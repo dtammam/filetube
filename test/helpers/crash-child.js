@@ -14,10 +14,13 @@ const { SqliteAdapter } = require('../../lib/db/sqlite');
 const dataDir = process.argv[2];
 const adapter = new SqliteAdapter(path.join(dataDir, 'filetube.db'), { log: () => {} });
 
-const db = { folders: [], progress: {} };
+// Wave 2: `progress` left the doc model (media_progress table), so the
+// per-burst kv row is a metadata row now - the atomicity claim (one
+// singleton + one kv row per transaction) is unchanged.
+const db = { folders: [], metadata: {} };
 for (let i = 1; i <= 200000; i++) {
   db.folders = [`/burst-${i}`];
-  db.progress[`p${i}`] = i;
+  db.metadata[`p${i}`] = i;
   adapter.save(db);
   if (i === 5) process.stdout.write('READY\n'); // parent arms the kill after a few real commits
 }

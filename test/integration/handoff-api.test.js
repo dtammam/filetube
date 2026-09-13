@@ -70,7 +70,7 @@ function seedItem(id, over = {}) {
 
 function seedDb() {
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { vid1: seedItem('vid1'), vid2: seedItem('vid2') },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

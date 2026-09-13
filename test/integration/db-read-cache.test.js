@@ -54,7 +54,7 @@ function baseSettings(overrides) {
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings(), ...db });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings(), ...db });
 }
 
 let server;

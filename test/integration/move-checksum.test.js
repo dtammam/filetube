@@ -52,7 +52,6 @@ function seedItem({ id, filePath, folders }) {
   saveDatabase({
     folders,
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: path.basename(filePath, path.extname(filePath)),
@@ -61,7 +60,6 @@ function seedItem({ id, filePath, folders }) {
       },
     },
     liked: [],
-    deleteTombstones: {},
     settings: baseSettings(),
   });
 }

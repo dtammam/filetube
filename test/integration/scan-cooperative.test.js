@@ -102,7 +102,7 @@ function buildUnchangedLibrary(count) {
     };
   }
   saveDatabase({
-    folders: [root], folderSettings: {}, progress: {}, metadata,
+    folders: [root], folderSettings: {}, metadata,
     settings: baseSettings(),
   });
   return { root, metadata };
@@ -270,7 +270,6 @@ test('AC1.6/AC1.7: after the async conversion, an unchanged file still reuses it
   saveDatabase({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [unchangedId]: {
         id: unchangedId, name: 'unchanged.mp4', title: 'unchanged', filePath: unchangedPath,

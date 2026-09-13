@@ -153,7 +153,6 @@ test('C: a rescan requested while a scan is in flight results in exactly one coa
   saveDatabase({
     folders: [dirA],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
@@ -199,7 +198,6 @@ test('FR3.4: sustained scan requests during an in-flight scan do not chain unbou
   saveDatabase({
     folders: [dir],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
@@ -306,7 +304,6 @@ test('deferred rescan (tech-debt #3): a budget-exhausted drain schedules exactly
   saveDatabase({
     folders: [dirA],
     folderSettings: {},
-    progress: {},
     metadata: {},
     // Off: no periodic timer to self-heal a dropped rescan -- exactly the
     // scenario tech-debt #3 documents.
@@ -383,7 +380,6 @@ test('armScanTimer arms no timer when scanIntervalMinutes is Off (0)', () => {
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
@@ -429,7 +425,7 @@ test('GET /api/scan-status: transcodeNames reflects codec-flagged items via the 
     'ready-mp4': pendingItem('ready-mp4', 'already-ready', { ext: '.mp4', videoCodec: 'h264', audioCodec: 'aac', needsTranscode: false, transcodeStatus: undefined }),
     'not-flagged': pendingItem('not-flagged', 'never-needed-it', { needsTranscode: false, transcodeStatus: undefined }),
   };
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  saveDatabase({ folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
@@ -444,7 +440,7 @@ test('GET /api/scan-status: transcodeNames is capped at 10 with the remainder re
   for (let i = 0; i < 15; i++) {
     metadata[`item-${i}`] = pendingItem(`item-${i}`, `clip-${i}`);
   }
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  saveDatabase({ folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
@@ -455,7 +451,7 @@ test('GET /api/scan-status: transcodeNames is capped at 10 with the remainder re
 });
 
 test('GET /api/scan-status: an empty pending-transcode set returns an empty transcodeNames array and zero overflow', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
@@ -504,7 +500,6 @@ test('FR3.3 HEADLINE: a mid-scan setTranscodeStatus write to \'failed\' survives
   saveDatabase({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.avi', title: 'existing', filePath: aviPath,
@@ -558,7 +553,6 @@ test('FR3.3: a legitimate \'ready\' (finished MP4 present on disk) still wins ov
   saveDatabase({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.avi', title: 'existing', filePath: aviPath,
@@ -598,7 +592,6 @@ test('FR3.3: a stale \'ready\' status with no cached MP4 is still cleared by the
   saveDatabase({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.avi', title: 'existing', filePath: aviPath,
@@ -634,7 +627,6 @@ test('FR3.3 conflict edge: a finished MP4 present concurrently with a worker\'s 
   saveDatabase({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.avi', title: 'existing', filePath: aviPath,

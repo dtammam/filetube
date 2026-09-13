@@ -25,6 +25,7 @@ const assert = require('node:assert');
 const {
   getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories, migrateOneOffsIntoChannelFolders,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const ytdlpArgs = require('../../lib/ytdlp/args');
@@ -76,7 +77,7 @@ test('HEADLINE: a flat one-off with a captured channelName is moved into resolve
   const subPath = path.join(downloadDir, 'Some Video [abc12345678].en.vtt');
   fs.writeFileSync(subPath, 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi\n');
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     progress: { [oldId]: { timestamp: 55, duration: 300, updatedAt: '2026-07-01T00:00:00.000Z' } },
@@ -133,7 +134,6 @@ test('idempotent: a second migration run moves nothing', async () => {
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [oldId]: {
         id: oldId, name: path.basename(filePath), title: 'Video', filePath,
@@ -166,7 +166,6 @@ test('an item already sitting in its resolved channel folder is skipped (no move
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'clip.mp4', title: 'clip', filePath,
@@ -197,7 +196,6 @@ test('an item with NO captured channel identity is left untouched', async () => 
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'no-identity.mp4', title: 'no-identity', filePath,
@@ -229,7 +227,6 @@ test('a non-ytdlp library file (outside the download root) is never touched, eve
     saveDatabase({
       folders: [libDir],
       folderSettings: {},
-      progress: {},
       metadata: {
         [id]: {
           id, name: 'movie.mp4', title: 'movie', filePath,
@@ -265,7 +262,6 @@ test('migration is a no-op when the yt-dlp module is disabled: no db change, no 
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'flat.mp4', title: 'flat', filePath,
@@ -304,7 +300,6 @@ test('GATE-FIX ADVERSARIAL SCENARIO: an item already foldered under a subscripti
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Some Video', filePath,
@@ -349,7 +344,6 @@ test('a flat one-off sitting in the legacy pre-T3 "One-Off" folder with a captur
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [oldId]: {
         id: oldId, name: path.basename(filePath), title: 'Legacy Video', filePath,
@@ -401,7 +395,6 @@ test('a same-basename collision loser is skipped/counted separately (not `errors
   saveDatabase({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [winnerId]: {
         id: winnerId, name: 'clash.mp4', title: 'clash', filePath: winnerPath,

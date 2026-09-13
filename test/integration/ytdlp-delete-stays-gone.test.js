@@ -34,6 +34,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, transcodedPath,
 } = require('../../server');
+const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
@@ -151,7 +152,7 @@ test('FR-I: a video deleted via DELETE /api/videos/:id stays gone -- the downloa
       title: 'FR-I fixture video',
       hasThumbnail: true,
     };
-    db.progress[videoId] = { position: 12.5 };
+    progressStore().set(videoId, { position: 12.5 }); // Wave 2: the relational store (was db.progress[...] =)
     return true;
   });
 
@@ -175,7 +176,7 @@ test('FR-I: a video deleted via DELETE /api/videos/:id stays gone -- the downloa
   assert.equal(fs.existsSync(sidecarPath), false, 'the transcode sidecar must leave the original id');
   const dbAfterDelete = loadDatabase();
   assert.equal(dbAfterDelete.metadata[videoId], undefined, 'the db.metadata row must be gone');
-  assert.equal(dbAfterDelete.progress[videoId], undefined, 'the db.progress entry must be gone');
+  assert.equal(progressStore().get(videoId), undefined, 'the pre-auth progress row must be gone (Wave 2: media_progress)');
 
   // ---- The core FR-I assertion: the delete path must NEVER have touched the
   // download-archive file -- it must still contain the deleted video's id,

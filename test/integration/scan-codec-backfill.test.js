@@ -71,7 +71,6 @@ test('scanDirectories: a legacy video item missing videoCodec/audioCodec is code
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy.mp4', title: 'legacy', filePath,
@@ -113,7 +112,6 @@ test('scanDirectories: a video item that already carries codec fields is reused 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'probed.mp4', title: 'probed', filePath,
@@ -152,7 +150,7 @@ test('scanDirectories: a brand-new video item gets explicit null codec fields pe
   const filePath = path.join(root, 'brand-new.mp4');
   fs.writeFileSync(filePath, 'brand-new-video-bytes');
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -177,7 +175,6 @@ test('scanDirectories: a video item probed-with-no-usable-codec (null fields) is
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'unprobeable.mp4', title: 'unprobeable', filePath,
@@ -208,7 +205,6 @@ test('scanDirectories: an .avi item with null codec fields still needs transcodi
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy.avi', title: 'legacy', filePath,
@@ -238,7 +234,6 @@ test('scanDirectories: an audio item is always reused regardless of missing code
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'track.mp3', title: 'track', filePath,

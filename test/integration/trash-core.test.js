@@ -19,10 +19,11 @@ fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  trashItem, getMediaId, loadDatabase, saveDatabase, updateDatabase,
+  trashItem, getMediaId, loadDatabase, updateDatabase,
   scanDirectories, userStore, __resetDatabaseForTests, __mintTestSession,
-  viewCountStore,
+  viewCountStore, progressStore, tombstoneStore,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
 const ISO = '2026-08-01T12:00:00.000Z';
@@ -35,7 +36,7 @@ function seedLibrary() {
   const filePath = path.join(ROOT, 'Chan', 'video one.mp4');
   fs.writeFileSync(filePath, 'media-bytes-1');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT],
     folderSettings: {},
     progress: { [id]: { timestamp: 11, duration: 100 } },
@@ -83,8 +84,9 @@ test('happy path: atomic move into <root>/.filetube-trash carries the WHOLE iden
   assert.equal(rec.trashedAt, 1750000000000);
   assert.equal(rec.item.title, 'video one', 'the full metadata snapshot rides the record');
   // Doc-table id-keyed carries followed the id (the move-mutator list).
-  assert.equal(db.progress[id], undefined);
-  assert.equal(db.progress[res.trashId].timestamp, 11);
+  // Wave 2: the frozen pre-auth position is relational; it re-keyed inside the mutator's save transaction.
+  assert.equal(progressStore.get(id), undefined);
+  assert.equal(progressStore.get(res.trashId).timestamp, 11);
   // Wave 1: the relational carrier followed the id too (post-commit re-key).
   assert.equal(viewCountStore.get(id), 0, 'no row left under the dead id');
   assert.equal(viewCountStore.get(res.trashId), 7, 'the count rides to the trash id');
@@ -206,7 +208,7 @@ test('source-unlink failure: trash succeeds, and the leftover dirent gets a defe
   assert.ok(fs.existsSync(filePath), 'the leftover dirent is still there (the failure under test)');
   const db = loadDatabase();
   assert.ok(db.trash[res.trashId], 'the trash record committed');
-  const tomb = db.deleteTombstones[id];
+  const tomb = tombstoneStore.get(id); // Wave 2: the relational store (minted inside the trash mutator's save transaction)
   assert.ok(tomb, 'the leftover is handed to the scan\'s deferred-delete retry');
   assert.equal(tomb.filePath, filePath);
 });

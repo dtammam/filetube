@@ -62,7 +62,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   authenticateFetch(server, base);
   saveDatabase({
-    folders: [mediaDir], folderSettings: {}, progress: {}, metadata: md,
+    folders: [mediaDir], folderSettings: {}, metadata: md,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', attributeControlEnabled: true }, // v1.202: OPT-IN feature, exercised ON here
   });
   victim = getMediaId(path.join(mediaDir, 'v0.mp4'));

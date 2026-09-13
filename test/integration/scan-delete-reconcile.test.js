@@ -32,7 +32,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scan-dele
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, updateDatabase, getMediaId, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { scanDirectories, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { seedState, progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -49,7 +50,7 @@ function baseSettings(overrides) {
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db); // Wave 2: relational keys (progress/deleteTombstones/viewCounts) go through their stores
 }
 
 function readDb() {
@@ -103,7 +104,7 @@ test('HEADLINE: a DELETE committing DURING a scan (after Phase 1 builds newMetad
   fs.rmSync(filePathZ);
   const deletePromise = updateDatabase(db => {
     delete db.metadata[idZ];
-    delete db.progress[idZ];
+    progressStore().remove(idZ); // Wave 2
     return true;
   });
 
@@ -164,7 +165,6 @@ test('a genuinely-new scanned file (absent from the Phase-1 snapshot) is still a
   writeDb({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: baseSettings(),
   });
@@ -190,7 +190,6 @@ test('non-concurrent case: a normal scan with no interleaved delete leaves all s
   writeDb({
     folders: [libDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [idE]: {
         id: idE, name: 'existing.mp4', title: 'existing', filePath: filePathE,

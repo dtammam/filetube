@@ -67,7 +67,7 @@ test('GET /api/settings never omits backgroundAudioForVideo, and it defaults to 
 });
 
 test('POST /api/settings accepts a backgroundAudioForVideo key without 400ing (KNOWN_KEYS regression)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -80,7 +80,7 @@ test('POST /api/settings accepts a backgroundAudioForVideo key without 400ing (K
 });
 
 test('GET /api/settings after a POST reflects the persisted backgroundAudioForVideo (round-trip)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -96,7 +96,7 @@ test('GET /api/settings after a POST reflects the persisted backgroundAudioForVi
 });
 
 test('POST /api/settings can turn backgroundAudioForVideo back OFF (explicit false)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ backgroundAudioForVideo: true }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ backgroundAudioForVideo: true }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -108,7 +108,7 @@ test('POST /api/settings can turn backgroundAudioForVideo back OFF (explicit fal
 });
 
 test('POST /api/settings rejects a non-boolean backgroundAudioForVideo with 400 and mutates nothing', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings({ backgroundAudioForVideo: true }) });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings({ backgroundAudioForVideo: true }) });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -124,7 +124,7 @@ test('POST /api/settings rejects a non-boolean backgroundAudioForVideo with 400 
 });
 
 test('POST /api/settings with an invalid backgroundAudioForVideo does not partially persist alongside other valid keys in the same request', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',

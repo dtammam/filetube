@@ -22,6 +22,7 @@ const {
   __getPersistedStateEpoch,
   userStore,
   viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
+  progressStore, tombstoneStore, // Wave 2: the frozen pre-auth positions + the tombstones, likewise
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -71,11 +72,10 @@ function fullState() {
     // v1.126: the per-folder display map RIDES the bundle (a non-empty value so
     // the deep-equal proves carriage, not just an empty default).
     folderDisplayNames: { Videos: 'Saturday Uploads' },
-    progress: { vid1: { timestamp: 42, duration: 100 } },
     metadata: { vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', type: 'video', ext: '.mp4', filePath: '/media/videos/clip.mp4', duration: 100, folderName: 'Videos' } },
     liked: ['vid1'],
-    deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000 } },
-    // (viewCounts left the doc object in Wave 1 - see FULL_VIEW_COUNTS / seedFullState.)
+    // (viewCounts left the doc object in Wave 1; progress + deleteTombstones in
+    // Wave 2 - see FULL_RELATIONAL / seedFullState.)
     // v1.65: trashed-item records ride the bundle (a restore that dropped
     // them would strand un-restorable, un-purgeable files in the trash dirs).
     trash: {
@@ -145,10 +145,17 @@ async function postRestore(bundle) {
 // REFUSES a `viewCounts` key, so the fixture seeds it through the store - the
 // same API the routes use - and the bundle still carries it as { id: count }.
 const FULL_VIEW_COUNTS = { vid1: 9 };
+// Wave 2: the frozen pre-auth position + a tombstone ride the bundle from
+// their tables, in the same { id: record } shapes they had as doc namespaces.
+const FULL_PROGRESS = { vid1: { timestamp: 42, duration: 100 } };
+const FULL_TOMBSTONES = { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000 } };
+const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones'];
 function seedFullState(overrides) {
   const state = { ...fullState(), ...(overrides || {}) };
   saveDatabase(state);
   viewCountStore.replaceAll(FULL_VIEW_COUNTS);
+  progressStore.replaceAll(FULL_PROGRESS);
+  tombstoneStore.replaceAll(FULL_TOMBSTONES);
   return state;
 }
 
@@ -172,13 +179,15 @@ test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips;
 
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
-  assert.deepEqual((await res.json()).restoredNamespaces.sort(), [...Object.keys(fullState()), 'viewCounts'].sort());
+  assert.deepEqual((await res.json()).restoredNamespaces.sort(), [...Object.keys(fullState()), ...RELATIONAL_KEYS].sort());
 
   assert.deepEqual(loadDatabase(), beforeState, 'restored state deep-equals the pre-wipe load');
-  // Wave 1: the relational namespace round-trips too - wiped by the reset
-  // (readPersistedDatabase === {} above proves the table was empty), restored
-  // from the bundle's { id: count } key into media_view_counts.
+  // Waves 1-2: the relational namespaces round-trip too - wiped by the reset
+  // (readPersistedDatabase === {} above proves the tables were empty), restored
+  // from the bundle's { id: record } keys into their tables.
   assert.deepEqual(viewCountStore.getAll(), FULL_VIEW_COUNTS, 'view counts restored into their table');
+  assert.deepEqual(progressStore.getAll(), FULL_PROGRESS, 'the frozen pre-auth positions restored into their table');
+  assert.deepEqual(tombstoneStore.getAll(), FULL_TOMBSTONES, 'the tombstones restored into their table');
 });
 
 test('v1.82 (gate S4 binding): a users-restoring restore WIPES stored avatars (no reassigned-id photo bleed)', async () => {
@@ -277,7 +286,7 @@ test('F5 coherency: a progress ping staged BEFORE the restore never lands after 
   // Even an explicit flush now must not land the pre-restore ping.
   await flushPendingProgress();
   assert.equal(userStore.getOneProgress(auth.user.id, 'vid1').timestamp, 42, 'the pre-restore ping never lands over the restored position');
-  assert.equal(loadDatabase().progress.vid1.timestamp, 42, 'the frozen doc-table record is exactly what the bundle restored -- untouched by any flush');
+  assert.equal(progressStore.get('vid1').timestamp, 42, 'the frozen pre-auth record (media_progress since Wave 2) is exactly what the bundle restored -- untouched by any flush');
 });
 
 test('validation refuses: wrong schema, unknown bundle key, non-empty users, oversized/invalid logo', async () => {

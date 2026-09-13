@@ -91,7 +91,6 @@ test('scan sets hasSubtitles=true for an already-indexed item that has grown a l
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'existing.mp4', title: 'Existing Video', filePath,
@@ -129,7 +128,6 @@ test('(HARD GATE) a file with NO subtitle sidecar is unaffected: hasSubtitles=fa
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'no-captions.mp4', title: 'No Captions', filePath,
@@ -158,7 +156,7 @@ test('a brand-new video scanned alongside a <base>.<lang>.vtt sidecar is indexed
   fs.writeFileSync(filePath, 'brand-new-video-bytes');
   fs.writeFileSync(path.join(root, 'Brand New [xyz789].en.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhi\n');
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -172,7 +170,7 @@ test('a brand-new video with NO sidecar is indexed with hasSubtitles=false', asy
   const filePath = path.join(root, 'brand-new-plain.mp4');
   fs.writeFileSync(filePath, 'brand-new-plain-video-bytes');
 
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -212,7 +210,6 @@ test('AC1.6/AC1.7: unchanged files sharing a directory reuse existing data with 
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [unchanged1Id]: {
         id: unchanged1Id, name: 'unchanged1.mp4', title: 'Unchanged 1', filePath: unchanged1Path,
@@ -284,7 +281,6 @@ test('the sidecar dirCache does not persist ACROSS scans: a sidecar added betwee
   writeDb({
     folders: [root],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'grows-a-sidecar-later.mp4', title: 'Later Sidecar', filePath,

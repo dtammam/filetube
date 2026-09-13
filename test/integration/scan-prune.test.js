@@ -13,7 +13,8 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, recordServed, saveDatabase, __resetDatabaseForTests, __mintTestSession, userStore, viewCountStore } = require('../../server');
+const { scanDirectories, getMediaId, recordServed, __resetDatabaseForTests, __mintTestSession, userStore, viewCountStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -30,7 +31,7 @@ function baseSettings(overrides) {
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db); // Wave 2: relational keys (progress/deleteTombstones/viewCounts) go through their stores
 }
 
 function readDb() {
@@ -86,7 +87,6 @@ test('(a) CATASTROPHE GUARD: entries under a missing/unmounted root survive with
   writeDb({
     folders: [missingRoot],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'ghost2.mp4', title: 'ghost2', filePath, folderName: 'ghost-lib',
@@ -250,7 +250,6 @@ test('(f) legacy entry with no rootFolder under a missing/unresolvable root is r
   writeDb({
     folders: [missingRoot],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'legacy.mp4', title: 'legacy', filePath, folderName: 'legacy-lib',
@@ -373,7 +372,6 @@ test('(h) FR3.2: a pruned id\'s persistedServedAt entry is cleared, so a re-adde
   writeDb({
     folders: [presentRoot],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'churn.mp4', title: 'churn', filePath, folderName: path.basename(presentRoot),
@@ -425,7 +423,6 @@ test('(d) all roots present and all files present: no spurious retention or prun
   writeDb({
     folders: [presentRoot],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'keep.mp4', title: 'keep', filePath, folderName: path.basename(presentRoot),

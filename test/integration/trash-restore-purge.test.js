@@ -23,6 +23,7 @@ const {
   scanDirectories, userStore, __resetDatabaseForTests,
   viewCountStore,
 } = require('../../server');
+const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -54,7 +55,6 @@ function seedLibrary() {
   saveDatabase({
     folders: [ROOT],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'movie.mp4', title: 'The Movie', filePath, folderName: 'Chan',
@@ -131,12 +131,12 @@ test('RETIRE-TOMBSTONE-FIRST: a tombstone at the original path cannot reap the r
   // A tombstone lands at the ORIGINAL path post-trash (the removeAnyway-of-
   // a-successor scenario, distilled).
   await updateDatabase((db) => {
-    db.deleteTombstones[id] = { filePath, deletedAt: Date.now() + 1000, youtubeId: null };
+    tombstoneStore().set(id, { filePath, deletedAt: Date.now() + 1000, youtubeId: null }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
   });
 
   const res = await restore(tid);
   assert.equal(res.status, 200);
-  assert.deepEqual(loadDatabase().deleteTombstones, {}, 'the destination tombstone was retired BEFORE the link');
+  assert.deepEqual(tombstoneStore().getAll(), {}, 'the destination tombstone was retired BEFORE the link');
 
   await scanDirectories();
   assert.ok(fs.existsSync(filePath), 'the restored file SURVIVES the scan (hard links preserve mtime -- the guard alone was no defense)');
@@ -174,7 +174,7 @@ test('PURGE: verified destruction of the file, sidecars, record and carriers -- 
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${tid}.jpg`)), 'the re-keyed thumbnail went too');
   const db = loadDatabase();
   assert.deepEqual(db.trash, {}, 'the record is gone');
-  assert.deepEqual(db.deleteTombstones, {}, 'a VERIFIED purge mints NO tombstone');
+  assert.deepEqual(tombstoneStore().getAll(), {}, 'a VERIFIED purge mints NO tombstone');
   assert.equal(userStore.getOneProgress(uid, tid), null, 'carrier rows removed');
   assert.deepEqual(userStore.getQueue(uid).entries, [], 'the queue row removed');
 

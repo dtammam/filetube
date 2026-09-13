@@ -21,6 +21,7 @@ const assert = require('node:assert');
 const {
   getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, scanDirectories,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 // v1.42: seeds go through the exported saveDatabase (the adapter opened at
@@ -51,7 +52,7 @@ test('HEADLINE: watch progress for a moved item survives the next scan unchanged
   const newId = getMediaId(newPath);
   assert.notEqual(oldId, newId, 'sanity: moving to a different folder must change the path-derived id');
 
-  saveDatabase({
+  seedState({
     folders: [srcDir, dstDir],
     folderSettings: {},
     progress: { [oldId]: { timestamp: 123, duration: 600, updatedAt: '2026-07-01T00:00:00.000Z' } },
@@ -109,7 +110,6 @@ test('a moved item with NO prior watch progress: single entry, no duplicate, aft
   saveDatabase({
     folders: [srcDir, dstDir],
     folderSettings: {},
-    progress: {},
     metadata: {
       [oldId]: {
         id: oldId, name: 'clip.mp4', title: 'clip', filePath,

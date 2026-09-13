@@ -40,8 +40,7 @@ before(async () => {
     };
   }
   saveDatabase({
-    folders: ['/lib'], folderSettings: {}, progress: {}, metadata, liked: [],
-    deleteTombstones: {},
+    folders: ['/lib'], folderSettings: {}, metadata, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 });

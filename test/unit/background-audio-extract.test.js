@@ -110,7 +110,7 @@ test('buildAudioExtractArgs: -i precedes the source path, -y forces overwrite of
 test('setAudioStatus: persists db.metadata[id].audioStatus without touching unrelated fields', async () => {
   const id = 'vid-audio-status';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, unrelatedField: 'keep-me' } },
   });
   await setAudioStatus(id, 'processing');
@@ -122,7 +122,7 @@ test('setAudioStatus: persists db.metadata[id].audioStatus without touching unre
 test('setAudioStatus: a no-op write (status unchanged) never touches the file (no-clobber, mirrors setTranscodeStatus)', async () => {
   const id = 'vid-audio-status-noop';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, audioStatus: 'ready' } },
   });
   const before = __getSaveDatabaseCallCount();
@@ -136,7 +136,7 @@ test('setAudioStatus: a no-op write (status unchanged) never touches the file (n
 });
 
 test('setAudioStatus: a missing metadata entry is a safe no-op (never throws, never resurrects the id)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {} });
+  writeDb({ folders: [], folderSettings: {}, metadata: {} });
   await assert.doesNotReject(setAudioStatus('does-not-exist', 'ready'));
   const db = readDb();
   assert.equal(db.metadata['does-not-exist'], undefined);
@@ -144,7 +144,7 @@ test('setAudioStatus: a missing metadata entry is a safe no-op (never throws, ne
 
 test('setAudioStatus: every documented status value round-trips', async () => {
   const id = 'vid-audio-status-cycle';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: { id } } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: { id } } });
   for (const status of ['pending', 'processing', 'ready', 'failed']) {
     await setAudioStatus(id, status);
     assert.equal(readDb().metadata[id].audioStatus, status);
@@ -156,7 +156,7 @@ test('setAudioStatus: every documented status value round-trips', async () => {
 test('clearAudioStatus: deletes the audioStatus key entirely (never leaves a stale value)', async () => {
   const id = 'vid-clear-status';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, audioStatus: 'ready', unrelatedField: 'keep-me' } },
   });
   await clearAudioStatus(id);
@@ -168,14 +168,14 @@ test('clearAudioStatus: deletes the audioStatus key entirely (never leaves a sta
 
 test('clearAudioStatus: a no-op when there is nothing to clear (never touches the file, never throws)', async () => {
   const id = 'vid-clear-status-noop';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: { id } } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: { id } } });
   await assert.doesNotReject(clearAudioStatus(id));
   const db = readDb();
   assert.ok(!('audioStatus' in db.metadata[id]));
 });
 
 test('clearAudioStatus: a missing metadata entry is a safe no-op (never throws, never resurrects the id)', async () => {
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {} });
+  writeDb({ folders: [], folderSettings: {}, metadata: {} });
   await assert.doesNotReject(clearAudioStatus('does-not-exist'));
   const db = readDb();
   assert.equal(db.metadata['does-not-exist'], undefined);
@@ -198,7 +198,7 @@ test("healStaleAudioReady: resets a stale 'ready' status to 'pending', returned 
 
 test("healStaleAudioReady: persists the heal to the database (fire-and-forget, mirrors setAudioStatus's own contract)", async () => {
   const id = 'vid-heal-persist';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: { id, audioStatus: 'ready' } } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: { id, audioStatus: 'ready' } } });
   const item = readDb().metadata[id];
   healStaleAudioReady(item);
   // healStaleAudioReady's own setAudioStatus call is fire-and-forget --

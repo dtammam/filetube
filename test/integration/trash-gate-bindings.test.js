@@ -28,6 +28,7 @@ const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
   trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests,
 } = require('../../server');
+const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -60,7 +61,6 @@ function seedLibrary(settingsOverrides) {
   saveDatabase({
     folders: [ROOT],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: 'clip.mp4', title: 'Clip', filePath, folderName: 'Chan',
@@ -216,7 +216,7 @@ test('QA W2: restoring a trash-less (pre-v1.65) bundle PRESERVES the current tra
 
   const bundle = {
     schema: 'filetube-backup-v1',
-    folders: [ROOT], folderSettings: {}, progress: {}, metadata: {}, liked: [],
+    folders: [ROOT], folderSettings: {}, metadata: {}, liked: [],
     settings: { trashRetentionDays: 30 },
   };
   const res = await fetch(`${base}/api/admin/restore`, {
@@ -274,7 +274,7 @@ test('ADV W5: the destination tombstone is retired in its OWN commit BEFORE the 
   const tr = await trashItem(deps(), id);
   assert.equal(tr.ok, true);
   await updateDatabase((db) => {
-    db.deleteTombstones[id] = { filePath, deletedAt: Date.now() + 1000, youtubeId: null };
+    tombstoneStore().set(id, { filePath, deletedAt: Date.now() + 1000, youtubeId: null }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
   });
 
   // The seat's binding: observe the COMMITTED tombstone state at the exact
@@ -284,7 +284,7 @@ test('ADV W5: the destination tombstone is retired in its OWN commit BEFORE the 
     get(target, prop) {
       if (prop === 'linkSync') {
         return (src, dst) => {
-          tombstoneAtLinkTime = Object.prototype.hasOwnProperty.call(loadDatabase().deleteTombstones, id)
+          tombstoneAtLinkTime = Object.prototype.hasOwnProperty.call(tombstoneStore().getAll(), id)
             ? 'STILL-PRESENT' : 'already-retired';
           return target.linkSync(src, dst);
         };
@@ -316,7 +316,7 @@ test('ADV W8 + S1 (tombstone shape): a failed source unlink (record + MINTED tom
   const tr = await trashItem({ loadDatabase, updateDatabase, getMediaId, fs: dyingFs }, id);
   assert.equal(tr.ok, true);
   assert.ok(fs.existsSync(filePath), 'precondition: the leftover dirent survives');
-  assert.ok(loadDatabase().deleteTombstones[id], 'precondition: the failure path minted the tombstone');
+  assert.ok(tombstoneStore().getAll()[id], 'precondition: the failure path minted the tombstone');
 
   await scanDirectories();
 
@@ -325,7 +325,7 @@ test('ADV W8 + S1 (tombstone shape): a failed source unlink (record + MINTED tom
   assert.ok(!fs.existsSync(filePath), 'the leftover dirent was reconciled away');
   assert.equal(Object.keys(db.trash).length, 1, 'and NO duplicate trash record was minted (S1)');
   assert.ok(fs.existsSync(tr.trashPath), 'the real bytes sit exactly once, in trash');
-  assert.equal(db.deleteTombstones[id], undefined, 'the tombstone was consumed');
+  assert.equal(tombstoneStore().get(id), undefined, 'the tombstone was consumed (Wave 2: the relational store)');
 });
 
 test('ADV W8 contract: purge after the reconcile is genuinely verified destruction', async () => {
@@ -374,7 +374,7 @@ test('R2 BIND-v (the TRUE crash shape): record + same-inode leftover, NO tombsto
   const { id, filePath } = seedLibrary();
   const tr = await trashItem(deps(), id);
   assert.equal(tr.ok, true);
-  assert.deepEqual(loadDatabase().deleteTombstones, {}, 'precondition: a clean trash mints NO tombstone');
+  assert.deepEqual(tombstoneStore().getAll(), {}, 'precondition: a clean trash mints NO tombstone');
   // The crash: re-create the leftover dirent as a hard link of the trash
   // copy (exactly what death between commit and unlink leaves behind).
   fs.linkSync(tr.trashPath, filePath);
@@ -412,7 +412,7 @@ test('R2 BIND-cc: DIFFERENT-inode content at a TOMBSTONED record-covered path is
   const past = new Date(Date.now() - 30 * DAY);
   fs.utimesSync(filePath, past, past); // mtime <= deletedAt so the retry fires
   await updateDatabase((db) => {
-    db.deleteTombstones[id] = { filePath, deletedAt: Date.now(), youtubeId: null };
+    tombstoneStore().set(id, { filePath, deletedAt: Date.now(), youtubeId: null }); // Wave 2: the relational store (was db.deleteTombstones[...] =)
   });
 
   await scanDirectories();

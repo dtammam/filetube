@@ -232,6 +232,16 @@ const userStore = createUserStore(dbAdapter);
 // `db.viewCounts`, which the save-lock now refuses.
 const createViewCountStore = require('./lib/media/viewCounts');
 const viewCountStore = createViewCountStore(dbAdapter);
+// Wave 2 (v1.292): the frozen pre-auth watch positions (adopted once by the
+// first admin) and the deferred-delete tombstones are relational too. Their
+// writes that must be atomic with a doc commit (the delete's tombstone mint,
+// the move/trash/restore retirements, the scan's consumption) run INSIDE the
+// save transaction via inSaveTransaction (below updateDatabase).
+const createProgressStore = require('./lib/media/progress');
+const createDeleteTombstoneStore = require('./lib/media/deleteTombstones');
+const progressStore = createProgressStore(dbAdapter);
+const tombstoneStore = createDeleteTombstoneStore(dbAdapter);
+const { pruneDeleteTombstones, DELETE_TOMBSTONE_CAP, DELETE_TOMBSTONE_MAX_AGE_MS } = createDeleteTombstoneStore;
 // Fail-closed at boot: a short/placeholder secret throws here (before listen).
 const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
 const AUTH_COOKIE_NAME = authGateLib.cookieNameFor(DATA_DIR);
@@ -520,13 +530,14 @@ function loadDatabase() {
   // v1.126: backfill `folderDisplayNames` ({ [folderName]: displayName }) like
   // every other top-level key - the per-channel-folder display map.
   if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object' || Array.isArray(db.folderDisplayNames)) db.folderDisplayNames = {};
-  if (!db.progress || typeof db.progress !== 'object') db.progress = {};
+  // (v1.42-v1.291: `progress` was backfilled here. Wave 2 moved it to
+  // media_progress / progressStore - no longer a key of this object.)
   if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
   // v1.30 C2: backfill `liked` (array of media ids) the same way every other
   // top-level key above is backfilled.
   if (!Array.isArray(db.liked)) db.liked = [];
-  // v1.41.3: backfill `deleteTombstones` like every other top-level key.
-  if (!db.deleteTombstones || typeof db.deleteTombstones !== 'object' || Array.isArray(db.deleteTombstones)) db.deleteTombstones = {};
+  // (v1.41.3-v1.291: `deleteTombstones` was backfilled here. Wave 2 moved it
+  // to media_delete_tombstones / tombstoneStore - no longer a key of this object.)
   // (v1.42-v1.290: `viewCounts` was backfilled here. Wave 1 of the relational
   // arc moved it to media_view_counts / viewCountStore - it is no longer a key
   // of this object, and the save-lock refuses it if one appears.)
@@ -616,7 +627,10 @@ function __failNextSaveForTests(err) {
   failNextSaveError = err instanceof Error ? err : new Error('simulated save failure (test injection)');
 }
 
-function saveDatabase(db) {
+// Wave 2: `effects` - the mutator's inSaveTransaction queue, run inside the
+// adapter's save transaction (see updateDatabase). Direct callers (test
+// seeding) pass nothing.
+function saveDatabase(db, effects = []) {
   saveDatabaseCallCount++;
   try {
     if (failNextSaveError) {
@@ -632,7 +646,7 @@ function saveDatabase(db) {
     // db.json.*.tmp files a pre-v1.42 crash may have left behind. Stays
     // SYNCHRONOUS: the mutate-then-save critical section inside
     // updateDatabase must complete in a single tick, exactly as before.
-    dbAdapter.save(db);
+    dbAdapter.save(db, effects.length > 0 ? { alsoInTransaction: () => { for (const fn of effects) fn(); } } : {});
     dbCache = db;
     dbCacheValid = true;
   } catch (err) {
@@ -671,14 +685,37 @@ let dbCacheValid = false;
 //     alive past the failure (`run.catch(() => {})`) so the NEXT queued
 //     write still proceeds -- one failure can never wedge all future writes.
 let dbWriteChain = Promise.resolve();
+// Wave 2: relational writes that must be ATOMIC with the doc commit. A
+// mutator calls `inSaveTransaction(fn)`; the queued fns run inside the
+// adapter's save transaction (after the doc rows, before COMMIT), so a
+// throw rolls both back and a crash leaves both or neither - the v1.41.3
+// tombstone contract ("mint in the SAME mutator that removes the entry")
+// keeps its atomicity now that the tombstone is a row in another table.
+// Valid ONLY inside a mutator tick; a mutator that queues effects and then
+// returns `false` (no save) is a programming error and throws loudly rather
+// than silently dropping the effects.
+let saveEffects = null;
+function inSaveTransaction(fn) {
+  if (!saveEffects) throw new Error('inSaveTransaction: only valid inside an updateDatabase mutator');
+  saveEffects.push(fn);
+}
 function updateDatabase(mutatorFn) {
   const run = dbWriteChain.then(() => {
     const db = loadDatabase();             // fresh read INSIDE the lock
-    const result = mutatorFn(db);          // synchronous mutate
+    saveEffects = [];
+    let result;
+    let effects;
+    try {
+      result = mutatorFn(db);              // synchronous mutate
+    } finally {
+      effects = saveEffects;
+      saveEffects = null;
+    }
     // A skipped save (result === false, e.g. a no-op/guard branch) leaves
     // the existing cache untouched: `saveDatabase` (and its cache-set, see
     // its own comment above) is simply never called on this branch.
-    if (result !== false) saveDatabase(db); // atomic write-temp-then-rename + cache-set
+    if (result !== false) saveDatabase(db, effects); // atomic write-temp-then-rename + cache-set
+    else if (effects.length > 0) throw new Error('updateDatabase: a mutator queued inSaveTransaction effects but returned false (no save) - effects would be lost');
     return result;
   });
   dbWriteChain = run.catch(() => {}); // keep the chain alive past a failure
@@ -2005,24 +2042,10 @@ function extractYtdlpVideoId(baseName) {
 // the next scan completes the deletion the user was already told happened.
 // (A parent that is present but UNREADABLE -- EACCES/EPERM -- still 409s
 // without touching the db, unless the caller opts into removeAnyway.)
-const DELETE_TOMBSTONE_CAP = 500;
-const DELETE_TOMBSTONE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
-
-// Pure, in-place prune: drops malformed/expired entries, then FIFO-caps by
-// deletedAt (oldest first). `now` injectable for tests. Exported.
-function pruneDeleteTombstones(tombstones, now = Date.now()) {
-  for (const id of Object.keys(tombstones)) {
-    const t = tombstones[id];
-    if (!t || typeof t.deletedAt !== 'number' || now - t.deletedAt > DELETE_TOMBSTONE_MAX_AGE_MS) {
-      delete tombstones[id];
-    }
-  }
-  const ids = Object.keys(tombstones);
-  if (ids.length > DELETE_TOMBSTONE_CAP) {
-    ids.sort((a, b) => tombstones[a].deletedAt - tombstones[b].deletedAt);
-    for (const id of ids.slice(0, ids.length - DELETE_TOMBSTONE_CAP)) delete tombstones[id];
-  }
-}
+// Wave 2: the growth bound (DELETE_TOMBSTONE_CAP / _MAX_AGE_MS) and the pure
+// in-place prune moved to lib/media/deleteTombstones.js with the table they
+// govern; `tombstoneStore.prune()` applies them to the rows. The names are
+// re-exported from there (see the store construction near userStore).
 
 // v1.33 T1: scan-time YouTube-id derivation, shared by the new/updated
 // branch's probe path and its probe-failure path. Two sources, in trust
@@ -4225,7 +4248,10 @@ async function runScanDirectories() {
   // a DELETE that lands mid-scan is the concurrent-delete case HR1b (below)
   // already covers; ids consumed HERE are removed from the FRESH in-lock db
   // in the final mutator (never a wholesale replace of the namespace).
-  const deleteTombstones = (db.deleteTombstones && typeof db.deleteTombstones === 'object') ? db.deleteTombstones : {};
+  // Wave 2: the tombstones are relational; this is the Phase-1 SNAPSHOT of
+  // the table (one read, same moment as the doc snapshot above), consumed
+  // ids are removed inside the final mutator's save transaction below.
+  const deleteTombstones = tombstoneStore.getAll();
   const consumedTombstoneIds = new Set();
 
   // v1.65 gate fix (adversarial W8, revised under the AC4.2 lock): a crash
@@ -4419,7 +4445,7 @@ async function runScanDirectories() {
           const freshDb = loadDatabase();
           // Re-verify against the tombstone we actually matched (primary key
           // `id`, or the SEAM 2 secondary key `tombstoneKey`).
-          const freshTombstone = freshDb.deleteTombstones && freshDb.deleteTombstones[tombstoneKey];
+          const freshTombstone = tombstoneStore.get(tombstoneKey); // Wave 2: the live table, not the snapshot
           // The live-claim guard stays keyed by `id` (= md5(filePath)): any
           // legitimate live entry claiming THIS path is keyed by md5 of THIS
           // path, whatever key the tombstone used.
@@ -5539,13 +5565,21 @@ async function runScanDirectories() {
     // v1.41.3: consume the tombstones this scan acted on -- targeted key
     // deletes against the FRESH map only (a tombstone minted mid-scan by a
     // concurrent DELETE is not in consumedTombstoneIds and survives intact).
-    if (consumedTombstoneIds.size && fresh.deleteTombstones && typeof fresh.deleteTombstones === 'object') {
-      for (const id of consumedTombstoneIds) delete fresh.deleteTombstones[id];
+    if (consumedTombstoneIds.size) {
+      // Wave 2: consumed inside this mutator's save transaction (atomic with
+      // the merge that indexes/reaps the files they governed).
+      const consumed = [...consumedTombstoneIds];
+      inSaveTransaction(() => tombstoneStore.remove(consumed));
     }
 
     fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
+    // Wave 2: the frozen pre-auth positions prune with their items inside
+    // this save transaction (they used to be `delete fresh.progress[id]`).
+    if (prunable.size > 0) {
+      const pruned = [...prunable];
+      inSaveTransaction(() => progressStore.remove(pruned));
+    }
     for (const id of prunable) {
-      delete fresh.progress[id]; // apply prune to the FRESH progress map
       // (v1.42 gate W3: the view counter used to prune here as a doc carry.
       // Wave 1: it is a relational carrier now, pruned post-commit below
       // beside the per-user rows - same two reasons: unbounded growth under
@@ -5986,7 +6020,7 @@ app.post('/api/auth/setup', async (req, res) => {
     const books = booksStore.readBooks(db);
     const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
     const adoption = {
-      progress: db.progress || {},
+      progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
       liked: Array.isArray(db.liked) ? db.liked : [],
       bookProgress: books.progress || {},
       bookPins: Array.isArray(books.pins) ? books.pins : [],
@@ -9875,8 +9909,10 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+// Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
+// joined viewCounts here - same bundle keys and shapes as before.
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9892,6 +9928,8 @@ app.get('/api/admin/backup', async (req, res) => {
       // Wave 1: the relational media namespace, read on the SAME chained
       // tick as the doc snapshot (one moment), in its historical bundle shape.
       bundle.viewCounts = viewCountStore.getAll();
+      bundle.progress = progressStore.getAll();          // Wave 2: verbatim records
+      bundle.deleteTombstones = tombstoneStore.getAll(); // Wave 2: verbatim records
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = db.settings ? db.settings[customLogoMimeKey(variant)] : undefined;
@@ -10088,6 +10126,22 @@ function validateBackupBundle(bundle) {
       // float, and "silently changed" is the class refuse-whole exists to
       // prevent (a v1.290 export never carries a float; only a hand edit does).
       if (!Number.isInteger(v) || v < 0 || v > Number.MAX_SAFE_INTEGER) return `viewCounts['${id}']: must be a non-negative integer within the safe-integer range`;
+    }
+  }
+  // Wave 2: the record namespaces - a per-id map of JSON records (any record
+  // shape is legal and copied verbatim; the importer keeps it byte-equal), but
+  // the MAP must be an object with non-empty NUL-free ids and no null holes -
+  // refuse-whole before the wipe. A tombstone's record must be an object (the
+  // scan reads .deletedAt/.filePath off it and the prune keys on deletedAt).
+  for (const key of ['progress', 'deleteTombstones']) {
+    if (bundle[key] === undefined) continue;
+    const map = bundle[key];
+    if (typeof map !== 'object' || map === null || Array.isArray(map)) return `${key} must be an object`;
+    for (const id of Object.keys(map)) {
+      if (id === '' || id.includes('\\u0000')) return `${key}['${id.split('\\u0000').join('\\\\u0000')}']: invalid media id`;
+      const rec = map[id];
+      if (rec === undefined || rec === null) return `${key}['${id}']: record is missing`;
+      if (key === 'deleteTombstones' && (typeof rec !== 'object' || Array.isArray(rec))) return `${key}['${id}']: must be an object`;
     }
   }
   // Container namespaces must be objects when present (delta-round
@@ -12456,7 +12510,9 @@ app.delete('/api/videos/:id', async (req, res) => {
   try {
     await updateDatabase(freshDb => {
       delete freshDb.metadata[item.id];
-      delete freshDb.progress[item.id];
+      // Wave 2: the frozen pre-auth position goes with the item, inside this
+      // save transaction (it was `delete freshDb.progress[item.id]`).
+      inSaveTransaction(() => progressStore.remove(item.id));
       // (v1.42 gate W3: the view counter went with its item here as a doc
       // carry. Wave 1: relational - removed post-commit below with the
       // per-user rows; same reasons: unbounded growth under churn AND a stale
@@ -12470,7 +12526,10 @@ app.delete('/api/videos/:id', async (req, res) => {
       // (pruneDeleteTombstones' header) finishes these deletes -- and since
       // v1.65 the retry TRASHES the survivor rather than unlinking it.
       {
-        if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object' || Array.isArray(freshDb.deleteTombstones)) freshDb.deleteTombstones = {};
+        // (Wave 2: the tombstone is a row in media_delete_tombstones, minted
+        // INSIDE this mutator's save transaction - see the inSaveTransaction
+        // call at the end of this block - so the "same mutator" atomicity of
+        // v1.41.3 holds across the two tables.)
         // SEAM 2 (defense-in-depth): the tombstone is keyed by md5(storedPath),
         // but the scanner can only recompute md5(realDiskPath) -- and in this
         // whole bug class those two DIVERGE, so the scanner's direct key lookup
@@ -12504,11 +12563,15 @@ app.delete('/api/videos/:id', async (req, res) => {
         const tombstoneSourceRef = (item.sourceExtractor && item.sourceId)
           ? { extractor: item.sourceExtractor, id: item.sourceId, bracketId: deleteBracket ? deleteBracket.id : undefined }
           : null;
-        freshDb.deleteTombstones[item.id] = {
+        const tombstone = {
           filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId,
           ...(tombstoneSourceRef ? { sourceRef: tombstoneSourceRef } : {}),
         };
-        pruneDeleteTombstones(freshDb.deleteTombstones);
+        const tombstoneId = item.id;
+        inSaveTransaction(() => {
+          tombstoneStore.set(tombstoneId, tombstone);
+          tombstoneStore.prune();
+        });
       }
       // tech-debt #5 (v1.30-era): mirror the scan-prune path so a
       // manually-deleted recently-served video doesn't strand a
@@ -13405,10 +13468,12 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
   // closes the crash half. Both are needed: neither alone is sufficient.)
   const newIdForTombstone = computeId(newPath);
   try {
-    await updateDb((freshDb) => {
-      if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') return false;
-      if (!Object.prototype.hasOwnProperty.call(freshDb.deleteTombstones, newIdForTombstone)) return false;
-      delete freshDb.deleteTombstones[newIdForTombstone];
+    await updateDb(() => {
+      // Wave 2: the tombstone is a row; retired inside this mutator's own
+      // committed save transaction (a `true` return with no doc change still
+      // opens the transaction for the queued effect).
+      if (!tombstoneStore.has(newIdForTombstone)) return false;
+      inSaveTransaction(() => tombstoneStore.remove(newIdForTombstone));
       return true;
     });
   } catch (err) {
@@ -13624,10 +13689,9 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       delete freshDb.metadata[oldId];
       freshDb.metadata[newId] = freshItem;
 
-      if (Object.prototype.hasOwnProperty.call(freshDb.progress, oldId)) {
-        freshDb.progress[newId] = freshDb.progress[oldId];
-        delete freshDb.progress[oldId];
-      }
+      // Wave 2: the frozen pre-auth position follows the re-key inside this
+      // save transaction (it was a doc carry: progress[newId] = progress[oldId]).
+      inSaveTransaction(() => progressStore.rekey(oldId, newId));
 
       // v1.30 C2: LIKED state is membership in `db.liked` (an ARRAY of media
       // ids -- there is no boolean on the item), so it is id-keyed exactly
@@ -13680,10 +13744,8 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       // live metadata entry under the same id can only be a leftover), and the
       // path it names is now empty. Dropped so it can never be applied to some
       // future file that lands at the old path.
-      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
-        delete freshDb.deleteTombstones[newId];
-        delete freshDb.deleteTombstones[oldId];
-      }
+      // Wave 2: both retirements inside this mutator's save transaction.
+      inSaveTransaction(() => tombstoneStore.remove([newId, oldId]));
 
       try {
         const oldThumb = path.join(THUMBNAIL_DIR, `${oldId}.jpg`);
@@ -14107,20 +14169,18 @@ async function trashItem(deps, id, opts = {}) {
 
       // Doc-table id-keyed carries, old -> trash (the move mutator's list;
       // its standing order applies here too).
-      if (Object.prototype.hasOwnProperty.call(freshDb.progress, id)) {
-        freshDb.progress[trashId] = freshDb.progress[id];
-        delete freshDb.progress[id];
-      }
+      // Wave 2: the frozen pre-auth position rides id -> trashId inside this
+      // save transaction; the tombstones for both ids retire in the same one.
+      inSaveTransaction(() => {
+        progressStore.rekey(id, trashId);
+        tombstoneStore.remove([trashId, id]);
+      });
       if (Array.isArray(freshDb.liked)) {
         const likedIndex = freshDb.liked.indexOf(id);
         if (likedIndex !== -1) freshDb.liked[likedIndex] = trashId;
       }
       // (Wave 1: the view counter is relational - it re-keys id -> trashId
       // post-commit in rekeyInFlightState with the per-user carriers.)
-      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
-        delete freshDb.deleteTombstones[trashId];
-        delete freshDb.deleteTombstones[id];
-      }
       // (Gate W8 note: the crash window between this commit and the source
       // unlink is closed by the SCAN's same-inode leftover reconcile, not a
       // pre-minted tombstone -- the AC4.2 1:1-write lock refuses a second
@@ -14278,10 +14338,14 @@ async function trashItem(deps, id, opts = {}) {
     // (which since v1.65 TRASHES survivors, or same-inode-reconciles a
     // record-covered leftover). Best-effort.
     try {
-      await updateDb((freshDb) => {
-        if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') freshDb.deleteTombstones = {};
-        freshDb.deleteTombstones[id] = { filePath: oldPath, deletedAt: Date.now(), youtubeId: null };
-        pruneDeleteTombstones(freshDb.deleteTombstones); // in-place prune (returns nothing)
+      await updateDb(() => {
+        // Wave 2: minted as a row inside this mutator's save transaction.
+        const leftover = { filePath: oldPath, deletedAt: Date.now(), youtubeId: null };
+        inSaveTransaction(() => {
+          tombstoneStore.set(id, leftover);
+          tombstoneStore.prune();
+        });
+        return true;
       });
     } catch (tombErr) {
       console.error(`Trash: could not record the leftover at ${oldPath} for deferred cleanup:`, tombErr.message);
@@ -14490,10 +14554,10 @@ async function restoreTrashItem(deps, trashId) {
   // occupancy/confinement checks above (adversarial S4: a refused restore
   // must not have consumed the destination's tombstone as a side effect).
   try {
-    await updateDb((freshDb) => {
-      if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') return false;
-      if (!Object.prototype.hasOwnProperty.call(freshDb.deleteTombstones, originalId)) return false;
-      delete freshDb.deleteTombstones[originalId];
+    await updateDb(() => {
+      // Wave 2: a row, retired inside this mutator's own committed save transaction.
+      if (!tombstoneStore.has(originalId)) return false;
+      inSaveTransaction(() => tombstoneStore.remove(originalId));
       return true;
     });
   } catch (err) {
@@ -14538,20 +14602,18 @@ async function restoreTrashItem(deps, trashId) {
       };
       delete freshDb.trash[trashId];
 
-      if (Object.prototype.hasOwnProperty.call(freshDb.progress, trashId)) {
-        freshDb.progress[originalId] = freshDb.progress[trashId];
-        delete freshDb.progress[trashId];
-      }
+      // Wave 2: the frozen pre-auth position rides trashId -> originalId
+      // inside this save transaction; both ids' tombstones retire in the same one.
+      inSaveTransaction(() => {
+        progressStore.rekey(trashId, originalId);
+        tombstoneStore.remove([originalId, trashId]);
+      });
       if (Array.isArray(freshDb.liked)) {
         const likedIndex = freshDb.liked.indexOf(trashId);
         if (likedIndex !== -1) freshDb.liked[likedIndex] = originalId;
       }
       // (Wave 1: the view counter is relational - it re-keys trashId ->
       // originalId post-commit in rekeyInFlightState with the per-user carriers.)
-      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
-        delete freshDb.deleteTombstones[originalId];
-        delete freshDb.deleteTombstones[trashId];
-      }
 
       try {
         const trashThumb = path.join(THUMBNAIL_DIR, `${trashId}.jpg`);
@@ -14725,14 +14787,16 @@ async function purgeTrashItem(deps, trashId) {
   try {
     await updateDb((freshDb) => {
       if (freshDb.trash) delete freshDb.trash[trashId];
-      delete freshDb.progress[trashId];
+      // Wave 2: the frozen pre-auth position and the tombstone under the
+      // trashId are purged inside this save transaction.
+      inSaveTransaction(() => {
+        progressStore.remove(trashId);
+        tombstoneStore.remove(trashId);
+      });
       // (Wave 1: the relational view counter is removed post-commit below.)
       if (Array.isArray(freshDb.liked)) {
         const likedIndex = freshDb.liked.indexOf(trashId);
         if (likedIndex !== -1) freshDb.liked.splice(likedIndex, 1);
-      }
-      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
-        delete freshDb.deleteTombstones[trashId];
       }
       clearPersistedServedAt(trashId);
       return true;
@@ -16942,8 +17006,8 @@ app.get('/api/stats', (req, res) => {
   let inventoryInput;
   if (isAdmin) {
     inventoryInput = {
-      metadata: visibleMetadata, progress: db.progress, viewCounts: viewCountStore.getAll(), // Wave 1: the table
-      liked: db.liked, deleteTombstones: db.deleteTombstones, folders: db.folders,
+      metadata: visibleMetadata, progress: progressStore.getAll(), viewCounts: viewCountStore.getAll(), // Waves 1-2: the tables
+      liked: db.liked, deleteTombstones: tombstoneStore.getAll(), folders: db.folders,
       books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
       music: { tracks: visibleTracks, folders: music.folders },
       users: userStore.countUsers(),
@@ -16953,8 +17017,9 @@ app.get('/api/stats', (req, res) => {
     // Tombstones only for items the member could have seen (v1.65 trash shape
     // carries `.item`; a legacy tombstone is flat).
     const scopedTombstones = {};
-    for (const id of Object.keys(db.deleteTombstones || {})) {
-      const t = db.deleteTombstones[id];
+    const allTombstones = tombstoneStore.getAll(); // Wave 2: the table
+    for (const id of Object.keys(allTombstones)) {
+      const t = allTombstones[id];
       const probe = t && t.item ? t.item : t;
       if (probe && mediaVisibleTo(req, probe)) scopedTombstones[id] = t;
     }
@@ -18952,6 +19017,12 @@ module.exports = {
   // so integration tests seed and read counts through the SAME API the
   // routes use (the doc-model `viewCounts` key is refused by the save-lock).
   viewCountStore,
+  // Wave 2: the frozen pre-auth positions + the deferred-delete tombstones
+  // (their doc keys are refused by the save-lock too), and the in-save
+  // transaction hook for tests that bind the atomicity contract.
+  progressStore,
+  tombstoneStore,
+  inSaveTransaction,
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

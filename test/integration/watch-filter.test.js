@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 function writeDb(db) {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, ...db });
+  saveDatabase({ folders: [], folderSettings: {}, ...db });
 }
 
 function seedItem(id, overrides) {

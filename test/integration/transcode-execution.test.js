@@ -82,7 +82,6 @@ function seedDb(items) {
   saveDatabase({
     folders: [mediaDir],
     folderSettings: {},
-    progress: {},
     metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

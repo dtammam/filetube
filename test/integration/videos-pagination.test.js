@@ -61,7 +61,7 @@ function buildFixture(count) {
       addedAt: 1700000000000 + i,
     };
   }
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata });
+  saveDatabase({ folders: [], folderSettings: {}, metadata });
   return metadata;
 }
 
@@ -140,7 +140,7 @@ test('AC3.2 (cross-window search match): an item findable only on a later page (
       addedAt: 1700000000000 + i,
     };
   }
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata });
+  saveDatabase({ folders: [], folderSettings: {}, metadata });
 
   const page0 = await getVideos('search=matchclip&sort=newest&limit=40&offset=0');
   assert.equal(page0.body.total, 80, 'sanity: the search narrows the library to the 80 matching items');

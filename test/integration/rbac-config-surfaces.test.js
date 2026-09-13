@@ -56,7 +56,7 @@ before(async () => {
   saveDatabase({
     folders: [pubRoot, hidRoot], folderSettings: { [pubRoot]: { name: 'Family' }, [hidRoot]: { name: 'Secret' } },
     folderDisplayNames: { FamilyChannel: 'Family Channel', SecretChannel: 'Secret Channel' },
-    progress: {}, metadata: { [openVid.id]: openVid, [hidVid.id]: hidVid },
+    metadata: { [openVid.id]: openVid, [hidVid.id]: hidVid },
     liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

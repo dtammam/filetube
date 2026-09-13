@@ -49,7 +49,7 @@ before(async () => {
   openId = open.id; hiddenId = hidden.id;
   saveDatabase({
     folders: [pubRoot, hidRoot], folderSettings: {},
-    progress: {}, metadata: { [open.id]: open, [hidden.id]: hidden },
+    metadata: { [open.id]: open, [hidden.id]: hidden },
     liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

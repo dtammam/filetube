@@ -66,7 +66,7 @@ async function seedAndTrash(folders) {
     files[folder] = { id, filePath, size };
   }
   saveDatabase({
-    folders: [ROOT], folderSettings: {}, progress: {}, metadata,
+    folders: [ROOT], folderSettings: {}, metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0 },
   });
   for (const folder of Object.keys(files)) {

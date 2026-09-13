@@ -30,7 +30,7 @@ after(async () => {
 });
 
 function baseDb(metadata) {
-  return { folders: [], folderSettings: {}, progress: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } };
+  return { folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } };
 }
 
 // A real yt-dlp auto-sub shape: rolling repeats + per-word tags.

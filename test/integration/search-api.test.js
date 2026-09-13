@@ -37,7 +37,7 @@ before(async () => {
   auth = authenticateFetch(server, base);
 
   saveDatabase({
-    folders: [DATA_DIR], folderSettings: {}, progress: {},
+    folders: [DATA_DIR], folderSettings: {},
     metadata: {
       vzw: { id: 'vzw', title: 'Zephyr Winds', filePath: path.join(DATA_DIR, 'zw.mp4'), folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 100, youtubeId: 'dQw4w9WgXcQ' },
       vother: { id: 'vother', title: 'Unrelated Clip', filePath: path.join(DATA_DIR, 'zw.mp4'), folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 5, size: 1, addedAt: 99 },

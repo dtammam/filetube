@@ -76,10 +76,13 @@ test('loadDatabase: yields a fully-defaulted db when the store is empty (no eage
   const db = loadDatabase();
   assert.deepEqual(db.folders, []);
   assert.deepEqual(db.folderSettings, {});
-  assert.deepEqual(db.progress, {});
   assert.deepEqual(db.metadata, {});
   assert.deepEqual(db.liked, []);
-  assert.deepEqual(db.deleteTombstones, {});
+  // Wave 2: `progress` and `deleteTombstones` are NOT keys of the doc object
+  // any more (media_progress / media_delete_tombstones); the save-lock
+  // refuses a backfill that re-added them.
+  assert.equal(db.progress, undefined, 'no doc-model progress key');
+  assert.equal(db.deleteTombstones, undefined, 'no doc-model deleteTombstones key');
   // Wave 1: `viewCounts` is NOT a key of the doc object any more (it lives in
   // media_view_counts behind viewCountStore); a backfill that re-added it
   // would be refused by the save-lock on the next write.
@@ -92,7 +95,7 @@ test('loadDatabase: yields a fully-defaulted db when the store is empty (no eage
 });
 
 test('loadDatabase: backfills folderSettings when the persisted set lacks it', () => {
-  saveDatabase({ folders: ['/x'], progress: {}, metadata: {} });
+  saveDatabase({ folders: ['/x'], metadata: {} });
   const db = loadDatabase();
   assert.deepEqual(db.folderSettings, {}, 'missing folderSettings is backfilled');
   assert.deepEqual(db.folders, ['/x']);
@@ -105,7 +108,7 @@ test('v1.42 migration-path: a corrupt db.json sitting beside an ACTIVE filetube.
   // garbage in it cannot perturb a load. (Corrupt db.json at FIRST boot —
   // before filetube.db exists — aborts the import instead; that leg lives in
   // test/unit/db-sqlite-adapter.test.js per AC9.)
-  saveDatabase({ folders: ['/real'], folderSettings: {}, progress: {}, metadata: {} });
+  saveDatabase({ folders: ['/real'], folderSettings: {}, metadata: {} });
   fs.writeFileSync(DB_FILE, '{ this is not valid json ');
   const db = loadDatabase();
   assert.deepEqual(db.folders, ['/real'], 'load comes from SQLite; the corrupt legacy file is inert');
@@ -117,10 +120,9 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     folders: ['/media/movies'],
     folderSettings: { '/media/movies': { name: 'Movies', hidden: false } },
     folderDisplayNames: {}, // v1.126: backfilled like every other top-level key
-    progress: { abc: { timestamp: 42, duration: 100 } },
     metadata: { abc: { id: 'abc', title: 'Test' } },
     liked: ['abc'],
-    deleteTombstones: {}, // v1.41.3: backfilled like every other top-level key
+    // (progress / deleteTombstones / viewCounts are relational since Waves 1-2 - not doc keys)
     trash: {}, // v1.65: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
@@ -132,26 +134,24 @@ test('loadDatabase: a persisted set with no settings key gets all defaults, no d
   saveDatabase({
     folders: ['/media/movies'],
     folderSettings: { '/media/movies': { name: 'Movies', hidden: false } },
-    progress: { abc: { timestamp: 42, duration: 100 } },
     metadata: { abc: { id: 'abc', title: 'Test' } },
   });
   const db = loadDatabase();
   assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'all settings defaulted');
   assert.deepEqual(db.folders, ['/media/movies'], 'folders preserved');
   assert.deepEqual(db.folderSettings, { '/media/movies': { name: 'Movies', hidden: false } }, 'folderSettings preserved');
-  assert.deepEqual(db.progress, { abc: { timestamp: 42, duration: 100 } }, 'progress preserved');
   assert.deepEqual(db.metadata, { abc: { id: 'abc', title: 'Test' } }, 'metadata preserved');
 });
 
 test('loadDatabase: defaults pruneMissing to true and scanIntervalMinutes to 30', () => {
-  saveDatabase({ folders: [], progress: {}, metadata: {} });
+  saveDatabase({ folders: [], metadata: {} });
   const db = loadDatabase();
   assert.equal(db.settings.pruneMissing, true);
   assert.equal(db.settings.scanIntervalMinutes, 30);
 });
 
 test('loadDatabase: a partial settings object keeps its set keys and fills the rest', () => {
-  saveDatabase({ folders: [], progress: {}, metadata: {}, settings: { cacheMaxAgeDays: 7 } });
+  saveDatabase({ folders: [], metadata: {}, settings: { cacheMaxAgeDays: 7 } });
   const db = loadDatabase();
   assert.equal(db.settings.cacheMaxAgeDays, 7, 'explicitly-set key is preserved');
   assert.equal(db.settings.scanIntervalMinutes, 30, 'unset key defaulted');
@@ -163,7 +163,6 @@ test('saveDatabase + loadDatabase: a metadata lastServedAt survives a round-trip
   const original = {
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: { abc: { id: 'abc', title: 'Test', lastServedAt: 1735689600000 } },
     settings: DEFAULT_SETTINGS,
   };
@@ -192,7 +191,6 @@ test('saveDatabase: a successful save persists the complete state (verified via 
   const db = {
     folders: ['/media/movies'],
     folderSettings: {},
-    progress: {},
     metadata: { abc: { id: 'abc', title: 'Test' } },
     settings: DEFAULT_SETTINGS,
   };
@@ -201,7 +199,7 @@ test('saveDatabase: a successful save persists the complete state (verified via 
 });
 
 test('saveDatabase: a pre-transaction failure (unknown namespace) leaves the prior state intact and RETHROWS', () => {
-  const original = { folders: ['/keep'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
+  const original = { folders: ['/keep'], folderSettings: {}, metadata: {}, settings: DEFAULT_SETTINGS };
   saveDatabase(original);
 
   // The unknown-key persistence lock fires before any row is touched — a
@@ -228,7 +226,7 @@ test('saveDatabase: a serialization failure aborts with NOTHING persisted — pr
   // touched. NOTE: a plain `undefined` value is NOT a failure — it is
   // silently dropped, exactly as JSON.stringify dropped it from db.json
   // pre-v1.42.)
-  const original = { folders: ['/keep2'], folderSettings: {}, progress: {}, metadata: { ok: { id: 'ok' } }, settings: DEFAULT_SETTINGS };
+  const original = { folders: ['/keep2'], folderSettings: {}, metadata: { ok: { id: 'ok' } }, settings: DEFAULT_SETTINGS };
   saveDatabase(original);
 
   const circular = { id: 'poison' };
@@ -258,7 +256,7 @@ test('saveDatabase: a serialization failure aborts with NOTHING persisted — pr
 // ---- [UNIT] Serialization correctness: updateDatabase(mutatorFn) -----------
 
 test('updateDatabase: two back-to-back calls mutating DIFFERENT fields both survive (neither clobbers the other)', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: DEFAULT_SETTINGS });
 
   const order = [];
   const first = updateDatabase((db) => {
@@ -288,7 +286,7 @@ test('updateDatabase: two back-to-back calls mutating DIFFERENT fields both surv
 });
 
 test('updateDatabase: a mutator returning false skips the save entirely (no-op guard path)', async () => {
-  saveDatabase({ folders: ['/unchanged'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  saveDatabase({ folders: ['/unchanged'], folderSettings: {}, metadata: {}, settings: DEFAULT_SETTINGS });
 
   const result = await updateDatabase(() => false);
 
@@ -297,7 +295,7 @@ test('updateDatabase: a mutator returning false skips the save entirely (no-op g
 });
 
 test('updateDatabase: a throwing mutator rejects only its own promise; the chain still processes the next write', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: DEFAULT_SETTINGS });
 
   const failing = updateDatabase(() => { throw new Error('boom'); });
   const succeeding = updateDatabase((db) => { db.folders = ['/after-failure']; return true; });
@@ -312,7 +310,7 @@ test('updateDatabase: a throwing mutator rejects only its own promise; the chain
 });
 
 test('updateDatabase: a saveDatabase failure REJECTS the call (no false success), and the chain still processes the next write', async () => {
-  saveDatabase({ folders: ['/before-failure'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  saveDatabase({ folders: ['/before-failure'], folderSettings: {}, metadata: {}, settings: DEFAULT_SETTINGS });
 
   // Same serialization poison as the saveDatabase abort test above — the
   // rejection must surface through updateDatabase's promise.
@@ -341,29 +339,27 @@ test('updateDatabase: a saveDatabase failure REJECTS the call (no false success)
 
 // ---- [UNIT] loadDatabase backfill: ALL top-level keys, not just folderSettings/settings ----
 
-test('loadDatabase: backfills ALL top-level keys (folders/progress/metadata), not just folderSettings/settings', () => {
+test('loadDatabase: backfills ALL top-level doc keys (folders/metadata), not just folderSettings/settings', () => {
   saveDatabase({ folderSettings: { '/x': { name: 'X', hidden: false } } });
   const db = loadDatabase();
   assert.deepEqual(db.folders, [], 'missing folders backfilled to []');
-  assert.deepEqual(db.progress, {}, 'missing progress backfilled to {}');
+  assert.equal(db.progress, undefined, 'progress is relational since Wave 2 - never backfilled onto the doc object');
   assert.deepEqual(db.metadata, {}, 'missing metadata backfilled to {}');
   assert.deepEqual(db.folderSettings, { '/x': { name: 'X', hidden: false } }, 'existing folderSettings preserved');
   assert.deepEqual(db.settings, DEFAULT_SETTINGS);
 });
 
-test('loadDatabase: a partial persisted set missing metadata/progress lets a mutator write into them without throwing', async () => {
+test('loadDatabase: a partial persisted set missing metadata lets a mutator write into it without throwing', async () => {
   saveDatabase({ folders: ['/x'] });
   await assert.doesNotReject(
     updateDatabase((db) => {
       db.metadata['new-id'] = { id: 'new-id' };
-      db.progress['new-id'] = { timestamp: 0 };
       return true;
     }),
-    'a partial persisted set (missing metadata/progress) must not throw a TypeError in a mutator'
+    'a partial persisted set (missing metadata) must not throw a TypeError in a mutator'
   );
   const after = loadDatabase();
   assert.equal(after.metadata['new-id'].id, 'new-id');
-  assert.equal(after.progress['new-id'].timestamp, 0);
 });
 
 // ---- [UNIT] startup sweep: orphaned db.json.*.tmp (LEGACY, pre-v1.42) ------
@@ -373,7 +369,7 @@ test('cleanupOrphanDbTmp: removes only db.json.*.tmp files, leaves db.json/filet
   // pre-SQLite instance can leave `db.json.<pid>.<seq>.tmp` orphans in
   // DATA_DIR. The legacy db.json itself (a decoy here) and the live
   // filetube.db must never be touched.
-  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: DEFAULT_SETTINGS });
   fs.writeFileSync(DB_FILE, '{"legacy": true}');
   const orphan1 = path.join(process.env.DATA_DIR, 'db.json.12345.0.tmp');
   const orphan2 = path.join(process.env.DATA_DIR, 'db.json.6789.3.tmp');

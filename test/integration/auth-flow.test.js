@@ -15,7 +15,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-authflow-
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __resetDatabaseForTests, __clearUsersForTests } = require('../../server');
+const { app, __resetDatabaseForTests, __clearUsersForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 
 let server, base;
 before(async () => {
@@ -59,7 +60,7 @@ test('no users: a page request redirects to /welcome; an API 401s; /welcome + as
 
 test('create-admin adopts pre-auth state, sets a session, and locks setup afterwards', async () => {
   // Seed some pre-auth global state to be adopted.
-  saveDatabase({ folders: [], folderSettings: {}, progress: { vid1: { timestamp: 30, duration: 100, updatedAt: '2026-07-01T00:00:00.000Z' } }, metadata: { vid1: { id: 'vid1', name: 'c.mp4' } }, liked: ['vid1'], settings: {} });
+  seedState({ folders: [], folderSettings: {}, progress: { vid1: { timestamp: 30, duration: 100, updatedAt: '2026-07-01T00:00:00.000Z' } }, metadata: { vid1: { id: 'vid1', name: 'c.mp4' } }, liked: ['vid1'], settings: {} });
 
   const setup = await jsonPost('/api/auth/setup', { username: 'dean', displayName: 'Dean', password: 'a-good-password' });
   assert.equal(setup.status, 200);

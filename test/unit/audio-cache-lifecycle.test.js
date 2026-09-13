@@ -146,7 +146,7 @@ test('sweepAgedTranscodes: age-retention sweep removes a stale .m4a sidecar via 
   const staleTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   fs.utimesSync(p, staleTime, staleTime);
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, lastServedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 } },
     settings: { cacheMaxAgeDays: 30 },
   });
@@ -172,7 +172,7 @@ test('evictTranscodeCache: clears audioStatus for an EVICTED .m4a sidecar, leave
   const oldVideo = write(`${videoId}.mp4`, 100, 1100);
   const freshKeep = write('keep.m4a', 100, 9000);
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: {
       [audioId]: { id: audioId, audioStatus: 'ready' },
       [videoId]: { id: videoId, transcodeStatus: 'ready' },
@@ -203,7 +203,7 @@ test('sweepAgedTranscodes: clears audioStatus for an aged-out .m4a sidecar', asy
   const staleTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   fs.utimesSync(p, staleTime, staleTime);
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, audioStatus: 'ready', lastServedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 } },
     settings: { cacheMaxAgeDays: 30 },
   });

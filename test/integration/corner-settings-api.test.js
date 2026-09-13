@@ -103,7 +103,6 @@ test('/api/videos items carry the server-derived watchUrl exactly when a SAFE yo
   saveDatabase({
     folders: ['/media/Movies'],
     folderSettings: {},
-    progress: {},
     metadata: {
       withId: {
         id: 'withId', title: 'From YouTube', type: 'video', ext: '.mp4',

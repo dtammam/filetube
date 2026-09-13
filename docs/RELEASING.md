@@ -116,6 +116,14 @@ carries `viewCounts` in the same `{ id: count }` shape on both sides of the
 line, so a v1.291+ bundle also restores into v1.290 and vice versa. Every
 later wave of the arc adds a floor the same way (the plan lists them).
 
+**Third floor - schema v22 (v1.292, Wave 2).** The frozen pre-auth watch
+positions (`progress`) and the deferred-delete tombstones
+(`deleteTombstones`) moved from `doc_kv` into `media_progress` and
+`media_delete_tombstones`; the v22 migration copies the records verbatim
+and deletes the doc rows. A v1.291-or-earlier build refuses a v22 database
+at boot; bundles carry both keys in the same `{ id: record }` shapes on
+both sides of the line.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

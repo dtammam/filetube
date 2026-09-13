@@ -66,7 +66,7 @@ before(async () => {
   const pub = seedItem(pubFile);
   const hid = seedItem(hidFile);
   saveDatabase({
-    folders: [mediaDir], folderSettings: {}, progress: {},
+    folders: [mediaDir], folderSettings: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
     liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

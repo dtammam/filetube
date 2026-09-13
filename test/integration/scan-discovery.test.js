@@ -48,7 +48,7 @@ test('scanDirectories: a root-level media file gets folderName === basename(root
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-discovery-root-'));
   const filePath = path.join(root, 'top-level.mp4');
   fs.writeFileSync(filePath, 'root-level-bytes');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -64,7 +64,7 @@ test('scanDirectories: a file in a nested subdirectory gets folderName === basen
   fs.mkdirSync(subDir);
   const filePath = path.join(subDir, 'episode.mp4');
   fs.writeFileSync(filePath, 'nested-bytes');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -85,7 +85,7 @@ test('scanDirectories: recurses through multiple levels of nesting and indexes f
   fs.writeFileSync(rootFile, 'a');
   fs.writeFileSync(level1File, 'b');
   fs.writeFileSync(level2File, 'c');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -107,7 +107,7 @@ test('scanDirectories: non-whitelisted extensions (sidecar files) sitting alongs
     path.join(root, 'readme.txt'),
   ];
   for (const p of sidecarPaths) fs.writeFileSync(p, 'sidecar-bytes');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -126,7 +126,7 @@ test('scanDirectories: both video and audio extensions are discovered in the sam
   const audioPath = path.join(root, 'track.mp3');
   fs.writeFileSync(videoPath, 'video-bytes');
   fs.writeFileSync(audioPath, 'audio-bytes');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -141,7 +141,7 @@ test('scanDirectories: an AVI (browser-incompatible container) is flagged needsT
   const mp4Path = path.join(root, 'new.mp4');
   fs.writeFileSync(aviPath, 'avi-bytes');
   fs.writeFileSync(mp4Path, 'mp4-bytes');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -242,7 +242,7 @@ test('scanDirectories: a yt-dlp per-format fragment/merge-temp file left after a
   for (const p of [goodPath, fragmentPath, audioFragmentPath, mergeTempPath, partPath, ytdlPath]) {
     fs.writeFileSync(p, 'bytes');
   }
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -262,7 +262,7 @@ test('scanDirectories: a bracket-less lookalike file (no yt-dlp id bracket) is s
   for (const p of [fragmentLookalike, tempLookalike]) {
     fs.writeFileSync(p, 'bytes');
   }
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -275,7 +275,7 @@ test('scanDirectories: a normal media filename with extra dots is still indexed 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-discovery-dotted-names-'));
   const dottedPath = path.join(root, 'My.Video.2024.mp4');
   fs.writeFileSync(dottedPath, 'bytes');
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 
@@ -288,7 +288,7 @@ test('scanDirectories: size and addedAt are populated from the real filesystem s
   const filePath = path.join(root, 'sized.mp4');
   const contents = Buffer.alloc(1234, 'x');
   fs.writeFileSync(filePath, contents);
-  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+  writeDb({ folders: [root], folderSettings: {}, metadata: {}, settings: baseSettings() });
 
   await scanDirectories();
 

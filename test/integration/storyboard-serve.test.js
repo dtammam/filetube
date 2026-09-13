@@ -35,7 +35,7 @@ async function waitForScanIdle(maxWaitMs = 10000) {
 
 function baseDb(metadata = {}) {
   return {
-    folders: [mediaDir], folderSettings: {}, progress: {}, metadata,
+    folders: [mediaDir], folderSettings: {}, metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   };
 }

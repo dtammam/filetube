@@ -43,6 +43,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
+const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 const DATA_DIR = process.env.DATA_DIR;
@@ -152,10 +153,10 @@ test('FIX-1 regression (BLOCKER) (a): a symlinked db.folders root -- pre-existin
     fs.writeFileSync(sidecarPath, 'transcoded');
     await updateDatabase((fresh) => {
       fresh.metadata[id].hasThumbnail = true;
-      fresh.progress[id] = { position: 42, duration: 100 };
+      progressStore().set(id, { position: 42, duration: 100 }); // Wave 2: the relational store (was fresh.progress[id] =)
       return true;
     });
-    assert.ok(loadDatabase().progress[id], 'sanity: the watch-progress entry was seeded');
+    assert.ok(progressStore().getAll()[id], 'sanity: the watch-progress entry was seeded');
     assert.equal(loadDatabase().settings.pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
 
     // Second scan (pruneMissing ON): the pre-fix bug realpath'd db.folders
@@ -166,13 +167,13 @@ test('FIX-1 regression (BLOCKER) (a): a symlinked db.folders root -- pre-existin
 
     db = loadDatabase();
     assert.ok(db.metadata[id], 'FIX-1: the id computed from the ORIGINAL (symlink) spelling must survive -- never re-id churned by a realpath rewrite');
-    assert.ok(db.progress[id], 'FIX-1: the watch-progress entry for that id must survive (not reaped)');
+    assert.ok(progressStore().get(id), 'FIX-1: the watch-progress entry for that id must survive (not reaped) - Wave 2: media_progress');
     assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), 'FIX-1: the thumbnail must survive (not reaped)');
     assert.ok(fs.existsSync(sidecarPath), 'FIX-1: the transcode sidecar must survive (not reaped)');
   } finally {
     fs.rmSync(aliasDir, { force: true });
     fs.rmSync(realDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; db.progress = {}; return true; });
+    await updateDatabase((db) => { db.folders = []; progressStore().replaceAll({}); return true; });
   }
 });
 

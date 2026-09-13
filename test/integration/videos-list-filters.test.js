@@ -76,7 +76,6 @@ test('?root= only returns items whose filePath is under that root, excluding sib
   writeDb({
     folders: ['/media/Movies', '/media/TV'],
     folderSettings: {},
-    progress: {},
     metadata: {
       m1: seedItem('m1', { rootFolder: '/media/Movies', filePath: '/media/Movies/m1.mp4' }),
       t1: seedItem('t1', { rootFolder: '/media/TV', filePath: '/media/TV/t1.mp4', folderName: 'TV' }),
@@ -92,7 +91,6 @@ test('?root= is recursive -- it also returns items nested in subfolders under th
   writeDb({
     folders: ['/media/Movies'],
     folderSettings: {},
-    progress: {},
     metadata: {
       nested: seedItem('nested', { rootFolder: '/media/Movies', filePath: '/media/Movies/Sub/nested.mp4', folderName: 'Sub' }),
     },
@@ -106,7 +104,6 @@ test('?folder= (channel filter) matches only items whose immediate folderName eq
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       a: seedItem('a', { folderName: 'ChannelA' }),
       b: seedItem('b', { folderName: 'ChannelB' }),
@@ -121,7 +118,6 @@ test('?search= matches on title OR folderName, case-insensitively', async () => 
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       a: seedItem('a', { title: 'A Great Vacation', folderName: 'Home Movies' }),
       b: seedItem('b', { title: 'Unrelated Clip', folderName: 'Vacation Photos' }),
@@ -137,7 +133,6 @@ test('default view (no filters) hides items under a folder marked hidden, but an
   writeDb({
     folders: ['/media/Hidden', '/media/Visible'],
     folderSettings: { '/media/Hidden': { name: 'Hidden', hidden: true } },
-    progress: {},
     metadata: {
       h1: seedItem('h1', { rootFolder: '/media/Hidden', filePath: '/media/Hidden/h1.mp4', folderName: 'Hidden' }),
       v1: seedItem('v1', { rootFolder: '/media/Visible', filePath: '/media/Visible/v1.mp4', folderName: 'Visible' }),
@@ -155,7 +150,6 @@ test('a folder marked hidden is still reachable via ?search= (only the no-filter
   writeDb({
     folders: ['/media/Hidden'],
     folderSettings: { '/media/Hidden': { name: 'Hidden', hidden: true } },
-    progress: {},
     metadata: {
       h1: seedItem('h1', { title: 'Findable Clip', rootFolder: '/media/Hidden', filePath: '/media/Hidden/h1.mp4', folderName: 'Hidden' }),
     },
@@ -169,7 +163,6 @@ test('no folder is marked hidden -> the default view returns everything unfilter
   writeDb({
     folders: ['/media/A', '/media/B'],
     folderSettings: {},
-    progress: {},
     metadata: {
       a: seedItem('a', { rootFolder: '/media/A', filePath: '/media/A/a.mp4' }),
       b: seedItem('b', { rootFolder: '/media/B', filePath: '/media/B/b.mp4' }),
@@ -187,7 +180,6 @@ test('v1.149: searching a CHANNEL NAME finds its items even when the folder diff
     folders: ['/media/Downloads'],
     folderSettings: {},
     folderDisplayNames: { rohordner: 'Omas Küche' },
-    progress: {},
     metadata: {
       byChannel: seedItem('byChannel', { title: 'Ein Rezept', folderName: 'ytdlp-downloads', filePath: '/media/Downloads/a.mp4', channelName: 'Kochen mit Maria' }),
       byDisplay: seedItem('byDisplay', { title: 'Anderes Video', folderName: 'rohordner', filePath: '/media/Downloads/b.mp4' }),
@@ -206,7 +198,6 @@ test('v1.149: searchIn=title and searchIn=channel narrow with NO leaks; junk sea
   writeDb({
     folders: ['/media/Downloads'],
     folderSettings: {},
-    progress: {},
     metadata: {
       titleHit: seedItem('titleHit', { title: 'Brotkanal Spezial', folderName: 'irgendwo', filePath: '/media/Downloads/t.mp4' }),
       channelHit: seedItem('channelHit', { title: 'Sauerteig Folge 3', folderName: 'anderswo', filePath: '/media/Downloads/c.mp4', channelName: 'Brotkanal' }),

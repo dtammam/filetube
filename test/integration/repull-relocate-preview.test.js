@@ -94,8 +94,8 @@ function seedDb({ item = {}, dbOverrides = {}, writeFile = true } = {}) {
     ...CHANNEL, ...(item.record || {}),
   };
   saveDatabase({
-    folders: [libraryDir], folderSettings: {}, progress: {},
-    metadata: { [id]: record }, liked: [], deleteTombstones: {},
+    folders: [libraryDir], folderSettings: {},
+    metadata: { [id]: record }, liked: [],
     // v1.42: pre-SQLite, saveDatabase was a whole-file replace, so a seed
     // implicitly wiped any ytdlp state a previous test left behind. The
     // diff-save keeps an ABSENT namespace's rows, so the seed now clears it
@@ -271,7 +271,7 @@ test('the preview groups moves and skips and rolls up the summary counts', () =>
   const localId = getMediaId(localFile);
 
   saveDatabase({
-    folders: [libraryDir], folderSettings: {}, progress: {},
+    folders: [libraryDir], folderSettings: {},
     metadata: {
       [movableId]: {
         id: movableId, name: 'Never Gonna Give You Up.mp4', title: 'Never Gonna Give You Up',
@@ -286,7 +286,7 @@ test('the preview groups moves and skips and rolls up the summary counts', () =>
         ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 30, hasThumbnail: false, artist: '',
       },
     },
-    liked: [], deleteTombstones: {}, settings: baseSettings(),
+    liked: [], settings: baseSettings(),
   });
 
   const preview = buildImportRelocationPreview(DEPS, config);
@@ -389,8 +389,8 @@ test('PERF: buildImportRelocationPreview loads the database ONCE regardless of i
     };
   }
   saveDatabase({
-    folders: [libraryDir], folderSettings: {}, progress: {},
-    metadata, liked: [], deleteTombstones: {}, settings: baseSettings(),
+    folders: [libraryDir], folderSettings: {},
+    metadata, liked: [], settings: baseSettings(),
   });
 
   const before = __getLoadDatabaseCallCount();

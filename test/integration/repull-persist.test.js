@@ -21,8 +21,9 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, saveDatabase, updateDatabase, recordRepulledItemMeta, enumerateRepullableItems,
+  getMediaId, loadDatabase, updateDatabase, recordRepulledItemMeta, enumerateRepullableItems,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -46,7 +47,7 @@ function baseSettings() {
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db); // Wave 2: relational keys (progress/deleteTombstones/viewCounts) go through their stores
 }
 
 let downloadDir;
@@ -119,7 +120,6 @@ test('v1.51 gate (QA W2): a reheat through the PRODUCTION writer creates NO noti
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Reheated Video', filePath,
@@ -148,7 +148,7 @@ test('v1.54: a reheat SUPERSEDES the follower count in BOTH directions -- delibe
   fs.writeFileSync(filePath, 'video-bytes');
   const id = getMediaId(filePath);
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, name: path.basename(filePath), title: 'F', filePath, folderName: path.basename(downloadDir), size: 11, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10, hasThumbnail: false, artist: '', sourceFollowerCount: 24000, sourceFollowerCountCapturedAt: 1_700_000_000_000 } },
     settings: baseSettings(),
   });
@@ -168,7 +168,6 @@ test('recordRepulledItemMeta detects hasSubtitles=true when a sidecar exists on 
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Captioned Video', filePath,
@@ -195,7 +194,6 @@ test('a missing releaseDate/channelAvatarUrl in meta leaves those fields untouch
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Partial Video', filePath,
@@ -230,7 +228,6 @@ test('recordRepulledItemMeta with markComplete:false updates releaseDate/channel
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Retryable Video', filePath,
@@ -264,7 +261,6 @@ test('recordRepulledItemMeta with markComplete absent (not passed) behaves the s
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Absent Marker Video', filePath,
@@ -291,7 +287,6 @@ test('recordRepulledItemMeta with markComplete:false never CLEARS an existing me
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Previously Done Video', filePath,
@@ -317,7 +312,6 @@ test('recordRepulledItemMeta on a non-existent mediaId is a safe no-op', async (
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {},
     settings: baseSettings(),
   });
@@ -342,7 +336,6 @@ test('recordRepulledItemMeta stores a known epoch-ms releaseDate exactly, with n
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Dated Video', filePath,
@@ -602,7 +595,6 @@ test('recordRepulledItemMeta persists a sanitized sourceTitle (emoji intact) and
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Underscore Folded Name', filePath,
@@ -634,7 +626,6 @@ test('recordRepulledItemMeta rejects an unsafe youtubeId and an empty-after-sani
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Guarded Video', filePath,
@@ -672,7 +663,6 @@ function importedItemDb(filePath, id, extra = {}) {
   return {
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: path.basename(filePath, path.extname(filePath)), filePath,
@@ -950,7 +940,6 @@ function seedItemWith(extra) {
   writeDb({
     folders: [],
     folderSettings: {},
-    progress: {},
     metadata: {
       [id]: {
         id, name: path.basename(filePath), title: 'Reheatable', filePath,

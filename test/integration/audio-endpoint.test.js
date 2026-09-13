@@ -81,7 +81,7 @@ test('GET /audio/:id -- unknown id returns the same 404 shape as GET /video/:id'
 test('GET /audio/:id -- an audio-type item 404s (nothing to hand off to -- it is already audio)', async () => {
   const id = 'aud-item';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'audio', filePath: path.join(originalDir, 'song.mp3'), size: 10, title: 'Song', name: 'song.mp3', ext: '.mp3', addedAt: Date.now() } },
   });
   const res = await fetch(`${base}/audio/${id}`);
@@ -91,7 +91,7 @@ test('GET /audio/:id -- an audio-type item 404s (nothing to hand off to -- it is
 
 test('GET /audio/:id -- a video item with NO sidecar and ffmpeg unavailable returns 503 without enqueuing', async () => {
   const id = 'vid-no-ffmpeg';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
 
   const res = await fetch(`${base}/audio/${id}`);
   assert.equal(res.status, 503);
@@ -106,7 +106,7 @@ test('GET /audio/:id -- a video item with NO sidecar and ffmpeg unavailable retu
 
 test('GET /audio/:id -- an already-extracted sidecar is served with Range support, content-type audio/mp4', async () => {
   const id = 'vid-ready-audio';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
   const bytes = 'FAKE-M4A-AUDIO-BYTES-0123456789';
   fs.writeFileSync(audioPath(id), bytes);
 
@@ -123,7 +123,7 @@ test('GET /audio/:id -- an already-extracted sidecar is served with Range suppor
 
 test('GET /audio/:id -- serving a ready sidecar marks it recently-served (live-watch protection, same as /video/:id)', async () => {
   const id = 'vid-served-audio';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
   fs.writeFileSync(audioPath(id), 'bytes');
 
   await fetch(`${base}/audio/${id}`);
@@ -142,7 +142,7 @@ test('GET /audio/:id -- serving a ready sidecar marks it recently-served (live-w
 // comment) but the PERSISTED status must no longer claim 'ready'.
 test("GET /audio/:id -- a stale audioStatus: 'ready' with the sidecar missing on disk is healed (never left claiming 'ready')", async () => {
   const id = 'vid-stale-ready-audio';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id, { audioStatus: 'ready' }) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id, { audioStatus: 'ready' }) } });
   // No file written at audioPath(id) -- the sidecar is confirmed missing.
 
   const res = await fetch(`${base}/audio/${id}`);
@@ -156,7 +156,7 @@ test("GET /audio/:id -- a stale audioStatus: 'ready' with the sidecar missing on
 
 test('GET /audio/:id -- audioStatus values OTHER than "ready" are left completely untouched (no unnecessary write)', async () => {
   const id = 'vid-processing-audio';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id, { audioStatus: 'processing' }) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id, { audioStatus: 'processing' }) } });
 
   await fetch(`${base}/audio/${id}`);
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -175,7 +175,7 @@ test('POST prepare-audio -- unknown id returns 404', async () => {
 test('POST prepare-audio -- an audio-type item is rejected with 400 (video-only feature)', async () => {
   const id = 'aud-prepare';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'audio', filePath: path.join(originalDir, 'song.mp3'), size: 10, title: 'Song', name: 'song.mp3', ext: '.mp3', addedAt: Date.now() } },
   });
   const res = await fetch(`${base}/api/videos/${id}/prepare-audio`, { method: 'POST' });
@@ -185,7 +185,7 @@ test('POST prepare-audio -- an audio-type item is rejected with 400 (video-only 
 
 test('POST prepare-audio -- an already-ready sidecar reports ready WITHOUT re-enqueuing', async () => {
   const id = 'vid-prepare-ready';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
   fs.writeFileSync(audioPath(id), 'bytes');
 
   const res = await fetch(`${base}/api/videos/${id}/prepare-audio`, { method: 'POST' });
@@ -200,7 +200,7 @@ test('POST prepare-audio -- an already-ready sidecar reports ready WITHOUT re-en
 // gone, and the persisted status must be healed too.
 test("POST prepare-audio -- a stale audioStatus: 'ready' with the sidecar missing is healed (response no longer claims ready)", async () => {
   const id = 'vid-prepare-stale-ready';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id, { audioStatus: 'ready' }) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id, { audioStatus: 'ready' }) } });
   // No file written at audioPath(id) -- the sidecar is confirmed missing.
 
   const res = await fetch(`${base}/api/videos/${id}/prepare-audio`, { method: 'POST' });
@@ -215,7 +215,7 @@ test("POST prepare-audio -- a stale audioStatus: 'ready' with the sidecar missin
 
 test('POST prepare-audio -- no sidecar + ffmpeg unavailable returns 503 and never enqueues', async () => {
   const id = 'vid-prepare-no-ffmpeg';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
 
   const res = await fetch(`${base}/api/videos/${id}/prepare-audio`, { method: 'POST' });
   assert.equal(res.status, 503);
@@ -227,7 +227,7 @@ test('POST prepare-audio -- no sidecar + ffmpeg unavailable returns 503 and neve
 
 test('GET /api/videos/:id -- audioStatus is absent (never fabricated) for an item that has never had one, audioProgress defaults to 0', async () => {
   const id = 'vid-no-audio-status';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
   const res = await fetch(`${base}/api/videos/${id}`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -237,7 +237,7 @@ test('GET /api/videos/:id -- audioStatus is absent (never fabricated) for an ite
 
 test('GET /api/videos/:id -- surfaces a persisted audioStatus (mirrors transcodeStatus\'s own spread-through)', async () => {
   const id = 'vid-with-audio-status';
-  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id, { audioStatus: 'ready' }) } });
+  writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id, { audioStatus: 'ready' }) } });
   const res = await fetch(`${base}/api/videos/${id}`);
   const json = await res.json();
   assert.equal(json.audioStatus, 'ready');
@@ -252,7 +252,7 @@ test('regression-lock: GET /video/:id still supports partial Range requests exac
   const bytes = 'ORIGINAL-VIDEO-BYTES-FOR-RANGE-TEST';
   fs.writeFileSync(p, bytes);
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'video', needsTranscode: false, filePath: p, size: bytes.length, title: 'Range', name: 'range.mp4', ext: '.mp4', addedAt: Date.now() } },
   });
 
@@ -273,7 +273,7 @@ test('regression-lock: GET /video/:id -- an out-of-range start still returns 416
   const p = path.join(originalDir, 'small.mp4');
   fs.writeFileSync(p, 'tiny');
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'video', needsTranscode: false, filePath: p, size: 4, title: 'Small', name: 'small.mp4', ext: '.mp4', addedAt: Date.now() } },
   });
 
@@ -294,7 +294,7 @@ test('regression-lock: GET /video/:id -- unknown id still 404s with the exact sa
 test('regression-lock: GET /video/:id -- a file missing on disk still 404s with the exact same message, no Content-Disposition leak', async () => {
   const id = 'vid-missing-on-disk-regression';
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'video', needsTranscode: false, filePath: path.join(originalDir, 'gone.mp4'), size: 0, title: 'Gone', name: 'gone.mp4', ext: '.mp4', addedAt: Date.now() } },
   });
   const res = await fetch(`${base}/video/${id}?download=1`);
@@ -325,7 +325,7 @@ for (const [rangeHeader, why] of MALFORMED_RANGES) {
     const p = path.join(originalDir, `${id}.mp4`);
     fs.writeFileSync(p, 'malformed-range-fixture-bytes');
     writeDb({
-      folders: [], folderSettings: {}, progress: {},
+      folders: [], folderSettings: {},
       metadata: { [id]: { id, type: 'video', needsTranscode: false, filePath: p, size: 29, title: 'x', name: `${id}.mp4`, ext: '.mp4', addedAt: Date.now() } },
     });
 
@@ -340,7 +340,7 @@ for (const [rangeHeader, why] of MALFORMED_RANGES) {
 
   test(`F4: GET /audio/:id -- a malformed Range header (${rangeHeader}, ${why}) returns 416, never 500`, async () => {
     const id = `aud-malformed-range-${rangeHeader.replace(/[^a-z0-9]/gi, '')}`;
-    writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: { [id]: videoItem(id) } });
+    writeDb({ folders: [], folderSettings: {}, metadata: { [id]: videoItem(id) } });
     fs.writeFileSync(audioPath(id), 'malformed-range-fixture-bytes');
 
     const res = await fetch(`${base}/audio/${id}`, { headers: { Range: rangeHeader } });
@@ -357,7 +357,7 @@ test('F4: GET /video/:id -- a VALID Range request is completely unaffected by th
   const bytes = 'VALID-RANGE-FIXTURE-BYTES-0123456789';
   fs.writeFileSync(p, bytes);
   writeDb({
-    folders: [], folderSettings: {}, progress: {},
+    folders: [], folderSettings: {},
     metadata: { [id]: { id, type: 'video', needsTranscode: false, filePath: p, size: bytes.length, title: 'x', name: 'valid-range.mp4', ext: '.mp4', addedAt: Date.now() } },
   });
 
