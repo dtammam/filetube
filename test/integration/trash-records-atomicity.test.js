@@ -22,7 +22,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {
-  app, trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, getMediaId,
+  app, trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, getMediaId, scanDirectories,
   loadDatabase, updateDatabase, saveDatabase, __resetDatabaseForTests, __failNextSaveForTests,
   trashStore, progressStore, tombstoneStore,
 } = require('../../server');
@@ -136,6 +136,41 @@ test('retention sweep on the typed column: exact boundary kept, older purged, ma
   assert.strictEqual(trashStore.has(malformed), true, 'a malformed record is never auto-swept (v1.65)');
   assert.strictEqual(trashStore.has(fresh), true);
   assert.ok(fs.existsSync(trashStore.get(malformed).trashPath), 'the malformed record\'s bytes are referenced and kept');
+});
+
+test('deferred-retry mint (the scan trashing a tombstoned survivor): a FAILED doc save mints NO record and leaves no trash-dir leftover - the survivor stays on disk and indexes honestly', async () => {
+  // The adversarial seat's probe (M11b): with the mint outside the transaction,
+  // a phantom Trash row pointed at a rolled-back path while the item was back
+  // in the library, and its restore 409'd forever.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-w3-retry-'));
+  fs.mkdirSync(path.join(root, 'Chan'));
+  const filePath = path.join(root, 'Chan', 'survivor.mp4');
+  fs.writeFileSync(filePath, 'survivor-bytes');
+  const old = new Date(Date.now() - 3600 * 1000);
+  fs.utimesSync(filePath, old, old); // mtime older than the delete -> the retry TRASHES it
+  const id = getMediaId(filePath);
+  saveDatabase({ folders: [root], folderSettings: {}, liked: [], metadata: {}, settings: settings({ pruneMissing: true }) });
+  tombstoneStore.set(id, { filePath, deletedAt: Date.now(), youtubeId: null });
+  __failNextSaveForTests(new Error('orphan-mint save refused'));
+  await scanDirectories();
+  assert.strictEqual(trashStore.size(), 0, 'no record was minted outside the failed transaction');
+  assert.ok(fs.existsSync(filePath), 'the survivor is still on disk');
+  const trashDir = path.join(root, TRASH_DIR_NAME);
+  assert.deepStrictEqual(fs.existsSync(trashDir) ? fs.readdirSync(trashDir) : [], [], 'no leftover in the trash dir (the rollback-unlink)');
+  assert.ok(loadDatabase().metadata[id], 'the survivor was indexed honestly by the same scan');
+
+  // Positive control (the failure axis above is vacuous unless the retry
+  // REACHES the mint): the same shape with the save allowed mints the record
+  // and moves the file.
+  const filePath2 = path.join(root, 'Chan', 'survivor-two.mp4');
+  fs.writeFileSync(filePath2, 'survivor-bytes-2');
+  fs.utimesSync(filePath2, old, old);
+  const id2 = getMediaId(filePath2);
+  tombstoneStore.set(id2, { filePath: filePath2, deletedAt: Date.now(), youtubeId: null });
+  await scanDirectories();
+  assert.strictEqual(trashStore.size(), 1, 'the retry reached the mint and it committed');
+  assert.ok(!fs.existsSync(filePath2), 'the survivor moved to the trash dir');
+  assert.strictEqual(loadDatabase().metadata[id2], undefined);
 });
 
 test('routes: restore/purge resolve the record from the table (missing -> 404, present -> the real outcome)', async () => {

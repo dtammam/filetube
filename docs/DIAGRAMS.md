@@ -103,7 +103,7 @@ media namespaces out of the document store one table at a time - see
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · trash ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
         SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
@@ -142,7 +142,7 @@ relational arc - the first media namespace out of the document model),
 shared `lib/media/jsonRowStore.js` shape; writes that must be atomic with a
 doc commit ride `updateDatabase`'s `inSaveTransaction` hook. Each store is
 its table's only runtime writer, and the adapter holds the bulk seams: the
-legacy-JSON import, the one-shot v21/v22 backfills, and the restore/reset
+legacy-JSON import, the one-shot v21/v22/v23 backfills, and the restore/reset
 wipe-and-replace; `books.*` to `lib/books/`; `music.*` to
 `lib/music/`; `podcasts.*` to `lib/podcasts/`; `ytdlp.*` to `lib/ytdlp/` -
 feature-owned namespaces are what keep the persist-gate bug class away.

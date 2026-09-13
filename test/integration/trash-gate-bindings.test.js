@@ -172,7 +172,7 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   // non-deterministic and faked ten kill verdicts inside the gate itself.
   const OUT1 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
   await updateDatabase((db) => {
-    trashStore().set('evil', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('evil', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'x', originalPath: path.join(OUT1, 'planted.mp4'),
       trashPath: filePath, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'x', title: 'evil' },
     });
@@ -198,7 +198,7 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   // Restore of a same-shaped corrupt record refuses cleanly.
   const OUT2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
   await updateDatabase((db) => {
-    trashStore().set('evil2', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('evil2', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'y', originalPath: path.join(OUT2, 'deep', 'planted2.mp4'),
       trashPath: filePath, trashedAt: Date.now(), rootFolder: null, item: { id: 'y' },
     });
@@ -233,7 +233,7 @@ test('ADV W3: the sweep confinement belt -- a corrupt IN-WINDOW record aiming th
   // an expired record is purged by the record pass and never exercises the
   // belt), and its trashPath dirname is a REAL library folder.
   await updateDatabase((db) => {
-    trashStore().set('corrupt', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('corrupt', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'z', originalPath: filePath,
       trashPath: path.join(ROOT, 'Chan', 'not-really-trash.mp4'),
       trashedAt: Date.now() - 1 * DAY, rootFolder: ROOT, item: { id: 'z' },
@@ -484,7 +484,7 @@ test('R3: a record whose destination is UNRELATED to both a root and its own tra
   const plantedTrash = path.join(OUT, TRASH_DIR_NAME, 'planted.mp4');
   fs.writeFileSync(plantedTrash, 'planted-bytes');
   await updateDatabase((db) => {
-    trashStore().set('outside', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('outside', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       // Destination in a THIRD tree: neither a configured root nor the
       // trash dir's own parent -- no construction path produces this.
       originalId: 'o', originalPath: path.join(ELSEWHERE, 'deep', 'written-outside.mp4'),
@@ -631,7 +631,7 @@ test('R4 BIND-n4e: restore\'s STRUCTURAL trash-dir check is load-bearing -- a re
   // unconditional unlink(trashPath) -- without the check, the live file
   // would be hard-linked away and then deleted.
   await updateDatabase((db) => {
-    trashStore().set('structural', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('structural', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 's', originalPath: path.join(ROOT, 'Chan', 'written-by-restore.mp4'),
       trashPath: filePath, trashedAt: Date.now(), rootFolder: ROOT, item: { id: 's', title: 'S' },
     });
@@ -684,7 +684,7 @@ test('R4 W1: ONE predicate -- a record restore refuses is NEVER auto-destroyed b
   await updateDatabase((db) => {
     // Shape 1: a '..' segment in originalPath -- path.resolve normalizes it
     // away, so the sweep's hand-copy accepted what restore refuses.
-    trashStore().set('dotdot', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('dotdot', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       // A LITERAL '..' segment (path.join would normalize it away here, the
       // same way path.resolve did inside the sweep's hand-copy).
       originalId: 'a', originalPath: `${OUT}/sub/../a.mp4`,
@@ -692,7 +692,7 @@ test('R4 W1: ONE predicate -- a record restore refuses is NEVER auto-destroyed b
     });
     // Shape 2: trashPath not inside a trash dir -- the hand-copy never
     // gated on that at all.
-    trashStore().set('notrash', { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set('notrash', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'b', originalPath: path.join(OUT, 'not-a-trash-dir', 'b-restored.mp4'),
       trashPath: bytesB, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'b' },
     });
@@ -761,12 +761,12 @@ test('QA-R2 W1: trashing a queued item must NOT brick queue reorder (the hidden 
 // test the purge half threw first and the sweep half was never reached, so
 // the sweep guarantee the name promised was unbound. Each half must kill
 // mutant q9 (dropping destConfined's `trashConfined &&` crash guard) alone.
-function plantMalformed(db, outsidePath, keys) {
+function plantMalformed(_db, outsidePath, keys) { // _db: the mutator arg, unused since Wave 3 (the store is the writer)
   // originalPath OUTSIDE every configured root: with it under a root,
   // destConfined's root clause short-circuits TRUE and path.dirname is
   // never evaluated -- the crash cannot occur and the test proves nothing.
   for (const key of keys) {
-    trashStore().set(key, { // Wave 3: the relational store (was trashStore().get(...) =)
+    trashStore().set(key, { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'm', originalPath: outsidePath,
       trashPath: undefined, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
     });
@@ -779,7 +779,7 @@ test('R5a (adversarial W1): purgeTrashItem cannot THROW on a malformed record (t
   await updateDatabase((db) => {
     let n = 0;
     for (const bad of [undefined, null, 42, {}, []]) {
-      trashStore().set(`malformed-${n += 1}`, { // Wave 3: the relational store (was trashStore().get(...) =)
+      trashStore().set(`malformed-${n += 1}`, { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
         originalId: 'm', originalPath: path.join(OUT, 'm.mp4'),
         trashPath: bad, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
       });

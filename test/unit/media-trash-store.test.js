@@ -130,6 +130,30 @@ test('migration v23: re-running is a no-op; a corrupt doc row rolls the whole bl
   assert.deepStrictEqual(Object.keys(createTrashStore(adapter).getAll()).sort(), ['bad', 'good']);
 });
 
+test('migration v23: a doc row whose key fails the id rule (empty / NUL - a <=v1.292 restore accepted it) is SKIPPED and logged, never moved (it would be an unpurgeable row that aborts the sweep)', () => {
+  rewindToV22([['', JSON.stringify(rec({ trashedAt: 1 }))], ['ok', JSON.stringify(rec({ trashedAt: 2 }))]]);
+  const raw = openRaw(path.join(dir, SQLITE_FILENAME));
+  // node:sqlite TRUNCATES a TEXT bind at NUL (a NUL key cannot even reach
+  // doc_kv that way), so the non-string arm is planted as a BLOB key - the
+  // shape a hand-edited file could carry.
+  raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)').run('trash', Buffer.from('blob-key'), JSON.stringify(rec({ trashedAt: 3 })));
+  raw.close();
+  const logged = [];
+  const origError = console.error;
+  console.error = (...a) => logged.push(a.join(' '));
+  try {
+    adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
+  } finally { console.error = origError; }
+  assert.strictEqual(logged.filter((l) => l.includes('migration v23: skipping')).length, 2, 'both unaddressable rows were logged: ' + logged.join(' | '));
+  const t = createTrashStore(adapter);
+  assert.deepStrictEqual(Object.keys(t.getAll()), ['ok'], 'only the addressable record moved');
+  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_kv WHERE namespace = 'trash'").get().c, 0, 'the doc rows are gone either way');
+  assert.deepStrictEqual(Object.keys(t.expiredBefore(Number.MAX_SAFE_INTEGER)), ['ok'], 'the sweep can never see an unaddressable row');
+  // Reads of such ids are tolerant, never a throw (the routes hand them request ids).
+  assert.strictEqual(t.get(''), undefined);
+  assert.strictEqual(t.has('a\u0000b'), false);
+});
+
 // ---- 3. the save-lock -------------------------------------------------------------
 
 test('save-lock: `trash` on the doc object is REFUSED', () => {

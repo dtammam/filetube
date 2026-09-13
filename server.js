@@ -12339,7 +12339,7 @@ app.delete('/api/videos/:id', async (req, res) => {
 
   // v1.65 (ruling 3, closes tech-debt #64): EVERY delete routes through
   // TRASH. The resolvable-file case is an atomic rename into the root's
-  // trash dir -- trashItem() owns the whole identity carry (the db.trash
+  // trash dir -- trashItem() owns the whole identity carry (the media_trash
   // record, doc-table carries, all nine per-user carriers, id-keyed sidecar
   // renames) and its own rollback, so NONE of the legacy cleanup below runs
   // for it. The legacy path survives only for the shapes with no file to
@@ -14046,19 +14046,21 @@ function rekeyInFlightState(oldId, newId, oldPath, newPath) {
 //   destroyMediaStreams -> source unlink last.
 //
 // The one structural difference from a move: the item LEAVES db.metadata and
-// its full record lands in db.trash[trashId] (trashId = md5(trashPath) --
-// the id system is untouched, trash is "just a move" to the carriers). The
-// doc-table carries (progress/liked) ride old->trash inside the mutator
-// exactly like a move, and the RELATIONAL carriers (per-user rows, and since
-// Wave 1 the view-count row) re-key post-commit in rekeyInFlightState, so a
+// its full record lands in media_trash under trashId (= md5(trashPath) --
+// the id system is untouched, trash is "just a move" to the carriers; Wave 3:
+// the record is a row minted INSIDE this mutator's save transaction). The
+// doc-table carry (liked) rides old->trash inside the mutator exactly like a
+// move; the progress row and the tombstones ride the same save transaction
+// (Wave 2), and the RELATIONAL carriers (per-user rows, and since Wave 1 the
+// view-count row) re-key post-commit in rekeyInFlightState, so a
 // restore re-links every scrap of history.
 //
 // NO pre-mutator tombstone retirement here (the move's mutator A): that
 // discipline protects a DESTINATION the scan can reap, and the scan never
 // walks TRASH_DIR_NAME (the v1.65 walker exclusion) -- no tombstone can ever
 // act on a trash-side path. restoreTrashItem (t3) re-occupies a REAL library
-// path and therefore DOES inherit mutator A. db.trash itself deliberately
-// does NOT join the move/prune mutators: its records reference trash-side
+// path and therefore DOES inherit mutator A. The trash records (media_trash)
+// deliberately do NOT join the move/prune mutators: they reference trash-side
 // paths no move or scan ever touches.
 //
 // SOURCE-UNLINK FAILURE (the last step) mints a deletion tombstone for the
@@ -14381,7 +14383,7 @@ async function trashItem(deps, id, opts = {}) {
 // v1.65: the scan's deferred-delete retry routes through trash too (ruling
 // 3: EVERY delete path). By the time the retry fires, the original delete
 // already removed the library entry and every carrier -- this is an ORPHAN
-// move: bytes into the trash dir + a minimal db.trash record (a restore
+// move: bytes into the trash dir + a minimal media_trash record (a restore
 // puts the file back and the next scan re-indexes it into full metadata).
 // Sidecar subtitles ride along under the narrow matcher (the retry used to
 // greedily DELETE them; carrying is strictly better).
@@ -14507,7 +14509,7 @@ function trashRecordPlacement(rec, roots) {
 }
 
 // restoreTrashItem: the exact reverse of trashItem -- link back to the
-// original path, ONE mutator (db.trash record -> db.metadata + doc-table
+// original path, ONE mutator (media_trash record -> db.metadata + doc-table
 // carries + sidecar renames back), rollback on failure, post-commit
 // rekeyInFlightState (all nine carriers re-link: the restored id IS the
 // pre-trash id, md5 of the same path). Ruling 4's full-fidelity promise
@@ -17814,7 +17816,7 @@ app.get('/thumbnail/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3 (AC3.3 headline route): hot GET reader
   // v1.65 gate fix (QA W1): a TRASHED item's thumbnail sidecar re-keyed to
   // the trashId, but this route required a live metadata entry -- so the
-  // Trash view's rows always fell to the SVG placeholder. A db.trash
+  // Trash view's rows always fell to the SVG placeholder. A media_trash
   // record's snapshot is as good an authority for its own id.
   const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
     ? (trashStore.get(req.params.id) || null) // Wave 3: the table

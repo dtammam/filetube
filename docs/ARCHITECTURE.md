@@ -59,7 +59,7 @@ Two buckets coexist in the one file:
 
 1. **The document store** - the old db.json object shape, persisted per row:
    `doc_kv(namespace, key, json)` for per-item namespaces (`metadata`,
-   `progress`, `trash`, `books.items`, `music.tracks`, `podcasts.episodes`,
+   `books.items`, `music.tracks`, `podcasts.episodes`,
    `ytdlp.downloadMeta`, ...) and `doc_single(name, json)` for small whole
    objects (`folders`, `settings`, `podcasts.subscriptions`, ...). The two
    namespace lists are a LOCK: `assertNoUnknownKeys()` throws on any key
@@ -146,7 +146,8 @@ tables), `visibility.js` (the ONE pure visibility decision).
   extraction; Roku compat renditions; TTS synthesis for books. Caches are
   size-capped LRU with age sweeps; in-flight files are eviction-protected.
 - **Trash** (soft delete): atomic rename into a per-root `.filetube-trash`
-  dir (same filesystem - no copy), records in `db.trash`, per-item
+  dir (same filesystem - no copy), records in `media_trash`
+  (`lib/media/trashRecords.js`, Wave 3 of the relational arc), per-item
   restore/purge routes only (deliberately no bulk delete), double-gated
   (capability + visibility), retention-swept on the scan interval.
 - **Background work**: ONE scan interval drives media+books+music scans and
