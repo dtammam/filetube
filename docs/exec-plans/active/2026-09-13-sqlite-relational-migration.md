@@ -163,6 +163,42 @@ hygiene, per CLAUDE.md.
 - New table (migration `user_version` 21), one-time backfill from `doc_kv.viewCounts`,
   a `lib/media/viewCounts` store, rewrite the 11 consumers, drop from `DOC_KV_NAMESPACES`,
   move to the SELECT-assembled backup bundle.
+- **Wave 1 record (2026-09-13, branch `feat/wave1-view-counts-relational`):**
+  - Schema **v21**: `media_view_counts (media_id TEXT PRIMARY KEY, count INTEGER)`; the
+    migration block copies every `doc_kv` `viewCounts` row (v1.42 value filter: finite
+    positive -> truncated integer; 0/negative/junk/null dropped) and DELETES the doc rows
+    in ONE transaction - leaving them would make `load()` assemble a key the save-lock
+    now refuses, i.e. boot would break on the first write. Idempotent under a crash
+    between COMMIT and the version stamp (test-bound). Rollback floor documented in
+    RELEASING.md (a <=v1.290 build refuses a v21 db; bundles restore on both sides).
+  - Store `lib/media/viewCounts.js` (`.gitignore` had to be root-anchored: the unanchored
+    `media/` swallowed `lib/media/` - the v1.286 scar, now fixed at the source): get /
+    getAll / size / set / increment (ONE atomic upsert, RETURNING; honors the legacy
+    embedded `item.viewCount` floor on first count) / remove / rekey (OR REPLACE) /
+    replaceAll (refuse-whole); own-property keys, NUL refusal; multi-row writes join an
+    already-open adapter transaction (the restore path) instead of nesting BEGIN.
+  - `server.js` consumers: the doc carries at delete / scan-prune / move / trash / restore /
+    purge are gone; `remove()` runs post-commit beside `userStore.removeMediaState` (4
+    sites) and `rekey()` inside `rekeyInFlightState` (ONE seam, THREE callers: move, trash,
+    restore). The view route no longer rides the doc write chain (one integer no longer
+    load-mutate-saves the whole library); existence is a `hasOwnProperty` read on the
+    cache. Stats/inventory/overlay read `getAll()` once per request.
+  - Backup: `viewCounts` left `BACKUP_NAMESPACE_KEYS` for `RELATIONAL_BUNDLE_KEYS`; the
+    bundle still carries `{ id: count }` under the same key (assembled on the same chained
+    tick); validation is field-level refuse-whole; restore routes it through
+    `importParsedJson` -> the `insertViewCount` handle inside `exclusiveReplace`, which now
+    WIPES the table too (restore = the bundle and nothing else; the between-test reset
+    relies on the same wipe). The boot db.json import routes the embedded extraction the
+    same way (one classifier, two callers, one upsert text exported by the store).
+  - `readPersistedDatabase` (the test read) surfaces the table as `viewCounts` when rows
+    exist, so the move/trash/restore/delete/prune carrier tests still read the REAL table
+    through an independent connection. 15 test files re-seeded through the store (the
+    doc key is refused). New `test/unit/media-view-counts-store.test.js` (15 tests: API,
+    migration + idempotency, save-lock, both bulk seams incl. rollback, the test read,
+    source locks: server.js never names the table; one INSERT text, in the store).
+  - Baseline after: doc_kv **12**, doc_single 18, total **30**, schema **21**, server.js
+    **19,095** (+54 - the post-commit carrier calls and their comments outweigh the
+    removed doc carries; the weight leaves in Wave 6/7, not here).
 
 ### Wave 2 - `progress` + `deleteTombstones` -> relational  (SOLO, full gate)
 - Per-id semantics + tombstone semantics (19 + 12 refs). `media_progress`,

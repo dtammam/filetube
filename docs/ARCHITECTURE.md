@@ -158,7 +158,10 @@ tables), `visibility.js` (the ONE pure visibility decision).
 ## The media places
 
 - **Video** (core, in server.js): roots `db.folders`; namespaces `metadata`,
-  `viewCounts`, `trash`, `deleteTombstones`; per-user progress/liked/watched/
+  `trash`, `deleteTombstones`; the per-item view counter is RELATIONAL since
+  Wave 1 of the relational-migration arc (`media_view_counts`, owned by
+  `lib/media/viewCounts.js` - the first media namespace out of the document
+  model); per-user progress/liked/watched/
   feed-hidden/queue. Browse contract lives in `lib/videoQuery.js`, kept in
   provable parity with the client's sort (`videoquery-parity.test.js`).
 - **Music** (v1.44): `db.music.*`; separate roots (three-way overlap-rejected

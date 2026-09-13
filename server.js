@@ -226,6 +226,12 @@ const createUserStore = require('./lib/auth/store');
 const authGateLib = require('./lib/auth/gate');
 const visibility = require('./lib/auth/visibility'); // v1.80 RBAC: the ONE visibility decision
 const userStore = createUserStore(dbAdapter);
+// Wave 1 of the relational-migration arc (v1.291): the per-item view counter
+// left the document model for its own table (lib/media/viewCounts.js). Every
+// runtime read/write of a view count goes through this store - never
+// `db.viewCounts`, which the save-lock now refuses.
+const createViewCountStore = require('./lib/media/viewCounts');
+const viewCountStore = createViewCountStore(dbAdapter);
 // Fail-closed at boot: a short/placeholder secret throws here (before listen).
 const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
 const AUTH_COOKIE_NAME = authGateLib.cookieNameFor(DATA_DIR);
@@ -521,10 +527,9 @@ function loadDatabase() {
   if (!Array.isArray(db.liked)) db.liked = [];
   // v1.41.3: backfill `deleteTombstones` like every other top-level key.
   if (!db.deleteTombstones || typeof db.deleteTombstones !== 'object' || Array.isArray(db.deleteTombstones)) db.deleteTombstones = {};
-  // v1.42: backfill `viewCounts` — the extracted per-id watch counters (see
-  // the view endpoint's own comment for why this lives OUTSIDE `db.metadata`
-  // items).
-  if (!db.viewCounts || typeof db.viewCounts !== 'object' || Array.isArray(db.viewCounts)) db.viewCounts = {};
+  // (v1.42-v1.290: `viewCounts` was backfilled here. Wave 1 of the relational
+  // arc moved it to media_view_counts / viewCountStore - it is no longer a key
+  // of this object, and the save-lock refuses it if one appears.)
   // v1.65: backfill `trash` (trashed-item records) like every other top-level key.
   if (!db.trash || typeof db.trash !== 'object' || Array.isArray(db.trash)) db.trash = {};
   // v1.42: when a container namespace EXISTS, backfill its per-key
@@ -5541,11 +5546,10 @@ async function runScanDirectories() {
     fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
     for (const id of prunable) {
       delete fresh.progress[id]; // apply prune to the FRESH progress map
-      // v1.42 (gate W3): the extracted view counter prunes with its item,
-      // for the same two reasons as the delete route's cleanup — unbounded
-      // growth under churn, and a stale count resurrecting onto a future
-      // re-add of the same path (same md5 id).
-      if (fresh.viewCounts) delete fresh.viewCounts[id];
+      // (v1.42 gate W3: the view counter used to prune here as a doc carry.
+      // Wave 1: it is a relational carrier now, pruned post-commit below
+      // beside the per-user rows - same two reasons: unbounded growth under
+      // churn, and a stale count resurrecting onto a same-path re-add.)
       // Also drop the write-throttle map entry (FR3.2): without this, a
       // pruned id's persistedServedAt entry lingers forever (unbounded growth
       // under churn) and can suppress lastServedAt persistence if the same id
@@ -5556,7 +5560,7 @@ async function runScanDirectories() {
   });
   if (dbChanged) console.log('Database synced successfully.');
 
-  // v1.43: mirror the mutator's `fresh.progress`/`fresh.viewCounts` prune
+  // v1.43: mirror the mutator's `fresh.progress` prune (and, since Wave 1, the view-count row's)
   // onto the per-user rows (user_progress/user_liked -- id-keyed carriers,
   // the v1.41.6 class), AFTER the doc commit for the same rolled-back-write
   // reason rekeyInFlightState documents. One transaction for the whole
@@ -5566,6 +5570,13 @@ async function runScanDirectories() {
       userStore.removeMediaState([...prunable]);
     } catch (err) {
       console.error('Scan: failed to prune per-user progress/liked for removed items (continuing):', err && err.message);
+    }
+    // Wave 1: the relational view counter is an id-keyed carrier too - same
+    // post-commit posture, same one-transaction-for-the-set shape.
+    try {
+      viewCountStore.remove([...prunable]);
+    } catch (err) {
+      console.error('Scan: failed to prune view counts for removed items (continuing):', err && err.message);
     }
   }
 
@@ -9859,7 +9870,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // repopulates ONLY from bundle keys, so an omitted 'tv' would SILENTLY erase a
 // restoring admin's entire Shows library + config (and the content-gated nav
 // link with it), exactly the data-loss books/music/podcasts already avoid here.
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+// Wave 1 (relational-migration arc): `viewCounts` left this DOC-model list -
+// it is assembled from its table (viewCountStore.getAll()) into the SAME
+// bundle key and shape ({ id: count }), so a bundle exported on either side
+// of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
+// restore routes through their store handles (validated below).
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'progress', 'metadata', 'liked', 'deleteTombstones', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9872,6 +9889,9 @@ app.get('/api/admin/backup', async (req, res) => {
       for (const key of BACKUP_NAMESPACE_KEYS) {
         if (db[key] !== undefined) bundle[key] = db[key];
       }
+      // Wave 1: the relational media namespace, read on the SAME chained
+      // tick as the doc snapshot (one moment), in its historical bundle shape.
+      bundle.viewCounts = viewCountStore.getAll();
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = db.settings ? db.settings[customLogoMimeKey(variant)] : undefined;
@@ -10048,9 +10068,21 @@ function validateBackupBundle(bundle) {
     && !TRASH_RETENTION_DAYS_VALID_VALUES.has(bundle.settings.trashRetentionDays)) {
     return 'settings.trashRetentionDays must be one of 0, 7, 14, 30, 90';
   }
-  const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users', 'notifications']);
+  const known = new Set([...BACKUP_NAMESPACE_KEYS, ...RELATIONAL_BUNDLE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users', 'notifications']);
   for (const key of Object.keys(bundle)) {
     if (!known.has(key)) return `unknown bundle key '${key}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
+  }
+  // Wave 1: `viewCounts` restores into media_view_counts through the store
+  // handle. Field-level, refuse-whole, before the wipe (the house posture): a
+  // per-id map of non-negative finite numbers (a legacy float is truncated by
+  // the importer; junk is refused here rather than half-applied mid-restore).
+  if (bundle.viewCounts !== undefined) {
+    if (typeof bundle.viewCounts !== 'object' || bundle.viewCounts === null || Array.isArray(bundle.viewCounts)) return 'viewCounts must be an object';
+    for (const id of Object.keys(bundle.viewCounts)) {
+      const v = bundle.viewCounts[id];
+      if (id === '' || id.includes('\u0000')) return `viewCounts['${id.split('\u0000').join('\\u0000')}']: invalid media id`;
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `viewCounts['${id}']: must be a non-negative number`;
+    }
   }
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
@@ -10137,7 +10169,7 @@ app.post('/api/admin/restore', (req, res, next) => {
   }
 
   const dbPart = {};
-  for (const key of BACKUP_NAMESPACE_KEYS) {
+  for (const key of [...BACKUP_NAMESPACE_KEYS, ...RELATIONAL_BUNDLE_KEYS]) {
     if (bundle[key] !== undefined) dbPart[key] = bundle[key];
   }
   // v1.65 gate fix (QA W2, the v1.51 partial-restore lesson): a bundle
@@ -10170,8 +10202,9 @@ app.post('/api/admin/restore', (req, res, next) => {
       // original ordering destroyed the old logo bytes before the import
       // ran, so a failed restore's "rolled back" response lied about the
       // logo. One classification, two callers (boot import + restore): the
-      // same strict importer maps namespaces to rows; 'bundle' mode reads
-      // viewCounts first-class.
+      // same strict importer maps namespaces to rows; the bundle's first-class
+      // `viewCounts` key routes to media_view_counts through the
+      // insertViewCount handle (Wave 1), inside this same transaction.
       sqliteDb.importParsedJson(dbPart, handles, { source: 'bundle' });
       // Logo bytes LAST — still inside the exclusive section, still BEFORE
       // the COMMIT that carries the mime keys (design review F6's ordering
@@ -12410,11 +12443,10 @@ app.delete('/api/videos/:id', async (req, res) => {
     await updateDatabase(freshDb => {
       delete freshDb.metadata[item.id];
       delete freshDb.progress[item.id];
-      // v1.42 (gate W3): the extracted per-id view counter goes with its
-      // item — leaving it would grow the namespace unboundedly under churn
-      // AND resurrect a stale count onto a future re-add of the same path
-      // (same md5 id). Same reasoning as clearPersistedServedAt in the prune.
-      if (freshDb.viewCounts) delete freshDb.viewCounts[item.id];
+      // (v1.42 gate W3: the view counter went with its item here as a doc
+      // carry. Wave 1: relational - removed post-commit below with the
+      // per-user rows; same reasons: unbounded growth under churn AND a stale
+      // count resurrecting onto a same-path re-add = same md5 id.)
       // v1.41.3: mint the deletion tombstone in the SAME mutator that removes
       // the entry. Every shape that reaches this legacy mutator is an
       // UNVERIFIED conclusion by construction (v1.65: the verified case is
@@ -12481,7 +12513,7 @@ app.delete('/api/videos/:id', async (req, res) => {
   }
 
   // v1.43: the per-user rows (user_progress/user_liked) are id-keyed carriers
-  // exactly like db.progress/db.viewCounts above, and go with the item for
+  // exactly like db.progress above (and the relational view-count row), and go with the item for
   // the same two reasons (unbounded growth under churn; stale state
   // resurrecting onto a future re-add of the same path = same md5 id).
   // AFTER the doc-table commit (the rekeyInFlightState posture): a rolled-
@@ -12493,6 +12525,13 @@ app.delete('/api/videos/:id', async (req, res) => {
     userStore.removeMediaState(item.id);
   } catch (err) {
     console.error(`Delete: failed to remove per-user progress/liked for ${item.id} (continuing):`, err.message);
+  }
+  // Wave 1: the relational view counter goes with its item (post-commit,
+  // same posture as the per-user rows above).
+  try {
+    viewCountStore.remove(item.id);
+  } catch (err) {
+    console.error(`Delete: failed to remove the view count for ${item.id} (continuing):`, err.message);
   }
   } // end !trashed (a trash move re-keyed the carriers instead of removing them)
 
@@ -13590,20 +13629,15 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
         if (likedIndex !== -1) freshDb.liked[likedIndex] = newId;
       }
 
-      // v1.42: `viewCounts` is id-keyed exactly like `progress`/`liked` and
-      // has to follow the re-key too. It did not, for the few hours between
-      // the T3 extraction and this gate round -- the adversarial seat proved
-      // (runnable repro) that a move zeroed the moved item's view count and
-      // orphaned the old row: the SAME v1.41.6 liked-drop class, striking
-      // the one field this release extracted specifically to protect. The
-      // import strips the legacy embedded `item.viewCount`, so post-move
-      // there is no fallback floor -- without this carry the count is gone.
-      // Every new id-keyed namespace MUST be added to this mutator (and to
-      // the delete/prune cleanups); the move-files suite locks this one.
-      if (freshDb.viewCounts && Object.prototype.hasOwnProperty.call(freshDb.viewCounts, oldId)) {
-        freshDb.viewCounts[newId] = freshDb.viewCounts[oldId];
-        delete freshDb.viewCounts[oldId];
-      }
+      // (v1.42: `viewCounts` followed the re-key HERE as a doc carry - added
+      // after the adversarial seat proved a move zeroed the moved item's count
+      // and orphaned the old row, the v1.41.6 liked-drop class striking the one
+      // field v1.42 extracted to protect. Wave 1: the counter is relational,
+      // so it re-keys POST-COMMIT in rekeyInFlightState beside the per-user
+      // rows - the move-files suite still locks that the count rides along.)
+      // Every new id-keyed DOC namespace MUST be added to this mutator (and
+      // to the delete/prune cleanups); every RELATIONAL carrier to
+      // rekeyInFlightState + removeMediaState's sites.
 
       // NOTE (gate fix round 3, QA sub-note): the three MODULE-LEVEL maps this
       // move also has to re-key -- `pendingProgress`, `persistedServedAt`,
@@ -13885,6 +13919,15 @@ function rekeyInFlightState(oldId, newId, oldPath, newPath) {
   } catch (err) {
     console.error(`Move: failed to re-key per-user progress/liked for ${oldId} -> ${newId}:`, err.message);
   }
+  // Wave 1: the relational view counter follows the item to its new id
+  // (move, trash and restore all pass through here - one seam, three
+  // callers). OR REPLACE inside the store: a collision at the destination
+  // cannot throw.
+  try {
+    viewCountStore.rekey(oldId, newId);
+  } catch (err) {
+    console.error(`Move: failed to re-key the view count for ${oldId} -> ${newId}:`, err.message);
+  }
   const servedAt = persistedServedAt.get(oldId);
   clearPersistedServedAt(oldId);
   if (servedAt !== undefined) persistedServedAt.set(newId, servedAt);
@@ -14056,10 +14099,8 @@ async function trashItem(deps, id, opts = {}) {
         const likedIndex = freshDb.liked.indexOf(id);
         if (likedIndex !== -1) freshDb.liked[likedIndex] = trashId;
       }
-      if (freshDb.viewCounts && Object.prototype.hasOwnProperty.call(freshDb.viewCounts, id)) {
-        freshDb.viewCounts[trashId] = freshDb.viewCounts[id];
-        delete freshDb.viewCounts[id];
-      }
+      // (Wave 1: the view counter is relational - it re-keys id -> trashId
+      // post-commit in rekeyInFlightState with the per-user carriers.)
       if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
         delete freshDb.deleteTombstones[trashId];
         delete freshDb.deleteTombstones[id];
@@ -14489,10 +14530,8 @@ async function restoreTrashItem(deps, trashId) {
         const likedIndex = freshDb.liked.indexOf(trashId);
         if (likedIndex !== -1) freshDb.liked[likedIndex] = originalId;
       }
-      if (freshDb.viewCounts && Object.prototype.hasOwnProperty.call(freshDb.viewCounts, trashId)) {
-        freshDb.viewCounts[originalId] = freshDb.viewCounts[trashId];
-        delete freshDb.viewCounts[trashId];
-      }
+      // (Wave 1: the view counter is relational - it re-keys trashId ->
+      // originalId post-commit in rekeyInFlightState with the per-user carriers.)
       if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
         delete freshDb.deleteTombstones[originalId];
         delete freshDb.deleteTombstones[trashId];
@@ -14671,7 +14710,7 @@ async function purgeTrashItem(deps, trashId) {
     await updateDb((freshDb) => {
       if (freshDb.trash) delete freshDb.trash[trashId];
       delete freshDb.progress[trashId];
-      if (freshDb.viewCounts) delete freshDb.viewCounts[trashId];
+      // (Wave 1: the relational view counter is removed post-commit below.)
       if (Array.isArray(freshDb.liked)) {
         const likedIndex = freshDb.liked.indexOf(trashId);
         if (likedIndex !== -1) freshDb.liked.splice(likedIndex, 1);
@@ -14690,6 +14729,12 @@ async function purgeTrashItem(deps, trashId) {
     userStore.removeMediaState(trashId);
   } catch (err) {
     console.error(`Purge: failed to remove per-user rows for ${trashId} (continuing):`, err.message);
+  }
+  // Wave 1: the relational view counter is purged with the record.
+  try {
+    viewCountStore.remove(trashId);
+  } catch (err) {
+    console.error(`Purge: failed to remove the view count for ${trashId} (continuing):`, err.message);
   }
 
   return { ok: true, trashId };
@@ -16881,7 +16926,7 @@ app.get('/api/stats', (req, res) => {
   let inventoryInput;
   if (isAdmin) {
     inventoryInput = {
-      metadata: visibleMetadata, progress: db.progress, viewCounts: db.viewCounts,
+      metadata: visibleMetadata, progress: db.progress, viewCounts: viewCountStore.getAll(), // Wave 1: the table
       liked: db.liked, deleteTombstones: db.deleteTombstones, folders: db.folders,
       books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
       music: { tracks: visibleTracks, folders: music.folders },
@@ -16900,7 +16945,7 @@ app.get('/api/stats', (req, res) => {
     inventoryInput = {
       metadata: visibleMetadata,
       progress: pickVisible(userStore.getProgress(uid), visibleMetadata), // THEIR own positions, visible only
-      viewCounts: pickVisible(db.viewCounts, visibleMetadata),            // global counters, visible items only
+      viewCounts: pickVisible(viewCountStore.getAll(), visibleMetadata), // global counters (the table), visible items only
       liked: userStore.getLiked(uid).filter((id) => has(visibleMetadata, id)),
       deleteTombstones: scopedTombstones,
       folders: distinctRoots(visibleMetadata),                           // never the raw configured-root list
@@ -16974,7 +17019,8 @@ app.get('/api/duplicates.csv', (req, res) => {
 // `viewCount` field yet, treated as zero here rather than ever triggering a
 // re-processing/re-scan pass to "fill it in" (the thumbnail-backfill-
 // regression lesson: a field default is not a reason to reprocess).
-// v1.42: the counter lives in `db.viewCounts[id]`, NOT on the metadata item.
+// v1.42: the counter was extracted OUT of the metadata item (into a doc
+// namespace then; since Wave 1 into the media_view_counts table).
 // `viewCount` was the one non-rebuildable field embedded in the rebuildable
 // `metadata` namespace, and in place it was demonstrably clobber-prone: the
 // scan's changed-file re-init and Phase-2 merge both drop it, so a view
@@ -16984,23 +17030,28 @@ app.get('/api/duplicates.csv', (req, res) => {
 // STARTING value the first time the id is counted or read — the item field
 // itself is left frozen in place and simply superseded (never mutated, never
 // "backfilled": the thumbnail-backfill lesson).
-function effectiveViewCount(db, id) {
-  const fromNs = db.viewCounts ? db.viewCounts[id] : undefined;
-  if (typeof fromNs === 'number' && Number.isFinite(fromNs) && fromNs >= 0) return fromNs;
+// Wave 1 (relational-migration arc, v1.291): the counter now lives in the
+// `media_view_counts` TABLE behind viewCountStore, not in `db.viewCounts`.
+// `counts` is one getAll() snapshot ({ id: count }) so a full-library overlay
+// costs one query, not one per item. The legacy embedded floor is unchanged.
+function effectiveViewCount(counts, db, id) {
+  const fromTable = Object.prototype.hasOwnProperty.call(counts, id) ? counts[id] : undefined;
+  if (typeof fromTable === 'number' && Number.isFinite(fromTable) && fromTable >= 0) return fromTable;
   const item = db.metadata ? db.metadata[id] : undefined;
   const legacy = item ? item.viewCount : undefined;
   return (typeof legacy === 'number' && Number.isFinite(legacy) && legacy >= 0) ? legacy : 0;
 }
 
 // Read-side overlay for the stats page: a NEW metadata map whose items carry
-// their effective view count (ns first, legacy floor second), so lib/stats
+// their effective view count (table first, legacy floor second), so lib/stats
 // stays a pure item-shape consumer. Copies are deliberate — readers must
 // never mutate `getCachedDatabase()`'s object (the read-cache contract).
 function withEffectiveViewCounts(db) {
+  const counts = viewCountStore.getAll();
   const out = {};
   for (const id of Object.keys(db.metadata || {})) {
     const { viewCount: _legacy, ...rest } = db.metadata[id];
-    const effective = effectiveViewCount(db, id);
+    const effective = effectiveViewCount(counts, db, id);
     out[id] = effective > 0 ? { ...rest, viewCount: effective } : rest;
   }
   return out;
@@ -17008,27 +17059,26 @@ function withEffectiveViewCounts(db) {
 
 app.post('/api/videos/:id/view', async (req, res) => {
   if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  let notFound = false;
+  // Wave 1: the counter is a relational row, so a view no longer rides the
+  // doc-model write chain (no load-mutate-save of the whole library for one
+  // integer). Existence is checked on the read cache (hasOwnProperty - the
+  // #220 guard shape, so `__proto__` is "not found", never a prototype
+  // walk); the increment is ONE atomic upsert that honors the legacy embedded
+  // floor the first time an id is counted. A view racing a concurrent delete
+  // can leave one orphan row for a just-deleted id - benign (the same
+  // documented class as the per-user carriers' crash window), and the next
+  // same-path re-add would resume its count, which is what a re-add did before.
+  const db = getCachedDatabase();
+  const id = req.params.id;
+  const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;
+  if (!item) return res.status(404).json({ error: 'Media file not found' });
   let viewCount = 0;
   try {
-    await updateDatabase(db => {
-      const item = db.metadata[req.params.id];
-      if (!item) {
-        notFound = true;
-        return false;
-      }
-      viewCount = effectiveViewCount(db, req.params.id) + 1;
-      db.viewCounts[req.params.id] = viewCount;
-      return true;
-    });
+    viewCount = viewCountStore.increment(id, { floor: item.viewCount });
   } catch (err) {
-    // Express 4 does not catch a rejected async-handler promise, so a
-    // rejection left unguarded here would hang the request instead of
-    // returning 500 (mirrors POST /api/progress's own pattern above).
-    console.error(`Error recording view for ${req.params.id}:`, err);
+    console.error(`Error recording view for ${id}:`, err);
     return res.status(500).json({ error: `Could not record view: ${err.message}` });
   }
-  if (notFound) return res.status(404).json({ error: 'Media file not found' });
   // v1.68 (Dean rulings 1-2): a play retires the player's own notification -
   // the view ping is THE play-start signal (once per watch load, every web
   // surface), so the bell row for this media leaves THIS user's panel and
@@ -18879,6 +18929,10 @@ module.exports = {
   // it produces a genuine cookie exactly like a browser login would.
   __mintTestSession,
   __clearUsersForTests,
+  // Wave 1 (relational-migration arc): the media view-count store, exported
+  // so integration tests seed and read counts through the SAME API the
+  // routes use (the doc-model `viewCounts` key is refused by the save-lock).
+  viewCountStore,
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

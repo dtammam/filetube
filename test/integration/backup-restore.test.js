@@ -21,6 +21,7 @@ const {
   __resetDatabaseForTests,
   __getPersistedStateEpoch,
   userStore,
+  viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -74,7 +75,7 @@ function fullState() {
     metadata: { vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', type: 'video', ext: '.mp4', filePath: '/media/videos/clip.mp4', duration: 100, folderName: 'Videos' } },
     liked: ['vid1'],
     deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000 } },
-    viewCounts: { vid1: 9 },
+    // (viewCounts left the doc object in Wave 1 - see FULL_VIEW_COUNTS / seedFullState.)
     // v1.65: trashed-item records ride the bundle (a restore that dropped
     // them would strand un-restorable, un-purgeable files in the trash dirs).
     trash: {
@@ -139,8 +140,20 @@ async function postRestore(bundle) {
   });
 }
 
+// Wave 1 (relational-migration arc): `viewCounts` is a relational namespace
+// now (media_view_counts, lib/media/viewCounts.js). The doc-model save-lock
+// REFUSES a `viewCounts` key, so the fixture seeds it through the store - the
+// same API the routes use - and the bundle still carries it as { id: count }.
+const FULL_VIEW_COUNTS = { vid1: 9 };
+function seedFullState(overrides) {
+  const state = { ...fullState(), ...(overrides || {}) };
+  saveDatabase(state);
+  viewCountStore.replaceAll(FULL_VIEW_COUNTS);
+  return state;
+}
+
 test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips; v1.43: users ride the bundle)', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const beforeState = loadDatabase();
 
   const bundle = await getBackup();
@@ -159,13 +172,17 @@ test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips;
 
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
-  assert.deepEqual((await res.json()).restoredNamespaces.sort(), Object.keys(fullState()).sort());
+  assert.deepEqual((await res.json()).restoredNamespaces.sort(), [...Object.keys(fullState()), 'viewCounts'].sort());
 
   assert.deepEqual(loadDatabase(), beforeState, 'restored state deep-equals the pre-wipe load');
+  // Wave 1: the relational namespace round-trips too - wiped by the reset
+  // (readPersistedDatabase === {} above proves the table was empty), restored
+  // from the bundle's { id: count } key into media_view_counts.
+  assert.deepEqual(viewCountStore.getAll(), FULL_VIEW_COUNTS, 'view counts restored into their table');
 });
 
 test('v1.82 (gate S4 binding): a users-restoring restore WIPES stored avatars (no reassigned-id photo bleed)', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   // Upload the acting admin's avatar through the real route.
   const up = await fetch(`${base}/api/me/avatar`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG_BYTES });
   assert.equal(up.status, 200);
@@ -185,7 +202,7 @@ test('v1.82 (gate S4 binding): a users-restoring restore WIPES stored avatars (n
 });
 
 test('logo bytes round-trip: upload -> backup -> delete -> restore brings back bytes AND mime; absent variant unlinks stale bin (F6)', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   // Upload a light logo through the real route (magic-byte sniffer included).
   const up = await fetch(`${base}/api/settings/logo`, {
     method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG_BYTES,
@@ -221,7 +238,7 @@ test('logo bytes round-trip: upload -> backup -> delete -> restore brings back b
 });
 
 test('F5 coherency: a progress ping staged BEFORE the restore never lands after it, and a zero-write read serves restored data', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   // A COMMITTED per-user position rides the bundle (v1.43 chunk 4d)...
   const committed = await fetch(`${base}/api/progress`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -264,7 +281,7 @@ test('F5 coherency: a progress ping staged BEFORE the restore never lands after 
 });
 
 test('validation refuses: wrong schema, unknown bundle key, non-empty users, oversized/invalid logo', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const good = await getBackup();
 
   assert.equal((await postRestore({ ...good, schema: 'filetube-backup-v99' })).status, 400);
@@ -297,7 +314,7 @@ test('W4: a wipe/restore landing MID-SCAN aborts the scan\'s stale merge — the
   // always commits before the scan's final mutator reaches the chain.
   const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-w4-lib-'));
   fs.writeFileSync(path.join(libDir, 'walker.mp4'), 'bytes-the-scan-would-index');
-  saveDatabase({ ...fullState(), folders: [libDir] });
+  seedFullState({ folders: [libDir] });
 
   const epochBefore = __getPersistedStateEpoch();
   const scanPromise = scanDirectories();     // Phase-1 walk starts (async)
@@ -311,7 +328,7 @@ test('W4: a wipe/restore landing MID-SCAN aborts the scan\'s stale merge — the
 });
 
 test('a restore that fails mid-populate ROLLS BACK completely — db state AND the logo bytes both intact, 500 surfaces', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   // A real logo on disk, so the delta-round residual is exercised: a failed
   // restore must NOT have destroyed the previous logo before the import ran.
   const up = await fetch(`${base}/api/settings/logo`, {
@@ -356,7 +373,7 @@ test('v1.43: backup and restore are ADMIN-ONLY (a member gets 403 on both)', asy
 });
 
 test('v1.43: the session secret NEVER rides the bundle (secrets do not ride bundles)', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const bundle = await getBackup();
   const secretBytes = fs.readFileSync(path.join(DATA_DIR, 'session-secret'), 'utf8').trim();
   const serialized = JSON.stringify(bundle);
@@ -366,7 +383,7 @@ test('v1.43: the session secret NEVER rides the bundle (secrets do not ride bund
 });
 
 test('v1.66 D2: push subscriptions NEVER ride the bundle; a users-less restore preserves them; a users restore drops them via cascade (disclosed)', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const { __mintTestSession } = require('../../server');
   const owner = __mintTestSession({ username: 'wp-device-owner', role: 'member' });
   const EP = 'https://push.example/wp/Bundle-Secret-XyZ?tok=qQ_17';
@@ -407,7 +424,7 @@ test('v1.66 D2: push subscriptions NEVER ride the bundle; a users-less restore p
 });
 
 test('v1.43: user accounts + per-user state round-trip through backup -> wipe -> restore, atomically with the doc tables', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const { __mintTestSession } = require('../../server');
   const extra = __mintTestSession({ username: 'roundtripper', role: 'member' });
   userStore.setProgress(extra.user.id, 'vid1', { timestamp: 33, duration: 100, updatedAt: '2026-07-17T00:00:00.000Z' });
@@ -482,7 +499,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
 });
 
 test('v1.51: the notification feed + per-user seen/read state round-trip through backup -> wipe -> restore (EIGHTH carrier)', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const { __mintTestSession } = require('../../server');
   const extra = __mintTestSession({ username: 'belltripper', role: 'member' });
   // Times anchor AFTER the account's creation moment (rows that predate an
@@ -523,7 +540,7 @@ test('v1.51: the notification feed + per-user seen/read state round-trip through
 });
 
 test('v1.51 gate fix (QA W1): a feed-only bundle (notifications, NO users) restores the feed WITHOUT destroying existing users\' reads', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const { __mintTestSession } = require('../../server');
   const keeper = __mintTestSession({ username: 'dotkeeper', role: 'member' });
   // Post-account times (see the round-trip test above for why).
@@ -559,7 +576,7 @@ test('v1.51 gate fix (QA W1): a feed-only bundle (notifications, NO users) resto
 });
 
 test('v1.51 gate fix (adversarial S1): a bundle with a duplicate notification mediaId is a clean 400, not a mid-restore 500', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const before = await getBackup();
   const res = await fetch(`${base}/api/admin/restore`, {
     method: 'POST',
@@ -585,7 +602,7 @@ test('v1.51 gate fix (adversarial S1): a bundle with a duplicate notification me
 });
 
 test('v1.43 self-lockout guard: a bundle that lacks the restoring admin (as an enabled admin) is refused whole, nothing changes', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const before = await getBackup();
   const usersBefore = userStore.listUsers().map((u) => u.username).sort();
 
@@ -612,7 +629,7 @@ test('v1.43 self-lockout guard: a bundle that lacks the restoring admin (as an e
 });
 
 test('v1.43: a v1.42-format bundle (users absent or empty) restores the docs and leaves the CURRENT accounts untouched', async () => {
-  saveDatabase(fullState());
+  seedFullState();
   const bundle = await getBackup();
   delete bundle.users; // the v1.42 shape
   const usersBefore = userStore.listUsers().map((u) => u.username).sort();
@@ -629,7 +646,7 @@ test('v1.43: a v1.42-format bundle (users absent or empty) restores the docs and
 
 test('CRITICAL-1: an id-reassigning restore invalidates a THIRD PARTY\'s live cookie -- no cross-user bleed / privilege escalation', async () => {
   const { __mintTestSession } = require('../../server');
-  saveDatabase(fullState());
+  seedFullState();
 
   // "Beta" instance: a friend `sam` (member) signs in and holds a REAL live
   // cookie {uid: sam.id, tv: 0}. No forging -- his genuine session is the
@@ -680,6 +697,7 @@ test('CRITICAL-1: an id-reassigning restore invalidates a THIRD PARTY\'s live co
 // ~2943 items; this builds a comparable map).
 function prodScaleState(itemCount) {
   const state = fullState();
+  const counts = { ...FULL_VIEW_COUNTS }; // Wave 1: seeded through the store, not the doc object
   for (let i = 0; i < itemCount; i++) {
     const id = `bulk${i}`;
     state.metadata[id] = {
@@ -692,20 +710,21 @@ function prodScaleState(itemCount) {
       duration: 3600,
       folderName: 'Videos',
     };
-    state.viewCounts[id] = i % 7;
+    counts[id] = i % 7;
   }
-  return state;
+  return { state, counts };
 }
 
 test('v1.43.1 A1: a prod-scale bundle (well over the global parser 100 kb cap) round-trips — the 32mb route-scoped limit is ALIVE', async () => {
-  const big = prodScaleState(3000);
+  const { state: big, counts: bigCounts } = prodScaleState(3000);
   saveDatabase(big);
+  viewCountStore.replaceAll(bigCounts);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
   assert.ok(wireBytes > 150 * 1024,
     `precondition: the fixture must dwarf the global 100 kb cap or this test proves nothing (got ${wireBytes} bytes)`);
 
-  saveDatabase(fullState()); // wipe down to the small state, then restore the big one
+  seedFullState(); // wipe down to the small state, then restore the big one
   const res = await postRestore(bundle);
   assert.equal(res.status, 200,
     `a real-scale restore must not 413 (got ${res.status}: ${await res.text().catch(() => '')})`);

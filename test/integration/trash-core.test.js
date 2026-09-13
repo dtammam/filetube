@@ -21,6 +21,7 @@ const assert = require('node:assert');
 const {
   trashItem, getMediaId, loadDatabase, saveDatabase, updateDatabase,
   scanDirectories, userStore, __resetDatabaseForTests, __mintTestSession,
+  viewCountStore,
 } = require('../../server');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -46,9 +47,9 @@ function seedLibrary() {
       },
     },
     liked: [id],
-    viewCounts: { [id]: 7 },
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0 },
   });
+  viewCountStore.set(id, 7); // Wave 1: the relational carrier, seeded through the store
   return { id, filePath };
 }
 
@@ -84,8 +85,9 @@ test('happy path: atomic move into <root>/.filetube-trash carries the WHOLE iden
   // Doc-table id-keyed carries followed the id (the move-mutator list).
   assert.equal(db.progress[id], undefined);
   assert.equal(db.progress[res.trashId].timestamp, 11);
-  assert.equal(db.viewCounts[id], undefined);
-  assert.equal(db.viewCounts[res.trashId], 7);
+  // Wave 1: the relational carrier followed the id too (post-commit re-key).
+  assert.equal(viewCountStore.get(id), 0, 'no row left under the dead id');
+  assert.equal(viewCountStore.get(res.trashId), 7, 'the count rides to the trash id');
   assert.ok(db.liked.includes(res.trashId) && !db.liked.includes(id));
 });
 

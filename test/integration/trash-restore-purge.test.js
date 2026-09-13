@@ -21,6 +21,7 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase,
   scanDirectories, userStore, __resetDatabaseForTests,
+  viewCountStore,
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
@@ -60,9 +61,9 @@ function seedLibrary() {
         rootFolder: ROOT, size: 11, ext: '.mp4', type: 'video', addedAt: 1700000000000, duration: 90,
       },
     },
-    viewCounts: { [id]: 5 },
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0 },
   });
+  viewCountStore.set(id, 5); // Wave 1: the relational carrier, seeded through the store
   return { id, filePath };
 }
 
@@ -100,7 +101,7 @@ test('FULL-FIDELITY ROUND TRIP: trash via the delete route, restore via the tras
   assert.equal(db.metadata[id].title, 'The Movie', 'metadata restored from the snapshot');
   assert.equal(db.metadata[id].addedAt, 1700000000000, 'addedAt survives (no stranger re-add)');
   assert.deepEqual(db.trash, {}, 'the trash record is gone');
-  assert.equal(db.viewCounts[id], 5, 'the view count came home');
+  assert.equal(viewCountStore.get(id), 5, 'the view count came home (Wave 1: re-keyed in its table)');
   // Every per-user carrier back under the ORIGINAL id.
   assert.equal(userStore.getOneProgress(uid, id).timestamp, 44, 'resume point re-linked');
   assert.deepEqual(userStore.getLiked(uid), [id], 'the Like re-linked');

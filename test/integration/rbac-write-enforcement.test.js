@@ -16,7 +16,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, loadDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, saveDatabase, loadDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, plain, granted;
@@ -29,12 +29,12 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base); // admin
 
+  viewCountStore.replaceAll({ vid: 1 }); // Wave 1: relational; seeded through the store
   saveDatabase({
     folders: [DATA_DIR], folderSettings: {}, progress: {},
     metadata: {
       vid: { id: 'vid', title: 'A Clip', name: 'clip.mp4', filePath: vidFile, folderName: 'Clips', channelName: 'Clips', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 9, addedAt: 10 },
     },
-    viewCounts: { vid: 1 },
     trash: { t1: { originalId: 'vid2', originalPath: path.join(DATA_DIR, 'old.mp4'), rootFolder: DATA_DIR, trashedAt: 5,
       item: { id: 'vid2', title: 'Trashed', name: 'old.mp4', filePath: path.join(DATA_DIR, 'old.mp4'), folderName: 'Clips', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
