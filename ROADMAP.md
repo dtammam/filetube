@@ -93,6 +93,50 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.291.0 - Relational-migration arc, Wave 1: view counts leave the document model (2026-09-13)
+
+The first namespace out of the doc-model mega-object, chosen because it is the one
+NON-REBUILDABLE per-item field (a rescan cannot rebuild how often you watched something)
+and the smallest blast radius. Schema **v21**: `media_view_counts (media_id, count)`,
+owned by the new `lib/media/viewCounts.js` store (the `lib/auth/store.js` shape). The
+migration copies every `doc_kv` `viewCounts` row into the table and deletes the doc rows
+in ONE transaction (idempotent under a crash before the stamp); `viewCounts` is gone from
+`DOC_KV_NAMESPACES`, so the save-lock now REFUSES a stray doc write. Second rollback floor
+in RELEASING.md: a <=v1.290 build refuses a v21 database; backup bundles carry the same
+`viewCounts: { id: count }` key on both sides and restore in either direction (measured).
+
+- `server.js`: the doc carries at delete / scan-prune / move / trash / restore / purge are
+  gone. `remove()` runs post-commit beside the per-user carriers (delete, scan-prune,
+  purge); `rekey()` inside `rekeyInFlightState` (one seam: move, trash, restore). The view
+  route no longer rides the doc write chain - one integer no longer load-mutate-saves the
+  whole library; the increment is one atomic upsert that honors the legacy embedded
+  floor. Stats / inventory / the read overlay read the table once per request.
+- Backup: same bundle key and shape; validation is field-level, refuse-whole, before the
+  wipe (integers within the safe range only); restore routes through the importer into
+  the table inside the same transaction that wipes it.
+- `.gitignore` root-anchored: the unanchored `media/` had swallowed `lib/media/`.
+- 15 existing test files re-seeded through the store; 2 new test files (store /
+  migration / seams unit file; route-level carrier + validation bindings).
+
+Full two-reviewer gate, both seats REQUEST CHANGES then APPROVE after one fix round.
+What it caught: a count >= 2^53 passed every validator, landed in the INTEGER column and
+then made EVERY read of the table throw (backup, stats and the view route all 500 until
+SQL surgery; v1.290's own validator accepted the value) - now a safe-integer ceiling at
+every write boundary and a saturating increment; the hard-delete and purge carrier
+calls were UNBOUND (the delete test's item had a file, so the trash re-key satisfied
+the assertion, not the reap); the bundle validation was unbound at the route; the
+both-shapes import precedence had flipped vs v1.290 (embedded value beat the
+first-class key); four stale mechanism comments; a drift on an arc metric. The seats'
+own mutants re-run RED against the fix (14 killed). Dual-Node 8496 tests / 8493 pass /
+0 fail / 3 skipped on both 22.23.1 and 24.14.0.
+
+KNOWN GAPS (disclosed): the v21 migration silently truncates a float doc row (a
+migration has nobody to refuse to; only a hand-edited value reaches it); a bundle
+restored WITHOUT a `viewCounts` key zeroes the live counts - unchanged pre-wave behavior
+(the doc wipe did the same), disclosed not fixed; the notifications phantom-prune does
+NOT touch view counts by design (recorded at the site). server.js grew +73 lines this
+wave (carrier calls + validator); the weight leaves in Waves 6/7. Device pass is Dean's.
+
 ### v1.290.0 - Relational-migration arc, Wave 0: honest-zero comment debt + db.json proven inert (2026-09-13)
 
 Groundwork for retiring the document model inside `filetube.db` (the plan is

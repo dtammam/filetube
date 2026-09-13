@@ -201,20 +201,39 @@ hygiene, per CLAUDE.md.
     same way (one classifier, two callers, one upsert text exported by the store).
   - `readPersistedDatabase` (the test read) surfaces the table as `viewCounts` when rows
     exist, so the move/trash/restore/delete/prune carrier tests still read the REAL table
-    through an independent connection. 14 existing test files touched (7 re-seed a
-    non-empty count through the store, 6 just drop the now-refused empty doc key, 1
-    switches a read); new `test/unit/media-view-counts-store.test.js` (API, migration +
+    through an independent connection. 15 existing test files touched (7 re-seed a
+    non-empty count through the store, 6 just drop the now-refused empty doc key, 2
+    adjust reads/assertions - dbjson-frozen and database.test); new `test/unit/media-view-counts-store.test.js` (API, migration +
     idempotency + the 2^53 drop, save-lock, all bulk seams incl. rollback and the
     both-shapes precedence, the test read, source locks) and
     `test/integration/view-counts-carriers.test.js` (the gate's donated bindings: hard
     delete + purge reap the row, bundle validation refuses before the wipe incl. 2^53
     and 1e300, a `__proto__` view is 404).
-  - Baseline after: doc_kv **12**, doc_single 18, total **30**, schema **21**, server.js
-    **19,095** (+54 - the post-commit carrier calls and their comments outweigh the
-    removed doc carries; the weight leaves in Wave 6/7, not here). `dbJsonRefFiles`
+  - Baseline after (at the fix commit `b33eab5e`): doc_kv **12**, doc_single 18, total
+    **30**, schema **21**, server.js **19,114** (+73 over the v1.290 baseline - the
+    post-commit carrier calls, the validator, and their comments outweigh the removed doc
+    carries; the weight leaves in Wave 6/7, not here). `dbJsonRefFiles`
     drifted 15 -> 16 in the first commit (the store header named the file literally; QA
     W3) and is back to **15** after the reword - the metric counts literal mentions, so
     prose in new modules must not name db.json.
+  - **Full gate (both seats REQUEST CHANGES -> fix commit `b33eab5e` -> both APPROVE).**
+    Adversarial (22 mutants on a real v20 file + live probes): W1 a count >= 2^53 poisoned
+    every read of the table (backup/stats/view 500) - the safe-integer ceiling above; W2
+    the hard-delete and purge `remove()` calls were UNBOUND (the delete test's item had a
+    file, so the trash re-key satisfied it); W3 the bundle validation was unbound at the
+    route; S5 the both-shapes import precedence had FLIPPED vs v1.290 (first-class key
+    routed first, embedded upserted over it). QA: W1 purge unbound (same), W2 four stale
+    mechanism comments, W3 the dbJsonRefFiles drift, S2 the same precedence flip, S3 the
+    migrate-check CLI's expected value drifting from the importer's rule. All applied;
+    the seats' own mutants re-run RED against the fix (M2/M3/M6/M12/M12b + 9 new). Kept
+    from the seats: the phantom-prune exemption (a GET route must not become a second
+    deleter of media state), and the float refusal in the validator (no legitimate
+    v1.24 -> v1.41 -> v1.42 -> v1.290 chain ever emits a non-integer; verified at source).
+  - **Template lessons for Wave 2+:** (1) a carrier binding must drive the branch that
+    REAPS, not one that RE-KEYS (populate, then assert the row is gone, not just moved);
+    (2) an INTEGER column needs a safe-integer ceiling at every write boundary, or one
+    hostile value kills every read; (3) when two seams can write the same id, the
+    authoritative one goes LAST; (4) new-module prose must not name db.json (the metric).
 
 ### Wave 2 - `progress` + `deleteTombstones` -> relational  (SOLO, full gate)
 - Per-id semantics + tombstone semantics (19 + 12 refs). `media_progress`,
