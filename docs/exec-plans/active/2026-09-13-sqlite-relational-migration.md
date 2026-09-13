@@ -1,0 +1,225 @@
+# Exec plan: retire the document model, relationalize the store, thin the monolith
+
+- **Created:** 2026-09-13
+- **Status:** ACTIVE (intake agreed with Dean 2026-09-13; not yet started)
+- **Owner:** main session (lean mode)
+- **Baseline commit:** `963f0ca2` (v1.289.0), `schema user_version = 20`
+
+---
+
+## 0. Why this exists (the corrected diagnosis)
+
+The v1.42 migration to SQLite succeeded: `filetube.db` **is** the single physical
+source of truth. `db.json` the file is a one-time import seed - read once at first
+boot only if `filetube.db` is absent, then left "byte-for-byte untouched forever" as
+a rollback net. It is **not** a live parallel store. (An earlier readout claimed it
+was; that was wrong.)
+
+What actually survives is **two data *models* inside the one SQLite file**:
+
+1. **The legacy document model** - tables `doc_kv` (per-key rows) and `doc_single`
+   (whole-blob rows) hold the entire old `db` mega-object, preserving "the exact
+   object shape db.json produced." `server.js` still does
+   `loadDatabase()` -> assemble the whole object -> mutate -> `saveDatabase(db)`.
+   **This is the "JSON" that remains: not a file format, but a programming model**,
+   and it is the direct cause of the persist-gate / stale-snapshot bug class (every
+   new field needs a backfill + carry-forward + merge guard + a namespace-lock entry).
+2. **The modern relational model** - real per-user tables (`user_progress`,
+   `user_music_liked`, `notifications`, `user_queue`, ...). These are clean and are
+   NOT in scope except as the pattern to copy.
+
+The finding that reframes the whole arc: **`server.js` is 19,041 lines *because* it
+hosts the document model** (assembly, backfill, the scan, move/trash/restore). Retire
+the document model and three of Dean's goals collapse into one arc:
+
+- **"No comment debt"** - already effectively true (see Wave 0); the 9 grep hits are false positives.
+- **"Remove all trace of JSON"** - = migrate the 32 document-model namespaces to relational tables + retire the `db.json` file.
+- **"server.js to player.js quality"** - = the same migration sheds the weight, then a teardown wave splits the rest.
+
+**Goal:** one physical store, one data model (relational, feature-owned stores like
+`lib/music`), a thin composition-root `server.js`, honest-zero comment debt, and the
+`db.json` import path gone - with **zero data loss on Dean's real library**, proven
+by his device pass at every release.
+
+---
+
+## 1. Machine-derived baseline (predictions the tools re-verify every commit)
+
+Every number below is a **prediction re-derived by a command**, never hand-counted.
+Re-run these at each wave commit; a drift is a finding.
+
+| Metric | Baseline (2026-09-13, `963f0ca2`) | Command to re-derive | Target at Wave 7 |
+|---|---|---|---|
+| `server.js` lines | **19,041** | `wc -l < server.js` | **< 3,000** |
+| `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
+| `doc_single` namespaces | **19** | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
+| Total legacy namespaces | **32** | sum of the two | **0** |
+| Genuine TODO/FIXME/HACK markers | **0** (9 grep hits are false positives) | see Wave 0 lint | **0**, lint-enforced |
+| `db.json` refs in shipped code | **> 0** (`server.js`, `lib/ytdlp/*`, scripts) | `git ls-files '*.js' \| grep -vE 'vendor\|node_modules\|test' \| xargs grep -l 'db\.json'` | **0** |
+| Test cases | **8,310** across **657** files | `git ls-files 'test/*.js' \| xargs grep -hoE '^\s*(test\|it)\(' \| wc -l` | net-add; ratio stays >= 1.48:1 |
+| Full suite | green on **both** Node 22.23.1 + 24.14.0 | `npm test` on each | green each release |
+
+### The 32 legacy namespaces (the migration backlog)
+
+`server.js` consumer counts (`grep -oE "db\.<ns>\b" server.js | wc -l`) drive the
+sequencing - low blast radius first, `metadata` last.
+
+**`doc_kv` (13, per-key rows):** `metadata` (172 refs / 284 rows on dev box),
+`progress` (19 / 7), `deleteTombstones` (12), `viewCounts` (11), `trash` (33),
+`books.items`, `books.progress`, `books.audio`, `music.tracks`, `podcasts.episodes`,
+`tv.episodes`, `ytdlp.downloadMeta`, `ytdlp.channelAvatars`.
+
+**`doc_single` (19, whole-blob rows):** `folders` (39), `folderSettings` (10),
+`folderDisplayNames` (22), `settings` (48), `liked` (12), `books.folders`,
+`books.settings`, `books.pins`, `music.folders`, `music.settings`, `music.channels`,
+`podcasts.subscriptions`, `podcasts.settings`, `tv.folders`, `tv.settings`,
+`ytdlp.subscriptions`, `ytdlp.pins`, `ytdlp.allowMembersOnly`.
+
+**Extraction-target giant functions** (`server.js`, the monolith weight):
+`runScanDirectories` (L4071, **1,533 lines**), `moveItemToFolder` (L13295, 553),
+`trashItem` (L13930, 306), `restoreTrashItem` (L14376, 226), `recordRepulledItemMeta`
+(L16045, 203), `planImportRelocation` (L15123, 176), `validateBackupBundle` (L9913,
+172), plus `loadDatabase`/`saveDatabase`/`updateDatabase` (L504-681, ~180).
+
+---
+
+## 2. Risk posture
+
+**Honest verdict: feasible, genuinely risky, not reckless - because it is incremental
+and the crown jewel is recoverable.**
+
+- **This is the destructive-work gate norm's reason to exist.** Every wave that holds
+  data a user can lose gets the **FULL** gate, never slim; the adversarial seat is
+  briefed to **destroy the data**, demand a runnable repro, and mutation-test the fix.
+- **~10 small migrations, not a big-bang rewrite.** Each namespace follows the same
+  template (Section 4) that the per-user tables already proved. One namespace can fail
+  without endangering the others.
+- **`metadata` goes LAST** and is the only truly scary one (172 refs, scan-written).
+  **Key safety fact: the media catalog is REBUILDABLE by rescanning the files.** The
+  one non-rebuildable per-item field (`viewCount`) was already extracted to its own
+  `viewCounts` namespace in v1.42 and migrates first (Wave 1). So even a catastrophic
+  `metadata` migration failure is recoverable by a rescan - the risk is downtime, not
+  permanent loss.
+- **`db.json` import path stays as the rollback net** until Wave 7, satisfying the
+  "keep it one more cycle" decision, and every wave verifies a **backup-bundle
+  round-trip** before and after.
+- **Dean's device pass is the final arbiter** at each release; solo waves first so the
+  template is battle-proven on real data before the batches.
+
+**Accepted residual (to log in `tech-debt-tracker.md` at kickoff):** while the arc is
+in flight, backup/restore and the scan re-init must carry BOTH models. Every wave
+updates *every* carrier seam (the v1.42 lesson) - this is tracked, not silent.
+
+---
+
+## 3. The waves
+
+Pacing (Dean, 2026-09-13): **solo waves 1-3** (prove the template on real data with a
+device pass between each), **batch waves 4-5**, **solo wave 6** (mandatory), teardown 7.
+Each wave = its own branch -> gate -> `merge --no-ff` -> release ceremony -> branch
+hygiene, per CLAUDE.md.
+
+### Wave 0 - Honest-zero comment debt + JSON de-reliance groundwork  (slim gate)
+- Reword the two comment strings that trip the marker grep (`lib/media-capabilities.js:7`
+  "a TODO gap", `public/js/glyph-pool.js:29,33` the `\XXXX` escape prose) OR allowlist
+  them, and add a lint/test that keeps the **genuine** marker count at 0 going forward.
+- Confirm (test) that `db.json` is never read when `filetube.db` exists; document the
+  import path as scheduled for removal in Wave 7.
+- **Predicted `server.js` delta:** ~0. **Risk:** none. **Data touched:** none.
+
+### Wave 1 - `viewCounts` -> `media_view_counts`  (SOLO, full gate: holds non-rebuildable data)
+- Lowest blast radius (11 refs), self-contained per-id integer store, already isolated
+  in v1.42 precisely because it is the one non-rebuildable field. Perfect template proof.
+- New table (migration `user_version` 21), one-time backfill from `doc_kv.viewCounts`,
+  a `lib/media/viewCounts` store, rewrite the 11 consumers, drop from `DOC_KV_NAMESPACES`,
+  move to the SELECT-assembled backup bundle.
+
+### Wave 2 - `progress` + `deleteTombstones` -> relational  (SOLO, full gate)
+- Per-id semantics + tombstone semantics (19 + 12 refs). `media_progress`,
+  `media_delete_tombstones`. Proves the per-id + delete-sweep pattern end to end.
+
+### Wave 3 - `trash` -> `media_trash`  (SOLO, FULL gate, data-loss sensitive)
+- 33 refs, restore path, backup bundle. Adversarial briefed to destroy trashed-item
+  recovery. Extract `trashItem` / `restoreTrashItem` into `lib/media/trash` as it moves.
+
+### Wave 4 - config singletons, batched  (full gate)
+- `settings` (48), `folders` (39), `folderDisplayNames` (22), `liked` (12),
+  `folderSettings` (10) -> `settings` (KV or typed columns), `folders`, `folder_display_names`,
+  `media_liked`, `folder_settings`. Extract `moveItemToFolder` into `lib/media/folders`.
+
+### Wave 5 - feature catalogs, batched (sub-waved per feature)  (full gate)
+- The `books.*`, `music.*`, `podcasts.*`, `tv.*`, `ytdlp.*` content namespaces (each
+  already has a `lib/<feature>` owner) -> relational tables owned by that module. May
+  ship as one sub-wave per feature if the batch is too large for a single gate.
+
+### Wave 6 - `metadata` -> `media_items`  (SOLO, FULL gate, adversarial destroys the catalog)
+- The crown jewel: 172 refs, 284 rows, written by the 1,533-line `runScanDirectories`.
+  New `media_items` table; extract the scan into `lib/scan/` as small tested functions
+  (the player.js standard). Verify a full backup round-trip and a rescan-rebuild BEFORE
+  and AFTER. This wave sheds the most `server.js` weight.
+
+### Wave 7 - Teardown + monolith split + `db.json` removal  (full gate)
+- Remove `loadDatabase`/`saveDatabase`/`updateDatabase`, the mega-object backfill, and
+  `doc_kv` + `doc_single` (arrays emptied, then tables dropped via a forward-only
+  migration). Remove the `db.json` import path and legacy tmp-sweep (grace satisfied).
+- Split the remaining routes into feature routers; `server.js` becomes a thin
+  composition root under the predicted **< 3,000 lines**.
+- Re-verify **every** Section 1 prediction; a miss is a finding, not a rounding note.
+
+---
+
+## 4. The per-namespace migration template (the proven pattern)
+
+Each namespace migration MUST do all of these; a test binds each:
+
+1. **Forward-only additive migration** from `user_version` 20 -> 21+, `CREATE TABLE
+   IF NOT EXISTS`, table born complete. Never edit an executed block (append-only, or
+   the suite hangs - repo scar).
+2. **One-time idempotent backfill** copying the namespace's `doc_kv`/`doc_single` rows
+   into the new table; NUL-safe (`node:sqlite` truncates TEXT at NUL - keep
+   `assertRowKeySafe`); `__proto__`-safe (`defineRowProperty`).
+3. **A feature-owned store module** (`lib/<feature>/store.js` shape) with the read/write
+   API; the ONLY writer of its table.
+4. **Rewrite every `server.js` consumer** (the N grep refs) to call the store, not
+   `db.<ns>`.
+5. **Remove the namespace from `DOC_KV_NAMESPACES` / `SINGLETON_NAMES`** so
+   `assertNoUnknownKeys` now REFUSES a stray write to it (the lock becomes the net).
+6. **Backup bundle:** move the namespace from the doc-model bundle to the table's
+   SELECT-assembled bundle (`BACKUP_NAMESPACE_KEYS`); verify a restore round-trip.
+7. **Tests (persist-gate discipline):** terminal-write coverage, restore round-trip,
+   backup inclusion, empty/absent handling, and BOTH axes of any reveal/clear or
+   symmetric invariant. Populate first, then drive the non-happy axis (no vacuous floors).
+8. **Gate:** FULL for anything a user can lose; adversarial destroys the data, runnable
+   repro, mutation-tested fix. Verify what a prescription REMOVES, not just what it adds.
+
+---
+
+## 5. Standing constraints (non-negotiable, from CLAUDE.md + memory)
+
+- Every wave: branch -> gate -> `merge --no-ff` -> release ceremony (version bump,
+  ROADMAP, `docs/releases.json` ledger in pure user language, tag) -> branch hygiene
+  (delete remote+local, `-d` never `-D`). Waves RELEASE with device pass pending +
+  disclosed, never merged-but-unreleased.
+- Dual-Node suites (v22.23.1 + v24.14.0) SEQUENTIALLY, reviewers idle, before each
+  release. Node 24 prints `ℹ` not `#` - an empty grep is not green.
+- Migrations forward-only + append-only; schema bumps additive; `user_version` climbs
+  from 20.
+- Mutation-test against a COMMIT in a `/tmp` `git archive` sandbox, never the dirty tree.
+- No blind staging (`git add -A` is hook-blocked); stage explicit paths; verify branch +
+  `git log` (phantom-commit) and `git ls-remote` (phantom-push, never pipe a push).
+- No em dashes in any output (plain " - "). No near-today date literals in tests (rot on
+  rollover) - dynamic offsets.
+- Diagnosis discipline: state the falsifying observation and gather it before editing; a
+  device-failed fix means the diagnosis was WRONG - re-root-cause, never re-patch.
+
+---
+
+## 6. Definition of done (the arc closes when)
+
+- `wc -l server.js` < 3,000; the top-10 giant functions live in tested `lib/` modules.
+- `DOC_KV_NAMESPACES` and `SINGLETON_NAMES` are gone; `doc_kv` + `doc_single` tables
+  dropped; no shipped code references `db.json`.
+- Genuine marker count 0, lint-enforced; test ratio >= 1.48:1; full suite green on both
+  Node versions.
+- Every wave device-passed by Dean on his real library; this plan moved to
+  `docs/exec-plans/completed/`.
