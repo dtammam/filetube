@@ -50,7 +50,7 @@ before(async () => {
   saveDatabase({
     folders: [pubRoot, hidRoot], folderSettings: {},
     progress: {}, metadata: { [open.id]: open, [hidden.id]: hidden },
-    viewCounts: {}, liked: [],
+    liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 

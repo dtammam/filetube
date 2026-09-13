@@ -13,7 +13,7 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, recordServed, saveDatabase, __resetDatabaseForTests, __mintTestSession, userStore } = require('../../server');
+const { scanDirectories, getMediaId, recordServed, saveDatabase, __resetDatabaseForTests, __mintTestSession, userStore, viewCountStore } = require('../../server');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -126,8 +126,6 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
     folders: [presentRoot],
     folderSettings: {},
     progress: { [id]: { position: 42 } },
-    // v1.42 (gate W3): a recorded view count must prune WITH its item.
-    viewCounts: { [id]: 7 },
     metadata: {
       [id]: {
         id, name: 'gone.mp4', title: 'gone', filePath, folderName: path.basename(presentRoot),
@@ -137,6 +135,9 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
     },
     settings: baseSettings({ pruneMissing: true }),
   });
+  // v1.42 (gate W3) / Wave 1: a recorded view count must prune WITH its item -
+  // seeded through the relational store, the same API the view route writes.
+  viewCountStore.set(id, 7);
 
   // v1.43 (chunk 4b): per-user rows are id-keyed carriers and must prune WITH
   // the item (no stale-position resurrection onto a future re-add of the same

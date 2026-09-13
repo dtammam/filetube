@@ -2962,5 +2962,11 @@
     "date": "2026-09-13",
     "title": "Groundwork for a cleaner, faster library database",
     "intent": "Nothing changes on screen in this release. Under the hood, FileTube is starting a long clean-up of how your library is stored: the old all-in-one record that dates back to the original db.json file will be replaced, piece by piece, with proper tables, so future features land faster and with less risk to your data. This first step proves two things about the code you already run: it carries no leftover half-finished notes anywhere, and the old db.json file (kept beside your database as a safety net) is never even opened once your database exists - checked automatically on every build from now on. Your videos, progress, and settings are untouched."
+  },
+  {
+    "version": "1.291.0",
+    "date": "2026-09-13",
+    "title": "View counts get their own home in the database",
+    "intent": "The number of times you have watched each video is the one piece of your library that cannot be rebuilt by rescanning your files, so it is the first thing to move into the new, cleaner database layout. The move happens automatically the first time this version starts, keeps every count exactly as it was, and from now on recording a view no longer rewrites the whole library index - just that one number. Backups made before or after this version still restore either way. Behind the scenes this also closes a hole where an impossibly large count in a restored backup could have made the stats page and backups stop working; such a value is now refused up front. Nothing changes on screen."
   }
 ]

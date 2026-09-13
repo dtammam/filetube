@@ -89,15 +89,19 @@ flowchart TD
 
 One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
 store persists the legacy db.json object shape per row; everything
-user-scoped is relational. The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.265.0:
-13 `doc_kv` namespaces, 18 `doc_single` names, 30 relational tables,
-schema version 20.
+user-scoped is relational, and so is the media view counter (the first
+media namespace the relational-migration arc moved out of the document
+store). The namespace lists in `lib/db/sqlite.js` are a
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.291.0:
+12 `doc_kv` namespaces, 18 `doc_single` names, 31 relational tables,
+schema version 21. (The relational-migration arc, Wave 1 onward, moves the
+media namespaces out of the document store one table at a time - see
+`docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · progress · viewCounts · trash ·<br/>deleteTombstones · books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata · progress · trash ·<br/>deleteTombstones · books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
         SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
@@ -105,6 +109,10 @@ flowchart LR
         CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_channel_pins · user_prefs"]
         PLACEST["per-place<br/>user_book_progress · user_book_pins ·<br/>user_book_liked · user_book_finished ·<br/>user_music_progress · user_music_liked ·<br/>user_music_state · user_podcast_progress ·<br/>user_podcast_liked · user_podcast_pins ·<br/>user_podcast_played ·<br/>user_tv_progress · user_tv_played · user_tv_liked"]
         NOTIF["notifications + push<br/>notifications · user_notification_reads ·<br/>user_notification_dismissals ·<br/>user_notification_state · push_subscriptions"]
+    end
+
+    subgraph MEDIA["Relational MEDIA tables (feature-owned stores; the arc's destination)"]
+        VC["lib/media/viewCounts.js<br/>media_view_counts (media_id, count)<br/>id-keyed carrier: remove on delete/prune/purge,<br/>rekey on move/trash/restore"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]
@@ -117,10 +125,15 @@ flowchart LR
 
     WRITERS --> DOC
     WRITERS --> REL
+    WRITERS --> MEDIA
 ```
 
-Ownership at a glance: `metadata`/`viewCounts`/`trash`/`folders*` belong to
-the video core in `server.js`; `books.*` to `lib/books/`; `music.*` to
+Ownership at a glance: `metadata`/`trash`/`folders*` belong to the video core
+in `server.js`; `media_view_counts` to `lib/media/viewCounts.js` (Wave 1 of the
+relational arc - the first media namespace out of the document model; the
+store is its only runtime writer, and the adapter holds the three bulk seams:
+the legacy-JSON import, the one-shot v21 backfill, and the restore/reset
+wipe-and-replace); `books.*` to `lib/books/`; `music.*` to
 `lib/music/`; `podcasts.*` to `lib/podcasts/`; `ytdlp.*` to `lib/ytdlp/` -
 feature-owned namespaces are what keep the persist-gate bug class away.
 

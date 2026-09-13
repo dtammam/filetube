@@ -80,7 +80,10 @@ test('loadDatabase: yields a fully-defaulted db when the store is empty (no eage
   assert.deepEqual(db.metadata, {});
   assert.deepEqual(db.liked, []);
   assert.deepEqual(db.deleteTombstones, {});
-  assert.deepEqual(db.viewCounts, {});
+  // Wave 1: `viewCounts` is NOT a key of the doc object any more (it lives in
+  // media_view_counts behind viewCountStore); a backfill that re-added it
+  // would be refused by the save-lock on the next write.
+  assert.equal(db.viewCounts, undefined, 'no doc-model viewCounts key');
   assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'fresh db gets defaulted settings');
   assert.ok(fs.existsSync(SQLITE_FILE), 'filetube.db exists from the adapter open');
   // v1.42: defaults are NOT eagerly persisted (the pre-v1.42 initial-create
@@ -118,7 +121,6 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     metadata: { abc: { id: 'abc', title: 'Test' } },
     liked: ['abc'],
     deleteTombstones: {}, // v1.41.3: backfilled like every other top-level key
-    viewCounts: {}, // v1.42: backfilled like every other top-level key
     trash: {}, // v1.65: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
@@ -180,7 +182,7 @@ function persistedShape(db) {
   for (const [key, value] of Object.entries(db)) {
     if (value && typeof value === 'object' && !Array.isArray(value)
       && Object.keys(value).length === 0
-      && ['metadata', 'progress', 'deleteTombstones', 'viewCounts'].includes(key)) continue;
+      && ['metadata', 'progress', 'deleteTombstones'].includes(key)) continue;
     out[key] = value;
   }
   return out;

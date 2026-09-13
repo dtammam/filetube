@@ -75,9 +75,12 @@ bin/
 /data/
 
 # --- Uploads / user media (app data) ---
-uploads/
-media/
-storage/
+# Root-anchored (Wave 1, 2026-09-13): the unanchored `media/` also swallowed
+# `lib/media/` - the feature-owned media stores - so `git add` silently
+# ignored source (the v1.286 scar). Only the top-level app-data dirs are ignored.
+/uploads/
+/media/
+/storage/
 tmp/
 *.sqlite
 *.sqlite3

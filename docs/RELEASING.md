@@ -106,6 +106,16 @@ v1.125 or earlier.** Released adapters can't be repaired retroactively
 never downgrade an instance across that line; restore the matching backup
 instead if you truly must run an older build.
 
+**Second floor - schema v21 (v1.291, relational-migration arc Wave 1).** The
+per-item view counter moved from the `doc_kv` `viewCounts` namespace into
+the `media_view_counts` table, and the v21 migration deletes the doc rows
+after copying them. A v1.290-or-earlier build REFUSES a v21 database at boot
+(rule 2 above), so a downgrade is a clean refusal rather than lost counts.
+To run an older build, restore that build's own backup bundle: the bundle
+carries `viewCounts` in the same `{ id: count }` shape on both sides of the
+line, so a v1.291+ bundle also restores into v1.290 and vice versa. Every
+later wave of the arc adds a floor the same way (the plan lists them).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

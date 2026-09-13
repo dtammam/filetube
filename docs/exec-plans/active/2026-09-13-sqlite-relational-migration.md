@@ -163,6 +163,77 @@ hygiene, per CLAUDE.md.
 - New table (migration `user_version` 21), one-time backfill from `doc_kv.viewCounts`,
   a `lib/media/viewCounts` store, rewrite the 11 consumers, drop from `DOC_KV_NAMESPACES`,
   move to the SELECT-assembled backup bundle.
+- **Wave 1 record (2026-09-13, branch `feat/wave1-view-counts-relational`):**
+  - Schema **v21**: `media_view_counts (media_id TEXT PRIMARY KEY, count INTEGER)`; the
+    migration block copies every `doc_kv` `viewCounts` row (v1.42 value filter: finite
+    positive -> truncated integer; 0/negative/junk/null dropped) and DELETES the doc rows
+    in ONE transaction - leaving them would make `load()` assemble a key the save-lock
+    now refuses, i.e. boot would break on the first write. Idempotent under a crash
+    between COMMIT and the version stamp (test-bound). Rollback floor documented in
+    RELEASING.md (a <=v1.290 build refuses a v21 db; bundles restore on both sides).
+  - Store `lib/media/viewCounts.js` (`.gitignore` had to be root-anchored: the unanchored
+    `media/` swallowed `lib/media/` - the v1.286 scar, now fixed at the source): get /
+    getAll / size / set / increment (ONE atomic upsert, RETURNING; honors the legacy
+    embedded `item.viewCount` floor on first count) / remove / rekey (OR REPLACE) /
+    replaceAll (refuse-whole); own-property keys, NUL refusal; multi-row writes join an
+    already-open adapter transaction (the restore path) instead of nesting BEGIN.
+  - `server.js` consumers: the doc carries at delete / scan-prune / move / trash / restore /
+    purge are gone; `remove()` runs post-commit beside `userStore.removeMediaState` at
+    THREE sites (delete, scan-prune, purge; the fourth `removeMediaState` site, the
+    notifications phantom-prune, is a DELIBERATE exemption - it scrubs per-user badge
+    state, and a GET route must not become a second deleter of media state; recorded at
+    the site) and `rekey()` inside `rekeyInFlightState` (ONE seam, THREE callers: move,
+    trash, restore). The view route no longer rides the doc write chain (one integer no
+    longer load-mutate-saves the whole library); existence is a `hasOwnProperty` read on
+    the cache (a `__proto__` id is 404, never a prototype walk). Stats/inventory/overlay
+    read `getAll()` once per request.
+  - Counts are capped at `Number.MAX_SAFE_INTEGER` at EVERY write boundary (store,
+    bundle validator, restore handle, migration/import value rule): a count past 2^53
+    lands in the INTEGER column and then every READ of the table throws - backup, stats
+    and the view route all 500 until SQL surgery (adversarial W1, measured on a real v20
+    file; v1.290's validator accepted it).
+  - Backup: `viewCounts` left `BACKUP_NAMESPACE_KEYS` for `RELATIONAL_BUNDLE_KEYS`; the
+    bundle still carries `{ id: count }` under the same key (assembled on the same chained
+    tick); validation is field-level refuse-whole; restore routes it through
+    `importParsedJson` -> the `insertViewCount` handle inside `exclusiveReplace`, which now
+    WIPES the table too (restore = the bundle and nothing else; the between-test reset
+    relies on the same wipe). The boot db.json import routes the embedded extraction the
+    same way (one classifier, two callers, one upsert text exported by the store).
+  - `readPersistedDatabase` (the test read) surfaces the table as `viewCounts` when rows
+    exist, so the move/trash/restore/delete/prune carrier tests still read the REAL table
+    through an independent connection. 15 existing test files touched (7 re-seed a
+    non-empty count through the store, 6 just drop the now-refused empty doc key, 2
+    adjust reads/assertions - dbjson-frozen and database.test); new `test/unit/media-view-counts-store.test.js` (API, migration +
+    idempotency + the 2^53 drop, save-lock, all bulk seams incl. rollback and the
+    both-shapes precedence, the test read, source locks) and
+    `test/integration/view-counts-carriers.test.js` (the gate's donated bindings: hard
+    delete + purge reap the row, bundle validation refuses before the wipe incl. 2^53
+    and 1e300, a `__proto__` view is 404).
+  - Baseline after (at the fix commit `b33eab5e`): doc_kv **12**, doc_single 18, total
+    **30**, schema **21**, server.js **19,114** (+73 over the v1.290 baseline - the
+    post-commit carrier calls, the validator, and their comments outweigh the removed doc
+    carries; the weight leaves in Wave 6/7, not here). `dbJsonRefFiles`
+    drifted 15 -> 16 in the first commit (the store header named the file literally; QA
+    W3) and is back to **15** after the reword - the metric counts literal mentions, so
+    prose in new modules must not name db.json.
+  - **Full gate (both seats REQUEST CHANGES -> fix commit `b33eab5e` -> both APPROVE).**
+    Adversarial (22 mutants on a real v20 file + live probes): W1 a count >= 2^53 poisoned
+    every read of the table (backup/stats/view 500) - the safe-integer ceiling above; W2
+    the hard-delete and purge `remove()` calls were UNBOUND (the delete test's item had a
+    file, so the trash re-key satisfied it); W3 the bundle validation was unbound at the
+    route; S5 the both-shapes import precedence had FLIPPED vs v1.290 (first-class key
+    routed first, embedded upserted over it). QA: W1 purge unbound (same), W2 four stale
+    mechanism comments, W3 the dbJsonRefFiles drift, S2 the same precedence flip, S3 the
+    migrate-check CLI's expected value drifting from the importer's rule. All applied;
+    the seats' own mutants re-run RED against the fix (M2/M3/M6/M12/M12b + 9 new). Kept
+    from the seats: the phantom-prune exemption (a GET route must not become a second
+    deleter of media state), and the float refusal in the validator (no legitimate
+    v1.24 -> v1.41 -> v1.42 -> v1.290 chain ever emits a non-integer; verified at source).
+  - **Template lessons for Wave 2+:** (1) a carrier binding must drive the branch that
+    REAPS, not one that RE-KEYS (populate, then assert the row is gone, not just moved);
+    (2) an INTEGER column needs a safe-integer ceiling at every write boundary, or one
+    hostile value kills every read; (3) when two seams can write the same id, the
+    authoritative one goes LAST; (4) new-module prose must not name db.json (the metric).
 
 ### Wave 2 - `progress` + `deleteTombstones` -> relational  (SOLO, full gate)
 - Per-id semantics + tombstone semantics (19 + 12 refs). `media_progress`,

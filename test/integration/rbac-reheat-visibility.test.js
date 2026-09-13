@@ -68,7 +68,7 @@ before(async () => {
   saveDatabase({
     folders: [mediaDir], folderSettings: {}, progress: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
-    viewCounts: {}, liked: [],
+    liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
 

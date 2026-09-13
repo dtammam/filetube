@@ -15,7 +15,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, saveDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, member;
@@ -32,16 +32,17 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base); // admin
 
+  viewCountStore.replaceAll({ blocked: 100, allowed: 5 }); // Wave 1: relational; seeded through the store
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: {
       blocked: { id: 'blocked', title: 'Adult Video', filePath: blockedFile, folderName: 'Adult', channelName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 12, addedAt: 20 },
       allowed: { id: 'allowed', title: 'Kids Video', filePath: allowedFile, folderName: 'Kids', channelName: 'Kids', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 12, addedAt: 10 },
     },
-    // viewCounts so the restricted item is the MOST-watched (stats mostWatched),
-    // and a trashed restricted item (trash list) - the two surfaces the security
-    // gate found leaking restricted titles/counts.
-    viewCounts: { blocked: 100, allowed: 5 },
+    // (view counts - the restricted item as the MOST-watched, stats mostWatched -
+    // are seeded through the relational store above the saveDatabase call; the
+    // trashed restricted item below is the other surface the security gate
+    // found leaking restricted titles/counts.)
     trash: {
       t1: { originalId: 'blocked', originalPath: blockedFile, rootFolder: DATA_DIR, trashedAt: 5,
         item: { id: 'blocked', title: 'Adult Video', name: 'Adult Video', filePath: blockedFile, folderName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } },

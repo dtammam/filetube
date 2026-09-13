@@ -32,7 +32,7 @@ const HASH_AT_BOOT = crypto.createHash('sha256').update(fs.readFileSync(DB_FILE)
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, loadDatabase, flushPendingProgress } = require('../../server');
+const { app, updateDatabase, flushPendingProgress, viewCountStore } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -79,6 +79,6 @@ test('AC2: a representative workout of every write path leaves db.json byte-iden
   // a direct mutator for good measure
   await updateDatabase((db) => { db.folderSettings['/x'] = { name: 'X', hidden: false }; return true; });
 
-  assert.equal(loadDatabase().viewCounts.vid1, 4, 'the writes really landed (in SQLite)');
+  assert.equal(viewCountStore.get('vid1'), 4, 'the writes really landed (in SQLite - the media_view_counts table since Wave 1)');
   assert.equal(hashNow(), HASH_AT_BOOT, 'db.json byte-identical through the whole workout — the old-tag instance sharing it is safe');
 });
