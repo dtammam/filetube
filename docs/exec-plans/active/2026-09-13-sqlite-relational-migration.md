@@ -279,7 +279,7 @@ hygiene, per CLAUDE.md.
   - Tests: the doc keys are refused, so ~100 fixtures lost their empty `progress: {}` /
     `deleteTombstones: {}` seeds (a script; QA read the full diff - every removal was a
     top-level key, no container key was touched) and `test/helpers/seed-state.js` is the
-    ONE seam that splits a legacy-shaped fixture into store writes + a doc save (13 files
+    ONE seam that splits a legacy-shaped fixture into store writes + a doc save (12 files
     call `seedState`; 23 import the helper, the rest for its store accessors); 22 direct
     in-mutator writes/reads switched to the stores. New:
     `test/unit/media-record-stores.test.js` (store API, typed column + prune, migration +
