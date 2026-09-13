@@ -38,6 +38,24 @@ module.exports = [
 
   js.configs.recommended,
 
+  // Wave 0 of the relational-migration arc (2026-09-13, docs/exec-plans/active/
+  // 2026-09-13-sqlite-relational-migration.md): honest-zero comment debt,
+  // LINT-ENFORCED. A comment that OPENS with a debt marker is a genuine marker
+  // and fails lint (the pre-commit hook runs eslint, so it cannot be committed).
+  // Prose that merely mentions the word mid-sentence is not debt and passes.
+  // Applies to EVERY linted file set (this block sits outside the per-set
+  // blocks on purpose). test/unit/comment-debt-census.test.js is the second
+  // net: it covers the non-JS surfaces eslint never sees (css/html/sh/brs/yml)
+  // and the mid-comment colon/paren-tagged forms this start-only check skips.
+  {
+    rules: {
+      'no-warning-comments': ['error', {
+        terms: ['todo', 'fixme', 'hack', 'xxx'],
+        location: 'start',
+      }],
+    },
+  },
+
   // Node backend + test suite (CommonJS). `lib/**` is the optional yt-dlp
   // integration module (v1.11.0) -- same backend/CommonJS ruleset as server.js.
   // NOTE: `lib/ytdlp/client/**` is overridden to the vanilla-browser ruleset

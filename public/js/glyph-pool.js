@@ -26,12 +26,12 @@
 // The same filename is used in all three vector directories.
 //
 // `emoji` is space-separated CODEPOINTS, not a literal emoji character. The
-// repo's rule is that chrome emoji live in CSS as \XXXX escapes, never as
-// literal characters in HTML/JS - test/unit/icon-assets.test.js enforces that
-// for a fixed 12-glyph list across five specific files (this file is NOT among
-// them), and test/unit/glyph-pool.test.js enforces it for THIS file. The
-// codepoints are also what the CSS `content: "\XXXX"` escape is derived from,
-// so that test can rebuild the expected declaration exactly.
+// repo's rule is that chrome emoji live in CSS as backslash-hex unicode escapes
+// (`\1F4C1`), never as literal characters in HTML/JS - test/unit/icon-assets.test.js
+// enforces that for a fixed 12-glyph list across five specific files (this file
+// is NOT among them), and test/unit/glyph-pool.test.js enforces it for THIS file.
+// The codepoints are also what the CSS `content: "\<hex>"` escape is derived
+// from, so that test can rebuild the expected declaration exactly.
 
 const GLYPH_POOL = [
   // The default. Already bundled in all three vector sets since v1.6.0 - it is
