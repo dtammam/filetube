@@ -178,11 +178,20 @@ hygiene, per CLAUDE.md.
     replaceAll (refuse-whole); own-property keys, NUL refusal; multi-row writes join an
     already-open adapter transaction (the restore path) instead of nesting BEGIN.
   - `server.js` consumers: the doc carries at delete / scan-prune / move / trash / restore /
-    purge are gone; `remove()` runs post-commit beside `userStore.removeMediaState` (4
-    sites) and `rekey()` inside `rekeyInFlightState` (ONE seam, THREE callers: move, trash,
-    restore). The view route no longer rides the doc write chain (one integer no longer
-    load-mutate-saves the whole library); existence is a `hasOwnProperty` read on the
-    cache. Stats/inventory/overlay read `getAll()` once per request.
+    purge are gone; `remove()` runs post-commit beside `userStore.removeMediaState` at
+    THREE sites (delete, scan-prune, purge; the fourth `removeMediaState` site, the
+    notifications phantom-prune, is a DELIBERATE exemption - it scrubs per-user badge
+    state, and a GET route must not become a second deleter of media state; recorded at
+    the site) and `rekey()` inside `rekeyInFlightState` (ONE seam, THREE callers: move,
+    trash, restore). The view route no longer rides the doc write chain (one integer no
+    longer load-mutate-saves the whole library); existence is a `hasOwnProperty` read on
+    the cache (a `__proto__` id is 404, never a prototype walk). Stats/inventory/overlay
+    read `getAll()` once per request.
+  - Counts are capped at `Number.MAX_SAFE_INTEGER` at EVERY write boundary (store,
+    bundle validator, restore handle, migration/import value rule): a count past 2^53
+    lands in the INTEGER column and then every READ of the table throws - backup, stats
+    and the view route all 500 until SQL surgery (adversarial W1, measured on a real v20
+    file; v1.290's validator accepted it).
   - Backup: `viewCounts` left `BACKUP_NAMESPACE_KEYS` for `RELATIONAL_BUNDLE_KEYS`; the
     bundle still carries `{ id: count }` under the same key (assembled on the same chained
     tick); validation is field-level refuse-whole; restore routes it through
@@ -192,13 +201,20 @@ hygiene, per CLAUDE.md.
     same way (one classifier, two callers, one upsert text exported by the store).
   - `readPersistedDatabase` (the test read) surfaces the table as `viewCounts` when rows
     exist, so the move/trash/restore/delete/prune carrier tests still read the REAL table
-    through an independent connection. 15 test files re-seeded through the store (the
-    doc key is refused). New `test/unit/media-view-counts-store.test.js` (15 tests: API,
-    migration + idempotency, save-lock, both bulk seams incl. rollback, the test read,
-    source locks: server.js never names the table; one INSERT text, in the store).
+    through an independent connection. 14 existing test files touched (7 re-seed a
+    non-empty count through the store, 6 just drop the now-refused empty doc key, 1
+    switches a read); new `test/unit/media-view-counts-store.test.js` (API, migration +
+    idempotency + the 2^53 drop, save-lock, all bulk seams incl. rollback and the
+    both-shapes precedence, the test read, source locks) and
+    `test/integration/view-counts-carriers.test.js` (the gate's donated bindings: hard
+    delete + purge reap the row, bundle validation refuses before the wipe incl. 2^53
+    and 1e300, a `__proto__` view is 404).
   - Baseline after: doc_kv **12**, doc_single 18, total **30**, schema **21**, server.js
     **19,095** (+54 - the post-commit carrier calls and their comments outweigh the
-    removed doc carries; the weight leaves in Wave 6/7, not here).
+    removed doc carries; the weight leaves in Wave 6/7, not here). `dbJsonRefFiles`
+    drifted 15 -> 16 in the first commit (the store header named the file literally; QA
+    W3) and is back to **15** after the reword - the metric counts literal mentions, so
+    prose in new modules must not name db.json.
 
 ### Wave 2 - `progress` + `deleteTombstones` -> relational  (SOLO, full gate)
 - Per-id semantics + tombstone semantics (19 + 12 refs). `media_progress`,

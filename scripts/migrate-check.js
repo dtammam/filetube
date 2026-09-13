@@ -27,6 +27,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { importDbJson, readPersistedDatabase, SQLITE_FILENAME, DOC_KV_NAMESPACES } = require('../lib/db/sqlite');
+const { usableCount } = require('../lib/media/viewCounts'); // the importer's own value rule (no drifting copy)
 
 function fail(msg) {
   console.error(`\nMIGRATION CHECK FAILED: ${msg}`);
@@ -65,8 +66,11 @@ try {
 
   // Fidelity: deep-equal modulo the two DOCUMENTED transforms (exec plan
   // AC1): (1) metadata items lose their embedded viewCount, which moves to
-  // the viewCounts namespace; (2) empty per-key namespaces have zero rows
-  // and assemble as absent.
+  // the media_view_counts TABLE (Wave 1 of the relational arc; the test read
+  // surfaces it as `viewCounts`) with the importer's value rule - finite
+  // positive, truncated to an integer, capped at the safe-integer range
+  // (usableCount in lib/media/viewCounts.js); (2) empty per-key namespaces
+  // have zero rows and assemble as absent.
   const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
   const expected = JSON.parse(JSON.stringify(parsed)); // deep copy
   const expectedViewCounts = {};
@@ -74,8 +78,8 @@ try {
     for (const id of Object.keys(expected.metadata)) {
       const item = expected.metadata[id];
       if (item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'viewCount')) {
-        const vc = item.viewCount;
-        if (typeof vc === 'number' && Number.isFinite(vc) && vc > 0) expectedViewCounts[id] = vc;
+        const vc = usableCount(item.viewCount);
+        if (vc !== null) expectedViewCounts[id] = vc;
         delete item.viewCount;
       }
     }

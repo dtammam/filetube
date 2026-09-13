@@ -5560,7 +5560,7 @@ async function runScanDirectories() {
   });
   if (dbChanged) console.log('Database synced successfully.');
 
-  // v1.43: mirror the mutator's `fresh.progress` prune (and, since Wave 1, the view-count row's)
+  // v1.43: mirror the mutator's `fresh.progress` prune
   // onto the per-user rows (user_progress/user_liked -- id-keyed carriers,
   // the v1.41.6 class), AFTER the doc commit for the same rolled-back-write
   // reason rekeyInFlightState documents. One transaction for the whole
@@ -10081,7 +10081,13 @@ function validateBackupBundle(bundle) {
     for (const id of Object.keys(bundle.viewCounts)) {
       const v = bundle.viewCounts[id];
       if (id === '' || id.includes('\u0000')) return `viewCounts['${id.split('\u0000').join('\\u0000')}']: invalid media id`;
-      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `viewCounts['${id}']: must be a non-negative number`;
+      // Safe-integer ceiling (adversarial W1): a count past 2^53 lands in the
+      // INTEGER column and then every READ of the table throws - backup, stats
+      // and the view route all 500 until SQL surgery. Refused here, before the wipe.
+      // Integers only: the importer's value rule would silently TRUNCATE a
+      // float, and "silently changed" is the class refuse-whole exists to
+      // prevent (a v1.290 export never carries a float; only a hand edit does).
+      if (!Number.isInteger(v) || v < 0 || v > Number.MAX_SAFE_INTEGER) return `viewCounts['${id}']: must be a non-negative integer within the safe-integer range`;
     }
   }
   // Container namespaces must be objects when present (delta-round
@@ -10571,6 +10577,14 @@ app.get('/api/notifications', (req, res) => {
     });
   }
   if (phantomMediaIds.length > 0) {
+    // Wave 1 (deliberate EXEMPTION, both gate seats): the view-count row is
+    // NOT pruned here. This prune exists for badge/panel coherency - it scrubs
+    // per-user feed state for ids that no longer resolve to metadata. A
+    // view-count row feeds no count that can disagree with anything a user
+    // sees; its only effect is a resumed count on a same-path re-add (the
+    // class accepted at the delete route), and making a GET route a second
+    // deleter of media state is not worth that. Later waves: the same call
+    // applies - carrier removal belongs to the delete/prune/purge writers.
     try {
       userStore.removeMediaState(phantomMediaIds);
     } catch (err) {
@@ -13952,8 +13966,10 @@ function rekeyInFlightState(oldId, newId, oldPath, newPath) {
 // The one structural difference from a move: the item LEAVES db.metadata and
 // its full record lands in db.trash[trashId] (trashId = md5(trashPath) --
 // the id system is untouched, trash is "just a move" to the carriers). The
-// doc-table carries (progress/liked/viewCounts) ride old->trash exactly like
-// a move so a restore re-links every scrap of history.
+// doc-table carries (progress/liked) ride old->trash inside the mutator
+// exactly like a move, and the RELATIONAL carriers (per-user rows, and since
+// Wave 1 the view-count row) re-key post-commit in rekeyInFlightState, so a
+// restore re-links every scrap of history.
 //
 // NO pre-mutator tombstone retirement here (the move's mutator A): that
 // discipline protects a DESTINATION the scan can reap, and the scan never
@@ -17064,10 +17080,13 @@ app.post('/api/videos/:id/view', async (req, res) => {
   // integer). Existence is checked on the read cache (hasOwnProperty - the
   // #220 guard shape, so `__proto__` is "not found", never a prototype
   // walk); the increment is ONE atomic upsert that honors the legacy embedded
-  // floor the first time an id is counted. A view racing a concurrent delete
-  // can leave one orphan row for a just-deleted id - benign (the same
-  // documented class as the per-user carriers' crash window), and the next
-  // same-path re-add would resume its count, which is what a re-add did before.
+  // floor the first time an id is counted. No in-process race with a delete:
+  // saveDatabase swaps the read cache synchronously inside the chain tick and
+  // the carrier remove() runs in its await continuation before any new request
+  // macrotask, so a view that lands after the delete 404s (measured: 30 views
+  // racing a DELETE, all 404, no orphan). The only orphan window is a CRASH
+  // between the doc commit and remove() - the per-user carriers' documented
+  // class - and it resumes a same-path re-add's count, disclosed with #224.
   const db = getCachedDatabase();
   const id = req.params.id;
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;

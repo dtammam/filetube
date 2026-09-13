@@ -131,8 +131,9 @@ flowchart LR
 Ownership at a glance: `metadata`/`trash`/`folders*` belong to the video core
 in `server.js`; `media_view_counts` to `lib/media/viewCounts.js` (Wave 1 of the
 relational arc - the first media namespace out of the document model; the
-store is its only runtime writer, the adapter's import/restore primitives the
-two bulk seams); `books.*` to `lib/books/`; `music.*` to
+store is its only runtime writer, and the adapter holds the three bulk seams:
+the legacy-JSON import, the one-shot v21 backfill, and the restore/reset
+wipe-and-replace); `books.*` to `lib/books/`; `music.*` to
 `lib/music/`; `podcasts.*` to `lib/podcasts/`; `ytdlp.*` to `lib/ytdlp/` -
 feature-owned namespaces are what keep the persist-gate bug class away.
 

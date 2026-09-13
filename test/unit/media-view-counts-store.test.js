@@ -100,8 +100,8 @@ test('store: rekey moves the count to the new id, leaves no row under the old id
 test('store: replaceAll is refuse-whole - one bad entry leaves the previous rows untouched; a good map replaces everything', () => {
   const s = createViewCountStore(adapter);
   s.set('keep', 2);
-  assert.throws(() => s.replaceAll({ ok: 1, bad: -1 }), /non-negative integer/);
-  assert.throws(() => s.replaceAll({ ok: 1, float: 1.5 }), /non-negative integer/);
+  assert.throws(() => s.replaceAll({ ok: 1, bad: -1 }), /non-negative safe integer/);
+  assert.throws(() => s.replaceAll({ ok: 1, float: 1.5 }), /non-negative safe integer/);
   assert.throws(() => s.replaceAll(['not', 'a', 'map']), /expects an object map/);
   assert.deepStrictEqual(s.getAll(), { keep: 2 }, 'refused maps changed nothing');
   s.replaceAll({ x: 1, y: 2 });
@@ -122,8 +122,25 @@ test('store: a __proto__ id is inert data (own property on the way out), and a N
     () => s.set('a\u0000b', 1), () => s.increment('a\u0000b'), () => s.remove('a\u0000b'),
     () => s.rekey('x', 'a\u0000b'), () => s.replaceAll({ 'a\u0000b': 1 }), () => s.get(''),
   ]) assert.throws(call, /U\+0000|non-empty string/);
-  assert.throws(() => s.set('a', -1), /non-negative integer/);
-  assert.throws(() => s.set('a', 1.5), /non-negative integer/);
+  assert.throws(() => s.set('a', -1), /non-negative safe integer/);
+  assert.throws(() => s.set('a', 1.5), /non-negative safe integer/);
+});
+
+test('store: the safe-integer ceiling - a count past 2^53 is refused at every write boundary and dropped by the value rule (adversarial W1: it would poison every READ of the table)', () => {
+  const s = createViewCountStore(adapter);
+  const TOO_BIG = 2 ** 53; // 9007199254740992: Number.isInteger says yes, node:sqlite cannot read it back
+  s.set('ok', Number.MAX_SAFE_INTEGER);
+  assert.strictEqual(s.get('ok'), Number.MAX_SAFE_INTEGER, 'the ceiling itself is storable and readable');
+  assert.throws(() => s.set('a', TOO_BIG), /safe integer/);
+  assert.throws(() => s.replaceAll({ a: 1, b: TOO_BIG }), /safe integer/);
+  assert.throws(() => adapter.exclusiveReplace((h) => h.insertViewCount('a', TOO_BIG)), /safe integer/);
+  assert.strictEqual(createViewCountStore.usableCount(TOO_BIG), null, 'the migration/import value rule drops it');
+  assert.strictEqual(createViewCountStore.usableCount(1e300), null, 'and 1e300 (would land as REAL and make increment a no-op)');
+  assert.strictEqual(createViewCountStore.usableCount(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+  assert.strictEqual(createViewCountStore.usableCount(2.9), 2);
+  assert.deepStrictEqual(s.getAll(), { ok: Number.MAX_SAFE_INTEGER }, 'every refusal left the table readable and unchanged');
+  assert.strictEqual(s.increment('ok'), Number.MAX_SAFE_INTEGER, 'increment SATURATES at the ceiling - no arithmetic can write the poisoning value');
+  assert.strictEqual(s.get('ok'), Number.MAX_SAFE_INTEGER);
 });
 
 test('store: a multi-row write inside an ALREADY-OPEN adapter transaction joins it (no nested BEGIN), and the outer rollback discards it', () => {
@@ -155,13 +172,14 @@ test('migration v21: doc_kv viewCounts rows move into the table (v1.42 value fil
   ins.run('viewCounts', 'negative', '-3');
   ins.run('viewCounts', 'junk', '"lots"');
   ins.run('viewCounts', 'nul', 'null');
+  ins.run('viewCounts', 'huge', '9007199254740992'); // 2^53: v1.290's validator let it in; it must NOT reach the INTEGER column
   ins.run('metadata', 'seven', JSON.stringify({ id: 'seven', title: 'kept' }));
   raw.close();
 
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'stamped forward');
   assert.deepStrictEqual(rows(), [{ media_id: 'float', count: 2 }, { media_id: 'seven', count: 7 }],
-    'a finite positive number is a count (float truncated); 0 / negative / junk / null are dropped');
+    'a finite positive number is a count (float truncated); 0 / negative / junk / null / 2^53 are dropped, and the table READS');
   assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_kv WHERE namespace = 'viewCounts'").get().c, 0,
     'the doc rows are gone - otherwise load() would assemble a key the save-lock refuses');
   const db = adapter.load();
@@ -217,6 +235,20 @@ test('importParsedJson: a bundle `viewCounts` map and a legacy embedded item.vie
   assert.ok(!kv.some(([ns]) => ns === 'viewCounts'), 'nothing was written to doc_kv under the dead namespace');
 });
 
+test('importParsedJson: when a source carries BOTH shapes for one id, the first-class viewCounts key wins (routed last) and the summary counts the id once (gate S2/S5: the first cut flipped this)', () => {
+  const { h, vc } = handlesInto(adapter);
+  const summary = importParsedJson({
+    viewCounts: { both: 9, junkFirstClass: 'x' },
+    metadata: { both: { id: 'both', viewCount: 4 }, junkFirstClass: { id: 'junkFirstClass', viewCount: 2 } },
+  }, h, { source: 'bundle' });
+  assert.deepStrictEqual(vc.filter(([id]) => id === 'both'), [['both', 9]], 'exactly one write for the id, the first-class value');
+  assert.deepStrictEqual(vc.filter(([id]) => id === 'junkFirstClass'), [['junkFirstClass', 2]], 'an UNUSABLE first-class value falls back to the embedded one');
+  assert.strictEqual(summary.viewCounts, 2, 'each id counted once');
+  // Through the real restore seam the same rule holds on disk.
+  adapter.exclusiveReplace((handles) => importParsedJson({ viewCounts: { both: 9 }, metadata: { both: { id: 'both', viewCount: 4 } } }, handles, { source: 'bundle' }));
+  assert.deepStrictEqual(createViewCountStore(adapter).getAll(), { both: 9 });
+});
+
 test('importParsedJson: WITHOUT an insertViewCount handle a source that carries view counts is refused loudly (never a silent drop)', () => {
   const { h } = handlesInto(adapter, { withViewCount: false });
   assert.throws(() => importParsedJson({ viewCounts: { a: 1 } }, h), /no insertViewCount handle/);
@@ -233,7 +265,7 @@ test('exclusiveReplace: wipes the table, repopulates it through insertViewCount 
   assert.deepStrictEqual(rows(), [], 'a populate that writes nothing leaves an EMPTY table (restore = the bundle and nothing else)');
   adapter.exclusiveReplace((h) => { h.insertViewCount('a', 2); h.insertViewCount('b', 3); });
   assert.deepStrictEqual(s.getAll(), { a: 2, b: 3 });
-  assert.throws(() => adapter.exclusiveReplace((h) => { h.insertViewCount('c', 5); h.insertViewCount('d', -1); }), /non-negative integer/);
+  assert.throws(() => adapter.exclusiveReplace((h) => { h.insertViewCount('c', 5); h.insertViewCount('d', -1); }), /non-negative safe integer/);
   assert.deepStrictEqual(s.getAll(), { a: 2, b: 3 }, 'rolled back whole: the previous rows are intact, c never landed');
   assert.throws(() => adapter.exclusiveReplace((h) => h.insertViewCount('x\u0000y', 1)), /U\+0000/);
 });
