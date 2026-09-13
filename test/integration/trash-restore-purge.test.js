@@ -23,7 +23,7 @@ const {
   scanDirectories, userStore, __resetDatabaseForTests,
   viewCountStore,
 } = require('../../server');
-const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -100,7 +100,7 @@ test('FULL-FIDELITY ROUND TRIP: trash via the delete route, restore via the tras
   const db = loadDatabase();
   assert.equal(db.metadata[id].title, 'The Movie', 'metadata restored from the snapshot');
   assert.equal(db.metadata[id].addedAt, 1700000000000, 'addedAt survives (no stranger re-add)');
-  assert.deepEqual(db.trash, {}, 'the trash record is gone');
+  assert.deepEqual(trashStore().getAll(), {}, 'the trash record is gone');
   assert.equal(viewCountStore.get(id), 5, 'the view count came home (Wave 1: re-keyed in its table)');
   // Every per-user carrier back under the ORIGINAL id.
   assert.equal(userStore.getOneProgress(uid, id).timestamp, 44, 'resume point re-linked');
@@ -120,9 +120,8 @@ test('restore CONFLICT: a new file at the original path -> 409, trash record and
   const res = await restore(tid);
   assert.equal(res.status, 409);
   assert.equal(fs.readFileSync(filePath, 'utf8'), 'NEW-DIFFERENT-CONTENT', 'the new file is untouched');
-  const db = loadDatabase();
-  assert.ok(db.trash[tid], 'the record is kept');
-  assert.ok(fs.existsSync(db.trash[tid].trashPath), 'the trashed bytes are kept');
+  assert.ok(trashStore().get(tid), 'the record is kept');
+  assert.ok(fs.existsSync(trashStore().get(tid).trashPath), 'the trashed bytes are kept');
 });
 
 test('RETIRE-TOMBSTONE-FIRST: a tombstone at the original path cannot reap the restored file on the next scan', async () => {
@@ -163,7 +162,7 @@ test('PURGE: verified destruction of the file, sidecars, record and carriers -- 
   fs.writeFileSync(path.join(ROOT, 'Chan', `${path.basename(filePath, '.mp4')}.en.vtt`), 'subs');
 
   const tid = (await (await delVideo(id)).json()).trashId;
-  const trashPath = loadDatabase().trash[tid].trashPath;
+  const trashPath = trashStore().get(tid).trashPath;
   const trashSub = path.join(path.dirname(trashPath), `${path.basename(trashPath, '.mp4')}.en.vtt`);
   assert.ok(fs.existsSync(trashSub), 'precondition: the subtitle rode into trash');
 
@@ -172,8 +171,7 @@ test('PURGE: verified destruction of the file, sidecars, record and carriers -- 
   assert.ok(!fs.existsSync(trashPath), 'the bytes are gone');
   assert.ok(!fs.existsSync(trashSub), 'the trash-side subtitle went too (W10 binding)');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${tid}.jpg`)), 'the re-keyed thumbnail went too');
-  const db = loadDatabase();
-  assert.deepEqual(db.trash, {}, 'the record is gone');
+  assert.deepEqual(trashStore().getAll(), {}, 'the record is gone');
   assert.deepEqual(tombstoneStore().getAll(), {}, 'a VERIFIED purge mints NO tombstone');
   assert.equal(userStore.getOneProgress(uid, tid), null, 'carrier rows removed');
   assert.deepEqual(userStore.getQueue(uid).entries, [], 'the queue row removed');
@@ -185,16 +183,16 @@ test('PURGE: verified destruction of the file, sidecars, record and carriers -- 
 test('restore of a MISSING trash file: 404 with the purge hint, record KEPT', async () => {
   const { id } = seedLibrary();
   const tid = (await (await delVideo(id)).json()).trashId;
-  fs.unlinkSync(loadDatabase().trash[tid].trashPath); // out-of-band cleanup
+  fs.unlinkSync(trashStore().get(tid).trashPath); // out-of-band cleanup
 
   const res = await restore(tid);
   assert.equal(res.status, 404);
   assert.match((await res.json()).error, /purged/i);
-  assert.ok(loadDatabase().trash[tid], 'the record survives for an explicit purge');
+  assert.ok(trashStore().get(tid), 'the record survives for an explicit purge');
 
   const p = await purge(tid);
   assert.equal(p.status, 200, 'purge tolerates the already-gone bytes');
-  assert.deepEqual(loadDatabase().trash, {});
+  assert.deepEqual(trashStore().getAll(), {});
 });
 
 test('ROUTE-ALIAS GUARD (the v1.64 lesson, bound): DELETE /api/trash and /api/trash/ match NO route -- nothing collection-wide exists to destroy', async () => {
@@ -205,5 +203,5 @@ test('ROUTE-ALIAS GUARD (the v1.64 lesson, bound): DELETE /api/trash and /api/tr
   const slash = await fetch(`${base}/api/trash/`, { method: 'DELETE' });
   assert.equal(bare.status, 404);
   assert.equal(slash.status, 404);
-  assert.ok(loadDatabase().trash[tid], 'the trash record is untouched by both probes');
+  assert.ok(trashStore().get(tid), 'the trash record is untouched by both probes');
 });

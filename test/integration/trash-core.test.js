@@ -23,7 +23,7 @@ const {
   scanDirectories, userStore, __resetDatabaseForTests, __mintTestSession,
   viewCountStore, progressStore, tombstoneStore,
 } = require('../../server');
-const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
 const ISO = '2026-08-01T12:00:00.000Z';
@@ -76,7 +76,7 @@ test('happy path: atomic move into <root>/.filetube-trash carries the WHOLE iden
 
   const db = loadDatabase();
   assert.equal(db.metadata[id], undefined, 'gone from the library');
-  const rec = db.trash[res.trashId];
+  const rec = trashStore().get(res.trashId);
   assert.ok(rec, 'the trash record exists under trashId = md5(trashPath)');
   assert.equal(res.trashId, getMediaId(res.trashPath));
   assert.equal(rec.originalId, id);
@@ -124,7 +124,7 @@ test('RESURRECTION GUARD: a full scan neither re-indexes the trashed file nor to
   assert.ok(db.metadata[getMediaId(keeper)], 'the scan ran and indexed the sibling');
   assert.equal(db.metadata[id], undefined, 'the trashed item did not resurrect under its old id');
   assert.equal(db.metadata[res.trashId], undefined, 'the trash-side file was never indexed');
-  assert.ok(db.trash[res.trashId], 'the trash record survived the scan untouched');
+  assert.ok(trashStore().get(res.trashId), 'the trash record survived the scan untouched');
   assert.ok(fs.existsSync(res.trashPath), 'the trash-side bytes survived the scan');
 });
 
@@ -160,7 +160,7 @@ test('concurrent delete (mutator sees no item) rolls back with a 404 and no tras
   const res = await trashItem({ loadDatabase: () => stale, updateDatabase, getMediaId }, id);
   assert.equal(res.ok, false);
   assert.equal(res.status, 404);
-  assert.deepEqual(loadDatabase().trash, {}, 'no trash record was minted');
+  assert.deepEqual(trashStore().getAll(), {}, 'no trash record was minted');
   const trashDir = path.join(ROOT, TRASH_DIR_NAME);
   const leftovers = fs.existsSync(trashDir) ? fs.readdirSync(trashDir) : [];
   assert.deepEqual(leftovers, [], 'the trash-side link was rolled back');
@@ -184,7 +184,7 @@ test('recoverable errno on the trash link -> 409 + code, NOTHING moved or record
   assert.equal(res.code, 'EROFS');
   assert.ok(fs.existsSync(filePath));
   assert.ok(loadDatabase().metadata[id], 'the library entry is untouched');
-  assert.deepEqual(loadDatabase().trash, {});
+  assert.deepEqual(trashStore().getAll(), {});
 });
 
 test('source-unlink failure: trash succeeds, and the leftover dirent gets a deferred-cleanup tombstone', async () => {
@@ -206,8 +206,7 @@ test('source-unlink failure: trash succeeds, and the leftover dirent gets a defe
   assert.equal(res.sourceUnlinkFailed, true);
   assert.ok(fs.existsSync(res.trashPath), 'the bytes are safe in trash');
   assert.ok(fs.existsSync(filePath), 'the leftover dirent is still there (the failure under test)');
-  const db = loadDatabase();
-  assert.ok(db.trash[res.trashId], 'the trash record committed');
+  assert.ok(trashStore().get(res.trashId), 'the trash record committed');
   const tomb = tombstoneStore.get(id); // Wave 2: the relational store (minted inside the trash mutator's save transaction)
   assert.ok(tomb, 'the leftover is handed to the scan\'s deferred-delete retry');
   assert.equal(tomb.filePath, filePath);

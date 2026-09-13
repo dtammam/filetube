@@ -123,7 +123,6 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     metadata: { abc: { id: 'abc', title: 'Test' } },
     liked: ['abc'],
     // (progress / deleteTombstones / viewCounts are relational since Waves 1-2 - not doc keys)
-    trash: {}, // v1.65: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
   saveDatabase(original);

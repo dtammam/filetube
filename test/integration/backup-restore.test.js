@@ -23,6 +23,7 @@ const {
   userStore,
   viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
   progressStore, tombstoneStore, // Wave 2: the frozen pre-auth positions + the tombstones, likewise
+  trashStore, // Wave 3: the trashed-item records, likewise
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -76,16 +77,9 @@ function fullState() {
     liked: ['vid1'],
     // (viewCounts left the doc object in Wave 1; progress + deleteTombstones in
     // Wave 2 - see FULL_RELATIONAL / seedFullState.)
-    // v1.65: trashed-item records ride the bundle (a restore that dropped
-    // them would strand un-restorable, un-purgeable files in the trash dirs).
-    trash: {
-      tr1: {
-        originalId: 'vidgone', originalPath: '/media/videos/old.mp4',
-        trashPath: '/media/videos/.filetube-trash/1750000000000-vidgone1-old.mp4',
-        trashedAt: 1750000000000, rootFolder: '/media/videos',
-        item: { id: 'vidgone', title: 'Old', filePath: '/media/videos/old.mp4', type: 'video', ext: '.mp4' },
-      },
-    },
+    // (v1.65: trashed-item records ride the bundle - a restore that dropped
+    // them would strand un-restorable, un-purgeable files in the trash dirs.
+    // Wave 3: relational - see FULL_TRASH / seedFullState.)
     settings: { defaultView: 'grid' },
     books: {
       folders: ['/media/books'],
@@ -149,13 +143,23 @@ const FULL_VIEW_COUNTS = { vid1: 9 };
 // their tables, in the same { id: record } shapes they had as doc namespaces.
 const FULL_PROGRESS = { vid1: { timestamp: 42, duration: 100 } };
 const FULL_TOMBSTONES = { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000 } };
-const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones'];
+// Wave 3: the trashed-item record rides the bundle from its table (same shape).
+const FULL_TRASH = {
+  tr1: {
+    originalId: 'vidgone', originalPath: '/media/videos/old.mp4',
+    trashPath: '/media/videos/.filetube-trash/1750000000000-vidgone1-old.mp4',
+    trashedAt: 1750000000000, rootFolder: '/media/videos',
+    item: { id: 'vidgone', title: 'Old', filePath: '/media/videos/old.mp4', type: 'video', ext: '.mp4' },
+  },
+};
+const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
 function seedFullState(overrides) {
   const state = { ...fullState(), ...(overrides || {}) };
   saveDatabase(state);
   viewCountStore.replaceAll(FULL_VIEW_COUNTS);
   progressStore.replaceAll(FULL_PROGRESS);
   tombstoneStore.replaceAll(FULL_TOMBSTONES);
+  trashStore.replaceAll(FULL_TRASH);
   return state;
 }
 
@@ -188,6 +192,7 @@ test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips;
   assert.deepEqual(viewCountStore.getAll(), FULL_VIEW_COUNTS, 'view counts restored into their table');
   assert.deepEqual(progressStore.getAll(), FULL_PROGRESS, 'the frozen pre-auth positions restored into their table');
   assert.deepEqual(tombstoneStore.getAll(), FULL_TOMBSTONES, 'the tombstones restored into their table');
+  assert.deepEqual(trashStore.getAll(), FULL_TRASH, 'the trash records restored into their table (Wave 3)');
 });
 
 test('v1.82 (gate S4 binding): a users-restoring restore WIPES stored avatars (no reassigned-id photo bleed)', async () => {

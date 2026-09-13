@@ -20,7 +20,8 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, saveDatabase, loadDatabase, __resetDatabaseForTests, viewCountStore } = require('../../server');
+const { app, saveDatabase, __resetDatabaseForTests, viewCountStore } = require('../../server');
+const { trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -67,7 +68,7 @@ test('purging a trashed item reaps the view-count row under the trashId', async 
   await view('t1');
   assert.strictEqual(viewCountStore.get('t1'), 1, 'precondition');
   assert.strictEqual((await fetch(`${base}/api/videos/t1`, { method: 'DELETE' })).status, 200);
-  const trashIds = Object.keys(loadDatabase().trash);
+  const trashIds = Object.keys(trashStore().getAll());
   assert.strictEqual(trashIds.length, 1, 'trashed, not hard-deleted');
   const tid = trashIds[0];
   assert.strictEqual(viewCountStore.get(tid), 1, 'precondition: the count rode to the trashId');

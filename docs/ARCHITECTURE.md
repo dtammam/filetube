@@ -157,13 +157,15 @@ tables), `visibility.js` (the ONE pure visibility decision).
 
 ## The media places
 
-- **Video** (core, in server.js): roots `db.folders`; doc namespaces `metadata`,
-  `trash`; RELATIONAL since the relational-migration arc: the per-item view
-  counter (`media_view_counts`, `lib/media/viewCounts.js`, Wave 1), the frozen
-  pre-auth positions (`media_progress`, `lib/media/progress.js`, Wave 2) and the
+- **Video** (core, in server.js): roots `db.folders`; doc namespace `metadata`;
+  RELATIONAL since the relational-migration arc: the per-item view counter
+  (`media_view_counts`, `lib/media/viewCounts.js`, Wave 1), the frozen pre-auth
+  positions (`media_progress`, `lib/media/progress.js`, Wave 2), the
   deferred-delete tombstones (`media_delete_tombstones`,
-  `lib/media/deleteTombstones.js`, Wave 2 - minted/retired inside the doc
-  commit's transaction via `inSaveTransaction`); per-user progress/liked/watched/
+  `lib/media/deleteTombstones.js`, Wave 2) and the trashed-item records
+  (`media_trash`, `lib/media/trashRecords.js`, Wave 3) - the last three
+  minted/retired inside the doc commit's transaction via `inSaveTransaction`;
+  per-user progress/liked/watched/
   feed-hidden/queue. Browse contract lives in `lib/videoQuery.js`, kept in
   provable parity with the client's sort (`videoquery-parity.test.js`).
 - **Music** (v1.44): `db.music.*`; separate roots (three-way overlap-rejected

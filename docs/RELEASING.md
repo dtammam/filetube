@@ -124,6 +124,13 @@ and deletes the doc rows. A v1.291-or-earlier build refuses a v22 database
 at boot; bundles carry both keys in the same `{ id: record }` shapes on
 both sides of the line.
 
+**Fourth floor - schema v23 (v1.293, Wave 3).** The trashed-item records
+(`trash`) moved from `doc_kv` into `media_trash`; the v23 migration copies
+the records verbatim and deletes the doc rows. A v1.292-or-earlier build
+refuses a v23 database at boot; bundles carry `trash` in the same
+`{ trashId: record }` shape on both sides of the line, and a bundle
+without the key still preserves the live records (the v1.65 rule).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

@@ -17,6 +17,7 @@ const RELATIONAL = {
   viewCounts: (s) => s.viewCountStore,
   progress: (s) => s.progressStore,
   deleteTombstones: (s) => s.tombstoneStore,
+  trash: (s) => s.trashStore, // Wave 3
 };
 
 function server() {
@@ -45,4 +46,5 @@ module.exports = {
   progressStore: () => server().progressStore,
   tombstoneStore: () => server().tombstoneStore,
   viewCountStore: () => server().viewCountStore,
+  trashStore: () => server().trashStore, // Wave 3
 };

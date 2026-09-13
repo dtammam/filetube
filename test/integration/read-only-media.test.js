@@ -84,7 +84,7 @@ function seedTrash(fileName) {
   fs.writeFileSync(trashPath, 'trashed-bytes');
   const tid = 'trash-' + fileName.replace(/\W/g, '');
   const originalPath = path.join(libDir, fileName);
-  saveDatabase({
+  seedState({
     folders: [libDir], folderSettings: {}, metadata: {},
     trash: { [tid]: {
       originalId: 'orig', originalPath, trashedAt: 5, rootFolder: libDir, trashPath,

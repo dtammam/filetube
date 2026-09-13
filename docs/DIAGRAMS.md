@@ -92,10 +92,11 @@ store persists the legacy db.json object shape per row; everything
 user-scoped is relational, and so are the media namespaces the
 relational-migration arc has moved out of the document store so far (the
 view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
-tombstones in Wave 2 - see the MEDIA box). The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.292.0:
-10 `doc_kv` namespaces, 18 `doc_single` names, 33 relational tables,
-schema version 22. (The relational-migration arc, Wave 1 onward, moves the
+tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box).
+The namespace lists in `lib/db/sqlite.js` are a
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.293.0:
+9 `doc_kv` namespaces, 18 `doc_single` names, 34 relational tables,
+schema version 23. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
@@ -116,6 +117,7 @@ flowchart LR
         VC["lib/media/viewCounts.js<br/>media_view_counts (media_id, count)<br/>id-keyed carrier: remove on delete/prune/purge,<br/>rekey on move/trash/restore"]
         PR["lib/media/progress.js<br/>media_progress (media_id, json)<br/>the FROZEN pre-auth positions the first admin adopts once;<br/>carried in-transaction with the doc commit"]
         DT["lib/media/deleteTombstones.js<br/>media_delete_tombstones (media_id, deleted_at, json)<br/>the deferred-delete records: minted/retired/consumed<br/>INSIDE the doc commit's transaction (inSaveTransaction)"]
+        TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]
@@ -131,13 +133,14 @@ flowchart LR
     WRITERS --> MEDIA
 ```
 
-Ownership at a glance: `metadata`/`trash`/`folders*` belong to the video core
-in `server.js`; `media_view_counts` to `lib/media/viewCounts.js` (Wave 1 of the
+Ownership at a glance: `metadata`/`folders*` belong to the video core in
+`server.js`; `media_view_counts` to `lib/media/viewCounts.js` (Wave 1 of the
 relational arc - the first media namespace out of the document model),
-`media_progress` to `lib/media/progress.js` and `media_delete_tombstones` to
-`lib/media/deleteTombstones.js` (Wave 2 - id-keyed JSON-record stores on the
+`media_progress` to `lib/media/progress.js`, `media_delete_tombstones` to
+`lib/media/deleteTombstones.js` (Wave 2) and `media_trash` to
+`lib/media/trashRecords.js` (Wave 3) - id-keyed JSON-record stores on the
 shared `lib/media/jsonRowStore.js` shape; writes that must be atomic with a
-doc commit ride `updateDatabase`'s `inSaveTransaction` hook). Each store is
+doc commit ride `updateDatabase`'s `inSaveTransaction` hook. Each store is
 its table's only runtime writer, and the adapter holds the bulk seams: the
 legacy-JSON import, the one-shot v21/v22 backfills, and the restore/reset
 wipe-and-replace; `books.*` to `lib/books/`; `music.*` to

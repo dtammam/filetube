@@ -18,7 +18,7 @@ const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase,
   trashItem, sweepTrash, __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -95,10 +95,9 @@ test('record-driven sweep: purges ONLY past-retention records (file + record + s
   const purged = await sweepTrash(now);
   assert.equal(purged, 1, 'exactly the expired record');
 
-  const db = loadDatabase();
-  assert.equal(db.trash[oldRes.trashId], undefined, 'the 31-day record is gone');
+  assert.equal(trashStore().get(oldRes.trashId), undefined, 'the 31-day record is gone');
   assert.ok(!fs.existsSync(oldRes.trashPath), 'its bytes are gone');
-  assert.ok(db.trash[freshRes.trashId], 'the 5-day record survives');
+  assert.ok(trashStore().get(freshRes.trashId), 'the 5-day record survives');
   assert.ok(fs.existsSync(freshRes.trashPath), 'its bytes survive');
   assert.deepEqual(tombstoneStore().getAll(), {}, 'a verified sweep purge mints no tombstone');
 });
@@ -109,7 +108,7 @@ test('retention 0 = keep forever: nothing purges no matter how old', async () =>
 
   const purged = await sweepTrash(Date.now());
   assert.equal(purged, 0);
-  assert.ok(loadDatabase().trash[res.trashId]);
+  assert.ok(trashStore().get(res.trashId));
   assert.ok(fs.existsSync(res.trashPath));
 });
 
@@ -128,7 +127,7 @@ test('orphan pass: an unreferenced trash-dir file past retention (by CTIME) is r
   // by then -- so assert the orphan sweep specifically by putting the
   // referenced record inside the window: re-check both.
   const future = Date.now() + 40 * DAY;
-  await updateDatabase((db) => { db.trash[res.trashId].trashedAt = future - 5 * DAY; }); // keep the record fresh at `future`
+  await updateDatabase((db) => { trashStore().set(res.trashId, { ...trashStore().get(res.trashId), trashedAt: future - 5 * DAY }); }); // keep the record fresh at `future`
   await sweepTrash(future);
   assert.ok(!fs.existsSync(orphan), 'the unreferenced orphan aged out by ctime and was removed');
   assert.ok(fs.existsSync(res.trashPath), 'the record-referenced file is untouched by the orphan pass');

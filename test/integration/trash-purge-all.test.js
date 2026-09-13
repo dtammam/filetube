@@ -21,9 +21,10 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-purgeall-
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, saveDatabase, loadDatabase, userStore,
+  app, getMediaId, saveDatabase, userStore,
   __mintTestSession, __resetDatabaseForTests,
 } = require('../../server');
+const { trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, member;
@@ -94,8 +95,7 @@ test('happy path: GET reports total bytes; purge-all frees every visible item an
   assert.equal(body.freedBytes, 35, 'freedBytes equals what GET advertised');
   assert.deepEqual(body.failures, [], 'no failures');
 
-  const db = loadDatabase();
-  assert.deepEqual(db.trash, {}, 'the trash map is empty');
+  assert.deepEqual(trashStore().getAll(), {}, 'the trash map is empty');
   assert.ok(!fs.existsSync(files.Open.filePath) && !fs.existsSync(files.Movies.filePath), 'source files long gone');
   const after = await getTrash();
   assert.equal(after.total, 0);
@@ -128,8 +128,7 @@ test('RBAC visibility: a restricted member purges ONLY visible items; the hidden
   assert.equal(body.purgedCount, 1, 'exactly one (the visible) item purged');
   assert.equal(body.freedBytes, 10, 'only the visible bytes freed');
 
-  const db = loadDatabase();
-  const remaining = Object.values(db.trash);
+  const remaining = Object.values(trashStore().getAll());
   assert.equal(remaining.length, 1, 'the restricted record survives');
   assert.equal(remaining[0].item.folderName, 'Adult', 'and it is exactly the hidden one');
   assert.ok(fs.existsSync(remaining[0].trashPath), 'the restricted bytes are untouched on disk');

@@ -18,7 +18,7 @@ const {
   app, getMediaId, loadDatabase, saveDatabase,
   scanDirectories, userStore, __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -80,7 +80,7 @@ test('happy path: DELETE moves to trash -- trashed contract, NO tombstone, carri
   assert.ok(!fs.existsSync(filePath));
   const db = loadDatabase();
   assert.equal(db.metadata[id], undefined);
-  const rec = db.trash[body.trashId];
+  const rec = trashStore().get(body.trashId);
   assert.ok(rec && rec.originalPath === filePath);
   assert.ok(fs.existsSync(rec.trashPath), 'bytes live in the trash dir');
   assert.deepEqual(tombstoneStore().getAll(), {}, 'a VERIFIED trash move mints NO tombstone (the v1.41.3 rule at its new home)');
@@ -102,7 +102,7 @@ test('read-only location: 409 + code + readOnly, db COMPLETELY untouched (the re
     assert.ok(fs.existsSync(filePath));
     const db = loadDatabase();
     assert.ok(db.metadata[id], 'library entry intact');
-    assert.deepEqual(db.trash, {});
+    assert.deepEqual(trashStore().getAll(), {});
     assert.deepEqual(tombstoneStore().getAll(), {});
   } finally {
     fs.chmodSync(ROOT, 0o755);
@@ -143,7 +143,7 @@ test('already gone: DELETE of an externally-removed file succeeds via the legacy
   const db = loadDatabase();
   assert.equal(db.metadata[id], undefined);
   assert.ok(tombstoneStore().get(id), 'already-gone is unverified -> tombstone (Wave 2: the relational store)');
-  assert.deepEqual(db.trash, {});
+  assert.deepEqual(trashStore().getAll(), {});
 });
 
 test('DEFERRED RETRY TRASHES: a removeAnyway survivor is moved to trash by the next scan once the mount is writable', async () => {
@@ -162,7 +162,7 @@ test('DEFERRED RETRY TRASHES: a removeAnyway survivor is moved to trash by the n
   const db = loadDatabase();
   assert.ok(!fs.existsSync(filePath), 'the retry moved the survivor off its old path');
   assert.equal(db.metadata[id], undefined, 'never re-indexed');
-  const recs = Object.values(db.trash);
+  const recs = Object.values(trashStore().getAll());
   assert.equal(recs.length, 1, 'exactly one orphan trash record');
   assert.equal(recs[0].originalPath, filePath);
   assert.equal(recs[0].item.orphanedByDeferredDelete, true, 'marked as the minimal orphan snapshot');
