@@ -2956,5 +2956,11 @@
     "date": "2026-09-12",
     "title": "Selecting text no longer closes the pop-up you're typing in",
     "intent": "When you opened the download box, pasted a link, and then tried to drag across the URL to select or fix part of it, the whole box would sometimes vanish - because the drag ended on the dimmed area behind it. That's fixed: these pop-ups now only close when you actually click the dim area to dismiss them, not when a text selection happens to end there. The fix also covers the podcast subscribe box, the chapter editor (where it could have thrown away chapter edits you hadn't saved yet), and the transcript editor. You can select and edit text in them freely now."
+  },
+  {
+    "version": "1.290.0",
+    "date": "2026-09-13",
+    "title": "Groundwork for a cleaner, faster library database",
+    "intent": "Nothing changes on screen in this release. Under the hood, FileTube is starting a long clean-up of how your library is stored: the old all-in-one record that dates back to the original db.json file will be replaced, piece by piece, with proper tables, so future features land faster and with less risk to your data. This first step proves two things about the code you already run: it carries no leftover half-finished notes anywhere, and the old db.json file (kept beside your database as a safety net) is never even opened once your database exists - checked automatically on every build from now on. Your videos, progress, and settings are untouched."
   }
 ]
