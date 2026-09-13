@@ -93,6 +93,45 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.290.0 - Relational-migration arc, Wave 0: honest-zero comment debt + db.json proven inert (2026-09-13)
+
+Groundwork for retiring the document model inside `filetube.db` (the plan is
+`docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`, landed through this
+gate). No data touched, `server.js` delta 0 lines; the wave exists so the arc's baseline
+predictions are machine-verified and its two floors are enforced before any table moves.
+
+- **Comment debt = 0, enforced by two nets.** eslint `no-warning-comments` (every linted JS
+  set) + `test/unit/comment-debt-census.test.js`: TIER 1 marker-form (any case, JSDoc
+  `@todo`, `TODO:`/`TODO(` tags) = 0 over every tracked code file incl. css/html/sh/yml/
+  json/brs and the extension-less hooks/Dockerfile/roku manifest; TIER 2 loose word = 0
+  in shipped code. The two shipped-code prose hits (capability registry, glyph pool) are
+  reworded. The census caught its first real hit in this wave's own eslint comment.
+- **db.json is never read when filetube.db exists** - now a binding, not a log line:
+  `test/unit/dbjson-never-read.test.js` spies every fs content reader (and copier) while a
+  deliberately NON-JSON db.json sits beside filetube.db; both rule-1 arms boot with zero
+  reads and unchanged bytes, and the positive controls prove the same bytes are FATAL
+  without filetube.db (the rollback net still imports a valid file once). The server seam
+  is source-locked (DB_FILE basename-only, one `openAdapter`, no `importDbJson`).
+- **Baseline re-derived** by `scripts/relational-arc-baseline.js` (server.js 19,041;
+  doc_kv 13; doc_single **18** - the intake draft said 19, corrected; total 31; db.json
+  ref files 15; tests 8,320/659). Tech-debt #224 logs the accepted residual (two models
+  share the store until Wave 7; every carrier seam carries both).
+
+Slim gate (adversarial seat) REQUEST CHANGES then APPROVE: both nets missed `@todo`,
+lowercase/title-case openers and the 4 extension-less tracked files; both floors could
+pass VACUOUSLY (scan over `[]` stayed green); the baseline instrument counted ITSELF (16
+not 15); three plan claims were unreproducible. All fixed and re-measured (every planted
+shape reds TIER 1; the round-1 survivors C6b/C9/C10/C11/C14/C15/C18 now red; the copy
+mutant is caught by the spy). Dual-Node 8475 tests / 8472 pass / 0 fail / 3 skipped on
+both 22.23.1 and 24.14.0. One hook run refused on the critter-mode timing test (1/6494,
+untouched, 13/13 green in isolation - tracker #212 class).
+
+KNOWN GAPS (disclosed): `// [TODO]` in bracket form inside a TEST file evades both nets
+(unconventional, informational); the server.js db.json lock is a source lock evadable by
+an indirect spelling - Wave 7 owes an integration boot of server.js with garbage db.json
+beside filetube.db. Device pass is Dean's (nothing user-visible changes; the probe is
+"boots and behaves identically").
+
 ### v1.289.0 - A text-selection drag no longer closes the download/subscribe/editor modals (2026-09-12)
 
 Dean: clicking into the download modal's URL (or folder) field and dragging to select or
