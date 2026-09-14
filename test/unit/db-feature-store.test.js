@@ -23,6 +23,7 @@ const path = require('node:path');
 const { SQLITE_FILENAME, SqliteAdapter, __openRawForTests: openRaw } = require('../../lib/db/sqlite');
 const { defineRecordListStore } = require('../../lib/db/recordListStore');
 const { defineFeatureStore } = require('../../lib/db/featureStore');
+const { ensureLegacyDocTables } = require('../helpers/legacy-doc-tables');
 
 const NUL = String.fromCharCode(0);
 let dir;
@@ -164,6 +165,7 @@ test('feature store: a PARTIAL snapshot (read(only) / holder(only)) syncs only t
 
 test('feature store: migrateFromDoc copies the doc rows (maps from doc_kv, the rest from doc_single) verbatim, skips/drops with a log line, deletes the doc rows; readPersisted assembles the namespace or undefined', () => {
   const raw = adapter.sql;
+  ensureLegacyDocTables(raw); // Wave 7 dropped the doc tables; the drain under test reads them
   raw.exec(`INSERT INTO doc_kv(namespace, key, json) VALUES ('t.episodes', 'e1', '{"id":"e1"}'), ('t.episodes', '', '{"id":""}'), ('other.ns', 'k', '1')`);
   raw.exec(`INSERT INTO doc_single(name, json) VALUES ('t.folders', '["/a","","/a","/b"]'), ('t.settings', '{"pollMinutes":30,"":1}'), ('t.pins', '[{"id":"p1"},"junk",{"id":"p1"}]'), ('t.allowMembersOnly', 'true'), ('t.channels', '{"NESTALGIA":"on","":"off","Zarchivo":"off"}'), ('other', '[]')`);
   const logged = [];

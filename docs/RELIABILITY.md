@@ -24,8 +24,8 @@ Standards for keeping this project stable and maintainable.
 - **Unit tests** (`test/unit/`): `node:test` over the regression-prone pure
   logic — id hashing, `needsTranscode`, `matchRootFolder`, `transcodedPath`,
   the SQLite adapter (schema migrations incl. the future-version refusal,
-  save/load round-trip, the unknown-key persistence lock, the db.json
-  importer's strict-parse abort), query/reducer modules, and the docs censuses.
+  save/load round-trip, the unknown-key persistence lock, the bundle
+  classifier's lossy-import refusal), query/reducer modules, and the docs censuses.
 - **Integration tests** (`test/integration/`): boot the real `app` on an
   ephemeral port against an isolated temp `DATA_DIR` (real SQLite, real auth
   sessions) and exercise the live routes — RBAC visibility and write gates,

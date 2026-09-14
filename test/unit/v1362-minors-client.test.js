@@ -89,7 +89,7 @@ test('v1.36.2 B: the foreground visibilitychange handler calls rearmNativeContro
 // ---- Bug D (server half, unit): the recoverable-delete errno set -------------
 
 test('v1.36.2 D: RECOVERABLE_DELETE_CODES covers the Docker-volume reality -- EROFS/EACCES (v1.13) + EBUSY/EPERM (v1.36.2), and nothing that should hard-fail', () => {
-  process.env.DATA_DIR = process.env.DATA_DIR || require('node:os').tmpdir();
+  require('../helpers/isolate-data-dir'); // #227: an ISOLATED DATA_DIR (os.tmpdir() opened a shared /tmp/filetube.db - a newer build's leftover file there reddened an older build's run)
   const { RECOVERABLE_DELETE_CODES } = require('../../server');
   for (const code of ['EROFS', 'EACCES', 'EBUSY', 'EPERM']) {
     assert.ok(RECOVERABLE_DELETE_CODES.has(code), `${code} must offer the 409 + removeAnyway escape hatch`);

@@ -87,28 +87,23 @@ flowchart TD
 
 ## 2. Data model
 
-One SQLite file, two buckets (see ARCHITECTURE.md "Storage"). The document
-store persists the legacy db.json object shape per row; everything
-user-scoped is relational, and so are the media namespaces the
-relational-migration arc has moved out of the document store so far (the
-view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
-tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
-the app settings and the folder config in Wave 4 - see the CONFIG box; the
-frozen pre-auth likes in Wave 4 too - the MEDIA box).
-The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.295.0 (Wave 6):
-0 `doc_kv` namespaces, 0 `doc_single` names, 61 relational tables,
-schema version 32. (The relational-migration arc, Wave 1 onward, moves the
-media namespaces out of the document store one table at a time - see
+One SQLite file, every table relational (see ARCHITECTURE.md "Storage").
+Everything user-scoped is relational; so is every media, config and feature
+namespace, moved out of the v1.42 document store one wave at a time by the
+relational-migration arc (the view counter in Wave 1; the frozen pre-auth
+positions and the deferred-delete tombstones in Wave 2; the trashed-item
+records in Wave 3 - see the MEDIA box; the app settings and the folder
+config in Wave 4 - see the CONFIG box; the frozen pre-auth likes in Wave 4
+too - the MEDIA box; the five feature catalogs in Wave 5 - the FEATURES box;
+the media index in Wave 6 - the MEDIA box). The doc-object key list in
+`lib/db/sqlite.js` (`DOC_OBJECT_KEYS`, just `metadata`) is a LOCK
+(`assertNoUnknownKeys()` throws on strangers). Measured at v1.296.0 (Wave 7):
+no document tables (`doc_kv` and `doc_single` were dropped in schema v33),
+61 relational tables, schema version 33. (The arc's plan:
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
-    subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>EMPTY since Wave 6 (the media index is media_items);<br/>dropped in Wave 7"]
-        SINGLE["doc_single (name, json)<br/>EMPTY since Wave 5 (every whole-object namespace is a feature-store table now);<br/>dropped in Wave 7"]
-    end
-
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
         CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_channel_pins · user_prefs"]
         PLACEST["per-place<br/>user_book_progress · user_book_pins ·<br/>user_book_liked · user_book_finished ·<br/>user_music_progress · user_music_liked ·<br/>user_music_state · user_podcast_progress ·<br/>user_podcast_liked · user_podcast_pins ·<br/>user_podcast_played ·<br/>user_tv_progress · user_tv_played · user_tv_liked"]
@@ -147,7 +142,6 @@ flowchart LR
 
     WRITERS["Writers:<br/>updateDatabase(mutatorFn) - one in-process mutex ·<br/>diff-save, changed rows only, one transaction ·<br/>getCachedDatabase() reads throw on mutation under test"]
 
-    WRITERS --> DOC
     WRITERS --> REL
     WRITERS --> MEDIA
     WRITERS --> CONFIG

@@ -7,12 +7,12 @@
 // sanctioned helper — a second, read-only connection, never the app's own
 // accounting); the between-test reset is `__resetDatabaseForTests()` (an OPEN
 // SQLite database cannot be rm'd out from under its connection the way
-// db.json could).
+// the pre-v1.42 JSON file could).
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json'); // legacy artifact — only ever written BY tests as a decoy now
+const DB_FILE = path.join(process.env.DATA_DIR, 'db.json'); // the pre-v1.42 file's name - only ever written BY tests as a decoy (Wave 7: the server never names it)
 const SQLITE_FILE = path.join(process.env.DATA_DIR, 'filetube.db');
 
 const { test, beforeEach } = require('node:test');
@@ -26,7 +26,6 @@ const {
   updateDatabase,
   transcodedPath,
   reconcileTranscode,
-  cleanupOrphanDbTmp,
   __resetDatabaseForTests,
   nodeVersionSupported,
 } = require('../../server');
@@ -108,13 +107,12 @@ test('the folder config reads from its stores (Wave 4): a root list with no sett
   assert.equal(loadDatabase().folders, undefined, 'never a doc key');
 });
 
-test('v1.42 migration-path: a corrupt db.json sitting beside an ACTIVE filetube.db is ignored, never read', () => {
+test('a corrupt legacy db.json sitting beside the ACTIVE filetube.db is ignored, never read', () => {
   // Pre-v1.42, loadDatabase parsed db.json every call and a corrupt file
-  // triggered reset-to-fresh recovery. Post-migration, db.json is a frozen
-  // legacy artifact: once filetube.db exists it is never consulted, so even
-  // garbage in it cannot perturb a load. (Corrupt db.json at FIRST boot —
-  // before filetube.db exists — aborts the import instead; that leg lives in
-  // test/unit/db-sqlite-adapter.test.js per AC9.)
+  // triggered reset-to-fresh recovery. Since v1.42 the file is never consulted
+  // once filetube.db exists, and since Wave 7 (v1.296) it is never consulted
+  // at all - the boot seam's fs-spy binding is test/unit/dbjson-never-read.test.js;
+  // this is the loadDatabase seam.
   saveDatabase({ metadata: { real: { id: 'real' } } });
   fs.writeFileSync(DB_FILE, '{ this is not valid json ');
   const db = loadDatabase();
@@ -358,40 +356,6 @@ test('loadDatabase: a partial persisted set missing metadata lets a mutator writ
   );
   const after = loadDatabase();
   assert.equal(after.metadata['new-id'].id, 'new-id');
-});
-
-// ---- [UNIT] startup sweep: orphaned db.json.*.tmp (LEGACY, pre-v1.42) ------
-
-test('cleanupOrphanDbTmp: removes only db.json.*.tmp files, leaves db.json/filetube.db and unrelated files alone', () => {
-  // The sweep survives v1.42 for one reason: an upgrade from a CRASHED
-  // pre-SQLite instance can leave `db.json.<pid>.<seq>.tmp` orphans in
-  // DATA_DIR. The legacy db.json itself (a decoy here) and the live
-  // filetube.db must never be touched.
-  saveDatabase({ metadata: {} });
-  fs.writeFileSync(DB_FILE, '{"legacy": true}');
-  const orphan1 = path.join(process.env.DATA_DIR, 'db.json.12345.0.tmp');
-  const orphan2 = path.join(process.env.DATA_DIR, 'db.json.6789.3.tmp');
-  const unrelated = path.join(process.env.DATA_DIR, 'not-a-db-temp.txt');
-  fs.writeFileSync(orphan1, 'stale');
-  fs.writeFileSync(orphan2, 'stale');
-  fs.writeFileSync(unrelated, 'keep me');
-
-  const removed = cleanupOrphanDbTmp(process.env.DATA_DIR);
-
-  assert.equal(removed, 2);
-  assert.ok(!fs.existsSync(orphan1));
-  assert.ok(!fs.existsSync(orphan2));
-  assert.ok(fs.existsSync(unrelated), 'unrelated files must never be touched');
-  assert.ok(fs.existsSync(DB_FILE), 'the legacy db.json must never be removed by the sweep (parallel-run contract)');
-  assert.ok(fs.existsSync(SQLITE_FILE), 'filetube.db must never be touched by the sweep');
-  fs.rmSync(unrelated);
-});
-
-test('cleanupOrphanDbTmp: an unreadable/missing directory is a safe no-op (returns 0, never throws)', () => {
-  assert.doesNotThrow(() => {
-    const removed = cleanupOrphanDbTmp(path.join(process.env.DATA_DIR, 'does-not-exist'));
-    assert.equal(removed, 0);
-  });
 });
 
 // ---- [UNIT] AC7: the Node-floor predicate (22.13 = first unflagged node:sqlite)

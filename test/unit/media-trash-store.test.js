@@ -29,9 +29,10 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, DOC_KV_NAMESPACES, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createTrashStore = require('../../lib/media/trashRecords');
 
 let dir;
@@ -84,6 +85,7 @@ function rewindToV22(seedRows) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE media_trash; PRAGMA user_version = 22');
+  ensureLegacyDocTables(raw);
   const ins = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
   for (const [key, json] of seedRows) ins.run('trash', key, json);
   raw.close();
@@ -91,7 +93,6 @@ function rewindToV22(seedRows) {
 
 test('migration v23: doc rows move VERBATIM (trashed_at derived), doc rows deleted, stamp 23, load() has no trash key, save() works', () => {
   assert.ok(SCHEMA_VERSION >= 23);
-  assert.ok(!DOC_KV_NAMESPACES.includes('trash'));
   rewindToV22([
     ['t1', JSON.stringify(rec({ trashedAt: 7 }))],
     ['t2', JSON.stringify({ originalPath: '/minimal' })],
@@ -104,7 +105,7 @@ test('migration v23: doc rows move VERBATIM (trashed_at derived), doc rows delet
   assert.deepStrictEqual(t.get('t2'), { originalPath: '/minimal' });
   assert.deepStrictEqual(t.get('t3').item.chaptersManual, [{ t: 0, title: 'Intro' }], 'the snapshot survives verbatim');
   assert.deepStrictEqual(rows(), [['t1', 7], ['t2', null], ['t3', null]]);
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_kv WHERE namespace = 'trash'").get().c, 0);
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.trash, undefined);
   assert.doesNotThrow(() => adapter.save(db));
@@ -115,6 +116,7 @@ test('migration v23: re-running is a no-op; a corrupt doc row rolls the whole bl
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 22');
+  ensureLegacyDocTables(raw);
   raw.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   assert.deepStrictEqual(createTrashStore(adapter).get('kept'), rec());
@@ -147,7 +149,7 @@ test('migration v23: a doc row whose key fails the id rule (empty / NUL - a <=v1
   assert.strictEqual(logged.filter((l) => l.includes('migration v23: skipping')).length, 2, 'both unaddressable rows were logged: ' + logged.join(' | '));
   const t = createTrashStore(adapter);
   assert.deepStrictEqual(Object.keys(t.getAll()), ['ok'], 'only the addressable record moved');
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_kv WHERE namespace = 'trash'").get().c, 0, 'the doc rows are gone either way');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   assert.deepStrictEqual(Object.keys(t.expiredBefore(Number.MAX_SAFE_INTEGER)), ['ok'], 'the sweep can never see an unaddressable row');
   // Reads of such ids are tolerant, never a throw (the routes hand them request ids).
   assert.strictEqual(t.get(''), undefined);
@@ -164,13 +166,11 @@ test('save-lock: `trash` on the doc object is REFUSED', () => {
 // ---- 4. the bulk seams ---------------------------------------------------------------
 
 test('importParsedJson: routes `trash` verbatim through insertTrash (never doc_kv); refuses without the handle / on a bad shape', () => {
-  const kv = [];
   const trash = [];
-  const h = { insertKv: (ns, k, v) => kv.push([ns, k, v]), insertSingle: () => {}, insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: (id, r) => trash.push([id, r]) };
+  const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: (id, r) => trash.push([id, r]) };
   const summary = importParsedJson({ metadata: {}, trash: { t1: rec(), t2: { originalPath: '/m' } } }, h, { source: 'bundle' });
   assert.deepStrictEqual(trash, [['t1', rec()], ['t2', { originalPath: '/m' }]]);
   assert.strictEqual(summary.trash, 2);
-  assert.ok(!kv.some(([ns]) => ns === 'trash'));
   const noHandle = { ...h };
   delete noHandle.insertTrash;
   assert.throws(() => importParsedJson({ trash: { t: rec() } }, noHandle), /no insertTrash handle/);

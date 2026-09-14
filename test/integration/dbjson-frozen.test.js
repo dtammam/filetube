@@ -1,14 +1,15 @@
 'use strict';
 
-// [INTEGRATION] v1.42 AC2 — the parallel-run contract's ongoing lock:
-// db.json is imported ONCE at first boot and then NEVER touched again, no
-// matter how much the instance writes. "Byte-identical after a week of use"
-// can't literally run a week in CI, so this locks the MECHANISM: a real
-// import boot followed by a representative workout of every write path,
-// with a byte-hash comparison at each checkpoint. Nothing in the v1.42
-// codebase writes the db.json path anymore (only the import READS it); this
-// test exists so a future regression that re-introduces a writer fails
-// loudly instead of silently breaking the old-tag instance sharing the file.
+// [INTEGRATION] The legacy db.json beside a live server: frozen AND
+// invisible. v1.42's AC2 locked "imported ONCE at first boot, then never
+// touched again"; Wave 7 of the relational-migration arc removed the import
+// itself, so the lock is now the stronger one the Wave 0 slim gate asked for
+// (S7): server.js ITSELF boots - the real require-time openAdapter, not the
+// adapter seam alone - with a garbage db.json beside filetube.db, serves the
+// database's rows, and a representative workout of every write path leaves
+// the garbage byte-identical. A source lock on server.js is evadable by an
+// indirect spelling; a boot that would have been FATAL had the file been
+// parsed is not.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -18,24 +19,26 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-frozen-')
 const DATA_DIR = process.env.DATA_DIR;
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
-// The pre-boot fixture: a realistic legacy-shaped db.json the boot must
-// import — written BEFORE the server require, like a real upgrade.
-const FIXTURE = {
-  folders: [],
-  folderSettings: {},
-  progress: { vid1: { timestamp: 10, duration: 60 } },
-  metadata: { vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', type: 'video', ext: '.mp4', filePath: '/media/clip.mp4', duration: 60, folderName: 'Media', viewCount: 3 } },
-  settings: { defaultView: 'grid' },
-};
-fs.writeFileSync(DB_FILE, JSON.stringify(FIXTURE, null, 2), 'utf8');
+// The pre-boot state, written BEFORE the server require like a real upgrade:
+// a seeded filetube.db (what a v1.42-v1.295 boot left behind) and, beside it,
+// a db.json that is NOT JSON - the old importer would have refused to boot on
+// it; the Wave 7 server must not notice it.
+const { SqliteAdapter, SQLITE_FILENAME, readPersistedDatabase } = require('../../lib/db/sqlite');
+{
+  const a = new SqliteAdapter(path.join(DATA_DIR, SQLITE_FILENAME), { log: () => {} });
+  try {
+    a.save({ metadata: { vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', type: 'video', ext: '.mp4', filePath: '/media/clip.mp4', duration: 60, folderName: 'Media' } } });
+  } finally { a.close(); }
+}
+const GARBAGE = '{ this is not JSON - the v1.42 importer would have aborted boot on me';
+fs.writeFileSync(DB_FILE, GARBAGE, 'utf8');
 const HASH_AT_BOOT = crypto.createHash('sha256').update(fs.readFileSync(DB_FILE)).digest('hex');
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, flushPendingProgress, viewCountStore } = require('../../server');
+const { app, flushPendingProgress, viewCountStore, loadDatabase } = require('../../server');
 const { folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
-const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -55,15 +58,14 @@ after(async () => {
 
 const hashNow = () => crypto.createHash('sha256').update(fs.readFileSync(DB_FILE)).digest('hex');
 
-test('AC2: the boot imported db.json (with the viewCounts extraction) and left it byte-identical', () => {
-  assert.equal(hashNow(), HASH_AT_BOOT, 'import reads, never writes');
-  const db = readPersistedDatabase(DATA_DIR);
-  assert.equal(db.metadata.vid1.title, 'Clip', 'imported');
-  assert.equal(db.metadata.vid1.viewCount, undefined, 'embedded count extracted off the item');
-  assert.equal(db.viewCounts.vid1, 3, 'and into its own namespace');
+test('S7: server.js booted beside a garbage db.json (which the old importer would have refused), serves the database\'s rows, and left the file byte-identical', () => {
+  assert.equal(hashNow(), HASH_AT_BOOT, 'boot never wrote the file');
+  assert.equal(fs.readFileSync(DB_FILE, 'utf8'), GARBAGE, 'and never repaired or replaced it');
+  assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the seeded row is what the server serves');
+  assert.equal(readPersistedDatabase(DATA_DIR).metadata.vid1.title, 'Clip');
 });
 
-test('AC2: a representative workout of every write path leaves db.json byte-identical', async () => {
+test('a representative workout of every write path leaves db.json byte-identical', async () => {
   // settings write
   assert.equal((await fetch(`${base}/api/settings`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultView: '' }),
@@ -80,6 +82,7 @@ test('AC2: a representative workout of every write path leaves db.json byte-iden
   // a direct mutator for good measure
   folderSettingsStore().set('/x', { name: 'X', hidden: false });
 
-  assert.equal(viewCountStore.get('vid1'), 4, 'the writes really landed (in SQLite - the media_view_counts table since Wave 1)');
-  assert.equal(hashNow(), HASH_AT_BOOT, 'db.json byte-identical through the whole workout — the old-tag instance sharing it is safe');
+  assert.equal(viewCountStore.get('vid1'), 1, 'the writes really landed (in SQLite - the media_view_counts table since Wave 1)');
+  assert.equal(hashNow(), HASH_AT_BOOT, 'db.json byte-identical through the whole workout');
+  assert.equal(fs.readFileSync(DB_FILE, 'utf8'), GARBAGE);
 });

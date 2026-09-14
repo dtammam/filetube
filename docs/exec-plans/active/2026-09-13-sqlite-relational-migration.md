@@ -54,11 +54,11 @@ re-derives the whole table: `node scripts/relational-arc-baseline.js --pretty`
 | Metric | Baseline (2026-09-13, `963f0ca2`) | Command to re-derive | Target at Wave 7 |
 |---|---|---|---|
 | `server.js` lines | **19,041** | `wc -l < server.js` | **< 3,000** |
-| `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
-| `doc_single` namespaces | **18** (the intake draft said 19 - a hand count; Wave 0's re-derivation corrected it) | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
-| Total legacy namespaces | **31** | sum of the two | **0** |
+| `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` (the list itself left with Wave 7; the instrument now counts document TABLES in a fresh schema - `docTables`) | **0** (table dropped) - **MET at v1.296.0 (Wave 7a): 0 tables** |
+| `doc_single` namespaces | **18** (the intake draft said 19 - a hand count; Wave 0's re-derivation corrected it) | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` (same: the list is gone, `docTables` is the metric) | **0** (table dropped) - **MET at v1.296.0** |
+| Total legacy namespaces | **31** | sum of the two | **0** - **MET at v1.295.0 (Wave 6); the tables followed at v1.296.0** |
 | Genuine TODO/FIXME/HACK markers | **0** (the intake draft's "9 grep hits are false positives" was not reproducible from a recorded command - the slim gate found the only 9-yielding grep counts 2 binary PNG matches and misses the `\XXXX` lines the draft cited; the pre-Wave-0 shipped-code prose hits are in commit `36a40a77`) | enforced, not printed: `test/unit/comment-debt-census.test.js` (TIER 1 marker-form over every tracked code file, TIER 2 loose word over shipped code) + eslint `no-warning-comments` | **0**, lint-enforced since Wave 0 |
-| `db.json` refs in shipped code | **15 files** (`server.js`, `lib/db/sqlite.js`, `lib/ytdlp/*`, `scripts/*`) | `node scripts/relational-arc-baseline.js` (`dbJsonRefFiles`; the script excludes itself - its labels name the file) | **0** |
+| `db.json` refs in shipped code | **15 files** (`server.js`, `lib/db/sqlite.js`, `lib/ytdlp/*`, `scripts/*`) | `node scripts/relational-arc-baseline.js` (`dbJsonRefFiles`; the script excludes itself - its labels name the file) | **0** - **MET at v1.296.0 (Wave 7a): 0 files**, bound by `test/unit/dbjson-never-read.test.js` |
 | Test cases | **8,310** across **657** files | `git ls-files 'test/*.js' \| xargs grep -hoE '^\s*(test\|it)\(' \| wc -l` | net-add; ratio stays >= 1.48:1 |
 | Full suite | green on **both** Node 22.23.1 + 24.14.0 | `npm test` on each | green each release |
 

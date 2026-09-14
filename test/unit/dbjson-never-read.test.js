@@ -1,18 +1,21 @@
 'use strict';
 
-// [UNIT] Wave 0 of the relational-migration arc (2026-09-13) - db.json is a
-// one-time import SEED, never a live store: when filetube.db exists its
-// CONTENT is never read (docs/exec-plans/active/2026-09-13-sqlite-relational-
-// migration.md, Section 0 + Wave 0). The import path itself (boot rule 2) is
-// the arc's rollback net and is scheduled for removal in Wave 7; until then
-// this file proves BOTH halves: rule 1 never reads the file, rule 2 still can.
+// [UNIT] Wave 7 of the relational-migration arc (2026-09-14) - the legacy
+// db.json file is INVISIBLE to boot. Wave 0 bound "when filetube.db exists its
+// CONTENT is never read" while boot rule 2 (the one-time import when
+// filetube.db is absent) stayed as the arc's rollback net; Wave 7 removed rule
+// 2 with the document model (docs/exec-plans/active/2026-09-13-sqlite-
+// relational-migration.md, Wave 7), so this file now proves the stronger
+// claim on BOTH arms: with or without filetube.db, openAdapter never names,
+// probes or reads a file called db.json - and the DoD's source lock: no
+// shipped JavaScript spells the name at all.
 //
-// Binding, not prose: an in-process spy on every fs content-reader records
-// any call aimed at a path named db.json, and the file beside filetube.db is
-// deliberately NOT JSON - so a read would have been FATAL (importDbJson's
-// strict parse), which the positive-control tests prove by letting it happen.
-// The spy is proven live inside the very run it guards: the existence probe
-// openAdapter makes (fs.existsSync) is recorded by the same spy.
+// Binding, not prose: an in-process spy on every fs content-reader AND every
+// metadata probe records any call aimed at a path named db.json, and the file
+// beside filetube.db is deliberately NOT JSON - so a read of it by the old
+// importer would have been FATAL. The spy is proven live inside the very run
+// that relies on it: a control read of the same file through the spied fs is
+// recorded.
 
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
@@ -20,9 +23,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 
-const { SQLITE_FILENAME, SqliteAdapter, openAdapter } = require('../../lib/db/sqlite');
+const { SQLITE_FILENAME, SqliteAdapter, openAdapter, SCHEMA_VERSION } = require('../../lib/db/sqlite');
 
+const ROOT = path.join(__dirname, '..', '..');
 let dir;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dbjson-never-read-')); });
 afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
@@ -31,11 +36,9 @@ const dbPath = () => path.join(dir, SQLITE_FILENAME);
 const jsonPath = () => path.join(dir, 'db.json');
 const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
-const GARBAGE = '{ this is not JSON - a read of me is FATAL by design';
-// (Wave 4: `settings` is relational now - the doc seed carries the doc keys only.)
+const GARBAGE = '{ this is not JSON - a read of me would have been FATAL by design';
 const SEED = { metadata: { vid1: { title: 'seeded item' }, marker: { title: 'seeded marker' } } };
 
-// `null` seeds a schema-current, row-empty filetube.db (open + close only).
 function seedSqlite(db) {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try { if (db) a.save(db); } finally { a.close(); }
@@ -43,8 +46,9 @@ function seedSqlite(db) {
 
 // Wrap every fs entry point that yields file CONTENT (sync, callback, promise,
 // stream) AND every copy that could smuggle the bytes to another name (the
-// slim gate's mutant: copyFileSync to a tmp, then read the tmp), plus the two
-// metadata probes, recording calls aimed at db.json.
+// Wave 0 slim gate's mutant: copyFileSync to a tmp, then read the tmp), plus
+// the metadata probes (existsSync / statSync / accessSync - the old boot rule
+// used the first two), recording calls aimed at db.json.
 function withFsSpy(run) {
   const reads = [];
   const probes = [];
@@ -59,24 +63,16 @@ function withFsSpy(run) {
     };
     return () => { obj[name] = orig; };
   };
-  const restores = [
-    patch(fs, 'readFileSync', reads),
-    patch(fs, 'openSync', reads),
-    patch(fs, 'createReadStream', reads),
-    patch(fs, 'readFile', reads),
-    patch(fs, 'open', reads),
-    patch(fs.promises, 'readFile', reads),
-    patch(fs.promises, 'open', reads),
-    patch(fs, 'copyFileSync', reads),
-    patch(fs, 'copyFile', reads),
-    patch(fs, 'cpSync', reads),
-    patch(fs, 'cp', reads),
-    patch(fs.promises, 'copyFile', reads),
-    patch(fs.promises, 'cp', reads),
-    ...(typeof fs.openAsBlob === 'function' ? [patch(fs, 'openAsBlob', reads)] : []),
-    patch(fs, 'existsSync', probes),
-    patch(fs, 'statSync', probes),
-  ];
+  const restores = [];
+  for (const name of ['readFileSync', 'readFile', 'openSync', 'open', 'createReadStream', 'copyFileSync', 'copyFile', 'renameSync', 'rename']) {
+    if (typeof fs[name] === 'function') restores.push(patch(fs, name, reads));
+  }
+  for (const name of ['readFile', 'open', 'copyFile', 'rename']) {
+    if (fs.promises && typeof fs.promises[name] === 'function') restores.push(patch(fs.promises, name, reads));
+  }
+  for (const name of ['existsSync', 'statSync', 'lstatSync', 'accessSync']) {
+    restores.push(patch(fs, name, probes));
+  }
   try {
     return { result: run(), reads, probes };
   } finally {
@@ -84,7 +80,14 @@ function withFsSpy(run) {
   }
 }
 
-test('rule 1: filetube.db present (non-empty) + a NON-JSON db.json beside it -> boots from SQLite, db.json content never read, bytes untouched', () => {
+test('control: the spy is live - a read and a probe of db.json through the spied fs are recorded', () => {
+  fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
+  const { reads, probes } = withFsSpy(() => { fs.existsSync(jsonPath()); return fs.readFileSync(jsonPath(), 'utf8'); });
+  assert.deepStrictEqual(reads, ['readFileSync']);
+  assert.deepStrictEqual(probes, ['existsSync']);
+});
+
+test('filetube.db present + a NON-JSON db.json beside it -> boots from SQLite; db.json is never read, never probed, bytes untouched', () => {
   seedSqlite(SEED);
   fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
   const before = sha(jsonPath());
@@ -92,13 +95,11 @@ test('rule 1: filetube.db present (non-empty) + a NON-JSON db.json beside it -> 
 
   const { result, reads, probes } = withFsSpy(() => openAdapter(dir, { log: (m) => lines.push(m) }));
   try {
-    assert.strictEqual(result.importSummary, null, 'no import happened');
     assert.deepStrictEqual(reads, [], `db.json content was read via: ${reads.join(', ')}`);
-    assert.ok(probes.includes('existsSync'), 'the spy is live: the existence probe on db.json was observed in this run');
-    assert.ok(lines.some((l) => l.includes('db.json is present and ignored')), 'the ignored line is logged');
+    assert.deepStrictEqual(probes, [], `db.json was probed via: ${probes.join(', ')} (Wave 7: boot does not even look for it)`);
+    assert.deepStrictEqual(lines.filter((l) => /db\.json|import|stranded|ignored/i.test(l)), [], 'no boot line mentions a legacy file');
     const loaded = result.adapter.load();
     assert.deepStrictEqual(loaded.metadata.marker, SEED.metadata.marker, 'state comes from filetube.db, not the file beside it');
-    assert.strictEqual(loaded.settings, undefined, 'Wave 4: settings is not a doc key');
     assert.strictEqual(loaded.metadata.vid1.title, 'seeded item');
   } finally {
     result.adapter.close();
@@ -106,79 +107,53 @@ test('rule 1: filetube.db present (non-empty) + a NON-JSON db.json beside it -> 
   assert.strictEqual(sha(jsonPath()), before, 'db.json is byte-identical after boot');
 });
 
-test('rule 1 (stranded fingerprint arm): an EMPTY filetube.db beside a non-JSON db.json -> warns by SIZE only, content still never read', () => {
-  seedSqlite(null); // schema-current, row-empty
-  fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
-  const lines = [];
-
-  const { result, reads, probes } = withFsSpy(() => openAdapter(dir, { log: (m) => lines.push(m) }));
-  result.adapter.close();
-  assert.strictEqual(result.importSummary, null);
-  assert.deepStrictEqual(reads, [], `db.json content was read via: ${reads.join(', ')}`);
-  assert.ok(probes.includes('statSync'), 'the fingerprint arm looks at the size (a metadata probe), which the spy observed');
-  assert.ok(lines.some((l) => l.includes('stranded import')), 'the stranded-import warning is the only reaction');
-});
-
-test('positive control A: WITHOUT filetube.db the same garbage IS read and aborts boot FATALLY, creating nothing', () => {
+test('NO filetube.db + a NON-JSON db.json -> a FRESH empty schema (never an import, never a throw); db.json never read, never probed, bytes untouched', () => {
   fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
   const before = sha(jsonPath());
 
-  const { reads } = withFsSpy(() => {
-    assert.throws(() => openAdapter(dir, { log: () => {} }), /FATAL: .*not parseable JSON/);
-  });
-  assert.ok(reads.includes('readFileSync'), `the spy sees the import read (got: ${reads.join(', ') || 'nothing'})`);
-  assert.ok(!fs.existsSync(dbPath()), 'no filetube.db was created by the aborted import');
-  assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.startsWith(SQLITE_FILENAME)), [], 'no tmp/sidecar either');
+  const { result, reads, probes } = withFsSpy(() => openAdapter(dir, { log: () => {} }));
+  try {
+    assert.deepStrictEqual(reads, [], `db.json content was read via: ${reads.join(', ')}`);
+    assert.deepStrictEqual(probes, [], `db.json was probed via: ${probes.join(', ')}`);
+    assert.deepStrictEqual(result.adapter.load(), {}, 'a fresh empty library - the legacy file is not a seed any more');
+    assert.strictEqual(result.adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
+  } finally {
+    result.adapter.close();
+  }
+  assert.ok(fs.existsSync(dbPath()), 'filetube.db was created');
   assert.strictEqual(sha(jsonPath()), before, 'the garbage file is untouched');
 });
 
-test('positive control B: the rollback net still works - WITHOUT filetube.db a valid db.json is imported once, then ignored on the next boot', () => {
+test('a VALID legacy db.json without filetube.db is NOT imported either (the rollback net is gone - the documented upgrade path is a v1.42-v1.295 boot first)', () => {
   fs.writeFileSync(jsonPath(), JSON.stringify(SEED), 'utf8');
-
-  const first = withFsSpy(() => openAdapter(dir, { log: () => {} }));
-  first.result.adapter.close();
-  assert.ok(first.result.importSummary, 'first boot imports');
-  assert.ok(first.reads.includes('readFileSync'), 'the import read is observed');
-
-  // Now corrupt the seed file: the second boot must not care.
-  fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
-  const second = withFsSpy(() => openAdapter(dir, { log: () => {} }));
+  const { result, reads } = withFsSpy(() => openAdapter(dir, { log: () => {} }));
   try {
-    assert.strictEqual(second.result.importSummary, null, 'no re-import');
-    assert.deepStrictEqual(second.reads, [], 'second boot never reads db.json');
-    assert.deepStrictEqual(second.result.adapter.load().metadata.marker, SEED.metadata.marker, 'the imported state is what boots');
+    assert.deepStrictEqual(reads, []);
+    assert.deepStrictEqual(result.adapter.load(), {}, 'nothing was imported');
   } finally {
-    second.result.adapter.close();
+    result.adapter.close();
   }
 });
 
-// ---- server.js seam lock: the server has no reader of db.json ----------------
+// ---- the source locks -----------------------------------------------------------
 //
-// server.js keeps a DB_FILE constant for the legacy tmp-file sweep only
-// (cleanupOrphanDbTmp matches `db.json.<pid>.<seq>.tmp` NAMES). Every CODE
-// mention of DB_FILE must be one of those two shapes (comment lines are
-// skipped - a prose mention is not a reader); a new reader of the file fails
-// here before it can ship. Boot goes through openAdapter exactly once. This
-// is a SOURCE lock: an indirect spelling (`'db' + '.json'`) evades it, which
-// is why the fs-spy tests above bind the behaviour at the adapter seam, and
-// why Wave 7 (removing rule 2) owes an integration boot of server.js itself
-// with garbage db.json beside filetube.db (slim gate SUGGESTION 7).
+// The DoD of the arc: "no shipped code references db.json". Bound here on
+// the same file set scripts/relational-arc-baseline.js measures (every
+// tracked .js outside test/ and vendor/, minus the baseline instrument
+// itself, whose labels name the metric). A comment counts: the point is
+// that nothing in the shipped tree - code OR prose - keeps the legacy file
+// alive as a concept a future change could reach for.
 
-test('server.js: DB_FILE is defined once and only ever used for the tmp-sweep basename; boot calls openAdapter exactly once and never importDbJson', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
-  const lines = src.split('\n');
-  const mentions = lines.map((l, i) => ({ n: i + 1, l }))
-    .filter(({ l }) => !/^\s*\/\//.test(l) && /\bDB_FILE\b/.test(l));
-  const definition = mentions.filter(({ l }) => /^const DB_FILE = path\.join\(DATA_DIR, 'db\.json'\);$/.test(l));
-  const basenameUse = mentions.filter(({ l }) => /path\.basename\(DB_FILE\)/.test(l));
-  assert.strictEqual(definition.length, 1, 'DB_FILE is defined exactly once');
-  const stray = mentions.filter((m) => !definition.includes(m) && !basenameUse.includes(m));
-  assert.deepStrictEqual(stray.map((m) => `${m.n}: ${m.l.trim()}`), [],
-    'server.js gained a NEW use of DB_FILE - db.json is a one-time import seed, the server never reads it');
+test('DoD: no shipped JavaScript names db.json (code or comment); server.js boots through openAdapter exactly once and has no DB_FILE', () => {
+  const shipped = execFileSync('git', ['ls-files', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean)
+    .filter((p) => !/(^|\/)(vendor|node_modules)\//.test(p) && !p.startsWith('test/') && p !== 'scripts/relational-arc-baseline.js');
+  assert.ok(shipped.length > 50, `sanity: the shipped set is real (${shipped.length} files)`);
+  assert.ok(shipped.includes('server.js') && shipped.includes('lib/db/sqlite.js'), 'sanity: the two files that carried the import path are in the set');
+  const offenders = shipped.filter((p) => /db\.json/.test(fs.readFileSync(path.join(ROOT, p), 'utf8')));
+  assert.deepStrictEqual(offenders, [], 'shipped files that still name the legacy file');
 
-  const openCalls = src.match(/sqliteDb\.openAdapter\(/g) || [];
-  assert.strictEqual(openCalls.length, 1, 'boot opens the store through openAdapter exactly once');
-  assert.ok(!/importDbJson\(/.test(src), 'server.js never calls the importer directly - only openAdapter rule 2 may');
-  assert.ok(!/readFileSync\([^)]*db\.json/.test(src) && !/JSON\.parse\([^)]*DB_FILE/.test(src),
-    'no direct db.json read in server.js');
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.strictEqual((src.match(/sqliteDb\.openAdapter\(/g) || []).length, 1, 'boot opens the store through openAdapter exactly once');
+  assert.ok(!/\bDB_FILE\b/.test(src), 'the DB_FILE constant (the last server-side spelling of the legacy path) is gone');
+  assert.ok(!/cleanupOrphanDbTmp/.test(src), 'the pre-v1.42 orphan-tmp sweep is gone with it');
 });

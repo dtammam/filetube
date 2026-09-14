@@ -27,11 +27,12 @@ const os = require('node:os');
 const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, DOC_KV_NAMESPACES, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   // The adapter's sanctioned raw door (the node:sqlite source lock keeps every
   // API touch in lib/db/sqlite.js - tests included).
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createViewCountStore = require('../../lib/media/viewCounts');
 
 let dir;
@@ -162,13 +163,13 @@ test('store: a multi-row write inside an ALREADY-OPEN adapter transaction joins 
 
 test('migration v21: doc_kv viewCounts rows move into the table (v1.42 value filter), the doc rows are deleted, load() carries no viewCounts key, save() still works', () => {
   assert.ok(SCHEMA_VERSION >= 21, 'the schema is at least v21');
-  assert.ok(!DOC_KV_NAMESPACES.includes('viewCounts'), 'viewCounts is not a doc_kv namespace any more');
   // Rewind this fresh v21 file to the v20 shape: drop the table, re-stamp, and
   // seed the doc_kv namespace the way a v1.290 instance persisted it.
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE media_view_counts');
   raw.exec('PRAGMA user_version = 20');
+  ensureLegacyDocTables(raw);
   const ins = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
   ins.run('viewCounts', 'seven', '7');
   ins.run('viewCounts', 'float', '2.9');
@@ -184,8 +185,7 @@ test('migration v21: doc_kv viewCounts rows move into the table (v1.42 value fil
   assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'stamped forward');
   assert.deepStrictEqual(rows(), [{ media_id: 'float', count: 2 }, { media_id: 'seven', count: 7 }],
     'a finite positive number is a count (float truncated); 0 / negative / junk / null / 2^53 are dropped, and the table READS');
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_kv WHERE namespace = 'viewCounts'").get().c, 0,
-    'the doc rows are gone - otherwise load() would assemble a key the save-lock refuses');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.viewCounts, undefined, 'load() carries no viewCounts key');
   assert.deepStrictEqual(db.metadata, { seven: { id: 'seven', title: 'kept' } }, 'other namespaces untouched');
@@ -200,6 +200,7 @@ test('migration v21: re-running the block is a no-op (idempotent under a crash b
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 20'); // the stamp never landed; the table + rows did
+  ensureLegacyDocTables(raw);
   raw.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   assert.deepStrictEqual(rows(), [{ media_id: 'kept', count: 4 }], 'the existing rows survive the re-run');
@@ -216,20 +217,17 @@ test('save-lock: a doc object carrying `viewCounts` is REFUSED (the namespace le
 // ---- 4. the bulk seams -------------------------------------------------------
 
 function handlesInto(adapterInstance, { withViewCount = true } = {}) {
-  const kv = [];
   const vc = [];
   const items = []; // Wave 6: the media index lands through insertItem, never doc_kv
   const h = {
-    insertKv: (ns, key, value) => kv.push([ns, key, value]),
-    insertSingle: () => {},
     insertItem: (id, record) => items.push([id, record]),
   };
   if (withViewCount) h.insertViewCount = (id, count) => vc.push([id, count]);
-  return { h, kv, vc, items };
+  return { h, vc, items };
 }
 
 test('importParsedJson: a bundle `viewCounts` map and a legacy embedded item.viewCount BOTH route through insertViewCount (usable values only); the summary counts them', () => {
-  const { h, kv, vc, items } = handlesInto(adapter);
+  const { h, vc, items } = handlesInto(adapter);
   const summary = importParsedJson({
     viewCounts: { fromBundle: 3, half: 2.5, zero: 0, junk: 'x' },
     metadata: { legacy: { id: 'legacy', title: 'L', viewCount: 4 }, plain: { id: 'plain' } },
@@ -237,7 +235,6 @@ test('importParsedJson: a bundle `viewCounts` map and a legacy embedded item.vie
   assert.deepStrictEqual(vc.sort(), [['fromBundle', 3], ['half', 2], ['legacy', 4]].sort());
   assert.deepStrictEqual(items.find(([id]) => id === 'legacy')[1], { id: 'legacy', title: 'L' }, 'the embedded field is stripped off the item (Wave 6: the item lands through insertItem)');
   assert.strictEqual(summary.viewCounts, 3);
-  assert.ok(!kv.some(([ns]) => ns === 'viewCounts'), 'nothing was written to doc_kv under the dead namespace');
 });
 
 test('importParsedJson: when a source carries BOTH shapes for one id, the first-class viewCounts key wins (routed last) and the summary counts the id once (gate S2/S5: the first cut flipped this)', () => {

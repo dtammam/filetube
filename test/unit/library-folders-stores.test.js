@@ -32,9 +32,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, SINGLETON_NAMES, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createFolderStore = require('../../lib/config/folders');
 const createFolderSettingsStore = require('../../lib/config/folderSettings');
 const createFolderDisplayNameStore = require('../../lib/config/folderDisplayNames');
@@ -77,16 +78,15 @@ function rewindToV24(singles) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE library_folders; DROP TABLE library_folder_settings; DROP TABLE channel_folder_display_names; PRAGMA user_version = 24');
+  ensureLegacyDocTables(raw);
   const ins = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
   for (const [name, json] of singles) ins.run(name, json);
   raw.close();
 }
 const reopen = () => { adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} }); return adapter; };
-const docSingles = () => adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_single WHERE name IN ('folders', 'folderSettings', 'folderDisplayNames')").get().c;
 
 test('migration v25: the list is numbered by index, the maps split one row per key (verbatim), doc rows deleted, stamp 25, load() has no keys, save() works', () => {
   assert.ok(SCHEMA_VERSION >= 25);
-  for (const k of ['folders', 'folderSettings', 'folderDisplayNames']) assert.ok(!SINGLETON_NAMES.includes(k), k);
   rewindToV24([
     ['folders', JSON.stringify(['/media/movies', '/media/tv'])],
     ['folderSettings', JSON.stringify({ '/media/movies': SETTING, '/synthetic': { name: 'D', order: 1 } })],
@@ -98,7 +98,7 @@ test('migration v25: the list is numbered by index, the maps split one row per k
   assert.deepStrictEqual(f.list(), ['/media/movies', '/media/tv']);
   assert.deepStrictEqual(fsS.getAll(), { '/media/movies': SETTING, '/synthetic': { name: 'D', order: 1 } });
   assert.deepStrictEqual(fd.getAll(), { NESTALGIA: 'Nestalgia Music' });
-  assert.strictEqual(docSingles(), 0, 'the doc rows are gone');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   for (const k of ['folders', 'folderSettings', 'folderDisplayNames']) assert.strictEqual(db[k], undefined, `no doc-model ${k} key`);
   assert.doesNotThrow(() => adapter.save(db));
@@ -112,6 +112,7 @@ test('migration v25: re-run is a no-op; a corrupt doc row rolls the whole block 
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 24');
+  ensureLegacyDocTables(raw);
   raw.close();
   reopen();
   assert.deepStrictEqual(stores().f.list(), ['/kept'], 'a re-run neither wipes nor duplicates');
@@ -146,7 +147,7 @@ test('migration v25: a duplicate / an unaddressable list entry and an unaddressa
     assert.strictEqual(logged.filter((l) => l.includes('migration v25: skipping a library folder entry')).length, 2, logged.join(' | '));
     assert.strictEqual(logged.filter((l) => l.includes('migration v25: skipping a folderSettings key')).length, 1);
     assert.strictEqual(logged.filter((l) => l.includes('migration v25: the folderDisplayNames row was not an object')).length, 1);
-    assert.strictEqual(docSingles(), 0);
+    assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33)');
   } finally {
     console.error = orig;
   }
@@ -165,7 +166,7 @@ test('save-lock: `folders`, `folderSettings` and `folderDisplayNames` on the doc
 test('importParsedJson: the list routes through replaceFolders (validated whole, duplicates collapsed) and the maps through their handles; refuses without a handle / on a bad entry', () => {
   const calls = { folders: null, fs: [], fd: [] };
   const h = {
-    insertKv: () => {}, insertSingle: () => {}, insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {},
+    insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {},
     replaceFolders: (list) => { calls.folders = list; }, insertFolderSetting: (k, v) => calls.fs.push([k, v]), insertFolderDisplayName: (k, v) => calls.fd.push([k, v]),
   };
   const summary = importParsedJson({ folders: ['/a', '/b', '/a'], folderSettings: { '/a': SETTING }, folderDisplayNames: { N: 'Name' }, metadata: {} }, h, { source: 'bundle' });
@@ -240,6 +241,7 @@ test('migration stamps ride their OWN commits: v25 lands and v26 fails -> the st
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE library_folders; DROP TABLE library_folder_settings; DROP TABLE channel_folder_display_names; DROP TABLE media_liked; PRAGMA user_version = 24');
+  ensureLegacyDocTables(raw);
   const ins = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
   ins.run('folders', JSON.stringify(['/kept']));
   ins.run('liked', '[not json'); // v26 will fail on this row
