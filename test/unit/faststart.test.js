@@ -144,20 +144,28 @@ test('remuxFaststartInPlace: spawn throws -> failed (never throws out)', async (
 test('v1.111 source-lock: the scan faststarts only NEW, .mp4, writable-download, ffmpeg-available files, and refreshes size', () => {
   const path2 = require('node:path');
   const src = fs.readFileSync(path2.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  // Wave 7b (slice S9): the scan orchestrator (runScanDirectories + its
+  // cooperative walk) moved VERBATIM to lib/scan/orchestrator.js, so the
+  // guard/remux/size/walk-skip sentences below are RE-POINTED there for the
+  // SAME code (never relaxed). The faststart require stays in server.js. The
+  // ffmpeg gate now reads LIVE through ffmpegIsAvailable() - a server.js `let`
+  // the async probe flips after the factory is built, so a destructured
+  // snapshot would freeze it (the S10a live-seams class).
+  const orch = fs.readFileSync(path2.join(__dirname, '..', '..', 'lib', 'scan', 'orchestrator.js'), 'utf8');
   assert.match(src, /const faststart = require\('\.\/lib\/faststart'\);/, 'server requires the faststart lib');
   // The full guard: new-to-db + video + not read-only + ffmpeg + under the yt-dlp
   // download dir + .mp4-eligible. Deleting any conjunct changes this.
   assert.match(
-    src,
-    /if \(!existing && !isAudio && !READ_ONLY_MEDIA && ffmpegAvailable &&\s*\n\s*matchRootFolder\(filePath, ytdlpDownloadRoots\) && faststart\.isFaststartEligible\(filePath\)\) \{/,
+    orch,
+    /if \(!existing && !isAudio && !READ_ONLY_MEDIA && ffmpegIsAvailable\(\) &&\s*\n\s*matchRootFolder\(filePath, ytdlpDownloadRoots\) && faststart\.isFaststartEligible\(filePath\)\) \{/,
     'the six-part safety guard is intact'
   );
-  assert.match(src, /const outcome = await faststart\.remuxFaststartInPlace\(filePath\);/, 'awaits the in-place remux');
+  assert.match(orch, /const outcome = await faststart\.remuxFaststartInPlace\(filePath\);/, 'awaits the in-place remux');
   // The remux changes byte length -> size MUST be refreshed on a real remux, or
   // the next scan needlessly re-inits the item.
-  assert.match(src, /if \(outcome === 'remuxed'\) \{\s*\n\s*try \{ info\.size = fs\.statSync\(filePath\)\.size;/, 'size refreshed after a real remux');
+  assert.match(orch, /if \(outcome === 'remuxed'\) \{\s*\n\s*try \{ info\.size = fs\.statSync\(filePath\)\.size;/, 'size refreshed after a real remux');
   // A crash-left `<orig>.faststart.tmp.mp4` (a sibling INSIDE a scan root) must
   // be excluded from the walk, or it's indexed as a phantom/duplicate card
   // (gate WARNING). isInFlightTranscode matches its `.tmp.mp4` suffix.
-  assert.match(src, /if \(isYtdlpIntermediate\(file\.name\) \|\| isInFlightTranscode\(file\.name\)\) \{/, 'the scan walk skips faststart temps');
+  assert.match(orch, /if \(isYtdlpIntermediate\(file\.name\) \|\| isInFlightTranscode\(file\.name\)\) \{/, 'the scan walk skips faststart temps');
 });
