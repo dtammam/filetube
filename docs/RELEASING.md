@@ -198,8 +198,10 @@ nonetheless there - the message names the rows for the operator to export or
 delete deliberately. A v1.295-or-earlier build refuses a v33 database at
 boot; bundles are unchanged by this floor (no key moved). Also in this
 release: the one-time import of a pre-v1.42 `db.json` is gone - a pre-v1.42
-instance upgrades by running any v1.42-v1.295 build once first
-(CONFIGURATION.md).
+instance upgrades by running any v1.42-v1.295 build once first, and if a
+v1.296+ boot already created an empty `filetube.db` beside the `db.json`,
+that file (plus its `-wal`/`-shm` sidecars) must be deleted before the
+older build runs - it would otherwise refuse the v33 schema (CONFIGURATION.md).
 
 ## The publish pipeline: build once, smoke, promote (v1.148)
 

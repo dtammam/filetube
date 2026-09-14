@@ -21,9 +21,8 @@ if [ -z "$found" ]; then
   echo "⚠ node_modules missing (looked in $PWD and every parent) — run 'npm install' before pushing." >&2
   exit 1
 fi
-# npm resolves its scripts' binaries from the CURRENT package's node_modules/.bin
-# only, so a worktree borrows the found install's .bin on PATH.
-export PATH="$found/.bin:$PATH"
+# (npm itself already puts every ancestor node_modules/.bin on its scripts'
+# PATH, so the walk is the whole fix - nothing else is needed for a worktree.)
 
 echo "→ eslint"
 npm run --silent lint

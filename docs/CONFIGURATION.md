@@ -123,11 +123,16 @@ rollback floors).
 v1.295 imported your existing `db.json` once, on their first boot, and then
 never touched it again. **From v1.296 that import is gone:** a `db.json`
 beside the database is never read, never probed and never modified - and a
-`DATA_DIR` with only a `db.json` in it starts as an EMPTY library. To bring
-a pre-v1.42 library forward, run any v1.42-v1.295 build once against that
-`DATA_DIR` (it creates `filetube.db` from your `db.json` and logs the import
-summary), then upgrade. The file itself stays byte-for-byte intact either
-way; an old-tag instance can keep running against it.
+`DATA_DIR` with only a `db.json` in it starts as an EMPTY library (the boot
+log says so: "created a fresh, EMPTY database"). To bring a pre-v1.42
+library forward: **if a v1.296+ boot already created an empty
+`filetube.db` in that `DATA_DIR`, delete it and its `filetube.db-wal` /
+`filetube.db-shm` sidecars first** (v1.42-v1.295 import only when
+`filetube.db` is absent, and they refuse to open a newer schema); then run
+any v1.42-v1.295 build once against that `DATA_DIR` (it creates
+`filetube.db` from your `db.json` and logs the import summary), then
+upgrade. The `db.json` itself stays byte-for-byte intact either way; an
+old-tag instance can keep running against it.
 
 Two related tools/levers:
 

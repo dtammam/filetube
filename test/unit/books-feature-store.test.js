@@ -107,7 +107,7 @@ test('importParsedJson: `books` routes whole through replaceFeature (never doc r
   const features = [];
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { folders: ['/books'], items: { b1: bk('b1') }, progress: {}, pins: [{ id: 'p1', dir: '/books', label: 'L', pinnedAt: 't', order: 0 }], settings: {}, audio: {} };
-  const summary = importParsedJson({ metadata: {}, books: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, books: ns }, h);
   assert.deepStrictEqual(features, [['books', ns]]);
   assert.strictEqual(summary['books.items'], 1);
   assert.strictEqual(summary['books.pins'], 1);

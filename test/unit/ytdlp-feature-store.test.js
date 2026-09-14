@@ -130,7 +130,7 @@ test('importParsedJson: `ytdlp` routes whole through replaceFeature (never doc r
   const features = [];
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { allowMembersOnly: true, subscriptions: [sub('s1')], downloadMeta: { v1: { channelUrl: 'https://www.youtube.com/@x' } }, pins: [pin('p1')], channelAvatars: {} };
-  const summary = importParsedJson({ metadata: {}, ytdlp: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, ytdlp: ns }, h);
   assert.deepStrictEqual(features, [['ytdlp', ns]]);
   assert.strictEqual(summary['ytdlp.subscriptions'], 1);
   assert.strictEqual(summary['ytdlp.downloadMeta'], 1);

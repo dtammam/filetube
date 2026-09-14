@@ -111,7 +111,7 @@ test('importParsedJson: `tv` routes whole through replaceFeature (never doc rows
   const features = [];
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { folders: ['/tv'], episodes: { e1: ep('e1') }, settings: {} };
-  const summary = importParsedJson({ metadata: {}, tv: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, tv: ns }, h);
   assert.deepStrictEqual(features, [['tv', ns]]);
   assert.strictEqual(summary['tv.folders'], 1);
   assert.strictEqual(summary['tv.episodes'], 1);

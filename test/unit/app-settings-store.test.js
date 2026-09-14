@@ -161,7 +161,7 @@ test('save-lock: `settings` on the doc object is REFUSED', () => {
 test('importParsedJson: routes `settings` through insertSetting (never doc_single); refuses without the handle / on a bad shape', () => {
   const settings = [];
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: (k, v) => settings.push([k, v]) };
-  const summary = importParsedJson({ folders: [], settings: { scanIntervalMinutes: 60, cacheMaxBytes: null, list: [1] } }, h, { source: 'bundle' });
+  const summary = importParsedJson({ folders: [], settings: { scanIntervalMinutes: 60, cacheMaxBytes: null, list: [1] } }, h);
   assert.deepStrictEqual(settings, [['scanIntervalMinutes', 60], ['cacheMaxBytes', null], ['list', [1]]]);
   assert.strictEqual(summary.settings, 3);
   const noHandle = { ...h };

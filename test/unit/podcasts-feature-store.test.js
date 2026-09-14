@@ -107,7 +107,7 @@ test('importParsedJson: `podcasts` routes whole through replaceFeature (never do
   const features = [];
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { subscriptions: [sub('s1')], episodes: { e1: ep('e1') }, settings: { pollMinutes: 0 } };
-  const summary = importParsedJson({ metadata: {}, podcasts: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, podcasts: ns }, h);
   assert.deepStrictEqual(features, [['podcasts', ns]]);
   assert.strictEqual(summary['podcasts.episodes'], 1);
   assert.strictEqual(summary['podcasts.subscriptions'], 1);

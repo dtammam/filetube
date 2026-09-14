@@ -101,8 +101,9 @@ COPY lib/ ./lib/
 # auto-find both resolve). Previously scripts/ was NOT copied, so the v1.111
 # device-pass note pointing at `node scripts/probe-faststart.js` referenced a
 # file absent from the image - this also retroactively makes THAT runnable.
-# These are the same scripts the repo already trusts (reset-admin, migrate-check,
-# the probe-* diagnostics); a few KB of JS, no runtime deps.
+# These are the same scripts the repo already trusts (reset-admin, the
+# probe-* diagnostics; migrate-check retired with the import path in v1.296);
+# a few KB of JS, no runtime deps.
 COPY scripts/ ./scripts/
 
 # Expose server port
@@ -115,7 +116,8 @@ ENV NODE_ENV=production
 # Create volume mounts for persistent database and media shares.
 # The SQLite database (filetube.db, since v1.42), thumbnails, and per-instance
 # secrets live under DATA_DIR (/app/data) - mount it or state is lost on
-# rebuild. (A legacy db.json in the mount is read-only import material only.)
+# rebuild. (A pre-v1.42 db.json in the mount is NOT read by v1.296+ - bring
+# such a library forward with one v1.42-v1.295 boot first; docs/CONFIGURATION.md.)
 # Media folders should be mounted (e.g. -v /path/to/my/movies:/media) and then configured via UI.
 VOLUME [ "/app/data" ]
 

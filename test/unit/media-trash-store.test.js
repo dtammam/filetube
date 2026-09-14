@@ -168,7 +168,7 @@ test('save-lock: `trash` on the doc object is REFUSED', () => {
 test('importParsedJson: routes `trash` verbatim through insertTrash (never doc_kv); refuses without the handle / on a bad shape', () => {
   const trash = [];
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: (id, r) => trash.push([id, r]) };
-  const summary = importParsedJson({ metadata: {}, trash: { t1: rec(), t2: { originalPath: '/m' } } }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, trash: { t1: rec(), t2: { originalPath: '/m' } } }, h);
   assert.deepStrictEqual(trash, [['t1', rec()], ['t2', { originalPath: '/m' }]]);
   assert.strictEqual(summary.trash, 2);
   const noHandle = { ...h };

@@ -55,23 +55,31 @@ function withFsSpy(run) {
   const isDbJson = (p) => {
     try { return path.basename(typeof p === 'string' ? p : String(p)) === 'db.json'; } catch (_) { return false; }
   };
+  // a listing of the directory that HOLDS the file is a probe of the file
+  const LISTERS = new Set(['readdirSync', 'opendirSync', 'globSync', 'readdir', 'opendir']);
   const patch = (obj, name, bucket) => {
     const orig = obj[name];
     obj[name] = function (p, ...rest) {
-      if (isDbJson(p)) bucket.push(name);
+      if (isDbJson(p) || (LISTERS.has(name) && typeof p === 'string' && path.resolve(p) === path.resolve(dir))) bucket.push(name);
       return orig.call(this, p, ...rest);
     };
     return () => { obj[name] = orig; };
   };
   const restores = [];
-  for (const name of ['readFileSync', 'readFile', 'openSync', 'open', 'createReadStream', 'copyFileSync', 'copyFile', 'renameSync', 'rename']) {
+  for (const name of ['readFileSync', 'readFile', 'openSync', 'open', 'createReadStream', 'copyFileSync', 'copyFile', 'cpSync', 'cp', 'renameSync', 'rename', 'openAsBlob']) {
     if (typeof fs[name] === 'function') restores.push(patch(fs, name, reads));
   }
-  for (const name of ['readFile', 'open', 'copyFile', 'rename']) {
+  for (const name of ['readFile', 'open', 'copyFile', 'cp', 'rename']) {
     if (fs.promises && typeof fs.promises[name] === 'function') restores.push(patch(fs.promises, name, reads));
   }
-  for (const name of ['existsSync', 'statSync', 'lstatSync', 'accessSync']) {
-    restores.push(patch(fs, name, probes));
+  // (gate: the probe list covers the path-resolvers and directory listers
+  // too - an obfuscated name through realpathSync/readdirSync escaped the
+  // first cut while the source lock never saw the spelling)
+  for (const name of ['existsSync', 'statSync', 'lstatSync', 'accessSync', 'realpathSync', 'readdirSync', 'opendirSync', 'globSync']) {
+    if (typeof fs[name] === 'function') restores.push(patch(fs, name, probes));
+  }
+  for (const name of ['stat', 'lstat', 'access', 'realpath', 'readdir', 'opendir']) {
+    if (fs.promises && typeof fs.promises[name] === 'function') restores.push(patch(fs.promises, name, probes));
   }
   try {
     return { result: run(), reads, probes };
@@ -82,9 +90,9 @@ function withFsSpy(run) {
 
 test('control: the spy is live - a read and a probe of db.json through the spied fs are recorded', () => {
   fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
-  const { reads, probes } = withFsSpy(() => { fs.existsSync(jsonPath()); return fs.readFileSync(jsonPath(), 'utf8'); });
+  const { reads, probes } = withFsSpy(() => { fs.existsSync(jsonPath()); fs.readdirSync(dir); return fs.readFileSync(jsonPath(), 'utf8'); });
   assert.deepStrictEqual(reads, ['readFileSync']);
-  assert.deepStrictEqual(probes, ['existsSync']);
+  assert.deepStrictEqual(probes, ['existsSync', 'readdirSync'], 'a listing of the directory counts as a probe of the file');
 });
 
 test('filetube.db present + a NON-JSON db.json beside it -> boots from SQLite; db.json is never read, never probed, bytes untouched', () => {
@@ -98,6 +106,7 @@ test('filetube.db present + a NON-JSON db.json beside it -> boots from SQLite; d
     assert.deepStrictEqual(reads, [], `db.json content was read via: ${reads.join(', ')}`);
     assert.deepStrictEqual(probes, [], `db.json was probed via: ${probes.join(', ')} (Wave 7: boot does not even look for it)`);
     assert.deepStrictEqual(lines.filter((l) => /db\.json|import|stranded|ignored/i.test(l)), [], 'no boot line mentions a legacy file');
+    assert.ok(!lines.some((l) => /created a fresh, EMPTY database/.test(l)), 'an existing database never triggers the fresh-database line');
     const loaded = result.adapter.load();
     assert.deepStrictEqual(loaded.metadata.marker, SEED.metadata.marker, 'state comes from filetube.db, not the file beside it');
     assert.strictEqual(loaded.metadata.vid1.title, 'seeded item');
@@ -111,11 +120,14 @@ test('NO filetube.db + a NON-JSON db.json -> a FRESH empty schema (never an impo
   fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
   const before = sha(jsonPath());
 
-  const { result, reads, probes } = withFsSpy(() => openAdapter(dir, { log: () => {} }));
+  const lines = [];
+  const { result, reads, probes } = withFsSpy(() => openAdapter(dir, { log: (m) => lines.push(m) }));
   try {
     assert.deepStrictEqual(reads, [], `db.json content was read via: ${reads.join(', ')}`);
     assert.deepStrictEqual(probes, [], `db.json was probed via: ${probes.join(', ')}`);
     assert.deepStrictEqual(result.adapter.load(), {}, 'a fresh empty library - the legacy file is not a seed any more');
+    assert.strictEqual(lines.filter((l) => /created a fresh, EMPTY database/.test(l)).length, 1, `the one signal an operator gets (gate): ${lines.join(' | ')}`);
+    assert.ok(!lines.some((l) => /db\.json/.test(l)), 'and it never names the legacy file');
     assert.strictEqual(result.adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   } finally {
     result.adapter.close();

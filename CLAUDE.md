@@ -237,7 +237,8 @@ just what it claims (reviewers are wrong too).
    `pointerdown` not `click` for tap-outside; the background-audio machinery in
    player.js is battle-won - reuse it, don't rebuild it.
 9. **Migrations are APPEND-ONLY once executed** (editing an executed block hangs
-   the suite); `node:sqlite` truncates TEXT at NUL; schema bumps are additive.
+   the suite); `node:sqlite` reads a NUL-bearing TEXT back truncated on Node
+   24.14 and older (#225) - refuse NUL ids at every write; schema bumps are additive.
 
 ## Environment
 

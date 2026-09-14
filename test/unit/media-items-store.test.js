@@ -142,7 +142,7 @@ test('the seams: import extracts viewCount to its handle and routes items throug
   const written = [];
   const counts = [];
   const h = { insertItem: (id, rec) => written.push([id, rec]), insertViewCount: (id, c) => counts.push([id, c]) };
-  const summary = importParsedJson({ metadata: { v1: { id: 'v1', viewCount: 7, title: 'one' }, v2: { id: 'v2' } } }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: { v1: { id: 'v1', viewCount: 7, title: 'one' }, v2: { id: 'v2' } } }, h);
   assert.deepStrictEqual(written, [['v1', { id: 'v1', title: 'one' }], ['v2', { id: 'v2' }]], 'the count is extracted off the item; the rest lands verbatim');
   assert.deepStrictEqual(counts, [['v1', 7]]);
   assert.strictEqual(summary.metadata, 2);

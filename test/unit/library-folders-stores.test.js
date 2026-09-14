@@ -169,7 +169,7 @@ test('importParsedJson: the list routes through replaceFolders (validated whole,
     insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {},
     replaceFolders: (list) => { calls.folders = list; }, insertFolderSetting: (k, v) => calls.fs.push([k, v]), insertFolderDisplayName: (k, v) => calls.fd.push([k, v]),
   };
-  const summary = importParsedJson({ folders: ['/a', '/b', '/a'], folderSettings: { '/a': SETTING }, folderDisplayNames: { N: 'Name' }, metadata: {} }, h, { source: 'bundle' });
+  const summary = importParsedJson({ folders: ['/a', '/b', '/a'], folderSettings: { '/a': SETTING }, folderDisplayNames: { N: 'Name' }, metadata: {} }, h);
   assert.deepStrictEqual(calls.folders, ['/a', '/b']);
   assert.deepStrictEqual(calls.fs, [['/a', SETTING]]);
   assert.deepStrictEqual(calls.fd, [['N', 'Name']]);

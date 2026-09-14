@@ -938,7 +938,7 @@ function __resetDatabaseForTests() {
   // so its session cookie stays valid all suite. Only the auth-flow suite,
   // which tests the zero-users funnel, wipes users — via __clearUsersForTests
   // below. Per-user STATE (progress/liked/pins), however, IS wiped — chunk 4b
-  // moved it out of the doc tables the exclusiveReplace covers, and a case's
+  // moved it into the per-user tables, outside exclusiveReplace's wipe, and a case's
   // watch positions must not bleed into the next (the pre-4b reset semantics,
   // restored for the new home).
   return replacePersistedState(null).then(() => {
@@ -4101,8 +4101,9 @@ async function runScanDirectories() {
     if (tombstone && typeof tombstone.deletedAt === 'number') {
       // v1.42 safe-mode lever (design review F1 — CRITICAL): under
       // FILETUBE_READ_ONLY_MEDIA the scan must never act on a tombstone
-      // match. The destroy scenario this blocks: the beta imports prod's
-      // the database INCLUDING a pending tombstone; prod's own scan later retires
+      // match. The destroy scenario this blocks: the beta RESTORES prod's
+      // backup bundle (until v1.295 it could also import prod's legacy JSON
+      // file) INCLUDING a pending tombstone; prod's own scan later retires
       // its copy and the user re-downloads the video (yt-dlp --mtime
       // back-dates the fresh file, so the mtime<=deletedAt guard passes);
       // the beta's automatic boot scan then matches the imported tombstone
@@ -9706,7 +9707,7 @@ app.get('/api/admin/backup', async (req, res) => {
 
 // Validation is strict and field-level: an unknown top-level key or a users
 // array this version cannot restore REFUSES the whole bundle (never a lossy
-// partial restore — the same posture as the boot importer).
+// partial restore — the posture the v1.42-v1.295 boot importer shared).
 function validateFeatureBundle(def, ns) {
   const badKey = (k) => typeof k !== 'string' || k === '' || k.includes('\u0000');
   const show = (k) => String(k).split('\u0000').join('\\u0000');
@@ -10089,11 +10090,12 @@ app.post('/api/admin/restore', (req, res, next) => {
       // refusal/throw must roll back with the FILESYSTEM untouched — the
       // original ordering destroyed the old logo bytes before the import
       // ran, so a failed restore's "rolled back" response lied about the
-      // logo. One classification, two callers (boot import + restore): the
-      // same strict importer maps namespaces to rows; the bundle's first-class
-      // `viewCounts` key routes to media_view_counts through the
-      // insertViewCount handle (Wave 1), inside this same transaction.
-      sqliteDb.importParsedJson(dbPart, handles, { source: 'bundle' });
+      // logo. One classification, ONE caller since Wave 7 (the v1.42-v1.295
+      // boot import was the other): the strict importer maps namespaces to
+      // rows; the bundle's first-class `viewCounts` key routes to
+      // media_view_counts through the insertViewCount handle (Wave 1), inside
+      // this same transaction.
+      sqliteDb.importParsedJson(dbPart, handles);
       // Logo bytes LAST — still inside the exclusive section, still BEFORE
       // the COMMIT that carries the mime keys (design review F6's ordering
       // holds: a crash between these file ops and the commit leaves new

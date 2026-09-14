@@ -231,7 +231,7 @@ test('importParsedJson: a bundle `viewCounts` map and a legacy embedded item.vie
   const summary = importParsedJson({
     viewCounts: { fromBundle: 3, half: 2.5, zero: 0, junk: 'x' },
     metadata: { legacy: { id: 'legacy', title: 'L', viewCount: 4 }, plain: { id: 'plain' } },
-  }, h, { source: 'bundle' });
+  }, h);
   assert.deepStrictEqual(vc.sort(), [['fromBundle', 3], ['half', 2], ['legacy', 4]].sort());
   assert.deepStrictEqual(items.find(([id]) => id === 'legacy')[1], { id: 'legacy', title: 'L' }, 'the embedded field is stripped off the item (Wave 6: the item lands through insertItem)');
   assert.strictEqual(summary.viewCounts, 3);
@@ -242,12 +242,12 @@ test('importParsedJson: when a source carries BOTH shapes for one id, the first-
   const summary = importParsedJson({
     viewCounts: { both: 9, junkFirstClass: 'x' },
     metadata: { both: { id: 'both', viewCount: 4 }, junkFirstClass: { id: 'junkFirstClass', viewCount: 2 } },
-  }, h, { source: 'bundle' });
+  }, h);
   assert.deepStrictEqual(vc.filter(([id]) => id === 'both'), [['both', 9]], 'exactly one write for the id, the first-class value');
   assert.deepStrictEqual(vc.filter(([id]) => id === 'junkFirstClass'), [['junkFirstClass', 2]], 'an UNUSABLE first-class value falls back to the embedded one');
   assert.strictEqual(summary.viewCounts, 2, 'each id counted once');
   // Through the real restore seam the same rule holds on disk.
-  adapter.exclusiveReplace((handles) => importParsedJson({ viewCounts: { both: 9 }, metadata: { both: { id: 'both', viewCount: 4 } } }, handles, { source: 'bundle' }));
+  adapter.exclusiveReplace((handles) => importParsedJson({ viewCounts: { both: 9 }, metadata: { both: { id: 'both', viewCount: 4 } } }, handles));
   assert.deepStrictEqual(createViewCountStore(adapter).getAll(), { both: 9 });
 });
 

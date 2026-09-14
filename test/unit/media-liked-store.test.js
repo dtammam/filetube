@@ -130,7 +130,7 @@ test('save-lock: `liked` on the doc object is REFUSED', () => {
 test('importParsedJson: the list routes through replaceLiked (validated whole, duplicates collapsed); refused without the handle / on a bad entry', () => {
   let got = null;
   const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: (list) => { got = list; } };
-  const summary = importParsedJson({ metadata: {}, liked: ['a', 'b', 'a'] }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, liked: ['a', 'b', 'a'] }, h);
   assert.deepStrictEqual(got, ['a', 'b']);
   assert.strictEqual(summary.liked, 2);
   const noHandle = { ...h };

@@ -274,7 +274,7 @@ test('importParsedJson: routes both record namespaces verbatim through their han
     progress: { v1: { timestamp: 1 }, v2: 918 },
     deleteTombstones: { t1: { filePath: '/x', deletedAt: 1 } },
     metadata: { v1: { id: 'v1' } },
-  }, h, { source: 'bundle' });
+  }, h);
   assert.deepStrictEqual(seen.progress, [['v1', { timestamp: 1 }], ['v2', 918]]);
   assert.deepStrictEqual(seen.tombstones, [['t1', { filePath: '/x', deletedAt: 1 }]]);
   assert.strictEqual(summary.progress, 2);

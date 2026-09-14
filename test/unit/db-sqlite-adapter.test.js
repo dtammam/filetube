@@ -488,7 +488,7 @@ test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are RE
 // classifier also served the one-time boot import of a legacy db.json.
 function restoreInto(a, parsed) {
   let summary;
-  a.exclusiveReplace((handles) => { summary = importParsedJson(parsed, handles, { source: 'bundle' }); });
+  a.exclusiveReplace((handles) => { summary = importParsedJson(parsed, handles); });
   return summary;
 }
 

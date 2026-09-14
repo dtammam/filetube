@@ -105,6 +105,52 @@ test('migration v33: REFUSES to drop a table that still holds a row - names ever
   assert.deepStrictEqual(Object.keys(adapter.load().metadata), ['kept']);
 });
 
+test('migration v33: the refusal names a NUL-bearing namespace as BYTES (never two strays under one truncated name - #225) and caps the list', () => {
+  const NUL = String.fromCharCode(0);
+  rewindToV32((raw) => {
+    const ins = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
+    ins.run(`evil${NUL}x`, 'k', '1'); // the bind stores the bytes on every runtime (#225)
+    ins.run('evil', 'k', '1');
+    for (let i = 0; i < 25; i++) ins.run(`ns${String(i).padStart(2, '0')}`, 'k', '1');
+  });
+  let message = '';
+  try { new SqliteAdapter(dbPath(), { log: () => {} }); } catch (err) { message = err.message; }
+  assert.match(message, /doc_kv namespace <bytes 6576696C0078> \(1 row\(s\)\)/, 'the NUL-bearing name is reported as its bytes');
+  assert.match(message, /doc_kv namespace 'evil' \(1 row\(s\)\)/, 'and the real one by name - two distinct strays');
+  assert.strictEqual((message.match(/row\(s\)/g) || []).length, 20, 'capped at 20 entries');
+  assert.match(message, /; \.\.\. and 7 more\./, 'the remainder is counted, not printed');
+  assert.match(message, /The document tables and their rows are unchanged; the database is still at v32/);
+  const raw = openRaw(dbPath());
+  try {
+    assert.strictEqual(version(raw), 32);
+    assert.strictEqual(raw.prepare('SELECT COUNT(*) AS c FROM doc_kv').get().c, 27, 'every row survived');
+  } finally { raw.close(); }
+});
+
+test('the below-v33 guard LOGS when a STAMPED file lacks a doc table (tampering) and stays silent for a fresh file and for a rewind that re-created them', () => {
+  const logged = [];
+  const orig = console.error;
+  console.error = (...a) => logged.push(a.join(' '));
+  try {
+    adapter.close();
+    let raw = openRaw(dbPath());
+    raw.exec('PRAGMA user_version = 25'); // stamped, tables absent - the tamper shape
+    raw.close();
+    reopen();
+    assert.strictEqual(logged.filter((l) => /MISSING its document table\(s\) doc_kv, doc_single/.test(l)).length, 1, logged.join(' | '));
+    logged.length = 0;
+    rewindToV32(); // the tables re-created by the rewind: nothing to say
+    reopen();
+    assert.deepStrictEqual(logged.filter((l) => /MISSING/.test(l)), []);
+    adapter.close();
+    raw = openRaw(dbPath());
+    raw.exec('PRAGMA user_version = 0'); // a fresh-file shape: the v1 block creates them, no log
+    raw.close();
+    reopen();
+    assert.deepStrictEqual(logged.filter((l) => /MISSING/.test(l)), []);
+  } finally { console.error = orig; }
+});
+
 test('migration v33: a file that would-be-refused is never partially dropped - one stray in doc_single alone keeps doc_kv too', () => {
   rewindToV32((raw) => { raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('lonely', 'null'); });
   assert.throws(() => new SqliteAdapter(dbPath(), { log: () => {} }), /doc_single name 'lonely' \(1 row\(s\)\)/);
@@ -162,5 +208,5 @@ test('the adapter exports no doc-model list, no doc handle, no boot importer (Wa
     .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
   const fromClass = src.slice(src.indexOf('class SqliteAdapter'));
   assert.ok(!/doc_kv|doc_single|SNAPSHOT_SEP|snapshot\.set|snapshot\.get/.test(fromClass), 'from the adapter class down, nothing names a doc table or the doc snapshot');
-  assert.ok(!/require\('node:fs'\)/.test(src), 'the adapter module reads no file but the database (the fs require left with the importer)');
+  assert.ok(!/require\(\s*['"`](?:node:)?fs(?:\/promises)?['"`]\s*\)/.test(src), 'the adapter module reads no file but the database (the fs require left with the importer - either spelling)');
 });
