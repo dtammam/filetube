@@ -393,15 +393,83 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     **19,217**, tests 8,368 / 665 + the 2 new files. Full suite Node 22 before the gate:
     8538 / 8535 / 0 fail / 3 skipped.
 
-### Wave 4 - config singletons, batched  (full gate)
-- `settings` (48), `folders` (39), `folderDisplayNames` (22), `liked` (12),
-  `folderSettings` (10) -> `settings` (KV or typed columns), `folders`, `folder_display_names`,
-  `media_liked`, `folder_settings`. Extract `moveItemToFolder` into `lib/media/folders`.
+### Wave 4 - config singletons  (batched with Wave 5 on ONE branch - Dean's pacing change)
+- Kickoff figures: `settings` (48), `folders` (39), `folderDisplayNames` (22), `liked` (12),
+  `folderSettings` (10). **Measured at the wave's start** (`node scripts/relational-arc-refs.js`,
+  comments stripped, HEAD d5a80dce): server.js `settings` 46 / `folders` 11 /
+  `folderDisplayNames` 16 / `liked` 15 / `folderSettings` 8; lib `settings` 2 / `folders` 10
+  (3 code sites in `lib/ytdlp/index.js` + `lib/podcasts/index.js`, the rest log strings).
+  Test blast radius: fixture files carrying `folders:` **148**, `folderSettings:` 128,
+  `settings:` 122, `liked:` 64; `db.<key>` spellings inside tests: folders 207,
+  folderSettings 43, settings 39, liked 28, folderDisplayNames 4; `saveDatabase(<variable>)`
+  94 sites. The test side is the larger half of this wave.
+- **Design (2026-09-14):**
+  - Two new shared primitives beside `lib/media/jsonRowStore.js`, same contract (adapter
+    in, statements cached on the adapter, joins an open transaction, ids by the ONE
+    `isPersistableId` rule, tolerant reads / asserting writes):
+    `lib/db/kvStore.js` - `defineKvStore({label, table})`: an object of key -> JSON value
+    as one row per key (`get()` merges construction-time defaults, `update(patch)` writes
+    only the touched keys, `replaceAll` refuse-whole); and `lib/db/orderedListStore.js` -
+    `defineOrderedListStore({label, table, column})`: an ordered list of strings as
+    `(value PK, position)` rows (`list()` in position order, `add` appends at max+1,
+    `remove`, `rekey` OR REPLACE, `replaceAll` dedupes keep-first - a list has set
+    semantics, so a legacy duplicate collapses instead of refusing an old export).
+    `jsonRowStore` gains a `keyColumn` option (default `media_id`) so a store keyed by a
+    path or a folder name does not carry a lying column name.
+  - Tables (one schema bump per group, each its own rollback floor, each a separate commit):
+    **v24** `app_settings (key TEXT PK, json)` <- `settings` (`lib/config/settings.js`;
+    `DEFAULT_SETTINGS` stays in server.js and is handed to the store, so `get()` is what
+    `withDefaultSettings(db.settings)` was; the bundle keeps exporting the MERGED object);
+    **v25** `library_folders (path PK, position)` <- `folders`,
+    `library_folder_settings (root_path PK, json)` <- `folderSettings`,
+    `channel_folder_display_names (folder_name PK, json)` <- `folderDisplayNames`
+    (`lib/config/folders.js`, `folderSettings.js`, `folderDisplayNames.js`);
+    **v26** `media_liked (media_id PK, position)` <- `liked` (`lib/media/liked.js` - the
+    FROZEN pre-auth likes the first admin adopts once, Wave 2's progress posture; its
+    carriers are the four in-mutator rename/trash/restore/purge re-keys, which ride
+    `inSaveTransaction`).
+  - Consumers: reads become store reads at the same site (a mutator that read `db.settings`
+    reads `settingsStore.get()`); a long-lived snapshot (the scan's `db` taken at scan
+    start) captures `settingsStore.get()` / `folderStore.list()` ONCE where it captured
+    `db`, so a mid-scan config change is still not observed mid-scan (unchanged semantics).
+    Writes inside mutators ride `inSaveTransaction` (config POST, settings POST, the logo
+    mime keys, the notifications seed stamp, the scan's display-name heal, the four liked
+    re-keys). The backup bundle keeps every key and shape; `BACKUP_NAMESPACE_KEYS` shrinks
+    to `metadata` + the containers and the five join `RELATIONAL_BUNDLE_KEYS`; restore
+    routes them through handles (`insertSetting`, `replaceFolders`, `insertFolderSetting`,
+    `insertFolderDisplayName`, `replaceLiked`) - validated field-level before the wipe.
+  - Tests: `test/helpers/seed-state.js` routes the five keys; a codemod turns
+    `saveDatabase({` fixtures into `seedState({` and `loadDatabase().<key>` reads into
+    store reads; mutator/variable spellings are hand-fixed (the Wave 3 rule: a codemod
+    never rewrites an assignment TARGET). `readPersistedDatabase` surfaces the five under
+    their old keys when rows exist (tests only).
+  - **`moveItemToFolder` extraction deferred to Wave 7**, same reason as Wave 3's
+    `trashItem`: a deps-bag threading of ~20 server.js internals is a second risk class
+    on a data-moving wave; storage move only here. Disclosed.
+- **Gate pacing on the shared branch:** the two waves are gated in TWO passes by the SAME
+  reviewer agents (pass A after the Wave 4 commits, pass B after Wave 5), so each review
+  is bounded; ONE release (v1.294.0) at the end, no device pass between 3 and 4. Split
+  trigger (disclosed if it fires): if pass A needs a third fix round, or pass B's diff is
+  more than a seat can honestly cover in one pass, Wave 5 releases separately.
 
-### Wave 5 - feature catalogs, batched (sub-waved per feature)  (full gate)
-- The `books.*`, `music.*`, `podcasts.*`, `tv.*`, `ytdlp.*` content namespaces (each
-  already has a `lib/<feature>` owner) -> relational tables owned by that module. May
-  ship as one sub-wave per feature if the batch is too large for a single gate.
+### Wave 5 - feature catalogs  (same branch; sub-waved per feature, smallest first)
+- The `books.*`, `music.*`, `podcasts.*`, `tv.*`, `ytdlp.*` namespaces (each already has a
+  `lib/<feature>` owner). Measured at the wave's start (same census): per-feature code
+  sites server/lib - tv 0/20 (+ `readTv` 13 / `ensureTv` 3 accessor calls in server.js),
+  music 13/24 (+23/3), books 0/57 (+25/7), podcasts 4/90 (+12/0; `ensurePodcasts` 22 in
+  lib), ytdlp 15/95 (+ `ensureYtdlp` 25 in lib). Order: tv -> music -> books -> podcasts
+  -> ytdlp (the security-gated downloader last, with the most probes).
+- Per feature: the id-keyed catalogs (`items`/`tracks`/`episodes`/`progress`/`audio`/
+  `downloadMeta`/`channelAvatars`) become `jsonRowStore` tables `<feature>_<name>`; the
+  root lists (`folders`) become `orderedListStore` tables; the `settings` objects (and
+  `ytdlp.allowMembersOnly`) become `kvStore` tables; `pins` / `subscriptions` /
+  `music.channels` become jsonRow tables keyed by id with a `position` column derived
+  from array order. The feature's `readX(db)` becomes `store.read()` (the same snapshot
+  shape, so the GET routes change mechanically); every `ensureX(db)` mutation site is
+  hand-rewritten to store writes inside `inSaveTransaction`. The doc container key
+  (`db.books`) leaves `CONTAINER_KEYS` when its last sub-key moves.
+- Each feature = one schema bump (v27 tv, v28 music, v29 books, v30 podcasts, v31 ytdlp),
+  one commit, its own rollback floor, its own migration + atomicity + bundle tests.
 
 ### Wave 6 - `metadata` -> `media_items`  (SOLO, FULL gate, adversarial destroys the catalog)
 - The crown jewel: 172 refs, 284 rows, written by the 1,533-line `runScanDirectories`.
