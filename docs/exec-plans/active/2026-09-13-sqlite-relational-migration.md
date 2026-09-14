@@ -1035,12 +1035,50 @@ disclosed.
     `tvDb.read()` calls out of server.js while the tv-feature-store lock still read server.js
     alone (S4 re-points it); aborted, merged S4 first, then S10b. Merged tree at three slices:
     8778 / 8778 / 0 / 0 (main checkout, no parallel load).
-  - Merged four-slice tree: server.js **13,566** lines (17,093 at v1.297.0), 22 route +
-    middleware registrations (98); the census's `mime` false positive struck in three slices.
-    Merged four-slice tree (main checkout, no parallel load): 8782 / 8782 / 0 fail / 0 skipped;
-    the verifier over all 29 R2 groups reports exactly the six documented seam routes; the
-    routing signature's unsorted output is identical to the R2 base.
-  - **Gate:** (filled after the gate)
+  - Merged four-slice tree: server.js **13,566** lines at the record commit 6b1476f1 (17,093 at
+    v1.297.0), 22 route + middleware registrations (98); the census's `mime` false positive struck
+    in three slices. Merged four-slice tree (main checkout, no parallel load): 8782 / 8782 / 0 fail
+    / 0 skipped; the verifier over all 29 R2 groups reports exactly the six documented seam routes;
+    the routing signature's unsorted output is identical to the R2 base. (The gate fix round then
+    took the tree to **13,563** lines / 8785 tests - the released tip; see the Gate entry.)
+  - **Gate (both seats, one fix round):** Full gate, fresh QA + adversarial instances on the whole
+    branch (a new Opus session could not resume the Fable-session reviewers). Both re-established
+    behaviour independently before finding anything: the routing signature's UNSORTED output is
+    byte-identical, line-for-line, to BOTH the R2 base 52d3e03e AND v1.297.0 (c5b91c31) - 199
+    routes, a complete proof that first-match resolution is unchanged for every URL; the verifier
+    over all 29 R2 groups fails on exactly the six documented seam routes and nothing else (each
+    diffed to the single documented token: `ffmpegAvailable`->`ffmpegIsAvailable()` x4,
+    `ttsEngineVersion`->`ttsEngineVersion()` x1, `./lib/ytdlp/activity`->`../ytdlp/activity` x2);
+    201 export names + 13 re-export identities intact; no fourth frozen seam exists (an AST walk of
+    all 32 register/factory deps objects found zero keys bound to a reassigned `let`); every
+    fix-round test binds under mutation (the two new RBAC admin gates on POST /api/config +
+    /api/settings, the DELETE /api/videos/:id read-only guard, the deps-contract test both
+    directions, the card-like statement-scoped window that is NOT satisfied by lib/user/routes.js's
+    identical `likedSet` line). **ADV APPROVE with two SUGGESTIONS; QA REQUEST CHANGES with one
+    WARNING** (no CRITICAL either seat). The WARNING: three require-block positional comments
+    (server.js `GET /api/stats` / `GET /api/transcript/:id` / `GET /api/videos` "below") went stale
+    when those routes moved to lib/media/routes.js this release, and the fix round's QA W3 deferral
+    ("R3 moves those regions") was factually wrong for them - the require block is permanently
+    settled, no R3 slice touches it. Fix round (this commit): the three comments now name
+    lib/media/routes.js (require block is not a moved body - no byte-identity invariant); the
+    remaining deferred positional comments (transcode/stream/audio-extract regions at server.js
+    L1265/L2504/L12602/L12712) are genuinely S8-moved and stay disclosed for R3. ADV SUGGESTION 1
+    (server.js 13,566 -> 13,561 doc staleness) applied - re-measured 13,563 at the released tip
+    after this comment fix and carried into the ROADMAP + this record. ADV SUGGESTION 2, recorded
+    for honesty: the adversarial seat could not reproduce the fix commit c9c503d2's magnitude claim
+    that the moved `/api/*/:id` slash-star "swallowed 170 lines to EOF from every text lock" (at the
+    current line no `*/` follows to EOF, so the non-greedy block regex never matches) - the reword
+    to `/api/<kind>/:id` is nonetheless a correct improvement, and the tree is measurably
+    porosity-free (zero line-comment `/*` in any of the 14 extracted modules; #228's two remaining
+    openers are pre-existing server.js lines, reduced from three by this wave). Delta re-confirm
+    (fix commit 1c469884, comments + docs only): BOTH seats APPROVE - ADV re-measured the code
+    stream byte-identical to its approved tip and the doc numbers accurate; QA verified the three
+    comments now name the right file and independently confirmed the c9c503d2 magnitude claim was
+    0 lines masked, not 170. Dual-Node (sequential, reviewers idle): 22.23.1 8785 / 8785 / 0 fail
+    / 0 skipped; 24.20.0 (the CI runner's minor) 8785 / 8785 / 0 / 0. Shipped v1.298.0
+    (device pass PENDING). Known gap disclosed: books-api T6 is a pre-existing time-dependent test
+    that can red under parallel-suite load, proven independent of this diff (S5-alone + any added
+    test file reds the identical two tests) - tracked in the tech-debt tracker, not fixed here.
 
 ---
 

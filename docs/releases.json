@@ -3010,5 +3010,11 @@
     "date": "2026-09-14",
     "title": "Behind the scenes: the server code starts moving into smaller pieces",
     "intent": "Nothing changes on screen. The part of the server that handles your account, the play queue, the bell, push alerts, watch history, likes, preferences and the books library has been moved out of one very large file into smaller ones, exactly as it was, so future fixes land faster and with less risk. Every page, button and download works as before, and a backup taken on the previous version restores normally."
+  },
+  {
+    "version": "1.298.0",
+    "date": "2026-09-14",
+    "title": "Behind the scenes: more of the server moves into smaller pieces",
+    "intent": "Nothing changes on screen. More of the large server file has been split into smaller ones, exactly as it was: the Music and Shows libraries with their scans, the video browsing, search and stats pages, and the settings and maintenance controls. Every page, button, scan and download works as before, and a backup taken on the previous version restores normally."
   }
 ]

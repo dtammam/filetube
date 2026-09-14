@@ -216,7 +216,10 @@ test('source lock: the route surface never names app_settings or the dead doc ke
   for (const call of ['settingsStore.get(', 'settingsStore.getKey(', 'settingsStore.set(', 'settingsStore.update(', 'settingsStore.remove(', 'settingsStore.has(']) {
     assert.ok(server.includes(call), `the route surface calls ${call}`);
   }
-  assert.ok(/inSaveTransaction\(\(\) => settingsStore\.(set|update|remove)\(/.test(server), 'a mutator\'s settings write rides the doc commit');
+  // EXACT (the R2 gate's S5): existential, a moved writer could lose its ride while one
+  // surviving site kept the lock green - four writers on the surface (three in
+  // lib/config/routes.js, one in server.js).
+  assert.strictEqual((server.match(/inSaveTransaction\(\(\) => settingsStore\.(set|update|remove)\(/g) || []).length, 4, 'every mutator\'s settings write rides the doc commit - four writers on the surface');
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
     .filter((p) => !p.startsWith('test/') && !/(^|\/)(vendor|node_modules)\//.test(p));
   const writers = tracked.filter((p) => /(INSERT\s+INTO|UPDATE)\s+(app_settings|\$\{settingsDef\.TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
