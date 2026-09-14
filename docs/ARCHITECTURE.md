@@ -1,7 +1,7 @@
 # FileTube Architecture
 
 Current-state reference, rewritten 2026-08-15 (v1.124.1) - the previous edition
-described the pre-v1.42 db.json era. Facts here are anchored to real files;
+described the pre-v1.42 JSON-file era. Facts here are anchored to real files;
 when this document and the code disagree, the code wins and this file is the
 bug. History lives in ROADMAP.md and docs/exec-plans/completed/, not here.
 
@@ -55,39 +55,44 @@ marker, for v1.126's `folderDisplayNames`), and a build REFUSES at boot any
 database stamped newer than itself. Rollback floor: databases touched by
 >=v1.126 are not writable by <=v1.125.
 
-Two buckets coexist in the one file:
+Every table is relational (since v1.296, Wave 7 of the relational-migration
+arc; from v1.42 to v1.295 a document store - `doc_kv` / `doc_single`, the
+pre-v1.42 object shape persisted per row - shared the file and was drained
+one namespace per wave, then dropped by schema v33):
 
-1. **The document store** - the old db.json object shape, persisted per row:
-   `doc_kv(namespace, key, json)` for per-item namespaces (EMPTY since Wave 6:
-   the media index `metadata` left for `media_items` - `lib/media/items.js`,
-   which keeps the `{ metadata }` object shape the routes read and the
-   per-row diff-save) and `doc_single(name, json)` for small whole
-   objects (EMPTY since Wave 5: the tv / music / books / podcasts / ytdlp
-   containers left for their feature stores - `lib/db/featureStore.js`;
-   Wave 7 drops both tables; `settings`, the folder
-   config and the frozen `liked` list left for `app_settings` / `library_folders` /
-   `library_folder_settings` / `channel_folder_display_names` / `media_liked`
-   in Wave 4 - the `lib/config/` stores and `lib/media/liked.js`). The two
-   namespace lists are a LOCK: `assertNoUnknownKeys()` throws on any key
-   outside them, so a new namespace can never be silently dropped. `save()` is
-   a diff-save against a per-row snapshot - only changed rows are written, in
-   one transaction.
+1. **Feature-owned media / config / catalog tables** - `media_items` (the
+   library index, `lib/media/items.js`: the routes still read it as the
+   `{ metadata }` object `load()` assembles and the mutators still write that
+   object inside an `updateDatabase` tick; the adapter's `save()` diffs it
+   back ROW BY ROW in one transaction with every carrier effect),
+   `media_view_counts` / `media_progress` / `media_delete_tombstones` /
+   `media_trash` / `media_liked` (the `lib/media/` stores), `app_settings` /
+   `library_folders` / `library_folder_settings` /
+   `channel_folder_display_names` (the `lib/config/` stores), and the tv /
+   music / books / podcasts / ytdlp catalogs behind `lib/db/featureStore.js`.
+   The doc-object key list (`DOC_OBJECT_KEYS`, just `metadata`) is a LOCK:
+   `assertNoUnknownKeys()` throws on any other key, so a namespace can never
+   be silently dropped - a new one is a store module + a migration + a test.
 2. **Relational per-user tables** - everything user-scoped: `users`,
    `user_progress`, `user_liked`, `user_watched`, `user_queue`,
    `user_restrictions`, `user_search_history`, `user_feed_hidden`,
    notifications/push tables, and the per-place progress/liked/pins tables for
    books, music, and podcasts. The accessor layer is `lib/auth/store.js`.
 
-Integrity guards worth knowing: `node:sqlite` truncates TEXT at NUL
-(row keys are refused loudly if they carry one); hostile `__proto__` row keys
+Integrity guards worth knowing: `node:sqlite` reads a NUL-bearing TEXT back
+truncated on Node 24.14 and older (tech-debt #225), so row keys are refused
+loudly if they carry one; hostile `__proto__` row keys
 round-trip as inert data via `Object.defineProperty`; the module-level
 `backup()` API is deliberately unused (unsafe under same-process writes) -
 backup bundles are SELECT-assembled.
 
-**db.json is a read-only legacy artifact.** Boot: `filetube.db` exists → use
-it; else import `db.json` once (strict - unknown keys ABORT rather than lose
-data), atomically; else fresh schema. Nothing writes db.json anymore
-(byte-hash-locked by `test/integration/dbjson-frozen.test.js`).
+**The pre-v1.42 db.json is invisible.** Boot: `filetube.db` exists → use it;
+else fresh schema. The one-time import of a legacy `db.json` (v1.42-v1.295)
+is gone since Wave 7: a file of that name beside the database is never named,
+probed or read (`test/unit/dbjson-never-read.test.js` binds it with an fs
+spy; `test/integration/dbjson-frozen.test.js` boots the real server beside a
+garbage one). A pre-v1.42 instance upgrades by running any v1.42-v1.295
+build once first (CONFIGURATION.md).
 
 Write path in the monolith: `updateDatabase(mutatorFn)` is a single in-process
 promise-chain mutex (mutators are synchronous; returning false skips the

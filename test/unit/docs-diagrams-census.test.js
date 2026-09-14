@@ -4,12 +4,12 @@
 // discipline applied to diagrams, which rot FASTER than prose because nobody
 // re-reads a picture). Three bindings, all LIVE-DERIVED - never hand-counted:
 //   1. every repo path the document names exists on disk;
-//   2. every persisted namespace (doc_kv + doc_single, parsed from
-//      lib/db/sqlite.js's own LOCK lists) and every CREATE TABLE name appears
-//      in the document - a rename/addition reds this file until the diagram
-//      is updated;
-//   3. the headline counts the document states (namespace/singleton/table
-//      counts, schema version) match the live derivation.
+//   2. every CREATE TABLE name appears in the document - a rename/addition
+//      reds this file until the diagram is updated (until Wave 7 the two
+//      doc-model namespace lists were parsed and bound here too; v33 dropped
+//      the document tables and the lists with them);
+//   3. the headline counts the document states (table count, schema version,
+//      the document tables' drop version) match the live derivation.
 // Route counts are deliberately NOT bound (high churn - they are stated as a
 // dated "measured at" snapshot in prose, the ARCHITECTURE.md "~140" posture).
 const { test } = require('node:test');
@@ -55,15 +55,16 @@ test('every repo path named in DIAGRAMS.md exists on disk', () => {
 const SQLITE_CODE = SQLITE_SRC.replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-function parseList(src, marker) {
-  const start = src.indexOf(marker);
-  assert.ok(start !== -1, `expected ${marker} in lib/db/sqlite.js`);
-  const block = src.slice(start, src.indexOf('];', start));
-  return [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
-}
-
-const kvNamespaces = parseList(SQLITE_CODE, 'const DOC_KV_NAMESPACES');
-const singletonNames = parseList(SQLITE_CODE, 'const SINGLETON_NAMES');
+// Wave 7: the document tables are created by the v1 block and DROPPED by a
+// later block; the drop's version is the one number the diagram states about
+// them, derived from the block that contains the DROP statements.
+const docDropVersion = (() => {
+  const m = /if \(current < (\d+)\) \{(?:(?!if \(current <)[\s\S])*?DROP TABLE IF EXISTS doc_kv/.exec(SQLITE_CODE);
+  assert.ok(m, 'expected the block that drops doc_kv in lib/db/sqlite.js');
+  assert.ok(/DROP TABLE IF EXISTS doc_single/.test(SQLITE_CODE), 'and doc_single is dropped too');
+  assert.ok(!/const DOC_KV_NAMESPACES|const SINGLETON_NAMES/.test(SQLITE_CODE), 'the doc-model lists are gone from the source');
+  return Number(m[1]);
+})();
 const tables = [...SQLITE_CODE.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+)/g)].map((m) => m[1]);
 const relationalTables = [...new Set(tables)].filter((t) => t !== 'doc_kv' && t !== 'doc_single');
 const schemaVersion = (() => {
@@ -74,13 +75,13 @@ const schemaVersion = (() => {
 
 // ---- 2. every namespace + table appears in the data-model section ----------
 
-test('every doc_kv namespace, doc_single name, and relational table appears in the DATA-MODEL section, boundary-delimited', () => {
-  // The relational-migration arc drains doc_kv one namespace per wave (13 at
-  // v1.290 -> 0 at Wave 7) while the relational roster grows, so the sanity
-  // floor is the SUM: a live derivation always sees the persisted names it saw
+test('every relational table appears in the DATA-MODEL section, boundary-delimited', () => {
+  // The relational-migration arc drained doc_kv one namespace per wave (13 at
+  // v1.290 -> 0 at Wave 6, tables dropped in Wave 7) while the relational
+  // roster grew, so the sanity floor is the roster: a live derivation always sees the names it saw
   // at v1.290 (13 + 18 + 30 = 61), just partitioned differently.
-  assert.ok(kvNamespaces.length + singletonNames.length + relationalTables.length >= 61 && relationalTables.length >= 30,
-    `sanity: live derivation looks real (${kvNamespaces.length}/${singletonNames.length}/${relationalTables.length})`);
+  assert.ok(relationalTables.length >= 61,
+    `sanity: live derivation looks real (${relationalTables.length} relational tables)`);
   // Gate W3 (measured porosity): whole-doc String.includes let 11 of 53
   // names be dropped from diagram 2 and stay green - `progress` matched
   // inside `books.progress`, `user_queue` inside `user_queue_state`, bare
@@ -105,7 +106,7 @@ test('every doc_kv namespace, doc_single name, and relational table appears in t
   // same block. 1 of 53; both source-side vectors (add/rename) still red;
   // closing it means structurally parsing the ·-separated lists - not worth
   // it. Do not over-trust "boundary-delimited" past this named residual.
-  const missing = [...kvNamespaces, ...singletonNames, ...relationalTables].filter((n) => !appears(n));
+  const missing = relationalTables.filter((n) => !appears(n));
   assert.deepStrictEqual(missing, [],
     'persisted names missing from diagram 2 (new namespace/table? renamed?) - update the data-model section:\n  ' + missing.join('\n  '));
 });
@@ -113,10 +114,8 @@ test('every doc_kv namespace, doc_single name, and relational table appears in t
 // ---- 3. the stated headline counts match the live derivation ---------------
 
 test('the headline counts DIAGRAMS.md states are the live-derived truth', () => {
-  assert.ok(DOC.includes(`${kvNamespaces.length} \`doc_kv\` namespaces`),
-    `the doc must state ${kvNamespaces.length} doc_kv namespaces (live-derived)`);
-  assert.ok(DOC.includes(`${singletonNames.length} \`doc_single\` names`),
-    `the doc must state ${singletonNames.length} doc_single names (live-derived)`);
+  assert.ok(DOC.includes(`no document tables (\`doc_kv\` and \`doc_single\` were dropped in schema v${docDropVersion})`),
+    `the doc must state that the document tables were dropped in schema v${docDropVersion} (live-derived)`);
   assert.ok(DOC.includes(`${relationalTables.length} relational tables`),
     `the doc must state ${relationalTables.length} relational tables (live-derived)`);
   assert.ok(DOC.includes(`schema version ${schemaVersion}`),

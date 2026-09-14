@@ -142,11 +142,10 @@ async function main() {
   const dataDir = resolveDataDir(process.env);
   // Data-safety guard: a wrong DATA_DIR must fail loudly, not mint a fresh
   // empty database and "successfully" create an admin nobody's instance will
-  // ever see. openAdapter() creates-or-imports on open, so probe FIRST.
+  // ever see. openAdapter() creates on open, so probe FIRST.
   const dbPath = path.join(dataDir, 'filetube.db');
-  const jsonPath = path.join(dataDir, 'db.json');
-  if (!fs.existsSync(dbPath) && !fs.existsSync(jsonPath)) {
-    console.error(`reset-admin: no FileTube database found in '${dataDir}' (no filetube.db, no db.json).`);
+  if (!fs.existsSync(dbPath)) {
+    console.error(`reset-admin: no FileTube database found in '${dataDir}' (no filetube.db).`);
     console.error('Set DATA_DIR to the directory your server actually uses and re-run.');
     process.exit(1);
   }

@@ -12,11 +12,11 @@
 //     empty = deliberate wipe, delete rows)
 //   - the unknown-key persistence lock (silent row-drop is the persist-gate
 //     class; the adapter must throw instead)
-//   - the WAL-safe db.json import: fidelity through the REAL rename path,
-//     byte-identical db.json, the viewCounts extraction transform (AC1),
-//     legacy-shape input (review F3), strict-parse corrupt abort (AC9 /
-//     review F2), lossy-import refusal, crashed-import leftovers
-//   - openAdapter boot rules 1-3 incl. the stranded-import fingerprint
+//   - the bundle classifier through the restore seam (Wave 7: the one
+//     import seam left): fidelity, the viewCounts extraction transform
+//     (AC1), legacy-shape input (review F3), lossy-import refusal with the
+//     wipe rolled back
+//   - openAdapter (Wave 7): use-or-create, a legacy file never read
 //   - exclusiveReplace (restore): rollback-on-throw + snapshot rebuild
 
 const { test, beforeEach, afterEach } = require('node:test');
@@ -24,17 +24,17 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const crypto = require('node:crypto');
 
 const {
   SQLITE_FILENAME,
   SqliteAdapter,
   openAdapter,
-  importDbJson,
+  importParsedJson,
   readPersistedDatabase,
   SCHEMA_VERSION,
 } = require('../../lib/db/sqlite');
 const podcastStore = require('../../lib/podcasts/store');
+const { ensureLegacyDocTables } = require('../helpers/legacy-doc-tables');
 
 let dir;
 beforeEach(() => {
@@ -47,7 +47,7 @@ afterEach(() => {
 const dbPath = () => path.join(dir, SQLITE_FILENAME);
 const jsonPath = () => path.join(dir, 'db.json');
 
-// A realistic full-shape db.json fixture: prod-shaped top-level keys plus
+// A realistic full-shape doc-object fixture: prod-shaped top-level keys plus
 // the newer namespaces, with viewCount embedded on items exactly where the
 // import must extract it from.
 function fullFixture() {
@@ -64,7 +64,7 @@ function fullFixture() {
   };
 }
 
-// The IMPORT-side fixture: a legacy db.json / bundle also carries the
+// The IMPORT-side fixture: a bundle (or, until v1.295, a legacy file) also carries the
 // namespaces that are relational tables since Waves 1-2 (progress and
 // deleteTombstones as first-class keys; viewCount embedded on items). The
 // importer routes them to their tables and readPersistedDatabase surfaces
@@ -333,7 +333,7 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     // absent namespace: a mutator tick that never touched the namespace must
     // not delete its rows (absence = "not loaded", not "deleted"). (books,
     // then ytdlp, carried this case until Wave 5 moved them to their tables;
-    // `metadata` is the one doc_kv namespace left.)
+    // `metadata` - the media index - is the one key left on the object.)
     const db3 = a.load();
     delete db3.metadata;
     const s3 = a.save(db3);
@@ -341,13 +341,13 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     assert.ok(readPersistedDatabase(dir).metadata.vid1, 'metadata rows survive an absent-namespace save');
 
     // present-but-empty: a deliberate wipe deletes rows. NOTE the documented
-    // normalization: an EMPTY doc_kv namespace has zero rows, so it assembles
+    // normalization: an EMPTY index has zero rows, so it assembles
     // as ABSENT — indistinguishable from never-ensured. That is safe because
     // server.js's load-time backfills (top-level keys) and the lazy ensure*
     // creators (books/ytdlp) re-supply `{}` before any consumer touches it,
     // making the post-load object identical either way.
     // (Wave 2: deleteTombstones is relational; Wave 5: so is ytdlp - the
-    // two metadata rows left play the doc_kv namespace here.)
+    // two media items left play the namespace here.)
     const db4 = a.load();
     db4.metadata = {};
     const s4 = a.save(db4);
@@ -405,7 +405,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     // the first row has already executed inside the open transaction, and
     // the rollback must discard it too; the diff snapshot must not advance.
     // (Until Wave 5 a doc_single write played the "row before the poison";
-    // no doc_single name is left, so two metadata rows carry the lesson.)
+    // two media items carry the lesson since.)
     // (Wave 6: the metadata rows are media_items; the items store's upsert is
     // the statement the diff runs - stub it through the store's own seam.)
     const itemStmts = a.items.__diffStmts;
@@ -443,14 +443,15 @@ test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are RE
   //    (wrong row targeted; the real row survived on disk and RESURRECTED on
   //    the next load). The separator is U+0000 now — spaced keys must
   //    round-trip and delete exactly.
-  // 2. node:sqlite TRUNCATES bound TEXT at an embedded U+0000 (verified
-  //    empirically: a NUL-bearing key persisted truncated), so such a key
-  //    would be silently corrupted — the adapter must REFUSE it loudly.
+  // 2. node:sqlite READS a NUL-bearing TEXT back truncated on Node 24.14 and
+  //    older (verbatim from 24.20 - tech-debt #225; the bind stores the bytes
+  //    on every version), so such a key would read back as a colliding
+  //    prefix — the adapter must REFUSE it loudly.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
     // (Wave 5: ytdlp.downloadMeta - the namespace whose keys carry spaces - is
-    // a feature-store table now; `metadata` is the one doc_kv namespace left,
-    // and the separator lesson is the ADAPTER's, so metadata keys carry it.)
+    // a feature-store table now; `metadata` is the one key left, and the
+    // separator lesson is the ADAPTER's, so media ids carry it.)
     a.save({
       metadata: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
     });
@@ -473,13 +474,23 @@ test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are RE
     // refused loudly, nothing persisted from the save.
     const db2 = a.load();
     db2.metadata['evil\u0000key'] = { h: 1 };
-    assert.throws(() => a.save(db2), /contains U\+0000.*truncates TEXT at NUL/s);
+    assert.throws(() => a.save(db2), /contains U\+0000.*truncated on Node 24\.14/s); // (#225: the message states the measured read-side premise)
     assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).metadata), ['plain'],
       'the refused save persisted nothing');
   } finally {
     a.close();
   }
 });
+
+// Wave 7: the ONE import seam left is the bundle restore - the classifier
+// runs inside exclusiveReplace's transaction exactly as server.js's restore
+// route wires it (a refusal rolls the wipe back). Until v1.295 the same
+// classifier also served the one-time boot import of a legacy db.json.
+function restoreInto(a, parsed) {
+  let summary;
+  a.exclusiveReplace((handles) => { summary = importParsedJson(parsed, handles); });
+  return summary;
+}
 
 test('a __proto__ row key round-trips as INERT OWN DATA — no prototype pollution, no silent row loss (gate CRITICAL)', () => {
   // JSON.parse materializes '__proto__' as an own key; plain-assignment
@@ -488,25 +499,18 @@ test('a __proto__ row key round-trips as INERT OWN DATA — no prototype polluti
   // uses defineProperty, so it stays plain data.
   // Splice the hostile key into the JSON TEXT directly — JSON.stringify
   // would drop a '__proto__' own-key from an ordinary object, but
-  // JSON.parse (the import's reader) happily materializes one.
-  const fixture = fullFixture();
-  fs.writeFileSync(
-    jsonPath(),
-    JSON.stringify(fixture).replace('"metadata":{', '"metadata":{"__proto__":{"id":"planted","polluted":true},'),
-    'utf8'
-  );
-  importDbJson(jsonPath(), dbPath(), { log: () => {} });
-
-  const db = readPersistedDatabase(dir);
-  assert.ok(Object.prototype.hasOwnProperty.call(db.metadata, '__proto__'), 'the hostile key survives as an OWN key (no silent loss)');
-  assert.equal(db.metadata['__proto__'].id, 'planted', 'readable as plain data');
-  assert.equal(Object.getPrototypeOf(db.metadata).polluted, undefined, 'namespace prototype NOT polluted');
-  assert.equal(({}).polluted, undefined, 'global Object.prototype NOT polluted');
-  assert.equal(db.metadata.someMissingId, undefined, 'a miss returns undefined, never planted fields');
-
-  // And the adapter's own load() (the app path) is equally safe.
+  // JSON.parse (a bundle's reader) happily materializes one.
+  const parsed = JSON.parse(JSON.stringify(fullFixture()).replace('"metadata":{', '"metadata":{"__proto__":{"id":"planted","polluted":true},'));
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
+    restoreInto(a, parsed);
+    const db = readPersistedDatabase(dir);
+    assert.ok(Object.prototype.hasOwnProperty.call(db.metadata, '__proto__'), 'the hostile key survives as an OWN key (no silent loss)');
+    assert.equal(db.metadata['__proto__'].id, 'planted', 'readable as plain data');
+    assert.equal(Object.getPrototypeOf(db.metadata).polluted, undefined, 'namespace prototype NOT polluted');
+    assert.equal(({}).polluted, undefined, 'global Object.prototype NOT polluted');
+    assert.equal(db.metadata.someMissingId, undefined, 'a miss returns undefined, never planted fields');
+    // And the adapter's own load() (the app path) is equally safe.
     const loaded = a.load();
     assert.ok(Object.prototype.hasOwnProperty.call(loaded.metadata, '__proto__'));
     assert.equal(({}).polluted, undefined, 'still clean after load()');
@@ -515,15 +519,20 @@ test('a __proto__ row key round-trips as INERT OWN DATA — no prototype polluti
   }
 });
 
-test('import: a db.json with a NUL-bearing key is refused loudly, creating nothing (no silent key corruption)', () => {
-  const fixture = fullFixture();
-  fixture.metadata['bad\u0000id'] = { id: 'bad' };
-  fs.writeFileSync(jsonPath(), JSON.stringify(fixture), 'utf8');
-  assert.throws(() => importDbJson(jsonPath(), dbPath(), { log: () => {} }), /contains U\+0000/);
-  assert.ok(!fs.existsSync(dbPath()), 'no filetube.db after the refusal — the next boot retries against a fixed file');
+test('restore: a bundle with a NUL-bearing media id is refused loudly and the wipe rolls back (no silent key corruption)', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    a.save({ metadata: { kept: { id: 'kept' } } });
+    const fixture = fullFixture();
+    fixture.metadata[`bad${String.fromCharCode(0)}id`] = { id: 'bad' };
+    assert.throws(() => restoreInto(a, fixture), /contains U\+0000/);
+    assert.deepStrictEqual(readPersistedDatabase(dir).metadata, { kept: { id: 'kept' } }, 'the refusal rolled the wipe back - the prior rows survive');
+  } finally {
+    a.close();
+  }
 });
 
-test('save: an undefined value is dropped silently — matching JSON.stringify\'s legacy db.json semantics', () => {
+test('save: an undefined value is dropped silently — matching JSON.stringify\'s legacy-file semantics', () => {
   // Pre-v1.42, JSON.stringify(db) simply OMITTED keys whose value was
   // undefined; the diff-save preserves that exact behavior (stringify yields
   // undefined on both sides of the compare, so no row is written). Locked
@@ -549,35 +558,27 @@ test('re-entrant transaction guard throws the adapter error, not SQLite\'s', () 
   }
 });
 
-test('import: fidelity through the real rename, byte-identical db.json, viewCounts extraction (AC1/AC2 shape)', () => {
-  const fixture = importFixture();
-  fs.writeFileSync(jsonPath(), JSON.stringify(fixture, null, 2), 'utf8');
-  const bytesBefore = crypto.createHash('sha256').update(fs.readFileSync(jsonPath())).digest('hex');
-
-  const summary = importDbJson(jsonPath(), dbPath(), { log: () => {} });
-  assert.strictEqual(summary.metadata, 3);
-  assert.strictEqual(summary.viewCounts, 1, 'vid1 extracted; vid3\'s viewCount:0 is dropped (missing reads as 0)');
-
-  const bytesAfter = crypto.createHash('sha256').update(fs.readFileSync(jsonPath())).digest('hex');
-  assert.strictEqual(bytesAfter, bytesBefore, 'db.json is byte-for-byte untouched (parallel-run contract)');
-
-  // Fidelity read AFTER the rename (the WAL-trap regression leg: these rows
-  // must be readable at the FINAL path, post close+fsync+rename).
-  const db = readPersistedDatabase(dir);
-  const expected = importFixture();
-  delete expected.metadata.vid1.viewCount;
-  delete expected.metadata.vid3.viewCount;
-  expected.viewCounts = { vid1: 7 };
-  assert.deepStrictEqual(db, expected, 'deep-equal modulo the documented viewCounts transform');
-  assert.strictEqual(db.metadata.vid1.viewCount, undefined, 'items carry no viewCount');
-  assert.deepStrictEqual(db.metadata.vid1.chaptersManual, [{ t: 0, title: 'Intro' }], 'user data on items migrates verbatim');
-  assert.ok(db.deleteTombstones.gone1, 'deleteTombstones migrates (drift correction #1)');
-
-  const leftovers = fs.readdirSync(dir).filter((f) => f.includes('.tmp'));
-  assert.deepStrictEqual(leftovers, [], 'no tmp/sidecar leftovers after a clean import');
+test('restore: bundle fidelity through the classifier - the viewCounts extraction is the one transform (AC1 shape)', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    const summary = restoreInto(a, importFixture());
+    assert.strictEqual(summary.metadata, 3);
+    assert.strictEqual(summary.viewCounts, 1, 'vid1 extracted; vid3\'s viewCount:0 is dropped (missing reads as 0)');
+    const db = readPersistedDatabase(dir);
+    const expected = importFixture();
+    delete expected.metadata.vid1.viewCount;
+    delete expected.metadata.vid3.viewCount;
+    expected.viewCounts = { vid1: 7 };
+    assert.deepStrictEqual(db, expected, 'deep-equal modulo the documented viewCounts transform');
+    assert.strictEqual(db.metadata.vid1.viewCount, undefined, 'items carry no viewCount');
+    assert.deepStrictEqual(db.metadata.vid1.chaptersManual, [{ t: 0, title: 'Intro' }], 'user data on items lands verbatim');
+    assert.ok(db.deleteTombstones.gone1, 'deleteTombstones lands (drift correction #1)');
+  } finally {
+    a.close();
+  }
 });
 
-test('import: legacy-shape db.json (no liked/deleteTombstones/books/ytdlp) assembles to the same partial object', () => {
+test('restore: a legacy-shape source (no liked/deleteTombstones/books/ytdlp - a pre-v1.42 export) assembles to the same partial object', () => {
   const legacy = {
     folders: ['/media/videos'],
     folderSettings: {},
@@ -585,76 +586,63 @@ test('import: legacy-shape db.json (no liked/deleteTombstones/books/ytdlp) assem
     metadata: { vid1: { id: 'vid1', name: 'clip.mp4' } },
     settings: { defaultView: 'grid' },
   };
-  fs.writeFileSync(jsonPath(), JSON.stringify(legacy, null, 2), 'utf8');
-  importDbJson(jsonPath(), dbPath(), { log: () => {} });
-  const db = readPersistedDatabase(dir);
-  const expected = { ...legacy };
-  delete expected.folderSettings; // Wave 4: an empty map has no rows (surfaced only when rows exist)
-  assert.deepStrictEqual(db, expected, 'raw import: no invented keys — backfill stays load-time-owned (review F3)');
-  assert.strictEqual(db.liked, undefined);
-  assert.strictEqual(db.books, undefined);
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    restoreInto(a, legacy);
+    const db = readPersistedDatabase(dir);
+    const expected = { ...legacy };
+    delete expected.folderSettings; // Wave 4: an empty map has no rows (surfaced only when rows exist)
+    assert.deepStrictEqual(db, expected, 'raw import: no invented keys — backfill stays load-time-owned (review F3)');
+    assert.strictEqual(db.liked, undefined);
+    assert.strictEqual(db.books, undefined);
+  } finally {
+    a.close();
+  }
 });
 
-test('import: corrupt db.json aborts loudly and creates NOTHING; a repaired file then imports fully (AC9)', () => {
-  fs.writeFileSync(jsonPath(), '{ this is not valid json', 'utf8');
-  assert.throws(() => importDbJson(jsonPath(), dbPath(), { log: () => {} }), /FATAL: .*not parseable JSON.*NOT been modified/s);
-  assert.ok(!fs.existsSync(dbPath()), 'no filetube.db after a corrupt-input abort');
-  assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.includes(SQLITE_FILENAME)), [], 'no tmp leftovers either');
-
-  fs.writeFileSync(jsonPath(), JSON.stringify(fullFixture(), null, 2), 'utf8');
-  importDbJson(jsonPath(), dbPath(), { log: () => {} });
-  assert.strictEqual(Object.keys(readPersistedDatabase(dir).metadata).length, 3, 'repaired boot imports the full set');
+test('restore: an unknown top-level key refuses a lossy import and the wipe rolls back', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    a.save({ metadata: { kept: { id: 'kept' } } });
+    const withUnknown = { ...fullFixture(), futureFeature: { x: 1 } };
+    assert.throws(() => restoreInto(a, withUnknown), /unknown top-level key 'futureFeature'.*newer FileTube/s);
+    assert.deepStrictEqual(readPersistedDatabase(dir).metadata, { kept: { id: 'kept' } }, 'nothing was wiped');
+  } finally {
+    a.close();
+  }
 });
 
-test('import: unknown key in db.json refuses a lossy import', () => {
-  const withUnknown = { ...fullFixture(), futureFeature: { x: 1 } };
-  fs.writeFileSync(jsonPath(), JSON.stringify(withUnknown), 'utf8');
-  assert.throws(() => importDbJson(jsonPath(), dbPath(), { log: () => {} }), /unknown top-level key 'futureFeature'.*newer FileTube/s);
-  assert.ok(!fs.existsSync(dbPath()));
-});
-
-test('import: leftovers from a crashed prior import are swept before the retry', () => {
-  fs.writeFileSync(`${dbPath()}.tmp`, 'garbage-from-a-crashed-import', 'utf8');
-  fs.writeFileSync(`${dbPath()}.tmp-wal`, 'garbage', 'utf8');
-  fs.writeFileSync(jsonPath(), JSON.stringify(fullFixture()), 'utf8');
-  importDbJson(jsonPath(), dbPath(), { log: () => {} });
-  assert.strictEqual(Object.keys(readPersistedDatabase(dir).metadata).length, 3);
-  assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.includes('.tmp')), []);
-});
-
-test('openAdapter boot rules: import-on-first-boot, then use-and-ignore, stranded fingerprint, fresh', () => {
-  // rule 2: json only → import
-  fs.writeFileSync(jsonPath(), JSON.stringify(fullFixture()), 'utf8');
+test('openAdapter (Wave 7): an existing database is used as-is; a missing one is created fresh; a legacy JSON file beside either is never read and never changes the outcome', () => {
+  const GARBAGE = '{ this is not JSON - a read of me would have been fatal by design';
+  // an existing database with a legacy file beside it
+  const seeded = new SqliteAdapter(dbPath(), { log: () => {} });
+  seeded.save(fullFixtureForUpgrade());
+  seeded.close();
+  fs.writeFileSync(jsonPath(), GARBAGE, 'utf8');
   const lines = [];
   const first = openAdapter(dir, { log: (m) => lines.push(m) });
-  assert.ok(first.importSummary, 'first boot imports');
-  assert.ok(lines.some((l) => l.includes('Imported db.json')), 'import summary logged');
-  first.adapter.close();
+  try {
+    assert.strictEqual(Object.keys(first.adapter.load().metadata).length, 3, 'the existing rows are what boots');
+  } finally {
+    first.adapter.close();
+  }
+  assert.strictEqual(fs.readFileSync(jsonPath(), 'utf8'), GARBAGE, 'the legacy file is untouched');
+  assert.ok(!lines.some((l) => /db\.json|import|stranded/i.test(l)), `boot never mentions a legacy file: ${lines.join(' | ') || '(no lines)'}`);
 
-  // rule 1: both exist, sqlite non-empty → used, json ignored
-  lines.length = 0;
-  const second = openAdapter(dir, { log: (m) => lines.push(m) });
-  assert.strictEqual(second.importSummary, null, 'no re-import');
-  assert.ok(lines.some((l) => l.includes('ignored')), 'ignored-db.json line logged');
-  assert.strictEqual(Object.keys(second.adapter.load().metadata).length, 3);
-  second.adapter.close();
-
-  // rule 1 exception: schema-empty sqlite beside a non-empty json → loud fingerprint
-  fs.unlinkSync(dbPath());
-  for (const f of fs.readdirSync(dir)) if (f.startsWith(SQLITE_FILENAME)) fs.unlinkSync(path.join(dir, f));
-  const empty = new SqliteAdapter(dbPath(), { log: () => {} });
-  empty.close();
-  lines.length = 0;
-  const third = openAdapter(dir, { log: (m) => lines.push(m) });
-  assert.ok(lines.some((l) => l.includes('stranded import')), 'stranded-import fingerprint warning logged (AC9)');
-  third.adapter.close();
-
-  // rule 3: neither → fresh empty
+  // no database, the same legacy file beside: a FRESH empty schema - never an
+  // import (boot rule 2 left with Wave 7), never a throw, the file untouched
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-sqlite-fresh-'));
   try {
+    fs.writeFileSync(path.join(dir2, 'db.json'), GARBAGE, 'utf8');
     const fresh = openAdapter(dir2, { log: () => {} });
-    assert.deepStrictEqual(fresh.adapter.load(), {});
-    fresh.adapter.close();
+    try {
+      assert.deepStrictEqual(fresh.adapter.load(), {}, 'a fresh empty schema');
+      assert.strictEqual(fresh.adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
+    } finally {
+      fresh.adapter.close();
+    }
+    assert.ok(fs.existsSync(path.join(dir2, SQLITE_FILENAME)), 'the database was created');
+    assert.strictEqual(fs.readFileSync(path.join(dir2, 'db.json'), 'utf8'), GARBAGE, 'and the legacy file is still untouched');
   } finally {
     fs.rmSync(dir2, { recursive: true, force: true });
   }
@@ -687,7 +675,8 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
     const stats = a.save(post);
     assert.deepStrictEqual(stats, { rowsWritten: 1, rowsDeleted: 0 }, 'diff base is the restored state (snapshot rebuilt)');
     // unknown namespace refused inside a replace too
-    assert.throws(() => a.exclusiveReplace(({ insertKv }) => insertKv('nope', 'k', 1)), /unknown doc_kv namespace/);
+    // Wave 7: no doc handles are offered at all (the document model is gone)
+    a.exclusiveReplace((handles) => { assert.strictEqual(handles.insertKv, undefined); assert.strictEqual(handles.insertSingle, undefined); });
   } finally {
     a.close();
   }
@@ -708,6 +697,7 @@ test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames 
   // Wave 4), the version stamp still 17.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   a.save(fullFixtureForUpgrade());
+  ensureLegacyDocTables(a.sql); // Wave 7 dropped the doc tables; a v17 file still had them
   a.sql.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('folderDisplayNames', JSON.stringify({ NESTALGIA: 'Nestalgia Music' }));
   a.sql.exec('PRAGMA user_version = 17');
   a.close();

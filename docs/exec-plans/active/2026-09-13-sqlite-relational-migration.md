@@ -54,11 +54,11 @@ re-derives the whole table: `node scripts/relational-arc-baseline.js --pretty`
 | Metric | Baseline (2026-09-13, `963f0ca2`) | Command to re-derive | Target at Wave 7 |
 |---|---|---|---|
 | `server.js` lines | **19,041** | `wc -l < server.js` | **< 3,000** |
-| `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
-| `doc_single` namespaces | **18** (the intake draft said 19 - a hand count; Wave 0's re-derivation corrected it) | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` | **0** (table dropped) |
-| Total legacy namespaces | **31** | sum of the two | **0** |
+| `doc_kv` namespaces | **13** | `DOC_KV_NAMESPACES.length` in `lib/db/sqlite.js` (the list itself left with Wave 7; the instrument now counts document TABLES in a fresh schema - `docTables`) | **0** (table dropped) - **MET at v1.296.0 (Wave 7a): 0 tables** |
+| `doc_single` namespaces | **18** (the intake draft said 19 - a hand count; Wave 0's re-derivation corrected it) | `SINGLETON_NAMES.length` in `lib/db/sqlite.js` (same: the list is gone, `docTables` is the metric) | **0** (table dropped) - **MET at v1.296.0** |
+| Total legacy namespaces | **31** | sum of the two | **0** - **MET at v1.295.0 (Wave 6); the tables followed at v1.296.0** |
 | Genuine TODO/FIXME/HACK markers | **0** (the intake draft's "9 grep hits are false positives" was not reproducible from a recorded command - the slim gate found the only 9-yielding grep counts 2 binary PNG matches and misses the `\XXXX` lines the draft cited; the pre-Wave-0 shipped-code prose hits are in commit `36a40a77`) | enforced, not printed: `test/unit/comment-debt-census.test.js` (TIER 1 marker-form over every tracked code file, TIER 2 loose word over shipped code) + eslint `no-warning-comments` | **0**, lint-enforced since Wave 0 |
-| `db.json` refs in shipped code | **15 files** (`server.js`, `lib/db/sqlite.js`, `lib/ytdlp/*`, `scripts/*`) | `node scripts/relational-arc-baseline.js` (`dbJsonRefFiles`; the script excludes itself - its labels name the file) | **0** |
+| `db.json` refs in shipped code | **15 files** (`server.js`, `lib/db/sqlite.js`, `lib/ytdlp/*`, `scripts/*`) | `node scripts/relational-arc-baseline.js` (`dbJsonRefFiles`; the script excludes itself - its labels name the file) | **0** - **MET at v1.296.0 (Wave 7a): 0 files**, bound by `test/unit/dbjson-never-read.test.js` |
 | Test cases | **8,310** across **657** files | `git ls-files 'test/*.js' \| xargs grep -hoE '^\s*(test\|it)\(' \| wc -l` | net-add; ratio stays >= 1.48:1 |
 | Full suite | green on **both** Node 22.23.1 + 24.14.0 | `npm test` on each | green each release |
 
@@ -749,6 +749,88 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
 - Split the remaining routes into feature routers; `server.js` becomes a thin
   composition root under the predicted **< 3,000 lines**.
 - Re-verify **every** Section 1 prediction; a miss is a finding, not a rounding note.
+- **Wave 7 is SPLIT (2026-09-14, the main session's call at the survey, disclosed to Dean):
+  7a = the teardown (this record; released alone as v1.296.0), 7b = the monolith split
+  (the routers, the `< 3,000` composition root, the three deferred giant extractions,
+  #226's read-cache design) - costed separately for Dean's call because of budget.**
+- **Wave 7a record (2026-09-14, branch `feat/wave7-teardown`, two commits: the teardown +
+  the gate fix round):**
+  - **Schema v33 drops `doc_kv` + `doc_single`** - the fourteenth rollback floor. The block
+    copies nothing (every namespace left in v21-v32) and REFUSES - throws, stamp stays 32,
+    tables and rows intact, still writable by v1.295 - if either table holds a row, naming
+    each stray with its count (a NUL-bearing name as its bytes, the list capped at 20 - gate).
+    The v1 block still creates the tables (append-only); a below-v33 guard at the top of
+    `migrateSchema` re-creates them (same DDL, `LEGACY_DOC_TABLES_DDL`) so a file stamped
+    back below v33 - the migration tests' rewinds - runs the drains against the schema they
+    were written for; a STAMPED file that lacks a table (tampering) is logged loudly (gate).
+  - **The document model left the adapter**: `SNAPSHOT_SEP` (a `NUL` constant stays for the
+    row-key guard), `DOC_KV_NAMESPACES`, `SINGLETON_NAMES`, `CONTAINER_KEYS`, `KNOWN_SUBKEYS`,
+    `getPath`/`setPath`, the six doc statements, the doc snapshot, the doc loops in `load` /
+    `save` / `exclusiveReplace` / `importParsedJson` / `readPersistedDatabase`, the
+    `insertKv` / `insertSingle` handles, the dead `source` option. `save()` is the media
+    index's diff plus `alsoInTransaction`; `assertNoUnknownKeys` keeps the top-level lock on
+    `DOC_OBJECT_KEYS = ['metadata']`. **Disclosed deviation from this section's literal text
+    ("remove loadDatabase/saveDatabase/updateDatabase")**: the three stay, as Wave 6 decided -
+    they are the media index's tick and the 150 read sites depend on the `{ metadata }`
+    object; removing them is 7b's work.
+  - **The db.json import path is gone**: `importDbJson`, `isSchemaEmpty`, the stranded
+    fingerprint, `openAdapter`'s existence/size probes (it opens the database, logs one line
+    when it CREATED a fresh empty one - gate - and returns `{ adapter }`; the module no longer
+    requires `fs`), `scripts/migrate-check.js` + its CLI test, `scripts/relational-arc-refs.js`,
+    server.js's `DB_FILE` + `cleanupOrphanDbTmp` + boot call + export, the two scripts' legacy
+    fallbacks, every comment mention (server.js 32 sites, lib/ytdlp 22, items.js 2), the
+    Dockerfile / .env.example prose (gate). `node scripts/relational-arc-baseline.js`:
+    **dbJsonRefFiles 0, docTables 0** (the instrument counts document tables in a fresh
+    schema now), schema 33, server.js 19062 lines. **Deliberate, disclosed behaviour change:**
+    a DATA_DIR holding only a pre-v1.42 db.json starts as an EMPTY library (the file
+    byte-identical, never probed - measured by both seats); the way forward is one boot of
+    any v1.42-v1.295 build first, deleting the empty `filetube.db` (+ sidecars) a v1.296 boot
+    may already have created (QA W1: without that step the older build refuses the v33 file) -
+    CONFIGURATION.md, RELEASING.md.
+  - **Tests**: `test/helpers/legacy-doc-tables.js`; the 12 store suites' rewinds re-create the
+    tables and their post-migration "doc rows gone" asserts became "doc tables gone" (both
+    seats mutated every drain's DELETE one at a time: each reds its own suite, so v33's
+    refusal IS the binding); the adapter suite's boot-import tests became restore-seam tests;
+    NEW `test/unit/db-doc-tables-drop.test.js` (the drop, the refusal with nothing dropped,
+    the NUL-as-bytes label + cap, the guard's log, the chain from v20 with real rows, the
+    export lock); `test/unit/dbjson-never-read.test.js` rewritten (fs spy on every content
+    reader, copier AND probe incl. the directory listers - gate - on both arms, a live-spy
+    control, the DoD source lock over `git ls-files`); `test/integration/dbjson-frozen.test.js`
+    = the Wave 0 S7 owed test (server.js boots beside a garbage db.json + a seeded
+    filetube.db); NEW `test/integration/dbjson-frozen-fresh.test.js` (ADV W1: the arm the wave
+    CHANGED - server.js boots a DATA_DIR holding only a valid legacy file into an EMPTY
+    library; measured RED on v1.295, green here).
+  - **#227 closed** (the isolated test; the hooks walk UP for `node_modules` - the first cut's
+    extra PATH export was measured inert by the adversarial seat and removed; CLAUDE.md states
+    the suite invocation). **#225 (a) done** (every NUL guard's message and comment, plus
+    CLAUDE.md, this plan's template and one test comment the QA seat found still on the old
+    premise). **#224 narrowed** to its second trigger.
+  - **Gate (both seats, one fix round).** No CRITICAL. The data-destruction core held under
+    eight hostile stray shapes, a partial-chain file, a tamper, a double open and a full
+    v1.41 -> v1.295 -> v1.296 upgrade (file byte-identical throughout). Findings, all applied:
+    **QA W1** the documented way back for a pre-v1.42 DATA_DIR was dead after one v1.296 boot
+    (the empty v33 file makes v1.295 refuse) - the delete step is documented and boot logs the
+    fresh-database line; **ADV W1** the rewritten frozen suite was green on v1.295 (it bound
+    the unchanged arm) - the fresh-DATA_DIR arm is a new integration file, red on v1.295;
+    **QA W5 = ADV W2** the teardown commit's baseline line says "8584 test cases across 694
+    files" - measured BEFORE the v33 suite and the helper were tracked; at that commit the
+    instrument says 8590 / 696. The same is true of that message's suite count (ADV residual
+    2): the 8763 came from a full run launched before the v33 suite's file existed, so at
+    abfa3db8 the count is 8769 - derived from the fix commit's measured 8772 minus its three
+    new cases, not re-run (the other four baseline numbers are exact; recorded here, no amend); **QA W2-W4, S4, ADV W3** eight stale comments (the restore's "two
+    callers", the v2 rationale's removed probe, the safety lever's broken sentence, the
+    Dockerfile's inverted sentence + retired script, .env.example, viewCounts' header,
+    CLAUDE.md, the plan's template); **QA S1 = ADV S5** the below-v33 guard logs when it
+    absorbs a missing table; **QA S2 = ADV S2** the spy's missing copiers/listers/resolvers and
+    the `require('fs')` spelling; **ADV S3** the refusal message's NUL-name duplication, its
+    false "database is unchanged" after a committed drain, and no cap; **ADV S1** the hooks'
+    inert PATH export; **QA S5/S6** the dead `source` option and an overstated export comment.
+    **Delta (same instances):** both APPROVE, no new findings; the adversarial seat re-ran
+    every round-1 mutant (all still red), its E3 indirect-spelling boot import now dies on
+    the new integration file, and its five obfuscated fs vectors red on the widened spy.
+    Its non-blocking residuals: a BLOB-typed stray name without a NUL prints as decimal
+    bytes (cosmetic); `.gitignore`'s db.json comment was present-tense (fixed in the release
+    commit). Dual-Node (sequential, reviewers idle): 22.23.1 8772 / 8772 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8772 / 8772 / 0 / 0; 24.14.0 8772 / 8772 / 0 / 0.
 
 ---
 
@@ -760,8 +842,9 @@ Each namespace migration MUST do all of these; a test binds each:
    IF NOT EXISTS`, table born complete. Never edit an executed block (append-only, or
    the suite hangs - repo scar).
 2. **One-time idempotent backfill** copying the namespace's `doc_kv`/`doc_single` rows
-   into the new table; NUL-safe (`node:sqlite` truncates TEXT at NUL - keep
-   `assertRowKeySafe`); `__proto__`-safe (`defineRowProperty`).
+   into the new table; NUL-safe (`node:sqlite` reads a NUL-bearing TEXT back truncated
+   on Node <= 24.14, #225 - keep `assertRowKeySafe`, decide key shape in SQL on the stored
+   bytes); `__proto__`-safe (`defineRowProperty`).
 3. **A feature-owned store module** (`lib/<feature>/store.js` shape) with the read/write
    API; the ONLY writer of its table.
 4. **Rewrite every `server.js` consumer** (the N grep refs) to call the store, not

@@ -29,9 +29,10 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, SINGLETON_NAMES, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createSettingsStore = require('../../lib/config/settings');
 
 const DEFAULTS = { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, trashRetentionDays: 30, nested: { a: 1 } };
@@ -75,6 +76,7 @@ function rewindToV23(settingsJson) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE app_settings; PRAGMA user_version = 23');
+  ensureLegacyDocTables(raw);
   if (settingsJson !== undefined) raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('settings', settingsJson);
   raw.close();
 }
@@ -86,7 +88,6 @@ function reopen(log) {
 
 test('migration v24: the doc row is split into one row per key (values verbatim), the doc row deleted, stamp 24, load() has no settings key, save() works', () => {
   assert.ok(SCHEMA_VERSION >= 24);
-  assert.ok(!SINGLETON_NAMES.includes('settings'));
   const legacy = { scanIntervalMinutes: 60, pruneMissing: false, cacheMaxBytes: null, transcriptAiPrompts: [{ id: 'p1', text: 'Summarise' }], customLogoMimeLight: 'image/png' };
   rewindToV23(JSON.stringify(legacy));
   reopen();
@@ -94,7 +95,7 @@ test('migration v24: the doc row is split into one row per key (values verbatim)
   const s = createSettingsStore(adapter, { defaults: DEFAULTS });
   assert.deepStrictEqual(s.getRaw(), legacy, 'every key moved, values verbatim (null included)');
   assert.deepStrictEqual(s.get(), { ...DEFAULTS, ...legacy }, 'defaults fill what the legacy object never set');
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_single WHERE name = 'settings'").get().c, 0, 'the doc row is gone');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.settings, undefined, 'no doc-model settings key');
   assert.doesNotThrow(() => adapter.save(db));
@@ -110,6 +111,7 @@ test('migration v24: no doc row -> an empty table; re-running is a no-op; a corr
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 23');
+  ensureLegacyDocTables(raw);
   raw.close();
   reopen();
   assert.deepStrictEqual(rows(), [['kept', '1']], 'a re-run neither wipes nor duplicates');
@@ -144,7 +146,7 @@ test('migration v24: a non-object doc row is DROPPED with a log line (the defaul
   } finally {
     console.error = orig;
   }
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_single WHERE name = 'settings'").get().c, 0, 'the doc row is gone either way');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
 });
 
 // ---- 3. the save-lock -------------------------------------------------------------
@@ -157,13 +159,11 @@ test('save-lock: `settings` on the doc object is REFUSED', () => {
 // ---- 4. the bulk seams ---------------------------------------------------------------
 
 test('importParsedJson: routes `settings` through insertSetting (never doc_single); refuses without the handle / on a bad shape', () => {
-  const singles = [];
   const settings = [];
-  const h = { insertKv: () => {}, insertSingle: (n, v) => singles.push([n, v]), insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: (k, v) => settings.push([k, v]) };
-  const summary = importParsedJson({ folders: [], settings: { scanIntervalMinutes: 60, cacheMaxBytes: null, list: [1] } }, h, { source: 'bundle' });
+  const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: (k, v) => settings.push([k, v]) };
+  const summary = importParsedJson({ folders: [], settings: { scanIntervalMinutes: 60, cacheMaxBytes: null, list: [1] } }, h);
   assert.deepStrictEqual(settings, [['scanIntervalMinutes', 60], ['cacheMaxBytes', null], ['list', [1]]]);
   assert.strictEqual(summary.settings, 3);
-  assert.ok(!singles.some(([n]) => n === 'settings'), 'never a doc_single row');
   const noHandle = { ...h };
   delete noHandle.insertSetting;
   assert.throws(() => importParsedJson({ settings: { a: 1 } }, noHandle), /no insertSetting handle/);
@@ -221,6 +221,7 @@ test('migration stamps ride their OWN commits: v24 lands and v25 fails -> the st
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE app_settings; DROP TABLE library_folders; DROP TABLE library_folder_settings; DROP TABLE channel_folder_display_names; DROP TABLE media_liked; PRAGMA user_version = 23');
+  ensureLegacyDocTables(raw);
   const ins = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
   ins.run('settings', JSON.stringify({ scanIntervalMinutes: 60, pruneMissing: false }));
   ins.run('folderSettings', '{not json'); // v25 will fail on this row

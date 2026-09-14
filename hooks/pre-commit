@@ -8,10 +8,21 @@ set -euo pipefail
 
 echo "Running pre-commit checks..."
 
-if [ ! -d node_modules ]; then
-  echo "⚠ node_modules missing — run 'npm install' before committing." >&2
+# Resolve node_modules the way Node does - walking UP from the worktree - so a
+# git worktree under .claude/worktrees/ (which shares the main checkout's
+# install through the parent directories) passes without a symlink (#227).
+dir="$PWD"
+found=""
+while [ "$dir" != "/" ]; do
+  if [ -d "$dir/node_modules" ]; then found="$dir/node_modules"; break; fi
+  dir="$(dirname "$dir")"
+done
+if [ -z "$found" ]; then
+  echo "⚠ node_modules missing (looked in $PWD and every parent) — run 'npm install' before committing." >&2
   exit 1
 fi
+# (npm itself already puts every ancestor node_modules/.bin on its scripts'
+# PATH, so the walk is the whole fix - nothing else is needed for a worktree.)
 
 # Lint (fails on errors, not warnings)
 echo "→ eslint"

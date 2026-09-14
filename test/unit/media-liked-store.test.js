@@ -29,9 +29,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, SINGLETON_NAMES, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createLikedStore = require('../../lib/media/liked');
 
 const NUL = String.fromCharCode(0);
@@ -64,6 +65,7 @@ function rewindToV25(likedJson) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE media_liked; PRAGMA user_version = 25');
+  ensureLegacyDocTables(raw);
   if (likedJson !== undefined) raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('liked', likedJson);
   raw.close();
 }
@@ -71,8 +73,6 @@ const reopen = () => { adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAM
 
 test('migration v26: the doc array becomes rows numbered by index (duplicate collapsed, unaddressable skipped + logged), doc row deleted, stamp 26, load() has no liked key, save() works', () => {
   assert.ok(SCHEMA_VERSION >= 26);
-  assert.ok(!SINGLETON_NAMES.includes('liked'));
-  assert.ok(SINGLETON_NAMES.every((n) => n.includes('.')), 'no top-level doc_single name is left - container sub-keys only');
   const logged = [];
   const orig = console.error;
   console.error = (...a) => logged.push(a.join(' '));
@@ -87,7 +87,7 @@ test('migration v26: the doc array becomes rows numbered by index (duplicate col
   assert.deepStrictEqual(l.list(), ['b', 'a', 'c'], 'like order, duplicate collapsed keep-first, junk skipped');
   assert.deepStrictEqual(rows(), [['b', 0], ['a', 1], ['c', 2]]);
   assert.strictEqual(logged.filter((m) => m.includes('migration v26: skipping a liked entry')).length, 2, logged.join(' | '));
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_single WHERE name = 'liked'").get().c, 0, 'the doc row is gone');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.liked, undefined, 'no doc-model liked key');
   assert.doesNotThrow(() => adapter.save(db));
@@ -102,6 +102,7 @@ test('migration v26: no doc row -> empty table; re-run is a no-op; a corrupt row
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 25');
+  ensureLegacyDocTables(raw);
   raw.close();
   reopen();
   assert.deepStrictEqual(createLikedStore(adapter).list(), ['kept'], 'a re-run neither wipes nor duplicates');
@@ -128,8 +129,8 @@ test('save-lock: `liked` on the doc object is REFUSED', () => {
 
 test('importParsedJson: the list routes through replaceLiked (validated whole, duplicates collapsed); refused without the handle / on a bad entry', () => {
   let got = null;
-  const h = { insertKv: () => {}, insertSingle: () => {}, insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: (list) => { got = list; } };
-  const summary = importParsedJson({ metadata: {}, liked: ['a', 'b', 'a'] }, h, { source: 'bundle' });
+  const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: (list) => { got = list; } };
+  const summary = importParsedJson({ metadata: {}, liked: ['a', 'b', 'a'] }, h);
   assert.deepStrictEqual(got, ['a', 'b']);
   assert.strictEqual(summary.liked, 2);
   const noHandle = { ...h };

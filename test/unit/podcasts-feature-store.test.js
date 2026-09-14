@@ -21,9 +21,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, DOC_KV_NAMESPACES, SINGLETON_NAMES, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const podcastStore = require('../../lib/podcasts/store');
 
 let dir;
@@ -46,18 +47,16 @@ function rewindToV29(rows) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec(TABLES.map((t) => `DROP TABLE ${t};`).join(' ') + ' PRAGMA user_version = 29');
+  ensureLegacyDocTables(raw);
   const kv = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
   const single = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
   for (const [kind, a, b, c] of rows) (kind === 'kv' ? kv.run(a, b, c) : single.run(a, b));
   raw.close();
 }
 const reopen = () => { adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} }); return adapter; };
-const docRows = () => adapter.sql.prepare("SELECT (SELECT COUNT(*) FROM doc_kv WHERE namespace LIKE 'podcasts.%') + (SELECT COUNT(*) FROM doc_single WHERE name LIKE 'podcasts.%') AS c").get().c;
 
 test('migration v30: every part moves verbatim (the subscription ORDER included - the array, not a sort); doc rows deleted; stamp 30; load() has no podcasts key; save() works', () => {
   assert.ok(SCHEMA_VERSION >= 30);
-  assert.ok(!DOC_KV_NAMESPACES.some((n) => n.startsWith('podcasts.')));
-  assert.ok(!SINGLETON_NAMES.some((n) => n.startsWith('podcasts.')));
   assert.ok(FEATURE_DEFS.some((d) => d.name === 'podcasts'));
   const subs = [sub('s2', { order: 2 }), sub('s1', { order: 1 }), sub('s3', { order: 0, paused: true })];
   rewindToV29([
@@ -70,7 +69,7 @@ test('migration v30: every part moves verbatim (the subscription ORDER included 
   assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   const podcasts = podcastStore.createPodcastsStore(adapter);
   assert.deepStrictEqual(podcasts.read(), { subscriptions: subs, episodes: { e1: ep('e1', { filePath: '/p/Show/e1.mp3' }), e2: ep('e2', { status: 'tombstone' }) }, settings: { pollMinutes: 45 } });
-  assert.strictEqual(docRows(), 0, 'every doc row is gone');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.podcasts, undefined, 'no doc-model podcasts key');
   assert.doesNotThrow(() => adapter.save(db));
@@ -84,6 +83,7 @@ test('migration v30: re-run is a no-op; a corrupt episode row rolls the whole bl
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 29');
+  ensureLegacyDocTables(raw);
   raw.close();
   reopen();
   assert.deepStrictEqual(podcastStore.createPodcastsStore(adapter).read().subscriptions, [sub('kept')], 'a re-run neither wipes nor duplicates');
@@ -104,16 +104,13 @@ test('save-lock: a stray `podcasts` container on the doc object is REFUSED (the 
 });
 
 test('importParsedJson: `podcasts` routes whole through replaceFeature (never doc rows); refused without the handle / on an unknown part / a bad shape', () => {
-  const kv = [];
-  const singles = [];
   const features = [];
-  const h = { insertKv: (ns, k, v) => kv.push([ns, k, v]), insertSingle: (n, v) => singles.push([n, v]), insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
+  const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { subscriptions: [sub('s1')], episodes: { e1: ep('e1') }, settings: { pollMinutes: 0 } };
-  const summary = importParsedJson({ metadata: {}, podcasts: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, podcasts: ns }, h);
   assert.deepStrictEqual(features, [['podcasts', ns]]);
   assert.strictEqual(summary['podcasts.episodes'], 1);
   assert.strictEqual(summary['podcasts.subscriptions'], 1);
-  assert.ok(!kv.some(([n]) => n.startsWith('podcasts.')) && !singles.some(([n]) => n.startsWith('podcasts.')), 'never a doc row');
   const noHandle = { ...h };
   delete noHandle.replaceFeature;
   assert.throws(() => importParsedJson({ podcasts: ns }, noHandle), /no replaceFeature handle/);

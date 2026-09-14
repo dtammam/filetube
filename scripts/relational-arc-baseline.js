@@ -23,8 +23,19 @@ const git = (args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', m
 const serverLines = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8').split('\n').length - 1;
 
 const sqlite = require(path.join(ROOT, 'lib', 'db', 'sqlite.js'));
-const docKv = sqlite.DOC_KV_NAMESPACES.length;
-const docSingle = sqlite.SINGLETON_NAMES.length;
+// Wave 7 dropped the two document tables (and the namespace lists this script
+// counted until then): the live metric is the number of document tables a
+// FRESH database is left with after every migration block ran - 0 since v33.
+const os = require('node:os');
+const docTables = (() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-arc-baseline-'));
+  try {
+    const { adapter } = sqlite.openAdapter(dir, { log: () => {} });
+    try {
+      return adapter.sql.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table' AND name IN ('doc_kv', 'doc_single')").get().c;
+    } finally { adapter.close(); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+})();
 
 // The instrument excludes itself: its own comments and labels name db.json,
 // and an instrument that counts itself can never reach the Wave 7 target of 0
@@ -48,9 +59,7 @@ const out = {
   head,
   schemaVersion,
   serverLines,
-  docKvNamespaces: docKv,
-  docSingleNamespaces: docSingle,
-  legacyNamespaces: docKv + docSingle,
+  docTables,
   dbJsonRefFiles: dbJsonRefFiles.length,
   dbJsonRefFileList: dbJsonRefFiles,
   testCases,

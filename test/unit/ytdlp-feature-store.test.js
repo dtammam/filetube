@@ -25,9 +25,11 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, DOC_KV_NAMESPACES, SINGLETON_NAMES, CONTAINER_KEYS, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const sqliteModule = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const ytdlpStore = require('../../lib/ytdlp/store');
 
 let dir;
@@ -50,22 +52,19 @@ function rewindToV30(rows) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec(TABLES.map((t) => `DROP TABLE ${t};`).join(' ') + ' PRAGMA user_version = 30');
+  ensureLegacyDocTables(raw);
   const kv = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
   const single = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
   for (const [kind, a, b, c] of rows) (kind === 'kv' ? kv.run(a, b, c) : single.run(a, b));
   raw.close();
 }
 const reopen = () => { adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} }); return adapter; };
-const docRows = () => adapter.sql.prepare("SELECT (SELECT COUNT(*) FROM doc_kv WHERE namespace LIKE 'ytdlp.%') + (SELECT COUNT(*) FROM doc_single WHERE name LIKE 'ytdlp.%') AS c").get().c;
 
-test('migration v31: every part moves verbatim (the ORDER of both lists, the flag, a spaced universal key); an id-less legacy subscription gets md5(channelUrl) minted; doc rows deleted; stamp 31; no doc_single name and only `metadata` in doc_kv remain', () => {
+test('migration v31: every part moves verbatim (the ORDER of both lists, the flag, a spaced universal key); an id-less legacy subscription gets md5(channelUrl) minted; doc rows deleted; stamp 31; the doc lists and tables are gone (Wave 7)', () => {
   assert.ok(SCHEMA_VERSION >= 31);
-  assert.deepStrictEqual(DOC_KV_NAMESPACES, [], 'no doc_kv namespace is left (Wave 6 moved metadata too)');
-  assert.deepStrictEqual(SINGLETON_NAMES, [], 'no doc_single name is left');
-  assert.deepStrictEqual(CONTAINER_KEYS, [], 'no container is left in the doc model');
   assert.ok(FEATURE_DEFS.some((d) => d.name === 'ytdlp'));
   const subs = [sub('b', { order: 1 }), sub('a', { order: 0 })];
-  const legacy = { channelUrl: 'https://www.youtube.com/@legacy', name: 'Legacy (no id)', order: 2 }; // a pre-id record a hand-edited db.json could carry
+  const legacy = { channelUrl: 'https://www.youtube.com/@legacy', name: 'Legacy (no id)', order: 2 }; // a pre-id record a hand-edited legacy file could carry
   const pins = [pin('p2', { order: 1 }), pin('p1', { order: 0 })];
   rewindToV30([
     ['single', 'ytdlp.subscriptions', JSON.stringify([...subs, legacy])],
@@ -87,8 +86,10 @@ test('migration v31: every part moves verbatim (the ORDER of both lists, the fla
   assert.deepStrictEqual(Object.keys(got.downloadMeta).sort(), ['dQw4w9WgXcQ', 'reddit abc123'], 'the spaced universal key survives as its own row');
   assert.deepStrictEqual(got.channelAvatars, { UCaaaaaaaaaaaaaaaaaaaaaa: { avatarUrl: 'https://yt3.ggpht.com/a.jpg', fetchedAt: 7 } });
   assert.ok(!('settings' in got), 'the internal table is never a namespace key');
-  assert.strictEqual(docRows(), 0, 'every doc row is gone');
-  assert.strictEqual(adapter.sql.prepare('SELECT COUNT(*) AS c FROM doc_single').get().c, 0, 'the doc_single table is empty for good');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
+  assert.strictEqual(sqliteModule.DOC_KV_NAMESPACES, undefined, 'Wave 7: the doc lists are gone from the adapter\'s exports');
+  assert.strictEqual(sqliteModule.SINGLETON_NAMES, undefined);
+  assert.strictEqual(sqliteModule.CONTAINER_KEYS, undefined);
   const db = adapter.load();
   assert.strictEqual(db.ytdlp, undefined, 'no doc-model ytdlp key');
   assert.doesNotThrow(() => adapter.save(db));
@@ -102,6 +103,7 @@ test('migration v31: re-run is a no-op; a corrupt avatar row rolls the whole blo
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 30');
+  ensureLegacyDocTables(raw);
   raw.close();
   reopen();
   const again = ytdlpStore.createYtdlpStore(adapter).read();
@@ -125,16 +127,13 @@ test('save-lock: a stray `ytdlp` container on the doc object is REFUSED; the doc
 });
 
 test('importParsedJson: `ytdlp` routes whole through replaceFeature (never doc rows); refused without the handle / on an unknown part / a bad shape / a URL map', () => {
-  const kv = [];
-  const singles = [];
   const features = [];
-  const h = { insertKv: (ns, k, v) => kv.push([ns, k, v]), insertSingle: (n, v) => singles.push([n, v]), insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
+  const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { allowMembersOnly: true, subscriptions: [sub('s1')], downloadMeta: { v1: { channelUrl: 'https://www.youtube.com/@x' } }, pins: [pin('p1')], channelAvatars: {} };
-  const summary = importParsedJson({ metadata: {}, ytdlp: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, ytdlp: ns }, h);
   assert.deepStrictEqual(features, [['ytdlp', ns]]);
   assert.strictEqual(summary['ytdlp.subscriptions'], 1);
   assert.strictEqual(summary['ytdlp.downloadMeta'], 1);
-  assert.ok(!kv.some(([n]) => n.startsWith('ytdlp.')) && !singles.some(([n]) => n.startsWith('ytdlp.')), 'never a doc row');
   const noHandle = { ...h };
   delete noHandle.replaceFeature;
   assert.throws(() => importParsedJson({ ytdlp: ns }, noHandle), /no replaceFeature handle/);

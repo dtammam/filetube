@@ -19,8 +19,9 @@
 // CLI a test SPAWNS itself - and such a CLI may mkdtemp a `filetube-` dir the
 // parent test still needs to inspect AFTER the child exits, which this exit
 // hook would then delete out from under it. So spawned CLIs are deliberately
-// left untouched here; a CLI that leaks its own tmpDir cleans up itself (see
-// scripts/migrate-check.js's process.on('exit'), the fix for exactly that).
+// left untouched here; a CLI that leaks its own tmpDir cleans up itself (the
+// v1.42 migrate-check CLI's process.on('exit') was the fix for exactly that;
+// Wave 7 retired that CLI with the import path).
 //
 // Cleaning on the worker's exit keeps the live temp-dir set bounded to roughly
 // the concurrency at any instant during a run - stopping the mid-run

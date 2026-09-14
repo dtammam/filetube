@@ -237,7 +237,8 @@ just what it claims (reviewers are wrong too).
    `pointerdown` not `click` for tap-outside; the background-audio machinery in
    player.js is battle-won - reuse it, don't rebuild it.
 9. **Migrations are APPEND-ONLY once executed** (editing an executed block hangs
-   the suite); `node:sqlite` truncates TEXT at NUL; schema bumps are additive.
+   the suite); `node:sqlite` reads a NUL-bearing TEXT back truncated on Node
+   24.14 and older (#225) - refuse NUL ids at every write; schema bumps are additive.
 
 ## Environment
 
@@ -246,6 +247,11 @@ just what it claims (reviewers are wrong too).
   `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`
 - Dual-Node verification uses v22.23.1 and v24.14.0 (swap the version in
   the path above). Sequential, never parallel with anything.
+- The suite's invocation is the npm scripts (`npm test`, `npm run
+  test:unit`, `npm run test:integration`) - their globs ARE the suite. A
+  bare `node --test test/unit` is not equivalent on Node 22 (it does not
+  preload the helpers the scripts do) and its counts are not release
+  counts (#227).
 
 ## Project configuration
 

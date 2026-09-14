@@ -181,14 +181,27 @@ allowMembersOnly`) moved into `ytdlp_subscriptions`, `ytdlp_pins`,
 `ytdlp_download_meta`, `ytdlp_channel_avatars` and `ytdlp_settings`; bundles
 carry `ytdlp` in its old container shape on both sides of the line. After this
 floor `metadata` is the only document-model namespace left (Wave 6), and no
-`doc_single` row exists at all (Wave 7 drops the table).
+`doc_single` row exists at all (Wave 7 dropped the table).
 
 **Thirteenth floor - schema v32 (v1.295, Wave 6, the media index).** The
 library index (`metadata`) moved into `media_items` (one row per indexed file,
 verbatim, in rowid order; `lib/media/items.js`); the v32 migration copies the
 doc rows and deletes them. A v1.294-or-earlier build refuses a v32 database at
 boot; bundles carry `metadata` in the same shape on both sides of the line.
-After this floor BOTH document tables are empty (Wave 7 drops them).
+After this floor BOTH document tables are empty (Wave 7 dropped them).
+
+**Fourteenth floor - schema v33 (v1.296, Wave 7, the teardown).** The two
+document tables (`doc_kv`, `doc_single`) are DROPPED; nothing is copied
+because every namespace left them in v21-v32, and the block REFUSES to run
+(leaving the database at v32, still writable by v1.295) if a row is
+nonetheless there - the message names the rows for the operator to export or
+delete deliberately. A v1.295-or-earlier build refuses a v33 database at
+boot; bundles are unchanged by this floor (no key moved). Also in this
+release: the one-time import of a pre-v1.42 `db.json` is gone - a pre-v1.42
+instance upgrades by running any v1.42-v1.295 build once first, and if a
+v1.296+ boot already created an empty `filetube.db` beside the `db.json`,
+that file (plus its `-wal`/`-shm` sidecars) must be deleted before the
+older build runs - it would otherwise refuse the v33 schema (CONFIGURATION.md).
 
 ## The publish pipeline: build once, smoke, promote (v1.148)
 

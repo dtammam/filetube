@@ -115,22 +115,24 @@ to today's behavior with no config changes needed):
 ## The database (v1.42+: SQLite) and upgrading from v1.41 or earlier
 
 From v1.42, FileTube's library state lives in `DATA_DIR/filetube.db`
-(SQLite via Node's built-in driver - no new dependencies). **The migration
-is automatic and non-destructive:** the first v1.42+ boot imports your
-existing `db.json` and then never touches it again - the file stays
-byte-for-byte intact forever, so an older FileTube version can keep
-running against it (e.g. prod on the old tag while you trial the new one
-against the same media from a different `DATA_DIR`). If `db.json` is
-unreadable, boot stops with a clear message and creates nothing - it can
-never silently start you over with an empty library.
+(SQLite via Node's built-in driver - no new dependencies). Schema upgrades
+between SQLite versions are automatic at boot (RELEASING.md lists the
+rollback floors).
 
-Before upgrading you can dry-run the migration against your real database
-(nothing is written anywhere permanent; your db.json is hash-verified
-untouched):
-
-```bash
-node scripts/migrate-check.js /path/to/DATA_DIR/db.json
-```
+**Coming from v1.41 or earlier (the `db.json` era)?** Versions v1.42 to
+v1.295 imported your existing `db.json` once, on their first boot, and then
+never touched it again. **From v1.296 that import is gone:** a `db.json`
+beside the database is never read, never probed and never modified - and a
+`DATA_DIR` with only a `db.json` in it starts as an EMPTY library (the boot
+log says so: "created a fresh, EMPTY database"). To bring a pre-v1.42
+library forward: **if a v1.296+ boot already created an empty
+`filetube.db` in that `DATA_DIR`, delete it and its `filetube.db-wal` /
+`filetube.db-shm` sidecars first** (v1.42-v1.295 import only when
+`filetube.db` is absent, and they refuse to open a newer schema); then run
+any v1.42-v1.295 build once against that `DATA_DIR` (it creates
+`filetube.db` from your `db.json` and logs the import summary), then
+upgrade. The `db.json` itself stays byte-for-byte intact either way; an
+old-tag instance can keep running against it.
 
 Two related tools/levers:
 

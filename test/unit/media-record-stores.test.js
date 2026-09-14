@@ -34,9 +34,10 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, DOC_KV_NAMESPACES, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createProgressStore = require('../../lib/media/progress');
 const createTombstoneStore = require('../../lib/media/deleteTombstones');
 const { DELETE_TOMBSTONE_CAP, DELETE_TOMBSTONE_MAX_AGE_MS, selectPrunedTombstoneIds, pruneDeleteTombstones } = createTombstoneStore;
@@ -189,6 +190,7 @@ function rewindToV21(seedDocRows) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE media_progress; DROP TABLE media_delete_tombstones; PRAGMA user_version = 21');
+  ensureLegacyDocTables(raw);
   const ins = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
   for (const [ns, key, json] of seedDocRows) ins.run(ns, key, json);
   raw.close();
@@ -196,7 +198,6 @@ function rewindToV21(seedDocRows) {
 
 test('migration v22: doc rows move VERBATIM into the two tables (legacy shapes intact, deleted_at derived), doc rows deleted, stamp 22, load() has no keys, save() works', () => {
   assert.ok(SCHEMA_VERSION >= 22);
-  assert.ok(!DOC_KV_NAMESPACES.includes('progress') && !DOC_KV_NAMESPACES.includes('deleteTombstones'));
   rewindToV21([
     ['progress', 'v1', JSON.stringify({ timestamp: 5, duration: 10, updatedAt: 'x' })],
     ['progress', 'v2', JSON.stringify({ position: 42 })],
@@ -217,7 +218,7 @@ test('migration v22: doc rows move VERBATIM into the two tables (legacy shapes i
     t3: { item: { id: 't3', title: 'snap' }, deletedAt: 5, filePath: '/z' },
   });
   assert.deepStrictEqual(tombRows().map((r) => [r.media_id, r.deleted_at]), [['t1', 123], ['t2', null], ['t3', 5]], 'deleted_at derived per row');
-  assert.strictEqual(adapter.sql.prepare("SELECT COUNT(*) AS c FROM doc_kv WHERE namespace IN ('progress','deleteTombstones')").get().c, 0);
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.progress, undefined);
   assert.strictEqual(db.deleteTombstones, undefined);
@@ -231,6 +232,7 @@ test('migration v22: re-running the block is a no-op (crash between COMMIT and t
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 21');
+  ensureLegacyDocTables(raw);
   raw.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   assert.deepStrictEqual(createProgressStore(adapter).getAll(), { kept: { timestamp: 1 } }, 'rows survive the re-run');
@@ -260,7 +262,7 @@ test('save-lock: `progress` and `deleteTombstones` on the doc object are REFUSED
 
 function handles(with_ = ['insertProgress', 'insertTombstone']) {
   const seen = { kv: [], progress: [], tombstones: [] };
-  const h = { insertKv: (ns, key, value) => seen.kv.push([ns, key, value]), insertSingle: () => {}, insertViewCount: () => {}, insertItem: () => {} }; // (insertItem: Wave 6 - the media index)
+  const h = { insertViewCount: () => {}, insertItem: () => {} }; // (insertItem: Wave 6 - the media index)
   if (with_.includes('insertProgress')) h.insertProgress = (id, rec) => seen.progress.push([id, rec]);
   if (with_.includes('insertTombstone')) h.insertTombstone = (id, rec) => seen.tombstones.push([id, rec]);
   return { h, seen };
@@ -272,12 +274,11 @@ test('importParsedJson: routes both record namespaces verbatim through their han
     progress: { v1: { timestamp: 1 }, v2: 918 },
     deleteTombstones: { t1: { filePath: '/x', deletedAt: 1 } },
     metadata: { v1: { id: 'v1' } },
-  }, h, { source: 'bundle' });
+  }, h);
   assert.deepStrictEqual(seen.progress, [['v1', { timestamp: 1 }], ['v2', 918]]);
   assert.deepStrictEqual(seen.tombstones, [['t1', { filePath: '/x', deletedAt: 1 }]]);
   assert.strictEqual(summary.progress, 2);
   assert.strictEqual(summary.deleteTombstones, 1);
-  assert.ok(!seen.kv.some(([ns]) => ns === 'progress' || ns === 'deleteTombstones'));
 });
 
 test('importParsedJson: refuses loudly - no handle for a carried namespace, a non-object map, a NUL id, an undefined record; an EMPTY map needs no handle', () => {

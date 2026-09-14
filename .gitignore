@@ -50,7 +50,8 @@ bin/
 *.test
 
 # --- FileTube runtime data (regenerable / personal) ---
-# db.json holds folder paths + watch progress; .thumbnails/ is a regenerable cache.
+# filetube.db is the database (v1.42+; a pre-v1.42 db.json may still sit beside it);
+# .thumbnails/ is a regenerable cache.
 # In Docker these live under the mounted DATA_DIR (./data); in local dev they land in the repo root.
 /db.json
 # v1.42: the SQLite store + WAL sidecars (same reasoning as db.json above).

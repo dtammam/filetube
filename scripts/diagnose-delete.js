@@ -4,7 +4,7 @@
  * diagnose-delete.js -- READ-ONLY diagnostic for the "won't delete / comes back"
  * class. Touches NOTHING on disk or in the db; it only reads. For each target
  * video id it prints, side by side:
- *   - the STORED filePath (exact codepoints) from db.json
+ *   - the STORED filePath (exact codepoints) from the database
  *   - whether fs.existsSync(stored) is true (the delete fast-path)
  *   - a RAW-BYTE listing of the real parent directory, marking which dirents
  *     share the target [id] bracket + extension (this is what resolveLeafBy
@@ -12,8 +12,8 @@
  *   - the deletion-tombstone state for the item
  *
  * Usage:
- *   node scripts/diagnose-delete.js                 # auto-find db.json
- *   node scripts/diagnose-delete.js /path/to/db.json
+ *   node scripts/diagnose-delete.js                 # auto-find filetube.db
+ *   node scripts/diagnose-delete.js /path/to/DATA_DIR
  *
  * The three ids below are Dean's failing files; edit TARGET_IDS to add more.
  */
@@ -23,10 +23,10 @@ const path = require('path');
 const TARGET_IDS = ['lUirOY2Xf_4', 'N5OU1gTCc5M', 'PnFlu3Awh74'];
 
 // ---- locate the database ----------------------------------------------------
-// v1.42: the live store is DATA_DIR/filetube.db (SQLite); db.json is the
-// frozen pre-v1.42 artifact. Accepts an explicit path to either (or to a
-// DATA_DIR); with no arg, probes the same candidate dirs as before,
-// preferring filetube.db and falling back to db.json with a legacy note.
+// v1.42: the live store is DATA_DIR/filetube.db (SQLite). Accepts an explicit
+// path to the file or to a DATA_DIR; with no arg, probes the candidate dirs.
+// (Until v1.295 a pre-v1.42 JSON file was accepted as a legacy fallback;
+// Wave 7 of the relational-migration arc removed that reader.)
 function findDbPath() {
   const dirs = [
     process.env.FILETUBE_DATA_DIR,
@@ -40,17 +40,13 @@ function findDbPath() {
   if (arg) {
     try {
       if (fs.statSync(arg).isDirectory()) {
-        const sq = path.join(arg, 'filetube.db');
-        return fs.existsSync(sq) ? sq : path.join(arg, 'db.json');
+        return path.join(arg, 'filetube.db');
       }
     } catch (_) { /* fall through: treat as a file path */ }
     return arg;
   }
   for (const d of dirs) {
     try { if (fs.existsSync(path.join(d, 'filetube.db'))) return path.join(d, 'filetube.db'); } catch (_) { /* keep probing */ }
-  }
-  for (const d of dirs) {
-    try { if (fs.existsSync(path.join(d, 'db.json'))) return path.join(d, 'db.json'); } catch (_) { /* keep probing */ }
   }
   return null;
 }
@@ -78,21 +74,15 @@ function hr() { line('-'.repeat(78)); }
 function main() {
   const dbPath = findDbPath();
   if (!dbPath) {
-    line('ERROR: could not find filetube.db or db.json. Pass a path: node scripts/diagnose-delete.js /path/to/DATA_DIR');
+    line('ERROR: could not find filetube.db. Pass a path: node scripts/diagnose-delete.js /path/to/DATA_DIR');
     process.exit(2);
   }
   line(`database: ${dbPath}`);
   let db;
-  if (dbPath.endsWith('.db')) {
-    try {
-      const { readPersistedDatabase } = require('../lib/db/sqlite');
-      db = readPersistedDatabase(path.dirname(dbPath));
-    } catch (e) { line(`ERROR reading ${dbPath}: ${e.message}`); process.exit(2); }
-  } else {
-    line('NOTE: reading a legacy db.json (pre-v1.42). If this instance has migrated, diagnose DATA_DIR/filetube.db instead — db.json is frozen at migration time.');
-    try { db = JSON.parse(fs.readFileSync(dbPath, 'utf8')); }
-    catch (e) { line(`ERROR reading db.json: ${e.message}`); process.exit(2); }
-  }
+  try {
+    const { readPersistedDatabase } = require('../lib/db/sqlite');
+    db = readPersistedDatabase(path.dirname(dbPath));
+  } catch (e) { line(`ERROR reading ${dbPath}: ${e.message}`); process.exit(2); }
 
   const metadata = db.metadata || {};
   const tombstones = db.deleteTombstones || {};

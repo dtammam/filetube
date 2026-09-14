@@ -30,9 +30,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const {
-  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, DOC_KV_NAMESPACES, SINGLETON_NAMES, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
+  SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
+const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const musicStore = require('../../lib/music/store');
 
 let dir;
@@ -52,18 +53,16 @@ function rewindToV27(rows) {
   adapter.close();
   const raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('DROP TABLE music_folders; DROP TABLE music_tracks; DROP TABLE music_settings; DROP TABLE music_channels; PRAGMA user_version = 27');
+  ensureLegacyDocTables(raw);
   const kv = raw.prepare('INSERT INTO doc_kv(namespace, key, json) VALUES(?, ?, ?)');
   const single = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
   for (const [kind, a, b, c] of rows) (kind === 'kv' ? kv.run(a, b, c) : single.run(a, b));
   raw.close();
 }
 const reopen = () => { adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} }); return adapter; };
-const docRows = () => adapter.sql.prepare("SELECT (SELECT COUNT(*) FROM doc_kv WHERE namespace LIKE 'music.%') + (SELECT COUNT(*) FROM doc_single WHERE name LIKE 'music.%') AS c").get().c;
 
 test('migration v27: the root list, the episode rows and the settings move verbatim; doc rows deleted; stamp 28; load() has no tv key; save() works', () => {
   assert.ok(SCHEMA_VERSION >= 28);
-  assert.ok(!DOC_KV_NAMESPACES.includes('music.tracks'));
-  assert.ok(!SINGLETON_NAMES.some((n) => n.startsWith('music.')));
   assert.ok(FEATURE_DEFS.some((d) => d.name === 'music'));
   rewindToV27([
     ['single', 'music.folders', JSON.stringify(['/music/b', '/music/a'])],
@@ -77,7 +76,7 @@ test('migration v27: the root list, the episode rows and the settings move verba
   const music = musicStore.createMusicStore(adapter);
   assert.deepStrictEqual(music.read(), { folders: ['/music/b', '/music/a'], tracks: { t1: trk('t1', { albumArtKey: 'k' }), t2: trk('t2') }, settings: { x: 1 }, channels: { NESTALGIA: 'on', Zarchivo: 'off' } });
   assert.deepStrictEqual(adapter.sql.prepare('SELECT folder_name, json FROM music_channels ORDER BY folder_name').all().map((r) => [r.folder_name, r.json]), [['NESTALGIA', '"on"'], ['Zarchivo', '"off"']], 'the doc_single MAP became one row per folder');
-  assert.strictEqual(docRows(), 0, 'every doc row is gone');
+  assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'the doc tables are gone (v33 - which refuses to drop a table that still holds a row, so every drain before it deleted its rows)');
   const db = adapter.load();
   assert.strictEqual(db.music, undefined, 'no doc-model music key');
   assert.doesNotThrow(() => adapter.save(db));
@@ -92,6 +91,7 @@ test('migration v28: re-run is a no-op; a corrupt track row rolls the whole bloc
   adapter.close();
   let raw = openRaw(path.join(dir, SQLITE_FILENAME));
   raw.exec('PRAGMA user_version = 27');
+  ensureLegacyDocTables(raw);
   raw.close();
   reopen();
   assert.deepStrictEqual(musicStore.createMusicStore(adapter).read().folders, ['/kept'], 'a re-run neither wipes nor duplicates');
@@ -112,17 +112,14 @@ test('save-lock: a stray `music` container on the doc object is REFUSED (the con
 });
 
 test('importParsedJson: `music` routes whole through replaceFeature (never doc rows); refused without the handle / on an unknown part / a bad shape', () => {
-  const kv = [];
-  const singles = [];
   const features = [];
-  const h = { insertKv: (ns, k, v) => kv.push([ns, k, v]), insertSingle: (n, v) => singles.push([n, v]), insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
+  const h = { insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: () => {}, insertSetting: () => {}, replaceFolders: () => {}, insertFolderSetting: () => {}, insertFolderDisplayName: () => {}, replaceLiked: () => {}, replaceFeature: (name, ns) => features.push([name, ns]) };
   const ns = { folders: ['/music'], tracks: { t1: trk('t1') }, settings: {}, channels: { N: 'on' } };
-  const summary = importParsedJson({ metadata: {}, music: ns }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, music: ns }, h);
   assert.deepStrictEqual(features, [['music', ns]]);
   assert.strictEqual(summary['music.folders'], 1);
   assert.strictEqual(summary['music.tracks'], 1);
   assert.strictEqual(summary['music.channels'], 1);
-  assert.ok(!kv.some(([n]) => n.startsWith('music.')) && !singles.some(([n]) => n.startsWith('music.')), 'never a doc row');
   const noHandle = { ...h };
   delete noHandle.replaceFeature;
   assert.throws(() => importParsedJson({ music: ns }, noHandle), /no replaceFeature handle/);
