@@ -585,16 +585,48 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     `<feature>-feature-atomicity` integration suites (failed-save axes through the REAL
     routes/writers, the order survival, the bundle round-trip + 400-before-wipe, the
     absent-key semantics: podcasts PRESERVES, the rest restore empty) + `db-feature-store`.
-  - Baseline after: doc_kv **1**, doc_single **0**, total **1** (`node
-    scripts/relational-arc-baseline.js`), schema **31**, 60 relational tables, server.js
-    **19383** lines, tests 8486 / 684 files (the baseline script's count; the suite's own
-    count is in the release notes). `scripts/migrate-check.js` passes a db.json carrying
+  - Baseline after the pass-B fix round: doc_kv **1**, doc_single **0**, total **1**
+    (`node scripts/relational-arc-baseline.js`), schema **31**, 60 relational tables,
+    server.js **19382** lines, tests 8502 / 687 files (the baseline script's count at the
+    fix commit; the suite's own count is in the release notes). `scripts/migrate-check.js` passes a db.json carrying
     every container (all five route through `replaceFeature`).
   - Deferred to Wave 7 (disclosed): the doc-model seams that still exist for `metadata`
     alone (`BACKUP_NAMESPACE_KEYS = ['metadata']`, the save-lock's container walk over an
     empty list, `doc_single` as an empty table); the podcasts episode DELETE / restore
     routes still hang on a failed commit after their file move (pre-existing, the Wave 3
     class, not this wave's change - tracked in #224's revisit).
+  - **Gate pass B (both seats FRESH instances - pass A's did not survive a context
+    compaction; one fix round + delta).** No CRITICAL. **ADV W1 (data loss, a surviving
+    mutant):** `syncFrom` treated a part absent from the snapshot as "emptied", so a PARTIAL
+    holder (`holder(only)` - the very optimisation the `only` parameter invites) reaching
+    the scan commit wiped the pins, the avatar registry and the flag; six suites stayed
+    green under the mutant because no scan test seeded those parts. Fixed as prescribed: a
+    partial snapshot is tagged (a non-enumerable Symbol) with the parts it read and
+    `syncFrom` skips the rest; bound by a primitive-level case and by a scan case that
+    seeds pins + avatars + flag and asserts them untouched. **ADV W2 = QA W2:** the scan
+    bridge's "inside its own commit" was bound only by a source lock (the out-of-
+    transaction mutant survived every executing test) - a failed-save scan case now binds
+    it (the bridge row survives, no item lands, the next scan consumes). **ADV W3 = QA W1
+    (perf):** whole-table reads per ITEM in the home row resolver, the grid card resolver,
+    the push resolver and the handoff resolvers (measured: `musicDb.read()` at 10k tracks
+    = ~50 ms per call) - every single-lookup site is a prepared point query now
+    (`xDb.parts.<map>.get(id)`, six books routes included), the mark readers read one
+    table, search reads the podcasts namespace once per query; the remaining per-request
+    LIST reads are disclosed in tracker #226 with a Wave 6 revisit. **ADV W4:** the v31
+    block minted an id for an id-less legacy yt-dlp subscription while the db.json boot
+    import and the bundle restore REFUSED the same record (a boot that never opens) -
+    one exported repair (`mintLegacyYtdlpSubscriptionIds`, md5 of the NORMALIZED url -
+    QA W5's finding: the raw-url mint would have made a later re-add a duplicate) runs at
+    all three seams; the validator accepts the shape. **QA W3:** the record's test count
+    was stale - re-derived at the fix commit. **QA W4:** the podcasts feed-url route hung
+    on a failed commit (undisclosed) - 500 now, test-bound. **QA W5:** five stale comments
+    (the sqlite header's `books.audio` bullet, the scan bridge's `fresh.ytdlp` prose, the
+    dead boot backfill's lead, the index's "server.js never reads the namespace",
+    the mint comment). Non-blocking, applied: a `value` part is shape-checked in the
+    bundle validator and coerced by the v31 block (QA S2 / ADV S7); the lock lists carry
+    `handoffDb|srcMeta` (ADV S6); the fanout unit tests start each fake-deps case with an
+    empty pin table (QA S3); the one-mutate-per-tick rule is stated in the primitive's
+    header and recorded in #226 with a revisit (ADV S5); the double reads (QA S1).
 
 ### Wave 6 - `metadata` -> `media_items`  (SOLO, FULL gate, adversarial destroys the catalog)
 - The crown jewel: 172 refs, 284 rows, written by the 1,533-line `runScanDirectories`.

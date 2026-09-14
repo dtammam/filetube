@@ -80,7 +80,7 @@ test('migration v31: every part moves verbatim (the ORDER of both lists, the fla
   const ytdlp = ytdlpStore.createYtdlpStore(adapter);
   const got = ytdlp.read();
   assert.deepStrictEqual(got.subscriptions.slice(0, 2), subs, 'verbatim, in array order');
-  assert.match(got.subscriptions[2].id, /^[0-9a-f]{32}$/, 'the legacy record got an id minted (md5 of its channelUrl) instead of being dropped');
+  assert.strictEqual(got.subscriptions[2].id, require('node:crypto').createHash('md5').update(ytdlpStore.normalizeChannelUrl(legacy.channelUrl)).digest('hex'), 'the legacy record got the id addSubscription would mint (md5 of the NORMALIZED url - a later re-add hits the existing branch, never a duplicate)');
   assert.strictEqual(got.subscriptions[2].name, 'Legacy (no id)');
   assert.deepStrictEqual(got.pins, pins);
   assert.strictEqual(got.allowMembersOnly, true, 'the flag moved into ytdlp_settings and reads back as the value part');
@@ -141,6 +141,10 @@ test('importParsedJson: `ytdlp` routes whole through replaceFeature (never doc r
   assert.throws(() => importParsedJson({ ytdlp: ['x'] }, h), /'ytdlp' is not an object/);
   assert.throws(() => importParsedJson({ ytdlp: { tombstones: {} } }, h), /unknown key 'ytdlp\.tombstones'/);
   assert.throws(() => importParsedJson({ ytdlp: { settings: {} } }, h), /unknown key 'ytdlp\.settings'/, 'the internal table is not a bundle key');
+  // gate pass B (adversarial W4): a legacy id-less subscription with a channelUrl is MINTED at the import seam, never a refusal
+  features.length = 0;
+  importParsedJson({ ytdlp: { subscriptions: [{ channelUrl: 'https://YouTube.com/@Legacy', name: 'L' }] } }, h);
+  assert.strictEqual(features[0][1].subscriptions[0].id, require('node:crypto').createHash('md5').update(ytdlpStore.normalizeChannelUrl('https://YouTube.com/@Legacy')).digest('hex'), 'minted like the v31 block');
 });
 
 test('exclusiveReplace: wipes all five tables (the flag included), repopulates through replaceFeature inside its transaction, rolls back whole on a bad row', () => {
@@ -187,7 +191,7 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names the ytdlp tables or the dead doc spellings in CODE; the reads take the store; the scan consumes the bridge on a holder and queues its diff into the commit; the module writes ONLY through ytdlpDb.mutate', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   for (const t of TABLES) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|dbSnapshot|getCachedDatabase\(\)|loadDatabase\(\))\.ytdlp\b/.test(server), 'no doc-model ytdlp access survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|dbSnapshot|getCachedDatabase\(\)|loadDatabase\(\))\.ytdlp\b/.test(server), 'no doc-model ytdlp access survives');
   assert.ok(!/ytdlp\.ensureYtdlp\(|ytdlp\.readYtdlpNamespace\(/.test(server), 'server.js never normalises the namespace itself');
   assert.ok((server.match(/ytdlpDb\.readPart\('subscriptions'\)/g) || []).length >= 6, 'the subscription-name reads');
   assert.ok((server.match(/ytdlpDb\.holder\(/g) || []).length >= 11, 'the per-request holders (avatar resolver, relocation joins, the scan)');
@@ -199,6 +203,8 @@ test('source lock: server.js never names the ytdlp tables or the dead doc spelli
   assert.ok(/inSaveTransaction\(\(\) => ytdlpDb\.syncFrom\(ytScan\.ytdlp\)\)/.test(server), 'the consumed entries ride the scan commit');
   assert.strictEqual((server.match(/ytdlpDb\.mutate\(\(yh\) => refreshPinLabelsForBackfilledChannel\(db, /g) || []).length, 2, 'both fanout writers relabel the pins through a nested feature mutate (items from the doc, pins from the holder)');
   assert.ok(!/const dbForLookup = /.test(server), 'the deep-clone dance is gone (a holder is a fresh snapshot)');
+  assert.ok(!/podcastsDb\.read\(\)\.episodes\[|const ns = podcastsDb\.read\(\);\n\s*const ep = /.test(server), 'gate pass B: no per-item whole-table read of the episodes map is left (point queries)');
+  assert.ok((server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5 && (server.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (server.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 6, 'the single-lookup sites are point queries');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'store.js'), 'utf8'));
   assert.strictEqual((lib.match(/deps\.updateDatabase\(/g) || []).length, 13, 'the store module\'s 13 writers');
   assert.strictEqual((lib.match(/deps\.updateDatabase\(\(\) => deps\.ytdlpDb\.mutate\(\(db\) =>/g) || []).length, 13, 'every one of them runs on the holder');

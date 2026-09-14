@@ -146,12 +146,13 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names the books tables or the dead doc spellings in CODE; every writer runs through booksDb.mutate (directly or through the store module\'s deps); the reads take booksDb.read()', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   for (const t of TABLES) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|getCachedDatabase\(\)|loadDatabase\(\))\.books\b/.test(server), 'no doc-model books access survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.books\b/.test(server), 'no doc-model books access survives');
   assert.ok(!/booksStore\.readBooks\(/.test(server), 'every read view moved to booksDb.read()');
   assert.ok(!/booksStore\.ensureBooks\((loadDatabase\(\)|fresh|freshDb)\)/.test(server), 'no ensureBooks over the doc object');
   assert.strictEqual((server.match(/booksDb\.mutate\(/g) || []).length, 5, 'the scan merge, the config POST, the cover POST, the TTS boot reconcile and the clear-cache drop - the five in-file writers');
   assert.strictEqual((server.match(/\{ updateDatabase, booksDb \}/g) || []).length, 2, 'the TTS status writers in lib/books/store.js get the store through deps');
-  assert.ok((server.match(/booksDb\.read\(\)/g) || []).length >= 25, 'the reads');
+  assert.ok((server.match(/booksDb\.read\(\)/g) || []).length + (server.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 30, 'the reads (snapshots + the single-lookup point queries of gate pass B)');
+  assert.ok((server.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 6, 'gate pass B: the six single-book lookups are point queries, never a six-table read');
   assert.ok(/bundle\.books = booksDb\.read\(\)/.test(server), 'the bundle reads the tables');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'books', 'store.js'), 'utf8'));
   assert.strictEqual((lib.match(/deps\.booksDb\.mutate\(/g) || []).length, 5, 'the module\'s five deps-mutators write through the store');

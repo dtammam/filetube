@@ -161,12 +161,13 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names the podcasts tables or the dead doc spellings in CODE; the reads take podcastsDb.read(); the bundle + the restore preservation read the tables; the module writes ONLY through podcastsDb.mutate', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   for (const t of TABLES) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|getCachedDatabase\(\)|loadDatabase\(\))\.podcasts\b/.test(server), 'no doc-model podcasts access survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.podcasts\b/.test(server), 'no doc-model podcasts access survives');
   assert.ok(!/podcastStore\.readPodcasts\(/.test(server), 'every read view moved to podcastsDb.read()');
   assert.ok(!/podcastStore\.ensurePodcasts\(/.test(server), 'server.js never mutates the namespace itself');
-  assert.ok((server.match(/podcastsDb\.read\(\)/g) || []).length >= 14, 'the reads');
+  assert.ok((server.match(/podcastsDb\.read\(\)/g) || []).length + (server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length + (server.match(/podcastsDb\.readPart\(/g) || []).length >= 18, 'the reads (snapshots + the point queries of gate pass B)');
+  assert.ok((server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5, 'gate pass B: the per-item episode lookups (home row, grid card, push row, handoff) are point queries, never the whole archive per item');
   assert.ok(/bundle\.podcasts = podcastsDb\.read\(\)/.test(server), 'the bundle reads the tables');
-  assert.ok(/podcastsNs: \(\) => podcastsDb\.read\(\)/.test(server), 'search reaches the namespace through the dep');
+  assert.ok(/podcastsNs: \(\(\) => \{ let memo = null; return \(\) => \(memo \|\| \(memo = podcastsDb\.read\(\)\)\); \}\)\(\)/.test(server), 'search reaches the namespace through the dep - memoised per query (gate pass B)');
   assert.strictEqual((server.match(/\bpodcastsDb,/g) || []).length, 3, 'the two deps bundles (routes + startBackground) and the export carry the store');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');

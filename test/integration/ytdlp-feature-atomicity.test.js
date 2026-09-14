@@ -103,6 +103,40 @@ test('the scan bridge: a recorded download capture lands in ytdlp_download_meta 
   assert.deepStrictEqual(ytdlpDb.syncFrom(ytdlpDb.read()), { rowsWritten: 0, rowsDeleted: 0 }, 'nothing left to write');
 });
 
+test('the scan bridge under a FAILED save: the bridge row SURVIVES and the item carries no identity; the next scan consumes it (gate pass B, both seats)', async () => {
+  const root = path.join(process.env.FILETUBE_YTDLP_DOWNLOAD_DIR, 'Chan');
+  fs.mkdirSync(root, { recursive: true });
+  const fileName = 'Clip [dQw4w9WgXcQ].mp4';
+  fs.writeFileSync(path.join(root, fileName), 'BYTES');
+  seedState({ folders: [process.env.FILETUBE_YTDLP_DOWNLOAD_DIR], folderSettings: {}, metadata: {}, settings, ytdlp: EMPTY });
+  await ytdlpStore.recordDownloadChannelMeta(deps, { videoId: 'dQw4w9WgXcQ', channelUrl: 'https://www.youtube.com/@RickAstley', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', channelName: 'Rick Astley', filePath: path.join(root, fileName) });
+  __failNextSaveForTests(new Error('simulated save failure'));
+  await scanDirectories().catch(() => {});
+  assert.ok(ytdlpDb.read().downloadMeta.dQw4w9WgXcQ, 'the consumed-in-memory entry is STILL a row - its deletion rode the commit that failed');
+  assert.strictEqual(Object.values(loadDatabase().metadata).find((it) => it && it.name === fileName), undefined, 'and no item landed without it');
+  await scanDirectories();
+  const item = Object.values(loadDatabase().metadata).find((it) => it && it.name === fileName);
+  assert.strictEqual(item.channelName, 'Rick Astley', 'the next scan consumed it');
+  assert.deepStrictEqual(ytdlpDb.read().downloadMeta, {});
+});
+
+test('the scan holder is FULL: a scan that consumes one capture leaves the pins, the avatar registry and the flag untouched (gate pass B, adversarial W1 - the partial-holder wipe)', async () => {
+  const root = path.join(process.env.FILETUBE_YTDLP_DOWNLOAD_DIR, 'Chan');
+  fs.mkdirSync(root, { recursive: true });
+  const fileName = 'Clip [dQw4w9WgXcQ].mp4';
+  fs.writeFileSync(path.join(root, fileName), 'BYTES');
+  const pins = [{ id: 'p1', channelDir: root, label: 'Chan', pinnedAt: 1, order: 0 }];
+  const channelAvatars = { UCaaaaaaaaaaaaaaaaaaaaaa: { avatarUrl: 'https://yt3.ggpht.com/a.jpg', fetchedAt: 1 } };
+  seedState({ folders: [process.env.FILETUBE_YTDLP_DOWNLOAD_DIR], folderSettings: {}, metadata: {}, settings, ytdlp: { ...EMPTY, pins, channelAvatars, allowMembersOnly: true } });
+  await ytdlpStore.recordDownloadChannelMeta(deps, { videoId: 'dQw4w9WgXcQ', channelUrl: 'https://www.youtube.com/@RickAstley', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', channelName: 'Rick Astley', filePath: path.join(root, fileName) });
+  await scanDirectories();
+  const after = ytdlpDb.read();
+  assert.deepStrictEqual(after.downloadMeta, {}, 'consumed');
+  assert.deepStrictEqual(after.pins, pins, 'the pins survived the scan commit');
+  assert.deepStrictEqual(after.channelAvatars, channelAvatars, 'the avatar registry survived');
+  assert.strictEqual(after.allowMembersOnly, true, 'the flag survived');
+});
+
 test('the bundle carries `ytdlp` (order + flag included) and a restore round-trips it; a malformed `ytdlp` is a 400 BEFORE the wipe; a bundle without the key restores to the empty namespace', async () => {
   const ns = {
     allowMembersOnly: true,
@@ -115,11 +149,16 @@ test('the bundle carries `ytdlp` (order + flag included) and a restore round-tri
   const bundle = await (await fetch(`${base}/api/admin/backup`)).json();
   delete bundle.users;
   assert.deepStrictEqual(bundle.ytdlp, ns, 'verbatim - the array order, the flag, the spaced key');
-  for (const bad of [['x'], { tombstones: {} }, { settings: {} }, { downloadMeta: { '': {} } }, { subscriptions: [{ noId: 1 }] }, { pins: 'x' }]) {
+  for (const bad of [['x'], { tombstones: {} }, { settings: {} }, { downloadMeta: { '': {} } }, { subscriptions: [{ noId: 1 }] }, { pins: 'x' }, { allowMembersOnly: 'yes' }, { allowMembersOnly: {} }]) {
     const r = await withTimeout(post('/api/admin/restore', { ...bundle, ytdlp: bad }));
     assert.strictEqual(r.status, 400, `${JSON.stringify(bad)}: ${await r.clone().text()}`);
     assert.deepStrictEqual(ytdlpDb.read().subscriptions, ns.subscriptions, 'the live rows survived the refusal');
   }
+  // gate pass B (adversarial W4): a v1.293 bundle carrying a legacy id-less subscription WITH a channelUrl restores - the id is minted, not refused
+  const legacy = { ...bundle, ytdlp: { ...ns, subscriptions: [...ns.subscriptions, { channelUrl: 'https://www.youtube.com/@legacy', name: 'Legacy', order: 2 }] } };
+  const rl = await withTimeout(post('/api/admin/restore', legacy));
+  assert.strictEqual(rl.status, 200, await rl.text());
+  assert.match(ytdlpDb.read().subscriptions[2].id, /^[0-9a-f]{32}$/, 'minted on the way in');
   ytdlpDb.replaceAll({ subscriptions: [{ id: 'scratch', channelUrl: 'https://www.youtube.com/@s', name: 'S' }] });
   const r = await post('/api/admin/restore', bundle);
   assert.strictEqual(r.status, 200, await r.text());

@@ -156,10 +156,11 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names the music tables or the dead doc spellings in CODE; the scan merge, the config POST and the channel-mark route run through musicDb.mutate; the reads take musicDb.read()', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   for (const t of ['music_folders', 'music_tracks', 'music_settings', 'music_channels']) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|loaded|persisted|snapshot|getCachedDatabase\(\)|loadDatabase\(\))\.music\b/.test(server), 'no doc-model music access survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.music\b/.test(server), 'no doc-model music access survives');
   assert.ok(!/musicStore\.readMusic\(/.test(server), 'every read view moved to musicDb.read()');
   assert.ok(!/musicStore\.ensureMusic\((db|fresh|freshDb)\)/.test(server), 'no ensureMusic over the doc object');
   assert.strictEqual((server.match(/musicDb\.mutate\(/g) || []).length, 3, 'the scan merge, the config POST and the channel-mark route - the three writers');
-  assert.ok((server.match(/musicDb\.read\(\)/g) || []).length >= 25, 'the reads');
+  assert.ok((server.match(/musicDb\.read\(\)/g) || []).length + (server.match(/musicDb\.parts\.tracks\.get\(/g) || []).length + (server.match(/musicDb\.readPart\(/g) || []).length >= 30, 'the reads (snapshots + the point queries + the one-table reads of gate pass B)');
+  assert.ok((server.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (server.match(/musicDb\.readPart\('channels'\)/g) || []).length >= 2, 'gate pass B: single-track lookups are point queries; the mark readers read one table');
   assert.ok(/bundle\.music = musicDb\.read\(\)/.test(server), 'the bundle reads the tables');
 });

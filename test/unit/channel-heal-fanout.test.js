@@ -8,9 +8,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = process.env.DATA_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-heal-fanout-'));
 
-const { test } = require('node:test');
+const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const { recordLocalChannelHealFanout, updateDatabase, saveDatabase, ytdlpDb, __resetDatabaseForTests } = require('../../server');
+// The fake-deps cases below drive the REAL module-level ytdlpDb for the pin
+// relabel (a nested feature mutate); a leftover pin from another case would make
+// that nested write need a real commit the fake has none of - start each case empty.
+beforeEach(() => ytdlpDb.replaceAll(null));
 
 const UC = 'UC-6oT0FOyAqCGfdNLi4fmXA';
 const HANDLE = 'https://www.youtube.com/@nestalgiamusic';

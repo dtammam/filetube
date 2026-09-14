@@ -151,7 +151,7 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names the tv tables or the dead doc spellings in CODE; the scan merge and the config POST run through tvDb.mutate; the reads take tvDb.read()', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   for (const t of ['tv_folders', 'tv_episodes', 'tv_settings']) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|getCachedDatabase\(\)|loadDatabase\(\))\.tv\b/.test(server), 'no doc-model tv access survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.tv\b/.test(server), 'no doc-model tv access survives');
   assert.ok(!/tvStore\.readTv\(/.test(server), 'every read view moved to tvDb.read()');
   assert.ok(!/tvStore\.ensureTv\((db|fresh|freshDb)\)/.test(server), 'no ensureTv over the doc object');
   assert.strictEqual((server.match(/tvDb\.mutate\(/g) || []).length, 2, 'the scan merge and the config POST - the two writers');

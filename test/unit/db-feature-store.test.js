@@ -144,6 +144,24 @@ test('feature store: replaceAll is refuse-whole (unknown part, bad list entry, b
   assert.strictEqual(s.isEmpty(), true);
 });
 
+test('feature store: a PARTIAL snapshot (read(only) / holder(only)) syncs only the parts it read - the rest is untouched, even after the module\'s ensure fills defaults (gate pass B, adversarial W1)', () => {
+  const s = featureDef.createStore(adapter);
+  s.replaceAll({ folders: ['/a'], episodes: { e1: { id: 'e1' } }, pins: [{ id: 'p1' }], settings: { k: 1 }, allowMembersOnly: true, channels: { c: 'on' } });
+  const h = s.holder(['folders']);
+  assert.deepStrictEqual(Object.keys(h.t), ['folders'], 'only the part asked for');
+  // a module's ensureX(holder) fills the missing keys with defaults - the very
+  // shape that used to read as "the user emptied every other part"
+  Object.assign(h.t, { episodes: {}, pins: [], settings: {}, allowMembersOnly: false, channels: {} });
+  h.t.folders = ['/b'];
+  assert.deepStrictEqual(s.syncFrom(h.t), { rowsWritten: 1, rowsDeleted: 0 }, 'the read part diffs; nothing else is touched');
+  assert.deepStrictEqual(s.read(), { folders: ['/b'], episodes: { e1: { id: 'e1' } }, pins: [{ id: 'p1' }], settings: { k: 1, allowMembersOnly: true }, allowMembersOnly: true, channels: { c: 'on' } }); // (this fixture's settings kv is not `internal`, so the value shows there too)
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(s.read(['pins']))), { pins: [{ id: 'p1' }] }, 'the tag is invisible to JSON');
+  const full = s.holder();
+  full.t.pins = [];
+  assert.deepStrictEqual(s.syncFrom(full.t), { rowsWritten: 0, rowsDeleted: 0 }, 'a FULL holder emptying a part still wipes it (a records part replaces whole; the stats count rows written)');
+  assert.deepStrictEqual(s.read().pins, [], 'the full holder is authoritative for every part');
+});
+
 test('feature store: migrateFromDoc copies the doc rows (maps from doc_kv, the rest from doc_single) verbatim, skips/drops with a log line, deletes the doc rows; readPersisted assembles the namespace or undefined', () => {
   const raw = adapter.sql;
   raw.exec(`INSERT INTO doc_kv(namespace, key, json) VALUES ('t.episodes', 'e1', '{"id":"e1"}'), ('t.episodes', '', '{"id":""}'), ('other.ns', 'k', '1')`);

@@ -79,6 +79,17 @@ test('PATCH /api/podcasts/subscriptions/:id: a FAILED doc save leaves the record
   assert.deepStrictEqual(listed.subscriptions.map((s) => s.id), ['s3', 's1', 's2'], 'the route sorts by `order` on the way out, as before');
 });
 
+test('POST /api/podcasts/subscriptions/:id/feed-url: a FAILED doc save answers 500, never a hang (gate pass B, QA W4)', async () => {
+  seedState({ folders: [], folderSettings: {}, metadata: {}, settings, podcasts: { ...EMPTY, subscriptions: [sub('s1', { feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', secretMissing: true })] } });
+  __failNextSaveForTests(new Error('simulated save failure'));
+  const failed = await withTimeout(post('/api/podcasts/subscriptions/s1/feed-url', { feedUrl: 'https://x.example/rss?auth=tok' }));
+  assert.strictEqual(failed.status, 500, await failed.text());
+  assert.strictEqual(podcastsDb.read().subscriptions[0].secretMissing, true, 'a failed save wrote nothing to the record');
+  const ok = await withTimeout(post('/api/podcasts/subscriptions/s1/feed-url', { feedUrl: 'https://x.example/rss?auth=tok' }));
+  assert.strictEqual(ok.status, 200, await ok.text());
+  assert.strictEqual(podcastsDb.read().subscriptions[0].secretMissing, false);
+});
+
 test('DELETE /api/podcasts/episodes/:id (the trash lane): the record flips in the tables; an unchanged pass writes nothing', async () => {
   const showDir = path.join(ROOT, 'Show');
   fs.mkdirSync(showDir, { recursive: true });

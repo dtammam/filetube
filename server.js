@@ -293,10 +293,9 @@ function resolvePushMeta(db, row) {
   const mediaId = row && typeof row === 'object' ? row.mediaId : row; // tolerate the pre-v1.73 call shape
   const kind = row && typeof row === 'object' && row.kind === 'podcast' ? 'podcast' : 'media';
   if (kind === 'podcast') {
-    const ns = podcastsDb.read();
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, mediaId) ? ns.episodes[mediaId] : null;
+    const ep = podcastsDb.parts.episodes.get(mediaId) || null; // Wave 5 (gate pass B): a point query, never the whole table per push row
     if (!ep || ep.status !== 'downloaded') return null; // pruned/trashed between insert and delivery - skip
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return { title: ep.title, channel: sub ? sub.name : 'Podcast', kind: 'podcast' };
   }
   const item = db.metadata && db.metadata[mediaId];
@@ -575,13 +574,10 @@ function loadDatabase() {
   // of this object, and the save-lock refuses it if one appears.)
   // (v1.65-v1.292: `trash` was backfilled here. Wave 3 moved it to
   // media_trash / trashStore - no longer a key of this object.)
-  // v1.42: when a container namespace EXISTS, backfill its per-key
-  // sub-namespaces the same way. Under db.json, ensureBooks/ensureYtdlp
-  // created these keys once and the empty `{}` persisted forever; under
-  // SQLite an empty doc_kv namespace has zero rows and assembles as absent,
-  // which would silently break every consumer that (correctly, per the old
-  // invariant) assumes `db.books.progress` exists whenever `db.books` does.
-  // The containers themselves stay lazy (ensure* call-site-owned, as today).
+  // (v1.42-v1.294: when a container namespace EXISTED, its per-key sub-
+  // namespaces were backfilled here, because an empty doc_kv namespace has
+  // zero rows and assembles as absent. Wave 5 moved every container to its
+  // feature-store tables - nothing is backfilled on this object any more.)
   // (v1.42-v1.293: the books sub-keys were backfilled here. Wave 5 moved the
   // books namespace to its tables behind booksDb - no longer a key of this object.)
   // (v1.42-v1.294: the ytdlp sub-keys were backfilled here. Wave 5 moved the
@@ -2215,7 +2211,7 @@ function ttsBlocksPath(key) { return path.join(TTS_CACHE_DIR, `${key}.blocks.jso
 // /status reported 'ready' for -> a spurious 404 (gate finding, v1.38.0). Falls
 // back to the current-settings key only when no status row exists yet.
 function ttsServeKey(bookId, spineIndex) {
-  const audio = booksDb.read().audio[bookId];
+  const audio = booksDb.parts.audio.get(bookId); // Wave 5 (gate pass B): a point query
   const entry = audio && audio[String(spineIndex)];
   return (entry && entry.key) ? entry.key : ttsCacheKey(bookId, spineIndex);
 }
@@ -2224,7 +2220,7 @@ function ttsServeKey(bookId, spineIndex) {
 // an unknown/non-epub book or an out-of-range chapter -- every caller (worker
 // AND routes) funnels validation through this ONE place.
 function resolveTtsChapter(bookId, spineIndex) {
-  const book = booksDb.read().items[bookId];
+  const book = booksDb.parts.items.get(bookId); // Wave 5 (gate pass B): a point query
   if (!book || book.format !== 'epub' || !Array.isArray(book.spine)) return null;
   const idx = Number(spineIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= book.spine.length) return null;
@@ -5376,8 +5372,10 @@ async function runScanDirectories() {
 
       // v1.20.0 FR-2: bridge each freshly-scanned yt-dlp download's captured
       // channel identity onto its db.metadata item, inside the SAME
-      // serialized mutator that already owns db.ytdlp -- ytdlp.consumeDownloadChannelMeta
-      // reads+re-validates+DELETES fresh.ytdlp.downloadMeta[videoId]
+      // serialized mutator -- ytdlp.consumeDownloadChannelMeta reads+re-validates+
+      // DELETES the entry on the `ytScan` holder (Wave 5: the bridge map is
+      // ytdlp_download_meta; the deletions land through the syncFrom queued
+      // into this commit below)
       // (read-validate-delete, bounding the map's growth to "lives only
       // until first index"). Scoped to items that are (a) genuinely
       // new/updated this scan (freshlyScannedIds -- an already-indexed
@@ -6780,7 +6778,7 @@ app.get('/api/folders/music-flag', (req, res) => {
   const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
   const db = getCachedDatabase();
-  const marks = musicDb.read().channels; // Wave 5: the music_channels table
+  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
   // Visibility-scoped: the toggle only renders for a channel the user can see.
   const hasVisibleAudio = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
@@ -7639,7 +7637,7 @@ app.get('/book/:id/file', (req, res) => {
 // Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
 // configured; 404 for an unknown/non-epub book or out-of-range chapter.
 app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
-  const rbacBook = booksDb.read().items[req.params.id]; // v1.80 RBAC
+  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
   if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
@@ -7655,7 +7653,7 @@ app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
 app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
   const idx = Number(req.params.spineIndex);
   if (!Number.isInteger(idx) || idx < 0) return res.json({ status: 'none', durationSec: null });
-  const audio = booksDb.read().audio[req.params.id];
+  const audio = booksDb.parts.audio.get(req.params.id); // Wave 5 (gate pass B): a point query
   const entry = audio && audio[String(idx)];
   if (!entry) return res.json({ status: 'none', durationSec: null });
   res.json({ status: entry.status, durationSec: typeof entry.durationSec === 'number' ? entry.durationSec : null });
@@ -7663,7 +7661,7 @@ app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
 
 // Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
 app.get('/book/:id/tts/:spineIndex', (req, res) => {
-  const rbacBook = booksDb.read().items[req.params.id]; // v1.80 RBAC
+  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
@@ -7679,7 +7677,7 @@ app.get('/book/:id/tts/:spineIndex', (req, res) => {
 
 // The blockIndex -> startSec map the reader uses to seek to the right paragraph.
 app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
-  const rbacBook = booksDb.read().items[req.params.id]; // v1.80 RBAC: private book TEXT
+  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC: private book TEXT
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
@@ -8512,7 +8510,7 @@ function projectedLibraryTracks(req, nativeTracks) {
   // below is UNCHANGED, so a restricted user still cannot see hidden audio.
   const db = getCachedDatabase();
   const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const marks = musicDb.read().channels; // Wave 5: the music_channels table
+  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
@@ -8663,7 +8661,7 @@ app.get('/api/music/artists', (req, res) => {
 // channel-level booleans the projection uses (single source of truth).
 app.get('/api/music/channels', (req, res) => {
   const db = getCachedDatabase();
-  const marks = musicDb.read().channels; // Wave 5: the music_channels table
+  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
   const displayNames = folderDisplayNameStore.getAll(); // Wave 4
   const visibleCount = new Map(); // folderName -> visible audio count
@@ -10057,7 +10055,14 @@ function validateFeatureBundle(def, ns) {
       for (const e of v) if (badKey(e)) return `${def.name}.${part}: every entry must be a non-empty string`;
     } else if (spec.kind === 'records') {
       if (!Array.isArray(v)) return `${def.name}.${part} must be an array`;
-      for (const r of v) if (!r || typeof r !== 'object' || Array.isArray(r) || badKey(r.id)) return `${def.name}.${part}: every entry must be an object with a non-empty string id`;
+      // Wave 5 (gate pass B): a legacy id-less yt-dlp subscription that carries a
+      // channelUrl is accepted - the importer mints the id the migration would
+      // (mintLegacyYtdlpSubscriptionIds) instead of refusing the whole bundle.
+      const idlessOk = (r) => def.name === 'ytdlp' && part === 'subscriptions' && (r.id === undefined || r.id === '') && !badKey(r.channelUrl);
+      for (const r of v) if (!r || typeof r !== 'object' || Array.isArray(r) || (badKey(r.id) && !idlessOk(r))) return `${def.name}.${part}: every entry must be an object with a non-empty string id`;
+    } else if (spec.kind === 'value') {
+      // A value part restores as its scalar shape (the flag is a boolean) - never an object.
+      if (typeof v !== typeof spec.defaultValue) return `${def.name}.${part} must be a ${typeof spec.defaultValue}`;
     } else if (spec.kind === 'map' || spec.kind === 'kv') {
       if (typeof v !== 'object' || Array.isArray(v)) return `${def.name}.${part} must be an object`;
       for (const k of Object.keys(v)) {
@@ -11043,7 +11048,7 @@ app.post('/api/queue/items', (req, res) => {
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
   } else if (kind === 'track') {
-    const track = ownTrack(musicDb.read().tracks, mediaId);
+    const track = musicDb.parts.tracks.get(mediaId); // Wave 5 (gate pass B): a point query
     if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
   } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
@@ -11259,7 +11264,7 @@ app.get('/api/search', (req, res) => {
     // unconditional eligibility + RBAC as /api/music (no opt-in).
     musicTracks: () => musicDb.read().tracks, // Wave 5: the native music tracks, from their table
     booksItems: () => booksDb.read().items, // Wave 5: the book items, from their table
-    podcastsNs: () => podcastsDb.read(), // Wave 5: the podcasts namespace (shows + episodes), from its tables
+    podcastsNs: (() => { let memo = null; return () => (memo || (memo = podcastsDb.read())); })(), // Wave 5: the podcasts namespace (shows + episodes), from its tables - ONE read per query (shows + episodes both ask)
     musicLibraryTracks: () => {
       const ns = musicDb.read();
       const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
@@ -11486,16 +11491,14 @@ app.get('/api/videos', (req, res) => {
 function resolveHomeItem(db, id, kind, progressPercent) {
   const enc = encodeURIComponent(id);
   if (kind === 'track') {
-    const ns = musicDb.read();
-    const track = ownTrack(ns.tracks, id);
+    const track = musicDb.parts.tracks.get(id); // Wave 5 (gate pass B): a point query - this runs once PER ITEM of every home row
     if (!track) return null;
     return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: `/albumart/${enc}`, href: `/music?play=${enc}`, progressPercent };
   }
   if (kind === 'podcast') {
-    const ns = podcastsDb.read();
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    const ep = podcastsDb.parts.episodes.get(id) || null; // Wave 5 (gate pass B): a point query, per item
     if (!ep || ep.status !== 'downloaded') return null;
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return { id, kind, title: ep.title || 'Episode', subtitle: sub ? sub.name : 'Podcast', thumbnailUrl: `/podcastart/${encodeURIComponent(ep.subId)}`, href: `/podcasts?play=${enc}`, progressPercent };
   }
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
@@ -11527,10 +11530,9 @@ function resolveHomeItem(db, id, kind, progressPercent) {
 // computed under RBAC, so this never re-derives them.
 function resolveModernGridItem(db, rec, ytView) {
   if (rec.kind === 'podcast') {
-    const ns = podcastsDb.read();
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, rec.id) ? ns.episodes[rec.id] : null;
+    const ep = podcastsDb.parts.episodes.get(rec.id) || null; // Wave 5 (gate pass B): a point query, per card
     if (!ep || ep.status !== 'downloaded') return null;
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return {
       id: rec.id, kind: 'podcast', title: ep.title || 'Episode',
       subId: ep.subId, showName: sub ? sub.name : 'Podcast',
@@ -12082,12 +12084,11 @@ function resolveHandoffTarget(db, seen) {
   const enc = encodeURIComponent(id);
 
   if (seen.kind === 'podcast') {
-    const ns = podcastsDb.read();
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    const ep = podcastsDb.parts.episodes.get(id) || null; // Wave 5 (gate pass B): a point query
     // Same rule as the push resolver: a non-downloaded episode is not
     // playable, so it is not offerable.
     if (!ep || ep.status !== 'downloaded') return null;
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return {
       title: ep.title || 'Episode',
       subtitle: sub ? sub.name : 'Podcast',
@@ -12101,8 +12102,7 @@ function resolveHandoffTarget(db, seen) {
   }
 
   if (seen.kind === 'track') {
-    const ns = musicDb.read();
-    const track = ownTrack(ns.tracks, id);
+    const track = musicDb.parts.tracks.get(id); // Wave 5 (gate pass B): a point query
     if (!track) return null;
     return {
       title: track.title || 'Track',
@@ -12168,12 +12168,11 @@ app.get('/api/handoff', (req, res) => {
   if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
     return res.json({ presence: null });
   }
-  if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicDb.read().tracks, seen.mediaId))) {
+  if (seen.kind === 'track' && !trackVisibleTo(req, musicDb.parts.tracks.get(seen.mediaId))) { // Wave 5 (gate pass B): a point query
     return res.json({ presence: null });
   }
   if (seen.kind === 'podcast') {
-    const pns = podcastsDb.read();
-    if (!podcastEpisodeVisibleTo(req, pns.episodes && pns.episodes[seen.mediaId])) return res.json({ presence: null });
+    if (!podcastEpisodeVisibleTo(req, podcastsDb.parts.episodes.get(seen.mediaId))) return res.json({ presence: null }); // Wave 5 (gate pass B): a point query
   }
 
   res.json({
