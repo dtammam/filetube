@@ -12,12 +12,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
-// Wave 7b (the monolith split, slice S2): the book config route - one of the
-// three reciprocal overlap clauses this file locks - moved to
-// lib/books/routes.js. SURFACE is server.js PLUS every module server.js was
-// split into (derived from its own requires), so the reciprocal lock reads the
-// same sentence wherever the slice put it. The tv-owned locks keep reading
-// SERVER, which is still where the Shows glue lives.
+// Wave 7b (the monolith split): slice S2 moved the book config route - one of
+// the three reciprocal overlap clauses this file locks - to lib/books/routes.js,
+// and slice S4 moved the Shows ROUTES to lib/tv/routes.js and the scan PASS to
+// lib/tv/scanRunner.js. SURFACE is server.js PLUS every module server.js was
+// split into (derived from its own requires), so a lock reads the same sentence
+// wherever the slice put it. The locks that still read SERVER are the ones whose
+// code is still in server.js: the module requires + exports, probeTvEpisode, the
+// thumb helpers, scanTv's coalescing guard, tvEpisodeVisibleTo, and the boot
+// hooks.
 const { routeSurfaceSource } = require('../helpers/route-surface');
 
 const AUTH_STORE = fs.readFileSync(path.join(__dirname, '../../lib/auth/store.js'), 'utf8');
@@ -52,7 +55,10 @@ test('probeTvEpisode: ffmpeg-guarded, returns duration + video/audio codec + con
 // ---- /tvepisode: codec-aware transcode + live-watch eviction guard (gate) ----
 
 test('/tvepisode: transcode decision is CODEC-aware (not ext-only), and a served rendition is protected from mid-watch eviction', () => {
-  const body = strip(SERVER.slice(SERVER.indexOf("app.get('/tvepisode/:id'"), SERVER.indexOf("app.get('/tvepisode/:id'") + 2400));
+  // S4: the route moved to lib/tv/routes.js, so the window is cut from the
+  // comment-free SURFACE - and, the comments gone, bounded by the NEXT route
+  // instead of a 2400-char guess, which is the same window minus the slack.
+  const body = strip(SURFACE.slice(SURFACE.indexOf("app.get('/tvepisode/:id'"), SURFACE.indexOf("app.get('/tvaudio/:id'")));
   assert.match(body, /needsTranscode\(ep\.ext, ep\.codec, ep\.audioCodec\)/,
     'codec-aware, mirroring the main video path - an HEVC/AC3-in-mp4 episode is NOT served raw');
   assert.doesNotMatch(body, /needsTranscode\(ep\.ext\)/,
@@ -64,7 +70,10 @@ test('/tvepisode: transcode decision is CODEC-aware (not ext-only), and a served
 // ---- runTvScan: prune discipline (the persist-gate lessons) -----------------
 
 test('runTvScan: Shows-less no-op, mount-loss guard, prune carrier, thumb pass, orphan cleanup', () => {
-  const body = strip(SERVER.slice(SERVER.indexOf('async function runTvScan()'), SERVER.indexOf('async function scanTv()')));
+  // S4: the pass moved to lib/tv/scanRunner.js, so the window is cut from the
+  // SURFACE and ends at the factory's own return (scanTv, the old end anchor,
+  // stayed in server.js and now sorts BEFORE the pass in the concatenation).
+  const body = strip(SURFACE.slice(SURFACE.indexOf('async function runTvScan()'), SURFACE.indexOf('return { runTvScan };')));
   assert.match(body, /if \(folders\.length === 0 && Object\.keys\(ns\.episodes\)\.length === 0\) return;/, 'Shows-less install is a total no-op');
   assert.match(body, /tvScan\.collectEpisodes\(\s*folders, ns\.episodes, \{ getId: getMediaId, getShowId: getMediaId, probe: probeTvEpisode \}\)/, 'episode id = md5(path), show id = md5(showPath)');
   // Option-C mount-loss guard: exists-but-empty root prunes NOTHING beneath it.
@@ -91,7 +100,9 @@ test('scanTv: single-walker coalescing + a deferred single-guarded re-entry', ()
 // ---- Phase 3: config routes + RBAC + the overlap net ------------------------
 
 test('POST /api/tv/config: admin-only + rejects overlap with media/book/music/podcast (both directions via foldersOverlap)', () => {
-  const body = strip(SERVER.slice(SERVER.indexOf("app.post('/api/tv/config'"), SERVER.indexOf("app.post('/api/tv/scan'")));
+  // S4: the config routes moved to lib/tv/routes.js - same anchors, same order,
+  // read off the SURFACE.
+  const body = strip(SURFACE.slice(SURFACE.indexOf("app.post('/api/tv/config'"), SURFACE.indexOf("app.post('/api/tv/scan'")));
   assert.match(body, /if \(!requireAdmin\(req, res\)\) return;/, 'library config is admin-only (write-RBAC)');
   assert.match(body, /foldersOverlap\(tvRoot, mediaRoot\)/);
   assert.match(body, /foldersOverlap\(tvRoot, bookRoot\)/);
@@ -103,7 +114,7 @@ test('POST /api/tv/config: admin-only + rejects overlap with media/book/music/po
 });
 
 test('GET /api/tv/config is visibility-GATED (a restricted member sees only roots with visible episodes)', () => {
-  const body = strip(SERVER.slice(SERVER.indexOf("app.get('/api/tv/config'"), SERVER.indexOf("app.post('/api/tv/config'")));
+  const body = strip(SURFACE.slice(SURFACE.indexOf("app.get('/api/tv/config'"), SURFACE.indexOf("app.post('/api/tv/config'"))); // S4: moved to lib/tv/routes.js
   assert.match(body, /visibleConfigRoots\(req, ns\.folders \|\| \[\], Object\.values\(ns\.episodes \|\| \{\}\), tvEpisodeVisibleTo\)/,
     'the nav-gate config filters roots through the SINGLE visibility decision (tvEpisodeVisibleTo)');
 });
@@ -134,6 +145,48 @@ test('scanTv rides BOTH boot slots (the periodic interval AND the deferred first
   // Two call sites in the boot code + the one inside scanTv's own deferred re-entry.
   const hooks = (SERVER.match(/\n\s*scanTv\(\)\.catch\(console\.error\);/g) || []).length;
   assert.ok(hooks >= 3, `scanTv must ride the interval + the deferred first-boot slot (+ its own re-entry) (found ${hooks})`);
+});
+
+// ---- the S4 mutable seam: ffmpeg availability is read LIVE, not at boot ------
+//
+// server.js's `ffmpegAvailable` is a `let` that starts FALSE and is flipped by an
+// ASYNCHRONOUS probe, long after lib/tv/routes.js registers. It is the one thing
+// the slice did NOT move byte-identically: the module reads `ffmpegIsAvailable()`
+// and server.js passes `() => ffmpegAvailable`. Destructuring the VALUE would
+// freeze it to that boot-time false - both tv queues would silently never start
+// and the two 503 arms would answer "ffmpeg unavailable" forever (the v1.185
+// inert-feature class, invisible on a box without ffmpeg). This EXECUTES the
+// route to bind it: register while the flag is false, flip it, and the route must
+// see the flip. Passing the value instead turns this red.
+const tvRoutes = require('../../lib/tv/routes');
+
+test('S4 seam: prepare-audio reads ffmpeg availability LIVE (the flag flips AFTER registration)', () => {
+  const handlers = {};
+  const app = {
+    get: (p, h) => { handlers[`GET ${p}`] = h; },
+    post: (p, h) => { handlers[`POST ${p}`] = h; },
+    delete: (p, h) => { handlers[`DELETE ${p}`] = h; },
+  };
+  let ffmpeg = false; // the boot-time value, exactly as server.js has it at register time
+  tvRoutes.registerRoutes(app, {
+    TRANSCODE_DIR: path.join(__dirname, 'no-such-dir'),
+    ffmpegIsAvailable: () => ffmpeg,
+    fs: { existsSync: () => false },
+    path,
+    tvDb: { read: () => ({ episodes: { e1: { id: 'e1', filePath: '/nope/ep.mkv' } } }) },
+    tvEpisodeVisibleTo: () => true,
+  });
+  const handler = handlers['POST /api/tv/episode/:id/prepare-audio'];
+  assert.ok(handler, 'the prepare-audio route registered');
+  const call = () => {
+    const out = {};
+    const res = { json: (b) => { out.body = b; return res; }, status: (c) => { out.code = c; return res; } };
+    handler({ params: { id: 'e1' }, user: { id: 'u1' } }, res);
+    return out;
+  };
+  assert.deepStrictEqual(call(), { code: 503, body: { error: 'ffmpeg unavailable' } }, 'ffmpeg-less: the 503 arm');
+  ffmpeg = true; // the async boot probe lands
+  assert.deepStrictEqual(call(), { body: { audioStatus: 'pending' } }, 'the flip is SEEN - a frozen boot-time value would still 503');
 });
 
 // ---- the prune carrier is born with the tables (lib/auth/store.js) ----------

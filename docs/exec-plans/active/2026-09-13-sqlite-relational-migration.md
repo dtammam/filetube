@@ -911,11 +911,21 @@ re-runs them on the commit):**
 - **Then #226** (the catalogs' read-through cache: a generation counter bumped by the ADAPTER
   on every write path incl. exclusiveReplace and the migrations).
 
-**Releases (Dean's pacing: one slice-release at a time, stoppable at any slice with the tree
-shippable):** R1 = S1a + S1b + S2; R2 = S3 + S4 + S10; R3 = S5 + S6 + S7 (full gate, adversarial
-destroys the data on both sides of each moved seam); R4 = S8 + S9 + #226, then the `< 3,000`
-prediction is re-verified and the plan moves to completed/. Each release: full gate, dual-Node,
-device pass PENDING and disclosed.
+**Releases.** R1 = S1a + S1b + S2, one slice at a time (the method proven; shipped v1.297.0,
+device-passed). **Re-paced after R1 (Dean, 2026-09-14: "Can we go any faster ... larger
+chunks"):** the remaining slices run in PARALLEL Opus worktrees from one base commit - each
+subagent confines its server.js edits to its own groups' statements, places its `require`
+immediately above its register call (never in the shared top require block) so the hunks
+never overlap, and the main session merges the branches one by one, re-running the verifier
+on each and resolving the one expected conflict (the route-surface registry list). Two
+releases remain: **R2 = S3 music + S4 tv + S10a media browse (`/api/videos`, `/api/home`,
+`/api/search`, `/api/stats`, `/api/channels` and the small media reads) + S10b config
+(`/api/config`, `/api/settings`, `/api/folders`, `/api/scan`, `/api/cache`)** - four parallel
+slices, one gate; **R3 = S5 + S6 + S7 + S8 + S9 in parallel + #226** (full gate, adversarial
+destroys the data on both sides of every moved seam), then the `< 3,000` prediction is
+re-verified and the plan moves to completed/. A slice that fails the machine check is dropped
+from its release, never held for. Each release: full gate, dual-Node, device pass PENDING and
+disclosed.
 
 - **Wave 7b R1 record (2026-09-14, branch `feat/wave7b-r1`: the design commit + three slice
   commits, each an Opus worktree subagent's move verified by the main session's machine
@@ -968,6 +978,107 @@ device pass PENDING and disclosed.
     had accumulated since 2026-09-13 (reaped; the harness's exit hook reaps only its own
     worker's dirs - a `find -mmin +60` before a release run is the cheap habit).
     Dual-Node (sequential, reviewers idle): 22.23.1 8775 / 8775 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8775 / 8775 / 0 / 0; 24.14.0 8775 / 8775 / 0 / 0.
+- **Wave 7b R2 record (2026-09-14, branch `feat/wave7b-r2`: the re-pacing commit + FOUR slices
+  run in PARALLEL Opus worktrees from base 52d3e03e, each verified by the main session with
+  `scripts/verify-split-slice.js` + the routing signature before its merge; merged S3 (ff), S4,
+  S10b, S10a (three-way, two expected conflicts each: the live-derived DIAGRAMS count and the
+  route-surface registry list):**
+  - **S3 music** (41886559): `/api/music`, `/track`, `/albumart`, `/audio` -> lib/music/routes.js
+    in FOUR register functions (the config block must precede the progress coalescer's `const`
+    - TDZ; S1a's user-routes call sits between two music blocks; `/audio` lives 8,700 lines
+    down); `runMusicScan` -> lib/music/scanRunner.js (`createMusicScanRunner(deps)`); `scanMusic`
+    / `musicScanState` / the timer / `probeMusicTrack` + `extractAlbumArt` STAY (callers, or they
+    read the mutable `ffmpegAvailable`). ONE deviation: `/audio/:id`'s `ffmpegAvailable` gate
+    crosses as the live `ffmpegIsAvailable()` (a `let` an async boot probe flips AFTER
+    registration - frozen, every `/audio` request would 503 forever; a new executing test binds
+    it, mutation-proven). server.js 17093 -> 16722.
+  - **S4 tv** (56a372ad): `/api/tv` + the four `/tv*` streams -> lib/tv/routes.js in ONE
+    register function (contiguous); `runTvScan` -> lib/tv/scanRunner.js; the TV-owned transcode
+    and audio-extract lanes moved WHOLE (both `let` busy flags with every reader and writer, so
+    no mutable seam crosses); `scanTv`, `tvScanState` (crosses as the same object),
+    `visibleTvEpisodes` (read by `/api/search`), `TRANSCODE_EXTENSIONS` stay. The same
+    `ffmpegAvailable` seam at four sites, mutation-proven three ways incl. a runtime fake ffmpeg.
+    Four tv-server-wiring locks re-pointed (one TIGHTENED to a statement window), the
+    tv-feature-store lock re-pointed (the brief wrongly said it already read the surface).
+    server.js -> 16623 alone.
+  - **S10b config** (e925fe44): `/api/config` + `/api/folders` + `/api/scan` (one interleaved
+    block), `/api/scan-status`, the logo pair, `/api/settings`, `/api/cache`,
+    `/api/storage-summary` -> lib/config/routes.js in SIX register functions; `GLYPH_IDS`, the
+    transcript-prompt validator + caps, `TRANSCODE_LIST_CAP`, `settingsResponse` moved with
+    proof; the enum allowlists, the transcode-cache machinery (S8's) stay. No deviation. Three
+    locks re-pointed (library-folders-stores, app-settings-store, setup-debug-lifecycle's
+    KNOWN_KEYS), all mutation-killed. server.js -> 16271 alone. It reported the parallel-load
+    flake honestly: three `PROGRESS_FLUSH_MS` debounce tests failed once under four concurrent
+    suites, green in isolation and on re-run.
+  - **S10a media browse** (e0bc414b): thirteen groups, 27 registrations / 1,757 statement lines
+    -> lib/media/routes.js (2,409 lines) in SEVEN register functions (measured, not assumed: one
+    call moved two browse routes ahead of `/api/progress` - a 4-line signature diff; and a call
+    above the critter constants threw a TDZ at require time). Eleven helpers moved incl. the
+    bulk-attribution latch (the routes ASSIGN it, so it had to move; server.js re-exports the
+    setter as the same object - 13 re-export identities checked). Deviations: the same
+    `ffmpegAvailable` seam, `ttsEngineVersion` (same class - frozen, Stats reports null
+    forever), and TWO `require('./lib/ytdlp/activity')` -> `require('../ytdlp/activity')`.
+    **The find of the release:** a relative `require()` specifier inside a moved body resolves
+    against the NEW file - a string literal no identifier census sees. It broke the bulk mover's
+    async tail (`MODULE_NOT_FOUND`, the single-flight latch stuck, two 409s and two 300 s
+    timeouts: 8778 / 8771 / 4 fail on the first full run, reported verbatim). Now bound by
+    `test/unit/media-routes-live-seams.test.js`, an AST net that RESOLVES every relative
+    specifier in every extracted module (its first cut matched a specifier quoted in a header
+    comment - the porosity lesson again). Its own mutant M4 survived at first: re-pointing the
+    card-like lock at the whole surface made it vacuous because lib/user/routes.js carries the
+    identical `likedSet` line - fixed with a statement-scoped window; 8/8 killed. Two exact
+    counts re-measured (podcastsDb 9 -> 13, ytdlpDb 11 -> 15). server.js -> 15229 alone.
+  - **The merge:** every slice edited DIAGRAMS' live-derived registration count (the census reds
+    without it and the hook refuses red - a forced deviation from "no docs"), so each merge
+    re-measured it on the merged tree; the registry list took every slice's additions. One
+    ordering lesson: S10b merged before S4 failed the hook - S10b moved the config route's
+    `tvDb.read()` calls out of server.js while the tv-feature-store lock still read server.js
+    alone (S4 re-points it); aborted, merged S4 first, then S10b. Merged tree at three slices:
+    8778 / 8778 / 0 / 0 (main checkout, no parallel load).
+  - Merged four-slice tree: server.js **13,566** lines at the record commit 6b1476f1 (17,093 at
+    v1.297.0), 22 route + middleware registrations (98); the census's `mime` false positive struck
+    in three slices. Merged four-slice tree (main checkout, no parallel load): 8782 / 8782 / 0 fail
+    / 0 skipped; the verifier over all 29 R2 groups reports exactly the six documented seam routes;
+    the routing signature's unsorted output is identical to the R2 base. (The gate fix round then
+    took the tree to **13,563** lines / 8785 tests - the released tip; see the Gate entry.)
+  - **Gate (both seats, one fix round):** Full gate, fresh QA + adversarial instances on the whole
+    branch (a new Opus session could not resume the Fable-session reviewers). Both re-established
+    behaviour independently before finding anything: the routing signature's UNSORTED output is
+    byte-identical, line-for-line, to BOTH the R2 base 52d3e03e AND v1.297.0 (c5b91c31) - 199
+    routes, a complete proof that first-match resolution is unchanged for every URL; the verifier
+    over all 29 R2 groups fails on exactly the six documented seam routes and nothing else (each
+    diffed to the single documented token: `ffmpegAvailable`->`ffmpegIsAvailable()` x4,
+    `ttsEngineVersion`->`ttsEngineVersion()` x1, `./lib/ytdlp/activity`->`../ytdlp/activity` x2);
+    201 export names + 13 re-export identities intact; no fourth frozen seam exists (an AST walk of
+    all 32 register/factory deps objects found zero keys bound to a reassigned `let`); every
+    fix-round test binds under mutation (the two new RBAC admin gates on POST /api/config +
+    /api/settings, the DELETE /api/videos/:id read-only guard, the deps-contract test both
+    directions, the card-like statement-scoped window that is NOT satisfied by lib/user/routes.js's
+    identical `likedSet` line). **ADV APPROVE with two SUGGESTIONS; QA REQUEST CHANGES with one
+    WARNING** (no CRITICAL either seat). The WARNING: three require-block positional comments
+    (server.js `GET /api/stats` / `GET /api/transcript/:id` / `GET /api/videos` "below") went stale
+    when those routes moved to lib/media/routes.js this release, and the fix round's QA W3 deferral
+    ("R3 moves those regions") was factually wrong for them - the require block is permanently
+    settled, no R3 slice touches it. Fix round (this commit): the three comments now name
+    lib/media/routes.js (require block is not a moved body - no byte-identity invariant); the
+    remaining deferred positional comments (transcode/stream/audio-extract regions at server.js
+    L1265/L2504/L12602/L12712) are genuinely S8-moved and stay disclosed for R3. ADV SUGGESTION 1
+    (server.js 13,566 -> 13,561 doc staleness) applied - re-measured 13,563 at the released tip
+    after this comment fix and carried into the ROADMAP + this record. ADV SUGGESTION 2, recorded
+    for honesty: the adversarial seat could not reproduce the fix commit c9c503d2's magnitude claim
+    that the moved `/api/*/:id` slash-star "swallowed 170 lines to EOF from every text lock" (at the
+    current line no `*/` follows to EOF, so the non-greedy block regex never matches) - the reword
+    to `/api/<kind>/:id` is nonetheless a correct improvement, and the tree is measurably
+    porosity-free (zero line-comment `/*` in any of the 14 extracted modules; #228's two remaining
+    openers are pre-existing server.js lines, reduced from three by this wave). Delta re-confirm
+    (fix commit 1c469884, comments + docs only): BOTH seats APPROVE - ADV re-measured the code
+    stream byte-identical to its approved tip and the doc numbers accurate; QA verified the three
+    comments now name the right file and independently confirmed the c9c503d2 magnitude claim was
+    0 lines masked, not 170. Dual-Node (sequential, reviewers idle): 22.23.1 8785 / 8785 / 0 fail
+    / 0 skipped; 24.20.0 (the CI runner's minor) 8785 / 8785 / 0 / 0. Shipped v1.298.0
+    (device pass PENDING). Known gap disclosed: books-api T6 is a pre-existing time-dependent test
+    that can red under parallel-suite load, proven independent of this diff (S5-alone + any added
+    test file reds the identical two tests) - tracked in the tech-debt tracker, not fixed here.
 
 ---
 

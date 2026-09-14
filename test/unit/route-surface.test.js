@@ -26,10 +26,16 @@ const EXPECTED = [
   'lib/auth/routes.js',
   'lib/books/routes.js',
   'lib/books/scanRunner.js',
+  'lib/config/routes.js',
+  'lib/media/routes.js',
   'lib/media/user-routes.js',
+  'lib/music/routes.js',
+  'lib/music/scanRunner.js',
   'lib/notifications/routes.js',
   'lib/push/routes.js',
   'lib/queue/routes.js',
+  'lib/tv/routes.js',
+  'lib/tv/scanRunner.js',
   'lib/user/routes.js',
 ];
 

@@ -101,9 +101,6 @@ const { applyHasSubtitlesDetection } = scanProbe;
 // the drift this shared module exists to make impossible. It is a pure leaf
 // module (no side effects, no deps), like lib/trashPaths above.
 const glyphPool = require('./public/js/glyph-pool');
-// Set form for the O(1) membership checks the config/settings writers do.
-// Derived from the registry, never a second hand-typed list.
-const GLYPH_IDS = new Set(glyphPool.GLYPH_POOL.map((g) => g.id));
 // v1.37.0 books: the db.books namespace owner + the pure scanner core --
 // see docs/exec-plans/completed/2026-07-12-v1.37.0-books.md. Both are leaf modules over
 // deps this file already provides (loadDatabase/updateDatabase/getMediaId);
@@ -154,8 +151,8 @@ const booksTtsChunk = require('./lib/books/tts-chunk');
 const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
-// lib/stats.js's header comment and `GET /api/stats` below for the full
-// live-compute rationale.
+// lib/stats.js's header comment and `GET /api/stats` (now in
+// lib/media/routes.js) for the full live-compute rationale.
 const stats = require('./lib/stats');
 // v1.42: FileTube requires Node >= 22.13 (the first line where node:sqlite
 // is available unflagged; engines bumped from >=20 — a BREAKING change,
@@ -186,13 +183,15 @@ const REPO_URL = 'https://github.com/dtammam/filetube';
 // `GET /api/subtitles/:id` -- see lib/subtitles.js's header comment.
 const subtitles = require('./lib/subtitles');
 // Transcript export (Dean): the sidecar as readable plain text, served by
-// `GET /api/transcript/:id` below -- same sidecar resolver as the subtitles
-// route, so "has captions" and "has a transcript" can never disagree.
+// `GET /api/transcript/:id` (now in lib/media/routes.js) -- same sidecar
+// resolver as the subtitles route, so "has captions" and "has a transcript"
+// can never disagree.
 const transcript = require('./lib/transcript');
 // v1.30 A5 (T6): pure sort comparators + format/search predicates +
 // pagination-parameter normalizers shared with the client's own
 // sortItems/filterByMediaType -- see lib/videoQuery.js's header comment and
-// `GET /api/videos` below for the paginated, server-authoritative pipeline.
+// `GET /api/videos` (now in lib/media/routes.js) for the paginated,
+// server-authoritative pipeline.
 const videoQuery = require('./lib/videoQuery');
 const searchRegistry = require('./lib/search/registry'); // v1.205 Wave B: universal-search provider registry
 const rokuCompatLib = require('./lib/rokuCompat'); // v1.46: pure verdict/args logic
@@ -502,48 +501,6 @@ const DEFAULT_SETTINGS = {
   // Experimental.
   attributeControlEnabled: false
 };
-
-// v1.201: shape rules for `transcriptAiPrompts` (see DEFAULT_SETTINGS).
-const TRANSCRIPT_AI_PROMPTS_MAX = 12;
-const TRANSCRIPT_AI_PROMPT_NAME_MAX = 60;
-const TRANSCRIPT_AI_PROMPT_TEXT_MAX = 4000;
-/**
- * Validate + normalize a client-supplied prompt list. Returns
- * `{ ok: true, value }` (ids assigned/preserved, strings trimmed) or
- * `{ ok: false, error }` (a human-readable 400 body). Pure.
- * @param {*} raw the POSTed value
- * @param {Array<{id:string,name:string,text:string}>} [existing] current list, so a
- *   client that omits/keeps an id keeps it stable across edits
- */
-function validateTranscriptAiPrompts(raw, existing) {
-  if (!Array.isArray(raw)) return { ok: false, error: 'transcriptAiPrompts must be an array' };
-  if (raw.length > TRANSCRIPT_AI_PROMPTS_MAX) return { ok: false, error: `transcriptAiPrompts: at most ${TRANSCRIPT_AI_PROMPTS_MAX} prompts` };
-  const existingIds = new Set((Array.isArray(existing) ? existing : []).map((e) => e && e.id).filter((x) => typeof x === 'string'));
-  const seenNames = new Set();
-  const seenIds = new Set();
-  const out = [];
-  for (let i = 0; i < raw.length; i++) {
-    const item = raw[i];
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return { ok: false, error: `transcriptAiPrompts[${i}] must be an object` };
-    const name = typeof item.name === 'string' ? item.name.trim() : '';
-    const text = typeof item.text === 'string' ? item.text.trim() : '';
-    if (name === '' || name.length > TRANSCRIPT_AI_PROMPT_NAME_MAX) return { ok: false, error: `transcriptAiPrompts[${i}].name must be 1-${TRANSCRIPT_AI_PROMPT_NAME_MAX} characters` };
-    if (text === '' || text.length > TRANSCRIPT_AI_PROMPT_TEXT_MAX) return { ok: false, error: `transcriptAiPrompts[${i}].text must be 1-${TRANSCRIPT_AI_PROMPT_TEXT_MAX} characters` };
-    const nameKey = name.toLowerCase();
-    if (seenNames.has(nameKey)) return { ok: false, error: `transcriptAiPrompts: duplicate name "${name}"` };
-    seenNames.add(nameKey);
-    // Keep a known id; otherwise mint one from the name (unique within the list).
-    let id = (typeof item.id === 'string' && existingIds.has(item.id) && !seenIds.has(item.id)) ? item.id : '';
-    if (id === '') {
-      const base = nameKey.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'prompt';
-      id = base;
-      for (let n = 2; seenIds.has(id) || (existingIds.has(id) && raw.some((r, j) => j !== i && r && r.id === id)); n++) id = `${base}-${n}`;
-    }
-    seenIds.add(id);
-    out.push({ id, name, text });
-  }
-  return { ok: true, value: out };
-}
 
 // Wave 4 of the relational-migration arc: the app settings live in
 // app_settings (one row per key) behind lib/config/settings.js. The store
@@ -3697,7 +3654,7 @@ async function restoreMissingPreviewClip(existing, id, filePath) {
 // pass (incl. a coalesced follow-up) legitimately resets them to 0 at its
 // own start, exactly like `lastScan` only reflects the most recently
 // COMPLETED pass. `phase` is one of 'idle' | 'walking' | 'syncing'.
-let scanState = { scanning: false, lastScan: null, rescanRequested: false, processed: 0, total: 0, phase: 'idle' };
+const scanState = { scanning: false, lastScan: null, rescanRequested: false, processed: 0, total: 0, phase: 'idle' };
 
 // v1.30 A2 (AC1.1): cooperative-scan batch size. Both the directory walk
 // (`scanDirRecursive`) and the metadata-merge loop (`runScanDirectories`)
@@ -5969,474 +5926,42 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// API: Get library folders list
-//
-// FR-G part 2 (v1.12.0, yt-dlp module parity): merges the yt-dlp module's
-// download directory into the RESPONSE as a synthetic, display-only folder
-// entry, WITHOUT ever writing it into `db.folders` -- this is Dean-approved
-// and intentionally SOFTENS the prior locked decision C7(ii) ("`GET
-// /api/config` never lists a folder the operator didn't add"). Reconciliation
-// note: `extraScanRoots()` remains the sole AUTHORITATIVE scan root
-// (`runScanDirectories` above reads it directly, never this response) and
-// keeps the E1 mount-loss OR-gate intact regardless of whether this synthetic
-// entry is present here -- no scan/prune decision anywhere depends on this
-// merge. It self-heals on every request (derived fresh from `extraScanRoots`
-// each time, never a one-time materialization into `db.folders`): if an
-// operator "removes" it from the UI, there is nothing persisted to remove --
-// it reappears on the next GET as long as the module still contributes a
-// root. Disabled (and the download dir was never created) -> `extraScanRoots`
-// returns `[]` -> no synthetic entry, byte-identical to pre-FR-G behavior
-// (AC4/46).
-app.get('/api/config', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const folders = folderStore.list(); // Wave 4: the tables (fresh arrays/maps per call)
-  const folderSettings = folderSettingsStore.getAll();
-  const ytdlpConfig = ytdlp.parseYtdlpConfig();
-  const synthRoots = ytdlp.extraScanRoots(ytdlpConfig); // [] when disabled & dir absent
-  for (const root of synthRoots) {
-    if (!folders.some(f => path.resolve(f) === root)) {
-      // Item 3 (v1.13.0, order persistence): a prior reorder (persisted via
-      // POST /api/config's synthetic folderSettings[root].order, alongside
-      // the existing name rename) sticks -- splice the synthetic root in at
-      // its stored display index instead of always appending last. A
-      // missing/non-integer order (never reordered, or a stale/cleared
-      // value) falls back to `folders.length`, reproducing the prior
-      // always-append-last behavior byte-for-byte (backward compatible).
-      // `order` is display-only: it is never read by any scan/prune path,
-      // and `extraScanRoots()` above remains the sole authoritative root.
-      const storedOrder = folderSettings[root] && folderSettings[root].order;
-      const idx = Number.isInteger(storedOrder) ? Math.max(0, Math.min(storedOrder, folders.length)) : folders.length;
-      folders.splice(idx, 0, root);
-    }
-    // A prior rename (persisted via POST /api/config's synthetic
-    // folderSettings allowance below) sticks; otherwise default to a
-    // friendly 'Downloads' label so the sidebar never shows a bare path.
-    if (!folderSettings[root] || typeof folderSettings[root].name !== 'string' || !folderSettings[root].name) {
-      folderSettings[root] = { ...(folderSettings[root] || {}), name: (folderSettings[root] && folderSettings[root].name) || 'Downloads' };
-    }
-  }
-  // FR-4 (v1.19.0): additive, READ-ONLY, response-only field so the client
-  // can robustly identify which `folders` entry is the synthetic download
-  // root (e.g. to disable its remove button) without re-deriving/guessing a
-  // path match itself. This is exactly `synthRoots` above -- never persisted,
-  // never accepted back on POST, and does not change any synthetic-root
-  // HANDLING (the splice/rename/order logic above, and the db.folders-
-  // exclusion in POST /api/config below, are both untouched).
-  // v1.126: the per-channel-folder display map rides the same read-only
-  // payload folderSettings does - every folder-label surface (headers, the
-  // Playlists sheet, the folder list, resolveChannelName's fallback) reads it
-  // client-side from ONE fetch. Response-only here; writes go through
-  // POST /api/folders/display-name below.
-  let outFolders = folders;
-  let outFolderSettings = folderSettings;
-  const allDisplayNames = folderDisplayNameStore.getAll(); // Wave 4
-  let outDisplayNames = allDisplayNames;
-  // v1.128 Wave B (L1): this response drives the MEMBER sidebar nav, so it
-  // can't be admin-gated - but for a RESTRICTED member it leaked every root
-  // abs path + folderSettings + folder/channel display name, hidden ones
-  // included. Filter to what the member can actually see: a root stays if some
-  // visible video item lives under it; a display name stays if the member can
-  // see an item in that folder. Admin + unrestricted member short-circuit to
-  // the byte-identical payload (an empty configured folder must not vanish
-  // from their sidebar).
-  if (requesterHasRestrictions(req)) {
-    const visibleRoots = new Set();
-    const visibleFolderNames = new Set();
-    for (const item of Object.values(db.metadata || {})) {
-      if (!item || typeof item.filePath !== 'string') continue;
-      if (!mediaVisibleTo(req, item)) continue;
-      const root = matchRootFolder(item.filePath, folders);
-      if (root) visibleRoots.add(root);
-      if (typeof item.folderName === 'string' && item.folderName !== '') visibleFolderNames.add(item.folderName);
-    }
-    outFolders = folders.filter((f) => visibleRoots.has(f));
-    outFolderSettings = {};
-    for (const f of outFolders) if (folderSettings[f] !== undefined) outFolderSettings[f] = folderSettings[f];
-    outDisplayNames = {};
-    for (const name of Object.keys(allDisplayNames)) {
-      if (visibleFolderNames.has(name)) outDisplayNames[name] = allDisplayNames[name];
-    }
-  }
-  res.json({
-    folders: outFolders,
-    folderSettings: outFolderSettings,
-    folderDisplayNames: outDisplayNames,
-    // syntheticFolders is a display hint (which folders are the module download
-    // root); intersect it with what actually survived the visibility filter.
-    syntheticFolders: synthRoots.filter((r) => outFolders.includes(r)),
-  });
-});
-
-// v1.126 (Dean): manual per-folder display name - the ONLY fix possible for
-// the ~70 folders whose items are permanently unhealable (no channelId, no
-// URL), and the override lane for everything else. `folderName` must name a
-// folder that actually exists in the library (derived from live metadata -
-// no junk-key writes); an empty/absent `name` CLEARS the mapping. Gated on
-// BOTH axes: requireModifyLibrary (capability - shared display metadata),
-// and visibility (a member restricted from the folder must not rename it -
-// neutral 404, the v1.123 T3 posture).
-app.post('/api/folders/display-name', async (req, res) => {
-  if (!requireModifyLibrary(req, res)) return;
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const folderName = typeof body.folderName === 'string' ? body.folderName.trim() : '';
-  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
-  const db = getCachedDatabase();
-  // Gate fix (both seats CRITICAL): existence AND visibility in ONE pass through
-  // the CANONICAL decision - the folder is renamable iff it has at least one
-  // item VISIBLE to this member. The earlier split used a bare
-  // `{kind:'media', folderName}` descriptor, which only matches `folder`-kind
-  // restrictions; `path`-kind and allowlist-mode restrictions carry no filePath,
-  // so they never matched - a member restricted from a root by the path lane
-  // could rename (and existence-oracle) a folder they cannot see. mediaVisibleTo
-  // builds the FULL descriptor (filePath/folderName/rootFolder), so all four
-  // restriction kinds bite. A wholly-hidden folder is indistinguishable from a
-  // non-existent one (both -> the same neutral 404). NEVER re-implement the
-  // visibility decision with a narrower descriptor (the v1.41.4 scar).
-  const visibleExists = Object.values(db.metadata || {}).some((it) => it && it.folderName === folderName && mediaVisibleTo(req, it));
-  if (!visibleExists) return res.status(404).json({ error: 'No such folder' });
-  const rawName = typeof body.name === 'string' ? body.name.trim() : '';
-  const name = rawName.slice(0, 150); // the pin-label bound
-  try {
-    await updateDatabase(() => {
-      // Wave 4: the map is a table; the write rides the doc commit's transaction.
-      const current = folderDisplayNameStore.get(folderName);
-      if (name === '') {
-        if (current === undefined) return false; // nothing to clear - skip the save
-        inSaveTransaction(() => folderDisplayNameStore.remove(folderName));
-        return true;
-      }
-      if (current === name) return false; // unchanged - skip the save
-      inSaveTransaction(() => folderDisplayNameStore.set(folderName, name));
-      return true;
-    });
-  } catch (err) {
-    // Express 4 never observes a rejected async handler: an unguarded failed
-    // save HUNG this request (gate pass A fix round, the Wave 3 class) - 500.
-    console.error('Error saving folder display name:', err);
-    return res.status(500).json({ error: `Could not save display name: ${err.message}` });
-  }
-  res.json({ success: true, folderName, name: name === '' ? null : name });
-});
-
-// Read the per-folder "show in Music" state for the folder header toggle.
-// Returns the stored override (or null); v1.242: `auto` is always true (every channel
-// is in Music by default) and `effective` is on-unless-'off' (channelEffectiveOnUniversal)
-// - the SAME predicate the projection uses, so the toggle can never disagree with what
-// actually projects; and whether the folder has any VISIBLE audio (the toggle renders only
-// when it does, so a folder the user cannot see is never revealed). The item-level payloads
-// stay per-user visibility-gated.
-app.get('/api/folders/music-flag', (req, res) => {
-  const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
-  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
-  const db = getCachedDatabase();
-  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
-  // Visibility-scoped: the toggle only renders for a channel the user can see.
-  const hasVisibleAudio = Object.values(db.metadata || {}).some(
-    (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
-  if (!hasVisibleAudio) return res.json({ folderName, hasAudio: false, override: null, effective: false, auto: false });
-  // v1.242: universal projection - a channel is in Music unless explicitly marked 'off'.
-  // `auto` (the default, ignoring an override) is now always true; `effective` is on-unless-off.
-  const override = Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null;
-  const effective = libraryAudio.channelEffectiveOnUniversal(folderName, marks);
-  return res.json({ folderName, hasAudio: true, override, effective, auto: true });
-});
-
-// Wave G: the per-folder "show in Music library" mark. `music` is 'on'/'off'
-// (an explicit override) or null (clear -> back to the v1.242 default, which is ON:
-// every channel is in Music unless explicitly marked 'off').
-// Same dual-axis gate as the rename route (requireModifyLibrary - shared library
-// metadata - AND visibility), but the existence probe requires a visible AUDIO
-// item: the mark is meaningless on a folder with no library audio, and this
-// blocks junk-key writes for video-only or unseen folders. Writes
-// db.music.channels[folderName]; the projection reads it in /api/music*.
-app.post('/api/folders/music-flag', async (req, res) => {
-  if (!requireModifyLibrary(req, res)) return;
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const folderName = typeof body.folderName === 'string' ? body.folderName.trim() : '';
-  if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
-  const music = body.music;
-  if (!(music === 'on' || music === 'off' || music === null)) {
-    return res.status(400).json({ error: "music must be 'on', 'off', or null" });
-  }
-  const db = getCachedDatabase();
-  // Existence AND visibility in ONE pass through the canonical decision (the
-  // v1.41.4 scar): renamable/markable iff the folder has >=1 AUDIO item visible
-  // to this user. A wholly-hidden or non-existent folder -> the same neutral 404.
-  const visibleAudioExists = Object.values(db.metadata || {}).some(
-    (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
-  if (!visibleAudioExists) return res.status(404).json({ error: 'No such folder' });
-  try {
-    await updateDatabase(() => musicDb.mutate((mdb) => { // Wave 5: the mark's diff rides the doc commit
-      const current = mdb.music.channels[folderName];
-      if (music === null) {
-        if (current === undefined) return false; // nothing to clear
-        delete mdb.music.channels[folderName];
-        return true;
-      }
-      if (current === music) return false; // unchanged
-      mdb.music.channels[folderName] = music;
-      return true;
-    }));
-  } catch (err) {
-    // Express 4 never observes a rejected async handler: an unguarded failed
-    // save HUNG this request (the Wave 3 class, found by the Wave 5 binding) - 500.
-    console.error('Error saving the music mark:', err);
-    return res.status(500).json({ error: `Could not save the music mark: ${err.message}` });
-  }
-  res.json({ success: true, folderName, music });
-});
-
-// API: Save folder configuration
-app.post('/api/config', async (req, res) => {
-  // v1.81 write-RBAC (gate CRITICAL): library-folder configuration is an
-  // admin/setup concern (like user-management + backup/restore). It was
-  // member-reachable and, with pruneMissing, a member POSTing an empty/edited
-  // folder list could WIPE the library index - strictly more destructive than
-  // the scan route this wave already gated. GET stays open (the sidebar needs
-  // it); only the mutating POST is admin-gated.
-  if (!requireAdmin(req, res)) return;
-  const { folders, folderSettings } = req.body;
-  if (!Array.isArray(folders)) {
-    return res.status(400).json({ error: 'folders must be an array of paths' });
-  }
-
-  // FR-G part 2: the module's synthetic download-dir root(s) are never
-  // written into `db.folders` here, but a `folderSettings` entry keyed by a
-  // synthetic root's resolved path IS allowed to persist on its own (e.g. a
-  // rename) even though the root itself is absent from `folders` -- this is
-  // how a rename sticks across restarts without the folder ever becoming a
-  // "real" `db.folders` row (see GET /api/config above). Computed BEFORE the
-  // `validFolders` loop below (FIX-2) so that loop can exclude a synthetic
-  // root a client round-tripped back from `GET /api/config`'s display-only
-  // merge.
-  const ytdlpConfig = ytdlp.parseYtdlpConfig();
-  const syntheticRoots = new Set(ytdlp.extraScanRoots(ytdlpConfig));
-
-  // Validate that folders exist locally, and DEDUPLICATE a submitted list
-  // using a resolved key -- WITHOUT rewriting the persisted spelling itself.
-  //
-  // FIX-1 (two-reviewer gate, BLOCKER, data-loss regression, same class as
-  // the scan-side fix above): this used to `path.resolve()` every surviving
-  // entry and persist THAT into `db.folders`. `getMediaId` hashes the
-  // absolute `filePath` a file was scanned under, so rewriting an EXISTING
-  // operator's stored folder spelling here -- even one that already resolved
-  // to itself, but especially a relative/symlink/bind-mount spelling that
-  // doesn't -- would change every file's id under that root on the very next
-  // scan, and `pruneMissing` (default ON) would reap the old ids' metadata/
-  // thumbnails/`db.progress` the same way the scan-side bug did. A save that
-  // didn't intend to change anything must leave existing stored strings
-  // byte-identical.
-  //
-  // The fix: `path.resolve` is used ONLY as a comparison key to drop a
-  // submitted entry that resolves to one already kept (or to a synthetic
-  // root, FIX-2 below) -- the ORIGINAL (trimmed, as-submitted) string is
-  // what's pushed into `validFolders` and ultimately persisted.
-  const validFolders = [];
-  const seenResolved = new Set();
-  // The client's `folderSettings` object is keyed by whatever folder string
-  // it last received -- remember the resolved form for each submitted
-  // original so the settings lookup below still finds it, independent of
-  // `validFolders` now holding un-resolved spellings.
-  const resolvedFromOriginal = new Map();
-  // QW2 (fast-follow, correctness fix): resolved key -> the ORIGINAL
-  // (trimmed, as-submitted) spelling that actually survived into
-  // `validFolders` for that resolved root. `db.folders` (via FIX-1) stores
-  // the original submitted spelling, not the resolved one -- so
-  // `db.folderSettings` must be keyed the SAME way, or a non-canonical
-  // spelling (trailing separator, relative path, a `.`/`..` segment -- not
-  // symlinks, those are a separate FR-G concern) ends up with `db.folders`
-  // and `db.folderSettings` keyed by two DIFFERENT strings. The client's
-  // rename/hidden lookups (`resolveChannelName` in public/js/common.js,
-  // public/js/main.js, and the GET /api/videos hidden-folder filter below)
-  // all index `folderSettings` by the RAW as-scanned spelling
-  // (`item.rootFolder`, which comes from `db.folders`) -- so a resolved-key
-  // mismatch here made the setting silently unreachable, even though it was
-  // faithfully persisted.
-  const originalByResolved = new Map();
-  // Item 3 (v1.13.0, order persistence): resolved synthetic root -> its
-  // display index in the SUBMITTED `folders` order (the count of real
-  // folders that preceded it), derived purely from client-submitted
-  // position -- no new client logic needed, the client already sends the
-  // reordered array via the existing up/down Setup-page controls. Never
-  // read by any scan/prune path.
-  const syntheticOrders = new Map();
-  for (const folder of folders) {
-    if (typeof folder !== 'string') continue;
-    const trimmed = folder.trim();
-    if (!trimmed || !fs.existsSync(trimmed)) continue;
-    const resolved = path.resolve(trimmed);
-    resolvedFromOriginal.set(trimmed, resolved);
-    if (seenResolved.has(resolved)) continue;
-    seenResolved.add(resolved);
-    // FIX-2 (two-reviewer gate, BLOCKER-adjacent, C7 reap-surface reopened):
-    // `GET /api/config` merges the module's synthetic download-dir root into
-    // its RESPONSE for display purposes only (never into `db.folders`) -- but
-    // a normal settings-page save round-trips that same `folders` array back
-    // into THIS handler. Without this check, the synthetic entry passed the
-    // (typeof-string/trim/existsSync)-only filter above and got persisted
-    // into `db.folders` on the very next save, reopening the exact
-    // "downloadDir must never be in db.folders" violation C3/C7 exists to
-    // prevent (disable-reap risk: a `db.folders`-resident downloadDir can be
-    // evicted by a later save, or double-walked alongside `extraScanRoots`).
-    // Excluded here, unconditionally -- its `folderSettings` entry (a rename)
-    // is untouched by this and still persists via `cleanSettings` below.
-    if (syntheticRoots.has(resolved)) {
-      // Record its intended display index (== how many real folders
-      // preceded it in the submitted order) BEFORE skipping it -- it is
-      // still never pushed into `validFolders`/`db.folders`.
-      syntheticOrders.set(resolved, validFolders.length);
-      continue;
-    }
-    // v1.37.0 gate fix (adversarial W1): the books design's HARD INVARIANT
-    // -- "book roots may never overlap media roots in EITHER direction" --
-    // was only enforced on the books side (POST /api/books/config). Enforce
-    // the reverse here too: a media folder that equals, contains, or lives
-    // inside a configured BOOK root is rejected, or a later media save
-    // could silently double-own a subtree the two scanners' prune/merge
-    // semantics would then fight over.
-    const bookRoots = booksDb.read().folders; // Wave 5: the books roots are a table
-    for (const bookRoot of bookRoots) {
-      const resolvedBookRoot = path.resolve(bookRoot);
-      if (resolved === resolvedBookRoot || ytdlpArgs.isPathUnder(resolved, resolvedBookRoot) || ytdlpArgs.isPathUnder(resolvedBookRoot, resolved)) {
-        return res.status(400).json({ error: `Media folder overlaps a book folder: ${trimmed} <-> ${bookRoot}` });
-      }
-    }
-    // v1.44 music: the reciprocal of POST /api/music/config's own three-way
-    // guard -- a media folder may not equal/contain/live inside a MUSIC root
-    // either, so ownership stays order-independent (whichever config saves
-    // second is the one that catches the overlap).
-    const musicRoots = musicDb.read().folders;
-    for (const musicRoot of musicRoots) {
-      const resolvedMusicRoot = path.resolve(musicRoot);
-      if (resolved === resolvedMusicRoot || ytdlpArgs.isPathUnder(resolved, resolvedMusicRoot) || ytdlpArgs.isPathUnder(resolvedMusicRoot, resolved)) {
-        return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
-      }
-    }
-    // v1.195 TV Shows: the reciprocal of POST /api/tv/config's own net - a media
-    // folder may not equal/contain/live inside a Shows root either.
-    for (const tvRoot of tvDb.read().folders) {
-      if (foldersOverlap(resolved, path.resolve(tvRoot))) {
-        return res.status(400).json({ error: `Media folder overlaps a Shows folder: ${trimmed} <-> ${tvRoot}` });
-      }
-    }
-    // v1.69 podcasts (D8, the FOUR-way): the podcasts download root is
-    // module-owned (env/default, not a configured list), but a media folder
-    // that equals/contains/lives inside it would double-own the episodes.
-    {
-      const podcastsRoot = podcasts.resolvePodcastsRoot(loadDatabase(), { dataDir: DATA_DIR });
-      if (resolved === podcastsRoot || ytdlpArgs.isPathUnder(resolved, podcastsRoot) || ytdlpArgs.isPathUnder(podcastsRoot, resolved)) {
-        return res.status(400).json({ error: `Media folder overlaps the podcasts folder: ${trimmed} <-> ${podcastsRoot}` });
-      }
-    }
-    validFolders.push(trimmed);
-    originalByResolved.set(resolved, trimmed); // QW2
-  }
-
-  // Keep per-folder settings (display name / hidden), pruned to folders that
-  // still exist OR are a synthetic root.
-  const cleanSettings = {};
-  if (folderSettings && typeof folderSettings === 'object') {
-    for (const [key, s] of Object.entries(folderSettings)) {
-      if (!s || typeof s !== 'object') continue;
-      const resolvedKey = resolvedFromOriginal.get(key) || path.resolve(key);
-      if (!seenResolved.has(resolvedKey) && !syntheticRoots.has(resolvedKey)) continue;
-      // QW2: the dedup/synthetic-root MEMBERSHIP CHECK above stays keyed by
-      // the resolved path (that part was already correct) -- but the key we
-      // actually STORE under matches `db.folders`' spelling for that root: a
-      // synthetic root (never in `db.folders`, always already a resolved
-      // path from `extraScanRoots`) keeps the resolved key unchanged; a real
-      // `db.folders` entry is stored under the SAME original spelling that
-      // survived into `validFolders`, so the client's `item.rootFolder`
-      // lookups can actually find it.
-      const storageKey = syntheticRoots.has(resolvedKey) ? resolvedKey : (originalByResolved.get(resolvedKey) || resolvedKey);
-      cleanSettings[storageKey] = {
-        name: typeof s.name === 'string' ? s.name.trim() : '',
-        hidden: !!s.hidden,
-        // v1.14.0 item 3: "Hide from sidebar" -- distinct from `hidden`
-        // ("Hide from home"). Independently boolean-coerced (never dropped
-        // like the pre-fix whitelist did), so a folder can be hidden from
-        // one, both, or neither, in any combination. Backfill for a legacy
-        // entry that never set it: `undefined` -> `false` (not hidden).
-        hiddenFromSidebar: !!s.hiddenFromSidebar
-      };
-      // v1.77: the folder's chosen glyph. This whitelist is EXHAUSTIVE - a
-      // field not named here is silently dropped on every save, which is why
-      // it is widened in the same commit that starts writing the field rather
-      // than a later one (the v1.14.0 scar directly above: the pre-fix
-      // whitelist dropped hiddenFromSidebar the same way).
-      //
-      // Validated against the shared registry, never trusted: the value is
-      // interpolated into a `class` attribute at four render sites, so an
-      // arbitrary string here would be an HTML-injection primitive. Only an
-      // exact known id is stored; anything else is dropped entirely, leaving
-      // the folder on the default glyph. Absence is the default, so no
-      // migration or backfill is needed for existing databases.
-      if (typeof s.glyph === 'string' && GLYPH_IDS.has(s.glyph)) {
-        cleanSettings[storageKey].glyph = s.glyph;
-      }
-      // Item 3 (v1.13.0, order persistence): `order` is ONLY ever written
-      // for a synthetic root -- real (`db.folders`) folders keep their
-      // order purely positional in `db.folders`, exactly as before this
-      // change. Prefer the index just derived from the submitted `folders`
-      // array (`syntheticOrders`); fall back to a client-submitted `s.order`
-      // so a save that doesn't round-trip the synthetic root inside
-      // `folders` (but still round-trips its `folderSettings` entry, e.g.
-      // a rename-only save) doesn't silently drop a previously-stored
-      // order. Only stored when it resolves to an integer.
-      if (syntheticRoots.has(resolvedKey)) {
-        const order = syntheticOrders.has(resolvedKey) ? syntheticOrders.get(resolvedKey) : (Number.isInteger(s.order) ? s.order : undefined);
-        if (Number.isInteger(order)) cleanSettings[storageKey].order = order;
-      }
-    }
-  }
-
-  try {
-    await updateDatabase(() => {
-      // Wave 4: both maps land inside the doc commit's transaction (a failed
-      // save leaves the tables exactly as they were).
-      inSaveTransaction(() => {
-        folderStore.replaceAll(validFolders);
-        folderSettingsStore.replaceAll(cleanSettings);
-      });
-      return true;
-    });
-  } catch (err) {
-    // Express 4 does not catch a rejected async-handler promise, so a
-    // rejection left unguarded here would hang the request instead of
-    // returning 500 (mirrors POST /api/scan's pattern above).
-    console.error('Error saving folder configuration:', err);
-    return res.status(500).json({ error: `Could not save folder configuration: ${err.message}` });
-  }
-
-  // Respond with the locally-computed values (not a `db` read back out of the
-  // mutator) -- they're already known and identical to what was just saved.
-  res.json({ success: true, folders: validFolders, folderSettings: cleanSettings });
-
-  // Sync directories asynchronously in background
-  scanDirectories().catch(console.error);
-});
-
-// API: Scan files on demand.
-// v1.30 A2 (AC2.1, CONTRACT CHANGE from the old synchronous 200/409): the
-// scan itself can now take a while even though it never blocks the event
-// loop (AC1.1), so this handler no longer `await`s it -- it fires
-// `scanDirectories()` fire-and-forget (mirroring `POST /api/config`'s own
-// background-scan trigger just above) and responds immediately. A scan
-// already in flight still flags the coalesced follow-up (unchanged
-// semantics, AC2.5) instead of starting a second concurrent scan; either way
-// the response is `202 { scanning: true, alreadyInProgress }` -- there is no
-// longer a 409/500 branch here: `scanDirectories()`'s own internal try/finally
-// (above) already logs and settles `scanState` on any error, and `.catch`
-// below guards the fire-and-forget call against an unhandled rejection.
-app.post('/api/scan', (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  const alreadyInProgress = scanState.scanning;
-  if (alreadyInProgress) {
-    scanState.rescanRequested = true;
-  } else {
-    scanDirectories().catch(console.error);
-  }
-  res.status(202).json({ scanning: true, alreadyInProgress });
+// Wave 7b (slice S10b): the media-folder config (GET/POST /api/config), the
+// per-folder display-name and Music-flag routes and the on-demand scan
+// trigger moved VERBATIM to lib/config/routes.js, together with GLYPH_IDS -
+// the folder-glyph allowlist the config POST was the only referrer of. The
+// three path groups interleave in one contiguous block, so they register as
+// ONE ordered block here, exactly where GET /api/config sat. The module's
+// require sits at its call site (not in the top require block) so the split's
+// parallel slices never edit the same hunk.
+const configRoutes = require('./lib/config/routes');
+configRoutes.registerConfigRoutes(app, {
+  DATA_DIR, // the podcasts-root probe in the media-folder overlap net
+  booksDb,
+  folderDisplayNameStore,
+  folderSettingsStore,
+  folderStore,
+  foldersOverlap,
+  glyphPool, // the shared glyph registry, handed in (R2 gate W2: the first cut required it a second time)
+  fs,
+  getCachedDatabase,
+  inSaveTransaction, // the folder list + the settings map write inside ONE doc commit
+  libraryAudio, // the channel-mark predicate the music-flag routes share with the projection
+  loadDatabase,
+  matchRootFolder,
+  mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
+  musicDb,
+  path,
+  podcasts,
+  requesterHasRestrictions,
+  requireAdmin,
+  requireModifyLibrary,
+  scanDirectories,
+  scanState, // the LIVE scan-state object (never reassigned, only mutated)
+  tvDb,
+  updateDatabase,
+  ytdlp,
+  ytdlpArgs,
 });
 
 // ---- Books (v1.37.0) --------------------------------------------------------
@@ -6448,7 +5973,7 @@ app.post('/api/scan', (req, res) => {
 // zero scans = zero db writes = the disabled-module posture ytdlp set).
 // Full design: docs/exec-plans/completed/2026-07-12-v1.37.0-books.md.
 
-let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
+const bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
 // v1.37.0 gate fix (adversarial W4): the single deferred follow-up timer --
 // see scanBooks' finally block.
 let deferredBookRescanTimer = null;
@@ -6650,48 +6175,17 @@ booksRoutes.registerProgressRoute(app, {
   pendingProgressKey,
 });
 
-// FR-3 (v1.18.0): bounds the `transcodeNames` list GET /api/scan-status
-// returns below -- codec-based detection (T2/FR-1b) can flag substantially
-// more files than the old extension-only set on a large library, so the
-// names array is capped rather than unbounded (fork #6 in the exec plan).
-const TRANSCODE_LIST_CAP = 10;
-
-// API: Live scan/transcode status for progress feedback in the UI
-app.get('/api/scan-status', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (was the one T2 left on loadDatabase)
-  // v1.128 Wave B (L5): the content-derived fields (fileCount, folderCount,
-  // transcodeNames) leaked full-library counts + pending-transcode item TITLES
-  // to a restricted member. Scope the item set to what the requester may see;
-  // admin + unrestricted member get the byte-identical full view. The
-  // operational fields (scanning/processed/total/phase) are not content.
-  const visibleMap = visibleMetadataFor(req, db.metadata);
-  const items = Object.values(visibleMap);
-  const folderCount = requesterHasRestrictions(req)
-    ? visibleConfigRoots(req, folderStore.list(), items, mediaVisibleTo).length
-    : folderStore.size(); // Wave 4
-  // Same filter that has always produced the `transcoding` count -- this is
-  // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
-  // codec-flagged HEVC .mp4 rides this exact filter, not a divergent one).
-  const pending = items.filter(i =>
-    i.needsTranscode && i.transcodeStatus && i.transcodeStatus !== 'ready' && i.transcodeStatus !== 'failed'
-  );
-  const transcodeNames = pending.slice(0, TRANSCODE_LIST_CAP).map(i => i.title || i.name);
-  const transcodeOverflow = Math.max(0, pending.length - transcodeNames.length);
-  res.json({
-    scanning: scanState.scanning,
-    lastScan: scanState.lastScan,
-    // v1.30 A2 (AC2.2): cooperative-scan progress -- see `scanState`'s own
-    // doc comment for the monotonic-within-a-pass contract. The db read
-    // above now goes through `getCachedDatabase()` (v1.30 A3, T4).
-    processed: scanState.processed,
-    total: scanState.total,
-    phase: scanState.phase,
-    fileCount: items.length,
-    folderCount,
-    transcoding: pending.length,
-    transcodeNames,
-    transcodeOverflow
-  });
+// Wave 7b (slice S10b): GET /api/scan-status moved VERBATIM to
+// lib/config/routes.js with TRANSCODE_LIST_CAP, the transcodeNames cap it was
+// the only reader of.
+configRoutes.registerScanStatusRoute(app, {
+  folderStore,
+  getCachedDatabase,
+  mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
+  requesterHasRestrictions,
+  scanState, // the LIVE scan-state object (never reassigned, only mutated)
+  visibleConfigRoots,
+  visibleMetadataFor,
 });
 
 // Valid POST /api/settings values for the two enum-like fields. `cacheMaxBytes`
@@ -6711,51 +6205,6 @@ const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 // v1.65: same allowed set for the trash retention (0 = keep forever).
 const TRASH_RETENTION_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 
-// Shape returned by both GET and POST /api/settings — the five persisted keys
-// plus a read-only `effectiveCacheMaxBytes` (UI prefill for the "no override"
-// case, since cacheMaxBytes:null defers to the env var / 5 GB default).
-function settingsResponse(settings) {
-  return {
-    scanIntervalMinutes: settings.scanIntervalMinutes,
-    pruneMissing: settings.pruneMissing,
-    cacheMaxBytes: settings.cacheMaxBytes,
-    cacheMaxAgeDays: settings.cacheMaxAgeDays,
-    // v1.65: trash retention (see DEFAULT_SETTINGS).
-    trashRetentionDays: settings.trashRetentionDays,
-    defaultView: settings.defaultView,
-    autoplayNext: settings.autoplayNext,
-    backgroundAudioForVideo: settings.backgroundAudioForVideo,
-    // v1.34: the default home sort (see DEFAULT_SETTINGS).
-    defaultSort: settings.defaultSort,
-    // v1.34 T4: custom-vs-native mobile video controls (see DEFAULT_SETTINGS).
-    mobileCustomPlayer: settings.mobileCustomPlayer,
-    // v1.35: deterministic background audio (see DEFAULT_SETTINGS).
-    preExtractAudio: settings.preExtractAudio,
-    // v1.121: background-audio position pre-sync (see DEFAULT_SETTINGS).
-    bgAudioSyncPosition: settings.bgAudioSyncPosition,
-    // v1.41.6: relocate hydrated imports into their channel folder (see
-    // DEFAULT_SETTINGS) -- ON by default.
-    relocateHydratedImports: settings.relocateHydratedImports,
-    // v1.51: the notification bell's instance-wide toggle (see DEFAULT_SETTINGS).
-    notificationsEnabled: settings.notificationsEnabled,
-    // v1.201: the "Share with AI" prompt list (see DEFAULT_SETTINGS). Always
-    // an array - a pre-v1.201 db without the key falls back to the default.
-    transcriptAiPrompts: Array.isArray(settings.transcriptAiPrompts) ? settings.transcriptAiPrompts : DEFAULT_SETTINGS.transcriptAiPrompts,
-    // v1.202: the manual-attribution opt-in (see DEFAULT_SETTINGS).
-    attributeControlEnabled: settings.attributeControlEnabled === true,
-    effectiveCacheMaxBytes: effectiveCacheCap(settings),
-    // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
-    // dedicated POST/DELETE /api/settings/logo routes below (never via the
-    // generic POST /api/settings merge; the key is deliberately absent from
-    // KNOWN_KEYS so a stray write 400s).
-    customLogo: typeof settings.customLogoMime === 'string' && settings.customLogoMime !== '',
-    // v1.33.1: the DARK-mode variant's own read-only flag (same managed-by-
-    // dedicated-routes posture; `customLogoDarkMime` is likewise absent from
-    // KNOWN_KEYS so a stray generic-settings write 400s).
-    customLogoDark: typeof settings.customLogoDarkMime === 'string' && settings.customLogoDarkMime !== ''
-  };
-}
-
 // ---- Music library (v1.44) --------------------------------------------------
 //
 // The music library's server half: its OWN folder config (`db.music.folders`
@@ -6765,7 +6214,7 @@ function settingsResponse(settings) {
 // music-less install (zero folders = zero scans = zero db writes). Full
 // design: docs/exec-plans/completed/2026-07-17-v1.44-music-library.md.
 
-let musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
+const musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
 let deferredMusicRescanTimer = null;
 
 function currentMusicScanState() {
@@ -6802,16 +6251,6 @@ function albumArtExists(albumArtKey) {
   return fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.jpg`))
     || fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.png`));
 }
-
-// Content types for the /track/:id stream. FLAC/WAV play natively in modern
-// browsers (verify on-device); ALAC (usually in .m4a) rides the T7 transcode.
-const MUSIC_CONTENT_TYPES = {
-  '.mp3': 'audio/mpeg',
-  '.m4a': 'audio/mp4',
-  '.aac': 'audio/aac',
-  '.flac': 'audio/flac',
-  '.wav': 'audio/wav',
-};
 
 // v1.44 T7: the ALAC transcode gate. CONSERVATIVE, positive-identification
 // only — only a probed `alac` codec transcodes; a null/unknown/absent codec
@@ -6876,24 +6315,6 @@ function processMusicTranscodeQueue() {
   });
 }
 
-// Square album-art placeholder (album/artist text, escaped exactly like the
-// bookcover placeholder -- a hostile tag must never become markup). Glyph-free
-// (no emoji): a simple record-styled square.
-function musicArtPlaceholderSvg(track) {
-  const album = String((track && track.album) || 'Music');
-  const artist = String((track && track.artist) || '');
-  const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
-  return `
-    <svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
-      <rect width="240" height="240" fill="#3a3f58"/>
-      <circle cx="120" cy="108" r="52" fill="none" stroke="#8890b5" stroke-width="2"/>
-      <circle cx="120" cy="108" r="10" fill="#8890b5"/>
-      <text x="120" y="196" font-family="Arial, sans-serif" font-size="15" fill="#e8e8f0" text-anchor="middle" font-weight="bold">${escapeHtml(clip(album, 22))}</text>
-      <text x="120" y="216" font-family="Arial, sans-serif" font-size="11" fill="#aab" text-anchor="middle">${escapeHtml(clip(artist, 26))}</text>
-    </svg>
-  `;
-}
-
 // Resolve one album's art (best-effort, idempotent, never throws): embedded
 // attached-pic via ffmpeg (re-encoded to a consistent .jpg), else a sidecar
 // cover.jpg/folder.jpg/front.* copied verbatim. Skips entirely if the album
@@ -6927,87 +6348,31 @@ async function extractAlbumArt(job) {
   }
 }
 
-async function runMusicScan() {
-  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
-  const ns = musicDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables
-  const folders = ns.folders.slice();
-  if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
-  const { tracks, survivingIds, missingRoots, erroredDirs } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
-  for (const root of missingRoots) {
-    console.warn(`music: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
-  }
-
-  const pruneMissing = !!scanSettings.pruneMissing;
-  const prunedIds = [];
-  const prunedRecords = [];
-  let finalTracks = tracks;
-  // Wave 5: the merge runs against a FRESH holder; the diff rides the doc commit.
-  await updateDatabase(() => musicDb.mutate((holder) => {
-    const freshNs = musicStore.ensureMusic(holder);
-    // The books/media Option-C mount-loss guard, applied to music: a root
-    // whose directory still exists but yielded ZERO files this pass while the
-    // library previously had tracks under it is the unmounted-share signature
-    // -- treat as VANISHED (prune nothing beneath it), never a bulk deletion.
-    const effectiveMissingRoots = new Set(missingRoots);
-    for (const root of folders) {
-      if (effectiveMissingRoots.has(root)) continue;
-      const hadTracks = Object.values(freshNs.tracks).some((t) => t && t.rootFolder === root);
-      const hasSurvivors = Object.values(tracks).some((t) => t && t.rootFolder === root);
-      if (hadTracks && !hasSurvivors) {
-        effectiveMissingRoots.add(root);
-        console.warn(`music: root ${root} exists but scanned EMPTY while the library has tracks under it -- treating as unmounted, pruning nothing beneath it`);
-      }
-    }
-    const prunable = new Set(musicStore.selectPrunableTrackIds(freshNs.tracks, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
-    const next = {};
-    for (const [id, t] of Object.entries(tracks)) next[id] = t;
-    for (const [id, t] of Object.entries(freshNs.tracks)) {
-      if (next[id]) continue;
-      if (prunable.has(id)) {
-        prunedIds.push(id);
-        prunedRecords.push(t); // captured for the orphaned-art sweep
-        continue;
-      }
-      next[id] = t; // non-surviving but protected (mount-loss / pruneMissing off)
-    }
-    freshNs.tracks = next;
-    finalTracks = next;
-    return true;
-  }));
-
-  // Per-user music state is track-id-keyed -- pruned tracks shed liked/progress
-  // and null any resume pointer that referenced them (post-commit, the
-  // removeMediaState posture; one transaction).
-  if (prunedIds.length > 0) {
-    try {
-      userStore.removeMusicState(prunedIds);
-    } catch (err) {
-      console.error('music: failed to prune per-user music state (continuing):', err && err.message);
-    }
-  }
-
-  // Album art for surviving albums that still lack an art file (best-effort).
-  try {
-    for (const job of musicScan.selectAlbumArtJobs(finalTracks, albumArtExists)) {
-      await extractAlbumArt(job);
-    }
-  } catch (err) {
-    console.error('music: album-art extraction pass failed (continuing):', err && err.message);
-  }
-
-  // Orphaned album art: unlink ONLY when an album's LAST track was pruned
-  // (selectOrphanedArtKeys excludes any key a surviving track still references).
-  for (const key of musicScan.selectOrphanedArtKeys(prunedRecords, finalTracks)) {
-    for (const ext of ['.jpg', '.png']) {
-      try { fs.unlinkSync(path.join(ALBUMART_DIR, `${key}${ext}`)); } catch (_) { /* best-effort */ }
-    }
-  }
-  // A pruned track's cached ALAC rendition (audioPath) is regenerable, but
-  // shed it now so a re-added same-name file doesn't serve a stale rendition.
-  for (const id of prunedIds) {
-    try { fs.unlinkSync(audioPath(id)); } catch (_) { /* best-effort / absent */ }
-  }
-}
+// Wave 7b (slice S3): ONE pass - the walk + probe, the merge, the per-user
+// prune and the pruned tracks' art/rendition hygiene - moved VERBATIM to
+// lib/music/scanRunner.js. scanMusic below is unchanged and stays here: it owns
+// musicScanState, the single deferred rescan timer and the follow-up budget,
+// and other callers (the media-scan timer, the boot path, the music routes) and
+// the integration tests reach it through this file's exports. probeMusicTrack
+// and extractAlbumArt stay above because they read the mutable `ffmpegAvailable`
+// (see the module's header) - they cross as deps.
+const musicScanRunner = require('./lib/music/scanRunner'); // Wave 7b R2: the require sits at its call site so parallel slices never touch the same hunk
+const { runMusicScan } = musicScanRunner.createMusicScanRunner({
+  ALBUMART_DIR,
+  albumArtExists,
+  audioPath,
+  extractAlbumArt,
+  fs,
+  getMediaId,
+  musicDb,
+  musicScan,
+  musicStore,
+  path,
+  probeMusicTrack,
+  settingsStore,
+  updateDatabase,
+  userStore,
+});
 
 // Overlap/coalescing guard -- the scanBooks discipline verbatim (a scan
 // requested mid-scan runs exactly one follow-up pass, never a concurrent
@@ -7042,85 +6407,34 @@ async function scanMusic() {
   }
 }
 
-app.get('/api/music/config', (req, res) => {
-  const ns = musicDb.read();
-  const folders = ns.folders || [];
-  // v1.128 Wave B (L3): same as books/config - common.js reads it for the
-  // Music nav tab, so filter to roots holding >=1 visible track for a
-  // restricted member; admin + unrestricted member byte-identical.
-  res.json({ folders: visibleConfigRoots(req, folders, Object.values(ns.tracks || {}), trackVisibleTo) });
-});
-
-app.post('/api/music/config', async (req, res) => {
-  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): library config is admin-only
-  const { folders } = req.body || {};
-  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
-    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
-  }
-  const resolved = [];
-  const seen = new Set();
-  for (const raw of folders) {
-    const folder = path.resolve(raw.trim());
-    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
-      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
-    }
-    if (seen.has(folder)) continue;
-    seen.add(folder);
-    resolved.push(folder);
-  }
-  // HARD INVARIANT (exec plan §4.4): music roots may never overlap media roots
-  // OR book roots, in EITHER direction -- a file must have exactly one owner,
-  // or the scanners' prune/merge semantics fight over it. Three-way check; the
-  // reciprocal clauses in the media/book config routes (T5) close the other
-  // direction so ownership is order-independent.
-  const cached = getCachedDatabase();
-  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
-  const bookFolders = (booksDb.read().folders || []).map((f) => path.resolve(f));
-  for (const musicRoot of resolved) {
-    for (const mediaRoot of mediaFolders) {
-      if (musicRoot === mediaRoot || ytdlpArgs.isPathUnder(musicRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, musicRoot)) {
-        return res.status(400).json({ error: `Music folder overlaps a media folder: ${musicRoot} <-> ${mediaRoot}` });
-      }
-    }
-    for (const bookRoot of bookFolders) {
-      if (musicRoot === bookRoot || ytdlpArgs.isPathUnder(musicRoot, bookRoot) || ytdlpArgs.isPathUnder(bookRoot, musicRoot)) {
-        return res.status(400).json({ error: `Music folder overlaps a book folder: ${musicRoot} <-> ${bookRoot}` });
-      }
-    }
-    // v1.69 podcasts (D8): the four-way clause, same both-directions posture.
-    const podcastsRootForMusic = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
-    if (musicRoot === podcastsRootForMusic || ytdlpArgs.isPathUnder(musicRoot, podcastsRootForMusic) || ytdlpArgs.isPathUnder(podcastsRootForMusic, musicRoot)) {
-      return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
-    }
-    // v1.195 TV Shows: reciprocal of the tv-config net.
-    for (const tvRoot of (tvDb.read().folders || []).map((f) => path.resolve(f))) {
-      if (foldersOverlap(musicRoot, tvRoot)) {
-        return res.status(400).json({ error: `Music folder overlaps a Shows folder: ${musicRoot} <-> ${tvRoot}` });
-      }
-    }
-  }
-  try {
-    await updateDatabase(() => musicDb.mutate((h) => { musicStore.ensureMusic(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
-  } catch (err) {
-    return res.status(500).json({ error: `Could not save music folders: ${err.message}` });
-  }
-  res.json({ folders: resolved });
-  scanMusic().catch(console.error);
-});
-
-app.post('/api/music/scan', (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  const alreadyInProgress = musicScanState.scanning;
-  if (alreadyInProgress) {
-    musicScanState.rescanRequested = true;
-  } else {
-    scanMusic().catch(console.error);
-  }
-  res.status(202).json({ scanning: true, alreadyInProgress });
-});
-
-app.get('/api/music/scan-status', (req, res) => {
-  res.json(musicScanState);
+// Wave 7b (slice S3): the music HTTP surface - /api/music, /track, /albumart
+// and /audio - moved VERBATIM to lib/music/routes.js, together with the two
+// module-scope names the moved routes were the only referrers of
+// (MUSIC_CONTENT_TYPES, musicArtPlaceholderSvg). The music routes are not one
+// contiguous run, so they register in FOUR calls, each exactly where its own
+// block's first route sat: this config/scan block, the read APIs below, the
+// track/art block after slice S1a's userRoutes call, and /audio far below.
+const musicRoutes = require('./lib/music/routes'); // Wave 7b R2: the require sits at its call site so parallel slices never touch the same hunk
+musicRoutes.registerConfigRoutes(app, {
+  DATA_DIR,
+  booksDb,
+  folderStore,
+  foldersOverlap,
+  fs,
+  getCachedDatabase,
+  musicDb,
+  musicScanState, // the LIVE object (currentMusicScanState exports the same one)
+  musicStore,
+  path,
+  podcasts,
+  requireAdmin,
+  requireModifyLibrary,
+  scanMusic, // the overlap/coalescing guard, still this file's
+  trackVisibleTo,
+  tvDb,
+  updateDatabase,
+  visibleConfigRoots,
+  ytdlpArgs,
 });
 
 // ---- Music: per-user progress coalescer (T8) --------------------------------
@@ -7334,140 +6648,25 @@ function musicListProgressMap(userId, tracks) {
   return out;
 }
 
-app.get('/api/music', (req, res) => {
-  const ns = musicDb.read();
-  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
-  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
-  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
-  const album = typeof req.query.album === 'string' ? req.query.album : '';
-  const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
-  const root = typeof req.query.root === 'string' ? req.query.root : '';
-  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
-  if (album) list = list.filter((t) => musicQuery.matchesAlbum(t, album));
-  if (artist) list = list.filter((t) => musicQuery.matchesArtist(t, artist));
-  if (root) list = list.filter((t) => musicQuery.matchesRoot(t, root));
-
-  const likedSet = new Set(userStore.getMusicLiked(req.user.id));
-  if (req.query.filter === 'liked') list = list.filter((t) => likedSet.has(t.id));
-  // v1.215: merge the media store for projected library tracks (see the helper).
-  const progressMap = musicListProgressMap(req.user.id, list);
-  if (req.query.filter === 'recent-listening') {
-    // The "Continue listening" surface: tracks with a saved position, most
-    // recently updated first.
-    list = list.filter((t) => progressMap[t.id] && Number(progressMap[t.id].position) > 0);
-    list.sort((a, b) => String((progressMap[b.id] || {}).updatedAt || '').localeCompare(String((progressMap[a.id] || {}).updatedAt || '')));
-  } else {
-    // Default sort: album/artist context implies album order; otherwise the
-    // requested sort (newest default). seed drives a reproducible shuffle.
-    const defaultSort = (album || artist) ? 'album-order' : 'newest';
-    const sortKey = typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : defaultSort;
-    const rng = sortKey === 'random' ? videoQuery.createSeededRng(videoQuery.normalizeSeed(req.query.seed)) : undefined;
-    list = musicQuery.sortTracks(list, sortKey, rng);
-  }
-
-  const total = list.length;
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const items = list.slice(offset, offset + limit).map((t) => publicTrackListItem(t, req.user.id, likedSet, progressMap));
-  res.json({ items, total, offset, limit });
-});
-
-app.get('/api/music/albums', (req, res) => {
-  const ns = musicDb.read();
-  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
-  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
-  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
-  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
-  // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
-  // DROP the per-row albumArtExists fs.existsSync — the client always requests
-  // /albumart/:artId, which serves the real file or an SVG placeholder, so
-  // hasArt was an unused N-stat-per-request event-loop tax at scale.
-  const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
-  const albums = musicQuery.groupAlbums(list, sortKey);
-  const total = albums.length;
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  res.json({ items: albums.slice(offset, offset + limit), total, offset, limit });
-});
-
-app.get('/api/music/artists', (req, res) => {
-  const ns = musicDb.read();
-  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
-  list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
-  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
-  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
-  const sortKey = typeof req.query.sort === 'string' ? req.query.sort : '';
-  const artists = musicQuery.groupArtists(list, sortKey);
-  const total = artists.length;
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  res.json({ items: artists.slice(offset, offset + limit), total, offset, limit });
-});
-
-// v1.211: the "Channels in Music" manager list - every audio-bearing channel the
-// user can SEE, with its current state, so Settings has ONE discoverable place to
-// pick channels (the per-page ♪ was only reachable via one nav path). Static
-// segment - declared BEFORE /api/music/:id (Express route order). Visibility-
-// scoped: only channels with >=1 VISIBLE audio item, and the audioCount is the
-// VISIBLE count (never a restricted-item oracle); `auto`/`effective` are the
-// channel-level booleans the projection uses (single source of truth).
-app.get('/api/music/channels', (req, res) => {
-  const db = getCachedDatabase();
-  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
-  const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  const displayNames = folderDisplayNameStore.getAll(); // Wave 4
-  const visibleCount = new Map(); // folderName -> visible audio count
-  for (const it of allAudio) {
-    if (typeof it.folderName !== 'string' || it.folderName === '') continue;
-    if (!mediaVisibleTo(req, it)) continue;
-    visibleCount.set(it.folderName, (visibleCount.get(it.folderName) || 0) + 1);
-  }
-  // v1.242: universal projection - every channel is in Music (auto:true) unless explicitly
-  // 'off'. The manager is now an OPT-OUT list; `effective` is on-unless-off.
-  const channels = [...visibleCount.entries()].map(([folderName, audioCount]) => ({
-    folderName,
-    displayName: (typeof displayNames[folderName] === 'string' && displayNames[folderName]) || folderName,
-    audioCount,
-    override: Object.prototype.hasOwnProperty.call(marks, folderName) ? marks[folderName] : null,
-    auto: true,
-    effective: libraryAudio.channelEffectiveOnUniversal(folderName, marks),
-  }));
-  channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
-  res.json({ channels });
-});
-
-// Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
-app.get('/api/music/liked', (req, res) => {
-  // v1.80 RBAC: a restricted track's id must not leak into the liked set.
-  const ns = musicDb.read();
-  const trackIds = userStore.getMusicLiked(req.user.id).filter((id) => trackVisibleTo(req, ownTrack(ns.tracks, id)));
-  res.json({ trackIds });
-});
-
-app.post('/api/music/liked/:id', (req, res) => {
-  const ns = musicDb.read();
-  if (!ownTrack(ns.tracks, req.params.id)) return res.status(404).json({ error: 'no such track' });
-  userStore.addMusicLiked(req.user.id, req.params.id, new Date().toISOString());
-  res.json({ liked: true });
-});
-
-app.delete('/api/music/liked/:id', (req, res) => {
-  userStore.removeMusicLiked(req.user.id, req.params.id);
-  res.json({ liked: false });
-});
-
-// The per-user resume pointer (Continue-listening / app-relaunch resume).
-app.get('/api/music/resume', (req, res) => {
-  res.json(userStore.getMusicState(req.user.id) || { lastTrackId: null, queueCtx: null, position: null });
-});
-
-app.post('/api/music/resume', (req, res) => {
-  const body = req.body || {};
-  const lastTrackId = typeof body.lastTrackId === 'string' ? body.lastTrackId : null;
-  const position = Number.isFinite(Number(body.position)) ? Number(body.position) : 0;
-  const queueCtx = body.queueCtx === undefined ? null : body.queueCtx;
-  userStore.setMusicState(req.user.id, { lastTrackId, queueCtx, position, updatedAt: new Date().toISOString() });
-  res.json({ ok: true });
+// Wave 7b (slice S3): the music read APIs through POST /api/music/resume,
+// moved VERBATIM to lib/music/routes.js and registering here, where GET
+// /api/music sat. publicTrackListItem, musicListProgressMap,
+// projectedLibraryTracks and ownTrack stay above (two register blocks and,
+// for the last two, /api/search + /api/home read them) and cross as deps.
+musicRoutes.registerLibraryRoutes(app, {
+  folderDisplayNameStore,
+  getCachedDatabase,
+  libraryAudio,
+  mediaVisibleTo,
+  musicDb,
+  musicListProgressMap,
+  musicQuery,
+  ownTrack,
+  projectedLibraryTracks,
+  publicTrackListItem,
+  trackVisibleTo,
+  userStore,
+  videoQuery,
 });
 
 // ---- the per-user state routes ----------------------------------------------
@@ -7493,136 +6692,35 @@ userRoutes.registerRoutes(app, {
   ytdlpDb,
 });
 
-// Per-track progress ping -> staged into the music coalescer (no disk I/O on
-// the request path). Static 'progress' segment declared BEFORE /api/music/:id.
-app.post('/api/music/progress', (req, res) => {
-  const body = req.body || {};
-  const id = typeof body.id === 'string' ? body.id : '';
-  if (!id) return res.status(400).json({ error: 'id required' });
-  // Accept `position` (music-native) OR `timestamp` (the shared player's wire
-  // shape, so player.js needs only an endpoint override, not a body change).
-  const raw = body.position !== undefined ? body.position : body.timestamp;
-  const position = Number.isFinite(Number(raw)) ? Number(raw) : 0;
-  const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
-  pendingMusicProgress.set(pendingProgressKey(req.user.id, id), {
-    userId: req.user.id,
-    trackId: id,
-    value: { position, duration, updatedAt: new Date().toISOString() },
-  });
-  armMusicProgressFlushTimerIfNeeded();
-  recordPresenceFromPing(req, 'track', id, position, duration); // v1.78 presence
-  res.json({ ok: true });
-});
-
-app.get('/api/music/progress/:id', (req, res) => {
-  const p = effectiveMusicProgress(req.user.id, req.params.id) || { position: 0, duration: 0, updatedAt: null };
-  // Surface BOTH keys: `position` (music-native) and `timestamp` (the alias the
-  // shared player reads) so either consumer works.
-  res.json({ position: p.position || 0, timestamp: p.position || 0, duration: p.duration || 0, updatedAt: p.updatedAt || null });
-});
-
-app.get('/api/music/:id', (req, res) => {
-  const ns = musicDb.read();
-  const track = ownTrack(ns.tracks, req.params.id);
-  if (track) {
-    if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
-    const likedSet = new Set(userStore.getMusicLiked(req.user.id));
-    const progressMap = userStore.getMusicProgress(req.user.id);
-    return res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
-  }
-  // v1.221: a PROJECTED library/chapter id has no native record. Resolve it from
-  // the SAME projection the list + search build (RBAC via mediaVisibleTo and the
-  // v1.242 unconditional eligibility both live INSIDE projectedLibraryTracks) and match
-  // by full id - so a search-tap / deep-link (?play=<id>) of a downloaded track or
-  // a chapter plays instead of 404ing. Reusing the projection (not a bespoke id
-  // decode) keeps "resolvable" == "appears in the list/search": no second gate to
-  // drift out of sync (the two-reader-seam class). A restricted file, or the
-  // toggle off, yields no match -> 404, exactly as it is absent from the list.
-  const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
-  const projected = projectedLibraryTracks(req, native).find((t) => t.id === req.params.id);
-  if (!projected) return res.status(404).json({ error: 'no such track' });
-  const likedSet = new Set(userStore.getMusicLiked(req.user.id));
-  const progressMap = musicListProgressMap(req.user.id, [projected]); // media-store merge (v1.215)
-  res.json(publicTrackListItem(projected, req.user.id, likedSet, progressMap));
-});
-
-// Range-streamed audio. Native containers stream directly; a probed-ALAC
-// track is served from its cached AAC rendition, transcoding on demand (the
-// AVI->MP4 precedent, audio flavor) and answering 503 until the rendition is
-// ready (the client retries).
-app.get('/track/:id', (req, res) => {
-  const ns = musicDb.read();
-  const track = ownTrack(ns.tracks, req.params.id);
-  if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
-  if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC: restricted -> 404
-  if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
-  // v1.72 (cap 7): ?download=1 = the app-wide save-to-device affordance
-  // (the /video/:id?download=1 / /episode/:id?download=1 pattern). Serves
-  // the ORIGINAL bytes with an attachment disposition through the shared
-  // injection-safe helper - deliberately BEFORE the transcode branch, so a
-  // save always gets the source file (an ALAC master downloads as-is; the
-  // browser-compat rendition is a streaming concern, not an archive).
-  if (req.query.download === '1') {
-    res.setHeader('Content-Disposition', contentDispositionAttachment(track.title || 'track', track.ext));
-    const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
-    return sendRangeable(req, res, track.filePath, contentType);
-  }
-  if (musicCodecNeedsTranscode(track.codec)) {
-    const rendition = audioPath(track.id);
-    if (fs.existsSync(rendition)) {
-      sendRangeable(req, res, rendition, 'audio/mp4');
-      return;
-    }
-    queueMusicTranscode(track.id, track.filePath);
-    return res.status(503).json({ error: 'transcoding', codec: track.codec });
-  }
-  const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
-  sendRangeable(req, res, track.filePath, contentType);
-});
-
-// Album art by TRACK id -> its album's art file, else an escaped SVG
-// placeholder (mirrors /bookcover/:id).
-app.get('/albumart/:id', (req, res) => {
-  const db = getCachedDatabase();
-  const ns = musicDb.read();
-  const track = ownTrack(ns.tracks, req.params.id);
-  if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
-  const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
-  if (key) {
-    for (const ext of ['.jpg', '.png']) {
-      const p = path.join(ALBUMART_DIR, `${key}${ext}`);
-      if (fs.existsSync(p)) {
-        // v1.123 T4 (security): `private` - albumart 404s per-user via
-        // trackVisibleTo, so a shared cache must not store/replay it cross-user.
-        res.set('Cache-Control', 'private, max-age=86400');
-        return res.sendFile(p);
-      }
-    }
-  }
-  // Wave G: a PROJECTED library-audio track's album/artist tile carries the
-  // MEDIA id as its artId (it has no album-art file), so fall back to that
-  // item's YouTube thumbnail - real imagery instead of the placeholder. Only a
-  // VISIBLE audio item, and only when there is no native track (never overrides
-  // a real track's own art resolved above). Mirrors /thumbnail's own gate.
-  // v1.222: a virtual chapter-track's id is `<mediaId>::c<idx>` (v1.221) with no
-  // file of its own - strip the chapter suffix so its tile/card/recent-tile
-  // resolves to the ONE shared file's thumbnail (was the grey placeholder). A
-  // plain library-single id has no suffix, so the strip is a no-op. RBAC re-gates
-  // the BASE item, so a chapter of a blocked file still 404s to the placeholder.
-  if (!track) {
-    const baseId = req.params.id.replace(/::c\d+$/, '');
-    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, baseId) ? db.metadata[baseId] : null;
-    if (item && item.type === 'audio' && mediaVisibleTo(req, item) && item.hasThumbnail) {
-      const thumbPath = path.join(THUMBNAIL_DIR, `${baseId}.jpg`);
-      if (fs.existsSync(thumbPath)) {
-        res.set('Cache-Control', 'private, max-age=86400');
-        return res.sendFile(thumbPath);
-      }
-    }
-  }
-  res.set('Content-Type', 'image/svg+xml');
-  res.set('Cache-Control', 'private, max-age=3600'); // v1.123 T4: keep the axis uniform behind the auth wall
-  res.send(musicArtPlaceholderSvg(track));
+// Wave 7b (slice S3): the progress ping, the track detail and the /track +
+// /albumart byte routes, moved VERBATIM to lib/music/routes.js and registering
+// here, where POST /api/music/progress sat - after the S1a user-state routes
+// above, whose registration splits the music surface in two.
+musicRoutes.registerTrackRoutes(app, {
+  ALBUMART_DIR,
+  THUMBNAIL_DIR,
+  armMusicProgressFlushTimerIfNeeded, // assigns this file's musicProgressFlushTimer
+  audioPath,
+  contentDispositionAttachment,
+  effectiveMusicProgress,
+  escapeHtml,
+  fs,
+  getCachedDatabase,
+  mediaVisibleTo,
+  musicCodecNeedsTranscode,
+  musicDb,
+  musicListProgressMap,
+  ownTrack,
+  path,
+  pendingMusicProgress,
+  pendingProgressKey,
+  projectedLibraryTracks,
+  publicTrackListItem,
+  queueMusicTranscode,
+  recordPresenceFromPing,
+  sendRangeable,
+  trackVisibleTo,
+  userStore,
 });
 
 // ---- TV Shows library (v1.195) ----------------------------------------------
@@ -7635,7 +6733,7 @@ app.get('/albumart/:id', (req, res) => {
 // browse/organization layer is new. Everything degrades to a no-op on a Shows-less
 // install (zero folders + zero episodes = zero scans = zero db writes).
 
-let tvScanState = { scanning: false, lastScan: null, rescanRequested: false };
+const tvScanState = { scanning: false, lastScan: null, rescanRequested: false };
 let deferredTvRescanTimer = null;
 function currentTvScanState() { return tvScanState; }
 
@@ -7689,73 +6787,26 @@ function extractTvThumb(job) {
   });
 }
 
-async function runTvScan() {
-  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
-  const ns = tvDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables (no doc snapshot needed)
-  const folders = ns.folders.slice();
-  if (folders.length === 0 && Object.keys(ns.episodes).length === 0) return; // Shows-less: total no-op
-  const { episodes, survivingIds, missingRoots, erroredDirs } = await tvScan.collectEpisodes(
-    folders, ns.episodes, { getId: getMediaId, getShowId: getMediaId, probe: probeTvEpisode });
-  for (const root of missingRoots) {
-    console.warn(`tv: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
-  }
-
-  const pruneMissing = !!scanSettings.pruneMissing;
-  const prunedIds = [];
-  let finalEpisodes = episodes;
-  // Wave 5: the merge runs against a FRESH holder and its diff (changed +
-  // pruned episode rows only) rides the doc commit's transaction.
-  await updateDatabase(() => tvDb.mutate((holder) => {
-    const freshNs = tvStore.ensureTv(holder); // the LIVE rows, read inside the lock
-    // The music/books Option-C mount-loss guard: a root that still EXISTS but
-    // yielded ZERO files this pass while the library previously had episodes under
-    // it is the unmounted-share signature -- treat as VANISHED (prune nothing).
-    const effectiveMissingRoots = new Set(missingRoots);
-    for (const root of folders) {
-      if (effectiveMissingRoots.has(root)) continue;
-      const hadEpisodes = Object.values(freshNs.episodes).some((e) => e && e.rootFolder === root);
-      const hasSurvivors = Object.values(episodes).some((e) => e && e.rootFolder === root);
-      if (hadEpisodes && !hasSurvivors) {
-        effectiveMissingRoots.add(root);
-        console.warn(`tv: root ${root} exists but scanned EMPTY while the library has episodes under it -- treating as unmounted, pruning nothing beneath it`);
-      }
-    }
-    const prunable = new Set(tvStore.selectPrunableEpisodeIds(freshNs.episodes, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
-    const next = {};
-    for (const [id, e] of Object.entries(episodes)) next[id] = e;
-    for (const [id, e] of Object.entries(freshNs.episodes)) {
-      if (next[id]) continue;
-      if (prunable.has(id)) { prunedIds.push(id); continue; }
-      next[id] = e; // non-surviving but protected (mount-loss / pruneMissing off)
-    }
-    freshNs.episodes = next;
-    finalEpisodes = next;
-    return true;
-  }));
-
-  // Per-user episode state is episode-id-keyed -- pruned episodes shed
-  // progress/played/liked (post-commit, the removeMusicState posture).
-  if (prunedIds.length > 0) {
-    try { userStore.removeTvEpisodeState(prunedIds); }
-    catch (err) { console.error('tv: failed to prune per-user episode state (continuing):', err && err.message); }
-  }
-
-  // Per-episode thumbnails for surviving episodes that still lack one (best-effort).
-  try {
-    for (const job of tvScan.selectThumbJobs(finalEpisodes, tvThumbExists)) {
-      const ep = finalEpisodes[job.id];
-      await extractTvThumb({ id: job.id, filePath: job.filePath, durationSec: ep && ep.durationSec });
-    }
-  } catch (err) {
-    console.error('tv: thumbnail extraction pass failed (continuing):', err && err.message);
-  }
-
-  // A pruned episode's cached thumbnail is regenerable, but shed it now so a
-  // re-added same-path file doesn't serve a stale frame.
-  for (const id of prunedIds) {
-    try { fs.unlinkSync(tvThumbPath(id)); } catch (_) { /* best-effort / absent */ }
-  }
-}
+// Wave 7b (slice S4): ONE pass - the walk, the merge, the prune carriers and
+// the thumbnail hygiene - moved VERBATIM to lib/tv/scanRunner.js. scanTv below
+// is unchanged and stays here: it owns tvScanState, the single deferred rescan
+// timer and the follow-up budget, and the media scan's timer, the boot path and
+// this file's exports all reach the scan through it.
+const tvScanRunner = require('./lib/tv/scanRunner'); // Wave 7b S4: the module's require sits at its call site so parallel slices never touch the same hunk
+const { runTvScan } = tvScanRunner.createTvScanRunner({
+  extractTvThumb,
+  fs,
+  getMediaId,
+  probeTvEpisode,
+  settingsStore,
+  tvDb,
+  tvScan,
+  tvStore,
+  tvThumbExists,
+  tvThumbPath,
+  updateDatabase,
+  userStore,
+});
 
 // Overlap/coalescing guard -- the scanMusic discipline verbatim.
 async function scanTv() {
@@ -7792,474 +6843,51 @@ function foldersOverlap(a, b) {
   return a === b || ytdlpArgs.isPathUnder(a, b) || ytdlpArgs.isPathUnder(b, a);
 }
 
-app.get('/api/tv/config', (req, res) => {
-  // GATED (route-read-classification): the nav gate reads this, so a restricted
-  // member sees only roots holding >=1 visible episode; admin + unrestricted member
-  // get the list byte-identical (visibleConfigRoots short-circuits when no restriction).
-  const ns = tvDb.read();
-  res.json({ folders: visibleConfigRoots(req, ns.folders || [], Object.values(ns.episodes || {}), tvEpisodeVisibleTo) });
+const tvRoutes = require('./lib/tv/routes'); // Wave 7b S4: the module's require sits at its call site so parallel slices never touch the same hunk
+tvRoutes.registerRoutes(app, {
+  DATA_DIR,
+  TRANSCODE_CRF,
+  TRANSCODE_DIR, // the SHARED transcode cache the tv renditions + sidecars live in
+  booksDb,
+  buildAudioExtractArgs, // reused unchanged by the tv audio lane
+  contentDispositionAttachment,
+  escapeHtml,
+  // The mutable seam: ffmpegAvailable is a `let` an async boot probe flips long
+  // after this call, so it crosses as a LIVE reader, never as a boot-time value.
+  ffmpegIsAvailable: () => ffmpegAvailable,
+  folderStore,
+  foldersOverlap, // the shared both-directions root-overlap test
+  fs,
+  getCachedDatabase,
+  markServed, // protects an actively-streaming rendition/sidecar from a cache sweep
+  musicDb,
+  needsTranscode,
+  path,
+  podcasts,
+  requireAdmin,
+  requireModifyLibrary,
+  scanTv, // the overlap/coalescing scan guard - still this file's
+  sendRangeable,
+  spawn,
+  tvDb,
+  tvEpisodeVisibleTo, // v1.195 RBAC: the single visibility decision for an episode
+  tvParse,
+  tvScan,
+  tvScanState, // the LIVE scan-state object (currentTvScanState exports the same one)
+  tvStore,
+  tvThumbPath, // shared with the scan pass (lib/tv/scanRunner.js)
+  updateDatabase,
+  userStore,
+  videoQuery,
+  visibleConfigRoots,
+  visibleTvEpisodes, // shared with GET /api/search
 });
-
-app.post('/api/tv/config', async (req, res) => {
-  if (!requireAdmin(req, res)) return; // library config is admin-only (write-RBAC)
-  const { folders } = req.body || {};
-  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
-    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
-  }
-  const resolved = [];
-  const seen = new Set();
-  for (const raw of folders) {
-    const folder = path.resolve(raw.trim());
-    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
-      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
-    }
-    if (seen.has(folder)) continue;
-    seen.add(folder);
-    resolved.push(folder);
-  }
-  // HARD INVARIANT: a Shows root may never overlap a media/book/music/podcast root,
-  // in EITHER direction (one owner per file). This is the TV-side of the net; the
-  // reciprocal clauses in the media/book/music/podcast config routes close the
-  // other direction (adding one of THOSE under a Shows root).
-  const cached = getCachedDatabase();
-  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
-  const bookFolders = (booksDb.read().folders || []).map((f) => path.resolve(f));
-  const musicFolders = (musicDb.read().folders || []).map((f) => path.resolve(f));
-  const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
-  for (const tvRoot of resolved) {
-    for (const mediaRoot of mediaFolders) {
-      if (foldersOverlap(tvRoot, mediaRoot)) return res.status(400).json({ error: `Shows folder overlaps a media folder: ${tvRoot} <-> ${mediaRoot}` });
-    }
-    for (const bookRoot of bookFolders) {
-      if (foldersOverlap(tvRoot, bookRoot)) return res.status(400).json({ error: `Shows folder overlaps a book folder: ${tvRoot} <-> ${bookRoot}` });
-    }
-    for (const musicRoot of musicFolders) {
-      if (foldersOverlap(tvRoot, musicRoot)) return res.status(400).json({ error: `Shows folder overlaps a music folder: ${tvRoot} <-> ${musicRoot}` });
-    }
-    if (foldersOverlap(tvRoot, podcastsRoot)) return res.status(400).json({ error: `Shows folder overlaps the podcasts folder: ${tvRoot} <-> ${podcastsRoot}` });
-  }
-  try {
-    await updateDatabase(() => tvDb.mutate((h) => { tvStore.ensureTv(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
-  } catch (err) {
-    return res.status(500).json({ error: `Could not save Shows folders: ${err.message}` });
-  }
-  res.json({ folders: resolved });
-  scanTv().catch(console.error);
-});
-
-app.post('/api/tv/scan', (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // write-RBAC (first guard)
-  const alreadyInProgress = tvScanState.scanning;
-  if (alreadyInProgress) tvScanState.rescanRequested = true;
-  else scanTv().catch(console.error);
-  res.status(202).json({ scanning: true, alreadyInProgress });
-});
-
-app.get('/api/tv/scan-status', (req, res) => { res.json(tvScanState); });
-
-// ---- TV Shows: read/browse APIs + poster/episode serving (Phase 3c) ----------
-
-// OWN-property episode lookup (prototype-pollution defense, the ownTrack posture):
-// a crafted id like '__proto__' must never resolve to an inherited object.
-function ownEpisode(episodes, id) {
-  return (episodes && Object.prototype.hasOwnProperty.call(episodes, id)) ? episodes[id] : null;
-}
-
-const TV_CONTENT_TYPES = {
-  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
-  '.mkv': 'video/x-matroska', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
-  '.flv': 'video/x-flv', '.wmv': 'video/x-ms-wmv', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg',
-};
-
-// A TV-OWNED transcode queue (never the video queue, which writes
-// db.metadata[id].transcodeStatus - a tv id would pollute the video namespace).
-// The music-transcode posture verbatim: renditions land at tvRenditionPath(id) in
-// TRANSCODE_DIR (shared cache management for free), readiness by FILE EXISTENCE
-// alone (no db write on the hot path), the video H.264+AAC+faststart args.
-function tvRenditionPath(id) { return path.join(TRANSCODE_DIR, `tv-${id}.mp4`); }
-const tvTranscodeQueue = [];
-let tvTranscodeBusy = false;
-function queueTvTranscode(id, srcPath) {
-  if (!ffmpegAvailable) return;
-  if (tvTranscodeQueue.some((job) => job.id === id)) return;
-  tvTranscodeQueue.push({ id, srcPath });
-  processTvTranscodeQueue();
-}
-function processTvTranscodeQueue() {
-  if (tvTranscodeBusy || tvTranscodeQueue.length === 0) return;
-  const { id, srcPath } = tvTranscodeQueue.shift();
-  if (!fs.existsSync(srcPath)) { processTvTranscodeQueue(); return; }
-  const outPath = tvRenditionPath(id);
-  if (fs.existsSync(outPath)) { processTvTranscodeQueue(); return; }
-  tvTranscodeBusy = true;
-  const tmpPath = `${outPath}.tmp.mp4`;
-  let proc;
-  try {
-    proc = spawn('ffmpeg', ['-i', srcPath, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(TRANSCODE_CRF), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-movflags', '+faststart', '-y', tmpPath]);
-  } catch (e) {
-    console.error(`tv: failed to start transcode for ${srcPath}:`, e.message);
-    tvTranscodeBusy = false; processTvTranscodeQueue(); return;
-  }
-  proc.stderr.on('data', () => { /* drain */ });
-  proc.on('error', (e) => {
-    console.error(`tv: transcode process error for ${srcPath}:`, e.message);
-    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-    tvTranscodeBusy = false; processTvTranscodeQueue();
-  });
-  proc.on('close', (code) => {
-    tvTranscodeBusy = false;
-    if (code === 0) {
-      try { fs.renameSync(tmpPath, outPath); } catch (e) { try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ } }
-    } else {
-      console.error(`tv: transcode failed (exit ${code}) for ${srcPath}`);
-      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-    }
-    processTvTranscodeQueue();
-  });
-}
-
-// v1.197 (W3): the TV episode AUDIO-EXTRACTION sidecar - the background-audio
-// handoff's `/tvaudio/:id` bytes. Mirrors the music ALAC queue verbatim (its own
-// single-flight lane; an episode's sidecar must not queue behind a long video
-// transcode), REUSING buildAudioExtractArgs unchanged (pure (srcPath, tmpPath) -
-// the same reuse the music queue already proved). Readiness is FILE EXISTENCE
-// only - never db.metadata's audioStatus machinery (setAudioStatus/
-// healStaleAudioReady are metadata-bound; skipping them eliminates the
-// stale-'ready' class by construction, the tv/music queue posture). The
-// `tv-<id>.m4a` name rides the shared TRANSCODE_DIR cache: isCompletedTranscode/
-// isInFlightTranscode pick it up for free (LRU eviction, age sweep, orphan
-// cleanup, markServed protection); the eviction paths' clearAudioStatus no-ops
-// on a tv key (not in db.metadata) and the preExtractAudio pin correctly skips
-// it (metadata-membership test) - both the music posture.
-function tvAudioPath(id) { return path.join(TRANSCODE_DIR, `tv-${id}.m4a`); }
-const tvAudioQueue = [];
-let tvAudioBusy = false;
-function queueTvAudioExtract(id, srcPath) {
-  if (!ffmpegAvailable) return;
-  if (tvAudioQueue.some((job) => job.id === id)) return; // already queued
-  tvAudioQueue.push({ id, srcPath });
-  processTvAudioExtractQueue();
-}
-function processTvAudioExtractQueue() {
-  if (tvAudioBusy || tvAudioQueue.length === 0) return;
-  const { id, srcPath } = tvAudioQueue.shift();
-  if (!fs.existsSync(srcPath)) { processTvAudioExtractQueue(); return; }
-  const outPath = tvAudioPath(id);
-  if (fs.existsSync(outPath)) { processTvAudioExtractQueue(); return; }
-  tvAudioBusy = true;
-  const tmpPath = `${outPath}.tmp.m4a`;
-  let proc;
-  try {
-    proc = spawn('ffmpeg', buildAudioExtractArgs(srcPath, tmpPath));
-  } catch (e) {
-    console.error(`tv: failed to start audio extract for ${srcPath}:`, e.message);
-    tvAudioBusy = false;
-    processTvAudioExtractQueue();
-    return;
-  }
-  proc.stderr.on('data', () => { /* drain */ });
-  proc.on('error', (e) => {
-    console.error(`tv: audio extract process error for ${srcPath}:`, e.message);
-    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-    tvAudioBusy = false;
-    processTvAudioExtractQueue();
-  });
-  proc.on('close', (code) => {
-    tvAudioBusy = false;
-    if (code === 0) {
-      try { fs.renameSync(tmpPath, outPath); } catch (e) {
-        console.error(`tv: could not finalize audio sidecar for ${srcPath}:`, e.message);
-        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-      }
-    } else {
-      console.error(`tv: audio extract failed (exit ${code}) for ${srcPath}`);
-      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-    }
-    processTvAudioExtractQueue();
-  });
-}
-
-function tvPosterPlaceholderSvg(name) {
-  const title = String(name || 'Show');
-  const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
-  return `
-    <svg width="300" height="450" viewBox="0 0 300 450" xmlns="http://www.w3.org/2000/svg">
-      <rect width="300" height="450" fill="#2b3049"/>
-      <rect x="110" y="150" width="80" height="110" rx="6" fill="none" stroke="#8890b5" stroke-width="3"/>
-      <text x="150" y="330" font-family="Arial, sans-serif" font-size="18" fill="#e8e8f0" text-anchor="middle" font-weight="bold">${escapeHtml(clip(title, 22))}</text>
-    </svg>`;
-}
 
 // The visible-episode array for the requester (the SINGLE visibility decision).
 function visibleTvEpisodes(req) {
   const ns = tvDb.read();
   return Object.values(ns.episodes || {}).filter((ep) => tvEpisodeVisibleTo(req, ep));
 }
-
-app.get('/api/tv', (req, res) => {
-  // GATED: the shows grid, over ONLY the episodes this requester may see.
-  res.json({ shows: tvParse.groupShows(visibleTvEpisodes(req)) });
-});
-
-// v1.196 (player integration): the per-episode DETAIL + transcode-STATUS endpoint.
-// Shaped like GET /api/videos/:id so the shared player (public/js/player.js) can
-// drive an episode through the SAME load/poll/overlay path a video uses: `type`,
-// `needsTranscode` (the codec-aware form), `transcodeStatus` (live from rendition
-// existence so the player's poll flips to 'ready'), `duration`, plus the tv-source
-// descriptor fields (`streamSrc`/`statusUrl`/`artUrl`) that keep the player OFF the
-// /api/videos + /video routes (that id is not in db.metadata). GATED: a restricted
-// or absent episode is 404 (no title/existence oracle), same as /tvepisode/:id.
-// Static segment 'episode' registered BEFORE /api/tv/:showId (route-order scar).
-app.get('/api/tv/episode/:id', (req, res) => {
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, req.params.id);
-  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
-  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
-  const transcodes = needsTranscode(ep.ext, ep.codec, ep.audioCodec);
-  res.json({
-    id: ep.id,
-    type: 'video',
-    title: ep.title || (ep.episodeNum != null ? `Episode ${ep.episodeNum}` : (ep.showName || 'Episode')),
-    showId: ep.showId,
-    showName: ep.showName || '',
-    seasonNum: ep.seasonNum,
-    episodeNum: ep.episodeNum,
-    duration: ep.durationSec || 0,
-    durationSec: ep.durationSec || 0,
-    needsTranscode: transcodes,
-    // Live readiness so pollTranscodeUntilReady sees 'ready' the moment the
-    // TV-owned rendition lands (only meaningful when needsTranscode is true).
-    transcodeStatus: transcodes ? (fs.existsSync(tvRenditionPath(ep.id)) ? 'ready' : 'pending') : 'ready',
-    // The tv source descriptor: the player streams + polls THESE, never /video or
-    // /api/videos. streamSrc serves the raw file or the rendition (transcode-503
-    // handled by /tvepisode itself); statusUrl re-hits THIS route for the poll.
-    streamSrc: `/tvepisode/${encodeURIComponent(ep.id)}`,
-    statusUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}`,
-    artUrl: `/tvposter/${encodeURIComponent(ep.showId)}`,
-    // v1.197 (W3): the background-audio descriptor trio. audioStatus is LIVE
-    // sidecar file-existence (the transcodeStatus trick above); the player's
-    // handoff machinery reads audioSrc/prepareAudioUrl instead of the video
-    // routes (/audio/:id + /api/videos/:id/prepare-audio).
-    audioStatus: fs.existsSync(tvAudioPath(ep.id)) ? 'ready' : 'pending',
-    audioSrc: `/tvaudio/${encodeURIComponent(ep.id)}`,
-    prepareAudioUrl: `/api/tv/episode/${encodeURIComponent(ep.id)}/prepare-audio`,
-    // v1.197 (W2): the watch-page description panel's display fields. fileName is
-    // the BASENAME only - the full filesystem path is never sent (tighter than
-    // the video payload); addedAtMs normalized to epoch ms for the shared
-    // formatRelativeTime formatter (records persist addedAt as an ISO string).
-    sizeBytes: typeof ep.size === 'number' ? ep.size : 0,
-    addedAtMs: typeof ep.addedAt === 'number' ? ep.addedAt : (Date.parse(ep.addedAt) || 0),
-    fileName: path.basename(ep.filePath),
-    ext: ep.ext, // the Type field (both gate seats: it was consumed internally but never sent - Type always painted the fallback)
-    // v1.196 (Phase B): the signed-in user's resume position + watched latch, so
-    // the player's resume overlay + the row's watched tick reflect real state.
-    progress: (userStore.getOneTvProgress(req.user.id, ep.id) || {}).position || 0,
-    watched: Object.prototype.hasOwnProperty.call(userStore.getTvPlayed(req.user.id), ep.id),
-  });
-});
-
-// v1.197 (W3): the background-audio pre-warm - the /api/videos/:id/prepare-audio
-// posture verbatim: GATED (a restricted episode must not be an existence oracle
-// or a CPU sink), never serves bytes, idempotent (sidecar on disk -> 'ready';
-// else enqueue -> 'pending'; ffmpeg absent -> the queue no-ops and the client's
-// repoll simply never resolves to ready - fail-safe, feature stays off).
-// Registered BEFORE /api/tv/:showId (the route-order scar).
-app.post('/api/tv/episode/:id/prepare-audio', (req, res) => {
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, req.params.id);
-  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
-  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
-  if (fs.existsSync(tvAudioPath(ep.id))) return res.json({ audioStatus: 'ready' });
-  // ffmpeg-less install: 503 like the video pair (a 200 'pending' would send the
-  // client's bounded repoll on a futile ~60s chain; a non-ok ends it immediately).
-  if (!ffmpegAvailable) return res.status(503).json({ error: 'ffmpeg unavailable' });
-  queueTvAudioExtract(ep.id, ep.filePath);
-  res.json({ audioStatus: 'pending' });
-});
-
-// v1.196 (Phase B): per-user resume + watched latch + Continue-Watching. Personal
-// writes, each gated to episodes the requester may see (no cross-user oracle, no
-// writing progress for a hidden episode). Static segments, before /api/tv/:showId.
-app.post('/api/tv/progress', (req, res) => {
-  // Body shape matches the shared player's saveProgressToServer ({id, timestamp,
-  // duration}) exactly, like /api/music/progress + /api/podcasts/progress - the
-  // player is the one write site (its `progressEndpoint` descriptor field points
-  // here for a tv source).
-  const { id, timestamp, duration } = req.body || {};
-  if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' });
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, id);
-  if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
-  const pos = Number(timestamp) || 0;
-  const dur = Number(duration) || ep.durationSec || 0;
-  userStore.setTvProgress(req.user.id, id, { position: pos, duration: dur, updatedAt: new Date().toISOString() });
-  // O2: auto-mark watched once the position crosses the shared threshold (90%).
-  if (dur > 0 && (pos / dur) * 100 >= videoQuery.WATCHED_PCT) {
-    userStore.setTvPlayed(req.user.id, id, new Date().toISOString());
-  }
-  res.json({ success: true });
-});
-
-app.post('/api/tv/played', (req, res) => {
-  const { episodeId } = req.body || {};
-  if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, episodeId);
-  if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
-  userStore.setTvPlayed(req.user.id, episodeId, new Date().toISOString());
-  res.json({ success: true, watched: true });
-});
-
-app.delete('/api/tv/played', (req, res) => {
-  const { episodeId } = req.body || {};
-  if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
-  // Un-watch deletes ONLY the requester's own row (a hidden episode simply has
-  // none), so no visibility oracle is exposed by skipping the existence gate.
-  userStore.clearTvPlayed(req.user.id, episodeId);
-  res.json({ success: true, watched: false });
-});
-
-app.get('/api/tv/continue', (req, res) => {
-  // GATED: the requester's in-progress episodes (a resume position, not finished,
-  // not watched), over ONLY episodes they may see, most-recent activity first,
-  // joined with the episode's display fields. Powers the Shows-home Continue row.
-  const ns = tvDb.read();
-  const progress = userStore.getTvProgress(req.user.id);
-  const played = userStore.getTvPlayed(req.user.id);
-  const rows = [];
-  for (const id of Object.keys(progress)) {
-    const ep = ownEpisode(ns.episodes, id);
-    if (!ep || !tvEpisodeVisibleTo(req, ep)) continue;
-    if (Object.prototype.hasOwnProperty.call(played, id)) continue; // finished
-    const p = progress[id];
-    const pos = Number(p.position) || 0;
-    const dur = Number(p.duration) || ep.durationSec || 0;
-    if (pos <= 0) continue; // never really started
-    if (dur > 0 && (pos / dur) * 100 >= videoQuery.WATCHED_PCT) continue; // effectively done
-    rows.push({
-      id: ep.id, showId: ep.showId, showName: ep.showName, seasonNum: ep.seasonNum,
-      episodeNum: ep.episodeNum, title: ep.title, durationSec: dur, position: pos,
-      updatedAt: p.updatedAt || '',
-    });
-  }
-  rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-  res.json({ episodes: rows });
-});
-
-app.get('/api/tv/:showId', (req, res) => {
-  const eps = visibleTvEpisodes(req);
-  const seasons = tvParse.groupSeasons(eps, req.params.showId);
-  if (seasons.length === 0) return res.status(404).json({ error: 'no such show' });
-  const first = eps.find((e) => e.showId === req.params.showId);
-  res.json({
-    id: req.params.showId,
-    name: (first && first.showName) || '',
-    seasons: seasons.map((s) => ({
-      seasonNum: s.seasonNum,
-      label: s.label,
-      episodes: s.episodes.map((e) => ({
-        id: e.id, seasonNum: e.seasonNum, episodeNum: e.episodeNum, title: e.title,
-        durationSec: e.durationSec || 0,
-        // v1.199 (Roku): the channel builds its playback queue from THIS payload,
-        // so each row carries what startPlaybackFlow needs - the codec-aware
-        // transcode flag (rendition -> mp4 demuxer), the extension (mkv streams
-        // as mkv), and the REQUESTER's own resume position (same per-user read
-        // as /api/tv/episode/:id - no cross-user leak).
-        ext: e.ext,
-        // Codec strings (absent when never probed) so the channel's playback-
-        // error line can name them instead of claiming "codecs unrecorded".
-        codec: e.codec, audioCodec: e.audioCodec,
-        needsTranscode: needsTranscode(e.ext, e.codec, e.audioCodec),
-        progress: (userStore.getOneTvProgress(req.user.id, e.id) || {}).position || 0,
-      })),
-    })),
-  });
-});
-
-// v1.198.1 (Dean: the episode "Up next" rail): per-EPISODE art. The generated
-// ffmpeg frame when it exists, else the show's folder poster, else the SVG
-// placeholder - never a broken img. Gated exactly like /tvepisode (restricted or
-// absent -> 404, no oracle); private-cached like /tvposter.
-app.get('/tvthumb/:id', (req, res) => {
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, req.params.id);
-  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
-  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
-  res.set('Cache-Control', 'private, max-age=3600');
-  const t = tvThumbPath(ep.id);
-  if (fs.existsSync(t)) return res.sendFile(t);
-  const poster = tvScan.findShowPoster(ep.showPath);
-  if (poster && fs.existsSync(poster)) return res.sendFile(poster);
-  res.set('Content-Type', 'image/svg+xml');
-  res.send(tvPosterPlaceholderSvg(ep.showName));
-});
-
-app.get('/tvposter/:showId', (req, res) => {
-  const eps = visibleTvEpisodes(req).filter((e) => e.showId === req.params.showId);
-  res.set('Cache-Control', 'private, max-age=3600'); // RBAC: keep behind the auth wall
-  if (eps.length > 0) {
-    const poster = tvScan.findShowPoster(eps[0].showPath);
-    if (poster && fs.existsSync(poster)) return res.sendFile(poster);
-    // Fallback: the earliest episode's generated thumbnail. Order via groupSeasons'
-    // null-safe season/episode keys (a raw `a.seasonNum - b.seasonNum` coerces an
-    // Extras episode's null seasonNum to NaN -> a nondeterministic representative).
-    const ordered = tvParse.groupSeasons(eps, req.params.showId);
-    const rep = ordered[0] && ordered[0].episodes[0];
-    if (rep) { const t = tvThumbPath(rep.id); if (fs.existsSync(t)) return res.sendFile(t); }
-  }
-  res.set('Content-Type', 'image/svg+xml');
-  res.send(tvPosterPlaceholderSvg(eps[0] && eps[0].showName));
-});
-
-app.get('/tvepisode/:id', (req, res) => {
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, req.params.id);
-  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
-  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
-  if (!fs.existsSync(ep.filePath)) return res.status(404).json({ error: 'file missing' });
-  const contentType = TV_CONTENT_TYPES[ep.ext] || 'video/mp4';
-  // ?download=1: the app-wide save-to-device affordance -> ORIGINAL bytes.
-  if (req.query.download === '1') {
-    res.setHeader('Content-Disposition', contentDispositionAttachment(ep.title || ep.showName || 'episode', ep.ext));
-    return sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
-  }
-  // Browser-incompatible CONTAINER *or* CODEC -> the TV-owned MP4 rendition
-  // (transcode on demand). Codec-aware, mirroring the main video serve path: an
-  // HEVC-video or AC3/DTS-audio episode in a native container (.mp4/.mov/.m4v) is
-  // the single most common TV-rip shape and would otherwise be served raw and
-  // never decode (the client would retry forever). ep.codec is the VIDEO codec.
-  if (needsTranscode(ep.ext, ep.codec, ep.audioCodec)) {
-    const rendition = tvRenditionPath(ep.id);
-    // Serving the cached rendition? Mark it live-watched so the SHARED transcode
-    // cache's LRU/age eviction (evictTranscodeCache/sweepAgedTranscodes, which
-    // count tv-<id>.mp4 as a completed rendition) never unlinks it mid-stream -
-    // the recentlyServed race guard the main video path relies on.
-    if (fs.existsSync(rendition)) return sendRangeable(req, res, rendition, 'video/mp4', () => markServed(rendition));
-    queueTvTranscode(ep.id, ep.filePath);
-    return res.status(503).json({ error: 'transcoding', ext: ep.ext });
-  }
-  sendRangeable(req, res, ep.filePath, contentType, () => markServed(ep.filePath));
-});
-
-// v1.197 (W3): the episode's extracted-audio sidecar bytes - the /audio/:id
-// posture with tv-owned mechanics: same gate as /tvepisode (restricted -> 404),
-// range-served with mid-stream eviction protection (markServed on the sidecar
-// AND the source, the video route's exact shape); absent -> enqueue the extract
-// and 503 {error:'extracting'} (the client's repoll converges on 'ready').
-app.get('/tvaudio/:id', (req, res) => {
-  const ns = tvDb.read();
-  const ep = ownEpisode(ns.episodes, req.params.id);
-  if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
-  if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
-  const sidecar = tvAudioPath(ep.id);
-  if (fs.existsSync(sidecar)) {
-    return sendRangeable(req, res, sidecar, 'audio/mp4', () => { markServed(sidecar); markServed(ep.filePath); });
-  }
-  if (!fs.existsSync(ep.filePath)) return res.status(404).json({ error: 'file missing' });
-  if (!ffmpegAvailable) return res.status(503).json({ error: 'ffmpeg unavailable' });
-  queueTvAudioExtract(ep.id, ep.filePath);
-  res.status(503).json({ error: 'extracting' });
-});
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
 //
@@ -8388,82 +7016,21 @@ app.get('/logo', (req, res) => {
   }
 });
 
-// Upload: raw image body (route-scoped express.raw -- this app deliberately
-// has no multipart dependency), validated by allowlisted Content-Type AND
-// magic bytes, capped at 1 MB.
-app.post(
-  '/api/settings/logo',
-  express.raw({ type: Object.keys(CUSTOM_LOGO_TYPES), limit: CUSTOM_LOGO_MAX_BYTES }),
-  async (req, res) => {
-    // v1.81 write-RBAC (forcing-net find): the instance logo is global/admin
-    // config - the upload sibling of the now-admin-gated DELETE.
-    if (!requireAdmin(req, res)) return;
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim();
-    if (!Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
-      return res.status(400).json({ error: 'Logo must be image/png, image/jpeg, or image/webp' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
-      return res.status(400).json({ error: 'Empty upload' });
-    }
-    if (!CUSTOM_LOGO_TYPES[mime](bytes)) {
-      return res.status(400).json({ error: 'File content does not match its image type' });
-    }
-    // Atomic write, same tmp+rename discipline as saveDatabase/runlog.
-    // v1.32 gate fix (adversarial): the file write happens INSIDE the
-    // updateDatabase mutator -- the single-writer FIFO then guarantees
-    // bytes-on-disk and customLogoMime always land together, closing the
-    // two-concurrent-uploads window where /logo could briefly serve one
-    // upload's bytes under the other's Content-Type.
-    // v1.33.1: variant-scoped -- ?variant=dark lands in its own file + its
-    // own settings key, never touching the light variant (and vice versa).
-    const variant = resolveLogoVariant(req.query.variant);
-    const target = customLogoPath(variant);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      await updateDatabase(db => {
-        fs.writeFileSync(tmp, bytes);
-        fs.renameSync(tmp, target);
-        inSaveTransaction(() => settingsStore.set(customLogoMimeKey(variant), mime)); // Wave 4: rides the doc commit
-        return true;
-      });
-    } catch (err) {
-      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
-      console.error('Error saving custom logo:', err);
-      return res.status(500).json({ error: `Could not save logo: ${err.message}` });
-    }
-    return res.json({ ok: true });
-  },
-  // Route-scoped error handler: an oversized body raised by express.raw's
-  // limit becomes a clean JSON 413, mirroring the body-parser mapping the
-  // one-shot download route uses.
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'Logo too large (max 1 MB)' });
-    }
-    return next(err);
-  }
-);
-
-// Reset to the default text logo.
-app.delete('/api/settings/logo', async (req, res) => {
-  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): the instance logo is global/admin config
-  // v1.33.1: variant-scoped -- DELETE ?variant=dark removes only the dark
-  // variant; the plain DELETE keeps its v1.32 meaning (the light/default one).
-  const variant = resolveLogoVariant(req.query.variant);
-  const mimeKey = customLogoMimeKey(variant);
-  try {
-    await updateDatabase(db => {
-      // Wave 4: the mime key is a settings row; its removal rides the commit.
-      if (settingsStore.has(mimeKey)) inSaveTransaction(() => settingsStore.remove(mimeKey));
-      return true;
-    });
-    try { fs.unlinkSync(customLogoPath(variant)); } catch { /* already gone -- fine */ }
-  } catch (err) {
-    console.error('Error removing custom logo:', err);
-    return res.status(500).json({ error: `Could not remove logo: ${err.message}` });
-  }
-  return res.json({ ok: true });
+// Wave 7b (slice S10b): the custom-logo upload + reset moved VERBATIM to
+// lib/config/routes.js. GET /logo stays here (its own route group), and so do
+// the logo helpers above - that route reads them too.
+configRoutes.registerLogoSettingsRoutes(app, {
+  CUSTOM_LOGO_MAX_BYTES,
+  CUSTOM_LOGO_TYPES,
+  customLogoMimeKey,
+  customLogoPath,
+  express, // only for express.raw on the logo upload
+  fs,
+  inSaveTransaction,
+  requireAdmin,
+  resolveLogoVariant,
+  settingsStore,
+  updateDatabase,
 });
 
 // ---- v1.82: per-user profile avatar -----------------------------------------
@@ -9154,139 +7721,23 @@ app.post('/api/admin/restore', (req, res, next) => {
   return next(err);
 });
 
-// API: Read the Automation & Storage settings for Settings-page prefill.
-app.get('/api/settings', (req, res) => {
-  res.json(settingsResponse(settingsStore.get())); // Wave 4: the table (defaults merged)
-});
-
-// API: Update the Automation & Storage settings. Body may be a PARTIAL object
-// (only the keys the user changed). Validates every provided key against its
-// allowed range before touching anything — on any invalid field the whole
-// request is rejected with 400 and nothing is persisted. Only the four known
-// keys are accepted; an unrecognized key is rejected too, keeping db.settings
-// free of arbitrary/typo'd keys.
-app.post('/api/settings', async (req, res) => {
-  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): global instance settings are admin-only (per-user prefs go via /api/me/settings)
-  const body = req.body || {};
-  // v1.41.6 DELIBERATE key-set change (this list is locked by
-  // test/unit/database.test.js's DEFAULT_SETTINGS deep-equal and
-  // test/integration/settings-cache-api.test.js's full-shape assertion, both
-  // updated in the same commit): `relocateHydratedImports` joins the set --
-  // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'bgAudioSyncPosition', 'relocateHydratedImports', 'notificationsEnabled', 'transcriptAiPrompts', 'attributeControlEnabled'];
-  for (const key of Object.keys(body)) {
-    if (!KNOWN_KEYS.includes(key)) {
-      return res.status(400).json({ error: `unknown settings key: ${key}` });
-    }
-  }
-  if ('scanIntervalMinutes' in body && !SCAN_INTERVAL_VALID_VALUES.has(body.scanIntervalMinutes)) {
-    return res.status(400).json({ error: 'scanIntervalMinutes must be one of 0, 30, 60, 360, 720, 1440' });
-  }
-  if ('pruneMissing' in body && typeof body.pruneMissing !== 'boolean') {
-    return res.status(400).json({ error: 'pruneMissing must be a boolean' });
-  }
-  if ('cacheMaxBytes' in body) {
-    const v = body.cacheMaxBytes;
-    if (v !== null && !(Number.isInteger(v) && v > 0)) {
-      return res.status(400).json({ error: 'cacheMaxBytes must be null or a positive integer' });
-    }
-  }
-  if ('cacheMaxAgeDays' in body && !CACHE_MAX_AGE_DAYS_VALID_VALUES.has(body.cacheMaxAgeDays)) {
-    return res.status(400).json({ error: 'cacheMaxAgeDays must be one of 0, 7, 14, 30, 90' });
-  }
-  if ('trashRetentionDays' in body && !TRASH_RETENTION_DAYS_VALID_VALUES.has(body.trashRetentionDays)) {
-    return res.status(400).json({ error: 'trashRetentionDays must be one of 0, 7, 14, 30, 90' });
-  }
-  // v1.14.0 item 4: defaultView is a free-form folder path/key (the same
-  // identity as a folderSettings key / ?root= param) or '' for "Most
-  // Recent" -- only a string type check here (never validated against the
-  // currently configured folders): a folder can be temporarily unmounted/
-  // renamed/removed without 400ing a save, and the CLIENT falls back to
-  // Most Recent at render time when the stored folder no longer exists
-  // (resolveDefaultView in public/js/common.js), so this route never needs
-  // to reject a since-removed folder path.
-  if ('defaultView' in body && typeof body.defaultView !== 'string') {
-    return res.status(400).json({ error: 'defaultView must be a string (folder path, or empty for Most recent)' });
-  }
-  // v1.34: the default home sort -- allowlisted to exactly the sort keys the
-  // library dropdown offers (public/index.html #sort-select / videoQuery's
-  // sortItems cases), so a stray/garbage value can never persist.
-  if ('defaultSort' in body && !VALID_DEFAULT_SORTS.has(body.defaultSort)) {
-    return res.status(400).json({ error: 'defaultSort must be one of: ' + [...VALID_DEFAULT_SORTS].join(', ') });
-  }
-  if ('mobileCustomPlayer' in body && typeof body.mobileCustomPlayer !== 'boolean') {
-    return res.status(400).json({ error: 'mobileCustomPlayer must be a boolean' });
-  }
-  if ('preExtractAudio' in body && typeof body.preExtractAudio !== 'boolean') {
-    return res.status(400).json({ error: 'preExtractAudio must be a boolean' });
-  }
-  // v1.121: bgAudioSyncPosition -- boolean, mirrors preExtractAudio exactly.
-  if ('bgAudioSyncPosition' in body && typeof body.bgAudioSyncPosition !== 'boolean') {
-    return res.status(400).json({ error: 'bgAudioSyncPosition must be a boolean' });
-  }
-  // v1.41.6: relocateHydratedImports -- boolean, mirrors preExtractAudio's own
-  // validation exactly. A non-boolean here would decide whether user FILES get
-  // moved, so it 400s like every other typed key rather than being coerced.
-  if ('relocateHydratedImports' in body && typeof body.relocateHydratedImports !== 'boolean') {
-    return res.status(400).json({ error: 'relocateHydratedImports must be a boolean' });
-  }
-  // v1.16.0 FR-3 (T3): autoplayNext -- boolean, mirrors pruneMissing's own
-  // validation exactly.
-  if ('autoplayNext' in body && typeof body.autoplayNext !== 'boolean') {
-    return res.status(400).json({ error: 'autoplayNext must be a boolean' });
-  }
-  // v1.27.0 (EXPERIMENTAL): backgroundAudioForVideo -- boolean, mirrors
-  // autoplayNext's own validation exactly.
-  if ('backgroundAudioForVideo' in body && typeof body.backgroundAudioForVideo !== 'boolean') {
-    return res.status(400).json({ error: 'backgroundAudioForVideo must be a boolean' });
-  }
-  // v1.51: notificationsEnabled -- boolean, mirrors pruneMissing exactly.
-  if ('notificationsEnabled' in body && typeof body.notificationsEnabled !== 'boolean') {
-    return res.status(400).json({ error: 'notificationsEnabled must be a boolean' });
-  }
-  // v1.202: attributeControlEnabled -- boolean, mirrors pruneMissing exactly.
-  if ('attributeControlEnabled' in body && typeof body.attributeControlEnabled !== 'boolean') {
-    return res.status(400).json({ error: 'attributeControlEnabled must be a boolean' });
-  }
-  // v1.201: transcriptAiPrompts -- validated + NORMALIZED (trimmed, ids
-  // assigned) before the merge, so what persists is always the canonical
-  // shape; a bad list rejects the WHOLE request (nothing partially persists).
-  if ('transcriptAiPrompts' in body) {
-    const checked = validateTranscriptAiPrompts(body.transcriptAiPrompts, settingsStore.getKey('transcriptAiPrompts')); // Wave 4
-    if (!checked.ok) return res.status(400).json({ error: checked.error });
-    body.transcriptAiPrompts = checked.value;
-  }
-
-  // All provided keys validated -- safe to merge and persist. `prevInterval`
-  // and the merged `saved` settings are captured via closure from INSIDE the
-  // mutator (the fresh-inside-the-lock db), not from a separate outer read.
-  let prevInterval;
-  let saved;
-  try {
-    await updateDatabase(() => {
-      const before = settingsStore.get(); // Wave 4: the table, on the chained tick
-      prevInterval = before.scanIntervalMinutes; // captured BEFORE the merge
-      saved = { ...before, ...body };
-      // Only the touched keys are written, inside the doc commit's transaction
-      // (a failed save leaves the table exactly as it was).
-      inSaveTransaction(() => settingsStore.update(body));
-      return true;
-    });
-  } catch (err) {
-    // Express 4 does not catch a rejected async-handler promise, so a
-    // rejection left unguarded here would hang the request instead of
-    // returning 500 (mirrors POST /api/scan's pattern above).
-    console.error('Error saving settings:', err);
-    return res.status(500).json({ error: `Could not save settings: ${err.message}` });
-  }
-  // Re-arm the periodic scan timer live ONLY when scanIntervalMinutes actually
-  // changed, so an interval change takes effect immediately with no restart.
-  // armScanTimer() does clearInterval + setInterval, which RESETS the
-  // countdown -- re-arming unconditionally on every save (even for an
-  // unrelated setting, or the same interval value) would defer the periodic
-  // scan indefinitely if settings are saved more often than the interval.
-  if (saved.scanIntervalMinutes !== prevInterval) armScanTimer();
-  res.json(settingsResponse(saved));
+// Wave 7b (slice S10b): GET + POST /api/settings moved VERBATIM to
+// lib/config/routes.js, together with settingsResponse (the shape both
+// return) and validateTranscriptAiPrompts + its three shape constants - the
+// routes were their only referrers. The four enum allowlists stay here: two
+// of the four have readers outside the slice.
+configRoutes.registerSettingsRoutes(app, {
+  CACHE_MAX_AGE_DAYS_VALID_VALUES,
+  DEFAULT_SETTINGS, // settingsResponse's transcriptAiPrompts fallback
+  SCAN_INTERVAL_VALID_VALUES,
+  TRASH_RETENTION_DAYS_VALID_VALUES,
+  VALID_DEFAULT_SORTS,
+  armScanTimer, // re-arms the periodic scan when the interval changes
+  effectiveCacheCap, // settingsResponse's read-only effectiveCacheMaxBytes
+  inSaveTransaction,
+  requireAdmin,
+  settingsStore,
+  updateDatabase,
 });
 
 // ---- v1.51: the notification bell -----------------------------------------
@@ -9348,358 +7799,74 @@ queueRoutes.registerRoutes(app, {
   userStore,
 });
 
-// API: Current transcode-cache size on disk, for the Settings-page display.
-app.get('/api/cache/size', (req, res) => {
-  res.json({
-    // v1.46 (gate W2): honest accounting includes the roku-compat rendition
-    // cache -- "Clear cache now" (below) sweeps it too.
-    bytes: transcodeCacheSize(TRANSCODE_DIR) + transcodeCacheSize(ROKU_COMPAT_DIR),
-    effectiveCacheMaxBytes: effectiveCacheCap(settingsStore.get()) // Wave 4
-  });
+// Wave 7b (slice S10b): the transcode-cache size read and "Clear cache now"
+// moved VERBATIM to lib/config/routes.js. The cache machinery they call
+// (transcodeCacheSize, effectiveCacheCap, activeProtectedPaths,
+// clearAudioStatus, the in-flight/completed predicates) stays here - it is the
+// transcode queues' own, and crosses as deps.
+configRoutes.registerCacheRoutes(app, {
+  ROKU_COMPAT_DIR,
+  TRANSCODE_DIR,
+  TTS_CACHE_DIR,
+  activeProtectedPaths, // the recently-served set a clear must never yank a file out of
+  booksDb,
+  booksStore,
+  clearAudioStatus,
+  effectiveCacheCap,
+  fs,
+  isCompletedTranscode,
+  isInFlightTranscode,
+  path,
+  requireModifyLibrary,
+  settingsStore,
+  transcodeCacheSize,
+  updateDatabase,
 });
 
-// API: "Clear cache now" -- delete cached transcodes (video *.mp4 AND
-// background-audio *.m4a, v1.27.0 -- one coherent cache, see
-// isCompletedTranscode) on demand. Excludes any in-flight write (*.tmp.mp4/
-// *.tmp.m4a — deleting it would corrupt the write in progress) and anything
-// currently protected by
-// activeProtectedPaths (the same recentlyServed-within-RECENT_STREAM_MS set
-// evictTranscodeCache/sweepAgedTranscodes use) so a clear can never yank a
-// file out from under an actively-watched stream. Does NOT touch
-// db.metadata[id].lastServedAt -- a future re-transcode naturally re-records
-// it on next watch. Per-file
-// try/catch so a single failed unlink never fails the whole clear.
-// F1 (two-reviewer gate, v1.27.0): DOES clear a cleared item's stale
-// `audioStatus` (mirrors evictTranscodeCache/sweepAgedTranscodes's own
-// clearAudioStatus call, above) -- a manual "Clear cache now" is exactly as
-// capable of invalidating a `'ready'` background-audio sidecar as automatic
-// eviction/aging is.
-app.post('/api/cache/clear', (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  let entries;
-  try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { entries = []; }
-  const now = Date.now();
-  const protectedPaths = activeProtectedPaths(now);
-  let removed = 0;
-  let freedBytes = 0;
-  for (const name of entries) {
-    if (!isCompletedTranscode(name)) continue;
-    const p = path.join(TRANSCODE_DIR, name);
-    if (protectedPaths.has(p)) continue;
-    try {
-      const size = fs.statSync(p).size;
-      fs.unlinkSync(p);
-      removed++;
-      freedBytes += size;
-      if (name.endsWith('.m4a')) clearAudioStatus(path.basename(name, '.m4a'));
-    } catch (e) {
-      console.error(`Failed to clear cached transcode ${p}:`, e.message);
-    }
-  }
-  // v1.46 (gate W2): also purge roku-compat renditions + verdict sidecars --
-  // the size endpoint above counts this dir, so a clear must sweep it or the
-  // UI would claim to have freed bytes it didn't. Same protections as the
-  // transcode loop: skip in-flight tmp writes and actively-watched files
-  // (an actively-watched rendition keeps its sidecar so the pair stays
-  // coherent; everything rebuilds on demand).
-  let rokuFiles;
-  try { rokuFiles = fs.readdirSync(ROKU_COMPAT_DIR); } catch (_) { rokuFiles = []; }
-  for (const name of rokuFiles) {
-    if (isInFlightTranscode(name)) continue;
-    const p = path.join(ROKU_COMPAT_DIR, name);
-    if (name.endsWith('.mp4') && protectedPaths.has(p)) continue;
-    if (name.endsWith('.json') && protectedPaths.has(path.join(ROKU_COMPAT_DIR, `${name.slice(0, -'.json'.length)}.mp4`))) continue;
-    try {
-      const st = fs.statSync(p);
-      if (st.isDirectory()) continue;
-      fs.unlinkSync(p);
-      removed++;
-      freedBytes += st.size;
-    } catch (e) {
-      console.error(`Failed to clear roku-compat rendition ${p}:`, e.message);
-    }
-  }
-  // v1.38.0: also purge the TTS audio cache (nuke-all, like the transcode side
-  // above). Skip in-flight work dirs/temps -- the worker cleans those itself.
-  let ttsFiles;
-  try { ttsFiles = fs.readdirSync(TTS_CACHE_DIR); } catch (_) { ttsFiles = []; }
-  const sparedTtsKeys = new Set(); // keys whose audio survived (actively streaming)
-  for (const name of ttsFiles) {
-    if (name.startsWith('.tmp-') || name.endsWith('.tmp.m4a') || name.endsWith('.blocks.json.tmp')) continue;
-    const p = path.join(TTS_CACHE_DIR, name);
-    // Never yank a chapter audio out from under an ACTIVE listen session -- the
-    // same recentlyServed protection the transcode loop above uses. The .m4a is
-    // protected via markServed on serve; also spare its sibling .blocks.json.
-    if (name.endsWith('.m4a') && protectedPaths.has(p)) { sparedTtsKeys.add(name.slice(0, -'.m4a'.length)); continue; }
-    if (name.endsWith('.blocks.json') && protectedPaths.has(path.join(TTS_CACHE_DIR, `${name.slice(0, -'.blocks.json'.length)}.m4a`))) continue;
-    try {
-      const st = fs.statSync(p);
-      if (st.isDirectory()) continue;
-      fs.unlinkSync(p);
-      removed++;
-      freedBytes += st.size;
-    } catch (e) {
-      console.error(`Failed to clear cached TTS audio ${p}:`, e.message);
-    }
-  }
-  // Drop the status rows whose files we deleted, but KEEP a spared (actively
-  // streaming) chapter's row so its /status stays truthful while it plays on.
-  updateDatabase(() => booksDb.mutate((db) => {
-    const ns = booksStore.ensureBooks(db);
-    for (const bookId of Object.keys(ns.audio)) {
-      const chapters = ns.audio[bookId];
-      for (const idx of Object.keys(chapters)) {
-        const entry = chapters[idx];
-        if (!entry || !entry.key || !sparedTtsKeys.has(entry.key)) delete chapters[idx];
-      }
-      if (Object.keys(chapters).length === 0) delete ns.audio[bookId];
-    }
-    return true;
-  })).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
-  res.json({ success: true, removed, freedBytes });
-});
-
-// API: universal search across every browsable media type (v1.205 Wave B).
-//
-// The header search box drives THIS, not /api/videos (which stays the library
-// grid's own list route). Blends videos + audio + music + podcasts (shows AND
-// episodes) + TV (shows AND episodes) + books into ONE ranked flat stream, a
-// resultType per item for the client's type badge. Providers live in
-// lib/search/registry.js; each owns its match predicate and its EXISTING
-// per-kind visibility gate, wired here via `deps` - so RBAC is the SAME single
-// decision as every list/serve route (never a divergent second gate; the
-// leaks-titles/counts class). Ranking (lib/search/rank.js): relevance tier ->
-// type priority -> recency. Pagination mirrors /api/videos: total = the full
-// ranked length, page = slice(offset, offset+limit). STATIC segment, declared
-// before /api/videos - no /:id sibling shadows it (the route-order scar).
-// Behind the same session gate as every /api route; req.user drives RBAC.
-app.get('/api/search', (req, res) => {
-  const db = getCachedDatabase();
-  const query = typeof req.query.q === 'string' ? req.query.q : '';
-  const chip = searchRegistry.normalizeChip(req.query.type);
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const deps = {
-    db,
-    gates: {
-      mediaVisibleTo,
-      trackVisibleTo,
-      podcastVisibleTo: podcastEpisodeVisibleTo, // accepts a bare {subId} for a show
-      tvVisibleEpisodes: visibleTvEpisodes,      // already RBAC-filtered
-      bookVisibleTo,
-    },
-    // buildWatchUrl re-validates the id (null on anything unsafe); the key is
-    // absent when there is nothing safe to share (C4, the /api/videos posture).
-    buildWatchUrl: (item) => (typeof item.youtubeId === 'string' ? (buildWatchUrl(item.youtubeId) || undefined) : undefined),
-    // v1.221: the projected library-audio tracks (downloaded audio, chaptered files
-    // expanded into per-chapter tracks) so searchMusic can surface them as MUSIC
-    // results - a downloaded track (and each CHAPTER TITLE) is findable + plays via
-    // the music player. Lazy (only the music arm calls it); v1.242: the same
-    // unconditional eligibility + RBAC as /api/music (no opt-in).
-    musicTracks: () => musicDb.read().tracks, // Wave 5: the native music tracks, from their table
-    booksItems: () => booksDb.read().items, // Wave 5: the book items, from their table
-    podcastsNs: (() => { let memo = null; return () => (memo || (memo = podcastsDb.read())); })(), // Wave 5: the podcasts namespace (shows + episodes), from its tables - ONE read per query (shows + episodes both ask)
-    musicLibraryTracks: () => {
-      const ns = musicDb.read();
-      const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
-      return projectedLibraryTracks(req, native);
-    },
-  };
-  const ranked = searchRegistry.runSearch(query, chip, req, deps);
-  const total = ranked.length;
-  const page = ranked.slice(offset, offset + limit);
-  res.json({ items: page, total, offset, limit, query, type: chip });
-});
-
-// API: Get list of videos/audio
-//
-// v1.30 A5 (T6, API CHANGE): paginated + server-authoritative sort/filter.
-// Response shape changed from a bare array to `{ items, total, offset,
-// limit }` -- see docs/exec-plans/completed/2026-07-11-v1.30-scale-perf-and-
-// polish.md ("### A5 -- pagination contract") and ARCHITECTURE.md. Pipeline:
-// getCachedDatabase() -> hidden-folder filter (home only, unchanged) ->
-// search -> root/folder filter -> format filter -> sort the FULL filtered
-// list (lib/videoQuery.js, seeded when `sort=random`) -> slice
-// [offset, offset+limit) -> overlay pending progress on the SLICED page only
-// -> respond with `total` = the full filtered length (before slicing).
-app.get('/api/videos', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const search = (req.query.search || '').toLowerCase().trim();
-  const folderFilter = req.query.folder || '';
-  const rootFilter = req.query.root || ''; // a configured folder path — matches everything under it (recursive)
-  const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
-  const format = req.query.format; // videoQuery.filterByFormat already treats anything but 'video'/'audio' as 'both'
-  const watch = videoQuery.normalizeWatchFilter(req.query.watch); // v1.50: all|new|watching|watched
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const seed = videoQuery.normalizeSeed(req.query.seed);
-
-  let list = Object.values(db.metadata);
-
-  // v1.80 RBAC: drop restricted items FIRST, so total/sort/pagination and every
-  // downstream filter operate on only what this user may see. Admin's index is
-  // empty (keeps everything).
-  list = list.filter((item) => mediaVisibleTo(req, item));
-
-  // Is a file located under a given folder path? (that folder or any descendant)
-  const underFolder = (filePath, folder) =>
-    filePath === folder || filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\');
-
-  // On the default (home/recent) view — no explicit filter — hide files from folders
-  // the user marked hidden (their whole subtree). Opening a folder still shows everything.
-  if (!search && !folderFilter && !rootFilter) {
-    const settings = folderSettingsStore.getAll(); // Wave 4
-    const hiddenFolders = Object.keys(settings).filter(f => settings[f] && settings[f].hidden);
-    if (hiddenFolders.length > 0) {
-      list = list.filter(item => !hiddenFolders.some(hf => underFolder(item.filePath, hf)));
-    }
-  }
-
-  // Search filter. v1.149: `searchIn` scopes the match (all|title|channel;
-  // anything else normalizes to 'all', which is a strict SUPERSET of the
-  // pre-v1.149 title+folder behavior - it adds the healed channelName and
-  // the v1.126 folder DISPLAY name, so searching a channel by the name a
-  // human knows finds its items even when the on-disk folder differs).
-  if (search) {
-    const searchScope = videoQuery.normalizeSearchScope(req.query.searchIn);
-    const searchDisplayNames = folderDisplayNameStore.getAll(); // Wave 4
-    list = list.filter(item => videoQuery.matchesSearch(item, search, {
-      scope: searchScope,
-      displayName: searchDisplayNames[item.folderName],
-    }));
-  }
-
-  // Mapped-folder filter: recursive — everything under the configured folder (incl. subfolders).
-  if (rootFilter) {
-    list = list.filter(item => underFolder(item.filePath, rootFilter));
-  }
-
-  // Folder uploader (channel) filter: files whose immediate parent matches.
-  if (folderFilter) {
-    list = list.filter(item => item.folderName === folderFilter);
-  }
-
-  // v1.79.1: the subscription-SCOPED browse (?subs=1) - the "New from your
-  // subscriptions" feed row's See-all target. Filter to items under a
-  // subscription folder via essentially the same name-based join GET /api/home
-  // uses (folderName OR channelName in the subscription-name set; /api/home
-  // additionally gates on folderKey presence, inert for real media items).
-  // Subscriptions are
-  // global until the v1.44 RBAC tranche (tech-debt #122); this shares that
-  // limitation by construction. Read the names straight off the namespace.
-  if (req.query.subs === '1') {
-    const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
-    const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
-    list = list.filter((item) => item && ((item.folderName && subNames.has(item.folderName)) || (item.channelName && subNames.has(item.channelName))));
-  }
-
-  // Media-type (format) filter — new in v1.30 A5; server-authoritative
-  // replacement for the client's local filterByMediaType.
-  list = videoQuery.filterByFormat(list, format);
-
-  // v1.50: per-user watched-state filter. Must run BEFORE total/sort/slice
-  // (a page-local filter would break pagination), and must see the same
-  // read-your-writes view `effectiveProgress` gives single-item readers --
-  // so the user's committed progress rows (ONE query, not per-item) get any
-  // not-yet-flushed pendingProgress entries overlaid before filtering.
-  // `watchedSet` is fetched once and reused by the page overlay below.
-  const watchedSet = new Set(userStore.getWatchedIds(req.user.id));
-  if (watch !== 'all') {
-    const progressMap = userStore.getProgress(req.user.id);
-    for (const entry of pendingProgress.values()) {
-      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
-    }
-    list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
-  }
-
-  // v1.72 (cap 5): the "Continue watching" selection - the music/podcasts
-  // recent-listening contract ported to media: items with a saved position,
-  // most recently updated first (read-your-writes: the pendingProgress
-  // overlay rides on top of the committed rows, its value carrying its own
-  // updatedAt), MINUS finished items - videos have a watched latch (music
-  // does not), and a completed video is not "in progress". The selection
-  // carries its own order, so the sort pipeline below is bypassed exactly
-  // like /api/music's recent-listening arm bypasses sortTracks.
-  const recentWatching = req.query.filter === 'recent-watching';
-  if (recentWatching) {
-    const progressMap = userStore.getProgress(req.user.id);
-    for (const entry of pendingProgress.values()) {
-      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
-    }
-    list = list.filter((item) => {
-      const p = Object.prototype.hasOwnProperty.call(progressMap, item.id) ? progressMap[item.id] : null;
-      if (!p || !(Number(p.timestamp) > 0)) return false;
-      const pct = Number(p.duration) > 0 ? (Number(p.timestamp) / Number(p.duration)) * 100 : 0;
-      return videoQuery.deriveWatchState(pct, watchedSet.has(item.id)) !== 'watched';
-    });
-    list.sort((a, b) => String((progressMap[b.id] || {}).updatedAt || '').localeCompare(String((progressMap[a.id] || {}).updatedAt || '')));
-  }
-
-  // `total` is the full filtered length, BEFORE slicing to a page — this is
-  // what makes AC3.2's "page(sort,filter) == sort(filter(full)).slice(...)"
-  // property hold, and what lets the client know when it has reached the end.
-  const total = list.length;
-
-  // Sort the FULL filtered list, then slice — never sort only the current
-  // page (that would break cross-window ordering at page boundaries).
-  // `random` is seeded from the client's `seed` query param so sequential
-  // page fetches sharing a seed observe one stable shuffle; an absent/
-  // invalid seed falls back to one-shot (non-reproducible) randomness.
-  const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
-  const sorted = recentWatching ? list : videoQuery.sortItems(list, sort, rng);
-  const page = sorted.slice(offset, offset + limit);
-
-  // Overlay progress only on the sliced page — v1.30 A4: `effectiveProgress`
-  // overlays any not-yet-flushed `pendingProgress` entry over the cache
-  // (read-your-writes). Doing this AFTER slicing (not over the full filtered
-  // list) keeps the per-request cost bounded to the page size.
-  // v1.43: the liked flag derives from the USER's membership set -- ONE
-  // user_liked read per request, shared across the page's items.
-  const likedSet = new Set(userStore.getLiked(req.user.id));
-  const items = page.map(item => {
-    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
-    const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
-    // v1.67: the ORIGINAL YouTube watch URL, derived exactly like the
-    // single-item route (buildWatchUrl re-validates the id, null on
-    // anything unsafe) so the card share corner never re-approximates a
-    // server-resolved field from the spread's raw youtubeId (v1.52 lesson).
-    // Key absent when there is nothing safe to share (C4).
-    const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
-    return {
-      ...item,
-      // v1.113 (Fix A): resolve the channel avatar EXACTLY like /api/home,
-      // /api/notifications and the watch route -- resolveItemChannelAvatarUrl
-      // checks the baked item.channelAvatarUrl FIRST (re-sanitizing it) then the
-      // registry/subscription join. The CARD read surfaces still spreading the
-      // raw item -- search (here), /api/liked and /api/history -- all get the
-      // same one-liner (gate WARNING: "the ONE read surface" was false; the
-      // shared buildCardHtml->modernCardAvatar path reads item.channelAvatarUrl
-      // on all three). READ-ONLY (store.js): no cached-db mutation, no clone;
-      // bounded to the page `limit`.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
-      ...(watchUrl ? { watchUrl } : {}),
-      // v1.93.2: DERIVED storyboard descriptor (eligible videos only), so the
-      // list projection carries the same geometry as the grid/watch payloads
-      // without a persisted flag.
-      storyboard: storyboardDescriptor(item) || undefined,
-      hasPreview: previewClipEligible(item) || undefined, // v1.94: card hover clip eligibility
-      progress: progress.timestamp,
-      progressPercent,
-      // v1.40.0: per-item liked flag so the grid can render each card's Like
-      // control in its correct initial state (same derivation as the single
-      // GET /api/videos/:id route and the by-construction flag on /api/liked).
-      liked: likedSet.has(item.id),
-      // v1.50: server-derived so the client never re-implements the
-      // thresholds (one authority for what "watched" means).
-      watchState: videoQuery.deriveWatchState(progressPercent, watchedSet.has(item.id))
-    };
-  });
-
-  res.json({ items, total, offset, limit });
+// Wave 7b (slice S10a of the monolith split, docs/exec-plans/active/
+// 2026-09-13-sqlite-relational-migration.md): the media BROWSE routes -
+// GET /api/search, GET /api/videos, GET /api/home, GET /api/channels and
+// GET /api/videos/:id - moved VERBATIM to lib/media/routes.js. The call sits
+// exactly where GET /api/search was registered, so the routing order is
+// unchanged.
+const mediaRoutes = require('./lib/media/routes'); // Wave 7b S10a: the require sits at its call site so parallel slices never touch the same hunk
+mediaRoutes.registerBrowseRoutes(app, {
+  audioExtractProgress, // the live per-id extract progress Map - the OBJECT, never a copy
+  bookVisibleTo,
+  booksDb,
+  buildWatchUrl, // lib/ytdlp/url - the search results' canonical watch links
+  effectiveProgress, // the stored position with any un-flushed ping overlaid
+  folderDisplayNameStore,
+  folderSettingsStore,
+  getCachedDatabase,
+  homeFeed, // lib/home/feed - the pure home-row assembler
+  mediaVisibleTo,
+  musicDb,
+  ownTrack,
+  path,
+  pendingProgress, // the progress coalescer's staging Map - the LIVE object, never a copy
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  previewClipEligible,
+  projectedLibraryTracks,
+  resolveHomeItem,
+  resolveItemChapters,
+  resolveModernGridItem,
+  searchRegistry, // lib/search/registry - the universal-search provider list
+  storyboardDescriptor,
+  trackVisibleTo,
+  transcodeProgress,
+  userStore,
+  videoQuery, // lib/videoQuery - the shared sort/filter/pagination primitives
+  visibleTvEpisodes,
+  ytdlp,
+  ytdlpDb,
 });
 
 // v1.79 home feed --------------------------------------------------------------
+//
+// Wave 7b (slice S10a): the ROUTE itself now lives in lib/media/routes.js; the
+// two id-to-card resolvers below stayed (other readers + the exports).
 //
 // GET /api/home assembles the per-user, YouTube-style row feed. It mirrors
 // v1.78's GET /api/handoff posture exactly: the pure lib/home/feed.js selects
@@ -9809,388 +7976,6 @@ function resolveModernGridItem(db, rec, ytView) {
     ...(item.hasSubtitles === true ? { hasSubtitles: true } : {}),
   };
 }
-
-app.get('/api/home', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const userId = req.user.id;
-
-  // ---- per-user reads (ONE query each, shared across the candidate build) ----
-  const watchedSet = new Set(userStore.getWatchedIds(userId));
-  const watchedTimes = userStore.getWatchedTimes(userId); // media_id -> completed_at
-  const likedSet = new Set(userStore.getLiked(userId));
-  // v1.97 "Hide from feed": the user's MANUAL modern-feed prune. Read once here;
-  // it is applied ONLY inside the grid short-circuit below (the modern feed) -
-  // NOT the row feed, /api/videos, or any library/search/channel surface. It is
-  // NOT a visibility/RBAC control (that is mediaVisibleTo / hiddenFolders) - a
-  // feed-hidden item stays fully findable everywhere else.
-  const feedHiddenSet = new Set(userStore.getFeedHidden(userId));
-  const progressMap = userStore.getProgress(userId);
-  for (const entry of pendingProgress.values()) {
-    if (entry.userId === userId) progressMap[entry.mediaId] = entry.value; // read-your-writes
-  }
-
-  // Home view hides files under folders the user marked hidden (mirrors
-  // /api/videos' home arm). Opening a folder still shows everything.
-  const folderSettings = folderSettingsStore.getAll(); // Wave 4
-  const hiddenFolders = Object.keys(folderSettings).filter((f) => folderSettings[f] && folderSettings[f].hidden);
-  const underFolder = (filePath, folder) => filePath === folder || (typeof filePath === 'string' && (filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\')));
-
-  // Subscription folder-name set (name-based join; subscriptions are GLOBAL/
-  // shared until the v1.44 RBAC tranche - disclosed in the exec plan). Read the
-  // names straight off the namespace - the feed needs the channel NAMES only,
-  // not the full enriched records the poll path builds.
-  const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
-  const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
-
-  // ---- v1.84 Modern Mode: the FLAT grid view (short-circuits the rows) ------
-  // A dedicated gather over the media library (video+audio) + downloaded
-  // podcasts, filtered by the chip, SORTED by the requested key (v1.86.0), and
-  // PAGINATED (v1.86.2 - {items,total,offset,limit}, the modern feed lazy-loads).
-  // It reuses the EXACT per-user reads + RBAC visibility (mediaVisibleTo/
-  // podcastEpisodeVisibleTo) + hidden-folder guards above, so it can never surface
-  // a restricted or hidden item the row path would hide. Music keeps its own place.
-  if (req.query.view === 'grid') {
-    const filter = homeFeed.resolveGridFilter(req.query.filter);
-    const cand = [];
-    // media (video + audio) - always gathered; the predicate decides membership
-    for (const id of Object.keys(db.metadata || {})) {
-      const item = db.metadata[id];
-      if (!item || typeof item !== 'object') continue;
-      if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC
-      if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
-      if (feedHiddenSet.has(id)) continue; // v1.97: the user pruned this from THEIR modern feed (this surface ONLY)
-      const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
-      const ts = p ? Number(p.timestamp) : 0;
-      const dur = p ? Number(p.duration) : 0;
-      const pct = dur > 0 ? (ts / dur) * 100 : 0;
-      const watched = watchedSet.has(id);
-      const finished = videoQuery.deriveWatchState(pct, watched) === 'watched';
-      const rec = {
-        id, kind: 'media', type: item.type === 'audio' ? 'audio' : 'video',
-        inProgress: ts > 0 && !finished, watched, finished,
-        addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
-        progressPercent: pct, liked: likedSet.has(id),
-        // v1.86.0: sort keys for videoQuery.sortItems. title/size for
-        // title-*/size-* ; releaseDate only when present (resolveReleaseDateSortValue
-        // falls back to addedAt otherwise, so we do NOT default it to 0).
-        title: item.title || item.name || '',
-        size: typeof item.size === 'number' ? item.size : 0,
-        releaseDate: typeof item.releaseDate === 'number' ? item.releaseDate : undefined,
-      };
-      if (homeFeed.matchesGridFilter(rec, filter)) cand.push(rec);
-    }
-    // podcasts (downloaded) - only for the chips that can contain them
-    if (filter === 'all' || filter === 'podcasts' || filter === 'continue') {
-      const podNs = podcastsDb.read();
-      const podProgress = userStore.getPodcastProgress(userId);
-      const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
-      for (const id of Object.keys(podNs.episodes || {})) {
-        const ep = podNs.episodes[id];
-        if (!ep || ep.status !== 'downloaded') continue;
-        if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC
-        const pp = Object.prototype.hasOwnProperty.call(podProgress, id) ? podProgress[id] : null;
-        const pos = pp ? Number(pp.position) : 0;
-        const dur = pp ? Number(pp.duration) : 0;
-        const rec = {
-          id, kind: 'podcast', type: 'audio',
-          inProgress: pos > 0, watched: false,
-          addedAt: typeof ep.addedAt === 'number' ? ep.addedAt : 0,
-          progressPercent: dur > 0 ? (pos / dur) * 100 : 0, liked: podLiked.has(id),
-          // v1.86.0: same sort keys. Podcasts carry no reliable byte size ->
-          // 0 (they sort together under size-*); releaseDate omitted -> addedAt
-          // fallback, mirroring the media path.
-          title: ep.title || 'Episode',
-          size: typeof ep.size === 'number' ? ep.size : 0,
-          releaseDate: typeof ep.releaseDate === 'number' ? ep.releaseDate : undefined,
-        };
-        if (homeFeed.matchesGridFilter(rec, filter)) cand.push(rec);
-      }
-    }
-    // v1.86.0 (Dean): sort the FULL candidate set by the requested key BEFORE the
-    // page slice, so "oldest"/"largest"/"feeling lucky" span the whole library.
-    // Reuses videoQuery.sortItems - the exact comparator set the classic
-    // /api/videos grid uses - so the two grids stay behaviourally identical.
-    // v1.86.2 (Dean): the modern grid now LAZY-LOADS - it PAGINATES exactly like
-    // /api/videos ({ items, total, offset, limit }) instead of a hard 60-cap.
-    // `random` is seeded (videoQuery.createSeededRng(seed)) so one scroll session
-    // observes ONE stable shuffle across pages rather than re-shuffling (and
-    // re-showing duplicates) on every appended page - the same seed contract the
-    // classic grid uses. Default 'newest' preserves the prior order.
-    const sort = homeFeed.resolveGridSort(req.query.sort);
-    const rng = sort === 'random' ? videoQuery.createSeededRng(videoQuery.normalizeSeed(req.query.seed)) : undefined;
-    const sortedCand = videoQuery.sortItems(cand, sort, rng);
-    const total = sortedCand.length;
-    const offset = videoQuery.normalizeOffset(req.query.offset);
-    const limit = videoQuery.normalizeLimit(req.query.limit);
-    const items = sortedCand.slice(offset, offset + limit).map((rec) => resolveModernGridItem(db, rec, ytView)).filter(Boolean);
-    return res.json({ items, filter, sort, total, offset, limit });
-  }
-
-  const records = [];
-  const kindById = new Map();
-  const pctById = new Map();
-  const folderTitles = new Map();
-  const folderHrefs = new Map();
-
-  // ---- MEDIA candidates (db.metadata) ----
-  for (const id of Object.keys(db.metadata || {})) {
-    const item = db.metadata[id];
-    if (!item || typeof item !== 'object') continue;
-    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: the feed never surfaces a restricted item
-    if (hiddenFolders.length && hiddenFolders.some((hf) => underFolder(item.filePath, hf))) continue;
-    const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
-    const ts = p ? Number(p.timestamp) : 0;
-    const dur = p ? Number(p.duration) : 0;
-    const pct = dur > 0 ? (ts / dur) * 100 : 0;
-    const watched = watchedSet.has(id);
-    const finished = videoQuery.deriveWatchState(pct, watched) === 'watched';
-    // inProgress matches /api/videos' recent-watching selection exactly: a
-    // saved position and not finished (no divergent floor - consistency with
-    // the already-shipped Continue-watching row).
-    const inProgress = ts > 0 && !finished;
-    const folderKey = item.folderName || null;
-    if (folderKey && !folderTitles.has(folderKey)) {
-      folderTitles.set(folderKey, (typeof item.channelName === 'string' && item.channelName) ? item.channelName : folderKey);
-      folderHrefs.set(folderKey, `/?folder=${encodeURIComponent(folderKey)}`);
-    }
-    kindById.set(id, 'media');
-    pctById.set(id, pct);
-    records.push({
-      id,
-      kind: 'media',
-      inProgress,
-      finished,
-      watched,
-      liked: likedSet.has(id),
-      progressAt: finished ? (watchedTimes[id] || (p && p.updatedAt) || '') : ((p && p.updatedAt) || ''),
-      addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
-      folderKey,
-      isSub: !!folderKey && (subNames.has(folderKey) || subNames.has(item.channelName)),
-    });
-  }
-
-  // ---- TRACK candidates (only the ones the mixed rows can use: in-progress
-  // OR liked). Tracks have no watched latch and no channel/sub identity. ----
-  const musicNs = musicDb.read();
-  const musicProgress = userStore.getMusicProgress(userId);
-  const musicLiked = new Set(userStore.getMusicLiked(userId));
-  for (const id of Object.keys(musicNs.tracks || {})) {
-    const liked = musicLiked.has(id);
-    const mp = Object.prototype.hasOwnProperty.call(musicProgress, id) ? musicProgress[id] : null;
-    const pos = mp ? Number(mp.position) : 0;
-    const inProgress = pos > 0;
-    if (!liked && !inProgress) continue;
-    const track = ownTrack(musicNs.tracks, id);
-    if (!track) continue;
-    if (!trackVisibleTo(req, track)) continue; // v1.80 RBAC: no restricted track in the feed
-    const dur = mp ? Number(mp.duration) : 0;
-    kindById.set(id, 'track');
-    pctById.set(id, dur > 0 ? (pos / dur) * 100 : 0);
-    records.push({ id, kind: 'track', inProgress, finished: false, watched: false, liked, progressAt: (mp && mp.updatedAt) || '', addedAt: typeof track.addedAt === 'number' ? track.addedAt : 0, folderKey: null, isSub: false });
-  }
-
-  // ---- PODCAST candidates (downloaded, in-progress OR liked) ----
-  const podNs = podcastsDb.read();
-  const podProgress = userStore.getPodcastProgress(userId);
-  const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
-  for (const id of Object.keys(podNs.episodes || {})) {
-    const ep = podNs.episodes[id];
-    if (!ep || ep.status !== 'downloaded') continue;
-    if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show in the feed
-    const liked = podLiked.has(id);
-    const pp = Object.prototype.hasOwnProperty.call(podProgress, id) ? podProgress[id] : null;
-    const pos = pp ? Number(pp.position) : 0;
-    const inProgress = pos > 0;
-    if (!liked && !inProgress) continue;
-    const dur = pp ? Number(pp.duration) : 0;
-    kindById.set(id, 'podcast');
-    pctById.set(id, dur > 0 ? (pos / dur) * 100 : 0);
-    records.push({ id, kind: 'podcast', inProgress, finished: false, watched: false, liked, progressAt: (pp && pp.updatedAt) || '', addedAt: typeof ep.addedAt === 'number' ? ep.addedAt : 0, folderKey: null, isSub: false });
-  }
-
-  const { rows } = homeFeed.assembleHomeRows({ records, folderTitles, folderHrefs });
-
-  // Resolve each selected id to render fields; drop dead links; drop a row that
-  // resolves empty (all its items vanished).
-  const outRows = [];
-  for (const row of rows) {
-    const items = [];
-    for (const id of row.itemIds) {
-      const resolved = resolveHomeItem(db, id, kindById.get(id) || 'media', pctById.get(id) || 0);
-      if (resolved) items.push(resolved);
-    }
-    if (items.length > 0) outRows.push({ id: row.id, title: row.title, seeAllHref: row.seeAllHref, items });
-  }
-
-  res.json({ rows: outRows });
-});
-
-// v1.47 (Roku playback wave): the channel list the TV's Channels view needs.
-// A "channel" is an item's immediate parent folder (`folderName` -- the same
-// identity `GET /api/videos?folder=` filters by); display name and avatar
-// come from the scan's channelName/channelAvatarUrl when present. Optional
-// `?root=<path>` scopes RECURSIVELY by filePath prefix (gate W5: matching
-// item.rootFolder exactly diverges from /api/videos under nested configured
-// roots -- matchRootFolder assigns the LONGEST containing root, so an
-// inner-root channel would vanish from the outer root's channel list while
-// its videos still showed). Gate W4: with no explicit ?root=, channels
-// under HIDDEN roots are skipped -- an operator hides a library precisely
-// to keep it off browse surfaces (the Roku picker already hides those
-// roots; asking for one explicitly still works). Pure read over the hot
-// cache; no new persistence, no writes.
-app.get('/api/channels', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const rootFilter = typeof req.query.root === 'string' && req.query.root !== '' ? req.query.root : null;
-  const settingsByRoot = folderSettingsStore.getAll(); // Wave 4
-  const hiddenRoots = new Set(Object.keys(settingsByRoot).filter(p => settingsByRoot[p] && settingsByRoot[p].hidden === true));
-  const underRoot = (fp) => fp === rootFilter || (typeof fp === 'string' && fp.startsWith(rootFilter + path.sep));
-  // v1.84: name-based subscription set (same join as /api/home) so consumers can
-  // pick the subscribed channels - the Modern-mode mobile avatar bar shows the
-  // recently-active SUBSCRIPTIONS.
-  const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
-  const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
-  const groups = new Map(); // folderName -> { folder, name, avatarUrl, count, latestAddedAt, isSub }
-  for (const id of Object.keys(db.metadata || {})) {
-    const item = db.metadata[id];
-    if (!item || !item.folderName) continue;
-    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: no restricted channels in the list
-    if (rootFilter) {
-      if (!underRoot(item.filePath)) continue;
-    } else if (item.rootFolder && hiddenRoots.has(item.rootFolder)) {
-      continue;
-    }
-    let g = groups.get(item.folderName);
-    if (!g) {
-      g = { folder: item.folderName, name: item.folderName, avatarUrl: null, count: 0, latestAddedAt: 0, isSub: false };
-      groups.set(item.folderName, g);
-    }
-    g.count++;
-    // First non-empty wins for name/avatar: every item of a channel folder
-    // carries the same scan-captured values, so "first" is not a lottery.
-    // v1.114 A2: prefer the captured channelName, stripping a leading "@" so a
-    // handle-stored-as-the-name ("@Apple") shows the name ("Apple") on the
-    // channel/avatar bar too (mirrors common.js displayChannelName, read-layer).
-    if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') {
-      g.name = item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
-    }
-    if (!g.isSub && (subNames.has(item.folderName) || subNames.has(item.channelName))) g.isSub = true;
-    // v1.85 (#3a): resolve through the channelId-keyed registry (the SAME chain
-    // the Subscriptions menu + per-card avatar use), not just the baked
-    // item.channelAvatarUrl. A subscribed channel whose videos never baked the
-    // URL still gets its real photo in the avatar bar (Dean: "Subs shows the
-    // avatar but the bar doesn't").
-    if (!g.avatarUrl) {
-      // resolveItemChannelAvatarUrl checks the baked item.channelAvatarUrl FIRST
-      // (step 1), then the channelId/URL registry - so this one call subsumes
-      // the old baked-field-only assignment.
-      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(ytView, item);
-      if (resolvedAvatar) g.avatarUrl = resolvedAvatar;
-    }
-    if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
-  }
-  // v1.126: a group whose name never resolved past the raw folderName (no item
-  // ever captured a channelName - the permanently-unhealable folders) takes the
-  // per-folder display map, mirroring resolveChannelName's fallback order
-  // client-side (channelName wins, then the map, then the raw folder).
-  const displayNames = folderDisplayNameStore.getAll(); // Wave 4
-  for (const g of groups.values()) {
-    if (g.name === g.folder && typeof displayNames[g.folder] === 'string' && displayNames[g.folder].trim() !== '') {
-      g.name = displayNames[g.folder].trim();
-    }
-  }
-  // localeCompare: a consistent comparator (gate S4 -- the previous one
-  // never returned 0, undefined order for equal lowercased names).
-  const channels = [...groups.values()].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-  res.json({ channels });
-});
-
-// API: Get details for single video/audio
-app.get('/api/videos/:id', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const item = db.metadata[req.params.id];
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  if (!mediaVisibleTo(req, item)) { // v1.80 RBAC: restricted -> 404 like missing
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-
-  // v1.30 A4: overlay any not-yet-flushed `pendingProgress` entry (read-your-writes).
-  // v1.43: scoped to the signed-in user.
-  const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0 };
-  // v1.25 QoL bugfix: serve-time fallback for the watch page's uploader
-  // avatar. `item.channelAvatarUrl` (a persisted, item-level capture) stays
-  // authoritative when present; only when it is EMPTY does this look up the
-  // yt-dlp subscription whose channelUrl/channelId matches this item's own
-  // captured identity and use THAT subscription's already-validated avatar
-  // (`ytdlp.resolveItemChannelAvatarUrl`, lib/ytdlp/store.js -- read-only,
-  // re-validates before returning, never persisted here). This covers any
-  // subscribed channel's item, including a MeTube-imported video the scan
-  // never routed through the yt-dlp download tree at all. A no-match (or the
-  // module disabled -- `db.ytdlp.subscriptions` is simply absent/empty then)
-  // leaves `channelAvatarUrl` empty, and the client's own resolveAvatarSource
-  // (public/js/common.js) already falls back to a first-letter avatar.
-  let channelAvatarUrl = item.channelAvatarUrl;
-  if ((typeof channelAvatarUrl !== 'string' || channelAvatarUrl === '') && ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) {
-    // v1.85 #3a: resolveItemChannelAvatarUrl is now READ-ONLY - it reads the
-    // ytdlp namespace via readYtdlpNamespace and NEVER calls ensureYtdlp, so it
-    // no longer mutates anything. That means the shared getCachedDatabase()
-    // object is safe to hand in directly. (Before #3a it backfilled db.ytdlp in
-    // place, so this route deep-cloned the namespace to protect the read-cache
-    // coherency invariant; both the mutation and the clone are gone, and the
-    // v1.85 /api/channels + modern-grid callers pass the raw cached db too.)
-    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item);
-  }
-  // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
-  // serve time from the persisted `youtubeId` through the same buildWatchUrl
-  // gate the re-pull path uses (it re-validates the id and returns null on
-  // anything unsafe -- the spread's own raw `youtubeId` is informational;
-  // THIS field is the one the client shares).
-  const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
-  // v1.34 T3: the resolved chapter list (manual > embedded > description --
-  // see resolveItemChapters) plus its provenance for the editor UI. The
-  // spread's own raw `chapters`/`chaptersManual` are superseded by the
-  // resolved keys below (object-literal order).
-  const resolvedChapters = resolveItemChapters(item);
-  res.json({
-    ...item,
-    ...(channelAvatarUrl ? { channelAvatarUrl } : {}),
-    ...(watchUrl ? { watchUrl } : {}),
-    // v1.93.2: DERIVED storyboard descriptor for the seek-bar scrub preview
-    // (eligible videos only). Overrides any legacy persisted `storyboard` from
-    // the `...item` spread so the client always gets the geometry that matches
-    // the on-disk sprite; the player preloads the sprite and shows the scrub
-    // preview only once it loads (ungenerated -> no preview, never an empty box).
-    storyboard: storyboardDescriptor(item) || undefined,
-    hasPreview: previewClipEligible(item) || undefined, // v1.94: hover clip eligibility
-    chapters: resolvedChapters.chapters,
-    chaptersSource: resolvedChapters.chaptersSource,
-    progress: progress.timestamp,
-    transcodeProgress: transcodeProgress[item.id] || 0,
-    // v1.27.0 (EXPERIMENTAL): `audioStatus` itself already rides the `...item`
-    // spread (db.metadata[id].audioStatus, set by setAudioStatus -- mirrors
-    // transcodeStatus's own spread-through); only the live in-memory percent
-    // needs adding explicitly, mirroring transcodeProgress just above.
-    audioProgress: audioExtractProgress[item.id] || 0,
-    // v1.30 C2: `liked` is DERIVED from membership at request time -- never
-    // persisted on the item itself. Membership IS the like state (see
-    // POST/DELETE /api/liked/:id below); this is purely a read-time
-    // convenience so the watch page's initial paint doesn't need a second
-    // `GET /api/liked` round-trip just to know this one item's state.
-    // v1.43: the signed-in user's user_liked rows, not the frozen db.liked.
-    liked: userStore.getLiked(req.user.id).includes(item.id),
-    // v1.72 (cap 6): the manual watched toggle's read side - same
-    // derived-at-request-time posture as `liked`, and the SAME derivation
-    // authority every list surface uses (latch OR >=90% live position).
-    watchState: videoQuery.deriveWatchState(
-      (progress.duration || item.duration || 0) > 0 ? (progress.timestamp / (progress.duration || item.duration)) * 100 : 0,
-      userStore.getWatchedIds(req.user.id).includes(item.id)
-    )
-  });
-});
 
 // Wave 7b (slice S1a): POST|DELETE /api/watched/:id (the manual watched
 // latch) moved VERBATIM to lib/user/routes.js - see the
@@ -10302,39 +8087,48 @@ function isFinishedPresence(seen) {
   return (seen.position / seen.duration) * 100 >= HANDOFF_FINISHED_PCT;
 }
 
-app.get('/api/handoff', (req, res) => {
-  const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId : '';
-  const seen = presence.readOther(req.user.id, deviceId);
-  if (!seen) return res.json({ presence: null });
-  if (isFinishedPresence(seen)) return res.json({ presence: null });
-
-  const handoffDb = getCachedDatabase();
-  const target = resolveHandoffTarget(handoffDb, seen);
-  if (!target) return res.json({ presence: null });
-  // v1.80 RBAC: never offer a restricted item across devices (e.g. a restriction
-  // added after playback began elsewhere). Podcast lands with its library.
-  if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
-    return res.json({ presence: null });
-  }
-  if (seen.kind === 'track' && !trackVisibleTo(req, musicDb.parts.tracks.get(seen.mediaId))) { // Wave 5 (gate pass B): a point query
-    return res.json({ presence: null });
-  }
-  if (seen.kind === 'podcast') {
-    if (!podcastEpisodeVisibleTo(req, podcastsDb.parts.episodes.get(seen.mediaId))) return res.json({ presence: null }); // Wave 5 (gate pass B): a point query
-  }
-
-  res.json({
-    presence: {
-      deviceId: seen.deviceId,
-      deviceLabel: seen.deviceLabel,
-      kind: seen.kind,
-      mediaId: seen.mediaId,
-      state: seen.state,
-      position: seen.position,
-      ageSeconds: seen.ageSeconds,
-      ...target,
-    },
-  });
+// Wave 7b (slice S10a): GET /api/handoff and DELETE /api/videos/:id moved
+// VERBATIM to lib/media/routes.js. A SECOND call, not part of the browse
+// bundle above, because mediaUserRoutes.registerProgressRoutes sits between
+// them and the routing order has to stay byte-for-byte what it was.
+mediaRoutes.registerHandoffAndDeleteRoutes(app, {
+  THUMBNAIL_DIR, // the hard-delete sweep's thumbnail/storyboard/preview roots
+  audioPath,
+  clearPersistedServedAt, // the delete path's served-at reset
+  destroyMediaStreams, // kills in-flight range streams before a file is unlinked
+  extractMediaRef,
+  extractYtdlpVideoId,
+  fs,
+  getCachedDatabase,
+  getMediaId,
+  inSaveTransaction, // the delete path batches every store write into one commit
+  isFinishedPresence, // the handoff's "already watched to the end" predicate
+  isSafeVideoId,
+  leafStillEnumerated,
+  loadDatabase,
+  matchRootFolder,
+  mediaVisibleTo,
+  musicDb,
+  path,
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  presence, // lib/presence/store - the device-handoff liveness reducer
+  previewClipPath,
+  progressStore,
+  refuseIfReadOnlyMedia,
+  requireModifyLibrary,
+  resolveHandoffTarget,
+  resolveOnDiskPath,
+  restrictedVideoMutation,
+  storyboardPath,
+  tombstoneStore,
+  trackVisibleTo,
+  transcodedPath,
+  trashItem, // server.js's soft-delete mover (slice R3 moves it)
+  updateDatabase,
+  userStore,
+  viewCountStore,
+  ytdlp,
 });
 
 // v1.36.2 (Dean: "sticky post-deletion" -- the "doesn't delete" half): the
@@ -10537,399 +8331,6 @@ function resolveOnDiskPath(filePath) {
   }
   return { realPath: current };
 }
-
-// API: Delete video/audio file
-app.delete('/api/videos/:id', async (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
-  // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
-  // actual persisted mutation below goes through its own `updateDatabase`
-  // call (which loads a fresh copy inside the lock), so this is safe on the
-  // cache: it is not a direct load->mutate->save site.
-  const db = getCachedDatabase();
-  const item = db.metadata[req.params.id];
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-
-  const filePath = item.filePath;
-  // Opt-in "remove from library anyway" -- only meaningful once the client has
-  // already seen the read-only/permission-denied error below and asked us to
-  // proceed. See docs/exec-plans/completed/2026-07-06-v1.13-polish.md item 5.
-  const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
-  let fileRemainsOnDisk = false;
-  // v1.65 note on the v1.41.3 verified/unverified distinction: the happy
-  // path is now a TRASH move (trashItem below), which mints no tombstone --
-  // the scan never walks the trash dir, so there is nothing to defer. Every
-  // shape that still reaches the LEGACY cleanup mutator (resolver `gone`,
-  // vanished-mid-delete, removeAnyway) is an unverified conclusion by
-  // construction -- the file may in fact survive -- so that mutator now
-  // ALWAYS mints the deletion tombstone (the old `unlinkVerified` flag,
-  // true only after a watched in-route unlink, has no true case left).
-
-  // v1.37.5: resolve the stored path to the REAL on-disk entry (handles an
-  // NFC/NFD-variant name that `existsSync(item.filePath)` would miss) BEFORE
-  // touching the db -- see `resolveOnDiskPath`'s doc comment for the bug this
-  // closes.
-  const resolved = resolveOnDiskPath(filePath);
-  if (resolved.realPath === null && resolved.unreadable) {
-    // We could not even ENUMERATE the parent dir (EACCES/EPERM/ENOTDIR), so we
-    // cannot confirm the file is gone. Dropping the library entry here is
-    // exactly the "disappears from the list but the file survives -> rescan
-    // resurrects it" bug -- so leave the db COMPLETELY untouched and surface a
-    // recoverable 409 (same opt-in `removeAnyway` follow-up as a read-only
-    // volume). Only once the caller explicitly accepts does the entry go.
-    if (!removeAnyway) {
-      const code = resolved.unreadable.code;
-      console.error(`Cannot delete ${filePath}: parent directory un-enumerable (${code || 'unknown'}); library entry left intact.`);
-      return res.status(409).json({
-        error: `Could not delete the file: its folder could not be read (${code || 'unknown'}), so removal can't be confirmed. The file was not removed.`,
-        code,
-        readOnly: true,
-      });
-    }
-    fileRemainsOnDisk = true; // removeAnyway: caller accepts it may reappear on the next scan.
-  }
-  // The concrete path we unlink + hang sidecar cleanup off of. Null only when
-  // the file is genuinely absent (`gone`) or unconfirmable-but-removeAnyway.
-  const mediaPathOnDisk = resolved.realPath;
-
-  // v1.41.10: close OUR OWN live streaming handles on everything this delete
-  // is about to unlink, and wait (bounded) for the fds to actually close
-  // BEFORE the unlink. An open read handle turns an SMB/CIFS delete into
-  // server-side DELETE_PENDING -- the dirent stays enumerable until the last
-  // holder closes while every retry reports ENOENT -- and this process was
-  // itself the holder in the incident this fixes (seek-abandoned Range
-  // streams; see activeMediaStreams' header). Registry keys are the exact
-  // strings handed to createReadStream: the stored path, the resolved
-  // on-disk variant, and the two id-keyed sidecars a player may be pulling.
-  const releasePaths = new Set([filePath, transcodedPath(item.id), audioPath(item.id)]);
-  // Defensive: today no route streams the RESOLVED variant when it differs
-  // from item.filePath (players receive item.filePath verbatim), so this Set
-  // member is a no-op lookup -- it exists so a future caller that streams the
-  // resolved spelling is covered without anyone having to remember this line.
-  if (mediaPathOnDisk) releasePaths.add(mediaPathOnDisk);
-  // Parallel: the bounded waits overlap, so even the pathological all-wedged
-  // case delays the DELETE by one 3s cap, not one per path.
-  const releasedStreams = (await Promise.all([...releasePaths].map((p) => destroyMediaStreams(p))))
-    .reduce((a, b) => a + b, 0);
-  if (releasedStreams > 0) {
-    console.log(`Delete: destroyed ${releasedStreams} live read stream(s) on ${filePath} before the trash move.`);
-  }
-
-  // v1.65 (ruling 3, closes tech-debt #64): EVERY delete routes through
-  // TRASH. The resolvable-file case is an atomic rename into the root's
-  // trash dir -- trashItem() owns the whole identity carry (the media_trash
-  // record, doc-table carries, all nine per-user carriers, id-keyed sidecar
-  // renames) and its own rollback, so NONE of the legacy cleanup below runs
-  // for it. The legacy path survives only for the shapes with no file to
-  // move: resolver `gone`, a vanished-mid-delete ENOENT, and the
-  // removeAnyway escape (file deliberately left on a failing mount). Every
-  // legacy shape is an UNVERIFIED conclusion by construction (nothing here
-  // watches an unlink succeed anymore), so the legacy mutator below always
-  // mints the v1.41.3 tombstone.
-  let trashed = false;
-  let trashedId = null;
-  let trashedDeletePending = false;
-  if (mediaPathOnDisk && !fileRemainsOnDisk) {
-    const tr = await trashItem(
-      { loadDatabase, updateDatabase, getMediaId },
-      item.id,
-      { sourcePath: resolved.realPathRaw || mediaPathOnDisk }
-    );
-    if (tr.ok) {
-      trashed = true;
-      trashedId = tr.trashId;
-      // A leftover source dirent (the post-commit unlink failed or the
-      // v1.41.10 delete-pending probe fired inside trashItem) is honestly a
-      // file remaining on disk; trashItem already minted its deferred-
-      // cleanup tombstone, and the scan's retry now trashes it too.
-      fileRemainsOnDisk = tr.sourceUnlinkFailed === true;
-      trashedDeletePending = tr.sourceDeletePending === true;
-      console.log(`Moved to trash: ${mediaPathOnDisk} -> ${tr.trashPath}`);
-    } else if (tr.status === 409 && tr.code && !removeAnyway) {
-      // The same actionable 409 + opt-in removeAnyway follow-up contract the
-      // unlink path has surfaced since v1.36.2 (a read-only mount can no
-      // more rename than unlink).
-      console.error(`Cannot trash file ${filePath} (${tr.code}):`, tr.error);
-      return res.status(409).json({
-        error: `Could not delete the file: this location is read-only, permission-denied, or the file is busy (${tr.code}). The file was not removed.`,
-        code: tr.code,
-        readOnly: true,
-      });
-    } else if (tr.status === 409 && tr.code && removeAnyway) {
-      // Opt-in: the entry leaves the library, the file stays on disk; the
-      // unverified tombstone below hands it to the scan's deferred retry.
-      fileRemainsOnDisk = true;
-    } else if (tr.status === 404) {
-      // Vanished between resolution and the link (TOCTOU): the desired end
-      // state ("not on disk") holds -- fall through to the legacy
-      // already-gone cleanup.
-      console.warn(`Delete: file already gone (${filePath}) -- removing the library entry anyway.`);
-    } else {
-      // trashItem rolled itself back; db and file are untouched.
-      console.error(`Error trashing file ${filePath}:`, tr.error);
-      return res.status(500).json({ error: `Could not delete file: ${tr.error}` });
-    }
-  } else if (!fileRemainsOnDisk) {
-    // resolved.gone: genuinely absent (parent dir readable with no matching
-    // entry, or the dir itself is gone). The desired end state already holds
-    // -> SUCCESS; fall through to remove the orphaned library entry.
-    console.warn(`File not on disk when deleting (already gone): ${filePath}`);
-  }
-
-  if (!trashed) {
-    // Legacy sidecar hygiene for the no-file shapes -- these ids never
-    // re-key, so their id-keyed sidecars die here. Best-effort throughout.
-    const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
-    try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
-    try { if (fs.existsSync(storyboardPath(item.id))) fs.unlinkSync(storyboardPath(item.id)); } catch (_) { /* best-effort */ } // v1.92 sprite
-    try { if (fs.existsSync(previewClipPath(item.id))) fs.unlinkSync(previewClipPath(item.id)); } catch (_) { /* best-effort */ } // v1.94 preview clip
-    try { if (fs.existsSync(transcodedPath(item.id))) fs.unlinkSync(transcodedPath(item.id)); } catch (_) { /* best-effort */ }
-    if (!fileRemainsOnDisk) {
-      // The greedy .vtt sweep (v1.36.2), only when the media file itself is
-      // genuinely gone -- a removeAnyway file keeps its subtitles.
-      try {
-        const mediaPath = mediaPathOnDisk || filePath;
-        const dir = path.dirname(mediaPath);
-        const base = path.basename(mediaPath, path.extname(mediaPath));
-        for (const name of fs.readdirSync(dir)) {
-          if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
-            try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
-          }
-        }
-      } catch (_) { /* best-effort -- e.g. the dir itself is gone */ }
-    }
-  }
-
-  // v1.41.10: post-verify against the parent directory. The legacy
-  // "already gone" conclusions can lie when the server holds the file in
-  // DELETE_PENDING (an open handle this process failed to release, or one on
-  // another machine entirely): the dirent stays enumerable and the next scan
-  // would re-index it. If the exact leaf bytes are still listed AND the leaf
-  // is unopenable, the file is NOT gone: say so (fileRemainsOnDisk +
-  // deletePending below); the legacy mutator's tombstone covers the retry --
-  // by the tombstone contract (v1.41.3) a conclusion contradicted by the
-  // directory itself is the definition of unverified. (v1.65: a successful
-  // trash move never enters this probe -- trashItem watches its own source
-  // unlink and tombstones any leftover itself.)
-  //
-  // Adversarial-gate CRITICAL (C1, this release): "still enumerated" ALONE
-  // must never downgrade a VERIFIED unlink. An external writer can land a
-  // brand-new file at the same leaf inside the unlink->readdir window (an
-  // in-flight yt-dlp re-download completing -- the archive append below only
-  // gates FUTURE download starts -- or a sync-client restore), and tombstoning
-  // THAT file schedules the scan to reap content the user never deleted:
-  // yt-dlp's default --mtime backdating defeats the scan's mtime<=deletedAt
-  // gate, and the fresh-db guards can't help (the tombstone is fresh; the
-  // metadata entry was just removed). Proven with a runnable repro against
-  // this branch; main kept the file. So discriminate undead-vs-recreated by
-  // OPENABILITY -- the incident's own signature: a DELETE_PENDING dirent is
-  // enumerable while every NEW open is refused (Linux cifs maps
-  // STATUS_DELETE_PENDING to ENOENT), whereas a recreated file opens fine.
-  // Deliberately an open, NOT existsSync: with actimeo=1 a stat can be
-  // answered from the client attribute cache for up to a second after the
-  // unlink and would misclassify a genuinely-pending file as recreated; an
-  // open is a real server round-trip. (An enumerated survivor that opens
-  // EACCES is misread as pending -- accepted: the worst case is one tombstone
-  // whose scan-side reap still re-checks mtime and the fresh-db guards.)
-  //
-  // Known residual (QA W1, disclosed): the OPPOSITE miss -- a stale
-  // client-side directory cache omitting a genuinely-pinned survivor -- makes
-  // this check pass, no tombstone is minted, and the next scan re-indexes the
-  // survivor once. Self-healing: deleting the re-indexed card again lands in
-  // the ENOENT shape above, which readdir (by then long past any cache TTL)
-  // catches and tombstones. One extra user delete, never data loss.
-  let deletePending = trashedDeletePending;
-  // v1.65: the probe below only concerns the LEGACY shapes -- a trash move
-  // runs the same v1.41.10 post-verify inside trashItem and reported its
-  // verdict via sourceDeletePending above.
-  if (!trashed && !fileRemainsOnDisk) {
-    const checkPath = resolved.realPathRaw || mediaPathOnDisk || filePath;
-    if (leafStillEnumerated(checkPath)) {
-      let openable = false;
-      try {
-        fs.closeSync(fs.openSync(checkPath, 'r'));
-        openable = true;
-      } catch (_) { /* unopenable: the delete-pending signature */ }
-      if (!openable) {
-        deletePending = true;
-        fileRemainsOnDisk = true;
-        console.warn(`Delete: ${filePath} is STILL enumerated by its parent directory and refuses opens (server-side delete-pending: an open handle somewhere is pinning it) -- reporting honestly and minting a tombstone.`);
-      }
-      // (Enumerated + openable: the legacy mutator below mints its
-      // unverified tombstone either way; the scan's mtime and fresh-db
-      // checks decide what the surviving bytes are -- the v1.41.3 contract.)
-    }
-  }
-
-  // v1.36.2 (Dean: "sticky post-deletion" -- the "comes back" half): make
-  // DELETION authoritative for staying gone. "Delete stays gone" previously
-  // relied entirely on the id already being in the shared download archive
-  // from the ORIGINAL download -- but one-offs download with
-  // --no-download-archive (their post-hoc append is best-effort and can
-  // fail), and an archive file lost to an ephemeral volume has no entry, so
-  // such a video was re-downloaded by the next subscription poll inside its
-  // window. Appending here (idempotent, never-throws --
-  // recordOneShotInArchive) closes that class for every yt-dlp-managed item
-  // regardless of how it was originally downloaded. Scoped exactly like the
-  // repull enumeration: rooted under a download dir AND carrying a
-  // recoverable youtube id (filename [id] bracket, else the persisted
-  // youtubeId re-checked through isSafeVideoId).
-  try {
-    const ytdlpConfig = ytdlp.parseYtdlpConfig();
-    if (ytdlp.isEnabled(ytdlpConfig) && matchRootFolder(filePath, ytdlp.extraScanRoots(ytdlpConfig))) {
-      const baseName = path.basename(filePath, path.extname(filePath));
-      // v1.41.13: archive by the item's real SOURCE. A legacy YouTube item
-      // keeps `youtube <id>` (from the [id] bracket or the persisted
-      // youtubeId). A universal item records `<extractor> <sourceId>` -- the
-      // RAW sourceId from metadata (authoritative, matches make_archive_id),
-      // never the sanitized on-disk bracket (design D5). extractMediaRef also
-      // recovers the source for a legacy-less item that carries the new bracket.
-      const youtubeId = extractYtdlpVideoId(baseName) || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
-      if (youtubeId) {
-        ytdlp.recordOneShotInArchive(ytdlpConfig, youtubeId, 'youtube');
-      } else if (typeof item.sourceExtractor === 'string' && item.sourceExtractor !== '' && typeof item.sourceId === 'string' && item.sourceId !== '') {
-        ytdlp.recordOneShotInArchive(ytdlpConfig, item.sourceId, item.sourceExtractor);
-      }
-    }
-  } catch (err) {
-    // Best-effort by contract -- a failed archive append must never block
-    // the delete (the worst case is the pre-v1.36.2 behavior).
-    console.error(`Delete: failed to record ${item.id} in the yt-dlp archive (continuing):`, err && err.message);
-  }
-
-  // LEGACY db cleanup -- only for the shapes trashItem did not handle
-  // (resolver `gone`, vanished-mid-delete, removeAnyway): remove the entry
-  // and mint the unverified tombstone. A successful trash move already did
-  // all of this (and more) inside its own mutator. Idempotent under a
-  // concurrent duplicate delete.
-  if (!trashed) {
-  try {
-    await updateDatabase(freshDb => {
-      delete freshDb.metadata[item.id];
-      // Wave 2: the frozen pre-auth position goes with the item, inside this
-      // save transaction (it was `delete freshDb.progress[item.id]`).
-      inSaveTransaction(() => progressStore.remove(item.id));
-      // (v1.42 gate W3: the view counter went with its item here as a doc
-      // carry. Wave 1: relational - removed post-commit below with the
-      // per-user rows; same reasons: unbounded growth under churn AND a stale
-      // count resurrecting onto a same-path re-add = same md5 id.)
-      // v1.41.3: mint the deletion tombstone in the SAME mutator that removes
-      // the entry. Every shape that reaches this legacy mutator is an
-      // UNVERIFIED conclusion by construction (v1.65: the verified case is
-      // now a trash move, which never reaches here and never tombstones --
-      // preserving the old contract's "a verified conclusion mints nothing"
-      // rule at its new home). The scan's deferred-retry contract
-      // (pruneDeleteTombstones' header) finishes these deletes -- and since
-      // v1.65 the retry TRASHES the survivor rather than unlinking it.
-      {
-        // (Wave 2: the tombstone is a row in media_delete_tombstones, minted
-        // INSIDE this mutator's save transaction - see the inSaveTransaction
-        // call at the end of this block - so the "same mutator" atomicity of
-        // v1.41.3 holds across the two tables.)
-        // SEAM 2 (defense-in-depth): the tombstone is keyed by md5(storedPath),
-        // but the scanner can only recompute md5(realDiskPath) -- and in this
-        // whole bug class those two DIVERGE, so the scanner's direct key lookup
-        // never matches and the tombstone sits dead for 90 days while the
-        // survivor is re-indexed. Record the yt-dlp id too (the stable
-        // invariant on BOTH the stored and the on-disk name) so the scan can
-        // recover the match by id when SEAM 1 could not unlink at delete time
-        // (a truly-unreadable parent -> removeAnyway, or an unforeseen
-        // divergence). Same two-source trust order as the archive append above:
-        // the stored basename's `[id]` bracket, else the persisted youtubeId
-        // re-checked through isSafeVideoId. null for a non-yt-dlp file (its
-        // secondary match never fires -- see the scan's SEAM 2 block).
-        const tombstoneYoutubeId = extractYtdlpVideoId(path.basename(filePath, path.extname(filePath)))
-          || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
-        // v1.41.13 (design D4): a non-YouTube item records its source ref too,
-        // so the scan's SEAM-2 secondary match can bind a divergent-spelling
-        // survivor by identity (same folder + ext, exactly like the YouTube
-        // id match). The bracket observed at delete time is stored alongside
-        // the raw ref -- SEAM-2 matches on the bracket pair (both sides read
-        // dirents -> both sanitized), never raw-vs-bracket (design D5).
-        const deleteBracket = extractMediaRef(path.basename(filePath, path.extname(filePath)));
-        // gate CRITICAL C1: the bracketId is ALWAYS the delete-time bracket id
-        // when a sourceRef is built. The old `!tombstoneYoutubeId` guard
-        // conflated "has a youtubeId" with "on-disk bracket is legacy 11-char"
-        // -- FALSE for a D1a proxy-host item (yewtu.be), whose youtubeId IS set
-        // but whose on-disk bracket is the universal `[Youtube=id]` shape,
-        // matchable ONLY by SEAM-2's universal (bracket) branch. Suppressing
-        // bracketId there disabled BOTH match paths -> the deleted proxy-host
-        // video RESURRECTED. A pure-YouTube item never builds a sourceRef
-        // (no sourceExtractor/sourceId), so this is a no-op on the YouTube path.
-        const tombstoneSourceRef = (item.sourceExtractor && item.sourceId)
-          ? { extractor: item.sourceExtractor, id: item.sourceId, bracketId: deleteBracket ? deleteBracket.id : undefined }
-          : null;
-        const tombstone = {
-          filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId,
-          ...(tombstoneSourceRef ? { sourceRef: tombstoneSourceRef } : {}),
-        };
-        const tombstoneId = item.id;
-        inSaveTransaction(() => {
-          tombstoneStore.set(tombstoneId, tombstone);
-          tombstoneStore.prune();
-        });
-      }
-      // tech-debt #5 (v1.30-era): mirror the scan-prune path so a
-      // manually-deleted recently-served video doesn't strand a
-      // persistedServedAt Map entry until id-reuse/restart.
-      clearPersistedServedAt(item.id);
-      return true;
-    });
-  } catch (err) {
-    // Express 4 does not catch a rejected async-handler promise, so a
-    // rejection left unguarded here would hang the request instead of
-    // returning 500. The file (and its thumbnail/transcode sidecar) is
-    // already gone from disk at this point -- only the db-metadata cleanup
-    // failed to persist.
-    console.error(`Error updating database after deleting ${filePath}:`, err);
-    return res.status(500).json({ error: `File deleted from disk but failed to update database: ${err.message}` });
-  }
-
-  // v1.43: the per-user rows (user_progress/user_liked) are id-keyed carriers
-  // exactly like the frozen progress row and the view-count row above, and go with the item for
-  // the same two reasons (unbounded growth under churn; stale state
-  // resurrecting onto a future re-add of the same path = same md5 id).
-  // AFTER the doc-table commit (the rekeyInFlightState posture): a rolled-
-  // back delete must never have already destroyed users' positions. A crash
-  // in this tiny window leaves orphan rows whose only effect is that a
-  // re-add of the exact same path resumes where users left off -- benign,
-  // and the flush guard never writes new rows for a metadata-less id.
-  try {
-    userStore.removeMediaState(item.id);
-  } catch (err) {
-    console.error(`Delete: failed to remove per-user progress/liked for ${item.id} (continuing):`, err.message);
-  }
-  // Wave 1: the relational view counter goes with its item (post-commit,
-  // same posture as the per-user rows above).
-  try {
-    viewCountStore.remove(item.id);
-  } catch (err) {
-    console.error(`Delete: failed to remove the view count for ${item.id} (continuing):`, err.message);
-  }
-  } // end !trashed (a trash move re-keyed the carriers instead of removing them)
-
-  if (fileRemainsOnDisk) {
-    return res.json({
-      success: true,
-      fileRemainsOnDisk: true,
-      ...(trashed ? { trashed: true, trashId: trashedId } : {}),
-      ...(deletePending ? { deletePending: true } : {}),
-      message: deletePending
-        ? 'Removed from your library, but the storage side reports the file is still held open (by another program or device), so it stays on disk until that handle closes. Library scans will keep it hidden and keep retrying the deletion.'
-        : trashed
-          ? 'Moved to Trash, but the original location still shows the file -- the next library scan will finish the cleanup.'
-          : 'Removed from your library. Note: the file itself could not be deleted -- the next library scan will retry the deletion once; if it still cannot be deleted, it will reappear.',
-    });
-  }
-
-  if (trashed) {
-    return res.json({ success: true, trashed: true, trashId: trashedId, message: 'Moved to Trash' });
-  }
-  res.json({ success: true, message: 'File deleted successfully' });
-});
 
 // Wave 7b (slice S1b): the Liked playlist - POST|DELETE /api/liked/:id and
 // GET /api/liked - moved VERBATIM to lib/media/user-routes.js, together with
@@ -12777,27 +10178,17 @@ async function sweepTrash(now = Date.now()) {
   return purged;
 }
 
-// API: Move a video/audio file into another configured library folder (C1).
-// Body: `{ targetFolder }`. See `moveItemToFolder`'s own comment for the full
-// confinement + id re-key design -- this route is a thin HTTP wrapper around
-// it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
-// physical-reconcile move, without going through this route.
-app.post('/api/videos/:id/move', async (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
-  const targetFolder = req.body && req.body.targetFolder;
-  let result;
-  try {
-    result = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, req.params.id, targetFolder);
-  } catch (err) {
-    console.error(`Error moving file ${req.params.id}:`, err);
-    return res.status(500).json({ error: `Could not move file: ${err.message}` });
-  }
-  if (!result.ok) {
-    return res.status(result.status || 500).json({ error: result.error });
-  }
-  res.json({ success: true, id: result.newId, filePath: result.newPath });
+// Wave 7b (slice S10a): POST /api/videos/:id/move moved VERBATIM to
+// lib/media/routes.js. It registers HERE, after the trash routes and after
+// moveItemToFolder's own declaration, exactly as before.
+mediaRoutes.registerMoveRoute(app, {
+  getMediaId,
+  loadDatabase,
+  moveItemToFolder, // server.js's collision-safe file mover (slice R3 moves it)
+  refuseIfReadOnlyMedia,
+  requireModifyLibrary,
+  restrictedVideoMutation,
+  updateDatabase,
 });
 
 // ---- T4 (v1.25 QoL): one-time migration of pre-existing flat one-off
@@ -14431,48 +11822,23 @@ async function recordLocalChannelHealFanout(deps, target) {
   return updated;
 }
 
-// API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
-// Computed LIVE from `db.metadata` on every request via the pure helpers in
-// `lib/stats.js` -- deliberately no cached aggregate (see that module's
-// header comment): at home-server scale an O(n) pass per request is trivial
-// and always fresh, and a cache would need its own invalidation story for no
-// real benefit.
-// v1.158 (Dean): the library's total bytes on disk, visibility-scoped - the
-// SAME figure the Stats "Total size on disk" tile shows (computeLibraryStats
-// over the requester's VISIBLE metadata, built exactly as /api/stats builds it
-// below), surfaced in the account ("You") menu so the core self-hosted number
-// is not a tap away in Stats. Tiny payload; the menu fetches it lazily on open.
-app.get('/api/storage-summary', (req, res) => {
-  const db = getCachedDatabase();
-  const withVc = withEffectiveViewCounts(db);
-  const visibleMetadata = {};
-  for (const id of Object.keys(withVc)) {
-    if (mediaVisibleTo(req, withVc[id])) visibleMetadata[id] = withVc[id];
-  }
-  res.json({ totalSizeBytes: stats.computeLibraryStats(visibleMetadata).totalSizeBytes });
+// Wave 7b (slice S10b): GET /api/storage-summary moved VERBATIM to
+// lib/config/routes.js. (The /api/stats section banner that used to sit here
+// went with GET /api/stats to lib/media/routes.js in slice S10a - the R2 gate
+// caught the orphaned banner the parallel merge left behind.)
+configRoutes.registerStorageSummaryRoute(app, {
+  getCachedDatabase,
+  mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
+  stats,
+  withEffectiveViewCounts,
 });
 
-// v1.159 (Dean): the flat, VISIBILITY-SCOPED A/V item list backing the Stats
-// "Videos & audio" sortable table - a restricted member never sees a hidden
-// item's title/size (scoped exactly like /api/stats: withEffectiveViewCounts +
-// mediaVisibleTo). A lean payload (id/title/type/duration/size only, no
-// filePath) sorted client-side; GATED in the read census.
-app.get('/api/library-items', (req, res) => {
-  const db = getCachedDatabase();
-  const withVc = withEffectiveViewCounts(db);
-  const items = [];
-  for (const id of Object.keys(withVc)) {
-    const it = withVc[id];
-    if (!mediaVisibleTo(req, it)) continue;
-    items.push({
-      id,
-      title: (it.title || it.name || '').toString(),
-      type: it.type === 'audio' ? 'audio' : 'video',
-      durationSeconds: Number(it.duration) || 0,
-      sizeBytes: Number(it.size) || 0,
-    });
-  }
-  res.json({ items, total: items.length });
+// Wave 7b (slice S10a): GET /api/library-items moved VERBATIM to
+// lib/media/routes.js.
+mediaRoutes.registerLibraryItemsRoute(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  withEffectiveViewCounts, // overlays the per-user view-count store onto db.metadata
 });
 
 // ---- v1.166 (Dean): Sneaky critter mode - THE FOLDER IS THE MANIFEST -------
@@ -14560,20 +11926,22 @@ function buildCritterListing(fileNames) {
 // The default is the compose-mount lockstep path (see docker-compose.yml).
 const crittersDir = () => process.env.CRITTERS_DIR || path.join(__dirname, 'public', 'critters');
 
-app.get('/api/critters', (req, res) => {
-  const dir = crittersDir();
-  let entries = [];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
-  } catch (_) {
-    // Missing/unreadable folder is a NORMAL state (fresh install) - empty list,
-    // the client falls back to its built-in figurines.
-    return res.json({ critters: [], voicePool: [] });
-  }
-  res.json({ critters: buildCritterListing(entries), voicePool: buildCritterVoicePool(entries) });
+// Wave 7b (slice S10a): GET /api/critters moved VERBATIM to
+// lib/media/routes.js. It registers on its OWN here, ahead of the management
+// routes below, because the deps object at a call site is evaluated EAGERLY:
+// the upload vocabulary (CRITTER_UPLOAD_*) is declared further down and would
+// still be in its temporal dead zone at this line.
+mediaRoutes.registerCritterListingRoute(app, {
+  buildCritterListing, // the pool projection the client engine consumes
+  buildCritterVoicePool, // the per-critter sound map the listing carries
+  crittersDir, // resolves against server.js's __dirname, so it cannot move here
+  fs,
 });
 
 // ---- v1.171 (Dean): critter pool MANAGEMENT (web UI) -----------------------
+// Wave 7b (slice S10a): the five /api/critters ROUTES now live in
+// lib/media/routes.js (with listCritterFiles and the two size caps); what is
+// left here is the shape/type vocabulary they are handed as deps.
 // The folder stays the manifest (v1.166): these routes are WRITERS to
 // public/critters/, never a registry - folder drop-in keeps working and the
 // Docker compose bind makes web uploads land on the host. All management is
@@ -14605,8 +11973,6 @@ const CRITTER_UPLOAD_EXT_FOR_MIME = {
   'audio/mpeg': ['.mp3'], 'audio/wav': ['.wav'], 'audio/x-wav': ['.wav'],
   'audio/mp4': ['.m4a'], 'audio/x-m4a': ['.m4a'], 'audio/ogg': ['.ogg'],
 };
-const CRITTER_UPLOAD_MAX_BYTES = 25 * 1024 * 1024; // the express.raw ceiling (images)
-const CRITTER_SOUND_MAX_BYTES = 10 * 1024 * 1024; // sounds are tap chirps - tighter
 
 // PURE filename gate for uploads. Returns the accepted name or null. The
 // accepted name is later joined under public/critters/ ONLY after this, plus
@@ -14691,277 +12057,75 @@ function buildStoreZip(entries) {
   return Buffer.concat(chunks);
 }
 
-// Directory entries the manager owns: REGULAR files with a critter image or
-// sound extension. README.md, subfolders, symlinks, and stray files are never
-// touched by delete-all/archive, and delete-item can never match them.
-function listCritterFiles() {
-  return fs.readdirSync(crittersDir(), { withFileTypes: true })
-    .filter((e) => e.isFile())
-    .map((e) => e.name)
-    .filter((n) => {
-      const ext = path.extname(n).toLowerCase();
-      return CRITTER_IMAGE_EXTS.has(ext) || CRITTER_SOUND_EXTS.has(ext);
-    });
-}
-
-app.post(
-  '/api/critters/upload',
-  // NOTE (QA S6, disclosed): express.raw buffers up to 25 MB BEFORE the admin
-  // check answers - an authenticated member can cost that buffering per
-  // request. Faithful mirror of the logo route's posture (1 MB there);
-  // authenticated-only, accepted.
-  express.raw({
-    type: Object.keys(CRITTER_UPLOAD_EXT_FOR_MIME),
-    limit: CRITTER_UPLOAD_MAX_BYTES,
-  }),
-  (req, res) => {
-    if (!requireAdmin(req, res)) return;
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    const validator = CRITTER_UPLOAD_IMAGE_TYPES[mime] || CRITTER_UPLOAD_SOUND_TYPES[mime];
-    if (!validator) {
-      return res.status(400).json({ error: 'Unsupported type. Images: PNG, JPEG, WebP, GIF. Sounds: MP3, WAV, M4A, OGG.' });
-    }
-    const name = sanitizeCritterUploadName(req.query.name, mime);
-    if (!name) {
-      return res.status(400).json({ error: 'Bad file name (plain names only, extension matching the file type).' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
-      return res.status(400).json({ error: 'Empty upload' });
-    }
-    if (CRITTER_UPLOAD_SOUND_TYPES[mime] && bytes.length > CRITTER_SOUND_MAX_BYTES) {
-      return res.status(413).json({ error: 'Sound too large (max 10 MB).' });
-    }
-    if (!validator(bytes)) {
-      return res.status(400).json({ error: 'File content does not match its declared type' });
-    }
-    const dir = crittersDir();
-    const target = path.join(dir, name);
-    if (path.dirname(target) !== dir) {
-      // Unreachable after sanitize; belt per the logo route's posture.
-      return res.status(400).json({ error: 'Bad file name' });
-    }
-    // tmp+rename (atomic; a mid-upload scatter never sees a half-written file -
-    // the .tmp suffix is outside both extension sets, invisible to the listing).
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      fs.mkdirSync(dir, { recursive: true }); // fresh install: the folder may not exist yet
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target);
-    } catch (err) {
-      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
-      console.error('Error saving critter upload:', err);
-      return res.status(500).json({ error: `Could not save file: ${err.message}` });
-    }
-    return res.json({ ok: true, name });
-  },
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'File too large (images max 25 MB, sounds max 10 MB).' });
-    }
-    return next(err);
-  },
-);
-
-app.delete('/api/critters/item', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const id = typeof req.query.id === 'string' ? req.query.id : '';
-  if (!id) return res.status(400).json({ error: 'Missing id' });
-  let names = [];
-  try { names = listCritterFiles(); } catch (_) {
-    return res.status(404).json({ error: 'No critters folder' });
-  }
-  // Resolve against ACTUAL directory entries with the listing's own basename
-  // rule (raw extname strip) - the caller's string is never joined into a
-  // path; only matched real entries are. The image and its paired sound go
-  // together (they are one critter).
-  const matches = names.filter((n) => path.basename(n, path.extname(n)) === id);
-  if (!matches.length) return res.status(404).json({ error: 'No such critter' });
-  const deleted = [];
-  for (const n of matches) {
-    try {
-      fs.unlinkSync(path.join(crittersDir(), n));
-      deleted.push(n);
-    } catch (err) {
-      console.error('Error deleting critter file:', err);
-      return res.status(500).json({ error: `Could not delete ${n}: ${err.message}`, deleted });
-    }
-  }
-  return res.json({ ok: true, deleted });
-});
-
-app.delete('/api/critters/all', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  let names = [];
-  try { names = listCritterFiles(); } catch (_) {
-    return res.json({ ok: true, deleted: 0 }); // no folder = nothing to delete
-  }
-  let deleted = 0;
-  for (const n of names) {
-    try {
-      fs.unlinkSync(path.join(crittersDir(), n));
-      deleted += 1;
-    } catch (err) {
-      console.error('Error deleting critter file:', err);
-      return res.status(500).json({ error: `Could not delete ${n}: ${err.message}`, deleted });
-    }
-  }
-  return res.json({ ok: true, deleted });
-});
-
-app.get('/api/critters/archive', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  let names = [];
-  try { names = listCritterFiles(); } catch (_) { names = []; }
-  const entries = [];
-  for (const n of names.sort()) {
-    try { entries.push({ name: n, data: fs.readFileSync(path.join(crittersDir(), n)) }); }
-    catch (err) { console.error('Error reading critter file for archive:', err); }
-  }
-  // The pool is a handful of figurine images - whole-buffer assembly is fine
-  // (a 16-critter obscene pool of 5 MB PNGs is ~80 MB worst case, one-shot,
-  // admin-only; not a streaming surface).
-  const zip = buildStoreZip(entries);
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', 'attachment; filename="critters.zip"');
-  return res.send(zip);
-});
-
-app.get('/api/stats', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
-  const books = booksDb.read();
-  // v1.41.0 (Dean): the Stats page is now the whole-library + About hub --
-  // fold in book inventory and the version/links "system" block. yt-dlp version
-  // moved here from the Subscriptions page; rows the client hides when a thing
-  // isn't installed (ytdlp not enabled -> null; TTS not available).
-  const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
-  const music = musicDb.read();
-  // v1.80 RBAC (security-gate finding): stats leaked restricted-item TITLES
-  // (mostWatched) and COUNTS to a restricted member. Filter the CONTENT
-  // namespaces to what req.user may see before computing; admin's empty index
-  // filters nothing (byte-unchanged). Other namespaces (progress/liked/folders/
-  // users) are user-state/config counts, not content titles.
-  // withEffectiveViewCounts returns the metadata MAP itself (id -> item), and
-  // computeLibraryStats/computeInventory take that map directly.
-  const withVc = withEffectiveViewCounts(db);
-  const visibleMetadata = {};
-  for (const id of Object.keys(withVc)) {
-    if (mediaVisibleTo(req, withVc[id])) visibleMetadata[id] = withVc[id];
-  }
-  const visibleTracks = {};
-  for (const id of Object.keys(music.tracks || {})) {
-    if (trackVisibleTo(req, music.tracks[id])) visibleTracks[id] = music.tracks[id];
-  }
-  const visibleBookItems = {};
-  for (const id of Object.keys(books.items || {})) {
-    if (bookVisibleTo(req, books.items[id])) visibleBookItems[id] = books.items[id];
-  }
-  // v1.81 (#127a): the inventory's watch-aggregate + folder sub-counts shipped
-  // RAW - v1.80 scoped the content TITLES/counts but left progress/viewCounts/
-  // liked/folders/tombstones/users global, so a restricted member could infer
-  // hidden content by VOLUME and see other users' watch totals. For a non-admin,
-  // every count is scoped to their VISIBLE library and their OWN watch data;
-  // the account roster (system-only) goes null and the stats client omits its
-  // row. Admin path stays BYTE-IDENTICAL (empty index visibleMetadata == all).
-  const isAdmin = !!(req.user && req.user.role === 'admin');
-  const has = (map, id) => Object.prototype.hasOwnProperty.call(map, id);
-  const pickVisible = (obj, visMap) => {
-    const out = {};
-    for (const id of Object.keys(obj || {})) if (has(visMap, id)) out[id] = obj[id];
-    return out;
-  };
-  const distinctRoots = (visMap) => {
-    const roots = new Set();
-    for (const id of Object.keys(visMap)) { const rf = visMap[id].rootFolder; if (rf) roots.add(rf); }
-    return Array.from(roots);
-  };
-  let inventoryInput;
-  if (isAdmin) {
-    inventoryInput = {
-      metadata: visibleMetadata, progress: progressStore.getAll(), viewCounts: viewCountStore.getAll(), // Waves 1-2: the tables
-      liked: likedStore.list(), deleteTombstones: tombstoneStore.getAll(), folders: folderStore.list(), // Wave 4
-      books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
-      music: { tracks: visibleTracks, folders: music.folders },
-      users: userStore.countUsers(),
-    };
-  } else {
-    const uid = req.user.id;
-    // Tombstones only for items the member could have seen (v1.65 trash shape
-    // carries `.item`; a legacy tombstone is flat).
-    const scopedTombstones = {};
-    const allTombstones = tombstoneStore.getAll(); // Wave 2: the table
-    for (const id of Object.keys(allTombstones)) {
-      const t = allTombstones[id];
-      const probe = t && t.item ? t.item : t;
-      if (probe && mediaVisibleTo(req, probe)) scopedTombstones[id] = t;
-    }
-    inventoryInput = {
-      metadata: visibleMetadata,
-      progress: pickVisible(userStore.getProgress(uid), visibleMetadata), // THEIR own positions, visible only
-      viewCounts: pickVisible(viewCountStore.getAll(), visibleMetadata), // global counters (the table), visible items only
-      liked: userStore.getLiked(uid).filter((id) => has(visibleMetadata, id)),
-      deleteTombstones: scopedTombstones,
-      folders: distinctRoots(visibleMetadata),                           // never the raw configured-root list
-      books: { items: visibleBookItems, progress: pickVisible(userStore.getBookProgress(uid), visibleBookItems), audio: pickVisible(books.audio, visibleBookItems) },
-      music: { tracks: visibleTracks, folders: distinctRoots(visibleTracks) },
-      users: null, // system-only: omitted from a non-admin's inventory
-    };
-  }
-  const inventory = stats.computeInventory(inventoryInput);
-  if (!isAdmin) inventory.users = null; // computeInventory coerces null->0; restore the "omit" signal for the client
-  res.json({
-    ...stats.computeLibraryStats(visibleMetadata),
-    books: stats.computeBookStats(visibleBookItems, books.audio),
-    // v1.44.3 (Dean): the "what's in my database" inventory — a plain count of
-    // each persisted namespace (mirrors what the backup bundle carries).
-    inventory,
-    system: {
-      version: APP_VERSION,
-      repoUrl: REPO_URL,
-      // v1.146: `engine` names WHICH engine the version belongs to - the
-      // version cache probes the ACTIVE binary (the ruling: About/Stats
-      // reports the active engine, never just the image ENV).
-      ytdlp: { enabled: ytdlpEnabled, version: ytdlpEnabled ? ytdlp.getCachedYtdlpVersion() : null, engine: ytdlpEnabled ? ytdlp.getEngineSummary() : null },
-      tts: { available: ttsAvailable(), engine: ttsConfig.engine, version: ttsEngineVersion },
-    },
-  });
-});
-
-// v1.41.11 (Dean: "see files that are truly duplicates so I can clean them
-// up -- wasted storage"): the duplicates report. Same posture as /api/stats
-// directly above -- a pure O(n) transform over db.metadata per request (see
-// computeDuplicateReport's header in lib/stats.js for the two sections and
-// the injected-extractor contract). READ-ONLY by design: no delete actions
-// anywhere on this surface (Dean's no-data-loss norm); he cleans up by hand.
-app.get('/api/duplicates', (req, res) => {
-  const db = getCachedDatabase(); // pure read on a request path (v1.30 A3)
-  // v1.128 Wave B (L6): this report is rendered on the member-reachable stats
-  // page, so it can't be admin-gated - but it emitted abs filePaths + counts
-  // over RAW db.metadata. Scope to the requester's visible items (the /api/stats
-  // posture); admin + unrestricted member see the byte-identical full report.
-  res.json(stats.computeDuplicateReport(visibleMetadataFor(req, db.metadata), { extractVideoId: extractYtdlpVideoId }));
-});
-
-// The same report as a downloadable CSV (Dean: "exportable output"). Static
-// ASCII filename -- contentDispositionAttachment is for media titles; nothing
-// here needs RFC 5987. One row per file, section-tagged; see
-// duplicateReportToCsv for the quoting + formula-defusal contract.
-// Synchronous O(n) on the request thread, same posture as /api/stats above --
-// the v1.41.11 gate probed a pathological 100k-item library at ~390ms report
-// + ~230ms CSV, acceptable at home-server scale; revisit only if libraries
-// grow an order of magnitude past that.
-app.get('/api/duplicates.csv', (req, res) => {
-  const db = getCachedDatabase();
-  // v1.128 Wave B (L7): same visibility scope as /api/duplicates above - the
-  // CSV file_path column emitted abs paths of hidden items.
-  const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(visibleMetadataFor(req, db.metadata), { extractVideoId: extractYtdlpVideoId }));
-  res.set('Content-Type', 'text/csv; charset=utf-8');
-  res.set('Content-Disposition', 'attachment; filename="filetube-duplicates.csv"');
-  res.send(csv);
+// Wave 7b (slice S10a): the critters MANAGEMENT routes, the aggregate reads
+// and the per-item mutations (/api/stats, /api/duplicates and
+// /api/duplicates.csv, the view/dimensions/chapters mutations, the manual
+// channel-attribution cluster, /api/subtitles and /api/transcript) moved
+// VERBATIM to lib/media/routes.js, together with the attribution helpers and
+// the critters lister that only they referenced. One call for the lot: they
+// were already contiguous here, and this is the first line at which every
+// constant handed in below has been initialized.
+mediaRoutes.registerLibraryRoutes(app, {
+  APP_VERSION,
+  CRITTER_IMAGE_EXTS,
+  CRITTER_SOUND_EXTS,
+  CRITTER_UPLOAD_EXT_FOR_MIME,
+  CRITTER_UPLOAD_IMAGE_TYPES,
+  CRITTER_UPLOAD_SOUND_TYPES,
+  MAX_MEDIA_DIMENSION,
+  REPO_URL,
+  bookVisibleTo,
+  booksDb,
+  buildStoreZip,
+  configuredLibraryRoots, // the bulk selector's root confinement
+  crittersDir, // resolves against server.js's __dirname, so it cannot move here
+  express, // the critters upload's route-scoped express.raw parser
+  extractYtdlpVideoId,
+  folderStore,
+  fs,
+  getCachedDatabase,
+  getMediaId,
+  isPrimitiveNumericInput,
+  isValidMediaDimension,
+  likedStore,
+  loadDatabase,
+  matchRootFolder,
+  mediaVisiblePredicate, // the restriction-aware predicate the bulk selector filters on
+  mediaVisibleTo,
+  moveItemToFolder, // server.js's collision-safe file mover (slice R3 moves it)
+  musicDb,
+  parseChapterLines,
+  path,
+  progressStore,
+  refuseIfReadOnlyMedia,
+  requireAdmin,
+  requireModifyLibrary,
+  resolveItemChapters,
+  restrictedVideoMutation,
+  sanitizeCritterUploadName,
+  settingsStore,
+  stats, // lib/stats - the pure aggregation helpers behind GET /api/stats
+  subtitles, // lib/subtitles - srtToVtt + findSubtitleSidecar
+  tombstoneStore,
+  trackVisibleTo,
+  transcript, // lib/transcript - the sidecar as plain text
+  ttsAvailable,
+  ttsConfig,
+  ttsEngineVersion: () => ttsEngineVersion, // LIVE reader: a server.js `let` an async probe fills in after boot
+  updateDatabase,
+  userStore,
+  validateChannelUrl, // lib/ytdlp/url - the one channel-URL gate the capture path uses
+  viewCountStore,
+  visibleMetadataFor, // the duplicates report's restriction-scoped metadata view
+  withEffectiveViewCounts, // overlays the per-user view-count store onto db.metadata
+  ytdlp,
+  ytdlpDb,
 });
 
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
-// Wave 3). A dedicated, separate route -- deliberately NOT folded into
+// Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now
+// lives in lib/media/routes.js; the two count resolvers below stayed.
+// A dedicated, separate route -- deliberately NOT folded into
 // `POST /api/progress` (fires repeatedly throughout playback via periodic
 // timestamp saves, which would over-count a single watch many times over)
 // and NOT hung off `GET /video/:id` (the Range-serve route, which fires many
@@ -15009,645 +12173,6 @@ function withEffectiveViewCounts(db) {
   }
   return out;
 }
-
-app.post('/api/videos/:id/view', async (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  // Wave 1: the counter is a relational row, so a view no longer rides the
-  // doc-model write chain (no load-mutate-save of the whole library for one
-  // integer). Existence is checked on the read cache (hasOwnProperty - the
-  // #220 guard shape, so `__proto__` is "not found", never a prototype
-  // walk); the increment is ONE atomic upsert that honors the legacy embedded
-  // floor the first time an id is counted. No in-process race with a delete:
-  // saveDatabase swaps the read cache synchronously inside the chain tick and
-  // the carrier remove() runs in its await continuation before any new request
-  // macrotask, so a view that lands after the delete 404s (measured: 30 views
-  // racing a DELETE, all 404, no orphan). The only orphan window is a CRASH
-  // between the doc commit and remove() - the per-user carriers' documented
-  // class - and it resumes a same-path re-add's count, disclosed with #224.
-  const db = getCachedDatabase();
-  const id = req.params.id;
-  const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;
-  if (!item) return res.status(404).json({ error: 'Media file not found' });
-  let viewCount = 0;
-  try {
-    viewCount = viewCountStore.increment(id, { floor: item.viewCount });
-  } catch (err) {
-    console.error(`Error recording view for ${id}:`, err);
-    return res.status(500).json({ error: `Could not record view: ${err.message}` });
-  }
-  // v1.68 (Dean rulings 1-2): a play retires the player's own notification -
-  // the view ping is THE play-start signal (once per watch load, every web
-  // surface), so the bell row for this media leaves THIS user's panel and
-  // badge here, server-side. Deliberately NOT behind the bell's feature
-  // gate: the gate governs the panel surface, and a play while the bell is
-  // off must still dismiss so re-enabling it later cannot resurrect rows
-  // for already-watched videos. Best-effort: hygiene must never fail the
-  // ping (its suite locks the response contract).
-  try {
-    userStore.dismissNotificationByMedia(req.user.id, req.params.id, Date.now());
-  } catch (err) {
-    console.error(`Notification dismiss-on-play failed for ${req.params.id}:`, err && err.message);
-  }
-  res.json({ success: true, viewCount });
-});
-
-// API: lazy per-item dimensions backfill (Feature A, v1.26.1, Shorts
-// player-size jump). The scan only ever captures `width`/`height` on a
-// video's initial (new/updated-file) probe -- see the comment above
-// `newMetadata[id].width = meta.width` -- so any item indexed before this
-// release, or whose original probe failed to yield usable dims, has none.
-// Rather than a library-wide re-probe sweep on upgrade (the exact class of
-// regression the thumbnail-backfill lesson warns against), the PLAYER
-// itself calls this once it has genuinely observed the real dimensions
-// (`<video>`'s own `videoWidth`/`videoHeight` at `loadedmetadata`,
-// player.js) -- so the FIRST play of a legacy item settles late (same as
-// today) but the SECOND play is jump-free. Fire-and-forget from the client:
-// this endpoint's own success/failure never affects playback.
-//
-// Validates: a positive-integer, sane-bounded (`isValidMediaDimension`,
-// shared with the ffprobe-side parse above) width/height; the item exists;
-// the item is a VIDEO (never audio -- mirrors the scan's own `!isAudio`
-// guard). No-clobber: an item that already carries BOTH `width` and
-// `height` is left completely untouched -- this endpoint only ever fills a
-// gap, exactly like the release-date/hasSubtitles backfills elsewhere in
-// this file. A malformed/late-arriving/duplicate POST (e.g. a stray second
-// `loadedmetadata` firing for the same load) is therefore always safe to
-// retry: it either fills the gap once or silently no-ops.
-app.post('/api/videos/:id/dimensions', async (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  const body = req.body || {};
-  // F3: reject a non-primitive-numeric body BEFORE Number() ever runs -- see
-  // isPrimitiveNumericInput's own comment for exactly which shapes this
-  // guards against ([1920], true, '0x10', etc.).
-  if (!isPrimitiveNumericInput(body.width) || !isPrimitiveNumericInput(body.height)) {
-    return res.status(400).json({ error: `width and height must be positive integers <= ${MAX_MEDIA_DIMENSION}` });
-  }
-  const width = Number(body.width);
-  const height = Number(body.height);
-  if (!isValidMediaDimension(width) || !isValidMediaDimension(height)) {
-    return res.status(400).json({ error: `width and height must be positive integers <= ${MAX_MEDIA_DIMENSION}` });
-  }
-  let notFound = false;
-  let wrongType = false;
-  let applied = false;
-  try {
-    await updateDatabase(db => {
-      const item = db.metadata[req.params.id];
-      if (!item) {
-        notFound = true;
-        return false;
-      }
-      if (item.type !== 'video') {
-        wrongType = true;
-        return false;
-      }
-      if (item.width && item.height) {
-        return false; // no-clobber: dims already known -- nothing to do
-      }
-      item.width = width;
-      item.height = height;
-      applied = true;
-      return true;
-    });
-  } catch (err) {
-    // Express 4 does not catch a rejected async-handler promise, so a
-    // rejection left unguarded here would hang the request instead of
-    // returning 500 (mirrors POST /api/videos/:id/view's own pattern above).
-    console.error(`Error recording dimensions for ${req.params.id}:`, err);
-    return res.status(500).json({ error: `Could not record dimensions: ${err.message}` });
-  }
-  if (notFound) return res.status(404).json({ error: 'Media file not found' });
-  if (wrongType) return res.status(400).json({ error: 'Dimensions only apply to video items' });
-  res.json({ success: true, applied });
-});
-
-// v1.34 T3 (Dean): the per-video CHAPTERS EDITOR endpoint. The client posts
-// the editor textarea's RAW TEXT (one "0:00 Title" line per chapter -- the
-// same grammar description parsing uses; parseChapterLines is the single
-// grammar owner) and the parsed result is stored as `chaptersManual` --
-// MANUAL ALWAYS WINS at serve time (resolveItemChapters). Empty/whitespace
-// text CLEARS the manual list (falling back to embedded/description).
-// Mirrors the dimensions route's exact updateDatabase + async-rejection
-// pattern above. The scan never writes chaptersManual, and the Phase-2
-// final-merge guard mirrors it from the fresh db unconditionally, so an
-// edit landing mid-scan can never be reverted.
-app.post('/api/videos/:id/chapters', async (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  const body = req.body || {};
-  if (typeof body.text !== 'string') {
-    return res.status(400).json({ error: 'text must be a string (one "0:00 Title" line per chapter; empty to clear)' });
-  }
-  if (body.text.length > 20000) {
-    return res.status(400).json({ error: 'Chapter text too large (max 20000 characters)' });
-  }
-  const clearing = body.text.trim() === '';
-  const parsed = clearing ? [] : parseChapterLines(body.text);
-  if (!clearing && parsed.length === 0) {
-    return res.status(400).json({ error: 'No valid chapter lines found — use one "0:00 Title" line per chapter' });
-  }
-  let notFound = false;
-  let resolved = null;
-  try {
-    await updateDatabase(db => {
-      const item = db.metadata[req.params.id];
-      if (!item) {
-        notFound = true;
-        return false;
-      }
-      if (clearing) {
-        if ('chaptersManual' in item) delete item.chaptersManual;
-      } else {
-        item.chaptersManual = parsed;
-      }
-      resolved = resolveItemChapters(item);
-      return true;
-    });
-  } catch (err) {
-    console.error(`Error saving chapters for ${req.params.id}:`, err);
-    return res.status(500).json({ error: `Could not save chapters: ${err.message}` });
-  }
-  if (notFound) return res.status(404).json({ error: 'Media file not found' });
-  res.json({ success: true, ...resolved });
-});
-
-// ---- v1.53: manual channel attribution -------------------------------------
-//
-// Dean's escape hatch for the class the reheat machinery structurally cannot
-// solve: a renamed/dead channel means no network re-pull will ever attribute
-// a MeTube-era import. The identity is written as a UNIT with the STICKY
-// `channelAttributedManually` flag (manual wins forever, decision 3 -- every
-// automatic identity writer now checks it), and the endpoint returns a
-// relocation PROPOSAL only; the physical move is the client's explicit
-// confirm through the EXISTING move endpoint (never a silent file move).
-
-// The picker's data: subscriptions + distinct identity groups already in the
-// library (covers dead channels whose earlier downloads were attributed at
-// capture time). Deduped by channelId when both sides know one, else by
-// channelUrl. Read-only over the cache.
-// v1.202: the attribution routes (three of the four; cancel is exempt, below) are OFF unless
-// settings.attributeControlEnabled (the Experimental opt-in). On the two
-// MUTATING routes the check sits AFTER the RBAC guard so a member still gets
-// the 403 the nets expect and an admin with the flag off gets a plain 404 -
-// "off" is real, not a hidden button. The target-list GET never had an admin
-// guard (a restriction-filtered read): everyone gets 404 while off. The bulk CANCEL route is deliberately NOT gated: a
-// job started while the flag was on must stay abortable after it is
-// turned off.
-function attributionFeatureOff(res) {
-  if (settingsStore.getKey('attributeControlEnabled') === true) return false; // Wave 4
-  res.status(404).json({ error: 'Not found' });
-  return true;
-}
-
-app.get('/api/attribution-targets', (req, res) => {
-  if (attributionFeatureOff(res)) return; // v1.202 (a read-only target list, but part of the same opt-in surface)
-  const db = getCachedDatabase();
-  const byUrl = new Map();
-  const seenChannelIds = new Set();
-  const addTarget = (t) => {
-    if (byUrl.has(t.channelUrl)) {
-      const existing = byUrl.get(t.channelUrl);
-      if (!existing.channelAvatarUrl && t.channelAvatarUrl) existing.channelAvatarUrl = t.channelAvatarUrl;
-      return;
-    }
-    if (t.channelId && seenChannelIds.has(t.channelId)) return; // same channel, other URL form
-    byUrl.set(t.channelUrl, t);
-    if (t.channelId) seenChannelIds.add(t.channelId);
-  };
-  const subs = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
-  for (const sub of subs) {
-    if (!sub || typeof sub.channelUrl !== 'string' || sub.channelUrl === '') continue;
-    addTarget({
-      channelUrl: sub.channelUrl,
-      channelName: (typeof sub.name === 'string' && sub.name !== '') ? sub.name : sub.channelUrl,
-      ...(typeof sub.channelId === 'string' && sub.channelId !== '' ? { channelId: sub.channelId } : {}),
-      ...(typeof sub.channelHandleUrl === 'string' && sub.channelHandleUrl !== '' ? { channelHandleUrl: sub.channelHandleUrl } : {}),
-      ...(typeof sub.channelAvatarUrl === 'string' && sub.channelAvatarUrl !== '' ? { channelAvatarUrl: sub.channelAvatarUrl } : {}),
-      source: 'subscription',
-    });
-  }
-  for (const item of Object.values(db.metadata || {})) {
-    if (!item || typeof item.channelUrl !== 'string' || item.channelUrl === '') continue;
-    // v1.128 Wave B (L8): the library-sourced arm emitted channelName /
-    // folderName for EVERY item, so a restricted member (the attribute-channel
-    // dialog is a library-edit feature) learned the channel/folder names of
-    // content hidden from them. Skip items they cannot see; the
-    // subscription-sourced arm above is the shared channel REGISTRY (by design,
-    // the tech-debt #150 class) and is left as-is.
-    if (!mediaVisibleTo(req, item)) continue;
-    addTarget({
-      channelUrl: item.channelUrl,
-      channelName: (typeof item.channelName === 'string' && item.channelName !== '') ? item.channelName : (item.folderName || item.channelUrl),
-      ...(typeof item.channelId === 'string' && item.channelId !== '' ? { channelId: item.channelId } : {}),
-      ...(typeof item.channelHandleUrl === 'string' && item.channelHandleUrl !== '' ? { channelHandleUrl: item.channelHandleUrl } : {}),
-      ...(typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '' ? { channelAvatarUrl: item.channelAvatarUrl } : {}),
-      source: 'library',
-    });
-  }
-  const targets = [...byUrl.values()].sort((a, b) => a.channelName.toLowerCase().localeCompare(b.channelName.toLowerCase()));
-  res.json({ targets });
-});
-
-// Validate an attribution target's identity at the write boundary through
-// the SAME single gates the capture path uses. Returns {ok, identity|error}.
-function sanitizeAttributionTarget(t) {
-  if (!t || typeof t !== 'object' || Array.isArray(t)) return { ok: false, error: 'target must be an object (or pass clear: true)' };
-  const check = validateChannelUrl(t.channelUrl);
-  if (!check.ok) return { ok: false, error: 'target.channelUrl is not a valid channel URL' };
-  // eslint-disable-next-line no-control-regex
-  const name = typeof t.channelName === 'string' ? t.channelName.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 200) : '';
-  if (name === '') return { ok: false, error: 'target.channelName is required' };
-  const identity = { channelUrl: check.url, channelName: name };
-  if (typeof t.channelId === 'string' && ytdlp.CHANNEL_ID_PATTERN.test(t.channelId)) identity.channelId = t.channelId;
-  if (typeof t.channelHandleUrl === 'string') {
-    const handle = validateChannelUrl(t.channelHandleUrl);
-    if (handle.ok && handle.url !== identity.channelUrl) identity.channelHandleUrl = handle.url;
-  }
-  const avatar = ytdlp.sanitizeChannelAvatarUrl(t.channelAvatarUrl);
-  if (avatar) identity.channelAvatarUrl = avatar;
-  return { ok: true, identity };
-}
-
-// Applies one manual attribution (or clear) to an item INSIDE a running
-// mutator. Shared by the single and bulk endpoints -- the v1.41.4 one-helper
-// discipline. Returns 'attributed' | 'cleared' | 'not-manual' | 'missing'.
-function applyManualAttribution(item, identity, clearing) {
-  if (!item) return 'missing';
-  if (clearing) {
-    // Only a MANUAL attribution may be cleared -- clearing capture-derived
-    // identity would destroy real data behind one keystroke.
-    if (item.channelAttributedManually !== true) return 'not-manual';
-    delete item.channelAttributedManually;
-    delete item.channelUrl;
-    delete item.channelHandleUrl;
-    delete item.channelId;
-    delete item.channelName;
-    delete item.channelAvatarUrl;
-    return 'cleared';
-  }
-  item.channelUrl = identity.channelUrl;
-  item.channelName = identity.channelName;
-  if (identity.channelId) item.channelId = identity.channelId; else delete item.channelId;
-  if (identity.channelHandleUrl) item.channelHandleUrl = identity.channelHandleUrl; else delete item.channelHandleUrl;
-  if (identity.channelAvatarUrl) item.channelAvatarUrl = identity.channelAvatarUrl; else delete item.channelAvatarUrl;
-  item.channelAttributedManually = true;
-  return 'attributed';
-}
-
-// The relocation PROPOSAL for a manual attribution: destination dir only,
-// no file touched. Deliberately NOT planImportRelocation (which hard-
-// requires a youtubeId these items lack and skips files already under the
-// download root -- Dean's exact case); the move itself is the existing
-// POST /api/videos/:id/move, which is collision-409-safe and re-keys all
-// per-user state.
-function proposeAttributionMove(db, item, identity) {
-  const config = ytdlp.parseYtdlpConfig();
-  if (!ytdlp.isEnabled(config)) return { available: false, reason: 'module-disabled' };
-  try {
-    // Wave 5: the subscriptions come from their table as a fresh snapshot
-    // holder - resolveChannelDirForChannel -> ensureYtdlp normalises THAT, never
-    // the shared getCachedDatabase() object (the cache-coherency rule holds).
-    const destinationDir = ytdlp.resolveChannelDirForChannel(ytdlpDb.holder(['subscriptions']), config, identity);
-    if (!destinationDir) return { available: false, reason: 'channel-dir-unresolvable' };
-    if (path.dirname(item.filePath) === destinationDir) return { available: false, reason: 'already-there' };
-    return { available: true, destinationDir };
-  } catch (err) {
-    console.error('Attribution: channel dir unresolvable:', err && err.message);
-    return { available: false, reason: 'channel-dir-unresolvable' };
-  }
-}
-
-app.post('/api/videos/:id/attribute-channel', async (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  if (attributionFeatureOff(res)) return; // v1.202 opt-in (after the RBAC guard)
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC
-  const body = req.body || {};
-  const clearing = body.clear === true;
-  let identity = null;
-  if (!clearing) {
-    const check = sanitizeAttributionTarget(body.target);
-    if (!check.ok) return res.status(400).json({ error: check.error });
-    identity = check.identity;
-  }
-  let result = null;
-  try {
-    await updateDatabase(db => {
-      result = applyManualAttribution(db.metadata[req.params.id], identity, clearing);
-      return result === 'attributed' || result === 'cleared';
-    });
-  } catch (err) {
-    console.error(`Error attributing ${req.params.id}:`, err);
-    return res.status(500).json({ error: `Could not attribute: ${err.message}` });
-  }
-  if (result === 'missing') return res.status(404).json({ error: 'Media file not found' });
-  if (result === 'not-manual') return res.status(400).json({ error: 'Only a manual attribution can be cleared.' });
-  let relocation = { available: false, reason: 'cleared' };
-  if (result === 'attributed') {
-    const db = getCachedDatabase();
-    const item = db.metadata[req.params.id];
-    relocation = item ? proposeAttributionMove(db, item, identity) : { available: false, reason: 'item-gone' };
-  }
-  res.json({ success: true, result, relocation });
-});
-
-// Bulk manual attribution. GATE ROUND 1 REBUILD (adversarial C2/C3, the
-// data-destruction findings): the selector `root` is now CONFINED to the
-// configured library roots (equal-or-under -- the computeMoveTarget
-// posture; an unconfined ancestor path swept and FLATTENED the reviewer's
-// entire fixture library in one request), the operation runs behind a
-// SINGLE-FLIGHT latch with a cancel endpoint (the repull-metadata shape the
-// exec plan specified), `preview: true` answers counts WITHOUT writing (the
-// v1.41.7 see-before-you-move posture -- the client confirms with real
-// numbers), and a re-run RESUMES: items already manually attributed to THIS
-// target but not yet living in its folder join the move set, so a crash
-// mid-loop is recoverable by pressing the button again (W2).
-let attributeBulkInProgress = false;
-let attributeBulkCancelled = false;
-const ATTRIBUTE_BULK_ONESHOT_KEY = 'attribute-bulk';
-
-// `root` must sit at-or-under a CONFIGURED library root. Same resolve+sep
-// discipline as computeMoveTarget; trailing separators normalized first
-// (gate S3: a trailing slash silently matched nothing).
-function confineBulkRoot(db, rawRoot) {
-  if (typeof rawRoot !== 'string' || rawRoot === '') return null;
-  let root = path.resolve(rawRoot);
-  const allowed = configuredLibraryRoots(db).map((r) => path.resolve(r));
-  const ok = allowed.some((r) => root === r || root.startsWith(r + path.sep));
-  return ok ? root : null;
-}
-
-app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
-  // v1.81 write-RBAC (gate CRITICAL): the BULK sibling of the single-item
-  // attribute-channel is a content mutation too - it rewrites channel identity
-  // across a whole root and, with relocate:true, MOVES files on disk. It was
-  // missed by the initial enumeration (the every-writer scar: gating one route
-  // is not enough). First guard, incl. the preview dry-run (no reason to preview
-  // a bulk op you cannot perform).
-  if (!requireModifyLibrary(req, res)) return;
-  if (attributionFeatureOff(res)) return; // v1.202 opt-in (after the RBAC guard)
-  const body = req.body || {};
-  const preview = body.preview === true;
-  const relocate = body.relocate === true;
-  // Read-only media refuses FILE MOVES only (gate S2/QA-S1: a metadata-only
-  // bulk attribute is the same kind of write the single endpoint allows).
-  if (relocate && !preview && refuseIfReadOnlyMedia(res)) return;
-  const db0 = getCachedDatabase();
-  // v1.127 Wave A (external review round 2, HIGH): this selector used to sweep
-  // EVERY item under root - hidden ones included - letting a
-  // capable-but-restricted member preview counts for, rewrite, and physically
-  // RELOCATE media they cannot see. The requester's visibility is captured
-  // req-free here so the shared selector AND the post-202 move loop below can
-  // both apply it.
-  const bulkItemVisible = mediaVisiblePredicate(req);
-  const root = confineBulkRoot(db0, body.root);
-  if (!root) return res.status(400).json({ error: 'root must be a configured library folder (or a folder inside one)' });
-  const check = sanitizeAttributionTarget(body.target);
-  if (!check.ok) return res.status(400).json({ error: check.error });
-  const identity = check.identity;
-
-  const proposal = proposeAttributionMove(db0, { filePath: path.join(root, '_probe_') }, identity);
-  const destinationDir = proposal.available ? proposal.destinationDir : null;
-
-  // The selector, shared by preview and execute: unattributed items under
-  // root (to attribute+move), plus -- resume, W2 -- items ALREADY manually
-  // attributed to THIS target that are not yet in its folder.
-  const selectWork = (db) => {
-    const toAttribute = [];
-    const toResume = [];
-    for (const item of Object.values(db.metadata || {})) {
-      if (!item || typeof item.filePath !== 'string') continue;
-      if (!matchRootFolder(item.filePath, [root])) continue;
-      if (!bulkItemVisible(item)) continue; // v1.127: hidden items never enter the worklist
-      const unattributed = !(typeof item.channelUrl === 'string' && item.channelUrl !== '');
-      if (unattributed) { toAttribute.push(item.id); continue; }
-      if (item.channelAttributedManually === true && item.channelUrl === identity.channelUrl
-        && destinationDir && path.dirname(item.filePath) !== destinationDir) {
-        toResume.push(item.id);
-      }
-    }
-    return { toAttribute, toResume };
-  };
-
-  if (preview) {
-    const { toAttribute, toResume } = selectWork(db0);
-    return res.json({
-      preview: true,
-      matched: toAttribute.length,
-      resuming: toResume.length,
-      destinationDir,
-      relocatable: Boolean(destinationDir),
-      ...(destinationDir ? {} : { relocateSkipped: proposal.reason }),
-    });
-  }
-
-  if (attributeBulkInProgress) {
-    return res.status(409).json({ error: 'A bulk attribution is already running.', alreadyRunning: true });
-  }
-  attributeBulkInProgress = true;
-  attributeBulkCancelled = false;
-
-  const matchedIds = [];
-  let resumeIds = [];
-  try {
-    await updateDatabase(db => {
-      const { toAttribute, toResume } = selectWork(db);
-      resumeIds = toResume;
-      for (const id of toAttribute) {
-        if (applyManualAttribution(db.metadata[id], identity, false) === 'attributed') matchedIds.push(id);
-      }
-      return matchedIds.length > 0;
-    });
-  } catch (err) {
-    attributeBulkInProgress = false;
-    console.error('Bulk attribution failed:', err);
-    return res.status(500).json({ error: `Bulk attribution failed: ${err.message}` });
-  }
-
-  const moveIds = relocate && destinationDir ? [...matchedIds, ...resumeIds] : [];
-  if (moveIds.length === 0) {
-    attributeBulkInProgress = false;
-    return res.json({
-      success: true, attributed: matchedIds.length, resuming: resumeIds.length, relocating: false,
-      ...(relocate && !destinationDir ? { relocateSkipped: proposal.reason } : {}),
-    });
-  }
-
-  const ytdlpActivity = require('./lib/ytdlp/activity');
-  ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, {
-    kind: 'attribute-bulk', state: 'running', total: moveIds.length,
-    done: 0, moved: 0, collisions: 0, alreadyThere: 0, failed: 0, cancelled: false, current: null,
-  });
-  res.status(202).json({ success: true, attributed: matchedIds.length, resuming: resumeIds.length, relocating: true, total: moveIds.length });
-  (async () => {
-    let moved = 0; let collisions = 0; let failed = 0; let alreadyThere = 0; let done = 0;
-    for (const id of moveIds) {
-      if (attributeBulkCancelled) break; // cooperative cancel (gate C3)
-      try {
-        // Gate S4: an item already in the destination is a resumed no-op,
-        // never a phantom failure.
-        const current = loadDatabase().metadata[id];
-        if (!current) { done++; continue; }
-        // v1.127 Wave A: the LOAD-BEARING visibility guard is the selector
-        // filter (bulkItemVisible in selectWork) - it, not this line, is what
-        // both gate seats mutation-bound. This per-item re-check is pure
-        // belt-and-suspenders and is in fact UNREACHABLE: the restriction
-        // index is frozen at request time, and the only way an item could turn
-        // hidden mid-loop is a filePath/folderName change, which re-keys its
-        // md5(filePath) id so the fresh `loadDatabase().metadata[id]` read
-        // above already returns undefined and hits `!current`. Kept as a cheap
-        // fail-safe only (e.g. against a future non-path-derived id scheme); do
-        // NOT treat it as the guard. The T2 reheat batch deliberately omits
-        // the analogous re-check for the same reason - its enumeration filter
-        // is the load-bearing guard (plan wave-a T2, disclosed).
-        if (!bulkItemVisible(current)) { done++; continue; }
-        if (path.dirname(current.filePath) === destinationDir) {
-          alreadyThere++; done++;
-          ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { done, moved, collisions, alreadyThere, failed });
-          continue;
-        }
-        const result = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, id, destinationDir, {});
-        if (result && result.ok) moved++;
-        else if (result && result.status === 409) collisions++;
-        else { failed++; console.error(`Bulk attribution move failed for ${id}:`, result && result.error); }
-      } catch (err) {
-        failed++;
-        console.error(`Bulk attribution move threw for ${id}:`, err && err.message);
-      }
-      done++;
-      ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { done, moved, collisions, alreadyThere, failed });
-    }
-    ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, {
-      state: 'done', current: null, cancelled: attributeBulkCancelled === true,
-    });
-    attributeBulkInProgress = false;
-  })().catch((err) => {
-    console.error('Bulk attribution mover crashed:', err);
-    const ytdlpActivity2 = require('./lib/ytdlp/activity');
-    ytdlpActivity2.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { state: 'error' });
-    attributeBulkInProgress = false;
-  });
-});
-
-// Cooperative cancel (gate C3) -- the running loop checks the latch between
-// items; already-moved files stay moved (honest: a cancel is "stop", never
-// "undo"), and the resume selector makes a later re-run finish the rest.
-app.post('/api/videos/attribute-channel-bulk/cancel', (req, res) => {
-  // v1.81 write-RBAC (gate WARNING): a capability-less member must not be able
-  // to abort an admin's in-flight bulk-attribution job (cross-user interference).
-  if (!requireModifyLibrary(req, res)) return;
-  if (!attributeBulkInProgress) return res.json({ cancelled: false, running: false });
-  attributeBulkCancelled = true;
-  res.json({ cancelled: true, running: true });
-});
-
-// API: Serve a subtitle track for a media item (A6, v1.24 UX Round, Wave 5).
-// Deliberately lives HERE, not in the yt-dlp module -- subtitle GRAB is
-// yt-dlp-module-adjacent (lib/ytdlp/args.js's buildYtdlpDownloadArgs), but
-// subtitle SERVE is a general library feature, exactly like /video/:id and
-// /thumbnail/:id above, and must work for LOCAL files with the yt-dlp module
-// completely disabled (FILETUBE_YTDLP_ENABLED unset). This route touches
-// nothing in lib/ytdlp -- only db.metadata/fs/lib/subtitles -- so it is
-// reachable regardless of module enablement, same as those two routes.
-//
-// Trust boundary: `item.filePath` is an already-trusted, already-indexed
-// path (the scan only ever writes db.metadata entries for files it walked
-// under a configured library root) -- `findSubtitleSidecar` only ever reads
-// the SAME directory that trusted path already lives in (see its own
-// comment, lib/subtitles.js), so there is no separate confinement check to
-// perform here: the confinement already happened once, at scan time,
-// mirroring GET /video/:id's own trust posture. The only untrusted input is
-// `:id` itself, and a hostile/unknown id simply misses the db.metadata
-// lookup and 404s, same as every other /api/*/:id route in this file.
-//
-// A `.srt` sidecar is converted to VTT ON THE FLY via srtToVtt (no cached
-// copy ever written to disk -- cheap, pure, string-only work); a `.vtt`
-// sidecar is served as-is. 404s when the id is unknown, the sidecar read
-// fails, or no sidecar exists at all.
-app.get('/api/subtitles/:id', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const item = db.metadata[req.params.id];
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  // v1.80 RBAC: a restricted item is indistinguishable from a missing one.
-  if (!mediaVisibleTo(req, item)) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const sidecar = subtitles.findSubtitleSidecar(item.filePath);
-  if (!sidecar) {
-    return res.status(404).json({ error: 'No subtitle track available for this item' });
-  }
-  let vttText;
-  try {
-    const raw = fs.readFileSync(sidecar.path, 'utf8');
-    vttText = sidecar.format === 'srt' ? subtitles.srtToVtt(raw) : raw;
-  } catch (err) {
-    console.error(`Error reading subtitle sidecar for ${req.params.id}:`, err);
-    return res.status(404).json({ error: 'Subtitle file could not be read' });
-  }
-  // v1.34 T2 (desktop CC sync): `?offset=<seconds>` serves the document with
-  // every cue shifted earlier by that amount -- the client's live-transcode
-  // playback re-points its <track> here after a live seek, because the
-  // ffmpeg pipe's timeline restarts at 0 while cue times are absolute (see
-  // shiftVttCues' own comment, lib/subtitles.js). Bounded parse: absent/
-  // garbage/negative/absurd values serve the unshifted document, never a 400
-  // (a broken offset should degrade to v1.33 behavior, not kill captions).
-  const rawOffset = req.query.offset;
-  const offset = typeof rawOffset === 'string' ? Number(rawOffset) : NaN;
-  if (Number.isFinite(offset) && offset > 0 && offset <= 60 * 60 * 24) {
-    vttText = subtitles.shiftVttCues(vttText, offset);
-  }
-  // v1.41.1 (Dean): normalize every cue to bottom-center (last, so it keeps
-  // whatever times the optional shift produced). CSS can't reposition native
-  // cues, so we fix it at the source for both SRT-derived and .vtt captions.
-  vttText = subtitles.centerVttCues(vttText);
-  res.setHeader('Content-Type', 'text/vtt');
-  // FIX-7 (two-reviewer gate, cheap hardening): defense-in-depth alongside
-  // the explicit `text/vtt` Content-Type above -- a browser that ignores (or
-  // sniffs past) that header for any reason can never reinterpret this
-  // response as something else (e.g. HTML) purely from its bytes.
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.send(vttText);
-});
-
-// API: the item's captions as a plain-text TRANSCRIPT (Dean: "allow me to see
-// and then copy/paste the full transcript from the video"). Header = title /
-// Published|Added <date> / channel, blank line, then one spoken line per row
-// (rolling auto-captions de-duplicated -- lib/transcript.js). `?timestamps=1`
-// prefixes each row with `[m:ss]`. Trust posture, RBAC 404 shape, and sidecar
-// resolution are IDENTICAL to `GET /api/subtitles/:id` above (a restricted or
-// unknown item is indistinguishable from one with no captions). Served as
-// text/plain so it is directly useful outside the app (curl, a script, an
-// analysis tool) -- the watch page's Transcript button fetches this same text.
-app.get('/api/transcript/:id', (req, res) => {
-  const db = getCachedDatabase();
-  const item = db.metadata[req.params.id];
-  if (!item || !mediaVisibleTo(req, item)) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const sidecar = subtitles.findSubtitleSidecar(item.filePath);
-  if (!sidecar) {
-    return res.status(404).json({ error: 'No subtitle track available for this item' });
-  }
-  let vttText;
-  try {
-    const raw = fs.readFileSync(sidecar.path, 'utf8');
-    vttText = sidecar.format === 'srt' ? subtitles.srtToVtt(raw) : raw;
-  } catch (err) {
-    console.error(`Error reading subtitle sidecar for transcript ${req.params.id}:`, err);
-    return res.status(404).json({ error: 'Subtitle file could not be read' });
-  }
-  const timestamps = req.query.timestamps === '1' || req.query.timestamps === 'true';
-  // Channel line: the item's captured channelName, else its folder -- the same
-  // rule the attribute-channel target list uses for an item's display name.
-  const channelName = (typeof item.channelName === 'string' && item.channelName !== '') ? item.channelName : (item.folderName || '');
-  const doc = transcript.vttToTranscriptDocument(vttText, {
-    title: item.title, releaseDate: item.releaseDate, addedAt: item.addedAt, channelName,
-  }, { timestamps });
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.send(doc);
-});
 
 // Serve extracted thumbnail or fallback placeholder
 app.get('/thumbnail/:id', (req, res) => {
@@ -16202,95 +12727,36 @@ function healStaleAudioReady(item) {
   return item.audioStatus;
 }
 
-app.get('/audio/:id', (req, res) => {
-  const db = getCachedDatabase();
-  const item = db.metadata[req.params.id];
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  // v1.80 RBAC: the background-audio byte route (easy to miss - separate from
-  // /video/:id). Restricted item -> 404.
-  if (!mediaVisibleTo(req, item)) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  if (item.type === 'audio') {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const out = audioPath(item.id);
-  if (fs.existsSync(out)) {
-    return sendRangeable(req, res, out, 'audio/mp4', () => {
-      markServed(out);
-      // v1.41.6 (gate fix): the SOURCE path too -- a background-audio handoff is
-      // an active viewing session, and the import-relocation must not re-key an
-      // item out from under the client that is mid-playback. See the same mark
-      // in `GET /video/:id` for the full reasoning.
-      markServed(item.filePath);
-      recordServed(item.id);
-    });
-  }
-  // F1: sidecar confirmed missing -- heal any stale 'ready' NOW. Use the
-  // returned (healed) status below, never `item.audioStatus` again -- see
-  // healStaleAudioReady's own comment for why `item` must not be mutated.
-  const healedAudioStatus = healStaleAudioReady(item);
-  if (!ffmpegAvailable) {
-    return res.status(503).json({ error: 'ffmpeg unavailable' });
-  }
-  if (healedAudioStatus !== 'failed') {
-    queueAudioExtract(item.id, item.filePath);
-  }
-  return res.status(503).json({ error: 'extracting', status: healedAudioStatus || 'pending' });
+// Wave 7b (slice S3): GET /audio/:id - the background-audio sidecar byte route
+// whose contract the comment block above describes - moved VERBATIM to
+// lib/music/routes.js and registering here, where it sat. `ffmpegAvailable` is a
+// mutable `let` this file flips from an async boot probe, so it crosses as the
+// live reader `ffmpegIsAvailable()` (the ONE non-byte-identical expression in
+// the slice; test/unit/music-audio-seam.test.js proves the seam live).
+musicRoutes.registerAudioRoute(app, {
+  audioPath,
+  ffmpegIsAvailable: () => ffmpegAvailable,
+  fs,
+  getCachedDatabase,
+  healStaleAudioReady,
+  markServed,
+  mediaVisibleTo,
+  queueAudioExtract,
+  recordServed,
+  sendRangeable,
 });
 
-// POST /api/videos/:id/prepare-audio (v1.27.0, EXPERIMENTAL): the pre-warm
-// hook for the background-audio handoff. The client fires this the moment a
-// mobile playback session starts for a VIDEO with the `backgroundAudioForVideo`
-// setting ON, so the audio-extract sidecar is USUALLY ready before the first
-// real background event needs it (there's no time to extract mid-handoff --
-// see GET /audio/:id's own comment). Deliberately a cheap POST that never
-// serves bytes -- not a GET /audio/:id HEAD-style kick: a HEAD request would
-// need the exact same 503-vs-200 branching as a real GET (Express's HEAD
-// handling for a GET route already strips the body, but the 503 JSON error
-// body callers actually want to read is exactly what HEAD throws away), and
-// a bare `fetch(..., { method: 'HEAD' })` against a Range-serving route is
-// easy to confuse with an accidental real playback request on a slow
-// connection. This route only enqueues (or reports "already ready") and
-// returns a tiny JSON status -- no Range/streaming machinery at all.
-// Idempotent and bounded by queueAudioExtract's own de-dupe guard (mirrors
-// queueTranscode's) -- never enqueues a second job for an id already
-// queued/in-flight, and never re-enqueues once a sidecar already exists on
-// disk.
-app.post('/api/videos/:id/prepare-audio', (req, res) => {
-  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
-  // cache -- outside T4's explicit hot-GET-reader scope (a POST pre-warm
-  // hook, not a GET route), and staying on a fresh per-request throwaway
-  // object here costs nothing meaningful (this route never streams bytes).
-  const db = loadDatabase();
-  const item = db.metadata[req.params.id];
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  // v1.80 RBAC: don't let a restricted item be an existence oracle / CPU sink.
-  if (!mediaVisibleTo(req, item)) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  if (item.type === 'audio') {
-    return res.status(400).json({ error: 'prepare-audio only applies to video items' });
-  }
-  if (fs.existsSync(audioPath(item.id))) {
-    return res.json({ audioStatus: 'ready' });
-  }
-  // F1: sidecar confirmed missing -- heal any stale 'ready' NOW. Use the
-  // returned (healed) status below, never `item.audioStatus` again -- see
-  // healStaleAudioReady's own comment (above GET /audio/:id) for why `item`
-  // is never mutated in place.
-  const healedAudioStatus = healStaleAudioReady(item);
-  if (!ffmpegAvailable) {
-    return res.status(503).json({ error: 'ffmpeg unavailable' });
-  }
-  if (healedAudioStatus !== 'failed') {
-    queueAudioExtract(item.id, item.filePath);
-  }
-  res.json({ audioStatus: healedAudioStatus || 'pending' });
+// Wave 7b (slice S10a): POST /api/videos/:id/prepare-audio moved VERBATIM to
+// lib/media/routes.js. It registers HERE, after GET /audio/:id, exactly as
+// before.
+mediaRoutes.registerPrepareAudioRoute(app, {
+  audioPath,
+  ffmpegIsAvailable: () => ffmpegAvailable, // LIVE reader: a server.js `let` the async ffmpeg probe flips after boot
+  fs,
+  healStaleAudioReady, // re-derives audioStatus when the sidecar is gone
+  loadDatabase,
+  mediaVisibleTo,
+  queueAudioExtract,
 });
 
 // Optional yt-dlp subscription module (v1.11.0): registered AFTER every
@@ -16979,7 +13445,11 @@ module.exports = {
   // v1.53 gate round 2 (M21): deterministic single-flight testing -- the
   // latch is module state, and a real stalled-mover race is untestable
   // without it. Test-only, the __-prefix convention.
-  __setAttributeBulkInProgressForTests(v) { attributeBulkInProgress = v === true; },
+  // Wave 7b (slice S10a): the latch moved to lib/media/routes.js with the two
+  // bulk routes that assign it, so this re-exports THAT module's setter as the
+  // SAME function object - the only way the seam can still reach the one
+  // variable the routes read.
+  __setAttributeBulkInProgressForTests: mediaRoutes.__setAttributeBulkInProgressForTests,
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,
