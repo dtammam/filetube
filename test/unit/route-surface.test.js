@@ -23,6 +23,7 @@ const ROOT = path.join(__dirname, '..', '..');
 // commit (the v1.259 lesson: a registry add that misses a hand-kept list is
 // inert - here the derivation and the list check each other).
 const EXPECTED = [
+  'lib/admin/backup.js',
   'lib/auth/routes.js',
   'lib/books/routes.js',
   'lib/books/scanRunner.js',

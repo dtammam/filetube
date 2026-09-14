@@ -32,8 +32,8 @@ flowchart TD
 
     subgraph SERVER["Node process - server.js (the monolith host)"]
         GATE["lib/auth/gate.js<br/>ONE app.use(authGate): cookies, rate limit,<br/>per-request user re-check, pre-login allowlist"]
-        ROUTES["server.js route + middleware registrations (18 at v1.299.0-wip; 22 at v1.298.0; 98 at v1.297.0; 176 at v1.296.0 - the census counts top-level app.use too)<br/>the byte streams (/video /thumbnail /storyboard /preview),<br/>backup, the logo, the shell + wildcard"]
-        W7B["Wave 7b route modules - registerRoutes(app, deps)<br/>R1: lib/queue/routes.js lib/notifications/routes.js lib/push/routes.js<br/>lib/user/routes.js lib/auth/routes.js lib/media/user-routes.js<br/>lib/books/routes.js + lib/books/scanRunner.js<br/>R2: lib/music/routes.js + lib/music/scanRunner.js lib/tv/routes.js + lib/tv/scanRunner.js<br/>lib/config/routes.js lib/media/routes.js (browse, stats, critters, attribution)<br/>R3: lib/media/trash.js (the trash core + /api/trash) lib/media/move.js (the mover)"]
+        ROUTES["server.js route + middleware registrations (16 at v1.299.0-wip; 22 at v1.298.0; 98 at v1.297.0; 176 at v1.296.0 - the census counts top-level app.use too)<br/>the byte streams (/video /thumbnail /storyboard /preview),<br/>the logo, the shell + wildcard"]
+        W7B["Wave 7b route modules - registerRoutes(app, deps)<br/>R1: lib/queue/routes.js lib/notifications/routes.js lib/push/routes.js<br/>lib/user/routes.js lib/auth/routes.js lib/media/user-routes.js<br/>lib/books/routes.js + lib/books/scanRunner.js<br/>R2: lib/music/routes.js + lib/music/scanRunner.js lib/tv/routes.js + lib/tv/scanRunner.js<br/>lib/config/routes.js lib/media/routes.js (browse, stats, critters, attribution)<br/>R3: lib/media/trash.js (the trash core + /api/trash) lib/media/move.js (the mover) lib/admin/backup.js (backup + restore, the bundle validators, the store zip)"]
         PODR["lib/podcasts/ routes<br/>registerRoutes(app, deps)"]
         YTDR["lib/ytdlp/ routes<br/>registerRoutes(app, deps)"]
         AUDIT["mutation audit middleware<br/>logs every mutating request + actor"]

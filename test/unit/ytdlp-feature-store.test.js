@@ -213,13 +213,16 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // (GET /api/videos + GET /api/channels, the subscription-derived channel
   // identity) and the attribution cluster moved to lib/media/routes.js, so
   // their two call sites in server.js and the two destructures that receive
-  // them there are four new crossings of the SAME store. Wave 7b (slice S6)
-  // took it from 15 to 17: the import-relocation planners moved to
+  // them there are four new crossings of the SAME store. Wave 7b (R3) merged two
+  // slices at once: slice S6 moved the import-relocation planners to
   // lib/ytdlp/relocation.js (planImportRelocation's subscription holder and the
-  // executor's channelId backfill), adding the factory call site's dep entry in
-  // server.js and the destructure that receives it in the module - two more
-  // crossings of the SAME store, and no new store anywhere.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 17, 'every crossing carries the store, never the doc namespace');
+  // executor's channelId backfill) - the factory call site's dep entry in
+  // server.js plus the module's destructure, two more; and slice S7 moved the
+  // backup bundle's `ytdlpDb.read()` (asserted above) to lib/admin/backup.js -
+  // server.js's one new deps-bundle entry plus the one destructure there, two
+  // more. 15 -> 19 re-measured on the merged tree (each slice was 15 -> 17 in
+  // isolation), all crossings of the SAME store, no new store anywhere.
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 19, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);

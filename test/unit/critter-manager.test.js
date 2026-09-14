@@ -20,10 +20,14 @@ const { sanitizeCritterUploadName, buildStoreZip } = require('../../server.js');
 const { routeSurfaceSource } = require('../helpers/route-surface');
 
 // Wave 7b (slice S10a): the five /api/critters routes and `listCritterFiles`
-// moved VERBATIM to lib/media/routes.js while the upload vocabulary, the two
-// pool projections and buildStoreZip stayed in server.js, so every source lock
-// below reads the ROUTE SURFACE (server.js plus every module the monolith
-// split carved out of it) rather than server.js alone. The moved statements
+// moved VERBATIM to lib/media/routes.js while the upload vocabulary and the two
+// pool projections stayed in server.js, so every source lock below reads the
+// ROUTE SURFACE (server.js plus every module the monolith split carved out of
+// it) rather than server.js alone. Slice S7 then moved buildStoreZip itself to
+// lib/admin/backup.js (it is one of the three pure functions the backup/restore
+// slice owns); server.js still EXPORTS it as the same function object, which is
+// what the require above resolves, and it is part of the same route surface.
+// The moved statements
 // carry ONE extra indent level inside their register function, which is why
 // the multi-line `app.post(` marker names four spaces, not two; nothing else
 // about these locks changed.
