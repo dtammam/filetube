@@ -34,6 +34,7 @@ const {
   readPersistedDatabase,
   SCHEMA_VERSION,
 } = require('../../lib/db/sqlite');
+const podcastStore = require('../../lib/podcasts/store');
 
 let dir;
 beforeEach(() => {
@@ -82,6 +83,11 @@ function importFixture() {
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
     liked: ['vid1'], // Wave 4: an ordered list (the frozen pre-auth likes)
     folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
+    podcasts: { // Wave 5: a feature container (the tables); no feed URLs, ever
+      subscriptions: [{ id: 'psub1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
+      episodes: { pep1: { id: 'pep1', subId: 'psub1', guid: 'g1', title: 'One', status: 'downloaded' } },
+      settings: { pollMinutes: 45 },
+    },
     books: { // Wave 5: a feature container (the tables)
       folders: ['/media/books'],
       items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
@@ -358,32 +364,31 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
   try {
     assert.throws(() => a.save({ metadata: {}, mystery: {} }), /unknown top-level db key 'mystery'/);
     assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
-    assert.throws(() => a.save({ podcasts: { playlists: {} } }), /unknown db key 'podcasts\.playlists'/);
-    assert.throws(() => a.save({ podcasts: { feedUrls: {} } }), /unknown db key 'podcasts\.feedUrls'/,
-      'the namespace lock guards podcasts sub-keys too - a feed-URL map in the db would be a secret leak, not just drift');
+    assert.throws(() => a.save({ podcasts: { subscriptions: [] } }), /unknown top-level db key 'podcasts'/, 'Wave 5: the podcasts container left the lock');
+    assert.throws(() => a.save({ ytdlp: { feedUrls: {} } }), /unknown db key 'ytdlp\.feedUrls'/,
+      'the namespace lock guards container sub-keys too - a URL map in the db would be a secret leak, not just drift');
   } finally {
     a.close();
   }
 });
 
-test('v1.69: the podcasts namespace round-trips (subscriptions/settings singletons + per-episode kv rows)', () => {
+test('Wave 5: the podcasts namespace round-trips through its feature store (ordered subscriptions + per-episode rows + settings)', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    const db = {
-      podcasts: {
-        subscriptions: [{ id: 'p1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
-        episodes: {
-          ep1: { id: 'ep1', subId: 'p1', guid: 'g1', title: 'One', status: 'downloaded' },
-          ep2: { id: 'ep2', subId: 'p1', guid: 'g2', title: 'Two', status: 'pending' },
-        },
-        settings: { pollMinutes: 60 },
+    const ns = {
+      subscriptions: [
+        { id: 'p2', name: 'Second', feedUrlDisplay: 'https://y.example/rss', feedHost: 'y.example', order: 2, paused: false, backfill: 'all' },
+        { id: 'p1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' },
+      ],
+      episodes: {
+        ep1: { id: 'ep1', subId: 'p1', guid: 'g1', title: 'One', status: 'downloaded' },
+        ep2: { id: 'ep2', subId: 'p1', guid: 'g2', title: 'Two', status: 'pending' },
       },
+      settings: { pollMinutes: 60 },
     };
-    a.save(db);
+    podcastStore.createPodcastsStore(a).replaceAll(ns);
     const back = readPersistedDatabase(dir);
-    assert.deepStrictEqual(back.podcasts.subscriptions, db.podcasts.subscriptions);
-    assert.deepStrictEqual(back.podcasts.episodes, db.podcasts.episodes);
-    assert.deepStrictEqual(back.podcasts.settings, db.podcasts.settings);
+    assert.deepStrictEqual(back.podcasts, ns, 'verbatim, the array ORDER included (position column, not a sort)');
   } finally {
     a.close();
   }

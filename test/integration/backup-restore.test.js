@@ -19,7 +19,7 @@ const { app, loadDatabase, pendingProgress, pendingProgressKey, flushPendingProg
   trashStore, // Wave 3: the trashed-item records, likewise
   musicDb, // Wave 5: the music namespace, likewise
 } = require('../../server');
-const { seedState } = require('../helpers/seed-state');
+const { seedState, podcastsDb } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -96,6 +96,14 @@ function fullState() {
       allowMembersOnly: false,
       subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
       downloadMeta: {}, pins: [], channelAvatars: {},
+    },
+    // Wave 5: the podcasts namespace rides the bundle from its tables (a
+    // non-empty value so the deep-equal proves carriage; the bundle key is
+    // ALWAYS present now, like tv/music/books, so restoredNamespaces names it).
+    podcasts: {
+      subscriptions: [{ id: 'podsubA', name: 'Show A', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 0, paused: false, backfill: 'all' }],
+      episodes: { podepA: { id: 'podepA', subId: 'podsubA', guid: 'gA', title: 'A', status: 'tombstone' } },
+      settings: { pollMinutes: 60 },
     },
     // v1.195: the tv namespace rides the bundle - restore wipes the doc tables
     // wholesale, so an un-bundled 'tv' would erase the entire Shows library +
@@ -347,12 +355,13 @@ test('a restore that fails mid-populate ROLLS BACK completely — db state AND t
   const beforeSnap = readPersistedDatabase(DATA_DIR);
 
   const bundle = await getBackup();
-  // Passes validateBackupBundle (podcasts IS an object) but fails INSIDE the
-  // exclusive section: podcasts.episodes is not a per-key map, so
+  // Passes validateBackupBundle (ytdlp IS an object) but fails INSIDE the
+  // exclusive section: ytdlp.downloadMeta is not a per-key map, so
   // importParsedJson refuses mid-populate — after the wipe, before the logo
-  // file ops. (Wave 5: `books` carried this until its parts became
-  // shape-checked BEFORE the wipe; podcasts is the doc container still left.)
-  bundle.podcasts = { episodes: 'not-a-map' };
+  // file ops. (Wave 5: `books`, then `podcasts`, carried this until their
+  // parts became shape-checked BEFORE the wipe; ytdlp is the doc container
+  // still left.)
+  bundle.ytdlp = { downloadMeta: 'not-a-map' };
   const res = await postRestore(bundle);
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /rolled back/);
@@ -853,9 +862,9 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
 
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
-  const after = loadDatabase();
-  assert.deepEqual(after.podcasts.subscriptions, state.podcasts.subscriptions, 'subscriptions survive a pre-v1.69 restore');
-  assert.deepEqual(after.podcasts.episodes, state.podcasts.episodes, 'the episode archive survives (no forced 42GB re-download)');
+  const after = podcastsDb().read(); // Wave 5: the tables
+  assert.deepEqual(after.subscriptions, state.podcasts.subscriptions, 'subscriptions survive a pre-v1.69 restore');
+  assert.deepEqual(after.episodes, state.podcasts.episodes, 'the episode archive survives (no forced 42GB re-download)');
 
   // The users-restore bumped the operator's token_version (the CRITICAL-1
   // floor) - re-sync the patched-fetch cookie, the suite's standing pattern.
@@ -868,5 +877,5 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
   bundle2.podcasts = { subscriptions: [], episodes: {}, settings: {} };
   const res2 = await postRestore(bundle2);
   assert.equal(res2.status, 200);
-  assert.deepEqual(loadDatabase().podcasts.subscriptions, [], 'an explicit podcasts key restores verbatim');
+  assert.deepEqual(podcastsDb().read().subscriptions, [], 'an explicit podcasts key restores verbatim');
 });

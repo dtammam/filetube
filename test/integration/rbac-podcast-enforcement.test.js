@@ -14,7 +14,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -42,7 +42,7 @@ before(async () => {
   blkEp = blk.epId; okEp = ok.epId;
   blkFile = blk.file; okFile = ok.file;
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     ns.subscriptions = []; ns.episodes = {};
     podcastStore.reduceAddSubscription(ns, { id: blkSub, name: 'Explicit Show', feedUrl: 'https://e.com/a.xml' });
@@ -52,7 +52,7 @@ before(async () => {
     podcastStore.reduceEpisodeDownloaded(ns, blkEp, { fileName: 'ep.mp3', filePath: blk.file, bytes: 5, nowMs: 6000 });
     podcastStore.reduceEpisodeDownloaded(ns, okEp, { fileName: 'ep.mp3', filePath: ok.file, bytes: 5, nowMs: 6000 });
     return true;
-  });
+  }));
 
   member = __mintTestSession({ username: 'kidpod', role: 'member' });
   userStore.setPodcastProgress(member.user.id, blkEp, { position: 3, duration: 100, updatedAt: '2026-08-05T02:00:00Z' });

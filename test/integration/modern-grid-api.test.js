@@ -18,8 +18,7 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, updateDatabase, userStore, __mintTestSession, __resetDatabaseForTests,
-} = require('../../server');
+  app, updateDatabase, userStore, __mintTestSession, __resetDatabaseForTests, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -73,7 +72,7 @@ function seedPodcast() {
   const subId = 'sub-S';
   const dlId = podcastStore.episodeIdFor(subId, 'g1');
   const pendId = podcastStore.episodeIdFor(subId, 'g2');
-  updateDatabase((db) => {
+  updateDatabase(() => podcastsDb.mutate((db) => {
     const p = podcastStore.ensurePodcasts(db);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'The Show', feedUrl: 'https://e.com/f.xml' });
@@ -81,7 +80,7 @@ function seedPodcast() {
     podcastStore.reduceEpisodeDownloaded(p, dlId, { fileName: 'ep.mp3', filePath: '/x/ep.mp3', bytes: 5, nowMs: 7000 });
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g2', title: 'Pending', pubDateMs: 2, durationSec: 10 }], 'pending', 7000);
     return db;
-  });
+  }));
   return { subId, dlId, pendId };
 }
 

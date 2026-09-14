@@ -17,8 +17,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, updateDatabase, userStore, __resetDatabaseForTests,
-} = require('../../server');
+  app, updateDatabase, userStore, __resetDatabaseForTests, podcastsDb } = require('../../server');
 const { settingsStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -228,7 +227,7 @@ async function seedPodcastEpisodeV173(guid) {
   const epId = podcastStoreV173.episodeIdFor(subId, guid);
   const epFile = path.join(process.env.DATA_DIR, `notif-${guid}.mp3`);
   fs.writeFileSync(epFile, 'mp3');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStoreV173.ensurePodcasts(db);
     if (!ns.subscriptions.some((x) => x && x.id === subId)) {
       ns.subscriptions.push(podcastStoreV173.subscriptionRecordFrom({ id: subId, feed: { feedUrlDisplay: 'https://feeds.invalid/rss/notif' }, name: 'Notif Show', backfill: 'all', nowMs: T0, order: 0 }));
@@ -236,7 +235,7 @@ async function seedPodcastEpisodeV173(guid) {
     podcastStoreV173.reduceUpsertEpisodes(ns, subId, [{ guid, title: `Ep ${guid}`, pubDateMs: 1000, durationSec: 60 }], 'pending', T0);
     podcastStoreV173.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 3, nowMs: T0 });
     return true;
-  });
+  }));
   return { subId, epId };
 }
 
@@ -277,10 +276,10 @@ test('v1.73 kind-confusion probe: a PHANTOM podcast row prunes via the EPISODE c
   userStore.setProgress(auth.user.id, epId, { timestamp: 33, duration: 100, updatedAt: new Date(T0).toISOString() });
   userStore.recordNotifications([{ mediaId: epId, createdAt: T0 + 30, kind: 'podcast' }]);
   // Make the podcast row PHANTOM: the episode record vanishes wholesale.
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     delete podcastStoreV173.ensurePodcasts(db).episodes[epId];
     return true;
-  });
+  }));
   const body = await (await fetch(`${base}/api/notifications`)).json();
   assert.ok(!body.items.some((r) => r.kind === 'podcast' && r.mediaId === epId), 'the phantom podcast row is gone');
   assert.equal(userStore.getOneProgress(auth.user.id, epId).timestamp, 33,
@@ -291,10 +290,10 @@ test('v1.73: a TRASHED episode row is HIDDEN, not pruned (restore brings it back
   await armFeature();
   const { epId } = await seedPodcastEpisodeV173('g-trash');
   userStore.recordNotifications([{ mediaId: epId, createdAt: T0 + 40, kind: 'podcast' }]);
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     podcastStoreV173.reduceEpisodeTrashed(podcastStoreV173.ensurePodcasts(db), epId, { trashPath: '/x/.filetube-trash/y', nowMs: T0 });
     return true;
-  });
+  }));
   let body = await (await fetch(`${base}/api/notifications`)).json();
   assert.ok(!body.items.some((r) => r.mediaId === epId), 'hidden while trashed');
   assert.equal(userStore.exportNotificationsForBackup().some((r) => r.mediaId === epId && r.kind === 'podcast'), true, 'the row SURVIVED (hidden, not pruned)');
@@ -325,10 +324,10 @@ test('v1.73 gate (adversarial W1/S4): resolvePushMeta arms bound - podcast/media
   assert.equal(resolvePushMeta(db, 'mediä-1').kind, 'media', 'bare-id legacy shape tolerated');
   // TRASHED episode -> null (the S4 mutant's named killer: a push must
   // never deep-link a non-playable episode).
-  await updateDatabase((mdb) => {
+  await updateDatabase(() => podcastsDb.mutate((mdb) => {
     podcastStoreV173.reduceEpisodeTrashed(podcastStoreV173.ensurePodcasts(mdb), epId, { trashPath: '/x/.filetube-trash/z', nowMs: T0 });
     return true;
-  });
+  }));
   assert.equal(resolvePushMeta(loadDatabase(), { mediaId: epId, kind: 'podcast' }), null, 'trashed episode skips delivery');
   // Phantom -> null.
   assert.equal(resolvePushMeta(loadDatabase(), { mediaId: 'no-such-ep', kind: 'podcast' }), null);
@@ -342,10 +341,10 @@ test('v1.73 gate (QA W4b): the phantom prune + episode purge actually DELETE fee
   // Phantom: the episode record vanishes; the panel GET must retire the
   // feed row AT THE STORE (not merely hide it - unpruned hidden orphans
   // squat the 200-row cap forever).
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     delete podcastStoreV173.ensurePodcasts(db).episodes[epId];
     return true;
-  });
+  }));
   await (await fetch(`${base}/api/notifications`)).json();
   assert.ok(!userStore.exportNotificationsForBackup().some((r) => r.mediaId === epId),
     'the phantom podcast feed row is GONE from the store after the panel read');

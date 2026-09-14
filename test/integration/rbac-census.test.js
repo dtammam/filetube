@@ -29,7 +29,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __mintTestSession, viewCountStore, musicDb, booksDb } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, viewCountStore, musicDb, booksDb, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -98,10 +98,12 @@ before(async () => {
     musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
     musicStore.ensureMusic(h).tracks = { trk: { id: 'trk', title: 'T', artist: 'A', album: 'Al', filePath: trkFile, rootFolder: DATA_DIR, folderName: 'F', ext: '.mp3', codec: 'mp3', durationSec: 1, albumArtKey: null, addedAt: '2026-01-01T00:00:00Z' } };
     return true; });
-    const p = podcastStore.ensurePodcasts(db); p.subscriptions = []; p.episodes = {};
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h); p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'Show', feedUrl: 'https://e.com/f.xml' });
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Ep', pubDateMs: 1, durationSec: 1 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(DATA_DIR, 'podcasts', 'Show', 'ep.mp3'), bytes: 1, nowMs: 6000 });
+    return true; });
     booksDb.mutate((h) => { // Wave 5: the books namespace is a feature store
     booksStore.ensureBooks(h).items = { bk: { id: 'bk', title: 'B', author: 'A', filePath: bookFile, folderName: 'F', format: 'epub', addedAt: 1 } };
     return true; });

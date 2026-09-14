@@ -62,7 +62,7 @@ function fakeGates(db) {
 function deps() {
   const db = fakeDb();
   // Wave 5: the music tracks reach the registry through the `musicTracks` dep (a live view over the fixture's map).
-  return { db, gates: fakeGates(db), buildWatchUrl: () => 'https://yt/watch?v=x', musicTracks: () => db.music.tracks, booksItems: () => db.books.items };
+  return { db, gates: fakeGates(db), buildWatchUrl: () => 'https://yt/watch?v=x', musicTracks: () => db.music.tracks, booksItems: () => db.books.items, podcastsNs: () => db.podcasts };
 }
 
 const req = { user: { id: 1, role: 'admin' } };

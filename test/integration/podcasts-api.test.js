@@ -17,7 +17,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-podcastsa
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase } = require('../../server');
+const { app, updateDatabase, podcastsDb } = require('../../server');
 const podcastStore = require('../../lib/podcasts/store');
 const secrets = require('../../lib/podcasts/secrets');
 const { authenticateFetch } = require('../helpers/auth');
@@ -120,7 +120,7 @@ test('seeded episodes: list newest-first with per-user state; stream honors Rang
   fs.writeFileSync(mediaFile, 'MP3BYTES-0123456789');
   epDownloaded = podcastStore.episodeIdFor(subId, 'g2');
   epPending = podcastStore.episodeIdFor(subId, 'g1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [
       { guid: 'g1', title: 'Ep One', pubDateMs: 1000, durationSec: 100, description: 'Show notes for one.' },
@@ -128,7 +128,7 @@ test('seeded episodes: list newest-first with per-user state; stream honors Rang
     ], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(ns, epDownloaded, { fileName: path.basename(mediaFile), filePath: mediaFile, bytes: 19, nowMs: 6000 });
     return true;
-  });
+  }));
 
   const r = await get(`/api/podcasts/shows/${subId}/episodes`);
   assert.strictEqual(r.status, 200);
@@ -229,12 +229,12 @@ test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states 
   const epFile = path.join(showDir, 'Trip [rss=t1].mp3');
   fs.writeFileSync(epFile, 'TRIPBYTES');
   const epId = podcastStore.episodeIdFor(subId, 't1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 't1', title: 'Trip', pubDateMs: 3000, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 9, nowMs: 6000 });
     return true;
-  });
+  }));
   // Per-user state before the trash trip.
   await postJson('/api/podcasts/progress', { episodeId: epId, position: 42, duration: 100 });
 
@@ -298,12 +298,12 @@ test('v1.71 T3: /episode/:id?download=1 sends an attachment disposition with the
   const epFile = path.join(showDir, 'Save Me [rss=dl1].mp3');
   fs.writeFileSync(epFile, 'DOWNLOADBYTES');
   const epId = podcastStore.episodeIdFor(subId, 'dl1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'dl1', title: 'Sävê "Me"', pubDateMs: 3200, durationSec: 10 }], 'pending', 5200);
     podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 13, nowMs: 6200 });
     return true;
-  });
+  }));
 
   const dl = await get(`/episode/${epId}?download=1`);
   assert.strictEqual(dl.status, 200);
@@ -326,12 +326,12 @@ test('v1.71 T4: episode likes - toggle round-trip, phantom 404, liked filter lis
   const epFile = path.join(showDir, 'Liked [rss=like1].mp3');
   fs.writeFileSync(epFile, 'LIKEBYTES');
   const epId = podcastStore.episodeIdFor(subId, 'like1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'like1', title: 'Likeable', pubDateMs: 3300, durationSec: 10 }], 'pending', 5300);
     podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 9, nowMs: 6300 });
     return true;
-  });
+  }));
 
   // Phantom-id discipline on the like verb.
   assert.strictEqual((await postJson('/api/podcasts/episodes/ffffffffffffffffffffffffffffffff/liked', {})).status, 404);
@@ -373,12 +373,12 @@ test('v1.71 (gate W4): the like routes act as the AUTHENTICATED user - a wrong-u
   const epFile = path.join(showDir, 'Actor [rss=act1].mp3');
   fs.writeFileSync(epFile, 'ACTORBYTES');
   const epId = podcastStore.episodeIdFor(subId, 'act1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'act1', title: 'Actor Ep', pubDateMs: 3500, durationSec: 10 }], 'pending', 5500);
     podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 10, nowMs: 6500 });
     return true;
-  });
+  }));
 
   // A likes; B must not see it - by ids, by lane, or on the row payload.
   await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
@@ -410,7 +410,7 @@ test('v1.71 T5: recent-listening selection - position>0 downloaded episodes, upd
   const idA = podcastStore.episodeIdFor(subId, 'cl-a');
   const idB = podcastStore.episodeIdFor(subId, 'cl-b');
   const idC = podcastStore.episodeIdFor(subId, 'cl-c');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [
       { guid: 'cl-a', title: 'A', pubDateMs: 3400, durationSec: 100 },
@@ -421,7 +421,7 @@ test('v1.71 T5: recent-listening selection - position>0 downloaded episodes, upd
     podcastStore.reduceEpisodeDownloaded(ns, idB, { fileName: 'b', filePath: mk('cl-b'), bytes: 1, nowMs: 6401 });
     podcastStore.reduceEpisodeDownloaded(ns, idC, { fileName: 'c', filePath: mk('cl-c'), bytes: 1, nowMs: 6402 });
     return true;
-  });
+  }));
   // A: older listen; B: newer listen; C: zero position (never counts).
   await postJson('/api/podcasts/progress', { episodeId: idA, position: 10, duration: 100 });
   await postJson('/api/podcasts/progress', { episodeId: idB, position: 20, duration: 100 });
@@ -448,12 +448,12 @@ test('v1.70 (QA S4): DELETE of an episode whose file already vanished records de
   const root = path.join(DATA_DIR, 'podcasts');
   const missing = path.join(root, 'RoundTrip Show', 'Gone [rss=gone1].mp3'); // never written
   const epId = podcastStore.episodeIdFor(subId, 'gone1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'gone1', title: 'Gone', pubDateMs: 3100, durationSec: 10 }], 'pending', 5100);
     podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(missing), filePath: missing, bytes: 9, nowMs: 6100 });
     return true;
-  });
+  }));
   const r = await fetch(`${base}/api/podcasts/episodes/${epId}`, { method: 'DELETE' });
   assert.strictEqual(r.status, 200);
   assert.strictEqual((await r.json()).status, 'deleted-on-disk', 'records the truth instead of failing the intent');
@@ -478,7 +478,7 @@ test('v1.70 gate CRITICAL#1: a hostile record cannot read, write or destroy outs
   const escapeReadId = podcastStore.episodeIdFor(subId, 'esc-read');
   const escapeWriteId = podcastStore.episodeIdFor(subId, 'esc-write');
   const escapeDeleteId = podcastStore.episodeIdFor(subId, 'esc-del');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [
       { guid: 'esc-read', title: 'R', pubDateMs: 1 },
@@ -492,7 +492,7 @@ test('v1.70 gate CRITICAL#1: a hostile record cannot read, write or destroy outs
     // 1b-mirror: DELETE a file that lives outside the root.
     Object.assign(ns.episodes[escapeDeleteId], { status: 'downloaded', filePath: victim });
     return true;
-  });
+  }));
 
   const r1 = await postJson(`/api/podcasts/episodes/${escapeReadId}/restore`, {});
   assert.strictEqual(r1.status, 409, 'restore-from-outside refuses');
@@ -520,13 +520,13 @@ test('v1.70 delta CRITICAL: /episode/:id refuses an out-of-root filePath (the RE
   const victim = path.join(outside, 'session-secret');
   fs.writeFileSync(victim, 'SUPER-SECRET-SIGNING-KEY');
   const readId = podcastStore.episodeIdFor(subId, 'read-esc');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'read-esc', title: 'X', pubDateMs: 1 }], 'pending', 5000);
     // A fully 'downloaded' record whose file lives outside the root.
     Object.assign(ns.episodes[readId], { status: 'downloaded', filePath: victim });
     return true;
-  });
+  }));
   const r = await get(`/episode/${readId}`);
   assert.strictEqual(r.status, 404, 'the read is refused');
   const body = await r.text();
@@ -546,14 +546,14 @@ test('v1.70 gate MV1: a non-downloaded episode never streams (the guard is load-
   const realFile = path.join(showDir, 'Guarded [rss=gg1].mp3');
   fs.writeFileSync(realFile, 'REALBYTES');
   const gId = podcastStore.episodeIdFor(subId, 'gg1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'gg1', title: 'Guarded', pubDateMs: 9 }], 'pending', 5000);
     ns.episodes[gId].filePath = realFile; // a real, readable file behind a non-downloaded status
     return true;
-  });
+  }));
   assert.strictEqual((await get(`/episode/${gId}`)).status, 404, 'status is the authority, not file existence');
-  await updateDatabase((db) => podcastStore.reduceEpisodeDownloaded(podcastStore.ensurePodcasts(db), gId, { fileName: path.basename(realFile), filePath: realFile, bytes: 9, nowMs: 1 }));
+  await updateDatabase(() => podcastsDb.mutate((db) => podcastStore.reduceEpisodeDownloaded(podcastStore.ensurePodcasts(db), gId, { fileName: path.basename(realFile), filePath: realFile, bytes: 9, nowMs: 1 })));
   assert.strictEqual((await get(`/episode/${gId}`)).status, 200, 'and it streams once genuinely downloaded');
 });
 

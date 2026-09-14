@@ -13,6 +13,7 @@ const path = require('node:path');
 const podcasts = require('../../lib/podcasts');
 const store = require('../../lib/podcasts/store');
 const secrets = require('../../lib/podcasts/secrets');
+const { SqliteAdapter, SQLITE_FILENAME } = require('../../lib/db/sqlite');
 
 // ---- reducers ---------------------------------------------------------------
 
@@ -74,15 +75,19 @@ test('selectExpiredTrashedEpisodes: 0/invalid retention = keep forever; only tra
 // ---- the cover fix (D1), through the pipeline with fakes ---------------------
 
 const TOKEN = 'CoverFixTok123456';
-let dataDir, db, deps, coverAttempts;
+let dataDir, db, deps, coverAttempts, storeDir, adapter, podcastsDb;
 
 beforeEach(() => {
   podcasts.resetPodcastsStateForTests();
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-podtrash-'));
   db = {};
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-podtrash-store-'));
+  adapter = new SqliteAdapter(path.join(storeDir, SQLITE_FILENAME), { log: () => {} });
+  podcastsDb = store.createPodcastsStore(adapter); // Wave 5: a REAL feature store on a scratch database - the module reads + writes through it
   coverAttempts = 0;
   deps = {
     dataDir,
+    podcastsDb,
     now: () => 1754150000000,
     loadDatabase: () => db,
     getCachedDatabase: () => db,
@@ -112,6 +117,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   podcasts.resetPodcastsStateForTests();
+  try { adapter.close(); } catch { /* closed by the test */ }
+  fs.rmSync(storeDir, { recursive: true, force: true });
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -119,15 +126,15 @@ async function addSub(backfill) {
   const input = store.validateAddInput({ feedUrl: `https://cdn.example/rss?auth=${TOKEN}`, backfill });
   const id = store.subscriptionIdFor(input.feed.url);
   secrets.setFeedSecret(dataDir, id, input.feed.url);
-  await deps.updateDatabase((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
-    store.subscriptionRecordFrom({ id, feed: input.feed, name: '', backfill: input.backfill, nowMs: 1, order: 0 })));
+  await deps.updateDatabase(() => podcastsDb.mutate((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
+    store.subscriptionRecordFrom({ id, feed: input.feed, name: '', backfill: input.backfill, nowMs: 1, order: 0 }))));
   return id;
 }
 
 test('D1: a failed cover is REPORTED in the status and RETRIED next poll even with zero new downloads', async () => {
   const id = await addSub('all');
   await podcasts.runPodcastPoll(deps, id);
-  let sub = store.readPodcasts(db).subscriptions[0];
+  let sub = podcastsDb.read().subscriptions[0];
   assert.match(sub.lastStatus, /cover art failed \(enclosure exceeds the size cap\)/, `the failure is no longer silent: ${sub.lastStatus}`);
   assert.strictEqual(coverAttempts, 1);
 
@@ -135,7 +142,7 @@ test('D1: a failed cover is REPORTED in the status and RETRIED next poll even wi
   // (this poll has targets.length === 0, the exact shape that used to make
   // one failure permanent).
   await podcasts.runPodcastPoll(deps, id);
-  sub = store.readPodcasts(db).subscriptions[0];
+  sub = podcastsDb.read().subscriptions[0];
   assert.strictEqual(coverAttempts, 2, 'retried on a zero-download cycle');
   assert.ok(!/cover art failed/.test(sub.lastStatus), `success clears the failure part: ${sub.lastStatus}`);
   assert.ok(fs.existsSync(path.join(dataDir, 'podcasts', 'Show', 'cover.png')), 'the art landed');
@@ -153,7 +160,7 @@ test('D1: a new-only sub with zero downloads still gets its cover (the root exis
   fs.mkdirSync(path.join(dataDir, 'podcasts'), { recursive: true });
   await podcasts.runPodcastPoll(deps, id);
   assert.ok(fs.existsSync(path.join(dataDir, 'podcasts', 'Show', 'cover.png')), 'cover lands with no episode downloads at all');
-  const eps = store.episodesForSub(store.readPodcasts(db).episodes, id);
+  const eps = store.episodesForSub(podcastsDb.read().episodes, id);
   assert.ok(eps.every((e) => e.status === 'skipped'), 'and the backfill policy was untouched');
 });
 
@@ -183,26 +190,28 @@ test('CRITICAL#2: the sweep treats all-trash-files-missing as an unmount and pur
     return { id, subId: 's1', guid: id, status: 'trashed', filePath: path.join(root, 'Show', `${id}.mp3`), trashPath: p, trashedAt: 1000 };
   };
   const purged = [];
-  db = { settings: { trashRetentionDays: 7 }, podcasts: { subscriptions: [], episodes: {}, settings: {} } };
-  for (const id of ['a', 'b', 'c']) db.podcasts.episodes[id] = mk(id, `${id}.mp3`);
+  db = { settings: { trashRetentionDays: 7 } };
+  const episodes = {};
+  for (const id of ['a', 'b', 'c']) episodes[id] = mk(id, `${id}.mp3`);
+  podcastsDb.replaceAll({ subscriptions: [], episodes, settings: {} });
   deps.now = () => 1000 + 30 * DAY; // all three are long expired
   deps.userStore = { removePodcastEpisodeState: (ids) => purged.push(...ids) };
 
   // The unmount shape: the mountpoint is present (and holds the trash dir),
   // but every tracked trash file has vanished at once.
-  for (const id of ['a', 'b', 'c']) fs.unlinkSync(db.podcasts.episodes[id].trashPath);
+  for (const id of ['a', 'b', 'c']) fs.unlinkSync(podcastsDb.read().episodes[id].trashPath);
   await podcasts.sweepExpiredTrash(deps);
-  assert.deepStrictEqual(Object.values(db.podcasts.episodes).map((e) => e.status), ['trashed', 'trashed', 'trashed'], 'nothing tombstoned');
+  assert.deepStrictEqual(Object.values(podcastsDb.read().episodes).map((e) => e.status), ['trashed', 'trashed', 'trashed'], 'nothing tombstoned');
   assert.deepStrictEqual(purged, [], 'no per-user rows purged');
-  assert.ok(db.podcasts.episodes.a.trashPath, 'the trash pointers survive for the remount');
+  assert.ok(podcastsDb.read().episodes.a.trashPath, 'the trash pointers survive for the remount');
 
   // One survivor defuses the signature: the genuinely-expired ones purge.
-  fs.writeFileSync(db.podcasts.episodes.c.trashPath, 'BYTES');
+  fs.writeFileSync(podcastsDb.read().episodes.c.trashPath, 'BYTES');
   await podcasts.sweepExpiredTrash(deps);
-  const statuses = Object.values(db.podcasts.episodes).map((e) => e.status);
+  const statuses = Object.values(podcastsDb.read().episodes).map((e) => e.status);
   assert.deepStrictEqual(statuses, ['tombstone', 'tombstone', 'tombstone'], 'a real purge still works');
   assert.deepStrictEqual(purged.sort(), ['a', 'b', 'c'], 'and retires the per-user rows');
-  assert.ok(!fs.existsSync(db.podcasts.episodes.c.trashPath), 'the surviving trash file is unlinked');
+  assert.ok(!fs.existsSync(podcastsDb.read().episodes.c.trashPath), 'the surviving trash file is unlinked');
 });
 
 test('CRITICAL#2 (compounding half): the cover retry never RECREATES a vanished podcasts root', async () => {
@@ -272,25 +281,23 @@ test('delta WARNING#2: an expired trashed episode outside the current root is le
   fs.writeFileSync(outsidePath, 'ONLYCOPY');
 
   const purged = [];
-  db = {
-    settings: { trashRetentionDays: 7 },
-    podcasts: {
+  db = { settings: { trashRetentionDays: 7 } };
+  podcastsDb.replaceAll({
       subscriptions: [],
       episodes: {
         inside: { id: 'inside', subId: 's1', guid: 'i', status: 'trashed', filePath: path.join(root, 'S', 'i.mp3'), trashPath: insidePath, trashedAt: 1000 },
         outside: { id: 'outside', subId: 's1', guid: 'o', status: 'trashed', filePath: path.join(oldRoot, 'S', 'o.mp3'), trashPath: outsidePath, trashedAt: 1000 },
       },
       settings: {},
-    },
-  };
+  });
   deps.now = () => 1000 + 30 * DAY;
   deps.userStore = { removePodcastEpisodeState: (ids) => purged.push(...ids) };
 
   await podcasts.sweepExpiredTrash(deps);
-  assert.strictEqual(db.podcasts.episodes.inside.status, 'tombstone', 'the in-root expiry purges normally');
+  assert.strictEqual(podcastsDb.read().episodes.inside.status, 'tombstone', 'the in-root expiry purges normally');
   assert.ok(!fs.existsSync(insidePath), 'and its bytes go');
-  assert.strictEqual(db.podcasts.episodes.outside.status, 'trashed', 'the out-of-root record is NOT tombstoned');
-  assert.strictEqual(db.podcasts.episodes.outside.trashPath, outsidePath, 'its pointer survives');
+  assert.strictEqual(podcastsDb.read().episodes.outside.status, 'trashed', 'the out-of-root record is NOT tombstoned');
+  assert.strictEqual(podcastsDb.read().episodes.outside.trashPath, outsidePath, 'its pointer survives');
   assert.strictEqual(fs.readFileSync(outsidePath, 'utf8'), 'ONLYCOPY', 'and the only copy of its bytes is untouched');
   assert.deepStrictEqual(purged, ['inside'], 'only the genuinely-purged episode retires its per-user rows');
   fs.rmSync(oldRoot, { recursive: true, force: true });
@@ -315,17 +322,21 @@ test('delta S1: rows and record purge in LOCKSTEP - a record the {from} guard sa
     return { id, subId: 's1', guid: id, status: 'trashed', filePath: path.join(root, 'S', `${id}.mp3`), trashPath: p, trashedAt: 1000 };
   };
   const purged = [];
-  db = { settings: { trashRetentionDays: 7 }, podcasts: { subscriptions: [], episodes: { keep: mk('keep'), go: mk('go') }, settings: {} } };
+  db = { settings: { trashRetentionDays: 7 } };
+  podcastsDb.replaceAll({ subscriptions: [], episodes: { keep: mk('keep'), go: mk('go') }, settings: {} });
   deps.now = () => 1000 + 30 * DAY;
   deps.userStore = { removePodcastEpisodeState: (ids) => purged.push(...ids) };
   // Simulate the interleaving the {from} guard exists for: 'keep' is
   // restored between the sweep's selection and its mutation.
   const realUpdate = deps.updateDatabase;
-  deps.updateDatabase = async (m) => { db.podcasts.episodes.keep.status = 'downloaded'; await realUpdate(m); };
+  deps.updateDatabase = async (m) => {
+    podcastsDb.mutate((h) => { h.podcasts.episodes.keep.status = 'downloaded'; return true; }); // the racing writer lands first
+    await realUpdate(m);
+  };
 
   await podcasts.sweepExpiredTrash(deps);
-  assert.strictEqual(db.podcasts.episodes.keep.status, 'downloaded', 'the guard saved the restored record');
-  assert.strictEqual(db.podcasts.episodes.go.status, 'tombstone', 'the genuine expiry still retires');
+  assert.strictEqual(podcastsDb.read().episodes.keep.status, 'downloaded', 'the guard saved the restored record');
+  assert.strictEqual(podcastsDb.read().episodes.go.status, 'tombstone', 'the genuine expiry still retires');
   assert.deepStrictEqual(purged, ['go'], 'ONLY the actually-tombstoned episode loses its per-user rows');
 });
 
@@ -338,7 +349,7 @@ test('delta S2 (cover retry): a missing root during the cover retry names the re
     body: '<rss><channel><title>Show</title><itunes:image href="https://cdn.example/art/big.png"></itunes:image></channel></rss>',
   });
   await podcasts.runPodcastPoll(deps, id);
-  const sub = store.readPodcasts(db).subscriptions[0];
+  const sub = podcastsDb.read().subscriptions[0];
   assert.match(sub.lastStatus, /podcasts folder is missing - is the volume mounted\?/,
     `the operator-facing line names the incident, not "unexpected": ${sub.lastStatus}`);
 });

@@ -168,6 +168,13 @@ carry `music` in its old container shape on both sides of the line.
 `books_items`, `books_progress`, `books_pins`, `books_settings` and `books_audio`;
 bundles carry `books` in its old container shape on both sides of the line.
 
+**Eleventh floor - schema v30 (v1.294, Wave 5, podcasts).** The podcasts
+namespace (`podcasts.subscriptions/episodes/settings`) moved into
+`podcasts_subscriptions` (an ordered record list), `podcasts_episodes` and
+`podcasts_settings`; bundles carry `podcasts` in its old container shape on
+both sides of the line. Feed URLs were never in the database and still are not
+(the 0600 secrets file is untouched by this floor).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

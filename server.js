@@ -292,7 +292,7 @@ function resolvePushMeta(db, row) {
   const mediaId = row && typeof row === 'object' ? row.mediaId : row; // tolerate the pre-v1.73 call shape
   const kind = row && typeof row === 'object' && row.kind === 'podcast' ? 'podcast' : 'media';
   if (kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
+    const ns = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(ns.episodes, mediaId) ? ns.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded') return null; // pruned/trashed between insert and delivery - skip
     const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
@@ -528,6 +528,7 @@ const likedStore = createLikedStore(dbAdapter);
 const tvDb = tvStore.createTvStore(dbAdapter, { inSaveTransaction });
 const musicDb = musicStore.createMusicStore(dbAdapter, { inSaveTransaction });
 const booksDb = booksStore.createBooksStore(dbAdapter, { inSaveTransaction });
+const podcastsDb = podcastStore.createPodcastsStore(dbAdapter, { inSaveTransaction });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -9957,13 +9958,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['metadata', 'podcasts', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
 // Wave 4 (second group): the folder config keys - same keys, same shapes.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music', 'books'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music', 'books', 'podcasts'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9990,6 +9991,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.tv = tvDb.read();                           // Wave 5: the Shows namespace, its old container shape
       bundle.music = musicDb.read();                     // Wave 5: the music namespace, its old container shape
       bundle.books = booksDb.read();                     // Wave 5: the books namespace, its old container shape
+      bundle.podcasts = podcastsDb.read();               // Wave 5: the podcasts namespace, its old container shape (no feed URLs - never in the db)
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10267,7 +10269,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['podcasts', 'ytdlp']) {
+  for (const container of ['ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -10377,12 +10379,9 @@ app.post('/api/admin/restore', (req, res, next) => {
   // destroy the subscription list and the whole episode archive (forcing a
   // full re-download) while orphaning the tokened secrets file.
   if (bundle.podcasts === undefined) {
-    const current = loadDatabase();
-    if (current.podcasts && (
-      (Array.isArray(current.podcasts.subscriptions) && current.podcasts.subscriptions.length > 0)
-      || (current.podcasts.episodes && Object.keys(current.podcasts.episodes).length > 0)
-    )) {
-      dbPart.podcasts = current.podcasts;
+    const current = podcastsDb.read(); // Wave 5: the tables, in the container shape the restore handle takes
+    if (current.subscriptions.length > 0 || Object.keys(current.episodes).length > 0) {
+      dbPart.podcasts = current;
     }
   }
 
@@ -10643,7 +10642,7 @@ app.get('/api/notifications', (req, res) => {
   const phantomEpisodeIds = [];
   // v1.73: podcast rows resolve against the episodes map, never db.metadata
   // (the shapedQueue posture) - one ns read for the whole request.
-  const podcastNsForFeed = podcastStore.readPodcasts(db);
+  const podcastNsForFeed = podcastsDb.read();
   const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
   for (const row of items) {
     // v1.146 (downloader-engine T5): engine event rows - ADMIN-ONLY (an
@@ -10938,7 +10937,7 @@ function shapedQueue(db, req) {
   const userId = req.user.id;
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
-  const podcastNs = podcastStore.readPodcasts(db);
+  const podcastNs = podcastsDb.read();
   const musicNs = musicDb.read();
   const entries = [];
   for (const e of live.entries) {
@@ -11026,7 +11025,7 @@ app.post('/api/queue/items', (req, res) => {
   // the insert as an existence oracle for a hidden item (and never gets it
   // echoed back through the shaped queue).
   if (kind === 'podcast') {
-    const podcastNs = podcastStore.readPodcasts(db);
+    const podcastNs = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
   } else if (kind === 'track') {
@@ -11246,6 +11245,7 @@ app.get('/api/search', (req, res) => {
     // unconditional eligibility + RBAC as /api/music (no opt-in).
     musicTracks: () => musicDb.read().tracks, // Wave 5: the native music tracks, from their table
     booksItems: () => booksDb.read().items, // Wave 5: the book items, from their table
+    podcastsNs: () => podcastsDb.read(), // Wave 5: the podcasts namespace (shows + episodes), from its tables
     musicLibraryTracks: () => {
       const ns = musicDb.read();
       const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
@@ -11477,7 +11477,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
     return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: `/albumart/${enc}`, href: `/music?play=${enc}`, progressPercent };
   }
   if (kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
+    const ns = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
     if (!ep || ep.status !== 'downloaded') return null;
     const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
@@ -11512,7 +11512,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
 // computed under RBAC, so this never re-derives them.
 function resolveModernGridItem(db, rec) {
   if (rec.kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
+    const ns = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(ns.episodes, rec.id) ? ns.episodes[rec.id] : null;
     if (!ep || ep.status !== 'downloaded') return null;
     const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
@@ -11630,7 +11630,7 @@ app.get('/api/home', (req, res) => {
     }
     // podcasts (downloaded) - only for the chips that can contain them
     if (filter === 'all' || filter === 'podcasts' || filter === 'continue') {
-      const podNs = podcastStore.readPodcasts(db);
+      const podNs = podcastsDb.read();
       const podProgress = userStore.getPodcastProgress(userId);
       const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
       for (const id of Object.keys(podNs.episodes || {})) {
@@ -11739,7 +11739,7 @@ app.get('/api/home', (req, res) => {
   }
 
   // ---- PODCAST candidates (downloaded, in-progress OR liked) ----
-  const podNs = podcastStore.readPodcasts(db);
+  const podNs = podcastsDb.read();
   const podProgress = userStore.getPodcastProgress(userId);
   const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
   for (const id of Object.keys(podNs.episodes || {})) {
@@ -12064,7 +12064,7 @@ function resolveHandoffTarget(db, seen) {
   const enc = encodeURIComponent(id);
 
   if (seen.kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
+    const ns = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
     // Same rule as the push resolver: a non-downloaded episode is not
     // playable, so it is not offerable.
@@ -12154,7 +12154,7 @@ app.get('/api/handoff', (req, res) => {
     return res.json({ presence: null });
   }
   if (seen.kind === 'podcast') {
-    const pns = podcastStore.readPodcasts(handoffDb);
+    const pns = podcastsDb.read();
     if (!podcastEpisodeVisibleTo(req, pns.episodes && pns.episodes[seen.mediaId])) return res.json({ presence: null });
   }
 
@@ -12889,7 +12889,7 @@ app.get('/api/feed-hidden', (req, res) => {
 // tombstoned/pending episode keeps its user_podcast_liked row - v1.65's law:
 // trash keeps per-user state - but never renders in the playlist).
 function shapedLikedPodcastItems(db, userId) {
-  const ns = podcastStore.readPodcasts(db);
+  const ns = podcastsDb.read();
   const likedRows = userStore.getPodcastLiked(userId);
   if (!likedRows.length) return [];
   const progress = userStore.getPodcastProgress(userId);
@@ -13050,7 +13050,7 @@ app.get('/api/liked', (req, res) => {
   // liked filtering lands with their libraries, T6/T7.)
   // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
   const likedMusicNs = musicDb.read();
-  const likedPodNs = podcastStore.readPodcasts(db);
+  const likedPodNs = podcastsDb.read();
   const likedBooksNs = booksDb.read();
   others = others.filter((o) => {
     if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
@@ -18793,6 +18793,7 @@ function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
 // yt-dlp polls/one-shots instead of competing for disk and network.
 podcasts.registerRoutes(app, {
   updateDatabase,
+  podcastsDb, // Wave 5: the namespace's feature store - every read + write in the module goes through it
   loadDatabase,
   getCachedDatabase,
   getSettings: () => settingsStore.get(), // Wave 4
@@ -18971,6 +18972,7 @@ if (require.main === module) {
     // never arm a poll timer.
     podcasts.startBackground({
       updateDatabase,
+      podcastsDb, // Wave 5
       loadDatabase,
       getCachedDatabase,
       getSettings: () => settingsStore.get(), // Wave 4: app settings are a store
@@ -19193,6 +19195,7 @@ module.exports = {
   tvDb, // Wave 5
   musicDb, // Wave 5
   booksDb, // Wave 5
+  podcastsDb, // Wave 5
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

@@ -15,7 +15,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, tvDb, musicDb, booksDb } = require('../../server');
+const { app, updateDatabase, tvDb, musicDb, booksDb, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -55,15 +55,17 @@ before(async () => {
       tzNew: { id: 'tzNew', title: 'Zephyr', artist: 'Band2', album: 'Al2', filePath: path.join(DATA_DIR, 'za.mp3'), rootFolder: DATA_DIR, folderName: 'F', ext: '.mp3', codec: 'mp3', durationSec: 3, albumArtKey: null, addedAt: '2026-08-01T00:00:00Z' },
     };
     return true; });
-    const p = podcastStore.ensurePodcasts(db); p.subscriptions = []; p.episodes = {};
-    podcastStore.reduceAddSubscription(p, { id: subId, name: 'Zephyr Cast', feedUrl: 'https://e.com/f.xml' });
     const epId = podcastStore.episodeIdFor(subId, 'g1');
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h); p.subscriptions = []; p.episodes = {};
+    podcastStore.reduceAddSubscription(p, { id: subId, name: 'Zephyr Cast', feedUrl: 'https://e.com/f.xml' });
     // g1 downloaded (surfaces); g2 stays pending (must NOT surface - WARNING 1).
     podcastStore.reduceUpsertEpisodes(p, subId, [
       { guid: 'g1', title: 'Zephyr Episode One', pubDateMs: 500, durationSec: 1 },
       { guid: 'g2', title: 'Zephyr Pending Ep', pubDateMs: 400, durationSec: 1 },
     ], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(DATA_DIR, 'podcasts', 'ZCast', 'ep.mp3'), bytes: 1, nowMs: 6000 });
+    return true; });
     tvDb.mutate((h) => { tvStore.ensureTv(h).episodes = { // Wave 5: the Shows namespace is a feature store
       tve: { id: 'tve', showId: 'shZ', showName: 'Zephyr Chronicles', title: 'The Storm', seasonNum: 1, episodeNum: 1, filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, ext: '.mp4', codec: 'h264', durationSec: 20, addedAt: 200 },
     }; return true; });

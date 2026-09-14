@@ -15,7 +15,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-queueapi-
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __resetDatabaseForTests, musicDb } = require('../../server');
+const { app, updateDatabase, userStore, __resetDatabaseForTests, musicDb, podcastsDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth;
@@ -159,13 +159,13 @@ const podStore = require('../../lib/podcasts/store');
 
 test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, and silently drops when trashed', async () => {
   const epId = podStore.episodeIdFor('süb-q', 'g-q1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podStore.ensurePodcasts(db);
     ns.subscriptions.push({ id: 'süb-q', name: 'Qüeue Show', feedUrlDisplay: 'https://q.invalid/f', addedAt: 1, backfill: 'all' });
     podStore.reduceUpsertEpisodes(ns, 'süb-q', [{ guid: 'g-q1', title: 'Qüeued Ep', pubDateMs: 1000, durationSec: 60 }], 'pending', 2000);
     podStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'f.mp3', filePath: '/tmp/qf.mp3', bytes: 3, nowMs: 3000 });
     return true;
-  });
+  }));
 
   // Kind discipline at the door: a phantom episode 404s; the SAME id posted
   // as media kind 404s too (disjoint id spaces, never inferred).
@@ -202,10 +202,10 @@ test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, 
 
   // Trash the episode: the row vanishes from the shaped view (silent drop,
   // the belt) while the raw store keeps it (restore fidelity)...
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podStore.ensurePodcasts(db);
     return podStore.reduceEpisodeTrashed(ns, epId, { trashPath: '/tmp/.filetube-trash/qf.mp3', nowMs: 4000 });
-  });
+  }));
   q = await GET();
   assert.deepEqual(q.entries.map((e) => e.kind), ['media'], 'the trashed episode left the panel');
   assert.equal(userStore.getQueue(auth.user.id).entries.length, 2, 'the raw entry survives for restore fidelity');
@@ -217,13 +217,13 @@ test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, 
 
 test('v1.71: media queue semantics are untouched by the widening (pointer, reorder, remove run mixed)', async () => {
   const epId = podStore.episodeIdFor('süb-q2', 'g-q2');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podStore.ensurePodcasts(db);
     ns.subscriptions.push({ id: 'süb-q2', name: 'S2', feedUrlDisplay: 'https://q2.invalid/f', addedAt: 1, backfill: 'all' });
     podStore.reduceUpsertEpisodes(ns, 'süb-q2', [{ guid: 'g-q2', title: 'E2', pubDateMs: 1000, durationSec: 60 }], 'pending', 2000);
     podStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'f2.mp3', filePath: '/tmp/qf2.mp3', bytes: 3, nowMs: 3000 });
     return true;
-  });
+  }));
   await add('vid-1');
   await fetch(`${base}/api/queue/items`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

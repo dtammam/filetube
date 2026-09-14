@@ -19,7 +19,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, updateDatabase, userStore,
-  __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase, musicDb } = require('../../server');
+  __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase, musicDb, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -261,13 +261,15 @@ test('resolveHomeItem: media/track/podcast arms + dead-link nulls', async () => 
     const m = musicStore.ensureMusic(h);
     m.tracks = { [trackId]: { id: trackId, filePath: '/music/s.mp3', rootFolder: '/music', ext: '.mp3', title: 'T', artist: 'A', album: 'Al', albumArtKey: null, codec: 'mp3', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' } };
     return true; });
-    const p = podcastStore.ensurePodcasts(db);
+    const pendingEp = podcastStore.episodeIdFor(subId, 'g2');
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'The Show', feedUrl: 'https://e.com/f.xml' });
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Ep', pubDateMs: 1, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: mediaFile, bytes: 5, nowMs: 6000 });
-    const pendingEp = podcastStore.episodeIdFor(subId, 'g2');
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g2', title: 'Pending', pubDateMs: 2, durationSec: 10 }], 'pending', 5000);
+    return true; });
     return { pendingEp };
   });
   const db = getCachedDatabase();

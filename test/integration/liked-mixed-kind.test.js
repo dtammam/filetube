@@ -29,7 +29,7 @@ const {
   app,
   updateDatabase,
   __mintTestSession,
-  userStore, musicDb } = require('../../server');
+  userStore, musicDb, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const musicStore = require('../../lib/music/store');
@@ -85,7 +85,7 @@ const epFile = path.join(process.env.DATA_DIR, 'ep.mp3');
 // (episodeIdFor - the same md5 derivation the poll pipeline uses).
 async function seedDownloadedEpisode(guid, opts = {}) {
   const epId = podcastStore.episodeIdFor(subId, guid);
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [
       { guid, title: opts.title || `Ep ${guid}`, pubDateMs: opts.pubDateMs || 1000, durationSec: opts.durationSec || 300 },
@@ -94,7 +94,7 @@ async function seedDownloadedEpisode(guid, opts = {}) {
       podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'ep.mp3', filePath: epFile, bytes: 9, nowMs: opts.nowMs || 6000 });
     }
     return true;
-  });
+  }));
   return epId;
 }
 

@@ -16,7 +16,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, getMediaId, userStore, __mintTestSession, musicDb } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession, musicDb, podcastsDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -74,7 +74,8 @@ before(async () => {
       hidtrk: { id: 'hidtrk', title: 'SECRETTRACK', artist: 'B', album: 'Bl', filePath: hidTrackFile, rootFolder: hidRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-02T00:00:00Z' },
     };
     return true; });
-    const p = podcastStore.ensurePodcasts(db);
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: OPEN_SUB, name: 'Open Show', feedUrl: 'https://e.com/o.xml' });
     podcastStore.reduceAddSubscription(p, { id: HID_SUB, name: 'Secret Show', feedUrl: 'https://e.com/s.xml' });
@@ -82,6 +83,7 @@ before(async () => {
     podcastStore.reduceUpsertEpisodes(p, HID_SUB, [{ guid: 'hg', title: 'SECRETEP', pubDateMs: 2, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, openEpId, { fileName: 'openep.mp3', filePath: openEpFile, bytes: 5, nowMs: 6000 });
     podcastStore.reduceEpisodeDownloaded(p, hidEpId, { fileName: 'SECRETEP.mp3', filePath: hidEpFile, bytes: 5, nowMs: 6000 });
+    return true; });
     return true;
   });
 
