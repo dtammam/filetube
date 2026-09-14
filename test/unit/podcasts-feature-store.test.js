@@ -182,8 +182,12 @@ test('source lock: the route surface never names the podcasts tables or the dead
   // sites in server.js and the two destructures that receive them there are
   // four new crossings of the SAME store - no new reader, no new spelling.
   // Still an EXACT count: a new crossing has to be a deliberate edit here, not
-  // a silent one.
-  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 13, 'every crossing carries the store, never the doc namespace');
+  // a silent one. Wave 7b (slice S7) took it from 13 to 15: the backup bundle's
+  // `podcastsDb.read()` and the restore route's pre-v1.69-bundle preservation
+  // read (both asserted above) moved to lib/admin/backup.js, so server.js's one
+  // new deps-bundle entry and the one destructure that receives it there are
+  // two more crossings of the SAME store.
+  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 15, 'every crossing carries the store, never the doc namespace');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');
   assert.strictEqual((lib.match(/\.updateDatabase\(\(\) => (deps|d)\.podcastsDb\.mutate\(\(mdb\) =>/g) || []).length, 21, 'every one of them runs its reducers through the store');
