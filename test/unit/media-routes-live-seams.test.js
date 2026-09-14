@@ -11,7 +11,7 @@
 // a snapshot would freeze them at their boot values forever: POST
 // /api/videos/:id/prepare-audio would answer 503 'ffmpeg unavailable' on a box
 // that has ffmpeg, and the Stats "About" row would report a null TTS version
-// on a box with espeak-ng. server.js therefore hands in `() => ffmpegAvailable`
+// on a box with espeak-ng. server.js therefore hands in `ffmpegIsAvailable: () => ffmpegAvailable`
 // and `() => ttsEngineVersion`, and those two reads carry a `()`.
 //
 // These tests drive the seams: register the routes with an accessor over a
@@ -69,7 +69,7 @@ test('S10a seam: POST /api/videos/:id/prepare-audio reads ffmpegAvailable LIVE, 
   const app = fakeApp();
   mediaRoutes.registerPrepareAudioRoute(app, {
     audioPath: (id) => `/nowhere/${id}.m4a`,
-    ffmpegAvailable: () => ffmpegAvailable,
+    ffmpegIsAvailable: () => ffmpegAvailable,
     fs: { existsSync: () => false }, // the sidecar is missing, so the ffmpeg gate is reached
     healStaleAudioReady: () => 'pending',
     loadDatabase: () => ({ metadata: { v1: { id: 'v1', type: 'video', filePath: '/lib/v1.mp4' } } }),
@@ -188,8 +188,13 @@ test('S10a class net: every relative require() in an extracted split module reso
     const found = [];
     (function walk(node) {
       if (!node || typeof node.type !== 'string') return;
-      if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'require') {
-        const a = node.arguments[0];
+      // require('x'), require.resolve('x') and import('x') are the three spellings of
+      // a relative specifier (the R2 gate's S1: the first cut saw only the first).
+      const isRequire = node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'require';
+      const isResolve = node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && node.callee.object.type === 'Identifier' && node.callee.object.name === 'require' && node.callee.property.name === 'resolve';
+      const isImport = node.type === 'ImportExpression';
+      if (isRequire || isResolve || isImport) {
+        const a = isImport ? node.source : node.arguments[0];
         if (a && a.type === 'Literal' && typeof a.value === 'string' && a.value.startsWith('.')) found.push(a.value);
       }
       for (const k of Object.keys(node)) {
@@ -217,7 +222,7 @@ test('S10a class net: every relative require() in an extracted split module reso
 
 test('S10a seam: server.js hands BOTH live seams in as accessors, never as the value', () => {
   const surface = routeSurfaceSource();
-  assert.ok(surface.includes('ffmpegAvailable: () => ffmpegAvailable'),
+  assert.ok(surface.includes('ffmpegIsAvailable: () => ffmpegAvailable'),
     'the prepare-audio call site must pass an accessor - `ffmpegAvailable,` would snapshot the boot value');
   assert.ok(surface.includes('ttsEngineVersion: () => ttsEngineVersion'),
     'the /api/stats call site must pass an accessor - `ttsEngineVersion,` would snapshot null');

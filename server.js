@@ -3652,7 +3652,7 @@ async function restoreMissingPreviewClip(existing, id, filePath) {
 // pass (incl. a coalesced follow-up) legitimately resets them to 0 at its
 // own start, exactly like `lastScan` only reflects the most recently
 // COMPLETED pass. `phase` is one of 'idle' | 'walking' | 'syncing'.
-let scanState = { scanning: false, lastScan: null, rescanRequested: false, processed: 0, total: 0, phase: 'idle' };
+const scanState = { scanning: false, lastScan: null, rescanRequested: false, processed: 0, total: 0, phase: 'idle' };
 
 // v1.30 A2 (AC1.1): cooperative-scan batch size. Both the directory walk
 // (`scanDirRecursive`) and the metadata-merge loop (`runScanDirectories`)
@@ -5940,6 +5940,7 @@ configRoutes.registerConfigRoutes(app, {
   folderSettingsStore,
   folderStore,
   foldersOverlap,
+  glyphPool, // the shared glyph registry, handed in (R2 gate W2: the first cut required it a second time)
   fs,
   getCachedDatabase,
   inSaveTransaction, // the folder list + the settings map write inside ONE doc commit
@@ -5970,7 +5971,7 @@ configRoutes.registerConfigRoutes(app, {
 // zero scans = zero db writes = the disabled-module posture ytdlp set).
 // Full design: docs/exec-plans/completed/2026-07-12-v1.37.0-books.md.
 
-let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
+const bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
 // v1.37.0 gate fix (adversarial W4): the single deferred follow-up timer --
 // see scanBooks' finally block.
 let deferredBookRescanTimer = null;
@@ -6211,7 +6212,7 @@ const TRASH_RETENTION_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 // music-less install (zero folders = zero scans = zero db writes). Full
 // design: docs/exec-plans/completed/2026-07-17-v1.44-music-library.md.
 
-let musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
+const musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
 let deferredMusicRescanTimer = null;
 
 function currentMusicScanState() {
@@ -6730,7 +6731,7 @@ musicRoutes.registerTrackRoutes(app, {
 // browse/organization layer is new. Everything degrades to a no-op on a Shows-less
 // install (zero folders + zero episodes = zero scans = zero db writes).
 
-let tvScanState = { scanning: false, lastScan: null, rescanRequested: false };
+const tvScanState = { scanning: false, lastScan: null, rescanRequested: false };
 let deferredTvRescanTimer = null;
 function currentTvScanState() { return tvScanState; }
 
@@ -11819,16 +11820,10 @@ async function recordLocalChannelHealFanout(deps, target) {
   return updated;
 }
 
-// API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
-// Computed LIVE from `db.metadata` on every request via the pure helpers in
-// `lib/stats.js` -- deliberately no cached aggregate (see that module's
-// header comment): at home-server scale an O(n) pass per request is trivial
-// and always fresh, and a cache would need its own invalidation story for no
-// real benefit.
-
 // Wave 7b (slice S10b): GET /api/storage-summary moved VERBATIM to
-// lib/config/routes.js. The section comment above it is the /api/stats
-// section's, which stays here with that route.
+// lib/config/routes.js. (The /api/stats section banner that used to sit here
+// went with GET /api/stats to lib/media/routes.js in slice S10a - the R2 gate
+// caught the orphaned banner the parallel merge left behind.)
 configRoutes.registerStorageSummaryRoute(app, {
   getCachedDatabase,
   mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
@@ -12754,7 +12749,7 @@ musicRoutes.registerAudioRoute(app, {
 // before.
 mediaRoutes.registerPrepareAudioRoute(app, {
   audioPath,
-  ffmpegAvailable: () => ffmpegAvailable, // LIVE reader: a server.js `let` the async ffmpeg probe flips after boot
+  ffmpegIsAvailable: () => ffmpegAvailable, // LIVE reader: a server.js `let` the async ffmpeg probe flips after boot
   fs,
   healStaleAudioReady, // re-derives audioStatus when the sidecar is gone
   loadDatabase,
