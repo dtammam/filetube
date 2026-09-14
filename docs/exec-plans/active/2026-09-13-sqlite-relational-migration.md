@@ -978,6 +978,69 @@ disclosed.
     had accumulated since 2026-09-13 (reaped; the harness's exit hook reaps only its own
     worker's dirs - a `find -mmin +60` before a release run is the cheap habit).
     Dual-Node (sequential, reviewers idle): 22.23.1 8775 / 8775 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8775 / 8775 / 0 / 0; 24.14.0 8775 / 8775 / 0 / 0.
+- **Wave 7b R2 record (2026-09-14, branch `feat/wave7b-r2`: the re-pacing commit + FOUR slices
+  run in PARALLEL Opus worktrees from base 52d3e03e, each verified by the main session with
+  `scripts/verify-split-slice.js` + the routing signature before its merge; merged S3 (ff), S4,
+  S10b, S10a (three-way, two expected conflicts each: the live-derived DIAGRAMS count and the
+  route-surface registry list):**
+  - **S3 music** (41886559): `/api/music`, `/track`, `/albumart`, `/audio` -> lib/music/routes.js
+    in FOUR register functions (the config block must precede the progress coalescer's `const`
+    - TDZ; S1a's user-routes call sits between two music blocks; `/audio` lives 8,700 lines
+    down); `runMusicScan` -> lib/music/scanRunner.js (`createMusicScanRunner(deps)`); `scanMusic`
+    / `musicScanState` / the timer / `probeMusicTrack` + `extractAlbumArt` STAY (callers, or they
+    read the mutable `ffmpegAvailable`). ONE deviation: `/audio/:id`'s `ffmpegAvailable` gate
+    crosses as the live `ffmpegIsAvailable()` (a `let` an async boot probe flips AFTER
+    registration - frozen, every `/audio` request would 503 forever; a new executing test binds
+    it, mutation-proven). server.js 17093 -> 16722.
+  - **S4 tv** (56a372ad): `/api/tv` + the four `/tv*` streams -> lib/tv/routes.js in ONE
+    register function (contiguous); `runTvScan` -> lib/tv/scanRunner.js; the TV-owned transcode
+    and audio-extract lanes moved WHOLE (both `let` busy flags with every reader and writer, so
+    no mutable seam crosses); `scanTv`, `tvScanState` (crosses as the same object),
+    `visibleTvEpisodes` (read by `/api/search`), `TRANSCODE_EXTENSIONS` stay. The same
+    `ffmpegAvailable` seam at four sites, mutation-proven three ways incl. a runtime fake ffmpeg.
+    Four tv-server-wiring locks re-pointed (one TIGHTENED to a statement window), the
+    tv-feature-store lock re-pointed (the brief wrongly said it already read the surface).
+    server.js -> 16623 alone.
+  - **S10b config** (e925fe44): `/api/config` + `/api/folders` + `/api/scan` (one interleaved
+    block), `/api/scan-status`, the logo pair, `/api/settings`, `/api/cache`,
+    `/api/storage-summary` -> lib/config/routes.js in SIX register functions; `GLYPH_IDS`, the
+    transcript-prompt validator + caps, `TRANSCODE_LIST_CAP`, `settingsResponse` moved with
+    proof; the enum allowlists, the transcode-cache machinery (S8's) stay. No deviation. Three
+    locks re-pointed (library-folders-stores, app-settings-store, setup-debug-lifecycle's
+    KNOWN_KEYS), all mutation-killed. server.js -> 16271 alone. It reported the parallel-load
+    flake honestly: three `PROGRESS_FLUSH_MS` debounce tests failed once under four concurrent
+    suites, green in isolation and on re-run.
+  - **S10a media browse** (e0bc414b): thirteen groups, 27 registrations / 1,757 statement lines
+    -> lib/media/routes.js (2,409 lines) in SEVEN register functions (measured, not assumed: one
+    call moved two browse routes ahead of `/api/progress` - a 4-line signature diff; and a call
+    above the critter constants threw a TDZ at require time). Eleven helpers moved incl. the
+    bulk-attribution latch (the routes ASSIGN it, so it had to move; server.js re-exports the
+    setter as the same object - 13 re-export identities checked). Deviations: the same
+    `ffmpegAvailable` seam, `ttsEngineVersion` (same class - frozen, Stats reports null
+    forever), and TWO `require('./lib/ytdlp/activity')` -> `require('../ytdlp/activity')`.
+    **The find of the release:** a relative `require()` specifier inside a moved body resolves
+    against the NEW file - a string literal no identifier census sees. It broke the bulk mover's
+    async tail (`MODULE_NOT_FOUND`, the single-flight latch stuck, two 409s and two 300 s
+    timeouts: 8778 / 8771 / 4 fail on the first full run, reported verbatim). Now bound by
+    `test/unit/media-routes-live-seams.test.js`, an AST net that RESOLVES every relative
+    specifier in every extracted module (its first cut matched a specifier quoted in a header
+    comment - the porosity lesson again). Its own mutant M4 survived at first: re-pointing the
+    card-like lock at the whole surface made it vacuous because lib/user/routes.js carries the
+    identical `likedSet` line - fixed with a statement-scoped window; 8/8 killed. Two exact
+    counts re-measured (podcastsDb 9 -> 13, ytdlpDb 11 -> 15). server.js -> 15229 alone.
+  - **The merge:** every slice edited DIAGRAMS' live-derived registration count (the census reds
+    without it and the hook refuses red - a forced deviation from "no docs"), so each merge
+    re-measured it on the merged tree; the registry list took every slice's additions. One
+    ordering lesson: S10b merged before S4 failed the hook - S10b moved the config route's
+    `tvDb.read()` calls out of server.js while the tv-feature-store lock still read server.js
+    alone (S4 re-points it); aborted, merged S4 first, then S10b. Merged tree at three slices:
+    8778 / 8778 / 0 / 0 (main checkout, no parallel load).
+  - Merged four-slice tree: server.js **13,566** lines (17,093 at v1.297.0), 22 route +
+    middleware registrations (98); the census's `mime` false positive struck in three slices.
+    Merged four-slice tree (main checkout, no parallel load): 8782 / 8782 / 0 fail / 0 skipped;
+    the verifier over all 29 R2 groups reports exactly the six documented seam routes; the
+    routing signature's unsorted output is identical to the R2 base.
+  - **Gate:** (filled after the gate)
 
 ---
 
