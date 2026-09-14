@@ -20,7 +20,7 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, updateDatabase, moveItemToFolder, transcodedPath,
 } = require('../../server');
-const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding
+const { seedState, likedStore } = require('../helpers/seed-state'); // Wave 2: relational seeding
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -577,7 +577,7 @@ test('v1.41.6 REGRESSION: a LIKED item keeps its Like across a move (db.liked is
   seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
   // A second, UNRELATED liked id -- the re-key must be surgical (in place, same
   // index) and must not disturb the rest of the list or its order.
-  await updateDatabase((db) => { db.liked = ['other-id', oldId]; return true; });
+  likedStore().replaceAll(['other-id', oldId]); // Wave 4: the frozen likes are a table
 
   const res = await fetch(`${base}/api/videos/${oldId}/move`, {
     method: 'POST',

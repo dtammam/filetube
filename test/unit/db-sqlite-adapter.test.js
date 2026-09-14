@@ -58,8 +58,7 @@ function fullFixture() {
       vid2: { id: 'vid2', name: 'song.mp3', title: 'Song', filePath: '/media/music/song.mp3' },
       vid3: { id: 'vid3', name: 'zero.mp4', title: 'Zero views', viewCount: 0 },
     },
-    liked: ['vid1'],
-    // (settings: relational since Wave 4 - see importFixture)
+    // (settings / liked: relational since Wave 4 - see importFixture)
     books: {
       folders: ['/media/books'],
       items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
@@ -97,6 +96,7 @@ function importFixture() {
   return {
     ...fullFixture(),
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
+    liked: ['vid1'], // Wave 4: an ordered list (the frozen pre-auth likes)
     folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
     folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
     // v1.126/v1.127: the per-channel-folder display-name map (the namespace
@@ -401,7 +401,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     const realUpsertKv = a.stmts.upsertKv;
     a.stmts.upsertKv = { run: () => { throw new Error('simulated statement failure'); } };
     const db2 = a.load();
-    db2.liked = ['never-committed']; // singleton write, executes before the kv poison (liked: the last top-level doc_single until Wave 4's third group)
+    db2.books.pins = [{ id: 'never-committed' }]; // singleton write (books.pins - a container sub-key; no top-level doc_single is left since Wave 4), executes before the kv poison
     db2.metadata.vid2.title = 'never';  // kv write, hits the stub
     try {
       assert.throws(() => a.save(db2), /simulated statement failure/);
@@ -415,7 +415,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     // Snapshot must still reflect disk: the same change saved cleanly now
     // must write BOTH rows (had the snapshot advanced, the diff would skip them).
     const db3 = a.load();
-    db3.liked = ['never-committed'];
+    db3.books.pins = [{ id: 'never-committed' }];
     db3.metadata.vid2.title = 'never';
     const stats = a.save(db3);
     assert.deepStrictEqual(stats, { rowsWritten: 2, rowsDeleted: 0 });

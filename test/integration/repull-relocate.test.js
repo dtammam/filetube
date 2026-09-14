@@ -66,7 +66,7 @@ const {
   planImportRelocation, activeMediaStreams,
   flushPendingProgress, userStore,
 } = require('../../server');
-const { seedState, settingsStore, progressStore, tombstoneStore   } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, settingsStore, progressStore, tombstoneStore, likedStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
@@ -175,7 +175,7 @@ test('HEADLINE: a hydrated MeTube import is moved into its channel folder with t
 
   await updateDatabase((db) => {
     progressStore().set(oldId, { timestamp: 55, duration: 213, updatedAt: '2026-07-01T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
-    db.liked = [oldId];
+    likedStore().replaceAll([oldId]); // Wave 4: the frozen likes are a table
     return true;
   });
 
@@ -205,7 +205,7 @@ test('HEADLINE: a hydrated MeTube import is moved into its channel folder with t
 
   assert.deepStrictEqual(db.progress[newId], { timestamp: 55, duration: 213, updatedAt: '2026-07-01T00:00:00.000Z' }, 'watch progress must survive under the new id');
   assert.ok(!db.progress[oldId]);
-  assert.deepStrictEqual(db.liked, [newId], 'the LIKE must survive the re-key (db.liked is an array of media ids)');
+  assert.deepStrictEqual(likedStore().list(), [newId], 'the LIKE must survive the re-key (db.liked is an array of media ids)');
 
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${newId}.jpg`)), 'the thumbnail must be re-keyed');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${oldId}.jpg`)));
@@ -304,7 +304,7 @@ test('MANDATORY RE-KEY REGRESSION: move -> rescan -> the item survives under its
   const { id: oldId } = seedHydratedImport();
   await updateDatabase((db) => {
     progressStore().set(oldId, { timestamp: 90, duration: 213, updatedAt: '2026-07-02T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
-    db.liked = [oldId];
+    likedStore().replaceAll([oldId]); // Wave 4: the frozen likes are a table
     return true;
   });
 
@@ -320,7 +320,7 @@ test('MANDATORY RE-KEY REGRESSION: move -> rescan -> the item survives under its
   assert.ok(!db.metadata[oldId], 'the OLD id must never be resurrected');
   assert.equal(Object.keys(db.metadata).length, 1, 'exactly one entry -- not a prune + fresh re-add');
   assert.deepStrictEqual(db.progress[newId], { timestamp: 90, duration: 213, updatedAt: '2026-07-02T00:00:00.000Z' }, 'watch progress must be byte-identical after the scan');
-  assert.deepStrictEqual(db.liked, [newId], 'the Like must survive the scan');
+  assert.deepStrictEqual(likedStore().list(), [newId], 'the Like must survive the scan');
   assert.equal(db.metadata[newId].channelUrl, CHANNEL.channelUrl, 'the identity must survive the scan');
   assert.equal(db.metadata[newId].youtubeId, VIDEO_ID);
   assert.equal(db.metadata[newId].metadataRepulledAt, 1_800_000_000_000, 'the reheat marker must survive the scan');
@@ -344,7 +344,7 @@ test('a relocation that lands MID-SCAN is not wiped by the scan\'s wholesale met
   await scanDirectories(); // index the padding + the import
   await updateDatabase((db) => {
     progressStore().set(oldId, { timestamp: 12, duration: 213, updatedAt: '2026-07-03T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
-    db.liked = [oldId];
+    likedStore().replaceAll([oldId]); // Wave 4: the frozen likes are a table
     return true;
   });
 
@@ -362,7 +362,7 @@ test('a relocation that lands MID-SCAN is not wiped by the scan\'s wholesale met
   assert.equal(db.metadata[newId].filePath, result.newPath);
   assert.equal(db.metadata[newId].channelUrl, CHANNEL.channelUrl, 'identity intact');
   assert.deepStrictEqual(db.progress[newId], { timestamp: 12, duration: 213, updatedAt: '2026-07-03T00:00:00.000Z' }, 'progress intact');
-  assert.deepStrictEqual(db.liked, [newId], 'the Like intact');
+  assert.deepStrictEqual(likedStore().list(), [newId], 'the Like intact');
 });
 
 // ---- INELIGIBLE: the things that must NEVER be moved ------------------------

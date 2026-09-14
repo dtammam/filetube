@@ -446,6 +446,41 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
   - **`moveItemToFolder` extraction deferred to Wave 7**, same reason as Wave 3's
     `trashItem`: a deps-bag threading of ~20 server.js internals is a second risk class
     on a data-moving wave; storage move only here. Disclosed.
+- **Wave 4 record (2026-09-14, branch `feat/wave4-5-config-and-catalogs`, three commits, one
+  per group; Dean's overnight authorization the same day: "continuing on through the rest of
+  the waves" - the per-wave device pass is waived until the arc completes, every release ships
+  DEVICE-PENDING and disclosed):**
+  - **Group 1 (v24)** `settings` -> `app_settings`: 48 server.js sites (the 46 doc spellings
+    + the `getCachedDatabase().settings` ones the first census missed - it counts them now),
+    one lib site (the podcasts trash sweep reads retention via a `getSettings` dep). The
+    scans capture `settingsStore.get()` once beside their Phase-1 snapshot (a mid-scan
+    change still not observed mid-scan). The bundle keeps the MERGED object.
+  - **Group 2 (v25)** the folder config -> `library_folders` / `library_folder_settings` /
+    `channel_folder_display_names`: 35 server.js sites + lib/podcasts (boot overlap warning)
+    + lib/ytdlp (the stale-downloadDir migration, through `getLibraryFolders` /
+    `removeLibraryFolder` + `inSaveTransaction` deps); the config POST writes both maps in
+    ONE `inSaveTransaction`; the rename route and the channel heal write a display name the
+    same way (the heal through a `setFolderDisplayName` dep so its unit harness stays
+    deterministic). **Three reads hid behind holder names the census did not know**
+    (`cachedForBooks.folders`, `cached.folders` x2, `mdb.folderDisplayNames`) - caught by the
+    feature-config overlap tests; the census and the new source locks now enumerate every
+    holder spelling. A `/*` inside a comment silently truncated the diagrams census's view
+    of `lib/db/sqlite.js` (9 names / 12 tables until reworded).
+  - **Group 3 (v26)** `liked` -> `media_liked` (`lib/media/liked.js`): the adoption and the
+    stats inventory read `list()`; the four carriers (rename / trash / restore / purge)
+    re-key or remove inside the commit; `rekey` keeps the SLOT (the array idiom wrote the
+    new id back at the same index). After it NO top-level `doc_single` name remains.
+  - Tests: `saveDatabase(` fixtures -> `seedState(` in 97 files (codemod), the folder
+    spellings in 11 files (codemod) + ~40 hand sites, the liked spellings in 7 files; the
+    seed helper routes the five keys REPLACE-ONLY-WHEN-PRESENT (a `loadDatabase()`-derived
+    object no longer carries them - the first cut wiped them on re-seed); the crash probe
+    writes two kv rows per burst; the adapter test's upgrade cases plant a v17 doc row raw.
+    Five new test files (`db-kv-list-stores`, `app-settings-store`, `library-folders-stores`,
+    `media-liked-store`, `app-settings-atomicity`, `media-liked-carriers`).
+  - Baseline after: doc_kv **9**, doc_single **13**, total **22**, schema **26**, server.js
+    **19296** lines, tests 8416 / 672 files. Full suite Node 22 before the gate:
+    8581 / 8581 / 0 fail / 0 skipped. `moveItemToFolder` extraction deferred to Wave 7.
+  - Gate pass A: pending (spawned after this record).
 - **Gate pacing on the shared branch:** the two waves are gated in TWO passes by the SAME
   reviewer agents (pass A after the Wave 4 commits, pass B after Wave 5), so each review
   is bounded; ONE release (v1.294.0) at the end, no device pass between 3 and 4. Split

@@ -30,6 +30,7 @@ const DOC_SEMANTICS = {
   folders: (s) => s.folderStore,
   folderSettings: (s) => s.folderSettingsStore,
   folderDisplayNames: (s) => s.folderDisplayNameStore,
+  liked: (s) => s.likedStore,
 };
 
 function server() {
@@ -66,4 +67,5 @@ module.exports = {
   folderStore: () => server().folderStore, // Wave 4
   folderSettingsStore: () => server().folderSettingsStore, // Wave 4
   folderDisplayNameStore: () => server().folderDisplayNameStore, // Wave 4
+  likedStore: () => server().likedStore, // Wave 4
 };

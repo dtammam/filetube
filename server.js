@@ -519,6 +519,11 @@ const createFolderDisplayNameStore = require('./lib/config/folderDisplayNames');
 const folderStore = createFolderStore(dbAdapter);
 const folderSettingsStore = createFolderSettingsStore(dbAdapter);
 const folderDisplayNameStore = createFolderDisplayNameStore(dbAdapter);
+// Wave 4 (third group): the FROZEN pre-auth likes (media_liked) - read once by
+// the first admin's adoption, otherwise only carried by the rename / trash /
+// restore / purge mutators (in-transaction re-keys), like the Wave 2 carriers.
+const createLikedStore = require('./lib/media/liked');
+const likedStore = createLikedStore(dbAdapter);
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -554,9 +559,8 @@ function loadDatabase() {
   // (v1.42-v1.291: `progress` was backfilled here. Wave 2 moved it to
   // media_progress / progressStore - no longer a key of this object.)
   if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
-  // v1.30 C2: backfill `liked` (array of media ids) the same way every other
-  // top-level key above is backfilled.
-  if (!Array.isArray(db.liked)) db.liked = [];
+  // (v1.30-v1.293: `liked` was backfilled here. Wave 4 moved it to media_liked
+  // / likedStore - no longer a key of this object.)
   // (v1.41.3-v1.291: `deleteTombstones` was backfilled here. Wave 2 moved it
   // to media_delete_tombstones / tombstoneStore - no longer a key of this object.)
   // (v1.42-v1.290: `viewCounts` was backfilled here. Wave 1 of the relational
@@ -6052,7 +6056,7 @@ app.post('/api/auth/setup', async (req, res) => {
     const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
     const adoption = {
       progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
-      liked: Array.isArray(db.liked) ? db.liked : [],
+      liked: likedStore.list(), // Wave 4: the frozen likes, from their table (like order)
       bookProgress: books.progress || {},
       bookPins: Array.isArray(books.pins) ? books.pins : [],
       channelPins: Array.isArray(ytd.pins) ? ytd.pins : [],
@@ -9945,13 +9949,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['metadata', 'liked', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
 // Wave 4 (second group): the folder config keys - same keys, same shapes.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9974,6 +9978,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.folders = folderStore.list();               // Wave 4: the root list, operator order
       bundle.folderSettings = folderSettingsStore.getAll();
       bundle.folderDisplayNames = folderDisplayNameStore.getAll();
+      bundle.liked = likedStore.list();                  // Wave 4: the frozen likes, like order
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10156,10 +10161,11 @@ function validateBackupBundle(bundle) {
   // Wave 4 (second group): the folder config. `folders` restores as an
   // ordered list of root paths, the two maps one row per key - shape-checked
   // before the wipe like everything else.
-  if (bundle.folders !== undefined) {
-    if (!Array.isArray(bundle.folders)) return 'folders must be an array';
-    for (const f of bundle.folders) {
-      if (typeof f !== 'string' || f === '' || f.includes('\u0000')) return 'folders: every entry must be a non-empty string';
+  for (const key of ['folders', 'liked']) {
+    if (bundle[key] === undefined) continue;
+    if (!Array.isArray(bundle[key])) return `${key} must be an array`;
+    for (const f of bundle[key]) {
+      if (typeof f !== 'string' || f === '' || f.includes('\u0000')) return `${key}: every entry must be a non-empty string`;
     }
   }
   for (const key of ['folderSettings', 'folderDisplayNames']) {
@@ -13783,10 +13789,9 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       // for the user to know why. Written back in place (same index) so the
       // liked-view's array order -- which is what `likedItems` renders by --
       // is preserved rather than bumping the item to the end.
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(oldId);
-        if (likedIndex !== -1) freshDb.liked[likedIndex] = newId;
-      }
+      // Wave 4: the frozen likes are a table; the re-key keeps the slot (the
+      // liked-view's order) and rides the doc commit's transaction.
+      inSaveTransaction(() => likedStore.rekey(oldId, newId));
 
       // (v1.42: `viewCounts` followed the re-key HERE as a doc carry - added
       // after the adversarial seat proved a move zeroed the moved item's count
@@ -14261,10 +14266,7 @@ async function trashItem(deps, id, opts = {}) {
         progressStore.rekey(id, trashId);
         tombstoneStore.remove([trashId, id]);
       });
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(id);
-        if (likedIndex !== -1) freshDb.liked[likedIndex] = trashId;
-      }
+      inSaveTransaction(() => likedStore.rekey(id, trashId)); // Wave 4: the frozen likes follow the item into the trash
       // (Wave 1: the view counter is relational - it re-keys id -> trashId
       // post-commit in rekeyInFlightState with the per-user carriers.)
       // (Gate W8 note: the crash window between this commit and the source
@@ -14698,10 +14700,7 @@ async function restoreTrashItem(deps, trashId) {
         progressStore.rekey(trashId, originalId);
         tombstoneStore.remove([originalId, trashId]);
       });
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(trashId);
-        if (likedIndex !== -1) freshDb.liked[likedIndex] = originalId;
-      }
+      inSaveTransaction(() => likedStore.rekey(trashId, originalId)); // Wave 4: and back out of it
       // (Wave 1: the view counter is relational - it re-keys trashId ->
       // originalId post-commit in rekeyInFlightState with the per-user carriers.)
 
@@ -14884,10 +14883,7 @@ async function purgeTrashItem(deps, trashId) {
         tombstoneStore.remove(trashId);
       });
       // (Wave 1: the relational view counter is removed post-commit below.)
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(trashId);
-        if (likedIndex !== -1) freshDb.liked.splice(likedIndex, 1);
-      }
+      inSaveTransaction(() => likedStore.remove(trashId)); // Wave 4: the frozen like goes with the purge
       clearPersistedServedAt(trashId);
       return true;
     });
@@ -17101,7 +17097,7 @@ app.get('/api/stats', (req, res) => {
   if (isAdmin) {
     inventoryInput = {
       metadata: visibleMetadata, progress: progressStore.getAll(), viewCounts: viewCountStore.getAll(), // Waves 1-2: the tables
-      liked: db.liked, deleteTombstones: tombstoneStore.getAll(), folders: folderStore.list(), // Wave 4
+      liked: likedStore.list(), deleteTombstones: tombstoneStore.getAll(), folders: folderStore.list(), // Wave 4
       books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
       music: { tracks: visibleTracks, folders: music.folders },
       users: userStore.countUsers(),
@@ -19137,6 +19133,7 @@ module.exports = {
   folderStore, // Wave 4
   folderSettingsStore, // Wave 4
   folderDisplayNameStore, // Wave 4
+  likedStore, // Wave 4
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

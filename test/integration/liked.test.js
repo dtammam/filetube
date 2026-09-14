@@ -40,7 +40,7 @@ const {
   __mintTestSession,
   userStore,
 } = require('../../server');
-const { settingsStore, seedState  } = require('../helpers/seed-state');
+const { settingsStore, seedState, likedStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -118,7 +118,7 @@ test('AC7.3: POST /api/liked/:id adds membership (per-user)', async () => {
   assert.equal(body.liked, true);
 
   assert.deepEqual(userStore.getLiked(uid), ['likeA']);
-  assert.deepEqual(loadDatabase().liked, [], 'the frozen db.liked record is never written by the route');
+  assert.deepEqual(likedStore().list(), [], 'the frozen liked record (Wave 4: media_liked) is never written by the route');
 });
 
 test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry', async () => {
@@ -332,8 +332,7 @@ test('backfill: an empty (fresh) persisted store loads with liked: []', async ()
   // db.json and asserted the initial-create write; the eager write is
   // subsumed by the adapter, defaults persist on the first real save.)
   await __resetDatabaseForTests();
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'a fresh store must carry liked: []');
+  assert.deepEqual(likedStore().list(), [], 'a fresh store reads an empty frozen-likes list (Wave 4: media_liked)');
 });
 
 test('backfill: a legacy/partial persisted set missing `liked` loads with db.liked = []', () => {
@@ -349,7 +348,7 @@ test('backfill: a legacy/partial persisted set missing `liked` loads with db.lik
   });
 
   const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'a legacy set without `liked` must backfill to []');
+  assert.deepEqual(likedStore().list(), [], 'a legacy set without `liked` reads as an empty list');
   assert.ok(db.metadata.legacy, 'other fields must remain intact after backfill');
 });
 
@@ -360,8 +359,8 @@ test('v1.42 migration-path: a corrupt db.json beside the ACTIVE store is inert (
   // filetube.db is live — garbage in it must not perturb anything. (Corrupt
   // db.json at FIRST boot aborts the import instead — AC9, adapter suite.)
   fs.writeFileSync(DB_FILE, '{ not valid json', 'utf8');
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'load ignores the corrupt legacy file entirely');
+  assert.ok(loadDatabase(), 'load still works beside the corrupt legacy file');
+  assert.deepEqual(likedStore().list(), [], 'load ignores the corrupt legacy file entirely');
   assert.ok(settingsStore().get().pruneMissing !== undefined, 'and the settings still read (Wave 4: from their own store)');
   fs.rmSync(DB_FILE);
 });

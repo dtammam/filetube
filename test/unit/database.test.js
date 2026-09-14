@@ -22,7 +22,7 @@ const {
   loadDatabase,
   saveDatabase,
   settingsStore, // Wave 4: app settings are a store, not a doc key
-  folderStore, folderSettingsStore, // Wave 4: the folder config too
+  folderStore, folderSettingsStore, likedStore, // Wave 4: the folder config and the frozen likes too
   updateDatabase,
   transcodedPath,
   reconcileTranscode,
@@ -81,7 +81,8 @@ test('loadDatabase: yields a fully-defaulted db when the store is empty (no eage
   assert.deepEqual(folderStore.list(), []);
   assert.deepEqual(folderSettingsStore.getAll(), {});
   assert.deepEqual(db.metadata, {});
-  assert.deepEqual(db.liked, []);
+  assert.equal(db.liked, undefined, 'Wave 4: liked is relational (media_liked) - no doc-model key');
+  assert.deepEqual(likedStore.list(), []);
   // Wave 2: `progress` and `deleteTombstones` are NOT keys of the doc object
   // any more (media_progress / media_delete_tombstones); the save-lock
   // refuses a backfill that re-added them.
@@ -125,11 +126,12 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
   const original = {
     // (folders / folderSettings / folderDisplayNames: relational since Wave 4)
     metadata: { abc: { id: 'abc', title: 'Test' } },
-    liked: ['abc'],
-    // (progress / deleteTombstones / viewCounts are relational since Waves 1-2, settings since Wave 4 - not doc keys)
+    // (progress / deleteTombstones / viewCounts are relational since Waves 1-2, settings / folders / liked since Wave 4 - not doc keys)
   };
   saveDatabase(original);
   assert.deepEqual(loadDatabase(), original);
+  likedStore.replaceAll(['abc']);
+  assert.deepEqual(likedStore.list(), ['abc'], 'Wave 4: liked round-trips through its own store');
   settingsStore.replaceAll(DEFAULT_SETTINGS);
   assert.deepEqual(settingsStore.get(), DEFAULT_SETTINGS, 'Wave 4: settings round-trips through its own store');
 });
@@ -333,11 +335,11 @@ test('updateDatabase: a saveDatabase failure REJECTS the call (no false success)
 
 // ---- [UNIT] loadDatabase backfill: ALL top-level keys, not just folderSettings/settings ----
 
-test('loadDatabase: backfills the remaining top-level doc keys (liked/metadata) - the folder config is relational since Wave 4', () => {
+test('loadDatabase: backfills the remaining top-level doc key (metadata) - the config singletons and liked are relational since Wave 4', () => {
   saveDatabase({ metadata: { m: { id: 'm' } } });
   const db = loadDatabase();
   assert.equal(db.folders, undefined, 'folders is never backfilled onto the doc object (Wave 4)');
-  assert.deepEqual(db.liked, [], 'missing liked backfilled to []');
+  assert.equal(db.liked, undefined, 'liked is never backfilled onto the doc object (Wave 4)');
   assert.equal(db.progress, undefined, 'progress is relational since Wave 2 - never backfilled onto the doc object');
   assert.deepEqual(db.metadata, { m: { id: 'm' } }, 'existing metadata preserved');
   assert.equal(db.folderSettings, undefined, 'folderSettings is never backfilled onto the doc object (Wave 4)');
@@ -346,7 +348,7 @@ test('loadDatabase: backfills the remaining top-level doc keys (liked/metadata) 
 });
 
 test('loadDatabase: a partial persisted set missing metadata lets a mutator write into it without throwing', async () => {
-  saveDatabase({ liked: ['x'] }); // (a doc key that is not metadata; liked moves in Wave 4's third group)
+  saveDatabase({}); // (no top-level doc singleton is left since Wave 4 - an empty document)
   await assert.doesNotReject(
     updateDatabase((db) => {
       db.metadata['new-id'] = { id: 'new-id' };

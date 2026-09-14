@@ -145,6 +145,13 @@ two maps into rows and deletes the doc rows. A v1.293-or-earlier build
 refuses a v25 database at boot; bundles carry the three keys in their old
 shapes on both sides of the line.
 
+**Seventh floor - schema v26 (v1.294, Wave 4, third group).** The frozen
+pre-auth likes (`liked`) moved from `doc_single` into `media_liked` (one row
+per id, like order); the v26 migration copies the list and deletes the doc
+row. A v1.293-or-earlier build refuses a v26 database at boot; bundles carry
+`liked` as the same array on both sides of the line. After this floor no
+top-level `doc_single` name remains - only container sub-keys.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

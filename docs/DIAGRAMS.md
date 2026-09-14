@@ -93,11 +93,12 @@ user-scoped is relational, and so are the media namespaces the
 relational-migration arc has moved out of the document store so far (the
 view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
 tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
-the app settings and the folder config in Wave 4 - see the CONFIG box).
+the app settings and the folder config in Wave 4 - see the CONFIG box; the
+frozen pre-auth likes in Wave 4 too - the MEDIA box).
 The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
-9 `doc_kv` namespaces, 14 `doc_single` names, 38 relational tables,
-schema version 25. (The relational-migration arc, Wave 1 onward, moves the
+9 `doc_kv` namespaces, 13 `doc_single` names, 39 relational tables,
+schema version 26. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
@@ -105,7 +106,7 @@ media namespaces out of the document store one table at a time - see
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
         KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        SINGLE["doc_single (name, json)<br/>whole small objects (container sub-keys only, since Wave 4):<br/>books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
@@ -119,6 +120,7 @@ flowchart LR
         PR["lib/media/progress.js<br/>media_progress (media_id, json)<br/>the FROZEN pre-auth positions the first admin adopts once;<br/>carried in-transaction with the doc commit"]
         DT["lib/media/deleteTombstones.js<br/>media_delete_tombstones (media_id, deleted_at, json)<br/>the deferred-delete records: minted/retired/consumed<br/>INSIDE the doc commit's transaction (inSaveTransaction)"]
         TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
+        LK["lib/media/liked.js<br/>media_liked (media_id, position)<br/>the FROZEN pre-auth likes the first admin adopts once;<br/>re-keyed/removed inside the doc commit by rename/trash/restore/purge"]
     end
 
     subgraph CONFIG["Relational CONFIG tables (Wave 4; lib/config/ stores on the lib/db/kvStore.js + lib/db/orderedListStore.js shapes)"]

@@ -23,7 +23,7 @@ const {
   scanDirectories, userStore, __resetDatabaseForTests, __mintTestSession,
   viewCountStore, progressStore, tombstoneStore,
 } = require('../../server');
-const { seedState, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, trashStore, likedStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
 const ISO = '2026-08-01T12:00:00.000Z';
@@ -90,7 +90,7 @@ test('happy path: atomic move into <root>/.filetube-trash carries the WHOLE iden
   // Wave 1: the relational carrier followed the id too (post-commit re-key).
   assert.equal(viewCountStore.get(id), 0, 'no row left under the dead id');
   assert.equal(viewCountStore.get(res.trashId), 7, 'the count rides to the trash id');
-  assert.ok(db.liked.includes(res.trashId) && !db.liked.includes(id));
+  assert.ok(likedStore().list().includes(res.trashId) && !likedStore().list().includes(id)); // Wave 4: the frozen likes are a table
 });
 
 test('ALL NINE per-user carriers re-key old -> trash (progress/liked/watched/queue asserted by row)', async () => {
