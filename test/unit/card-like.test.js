@@ -12,10 +12,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { routeSurfaceFiles } = require('../helpers/route-surface');
 
 const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
 const mainSrc = fs.readFileSync(path.join(__dirname, '../../public/js/main.js'), 'utf8');
-const serverSrc = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
 
 test('assets: heart.svg exists and is a valid single-path <svg>', () => {
   const svg = fs.readFileSync(path.join(__dirname, '../../public/assets/icons/heart.svg'), 'utf8');
@@ -112,6 +112,23 @@ test('server.js: the GET /api/videos list tags each item with a `liked` flag fro
   // v1.43 (chunk 4b): membership moved from the frozen db.liked record to
   // per-user user_liked rows -- the list derivation reads ONE per-request
   // membership set for the signed-in user and tags each page item from it.
-  assert.match(serverSrc, /const likedSet = new Set\(userStore\.getLiked\(req\.user\.id\)\)/);
-  assert.match(serverSrc, /liked:\s*likedSet\.has\(item\.id\)/);
+  //
+  // Wave 7b (slice S10a) SCOPED this to the statement. The route moved to
+  // lib/media/routes.js, and reading the whole surface made the lock vacuous:
+  // lib/user/routes.js carries the identical `likedSet` line (slice S1a's
+  // history route), so deleting THIS route's derivation still matched - the
+  // mutant survived. The window is the GET /api/videos registration up to the
+  // next registration in the same file; a missing boundary reds rather than
+  // silently widening (the #213 distance-lock lesson).
+  const file = routeSurfaceFiles().find((p) => fs.readFileSync(p, 'utf8').includes("app.get('/api/videos', "));
+  assert.ok(file, 'GET /api/videos is registered on the route surface');
+  const src = fs.readFileSync(file, 'utf8');
+  const start = src.indexOf("app.get('/api/videos', ");
+  const after = /\bapp\.(?:get|post|put|patch|delete|all|use)\(/g;
+  after.lastIndex = start + 1;
+  const next = after.exec(src);
+  assert.ok(next, 'a following route registration bounds the window');
+  const body = src.slice(start, next.index);
+  assert.match(body, /const likedSet = new Set\(userStore\.getLiked\(req\.user\.id\)\)/);
+  assert.match(body, /liked:\s*likedSet\.has\(item\.id\)/);
 });

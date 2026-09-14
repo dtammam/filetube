@@ -2687,7 +2687,11 @@ test('v1.185 buildCritterVoicePool (server): full pool as sorted URLs, deduped b
 });
 
 test('v1.185 the /api/critters handler returns BOTH the listing and the full voicePool (source lock)', () => {
-  const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+  // Wave 7b (slice S10a): the handler moved VERBATIM to lib/media/routes.js
+  // while its three collectors stayed in server.js, so this reads the ROUTE
+  // SURFACE (server.js plus every module the split carved out of it) - both
+  // halves of the no-drift claim are still on it, and neither assert relaxed.
+  const SERVER = require('../helpers/route-surface').routeSurfaceSource();
   assert.match(SERVER, /res\.json\(\{ critters: buildCritterListing\(entries\), voicePool: buildCritterVoicePool\(entries\) \}\);/,
     'the populated response carries the full pool');
   assert.match(SERVER, /return res\.json\(\{ critters: \[\], voicePool: \[\] \}\);/,

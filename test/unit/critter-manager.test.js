@@ -17,8 +17,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { sanitizeCritterUploadName, buildStoreZip } = require('../../server.js');
+const { routeSurfaceSource } = require('../helpers/route-surface');
 
-const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+// Wave 7b (slice S10a): the five /api/critters routes and `listCritterFiles`
+// moved VERBATIM to lib/media/routes.js while the upload vocabulary, the two
+// pool projections and buildStoreZip stayed in server.js, so every source lock
+// below reads the ROUTE SURFACE (server.js plus every module the monolith
+// split carved out of it) rather than server.js alone. The moved statements
+// carry ONE extra indent level inside their register function, which is why
+// the multi-line `app.post(` marker names four spaces, not two; nothing else
+// about these locks changed.
+const SERVER = routeSurfaceSource();
 
 // ---- sanitizeCritterUploadName ---------------------------------------------
 
@@ -183,13 +192,13 @@ test('delete routes: unlink targets come from the REAL directory listing, never 
   assert.ok(!/fs\.unlinkSync\(path\.join\([^)]*\bid\b/.test(item), 'the caller id is NEVER joined into an unlink path');
   const all = SERVER.slice(SERVER.indexOf("app.delete('/api/critters/all'"), SERVER.indexOf("app.get('/api/critters/archive'"));
   assert.ok(all.includes('listCritterFiles()'), 'delete-all is scoped to the listing');
-  const lister = SERVER.slice(SERVER.indexOf('function listCritterFiles'), SERVER.indexOf("app.post(\n  '/api/critters/upload'"));
+  const lister = SERVER.slice(SERVER.indexOf('function listCritterFiles'), SERVER.indexOf("app.post(\n    '/api/critters/upload'"));
   assert.ok(lister.includes('e.isFile()'), 'regular files only - symlinks/subdirs/README are never touched');
   assert.ok(lister.includes('CRITTER_IMAGE_EXTS.has(ext) || CRITTER_SOUND_EXTS.has(ext)'), 'critter extensions only');
 });
 
 test('every management route is admin-gated in-route (requireAdmin), matching the census classification', () => {
-  for (const marker of ["app.post(\n  '/api/critters/upload'", "app.delete('/api/critters/item'", "app.delete('/api/critters/all'", "app.get('/api/critters/archive'"]) {
+  for (const marker of ["app.post(\n    '/api/critters/upload'", "app.delete('/api/critters/item'", "app.delete('/api/critters/all'", "app.get('/api/critters/archive'"]) {
     const at = SERVER.indexOf(marker);
     assert.ok(at !== -1, marker + ' exists');
     const head = SERVER.slice(at, at + 600);
