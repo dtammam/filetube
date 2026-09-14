@@ -64,6 +64,8 @@ to the base for every slice.
 - **Counts** in the four commit messages + the merge commits vs the instrument at each commit.
 
 ## Measured at the branch tip (Node 22.23.1, main checkout, no parallel load)
+NOTE (added post-gate): the figures below are the PRE-fix-round tip at 6b1476f1. The released tip
+after the gate fix round is server.js **13,563** lines and `npm test` **8785 / 8785 / 0 / 0**.
 Census: server.js 13,566 lines (17,093 at v1.297.0); 22 route + middleware registrations (98);
 251 functions = 7,735 lines; 513 module-scope names. Merged tree `npm test`: 8782 / 8782 / 0 / 0.
 Verifier over all 29 R2 groups vs 52d3e03e: exactly the six documented seam routes fail;

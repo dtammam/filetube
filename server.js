@@ -151,8 +151,8 @@ const booksTtsChunk = require('./lib/books/tts-chunk');
 const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
-// lib/stats.js's header comment and `GET /api/stats` below for the full
-// live-compute rationale.
+// lib/stats.js's header comment and `GET /api/stats` (now in
+// lib/media/routes.js) for the full live-compute rationale.
 const stats = require('./lib/stats');
 // v1.42: FileTube requires Node >= 22.13 (the first line where node:sqlite
 // is available unflagged; engines bumped from >=20 — a BREAKING change,
@@ -183,13 +183,15 @@ const REPO_URL = 'https://github.com/dtammam/filetube';
 // `GET /api/subtitles/:id` -- see lib/subtitles.js's header comment.
 const subtitles = require('./lib/subtitles');
 // Transcript export (Dean): the sidecar as readable plain text, served by
-// `GET /api/transcript/:id` below -- same sidecar resolver as the subtitles
-// route, so "has captions" and "has a transcript" can never disagree.
+// `GET /api/transcript/:id` (now in lib/media/routes.js) -- same sidecar
+// resolver as the subtitles route, so "has captions" and "has a transcript"
+// can never disagree.
 const transcript = require('./lib/transcript');
 // v1.30 A5 (T6): pure sort comparators + format/search predicates +
 // pagination-parameter normalizers shared with the client's own
 // sortItems/filterByMediaType -- see lib/videoQuery.js's header comment and
-// `GET /api/videos` below for the paginated, server-authoritative pipeline.
+// `GET /api/videos` (now in lib/media/routes.js) for the paginated,
+// server-authoritative pipeline.
 const videoQuery = require('./lib/videoQuery');
 const searchRegistry = require('./lib/search/registry'); // v1.205 Wave B: universal-search provider registry
 const rokuCompatLib = require('./lib/rokuCompat'); // v1.46: pure verdict/args logic
