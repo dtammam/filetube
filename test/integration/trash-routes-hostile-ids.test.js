@@ -67,16 +67,24 @@ test('a %00 id on the trash restore/purge routes is a 404 (never a hung handler)
   assert.strictEqual(list.status, 200, 'the process kept serving');
 });
 
-test('a notification row whose media id is empty (a hostile bundle restored on <=v1.292 stores a NUL id as "") no longer 500s the bell for everyone', async () => {
+test('a notification row whose media id is unaddressable (a NUL id a <=v1.292 restore accepted - read as "" on Node <=24.14, as the NUL on 24.20+) no longer 500s the bell for everyone', async () => {
   // Plant the row the way a restored bundle leaves it: the raw replace seam
-  // drops a literal '' (isValidNotificationEntry), but a NUL id passes it and
-  // node:sqlite truncates the TEXT bind to '' - so seed the NUL. The populate
-  // step is bound (QA delta W1: an empty feed made this test a vacuous floor).
+  // drops a literal '' (isValidNotificationEntry), but a NUL id passes it - so
+  // seed the NUL. The bind stores the NUL byte on EVERY Node version (measured
+  // v1.293.1: hex(media_id) = 00 on 22.23.1 / 24.14.0 / 24.20.0); what differs
+  // is the READ-BACK - node:sqlite up to 24.14 converts a TEXT column to a JS
+  // string stopping at the first NUL (the row reads as ''), 24.20+ converts by
+  // byte length (it reads as '\x00'). CI's Node 24 runner was on 24.20.0 and
+  // this assertion, pinned to '', was the only red test. Either reading is the
+  // hostile row this test is about - an id no route could ever address - and
+  // the populate step stays bound (QA delta W1: an empty feed made this test a
+  // vacuous floor). Tracker #225.
   userStore.replaceAllNotificationsRaw([{ mediaId: String.fromCharCode(0), createdAt: Date.now(), kind: 'media' }]);
   const raw = openRaw(path.join(DATA_DIR, SQLITE_FILENAME));
   let planted;
   try { planted = raw.prepare('SELECT media_id FROM notifications').all().map((r) => r.media_id); } finally { raw.close(); }
-  assert.deepStrictEqual(planted, [''], 'the hostile row is really in the table');
+  assert.strictEqual(planted.length, 1, 'the hostile row is really in the table');
+  assert.ok(planted[0] === '' || planted[0] === String.fromCharCode(0), `the planted id reads as the older runtimes' '' or 24.20+'s verbatim NUL (got ${JSON.stringify(planted[0])})`);
   for (let i = 0; i < 3; i++) {
     const r = await withTimeout(fetch(`${base}/api/notifications`));
     assert.strictEqual(r.status, 200, `bell open #${i + 1} answers`);

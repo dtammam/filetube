@@ -93,6 +93,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.293.1 - CI hotfix: the Node 24.20 runner reads a NUL id back verbatim (2026-09-14)
+
+After v1.293.0 merged, CI's Node 24 job failed one test - and the Docker qualify job
+with it, so the v1.293.0 image never published. The runner resolves `'24'` to 24.20.0,
+and on that version `node:sqlite` reads a TEXT value containing a NUL back as the NUL
+itself; on 22.23.1 and 24.14.0 (the local dual-Node pair) the read stops at the first NUL
+and the same row reads as `''`. Wave 3's hostile-bell-row test had pinned the `''`
+reading. Test-only fix: the assertion accepts either reading and still binds "exactly one
+row planted". No runtime change - every NUL guard refuses such an id on every version.
+
+Slim gate (adversarial). What it caught: my first write-up said the BIND truncated on
+the older runtimes; the seat measured all three versions (`hex(media_id)` = `00`, blob
+length 1, the NUL-bearing `WHERE` bind matches) - the byte was always stored, only the
+READ changed, and a stored `abc\0` read back as a colliding prefix `abc` before 24.20.
+The commit, the test comment and tracker #225 were reworded to the measured mechanism.
+Mutants: the tolerant `has()` reverted goes red on all three versions, the seed deleted
+goes red. Full suites 8543 / 8540 / 0 / 3 skipped on 22.23.1 AND on 24.20.0 (the runner's
+version, installed locally for this); 24.14.0 was run file-level only, disclosed.
+
+KNOWN GAPS (disclosed, tracker #225): the NUL guards' comments and messages still say
+"truncates" (reword in Wave 7); the CI matrix's `'24'` floats to the newest minor, so the
+release suites should run on that minor from now on; `isValidNotificationEntry` is the one
+bundle seam without a NUL refusal.
+
 ### v1.293.0 - Relational-migration arc, Wave 3: trash records leave the document model (2026-09-14)
 
 The trashed-item records - the ONLY way back for a file whose bytes already sit in
