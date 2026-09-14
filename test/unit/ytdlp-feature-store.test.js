@@ -60,7 +60,7 @@ const docRows = () => adapter.sql.prepare("SELECT (SELECT COUNT(*) FROM doc_kv W
 
 test('migration v31: every part moves verbatim (the ORDER of both lists, the flag, a spaced universal key); an id-less legacy subscription gets md5(channelUrl) minted; doc rows deleted; stamp 31; no doc_single name and only `metadata` in doc_kv remain', () => {
   assert.ok(SCHEMA_VERSION >= 31);
-  assert.deepStrictEqual(DOC_KV_NAMESPACES, ['metadata'], 'the last doc_kv namespace');
+  assert.deepStrictEqual(DOC_KV_NAMESPACES, [], 'no doc_kv namespace is left (Wave 6 moved metadata too)');
   assert.deepStrictEqual(SINGLETON_NAMES, [], 'no doc_single name is left');
   assert.deepStrictEqual(CONTAINER_KEYS, [], 'no container is left in the doc model');
   assert.ok(FEATURE_DEFS.some((d) => d.name === 'ytdlp'));

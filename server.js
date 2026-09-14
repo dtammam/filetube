@@ -10287,6 +10287,20 @@ function validateBackupBundle(bundle) {
   // (The container-object check that lived here is subsumed: every container
   // is a feature store since Wave 5 and validateFeatureBundle below checks
   // each one part by part.)
+  // Wave 6: the media index (`metadata`, a table now) - shape-checked BEFORE
+  // the wipe like every other namespace: a per-id map of item OBJECTS with
+  // non-empty NUL-free ids. (Until Wave 6 a malformed `metadata` reached the
+  // populate and became a 500 "rolled back"; a 400 before the wipe is the
+  // arc's posture.)
+  if (bundle.metadata !== undefined) {
+    const m = bundle.metadata;
+    if (typeof m !== 'object' || m === null || Array.isArray(m)) return "bundle key 'metadata' must be an object";
+    for (const id of Object.keys(m)) {
+      if (id === '' || id.includes('\u0000')) return `metadata['${id.split('\u0000').join('\\u0000')}']: invalid id`;
+      const item = m[id];
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) return `metadata['${id}']: must be an object`;
+    }
+  }
   // Wave 5: a relational feature container - shape-checked part by part
   // BEFORE the wipe (the same posture as the record namespaces): known parts
   // only; a list is an array of non-empty NUL-free strings; a map / kv is an

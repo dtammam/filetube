@@ -88,6 +88,7 @@ try {
   const dropEmpty = (obj, key) => {
     if (obj && obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key]) && Object.keys(obj[key]).length === 0) delete obj[key];
   };
+  dropEmpty(expected, 'metadata'); // Wave 6: the media index is a table; an empty one surfaces as absent
   for (const ns of DOC_KV_NAMESPACES) {
     const parts = ns.split('.');
     if (parts.length === 1) dropEmpty(expected, parts[0]);

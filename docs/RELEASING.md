@@ -183,6 +183,13 @@ carry `ytdlp` in its old container shape on both sides of the line. After this
 floor `metadata` is the only document-model namespace left (Wave 6), and no
 `doc_single` row exists at all (Wave 7 drops the table).
 
+**Thirteenth floor - schema v32 (v1.295, Wave 6, the media index).** The
+library index (`metadata`) moved into `media_items` (one row per indexed file,
+verbatim, in rowid order; `lib/media/items.js`); the v32 migration copies the
+doc rows and deletes them. A v1.294-or-earlier build refuses a v32 database at
+boot; bundles carry `metadata` in the same shape on both sides of the line.
+After this floor BOTH document tables are empty (Wave 7 drops them).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

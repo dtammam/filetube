@@ -218,22 +218,24 @@ test('save-lock: a doc object carrying `viewCounts` is REFUSED (the namespace le
 function handlesInto(adapterInstance, { withViewCount = true } = {}) {
   const kv = [];
   const vc = [];
+  const items = []; // Wave 6: the media index lands through insertItem, never doc_kv
   const h = {
     insertKv: (ns, key, value) => kv.push([ns, key, value]),
     insertSingle: () => {},
+    insertItem: (id, record) => items.push([id, record]),
   };
   if (withViewCount) h.insertViewCount = (id, count) => vc.push([id, count]);
-  return { h, kv, vc };
+  return { h, kv, vc, items };
 }
 
 test('importParsedJson: a bundle `viewCounts` map and a legacy embedded item.viewCount BOTH route through insertViewCount (usable values only); the summary counts them', () => {
-  const { h, kv, vc } = handlesInto(adapter);
+  const { h, kv, vc, items } = handlesInto(adapter);
   const summary = importParsedJson({
     viewCounts: { fromBundle: 3, half: 2.5, zero: 0, junk: 'x' },
     metadata: { legacy: { id: 'legacy', title: 'L', viewCount: 4 }, plain: { id: 'plain' } },
   }, h, { source: 'bundle' });
   assert.deepStrictEqual(vc.sort(), [['fromBundle', 3], ['half', 2], ['legacy', 4]].sort());
-  assert.deepStrictEqual(kv.find(([, key]) => key === 'legacy')[2], { id: 'legacy', title: 'L' }, 'the embedded field is stripped off the item');
+  assert.deepStrictEqual(items.find(([id]) => id === 'legacy')[1], { id: 'legacy', title: 'L' }, 'the embedded field is stripped off the item (Wave 6: the item lands through insertItem)');
   assert.strictEqual(summary.viewCounts, 3);
   assert.ok(!kv.some(([ns]) => ns === 'viewCounts'), 'nothing was written to doc_kv under the dead namespace');
 });

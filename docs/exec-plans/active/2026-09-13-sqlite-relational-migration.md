@@ -634,6 +634,48 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
   (the player.js standard). Verify a full backup round-trip and a rescan-rebuild BEFORE
   and AFTER. This wave sheds the most `server.js` weight.
 
+- **Wave 6 design (2026-09-14, branch `feat/wave6-media-items`, Dean's split: the store, the
+  adapter seams and the scan's write path stay with the main session; the scan-helper
+  extraction is a worktree subagent's mechanical job reviewed by the main session):**
+  - `lib/media/items.js` owns `media_items (media_id TEXT PRIMARY KEY, json TEXT NOT NULL)`
+    - one row per indexed file, the json VERBATIM, in rowid order (the walk order doc_kv gave
+    `Object.keys(db.metadata)`). It is the table's ONLY runtime writer.
+  - **What deliberately did not change:** the routes keep reading the index as the
+    `{ metadata }` object `loadDatabase()` / `getCachedDatabase()` hand them (the adapter's
+    `load()` assembles it from the table; an empty table is absent, server.js backfills `{}`),
+    and the mutators keep writing `db.metadata[id] = item` / `delete db.metadata[id]` inside
+    an `updateDatabase` tick. The adapter's `save()` hands the object's `metadata` to the
+    store's per-row diff - `planDiff` (serialized JSON vs the last commit's snapshot; an
+    ABSENT key = rows kept, a PRESENT-but-empty map = wiped, an `undefined` value dropped as
+    JSON.stringify dropped it, a NUL id refused), `applyPlan` inside the SAME transaction as
+    the doc writes and every `inSaveTransaction` effect, `advancePlan` only after COMMIT. So
+    the 150 `db.metadata` read sites and the scan's final merge are textually unchanged, the
+    persist-gate seams (carry-forward, merge guard, epoch check) are untouched, and the
+    `getCachedDatabase()` read cache is exactly as fast as before (the #226 read-cache design
+    question does not arise for the index: the cached object IS the cache).
+  - `lib/db/sqlite.js`: `DOC_KV_NAMESPACES = []` and `SINGLETON_NAMES = []` (BOTH doc tables
+    are empty - Wave 7 drops them); `DOC_OBJECT_KEYS = ['metadata']` keeps the save-lock
+    honest (a stray key still throws); the v32 block creates the table, copies the doc rows
+    verbatim (a corrupt row rolls the block back to a re-runnable v31, an unaddressable key is
+    skipped with a log line), deletes them and stamps inside the block; `exclusiveReplace`
+    wipes the table and takes an `insertItem` handle; `importParsedJson` routes `metadata`
+    through `insertItem` (the viewCount extraction unchanged, still through
+    `insertViewCount`; the handle is required only when items exist); `readPersistedDatabase`
+    surfaces the table under the old key; the stranded-import fingerprint counts the table.
+    server.js: the bundle validator shape-checks `metadata` BEFORE the wipe (an object of
+    item objects with NUL-free ids - a 500 "rolled back" until now). `scripts/migrate-check.js`
+    drops an empty index like the other empties.
+  - Tests: `media-items-store` (migration verbatim + order + skip + re-run + rollback, the
+    diff's every axis incl. an in-transaction effect's throw, the seams, the locks: no file
+    outside the store spells a raw write) and `media-items-atomicity` (a REAL scan indexes
+    into the table, an unchanged tick writes nothing, a changed item rewrites its row; a scan
+    whose save fails leaves the index AND its carriers untouched; the plan's backup
+    round-trip + a RESCAN after the restore reusing the restored rows; a v1.294-shaped bundle;
+    400-before-wipe). The adapter suite's doc-model cases (mid-transaction poison, the
+    exclusiveReplace handle) moved onto the store's seams.
+  - Baseline after the storage move: doc_kv **0**, doc_single **0**, legacy **0**, schema
+    **32**, 61 relational tables, server.js 19396 lines (before the helper extraction).
+
 ### Wave 7 - Teardown + monolith split + `db.json` removal  (full gate)
 - Remove `loadDatabase`/`saveDatabase`/`updateDatabase`, the mega-object backfill, and
   `doc_kv` + `doc_single` (arrays emptied, then tables dropped via a forward-only
