@@ -96,7 +96,7 @@ tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
 the app settings and the folder config in Wave 4 - see the CONFIG box; the
 frozen pre-auth likes in Wave 4 too - the MEDIA box).
 The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.295.0 (Wave 6):
 0 `doc_kv` namespaces, 0 `doc_single` names, 61 relational tables,
 schema version 32. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see

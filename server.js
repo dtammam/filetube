@@ -3911,7 +3911,7 @@ async function runScanDirectories() {
   const ytdlpDownloadRoots = ytdlp.extraScanRoots(ytdlpConfig);
   const scannedFiles = new Map(); // path -> file info
   // Configured root folders that are absent/unmounted this scan (the single
-  // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
+  // existence-check seam, reused by selectPrunableIds' mount-loss guard - lib/scan/merge.js).
   const missingRoots = new Set();
   // Directories that are un-enumerable this scan (EACCES/EIO/ESTALE etc.) --
   // populated both when a directory's OWN readdir throws AND when a per-FILE
@@ -4458,7 +4458,7 @@ async function runScanDirectories() {
         artist: '',
         needsTranscode: !isAudio && needsTranscode(info.ext),
         // A6 (v1.24 UX Round, Wave 5): additive, schema-only -- see
-        // applyHasSubtitlesDetection's comment above for why this cheap
+        // applyHasSubtitlesDetection's comment (lib/scan/probe.js) for why this cheap
         // directory check never counts as "re-processing". Threads the same
         // per-scan `perScanReaddirCache` (v1.30, A1) as the reuse fast-paths
         // above so a NEW file sharing a directory with already-indexed
@@ -15869,7 +15869,7 @@ function resolveRelocationTitle(item) {
  *   2. else a persisted `item.youtubeId` that survives `isSafeVideoId` --
  *      trusted from ANY root, because it can only have come from the
  *      downloader's own embedded provenance tag (the trust boundary
- *      `deriveScanYoutubeId` documents, above) or a prior reheat.
+ *      `deriveScanYoutubeId` documents - lib/scan/identity.js) or a prior reheat.
  *   3. else `null` id -- still enumerated (never a network call: the worker
  *      gates its spawn on a watch URL) purely so the worker's LOCAL,
  *      network-free ffprobe tags pass can still upgrade it from an embedded

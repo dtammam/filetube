@@ -67,10 +67,11 @@ test('migration v32: the doc rows move VERBATIM (json text untouched, rowid orde
   assert.deepStrictEqual(SINGLETON_NAMES, []);
   assert.deepStrictEqual(DOC_OBJECT_KEYS, ['metadata'], 'the doc OBJECT keeps its one key');
   const spaced = '{"id":"b","title":"B",  "keep":  "spacing"}'; // not JSON.stringify's spelling - must land byte-identical
-  // (an EMPTY key, not a NUL-bearing one: node:sqlite reads a NUL-bearing TEXT
-  // back truncated on <= 24.14 and verbatim on 24.20 - tracker #225 - so only
-  // the empty key is unaddressable on every runtime)
-  rewindToV31([['zeta', JSON.stringify(it('zeta'))], ['b', spaced], ['', JSON.stringify(it('bad'))], ['alpha', JSON.stringify(it('alpha'))]]);
+  // An EMPTY key and a NUL-bearing one. node:sqlite reads a NUL-bearing TEXT
+  // back truncated on <= 24.14 and verbatim on 24.20 (tracker #225); the
+  // migration decides in SQL on the stored bytes, so `alpha\0` is skipped on
+  // every runtime and can never clobber the real `alpha` (the gate's repro).
+  rewindToV31([['zeta', JSON.stringify(it('zeta'))], ['b', spaced], ['', JSON.stringify(it('bad'))], ['alpha', JSON.stringify(it('alpha'))], [`alpha${NUL}`, JSON.stringify(it('impostor'))]]);
   const lines = [];
   const origErr = console.error;
   console.error = (m) => lines.push(String(m));
@@ -79,7 +80,8 @@ test('migration v32: the doc rows move VERBATIM (json text untouched, rowid orde
   assert.deepStrictEqual(Object.keys(adapter.load().metadata), ['zeta', 'b', 'alpha'], 'rowid order, not id order - the walk order the routes had');
   assert.strictEqual(rawJson('b'), spaced, 'the json text is the doc row\'s bytes, never re-serialized');
   assert.strictEqual(docRows(), 0, 'every doc row is gone (the skipped one included)');
-  assert.ok(lines.some((l) => /migration v32: skipping a metadata key/.test(l)), 'the empty key is logged, not moved');
+  assert.strictEqual(lines.filter((l) => /migration v32: skipping a metadata key/.test(l)).length, 2, 'the empty key AND the NUL key are logged, not moved');
+  assert.strictEqual(JSON.parse(rawJson('alpha')).title, 'alpha', 'the real alpha row was never clobbered by the NUL impostor');
   assert.ok(lines.some((l) => /migration v32: moved 3 media item/.test(l)));
   assert.strictEqual(adapter.sql.prepare('SELECT COUNT(*) AS c FROM doc_kv').get().c + adapter.sql.prepare('SELECT COUNT(*) AS c FROM doc_single').get().c, 0, 'BOTH doc tables are empty for good');
 });
@@ -179,7 +181,7 @@ test('source lock: server.js never names media_items; lib/media/items.js is the 
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   assert.ok(!server.includes('media_items'), 'server.js never names the table');
   const files = execFileSync('git', ['ls-files', 'lib', 'server.js', 'scripts'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => f.endsWith('.js'));
-  const writers = files.filter((f) => f !== 'lib/media/items.js' && /INSERT INTO media_items|UPDATE media_items|DELETE FROM media_items/.test(stripComments(fs.readFileSync(path.join(ROOT, f), 'utf8'))));
+  const writers = files.filter((f) => f !== 'lib/media/items.js' && /(INSERT INTO|UPDATE) (media_items|\$\{itemsDef\.TABLE\})|DELETE FROM media_items/.test(stripComments(fs.readFileSync(path.join(ROOT, f), 'utf8')))); // (the template spelling `${itemsDef.TABLE}` counts too - gate S3; the adapter's DELETE wipe through the exported name is the one allowed seam)
   assert.deepStrictEqual(writers, [], 'no file outside the store spells a raw write of the table (the adapter\'s wipe goes through the store\'s exported TABLE name)');
   const sqlite = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'db', 'sqlite.js'), 'utf8'));
   assert.ok(/this\.items\.planDiff\(getPath\(db, 'metadata'\)\)/.test(sqlite) && /this\.items\.applyPlan\(itemsPlan\)/.test(sqlite) && /this\.items\.advancePlan\(itemsPlan\)/.test(sqlite), 'save() runs the store\'s diff inside its transaction and advances the base after the commit');

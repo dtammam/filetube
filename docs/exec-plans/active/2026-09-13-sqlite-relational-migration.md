@@ -690,7 +690,7 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     the constant stays in server.js so a future move trips a test that names the
     consequence). Two more comment-porous locks bit the subagent (a quoted constant in a
     comment; a `require('../../server')` literal in a test header) - reworded. 105 new
-    assertions; mutation-verified against the commit (a wrapper re-export, a leftover copy,
+    test cases (140 assert calls); mutation-verified against the commit (a wrapper re-export, a leftover copy,
     a dropped mount-loss guard, a flipped return - all red).
   - Residuals the extraction surfaced (tracked in #227): `test/unit/v1362-minors-client.test.js`
     does not isolate DATA_DIR and opens `/tmp/filetube.db` - a v32 build's leftover there
@@ -701,6 +701,38 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
   - Baseline after the storage move + the extraction: doc_kv **0**, doc_single **0**, legacy
     **0**, schema **32**, 61 relational tables, server.js **19092** lines (19396 before the
     extraction; 304 lines moved), tests re-derived at the gate.
+  - **Gate (both seats, one fix round + delta).** No CRITICAL. **ADV W1 (presence-not-binding
+    on a data-destroying route):** the restore validator's item-OBJECT rule was unbound - under
+    the mutant a bundle with `metadata: { m1: 'string item' }` restored 200 and the string
+    became a row the routes then read; the atomicity test's bad list now carries a string, a
+    null, a number and an array item (red under the mutant). **ADV W2 (a migration deciding on
+    the wrong bytes):** the v32 skip rule ran on the JS-side key, which node:sqlite hands back
+    TRUNCATED on Node <= 24.14 - a hostile `abc\0` doc row read as `abc` and its upsert
+    CLOBBERED the real `abc` item (measured on 22.23.1 and 24.14.0; on 24.20 it would be
+    skipped). Unreachable through any writer (md5 ids; the save and the import refuse NUL),
+    but one line: the rule runs in SQL on the stored bytes now
+    (`instr(CAST(key AS BLOB), x'00')`), test-bound with an impostor row beside the real one.
+    **ADV S3:** the "only writer" lock now matches the store's template spelling too. **ADV S4
+    = QA S1:** the adapter's dead `if (this.items)` guard (with a false comment) is gone and the
+    open-time snapshot is rebuilt ONCE (the store no longer rebuilds in its constructor).
+    **ADV S5 = QA S4:** "an unchanged rescan writes zero rows" is MEASURED now (a spy on the
+    adapter's save accounting during a real rescan) - the disk deep-equal alone let a
+    rewrite-everything mutant pass. **ADV S6 (noted, not bound):** `ORDER BY rowid` is a
+    guarantee a plain table scan happens to satisfy without it. **QA W1:** five positional
+    comments left pointing "above"/"below" at code that moved - each names its file now.
+    **QA W2:** the sqlite.js header's "one row PER KEY (doc_kv)" contract and the list's
+    "only metadata is left" parenthetical reworded (both tables are EMPTY). **QA W3:** the
+    DIAGRAMS headline was stamped "Measured at v1.294.0" against Wave 6 numbers - v1.295.0.
+    **QA S2:** the items store's NUL prose states the version-dependent read (#225), not the
+    falsified "truncates". **QA S3:** "105 new assertions" -> 105 test cases (140 asserts).
+    Verified clean by the seats (measured): the diff base's honesty under same-tick double
+    writes, key-order-only changes, an effect that throws after applyPlan; a 1k-file scan with
+    a failure INSIDE the transaction (index + every carrier untouched, the next scan lands one
+    new and prunes one); the epoch guard and HR1b still bound; a `__proto__` key, a 40 MB row,
+    a corrupt row mid-chain (rollback to v31), re-run idempotency, rowid order; a v1.42
+    db.json and a v1.294 bundle; 400s before the wipe with the logo bytes, users and rows
+    surviving; the cache mutation guard; the stranded fingerprint; the 13 bodies byte-identical
+    and the re-exports the SAME function objects; no new per-request full-table read.
 
 ### Wave 7 - Teardown + monolith split + `db.json` removal  (full gate)
 - Remove `loadDatabase`/`saveDatabase`/`updateDatabase`, the mega-object backfill, and

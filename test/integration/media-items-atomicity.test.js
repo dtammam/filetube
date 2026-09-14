@@ -22,7 +22,7 @@ const path = require('node:path');
 const { app, __resetDatabaseForTests, __failNextSaveForTests, scanDirectories, loadDatabase, getMediaId, viewCountStore, tombstoneStore, updateDatabase } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
-const { readPersistedDatabase } = require('../../lib/db/sqlite');
+const { readPersistedDatabase, SqliteAdapter } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -53,7 +53,19 @@ test('a REAL scan indexes into media_items; an unchanged rescan writes zero rows
   const ids = [getMediaId(path.join(root, 'Chan', 'a.mp4')), getMediaId(path.join(root, 'Chan', 'b.mp4'))];
   assert.deepStrictEqual(Object.keys(itemsOnDisk()).sort(), [...ids].sort(), 'both files are rows');
   const before = itemsOnDisk();
-  // the diff base after the scan: a no-op mutator tick writes nothing
+  // a REAL unchanged rescan writes ZERO rows - measured on the adapter's own
+  // save accounting (gate: the disk deep-equal alone let a rewrite-everything
+  // mutant pass), then the diff base is proven by a no-op mutator tick too
+  const saves = [];
+  const realSave = SqliteAdapter.prototype.save;
+  SqliteAdapter.prototype.save = function spied(db, opts) { const stats = realSave.call(this, db, opts); saves.push(stats); return stats; };
+  try {
+    await scanDirectories();
+  } finally {
+    SqliteAdapter.prototype.save = realSave;
+  }
+  assert.ok(saves.length >= 1, 'the rescan saved');
+  assert.deepStrictEqual(saves.map((x) => [x.rowsWritten, x.rowsDeleted]).filter(([w, d]) => w || d), [], 'every save of the unchanged rescan wrote and deleted zero rows');
   const stats = await updateDatabase((db) => { void db; return true; });
   assert.ok(stats === true || stats === undefined, 'the tick ran');
   assert.deepStrictEqual(itemsOnDisk(), before, 'an unchanged rescan / tick rewrites nothing');
@@ -85,7 +97,7 @@ test('a full backup round-trip: export, wipe, restore deep-equals; a RESCAN afte
   const bundle = await (await fetch(`${base}/api/admin/backup`)).json();
   delete bundle.users;
   assert.deepStrictEqual(bundle.metadata, indexed, 'the bundle carries the index in its old shape');
-  for (const bad of [['x'], 'no', { [String.fromCharCode(0)]: {} }]) {
+  for (const bad of [['x'], 'no', { [String.fromCharCode(0)]: {} }, { m1: 'string item' }, { m1: null }, { m1: 42 }, { m1: ['x'] }]) { // (gate: the item-OBJECT rule was unbound - a string item restored 200 under the mutant)
     const r = await withTimeout(post('/api/admin/restore', { ...bundle, metadata: bad }));
     assert.strictEqual(r.status, 400, `${JSON.stringify(bad)}: ${await r.clone().text()}`);
     assert.deepStrictEqual(itemsOnDisk(), indexed, 'the live rows survived the refusal');
