@@ -673,8 +673,34 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     round-trip + a RESCAN after the restore reusing the restored rows; a v1.294-shaped bundle;
     400-before-wipe). The adapter suite's doc-model cases (mid-transaction poison, the
     exclusiveReplace handle) moved onto the store's seams.
-  - Baseline after the storage move: doc_kv **0**, doc_single **0**, legacy **0**, schema
-    **32**, 61 relational tables, server.js 19396 lines (before the helper extraction).
+  - **The scan-helper extraction (a worktree subagent on Opus - Dean's ruling: not Sonnet for
+    this - reviewed by the main session; merged d5613365).** 13 pure helpers left server.js
+    for five `lib/scan/` modules, their bodies BYTE-IDENTICAL (machine-checked by the main
+    session: each moved body appears verbatim in exactly one module and is gone from
+    server.js): `roots.js` (matchRootFolder, normalizeScanRoot, detectVanishedRoots),
+    `merge.js` (selectPrunableIds, mergeScannedMetadata), `identity.js` (extractYtdlpVideoId,
+    youtubeIdFromUrlString, deriveScanYoutubeId, deriveReleaseDate), `captured.js`
+    (applyCapturedViewCount, applyCapturedFollowerCount, collectDownloadNotification),
+    `probe.js` (applyHasSubtitlesDetection). server.js re-exports every name (the SAME
+    function object - the extraction lock binds identity, not presence). Deliberately left,
+    disclosed: `reconcileTranscode` (reads TRANSCODE_DIR and stats the cache - not pure) and
+    the `needsTranscode` cluster (its move was implemented and REVERTED: `tv-scan.test.js`
+    parses `TRANSCODE_EXTENSIONS` out of server.js's text to prove TV_EXTENSIONS never
+    drifts - a comment-porous lock, the repo-known class; the extraction lock now pins that
+    the constant stays in server.js so a future move trips a test that names the
+    consequence). Two more comment-porous locks bit the subagent (a quoted constant in a
+    comment; a `require('../../server')` literal in a test header) - reworded. 105 new
+    assertions; mutation-verified against the commit (a wrapper re-export, a leftover copy,
+    a dropped mount-loss guard, a flipped return - all red).
+  - Residuals the extraction surfaced (tracked in #227): `test/unit/v1362-minors-client.test.js`
+    does not isolate DATA_DIR and opens `/tmp/filetube.db` - a v32 build's leftover there
+    makes an older build's run of that test red (environment debris, not code); the
+    pre-commit hook's `[ -d node_modules ]` check fails inside a git worktree (Node resolves
+    modules by walking up, the hook does not); `node --test test/unit` (a bare directory)
+    is not the suite's invocation on this Node - use the npm scripts.
+  - Baseline after the storage move + the extraction: doc_kv **0**, doc_single **0**, legacy
+    **0**, schema **32**, 61 relational tables, server.js **19092** lines (19396 before the
+    extraction; 304 lines moved), tests re-derived at the gate.
 
 ### Wave 7 - Teardown + monolith split + `db.json` removal  (full gate)
 - Remove `loadDatabase`/`saveDatabase`/`updateDatabase`, the mega-object backfill, and
