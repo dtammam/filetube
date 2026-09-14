@@ -93,6 +93,70 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.294.0 - Relational-migration arc, Waves 4 + 5: the config singletons and every feature catalog leave the document model (2026-09-14)
+
+Two waves on one branch, one release (Dean's pacing ruling), each gated in its own
+pass. The document model is down to ONE namespace, `metadata` (Wave 6), and the
+`doc_single` table is empty (Wave 7 drops it). Legacy namespaces 22 -> **1**
+(`node scripts/relational-arc-baseline.js`); schema **v24 -> v31**, eight rollback floors
+(docs/RELEASING.md, fifth to twelfth); 60 relational tables.
+
+**Wave 4 (v24-v26).** `settings` -> `app_settings` (one row per key, DEFAULT_SETTINGS
+merged on read); the folder config -> `library_folders` / `library_folder_settings` /
+`channel_folder_display_names` (the config POST writes both maps in ONE
+`inSaveTransaction`; the rename route and the channel heal write a display name the
+same way); `liked` -> `media_liked` (the four carriers - rename / trash / restore /
+purge - re-key or remove inside the commit; `rekey` keeps the slot). New shared shapes:
+`lib/db/kvStore.js`, `lib/db/orderedListStore.js`.
+
+**Wave 5 (v27-v31).** A FEATURE STORE (`lib/db/featureStore.js` + `recordListStore.js`):
+a module's namespace as a set of tables (list / map / kv / ordered records / value);
+`read()` is the module's old snapshot, `mutate(fn)` runs the module's own normaliser +
+reducers on a fresh holder and writes back the row DIFF inside the doc commit. tv (3
+tables), music (4; the show-in-Music marks), books (6; the frozen pre-auth reading
+positions + shelf pins), podcasts (3; the ordered subscriptions - a position column,
+never a sort; the episode archive with its tombstones; feed URLs were never in the db
+and still are not), ytdlp (5; the ordered subscriptions and frozen pins, the
+download->scan identity bridge the scan now consumes on a holder INSIDE its own commit,
+the channel-avatar registry, the allowMembersOnly flag in an internal table). Bundles
+carry every container in its old shape on both sides of the line; every part is
+shape-checked BEFORE the restore's wipe; a bundle without `podcasts` still PRESERVES the
+archive (the v1.69 no-forced-re-download rule). Single-item lookups are prepared point
+queries; the per-item read cost of the list routes is measured and tracked (#226).
+
+Full gate, two passes by the two-reviewer seats (the exec plan's Wave 4 and Wave 5
+records carry the detail). PASS A (Wave 4): per-block migration stamps (a v25 failure no
+longer leaves a partial v24 under a v23 stamp - measured settings loss before the fix),
+the config POST's atomicity bound by live probes (a regex-only lock had let the hoisted-
+writes mutant survive), the move carrier's failure axis bound, migrate-check on the
+common legacy shape (`liked: []` refused every v1.30+ file), two inert lock arms
+(`cached\w*` typed into a regex literal), a rename route that HUNG on a failed save.
+PASS B (Wave 5, fresh seats after a context compaction): the adversarial seat's
+surviving mutant - a PARTIAL feature-store snapshot reaching the scan commit WIPED the
+downloader's pins, avatar registry and flag, and six suites stayed green because no scan
+test seeded them (fixed in the primitive: a partial snapshot syncs only what it read;
+bound at the primitive and through a real scan); the scan bridge's "inside its own
+commit" was bound only by a source lock (a failed-save scan case now binds it); a legacy
+id-less yt-dlp subscription the migration MINTED an id for was REFUSED by the db.json
+boot import and the bundle restore (one repair at all three seams, md5 of the
+NORMALIZED url so a re-add never duplicates); per-item whole-table reads in the home /
+grid / push / handoff resolvers (measured ~50 ms per read at 10k tracks - point queries
+now); a podcasts feed-url route that hung on a failed commit; a stale test count in the
+record; five stale comments. Dual-Node, sequential, reviewers idle: 22.23.1 8657 tests /
+8657 pass / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8657 / 8657 / 0 / 0;
+24.14.0 8657 / 8657 / 0 / 0.
+
+KNOWN GAPS (disclosed): DEVICE-PENDING - Dean's overnight authorization waives the
+per-wave device pass until the arc completes (the probe list is in the report); the
+list routes read a whole table per request where v1.293 read a cached object (#226,
+Wave 6 decides the read-cache design); a second feature-store mutate in one commit
+tick would revert the first - no production path does it, rule stated, guard deferred
+(#226); the podcasts episode DELETE / restore routes still hang on a failed commit
+after their file move (pre-existing, #224's revisit); the doc-model seams that remain
+for `metadata` alone go in Wave 7; the source locks need a repo checkout; the bundle
+validator is tighter than v1.293.1 (a NUL folder path, an empty-string key or a
+non-boolean `allowMembersOnly` is a 400 now).
+
 ### v1.293.1 - CI hotfix: the Node 24.20 runner reads a NUL id back verbatim (2026-09-14)
 
 After v1.293.0 merged, CI's Node 24 job failed one test - and the Docker qualify job
