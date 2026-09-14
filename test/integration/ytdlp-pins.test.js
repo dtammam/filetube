@@ -38,6 +38,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
 const { app, loadDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const store = require('../../lib/ytdlp/store');
@@ -163,7 +164,7 @@ test('REGRESSION (mirrors the v1.20 FR-4 db.folders-invariant test): db.folders/
   await fetch(`${base}/api/subscriptions/pins`);
   await fetch(`${base}/api/subscriptions/pins`);
 
-  const midway = loadDatabase();
+  const midway = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
   assert.deepEqual(midway.folders || [], [], 'db.folders must remain empty -- a pin is never written there');
   assert.deepEqual(midway.folderSettings || {}, {}, 'db.folderSettings must remain empty -- a pin is never written there');
 
@@ -199,7 +200,7 @@ test('AC38 REGRESSION (mirrors the v1.20 FR-4 invariant test): POST /api/config 
   assert.equal(list.length, 1, 'the pin must survive a POST /api/config save untouched');
   assert.deepEqual(list[0], created);
 
-  const persisted = loadDatabase();
+  const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
   assert.deepEqual(persisted.folders || [], [], 'the pin\'s channelDir must never leak into db.folders via a config save');
   assert.deepEqual(persisted.folderSettings || {}, {}, 'the pin must never leak into db.folderSettings via a config save');
 

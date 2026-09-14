@@ -49,15 +49,15 @@ test('AC4: kill -9 mid-write-burst → reopen clean, last committed transaction 
     // asserted. What IS asserted: the reopen works and the state is a clean
     // committed prefix.
     const db = readPersistedDatabase(dataDir);
-    const folders = db.folders;
-    assert.ok(Array.isArray(folders) && folders.length === 1, 'folders singleton recovered');
-    const k = Number(folders[0].replace('/burst-', ''));
+    const bursts0 = db.metadata || {};
+    assert.ok(Number.isInteger(bursts0.marker), 'the marker row recovered (Wave 4: two kv rows per burst, no singleton left)');
+    const k = bursts0.marker;
     assert.ok(Number.isInteger(k) && k >= 5, `at least the pre-READY commits survived (K=${k})`);
 
     // Wave 2: the per-burst kv row is a metadata row (progress is relational now).
     const bursts = db.metadata || {};
     const keys = Object.keys(bursts);
-    assert.equal(keys.length, k, `exactly K=${k} kv rows — the folders row and its burst's metadata row committed ATOMICALLY`);
+    assert.equal(keys.length, k + 1, `exactly K=${k} burst rows + the marker — the marker row and its burst's row committed ATOMICALLY`);
     assert.equal(bursts[`p${k}`], k, 'the last committed transaction is fully intact');
     assert.equal(bursts[`p${k + 1}`], undefined, 'nothing from the killed transaction leaked');
 
@@ -67,9 +67,9 @@ test('AC4: kill -9 mid-write-burst → reopen clean, last committed transaction 
     const a = new SqliteAdapter(path.join(dataDir, SQLITE_FILENAME), { log: () => {} });
     try {
       const reopened = a.load();
-      reopened.folders = ['/post-recovery'];
+      reopened.metadata.marker = 'post-recovery'; // Wave 4: a kv row (no doc singleton left for this probe)
       a.save(reopened);
-      assert.deepEqual(readPersistedDatabase(dataDir).folders, ['/post-recovery']);
+      assert.deepEqual(readPersistedDatabase(dataDir).metadata.marker, 'post-recovery');
     } finally {
       a.close();
     }

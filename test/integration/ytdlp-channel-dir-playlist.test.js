@@ -31,6 +31,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
 const { app, scanDirectories, loadDatabase, updateDatabase } = require('../../server');
+const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const argsMod = require('../../lib/ytdlp/args');
@@ -55,7 +56,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; db.ytdlp = undefined; return true; });
+  folderStore().replaceAll([]); folderSettingsStore().replaceAll({}); await updateDatabase((db) => { db.ytdlp = undefined; return true; });
 });
 
 test('AC18/AC19: GET /api/subscriptions includes a channelDir per subscription, matching args.resolveChannelDir', async () => {

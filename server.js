@@ -508,6 +508,17 @@ function validateTranscriptAiPrompts(raw, existing) {
 // `inSaveTransaction` so a failed doc save rolls the setting back too.
 const createSettingsStore = require('./lib/config/settings');
 const settingsStore = createSettingsStore(dbAdapter, { defaults: DEFAULT_SETTINGS });
+// Wave 4 (second group): the folder config - the root list (library_folders,
+// operator order), the per-root settings map (library_folder_settings) and
+// the per-channel-folder display names (channel_folder_display_names). The
+// config POST replaces the first two inside the doc commit's transaction;
+// the channel heal writes a display name the same way.
+const createFolderStore = require('./lib/config/folders');
+const createFolderSettingsStore = require('./lib/config/folderSettings');
+const createFolderDisplayNameStore = require('./lib/config/folderDisplayNames');
+const folderStore = createFolderStore(dbAdapter);
+const folderSettingsStore = createFolderSettingsStore(dbAdapter);
+const folderDisplayNameStore = createFolderDisplayNameStore(dbAdapter);
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -535,11 +546,11 @@ function loadDatabase() {
   // normalization — see lib/db/sqlite.js's load() comment) can never make a
   // mutator throw a TypeError against a missing `folders`/`progress`/
   // `metadata`.
-  if (!Array.isArray(db.folders)) db.folders = [];
-  if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
-  // v1.126: backfill `folderDisplayNames` ({ [folderName]: displayName }) like
-  // every other top-level key - the per-channel-folder display map.
-  if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object' || Array.isArray(db.folderDisplayNames)) db.folderDisplayNames = {};
+  // (pre-v1.294: `folders`, `folderSettings` and `folderDisplayNames` were
+  // backfilled here. Wave 4 moved them to library_folders /
+  // library_folder_settings / channel_folder_display_names behind
+  // folderStore / folderSettingsStore / folderDisplayNameStore - no longer
+  // keys of this object.)
   // (v1.42-v1.291: `progress` was backfilled here. Wave 2 moved it to
   // media_progress / progressStore - no longer a key of this object.)
   if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
@@ -4117,6 +4128,7 @@ async function runScanDirectories() {
   // snapshot below - a settings change mid-scan is not observed mid-scan,
   // exactly as the old `db.settings` snapshot behaved.
   const scanSettings = settingsStore.get();
+  const scanFolders = folderStore.list(); // Wave 4: the root list, captured with the snapshot too
   // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
   // cache -- this is the scan's own Phase-1 snapshot (background job, not a
   // request/serve-path read; runs once per scan pass, not per request). The
@@ -4188,7 +4200,7 @@ async function runScanDirectories() {
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
   const currentFolders = [];
   const seenScanRootKeys = new Set();
-  for (const rawRoot of [...(db.folders || []), ...ytdlp.extraScanRoots(ytdlpConfig)]) {
+  for (const rawRoot of [...scanFolders, ...ytdlp.extraScanRoots(ytdlpConfig)]) {
     const key = normalizeScanRoot(rawRoot);
     if (seenScanRootKeys.has(key)) continue; // same real tree as an earlier entry -- drop, never re-walk
     seenScanRootKeys.add(key);
@@ -6611,8 +6623,8 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // (AC4/46).
 app.get('/api/config', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const folders = [...(db.folders || [])];
-  const folderSettings = { ...(db.folderSettings || {}) };
+  const folders = folderStore.list(); // Wave 4: the tables (fresh arrays/maps per call)
+  const folderSettings = folderSettingsStore.getAll();
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
   const synthRoots = ytdlp.extraScanRoots(ytdlpConfig); // [] when disabled & dir absent
   for (const root of synthRoots) {
@@ -6651,7 +6663,8 @@ app.get('/api/config', (req, res) => {
   // POST /api/folders/display-name below.
   let outFolders = folders;
   let outFolderSettings = folderSettings;
-  let outDisplayNames = db.folderDisplayNames || {};
+  const allDisplayNames = folderDisplayNameStore.getAll(); // Wave 4
+  let outDisplayNames = allDisplayNames;
   // v1.128 Wave B (L1): this response drives the MEMBER sidebar nav, so it
   // can't be admin-gated - but for a RESTRICTED member it leaked every root
   // abs path + folderSettings + folder/channel display name, hidden ones
@@ -6674,8 +6687,8 @@ app.get('/api/config', (req, res) => {
     outFolderSettings = {};
     for (const f of outFolders) if (folderSettings[f] !== undefined) outFolderSettings[f] = folderSettings[f];
     outDisplayNames = {};
-    for (const name of Object.keys(db.folderDisplayNames || {})) {
-      if (visibleFolderNames.has(name)) outDisplayNames[name] = db.folderDisplayNames[name];
+    for (const name of Object.keys(allDisplayNames)) {
+      if (visibleFolderNames.has(name)) outDisplayNames[name] = allDisplayNames[name];
     }
   }
   res.json({
@@ -6717,16 +6730,16 @@ app.post('/api/folders/display-name', async (req, res) => {
   if (!visibleExists) return res.status(404).json({ error: 'No such folder' });
   const rawName = typeof body.name === 'string' ? body.name.trim() : '';
   const name = rawName.slice(0, 150); // the pin-label bound
-  await updateDatabase((mdb) => {
-    if (!mdb.folderDisplayNames || typeof mdb.folderDisplayNames !== 'object') mdb.folderDisplayNames = {};
-    const current = mdb.folderDisplayNames[folderName];
+  await updateDatabase(() => {
+    // Wave 4: the map is a table; the write rides the doc commit's transaction.
+    const current = folderDisplayNameStore.get(folderName);
     if (name === '') {
       if (current === undefined) return false; // nothing to clear - skip the save
-      delete mdb.folderDisplayNames[folderName];
+      inSaveTransaction(() => folderDisplayNameStore.remove(folderName));
       return true;
     }
     if (current === name) return false; // unchanged - skip the save
-    mdb.folderDisplayNames[folderName] = name;
+    inSaveTransaction(() => folderDisplayNameStore.set(folderName, name));
     return true;
   });
   res.json({ success: true, folderName, name: name === '' ? null : name });
@@ -7000,9 +7013,13 @@ app.post('/api/config', async (req, res) => {
   }
 
   try {
-    await updateDatabase(db => {
-      db.folders = validFolders;
-      db.folderSettings = cleanSettings;
+    await updateDatabase(() => {
+      // Wave 4: both maps land inside the doc commit's transaction (a failed
+      // save leaves the tables exactly as they were).
+      inSaveTransaction(() => {
+        folderStore.replaceAll(validFolders);
+        folderSettingsStore.replaceAll(cleanSettings);
+      });
       return true;
     });
   } catch (err) {
@@ -7258,7 +7275,7 @@ app.post('/api/books/config', async (req, res) => {
   // in EITHER direction -- a file must have exactly one owner, or the two
   // scanners' prune/merge semantics fight over it.
   const cachedForBooks = getCachedDatabase();
-  const mediaFolders = (cachedForBooks.folders || []).map((f) => path.resolve(f));
+  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
   for (const bookRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
       if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
@@ -7874,8 +7891,8 @@ app.get('/api/scan-status', (req, res) => {
   const visibleMap = visibleMetadataFor(req, db.metadata);
   const items = Object.values(visibleMap);
   const folderCount = requesterHasRestrictions(req)
-    ? visibleConfigRoots(req, db.folders || [], items, mediaVisibleTo).length
-    : (db.folders || []).length;
+    ? visibleConfigRoots(req, folderStore.list(), items, mediaVisibleTo).length
+    : folderStore.size(); // Wave 4
   // Same filter that has always produced the `transcoding` count -- this is
   // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
   // codec-flagged HEVC .mp4 rides this exact filter, not a divergent one).
@@ -8281,7 +8298,7 @@ app.post('/api/music/config', async (req, res) => {
   // reciprocal clauses in the media/book config routes (T5) close the other
   // direction so ownership is order-independent.
   const cached = getCachedDatabase();
-  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
+  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
   const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
   for (const musicRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
@@ -8624,7 +8641,7 @@ app.get('/api/music/channels', (req, res) => {
   const db = getCachedDatabase();
   const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  const displayNames = (db.folderDisplayNames && typeof db.folderDisplayNames === 'object') ? db.folderDisplayNames : {};
+  const displayNames = folderDisplayNameStore.getAll(); // Wave 4
   const visibleCount = new Map(); // folderName -> visible audio count
   for (const it of allAudio) {
     if (typeof it.folderName !== 'string' || it.folderName === '') continue;
@@ -9045,7 +9062,7 @@ app.post('/api/tv/config', async (req, res) => {
   // reciprocal clauses in the media/book/music/podcast config routes close the
   // other direction (adding one of THOSE under a Shows root).
   const cached = getCachedDatabase();
-  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
+  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
   const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
   const musicFolders = (musicStore.readMusic(cached).folders || []).map((f) => path.resolve(f));
   const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
@@ -9928,12 +9945,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata', 'liked', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings'];
+// Wave 4 (second group): the folder config keys - same keys, same shapes.
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9953,6 +9971,9 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.deleteTombstones = tombstoneStore.getAll(); // Wave 2: verbatim records
       bundle.trash = trashStore.getAll();                // Wave 3: verbatim records
       bundle.settings = settingsStore.get();             // Wave 4: the MERGED object, as the doc snapshot carried it
+      bundle.folders = folderStore.list();               // Wave 4: the root list, operator order
+      bundle.folderSettings = folderSettingsStore.getAll();
+      bundle.folderDisplayNames = folderDisplayNameStore.getAll();
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10130,6 +10151,23 @@ function validateBackupBundle(bundle) {
     if (typeof bundle.settings !== 'object' || bundle.settings === null || Array.isArray(bundle.settings)) return 'settings must be an object';
     for (const key of Object.keys(bundle.settings)) {
       if (key === '' || key.includes('\u0000')) return `settings['${key.split('\u0000').join('\\u0000')}']: invalid settings key`;
+    }
+  }
+  // Wave 4 (second group): the folder config. `folders` restores as an
+  // ordered list of root paths, the two maps one row per key - shape-checked
+  // before the wipe like everything else.
+  if (bundle.folders !== undefined) {
+    if (!Array.isArray(bundle.folders)) return 'folders must be an array';
+    for (const f of bundle.folders) {
+      if (typeof f !== 'string' || f === '' || f.includes('\u0000')) return 'folders: every entry must be a non-empty string';
+    }
+  }
+  for (const key of ['folderSettings', 'folderDisplayNames']) {
+    if (bundle[key] === undefined) continue;
+    if (typeof bundle[key] !== 'object' || bundle[key] === null || Array.isArray(bundle[key])) return `${key} must be an object`;
+    for (const k of Object.keys(bundle[key])) {
+      if (k === '' || k.includes('\u0000')) return `${key}['${k.split('\u0000').join('\\u0000')}']: invalid key`;
+      if (bundle[key][k] === undefined) return `${key}['${k}']: record is missing`;
     }
   }
   // Same amplifier, settings side: the sweep also clamps (defense in depth),
@@ -11201,7 +11239,7 @@ app.get('/api/videos', (req, res) => {
   // On the default (home/recent) view — no explicit filter — hide files from folders
   // the user marked hidden (their whole subtree). Opening a folder still shows everything.
   if (!search && !folderFilter && !rootFilter) {
-    const settings = db.folderSettings || {};
+    const settings = folderSettingsStore.getAll(); // Wave 4
     const hiddenFolders = Object.keys(settings).filter(f => settings[f] && settings[f].hidden);
     if (hiddenFolders.length > 0) {
       list = list.filter(item => !hiddenFolders.some(hf => underFolder(item.filePath, hf)));
@@ -11215,7 +11253,7 @@ app.get('/api/videos', (req, res) => {
   // human knows finds its items even when the on-disk folder differs).
   if (search) {
     const searchScope = videoQuery.normalizeSearchScope(req.query.searchIn);
-    const searchDisplayNames = db.folderDisplayNames || {};
+    const searchDisplayNames = folderDisplayNameStore.getAll(); // Wave 4
     list = list.filter(item => videoQuery.matchesSearch(item, search, {
       scope: searchScope,
       displayName: searchDisplayNames[item.folderName],
@@ -11486,7 +11524,7 @@ app.get('/api/home', (req, res) => {
 
   // Home view hides files under folders the user marked hidden (mirrors
   // /api/videos' home arm). Opening a folder still shows everything.
-  const folderSettings = db.folderSettings || {};
+  const folderSettings = folderSettingsStore.getAll(); // Wave 4
   const hiddenFolders = Object.keys(folderSettings).filter((f) => folderSettings[f] && folderSettings[f].hidden);
   const underFolder = (filePath, folder) => filePath === folder || (typeof filePath === 'string' && (filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\')));
 
@@ -11696,7 +11734,7 @@ app.get('/api/home', (req, res) => {
 app.get('/api/channels', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const rootFilter = typeof req.query.root === 'string' && req.query.root !== '' ? req.query.root : null;
-  const settingsByRoot = db.folderSettings || {};
+  const settingsByRoot = folderSettingsStore.getAll(); // Wave 4
   const hiddenRoots = new Set(Object.keys(settingsByRoot).filter(p => settingsByRoot[p] && settingsByRoot[p].hidden === true));
   const underRoot = (fp) => fp === rootFilter || (typeof fp === 'string' && fp.startsWith(rootFilter + path.sep));
   // v1.84: name-based subscription set (same join as /api/home) so consumers can
@@ -11747,7 +11785,7 @@ app.get('/api/channels', (req, res) => {
   // ever captured a channelName - the permanently-unhealable folders) takes the
   // per-folder display map, mirroring resolveChannelName's fallback order
   // client-side (channelName wins, then the map, then the raw folder).
-  const displayNames = db.folderDisplayNames || {};
+  const displayNames = folderDisplayNameStore.getAll(); // Wave 4
   for (const g of groups.values()) {
     if (g.name === g.folder && typeof displayNames[g.folder] === 'string' && displayNames[g.folder].trim() !== '') {
       g.name = displayNames[g.folder].trim();
@@ -13291,9 +13329,11 @@ app.delete('/api/trash/:id', async (req, res) => {
  * membership check, not something walked), so no `normalizeScanRoot` dedup
  * pass is needed.
  */
-function configuredLibraryRoots(db) {
+// Wave 4: the root list comes from the table; the doc snapshot is no longer
+// consulted (the parameter stays for the ten callers' shape).
+function configuredLibraryRoots(_db) {
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
-  return [...((db && db.folders) || []), ...ytdlp.extraScanRoots(ytdlpConfig)];
+  return [...folderStore.list(), ...ytdlp.extraScanRoots(ytdlpConfig)];
 }
 
 /**
@@ -16601,8 +16641,9 @@ async function recordLocalChannelHealFanout(deps, target) {
           if (!it || typeof it.folderName !== 'string' || it.folderName === '') continue;
           if (it.channelId !== target.identity.channelId) continue;
           if (ytdlp.folderKeyOf(it) !== target.folderKey) continue;
-          if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object') db.folderDisplayNames = {};
-          db.folderDisplayNames[it.folderName] = healName;
+          // Wave 4: the map is a table; the write rides the doc commit through
+          // the deps seam (the unit harness supplies its own).
+          d.setFolderDisplayName(it.folderName, healName);
           break;
         }
       }
@@ -17060,7 +17101,7 @@ app.get('/api/stats', (req, res) => {
   if (isAdmin) {
     inventoryInput = {
       metadata: visibleMetadata, progress: progressStore.getAll(), viewCounts: viewCountStore.getAll(), // Waves 1-2: the tables
-      liked: db.liked, deleteTombstones: tombstoneStore.getAll(), folders: db.folders,
+      liked: db.liked, deleteTombstones: tombstoneStore.getAll(), folders: folderStore.list(), // Wave 4
       books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
       music: { tracks: visibleTracks, folders: music.folders },
       users: userStore.countUsers(),
@@ -18536,6 +18577,9 @@ ytdlp.registerRoutes(app, {
   // v1.116 (Dean): the LOCAL-heal fan-out writer (adopts the canonical identity
   // UNIT from a same-folder sibling), deps-injected into the same batch.
   recordLocalChannelHealFanout,
+  // Wave 4: the heal's display-name write goes to channel_folder_display_names
+  // INSIDE the doc commit (this dep is called from within the mutator above).
+  setFolderDisplayName: (name, value) => inSaveTransaction(() => folderDisplayNameStore.set(name, value)),
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -18705,6 +18749,7 @@ podcasts.registerRoutes(app, {
   loadDatabase,
   getCachedDatabase,
   getSettings: () => settingsStore.get(), // Wave 4
+  getLibraryFolders: () => folderStore.list(), // Wave 4
   dataDir: DATA_DIR,
   userStore,
   // v1.73: the poll's notification bridge (route-triggered checks run the
@@ -18860,7 +18905,14 @@ if (require.main === module) {
     // v1.146: + recordEngineEvent so the engine's boot recovery and daily
     // auto-update tick can bell their outcomes (same producer as the
     // routes bundle - each bundle carries its own reference, v1.29 lesson).
-    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent });
+    ytdlp.startBackground({
+      updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent,
+      // Wave 4: the root list is a table; the stale-downloadDir migration reads and prunes it here.
+      getLibraryFolders: () => folderStore.list(),
+      removeLibraryFolder: (p) => folderStore.remove(p),
+      inSaveTransaction,
+      setFolderDisplayName: (name, value) => inSaveTransaction(() => folderDisplayNameStore.set(name, value)), // Wave 4: the timer-run heal
+    });
 
     // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll
     // timer. Early-returns doing NOTHING (no dir, no timer) with zero
@@ -18872,6 +18924,7 @@ if (require.main === module) {
       loadDatabase,
       getCachedDatabase,
       getSettings: () => settingsStore.get(), // Wave 4: app settings are a store
+      getLibraryFolders: () => folderStore.list(), // Wave 4: the root list is a table
       dataDir: DATA_DIR,
       userStore,
       // v1.73: the timer-run poll notifies + pushes exactly like the
@@ -19081,6 +19134,9 @@ module.exports = {
   // Wave 3: the trashed-item records.
   trashStore,
   settingsStore, // Wave 4
+  folderStore, // Wave 4
+  folderSettingsStore, // Wave 4
+  folderDisplayNameStore, // Wave 4
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

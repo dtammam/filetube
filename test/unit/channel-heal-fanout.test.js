@@ -20,10 +20,14 @@ const FOLDER = '/music/nestalgiamusic';
 function makeDeps(metadata, ytdlp) {
   const db = { metadata, ytdlp: ytdlp || { pins: [] } };
   const returns = [];
+  const names = {}; // Wave 4: the display-name map is a table behind a deps seam
   let calls = 0;
   return {
-    db, returns, get calls() { return calls; },
-    deps: { updateDatabase: (fn) => { calls += 1; returns.push(fn(db)); return Promise.resolve(); } },
+    db, returns, names, get calls() { return calls; },
+    deps: {
+      updateDatabase: (fn) => { calls += 1; returns.push(fn(db)); return Promise.resolve(); },
+      setFolderDisplayName: (name, value) => { names[name] = value; },
+    },
   };
 }
 const target = () => ({
@@ -66,7 +70,8 @@ test('heal fanout: a no-op target (no writes) never persists; a bad/absent targe
 // ---- v1.126: the heal ALSO writes the per-folder display map ---------------
 // A folder healing to one canonical name is exactly the signal the folder-label
 // surfaces (the ?folder= header, the channels bar, pins' fallback) need - the
-// fanout writes db.folderDisplayNames[folderName] = canonical name, OVERWRITE
+// fanout writes folderDisplayNames[folderName] = canonical name (Wave 4: through
+// the deps' setFolderDisplayName seam, into channel_folder_display_names), OVERWRITE
 // posture (a re-run with a fresher name wins; never gated on absence).
 
 test('v1.126: a successful heal writes folderDisplayNames[folderName] (and OVERWRITES a stale entry)', async () => {
@@ -74,10 +79,10 @@ test('v1.126: a successful heal writes folderDisplayNames[folderName] (and OVERW
     b1: frag({ folderName: 'nestalgiamusic' }),
     good: { type: 'audio', filePath: FOLDER + '/g.mp3', folderName: 'nestalgiamusic', channelName: 'NESTALGIA', channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE },
   });
-  h.db.folderDisplayNames = { nestalgiamusic: 'Stale Old Name' };
+  h.names.nestalgiamusic = 'Stale Old Name';
   const n = await recordLocalChannelHealFanout(h.deps, target());
   assert.equal(n, 1, 'the bad sibling healed');
-  assert.equal(h.db.folderDisplayNames.nestalgiamusic, 'NESTALGIA',
+  assert.equal(h.names.nestalgiamusic, 'NESTALGIA',
     'the display map takes the canonical name, overwriting the stale entry');
 });
 
@@ -86,5 +91,5 @@ test('v1.126: a no-op heal (nothing written) never touches the display map', asy
     good: { type: 'audio', filePath: FOLDER + '/g.mp3', folderName: 'nestalgiamusic', channelName: 'NESTALGIA', channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE },
   });
   await recordLocalChannelHealFanout(h.deps, target());
-  assert.equal(h.db.folderDisplayNames, undefined, 'no heal -> no map write, no key created');
+  assert.deepEqual(h.names, {}, 'no heal -> no map write, no key created');
 });

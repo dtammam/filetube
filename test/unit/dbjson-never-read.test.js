@@ -33,7 +33,7 @@ const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest
 
 const GARBAGE = '{ this is not JSON - a read of me is FATAL by design';
 // (Wave 4: `settings` is relational now - the doc seed carries the doc keys only.)
-const SEED = { folders: ['/media/seeded'], metadata: { vid1: { title: 'seeded item' } } };
+const SEED = { metadata: { vid1: { title: 'seeded item' }, marker: { title: 'seeded marker' } } };
 
 // `null` seeds a schema-current, row-empty filetube.db (open + close only).
 function seedSqlite(db) {
@@ -97,7 +97,7 @@ test('rule 1: filetube.db present (non-empty) + a NON-JSON db.json beside it -> 
     assert.ok(probes.includes('existsSync'), 'the spy is live: the existence probe on db.json was observed in this run');
     assert.ok(lines.some((l) => l.includes('db.json is present and ignored')), 'the ignored line is logged');
     const loaded = result.adapter.load();
-    assert.deepStrictEqual(loaded.folders, SEED.folders, 'state comes from filetube.db, not the file beside it');
+    assert.deepStrictEqual(loaded.metadata.marker, SEED.metadata.marker, 'state comes from filetube.db, not the file beside it');
     assert.strictEqual(loaded.settings, undefined, 'Wave 4: settings is not a doc key');
     assert.strictEqual(loaded.metadata.vid1.title, 'seeded item');
   } finally {
@@ -146,7 +146,7 @@ test('positive control B: the rollback net still works - WITHOUT filetube.db a v
   try {
     assert.strictEqual(second.result.importSummary, null, 'no re-import');
     assert.deepStrictEqual(second.reads, [], 'second boot never reads db.json');
-    assert.deepStrictEqual(second.result.adapter.load().folders, SEED.folders, 'the imported state is what boots');
+    assert.deepStrictEqual(second.result.adapter.load().metadata.marker, SEED.metadata.marker, 'the imported state is what boots');
   } finally {
     second.result.adapter.close();
   }

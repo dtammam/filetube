@@ -30,6 +30,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { folderStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 
 let server;
@@ -120,7 +121,7 @@ test('a NON-yt-dlp file (outside any download root) NEVER gets channel fields at
     fs.writeFileSync(libraryFilePath, 'not a real video');
 
     await updateDatabase((db) => {
-      db.folders = [libraryDir];
+      folderStore().replaceAll([libraryDir]); // Wave 4: the root list is a table
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta.dQw4w9WgXcQ = {
         channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -147,7 +148,7 @@ test('a NON-yt-dlp file (outside any download root) NEVER gets channel fields at
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
     fs.rmSync(libraryDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; return true; });
+    folderStore().replaceAll([]);
   }
 });
 

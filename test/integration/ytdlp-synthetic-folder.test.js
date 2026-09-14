@@ -52,6 +52,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const { app, scanState, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -102,7 +103,7 @@ async function waitForScanIdle(maxWaitMs = 10000) {
 
 beforeEach(async () => {
   await waitForScanIdle();
-  await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+  folderStore().replaceAll([]); folderSettingsStore().replaceAll({});
 });
 
 test('AC42: GET /api/config surfaces the download dir as a synthetic folder, never present in db.folders', async () => {
@@ -112,7 +113,7 @@ test('AC42: GET /api/config surfaces the download dir as a synthetic folder, nev
     const res = await fetch(`${base}/api/config`);
     const body = await res.json();
     assert.ok(body.folders.includes(path.resolve(downloadDir)), 'the synthetic folder must be present in the RESPONSE');
-    assert.ok(!(loadDatabase().folders || []).includes(downloadDir), 'the synthetic folder must NEVER be present in persisted db.folders');
+    assert.ok(!(folderStore().list() || []).includes(downloadDir), 'the synthetic folder must NEVER be present in persisted db.folders');
     assert.equal(body.folderSettings[path.resolve(downloadDir)].name, 'Downloads', 'defaults to a friendly name when no rename has been persisted');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
@@ -141,7 +142,7 @@ test('AC44: the synthetic folder is renamable via a persisted folderSettings ent
     assert.equal(postRes.status, 200);
     assert.deepEqual(postBody.folders, [], 'db.folders must stay empty -- the synthetic root is never written there');
 
-    const persisted = loadDatabase();
+    const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
     assert.deepEqual(persisted.folders, [], 'db.folders itself must never contain the synthetic root');
     assert.equal(persisted.folderSettings[resolvedDownloadDir].name, 'My Downloads', 'the rename must persist via folderSettings alone');
 
@@ -187,7 +188,7 @@ test('FIX-2 regression: POST /api/config with the synthetic download folder pres
     assert.equal(postRes.status, 200);
     assert.ok(!postBody.folders.includes(resolvedDownloadDir), 'FIX-2: the synthetic download folder must NEVER be written into db.folders, even when round-tripped back from GET');
 
-    const persisted = loadDatabase();
+    const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
     assert.ok(!(persisted.folders || []).includes(resolvedDownloadDir), 'FIX-2: db.folders itself must never contain the synthetic root after this save');
     assert.equal(persisted.folderSettings[resolvedDownloadDir].name, 'Renamed Downloads', 'a submitted folderSettings rename for the synthetic root must still persist, independent of the folders-array exclusion');
   } finally {
@@ -210,7 +211,7 @@ test('AC45: self-heals -- the synthetic folder reappears from extraScanRoots eve
 
     // Simulate a settings wipe (as if an operator's folderSettings.json entry
     // were lost/reset) -- the very next GET still re-derives it.
-    await updateDatabase((db) => { db.folderSettings = {}; return true; });
+    folderSettingsStore().replaceAll({});
     const res2 = await fetch(`${base}/api/config`);
     const body2 = await res2.json();
     assert.ok(body2.folders.includes(path.resolve(downloadDir)), 'must re-derive the synthetic folder after a settings reset, with no operator action');
@@ -232,7 +233,7 @@ test('AC46 (restates AC4): disabled -- the synthetic folder entry is absent from
     const res = await fetch(`${base}/api/config`);
     const body = await res.json();
     assert.ok(!body.folders.includes(path.resolve(neverCreatedDir)), 'disabled + never-created dir must never surface a synthetic entry');
-    assert.deepEqual(body.folders, loadDatabase().folders || [], 'the response must be byte-identical to db.folders when there is no synthetic contribution');
+    assert.deepEqual(body.folders, folderStore().list() || [], 'the response must be byte-identical to db.folders when there is no synthetic contribution');
   } finally {
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   }
@@ -270,20 +271,17 @@ test('AC47: no scan/prune decision depends on the GET /api/config synthetic merg
 test('migrateStaleDownloadDirFromFolders still strips a REAL persisted db.folders entry (unchanged by FR-G part 2)', async () => {
   const staleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-synthetic-stale-'));
   try {
-    await updateDatabase((db) => {
-      db.folders = Array.from(new Set([...(db.folders || []), staleDir]));
-      return true;
-    });
-    assert.ok(loadDatabase().folders.includes(staleDir), 'sanity: the stale entry was seeded');
+    folderStore().add(staleDir); // Wave 4: the root list is a table
+    assert.ok(folderStore().list().includes(staleDir), 'sanity: the stale entry was seeded');
 
     process.env.FILETUBE_YTDLP_ENABLED = 'true';
     process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = staleDir;
     const config = ytdlp.parseYtdlpConfig(process.env);
-    const deps = { updateDatabase, loadDatabase };
+    const deps = { updateDatabase, loadDatabase, getLibraryFolders: () => folderStore().list(), removeLibraryFolder: (p) => folderStore().remove(p) }; // Wave 4: the root list is a table behind a deps seam
 
     await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
 
-    assert.ok(!loadDatabase().folders.includes(staleDir), 'the real persisted db.folders entry must still be stripped');
+    assert.ok(!folderStore().list().includes(staleDir), 'the real persisted db.folders entry must still be stripped');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
@@ -299,7 +297,7 @@ test('AC8: reordering the synthetic folder among real folders persists across a 
   const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-a-'));
   const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-b-'));
   try {
-    await updateDatabase((db) => { db.folders = [realA, realB]; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([realA, realB]); folderSettingsStore().replaceAll({});
     const resolvedDownloadDir = path.resolve(downloadDir);
 
     // Sanity: with no order ever stored, GET still appends the synthetic
@@ -334,7 +332,7 @@ test('AC9: rename and reorder submitted together both persist together across a 
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
   const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-c-'));
   try {
-    await updateDatabase((db) => { db.folders = [realA]; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([realA]); folderSettingsStore().replaceAll({});
     const resolvedDownloadDir = path.resolve(downloadDir);
 
     // Move the synthetic folder ahead of the one real folder AND rename it,
@@ -364,7 +362,7 @@ test('AC10: after a rename/reorder round trip, the synthetic folder is still abs
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
   const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-d-'));
   try {
-    await updateDatabase((db) => { db.folders = [realA]; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([realA]); folderSettingsStore().replaceAll({});
     const resolvedDownloadDir = path.resolve(downloadDir);
 
     await fetch(`${base}/api/config`, {
@@ -376,7 +374,7 @@ test('AC10: after a rename/reorder round trip, the synthetic folder is still abs
       }),
     });
 
-    const persisted = loadDatabase();
+    const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
     assert.ok(!(persisted.folders || []).includes(resolvedDownloadDir), 'AC10: db.folders on disk must never contain the synthetic root after a reorder save');
     assert.ok(Number.isInteger(persisted.folderSettings[resolvedDownloadDir].order), 'the order is stored on the synthetic root\'s folderSettings entry, not in db.folders');
   } finally {
@@ -392,11 +390,8 @@ test('AC10b: a stale/out-of-range stored order is clamped rather than throwing o
   const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-e-'));
   try {
     const resolvedDownloadDir = path.resolve(downloadDir);
-    await updateDatabase((db) => {
-      db.folders = [realA];
-      db.folderSettings = { [resolvedDownloadDir]: { name: 'Downloads', order: 99 } };
-      return true;
-    });
+    folderStore().replaceAll([realA]); // Wave 4: the tables
+      folderSettingsStore().replaceAll({ [resolvedDownloadDir]: { name: 'Downloads', order: 99 } });
 
     const getBody = await (await fetch(`${base}/api/config`)).json();
     assert.deepEqual(getBody.folders, [realA, resolvedDownloadDir], 'an out-of-range order clamps to append-last rather than erroring');
@@ -415,7 +410,7 @@ test('AC11: disabled -- real-folder POST/GET order behavior is byte-identical, n
   const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-g-'));
   try {
     assert.equal(process.env.FILETUBE_YTDLP_ENABLED, undefined, 'sanity: module must be disabled');
-    await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([]); folderSettingsStore().replaceAll({});
 
     const postRes = await fetch(`${base}/api/config`, {
       method: 'POST',
@@ -448,11 +443,8 @@ test('AC12: a stored synthetic order does not affect extraScanRoots or the E1 mo
     const resolvedDownloadDir = path.resolve(downloadDir);
     // Seed an arbitrary stored order BEFORE scanning -- it must have zero
     // bearing on the scan/prune path, which reads extraScanRoots() directly.
-    await updateDatabase((db) => {
-      db.folders = [];
-      db.folderSettings = { [resolvedDownloadDir]: { name: 'Downloads', order: 3 } };
-      return true;
-    });
+    folderStore().replaceAll([]); // Wave 4: the tables
+      folderSettingsStore().replaceAll({ [resolvedDownloadDir]: { name: 'Downloads', order: 3 } });
 
     const filePath = path.join(downloadDir, 'order-proof.mp4');
     fs.writeFileSync(filePath, 'not a real video');
@@ -528,7 +520,7 @@ test('FR-4: syntheticFolders is read-only -- POST /api/config ignores a client-s
     assert.equal(postRes.status, 200);
     assert.ok(!(postBody.folders || []).includes(resolvedDownloadDir), 'the real synthetic root must still never be written into db.folders');
 
-    const persisted = loadDatabase();
+    const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
     assert.ok(!(persisted.folders || []).includes(resolvedDownloadDir), 'db.folders on disk must never contain the synthetic root');
     assert.ok(!(persisted.folders || []).includes('/not/actually/synthetic'), 'a client-submitted syntheticFolders entry must never be persisted anywhere -- the field is read-only/response-only');
 

@@ -43,7 +43,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
-const { settingsStore, progressStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { settingsStore, progressStore, folderStore, folderSettingsStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 const DATA_DIR = process.env.DATA_DIR;
@@ -82,10 +82,7 @@ test('AC38/AC41: extraScanRoots (yt-dlp download dir) + a symlink-aliased manual
     // of the same real tree to db.folders (the exact confirmed root cause:
     // the module contributes path.resolve(downloadDir) via extraScanRoots,
     // while db.folders held a byte-different (here: symlinked) spelling).
-    await updateDatabase((db) => {
-      db.folders = [aliasDir];
-      return true;
-    });
+    folderStore().replaceAll([aliasDir]); // Wave 4: the root list is a table
 
     await scanDirectories();
 
@@ -114,7 +111,7 @@ test('AC38/AC41: extraScanRoots (yt-dlp download dir) + a symlink-aliased manual
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
     fs.rmSync(aliasDir, { force: true });
     fs.rmSync(realDownloadDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; return true; });
+    folderStore().replaceAll([]);
   }
 });
 
@@ -131,10 +128,7 @@ test('FIX-1 regression (BLOCKER) (a): a symlinked db.folders root -- pre-existin
     fs.writeFileSync(path.join(realDir, 'episode.mp4'), 'not a real video');
     const filePath = path.join(aliasDir, 'episode.mp4'); // the path AS WALKED, under the symlink spelling
 
-    await updateDatabase((db) => {
-      db.folders = [aliasDir];
-      return true;
-    });
+    folderStore().replaceAll([aliasDir]); // Wave 4: the root list is a table
 
     // First scan: establishes the id under the SYMLINK spelling -- exactly
     // the pre-existing-install scenario this regression protects.
@@ -173,7 +167,7 @@ test('FIX-1 regression (BLOCKER) (a): a symlinked db.folders root -- pre-existin
   } finally {
     fs.rmSync(aliasDir, { force: true });
     fs.rmSync(realDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; progressStore().replaceAll({}); return true; });
+    folderStore().replaceAll([]); progressStore().replaceAll({}); // Wave 4
   }
 });
 
@@ -184,10 +178,7 @@ test('AC39 REGRESSION: two genuinely distinct real folders registered via db.fol
     fs.writeFileSync(path.join(dirA, 'a.mp4'), 'not a real video');
     fs.writeFileSync(path.join(dirB, 'b.mp4'), 'not a real video');
 
-    await updateDatabase((db) => {
-      db.folders = [dirA, dirB];
-      return true;
-    });
+    folderStore().replaceAll([dirA, dirB]); // Wave 4: the root list is a table
 
     await scanDirectories();
 
@@ -197,7 +188,7 @@ test('AC39 REGRESSION: two genuinely distinct real folders registered via db.fol
   } finally {
     fs.rmSync(dirA, { recursive: true, force: true });
     fs.rmSync(dirB, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; return true; });
+    folderStore().replaceAll([]);
   }
 });
 
@@ -229,12 +220,12 @@ test('AC40: POST /api/config dedupes a relative-spelling re-add of an already-co
     // below uses a spelling that does NOT coincidentally resolve to itself.
     assert.equal(body.folders[0], dir, 'the persisted entry must be the first-seen ORIGINAL spelling, not a path.resolve rewrite');
 
-    const persisted = loadDatabase().folders;
+    const persisted = folderStore().list();
     assert.equal(persisted.length, 1, 'db.folders itself must also hold exactly one entry');
     assert.equal(persisted[0], dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; return true; });
+    folderStore().replaceAll([]);
   }
 });
 
@@ -258,13 +249,13 @@ test('FIX-1 regression (BLOCKER) (c): POST /api/config re-saving an existing (no
     assert.equal(body.folders.length, 1);
     assert.equal(body.folders[0], aliasDir, 'FIX-1: a save must never rewrite an existing stored spelling to its resolved/realpath form');
 
-    const persisted = loadDatabase().folders;
+    const persisted = folderStore().list();
     assert.equal(persisted.length, 1);
     assert.equal(persisted[0], aliasDir, 'FIX-1: db.folders itself must hold the byte-identical, un-rewritten spelling after a re-save');
   } finally {
     fs.rmSync(aliasDir, { force: true });
     fs.rmSync(realDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; return true; });
+    folderStore().replaceAll([]);
   }
 });
 
@@ -294,14 +285,14 @@ test('AC40/QW2: a folderSettings rename submitted under a non-canonical spelling
     assert.ok(body.folderSettings[divergentSpelling], 'QW2: the settings entry must be keyed by the SAME original spelling db.folders uses');
     assert.equal(body.folderSettings[divergentSpelling].name, 'My Custom Name');
 
-    const persisted = loadDatabase();
+    const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
     assert.equal(persisted.folders[0], divergentSpelling);
     assert.equal(persisted.folderSettings[resolved], undefined, 'QW2: db.folderSettings on disk must not be keyed by the resolved path either');
     assert.ok(persisted.folderSettings[divergentSpelling], 'QW2: db.folderSettings on disk must be keyed by the original spelling');
     assert.equal(persisted.folderSettings[divergentSpelling].name, 'My Custom Name');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([]); folderSettingsStore().replaceAll({});
   }
 });
 
@@ -333,6 +324,6 @@ test('QW2: a rename on a non-canonical folder spelling round-trips AND is reacha
     assert.equal(getBody.folderSettings[divergentSpelling].name, 'Renamed Folder');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([]); folderSettingsStore().replaceAll({});
   }
 });

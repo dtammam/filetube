@@ -39,6 +39,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { folderStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
@@ -170,7 +171,7 @@ test('a non-yt-dlp file under an ordinary library folder is NEVER backfilled, ev
     const filePath = path.join(coincidentalDir, 'Home Movie [cccccccccc1].mp4');
     fs.writeFileSync(filePath, 'not a real video');
 
-    await updateDatabase((db) => { db.folders = [libraryDir]; return true; });
+    folderStore().replaceAll([libraryDir]);
     await scanDirectories();
 
     const id = getMediaId(filePath);
@@ -183,7 +184,8 @@ test('a non-yt-dlp file under an ordinary library folder is NEVER backfilled, ev
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
     fs.rmSync(libraryDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    folderStore().replaceAll([]); // Wave 4
+    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
   }
 });
 

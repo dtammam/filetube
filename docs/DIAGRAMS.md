@@ -93,11 +93,11 @@ user-scoped is relational, and so are the media namespaces the
 relational-migration arc has moved out of the document store so far (the
 view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
 tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
-the app settings in Wave 4 - see the CONFIG box).
+the app settings and the folder config in Wave 4 - see the CONFIG box).
 The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
-9 `doc_kv` namespaces, 17 `doc_single` names, 35 relational tables,
-schema version 24. (The relational-migration arc, Wave 1 onward, moves the
+9 `doc_kv` namespaces, 14 `doc_single` names, 38 relational tables,
+schema version 25. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
@@ -105,7 +105,7 @@ media namespaces out of the document store one table at a time - see
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
         KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
@@ -121,8 +121,11 @@ flowchart LR
         TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
     end
 
-    subgraph CONFIG["Relational CONFIG tables (Wave 4; lib/config/*, lib/db/kvStore.js + orderedListStore.js shapes)"]
+    subgraph CONFIG["Relational CONFIG tables (Wave 4; lib/config/ stores on the lib/db/kvStore.js + lib/db/orderedListStore.js shapes)"]
         ST["lib/config/settings.js<br/>app_settings (key, json)<br/>the app settings, ONE ROW PER KEY;<br/>DEFAULT_SETTINGS (server.js) merged on read;<br/>a mutator's write rides the doc commit (inSaveTransaction)"]
+        FO["lib/config/folders.js<br/>library_folders (path, position)<br/>the configured media roots in the operator's order;<br/>the config POST replaces the list inside the doc commit"]
+        FS["lib/config/folderSettings.js<br/>library_folder_settings (root_path, json)<br/>per-root name / hidden / hiddenFromSidebar / glyph / order,<br/>keyed by the root's STORED spelling (QW2)"]
+        FD["lib/config/folderDisplayNames.js<br/>channel_folder_display_names (folder_name, json)<br/>per-channel-folder display names; the channel heal<br/>writes one inside the doc commit (OVERWRITE posture)"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]

@@ -449,7 +449,7 @@ test('AC4.2: a simulated crash mid-write during POST /api/config never tears the
     body: JSON.stringify({ folders: [] }),
   });
   assert.equal(res2.status, 200);
-  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders, [], 'a later clean write proceeds normally');
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders || [], [], 'a later clean write proceeds normally (Wave 4: an empty root list has no rows)');
 });
 
 // ---- AC4.3 (converse): bounded, progress-only relaxation ------------------

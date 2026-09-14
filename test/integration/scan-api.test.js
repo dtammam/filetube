@@ -21,7 +21,7 @@ const {
   transcodedPath,
   __resetDatabaseForTests,
 } = require('../../server');
-const { seedState } = require('../helpers/seed-state');
+const { seedState, folderStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -161,9 +161,7 @@ test('C: a rescan requested while a scan is in flight results in exactly one coa
 
   // Still in the same synchronous tick as the call above (the scan is paused
   // on its one await point, having already snapshotted db.folders = [dirA]):
-  const db = loadDatabase();
-  db.folders = [dirA, dirB];
-  seedState(db);
+  folderStore().replaceAll([dirA, dirB]); // Wave 4: the root list is a table
   // A second scanDirectories() call lands while scanState.scanning is still
   // true -- it must coalesce into a follow-up, not silently drop.
   await scanDirectories();
@@ -258,9 +256,7 @@ test('FR3.4: sustained scan requests during an in-flight scan do not chain unbou
 async function exhaustDrainWithPendingRescan(folder, triggerFolder) {
   const scanPromise = scanDirectories(); // pass 1: pauses on `folder`'s new file
 
-  const db = loadDatabase();
-  db.folders = [...db.folders, triggerFolder];
-  seedState(db);
+  folderStore().add(triggerFolder); // Wave 4: the root list is a table
   await scanDirectories(); // sets rescanRequested = true (pass 1 still in flight)
   assert.equal(scanState.rescanRequested, true, 'pass 1 in flight must flag the one allowed follow-up');
 
@@ -331,9 +327,7 @@ test('deferred rescan (tech-debt #3): a budget-exhausted drain schedules exactly
     // A folder-add that lands after the drain has already settled (the exact
     // "auto-scan Off" gap tech-debt #3 describes) is still sitting unindexed,
     // relying entirely on the deferred timer to ever pick it up.
-    const dbBeforeFire = loadDatabase();
-    dbBeforeFire.folders = [...dbBeforeFire.folders, dirC];
-    seedState(dbBeforeFire);
+    folderStore().add(dirC); // Wave 4: the root list is a table
 
     // Trigger the deferred pass deterministically instead of a flaky real
     // 5s wait: invoke the already-scheduled Timeout's callback directly (the

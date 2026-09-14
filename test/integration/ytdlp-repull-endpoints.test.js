@@ -47,6 +47,8 @@ function makeFakeDeps(initialDb = {}) {
   let db = initialDb;
   return {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
     scanDirectories: async () => {},
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),
@@ -292,6 +294,8 @@ test('startBackground creates the download directory on disk but NEVER touches d
   const updateDatabaseCalls = [];
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: (mutatorFn) => {
       updateDatabaseCalls.push(1);
       const result = mutatorFn(db);
@@ -353,6 +357,8 @@ test('startBackground never touches db.folders or creates a directory when disab
   const calls = [];
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: (mutatorFn) => {
       calls.push(1);
       return Promise.resolve(mutatorFn(db));
@@ -377,6 +383,8 @@ test('D2: migrateStaleDownloadDirFromFolders removes a matching downloadDir entr
   let db = { folders: ['/existing/media', downloadDir, '/another/kept/folder'] };
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
   };
 
@@ -392,6 +400,8 @@ test('D2: migrateStaleDownloadDirFromFolders never calls updateDatabase when db.
   const updateDatabaseCalls = [];
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: (mutatorFn) => {
       updateDatabaseCalls.push(1);
       return Promise.resolve(mutatorFn(db));
@@ -411,6 +421,8 @@ test('D2: migrateStaleDownloadDirFromFolders is idempotent -- a second call afte
   const updateDatabaseCalls = [];
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: (mutatorFn) => {
       updateDatabaseCalls.push(1);
       return Promise.resolve(mutatorFn(db));
@@ -432,6 +444,8 @@ test('F2: migrateStaleDownloadDirFromFolders never throws when deps.updateDataba
   const db = { folders: [downloadDir] };
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     // A synchronous throw thrown during the CALL ITSELF (not a rejected
     // promise it returns) -- e.g. a real `updateDatabase` throwing while
     // acquiring its lock before it ever gets to returning a promise. The
@@ -455,6 +469,8 @@ test('F2: startBackground never throws when migrateStaleDownloadDirFromFolders h
   const db = { folders: [downloadDir] };
   const deps = {
     loadDatabase: () => db,
+    getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
+    removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     updateDatabase: () => {
       throw new Error('synchronous updateDatabase failure');
     },

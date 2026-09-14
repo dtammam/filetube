@@ -157,8 +157,8 @@ test('migration v23: a doc row whose key fails the id rule (empty / NUL - a <=v1
 // ---- 3. the save-lock -------------------------------------------------------------
 
 test('save-lock: `trash` on the doc object is REFUSED', () => {
-  assert.throws(() => adapter.save({ folders: [], trash: {} }), /unknown top-level db key 'trash'/);
-  assert.throws(() => adapter.save({ folders: [], trash: { t: rec() } }), /unknown top-level db key 'trash'/);
+  assert.throws(() => adapter.save({ metadata: {}, trash: {} }), /unknown top-level db key 'trash'/);
+  assert.throws(() => adapter.save({ metadata: {}, trash: { t: rec() } }), /unknown top-level db key 'trash'/);
 });
 
 // ---- 4. the bulk seams ---------------------------------------------------------------
@@ -167,7 +167,7 @@ test('importParsedJson: routes `trash` verbatim through insertTrash (never doc_k
   const kv = [];
   const trash = [];
   const h = { insertKv: (ns, k, v) => kv.push([ns, k, v]), insertSingle: () => {}, insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: (id, r) => trash.push([id, r]) };
-  const summary = importParsedJson({ folders: [], trash: { t1: rec(), t2: { originalPath: '/m' } } }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, trash: { t1: rec(), t2: { originalPath: '/m' } } }, h, { source: 'bundle' });
   assert.deepStrictEqual(trash, [['t1', rec()], ['t2', { originalPath: '/m' }]]);
   assert.strictEqual(summary.trash, 2);
   assert.ok(!kv.some(([ns]) => ns === 'trash'));

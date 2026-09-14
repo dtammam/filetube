@@ -19,12 +19,17 @@ const RELATIONAL = {
   deleteTombstones: (s) => s.tombstoneStore,
   trash: (s) => s.trashStore, // Wave 3
 };
-// Wave 4: the config singletons. A doc key that a fixture OMITS used to mean
-// "gone" (saveDatabase replaced the whole document, and loadDatabase
-// backfilled the default) - so these are ALWAYS replaced, an absent key
-// wiping the table, unlike the Waves 1-3 keys above (only when present).
+// Wave 4: the config singletons - same rule as above (replaced only when the
+// fixture carries the key). A whole-state fixture that omits one relies on
+// the suite's __resetDatabaseForTests() (which wipes every table) for the
+// "absent = defaults" the whole-document save used to give; an object
+// derived from loadDatabase() (which no longer carries these keys) must NOT
+// wipe them on re-seed.
 const DOC_SEMANTICS = {
   settings: (s) => s.settingsStore,
+  folders: (s) => s.folderStore,
+  folderSettings: (s) => s.folderSettingsStore,
+  folderDisplayNames: (s) => s.folderDisplayNameStore,
 };
 
 function server() {
@@ -46,7 +51,7 @@ function seedState(state) {
     if (state[key] !== undefined) RELATIONAL[key](s).replaceAll(state[key]);
   }
   for (const key of Object.keys(DOC_SEMANTICS)) {
-    DOC_SEMANTICS[key](s).replaceAll(state[key] === undefined ? null : state[key]);
+    if (state[key] !== undefined) DOC_SEMANTICS[key](s).replaceAll(state[key]);
   }
   return doc;
 }
@@ -58,4 +63,7 @@ module.exports = {
   viewCountStore: () => server().viewCountStore,
   trashStore: () => server().trashStore, // Wave 3
   settingsStore: () => server().settingsStore, // Wave 4
+  folderStore: () => server().folderStore, // Wave 4
+  folderSettingsStore: () => server().folderSettingsStore, // Wave 4
+  folderDisplayNameStore: () => server().folderDisplayNameStore, // Wave 4
 };

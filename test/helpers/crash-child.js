@@ -17,9 +17,12 @@ const adapter = new SqliteAdapter(path.join(dataDir, 'filetube.db'), { log: () =
 // Wave 2: `progress` left the doc model (media_progress table), so the
 // per-burst kv row is a metadata row now - the atomicity claim (one
 // singleton + one kv row per transaction) is unchanged.
-const db = { folders: [], metadata: {} };
+// Wave 4: no top-level doc singleton is left for this probe (folders moved to a
+// table), so each burst writes TWO doc_kv rows - a marker row and the burst's
+// own row - and the parent asserts they committed atomically.
+const db = { metadata: {} };
 for (let i = 1; i <= 200000; i++) {
-  db.folders = [`/burst-${i}`];
+  db.metadata.marker = i;
   db.metadata[`p${i}`] = i;
   adapter.save(db);
   if (i === 5) process.stdout.write('READY\n'); // parent arms the kill after a few real commits

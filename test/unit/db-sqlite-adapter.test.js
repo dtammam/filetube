@@ -51,11 +51,7 @@ const jsonPath = () => path.join(dir, 'db.json');
 // import must extract it from.
 function fullFixture() {
   return {
-    folders: ['/media/videos', '/media/music'],
-    folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
-    // v1.126/v1.127: the per-channel-folder display-name map (the namespace
-    // whose missing fixture coverage external review round 2 flagged).
-    folderDisplayNames: { NESTALGIA: 'Nestalgia Music' },
+    // (folders / folderSettings / folderDisplayNames: relational since Wave 4 - see importFixture)
     // (progress / deleteTombstones: relational since Wave 2 - see importFixture)
     metadata: {
       vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', filePath: '/media/videos/clip.mp4', viewCount: 7, chaptersManual: [{ t: 0, title: 'Intro' }] },
@@ -101,6 +97,11 @@ function importFixture() {
   return {
     ...fullFixture(),
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
+    folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
+    folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
+    // v1.126/v1.127: the per-channel-folder display-name map (the namespace
+    // whose missing fixture coverage external review round 2 flagged).
+    folderDisplayNames: { NESTALGIA: 'Nestalgia Music' },
     progress: { vid1: 42.5, vid2: 918 },
     deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000, youtubeId: 'abc123def45' } },
   };
@@ -352,7 +353,7 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
 test('unknown keys throw instead of being silently dropped (top-level and container sub-key)', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.throws(() => a.save({ folders: [], mystery: {} }), /unknown top-level db key 'mystery'/);
+    assert.throws(() => a.save({ metadata: {}, mystery: {} }), /unknown top-level db key 'mystery'/);
     assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
     assert.throws(() => a.save({ music: { playlists: {} } }), /unknown db key 'music\.playlists'/);
     assert.throws(() => a.save({ podcasts: { feedUrls: {} } }), /unknown db key 'podcasts\.feedUrls'/,
@@ -400,7 +401,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     const realUpsertKv = a.stmts.upsertKv;
     a.stmts.upsertKv = { run: () => { throw new Error('simulated statement failure'); } };
     const db2 = a.load();
-    db2.folders = ['/never-committed']; // singleton write, executes before the kv poison
+    db2.liked = ['never-committed']; // singleton write, executes before the kv poison (liked: the last top-level doc_single until Wave 4's third group)
     db2.metadata.vid2.title = 'never';  // kv write, hits the stub
     try {
       assert.throws(() => a.save(db2), /simulated statement failure/);
@@ -414,7 +415,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     // Snapshot must still reflect disk: the same change saved cleanly now
     // must write BOTH rows (had the snapshot advanced, the diff would skip them).
     const db3 = a.load();
-    db3.folders = ['/never-committed'];
+    db3.liked = ['never-committed'];
     db3.metadata.vid2.title = 'never';
     const stats = a.save(db3);
     assert.deepStrictEqual(stats, { rowsWritten: 2, rowsDeleted: 0 });
@@ -436,7 +437,7 @@ test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are RE
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
     a.save({
-      folders: [],
+      metadata: {},
       ytdlp: {
         allowMembersOnly: false, subscriptions: [], pins: [], channelAvatars: {},
         downloadMeta: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
@@ -519,7 +520,7 @@ test('save: an undefined value is dropped silently — matching JSON.stringify\'
   // crash or a literal "undefined" string row.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    a.save({ folders: [], metadata: { real: { id: 'real' }, ghost: undefined } });
+    a.save({ metadata: { real: { id: 'real' }, ghost: undefined } });
     assert.deepStrictEqual(readPersistedDatabase(dir).metadata, { real: { id: 'real' } });
   } finally {
     a.close();
@@ -576,7 +577,9 @@ test('import: legacy-shape db.json (no liked/deleteTombstones/books/ytdlp) assem
   fs.writeFileSync(jsonPath(), JSON.stringify(legacy, null, 2), 'utf8');
   importDbJson(jsonPath(), dbPath(), { log: () => {} });
   const db = readPersistedDatabase(dir);
-  assert.deepStrictEqual(db, legacy, 'raw import: no invented keys — backfill stays load-time-owned (review F3)');
+  const expected = { ...legacy };
+  delete expected.folderSettings; // Wave 4: an empty map has no rows (surfaced only when rows exist)
+  assert.deepStrictEqual(db, expected, 'raw import: no invented keys — backfill stays load-time-owned (review F3)');
   assert.strictEqual(db.liked, undefined);
   assert.strictEqual(db.books, undefined);
 });
@@ -660,8 +663,8 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
 
     // success leg + snapshot rebuild: after replace, a save() diff must be
     // computed against the RESTORED rows, not the pre-restore snapshot.
-    a.exclusiveReplace(({ insertKv, insertSingle }) => {
-      insertSingle('folders', ['/restored']);
+    a.exclusiveReplace(({ insertKv, replaceFolders }) => {
+      replaceFolders(['/restored']); // Wave 4: the root list is a table
       insertKv('metadata', 'r1', { id: 'r1', name: 'restored.mp4' });
     });
     assert.deepStrictEqual(readPersistedDatabase(dir), {
@@ -688,12 +691,13 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
 // can't be repaired; these tests bind the two forward fixes: the v18 stamp
 // and the loud refusal of any database from the future.
 
-test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames at v17) upgrades and round-trips', () => {
-  // Simulate exactly what a v1.126 instance leaves behind: the new namespace
-  // persisted, the version stamp still 17.
+test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames at v17) upgrades; Wave 4 then carries the doc row into its table', () => {
+  // Simulate exactly what a v1.126 instance leaves behind: the namespace
+  // persisted as a doc row (planted raw - the save-lock refuses the key since
+  // Wave 4), the version stamp still 17.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
-  const shape = fullFixtureForUpgrade();
-  a.save(shape);
+  a.save(fullFixtureForUpgrade());
+  a.sql.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('folderDisplayNames', JSON.stringify({ NESTALGIA: 'Nestalgia Music' }));
   a.sql.exec('PRAGMA user_version = 17');
   a.close();
 
@@ -701,14 +705,13 @@ test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames 
   try {
     assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION,
       'the marker migration stamps the current version (no structural change to run)');
-    const loaded = b.load();
-    assert.deepStrictEqual(loaded.folderDisplayNames, shape.folderDisplayNames,
-      'the v1.126 namespace survives the marker migration');
-    // And the file is still WRITABLE end-to-end after the stamp (the exact
+    assert.strictEqual(b.load().folderDisplayNames, undefined, 'Wave 4: no longer a doc key');
+    assert.deepStrictEqual(readPersistedDatabase(dir).folderDisplayNames, { NESTALGIA: 'Nestalgia Music' },
+      'the v1.126 namespace survives the marker migration - carried into channel_folder_display_names by v25');
+    // And the file is still WRITABLE end-to-end after the stamps (the exact
     // axis the downgrade outage broke).
-    loaded.folderDisplayNames.NEWDIR = 'New Display Name';
-    b.save(loaded);
-    assert.strictEqual(b.load().folderDisplayNames.NEWDIR, 'New Display Name', 'durable write after the marker migration');
+    require('../../lib/config/folderDisplayNames')(b).set('NEWDIR', 'New Display Name');
+    assert.strictEqual(readPersistedDatabase(dir).folderDisplayNames.NEWDIR, 'New Display Name', 'durable write after the migrations');
   } finally {
     b.close();
   }

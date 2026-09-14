@@ -19,7 +19,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, scanBooks, currentBookScanState, BOOKCOVER_DIR,
 } = require('../../server');
-const { settingsStore } = require('../helpers/seed-state');
+const { settingsStore, folderStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 // v1.37.0 gate fix (W2 made the scanner cooperative-async): a scanBooks()
@@ -185,10 +185,7 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
 
 test('T4: config rejects overlap with media folders in BOTH directions', async () => {
   const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-mediadir-'));
-  await updateDatabase((db) => {
-    db.folders = [mediaDir];
-    return true;
-  });
+  folderStore().replaceAll([mediaDir]); // Wave 4: the root list is a table
   const inside = path.join(mediaDir, 'books');
   fs.mkdirSync(inside, { recursive: true });
   const r1 = await postJson('/api/books/config', { folders: [inside] });
@@ -197,10 +194,7 @@ test('T4: config rejects overlap with media folders in BOTH directions', async (
   assert.equal(r2.status, 400, 'book root ABOVE a media root rejected');
   const r3 = await postJson('/api/books/config', { folders: ['/definitely/not/a/real/dir'] });
   assert.equal(r3.status, 400, 'nonexistent dir rejected');
-  await updateDatabase((db) => {
-    db.folders = [];
-    return true;
-  });
+  folderStore().replaceAll([]); // Wave 4: the root list is a table
   fs.rmSync(mediaDir, { recursive: true, force: true });
 });
 

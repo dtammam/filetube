@@ -137,6 +137,14 @@ per key; the v24 migration splits the object and deletes the doc row. A
 v1.293-or-earlier build refuses a v24 database at boot; bundles carry
 `settings` as the same merged object on both sides of the line.
 
+**Sixth floor - schema v25 (v1.294, Wave 4, second group).** The folder
+config (`folders`, `folderSettings`, `folderDisplayNames`) moved from
+`doc_single` into `library_folders`, `library_folder_settings` and
+`channel_folder_display_names`; the v25 migration splits the list and the
+two maps into rows and deletes the doc rows. A v1.293-or-earlier build
+refuses a v25 database at boot; bundles carry the three keys in their old
+shapes on both sides of the line.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

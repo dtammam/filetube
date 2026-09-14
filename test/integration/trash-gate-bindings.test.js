@@ -28,7 +28,7 @@ const {
   app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
   trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests,
 } = require('../../server');
-const { seedState, settingsStore, tombstoneStore, trashStore   } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, settingsStore, tombstoneStore, trashStore, folderStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -532,7 +532,7 @@ test('R3 CRITICAL-1b: removing the library folder does not make a trashed item u
   const { id, filePath } = seedLibrary();
   const tr = await trashItem(deps(), id, { nowMs: Date.now() - 5 * DAY });
   assert.equal(tr.ok, true);
-  await updateDatabase((db) => { db.folders = []; }); // the user removes the folder
+  folderStore().replaceAll([]); // the user removes the folder
 
   // Still inside its window: the sweep leaves it alone regardless.
   assert.equal(await sweepTrash(Date.now()), 0);

@@ -38,7 +38,8 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, loadDatabase, updateDatabase } = require('../../server');
+const { app } = require('../../server');
+const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { moveArrayItem, computeDropIndex, rebuildFullFolderOrder, visibleSidebarFolders } = require('../../public/js/common.js');
 
@@ -64,7 +65,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+  folderStore().replaceAll([]); folderSettingsStore().replaceAll({});
 });
 
 test('AC1.1 + convergence: a DnD-computed drag of the synthetic Downloads folder to the front matches the equivalent up/down sequence, and persists via folderSettings.order without ever entering db.folders', async () => {
@@ -73,7 +74,7 @@ test('AC1.1 + convergence: a DnD-computed drag of the synthetic Downloads folder
   const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-a-'));
   const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-b-'));
   try {
-    await updateDatabase((db) => { db.folders = [realA, realB]; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([realA, realB]); folderSettingsStore().replaceAll({});
     const resolvedDownloadDir = path.resolve(downloadDir);
 
     const initial = await (await fetch(`${base}/api/config`)).json();
@@ -105,8 +106,8 @@ test('AC1.1 + convergence: a DnD-computed drag of the synthetic Downloads folder
     assert.deepEqual(postBody.folders, [realA, realB], 'AC1.1: the synthetic root is never pushed into the persisted validFolders/db.folders response');
     assert.ok(!postBody.folders.includes(resolvedDownloadDir));
 
-    assert.ok(!(loadDatabase().folders || []).includes(resolvedDownloadDir), 'AC1.1: db.folders on disk must never contain the synthetic entry after a DnD reorder');
-    assert.ok(Number.isInteger(loadDatabase().folderSettings[resolvedDownloadDir].order), 'AC1.1: the synthetic entry\'s new position persists via folderSettings.order');
+    assert.ok(!(folderStore().list() || []).includes(resolvedDownloadDir), 'AC1.1: db.folders on disk must never contain the synthetic entry after a DnD reorder');
+    assert.ok(Number.isInteger(folderSettingsStore().getAll()[resolvedDownloadDir].order), 'AC1.1: the synthetic entry\'s new position persists via folderSettings.order');
 
     const getBody = await (await fetch(`${base}/api/config`)).json();
     assert.deepEqual(getBody.folders, [resolvedDownloadDir, realA, realB], 'AC1.1: the DnD-computed reorder persists across a fresh GET, identical to the up/down result');
@@ -125,11 +126,8 @@ test('sidebar DnD model: dragging the synthetic folder within the VISIBLE subset
   const realHidden = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-hidden-'));
   const realC = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-d-'));
   try {
-    await updateDatabase((db) => {
-      db.folders = [realA, realHidden, realC];
-      db.folderSettings = { [realHidden]: { name: '', hidden: false, hiddenFromSidebar: true } };
-      return true;
-    });
+    folderStore().replaceAll([realA, realHidden, realC]); // Wave 4: the tables
+      folderSettingsStore().replaceAll({ [realHidden]: { name: '', hidden: false, hiddenFromSidebar: true } });
     const resolvedDownloadDir = path.resolve(downloadDir);
 
     const initial = await (await fetch(`${base}/api/config`)).json();
@@ -158,7 +156,7 @@ test('sidebar DnD model: dragging the synthetic folder within the VISIBLE subset
     const postBody = await postRes.json();
     assert.equal(postRes.status, 200);
     assert.deepEqual(postBody.folders, [realHidden, realA, realC], 'the synthetic root is excluded from the persisted response; the real folders keep the rebuilt relative order');
-    assert.ok(!(loadDatabase().folders || []).includes(resolvedDownloadDir), 'the synthetic folder must never enter db.folders via the sidebar DnD path either');
+    assert.ok(!(folderStore().list() || []).includes(resolvedDownloadDir), 'the synthetic folder must never enter db.folders via the sidebar DnD path either');
 
     const getBody = await (await fetch(`${base}/api/config`)).json();
     assert.deepEqual(getBody.folders, [resolvedDownloadDir, realHidden, realA, realC], 'the reorder persists across a fresh GET, synthetic folder spliced back at its stored order');
@@ -177,7 +175,7 @@ test('AC1.2: a DnD-computed reorder of real folders (no synthetic folder involve
   const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-f-'));
   const realC = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-g-'));
   try {
-    await updateDatabase((db) => { db.folders = [realA, realB, realC]; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([realA, realB, realC]); folderSettingsStore().replaceAll({});
 
     // Drag the last folder (index 2) to the front (index 0).
     const dndResult = moveArrayItem([realA, realB, realC], 2, computeDropIndex(2, 0, true));
@@ -191,7 +189,7 @@ test('AC1.2: a DnD-computed reorder of real folders (no synthetic folder involve
     const postBody = await postRes.json();
     assert.equal(postRes.status, 200);
     assert.deepEqual(postBody.folders, [realC, realA, realB], 'AC1.2: real-folder order is purely positional in db.folders');
-    assert.deepEqual(loadDatabase().folders, [realC, realA, realB]);
+    assert.deepEqual(folderStore().list(), [realC, realA, realB]);
 
     const getBody = await (await fetch(`${base}/api/config`)).json();
     assert.deepEqual(getBody.folders, [realC, realA, realB], 'AC1.2: persists across a fresh GET');
@@ -207,7 +205,7 @@ test('AC1.5 / disabled-module: no synthetic folder ever appears, and a DnD-compu
   const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-h-'));
   const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dnd-i-'));
   try {
-    await updateDatabase((db) => { db.folders = [realA, realB]; db.folderSettings = {}; return true; });
+    folderStore().replaceAll([realA, realB]); folderSettingsStore().replaceAll({});
 
     const initial = await (await fetch(`${base}/api/config`)).json();
     assert.deepEqual(initial.folders, [realA, realB], 'disabled: no synthetic entry appears in the list to begin with');

@@ -20,7 +20,9 @@ const path = require('node:path');
 const { DOC_KV_NAMESPACES, SINGLETON_NAMES } = require('../lib/db/sqlite');
 
 const ROOT = path.join(__dirname, '..');
-const HOLDERS = '(?:db|freshDb|fresh|current|state|snapshot|cached|next|prev|getCachedDatabase\\(\\)|loadDatabase\\(\\))';
+// Every spelling the codebase gives the doc object (the v1.294 gate lesson:
+// `cachedForBooks`, `cached`, `mdb` were holders the first list missed).
+const HOLDERS = '(?:db|freshDb|fresh|current|state|snapshot|cached\\w*|mdb|next|prev|loaded|persisted|getCachedDatabase\\(\\)|loadDatabase\\(\\))';
 
 function stripComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|[^:\\])\/\/.*$/, '$1')).join('\n');

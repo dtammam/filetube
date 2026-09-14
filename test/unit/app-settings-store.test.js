@@ -150,8 +150,8 @@ test('migration v24: a non-object doc row is DROPPED with a log line (the defaul
 // ---- 3. the save-lock -------------------------------------------------------------
 
 test('save-lock: `settings` on the doc object is REFUSED', () => {
-  assert.throws(() => adapter.save({ folders: [], settings: {} }), /unknown top-level db key 'settings'/);
-  assert.throws(() => adapter.save({ folders: [], settings: { pruneMissing: true } }), /unknown top-level db key 'settings'/);
+  assert.throws(() => adapter.save({ metadata: {}, settings: {} }), /unknown top-level db key 'settings'/);
+  assert.throws(() => adapter.save({ metadata: {}, settings: { pruneMissing: true } }), /unknown top-level db key 'settings'/);
 });
 
 // ---- 4. the bulk seams ---------------------------------------------------------------
@@ -202,7 +202,7 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names app_settings or the dead doc key in CODE and calls the store at every seam; the INSERT text stays in the shared kv definition', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   assert.ok(!/app_settings/.test(server));
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev)\.settings\b/.test(server), 'no doc-model settings access survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\\w*|mdb|loaded|persisted|snapshot)\.settings\b/.test(server), 'no doc-model settings access survives (every holder name the doc object has worn)');
   assert.ok(!/(getCachedDatabase|loadDatabase)\(\)\.settings\b/.test(server), 'nor through the read cache / a fresh load');
   assert.ok(!/withDefaultSettings/.test(server), 'the load-time merge is gone (the store merges)');
   for (const call of ['settingsStore.get(', 'settingsStore.getKey(', 'settingsStore.set(', 'settingsStore.update(', 'settingsStore.remove(', 'settingsStore.has(']) {

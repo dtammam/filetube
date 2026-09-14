@@ -20,7 +20,7 @@ const {
   app, loadDatabase, updateDatabase, getMediaId, scanDirectories,
   recordRepulledItemMeta, scanState,
 } = require('../../server');
-const { seedState } = require('../helpers/seed-state');
+const { seedState, folderStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const activity = require('../../lib/ytdlp/activity');
 const { authenticateFetch } = require('../helpers/auth');
@@ -119,7 +119,7 @@ test('attribute: identity lands as a UNIT with the sticky flag; validation refus
 test('manual attribution SURVIVES the scan: unchanged rescan AND the changed-file re-init carry', async () => {
   const filePath = seedFile(mediaDir, 'Stïcky Video.mp4');
   const item = baseItem(filePath);
-  await updateDatabase((db) => { db.metadata[item.id] = item; if (!db.folders.includes(mediaDir)) db.folders.push(mediaDir); });
+  await updateDatabase((db) => { db.metadata[item.id] = item; folderStore().add(mediaDir); });
   assert.equal((await postAttribute(item.id, { target: TARGET })).status, 200);
 
   await scanDirectories();
@@ -247,7 +247,7 @@ test('gate round: bulk root CONFINEMENT (C2) + preview (C3) + relocateSkipped wh
   const it1 = baseItem(f1);
   await updateDatabase((db) => {
     db.metadata[it1.id] = it1;
-    if (!db.folders.includes(pvDir)) db.folders.push(pvDir);
+    folderStore().add(pvDir);
   });
   const pv = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -271,7 +271,7 @@ test('gate round: bulk root CONFINEMENT (C2) + preview (C3) + relocateSkipped wh
 test('gate round 2 (M21/M24-half): the single-flight latch 409s a second bulk; cancel answers honestly when nothing runs', async () => {
   const { __setAttributeBulkInProgressForTests } = require('../../server');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attrib-latch-'));
-  await updateDatabase((db) => { if (!db.folders.includes(dir)) db.folders.push(dir); });
+  await updateDatabase((db) => { folderStore().add(dir); });
   try {
     __setAttributeBulkInProgressForTests(true);
     const res = await fetch(`${base}/api/videos/attribute-channel-bulk`, {
@@ -302,7 +302,7 @@ test('gate round 2 (M23): a re-run RESUMES - an attributed-but-unmoved item is c
     } });
     await updateDatabase((db) => {
       db.metadata[it.id] = it;
-      if (!db.folders.includes(resumeDir)) db.folders.push(resumeDir);
+      folderStore().add(resumeDir);
       const ns = store.ensureYtdlp(db);
       if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
         ns.subscriptions.push({ id: 'subRez2', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: 'Résurrected Chännel', order: 10 });
@@ -403,7 +403,7 @@ test('bulk: unattributed items under root get the identity; attributed items are
     const c = baseItem(fpC, { channelUrl: 'https://www.youtube.com/channel/UCeeeeeeeeeeeeeeeeeeeeee', channelName: 'Kéep Me', channelAttributedManually: true });
     await updateDatabase((db) => {
       db.metadata[a.id] = a; db.metadata[b.id] = b; db.metadata[c.id] = c;
-      if (!db.folders.includes(bulkDir)) db.folders.push(bulkDir);
+      folderStore().add(bulkDir);
       const ns = store.ensureYtdlp(db);
       // A subscription matching the target -> the channel dir resolves
       // deterministically under the download root.

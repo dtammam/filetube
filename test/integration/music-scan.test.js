@@ -22,7 +22,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, scanMusic, currentMusicScanState, ALBUMART_DIR, userStore,
 } = require('../../server');
-const { settingsStore } = require('../helpers/seed-state');
+const { settingsStore, folderStore } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const musicScanLib = require('../../lib/music/scan');
 const { authenticateFetch } = require('../helpers/auth');
@@ -228,7 +228,7 @@ test('T4: album art is orphan-pruned ONLY when the album\'s LAST track is remove
 test('T4: music config REFUSES overlap with a media folder or a book folder (three-way, both directions)', async () => {
   const shared = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-shared-'));
   // Overlap with a MEDIA folder.
-  await updateDatabase((db) => { db.folders = [shared]; return true; });
+  folderStore().replaceAll([shared]);
   let res = await setFolders([shared]);
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /overlaps a media folder/);
@@ -237,7 +237,7 @@ test('T4: music config REFUSES overlap with a media folder or a book folder (thr
   fs.mkdirSync(path.join(shared, 'sub'), { recursive: true });
   res = await setFolders([path.join(shared, 'sub')]);
   assert.equal(res.status, 400, 'a music folder UNDER a media folder is refused');
-  await updateDatabase((db) => { db.folders = []; return true; });
+  folderStore().replaceAll([]);
 
   // Overlap with a BOOK folder.
   await updateDatabase((db) => { require('../../lib/books/store').ensureBooks(db).folders = [shared]; return true; });
@@ -272,7 +272,8 @@ test('T5: RECIPROCAL overlap guards — media-config AND book-config reject a fo
   assert.equal(r.status, 400, 'book folder UNDER a music root rejected');
 
   // Cleanup: leave media/book config empty for the next test file.
-  await updateDatabase((db) => { db.folders = []; require('../../lib/books/store').ensureBooks(db).folders = []; return true; });
+  folderStore().replaceAll([]); // Wave 4: the root list is a table
+  await updateDatabase((db) => { require('../../lib/books/store').ensureBooks(db).folders = []; return true; });
 });
 
 test('T4: pure selectAlbumArtJobs/selectOrphanedArtKeys wired via the scan lib match the server behaviour', () => {
