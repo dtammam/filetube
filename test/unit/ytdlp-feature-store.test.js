@@ -209,8 +209,12 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // /api/auth/setup adopts the frozen pre-auth channel pins) and
   // lib/media/user-routes.js (S1b: GET /api/liked's avatar holder). Still an
   // EXACT count: a new crossing has to be a deliberate edit here, not a
-  // silent one.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 11, 'every crossing carries the store, never the doc namespace');
+  // silent one. Wave 7b (slice S10a) took it from 11 to 15: the browse routes
+  // (GET /api/videos + GET /api/channels, the subscription-derived channel
+  // identity) and the attribution cluster moved to lib/media/routes.js, so
+  // their two call sites in server.js and the two destructures that receive
+  // them there are four new crossings of the SAME store.
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 15, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);

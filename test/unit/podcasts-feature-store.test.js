@@ -176,9 +176,14 @@ test('source lock: the route surface never names the podcasts tables or the dead
   // bundle, startBackground, the export) and the three destructures that
   // receive them in lib/queue/routes.js, lib/notifications/routes.js and
   // lib/media/user-routes.js (S1b moved GET /api/liked's podcast arm there).
+  // Wave 7b (slice S10a) took it from 9 to 13: GET /api/home and GET /api/search
+  // (the mixed-kind feed rows and the universal search) and GET /api/handoff
+  // (the podcast handoff arm) moved to lib/media/routes.js, so their two call
+  // sites in server.js and the two destructures that receive them there are
+  // four new crossings of the SAME store - no new reader, no new spelling.
   // Still an EXACT count: a new crossing has to be a deliberate edit here, not
   // a silent one.
-  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 9, 'every crossing carries the store, never the doc namespace');
+  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 13, 'every crossing carries the store, never the doc namespace');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');
   assert.strictEqual((lib.match(/\.updateDatabase\(\(\) => (deps|d)\.podcastsDb\.mutate\(\(mdb\) =>/g) || []).length, 21, 'every one of them runs its reducers through the store');
