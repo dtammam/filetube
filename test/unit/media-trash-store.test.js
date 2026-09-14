@@ -219,7 +219,7 @@ test('source lock: server.js never names media_trash or the dead doc key in CODE
   const writers = tracked.filter((p) => /(INSERT\s+INTO|UPDATE(\s+OR\s+REPLACE)?)\s+(media_trash|\$\{table\}|\$\{def\.table\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
   // Wave 4: the two sibling primitives (kv / ordered-list) interpolate their
   // own `${table}` - shared definitions, not drifting copies of THIS table's text.
-  assert.deepStrictEqual(writers, ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/media/jsonRowStore.js']);
+  assert.deepStrictEqual(writers, ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/recordListStore.js', 'lib/media/jsonRowStore.js']);
   const deleters = tracked.filter((p) => /DELETE\s+FROM\s+(media_trash|\$\{trashDef\.TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
   assert.deepStrictEqual(deleters, ['lib/db/sqlite.js'], 'only the adapter\'s wipe-and-replace DELETEs by name; the store deletes through the shared definition');
 });

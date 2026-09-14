@@ -115,14 +115,14 @@ test('POST /api/folders/display-name: a FAILED save leaves the map untouched (se
     metadata: { [id]: { id, name: 'a.mp4', title: 'a', filePath, folderName: 'Chan', rootFolder: root, size: 5, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10 } },
   });
   __failNextSaveForTests(new Error('simulated save failure'));
-  const failed = await post('/api/folders/display-name', { folderName: 'Chan', name: 'New Name' });
+  const failed = await withTimeout(post('/api/folders/display-name', { folderName: 'Chan', name: 'New Name' }));
   assert.strictEqual(failed.status, 500, await failed.text());
   assert.deepStrictEqual(folderDisplayNameStore.getAll(), { Chan: 'Old Name' }, 'a failed rename wrote nothing');
   const ok = await post('/api/folders/display-name', { folderName: 'Chan', name: 'New Name' });
   assert.strictEqual(ok.status, 200, await ok.text());
   assert.deepStrictEqual(folderDisplayNameStore.getAll(), { Chan: 'New Name' });
   __failNextSaveForTests(new Error('simulated save failure'));
-  const failedClear = await post('/api/folders/display-name', { folderName: 'Chan', name: '' });
+  const failedClear = await withTimeout(post('/api/folders/display-name', { folderName: 'Chan', name: '' }));
   assert.strictEqual(failedClear.status, 500);
   assert.deepStrictEqual(folderDisplayNameStore.getAll(), { Chan: 'New Name' }, 'a failed clear kept the row');
   const cleared = await post('/api/folders/display-name', { folderName: 'Chan', name: '' });

@@ -363,7 +363,7 @@ test('source lock: server.js never names the two tables or the dead doc keys in 
   // store's own prune (DELETE on the typed column) - nothing else.
   // (`${TABLE}` is the view-count store's own constant - Wave 1's lock covers it.)
   const writers = tracked.filter((p) => /(INSERT\s+INTO|UPDATE(\s+OR\s+REPLACE)?)\s+(media_progress|media_delete_tombstones|\$\{table\}|\$\{def\.table\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
-  assert.deepStrictEqual(writers, ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/media/jsonRowStore.js'], 'one INSERT/UPDATE text per shape, in the shared store definitions (Wave 4 added the kv / ordered-list siblings)');
+  assert.deepStrictEqual(writers, ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/recordListStore.js', 'lib/media/jsonRowStore.js'], 'one INSERT/UPDATE text per shape, in the shared store definitions (Wave 4 added the kv / ordered-list siblings, Wave 5 the record-list one)');
   const deleters = tracked.filter((p) => /DELETE\s+FROM\s+(media_progress|media_delete_tombstones|\$\{table\}|\$\{def\.table\}|\$\{progressDef\.TABLE\}|\$\{tombstoneDef\.TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
-  assert.deepStrictEqual(deleters.sort(), ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/sqlite.js', 'lib/media/deleteTombstones.js', 'lib/media/jsonRowStore.js'], 'DELETEs: the shared store definitions (Wave 4: + the kv / ordered-list siblings), the tombstone prune, and the adapter\'s wipe-and-replace - nothing else');
+  assert.deepStrictEqual(deleters.sort(), ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/recordListStore.js', 'lib/db/sqlite.js', 'lib/media/deleteTombstones.js', 'lib/media/jsonRowStore.js'], 'DELETEs: the shared store definitions (Waves 4-5 siblings included), the tombstone prune, and the adapter\'s wipe-and-replace - nothing else');
 });

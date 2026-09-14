@@ -235,3 +235,23 @@ test('source lock: server.js never names the three tables or the dead doc keys i
   assert.ok(!/\bdb\.folders\b/.test(ytdlp), 'the yt-dlp module no longer touches db.folders in code');
   assert.ok(/deps\.removeLibraryFolder\(/.test(ytdlp) && /deps\.getLibraryFolders\(\)/.test(ytdlp), 'the stale-downloadDir migration goes through the deps seam');
 });
+
+test('migration stamps ride their OWN commits: v25 lands and v26 fails -> the stamp is 25 (the folder rows kept, their doc rows gone) - defence in depth behind the v24 floor (adversarial pass A delta N1b)', () => {
+  adapter.close();
+  let raw = openRaw(path.join(dir, SQLITE_FILENAME));
+  raw.exec('DROP TABLE library_folders; DROP TABLE library_folder_settings; DROP TABLE channel_folder_display_names; DROP TABLE media_liked; PRAGMA user_version = 24');
+  const ins = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
+  ins.run('folders', JSON.stringify(['/kept']));
+  ins.run('liked', '[not json'); // v26 will fail on this row
+  raw.close();
+  assert.throws(() => new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} }), /JSON|Unexpected/);
+  raw = openRaw(path.join(dir, SQLITE_FILENAME));
+  assert.strictEqual(raw.prepare('PRAGMA user_version').get().user_version, 25, 'the stamp is the last COMMITTED floor');
+  assert.deepStrictEqual(raw.prepare('SELECT path FROM library_folders').all().map((r) => r.path), ['/kept'], 'v25 committed its rows');
+  assert.strictEqual(raw.prepare("SELECT COUNT(*) AS c FROM doc_single WHERE name = 'folders'").get().c, 0, 'and deleted the doc row');
+  raw.prepare("UPDATE doc_single SET json = '[]' WHERE name = 'liked'").run();
+  raw.close();
+  reopen();
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'repaired: runs to the current version');
+  assert.deepStrictEqual(stores().f.list(), ['/kept'], 'the folder list survived the partial run intact');
+});
