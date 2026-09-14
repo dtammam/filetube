@@ -814,8 +814,10 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     the unchanged arm) - the fresh-DATA_DIR arm is a new integration file, red on v1.295;
     **QA W5 = ADV W2** the teardown commit's baseline line says "8584 test cases across 694
     files" - measured BEFORE the v33 suite and the helper were tracked; at that commit the
-    instrument says 8590 / 696 (the other four numbers and the suite count are exact; recorded
-    here, no amend); **QA W2-W4, S4, ADV W3** eight stale comments (the restore's "two
+    instrument says 8590 / 696. The same is true of that message's suite count (ADV residual
+    2): the 8763 came from a full run launched before the v33 suite's file existed, so at
+    abfa3db8 the count is 8769 - derived from the fix commit's measured 8772 minus its three
+    new cases, not re-run (the other four baseline numbers are exact; recorded here, no amend); **QA W2-W4, S4, ADV W3** eight stale comments (the restore's "two
     callers", the v2 rationale's removed probe, the safety lever's broken sentence, the
     Dockerfile's inverted sentence + retired script, .env.example, viewCounts' header,
     CLAUDE.md, the plan's template); **QA S1 = ADV S5** the below-v33 guard logs when it
@@ -823,7 +825,12 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     the `require('fs')` spelling; **ADV S3** the refusal message's NUL-name duplication, its
     false "database is unchanged" after a committed drain, and no cap; **ADV S1** the hooks'
     inert PATH export; **QA S5/S6** the dead `source` option and an overstated export comment.
-    Delta re-confirmation: recorded in the release commit.
+    **Delta (same instances):** both APPROVE, no new findings; the adversarial seat re-ran
+    every round-1 mutant (all still red), its E3 indirect-spelling boot import now dies on
+    the new integration file, and its five obfuscated fs vectors red on the widened spy.
+    Its non-blocking residuals: a BLOB-typed stray name without a NUL prints as decimal
+    bytes (cosmetic); `.gitignore`'s db.json comment was present-tense (fixed in the release
+    commit). Dual-Node (sequential, reviewers idle): 22.23.1 8772 / 8772 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8772 / 8772 / 0 / 0; 24.14.0 8772 / 8772 / 0 / 0.
 
 ---
 

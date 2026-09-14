@@ -93,6 +93,57 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.296.0 - Relational-migration arc, Wave 7a: the document model is torn down (2026-09-14)
+
+The two document tables (`doc_kv`, `doc_single`) that v1.42 persisted the
+pre-SQLite object into - EMPTY since Wave 6 - are DROPPED by schema **v33**, the
+fourteenth rollback floor (docs/RELEASING.md). The block copies nothing (every
+namespace left in v21-v32) and REFUSES to run - stamp stays 32, tables and rows
+intact, still writable by v1.295 - if either table nonetheless holds a row,
+naming each stray with its count. With the tables went the model: the namespace
+lists, the doc snapshot, the doc loops and handles in `lib/db/sqlite.js`; the
+one-time import of a pre-v1.42 `db.json` (v1.42-v1.295) and its dry-run script;
+server.js's `DB_FILE` and the pre-v1.42 orphan-tmp sweep; every comment mention
+of the legacy file in shipped code (`node scripts/relational-arc-baseline.js`:
+dbJsonRefFiles **0**, docTables **0**). Boot opens `filetube.db` or creates it
+fresh - and says so in the log when it did - and touches no other file.
+
+DISCLOSED behaviour change: a `DATA_DIR` holding only a pre-v1.42 `db.json`
+starts as an EMPTY library (the file untouched, never probed). The way forward
+is one boot of any v1.42-v1.295 build first, after deleting the empty
+`filetube.db` a v1.296 boot may already have created (docs/CONFIGURATION.md).
+Disclosed deviation from the plan's literal text: `loadDatabase` /
+`saveDatabase` / `updateDatabase` stay (the media index's tick, as Wave 6
+decided); removing them is the monolith split's work - Wave 7b, a separate
+costed wave. Also closed: #227 (the hooks resolve `node_modules` by walking up
+like Node does; the one non-isolated unit test isolates `DATA_DIR`; CLAUDE.md
+states the suite invocation) and #225 (a) (every NUL guard states the measured
+premise: read back truncated on Node 24.14 and older).
+
+Full gate, one fix round, both seats APPROVE on the delta. What it caught: the
+documented way back for a pre-v1.42 data dir was DEAD after one v1.296 boot
+(the empty v33 file makes v1.295 refuse - QA measured it end to end; the delete
+step is documented and boot logs the fresh-database line); the rewritten boot
+integration test bound the arm v1.295 already had (green there by differential
+run) - the changed arm is a new file, red on v1.295; the refusal message printed
+a NUL-bearing stray twice under one truncated name, claimed "unchanged" after a
+lower drain had committed, and had no cap (75 KB for a hostile file); the
+below-v33 guard silently absorbed a tampered file (it logs now); the spy missed
+the directory listers and copiers; the hooks' PATH export was inert; eight
+stale comments incl. an inverted Dockerfile sentence; the teardown commit's
+baseline line was measured before two files were tracked (disclosed in the
+plan, not amended). The adversarial seat threw eight hostile stray shapes, a
+partial-chain file, a tamper and a full v1.41 -> v1.295 -> v1.296 upgrade at
+the drop and could not lose a byte. Dual-Node, sequential, reviewers idle:
+22.23.1 8772 / 8772 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8772 / 8772 / 0 / 0; 24.14.0 8772 / 8772 / 0 / 0.
+
+KNOWN GAPS (disclosed): DEVICE-PENDING until Dean's pass (probe list in the
+report); Wave 7b (the monolith split toward < 3,000 lines of server.js, the
+trashItem / restoreTrashItem / moveItemToFolder extractions, #226's read-cache
+design) is the arc's remaining work, costed separately; a BLOB-typed stray name
+without a NUL prints as decimal bytes in the refusal message (hostile-file
+cosmetics; the refusal and the byte-safety are unaffected).
+
 ### v1.295.0 - Relational-migration arc, Wave 6: the media index leaves the document model (2026-09-14)
 
 The library index (`metadata` - one record per indexed file, the scan's final
