@@ -37,6 +37,7 @@ const EXPECTED = [
   'lib/tv/routes.js',
   'lib/tv/scanRunner.js',
   'lib/user/routes.js',
+  'lib/ytdlp/relocation.js',
 ];
 
 test('the route surface is exactly the registry of extracted modules (both directions), each required by server.js and carrying the marker sentence', () => {
