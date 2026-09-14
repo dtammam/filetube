@@ -171,12 +171,14 @@ test('source lock: the route surface never names the podcasts tables or the dead
   assert.ok((surface.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5, 'gate pass B: the per-item episode lookups (home row, grid card, push row, handoff) are point queries, never the whole archive per item');
   assert.ok(/bundle\.podcasts = podcastsDb\.read\(\)/.test(surface), 'the bundle reads the tables');
   assert.ok(/podcastsNs: \(\(\) => \{ let memo = null; return \(\) => \(memo \|\| \(memo = podcastsDb\.read\(\)\)\); \}\)\(\)/.test(surface), 'search reaches the namespace through the dep - memoised per query (gate pass B)');
-  // Wave 7b (S1a): 7 across the surface - server.js's five (the queue and
-  // notification deps bundles, lib/podcasts's registerRoutes bundle,
-  // startBackground, the export) and the two destructures that receive them in
-  // lib/queue/routes.js and lib/notifications/routes.js. Still an EXACT count:
-  // a new crossing has to be a deliberate edit here, not a silent one.
-  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
+  // Wave 7b (S1a, then S1b): 9 across the surface - server.js's six (the
+  // queue, notification and Liked deps bundles, lib/podcasts's registerRoutes
+  // bundle, startBackground, the export) and the three destructures that
+  // receive them in lib/queue/routes.js, lib/notifications/routes.js and
+  // lib/media/user-routes.js (S1b moved GET /api/liked's podcast arm there).
+  // Still an EXACT count: a new crossing has to be a deliberate edit here, not
+  // a silent one.
+  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 9, 'every crossing carries the store, never the doc namespace');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');
   assert.strictEqual((lib.match(/\.updateDatabase\(\(\) => (deps|d)\.podcastsDb\.mutate\(\(mdb\) =>/g) || []).length, 21, 'every one of them runs its reducers through the store');

@@ -201,12 +201,16 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   assert.ok((surface.match(/ytdlpDb\.readPart\('subscriptions'\)/g) || []).length >= 6, 'the subscription-name reads');
   assert.ok((surface.match(/ytdlpDb\.holder\(/g) || []).length >= 11, 'the per-request holders (avatar resolver, relocation joins, the scan)');
   assert.ok(/bundle\.ytdlp = ytdlpDb\.read\(\)/.test(surface), 'the bundle reads the tables');
-  // Wave 7b (S1a): 7 across the surface - server.js's five (the user-state and
-  // notification deps bundles, lib/ytdlp's registerRoutes bundle,
-  // startBackground, the export) and the two destructures that receive them in
-  // lib/user/routes.js and lib/notifications/routes.js. Still an EXACT count:
-  // a new crossing has to be a deliberate edit here, not a silent one.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
+  // Wave 7b (S1a, then S1b): 11 across the surface - server.js's seven (the
+  // user-state, notification, identity and Liked deps bundles, lib/ytdlp's
+  // registerRoutes bundle, startBackground, the export) and the four
+  // destructures that receive them in lib/user/routes.js,
+  // lib/notifications/routes.js, lib/auth/routes.js (S1b: POST
+  // /api/auth/setup adopts the frozen pre-auth channel pins) and
+  // lib/media/user-routes.js (S1b: GET /api/liked's avatar holder). Still an
+  // EXACT count: a new crossing has to be a deliberate edit here, not a
+  // silent one.
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 11, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);

@@ -128,6 +128,12 @@ const queueRoutes = require('./lib/queue/routes');
 const notificationsRoutes = require('./lib/notifications/routes');
 const pushRoutes = require('./lib/push/routes');
 const userRoutes = require('./lib/user/routes');
+// Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
+// and the pre-auth-era per-user media state routes (/api/liked,
+// /api/progress), same pattern - each registers at the call site below that
+// holds its original routing position.
+const authRoutes = require('./lib/auth/routes');
+const mediaUserRoutes = require('./lib/media/user-routes');
 // Wave G: the pure projection of library audio (db.metadata type 'audio') into
 // the Music library - eligibility + track shaping, no I/O.
 const libraryAudio = require('./lib/music/libraryAudio');
@@ -5563,7 +5569,16 @@ app.use((req, res, next) => {
 // (e.g. a Shortcut that mis-serializes its own payload) makes `express.json()`
 // throw, and Express's DEFAULT error handler renders that as an HTML stack
 // page -- useless to any JSON API caller (a Shortcut, curl, the browser
-// fetch()s in public/js/*). A 4-arg (error-handling) middleware placed
+// fetch()s under public/js). A 4-arg (error-handling) middleware placed
+// [Wave 7b, S1b: that path is spelled without a star on purpose. The source
+// locks strip BLOCK comments before line comments, so a literal slash-star
+// inside a line comment opens a pseudo-block that runs to the next star-slash
+// - here it used to swallow 218 lines of server.js, and when this slice moved
+// the login route whose inline "non-fatal" comment accidentally closed it, the
+// swallow grew to 898 lines and took a musicDb.mutate call with it (the
+// comment-porous source-lock class, v1.50/v1.77/v1.133). Removing the star
+// restores the locks' reach. Three more such stars remain in this file's line
+// comments (tech-debt: the shared stripper strips in the wrong order).]
 // immediately AFTER `express.json()` intercepts a body-parser failure and
 // turns it into a clean JSON error response. Every OTHER error is passed
 // through UNTOUCHED via `next(err)` -- this never changes how any route's
@@ -5723,172 +5738,37 @@ function rateKey(req, username) {
   return `${ip}|${String(username || '').toLowerCase()}`;
 }
 
-// POST /api/auth/setup — one-time create-admin. Allowlisted ONLY while zero
-// users exist (the gate 409s it otherwise). Adopts the pre-auth global
-// state into the new admin (design-delta WARNING-4: hash async FIRST, then
-// the count-guarded insert + adoption in one synchronous transaction).
-app.post('/api/auth/setup', async (req, res) => {
-  const body = req.body || {};
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
-  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const limit = loginRateLimiter.take(rateKey(req, username));
-  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
-  if (!userStore.validateUsername(username)) return res.status(400).json({ error: 'Username can use letters, numbers, and . _ - (up to 64 characters).' });
-  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
-  try {
-    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
-    // Read the pre-auth global state to adopt (once, before the tx).
-    const books = booksDb.read();
-    const ytd = ytdlpDb.read(['pins']); // Wave 5: the frozen pre-auth channel pins, from their table
-    const adoption = {
-      progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
-      liked: likedStore.list(), // Wave 4: the frozen likes, from their table (like order)
-      bookProgress: books.progress || {},
-      bookPins: Array.isArray(books.pins) ? books.pins : [],
-      channelPins: Array.isArray(ytd.pins) ? ytd.pins : [],
-    };
-    const admin = userStore.createFirstAdmin({ username, displayName, passwordHash }, adoption, new Date().toISOString());
-    if (!admin) return res.status(409).json({ error: 'setup already complete' });
-    userStore.setSettingsJson(admin.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new setup -> feed on
-    loginRateLimiter.refund(rateKey(req, username));
-    issueSessionCookie(res, req, admin);
-    return res.json({ success: true, user: publicUser(admin) });
-  } catch (err) {
-    console.error('Error in /api/auth/setup:', err);
-    return res.status(500).json({ error: `Could not create the admin account: ${err.message}` });
-  }
-});
-
-// POST /api/auth/login — verify credentials, set the session cookie. Honest
-// timing: always run a hash (a dummy for an unknown user) so a missing
-// username doesn't return faster than a wrong password (user-enumeration
-// timing guard).
-const DUMMY_HASH = 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-app.post('/api/auth/login', async (req, res) => {
-  const body = req.body || {};
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const key = rateKey(req, username);
-  const limit = loginRateLimiter.take(key);
-  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
-  try {
-    const user = username ? userStore.getByUsername(username) : null;
-    const hash = user ? userStore.getPasswordHash(user.id) : DUMMY_HASH;
-    const result = await authCrypto.verifyPassword(password, hash || DUMMY_HASH);
-    if (!user || user.disabled || !result.ok) {
-      return res.status(401).json({ error: 'That username or password is not right.' });
-    }
-    // Params-upgrade-on-login: re-hash at current cost if the stored hash lags.
-    if (result.needsRehash) {
-      try { userStore.updatePassword(user.id, await authCrypto.hashPassword(password)); } catch (_) { /* non-fatal */ }
-    }
-    const fresh = userStore.getById(user.id); // pick up any tv bump from the rehash
-    loginRateLimiter.refund(key);
-    issueSessionCookie(res, req, fresh);
-    return res.json({ success: true, user: publicUser(fresh) });
-  } catch (err) {
-    console.error('Error in /api/auth/login:', err);
-    return res.status(500).json({ error: `Sign-in failed: ${err.message}` });
-  }
-});
-
-// POST /api/auth/logout — clear the cookie (gated: you must be signed in).
-app.post('/api/auth/logout', (req, res) => {
-  clearSessionCookie(res);
-  return res.json({ success: true });
-});
-
-// GET /api/auth/me — the current user (gated). Powers the Settings Account
-// chip + client "am I logged in / am I admin" checks. `settings` is the
-// user's mirrored display prefs (settings_json) — the device-sync source a
-// FRESH device pulls from before localStorage has anything (locked intake
-// #6: localStorage stays the immediate, device-local source of truth).
-app.get('/api/auth/me', (req, res) => {
-  // v1.82: the account menu reads `user.avatar` to render the photo (or fall
-  // back to an initials monogram). Kept off publicUser (which stays a pure
-  // projection) and merged here where the fs lookup belongs.
-  return res.json({
-    user: { ...publicUser(req.user), avatar: avatarInfo(req.user.id) },
-    settings: parseUserSettings(req.user),
-  });
-});
-
-function parseUserSettings(user) {
-  try {
-    const parsed = JSON.parse(user.settingsJson || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-// POST /api/me/settings — mirror a display pref (theme/era/icons) onto the
-// user record. Fire-and-forget from the client pickers; localStorage stays
-// the device-local fast path, this is only the cross-device seed. Keys are
-// allowlisted and values bounded — settings_json must never become an
-// arbitrary client-writable blob.
-// v1.63.1: 'starRatings' ('shown'|'hidden') - Dean's hide-the-fake-stars
-// toggle rides the same display-pref mirror as theme/era/icons.
-// v1.66: 'pushEnabled' ('on'|'off') - the PER-USER push opt-out (ruling:
-// per-device subscribe, per-user opt-out). Delivery honors only the literal
-// 'off' (lib/push/deliver.js pushOptedOut); absent = on.
-// v1.67: cornerTL/TR/BL are the card-corner controls (Dean's ruling C1:
-// per-user SERVER-persisted; the server is the truth, not a device seed).
-// v1.204: cornerBR joined them - the bottom-right corner became selectable
-// too (it shares its space with the duration badge, which slides left when
-// the slot is occupied). Values are enum-ish control names; the lane stays
-// SHAPE-only like its siblings and the card renderer defends against
-// unknown values (plan D1).
-// v1.77: the Library-entry glyph keys (glyphDownloads/Music/Books/Podcasts/
-// History) join on the same per-user SERVER-persisted footing as the corners.
-// SPREAD FROM THE REGISTRY, never re-typed - a slot added to
-// LIBRARY_GLYPH_SLOTS becomes writable here automatically, so the picker can
-// never offer an entry whose saves the server silently 400s. The lane stays
-// SHAPE-only like its siblings (the existing value regex below already bounds
-// these to registry-id shape) and the client resolver defends against unknown
-// values, exactly as the card renderer does.
-const MIRRORED_SETTING_KEYS = new Set([
-  'theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL', 'cornerBR',
-  // v1.79: the home-feed vs classic-grid toggle. Stored as the bounded string
-  // 'on'/'off' like pushEnabled/starRatings (the value regex below bounds it).
-  'homeFeed',
-  // v1.84: Modern YouTube Mode - a third home layout (flat big-tile grid +
-  // chips + mobile avatar bar). Same bounded 'on'/'off' string; absent => off.
-  'modernMode',
-  // Wave G master toggle - RETIRED in v1.242 (audio now projects unconditionally).
-  // Intentionally RETAINED in the allowlist so a stale client's POST still 200s;
-  // NOTHING reads it any more (inert - do not gate behavior on it).
-  'musicIncludesLibrary',
-  ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
-]);
-
-// v1.79: net-new setups/accounts get the YouTube-style home feed out of the
-// box (Dean's intake default), while existing installs are UNCHANGED - the
-// store's settings_json default stays '{}', which the client resolves to
-// classic (absent => off). Only the two PRODUCT creation flows seed this; the
-// test-session mint (__mintTestSession) deliberately does NOT, so existing
-// suites that assume an empty settings_json are unaffected.
-const NEW_USER_DEFAULT_SETTINGS = { homeFeed: 'on' };
-app.post('/api/me/settings', (req, res) => {
-  const body = req.body || {};
-  const merged = parseUserSettings(req.user);
-  for (const key of Object.keys(body)) {
-    if (!MIRRORED_SETTING_KEYS.has(key)) {
-      return res.status(400).json({ error: `unknown setting '${key}'` });
-    }
-    const value = body[key];
-    if (value === null) {
-      delete merged[key]; // explicit null clears the mirror (pref reset)
-      continue;
-    }
-    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(value)) {
-      return res.status(400).json({ error: `invalid value for '${key}'` });
-    }
-    merged[key] = value;
-  }
-  userStore.setSettingsJson(req.user.id, merged);
-  return res.json({ success: true, settings: merged });
+// ---- the identity routes ----------------------------------------------------
+// Wave 7b (slice S1b): sign-in/sign-out and the current user (/api/auth), the
+// display-pref mirror (POST /api/me/settings) and admin user management
+// (/api/users) moved VERBATIM to lib/auth/routes.js and register from here, in
+// their original source order - AHEAD of the shell wildcard and the static
+// layer, which is the routing position this call site preserves. The login
+// dummy hash, the settings allowlist, the new-account default, the rule
+// messages, the restriction enums and the resolveTargetUser /
+// wouldRemoveLastAdmin / readAccessMode / unitRows helpers moved with them
+// (the routes were their only readers); requireAdmin, publicUser and the
+// session-cookie pair stayed here because other code reads them.
+authRoutes.registerRoutes(app, {
+  authCrypto,
+  avatarInfo, // GET /api/auth/me merges the photo's presence + cache-bust version
+  booksDb,
+  clearSessionCookie,
+  // The user-delete cascade drops that user's staged (un-flushed) pings before
+  // the row goes, so no flush batch ever carries a vanished user_id.
+  dropPendingProgressForUser,
+  glyphPool, // LIBRARY_GLYPH_SLOTS - the settings allowlist spreads from the registry
+  issueSessionCookie,
+  likedStore, // the frozen pre-auth likes /api/auth/setup adopts into the first admin
+  loginRateLimiter,
+  progressStore, // the frozen pre-auth positions, adopted by the same route
+  publicUser,
+  rateKey, // the (ip, username) login-rate bucket key
+  requireAdmin,
+  unlinkAvatar, // the user-delete cascade: no orphaned profile image / sticker
+  unlinkSticker,
+  userStore,
+  ytdlpDb,
 });
 
 // Test-only: mint a genuine session cookie for tests (see the export comment).
@@ -5926,9 +5806,13 @@ function publicUser(u) {
 }
 
 // ---- v1.43 chunk 4c: admin user management ---------------------------------
-// Everything below is admin-only (the gate already guarantees a signed-in
-// req.user; these add the role check). Response shapes reuse publicUser /
-// listUsers' projection — a password hash can never ride any of them.
+// The admin-only PREDICATES. The /api/users routes they gate moved to
+// lib/auth/routes.js in Wave 7b (slice S1b) - see the authRoutes.registerRoutes
+// call above - and reach these through `deps`; the predicates themselves stayed
+// because routes all over this file (and the ytdlp/podcasts modules) gate on
+// them. The gate already guarantees a signed-in req.user; these add the role
+// check. Response shapes there reuse publicUser / listUsers' projection — a
+// password hash can never ride any of them.
 
 function requireAdmin(req, res) {
   if (!req.user || req.user.role !== 'admin') {
@@ -5965,222 +5849,6 @@ function requireModifyLibrary(req, res) {
   res.status(403).json({ error: 'You do not have permission to modify the library.' });
   return false;
 }
-
-// The self-lockout guard for user management: refuse any change that would
-// leave the instance with ZERO enabled admins (disable/demote/delete of the
-// last one). Instant revocation (token_version bumps) makes such a mistake
-// unrecoverable from the UI — there would be nobody left who can undo it.
-function wouldRemoveLastAdmin(targetId, change) {
-  const target = userStore.getById(targetId);
-  if (!target) return false; // 404s elsewhere
-  const isEnabledAdmin = target.role === 'admin' && !target.disabled;
-  if (!isEnabledAdmin) return false;
-  const enabledAdmins = userStore.listUsers().filter((u) => u.role === 'admin' && !u.disabled);
-  if (enabledAdmins.length > 1) return false;
-  return change === 'disable' || change === 'demote' || change === 'delete';
-}
-
-const USERNAME_RULE_MESSAGE = 'Username can use letters, numbers, and . _ - (up to 64 characters).';
-const PASSWORD_RULE_MESSAGE = `Use a password of at least ${authCrypto.MIN_PASSWORD_LENGTH} characters.`;
-
-app.get('/api/users', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  res.json({ users: userStore.listUsers() });
-});
-
-app.post('/api/users', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const body = req.body || {};
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
-  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const role = body.role === 'admin' ? 'admin' : 'member';
-  const canManageSubscriptions = body.canManageSubscriptions === true;
-  // v1.81 write-RBAC: strict boolean coercion (AC8) - a truthy string/1/[] can
-  // never grant the capability. Default OFF when absent.
-  const canModifyLibrary = body.canModifyLibrary === true;
-  if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
-  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
-  if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
-  try {
-    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
-    // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
-    // behind the friendly pre-check above.
-    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions, canModifyLibrary }, new Date().toISOString());
-    userStore.setSettingsJson(user.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new account -> feed on
-    return res.status(201).json({ success: true, user: publicUser(user) });
-  } catch (err) {
-    if (String(err.message || '').includes('UNIQUE')) {
-      return res.status(409).json({ error: 'That username is already taken.' });
-    }
-    console.error('Error creating user:', err);
-    return res.status(500).json({ error: `Could not create the user: ${err.message}` });
-  }
-});
-
-// Shared target resolution: integer id, existing row.
-function resolveTargetUser(req, res) {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    res.status(400).json({ error: 'invalid user id' });
-    return null;
-  }
-  const target = userStore.getById(id);
-  if (!target) {
-    res.status(404).json({ error: 'No such user.' });
-    return null;
-  }
-  return target;
-}
-
-app.post('/api/users/:id/password', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
-  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
-  try {
-    const passwordHash = await authCrypto.hashPassword(password);
-    userStore.updatePassword(target.id, passwordHash); // bumps token_version -> every session revoked
-    // Resetting YOUR OWN password revokes your own cookie too — reissue it
-    // so the admin doing the reset is not bounced to /login mid-task.
-    if (target.id === req.user.id) {
-      issueSessionCookie(res, req, userStore.getById(target.id));
-    }
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('Error resetting password:', err);
-    return res.status(500).json({ error: `Could not reset the password: ${err.message}` });
-  }
-});
-
-app.post('/api/users/:id/disabled', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const disabled = req.body && req.body.disabled === true;
-  if (disabled && target.id === req.user.id) {
-    return res.status(409).json({ error: 'You cannot disable your own account.' });
-  }
-  if (disabled && wouldRemoveLastAdmin(target.id, 'disable')) {
-    return res.status(409).json({ error: 'That is the last enabled admin - disable is refused so the instance cannot lock itself out.' });
-  }
-  userStore.setDisabled(target.id, disabled); // bumps token_version -> instant revocation on disable
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-app.post('/api/users/:id/role', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const role = req.body && req.body.role;
-  if (role !== 'admin' && role !== 'member') return res.status(400).json({ error: "role must be 'admin' or 'member'" });
-  if (role === 'member' && wouldRemoveLastAdmin(target.id, 'demote')) {
-    return res.status(409).json({ error: 'That is the last enabled admin - demotion is refused so the instance cannot lock itself out.' });
-  }
-  userStore.setRole(target.id, role);
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-app.post('/api/users/:id/subscriptions-flag', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-// v1.81 write-RBAC: admin grants/revokes a user's library-WRITE capability.
-// Mirrors subscriptions-flag exactly (admin-only, strict boolean, self-safe -
-// nothing here can lock the instance out since admins bypass the flag anyway).
-app.post('/api/users/:id/modify-library-flag', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  userStore.setCanModifyLibrary(target.id, req.body && req.body.canModifyLibrary === true);
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-// v1.80 RBAC: admin management of a user's library restrictions (blocklist).
-const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
-const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books', 'tv']);
-const RESTRICTION_VALUE_MAX = 4096;
-
-// The stored mode is carried as a distinguished row {kind:'mode'} (no extra
-// schema); these helpers separate it from the unit rows at the API boundary.
-function readAccessMode(rows) {
-  return rows.some((r) => r.kind === 'mode' && r.value === 'allowlist') ? 'allowlist' : 'blocklist';
-}
-function unitRows(rows) {
-  return rows.filter((r) => r.kind !== 'mode');
-}
-
-app.get('/api/users/:id/restrictions', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const rows = userStore.getRestrictions(target.id);
-  return res.json({ mode: readAccessMode(rows), restrictions: unitRows(rows) });
-});
-
-// Replace a user's ENTIRE access config (the admin UI PUTs the desired set):
-//   { mode: 'blocklist'|'allowlist', restrictions: [{kind, value}, ...] }
-// mode 'blocklist' (default) => the listed units are BLOCKED; 'allowlist' => the
-// user sees ONLY the listed units (Dean's kid-account belt-and-suspenders).
-app.put('/api/users/:id/restrictions', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const body = req.body || {};
-  const mode = body.mode === undefined ? 'blocklist' : body.mode;
-  if (mode !== 'blocklist' && mode !== 'allowlist') {
-    return res.status(400).json({ error: `invalid mode '${mode}'` });
-  }
-  const rows = Array.isArray(body.restrictions) ? body.restrictions : null;
-  if (!rows) return res.status(400).json({ error: 'restrictions must be an array' });
-  const clean = [];
-  for (const r of rows) {
-    if (!r || typeof r !== 'object') return res.status(400).json({ error: 'each restriction must be an object' });
-    if (!VALID_RESTRICTION_KINDS.has(r.kind)) return res.status(400).json({ error: `invalid restriction kind '${r.kind}'` });
-    if (typeof r.value !== 'string' || r.value === '' || r.value.length > RESTRICTION_VALUE_MAX) {
-      return res.status(400).json({ error: 'invalid restriction value' });
-    }
-    if (r.kind === 'library' && !VALID_LIBRARY_VALUES.has(r.value)) {
-      return res.status(400).json({ error: `invalid library '${r.value}'` });
-    }
-    clean.push({ kind: r.kind, value: r.value });
-  }
-  // Persist the mode as a row only when it overrides the default.
-  if (mode === 'allowlist') clean.push({ kind: 'mode', value: 'allowlist' });
-  userStore.setRestrictions(target.id, clean);
-  const stored = userStore.getRestrictions(target.id);
-  return res.json({ success: true, mode: readAccessMode(stored), restrictions: unitRows(stored) });
-});
-
-app.delete('/api/users/:id', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  if (target.id === req.user.id) {
-    return res.status(409).json({ error: 'You cannot delete your own account.' });
-  }
-  if (wouldRemoveLastAdmin(target.id, 'delete')) {
-    return res.status(409).json({ error: 'That is the last enabled admin - deletion is refused so the instance cannot lock itself out.' });
-  }
-  // Gate WARNING-1 (adversarial): drop this user's staged (un-flushed)
-  // pings BEFORE the row is deleted — otherwise the next flush would carry a
-  // ping whose user_id no longer exists. The batch flush filters vanished
-  // users too (defense in depth), but clearing at the source keeps the
-  // coalescer honest and avoids a wasted FK-filter round.
-  dropPendingProgressForUser(target.id);
-  // Hard delete: ON DELETE CASCADE clears the per-user state; AUTOINCREMENT
-  // guarantees the id is never reused, so any still-valid cookie for it can
-  // never inherit a future account (design-delta SUGGESTION-6).
-  userStore.deleteUser(target.id);
-  unlinkAvatar(target.id); // v1.82: no orphaned profile image for a reaped id
-  unlinkSticker(target.id); // v1.238: same, for the custom player sticker
-  return res.json({ success: true });
-});
 
 // Remove every staged (not-yet-flushed) progress/book-progress/music ping owned
 // by a user id, across all THREE coalescers — called when a user is deleted so
@@ -9395,7 +9063,11 @@ app.delete('/api/settings/logo', async (req, res) => {
 // and with NO persisted metadata (so no schema/settings change): the file's
 // presence IS the state, its mtime is the cache-bust version, and the serve
 // route sniffs the real mime from magic bytes. An unset avatar -> the client
-// renders an initials monogram.
+// renders an initials monogram. Wave 7b (slice S1b): the three routes moved to
+// lib/auth/routes.js (registerAvatarRoutes, called below); these constants and
+// helpers stayed here because AVATARS_DIR has a reader outside the group
+// (POST /api/admin/restore), and splitting one file's machinery across two
+// would leave the directory constant defined in both.
 const AVATAR_MAX_BYTES = 1024 * 1024;
 const AVATARS_DIR = path.join(DATA_DIR, 'avatars');
 // Own allowlist + magic-byte sniffers (an intentional copy of the logo's, per
@@ -9432,81 +9104,39 @@ function unlinkAvatar(userId) {
   try { fs.unlinkSync(avatarPath(userId)); } catch { /* absent -- fine */ }
 }
 
-// Serve any user's avatar by id (a profile photo is low-sensitivity: the header
-// fetches the CURRENT user's; the admin Users list may show others'). Numeric id
-// only -> no path traversal. 404 when unset OR corrupt (never serve junk bytes).
-app.get('/api/users/:id/avatar', (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'No avatar' });
-  let bytes;
-  try { bytes = fs.readFileSync(avatarPath(id)); }
-  catch { return res.status(404).json({ error: 'No avatar' }); }
-  const mime = sniffAvatarMime(bytes);
-  if (!mime) return res.status(404).json({ error: 'No avatar' });
-  res.setHeader('Content-Type', mime);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'no-cache'); // the client cache-busts via ?v=<mtime>
-  return res.send(bytes);
-});
-
-// Upload the CURRENT user's avatar. Self-service by design: there is NO by-id
-// write route, so a member can only ever set their own photo.
-app.post(
-  '/api/me/avatar',
-  express.raw({ type: Object.keys(AVATAR_TYPES), limit: AVATAR_MAX_BYTES }),
-  (req, res) => {
-    // MIME types are case-insensitive (RFC 2045); express.raw's type-is already
-    // matched case-insensitively, so lowercase before the allowlist check.
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (!Object.prototype.hasOwnProperty.call(AVATAR_TYPES, mime)) {
-      return res.status(400).json({ error: 'Photo must be a PNG, JPEG, or WebP image' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
-      return res.status(400).json({ error: 'Empty upload' });
-    }
-    if (!AVATAR_TYPES[mime](bytes)) {
-      return res.status(400).json({ error: 'File content does not match its image type' });
-    }
-    const target = avatarPath(req.user.id);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      fs.mkdirSync(AVATARS_DIR, { recursive: true });
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target); // atomic replace
-    } catch (err) {
-      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
-      console.error('Error saving avatar:', err);
-      return res.status(500).json({ error: `Could not save photo: ${err.message}` });
-    }
-    return res.json({ ok: true, avatar: avatarInfo(req.user.id) });
-  },
-  // Oversized body -> clean JSON 413 (mirrors the logo route's mapping).
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'Photo too large (max 1 MB)' });
-    }
-    return next(err);
-  }
-);
-
-// Remove the current user's avatar -> back to the initials monogram.
-app.delete('/api/me/avatar', (req, res) => {
-  unlinkAvatar(req.user.id);
-  return res.json({ ok: true, avatar: { present: false, version: 0 } });
+// Wave 7b (slice S1b): the profile-photo routes - GET /api/users/:id/avatar,
+// POST|DELETE /api/me/avatar - moved VERBATIM to lib/auth/routes.js. They
+// register HERE, behind the shell wildcard and the static layer, because that
+// is where they have always been; the helpers and constants above stayed and
+// cross in through deps.
+authRoutes.registerAvatarRoutes(app, {
+  AVATARS_DIR,
+  AVATAR_MAX_BYTES,
+  AVATAR_TYPES, // the mime allowlist AND its magic-byte sniffers
+  avatarInfo,
+  avatarPath,
+  express, // express.raw - the upload parser, built at REGISTRATION time
+  fs,
+  sniffAvatarMime,
+  unlinkAvatar,
 });
 
 // ---- v1.238: per-user custom PLAYER STICKER (the speed-menu sticker icon) ----
 // A deliberate second copy of the avatar machinery above, not a shared helper:
 // the sticker and the profile photo are unrelated features that happen to share
-// an upload shape, and the avatar header (~9573) already documents WHY these
-// diverge rather than fold. Same properties: PER USER, self-service (no by-id
+// an upload shape, and the "v1.82: per-user profile avatar" header above in
+// this file already documents WHY these diverge rather than fold (a line
+// number would rot - Wave 7b moved this code once already). Same properties:
+// PER USER, self-service (no by-id
 // write route -> a member can only set THEIR OWN), disk-only (presence IS the
 // state, mtime is the cache-bust version, no persisted db metadata -> no schema
 // bump and, like avatars, NOT carried in the backup bundle), mime sniffed from
 // magic bytes on serve. The device-local `ft-sticker` choice decides logo vs
 // preset vs emoji vs THIS custom image; an unset/deleted file -> the client
 // falls back to whatever `ft-sticker` names (default: the FileTube logo).
+// Wave 7b (slice S1b): the three routes moved to lib/auth/routes.js
+// (registerStickerRoutes, called below); these constants and helpers stayed,
+// keeping this copy symmetric with the avatar machinery above.
 const STICKER_MAX_BYTES = 1024 * 1024;
 const STICKERS_DIR = path.join(DATA_DIR, 'stickers');
 // Own allowlist + magic-byte sniffers (SVG is deliberately excluded - an inline
@@ -9540,63 +9170,20 @@ function unlinkSticker(userId) {
   try { fs.unlinkSync(stickerPath(userId)); } catch { /* absent -- fine */ }
 }
 
-// Serve the CURRENT user's sticker only (self-only: a sticker is a personal
-// player decoration with no cross-user display surface, so unlike the avatar
-// there is NO by-id read route to widen the surface). 404 when unset OR corrupt.
-app.get('/api/me/sticker', (req, res) => {
-  let bytes;
-  try { bytes = fs.readFileSync(stickerPath(req.user.id)); }
-  catch { return res.status(404).json({ error: 'No sticker' }); }
-  const mime = sniffStickerMime(bytes);
-  if (!mime) return res.status(404).json({ error: 'No sticker' });
-  res.setHeader('Content-Type', mime);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'no-cache'); // the client cache-busts via ?v=<mtime>
-  return res.send(bytes);
-});
-
-// Upload the CURRENT user's sticker. Self-service by design: no by-id write route.
-app.post(
-  '/api/me/sticker',
-  express.raw({ type: Object.keys(STICKER_TYPES), limit: STICKER_MAX_BYTES }),
-  (req, res) => {
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (!Object.prototype.hasOwnProperty.call(STICKER_TYPES, mime)) {
-      return res.status(400).json({ error: 'Sticker must be a PNG, JPEG, or WebP image' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
-      return res.status(400).json({ error: 'Empty upload' });
-    }
-    if (!STICKER_TYPES[mime](bytes)) {
-      return res.status(400).json({ error: 'File content does not match its image type' });
-    }
-    const target = stickerPath(req.user.id);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      fs.mkdirSync(STICKERS_DIR, { recursive: true });
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target); // atomic replace
-    } catch (err) {
-      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
-      console.error('Error saving sticker:', err);
-      return res.status(500).json({ error: `Could not save sticker: ${err.message}` });
-    }
-    return res.json({ ok: true, sticker: stickerInfo(req.user.id) });
-  },
-  // Oversized body -> clean JSON 413 (mirrors the avatar/logo route mapping).
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'Sticker too large (max 1 MB)' });
-    }
-    return next(err);
-  }
-);
-
-// Remove the current user's custom sticker -> back to the chosen preset/logo.
-app.delete('/api/me/sticker', (req, res) => {
-  unlinkSticker(req.user.id);
-  return res.json({ ok: true, sticker: { present: false, version: 0 } });
+// Wave 7b (slice S1b): the player-sticker routes - GET|POST|DELETE
+// /api/me/sticker - moved VERBATIM to lib/auth/routes.js, registering here for
+// the same reason the avatar routes do (their original position behind the
+// shell wildcard, and after the sticker constants above).
+authRoutes.registerStickerRoutes(app, {
+  STICKERS_DIR,
+  STICKER_MAX_BYTES,
+  STICKER_TYPES, // the mime allowlist AND its magic-byte sniffers (no SVG)
+  express, // express.raw - the upload parser, built at REGISTRATION time
+  fs,
+  sniffStickerMime,
+  stickerInfo,
+  stickerPath,
+  unlinkSticker,
 });
 
 // ---- v1.42: instance backup / restore ---------------------------------------
@@ -11201,83 +10788,19 @@ app.get('/api/videos/:id', (req, res) => {
 // latch) moved VERBATIM to lib/user/routes.js - see the
 // userRoutes.registerRoutes call beside the cross-device preference sync.
 
-// API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
-// `pendingProgress` entry (read-your-writes); see `effectiveProgress` above.
-// v1.43: scoped to the signed-in user (`req.user` is set by the auth gate on
-// every non-allowlisted route).
-app.get('/api/progress/:id', (req, res) => {
-  const progress = effectiveProgress(req.user.id, req.params.id) || { timestamp: 0 };
-  res.json(progress);
-});
-
-// API: Save watch progress
-// v1.30 A4 (AC4.1/AC4.2/AC4.3): rewritten from a per-ping `updateDatabase`
-// call (one atomic write+fsync every ~4s while a video plays) into the
-// progress-write coalescer -- validate, compute the value, stage it in
-// `pendingProgress`, arm the shared debounce timer if needed, and respond
-// immediately. No disk I/O happens on this request at all; the batched
-// write happens later, on `flushPendingProgress` (the timer, or a shutdown
-// handler). The 400 (bad input) / 404 (unknown id) semantics and the stored
-// value's shape (`{timestamp, duration, updatedAt}`, same duration-fallback
-// precedence) are BYTE-IDENTICAL to the pre-A4 per-ping behavior -- only the
-// persistence timing changed. Synchronous now (no `await`): there is nothing
-// left in this handler that can reject.
-app.post('/api/progress', (req, res) => {
-  const { id, timestamp, duration } = req.body;
-  if (!id || typeof timestamp !== 'number') {
-    return res.status(400).json({ error: 'id and numeric timestamp are required' });
-  }
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ row-key lesson): a plain truthiness
-  // probe lets id='__proto__'/'constructor' pass via Object.prototype
-  // inheritance, and v1.43 persists this client-supplied id into
-  // user_progress -- a stored junk-key row minted by any signed-in user.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;
-  if (!item) {
-    return res.status(404).json({ error: 'Media not found' });
-  }
-  // v1.50 gate (adversarial WARNING): normalize `duration` ONCE, up front,
-  // with the same finite-number-or-fallback posture the flush's num() has
-  // always applied. Before this, a crafted string duration ("100") was
-  // truthy enough to ride the staging fallback and coerce through the latch
-  // division, while filterByWatchState's strict number check excluded the
-  // same un-flushed entry from its bucket -- three readers, two answers.
-  // Now every reader (latch, watch buckets, flush, progress overlay) sees
-  // one numeric value. For every POSITIVE-FINITE numeric-duration caller
-  // (the real client sends video.duration) this is byte-identical to the
-  // old `duration || item.duration || 0`; a negative/Infinity/NaN numeric
-  // duration now falls back to the item's real duration instead of staging
-  // garbage (gate delta precision -- an improvement, not a preservation).
-  const effDuration = (typeof duration === 'number' && Number.isFinite(duration) && duration > 0)
-    ? duration
-    : (item.duration || 0);
-  pendingProgress.set(pendingProgressKey(req.user.id, id), {
-    userId: req.user.id,
-    mediaId: id,
-    value: {
-      timestamp,
-      duration: effDuration,
-      updatedAt: new Date().toISOString()
-    }
-  });
-  armProgressFlushTimerIfNeeded();
-  // v1.50 watched latch: the first ping that crosses WATCHED_PCT marks the
-  // item watched for this user, STICKY (a later loop-restart/rewatch ping
-  // near 0 never clears it -- that's what keeps a looping video from
-  // un-watching itself). Checked on the ping, NOT the coalesced flush: the
-  // flush only keeps the LAST value of the window, so a cross-then-restart
-  // inside one window would otherwise lose the crossing entirely. This is
-  // the one durable-write exception to this handler's "no disk I/O" rule,
-  // and it is bounded: one indexed point SELECT per ping while past the
-  // threshold, one tiny INSERT ever (markWatched is check-then-insert).
-  if (effDuration > 0 && (timestamp / effDuration) * 100 >= videoQuery.WATCHED_PCT) {
-    userStore.markWatched(req.user.id, id, new Date().toISOString());
-  }
-  // v1.78: presence, LAST - after every existing effect, and after the 400/404
-  // gates above, so a rejected ping mints no presence for an id this user was
-  // never allowed to write. Cannot change this response (see the helper).
-  recordPresenceFromPing(req, 'media', id, timestamp, effDuration);
-  res.json({ success: true });
+// Wave 7b (slice S1b): GET /api/progress/:id and POST /api/progress (the
+// write coalescer's ingress) moved VERBATIM to lib/media/user-routes.js.
+mediaUserRoutes.registerProgressRoutes(app, {
+  armProgressFlushTimerIfNeeded,
+  effectiveProgress, // the stored position with any un-flushed ping overlaid
+  getCachedDatabase,
+  // The coalescer's staging Map itself (never a snapshot): POST stages into
+  // the LIVE object the flush timer drains.
+  pendingProgress,
+  pendingProgressKey,
+  recordPresenceFromPing, // v1.78 device handoff, last - after every other effect
+  userStore,
+  videoQuery, // WATCHED_PCT - the watched latch's threshold
 });
 
 // v1.78 device handoff: resolve a presence entry into what the card RENDERS.
@@ -12000,293 +11523,36 @@ app.delete('/api/videos/:id', async (req, res) => {
   res.json({ success: true, message: 'File deleted successfully' });
 });
 
-// ---- v1.30 C2 (Visual polish cluster): Like -> "Liked" playlist --------
-//
-// Like state IS membership -- there is no separate boolean flag anywhere
-// (not on `db.metadata[id]`, not in settings) to ever drift out of sync
-// with it. v1.43 (chunk 4b): membership lives in the relational
-// `user_liked` table keyed by (user_id, media_id) -- a Like belongs to a
-// USER. The frozen pre-auth `liked` record (media_liked since Wave 4, was the
-// doc-table array) is retained untouched, adopted into the first admin at
-// /welcome; no reader
-// falls back to it (the total-cutover contract, design finding #6). The
-// mutations below are direct synchronous upserts/deletes on the warm
-// SQLite handle -- still exactly one durable write per invocation
-// (AC4.2's unbatched 1:1 posture), just against the user table instead of
-// a whole doc-table save.
-
-// API: Like an item (idempotent add). 404s exactly like the other single-id
-// routes above if the id isn't a real library item -- mirrors
-// `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
-app.post('/api/liked/:id', (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_liked -- see POST /api/progress's identical guard.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  userStore.addLiked(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent re-add
-  res.json({ success: true, liked: true });
-});
-
-// API: Unlike an item (idempotent remove). No existence-in-metadata gate --
-// removing membership for an id that's already absent (or was since deleted
-// from the library entirely) is itself the desired end state, nothing to
-// 404 on.
-app.delete('/api/liked/:id', (req, res) => {
-  userStore.removeLiked(req.user.id, req.params.id);
-  res.json({ success: true, liked: false });
+// Wave 7b (slice S1b): the Liked playlist - POST|DELETE /api/liked/:id and
+// GET /api/liked - moved VERBATIM to lib/media/user-routes.js, together with
+// the three shapedLiked*Items projections the listing is the only reader of.
+mediaUserRoutes.registerLikedRoutes(app, {
+  albumArtExists, // the liked-track arm's cover-art presence probe
+  bookVisibleTo,
+  booksDb,
+  effectiveBookProgress,
+  effectiveMusicProgress,
+  effectiveProgress,
+  getCachedDatabase,
+  mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
+  musicDb,
+  ownTrack, // the music store's own-track lookup (a track row by id)
+  pendingProgress, // the coalescer's staging Map - the LIVE object (read-your-writes)
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  previewClipEligible,
+  restrictedVideoMutation, // v1.80 RBAC (S-b): no restricted-id oracle, no persist
+  storyboardDescriptor,
+  trackVisibleTo,
+  userStore,
+  videoQuery,
+  ytdlp, // resolveItemChannelAvatarUrl for the Liked cards
+  ytdlpDb,
 });
 
 // Wave 7b (slice S1a): the three /api/feed-hidden routes moved VERBATIM to
 // lib/user/routes.js - see the userRoutes.registerRoutes call beside the
 // cross-device preference sync.
-
-// ---- v1.72 (#94): the Liked playlist is MIXED-KIND -------------------------
-//
-// Hearting content in ANY kind surfaces it in THE Liked playlist (/?liked=1,
-// the count-gated sidebar entry, and v1.75's opt-in bottom-bar entry). v1.75
-// (Dean's ruling): this is the ONE read surface - the kind-scoped lanes that
-// used to complement it (the podcasts place's Liked card, the music place's
-// Liked tab) are REMOVED, and docs/CONTRIBUTING.md's capability 4 now records
-// a new kind-scoped Liked lane as a defect to add, not a complement. The
-// per-kind HEARTS remain the write surfaces. Each arm below is a read-time projection
-// of that kind's OWN liked carrier into the card item shape the Liked grid
-// renders; `kind` is CARRIED on every item (podcast/track/book ids are md5
-// hex exactly like media ids - kind is never inferred from id shape), and
-// each id space keeps its own lane's exact silent-drop rule. Like/unlike
-// writes stay on the per-kind routes; these arms never mutate membership.
-
-// The podcast arm - the /api/podcasts/episodes?filter=liked drop rule
-// EXACTLY: the episode row must exist and be status 'downloaded' (a trashed/
-// tombstoned/pending episode keeps its user_podcast_liked row - v1.65's law:
-// trash keeps per-user state - but never renders in the playlist).
-function shapedLikedPodcastItems(db, userId) {
-  const ns = podcastsDb.read();
-  const likedRows = userStore.getPodcastLiked(userId);
-  if (!likedRows.length) return [];
-  const progress = userStore.getPodcastProgress(userId);
-  const played = userStore.getPodcastPlayed(userId);
-  const subNameById = new Map(ns.subscriptions.filter(Boolean).map((s) => [s.id, s.name]));
-  const items = [];
-  for (const row of likedRows) {
-    const id = row.episodeId;
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
-    if (!ep || ep.status !== 'downloaded') continue;
-    const prog = Object.prototype.hasOwnProperty.call(progress, id) ? progress[id] : null;
-    const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
-    items.push({
-      kind: 'podcast',
-      id: ep.id,
-      title: ep.title,
-      type: 'audio',
-      // The library-entry moment, like a video's addedAt (file birthtime):
-      // when the enclosure finished downloading; pubDateMs is the fallback
-      // for legacy rows that predate the downloadedAt stamp.
-      addedAt: Number.isFinite(ep.downloadedAt) ? ep.downloadedAt : (Number.isFinite(ep.pubDateMs) ? ep.pubDateMs : 0),
-      duration: Number.isFinite(ep.durationSec) ? ep.durationSec : 0,
-      size: Number.isFinite(ep.bytes) ? ep.bytes : 0,
-      subId: ep.subId,
-      showName: subNameById.has(ep.subId) ? subNameById.get(ep.subId) : null,
-      liked: true,
-      progress: prog ? Number(prog.position) : 0,
-      progressPercent: pct,
-      // The played latch IS this kind's watched latch - one derivation
-      // authority (videoQuery) for every kind.
-      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(played, id))
-    });
-  }
-  return items;
-}
-
-// The music arm - the /api/music?filter=liked drop rule EXACTLY: the track
-// row must still exist (own-property; a pruned track sheds its liked row via
-// removeMusicState, but a race between prune and read must never render a
-// ghost).
-function shapedLikedTrackItems(db, userId) {
-  const likedIds = userStore.getMusicLiked(userId);
-  if (!likedIds.length) return [];
-  const ns = musicDb.read();
-  const items = [];
-  for (const id of likedIds) {
-    const track = ownTrack(ns.tracks, id);
-    if (!track) continue;
-    // QA gate S3: read-your-writes like the media arm - the coalescer
-    // overlay beats the committed row (liked sets are small; per-id reads
-    // are fine here).
-    const prog = effectiveMusicProgress(userId, id);
-    const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
-    items.push({
-      kind: 'track',
-      id: track.id,
-      title: track.title,
-      type: 'audio',
-      // music scan stamps addedAt as an ISO string; the card/sort contract
-      // (sortItems, formatRelativeTime) is numeric ms like media addedAt.
-      addedAt: Date.parse(track.addedAt) || 0,
-      duration: Number.isFinite(track.durationSec) ? track.durationSec : 0,
-      size: 0,
-      artist: track.artist,
-      album: track.album,
-      hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
-      liked: true,
-      progress: prog ? Number(prog.position) : 0,
-      progressPercent: pct,
-      // Music has no played latch (morning question M2) - the live position
-      // is the only signal, same derivation authority.
-      watchState: videoQuery.deriveWatchState(pct, false)
-    });
-  }
-  return items;
-}
-
-// The books arm - drop rule mirrors music's: the item row must still exist
-// (the scan prune retires membership via removeBookState; a race between
-// prune and read must never render a ghost). Books carry NO `type`: the
-// format filter's documented ambiguous-inclusion rule applies (a book is
-// neither video nor audio and fails safe toward visible).
-function shapedLikedBookItems(db, userId) {
-  const likedRows = userStore.getBookLiked(userId);
-  if (!likedRows.length) return [];
-  const ns = booksDb.read();
-  const finishedMap = userStore.getBookFinished(userId);
-  const items = [];
-  for (const row of likedRows) {
-    const id = row.bookId;
-    const item = Object.prototype.hasOwnProperty.call(ns.items, id) ? ns.items[id] : null;
-    if (!item) continue;
-    // QA gate S3: read-your-writes like the media arm (coalescer overlay
-    // first) - the track arm's exact posture.
-    const prog = effectiveBookProgress(userId, id);
-    const pct = prog && typeof prog.percent === 'number' ? Math.min(100, Math.max(0, prog.percent)) : 0;
-    items.push({
-      kind: 'book',
-      id: item.id,
-      title: item.title,
-      author: item.author,
-      // The scanner stamps addedAt as an ISO string; the sort contract is
-      // numeric ms (the track-arm conversion).
-      addedAt: typeof item.addedAt === 'number' ? item.addedAt : (Date.parse(item.addedAt) || 0),
-      duration: 0,
-      size: Number.isFinite(item.size) ? item.size : 0,
-      liked: true,
-      progress: 0,
-      progressPercent: pct,
-      // Reading percent + the manual finished latch through the ONE
-      // derivation authority (the latch strictly widens 'watched').
-      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(finishedMap, id))
-    });
-  }
-  return items;
-}
-
-// API: List liked items -- reuses the SAME `{items,total,offset,limit}`
-// shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
-// scoped down to the signed-in user's liked membership. Read-only; never
-// mutates membership. v1.72 (#94): the response is MIXED-KIND - liked
-// podcast episodes, music tracks and books ride the same list, sort,
-// filters and pagination as liked videos; media items carry kind:'media'
-// explicitly.
-app.get('/api/liked', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  // v1.43: membership is the signed-in user's user_liked rows (a warm
-  // prepared-statement read), never the frozen db.liked record.
-  const likedIds = new Set(userStore.getLiked(req.user.id));
-  const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const seed = videoQuery.normalizeSeed(req.query.seed);
-
-  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id) && mediaVisibleTo(req, item)); // v1.80 RBAC
-  // v1.32: the Liked view is now a real library scope (main.js's ?liked=1)
-  // -- honor the same format toggle the home grid forwards, so
-  // videos/audio/both filtering behaves identically in both views.
-  if (typeof req.query.format === 'string') {
-    list = videoQuery.filterByFormat(list, req.query.format);
-  }
-
-  // v1.50: honor the watched-state toggle too, for exactly the v1.32 reason
-  // above -- the home toolbar (which now carries the watch group) fronts
-  // BOTH endpoints, and a visible control that silently no-ops in one of
-  // the two views is the worse behavior. Same derivation as /api/videos.
-  // v1.72 (#94): the non-media arms. Shaped up-front (liked sets are small);
-  // the format/watch filters below apply to them through the SAME predicates
-  // (filterByFormat reads item.type; a shaped item's watchState was derived
-  // by the same videoQuery authority the media path uses at page-shaping
-  // time, so filtering on it is the identical decision).
-  let others = [
-    ...shapedLikedPodcastItems(db, req.user.id),
-    ...shapedLikedTrackItems(db, req.user.id),
-    ...shapedLikedBookItems(db, req.user.id)
-  ];
-  // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
-  // liked filtering lands with their libraries, T6/T7.)
-  // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
-  const likedMusicNs = musicDb.read();
-  const likedPodNs = podcastsDb.read();
-  const likedBooksNs = booksDb.read();
-  others = others.filter((o) => {
-    if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
-    if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
-    if (o.kind === 'book') return bookVisibleTo(req, likedBooksNs.items && likedBooksNs.items[o.id]);
-    return true;
-  });
-  if (typeof req.query.format === 'string') {
-    others = videoQuery.filterByFormat(others, req.query.format);
-  }
-
-  const watch = videoQuery.normalizeWatchFilter(req.query.watch);
-  const watchedSet = new Set(userStore.getWatchedIds(req.user.id));
-  if (watch !== 'all') {
-    const progressMap = userStore.getProgress(req.user.id);
-    for (const entry of pendingProgress.values()) {
-      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
-    }
-    list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
-    others = others.filter((o) => o.watchState === watch);
-  }
-
-  // `total` is the full liked-set length (after format/watch filtering),
-  // BEFORE slicing to a page -- same contract as GET /api/videos's `total`.
-  const total = list.length + others.length;
-
-  const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
-  // One merged sort: shaped items carry the same addedAt/title/size fields
-  // the media records do, so every toolbar sort (and the seeded shuffle's
-  // stable paging) treats the kinds uniformly.
-  const sorted = videoQuery.sortItems([...list, ...others], sort, rng);
-  const page = sorted.slice(offset, offset + limit);
-
-  const items = page.map(item => {
-    if (item.kind) return item; // a shaped non-media item - already complete
-    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
-    const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
-    return {
-      ...item,
-      // v1.113 (Fix A sweep): the Liked grid feeds the SAME buildCardHtml ->
-      // modernCardAvatar path as /api/videos, so resolve the avatar identically
-      // (read-only) or a registry-resolvable channel shows a monogram here.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
-      kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
-      liked: true, // every item in this listing is, by construction, a liked member
-      // v1.93.2: DERIVED storyboard descriptor - the Liked view feeds
-      // buildCardHtml, which renders the hover/in-view preview. Parity with
-      // /api/videos and the modern grid; without this, Liked cards lost their
-      // preview once the persisted field was removed.
-      storyboard: storyboardDescriptor(item) || undefined,
-      hasPreview: previewClipEligible(item) || undefined, // v1.94: hover clip eligibility
-      progress: progress.timestamp,
-      progressPercent,
-      // v1.50: same server-derived state as /api/videos (one authority).
-      watchState: videoQuery.deriveWatchState(progressPercent, watchedSet.has(item.id))
-    };
-  });
-
-  res.json({ items, total, offset, limit });
-});
 
 // Wave 7b (slice S1a): GET|DELETE /api/history, DELETE /api/history/:id and
 // the four /api/search-history routes (with SEARCH_HISTORY_CAP and
