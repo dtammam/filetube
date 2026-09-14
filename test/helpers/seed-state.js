@@ -34,6 +34,7 @@ const DOC_SEMANTICS = {
   liked: (s) => s.likedStore,
   tv: (s) => s.tvDb, // Wave 5: a feature store - replaceAll(ns) takes the container shape
   music: (s) => s.musicDb,
+  books: (s) => s.booksDb,
 };
 
 function server() {
@@ -73,4 +74,5 @@ module.exports = {
   likedStore: () => server().likedStore, // Wave 4
   tvDb: () => server().tvDb, // Wave 5
   musicDb: () => server().musicDb, // Wave 5
+  booksDb: () => server().booksDb, // Wave 5
 };

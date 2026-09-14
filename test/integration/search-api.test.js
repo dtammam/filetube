@@ -15,7 +15,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, tvDb, musicDb } = require('../../server');
+const { app, updateDatabase, tvDb, musicDb, booksDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -67,9 +67,11 @@ before(async () => {
     tvDb.mutate((h) => { tvStore.ensureTv(h).episodes = { // Wave 5: the Shows namespace is a feature store
       tve: { id: 'tve', showId: 'shZ', showName: 'Zephyr Chronicles', title: 'The Storm', seasonNum: 1, episodeNum: 1, filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, ext: '.mp4', codec: 'h264', durationSec: 20, addedAt: 200 },
     }; return true; });
-    booksStore.ensureBooks(db).items = {
+    booksDb.mutate((h) => { // Wave 5: the books namespace is a feature store
+    booksStore.ensureBooks(h).items = {
       bz: { id: 'bz', title: 'Zephyr', author: 'Writer', filePath: path.join(DATA_DIR, 'zb.epub'), folderName: 'F', format: 'epub', addedAt: 50 },
     };
+    return true; });
     return true;
   });
 });

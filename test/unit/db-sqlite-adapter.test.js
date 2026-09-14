@@ -59,14 +59,7 @@ function fullFixture() {
       vid3: { id: 'vid3', name: 'zero.mp4', title: 'Zero views', viewCount: 0 },
     },
     // (settings / liked: relational since Wave 4 - see importFixture)
-    books: {
-      folders: ['/media/books'],
-      items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
-      progress: { bk1: { spineIndex: 3, offset: 0.5 } },
-      pins: [{ id: 'pin1', dir: '/media/books', label: 'Shelf', order: 0 }],
-      settings: {},
-      audio: { bk1: { 0: { status: 'ready', key: 'k0' } } },
-    },
+    // (books: relational since Wave 5 - see importFixture)
     // (music: relational since Wave 5 - see importFixture)
     ytdlp: {
       allowMembersOnly: false,
@@ -89,6 +82,14 @@ function importFixture() {
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
     liked: ['vid1'], // Wave 4: an ordered list (the frozen pre-auth likes)
     folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
+    books: { // Wave 5: a feature container (the tables)
+      folders: ['/media/books'],
+      items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
+      progress: { bk1: { spineIndex: 3, offset: 0.5 } },
+      pins: [{ id: 'pin1', dir: '/media/books', label: 'Shelf', order: 0 }],
+      settings: {},
+      audio: { bk1: { 0: { status: 'ready', key: 'k0' } } },
+    },
     music: { // Wave 5: a feature container (the tables)
       folders: ['/media/tunes'],
       tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
@@ -324,13 +325,14 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     assert.deepStrictEqual(s2, { rowsWritten: 0, rowsDeleted: 1 });
     assert.strictEqual(readPersistedDatabase(dir).metadata.vid3, undefined);
 
-    // absent namespace: a mutator tick that never ensured books must not
-    // delete the books rows (absence = "not loaded", not "deleted")
+    // absent namespace: a mutator tick that never ensured ytdlp must not
+    // delete the ytdlp rows (absence = "not loaded", not "deleted").
+    // (books carried this case until Wave 5 moved it to its tables.)
     const db3 = a.load();
-    delete db3.books;
+    delete db3.ytdlp;
     const s3 = a.save(db3);
     assert.deepStrictEqual(s3, { rowsWritten: 0, rowsDeleted: 0 });
-    assert.ok(readPersistedDatabase(dir).books.items.bk1, 'books rows survive an absent-namespace save');
+    assert.ok(readPersistedDatabase(dir).ytdlp.downloadMeta.yt1, 'ytdlp rows survive an absent-namespace save');
 
     // present-but-empty: a deliberate wipe deletes rows. NOTE the documented
     // normalization: an EMPTY doc_kv namespace has zero rows, so it assembles
@@ -356,7 +358,7 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
   try {
     assert.throws(() => a.save({ metadata: {}, mystery: {} }), /unknown top-level db key 'mystery'/);
     assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
-    assert.throws(() => a.save({ books: { playlists: {} } }), /unknown db key 'books\.playlists'/);
+    assert.throws(() => a.save({ podcasts: { playlists: {} } }), /unknown db key 'podcasts\.playlists'/);
     assert.throws(() => a.save({ podcasts: { feedUrls: {} } }), /unknown db key 'podcasts\.feedUrls'/,
       'the namespace lock guards podcasts sub-keys too - a feed-URL map in the db would be a secret leak, not just drift');
   } finally {
@@ -402,7 +404,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     const realUpsertKv = a.stmts.upsertKv;
     a.stmts.upsertKv = { run: () => { throw new Error('simulated statement failure'); } };
     const db2 = a.load();
-    db2.books.pins = [{ id: 'never-committed' }]; // singleton write (books.pins - a container sub-key; no top-level doc_single is left since Wave 4), executes before the kv poison
+    db2.ytdlp.pins = [{ id: 'never-committed' }]; // singleton write (ytdlp.pins - a container sub-key; no top-level doc_single is left since Wave 4, books moved in Wave 5), executes before the kv poison
     db2.metadata.vid2.title = 'never';  // kv write, hits the stub
     try {
       assert.throws(() => a.save(db2), /simulated statement failure/);
@@ -416,7 +418,7 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     // Snapshot must still reflect disk: the same change saved cleanly now
     // must write BOTH rows (had the snapshot advanced, the diff would skip them).
     const db3 = a.load();
-    db3.books.pins = [{ id: 'never-committed' }];
+    db3.ytdlp.pins = [{ id: 'never-committed' }];
     db3.metadata.vid2.title = 'never';
     const stats = a.save(db3);
     assert.deepStrictEqual(stats, { rowsWritten: 2, rowsDeleted: 0 });

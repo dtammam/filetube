@@ -97,16 +97,16 @@ the app settings and the folder config in Wave 4 - see the CONFIG box; the
 frozen pre-auth likes in Wave 4 too - the MEDIA box).
 The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
-7 `doc_kv` namespaces, 8 `doc_single` names, 46 relational tables,
-schema version 28. (The relational-migration arc, Wave 1 onward, moves the
+4 `doc_kv` namespaces, 5 `doc_single` names, 52 relational tables,
+schema version 29. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>books.items · books.progress ·<br/>books.audio · podcasts.episodes ·<br/>ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects (container sub-keys only, since Wave 4):<br/>books.folders · books.settings ·<br/>books.pins ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>podcasts.episodes ·<br/>ytdlp.downloadMeta · ytdlp.channelAvatars"]
+        SINGLE["doc_single (name, json)<br/>whole small objects (container sub-keys only, since Wave 4):<br/>podcasts.subscriptions · podcasts.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
@@ -133,6 +133,7 @@ flowchart LR
     subgraph FEATURES["Relational FEATURE stores (Wave 5; lib/db/featureStore.js - read() = the module's snapshot, mutate() = its reducers + a row DIFF inside the doc commit)"]
         TV["lib/tv/store.js<br/>tv_folders (path, position) · tv_episodes (episode_id, json) · tv_settings (key, json)<br/>the Shows library: roots, one row per episode, settings"]
         MU["lib/music/store.js<br/>music_folders · music_tracks (track_id, json) · music_settings · music_channels (folder_name, json)<br/>the music library: roots, one row per track, settings, the show-in-Music marks"]
+        BK["lib/books/store.js<br/>books_folders · books_items (book_id, json) · books_progress · books_pins (id, position, json) · books_settings · books_audio<br/>the books library: roots, one row per book, the frozen pre-auth positions + shelf pins, TTS status"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]

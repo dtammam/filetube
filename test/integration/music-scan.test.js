@@ -19,7 +19,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-music-'))
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, getMediaId, scanMusic, currentMusicScanState, ALBUMART_DIR, userStore, musicDb } = require('../../server');
+const { app, updateDatabase, getMediaId, scanMusic, currentMusicScanState, ALBUMART_DIR, userStore, musicDb, booksDb } = require('../../server');
 const { settingsStore, folderStore } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const musicScanLib = require('../../lib/music/scan');
@@ -238,11 +238,11 @@ test('T4: music config REFUSES overlap with a media folder or a book folder (thr
   folderStore().replaceAll([]);
 
   // Overlap with a BOOK folder.
-  await updateDatabase((db) => { require('../../lib/books/store').ensureBooks(db).folders = [shared]; return true; });
+  await updateDatabase(() => booksDb.mutate((db) => { require('../../lib/books/store').ensureBooks(db).folders = [shared]; return true; }));
   res = await setFolders([shared]);
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /overlaps a book folder/);
-  await updateDatabase((db) => { require('../../lib/books/store').ensureBooks(db).folders = []; return true; });
+  await updateDatabase(() => booksDb.mutate((db) => { require('../../lib/books/store').ensureBooks(db).folders = []; return true; }));
 });
 
 test('T5: RECIPROCAL overlap guards — media-config AND book-config reject a folder overlapping a MUSIC root', async () => {
@@ -271,7 +271,7 @@ test('T5: RECIPROCAL overlap guards — media-config AND book-config reject a fo
 
   // Cleanup: leave media/book config empty for the next test file.
   folderStore().replaceAll([]); // Wave 4: the root list is a table
-  await updateDatabase((db) => { require('../../lib/books/store').ensureBooks(db).folders = []; return true; });
+  await updateDatabase(() => booksDb.mutate((db) => { require('../../lib/books/store').ensureBooks(db).folders = []; return true; }));
 });
 
 test('T4: pure selectAlbumArtJobs/selectOrphanedArtKeys wired via the scan lib match the server behaviour', () => {

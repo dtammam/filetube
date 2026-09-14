@@ -163,6 +163,11 @@ bundles carry `tv` in its old container shape on both sides of the line.
 `music_folders`, `music_tracks`, `music_settings` and `music_channels`; bundles
 carry `music` in its old container shape on both sides of the line.
 
+**Tenth floor - schema v29 (v1.294, Wave 5, books).** The books namespace
+(`books.folders/items/progress/pins/settings/audio`) moved into `books_folders`,
+`books_items`, `books_progress`, `books_pins`, `books_settings` and `books_audio`;
+bundles carry `books` in its old container shape on both sides of the line.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

@@ -14,7 +14,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, booksDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const booksStore = require('../../lib/books/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -34,14 +34,14 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
   seedState({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
-  await updateDatabase((db) => {
+  await updateDatabase(() => booksDb.mutate((db) => {
     const ns = booksStore.ensureBooks(db);
     ns.items = {
       blk: { id: 'blk', title: 'Secret', author: 'A', filePath: blockedFile, folderName: 'Private', format: 'epub', addedAt: 20 },
       ok: { id: 'ok', title: 'Nursery Rhymes', author: 'B', filePath: allowedFile, folderName: 'Kids', format: 'epub', addedAt: 10 },
     };
     return true;
-  });
+  }));
   member = __mintTestSession({ username: 'kidbooks', role: 'member' });
   // Restrict on the Private book root (prefix) - everything under it is private.
   userStore.setRestrictions(member.user.id, [{ kind: 'path', value: privDir }]);

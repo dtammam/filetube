@@ -347,10 +347,12 @@ test('a restore that fails mid-populate ROLLS BACK completely — db state AND t
   const beforeSnap = readPersistedDatabase(DATA_DIR);
 
   const bundle = await getBackup();
-  // Passes validateBackupBundle (books IS an object) but fails INSIDE the
-  // exclusive section: books.items is not a per-key map, so importParsedJson
-  // refuses mid-populate — after the wipe, before the logo file ops.
-  bundle.books = { items: 'not-a-map' };
+  // Passes validateBackupBundle (podcasts IS an object) but fails INSIDE the
+  // exclusive section: podcasts.episodes is not a per-key map, so
+  // importParsedJson refuses mid-populate — after the wipe, before the logo
+  // file ops. (Wave 5: `books` carried this until its parts became
+  // shape-checked BEFORE the wipe; podcasts is the doc container still left.)
+  bundle.podcasts = { episodes: 'not-a-map' };
   const res = await postRestore(bundle);
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /rolled back/);

@@ -15,11 +15,7 @@ process.env.PROGRESS_FLUSH_MS = '50'; // shrink the real debounce window for tes
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const {
-  app, loadDatabase, updateDatabase, getMediaId, scanBooks,
-  flushPendingBookProgress, effectiveBookProgress,
-  __getBookProgressFlushWriteCount, __mintTestSession, userStore,
-} = require('../../server');
+const { app, updateDatabase, getMediaId, scanBooks, flushPendingBookProgress, effectiveBookProgress, __getBookProgressFlushWriteCount, __mintTestSession, userStore, booksDb } = require('../../server');
 const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -39,12 +35,12 @@ before(async () => {
     coverData: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2]),
   }));
   fs.writeFileSync(path.join(booksDir, 'manual.pdf'), '%PDF-1.4 0123456789'.repeat(100));
-  await updateDatabase((db) => {
+  await updateDatabase(() => booksDb.mutate((db) => {
     require('../../lib/books/store').ensureBooks(db).folders = [booksDir];
     return true;
-  });
+  }));
   await scanBooks();
-  const items = loadDatabase().books.items;
+  const items = booksDb.read().items;
   epubId = Object.values(items).find((i) => i.format === 'epub').id;
   pdfId = Object.values(items).find((i) => i.format === 'pdf').id;
   await new Promise((resolve) => {
@@ -114,10 +110,10 @@ test('T5: GET /bookcover/:id -- real cover for the epub; ESCAPED SVG placeholder
   const svg = await placeholder.text();
   assert.ok(svg.includes('PDF'), 'format badge present');
   // Escaping: give the pdf a hostile title and re-fetch.
-  await updateDatabase((db) => {
+  await updateDatabase(() => booksDb.mutate((db) => {
     db.books.items[pdfId] = { ...db.books.items[pdfId], title: '<script>alert(1)</script>' };
     return true;
-  });
+  }));
   const hostile = await (await fetch(`${base}/bookcover/${pdfId}`)).text();
   assert.ok(!hostile.includes('<script>'), 'a hostile title never becomes markup in the placeholder');
   assert.ok(hostile.includes('&lt;script&gt;'), 'it renders as text');
@@ -133,7 +129,7 @@ test('T5: POST /api/books/:id/cover -- magic-sniffed, no-clobber, pageCount ride
     method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: realJpeg,
   });
   assert.deepEqual(await ok.json(), { applied: true });
-  const item = loadDatabase().books.items[pdfId];
+  const item = booksDb.read().items[pdfId];
   assert.equal(item.hasCover, true);
   assert.equal(item.pageCount, 42);
   // No-clobber: a second post reports applied:false and changes nothing.
@@ -141,7 +137,7 @@ test('T5: POST /api/books/:id/cover -- magic-sniffed, no-clobber, pageCount ride
     method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: realJpeg,
   });
   assert.equal((await again.json()).applied, false);
-  assert.equal(loadDatabase().books.items[pdfId].pageCount, 42, 'pageCount never re-written');
+  assert.equal(booksDb.read().items[pdfId].pageCount, 42, 'pageCount never re-written');
 });
 
 test('T6: progress pings coalesce (N pings -> ONE write), read-your-writes before flush, locator validation per format', async () => {

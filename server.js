@@ -527,6 +527,7 @@ const likedStore = createLikedStore(dbAdapter);
 // hoisted; every mutate() runs inside an updateDatabase tick).
 const tvDb = tvStore.createTvStore(dbAdapter, { inSaveTransaction });
 const musicDb = musicStore.createMusicStore(dbAdapter, { inSaveTransaction });
+const booksDb = booksStore.createBooksStore(dbAdapter, { inSaveTransaction });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -578,11 +579,8 @@ function loadDatabase() {
   // which would silently break every consumer that (correctly, per the old
   // invariant) assumes `db.books.progress` exists whenever `db.books` does.
   // The containers themselves stay lazy (ensure* call-site-owned, as today).
-  if (db.books && typeof db.books === 'object') {
-    for (const k of ['items', 'progress', 'audio']) {
-      if (!db.books[k] || typeof db.books[k] !== 'object' || Array.isArray(db.books[k])) db.books[k] = {};
-    }
-  }
+  // (v1.42-v1.293: the books sub-keys were backfilled here. Wave 5 moved the
+  // books namespace to its tables behind booksDb - no longer a key of this object.)
   if (db.ytdlp && typeof db.ytdlp === 'object') {
     for (const k of ['downloadMeta', 'channelAvatars']) {
       if (!db.ytdlp[k] || typeof db.ytdlp[k] !== 'object' || Array.isArray(db.ytdlp[k])) db.ytdlp[k] = {};
@@ -2187,7 +2185,7 @@ const ttsQueue = [];
 let ttsBusy = false;
 
 function ttsSettings() {
-  return booksStore.readBooks(getCachedDatabase()).settings || {};
+  return booksDb.read().settings || {};
 }
 
 // The cache key folds in engine/voice/rate/ttsRev, so a settings change
@@ -2210,7 +2208,7 @@ function ttsBlocksPath(key) { return path.join(TTS_CACHE_DIR, `${key}.blocks.jso
 // /status reported 'ready' for -> a spurious 404 (gate finding, v1.38.0). Falls
 // back to the current-settings key only when no status row exists yet.
 function ttsServeKey(bookId, spineIndex) {
-  const audio = booksStore.readBooks(getCachedDatabase()).audio[bookId];
+  const audio = booksDb.read().audio[bookId];
   const entry = audio && audio[String(spineIndex)];
   return (entry && entry.key) ? entry.key : ttsCacheKey(bookId, spineIndex);
 }
@@ -2219,7 +2217,7 @@ function ttsServeKey(bookId, spineIndex) {
 // an unknown/non-epub book or an out-of-range chapter -- every caller (worker
 // AND routes) funnels validation through this ONE place.
 function resolveTtsChapter(bookId, spineIndex) {
-  const book = booksStore.readBooks(getCachedDatabase()).items[bookId];
+  const book = booksDb.read().items[bookId];
   if (!book || book.format !== 'epub' || !Array.isArray(book.spine)) return null;
   const idx = Number(spineIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= book.spine.length) return null;
@@ -2229,7 +2227,7 @@ function resolveTtsChapter(bookId, spineIndex) {
 // Set status without awaiting -- the no-clobber mutator is idempotent and the
 // worker's own control flow never depends on the write having landed.
 function setTtsStatus(bookId, spineIndex, patch) {
-  booksStore.setBookAudioStatus({ updateDatabase }, bookId, spineIndex, { ...patch, updatedAt: new Date().toISOString() })
+  booksStore.setBookAudioStatus({ updateDatabase, booksDb }, bookId, spineIndex, { ...patch, updatedAt: new Date().toISOString() })
     .catch((err) => console.error(`TTS: failed to persist status for ${bookId}/${spineIndex}:`, err && err.message));
 }
 
@@ -2355,7 +2353,7 @@ async function runChapterSynthesis({ bookId, spineIndex, key }) {
     // The book was pruned/removed between enqueue and now. Drop the stale
     // pending row WITHOUT recreating an audio map for a gone book
     // (clearBookAudioStatus is a no-op when the map is already absent).
-    booksStore.clearBookAudioStatus({ updateDatabase }, bookId, spineIndex)
+    booksStore.clearBookAudioStatus({ updateDatabase, booksDb }, bookId, spineIndex)
       .catch((err) => console.error(`TTS: failed to clear status for a vanished book ${bookId}/${spineIndex}:`, err && err.message));
     return { ok: false };
   }
@@ -2440,7 +2438,7 @@ function reconcileTtsCacheAtBoot() {
       }
     }
   } catch (_) { /* no tts-cache dir yet */ }
-  updateDatabase((db) => {
+  updateDatabase(() => booksDb.mutate((db) => {
     const ns = booksStore.ensureBooks(db);
     let changed = false;
     for (const bookId of Object.keys(ns.audio)) {
@@ -2454,7 +2452,7 @@ function reconcileTtsCacheAtBoot() {
       if (Object.keys(chapters).length === 0) { delete ns.audio[bookId]; changed = true; }
     }
     return changed;
-  }).catch((err) => console.error('TTS boot reconcile failed:', err && err.message));
+  })).catch((err) => console.error('TTS boot reconcile failed:', err && err.message));
 }
 
 // ---- Pre-transcode queue (AVI and other non-web containers -> MP4) ----
@@ -6055,7 +6053,7 @@ app.post('/api/auth/setup', async (req, res) => {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // Read the pre-auth global state to adopt (once, before the tx).
     const db = getCachedDatabase();
-    const books = booksStore.readBooks(db);
+    const books = booksDb.read();
     const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
     const adoption = {
       progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
@@ -6935,7 +6933,7 @@ app.post('/api/config', async (req, res) => {
     // inside a configured BOOK root is rejected, or a later media save
     // could silently double-own a subtree the two scanners' prune/merge
     // semantics would then fight over.
-    const bookRoots = booksStore.ensureBooks(loadDatabase()).folders;
+    const bookRoots = booksDb.read().folders; // Wave 5: the books roots are a table
     for (const bookRoot of bookRoots) {
       const resolvedBookRoot = path.resolve(bookRoot);
       if (resolved === resolvedBookRoot || ytdlpArgs.isPathUnder(resolved, resolvedBookRoot) || ytdlpArgs.isPathUnder(resolvedBookRoot, resolved)) {
@@ -7103,9 +7101,8 @@ async function runBookScan() {
   // Phase-1 read (no lock): folders + the previous items snapshot. All the
   // slow work (walk, zip reads, cover extraction) happens against this
   // snapshot, off the writer lock -- the media scan's own discipline.
-  const db = loadDatabase();
   const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
-  const ns = booksStore.ensureBooks(db);
+  const ns = booksDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
   const { items, covers, survivingIds, missingRoots, erroredDirs } = await booksScan.collectBooks(folders, ns.items, getMediaId);
@@ -7133,8 +7130,9 @@ async function runBookScan() {
   const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   const prunedAudioKeys = []; // v1.38.0: TTS cache keys of pruned books, deleted below
-  await updateDatabase((fresh) => {
-    const freshNs = booksStore.ensureBooks(fresh);
+  // Wave 5: the merge runs against a FRESH holder; the diff rides the doc commit.
+  await updateDatabase(() => booksDb.mutate((holder) => {
+    const freshNs = booksStore.ensureBooks(holder);
     // v1.37.0 gate fix (QA CRITICAL #2 -- the v1.33 tech-debt-#10 Option-C
     // lesson, now applied to books): a root whose mountpoint DIRECTORY
     // still exists but yielded ZERO files this pass, while the library
@@ -7198,7 +7196,7 @@ async function runBookScan() {
     }
     freshNs.items = next;
     return true;
-  });
+  }));
 
   // v1.43: per-user reading positions are book-id-keyed carriers -- pruned
   // books shed them too (post-commit, the removeMediaState posture; one
@@ -7264,7 +7262,7 @@ async function scanBooks() {
 }
 
 app.get('/api/books/config', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const folders = ns.folders || [];
   // v1.128 Wave B (L2): common.js reads this on every page to decide whether
   // to show the Books nav tab, so members reach it - but it leaked every book
@@ -7333,10 +7331,7 @@ app.post('/api/books/config', async (req, res) => {
     }
   }
   try {
-    await updateDatabase((db) => {
-      booksStore.ensureBooks(db).folders = resolved;
-      return true;
-    });
+    await updateDatabase(() => booksDb.mutate((h) => { booksStore.ensureBooks(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
   } catch (err) {
     return res.status(500).json({ error: `Could not save book folders: ${err.message}` });
   }
@@ -7403,7 +7398,7 @@ function flushPendingBookProgress() {
   const snapshot = [...pendingBookProgress.values()];
   pendingBookProgress.clear();
   return updateDatabase((db) => {
-    const ns = booksStore.readBooks(db);
+    const ns = booksDb.read();
     // Same deleted-between-ping-and-flush guard as the media coalescer: a
     // flush must never resurrect progress for a pruned book. OWN-property
     // (the v1.42 __proto__ lesson), same as the media flush above.
@@ -7479,7 +7474,7 @@ function publicBookListItem(item, userId, likedSet, finishedMap) {
 }
 
 app.get('/api/books', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   let list = Object.values(ns.items).filter((i) => bookVisibleTo(req, i)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
   if (search !== '') {
@@ -7517,7 +7512,7 @@ app.get('/api/books', (req, res) => {
 // state (T10's pin gesture). Exposing shelf DIR paths to the operator's own
 // UI is the same trust level as /api/config exposing db.folders.
 app.get('/api/books/folders', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const byDir = new Map();
   for (const item of Object.values(ns.items)) {
     if (typeof item.filePath !== 'string') continue;
@@ -7555,7 +7550,7 @@ app.get('/api/books/pins', (req, res) => {
 // (the id persists into user_book_liked); the DELETE is idempotent like
 // every other unlike.
 app.post('/api/books/liked/:id', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -7571,7 +7566,7 @@ app.delete('/api/books/liked/:id', (req, res) => {
 // {finished:false} clears, anything else sets). No auto threshold - a text
 // position's "end" is format-dependent (exec plan, morning question M1).
 app.post('/api/books/:id/finished', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -7582,7 +7577,7 @@ app.post('/api/books/:id/finished', (req, res) => {
 });
 
 app.get('/api/books/:id', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
@@ -7603,7 +7598,7 @@ const BOOK_CONTENT_TYPES = { epub: 'application/epub+zip', pdf: 'application/pdf
 // future writer of items[*].filePath MUST re-establish confinement here or
 // this becomes an arbitrary-file-read.
 app.get('/book/:id/file', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC: private library
@@ -7632,7 +7627,7 @@ app.get('/book/:id/file', (req, res) => {
 // Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
 // configured; 404 for an unknown/non-epub book or out-of-range chapter.
 app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
-  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  const rbacBook = booksDb.read().items[req.params.id]; // v1.80 RBAC
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
   if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
@@ -7648,7 +7643,7 @@ app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
 app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
   const idx = Number(req.params.spineIndex);
   if (!Number.isInteger(idx) || idx < 0) return res.json({ status: 'none', durationSec: null });
-  const audio = booksStore.readBooks(getCachedDatabase()).audio[req.params.id];
+  const audio = booksDb.read().audio[req.params.id];
   const entry = audio && audio[String(idx)];
   if (!entry) return res.json({ status: 'none', durationSec: null });
   res.json({ status: entry.status, durationSec: typeof entry.durationSec === 'number' ? entry.durationSec : null });
@@ -7656,7 +7651,7 @@ app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
 
 // Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
 app.get('/book/:id/tts/:spineIndex', (req, res) => {
-  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  const rbacBook = booksDb.read().items[req.params.id]; // v1.80 RBAC
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
@@ -7672,7 +7667,7 @@ app.get('/book/:id/tts/:spineIndex', (req, res) => {
 
 // The blockIndex -> startSec map the reader uses to seek to the right paragraph.
 app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
-  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC: private book TEXT
+  const rbacBook = booksDb.read().items[req.params.id]; // v1.80 RBAC: private book TEXT
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
@@ -7684,7 +7679,7 @@ app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
 });
 
 app.get('/bookcover/:id', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
@@ -7740,7 +7735,7 @@ app.post(
   '/api/books/:id/cover',
   express.raw({ type: Object.keys(BOOK_COVER_TYPES), limit: BOOK_COVER_MAX_BYTES }),
   async (req, res) => {
-    const ns = booksStore.readBooks(getCachedDatabase());
+    const ns = booksDb.read();
     const item = ns.items[req.params.id];
     if (!item) return res.status(404).json({ error: 'Book not found' });
     // v1.123 T3 (security): visibility axis - this writes a SHARED cover for the
@@ -7770,7 +7765,7 @@ app.post(
     const rawPages = parseInt(req.query.pages, 10);
     const pageCount = Number.isInteger(rawPages) && rawPages > 0 && rawPages < 100000 ? rawPages : undefined;
     try {
-      await updateDatabase((db) => {
+      await updateDatabase(() => booksDb.mutate((db) => {
         const freshNs = booksStore.ensureBooks(db);
         const fresh = freshNs.items[item.id];
         if (!fresh) return false; // pruned between read and write: drop
@@ -7780,7 +7775,7 @@ app.post(
         }
         if (pageCount !== undefined && fresh.pageCount === undefined) fresh.pageCount = pageCount;
         return true;
-      });
+      }));
     } catch (err) {
       return res.status(500).json({ error: `Cover stored but the record update failed: ${err.message}` });
     }
@@ -7796,7 +7791,7 @@ app.post(
 // the reducer output to the user's user_book_pins rows -- the validation
 // (root confinement) is unchanged.
 app.post('/api/books/pins', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
@@ -7855,7 +7850,7 @@ app.get('/podcasts', (req, res) => {
 });
 
 app.post('/api/books/:id/progress', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   // OWN-property check (v1.42 __proto__ lesson): this id persists into
   // user_book_progress -- see POST /api/progress's identical guard.
   const item = Object.prototype.hasOwnProperty.call(ns.items, req.params.id) ? ns.items[req.params.id] : undefined;
@@ -8318,7 +8313,7 @@ app.post('/api/music/config', async (req, res) => {
   // direction so ownership is order-independent.
   const cached = getCachedDatabase();
   const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
-  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  const bookFolders = (booksDb.read().folders || []).map((f) => path.resolve(f));
   for (const musicRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
       if (musicRoot === mediaRoot || ytdlpArgs.isPathUnder(musicRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, musicRoot)) {
@@ -9080,7 +9075,7 @@ app.post('/api/tv/config', async (req, res) => {
   // other direction (adding one of THOSE under a Shows root).
   const cached = getCachedDatabase();
   const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
-  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  const bookFolders = (booksDb.read().folders || []).map((f) => path.resolve(f));
   const musicFolders = (musicDb.read().folders || []).map((f) => path.resolve(f));
   const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
   for (const tvRoot of resolved) {
@@ -9962,13 +9957,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['metadata', 'books', 'podcasts', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata', 'podcasts', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
 // Wave 4 (second group): the folder config keys - same keys, same shapes.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music', 'books'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9994,6 +9989,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.liked = likedStore.list();                  // Wave 4: the frozen likes, like order
       bundle.tv = tvDb.read();                           // Wave 5: the Shows namespace, its old container shape
       bundle.music = musicDb.read();                     // Wave 5: the music namespace, its old container shape
+      bundle.books = booksDb.read();                     // Wave 5: the books namespace, its old container shape
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10271,7 +10267,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'podcasts', 'ytdlp']) {
+  for (const container of ['podcasts', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -11196,7 +11192,7 @@ app.post('/api/cache/clear', (req, res) => {
   }
   // Drop the status rows whose files we deleted, but KEEP a spared (actively
   // streaming) chapter's row so its /status stays truthful while it plays on.
-  updateDatabase((db) => {
+  updateDatabase(() => booksDb.mutate((db) => {
     const ns = booksStore.ensureBooks(db);
     for (const bookId of Object.keys(ns.audio)) {
       const chapters = ns.audio[bookId];
@@ -11207,7 +11203,7 @@ app.post('/api/cache/clear', (req, res) => {
       if (Object.keys(chapters).length === 0) delete ns.audio[bookId];
     }
     return true;
-  }).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
+  })).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
   res.json({ success: true, removed, freedBytes });
 });
 
@@ -11249,6 +11245,7 @@ app.get('/api/search', (req, res) => {
     // the music player. Lazy (only the music arm calls it); v1.242: the same
     // unconditional eligibility + RBAC as /api/music (no opt-in).
     musicTracks: () => musicDb.read().tracks, // Wave 5: the native music tracks, from their table
+    booksItems: () => booksDb.read().items, // Wave 5: the book items, from their table
     musicLibraryTracks: () => {
       const ns = musicDb.read();
       const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
@@ -12978,7 +12975,7 @@ function shapedLikedTrackItems(db, userId) {
 function shapedLikedBookItems(db, userId) {
   const likedRows = userStore.getBookLiked(userId);
   if (!likedRows.length) return [];
-  const ns = booksStore.readBooks(db);
+  const ns = booksDb.read();
   const finishedMap = userStore.getBookFinished(userId);
   const items = [];
   for (const row of likedRows) {
@@ -13054,7 +13051,7 @@ app.get('/api/liked', (req, res) => {
   // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
   const likedMusicNs = musicDb.read();
   const likedPodNs = podcastStore.readPodcasts(db);
-  const likedBooksNs = booksStore.readBooks(db);
+  const likedBooksNs = booksDb.read();
   others = others.filter((o) => {
     if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
     if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
@@ -17101,7 +17098,7 @@ app.get('/api/critters/archive', (req, res) => {
 
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
-  const books = booksStore.readBooks(db);
+  const books = booksDb.read();
   // v1.41.0 (Dean): the Stats page is now the whole-library + About hub --
   // fold in book inventory and the version/links "system" block. yt-dlp version
   // moved here from the Subscriptions page; rows the client hides when a thing
@@ -18801,6 +18798,7 @@ podcasts.registerRoutes(app, {
   getSettings: () => settingsStore.get(), // Wave 4
   getLibraryFolders: () => folderStore.list(), // Wave 4
   getMusicFolders: () => musicDb.read().folders, // Wave 5
+  getBookFolders: () => booksDb.read().folders, // Wave 5
   dataDir: DATA_DIR,
   userStore,
   // v1.73: the poll's notification bridge (route-triggered checks run the
@@ -18978,6 +18976,7 @@ if (require.main === module) {
       getSettings: () => settingsStore.get(), // Wave 4: app settings are a store
       getLibraryFolders: () => folderStore.list(), // Wave 4: the root list is a table
       getMusicFolders: () => musicDb.read().folders, // Wave 5
+      getBookFolders: () => booksDb.read().folders, // Wave 5
       dataDir: DATA_DIR,
       userStore,
       // v1.73: the timer-run poll notifies + pushes exactly like the
@@ -19193,6 +19192,7 @@ module.exports = {
   likedStore, // Wave 4
   tvDb, // Wave 5
   musicDb, // Wave 5
+  booksDb, // Wave 5
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.
