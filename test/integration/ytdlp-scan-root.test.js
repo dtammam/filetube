@@ -47,7 +47,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
+const { app, scanDirectories, loadDatabase, updateDatabase, inSaveTransaction, getMediaId, transcodedPath } = require('../../server');
 const { settingsStore, progressStore, folderStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
@@ -290,7 +290,7 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
     process.env.FILETUBE_YTDLP_ENABLED = 'true';
     process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = upgradeDir;
     const config = ytdlp.parseYtdlpConfig(process.env);
-    const deps = { updateDatabase, loadDatabase, scanDirectories, getMediaId, getLibraryFolders: () => folderStore().list(), removeLibraryFolder: (p) => folderStore().remove(p) }; // Wave 4: the root list is a table behind a deps seam
+    const deps = { updateDatabase, loadDatabase, scanDirectories, getMediaId, getLibraryFolders: () => folderStore().list(), removeLibraryFolder: (p) => folderStore().remove(p), inSaveTransaction }; // Wave 4: the root list is a table behind a deps seam (the prune rides the commit)
 
     // Directly await the migration (the production function `startBackground`
     // itself calls) for a deterministic assertion, independent of any timer

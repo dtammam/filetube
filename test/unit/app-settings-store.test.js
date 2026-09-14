@@ -202,7 +202,7 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').
 test('source lock: server.js never names app_settings or the dead doc key in CODE and calls the store at every seam; the INSERT text stays in the shared kv definition', () => {
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   assert.ok(!/app_settings/.test(server));
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\\w*|mdb|loaded|persisted|snapshot)\.settings\b/.test(server), 'no doc-model settings access survives (every holder name the doc object has worn)');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot)\.settings\b/.test(server), 'no doc-model settings access survives (every holder name the doc object has worn)');
   assert.ok(!/(getCachedDatabase|loadDatabase)\(\)\.settings\b/.test(server), 'nor through the read cache / a fresh load');
   assert.ok(!/withDefaultSettings/.test(server), 'the load-time merge is gone (the store merges)');
   for (const call of ['settingsStore.get(', 'settingsStore.getKey(', 'settingsStore.set(', 'settingsStore.update(', 'settingsStore.remove(', 'settingsStore.has(']) {
@@ -215,4 +215,24 @@ test('source lock: server.js never names app_settings or the dead doc key in COD
   assert.deepStrictEqual(writers, [], 'no literal INSERT for the table anywhere - the kv definition interpolates its own table name');
   const src = fs.readFileSync(path.join(ROOT, 'lib', 'config', 'settings.js'), 'utf8');
   assert.match(src, /defineKvStore\(\{ label: 'settings', table: 'app_settings' \}\)/);
+});
+
+test('migration stamps ride their OWN commits: v24 lands and v25 fails -> the stamp is 24 (the settings rows kept, the doc row gone) - a <=v1.293 build refuses it instead of booting a partial database and defaulting the settings (adversarial pass A W1)', () => {
+  adapter.close();
+  let raw = openRaw(path.join(dir, SQLITE_FILENAME));
+  raw.exec('DROP TABLE app_settings; DROP TABLE library_folders; DROP TABLE library_folder_settings; DROP TABLE channel_folder_display_names; DROP TABLE media_liked; PRAGMA user_version = 23');
+  const ins = raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)');
+  ins.run('settings', JSON.stringify({ scanIntervalMinutes: 60, pruneMissing: false }));
+  ins.run('folderSettings', '{not json'); // v25 will fail on this row
+  raw.close();
+  assert.throws(() => new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} }), /JSON|Unexpected/);
+  raw = openRaw(path.join(dir, SQLITE_FILENAME));
+  assert.strictEqual(raw.prepare('PRAGMA user_version').get().user_version, 24, 'the stamp is the last COMMITTED floor, not the pre-migration one');
+  assert.deepStrictEqual(raw.prepare('SELECT key, json FROM app_settings ORDER BY key').all().map((r) => [r.key, r.json]), [['pruneMissing', 'false'], ['scanIntervalMinutes', '60']], 'v24 committed its rows');
+  assert.strictEqual(raw.prepare("SELECT COUNT(*) AS c FROM doc_single WHERE name = 'settings'").get().c, 0, 'and deleted the doc row (a re-run of v24 must not overwrite the rows with defaults)');
+  raw.prepare("UPDATE doc_single SET json = '{}' WHERE name = 'folderSettings'").run();
+  raw.close();
+  reopen();
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'repaired: the remaining blocks run to the current version');
+  assert.deepStrictEqual(createSettingsStore(adapter).getRaw(), { scanIntervalMinutes: 60, pruneMissing: false }, 'the settings survived the partial run intact');
 });

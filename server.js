@@ -497,9 +497,6 @@ function validateTranscriptAiPrompts(raw, existing) {
   return { ok: true, value: out };
 }
 
-// Per-key merge so a partial/older `settings` object keeps whatever keys it
-// already has and only gets the missing ones defaulted (mirrors the
-// `folderSettings` backfill pattern below).
 // Wave 4 of the relational-migration arc: the app settings live in
 // app_settings (one row per key) behind lib/config/settings.js. The store
 // merges DEFAULT_SETTINGS (this file's policy) on every get(), which is what
@@ -1707,7 +1704,7 @@ function selectAgedOut(files, maxAgeMs, now, protectedPaths) {
 
 // Filesystem wrapper around the pure `selectAgedOut` selector — the D3 age-
 // retention sweep. Structured like `evictTranscodeCache`, but kept as a
-// SEPARATE step (never folded in): reads db.settings.cacheMaxAgeDays (0/falsy
+// SEPARATE step (never folded in): reads the cacheMaxAgeDays setting (0/falsy
 // = "Off", in which case selectAgedOut always returns [] and nothing is
 // touched — evictTranscodeCache's size-cap LRU path stays completely
 // unaffected). Builds {path, lastServedAt, atimeMs} for every non-*.tmp.mp4
@@ -5056,8 +5053,9 @@ async function runScanDirectories() {
   // Re-read-merge-on-save, now formalized as ONE serialized updateDatabase
   // mutator: the scan holds its own Phase-1 `db` snapshot across many awaited
   // extractMetadataAndThumbnail calls, so writing it back directly would
-  // clobber ANY db.settings/folders/folderSettings/progress/lastServedAt/
-  // transcodeStatus written concurrently (POST /api/settings, POST
+  // clobber ANY metadata field written concurrently (lastServedAt /
+  // transcodeStatus; the settings, folder config and progress are their own
+  // tables since Waves 2-4 and never ride this object) (POST /api/settings, POST
   // /api/config, recordServed, watch-progress, a transcode worker's
   // setTranscodeStatus) during the scan. `updateDatabase` hands the mutator a
   // FRESH db loaded INSIDE the lock -- there is no separate `loadDatabase()`
@@ -6734,18 +6732,25 @@ app.post('/api/folders/display-name', async (req, res) => {
   if (!visibleExists) return res.status(404).json({ error: 'No such folder' });
   const rawName = typeof body.name === 'string' ? body.name.trim() : '';
   const name = rawName.slice(0, 150); // the pin-label bound
-  await updateDatabase(() => {
-    // Wave 4: the map is a table; the write rides the doc commit's transaction.
-    const current = folderDisplayNameStore.get(folderName);
-    if (name === '') {
-      if (current === undefined) return false; // nothing to clear - skip the save
-      inSaveTransaction(() => folderDisplayNameStore.remove(folderName));
+  try {
+    await updateDatabase(() => {
+      // Wave 4: the map is a table; the write rides the doc commit's transaction.
+      const current = folderDisplayNameStore.get(folderName);
+      if (name === '') {
+        if (current === undefined) return false; // nothing to clear - skip the save
+        inSaveTransaction(() => folderDisplayNameStore.remove(folderName));
+        return true;
+      }
+      if (current === name) return false; // unchanged - skip the save
+      inSaveTransaction(() => folderDisplayNameStore.set(folderName, name));
       return true;
-    }
-    if (current === name) return false; // unchanged - skip the save
-    inSaveTransaction(() => folderDisplayNameStore.set(folderName, name));
-    return true;
-  });
+    });
+  } catch (err) {
+    // Express 4 never observes a rejected async handler: an unguarded failed
+    // save HUNG this request (gate pass A fix round, the Wave 3 class) - 500.
+    console.error('Error saving folder display name:', err);
+    return res.status(500).json({ error: `Could not save display name: ${err.message}` });
+  }
   res.json({ success: true, folderName, name: name === '' ? null : name });
 });
 
@@ -12722,8 +12727,9 @@ app.delete('/api/videos/:id', async (req, res) => {
 // (not on `db.metadata[id]`, not in settings) to ever drift out of sync
 // with it. v1.43 (chunk 4b): membership lives in the relational
 // `user_liked` table keyed by (user_id, media_id) -- a Like belongs to a
-// USER. The doc-table `db.liked` array is retained untouched as the frozen
-// pre-auth record (adopted into the first admin at /welcome); no reader
+// USER. The frozen pre-auth `liked` record (media_liked since Wave 4, was the
+// doc-table array) is retained untouched, adopted into the first admin at
+// /welcome; no reader
 // falls back to it (the total-cutover contract, design finding #6). The
 // mutations below are direct synchronous upserts/deletes on the warm
 // SQLite handle -- still exactly one durable write per invocation
@@ -13304,9 +13310,9 @@ app.delete('/api/trash/:id', async (req, res) => {
 // functions below exist specifically to prevent that: `computeMoveTarget`
 // resolves + CONFINES the destination (pure, zero filesystem access) before
 // any FS op ever runs; `moveItemToFolder` does the FS move, then re-keys
-// `db.metadata`/`db.liked` (doc) plus the progress / tombstone / view-count rows
-// (relational since Waves 1-2: the first two inside the same save transaction,
-// the counter post-commit in rekeyInFlightState) and renames the
+// `db.metadata` (doc) plus the progress / tombstone / frozen-like rows
+// (relational since Waves 2-4, inside the same save transaction) and the
+// view counter (post-commit in rekeyInFlightState) and renames the
 // thumbnail/transcode/background-audio/subtitle sidecars from the OLD
 // path-derived id to the NEW one, all inside ONE `updateDatabase` mutator --
 // so the next scan finds the file already indexed under its new-path id and
@@ -18588,7 +18594,7 @@ ytdlp.registerRoutes(app, {
     replace: (userId, pins) => userStore.setChannelPins(userId, pins),
   },
   // v1.41.6: the reheat's import-relocation seam -- server.js owns the move +
-  // id re-key machinery (`moveItemToFolder`) and `db.settings`, so the yt-dlp
+  // id re-key machinery (`moveItemToFolder`) and the settings store, so the yt-dlp
   // module gets this deps-injected like every other server-owned primitive
   // (the same circular-require-avoiding bridge `recordRepulledItemMeta` uses).
   // The batch calls it per item, AFTER that item's hydration has persisted.
@@ -18600,7 +18606,7 @@ ytdlp.registerRoutes(app, {
   // killing the text-wordmark FOUC there too.
   sendShellHtml,
   // v1.41.7 (Dean has NO media backup): the DRY-RUN preview seam. server.js owns
-  // the shared `planImportRelocation` decision + `db.settings`, so the yt-dlp
+  // the shared `planImportRelocation` decision + the settings store, so the yt-dlp
   // module's `POST /api/ytdlp/repull-metadata/preview` route gets this deps-
   // injected like every other server-owned primitive. It is READ-ONLY -- it
   // never writes db.json, moves a file, or spawns anything.
@@ -18907,7 +18913,8 @@ if (require.main === module) {
       getLibraryFolders: () => folderStore.list(),
       removeLibraryFolder: (p) => folderStore.remove(p),
       inSaveTransaction,
-      setFolderDisplayName: (name, value) => inSaveTransaction(() => folderDisplayNameStore.set(name, value)), // Wave 4: the timer-run heal
+      // (the channel heal's setFolderDisplayName dep lives in the ROUTES bundle -
+      // the heal batch runs from there, never from the timer poll.)
     });
 
     // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll

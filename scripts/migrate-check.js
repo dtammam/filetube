@@ -97,7 +97,14 @@ try {
   // empty map, or an empty root list, assembles as absent, exactly like an
   // empty doc_kv namespace does.
   for (const key of ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folderSettings', 'folderDisplayNames']) dropEmpty(expected, key);
-  if (Array.isArray(expected.folders) && expected.folders.length === 0) delete expected.folders;
+  // The two ordered lists: the importer collapses an exact duplicate keep-first
+  // (set semantics) and an empty list assembles as absent - compare what it
+  // will actually hold.
+  for (const [key, normalize] of [['folders', require('../lib/config/folders').normalizeList], ['liked', require('../lib/media/liked').normalizeList]]) {
+    if (!Array.isArray(expected[key])) continue;
+    const kept = normalize(expected[key]);
+    if (kept.length === 0) delete expected[key]; else expected[key] = kept;
+  }
 
   const assembled = readPersistedDatabase(tmpDir);
   const a = JSON.stringify(sortKeysDeep(assembled));

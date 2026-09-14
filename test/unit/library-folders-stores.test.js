@@ -225,7 +225,7 @@ test('source lock: server.js never names the three tables or the dead doc keys i
   const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
   for (const t of ['library_folders', 'library_folder_settings', 'channel_folder_display_names']) assert.ok(!server.includes(t), t);
   // Every holder name the doc object has worn in this file (the gate lesson: `cachedForBooks`, `cached` and `mdb` hid three reads from the first census).
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\\w*|mdb|loaded|persisted|snapshot)\.(folders|folderSettings|folderDisplayNames)\b/.test(server), 'no doc-model access to the dead keys survives');
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot)\.(folders|folderSettings|folderDisplayNames)\b/.test(server), 'no doc-model access to the dead keys survives');
   assert.ok(!/(getCachedDatabase|loadDatabase)\(\)\.(folders|folderSettings|folderDisplayNames)\b/.test(server));
   for (const call of ['folderStore.list(', 'folderStore.replaceAll(', 'folderStore.remove(', 'folderStore.size(', 'folderSettingsStore.getAll(', 'folderSettingsStore.replaceAll(', 'folderDisplayNameStore.getAll(', 'folderDisplayNameStore.get(', 'folderDisplayNameStore.set(', 'folderDisplayNameStore.remove(']) {
     assert.ok(server.includes(call), `server.js calls ${call}`);

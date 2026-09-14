@@ -51,7 +51,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, scanState, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, scanState, scanDirectories, loadDatabase, updateDatabase, getMediaId, inSaveTransaction } = require('../../server');
 const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
@@ -277,7 +277,7 @@ test('migrateStaleDownloadDirFromFolders still strips a REAL persisted db.folder
     process.env.FILETUBE_YTDLP_ENABLED = 'true';
     process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = staleDir;
     const config = ytdlp.parseYtdlpConfig(process.env);
-    const deps = { updateDatabase, loadDatabase, getLibraryFolders: () => folderStore().list(), removeLibraryFolder: (p) => folderStore().remove(p) }; // Wave 4: the root list is a table behind a deps seam
+    const deps = { updateDatabase, loadDatabase, getLibraryFolders: () => folderStore().list(), removeLibraryFolder: (p) => folderStore().remove(p), inSaveTransaction }; // Wave 4: the root list is a table behind a deps seam (the prune rides the commit)
 
     await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
 

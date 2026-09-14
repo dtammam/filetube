@@ -112,3 +112,26 @@ test('the bundle carries `liked` in like order and a restore round-trips it; a m
   assert.strictEqual(r2.status, 200);
   assert.deepStrictEqual(likedStore.list(), [], 'a bundle without the key restores to an empty list (the bundle is the whole state)');
 });
+
+test('move: a FAILED doc save leaves the frozen like on the OLD id (no half-carried row); the committed move carries it in its slot (adversarial pass A W4)', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-mv-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-mv-dst-'));
+  const filePath = path.join(srcDir, 'liked.mp4');
+  fs.writeFileSync(filePath, 'bytes');
+  const oldId = getMediaId(filePath);
+  const newId = getMediaId(path.join(dstDir, 'liked.mp4'));
+  seedState({
+    folders: [srcDir, dstDir], folderSettings: {}, liked: ['other-id', oldId, 'after'], settings,
+    metadata: { [oldId]: { id: oldId, name: 'liked.mp4', title: 'liked', filePath, folderName: path.basename(srcDir), rootFolder: srcDir, size: 5, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10 } },
+  });
+  const move = () => fetch(`${base}/api/videos/${oldId}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetFolder: dstDir }) });
+  __failNextSaveForTests(new Error('simulated save failure'));
+  const failed = await move();
+  assert.strictEqual(failed.status, 500, await failed.text());
+  assert.ok(loadDatabase().metadata[oldId], 'the item is still under the OLD id');
+  assert.deepStrictEqual(likedStore.list(), ['other-id', oldId, 'after'], 'a failed move carries nothing - the like still points at the item that exists');
+  assert.ok(fs.existsSync(filePath), 'the file did not move either');
+  const ok = await move();
+  assert.strictEqual(ok.status, 200, await ok.text());
+  assert.deepStrictEqual(likedStore.list(), ['other-id', newId, 'after'], 'the committed move carried the like, same slot');
+});

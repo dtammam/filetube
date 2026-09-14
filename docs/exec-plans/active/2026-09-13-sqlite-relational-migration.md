@@ -475,12 +475,44 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     seed helper routes the five keys REPLACE-ONLY-WHEN-PRESENT (a `loadDatabase()`-derived
     object no longer carries them - the first cut wiped them on re-seed); the crash probe
     writes two kv rows per burst; the adapter test's upgrade cases plant a v17 doc row raw.
-    Five new test files (`db-kv-list-stores`, `app-settings-store`, `library-folders-stores`,
-    `media-liked-store`, `app-settings-atomicity`, `media-liked-carriers`).
+    Six new test files (`db-kv-list-stores`, `app-settings-store`, `library-folders-stores`,
+    `media-liked-store`, `app-settings-atomicity`, `media-liked-carriers`) + the gate's two
+    (`library-folders-atomicity`, the move carrier case in `media-liked-carriers`).
   - Baseline after: doc_kv **9**, doc_single **13**, total **22**, schema **26**, server.js
-    **19296** lines, tests 8416 / 672 files. Full suite Node 22 before the gate:
+    **19296** lines, tests 8426 / 674 files (re-derived at the gate; the first figure was a stale run). Full suite Node 22 before the gate:
     8581 / 8581 / 0 fail / 0 skipped. `moveItemToFolder` extraction deferred to Wave 7.
-  - Gate pass A: pending (spawned after this record).
+  - **Gate pass A (both seats, one fix round + delta).** No CRITICAL. QA W1: two of the
+    three new source locks had an INERT holder arm (`cached\\w*` typed into a regex
+    literal - a backslash and zero-or-more `w`; the mutant "reinstate `cached.folders`"
+    survived) - fixed, re-verified by `re.test('cachedForBooks.folders')`. QA W2 = ADV W2:
+    `scripts/migrate-check.js` refused every db.json with `liked: []` (the shape every
+    v1.30+ file carries) and a duplicated list entry - it now normalizes the two lists
+    like the importer and drops the empties (test-bound). ADV W1: the migration stamp was
+    written once at the END, so a v25/v26 failure left v24 COMMITTED under a v23 stamp and
+    v1.293.1 booted that partial database, defaulted the settings it no longer found and a
+    re-run of v24 overwrote the migrated rows (measured settings loss) - v24/v25/v26 now
+    stamp their own floor inside their commit (test-bound: v24 lands, v25 fails -> stamp
+    24, rows kept, doc row gone). The v21-v23 blocks keep the end stamp (append-only
+    rule; their partial states crash the old build rather than default). ADV W3 = QA W3:
+    the config POST's atomicity was bound only by a regex (the hoisted-writes mutant
+    survived 106 tests) - the seat's probes are adopted as
+    `test/integration/library-folders-atomicity.test.js` (both tables under a failed
+    save, a throw in the second replaceAll rolling back the first, the dedupe-by-resolved
+    spelling, NUL paths dropped). ADV W4: the MOVE carrier's failure axis was unbound
+    (the out-of-transaction mutant survived 74 tests) - bound in
+    `media-liked-carriers`. Writing those tests found a REAL bug the seats' probes had
+    not driven: `POST /api/folders/display-name` had no try/catch around its save, so a
+    failed save HUNG the request (the Wave 3 class) - guarded, 500. Non-blocking, all
+    applied: the notifications stamp and the rename route now have failed-save axes; the
+    yt-dlp stale-prune requires the in-transaction hook (its direct-write fallback and the
+    dead `setFolderDisplayName` in the timer bundle are gone); the podcasts sweep guards
+    `getSettings` like `getLibraryFolders`; nine stale comments (the orphaned
+    `withDefaultSettings` note, `db.liked` in three places, the clobber list, the version
+    ladder); the record's test counts re-derived (8426 / 674). Disclosed: the bundle
+    validator is deliberately tighter - v1.293.1 accepted a NUL folder path and an
+    empty-string folderSettings key verbatim, this build 400s both; the source locks
+    shell out to `git ls-files` and need a repo checkout (all waves' locks do); v25/v26
+    log a collapsed duplicate now.
 - **Gate pacing on the shared branch:** the two waves are gated in TWO passes by the SAME
   reviewer agents (pass A after the Wave 4 commits, pass B after Wave 5), so each review
   is bounded; ONE release (v1.294.0) at the end, no device pass between 3 and 4. Split
