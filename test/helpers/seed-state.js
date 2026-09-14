@@ -32,6 +32,7 @@ const DOC_SEMANTICS = {
   folderSettings: (s) => s.folderSettingsStore,
   folderDisplayNames: (s) => s.folderDisplayNameStore,
   liked: (s) => s.likedStore,
+  tv: (s) => s.tvDb, // Wave 5: a feature store - replaceAll(ns) takes the container shape
 };
 
 function server() {
@@ -69,4 +70,5 @@ module.exports = {
   folderSettingsStore: () => server().folderSettingsStore, // Wave 4
   folderDisplayNameStore: () => server().folderDisplayNameStore, // Wave 4
   likedStore: () => server().likedStore, // Wave 4
+  tvDb: () => server().tvDb, // Wave 5
 };

@@ -17,7 +17,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, tvDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const tvStore = require('../../lib/tv/store');
 const tvView = require('../../public/js/tv.js');
@@ -44,7 +44,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
   seedState({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
-  await updateDatabase((db) => {
+  await updateDatabase(() => tvDb.mutate((db) => { // Wave 5: the Shows namespace is a feature store
     const ns = tvStore.ensureTv(db);
     ns.folders = [path.join(DATA_DIR, 'adult'), path.join(DATA_DIR, 'kids')];
     ns.episodes = {
@@ -61,7 +61,7 @@ before(async () => {
       ac3: { id: 'ac3', filePath: ac3File, rootFolder: path.join(DATA_DIR, 'kids'), showId: 'sh-ok', showPath: kidsShow, showName: 'Kids Show', seasonNum: 1, episodeNum: 3, title: 'Sound', ext: '.mp4', codec: 'h264', audioCodec: 'ac3', durationSec: 100, addedAt: 4 },
     };
     return true;
-  });
+  }));
   member = __mintTestSession({ username: 'kidtv', role: 'member' });
   userStore.setRestrictions(member.user.id, [{ kind: 'path', value: path.join(DATA_DIR, 'adult') }]);
 });

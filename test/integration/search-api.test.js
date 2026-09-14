@@ -15,7 +15,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase } = require('../../server');
+const { app, updateDatabase, tvDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -62,9 +62,9 @@ before(async () => {
       { guid: 'g2', title: 'Zephyr Pending Ep', pubDateMs: 400, durationSec: 1 },
     ], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(DATA_DIR, 'podcasts', 'ZCast', 'ep.mp3'), bytes: 1, nowMs: 6000 });
-    tvStore.ensureTv(db).episodes = {
+    tvDb.mutate((h) => { tvStore.ensureTv(h).episodes = { // Wave 5: the Shows namespace is a feature store
       tve: { id: 'tve', showId: 'shZ', showName: 'Zephyr Chronicles', title: 'The Storm', seasonNum: 1, episodeNum: 1, filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, ext: '.mp4', codec: 'h264', durationSec: 20, addedAt: 200 },
-    };
+    }; return true; });
     booksStore.ensureBooks(db).items = {
       bz: { id: 'bz', title: 'Zephyr', author: 'Writer', filePath: path.join(DATA_DIR, 'zb.epub'), folderName: 'F', format: 'epub', addedAt: 50 },
     };

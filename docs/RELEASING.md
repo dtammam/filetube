@@ -152,6 +152,12 @@ row. A v1.293-or-earlier build refuses a v26 database at boot; bundles carry
 `liked` as the same array on both sides of the line. After this floor no
 top-level `doc_single` name remains - only container sub-keys.
 
+**Eighth floor - schema v27 (v1.294, Wave 5, tv).** The Shows namespace
+(`tv.folders`, `tv.episodes`, `tv.settings`) moved into `tv_folders`,
+`tv_episodes` and `tv_settings`; the v27 migration copies the doc rows and
+deletes them. A v1.293-or-earlier build refuses a v27 database at boot;
+bundles carry `tv` in its old container shape on both sides of the line.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

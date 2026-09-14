@@ -521,6 +521,11 @@ const folderDisplayNameStore = createFolderDisplayNameStore(dbAdapter);
 // restore / purge mutators (in-transaction re-keys), like the Wave 2 carriers.
 const createLikedStore = require('./lib/media/liked');
 const likedStore = createLikedStore(dbAdapter);
+// Wave 5: the content modules' namespaces as feature stores - read() is the
+// readX(db) snapshot, mutate() runs the module's own normaliser + reducers on
+// a fresh holder and writes the DIFF inside the doc commit (the hook is
+// hoisted; every mutate() runs inside an updateDatabase tick).
+const tvDb = tvStore.createTvStore(dbAdapter, { inSaveTransaction });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -6945,7 +6950,7 @@ app.post('/api/config', async (req, res) => {
     }
     // v1.195 TV Shows: the reciprocal of POST /api/tv/config's own net - a media
     // folder may not equal/contain/live inside a Shows root either.
-    for (const tvRoot of tvStore.readTv(loadDatabase()).folders) {
+    for (const tvRoot of tvDb.read().folders) {
       if (foldersOverlap(resolved, path.resolve(tvRoot))) {
         return res.status(400).json({ error: `Media folder overlaps a Shows folder: ${trimmed} <-> ${tvRoot}` });
       }
@@ -7305,7 +7310,7 @@ app.post('/api/books/config', async (req, res) => {
   }
   // v1.195 TV Shows: reciprocal of the tv-config net - a book root may not overlap
   // a Shows root either (both directions).
-  const tvFoldersForBooks = (tvStore.readTv(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  const tvFoldersForBooks = (tvDb.read().folders || []).map((f) => path.resolve(f));
   for (const bookRoot of resolved) {
     for (const tvRoot of tvFoldersForBooks) {
       if (foldersOverlap(bookRoot, tvRoot)) {
@@ -8326,7 +8331,7 @@ app.post('/api/music/config', async (req, res) => {
       return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
     }
     // v1.195 TV Shows: reciprocal of the tv-config net.
-    for (const tvRoot of (tvStore.readTv(cached).folders || []).map((f) => path.resolve(f))) {
+    for (const tvRoot of (tvDb.read().folders || []).map((f) => path.resolve(f))) {
       if (foldersOverlap(musicRoot, tvRoot)) {
         return res.status(400).json({ error: `Music folder overlaps a Shows folder: ${musicRoot} <-> ${tvRoot}` });
       }
@@ -8940,9 +8945,8 @@ function extractTvThumb(job) {
 }
 
 async function runTvScan() {
-  const db = loadDatabase();
   const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
-  const ns = tvStore.ensureTv(db);
+  const ns = tvDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables (no doc snapshot needed)
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.episodes).length === 0) return; // Shows-less: total no-op
   const { episodes, survivingIds, missingRoots, erroredDirs } = await tvScan.collectEpisodes(
@@ -8954,8 +8958,10 @@ async function runTvScan() {
   const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   let finalEpisodes = episodes;
-  await updateDatabase((fresh) => {
-    const freshNs = tvStore.ensureTv(fresh);
+  // Wave 5: the merge runs against a FRESH holder and its diff (changed +
+  // pruned episode rows only) rides the doc commit's transaction.
+  await updateDatabase(() => tvDb.mutate((holder) => {
+    const freshNs = tvStore.ensureTv(holder); // the LIVE rows, read inside the lock
     // The music/books Option-C mount-loss guard: a root that still EXISTS but
     // yielded ZERO files this pass while the library previously had episodes under
     // it is the unmounted-share signature -- treat as VANISHED (prune nothing).
@@ -8980,7 +8986,7 @@ async function runTvScan() {
     freshNs.episodes = next;
     finalEpisodes = next;
     return true;
-  });
+  }));
 
   // Per-user episode state is episode-id-keyed -- pruned episodes shed
   // progress/played/liked (post-commit, the removeMusicState posture).
@@ -9045,7 +9051,7 @@ app.get('/api/tv/config', (req, res) => {
   // GATED (route-read-classification): the nav gate reads this, so a restricted
   // member sees only roots holding >=1 visible episode; admin + unrestricted member
   // get the list byte-identical (visibleConfigRoots short-circuits when no restriction).
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   res.json({ folders: visibleConfigRoots(req, ns.folders || [], Object.values(ns.episodes || {}), tvEpisodeVisibleTo) });
 });
 
@@ -9088,7 +9094,7 @@ app.post('/api/tv/config', async (req, res) => {
     if (foldersOverlap(tvRoot, podcastsRoot)) return res.status(400).json({ error: `Shows folder overlaps the podcasts folder: ${tvRoot} <-> ${podcastsRoot}` });
   }
   try {
-    await updateDatabase((db) => { tvStore.ensureTv(db).folders = resolved; return true; });
+    await updateDatabase(() => tvDb.mutate((h) => { tvStore.ensureTv(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
   } catch (err) {
     return res.status(500).json({ error: `Could not save Shows folders: ${err.message}` });
   }
@@ -9241,7 +9247,7 @@ function tvPosterPlaceholderSvg(name) {
 
 // The visible-episode array for the requester (the SINGLE visibility decision).
 function visibleTvEpisodes(req) {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   return Object.values(ns.episodes || {}).filter((ep) => tvEpisodeVisibleTo(req, ep));
 }
 
@@ -9260,7 +9266,7 @@ app.get('/api/tv', (req, res) => {
 // or absent episode is 404 (no title/existence oracle), same as /tvepisode/:id.
 // Static segment 'episode' registered BEFORE /api/tv/:showId (route-order scar).
 app.get('/api/tv/episode/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9314,7 +9320,7 @@ app.get('/api/tv/episode/:id', (req, res) => {
 // repoll simply never resolves to ready - fail-safe, feature stays off).
 // Registered BEFORE /api/tv/:showId (the route-order scar).
 app.post('/api/tv/episode/:id/prepare-audio', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9336,7 +9342,7 @@ app.post('/api/tv/progress', (req, res) => {
   // here for a tv source).
   const { id, timestamp, duration } = req.body || {};
   if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' });
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, id);
   if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
   const pos = Number(timestamp) || 0;
@@ -9352,7 +9358,7 @@ app.post('/api/tv/progress', (req, res) => {
 app.post('/api/tv/played', (req, res) => {
   const { episodeId } = req.body || {};
   if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, episodeId);
   if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
   userStore.setTvPlayed(req.user.id, episodeId, new Date().toISOString());
@@ -9372,7 +9378,7 @@ app.get('/api/tv/continue', (req, res) => {
   // GATED: the requester's in-progress episodes (a resume position, not finished,
   // not watched), over ONLY episodes they may see, most-recent activity first,
   // joined with the episode's display fields. Powers the Shows-home Continue row.
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const progress = userStore.getTvProgress(req.user.id);
   const played = userStore.getTvPlayed(req.user.id);
   const rows = [];
@@ -9430,7 +9436,7 @@ app.get('/api/tv/:showId', (req, res) => {
 // placeholder - never a broken img. Gated exactly like /tvepisode (restricted or
 // absent -> 404, no oracle); private-cached like /tvposter.
 app.get('/tvthumb/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9461,7 +9467,7 @@ app.get('/tvposter/:showId', (req, res) => {
 });
 
 app.get('/tvepisode/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9496,7 +9502,7 @@ app.get('/tvepisode/:id', (req, res) => {
 // AND the source, the video route's exact shape); absent -> enqueue the extract
 // and 503 {error:'extracting'} (the client's repoll converges on 'ready').
 app.get('/tvaudio/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9954,13 +9960,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['metadata', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata', 'books', 'music', 'podcasts', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
 // Wave 4 (second group): the folder config keys - same keys, same shapes.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9984,6 +9990,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.folderSettings = folderSettingsStore.getAll();
       bundle.folderDisplayNames = folderDisplayNameStore.getAll();
       bundle.liked = likedStore.list();                  // Wave 4: the frozen likes, like order
+      bundle.tv = tvDb.read();                           // Wave 5: the Shows namespace, its old container shape
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10022,6 +10029,32 @@ app.get('/api/admin/backup', async (req, res) => {
 // Validation is strict and field-level: an unknown top-level key or a users
 // array this version cannot restore REFUSES the whole bundle (never a lossy
 // partial restore — the same posture as the boot importer).
+function validateFeatureBundle(def, ns) {
+  const badKey = (k) => typeof k !== 'string' || k === '' || k.includes('\u0000');
+  const show = (k) => String(k).split('\u0000').join('\\u0000');
+  if (typeof ns !== 'object' || ns === null || Array.isArray(ns)) return `bundle key '${def.name}' must be an object`;
+  for (const part of Object.keys(ns)) {
+    const spec = def.parts[part];
+    if (!spec) return `unknown bundle key '${def.name}.${part}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
+    const v = ns[part];
+    if (v === undefined || v === null) continue;
+    if (spec.kind === 'list') {
+      if (!Array.isArray(v)) return `${def.name}.${part} must be an array`;
+      for (const e of v) if (badKey(e)) return `${def.name}.${part}: every entry must be a non-empty string`;
+    } else if (spec.kind === 'records') {
+      if (!Array.isArray(v)) return `${def.name}.${part} must be an array`;
+      for (const r of v) if (!r || typeof r !== 'object' || Array.isArray(r) || badKey(r.id)) return `${def.name}.${part}: every entry must be an object with a non-empty string id`;
+    } else if (spec.kind === 'map' || spec.kind === 'kv') {
+      if (typeof v !== 'object' || Array.isArray(v)) return `${def.name}.${part} must be an object`;
+      for (const k of Object.keys(v)) {
+        if (badKey(k)) return `${def.name}.${part}['${show(k)}']: invalid key`;
+        if (v[k] === undefined) return `${def.name}.${part}['${k}']: record is missing`;
+      }
+    }
+  }
+  return null;
+}
+
 function validateBackupBundle(bundle) {
   if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return 'bundle must be a JSON object';
   if (bundle.schema !== BACKUP_SCHEMA) return `unsupported schema '${bundle.schema}' (expected ${BACKUP_SCHEMA})`;
@@ -10235,10 +10268,21 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'podcasts', 'tv', 'ytdlp']) {
+  for (const container of ['books', 'music', 'podcasts', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
+  }
+  // Wave 5: a relational feature container - shape-checked part by part
+  // BEFORE the wipe (the same posture as the record namespaces): known parts
+  // only; a list is an array of non-empty NUL-free strings; a map / kv is an
+  // object with such keys and no undefined values; a record list is an array
+  // of objects with such ids.
+  for (const def of sqliteDb.FEATURE_DEFS) {
+    const ns = bundle[def.name];
+    if (ns === undefined) continue;
+    const problem = validateFeatureBundle(def, ns);
+    if (problem) return problem;
   }
   if (bundle.customLogo !== undefined) {
     if (typeof bundle.customLogo !== 'object' || bundle.customLogo === null || Array.isArray(bundle.customLogo)) return 'customLogo must be an object';
@@ -19141,6 +19185,7 @@ module.exports = {
   folderSettingsStore, // Wave 4
   folderDisplayNameStore, // Wave 4
   likedStore, // Wave 4
+  tvDb, // Wave 5
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.
