@@ -5,6 +5,8 @@
 // session's MACHINE check of a slice - never the subagent's prose.
 //
 //   node scripts/verify-split-slice.js <baseCommit> <treeDir> <group>=<module> [...]
+//   (run FROM the checkout - the base is read with `git show` against this repo; the
+//   <treeDir> may be a worktree or a git-archive sandbox)
 //
 // For every top-level `app.<verb>('<path>', ...)` registration in the BASE
 // commit's server.js whose path group matches, the statement must appear in
@@ -98,6 +100,7 @@ for (const m of maps) {
   const moved = baseRoutes.filter((r) => r.group === group);
   if (moved.length === 0) fail(`${group}: no routes in the base commit`);
   let cursor = 0;
+  let verified = 0;
   for (const r of moved) {
     const lines = r.text.split('\n');
     // one indent level on CODE lines only; content lines of a multi-line literal stay put
@@ -108,7 +111,7 @@ for (const m of maps) {
     if (at === -1) {
       if (candidates.some((c) => modSrc.includes(c))) fail(`${group} ${r.verb} ${r.route}: present in ${mod} but OUT OF ORDER`);
       else fail(`${group} ${r.verb} ${r.route} (base line ${r.line}): NOT byte-identical (modulo one indent level on code lines) in ${mod}`);
-    } else cursor = at + used.length;
+    } else { cursor = at + used.length; verified++; }
     for (const lit of r.literals) {
       if (!modSrc.includes(lit)) fail(`${group} ${r.verb} ${r.route}: a multi-line literal's bytes changed in ${mod} (string content is not code)`);
     }
@@ -116,13 +119,24 @@ for (const m of maps) {
   }
   const left = newRoutes.filter((r) => r.group === group);
   if (left.length) fail(`${group}: ${left.length} route(s) still registered in server.js: ${left.map((r) => r.route).join(', ')}`);
-  console.log(`${group}: ${moved.length} route statement(s) verified byte-identical + in order in ${mod}; ${moved.reduce((a, r) => a + r.text.split('\n').length, 0)} statement lines; ${moved.reduce((a, r) => a + r.literals.length, 0)} multi-line literal(s) byte-identical`);
+  console.log(`${group}: ${verified} of ${moved.length} route statement(s) verified byte-identical + in order in ${mod}; ${moved.reduce((a, r) => a + r.text.split('\n').length, 0)} statement lines; ${moved.reduce((a, r) => a + r.literals.length, 0)} multi-line literal(s) byte-identical`);
 }
 
 // ---- exports: the same NAMES, and re-exports the same OBJECTS ------------------------------
+// The export NAMES, from the AST (a regex missed method-shorthand entries - gate).
 const exportNames = (src) => {
-  const m = /module\.exports = \{([\s\S]*?)\n\};/.exec(src);
-  return m ? [...m[1].matchAll(/^\s*(\w+)(?:: [^,]+)?,/gm)].map((x) => x[1]) : [];
+  const ast = parse(src);
+  const names = [];
+  for (const st of ast.body) {
+    if (st.type !== 'ExpressionStatement' || st.expression.type !== 'AssignmentExpression') continue;
+    const l = st.expression.left;
+    if (l.type !== 'MemberExpression' || l.object.name !== 'module' || l.property.name !== 'exports') continue;
+    if (st.expression.right.type !== 'ObjectExpression') continue;
+    for (const prop of st.expression.right.properties) {
+      if (prop.type === 'Property') names.push(prop.key.type === 'Identifier' ? prop.key.name : String(prop.key.value));
+    }
+  }
+  return names;
 };
 const baseExports = exportNames(baseSrc);
 const newExports = exportNames(newSrc);
