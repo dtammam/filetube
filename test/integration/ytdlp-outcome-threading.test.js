@@ -30,8 +30,7 @@ process.env.FILETUBE_YTDLP_POLL_MINUTES = '0'; // manual-only: no real timer dur
 const { test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, loadDatabase, updateDatabase, scanDirectories, getMediaId,
-} = require('../../server');
+  app, loadDatabase, updateDatabase, scanDirectories, getMediaId, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
@@ -77,7 +76,7 @@ afterEach(() => {
 // PLUS `dataDir` -- this is the exact T3 wiring under test).
 function testDeps() {
   return {
-    loadDatabase, updateDatabase, scanDirectories, getMediaId, dataDir: process.env.DATA_DIR,
+    loadDatabase, updateDatabase, ytdlpDb, scanDirectories, getMediaId, dataDir: process.env.DATA_DIR, // Wave 5: ytdlpDb
   };
 }
 

@@ -6,7 +6,8 @@
 // namespaces still left (metadata and the feature containers) and namespaces
 // that have already become relational tables (viewCounts in Wave 1; progress
 // and deleteTombstones in Wave 2; trash in Wave 3; settings, the folder config
-// and liked in Wave 4; the tv / music / books / podcasts containers in Wave 5). The doc-model save-lock REFUSES the relational
+// and liked in Wave 4; the tv / music / books / podcasts / ytdlp containers in
+// Wave 5 - only `metadata` still goes through saveDatabase). The doc-model save-lock REFUSES the relational
 // keys (that refusal is the arc's net), so this helper is the one seam that
 // splits a legacy-shaped fixture: relational keys go through their stores -
 // the SAME API the routes use - and the rest goes through saveDatabase.
@@ -36,6 +37,7 @@ const DOC_SEMANTICS = {
   music: (s) => s.musicDb,
   books: (s) => s.booksDb,
   podcasts: (s) => s.podcastsDb,
+  ytdlp: (s) => s.ytdlpDb,
 };
 
 function server() {
@@ -77,4 +79,5 @@ module.exports = {
   musicDb: () => server().musicDb, // Wave 5
   booksDb: () => server().booksDb, // Wave 5
   podcastsDb: () => server().podcastsDb, // Wave 5
+  ytdlpDb: () => server().ytdlpDb, // Wave 5
 };

@@ -29,7 +29,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, ytdlpDb } = require('../../server');
 const { folderStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 
@@ -58,7 +58,7 @@ test('a scanned yt-dlp download gets channelUrl/channelName/channelId/channelHan
     const filePath = path.join(downloadDir, 'Amazing Video Title [dQw4w9WgXcQ].mp4');
     fs.writeFileSync(filePath, 'not a real video');
 
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta.dQw4w9WgXcQ = {
         channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -67,7 +67,7 @@ test('a scanned yt-dlp download gets channelUrl/channelName/channelId/channelHan
         channelName: 'Rick Astley',
         capturedAt: Date.now(),
       };
-    });
+    }));
 
     await scanDirectories();
 
@@ -120,7 +120,7 @@ test('a NON-yt-dlp file (outside any download root) NEVER gets channel fields at
     const libraryFilePath = path.join(libraryDir, 'My Home Movie [dQw4w9WgXcQ].mp4');
     fs.writeFileSync(libraryFilePath, 'not a real video');
 
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       folderStore().replaceAll([libraryDir]); // Wave 4: the root list is a table
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta.dQw4w9WgXcQ = {
@@ -128,7 +128,7 @@ test('a NON-yt-dlp file (outside any download root) NEVER gets channel fields at
         channelName: 'Rick Astley',
         capturedAt: Date.now(),
       };
-    });
+    }));
 
     await scanDirectories();
 
@@ -142,7 +142,7 @@ test('a NON-yt-dlp file (outside any download root) NEVER gets channel fields at
     // The seeded entry must be left UNTOUCHED (never consumed by a
     // non-yt-dlp-rooted file) -- still available for the ACTUAL yt-dlp
     // download under downloadDir, if any.
-    const ns = store.ensureYtdlp(loadDatabase());
+    const ns = ytdlpDb.read(); // Wave 5: the bridge map is a table
     assert.ok(ns.downloadMeta.dQw4w9WgXcQ, 'the downloadMeta entry must not be consumed by a file outside the download root');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
@@ -159,7 +159,7 @@ test('a seeded downloadMeta entry with a HOSTILE channelUrl never reaches db.met
     const filePath = path.join(downloadDir, 'Hostile Capture [hostileId12].mp4');
     fs.writeFileSync(filePath, 'not a real video');
 
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       // Simulate a somehow-corrupted persisted entry (bypassing the
       // capture-time sanitizer entirely) to prove the SCAN-TIME bridge
@@ -169,7 +169,7 @@ test('a seeded downloadMeta entry with a HOSTILE channelUrl never reaches db.met
         channelName: 'Hostile',
         capturedAt: Date.now(),
       };
-    });
+    }));
 
     await scanDirectories();
 
@@ -197,7 +197,7 @@ test('a scanned NON-YouTube download gets sourceExtractor/sourceId + channelName
     const filePath = path.join(downloadDir, basename);
     fs.writeFileSync(filePath, 'not a real video');
 
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       // Universal entries are keyed by the rendered on-disk BASENAME (design D5).
       ns.downloadMeta[basename] = {
@@ -207,7 +207,7 @@ test('a scanned NON-YouTube download gets sourceExtractor/sourceId + channelName
         channelName: 'Some Studio',
         capturedAt: Date.now(),
       };
-    });
+    }));
 
     await scanDirectories();
 
@@ -243,12 +243,12 @@ test('D1a: a proxy-host YouTube download ([Youtube=id] bracket) gets youtubeId s
     // The capture (extractor_key 'Youtube') was stored by the YouTube branch,
     // keyed by the BARE videoId -- the scan must recover it despite the
     // [Youtube=id] bracket (gate W2/S2).
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
         channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
         channelName: 'Rick Astley', capturedAt: Date.now(),
       };
-    });
+    }));
 
     await scanDirectories();
 

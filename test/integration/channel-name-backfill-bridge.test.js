@@ -20,7 +20,7 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, loadDatabase, updateDatabase } = require('../../server');
+const { app, loadDatabase, updateDatabase, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
@@ -73,10 +73,10 @@ test('POST /api/ytdlp/backfill-channel-names against the REAL app writes the can
     // good-name guard is what protects it.
     db.metadata.good = { id: 'good', type: 'video', filePath: path.join(downloadDir, 'goodsub', 'g.mp4'), channelName: 'Already Real', channelId: UC_A, folderName: 'AfterSkool' };
     db.metadata.other = { id: 'other', type: 'video', filePath: path.join(downloadDir, 'o.mp4'), channelName: '', channelUrl: 'https://www.youtube.com/@someoneelse', folderName: 'Other' };
-    db.ytdlp = db.ytdlp || {};
     // channelDir IS the channel's on-disk download folder -- the same folder the
     // A items live in -- so the pure pin re-label matches it by full path.
-    db.ytdlp.pins = [{ id: 'p1', channelDir: downloadDir, label: '@AfterSkool', pinnedAt: 1 }];
+    // (Wave 5: the frozen pre-auth pins are a feature-store table.)
+    ytdlpDb.mutate((h) => { h.ytdlp.pins = [{ id: 'p1', channelDir: downloadDir, label: '@AfterSkool', pinnedAt: 1 }]; return true; });
     return true;
   });
 
@@ -105,5 +105,5 @@ test('POST /api/ytdlp/backfill-channel-names against the REAL app writes the can
   assert.equal(db.metadata.manual.channelName, '@AfterSkool', 'MANUAL attribution never overwritten');
   assert.equal(db.metadata.good.channelName, 'Already Real', 'an already-good name never overwritten');
   assert.equal(db.metadata.other.channelName, '', 'a different channel (probe returned null) untouched');
-  assert.equal(db.ytdlp.pins[0].label, 'After Skool', 'the channel pin snapshot was re-labelled to the real name');
+  assert.equal(ytdlpDb.read().pins[0].label, 'After Skool', 'the channel pin snapshot was re-labelled to the real name (in its table)');
 });

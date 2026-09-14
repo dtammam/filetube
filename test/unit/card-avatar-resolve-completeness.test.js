@@ -8,7 +8,8 @@
 // repeatedly-paid "enumerate EVERY surface / shared resolver not called" class
 // (v1.41.4, v1.80). Rather than trust a hand list, DERIVE the surfaces: every
 // route projection that spreads `...item,` into a returned object must resolve
-// the channel avatar via `resolveItemChannelAvatarUrl(db, item)` nearby. A NEW
+// the channel avatar via `resolveItemChannelAvatarUrl(ytView, item)` nearby (Wave 5:
+// `ytView` is the per-request feature-store holder the handler hoists). A NEW
 // card projection that forgets it reddens HERE, before a user sees a monogram.
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -28,7 +29,7 @@ test('every `...item,` card projection in server.js resolves the channel avatar 
     const window = src.slice(Math.max(0, ln - 25), ln + 25).join('\n');
     assert.match(
       window,
-      /resolveItemChannelAvatarUrl\(db, item\)/,
+      /resolveItemChannelAvatarUrl\((db|ytView), item\)/,
       `the \`...item,\` projection at server.js:${ln + 1} must resolve the channel avatar within its block ` +
       `(Fix A sweep -- a card surface that spreads the raw item shows a monogram where the avatar is registry-resolvable)`
     );

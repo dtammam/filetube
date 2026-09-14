@@ -18,8 +18,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, updateDatabase, userStore, __resetDatabaseForTests, __mintTestSession,
-} = require('../../server');
+  app, updateDatabase, userStore, __resetDatabaseForTests, __mintTestSession, ytdlpDb } = require('../../server');
 const store = require('../../lib/ytdlp/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -48,8 +47,7 @@ async function armFeature() {
   T0 = Date.parse(userStore.getById(auth.user.id).createdAt) + 2;
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   await updateDatabase((db) => {
-    const ns = store.ensureYtdlp(db);
-    ns.subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@sömechannel', name: 'Söme Channel', order: 0 });
+    ytdlpDb.mutate((h) => { store.ensureYtdlp(h).subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@sömechannel', name: 'Söme Channel', order: 0 }); return true; }); // Wave 5
     db.metadata['mediä-A'] = {
       id: 'mediä-A', name: 'Clïp A.mp4', title: 'Clïp A', type: 'video', ext: '.mp4',
       filePath: '/lib/Clïp A.mp4', size: 10, addedAt: ITEM_ADDED_AT,

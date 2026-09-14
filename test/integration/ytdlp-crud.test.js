@@ -16,7 +16,7 @@ process.env.FILETUBE_YTDLP_POLL_MINUTES = '0'; // manual-only: no real timer dur
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, currentYtdlpPollTimer, loadDatabase, updateDatabase } = require('../../server');
+const { app, currentYtdlpPollTimer, loadDatabase, updateDatabase, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const store = require('../../lib/ytdlp/store');
@@ -105,7 +105,7 @@ test('GET /api/subscriptions includes channelAvatarUrl in each row when the subs
   // pipeline (poll self-heal / the one-shot subscribe probe / the "Refresh
   // avatars" batch) already uses -- deterministic, no real yt-dlp spawn.
   await store.recordSubscriptionChannelAvatar(
-    { loadDatabase, updateDatabase },
+    { loadDatabase, updateDatabase, ytdlpDb }, // Wave 5
     'https://www.youtube.com/@avatarserializer',
     'https://example.com/avatar.jpg'
   );
@@ -154,13 +154,13 @@ test('GET /api/subscriptions falls back to the channelId registry when the subsc
   const created = await addRes.json();
 
   const channelId = 'UCregistryfallbackserial';
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     const sub = ns.subscriptions.find((s) => s.id === created.id);
     sub.channelId = channelId;
     ns.channelAvatars[channelId] = { avatarUrl: 'https://example.com/registry-serializer.jpg', fetchedAt: Date.now() };
     return true;
-  });
+  }));
 
   const listRes = await fetch(`${base}/api/subscriptions`);
   const list = await listRes.json();

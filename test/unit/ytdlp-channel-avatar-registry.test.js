@@ -15,6 +15,10 @@ const crypto = require('node:crypto');
 
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
+const ytdlpStore = require('../../lib/ytdlp/store');
+const { sharedScratchStore, docView } = require('../helpers/scratch-feature-store');
+const scratchYtdlp = sharedScratchStore(ytdlpStore.FEATURE); // Wave 5: the namespace is a feature store - one scratch database per file, re-seeded per fake deps
+
 const store = require('../../lib/ytdlp/store');
 
 const originalProbeChannelAvatar = run.probeChannelAvatar;
@@ -25,8 +29,11 @@ afterEach(() => {
 
 function makeFakeDeps(initialDb = {}) {
   let db = initialDb;
+  const ytdlpDb = scratchYtdlp.seed(db.ytdlp); // the fixture's namespace becomes the store's rows; the doc keeps the rest
+  delete db.ytdlp;
   return {
-    loadDatabase: () => db,
+    ytdlpDb,
+    loadDatabase: () => docView(db, ytdlpDb),
     updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),
   };

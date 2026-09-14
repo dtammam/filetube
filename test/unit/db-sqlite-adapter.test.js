@@ -60,15 +60,7 @@ function fullFixture() {
       vid3: { id: 'vid3', name: 'zero.mp4', title: 'Zero views', viewCount: 0 },
     },
     // (settings / liked: relational since Wave 4 - see importFixture)
-    // (books: relational since Wave 5 - see importFixture)
-    // (music: relational since Wave 5 - see importFixture)
-    ytdlp: {
-      allowMembersOnly: false,
-      subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
-      downloadMeta: { yt1: { channelName: 'X', capturedAt: 1752600000000 } },
-      pins: [],
-      channelAvatars: { UC123: { avatarUrl: 'https://a/b.jpg', fetchedAt: 1752600000000 } },
-    },
+    // (books / music / podcasts / ytdlp: relational since Wave 5 - see importFixture)
   };
 }
 
@@ -83,6 +75,13 @@ function importFixture() {
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
     liked: ['vid1'], // Wave 4: an ordered list (the frozen pre-auth likes)
     folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
+    ytdlp: { // Wave 5: a feature container (the tables) - the LAST container to leave the doc model
+      allowMembersOnly: true,
+      subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false, order: 0 }],
+      downloadMeta: { yt1: { channelName: 'X', capturedAt: 1752600000000 }, 'reddit abc123': { universal: true } },
+      pins: [{ id: 'pin1', channelDir: '/media/videos/X', label: 'X', pinnedAt: 't', order: 0 }],
+      channelAvatars: { UC123: { avatarUrl: 'https://a/b.jpg', fetchedAt: 1752600000000 } },
+    },
     podcasts: { // Wave 5: a feature container (the tables); no feed URLs, ever
       subscriptions: [{ id: 'psub1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
       episodes: { pep1: { id: 'pep1', subId: 'psub1', guid: 'g1', title: 'One', status: 'downloaded' } },
@@ -331,14 +330,15 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     assert.deepStrictEqual(s2, { rowsWritten: 0, rowsDeleted: 1 });
     assert.strictEqual(readPersistedDatabase(dir).metadata.vid3, undefined);
 
-    // absent namespace: a mutator tick that never ensured ytdlp must not
-    // delete the ytdlp rows (absence = "not loaded", not "deleted").
-    // (books carried this case until Wave 5 moved it to its tables.)
+    // absent namespace: a mutator tick that never touched the namespace must
+    // not delete its rows (absence = "not loaded", not "deleted"). (books,
+    // then ytdlp, carried this case until Wave 5 moved them to their tables;
+    // `metadata` is the one doc_kv namespace left.)
     const db3 = a.load();
-    delete db3.ytdlp;
+    delete db3.metadata;
     const s3 = a.save(db3);
     assert.deepStrictEqual(s3, { rowsWritten: 0, rowsDeleted: 0 });
-    assert.ok(readPersistedDatabase(dir).ytdlp.downloadMeta.yt1, 'ytdlp rows survive an absent-namespace save');
+    assert.ok(readPersistedDatabase(dir).metadata.vid1, 'metadata rows survive an absent-namespace save');
 
     // present-but-empty: a deliberate wipe deletes rows. NOTE the documented
     // normalization: an EMPTY doc_kv namespace has zero rows, so it assembles
@@ -346,13 +346,13 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     // server.js's load-time backfills (top-level keys) and the lazy ensure*
     // creators (books/ytdlp) re-supply `{}` before any consumer touches it,
     // making the post-load object identical either way.
-    // (Wave 2: deleteTombstones is relational; ytdlp.downloadMeta plays the
-    // one-row doc_kv namespace here.)
+    // (Wave 2: deleteTombstones is relational; Wave 5: so is ytdlp - the
+    // two metadata rows left play the doc_kv namespace here.)
     const db4 = a.load();
-    db4.ytdlp.downloadMeta = {};
+    db4.metadata = {};
     const s4 = a.save(db4);
-    assert.deepStrictEqual(s4, { rowsWritten: 0, rowsDeleted: 1 });
-    assert.strictEqual(readPersistedDatabase(dir).ytdlp.downloadMeta, undefined,
+    assert.deepStrictEqual(s4, { rowsWritten: 0, rowsDeleted: 2 });
+    assert.strictEqual(readPersistedDatabase(dir).metadata, undefined,
       'empty kv namespace normalizes to absent at the adapter layer (backfill restores {} at load)');
   } finally {
     a.close();
@@ -363,10 +363,8 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
     assert.throws(() => a.save({ metadata: {}, mystery: {} }), /unknown top-level db key 'mystery'/);
-    assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
     assert.throws(() => a.save({ podcasts: { subscriptions: [] } }), /unknown top-level db key 'podcasts'/, 'Wave 5: the podcasts container left the lock');
-    assert.throws(() => a.save({ ytdlp: { feedUrls: {} } }), /unknown db key 'ytdlp\.feedUrls'/,
-      'the namespace lock guards container sub-keys too - a URL map in the db would be a secret leak, not just drift');
+    assert.throws(() => a.save({ ytdlp: { subscriptions: [] } }), /unknown top-level db key 'ytdlp'/, 'Wave 5: the last container left the lock - no sub-key walk is left');
   } finally {
     a.close();
   }
@@ -403,14 +401,17 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     a.save(db);
     const before = readPersistedDatabase(dir);
 
-    // Stub the kv upsert so it fails AFTER the singleton writes of the same
-    // save have already executed inside the open transaction — the rollback
-    // must discard those too, and the diff snapshot must not advance.
+    // Stub the kv upsert so it fails on the SECOND row of the same save -
+    // the first row has already executed inside the open transaction, and
+    // the rollback must discard it too; the diff snapshot must not advance.
+    // (Until Wave 5 a doc_single write played the "row before the poison";
+    // no doc_single name is left, so two metadata rows carry the lesson.)
     const realUpsertKv = a.stmts.upsertKv;
-    a.stmts.upsertKv = { run: () => { throw new Error('simulated statement failure'); } };
+    let upserts = 0;
+    a.stmts.upsertKv = { run: (...args) => { if (++upserts === 2) throw new Error('simulated statement failure'); return realUpsertKv.run(...args); } };
     const db2 = a.load();
-    db2.ytdlp.pins = [{ id: 'never-committed' }]; // singleton write (ytdlp.pins - a container sub-key; no top-level doc_single is left since Wave 4, books moved in Wave 5), executes before the kv poison
-    db2.metadata.vid2.title = 'never';  // kv write, hits the stub
+    db2.metadata.vid1.title = 'never'; // the row before the poison
+    db2.metadata.vid2.title = 'never'; // the poison
     try {
       assert.throws(() => a.save(db2), /simulated statement failure/);
     } finally {
@@ -418,12 +419,12 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     }
 
     assert.deepStrictEqual(readPersistedDatabase(dir), before,
-      'EVERY row of the failed transaction rolled back — including the singleton written before the poison');
+      'EVERY row of the failed transaction rolled back — including the row written before the poison');
 
     // Snapshot must still reflect disk: the same change saved cleanly now
     // must write BOTH rows (had the snapshot advanced, the diff would skip them).
     const db3 = a.load();
-    db3.ytdlp.pins = [{ id: 'never-committed' }];
+    db3.metadata.vid1.title = 'never';
     db3.metadata.vid2.title = 'never';
     const stats = a.save(db3);
     assert.deepStrictEqual(stats, { rowsWritten: 2, rowsDeleted: 0 });
@@ -444,34 +445,33 @@ test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are RE
   //    would be silently corrupted — the adapter must REFUSE it loudly.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
+    // (Wave 5: ytdlp.downloadMeta - the namespace whose keys carry spaces - is
+    // a feature-store table now; `metadata` is the one doc_kv namespace left,
+    // and the separator lesson is the ADAPTER's, so metadata keys carry it.)
     a.save({
-      metadata: {},
-      ytdlp: {
-        allowMembersOnly: false, subscriptions: [], pins: [], channelAvatars: {},
-        downloadMeta: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
-      },
+      metadata: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
     });
     assert.deepStrictEqual(
-      Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta).sort(),
+      Object.keys(readPersistedDatabase(dir).metadata).sort(),
       ['plain', 'reddit abc123'],
       'the spaced key persisted as its own distinct row'
     );
 
     const db = a.load();
-    delete db.ytdlp.downloadMeta['reddit abc123'];
+    delete db.metadata['reddit abc123'];
     const stats = a.save(db);
     assert.deepStrictEqual(stats, { rowsWritten: 0, rowsDeleted: 1 });
-    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta), ['plain'],
+    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).metadata), ['plain'],
       'exactly the right row deleted — no truncated-key mistargeting');
-    assert.deepStrictEqual(Object.keys(a.load().ytdlp.downloadMeta), ['plain'],
+    assert.deepStrictEqual(Object.keys(a.load().metadata), ['plain'],
       'and the next load agrees (no resurrect)');
 
     // NUL-bearing key (escape sequence, per the source-hygiene lock):
     // refused loudly, nothing persisted from the save.
     const db2 = a.load();
-    db2.ytdlp.downloadMeta['evil\u0000key'] = { h: 1 };
+    db2.metadata['evil\u0000key'] = { h: 1 };
     assert.throws(() => a.save(db2), /contains U\+0000.*truncates TEXT at NUL/s);
-    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta), ['plain'],
+    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).metadata), ['plain'],
       'the refused save persisted nothing');
   } finally {
     a.close();

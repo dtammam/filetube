@@ -18,6 +18,8 @@ const assert = require('node:assert');
 const crypto = require('node:crypto');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { featureStoreFor, docView } = require('../helpers/scratch-feature-store');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
@@ -58,7 +60,8 @@ function makeFakeDeps(initialDb = {}) {
   const events = [];
   const scanCalls = [];
   return {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     updateDatabase: (mutatorFn) => {
       events.push({ type: 'updateDatabase', at: Date.now() });
       const result = mutatorFn(db);

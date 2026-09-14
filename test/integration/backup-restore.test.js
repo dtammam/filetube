@@ -18,6 +18,7 @@ const { app, loadDatabase, pendingProgress, pendingProgressKey, flushPendingProg
   progressStore, tombstoneStore, // Wave 2: the frozen pre-auth positions + the tombstones, likewise
   trashStore, // Wave 3: the trashed-item records, likewise
   musicDb, // Wave 5: the music namespace, likewise
+  __failNextRestorePopulateForTests, // Wave 5: the mid-populate rollback seam
 } = require('../../server');
 const { seedState, podcastsDb } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -355,13 +356,12 @@ test('a restore that fails mid-populate ROLLS BACK completely — db state AND t
   const beforeSnap = readPersistedDatabase(DATA_DIR);
 
   const bundle = await getBackup();
-  // Passes validateBackupBundle (ytdlp IS an object) but fails INSIDE the
-  // exclusive section: ytdlp.downloadMeta is not a per-key map, so
-  // importParsedJson refuses mid-populate — after the wipe, before the logo
-  // file ops. (Wave 5: `books`, then `podcasts`, carried this until their
-  // parts became shape-checked BEFORE the wipe; ytdlp is the doc container
-  // still left.)
-  bundle.ytdlp = { downloadMeta: 'not-a-map' };
+  // The bundle passes validateBackupBundle whole; the failure is injected
+  // INSIDE the exclusive section - after the wipe, before the logo file ops.
+  // (Until Wave 5 a malformed container sub-key did this job; every container
+  // is a feature store shape-checked BEFORE the wipe now, so no bundle shape
+  // reaches the populate unvalidated - the seam is the only way in.)
+  __failNextRestorePopulateForTests(new Error('simulated mid-populate failure'));
   const res = await postRestore(bundle);
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /rolled back/);

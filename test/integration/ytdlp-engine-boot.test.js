@@ -16,6 +16,8 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { scratchFeatureStore } = require('../helpers/scratch-feature-store');
 const engine = require('../../lib/ytdlp/engine');
 
 const originalSpawn = cp.spawn;
@@ -269,7 +271,8 @@ test('adversarial W2: startBackground itself binds the seam, reconciles, and arm
     armPypi(); // the reset ALSO cleared the fetch fake - re-arm or the boot recovery hits the tripwire
     ytdlp.startBackground({
       updateDatabase: async () => {},
-      loadDatabase: () => ({ ytdlp: { subscriptions: [] }, settings: {}, metadata: {} }),
+      ytdlpDb: scratchFeatureStore(ytdlpStoreModule.FEATURE), // Wave 5
+      loadDatabase: () => ({ settings: {}, metadata: {} }),
       scanDirectories: async () => {},
       getMediaId: () => 'x',
       dataDir,
@@ -355,7 +358,7 @@ test('adversarial round 2 W-WIRE: the REAL initRuntime wiring suppresses failure
     engine._resetForTests();
     armPypi(); // the reset ALSO cleared the fetch fake - re-arm (network tripwire above)
     ytdlp.startBackground({
-      updateDatabase: async () => {}, loadDatabase: () => ({ ytdlp: { subscriptions: [] }, settings: {}, metadata: {} }),
+      updateDatabase: async () => {}, ytdlpDb: scratchFeatureStore(ytdlpStoreModule.FEATURE), loadDatabase: () => ({ settings: {}, metadata: {} }), // Wave 5
       scanDirectories: async () => {}, getMediaId: () => 'x', dataDir,
       recordEngineEvent: (event, version) => bells.push({ event, version }),
     });

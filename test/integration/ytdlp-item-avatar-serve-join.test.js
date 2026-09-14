@@ -23,7 +23,7 @@ process.env.FILETUBE_YTDLP_POLL_MINUTES = '0';
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, getMediaId } = require('../../server');
+const { app, updateDatabase, getMediaId, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const store = require('../../lib/ytdlp/store');
 
@@ -46,7 +46,7 @@ after(async () => {
 });
 
 function ytdlpDeps() {
-  return { updateDatabase, getMediaId };
+  return { updateDatabase, ytdlpDb, getMediaId }; // Wave 5
 }
 
 test('GET /api/videos/:id: an item with an EMPTY channelAvatarUrl whose channelUrl matches a subscription serves that subscription\'s avatar', async () => {
@@ -77,13 +77,13 @@ test('GET /api/videos/:id: an item matched by channelId (channelUrl differs) sti
     channelUrl: 'https://www.youtube.com/@joinbyidhandle',
     name: 'Join By Id Channel',
   });
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     const sub = ns.subscriptions.find((s) => s.channelUrl === 'https://www.youtube.com/@joinbyidhandle');
     sub.channelId = 'UCjoinbyid000000000000';
     sub.channelAvatarUrl = 'https://yt3.ggpht.com/joined-by-id.jpg';
     return true;
-  });
+  }));
 
   await updateDatabase((db) => {
     db.metadata.joinByIdItem = {
@@ -204,7 +204,7 @@ test('HEADLINE: an item captured as /channel/UC… resolves its avatar via the R
     name: 'Headline Handle Channel',
   });
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.channelAvatars.UCheadlineregistryidxxxx = {
       avatarUrl: 'https://yt3.ggpht.com/registry-headline.jpg',
@@ -212,7 +212,7 @@ test('HEADLINE: an item captured as /channel/UC… resolves its avatar via the R
       channelUrl: 'https://www.youtube.com/channel/UCheadlineregistryidxxxx',
     };
     return true;
-  });
+  }));
 
   await updateDatabase((db) => {
     db.metadata.headlineItem = {
@@ -234,7 +234,7 @@ test('HEADLINE: an item captured as /channel/UC… resolves its avatar via the R
 });
 
 test('a NON-subscribed one-off channel, once registered, resolves for its items -- no matching subscription needed at all', async () => {
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.channelAvatars.UConeoffregistryidxxxxxx = {
       avatarUrl: 'https://yt3.ggpht.com/registry-oneoff.jpg',
@@ -242,7 +242,7 @@ test('a NON-subscribed one-off channel, once registered, resolves for its items 
       channelUrl: 'https://www.youtube.com/channel/UConeoffregistryidxxxxxx',
     };
     return true;
-  });
+  }));
 
   await updateDatabase((db) => {
     db.metadata.oneOffRegistryItem = {

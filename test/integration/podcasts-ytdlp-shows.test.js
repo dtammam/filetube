@@ -17,7 +17,7 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
-const { app, updateDatabase, userStore } = require('../../server');
+const { app, updateDatabase, userStore, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, user;
@@ -52,12 +52,11 @@ test('seed: a toggled ytdlp sub + two channel-dir media items', async () => {
   itemNew = seedMediaItem('Episode Two [abcdefghij2].mp3', Date.UTC(2026, 7, 2));
   itemOld = seedMediaItem('Episode One [abcdefghij1].mp3', Date.UTC(2026, 6, 1));
   await updateDatabase((db) => {
-    db.ytdlp = db.ytdlp || {};
-    db.ytdlp.subscriptions = [{
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ // Wave 5: the ytdlp namespace is a feature store
       id: SUB_ID, channelUrl: 'https://www.youtube.com/@podchannel', name: CHANNEL_NAME,
       format: 'audio', quality: 'best', paused: false, skipShorts: false, order: 1,
       addedAt: '2026-08-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: 'ok', libraryPlace: 'default',
-    }];
+    }]; return true; });
     db.metadata = db.metadata || {};
     db.metadata[itemNew.id] = itemNew;
     db.metadata[itemOld.id] = itemOld;

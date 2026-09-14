@@ -537,6 +537,64 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
   (`db.books`) leaves `CONTAINER_KEYS` when its last sub-key moves.
 - Each feature = one schema bump (v27 tv, v28 music, v29 books, v30 podcasts, v31 ytdlp),
   one commit, its own rollback floor, its own migration + atomicity + bundle tests.
+- **Wave 5 record (2026-09-14, same branch, six commits: the primitives + one per feature;
+  overnight, Dean's standing authorization):**
+  - **The primitive (`lib/db/featureStore.js`, `lib/db/recordListStore.js`).** A namespace is a
+    set of tables on the shared shapes (`list` / `map` / `kv` / `records` / `value`); `read()`
+    is the module's old `readX(db)` snapshot, `holder(only)` wraps it as `{ [name]: snapshot }`
+    so the module's own `ensureX(holder)` normaliser and reducers keep running UNCHANGED, and
+    `mutate(fn)` writes back the DIFF (changed rows only, per part) through
+    `inSaveTransaction` - one commit with the doc. `migrateFromDoc` copies the doc rows
+    verbatim (only the parts that have rows; never wipes - a re-run is a no-op), per-block
+    stamps as in Wave 4. A `value` part (ytdlp.allowMembersOnly) lives in an `internal` kv
+    table that is never a namespace key; an unset value IS its default (no row, no diff).
+  - **v27 tv** (2 server writers: the scan merge, the config POST) · **v28 music** (+ the
+    channel-mark route; `music.channels` was a doc_single MAP - `docSingleMap`) · **v29
+    books** (the five deps-mutators in `lib/books/store.js` take `booksDb` through deps; the
+    scan merge, the config POST, the cover POST, the TTS boot reconcile, the clear-cache
+    drop) · **v30 podcasts** (the module's 21 writers, a string/comment-aware codemod +
+    hand edits; `subscriptions` is an ORDERED record list - a position column, never a
+    sort; the search registry takes a `podcastsNs` dep; the restore's absent-key
+    PRESERVATION reads the tables; the three simple mutating routes 500 on a failed
+    commit instead of hanging) · **v31 ytdlp** (the 13 store writers; the index's reads take
+    a holder or a VIEW - the doc snapshot with the namespace attached - because
+    `collectDistinctChannelAvatarTargets` and friends read db.metadata AND the namespace;
+    server.js hoists ONE `ytdlpDb.holder(['subscriptions','channelAvatars'])` per request
+    for the 8 avatar-resolver loops, the scan takes one holder for the bridge map + the
+    folder backfill and queues `syncFrom` into its own commit, the relocation joins and the
+    attribution proposal take a subscriptions holder (the deep-clone dance is gone), the
+    two fanout writers relabel the frozen pins through a NESTED feature mutate, an id-less
+    legacy subscription gets `md5(channelUrl)` minted by the migration instead of falling
+    through the record list's id floor). After v31: `CONTAINER_KEYS = []`,
+    `SINGLETON_NAMES = []`, `DOC_KV_NAMESPACES = ['metadata']` - the doc model is one
+    namespace; the container-object check in the bundle validator is subsumed by
+    `validateFeatureBundle` (every container shape-checked BEFORE the wipe), so the
+    mid-populate rollback test needs an injected failure (`__failNextRestorePopulateForTests`).
+  - Tests: the per-feature unit harnesses that faked the doc object now hand the module a
+    REAL store on a scratch database (`test/helpers/scratch-feature-store.js`:
+    `featureStoreFor(FEATURE, db)` seeds one shared scratch store per feature per process
+    from the fixture's key and `docView` attaches the snapshot to the doc IN PLACE - the
+    21 yt-dlp module-only harnesses converted by a one-line codemod, the four `makeFakeDeps`
+    builders by hand); the integration mutators wrapped by the Wave-4 codemod (extended to
+    the `fresh` param) + ~30 mixed sites by hand; seeds carry ids (records need them);
+    the adapter test's doc-model cases run on `metadata` now (the one doc_kv namespace);
+    the fanout unit test's pin case runs through the REAL writer. New: five
+    `<feature>-feature-store` unit suites (migration verbatim incl. order, re-run no-op,
+    corrupt-row rollback of every CREATE TABLE, save-lock, import route, exclusiveReplace,
+    test read, mutate diff, source locks on server.js AND the module) + five
+    `<feature>-feature-atomicity` integration suites (failed-save axes through the REAL
+    routes/writers, the order survival, the bundle round-trip + 400-before-wipe, the
+    absent-key semantics: podcasts PRESERVES, the rest restore empty) + `db-feature-store`.
+  - Baseline after: doc_kv **1**, doc_single **0**, total **1** (`node
+    scripts/relational-arc-baseline.js`), schema **31**, 60 relational tables, server.js
+    **19383** lines, tests 8486 / 684 files (the baseline script's count; the suite's own
+    count is in the release notes). `scripts/migrate-check.js` passes a db.json carrying
+    every container (all five route through `replaceFeature`).
+  - Deferred to Wave 7 (disclosed): the doc-model seams that still exist for `metadata`
+    alone (`BACKUP_NAMESPACE_KEYS = ['metadata']`, the save-lock's container walk over an
+    empty list, `doc_single` as an empty table); the podcasts episode DELETE / restore
+    routes still hang on a failed commit after their file move (pre-existing, the Wave 3
+    class, not this wave's change - tracked in #224's revisit).
 
 ### Wave 6 - `metadata` -> `media_items`  (SOLO, FULL gate, adversarial destroys the catalog)
 - The crown jewel: 172 refs, 284 rows, written by the 1,533-line `runScanDirectories`.

@@ -97,16 +97,16 @@ the app settings and the folder config in Wave 4 - see the CONFIG box; the
 frozen pre-auth likes in Wave 4 too - the MEDIA box).
 The namespace lists in `lib/db/sqlite.js` are a
 LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
-3 `doc_kv` namespaces, 3 `doc_single` names, 55 relational tables,
-schema version 30. (The relational-migration arc, Wave 1 onward, moves the
+1 `doc_kv` namespaces (just `metadata`), 0 `doc_single` names, 60 relational tables,
+schema version 31. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects (container sub-keys only, since Wave 4):<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata (the last doc namespace - Wave 6 moves it)"]
+        SINGLE["doc_single (name, json)<br/>EMPTY since Wave 5 (every whole-object namespace is a feature-store table now);<br/>dropped in Wave 7"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
@@ -135,6 +135,7 @@ flowchart LR
         MU["lib/music/store.js<br/>music_folders · music_tracks (track_id, json) · music_settings · music_channels (folder_name, json)<br/>the music library: roots, one row per track, settings, the show-in-Music marks"]
         BK["lib/books/store.js<br/>books_folders · books_items (book_id, json) · books_progress · books_pins (id, position, json) · books_settings · books_audio<br/>the books library: roots, one row per book, the frozen pre-auth positions + shelf pins, TTS status"]
         PC["lib/podcasts/store.js<br/>podcasts_subscriptions (id, position, json) · podcasts_episodes (episode_id, json) · podcasts_settings (key, json)<br/>the podcast registry: the ordered subscriptions (no feed URLs - those stay in the 0600 secrets file), one row per episode (the download ARCHIVE, tombstones included), settings"]
+        YT["lib/ytdlp/store.js<br/>ytdlp_subscriptions (id, position, json) · ytdlp_pins (id, position, json) · ytdlp_download_meta (meta_key, json) · ytdlp_channel_avatars (channel_id, json) · ytdlp_settings (key, json)<br/>the downloader: the ordered channel subscriptions, the frozen pre-auth channel pins, the download->scan identity bridge (consumed by the scan inside its commit), the channel-avatar registry, the allowMembersOnly flag"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]

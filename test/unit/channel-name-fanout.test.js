@@ -12,7 +12,7 @@ process.env.DATA_DIR = process.env.DATA_DIR || fs.mkdtempSync(path.join(os.tmpdi
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { recordChannelNameBackfillFanout, refreshPinLabelsForBackfilledChannel } = require('../../server');
+const { recordChannelNameBackfillFanout, refreshPinLabelsForBackfilledChannel, updateDatabase, saveDatabase, ytdlpDb, __resetDatabaseForTests } = require('../../server');
 
 const UC_A = 'UCaaaaaaaaaaaaaaaaaaaaaa';
 const UC_B = 'UCbbbbbbbbbbbbbbbbbbbbbb';
@@ -59,11 +59,16 @@ test('fanout: a match-nothing pass returns false from the mutator (skip-the-save
   assert.equal(h.db.metadata.g.channelName, 'Already Real');
 });
 
-test('fanout ALSO refreshes the channel pin label (the snapshot the backfill would otherwise miss)', async () => {
-  const pins = [{ id: 'p1', channelDir: '/media/AfterSkool', label: '@afterskool', pinnedAt: 1 }];
-  const h = makeDeps({ a: vid() }, { pins });
-  await recordChannelNameBackfillFanout(h.deps, { channelId: UC_A }, { channelName: 'After Skool' });
-  assert.equal(pins[0].label, 'After Skool', 'the pin snapshot was re-labelled to the backfilled name');
+test('fanout ALSO refreshes the channel pin label (the snapshot the backfill would otherwise miss) - Wave 5: through the REAL writer, into ytdlp_pins', async () => {
+  // The pins live in their table since Wave 5 and the relabel is a nested
+  // feature mutate riding the doc commit, so this case runs the real
+  // updateDatabase (the fake above has no commit for the nested write to ride).
+  await __resetDatabaseForTests();
+  saveDatabase({ metadata: { a: vid() } });
+  ytdlpDb.replaceAll({ pins: [{ id: 'p1', channelDir: '/media/AfterSkool', label: '@afterskool', pinnedAt: 1 }] });
+  const n = await recordChannelNameBackfillFanout({ updateDatabase }, { channelId: UC_A }, { channelName: 'After Skool' });
+  assert.equal(n, 1, 'the item was backfilled');
+  assert.equal(ytdlpDb.read().pins[0].label, 'After Skool', 'the pin snapshot was re-labelled to the backfilled name, in its table');
 });
 
 // ---- refreshPinLabelsForBackfilledChannel (pure) ----------------------------

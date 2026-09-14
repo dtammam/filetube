@@ -35,6 +35,7 @@ const { formatBodyParserError } = require('./lib/bodyParserErrors');
 // resolve a captured channel's confined target folder the identical way
 // every other channel-dir consumer (subscriptions, one-shot downloads) does.
 const ytdlpArgs = require('./lib/ytdlp/args');
+const ytdlpStore = require('./lib/ytdlp/store'); // Wave 5: the ytdlp namespace's feature store (FEATURE, createYtdlpStore)
 // Metadata+subtitle re-pull backfill (v1.25 QoL follow-up): `buildWatchUrl` is
 // a pure, side-effect-free helper (lib/ytdlp/url.js's own module comment) that
 // `lib/ytdlp/index.js` already requires internally but does not re-export --
@@ -529,6 +530,7 @@ const tvDb = tvStore.createTvStore(dbAdapter, { inSaveTransaction });
 const musicDb = musicStore.createMusicStore(dbAdapter, { inSaveTransaction });
 const booksDb = booksStore.createBooksStore(dbAdapter, { inSaveTransaction });
 const podcastsDb = podcastStore.createPodcastsStore(dbAdapter, { inSaveTransaction });
+const ytdlpDb = ytdlpStore.createYtdlpStore(dbAdapter, { inSaveTransaction });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -582,11 +584,8 @@ function loadDatabase() {
   // The containers themselves stay lazy (ensure* call-site-owned, as today).
   // (v1.42-v1.293: the books sub-keys were backfilled here. Wave 5 moved the
   // books namespace to its tables behind booksDb - no longer a key of this object.)
-  if (db.ytdlp && typeof db.ytdlp === 'object') {
-    for (const k of ['downloadMeta', 'channelAvatars']) {
-      if (!db.ytdlp[k] || typeof db.ytdlp[k] !== 'object' || Array.isArray(db.ytdlp[k])) db.ytdlp[k] = {};
-    }
-  }
+  // (v1.42-v1.294: the ytdlp sub-keys were backfilled here. Wave 5 moved the
+  // ytdlp namespace to its tables behind ytdlpDb - no longer a key of this object.)
   // Wave G: when the music container exists, backfill `channels` (the per-folder
   // "show in Music" marks) the same way books.progress/ytdlp.downloadMeta are
   // backfilled - so the eligibility predicate and the write route never touch an
@@ -649,6 +648,13 @@ let saveDatabaseCallCount = 0;
 // call throws before touching the adapter, exercising the exact
 // route-returns-500 / prior-state-intact / chain-not-wedged contracts the
 // old stubs exercised. Self-disarms after one shot; inert in production.
+// Wave 5: with every container a feature store, no bundle shape reaches the
+// exclusive section unvalidated any more - so the "mid-populate rollback"
+// test needs an injected failure to prove the wipe rolls back whole.
+let failNextRestorePopulateError = null;
+function __failNextRestorePopulateForTests(err) {
+  failNextRestorePopulateError = err instanceof Error ? err : new Error('simulated restore populate failure (test injection)');
+}
 let failNextSaveError = null;
 function __failNextSaveForTests(err) {
   failNextSaveError = err instanceof Error ? err : new Error('simulated save failure (test injection)');
@@ -5074,6 +5080,11 @@ async function runScanDirectories() {
   // updateDatabase call. Phase 1 above (the FFmpeg-awaiting extraction loop)
   // never holds this lock -- writes stay unblocked for the whole scan.
   await updateDatabase(fresh => {
+    // Wave 5: the yt-dlp bridge map (downloadMeta, consumed below) and the
+    // subscriptions (the folder backfill) come from their tables as ONE
+    // snapshot holder; the consumed entries' diff is queued into this same
+    // commit at the end (never a separate write, never on a skipped save).
+    const ytScan = ytdlpDb.holder();
     // v1.42 (gate W4): if a RESTORE (or the tests' reset) wiped-and-replaced
     // the persisted state while this scan was walking, every decision below
     // -- phase1Ids, newMetadata, prunable -- was computed against a snapshot
@@ -5391,7 +5402,7 @@ async function runScanDirectories() {
         const mediaRef = !videoId ? extractMediaRef(path.basename(item.name, item.ext)) : null;
         if (mediaRef && mediaRef.source) {
           const isYt = mediaRef.source.toLowerCase() === 'youtube';
-          const consumedU = ytdlp.consumeUniversalDownloadMeta(fresh, path.basename(item.filePath));
+          const consumedU = ytdlp.consumeUniversalDownloadMeta(ytScan, path.basename(item.filePath));
           if (consumedU) {
             item.sourceExtractor = consumedU.sourceExtractor;
             item.sourceId = consumedU.sourceId;
@@ -5433,7 +5444,7 @@ async function runScanDirectories() {
           // channelUrl/channelId/channelName/avatar reach the item (gate W2).
           if (isYt && isSafeVideoId(mediaRef.id)) {
             item.youtubeId = mediaRef.id;
-            const consumedYt = ytdlp.consumeDownloadChannelMeta(fresh, mediaRef.id);
+            const consumedYt = ytdlp.consumeDownloadChannelMeta(ytScan, mediaRef.id);
             if (consumedYt) {
               // v1.53: identity written as a UNIT only when no MANUAL
               // attribution holds it (manual wins forever, decision 3); the
@@ -5460,7 +5471,7 @@ async function runScanDirectories() {
           // bracket, but this also covers the AC20 race window where the
           // item was indexed before this bridge pass).
           item.youtubeId = videoId;
-          const consumed = ytdlp.consumeDownloadChannelMeta(fresh, videoId);
+          const consumed = ytdlp.consumeDownloadChannelMeta(ytScan, videoId);
           if (consumed) {
             // v1.53: same manual-wins unit guard as the D1a site above.
             if (!item.channelAttributedManually) {
@@ -5528,7 +5539,7 @@ async function runScanDirectories() {
       // check makes the invariant survive any future manual shape that
       // doesn't (a name-only attribution, a cleared-URL edge).
       if (!item.channelUrl && !item.channelAttributedManually && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
-        const backfilled = ytdlp.backfillChannelIdentityFromFolder(fresh, item, ytdlpConfig);
+        const backfilled = ytdlp.backfillChannelIdentityFromFolder(ytScan, item, ytdlpConfig);
         if (backfilled) {
           item.channelUrl = backfilled.channelUrl;
           // AC80: writing channelName here is what makes the real creator
@@ -5551,6 +5562,7 @@ async function runScanDirectories() {
     }
 
     if (!dbChanged) return false;
+    inSaveTransaction(() => ytdlpDb.syncFrom(ytScan.ytdlp)); // Wave 5: the consumed bridge entries land in this commit (a no-op diff when nothing was consumed)
 
     // HR1b (finding D): never resurrect an id DELETEd concurrently during this
     // scan. An id in the Phase-1 snapshot (phase1Ids) that is now ABSENT from
@@ -6053,9 +6065,8 @@ app.post('/api/auth/setup', async (req, res) => {
   try {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // Read the pre-auth global state to adopt (once, before the tx).
-    const db = getCachedDatabase();
     const books = booksDb.read();
-    const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
+    const ytd = ytdlpDb.read(['pins']); // Wave 5: the frozen pre-auth channel pins, from their table
     const adoption = {
       progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
       liked: likedStore.list(), // Wave 4: the frozen likes, from their table (like order)
@@ -8500,6 +8511,7 @@ function projectedLibraryTracks(req, nativeTracks) {
   // marked 'off'. Instant + library-wide (this reads db.metadata live). RBAC (mediaVisibleTo)
   // below is UNCHANGED, so a restricted user still cannot see hidden audio.
   const db = getCachedDatabase();
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const marks = musicDb.read().channels; // Wave 5: the music_channels table
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
@@ -8516,7 +8528,7 @@ function projectedLibraryTracks(req, nativeTracks) {
     // Music redesign Slice 1: carry the channel avatar so the artist circle has a
     // real picture (the resolver is READ-ONLY: item -> channelId registry ->
     // subscription). Native music tracks have no channel, so no avatar.
-    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
     for (const track of tracks) { track.avatarUrl = avatarUrl; out.push(track); }
   }
   return out;
@@ -9958,13 +9970,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['metadata', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata']; // Wave 5: the last doc-model key (Wave 6 moves it too)
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
 // Wave 4 (second group): the folder config keys - same keys, same shapes.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music', 'books', 'podcasts'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music', 'books', 'podcasts', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9992,6 +10004,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.music = musicDb.read();                     // Wave 5: the music namespace, its old container shape
       bundle.books = booksDb.read();                     // Wave 5: the books namespace, its old container shape
       bundle.podcasts = podcastsDb.read();               // Wave 5: the podcasts namespace, its old container shape (no feed URLs - never in the db)
+      bundle.ytdlp = ytdlpDb.read();                     // Wave 5: the ytdlp namespace, its old container shape (allowMembersOnly included)
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10266,14 +10279,9 @@ function validateBackupBundle(bundle) {
       if (key === 'deleteTombstones' && (rec === null || typeof rec !== 'object' || Array.isArray(rec))) return `${key}['${id}']: must be an object`;
     }
   }
-  // Container namespaces must be objects when present (delta-round
-  // residual): catching a malformed shape HERE means a 400 before the wipe
-  // even starts, rather than a mid-populate rollback.
-  for (const container of ['ytdlp']) {
-    if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
-      return `bundle key '${container}' must be an object`;
-    }
-  }
+  // (The container-object check that lived here is subsumed: every container
+  // is a feature store since Wave 5 and validateFeatureBundle below checks
+  // each one part by part.)
   // Wave 5: a relational feature container - shape-checked part by part
   // BEFORE the wipe (the same posture as the record namespaces): known parts
   // only; a list is an array of non-empty NUL-free strings; a map / kv is an
@@ -10387,6 +10395,11 @@ app.post('/api/admin/restore', (req, res, next) => {
 
   try {
     await replacePersistedState((handles) => {
+      if (failNextRestorePopulateError) { // test seam: a mid-populate failure, after the wipe (see __failNextRestorePopulateForTests)
+        const injected = failNextRestorePopulateError;
+        failNextRestorePopulateError = null;
+        throw injected;
+      }
       // Import FIRST (delta-round residual, adversarial seat): any import
       // refusal/throw must roll back with the FILESYSTEM untouched — the
       // original ordering destroyed the old logo bytes before the import
@@ -10609,9 +10622,9 @@ app.post('/api/settings', async (req, res) => {
 // subscriptions nav link. GENERATION is deliberately not gated here (the
 // feed keeps accumulating while the bell is off -- decision 8); this gate is
 // about what a browser can see.
-function notificationsFeatureEnabled(db) {
+function notificationsFeatureEnabled(_db) {
   if (!ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) return false;
-  const subs = db && db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subs = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table (one point query)
   if (subs.length < 1) return false;
   return settingsStore.getKey('notificationsEnabled') !== false; // Wave 4
 }
@@ -10634,6 +10647,7 @@ app.get('/api/notifications/badge', (req, res) => {
 // pending) is filtered here as the defensive net.
 app.get('/api/notifications', (req, res) => {
   const db = getCachedDatabase();
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   const { items } = userStore.listNotifications(req.user.id);
   const metadata = db.metadata || {};
@@ -10739,7 +10753,7 @@ app.get('/api/notifications', (req, res) => {
       // v1.85 #3a: resolveItemChannelAvatarUrl is READ-ONLY now (it reads via
       // readYtdlpNamespace, never ensureYtdlp), so the shared getCachedDatabase()
       // object can be handed in directly - no defensive deep-clone.
-      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
     }
     rows.push({
       id: row.id,
@@ -11271,6 +11285,7 @@ app.get('/api/search', (req, res) => {
 // -> respond with `total` = the full filtered length (before slicing).
 app.get('/api/videos', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const search = (req.query.search || '').toLowerCase().trim();
   const folderFilter = req.query.folder || '';
   const rootFilter = req.query.root || ''; // a configured folder path — matches everything under it (recursive)
@@ -11335,7 +11350,7 @@ app.get('/api/videos', (req, res) => {
   // global until the v1.44 RBAC tranche (tech-debt #122); this shares that
   // limitation by construction. Read the names straight off the namespace.
   if (req.query.subs === '1') {
-    const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+    const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
     const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
     list = list.filter((item) => item && ((item.folderName && subNames.has(item.folderName)) || (item.channelName && subNames.has(item.channelName))));
   }
@@ -11423,7 +11438,7 @@ app.get('/api/videos', (req, res) => {
       // shared buildCardHtml->modernCardAvatar path reads item.channelAvatarUrl
       // on all three). READ-ONLY (store.js): no cached-db mutation, no clone;
       // bounded to the page `limit`.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
       ...(watchUrl ? { watchUrl } : {}),
       // v1.93.2: DERIVED storyboard descriptor (eligible videos only), so the
       // list projection carries the same geometry as the grid/watch payloads
@@ -11510,7 +11525,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
 // them. Returns null when the id is no longer resolvable (the dead-link drop).
 // The `rec` already carries the per-user progress/watch booleans the gather
 // computed under RBAC, so this never re-derives them.
-function resolveModernGridItem(db, rec) {
+function resolveModernGridItem(db, rec, ytView) {
   if (rec.kind === 'podcast') {
     const ns = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(ns.episodes, rec.id) ? ns.episodes[rec.id] : null;
@@ -11535,7 +11550,7 @@ function resolveModernGridItem(db, rec) {
   return {
     id: rec.id, kind: 'media', title: item.title || item.name || 'Video',
     folderName: item.folderName || '', channelName: item.channelName || '',
-    channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+    channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
     sourceViewCount: typeof item.sourceViewCount === 'number' ? item.sourceViewCount : undefined,
     sourceViewCountCapturedAt: item.sourceViewCountCapturedAt,
     addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
@@ -11561,6 +11576,7 @@ function resolveModernGridItem(db, rec) {
 
 app.get('/api/home', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const userId = req.user.id;
 
   // ---- per-user reads (ONE query each, shared across the candidate build) ----
@@ -11588,7 +11604,7 @@ app.get('/api/home', (req, res) => {
   // shared until the v1.44 RBAC tranche - disclosed in the exec plan). Read the
   // names straight off the namespace - the feed needs the channel NAMES only,
   // not the full enriched records the poll path builds.
-  const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
   const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
 
   // ---- v1.84 Modern Mode: the FLAT grid view (short-circuits the rows) ------
@@ -11671,7 +11687,7 @@ app.get('/api/home', (req, res) => {
     const total = sortedCand.length;
     const offset = videoQuery.normalizeOffset(req.query.offset);
     const limit = videoQuery.normalizeLimit(req.query.limit);
-    const items = sortedCand.slice(offset, offset + limit).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
+    const items = sortedCand.slice(offset, offset + limit).map((rec) => resolveModernGridItem(db, rec, ytView)).filter(Boolean);
     return res.json({ items, filter, sort, total, offset, limit });
   }
 
@@ -11789,6 +11805,7 @@ app.get('/api/home', (req, res) => {
 // cache; no new persistence, no writes.
 app.get('/api/channels', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const rootFilter = typeof req.query.root === 'string' && req.query.root !== '' ? req.query.root : null;
   const settingsByRoot = folderSettingsStore.getAll(); // Wave 4
   const hiddenRoots = new Set(Object.keys(settingsByRoot).filter(p => settingsByRoot[p] && settingsByRoot[p].hidden === true));
@@ -11796,7 +11813,7 @@ app.get('/api/channels', (req, res) => {
   // v1.84: name-based subscription set (same join as /api/home) so consumers can
   // pick the subscribed channels - the Modern-mode mobile avatar bar shows the
   // recently-active SUBSCRIPTIONS.
-  const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
   const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
   const groups = new Map(); // folderName -> { folder, name, avatarUrl, count, latestAddedAt, isSub }
   for (const id of Object.keys(db.metadata || {})) {
@@ -11832,7 +11849,7 @@ app.get('/api/channels', (req, res) => {
       // resolveItemChannelAvatarUrl checks the baked item.channelAvatarUrl FIRST
       // (step 1), then the channelId/URL registry - so this one call subsumes
       // the old baked-field-only assignment.
-      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(db, item);
+      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(ytView, item);
       if (resolvedAvatar) g.avatarUrl = resolvedAvatar;
     }
     if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
@@ -11856,6 +11873,7 @@ app.get('/api/channels', (req, res) => {
 // API: Get details for single video/audio
 app.get('/api/videos/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
@@ -11888,7 +11906,7 @@ app.get('/api/videos/:id', (req, res) => {
     // place, so this route deep-cloned the namespace to protect the read-cache
     // coherency invariant; both the mutation and the clone are gone, and the
     // v1.85 /api/channels + modern-grid callers pass the raw cached db too.)
-    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item);
+    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item);
   }
   // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
   // serve time from the persisted `youtubeId` through the same buildWatchUrl
@@ -12844,6 +12862,7 @@ app.delete('/api/feed-hidden/:id', (req, res) => {
 // cards, newest-hidden first (getFeedHidden's order).
 app.get('/api/feed-hidden', (req, res) => {
   const db = getCachedDatabase();
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const userId = req.user.id;
   const likedSet = new Set(userStore.getLiked(userId));
   const progressMap = userStore.getProgress(userId);
@@ -12863,7 +12882,7 @@ app.get('/api/feed-hidden', (req, res) => {
       addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
       progressPercent: dur > 0 ? (ts / dur) * 100 : 0, liked: likedSet.has(id),
     };
-    const shaped = resolveModernGridItem(db, rec);
+    const shaped = resolveModernGridItem(db, rec, ytView);
     if (shaped) items.push(shaped);
   }
   res.json({ items, total: items.length });
@@ -13016,6 +13035,7 @@ function shapedLikedBookItems(db, userId) {
 // explicitly.
 app.get('/api/liked', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   // v1.43: membership is the signed-in user's user_liked rows (a warm
   // prepared-statement read), never the frozen db.liked record.
   const likedIds = new Set(userStore.getLiked(req.user.id));
@@ -13093,7 +13113,7 @@ app.get('/api/liked', (req, res) => {
       // v1.113 (Fix A sweep): the Liked grid feeds the SAME buildCardHtml ->
       // modernCardAvatar path as /api/videos, so resolve the avatar identically
       // (read-only) or a registry-resolvable channel shows a monogram here.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
       kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
       liked: true, // every item in this listing is, by construction, a liked member
       // v1.93.2: DERIVED storyboard descriptor - the Liked view feeds
@@ -13124,6 +13144,7 @@ app.get('/api/liked', (req, res) => {
 // page, and the media-delete prune remains the durable cleaner.
 app.get('/api/history', (req, res) => {
   const db = getCachedDatabase(); // hot GET reader, same as /api/liked
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const limit = videoQuery.normalizeLimit(req.query.limit);
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const progressMap = userStore.getProgress(req.user.id);
@@ -13163,7 +13184,7 @@ app.get('/api/history', (req, res) => {
       ...item,
       // v1.113 (Fix A sweep): History feeds the SAME buildCardHtml ->
       // modernCardAvatar path, so resolve the avatar identically (read-only).
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
       liked: likedSet.has(id),
       progress: progress.timestamp || 0,
       progressPercent,
@@ -15500,13 +15521,14 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
 
   // When even the both-URL-forms + id join can't decide, don't guess -- a
   // skipped file is recoverable, a split library is not.
-  if (ytdlp.hasAmbiguousChannelSubscription(db, channelForJoin)) {
+  const ytSubs = ytdlpDb.holder(['subscriptions']); // Wave 5: the subscriptions, from their table
+  if (ytdlp.hasAmbiguousChannelSubscription(ytSubs, channelForJoin)) {
     return skipWithItem('ambiguous-subscription');
   }
 
   let targetDir;
   try {
-    targetDir = ytdlp.resolveChannelDirForChannel(db, config, channelForJoin);
+    targetDir = ytdlp.resolveChannelDirForChannel(ytSubs, config, channelForJoin);
   } catch (err) {
     // The executor treats this as a hard FAILURE, not a skip.
     return {
@@ -15742,7 +15764,7 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId, op
   try {
     if (typeof plan.channelId === 'string' && plan.channelId !== '') {
       await ytdlp.backfillSubscriptionChannelIdForChannel(
-        { loadDatabase: loadDb, updateDatabase: updateDb },
+        { loadDatabase: loadDb, updateDatabase: updateDb, ytdlpDb }, // Wave 5: the subscription lives in its table
         { channelUrl: plan.channelUrlValidated, channelHandleUrl: plan.channelHandleUrl, channelId: plan.channelId },
       );
     }
@@ -16605,13 +16627,13 @@ async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Da
 // holding the lock); returns the count of pins relabelled. Never throws; a
 // blank/absent name is a no-op. RESPECTS the snapshot design -- a deliberate
 // label write keyed by the folder match, not a conversion to a live join.
-function refreshPinLabelsForBackfilledChannel(db, target, name) {
+function refreshPinLabelsForBackfilledChannel(db, target, name, pinsHolder = db) { // Wave 5: the items come from `db` (the doc), the pins from `pinsHolder` = { ytdlp: { pins } } (a feature-store holder inside ytdlpDb.mutate; defaults to db for a holder-shaped caller)
   // v1.115 gate fix (both seats): the pin label is a durable write too -- strip
   // control chars/NUL here as well (the pin-label reducer store.js:2071 does).
   // eslint-disable-next-line no-control-regex
   const trimmed = typeof name === 'string' ? name.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
   if (trimmed === '') return 0;
-  const pins = db && db.ytdlp && Array.isArray(db.ytdlp.pins) ? db.ytdlp.pins : null;
+  const pins = pinsHolder && pinsHolder.ytdlp && Array.isArray(pinsHolder.ytdlp.pins) ? pinsHolder.ytdlp.pins : null;
   if (!pins || pins.length === 0) return 0;
   const t = target && typeof target === 'object' ? target : {};
   // v1.115 gate fix (adversarial SUGGESTION-1): key on the channel's item FOLDER
@@ -16652,7 +16674,9 @@ async function recordChannelNameBackfillFanout(deps, target, probed, nowMs = Dat
   let updated = 0;
   await d.updateDatabase((db) => {
     updated = ytdlp.applyBackfilledChannelName((db && db.metadata) || {}, target, name);
-    if (updated > 0) refreshPinLabelsForBackfilledChannel(db, target, name);
+    // Wave 5: the frozen pre-auth pins live in ytdlp_pins - the relabel is a
+    // nested feature mutate riding this same commit (skipped when nothing matched).
+    if (updated > 0) ytdlpDb.mutate((yh) => refreshPinLabelsForBackfilledChannel(db, target, name, yh) > 0);
     return updated > 0;
   });
   return updated;
@@ -16674,7 +16698,7 @@ async function recordLocalChannelHealFanout(deps, target) {
       // The pin re-label already keys on the channel's item folder full paths,
       // and the healed items now carry the canonical id -- pass the canonical
       // identity so the pin adopts the real name.
-      refreshPinLabelsForBackfilledChannel(db, { channelId: target.identity.channelId }, target.identity.channelName);
+      ytdlpDb.mutate((yh) => refreshPinLabelsForBackfilledChannel(db, { channelId: target.identity.channelId }, target.identity.channelName, yh) > 0); // Wave 5: ytdlp_pins, same commit
       // v1.126: a folder that healed to ONE canonical name also writes the
       // per-folder display map, so every folder-LABEL surface (the `?folder=`
       // header, the channels bar, pins' fallback) heals with it. folderName
@@ -17483,7 +17507,7 @@ app.get('/api/attribution-targets', (req, res) => {
     byUrl.set(t.channelUrl, t);
     if (t.channelId) seenChannelIds.add(t.channelId);
   };
-  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions)) ? db.ytdlp.subscriptions : [];
+  const subs = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
   for (const sub of subs) {
     if (!sub || typeof sub.channelUrl !== 'string' || sub.channelUrl === '') continue;
     addTarget({
@@ -17573,12 +17597,10 @@ function proposeAttributionMove(db, item, identity) {
   const config = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(config)) return { available: false, reason: 'module-disabled' };
   try {
-    // The SAME cache-coherency dance GET /api/videos/:id documents:
-    // resolveChannelDirForChannel -> ensureYtdlp backfills IN PLACE, and the
-    // shared getCachedDatabase() object must never be mutated (the test
-    // runner's throwing Proxy is the enforcement).
-    const dbForLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
-    const destinationDir = ytdlp.resolveChannelDirForChannel(dbForLookup, config, identity);
+    // Wave 5: the subscriptions come from their table as a fresh snapshot
+    // holder - resolveChannelDirForChannel -> ensureYtdlp normalises THAT, never
+    // the shared getCachedDatabase() object (the cache-coherency rule holds).
+    const destinationDir = ytdlp.resolveChannelDirForChannel(ytdlpDb.holder(['subscriptions']), config, identity);
     if (!destinationDir) return { available: false, reason: 'channel-dir-unresolvable' };
     if (path.dirname(item.filePath) === destinationDir) return { available: false, reason: 'already-there' };
     return { available: true, destinationDir };
@@ -18610,6 +18632,7 @@ ytdlp.registerRoutes(app, {
   // same decision in a form that survives past the 202 response.
   mediaVisiblePredicate,
   updateDatabase,
+  ytdlpDb, // Wave 5: the namespace's feature store - every read + write in the module goes through it
   loadDatabase,
   scanDirectories,
   getMediaId,
@@ -18714,7 +18737,7 @@ function ytdlpPodcastItemsUnder(db, dir, itemVisible) {
 function listYtdlpPodcastShows(db, itemVisible) {
   const cfg = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(cfg)) return [];
-  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
+  const subs = ytdlpDb.readPart('subscriptions') // Wave 5: from its table
     .filter((s) => s && s.libraryPlace === 'podcasts');
   return subs.map((sub) => {
     // v1.128 Wave B (L10, gate WARNING-1 fix): decide the show-level drop from
@@ -18758,7 +18781,7 @@ function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
   const shows = listYtdlpPodcastShows(db, itemVisible);
   const show = shows.find((s) => s.id === showId);
   if (!show) return null;
-  const sub = db.ytdlp.subscriptions.find((s) => s && `yt:${s.id}` === showId);
+  const sub = ytdlpDb.readPart('subscriptions').find((s) => s && `yt:${s.id}` === showId);
   let items = [];
   try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub), itemVisible); } catch (_) { items = []; }
   const progress = userStore.getProgress(userId);
@@ -18956,7 +18979,7 @@ if (require.main === module) {
     // auto-update tick can bell their outcomes (same producer as the
     // routes bundle - each bundle carries its own reference, v1.29 lesson).
     ytdlp.startBackground({
-      updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent,
+      updateDatabase, ytdlpDb, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent, // Wave 5: ytdlpDb
       // Wave 4: the root list is a table; the stale-downloadDir migration reads and prunes it here.
       getLibraryFolders: () => folderStore.list(),
       removeLibraryFolder: (p) => folderStore.remove(p),
@@ -19196,6 +19219,8 @@ module.exports = {
   musicDb, // Wave 5
   booksDb, // Wave 5
   podcastsDb, // Wave 5
+  ytdlpDb, // Wave 5
+  __failNextRestorePopulateForTests, // Wave 5: the mid-populate rollback seam
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

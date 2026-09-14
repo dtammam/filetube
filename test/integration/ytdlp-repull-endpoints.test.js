@@ -23,6 +23,8 @@ const assert = require('node:assert');
 const express = require('express');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { featureStoreFor, docView } = require('../helpers/scratch-feature-store');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
@@ -46,7 +48,8 @@ afterEach(() => {
 function makeFakeDeps(initialDb = {}) {
   let db = initialDb;
   return {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -294,7 +297,8 @@ test('startBackground creates the download directory on disk but NEVER touches d
   let db = { folders: ['/existing/media'] };
   const updateDatabaseCalls = [];
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -358,7 +362,8 @@ test('startBackground never touches db.folders or creates a directory when disab
   let db = { folders: [] };
   const calls = [];
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -385,7 +390,8 @@ test('D2: migrateStaleDownloadDirFromFolders removes a matching downloadDir entr
   const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
   let db = { folders: ['/existing/media', downloadDir, '/another/kept/folder'] };
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -403,7 +409,8 @@ test('D2: migrateStaleDownloadDirFromFolders never calls updateDatabase when db.
   let db = { folders: ['/existing/media'] };
   const updateDatabaseCalls = [];
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -425,7 +432,8 @@ test('D2: migrateStaleDownloadDirFromFolders is idempotent -- a second call afte
   let db = { folders: [downloadDir] };
   const updateDatabaseCalls = [];
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -449,7 +457,8 @@ test('F2: migrateStaleDownloadDirFromFolders never throws when deps.updateDataba
   const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
   const db = { folders: [downloadDir] };
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now
@@ -475,7 +484,8 @@ test('F2: startBackground never throws when migrateStaleDownloadDirFromFolders h
   const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: '1', FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
   const db = { folders: [downloadDir] };
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     getLibraryFolders: () => db.folders, // Wave 4: the root list is a table behind a deps seam
     removeLibraryFolder: (p) => { db.folders = db.folders.filter((x) => x !== p); },
     inSaveTransaction: (fn) => fn(), // the fake commit: run the queued prune now

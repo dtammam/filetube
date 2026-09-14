@@ -27,6 +27,8 @@ const assert = require('node:assert');
 const express = require('express');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { featureStoreFor, docView } = require('../helpers/scratch-feature-store');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
 const activity = require('../../lib/ytdlp/activity');
@@ -56,7 +58,8 @@ afterEach(() => {
 function makeFakeDeps(initialDb = {}) {
   let db = initialDb;
   return {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
     scanDirectories: async () => {},
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),
@@ -173,8 +176,7 @@ test('a subscription with no channelUrl is skipped (counted skipped), never prob
   // Force one subscription's channelUrl empty (a malformed/legacy record) --
   // simulates the "no channel identity to probe" case directly, since
   // addSubscription itself always requires a channelUrl.
-  const db = deps.loadDatabase();
-  store.ensureYtdlp(db).subscriptions.push({ id: 'no-url-sub', name: 'No URL', channelUrl: '', format: 'video', quality: 'best', order: 1 });
+  deps.ytdlpDb.mutate((h) => { store.ensureYtdlp(h).subscriptions.push({ id: 'no-url-sub', name: 'No URL', channelUrl: '', format: 'video', quality: 'best', order: 1 }); return true; }); // Wave 5: seeded through the store
 
   const probeCalls = [];
   run.probeChannelAvatar = async (channelUrl) => {

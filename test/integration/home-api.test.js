@@ -19,7 +19,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, updateDatabase, userStore,
-  __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase, musicDb, podcastsDb } = require('../../server');
+  __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase, musicDb, podcastsDb, ytdlpDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -163,8 +163,7 @@ test('AC4: new-from-subs only when a subscription folder matches; absent with no
   await __resetDatabaseForTests();
   seed({ a: item('a', { folderName: 'Chan', channelName: 'Chan', addedAt: 30 }), b: item('b', { folderName: 'Other', channelName: 'Other', addedAt: 40 }) });
   await updateDatabase((db) => {
-    if (!db.ytdlp || typeof db.ytdlp !== 'object') db.ytdlp = { allowMembersOnly: false, subscriptions: [] };
-    db.ytdlp.subscriptions = [{ name: 'Chan', order: 0 }];
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ id: 'subChan', name: 'Chan', order: 0 }]; return true; }); // Wave 5: a feature store (records need ids)
     return true;
   });
   const sub = rowOf((await getHome()).body, 'new-from-subs');

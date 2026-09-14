@@ -175,6 +175,14 @@ namespace (`podcasts.subscriptions/episodes/settings`) moved into
 both sides of the line. Feed URLs were never in the database and still are not
 (the 0600 secrets file is untouched by this floor).
 
+**Twelfth floor - schema v31 (v1.294, Wave 5, ytdlp).** The downloader's
+namespace (`ytdlp.subscriptions/pins/downloadMeta/channelAvatars/
+allowMembersOnly`) moved into `ytdlp_subscriptions`, `ytdlp_pins`,
+`ytdlp_download_meta`, `ytdlp_channel_avatars` and `ytdlp_settings`; bundles
+carry `ytdlp` in its old container shape on both sides of the line. After this
+floor `metadata` is the only document-model namespace left (Wave 6), and no
+`doc_single` row exists at all (Wave 7 drops the table).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

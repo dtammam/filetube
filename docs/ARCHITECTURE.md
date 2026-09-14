@@ -58,11 +58,11 @@ database stamped newer than itself. Rollback floor: databases touched by
 Two buckets coexist in the one file:
 
 1. **The document store** - the old db.json object shape, persisted per row:
-   `doc_kv(namespace, key, json)` for per-item namespaces (`metadata`,
-   `ytdlp.downloadMeta`, `ytdlp.channelAvatars`) and `doc_single(name, json)`
-   for small whole objects (`ytdlp.subscriptions`, `ytdlp.pins`,
-   `ytdlp.allowMembersOnly`; the tv / music / books / podcasts containers left
-   for their feature stores in Wave 5 - `lib/db/featureStore.js`; `settings`, the folder
+   `doc_kv(namespace, key, json)` for per-item namespaces (only `metadata`
+   is left, until Wave 6) and `doc_single(name, json)` for small whole
+   objects (EMPTY since Wave 5: the tv / music / books / podcasts / ytdlp
+   containers left for their feature stores - `lib/db/featureStore.js` -
+   and Wave 7 drops the table; `settings`, the folder
    config and the frozen `liked` list left for `app_settings` / `library_folders` /
    `library_folder_settings` / `channel_folder_display_names` / `media_liked`
    in Wave 4 - the `lib/config/` stores and `lib/media/liked.js`). The two

@@ -10,7 +10,7 @@ process.env.DATA_DIR = process.env.DATA_DIR || fs.mkdtempSync(path.join(os.tmpdi
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { recordLocalChannelHealFanout } = require('../../server');
+const { recordLocalChannelHealFanout, updateDatabase, saveDatabase, ytdlpDb, __resetDatabaseForTests } = require('../../server');
 
 const UC = 'UC-6oT0FOyAqCGfdNLi4fmXA';
 const HANDLE = 'https://www.youtube.com/@nestalgiamusic';
@@ -52,11 +52,16 @@ test('heal fanout: adopts id+name+url+avatar onto bad siblings, persists on chan
   assert.deepEqual(h.returns, [true], 'persisted');
 });
 
-test('heal fanout: re-labels the channel pin to the real name', async () => {
-  const pins = [{ id: 'p1', channelDir: FOLDER, label: '@nestalgiamusic', pinnedAt: 1 }];
-  const h = makeDeps({ b: frag() }, { pins });
-  await recordLocalChannelHealFanout(h.deps, target());
-  assert.equal(pins[0].label, 'NESTALGIA', 'pin snapshot re-labelled');
+test('heal fanout: re-labels the channel pin to the real name - Wave 5: through the REAL writer, into ytdlp_pins', async () => {
+  // The pins live in their table since Wave 5 and the relabel is a nested
+  // feature mutate riding the doc commit, so this case runs the real
+  // updateDatabase (the fake above has no commit for the nested write to ride).
+  await __resetDatabaseForTests();
+  saveDatabase({ metadata: { b: frag() } });
+  ytdlpDb.replaceAll({ pins: [{ id: 'p1', channelDir: FOLDER, label: '@nestalgiamusic', pinnedAt: 1 }] });
+  const n = await recordLocalChannelHealFanout({ updateDatabase, setFolderDisplayName: () => {} }, target());
+  assert.equal(n, 1, 'the fragment healed');
+  assert.equal(ytdlpDb.read().pins[0].label, 'NESTALGIA', 'pin snapshot re-labelled, in its table');
 });
 
 test('heal fanout: a no-op target (no writes) never persists; a bad/absent target is 0', async () => {

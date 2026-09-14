@@ -16,8 +16,7 @@ const assert = require('node:assert');
 const crypto = require('node:crypto');
 const {
   app, updateDatabase, userStore,
-  __resetDatabaseForTests, __setPushGuardLookupForTests, __mintTestSession,
-} = require('../../server');
+  __resetDatabaseForTests, __setPushGuardLookupForTests, __mintTestSession, ytdlpDb } = require('../../server');
 const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytStore = require('../../lib/ytdlp/store');
@@ -67,10 +66,10 @@ after(async () => {
 
 beforeEach(async () => {
   await __resetDatabaseForTests();
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = ytStore.ensureYtdlp(db);
     ns.subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@x', name: 'X', paused: false });
-  });
+  }));
 });
 
 test('feature gate: all three routes 404 when notifications are disabled (settings toggle)', async () => {

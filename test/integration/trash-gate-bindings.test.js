@@ -26,8 +26,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
-  trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests,
-} = require('../../server');
+  trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests, ytdlpDb } = require('../../server');
 const { seedState, settingsStore, tombstoneStore, trashStore, folderStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
@@ -81,8 +80,7 @@ test('QA C1: opening the bell while an item sits in Trash leaves every carrier i
   const { id } = seedLibrary();
   // The feature gate needs >=1 subscription (the seat's repro's own seed).
   await updateDatabase((db) => {
-    db.ytdlp = db.ytdlp || {};
-    db.ytdlp.subscriptions = [{ url: 'https://youtube.com/@chan', channelId: 'UCx', title: 'Chan' }];
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ id: 'subChan', url: 'https://youtube.com/@chan', channelId: 'UCx', title: 'Chan' }]; return true; }); // Wave 5
   });
   userStore.recordNotifications([{ mediaId: id, createdAt: Date.now() }]);
   userStore.setProgress(uid, id, { timestamp: 44, duration: 60, updatedAt: ISO });

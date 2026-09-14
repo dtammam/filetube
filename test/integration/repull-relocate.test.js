@@ -64,8 +64,7 @@ const {
   app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
   planImportRelocation, activeMediaStreams,
-  flushPendingProgress, userStore,
-} = require('../../server');
+  flushPendingProgress, userStore, ytdlpDb } = require('../../server');
 const { seedState, settingsStore, progressStore, tombstoneStore, likedStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -87,7 +86,7 @@ function baseSettings(overrides) {
   };
 }
 
-const DEPS = { loadDatabase, updateDatabase, getMediaId };
+const DEPS = { loadDatabase, updateDatabase, ytdlpDb, getMediaId }; // Wave 5: the namespace is a feature store
 
 let libraryDir; // an ORDINARY library root -- where MeTube put the file
 let downloadDir; // FileTube's own yt-dlp download dir
@@ -249,7 +248,7 @@ test('a SUBSCRIBED channel\'s import lands in that subscription\'s EXISTING fold
     quality: 'best',
   };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);
@@ -268,11 +267,11 @@ test('an UNSUBSCRIBED channel\'s import lands in a folder derived from its displ
   const { id } = seedHydratedImport();
   await updateDatabase((db) => {
     // A subscription to a DIFFERENT channel must not attract this item.
-    db.ytdlp = {
+    ytdlpDb.replaceAll({
       allowMembersOnly: false,
       subscriptions: [{ id: 'sub-x', channelUrl: 'https://www.youtube.com/@SomeoneElse', channelId: 'UCzzzzzzzzzzzzzzzzzzzzzz', name: '@SomeoneElse' }],
       downloadMeta: {}, pins: [], channelAvatars: {},
-    };
+    }); // Wave 5: the namespace is a feature store
     return true;
   });
 
@@ -940,7 +939,7 @@ test('THE SPLIT-LIBRARY CRITICAL, end to end: an import whose channel is subscri
   // EXACTLY what addSubscription writes: handle URL, no channelId.
   const sub = { id: 'sub-unpolled', channelUrl: 'https://www.youtube.com/@RickAstley', name: '@RickAstley', format: 'video', quality: 'best' };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);
@@ -961,11 +960,11 @@ test('when the subscription join is UNDECIDABLE (unpolled @handle sub, item with
   const config = ytdlp.parseYtdlpConfig();
   const { filePath, id } = seedHydratedImport({ item: { channelHandleUrl: undefined } });
   await updateDatabase((db) => {
-    db.ytdlp = {
+    ytdlpDb.replaceAll({
       allowMembersOnly: false,
       subscriptions: [{ id: 's1', channelUrl: 'https://www.youtube.com/@RickAstley', name: '@RickAstley' }],
       downloadMeta: {}, pins: [], channelAvatars: {},
-    };
+    }); // Wave 5: the namespace is a feature store
     return true;
   });
 
@@ -987,7 +986,7 @@ test('C2-RESIDUAL (gate round 2): an id-less /c/ subscription for this channel m
   // What the user actually added, never successfully polled -> no channelId.
   const sub = { id: 's1', channelUrl: 'https://www.youtube.com/c/RickAstley', name: 'RickAstley' };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);
@@ -1016,7 +1015,7 @@ test('QA REPRO (gate round 3): an item with NO channelId, whose channel is subsc
     format: 'video', quality: 'best',
   };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);

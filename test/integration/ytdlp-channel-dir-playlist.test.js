@@ -30,7 +30,7 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
-const { app, scanDirectories, loadDatabase, updateDatabase } = require('../../server');
+const { app, scanDirectories, loadDatabase, ytdlpDb } = require('../../server');
 const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
@@ -56,7 +56,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  folderStore().replaceAll([]); folderSettingsStore().replaceAll({}); await updateDatabase((db) => { db.ytdlp = undefined; return true; });
+  folderStore().replaceAll([]); folderSettingsStore().replaceAll({}); ytdlpDb.replaceAll(null); // Wave 5: the namespace is a feature store
 });
 
 test('AC18/AC19: GET /api/subscriptions includes a channelDir per subscription, matching args.resolveChannelDir', async () => {

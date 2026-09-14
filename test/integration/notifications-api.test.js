@@ -17,7 +17,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, updateDatabase, userStore, __resetDatabaseForTests, podcastsDb } = require('../../server');
+  app, updateDatabase, userStore, __resetDatabaseForTests, podcastsDb, ytdlpDb } = require('../../server');
 const { settingsStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -61,8 +61,7 @@ async function armFeature() {
   assert.ok(Number.isFinite(T0), 'fixture anchor must be a real timestamp');
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   await updateDatabase((db) => {
-    const ns = store.ensureYtdlp(db);
-    ns.subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@sömechannel', name: 'Söme Channel', order: 0 });
+    ytdlpDb.mutate((h) => { store.ensureYtdlp(h).subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@sömechannel', name: 'Söme Channel', order: 0 }); return true; }); // Wave 5
     db.metadata['mediä-1'] = {
       id: 'mediä-1', name: 'Clïp One.mp4', title: 'Clïp One', type: 'video', ext: '.mp4',
       filePath: '/lib/Clïp One.mp4', size: 10, addedAt: ITEM_ADDED_AT,
@@ -91,14 +90,14 @@ test('the three-way visibility gate: module off, zero subs, and toggle off each 
 
   // 2. Module on, zero subscriptions.
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
-  await updateDatabase((db) => { store.ensureYtdlp(db).subscriptions.length = 0; });
+  await updateDatabase(() => ytdlpDb.mutate((db) => { store.ensureYtdlp(db).subscriptions.length = 0; }));
   assert.equal((await fetch(`${base}/api/notifications/badge`)).status, 404, 'no subs -> no bell (decision 9)');
 
   // 3. Subs back, toggle off.
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     store.ensureYtdlp(db).subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@x', name: 'X', order: 0 });
     settingsStore().update({ notificationsEnabled: false }); // Wave 4: the settings table
-  });
+  }));
   assert.equal((await fetch(`${base}/api/notifications/badge`)).status, 404, 'toggle off -> no bell');
 });
 
