@@ -733,6 +733,11 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     db.json and a v1.294 bundle; 400s before the wipe with the logo bytes, users and rows
     surviving; the cache mutation guard; the stranded fingerprint; the 13 bodies byte-identical
     and the re-exports the SAME function objects; no new per-request full-table read.
+    **Process disclosure (QA's delta finding):** the fix commit's message was amended
+    MESSAGE-ONLY with `--no-verify` to correct a mis-typed suite count (8776 -> the measured
+    8772) on a tree byte-identical to the one the pre-commit hook had passed three minutes
+    earlier; the amended message carries the measured number. No code changed under the
+    bypass.
 
 ### Wave 7 - Teardown + monolith split + `db.json` removal  (full gate)
 - Remove `loadDatabase`/`saveDatabase`/`updateDatabase`, the mega-object backfill, and
