@@ -20,7 +20,8 @@
 //      maps through their handles; exclusiveReplace wipes + repopulates all
 //      three inside its transaction and rolls back whole on a bad row;
 //   5. readPersistedDatabase surfaces the three under their old keys;
-//   6. source locks: server.js never names the tables or the dead doc keys in
+//   6. source locks: the route surface (server.js plus the modules Wave 7b's
+//      split carved out of it) never names the tables or the dead doc keys in
 //      CODE and calls the stores at every seam; the config POST's two writes
 //      ride inSaveTransaction together.
 
@@ -39,6 +40,7 @@ const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/lega
 const createFolderStore = require('../../lib/config/folders');
 const createFolderSettingsStore = require('../../lib/config/folderSettings');
 const createFolderDisplayNameStore = require('../../lib/config/folderDisplayNames');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + the modules the split carved out of it
 
 const NUL = String.fromCharCode(0);
 let dir;
@@ -222,14 +224,21 @@ test('readPersistedDatabase: surfaces the three under their old keys only when r
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the three tables or the dead doc keys in CODE, calls the stores at every seam, and the config POST writes both maps in ONE inSaveTransaction', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+// Wave 7b (the monolith split, slice S10b): GET/POST /api/config and the
+// /api/folders routes - the folder list's own writers, and the only site of
+// the two-map inSaveTransaction below - moved to lib/config/routes.js. The
+// lock reads the route SURFACE (server.js PLUS every module the split carved
+// out of it, derived from server.js's own requires) so it binds the same
+// sentences wherever the slice put them; the negatives got STRONGER with it
+// (they now sweep every extracted module too).
+test('source lock: the route surface never names the three tables or the dead doc keys in CODE, calls the stores at every seam, and the config POST writes both maps in ONE inSaveTransaction', () => {
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')), ROOT);
   for (const t of ['library_folders', 'library_folder_settings', 'channel_folder_display_names']) assert.ok(!server.includes(t), t);
   // Every holder name the doc object has worn in this file (the gate lesson: `cachedForBooks`, `cached` and `mdb` hid three reads from the first census).
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot)\.(folders|folderSettings|folderDisplayNames)\b/.test(server), 'no doc-model access to the dead keys survives');
   assert.ok(!/(getCachedDatabase|loadDatabase)\(\)\.(folders|folderSettings|folderDisplayNames)\b/.test(server));
   for (const call of ['folderStore.list(', 'folderStore.replaceAll(', 'folderStore.remove(', 'folderStore.size(', 'folderSettingsStore.getAll(', 'folderSettingsStore.replaceAll(', 'folderDisplayNameStore.getAll(', 'folderDisplayNameStore.get(', 'folderDisplayNameStore.set(', 'folderDisplayNameStore.remove(']) {
-    assert.ok(server.includes(call), `server.js calls ${call}`);
+    assert.ok(server.includes(call), `the route surface calls ${call}`);
   }
   assert.match(server, /inSaveTransaction\(\(\) => \{\s*folderStore\.replaceAll\(validFolders\);\s*folderSettingsStore\.replaceAll\(cleanSettings\);\s*\}\)/, 'the config POST writes the list and the map inside one commit');
   const ytdlp = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'index.js'), 'utf8'));

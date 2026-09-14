@@ -16,7 +16,8 @@
 //      (and refuses without it / on a bad shape); exclusiveReplace wipes +
 //      repopulates inside its transaction and rolls back whole on a bad row;
 //   5. readPersistedDatabase surfaces the RAW rows as `settings` when rows exist;
-//   6. source locks: server.js never names the table or the dead doc key in
+//   6. source locks: the route surface (server.js plus the modules Wave 7b's
+//      split carved out of it) never names the table or the dead doc key in
 //      CODE and calls the store at every seam; the INSERT text stays in the
 //      shared kv definition.
 
@@ -34,6 +35,7 @@ const {
 } = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const createSettingsStore = require('../../lib/config/settings');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + the modules the split carved out of it
 
 const DEFAULTS = { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, trashRetentionDays: 30, nested: { a: 1 } };
 let dir;
@@ -199,14 +201,20 @@ test('readPersistedDatabase: surfaces the RAW rows as `settings` only when rows 
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names app_settings or the dead doc key in CODE and calls the store at every seam; the INSERT text stays in the shared kv definition', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+// Wave 7b (the monolith split, slice S10b): GET/POST /api/settings and the
+// custom-logo routes - the only callers of settingsStore.update/remove/has -
+// moved to lib/config/routes.js. The lock reads the route SURFACE (server.js
+// PLUS every module the split carved out of it, derived from server.js's own
+// requires) so it binds the same sentences wherever the slice put them; the
+// negatives got STRONGER with it (they now sweep every extracted module too).
+test('source lock: the route surface never names app_settings or the dead doc key in CODE and calls the store at every seam; the INSERT text stays in the shared kv definition', () => {
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')), ROOT);
   assert.ok(!/app_settings/.test(server));
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot)\.settings\b/.test(server), 'no doc-model settings access survives (every holder name the doc object has worn)');
   assert.ok(!/(getCachedDatabase|loadDatabase)\(\)\.settings\b/.test(server), 'nor through the read cache / a fresh load');
   assert.ok(!/withDefaultSettings/.test(server), 'the load-time merge is gone (the store merges)');
   for (const call of ['settingsStore.get(', 'settingsStore.getKey(', 'settingsStore.set(', 'settingsStore.update(', 'settingsStore.remove(', 'settingsStore.has(']) {
-    assert.ok(server.includes(call), `server.js calls ${call}`);
+    assert.ok(server.includes(call), `the route surface calls ${call}`);
   }
   assert.ok(/inSaveTransaction\(\(\) => settingsStore\.(set|update|remove)\(/.test(server), 'a mutator\'s settings write rides the doc commit');
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
