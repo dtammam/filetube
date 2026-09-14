@@ -911,11 +911,21 @@ re-runs them on the commit):**
 - **Then #226** (the catalogs' read-through cache: a generation counter bumped by the ADAPTER
   on every write path incl. exclusiveReplace and the migrations).
 
-**Releases (Dean's pacing: one slice-release at a time, stoppable at any slice with the tree
-shippable):** R1 = S1a + S1b + S2; R2 = S3 + S4 + S10; R3 = S5 + S6 + S7 (full gate, adversarial
-destroys the data on both sides of each moved seam); R4 = S8 + S9 + #226, then the `< 3,000`
-prediction is re-verified and the plan moves to completed/. Each release: full gate, dual-Node,
-device pass PENDING and disclosed.
+**Releases.** R1 = S1a + S1b + S2, one slice at a time (the method proven; shipped v1.297.0,
+device-passed). **Re-paced after R1 (Dean, 2026-09-14: "Can we go any faster ... larger
+chunks"):** the remaining slices run in PARALLEL Opus worktrees from one base commit - each
+subagent confines its server.js edits to its own groups' statements, places its `require`
+immediately above its register call (never in the shared top require block) so the hunks
+never overlap, and the main session merges the branches one by one, re-running the verifier
+on each and resolving the one expected conflict (the route-surface registry list). Two
+releases remain: **R2 = S3 music + S4 tv + S10a media browse (`/api/videos`, `/api/home`,
+`/api/search`, `/api/stats`, `/api/channels` and the small media reads) + S10b config
+(`/api/config`, `/api/settings`, `/api/folders`, `/api/scan`, `/api/cache`)** - four parallel
+slices, one gate; **R3 = S5 + S6 + S7 + S8 + S9 in parallel + #226** (full gate, adversarial
+destroys the data on both sides of every moved seam), then the `< 3,000` prediction is
+re-verified and the plan moves to completed/. A slice that fails the machine check is dropped
+from its release, never held for. Each release: full gate, dual-Node, device pass PENDING and
+disclosed.
 
 - **Wave 7b R1 record (2026-09-14, branch `feat/wave7b-r1`: the design commit + three slice
   commits, each an Opus worktree subagent's move verified by the main session's machine
