@@ -28,7 +28,7 @@ const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
   trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -172,10 +172,10 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   // non-deterministic and faked ten kill verdicts inside the gate itself.
   const OUT1 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
   await updateDatabase((db) => {
-    db.trash.evil = {
+    trashStore().set('evil', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'x', originalPath: path.join(OUT1, 'planted.mp4'),
       trashPath: filePath, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'x', title: 'evil' },
-    };
+    });
     db.settings.trashRetentionDays = 1e-9; // the smuggled amplifier
   });
 
@@ -185,23 +185,23 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   // corrupt record survives the sweep untouched, and so does the live file.
   await sweepTrash(Date.now());
   assert.ok(fs.existsSync(filePath), 'the live library file survives the sweep');
-  assert.ok(loadDatabase().trash.evil, 'S-2: an unrestorable record is NEVER auto-destroyed -- it waits for an explicit purge');
+  assert.ok(trashStore().get('evil'), 'S-2: an unrestorable record is NEVER auto-destroyed -- it waits for an explicit purge');
   assert.ok(loadDatabase().metadata[id], 'the library entry is untouched');
 
   // An EXPLICIT purge retires it -- still without touching the file
   // (layer 2: purge's own confinement).
   const purged = await purgeTrashItem({ loadDatabase, updateDatabase }, 'evil');
   assert.equal(purged.ok, true);
-  assert.equal(loadDatabase().trash.evil, undefined, 'the corrupt record was retired harmlessly');
+  assert.equal(trashStore().get('evil'), undefined, 'the corrupt record was retired harmlessly');
   assert.ok(fs.existsSync(filePath), 'and the live library file STILL survives');
 
   // Restore of a same-shaped corrupt record refuses cleanly.
   const OUT2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
   await updateDatabase((db) => {
-    db.trash.evil2 = {
+    trashStore().set('evil2', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'y', originalPath: path.join(OUT2, 'deep', 'planted2.mp4'),
       trashPath: filePath, trashedAt: Date.now(), rootFolder: null, item: { id: 'y' },
-    };
+    });
   });
   const res = await restoreTrashItem(deps(), 'evil2');
   assert.equal(res.ok, false);
@@ -223,8 +223,7 @@ test('QA W2: restoring a trash-less (pre-v1.65) bundle PRESERVES the current tra
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle),
   });
   assert.equal(res.status, 200);
-  const db = loadDatabase();
-  assert.ok(db.trash[tr.trashId], 'the trash record survived a bundle that never knew about trash');
+  assert.ok(trashStore().get(tr.trashId), 'the trash record survived a bundle that never knew about trash');
   assert.ok(fs.existsSync(tr.trashPath), 'and its bytes remain restorable');
 });
 
@@ -234,15 +233,15 @@ test('ADV W3: the sweep confinement belt -- a corrupt IN-WINDOW record aiming th
   // an expired record is purged by the record pass and never exercises the
   // belt), and its trashPath dirname is a REAL library folder.
   await updateDatabase((db) => {
-    db.trash.corrupt = {
+    trashStore().set('corrupt', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'z', originalPath: filePath,
       trashPath: path.join(ROOT, 'Chan', 'not-really-trash.mp4'),
       trashedAt: Date.now() - 1 * DAY, rootFolder: ROOT, item: { id: 'z' },
-    };
+    });
   });
   // A bystander in that folder, unreferenced and "old" (ctime is fresh, so
   // push `now` far out -- but keep the corrupt record in-window there too).
-  await updateDatabase((db) => { db.trash.corrupt.trashedAt = Date.now() + 39 * DAY; });
+  await updateDatabase((db) => { trashStore().set('corrupt', { ...trashStore().get('corrupt'), trashedAt: Date.now() + 39 * DAY }); });
   const future = Date.now() + 40 * DAY;
 
   await sweepTrash(future);
@@ -262,7 +261,7 @@ test('ADV W4: a live record\'s trash-side SUBTITLES survive the orphan pass even
 
   // Make the record un-purgeable by the record pass (future trashedAt --
   // clock skew / crafted), then sweep far in the future so ctime ages out.
-  await updateDatabase((db) => { db.trash[tr.trashId].trashedAt = Date.now() + 400 * DAY; });
+  await updateDatabase((db) => { trashStore().set(tr.trashId, { ...trashStore().get(tr.trashId), trashedAt: Date.now() + 400 * DAY }); });
   await sweepTrash(Date.now() + 100 * DAY);
 
   assert.ok(fs.existsSync(tr.trashPath), 'the referenced media survives');
@@ -323,7 +322,7 @@ test('ADV W8 + S1 (tombstone shape): a failed source unlink (record + MINTED tom
   const db = loadDatabase();
   assert.equal(db.metadata[id], undefined, 'THE finding: the deleted item did not resurrect');
   assert.ok(!fs.existsSync(filePath), 'the leftover dirent was reconciled away');
-  assert.equal(Object.keys(db.trash).length, 1, 'and NO duplicate trash record was minted (S1)');
+  assert.equal(trashStore().size(), 1, 'and NO duplicate trash record was minted (S1)');
   assert.ok(fs.existsSync(tr.trashPath), 'the real bytes sit exactly once, in trash');
   assert.equal(tombstoneStore().get(id), undefined, 'the tombstone was consumed (Wave 2: the relational store)');
 });
@@ -363,7 +362,7 @@ test('ADV W9: the half-restored same-inode state COMPLETES the restore instead o
   assert.equal(res.restoredId, id);
   const db = loadDatabase();
   assert.ok(db.metadata[id], 'metadata restored');
-  assert.deepEqual(db.trash, {}, 'record retired');
+  assert.deepEqual(trashStore().getAll(), {}, 'record retired');
   assert.equal(userStore.getOneProgress(uid, id).timestamp, 44, 'the stranded carriers re-linked home');
   assert.ok(fs.existsSync(filePath) && !fs.existsSync(tr.trashPath), 'exactly one link remains, at the library path');
 });
@@ -384,7 +383,7 @@ test('R2 BIND-v (the TRUE crash shape): record + same-inode leftover, NO tombsto
   const db = loadDatabase();
   assert.equal(db.metadata[id], undefined, 'THE binding: no tombstone, and the item still must not resurrect');
   assert.ok(!fs.existsSync(filePath), 'the leftover was reconciled away');
-  assert.equal(Object.keys(db.trash).length, 1, 'single record');
+  assert.equal(trashStore().size(), 1, 'single record');
   assert.ok(fs.existsSync(tr.trashPath), 'bytes intact in trash');
 });
 
@@ -399,7 +398,7 @@ test('R2 reconcile inode guard: NEW content at a record-covered path (no tombsto
   assert.ok(fs.existsSync(filePath), 'the new content survives');
   assert.equal(fs.readFileSync(filePath, 'utf8'), 'BRAND-NEW-USER-CONTENT');
   assert.ok(loadDatabase().metadata[id], 'and is indexed as the new content it is');
-  assert.ok(loadDatabase().trash[tr.trashId], 'the old record is untouched');
+  assert.ok(trashStore().get(tr.trashId), 'the old record is untouched');
 });
 
 test('R2 BIND-cc: DIFFERENT-inode content at a TOMBSTONED record-covered path is orphan-trashed (recoverable), never blind-unlinked', async () => {
@@ -418,7 +417,7 @@ test('R2 BIND-cc: DIFFERENT-inode content at a TOMBSTONED record-covered path is
   await scanDirectories();
 
   assert.ok(!fs.existsSync(filePath), 'the retry consumed the tombstoned path');
-  const recs = Object.values(loadDatabase().trash);
+  const recs = Object.values(trashStore().getAll());
   assert.equal(recs.length, 2, 'the new content became its own trash record');
   const orphanRec = recs.find((r) => r.trashPath !== tr.trashPath);
   assert.equal(fs.readFileSync(orphanRec.trashPath, 'utf8'), 'NEW-CONTENT-THE-RETRY-MUST-NOT-DESTROY', 'RECOVERABLE, never blind-unlinked');
@@ -431,7 +430,7 @@ test('R2 BIND-s: a smuggled out-of-set retention cannot rapid-purge LEGITIMATE r
 
   const purged = await sweepTrash(Date.now());
   assert.equal(purged, 0, 'THE binding: the clamp treats 1e-9 as the default, not as microseconds');
-  assert.ok(loadDatabase().trash[tr.trashId], 'the legitimate record survives');
+  assert.ok(trashStore().get(tr.trashId), 'the legitimate record survives');
   assert.ok(fs.existsSync(tr.trashPath), 'its bytes survive');
 });
 
@@ -452,7 +451,7 @@ test('R2 BIND-z: GET /thumbnail/<trashId> serves the re-keyed sidecar (and a tit
   // the assertion could not fail). Remove the sidecar so the placeholder
   // path actually runs.
   fs.unlinkSync(path.join(process.env.DATA_DIR, '.thumbnails', `${tr.trashId}.jpg`));
-  await updateDatabase((db) => { delete db.trash[tr.trashId].item.title; });
+  { const r = trashStore().get(tr.trashId); delete r.item.title; trashStore().set(tr.trashId, r); } // Wave 3: the relational store
   const res2 = await fetch(`${base}/thumbnail/${tr.trashId}`);
   assert.equal(res2.status, 200, 'a title-less record must not crash the route');
   assert.match(res2.headers.get('content-type') || '', /image\/svg/, 'it falls to the SVG placeholder');
@@ -474,7 +473,7 @@ test('R2 (S-C): restore rollback on a mutator THROW unlinks the fresh link only 
   assert.equal(res.status, 500);
   assert.ok(!fs.existsSync(filePath), 'the fresh link was rolled back (trash side survives, so this is safe)');
   assert.ok(fs.existsSync(tr.trashPath), 'the trash copy is untouched');
-  assert.ok(loadDatabase().trash[tr.trashId], 'the record is intact for a retry');
+  assert.ok(trashStore().get(tr.trashId), 'the record is intact for a retry');
 });
 
 test('R3: a record whose destination is UNRELATED to both a root and its own trash dir is refused (structural confinement)', async () => {
@@ -485,12 +484,12 @@ test('R3: a record whose destination is UNRELATED to both a root and its own tra
   const plantedTrash = path.join(OUT, TRASH_DIR_NAME, 'planted.mp4');
   fs.writeFileSync(plantedTrash, 'planted-bytes');
   await updateDatabase((db) => {
-    db.trash.outside = {
+    trashStore().set('outside', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       // Destination in a THIRD tree: neither a configured root nor the
       // trash dir's own parent -- no construction path produces this.
       originalId: 'o', originalPath: path.join(ELSEWHERE, 'deep', 'written-outside.mp4'),
       trashPath: plantedTrash, trashedAt: Date.now(), rootFolder: null, item: { id: 'o' },
-    };
+    });
   });
 
   const res = await restoreTrashItem(deps(), 'outside');
@@ -574,7 +573,7 @@ test('R3 CRITICAL-2: the instance can restore ITS OWN backup when a trash record
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle),
   });
   assert.equal(res.status, 200, 'THE finding: a backup the app refuses to restore is a DR failure');
-  assert.equal(Object.keys(loadDatabase().trash).length, 2, 'both records came back');
+  assert.equal(Object.keys(trashStore().getAll()).length, 2, 'both records came back');
 });
 
 test('R3 BIND-n3a: restore\'s THROW rollback keeps the last link when the trash side is already gone', async () => {
@@ -632,10 +631,10 @@ test('R4 BIND-n4e: restore\'s STRUCTURAL trash-dir check is load-bearing -- a re
   // unconditional unlink(trashPath) -- without the check, the live file
   // would be hard-linked away and then deleted.
   await updateDatabase((db) => {
-    db.trash.structural = {
+    trashStore().set('structural', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 's', originalPath: path.join(ROOT, 'Chan', 'written-by-restore.mp4'),
       trashPath: filePath, trashedAt: Date.now(), rootFolder: ROOT, item: { id: 's', title: 'S' },
-    };
+    });
   });
 
   const res = await restoreTrashItem(deps(), 'structural');
@@ -685,18 +684,18 @@ test('R4 W1: ONE predicate -- a record restore refuses is NEVER auto-destroyed b
   await updateDatabase((db) => {
     // Shape 1: a '..' segment in originalPath -- path.resolve normalizes it
     // away, so the sweep's hand-copy accepted what restore refuses.
-    db.trash.dotdot = {
+    trashStore().set('dotdot', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       // A LITERAL '..' segment (path.join would normalize it away here, the
       // same way path.resolve did inside the sweep's hand-copy).
       originalId: 'a', originalPath: `${OUT}/sub/../a.mp4`,
       trashPath: bytesA, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'a' },
-    };
+    });
     // Shape 2: trashPath not inside a trash dir -- the hand-copy never
     // gated on that at all.
-    db.trash.notrash = {
+    trashStore().set('notrash', { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'b', originalPath: path.join(OUT, 'not-a-trash-dir', 'b-restored.mp4'),
       trashPath: bytesB, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'b' },
-    };
+    });
   });
 
   assert.equal((await restoreTrashItem(deps(), 'dotdot')).status, 400, 'precondition: restore refuses shape 1');
@@ -704,8 +703,7 @@ test('R4 W1: ONE predicate -- a record restore refuses is NEVER auto-destroyed b
 
   const purged = await sweepTrash(Date.now());
   assert.equal(purged, 0, 'THE binding: neither past-retention record was auto-purged');
-  const db = loadDatabase();
-  assert.ok(db.trash.dotdot && db.trash.notrash, 'both records stand, awaiting an explicit purge');
+  assert.ok(trashStore().get('dotdot') && trashStore().get('notrash'), 'both records stand, awaiting an explicit purge');
   assert.ok(fs.existsSync(bytesA), 'shape 1 bytes survive (the hand-copy destroyed these)');
   assert.ok(fs.existsSync(bytesB), 'shape 2 bytes survive');
   assert.ok(loadDatabase().metadata[id], 'the live library is untouched');
@@ -763,15 +761,15 @@ test('QA-R2 W1: trashing a queued item must NOT brick queue reorder (the hidden 
 // test the purge half threw first and the sweep half was never reached, so
 // the sweep guarantee the name promised was unbound. Each half must kill
 // mutant q9 (dropping destConfined's `trashConfined &&` crash guard) alone.
-function plantMalformed(db, outsidePath, keys) {
+function plantMalformed(_db, outsidePath, keys) { // _db: the mutator arg, unused since Wave 3 (the store is the writer)
   // originalPath OUTSIDE every configured root: with it under a root,
   // destConfined's root clause short-circuits TRUE and path.dirname is
   // never evaluated -- the crash cannot occur and the test proves nothing.
   for (const key of keys) {
-    db.trash[key] = {
+    trashStore().set(key, { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
       originalId: 'm', originalPath: outsidePath,
       trashPath: undefined, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
-    };
+    });
   }
 }
 
@@ -781,10 +779,10 @@ test('R5a (adversarial W1): purgeTrashItem cannot THROW on a malformed record (t
   await updateDatabase((db) => {
     let n = 0;
     for (const bad of [undefined, null, 42, {}, []]) {
-      db.trash[`malformed-${n += 1}`] = {
+      trashStore().set(`malformed-${n += 1}`, { // Wave 3: the relational store (was a db.trash.NAME = {...} doc write)
         originalId: 'm', originalPath: path.join(OUT, 'm.mp4'),
         trashPath: bad, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
-      };
+      });
     }
   });
   for (const key of ['malformed-1', 'malformed-2', 'malformed-3', 'malformed-4', 'malformed-5']) {
@@ -806,7 +804,7 @@ test('R5b (adversarial W1): ONE malformed record must not abort the whole retent
 
   const purged = await sweepTrash(Date.now());
   assert.equal(purged, 1, 'the sweep completed instead of aborting on the malformed record');
-  assert.equal(loadDatabase().trash[good.trashId], undefined, 'and the healthy past-retention record WAS purged');
+  assert.equal(trashStore().get(good.trashId), undefined, 'and the healthy past-retention record WAS purged');
   assert.ok(!fs.existsSync(good.trashPath));
 });
 

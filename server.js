@@ -242,6 +242,11 @@ const createDeleteTombstoneStore = require('./lib/media/deleteTombstones');
 const progressStore = createProgressStore(dbAdapter);
 const tombstoneStore = createDeleteTombstoneStore(dbAdapter);
 const { pruneDeleteTombstones, DELETE_TOMBSTONE_CAP, DELETE_TOMBSTONE_MAX_AGE_MS } = createDeleteTombstoneStore;
+// Wave 3 (v1.293): the trashed-item records (the only way back for a trashed
+// file) are relational too - minted/retired inside the doc commit's
+// transaction like the tombstones; the retention sweep queries trashed_at.
+const createTrashRecordStore = require('./lib/media/trashRecords');
+const trashStore = createTrashRecordStore(dbAdapter);
 // Fail-closed at boot: a short/placeholder secret throws here (before listen).
 const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
 const AUTH_COOKIE_NAME = authGateLib.cookieNameFor(DATA_DIR);
@@ -541,8 +546,8 @@ function loadDatabase() {
   // (v1.42-v1.290: `viewCounts` was backfilled here. Wave 1 of the relational
   // arc moved it to media_view_counts / viewCountStore - it is no longer a key
   // of this object, and the save-lock refuses it if one appears.)
-  // v1.65: backfill `trash` (trashed-item records) like every other top-level key.
-  if (!db.trash || typeof db.trash !== 'object' || Array.isArray(db.trash)) db.trash = {};
+  // (v1.65-v1.292: `trash` was backfilled here. Wave 3 moved it to
+  // media_trash / trashStore - no longer a key of this object.)
   // v1.42: when a container namespace EXISTS, backfill its per-key
   // sub-namespaces the same way. Under db.json, ensureBooks/ensureYtdlp
   // created these keys once and the empty `{}` persisted forever; under
@@ -4269,11 +4274,11 @@ async function runScanDirectories() {
   // leftover -- unlink it, never index it. A different inode is new content
   // the user placed; it indexes honestly.
   const trashByOriginalPath = new Map();
-  if (db.trash && typeof db.trash === 'object') {
-    for (const rec of Object.values(db.trash)) {
-      if (rec && typeof rec.originalPath === 'string' && typeof rec.trashPath === 'string') {
-        trashByOriginalPath.set(rec.originalPath, rec);
-      }
+  // Wave 3: the records are relational; this is the Phase-1 SNAPSHOT of the
+  // table (one read, the same moment as the doc snapshot above).
+  for (const rec of Object.values(trashStore.getAll())) {
+    if (rec && typeof rec.originalPath === 'string' && typeof rec.trashPath === 'string') {
+      trashByOriginalPath.set(rec.originalPath, rec);
     }
   }
 
@@ -9914,10 +9919,11 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'settings', 'trash', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'settings', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
-// joined viewCounts here - same bundle keys and shapes as before.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones'];
+// joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
+// before (validateBackupBundle's trash section is unchanged).
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9935,6 +9941,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.viewCounts = viewCountStore.getAll();
       bundle.progress = progressStore.getAll();          // Wave 2: verbatim records
       bundle.deleteTombstones = tombstoneStore.getAll(); // Wave 2: verbatim records
+      bundle.trash = trashStore.getAll();                // Wave 3: verbatim records
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = db.settings ? db.settings[customLogoMimeKey(variant)] : undefined;
@@ -10138,7 +10145,9 @@ function validateBackupBundle(bundle) {
   // the MAP must be an object with non-empty NUL-free ids and no null holes -
   // refuse-whole before the wipe. A tombstone's record must be an object (the
   // scan reads .deletedAt/.filePath off it and the prune keys on deletedAt).
-  for (const key of ['progress', 'deleteTombstones']) {
+  // (Wave 3: `trash` joins for the id/shape checks; its per-record path
+  // validation above is unchanged.)
+  for (const key of ['progress', 'deleteTombstones', 'trash']) {
     if (bundle[key] === undefined) continue;
     const map = bundle[key];
     if (typeof map !== 'object' || map === null || Array.isArray(map)) return `${key} must be an object`;
@@ -10246,8 +10255,8 @@ app.post('/api/admin/restore', (req, res, next) => {
   // current trash records. Wiping them would strand the trashed files as
   // unreferenced orphans that the retention sweep then silently destroys.
   if (bundle.trash === undefined) {
-    const current = loadDatabase();
-    if (current.trash && Object.keys(current.trash).length > 0) dbPart.trash = current.trash;
+    const current = trashStore.getAll(); // Wave 3: the table
+    if (Object.keys(current).length > 0) dbPart.trash = current;
   }
   // v1.69 gate fix (adversarial #5, the SAME v1.51 partial-restore lesson):
   // a bundle without a podcasts key - every pre-v1.69 export - must
@@ -10593,7 +10602,7 @@ app.get('/api/notifications', (req, res) => {
       // bell-open (proven by the seat's runnable repro). Filter without
       // pruning; restore re-keys the row home, purge retires it. (The
       // badge counts the hidden row until then -- accepted, disclosed.)
-      if (db.trash && Object.prototype.hasOwnProperty.call(db.trash, row.mediaId)) {
+      if (trashStore.has(row.mediaId)) { // Wave 3: the table
         continue;
       }
       // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
@@ -12330,7 +12339,7 @@ app.delete('/api/videos/:id', async (req, res) => {
 
   // v1.65 (ruling 3, closes tech-debt #64): EVERY delete routes through
   // TRASH. The resolvable-file case is an atomic rename into the root's
-  // trash dir -- trashItem() owns the whole identity carry (the db.trash
+  // trash dir -- trashItem() owns the whole identity carry (the media_trash
   // record, doc-table carries, all nine per-user carriers, id-keyed sidecar
   // renames) and its own rollback, so NONE of the legacy cleanup below runs
   // for it. The legacy path survives only for the shapes with no file to
@@ -13127,7 +13136,7 @@ app.delete('/api/search-history', (req, res) => {
 app.get('/api/trash', (req, res) => {
   const db = getCachedDatabase();
   const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
-  const items = Object.entries(db.trash || {})
+  const items = Object.entries(trashStore.getAll()) // Wave 3: the table
     .filter(([, rec]) => trashRecordVisibleTo(req, rec)) // the ONE predicate (shared with purge/restore)
     .map(([tid, rec]) => ({
       trashId: tid,
@@ -13166,11 +13175,10 @@ app.get('/api/trash', (req, res) => {
 app.post('/api/trash/purge-all', async (req, res) => {
   if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
   if (refuseIfReadOnlyMedia(res)) return;
-  const db = getCachedDatabase();
   // Snapshot the visible id set + each record's size BEFORE any purge (each
   // purgeTrashItem reloads + mutates the db; freedBytes must read the size from
   // the pre-purge snapshot).
-  const targets = Object.entries(db.trash || {})
+  const targets = Object.entries(trashStore.getAll()) // Wave 3: the table
     .filter(([, rec]) => trashRecordVisibleTo(req, rec))
     .map(([tid, rec]) => ({ tid, size: (rec.item && Number(rec.item.size)) || 0 }));
   let purgedCount = 0;
@@ -13192,7 +13200,7 @@ app.post('/api/trash/:id/restore', async (req, res) => {
   // v1.123 T3 (security): visibility axis. requireModifyLibrary gates the
   // capability; a member holding it but RESTRICTED from the item's folder must
   // still not re-materialize it. 404 (neutral - same as a missing id below).
-  if (!trashRecordVisibleTo(req, (getCachedDatabase().trash || {})[req.params.id])) {
+  if (!trashRecordVisibleTo(req, trashStore.get(req.params.id))) {
     return res.status(404).json({ error: 'Trash item not found' });
   }
   const result = await restoreTrashItem({ loadDatabase, updateDatabase, getMediaId }, req.params.id);
@@ -13208,7 +13216,7 @@ app.delete('/api/trash/:id', async (req, res) => {
   // v1.123 T3 (security): visibility axis - purge PERMANENTLY destroys the file,
   // so a capable-but-restricted member must never reach it for a hidden item.
   // 404 (neutral - same as a missing id below).
-  if (!trashRecordVisibleTo(req, (getCachedDatabase().trash || {})[req.params.id])) {
+  if (!trashRecordVisibleTo(req, trashStore.get(req.params.id))) {
     return res.status(404).json({ error: 'Trash item not found' });
   }
   const result = await purgeTrashItem({ loadDatabase, updateDatabase }, req.params.id);
@@ -14038,19 +14046,21 @@ function rekeyInFlightState(oldId, newId, oldPath, newPath) {
 //   destroyMediaStreams -> source unlink last.
 //
 // The one structural difference from a move: the item LEAVES db.metadata and
-// its full record lands in db.trash[trashId] (trashId = md5(trashPath) --
-// the id system is untouched, trash is "just a move" to the carriers). The
-// doc-table carries (progress/liked) ride old->trash inside the mutator
-// exactly like a move, and the RELATIONAL carriers (per-user rows, and since
-// Wave 1 the view-count row) re-key post-commit in rekeyInFlightState, so a
+// its full record lands in media_trash under trashId (= md5(trashPath) --
+// the id system is untouched, trash is "just a move" to the carriers; Wave 3:
+// the record is a row minted INSIDE this mutator's save transaction). The
+// doc-table carry (liked) rides old->trash inside the mutator exactly like a
+// move; the progress row and the tombstones ride the same save transaction
+// (Wave 2), and the RELATIONAL carriers (per-user rows, and since Wave 1 the
+// view-count row) re-key post-commit in rekeyInFlightState, so a
 // restore re-links every scrap of history.
 //
 // NO pre-mutator tombstone retirement here (the move's mutator A): that
 // discipline protects a DESTINATION the scan can reap, and the scan never
 // walks TRASH_DIR_NAME (the v1.65 walker exclusion) -- no tombstone can ever
 // act on a trash-side path. restoreTrashItem (t3) re-occupies a REAL library
-// path and therefore DOES inherit mutator A. db.trash itself deliberately
-// does NOT join the move/prune mutators: its records reference trash-side
+// path and therefore DOES inherit mutator A. The trash records (media_trash)
+// deliberately do NOT join the move/prune mutators: they reference trash-side
 // paths no move or scan ever touches.
 //
 // SOURCE-UNLINK FAILURE (the last step) mints a deletion tombstone for the
@@ -14165,8 +14175,10 @@ async function trashItem(deps, id, opts = {}) {
       const freshItem = freshDb.metadata[id];
       if (!freshItem) return false; // concurrently deleted -- nothing left to trash
 
-      if (!freshDb.trash || typeof freshDb.trash !== 'object') freshDb.trash = {};
-      freshDb.trash[trashId] = {
+      // Wave 3: the record is a media_trash row, minted INSIDE this save
+      // transaction (see the inSaveTransaction call right after it) - the
+      // bytes are already linked into trash, and the row is the only way back.
+      const trashRecord = {
         originalId: id,
         originalPath: oldPath,
         trashPath,
@@ -14177,6 +14189,7 @@ async function trashItem(deps, id, opts = {}) {
         // rebuilds db.metadata from it byte-identical.
         item: { ...freshItem },
       };
+      inSaveTransaction(() => trashStore.set(trashId, trashRecord));
       delete freshDb.metadata[id];
 
       // Doc-table id-keyed carries, old -> trash (the move mutator's list;
@@ -14370,7 +14383,7 @@ async function trashItem(deps, id, opts = {}) {
 // v1.65: the scan's deferred-delete retry routes through trash too (ruling
 // 3: EVERY delete path). By the time the retry fires, the original delete
 // already removed the library entry and every carrier -- this is an ORPHAN
-// move: bytes into the trash dir + a minimal db.trash record (a restore
+// move: bytes into the trash dir + a minimal media_trash record (a restore
 // puts the file back and the next scan re-indexes it into full metadata).
 // Sidecar subtitles ride along under the narrow matcher (the retry used to
 // greedily DELETE them; carrying is strictly better).
@@ -14402,9 +14415,9 @@ async function trashOrphanFile(filePath, opts = {}) {
 
   try {
     await updateDatabase((freshDb) => {
-      if (!freshDb.trash || typeof freshDb.trash !== 'object') freshDb.trash = {};
       const ext = path.extname(filePath).toLowerCase();
-      freshDb.trash[trashId] = {
+      // Wave 3: a media_trash row, minted inside this mutator's save transaction.
+      const leftoverRecord = {
         originalId,
         originalPath: filePath,
         trashPath,
@@ -14418,6 +14431,8 @@ async function trashOrphanFile(filePath, opts = {}) {
           orphanedByDeferredDelete: true,
         },
       };
+      inSaveTransaction(() => trashStore.set(trashId, leftoverRecord));
+      return true;
     });
   } catch (err) {
     try { fs.unlinkSync(trashPath); } catch (_) { /* best-effort rollback */ }
@@ -14494,7 +14509,7 @@ function trashRecordPlacement(rec, roots) {
 }
 
 // restoreTrashItem: the exact reverse of trashItem -- link back to the
-// original path, ONE mutator (db.trash record -> db.metadata + doc-table
+// original path, ONE mutator (media_trash record -> db.metadata + doc-table
 // carries + sidecar renames back), rollback on failure, post-commit
 // rekeyInFlightState (all nine carriers re-link: the restored id IS the
 // pre-trash id, md5 of the same path). Ruling 4's full-fidelity promise
@@ -14517,7 +14532,7 @@ async function restoreTrashItem(deps, trashId) {
   }
 
   const db = loadDb();
-  const rec = db.trash && Object.prototype.hasOwnProperty.call(db.trash, trashId) ? db.trash[trashId] : null;
+  const rec = trashStore.get(trashId) || null; // Wave 3: the table
   if (!rec) {
     return { ok: false, status: 404, error: 'Trash item not found' };
   }
@@ -14597,8 +14612,8 @@ async function restoreTrashItem(deps, trashId) {
   let mutatorResult;
   try {
     mutatorResult = await updateDb((freshDb) => {
-      if (!freshDb.trash || !Object.prototype.hasOwnProperty.call(freshDb.trash, trashId)) return false;
-      const freshRec = freshDb.trash[trashId];
+      const freshRec = trashStore.get(trashId); // Wave 3: the LIVE table, inside the write chain
+      if (!freshRec) return false;
 
       // Rebuild the metadata entry from the snapshot; id/filePath/name are
       // recomputed from the ORIGINAL path (originalId is md5(originalPath)
@@ -14612,11 +14627,13 @@ async function restoreTrashItem(deps, trashId) {
         name: path.basename(originalPath),
         folderName: path.basename(path.dirname(originalPath)) || freshRec.item.folderName,
       };
-      delete freshDb.trash[trashId];
-
+      // Wave 3: the trash record retires inside this save transaction (the
+      // same commit that re-creates the metadata entry - never a dangling
+      // record, never a re-created entry without its record gone).
       // Wave 2: the frozen pre-auth position rides trashId -> originalId
       // inside this save transaction; both ids' tombstones retire in the same one.
       inSaveTransaction(() => {
+        trashStore.remove(trashId);
         progressStore.rekey(trashId, originalId);
         tombstoneStore.remove([originalId, trashId]);
       });
@@ -14743,8 +14760,7 @@ async function purgeTrashItem(deps, trashId) {
     return { ok: false, status: 500, error: 'purgeTrashItem: missing required deps' };
   }
 
-  const db = loadDb();
-  const rec = db.trash && Object.prototype.hasOwnProperty.call(db.trash, trashId) ? db.trash[trashId] : null;
+  const rec = trashStore.get(trashId) || null; // Wave 3: the table (loadDb stays a required dep for the doc-side gate below)
   if (!rec) {
     return { ok: false, status: 404, error: 'Trash item not found' };
   }
@@ -14798,10 +14814,11 @@ async function purgeTrashItem(deps, trashId) {
 
   try {
     await updateDb((freshDb) => {
-      if (freshDb.trash) delete freshDb.trash[trashId];
-      // Wave 2: the frozen pre-auth position and the tombstone under the
-      // trashId are purged inside this save transaction.
+      // Wave 3: the trash record, and (Wave 2) the frozen pre-auth position
+      // and the tombstone under the trashId, are purged inside this save
+      // transaction.
       inSaveTransaction(() => {
+        trashStore.remove(trashId);
         progressStore.remove(trashId);
         tombstoneStore.remove(trashId);
       });
@@ -14859,9 +14876,11 @@ async function sweepTrash(now = Date.now()) {
   let purged = 0;
 
   const sweepRoots = configuredLibraryRoots(db).filter((r) => typeof r === 'string' && r !== '');
-  for (const [tid, rec] of Object.entries(db.trash || {})) {
-    if (!rec || typeof rec.trashedAt !== 'number') continue;
-    if (now - rec.trashedAt <= maxAgeMs) continue;
+  // Wave 3: the retention query runs on the typed trashed_at column - a record
+  // with no numeric trashedAt is never returned (the v1.65 rule, unchanged),
+  // and the boundary is the same strict `now - trashedAt > maxAgeMs`.
+  for (const [tid, rec] of Object.entries(trashStore.expiredBefore(now - maxAgeMs))) {
+    if (!rec) continue;
     // Gate round 3 (adversarial S-2): NEVER auto-destroy a record the user
     // cannot currently restore. If restore would refuse this record (its
     // destination sits neither under a configured root nor under the trash
@@ -14880,13 +14899,14 @@ async function sweepTrash(now = Date.now()) {
 
   try {
     const fresh = loadDatabase();
-    const referenced = new Set(Object.values(fresh.trash || {}).map((r) => r && r.trashPath).filter(Boolean));
+    const liveTrash = trashStore.getAll(); // Wave 3: the table, read AFTER the purges above
+    const referenced = new Set(Object.values(liveTrash).map((r) => r && r.trashPath).filter(Boolean));
     // Gate fix W4: a live record's subtitle sidecars share its trash-side
     // basename -- referenced in spirit, bytes exist nowhere else.
     const referencedBases = new Set();
     for (const p of referenced) referencedBases.add(path.basename(p, path.extname(p)));
     const trashDirs = new Set(configuredLibraryRoots(fresh).map((r) => path.join(r, TRASH_DIR_NAME)));
-    for (const r of Object.values(fresh.trash || {})) {
+    for (const r of Object.values(liveTrash)) {
       if (r && r.trashPath) trashDirs.add(path.dirname(r.trashPath));
     }
     for (const dir of trashDirs) {
@@ -17796,11 +17816,11 @@ app.get('/thumbnail/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3 (AC3.3 headline route): hot GET reader
   // v1.65 gate fix (QA W1): a TRASHED item's thumbnail sidecar re-keyed to
   // the trashId, but this route required a live metadata entry -- so the
-  // Trash view's rows always fell to the SVG placeholder. A db.trash
+  // Trash view's rows always fell to the SVG placeholder. A media_trash
   // record's snapshot is as good an authority for its own id.
-  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
-    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
-    ? db.trash[req.params.id] : null;
+  const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    ? (trashStore.get(req.params.id) || null) // Wave 3: the table
+    : null;
   const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
   // v1.80 RBAC: never serve a restricted item's thumbnail (it reveals the
   // content visually). Resolves via metadata OR the trash snapshot, so the
@@ -17857,9 +17877,9 @@ app.get('/thumbnail/:id', (req, res) => {
 // (only changes on rescan) -> the same day-long private cache as the thumbnail.
 app.get('/storyboard/:id', (req, res) => {
   const db = getCachedDatabase(); // hot GET reader
-  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
-    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
-    ? db.trash[req.params.id] : null;
+  const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    ? (trashStore.get(req.params.id) || null) // Wave 3: the table
+    : null;
   const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
   if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
     return res.status(404).json({ error: 'Media file not found' });
@@ -17884,9 +17904,9 @@ app.get('/storyboard/:id', (req, res) => {
 // Content-Type: video/mp4 from the .mp4 extension.
 app.get('/preview/:id', (req, res) => {
   const db = getCachedDatabase(); // hot GET reader
-  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
-    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
-    ? db.trash[req.params.id] : null;
+  const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    ? (trashStore.get(req.params.id) || null) // Wave 3: the table
+    : null;
   const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
   if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
     return res.status(404).json({ error: 'Media file not found' });
@@ -19035,6 +19055,8 @@ module.exports = {
   progressStore,
   tombstoneStore,
   inSaveTransaction,
+  // Wave 3: the trashed-item records.
+  trashStore,
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

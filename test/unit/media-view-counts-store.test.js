@@ -120,8 +120,12 @@ test('store: a __proto__ id is inert data (own property on the way out), and a N
   assert.strictEqual(({}).x, undefined, 'no pollution leaked');
   for (const call of [
     () => s.set('a\u0000b', 1), () => s.increment('a\u0000b'), () => s.remove('a\u0000b'),
-    () => s.rekey('x', 'a\u0000b'), () => s.replaceAll({ 'a\u0000b': 1 }), () => s.get(''),
+    () => s.rekey('x', 'a\u0000b'), () => s.replaceAll({ 'a\u0000b': 1 }),
   ]) assert.throws(call, /U\+0000|non-empty string/);
+  // Wave 3 gate: READS are tolerant - a request-derived id that could never
+  // have been persisted reads as 0, never throws (the serve routes hand it in).
+  assert.strictEqual(s.get(''), 0);
+  assert.strictEqual(s.get('a\u0000b'), 0);
   assert.throws(() => s.set('a', -1), /non-negative safe integer/);
   assert.throws(() => s.set('a', 1.5), /non-negative safe integer/);
 });

@@ -93,6 +93,59 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.293.0 - Relational-migration arc, Wave 3: trash records leave the document model (2026-09-14)
+
+The trashed-item records - the ONLY way back for a file whose bytes already sit in
+`.filetube-trash/` - move out of the doc-model mega-object into `media_trash`, schema
+**v23**, on the shared `jsonRowStore` shape (`lib/media/trashRecords.js`). Records are
+stored verbatim (the full metadata snapshot inside `item` restores byte-identical) and
+the typed `trashed_at` column is actually QUERIED: the retention sweep asks the table
+for records strictly older than the cutoff, and a record without a numeric `trashedAt`
+is never returned (the v1.65 "never auto-sweep a malformed record" rule, kept exactly).
+The migration copies the doc rows and deletes them in one transaction; a corrupt row
+rolls the whole block back, CREATE TABLE included, to a re-runnable v22. Fourth rollback
+floor in RELEASING.md.
+
+- **Atomic with the doc commit.** The trash move (and the scan's deferred-retry mint of a
+  tombstoned survivor) writes the record inside `inSaveTransaction` with the metadata
+  removal; restore retires it in the same commit that re-creates the entry; purge retires
+  it with the carriers. 39 consumer sites rewritten: the list, purge-all, the sweep, the
+  three serve routes for a trashed item, the notifications phantom filter, the RBAC
+  visibility checks and the backup bundle (`trash` keeps its key and shape; a bundle
+  without `trash` still preserves the live records; a NUL/empty trash id is refused
+  before the wipe).
+- **Extraction deferred, disclosed:** the plan's "extract `trashItem`/`restoreTrashItem`
+  into `lib/media/trash`" needs ~20 server.js internals through a deps bag - a second
+  risk class on a data-loss wave. It moves to Wave 7's monolith split. Storage only here.
+- Tests: 15 fixtures re-routed by codemod (one heuristic turned a field assignment into a
+  getter call - a silent no-op caught by two red retention tests: a codemod must never
+  rewrite an assignment TARGET); three new test files. Doc_kv namespaces 9, legacy total
+  27 (`node scripts/relational-arc-baseline.js`).
+
+Full two-reviewer gate, both seats REQUEST CHANGES then APPROVE after one fix round plus
+one delta. What it caught - CRITICAL, both seats: the record stores' id assertion had
+moved onto READ paths fed by request ids, so `POST /api/trash/%00/restore` and
+`DELETE /api/trash/%00` HUNG (an async rejection Express 4 never observes), the serve
+routes 500'd, and one hostile notification row (media id `''`, the shape a NUL id takes
+after a `<=v1.292` restore) made the bell 500 for every user. Reads are tolerant now;
+writes still refuse. Adversarial: a `''` trash key from an old bundle migrated verbatim
+into an unpurgeable row that aborted the sweep and purge-all (the migration now skips an
+unaddressable key with a log line); the deferred-retry mint had no atomicity binding.
+QA on the delta: the new bell test seeded ZERO rows (the raw replace seam drops `''`) -
+a vacuous floor, fixed with a NUL seed and a bound populate step. Named mutants N1-N8 and
+M1-M19 killed against the commits. Dual-Node 8543 tests / 8540 pass / 0 fail / 3 skipped
+on both 22.23.1 and 24.14.0; the first Node 22 run had ONE failure - the 32 MB backup
+bundle fetch failed under full-suite load (tracker #212's load class; 3/3 in isolation,
+clean on the re-run) - reported here, not hidden.
+
+KNOWN GAPS (disclosed): the storyboard/preview lookups of a TRASHED item are unbound
+(only thumbnail is); the sweep's orphan pass reads its snapshot after the purges (benign
+- a purge-then-orphan race deletes a file the purge already deleted); the pre-existing
+`''` doc key in a real database (if any) is dropped by the migration with a log line - it
+was never restorable and its bytes still age out via the orphan pass. **Pacing change
+(Dean):** Waves 4 + 5 ride one branch, gate and release next, with no device pass between
+3 and 4; Wave 6 stays solo. Device pass is Dean's.
+
 ### v1.292.0 - Relational-migration arc, Wave 2: watch-position record + delete tombstones leave the document model (2026-09-13)
 
 Two more namespaces out of the doc-model mega-object, schema **v22**: `media_progress`

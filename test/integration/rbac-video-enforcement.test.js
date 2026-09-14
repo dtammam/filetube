@@ -15,7 +15,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
+const { app, userStore, __mintTestSession, viewCountStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, member;
@@ -33,7 +34,7 @@ before(async () => {
   auth = authenticateFetch(server, base); // admin
 
   viewCountStore.replaceAll({ blocked: 100, allowed: 5 }); // Wave 1: relational; seeded through the store
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       blocked: { id: 'blocked', title: 'Adult Video', filePath: blockedFile, folderName: 'Adult', channelName: 'Adult', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 12, addedAt: 20 },

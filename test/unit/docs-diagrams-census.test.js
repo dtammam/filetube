@@ -75,7 +75,11 @@ const schemaVersion = (() => {
 // ---- 2. every namespace + table appears in the data-model section ----------
 
 test('every doc_kv namespace, doc_single name, and relational table appears in the DATA-MODEL section, boundary-delimited', () => {
-  assert.ok(kvNamespaces.length >= 10 && singletonNames.length >= 10 && relationalTables.length >= 20,
+  // The relational-migration arc drains doc_kv one namespace per wave (13 at
+  // v1.290 -> 0 at Wave 7) while the relational roster grows, so the sanity
+  // floor is the SUM: a live derivation always sees the persisted names it saw
+  // at v1.290 (13 + 18 + 30 = 61), just partitioned differently.
+  assert.ok(kvNamespaces.length + singletonNames.length + relationalTables.length >= 61 && relationalTables.length >= 30,
     `sanity: live derivation looks real (${kvNamespaces.length}/${singletonNames.length}/${relationalTables.length})`);
   // Gate W3 (measured porosity): whole-doc String.includes let 11 of 53
   // names be dropped from diagram 2 and stay green - `progress` matched

@@ -16,6 +16,7 @@ const assert = require('node:assert');
 const {
   trashItem, getMediaId, loadDatabase, saveDatabase, updateDatabase, __resetDatabaseForTests,
 } = require('../../server');
+const { trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
 let ROOT;
@@ -66,7 +67,7 @@ test('EXDEV happy path: the verified copy lands, the source unlinks, the record 
   assert.equal(res.ok, true);
   assert.ok(!fs.existsSync(filePath), 'source removed only after verification');
   assert.equal(fs.readFileSync(res.trashPath, 'utf8'), 'GENUINE-BYTES-OF-THE-ORIGINAL');
-  assert.ok(loadDatabase().trash[res.trashId]);
+  assert.ok(trashStore().get(res.trashId));
 });
 
 test('EXDEV corrupt copy: sha256 REFUSES it -- the bad copy is removed, the SOURCE IS NEVER UNLINKED, no record exists', async () => {
@@ -80,6 +81,6 @@ test('EXDEV corrupt copy: sha256 REFUSES it -- the bad copy is removed, the SOUR
   const trashDir = path.join(ROOT, TRASH_DIR_NAME);
   const leftovers = fs.existsSync(trashDir) ? fs.readdirSync(trashDir) : [];
   assert.deepEqual(leftovers, [], 'the corrupt copy was taken back out');
-  assert.deepEqual(loadDatabase().trash, {}, 'no record was minted');
+  assert.deepEqual(trashStore().getAll(), {}, 'no record was minted');
   assert.ok(loadDatabase().metadata[id], 'the library entry is untouched');
 });

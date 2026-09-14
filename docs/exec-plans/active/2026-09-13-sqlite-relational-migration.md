@@ -122,6 +122,15 @@ device pass between each), **batch waves 4-5**, **solo wave 6** (mandatory), tea
 Each wave = its own branch -> gate -> `merge --no-ff` -> release ceremony -> branch
 hygiene, per CLAUDE.md.
 
+**Pacing change (Dean, 2026-09-13, after Wave 3's gate):** the template held on real
+data three times (Waves 0-2 device-passed; every gate finding was in the new bindings,
+none in a shipped release), so the batch starts one wave early: Wave 3 releases as is
+(device pass pending, disclosed); **Waves 4 + 5 ride ONE branch, one full gate, one
+release** - no device pass between 3 and 4, the namespace groups land as separate
+commits so a rollback floor exists per group; **Wave 6 (`metadata`) stays solo** with its
+own gate and Dean's device pass; Wave 7 follows directly. The per-namespace template,
+the full gate and the bundle round-trip are unchanged - only the cadence.
+
 ### Wave 0 - Honest-zero comment debt + JSON de-reliance groundwork  (slim gate)
 - Reword the two comment strings that trip the marker grep (`lib/media-capabilities.js:7`
   "a TODO gap", `public/js/glyph-pool.js:29,33` the `\XXXX` escape prose) OR allowlist
@@ -320,8 +329,69 @@ hygiene, per CLAUDE.md.
     tombstone reads unbound (informational).
 
 ### Wave 3 - `trash` -> `media_trash`  (SOLO, FULL gate, data-loss sensitive)
-- 33 refs, restore path, backup bundle. Adversarial briefed to destroy trashed-item
+- 33 refs at kickoff (39 measured code refs at the wave's start), restore path, backup bundle. Adversarial briefed to destroy trashed-item
   recovery. Extract `trashItem` / `restoreTrashItem` into `lib/media/trash` as it moves.
+- **Wave 3 record (2026-09-13, branch `feat/wave3-trash-relational`):**
+  - Schema **v23**: `media_trash (media_id = trashId PK, trashed_at, json)` on the shared
+    `jsonRowStore` shape (`lib/media/trashRecords.js`); records verbatim (the full
+    metadata snapshot inside `item` restores byte-identical); `trashed_at` is QUERIED:
+    `expiredBefore(cutoff)` is the retention sweep's query (strictly older; a record
+    without a numeric trashedAt is never returned - the v1.65 "never auto-sweep a
+    malformed record" rule kept exactly). Migration: verbatim copy + doc-row delete in
+    one transaction, corrupt row rolls back incl. the CREATE TABLE. Fourth rollback floor.
+  - Consumers (the 39 refs): the mint (trash move) and the deferred-retry's leftover
+    mint ride `inSaveTransaction` with the metadata removal (the record is the ONLY way
+    back for a file whose bytes already sit in `.filetube-trash/`); restore retires the
+    record in the same commit that re-creates the entry; purge retires it with the
+    carriers; the scan's leftover reconcile reads a Phase-1 snapshot (`getAll()`); the
+    trash list, purge-all, the three serve routes (thumbnail/storyboard/preview of a
+    trashed item), the notifications phantom filter and the restore/purge routes'
+    visibility check read the live table (the last two were `getCachedDatabase().trash`,
+    a spelling the first grep missed - caught by the RBAC suite, then source-locked).
+    Backup: `trash` joins `RELATIONAL_BUNDLE_KEYS` (same key/shape; the v1.65 path
+    validation and the "a bundle without `trash` preserves the live records" rule are
+    unchanged; a NUL/empty trash id in a bundle is refused at the bundle level, before
+    the wipe - the ROUTES, by contrast, read such an id as "no record" (below)).
+  - **Extraction deferred, disclosed:** the plan's "extract `trashItem`/`restoreTrashItem`
+    into `lib/media/trash` as it moves" needs ~20 server.js internals threaded through a
+    deps bag (sidecar path helpers, `rekeyInFlightState`, `destroyMediaStreams`,
+    module-level served-at maps, the RBAC predicates). On a data-loss-sensitive wave
+    that already touches 20 files, that extraction is a second risk class with its own
+    gate; it moves to Wave 7's monolith split (where every giant function goes through
+    the same deps-bag discipline at once). Storage move only this wave.
+  - Tests: 15 fixtures re-routed (a codemod for the multi-line in-mutator record writes
+    - `db.trash.NAME = {...}` - and the reads; one heuristic mis-quoted a loop VARIABLE as
+    a string key, caught by eslint); the codemod's read rewrite turned three
+    `db.trash[x].trashedAt = v` field mutations into `trashStore().get(x).trashedAt = v`
+    - a SILENT NO-OP on a fresh object (caught by two red retention tests; rule: a
+    codemod must never rewrite an assignment target into a getter). New
+    `test/unit/media-trash-store.test.js` and
+    `test/integration/trash-records-atomicity.test.js` (mint/restore/purge under a
+    FAILED doc save, the sweep boundary on the typed column, the routes, NUL ids).
+    The docs-diagrams census's sanity floor now sums the three rosters (doc_kv drains
+    toward 0 by design).
+  - **Gate (both seats, one fix round).** CRITICAL (both): the store's id assertion had
+    moved onto READ paths fed by request ids - `POST /api/trash/%00/restore` and
+    `DELETE /api/trash/%00` HUNG (an async handler rejection Express 4 never observes),
+    the three serve routes 500'd, and one notification row with media id `''` (a hostile
+    bundle restored on <=v1.292 stores a NUL id as `''`) made the bell 500 for every user.
+    Fix: reads are tolerant (`isPersistableId` false -> absent / 0), writes still refuse;
+    bound by `test/integration/trash-routes-hostile-ids.test.js` (the v1.292.0 statuses
+    + the process keeps serving). Adversarial W1: a `''` trash key from an old bundle
+    migrated VERBATIM into an unpurgeable row that aborted the sweep and purge-all - the
+    v23 migration now skips an unaddressable key with a log line (bytes stay for the
+    orphan pass; bound incl. a BLOB key, since `node:sqlite` cannot even plant a NUL key).
+    Adversarial W2 / QA W4: the deferred-retry mint's atomicity was unbound - bound with
+    a failure axis AND a positive control (the retry must REACH the mint). Non-blocking
+    (all applied): DIAGRAMS KV box still listed `trash`, ARCHITECTURE's doc_kv list,
+    nine stale test comments, six stale server.js comments, the `expiredBefore`
+    statement now cached on the adapter. Disclosed residuals: storyboard/preview lookups
+    of a TRASHED item are unbound (only thumbnail is); the orphan pass reads its
+    `getAll()` snapshot after the purges (benign - a purge-then-orphan race deletes a
+    file the purge already deleted).
+  - Baseline after: doc_kv **9**, doc_single 18, total **27**, schema **23**, server.js
+    **19,217**, tests 8,368 / 665 + the 2 new files. Full suite Node 22 before the gate:
+    8538 / 8535 / 0 fail / 3 skipped.
 
 ### Wave 4 - config singletons, batched  (full gate)
 - `settings` (48), `folders` (39), `folderDisplayNames` (22), `liked` (12),

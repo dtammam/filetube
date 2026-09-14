@@ -105,7 +105,7 @@ test('record store: ids - empty / non-string / NUL-bearing refused at every writ
   const p = createProgressStore(adapter);
   for (const call of [
     () => p.set('', 1), () => p.set(7, 1), () => p.set('a\u0000b', 1), () => p.remove('a\u0000b'),
-    () => p.rekey('x', 'a\u0000b'), () => p.replaceAll({ 'a\u0000b': 1 }), () => p.get(''),
+    () => p.rekey('x', 'a\u0000b'), () => p.replaceAll({ 'a\u0000b': 1 }),
   ]) assert.throws(call, /U\+0000|non-empty string/);
   assert.throws(() => p.set('a', undefined), /cannot be undefined/);
   assert.throws(() => p.set('a', () => 1), /JSON-serialisable/);
@@ -114,6 +114,22 @@ test('record store: ids - empty / non-string / NUL-bearing refused at every writ
   assert.ok(Object.prototype.hasOwnProperty.call(all, '__proto__'));
   assert.strictEqual(Object.getPrototypeOf(all), Object.prototype, 'prototype not reassigned');
   assert.strictEqual(({}).polluted, undefined, 'no pollution leaked');
+});
+
+test('record store: READS are tolerant - an id that could never have been persisted reads as absent (undefined / false), never throws; WRITES still refuse it (Wave 3 gate CRITICAL)', () => {
+  const p = createProgressStore(adapter);
+  const t = createTombstoneStore(adapter);
+  p.set('real', 1);
+  for (const bad of ['', 'a\u0000b', String.fromCharCode(0), 42, null, undefined, {}]) {
+    assert.strictEqual(p.get(bad), undefined, `get(${JSON.stringify(bad)}) reads as absent`);
+    assert.strictEqual(p.has(bad), false, `has(${JSON.stringify(bad)}) is false`);
+    assert.strictEqual(t.get(bad), undefined);
+    assert.throws(() => p.set(bad, 1), /non-empty string|U\+0000/, `set(${JSON.stringify(bad)}) still refuses`);
+  }
+  assert.strictEqual(p.get('real'), 1, 'a real id still reads');
+  assert.strictEqual(require('../../lib/media/viewCounts')(adapter).get(''), 0, 'the view-count store reads 0 for an unpersistable id');
+  const { isPersistableId } = require('../../lib/media/jsonRowStore');
+  assert.deepStrictEqual(['ok', '', 'a\u0000b', 7, null].map(isPersistableId), [true, false, false, false, false]);
 });
 
 test('record store: a multi-row write inside an ALREADY-OPEN adapter transaction joins it and the outer rollback discards it', () => {

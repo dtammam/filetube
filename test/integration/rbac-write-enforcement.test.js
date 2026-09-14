@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, loadDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
+const { app, loadDatabase, userStore, __mintTestSession, viewCountStore } = require('../../server');
+const { seedState, trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, plain, granted;
@@ -30,7 +31,7 @@ before(async () => {
   auth = authenticateFetch(server, base); // admin
 
   viewCountStore.replaceAll({ vid: 1 }); // Wave 1: relational; seeded through the store
-  saveDatabase({
+  seedState({
     folders: [DATA_DIR], folderSettings: {},
     metadata: {
       vid: { id: 'vid', title: 'A Clip', name: 'clip.mp4', filePath: vidFile, folderName: 'Clips', channelName: 'Clips', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 9, addedAt: 10 },
@@ -98,7 +99,7 @@ test('W1 integrity: after the refused DELETE, the item is byte-unchanged in the 
   const db = loadDatabase();
   assert.ok(db.metadata.vid, 'the video record still exists after the refused delete');
   assert.strictEqual(fs.existsSync(vidFile), true, 'the file is still on disk');
-  assert.ok(db.trash.t1, 'the trashed item was neither restored nor purged');
+  assert.ok(trashStore().get('t1'), 'the trashed item was neither restored nor purged');
 });
 
 test('W2 guard-order: the capability gate runs BEFORE the existence oracle (403, not 404, on a missing id)', async () => {
@@ -125,8 +126,9 @@ test('AC1: the ADMIN and a GRANTED member pass the capability gate on every rout
       const s = (await req(method, p, who.c, body)).status;
       assert.notStrictEqual(s, 403, `${who.n}: ${method} ${p} passed the gate (got ${s})`);
       if (p === '/api/trash/t1/restore' || p === '/api/trash/t1') {
-        saveDatabase({ ...loadDatabase(), trash: { t1: { originalId: 'vid2', originalPath: path.join(DATA_DIR, 'old.mp4'), rootFolder: DATA_DIR, trashedAt: 5,
-          item: { id: 'vid2', title: 'Trashed', name: 'old.mp4', filePath: path.join(DATA_DIR, 'old.mp4'), folderName: 'Clips', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } } });
+        // Wave 3: re-seed the trash record through its store (the doc key is refused).
+        trashStore().replaceAll({ t1: { originalId: 'vid2', originalPath: path.join(DATA_DIR, 'old.mp4'), rootFolder: DATA_DIR, trashedAt: 5,
+          item: { id: 'vid2', title: 'Trashed', name: 'old.mp4', filePath: path.join(DATA_DIR, 'old.mp4'), folderName: 'Clips', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } } });
       }
     }
   }
