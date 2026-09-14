@@ -19,6 +19,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, saveDatabase, __resetDatabaseForTests, trashStore, progressStore, tombstoneStore, viewCountStore, userStore } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
+const { SQLITE_FILENAME, __openRawForTests: openRaw } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -67,8 +68,15 @@ test('a %00 id on the trash restore/purge routes is a 404 (never a hung handler)
 });
 
 test('a notification row whose media id is empty (a hostile bundle restored on <=v1.292 stores a NUL id as "") no longer 500s the bell for everyone', async () => {
-  // Plant the row the way a restored bundle would leave it.
-  userStore.replaceAllNotificationsRaw([{ mediaId: '', createdAt: Date.now(), kind: 'media' }]);
+  // Plant the row the way a restored bundle leaves it: the raw replace seam
+  // drops a literal '' (isValidNotificationEntry), but a NUL id passes it and
+  // node:sqlite truncates the TEXT bind to '' - so seed the NUL. The populate
+  // step is bound (QA delta W1: an empty feed made this test a vacuous floor).
+  userStore.replaceAllNotificationsRaw([{ mediaId: String.fromCharCode(0), createdAt: Date.now(), kind: 'media' }]);
+  const raw = openRaw(path.join(DATA_DIR, SQLITE_FILENAME));
+  let planted;
+  try { planted = raw.prepare('SELECT media_id FROM notifications').all().map((r) => r.media_id); } finally { raw.close(); }
+  assert.deepStrictEqual(planted, [''], 'the hostile row is really in the table');
   for (let i = 0; i < 3; i++) {
     const r = await withTimeout(fetch(`${base}/api/notifications`));
     assert.strictEqual(r.status, 200, `bell open #${i + 1} answers`);
