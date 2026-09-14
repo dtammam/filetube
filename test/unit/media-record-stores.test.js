@@ -28,6 +28,7 @@
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b R1 gate (QA W1): the progress routes live in lib/media/user-routes.js now
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -349,12 +350,14 @@ test('save(db, { alsoInTransaction }): the callback runs INSIDE the doc transact
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the two tables or the dead doc keys in CODE; the INSERT text lives only in the shared store definition', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
-  assert.ok(!/media_progress|media_delete_tombstones/.test(server), 'server.js does not name the tables');
-  assert.ok(!/\b(db|freshDb|fresh|current)\.(progress|deleteTombstones)\b/.test(server), 'no doc-model access to the dead keys survives in server.js code');
+test('source lock: the route surface never names the two tables or the dead doc keys in CODE; the INSERT text lives only in the shared store definition', () => {
+  // Wave 7b: the progress routes moved to lib/media/user-routes.js and the per-user
+  // adoption to lib/auth/routes.js - the lock reads server.js PLUS every extracted module.
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
+  assert.ok(!/media_progress|media_delete_tombstones/.test(server), 'the route surface does not name the tables');
+  assert.ok(!/\b(db|freshDb|fresh|current)\.(progress|deleteTombstones)\b/.test(server), 'no doc-model access to the dead keys survives on the route surface');
   for (const call of ['progressStore.getAll(', 'progressStore.remove(', 'progressStore.rekey(', 'tombstoneStore.getAll(', 'tombstoneStore.get(', 'tombstoneStore.has(', 'tombstoneStore.set(', 'tombstoneStore.remove(', 'tombstoneStore.prune(', 'inSaveTransaction(']) {
-    assert.ok(server.includes(call), `server.js calls ${call}`);
+    assert.ok(server.includes(call), `the route surface calls ${call}`);
   }
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
     .filter((p) => !p.startsWith('test/') && !/(^|\/)(vendor|node_modules)\//.test(p));

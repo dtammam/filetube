@@ -12,6 +12,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const { routeSurfaceSource } = require('../helpers/route-surface');
 
 const AGENT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
 
@@ -152,8 +153,12 @@ test('TRIPLE allowlist lock: the client list, the server list, and the plan are 
   assert.deepEqual([...shared.SYNCED_PREF_KEYS].sort(), [...PLAN_KEYS].sort(), 'shared module === plan (both directions)');
   assert.equal(shared.PREF_VALUE_MAX_BYTES, 512);
   assert.equal(shared.PREF_CLOCK_SLACK_MS, 300000);
-  const serverSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
-  assert.ok(serverSrc.includes("require('./lib/prefs-allowlist')"), 'the routes consume the shared module');
+  // Wave 7b (the monolith split, slice S1a): the /api/prefs routes and this
+  // binding moved to lib/user/routes.js, so the lock follows the SAME sentence
+  // to the route surface (server.js + every registerRoutes module it
+  // registers) instead of being dropped.
+  const surfaceSrc = routeSurfaceSource();
+  assert.ok(/require\('(\.\/lib|\.\.)\/prefs-allowlist'\)/.test(surfaceSrc), 'the routes consume the shared module');
   const storeSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'auth', 'store.js'), 'utf8');
   assert.ok(storeSrc.includes("require('../prefs-allowlist')"), 'the RESTORE loop consumes the shared module (adversarial W-A/W-C: every ingress, one list)');
   assert.ok(clientSrc.includes("var META_KEY = 'ft-prefs-meta'"), 'the meta key is pinned (never in any allowlist)');

@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] v1.85 (adversarial gate SUGGESTION-4): search-history RETENTION. The
-// read caps at 20 (server.js SEARCH_HISTORY_CAP), but the TABLE must also be
+// read caps at 20 (SEARCH_HISTORY_CAP in lib/user/routes.js since Wave 7b), but the TABLE must also be
 // pruned on insert so high-cardinality terms cannot accumulate unbounded -
 // keep the most-recent SEARCH_HISTORY_RETENTION (50), prune the older rest.
 // Mirrors books-user-store.test.js: a real store over a real adapter, with raw

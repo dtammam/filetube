@@ -119,6 +119,26 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
+// Wave 7b, slice S1a (the monolith split, docs/exec-plans/active/
+// 2026-09-13-sqlite-relational-migration.md): four route groups now live in
+// their own modules and register through `registerRoutes(app, deps)` - the
+// lib/ytdlp + lib/podcasts pattern. Requiring them has no side effects (pure
+// leaves over the deps this file hands in at each call site below).
+const queueRoutes = require('./lib/queue/routes');
+const notificationsRoutes = require('./lib/notifications/routes');
+const pushRoutes = require('./lib/push/routes');
+const userRoutes = require('./lib/user/routes');
+// Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
+// and the pre-auth-era per-user media state routes (/api/liked,
+// /api/progress), same pattern - each registers at the call site below that
+// holds its original routing position.
+const authRoutes = require('./lib/auth/routes');
+const mediaUserRoutes = require('./lib/media/user-routes');
+// Wave 7b, slice S2: the book library's whole HTTP surface (/api/books, /book,
+// /bookcover) and the book scan's single pass; scanBooks, its overlap/coalescing
+// guard, stays in this file (other callers and the exports still reach it here).
+const booksRoutes = require('./lib/books/routes');
+const booksScanRunner = require('./lib/books/scanRunner');
 // Wave G: the pure projection of library audio (db.metadata type 'audio') into
 // the Music library - eligibility + track shaping, no I/O.
 const libraryAudio = require('./lib/music/libraryAudio');
@@ -5554,7 +5574,18 @@ app.use((req, res, next) => {
 // (e.g. a Shortcut that mis-serializes its own payload) makes `express.json()`
 // throw, and Express's DEFAULT error handler renders that as an HTML stack
 // page -- useless to any JSON API caller (a Shortcut, curl, the browser
-// fetch()s in public/js/*). A 4-arg (error-handling) middleware placed
+// fetch()s under public/js). A 4-arg (error-handling) middleware placed
+// [Wave 7b, S1b: that path is spelled without a star on purpose. The source
+// locks strip BLOCK comments before line comments, so a literal slash-star
+// inside a line comment opens a pseudo-block that runs to the next star-slash
+// - here it used to swallow 218 lines of server.js, and when this slice moved
+// the login route whose inline "non-fatal" comment accidentally closed it, the
+// swallow grew to 898 lines and took a musicDb.mutate call with it (the
+// comment-porous source-lock class, v1.50/v1.77/v1.133). Removing the star
+// restores the locks' reach. Three more such stars remain in this file's line
+// comments - two active openers plus one that currently sits inside the first
+// one's swallow and would open its own the moment that one is removed
+// (tech-debt #228: the shared stripper strips in the wrong order).]
 // immediately AFTER `express.json()` intercepts a body-parser failure and
 // turns it into a clean JSON error response. Every OTHER error is passed
 // through UNTOUCHED via `next(err)` -- this never changes how any route's
@@ -5714,172 +5745,37 @@ function rateKey(req, username) {
   return `${ip}|${String(username || '').toLowerCase()}`;
 }
 
-// POST /api/auth/setup — one-time create-admin. Allowlisted ONLY while zero
-// users exist (the gate 409s it otherwise). Adopts the pre-auth global
-// state into the new admin (design-delta WARNING-4: hash async FIRST, then
-// the count-guarded insert + adoption in one synchronous transaction).
-app.post('/api/auth/setup', async (req, res) => {
-  const body = req.body || {};
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
-  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const limit = loginRateLimiter.take(rateKey(req, username));
-  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
-  if (!userStore.validateUsername(username)) return res.status(400).json({ error: 'Username can use letters, numbers, and . _ - (up to 64 characters).' });
-  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
-  try {
-    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
-    // Read the pre-auth global state to adopt (once, before the tx).
-    const books = booksDb.read();
-    const ytd = ytdlpDb.read(['pins']); // Wave 5: the frozen pre-auth channel pins, from their table
-    const adoption = {
-      progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
-      liked: likedStore.list(), // Wave 4: the frozen likes, from their table (like order)
-      bookProgress: books.progress || {},
-      bookPins: Array.isArray(books.pins) ? books.pins : [],
-      channelPins: Array.isArray(ytd.pins) ? ytd.pins : [],
-    };
-    const admin = userStore.createFirstAdmin({ username, displayName, passwordHash }, adoption, new Date().toISOString());
-    if (!admin) return res.status(409).json({ error: 'setup already complete' });
-    userStore.setSettingsJson(admin.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new setup -> feed on
-    loginRateLimiter.refund(rateKey(req, username));
-    issueSessionCookie(res, req, admin);
-    return res.json({ success: true, user: publicUser(admin) });
-  } catch (err) {
-    console.error('Error in /api/auth/setup:', err);
-    return res.status(500).json({ error: `Could not create the admin account: ${err.message}` });
-  }
-});
-
-// POST /api/auth/login — verify credentials, set the session cookie. Honest
-// timing: always run a hash (a dummy for an unknown user) so a missing
-// username doesn't return faster than a wrong password (user-enumeration
-// timing guard).
-const DUMMY_HASH = 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-app.post('/api/auth/login', async (req, res) => {
-  const body = req.body || {};
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const key = rateKey(req, username);
-  const limit = loginRateLimiter.take(key);
-  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
-  try {
-    const user = username ? userStore.getByUsername(username) : null;
-    const hash = user ? userStore.getPasswordHash(user.id) : DUMMY_HASH;
-    const result = await authCrypto.verifyPassword(password, hash || DUMMY_HASH);
-    if (!user || user.disabled || !result.ok) {
-      return res.status(401).json({ error: 'That username or password is not right.' });
-    }
-    // Params-upgrade-on-login: re-hash at current cost if the stored hash lags.
-    if (result.needsRehash) {
-      try { userStore.updatePassword(user.id, await authCrypto.hashPassword(password)); } catch (_) { /* non-fatal */ }
-    }
-    const fresh = userStore.getById(user.id); // pick up any tv bump from the rehash
-    loginRateLimiter.refund(key);
-    issueSessionCookie(res, req, fresh);
-    return res.json({ success: true, user: publicUser(fresh) });
-  } catch (err) {
-    console.error('Error in /api/auth/login:', err);
-    return res.status(500).json({ error: `Sign-in failed: ${err.message}` });
-  }
-});
-
-// POST /api/auth/logout — clear the cookie (gated: you must be signed in).
-app.post('/api/auth/logout', (req, res) => {
-  clearSessionCookie(res);
-  return res.json({ success: true });
-});
-
-// GET /api/auth/me — the current user (gated). Powers the Settings Account
-// chip + client "am I logged in / am I admin" checks. `settings` is the
-// user's mirrored display prefs (settings_json) — the device-sync source a
-// FRESH device pulls from before localStorage has anything (locked intake
-// #6: localStorage stays the immediate, device-local source of truth).
-app.get('/api/auth/me', (req, res) => {
-  // v1.82: the account menu reads `user.avatar` to render the photo (or fall
-  // back to an initials monogram). Kept off publicUser (which stays a pure
-  // projection) and merged here where the fs lookup belongs.
-  return res.json({
-    user: { ...publicUser(req.user), avatar: avatarInfo(req.user.id) },
-    settings: parseUserSettings(req.user),
-  });
-});
-
-function parseUserSettings(user) {
-  try {
-    const parsed = JSON.parse(user.settingsJson || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-// POST /api/me/settings — mirror a display pref (theme/era/icons) onto the
-// user record. Fire-and-forget from the client pickers; localStorage stays
-// the device-local fast path, this is only the cross-device seed. Keys are
-// allowlisted and values bounded — settings_json must never become an
-// arbitrary client-writable blob.
-// v1.63.1: 'starRatings' ('shown'|'hidden') - Dean's hide-the-fake-stars
-// toggle rides the same display-pref mirror as theme/era/icons.
-// v1.66: 'pushEnabled' ('on'|'off') - the PER-USER push opt-out (ruling:
-// per-device subscribe, per-user opt-out). Delivery honors only the literal
-// 'off' (lib/push/deliver.js pushOptedOut); absent = on.
-// v1.67: cornerTL/TR/BL are the card-corner controls (Dean's ruling C1:
-// per-user SERVER-persisted; the server is the truth, not a device seed).
-// v1.204: cornerBR joined them - the bottom-right corner became selectable
-// too (it shares its space with the duration badge, which slides left when
-// the slot is occupied). Values are enum-ish control names; the lane stays
-// SHAPE-only like its siblings and the card renderer defends against
-// unknown values (plan D1).
-// v1.77: the Library-entry glyph keys (glyphDownloads/Music/Books/Podcasts/
-// History) join on the same per-user SERVER-persisted footing as the corners.
-// SPREAD FROM THE REGISTRY, never re-typed - a slot added to
-// LIBRARY_GLYPH_SLOTS becomes writable here automatically, so the picker can
-// never offer an entry whose saves the server silently 400s. The lane stays
-// SHAPE-only like its siblings (the existing value regex below already bounds
-// these to registry-id shape) and the client resolver defends against unknown
-// values, exactly as the card renderer does.
-const MIRRORED_SETTING_KEYS = new Set([
-  'theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL', 'cornerBR',
-  // v1.79: the home-feed vs classic-grid toggle. Stored as the bounded string
-  // 'on'/'off' like pushEnabled/starRatings (the value regex below bounds it).
-  'homeFeed',
-  // v1.84: Modern YouTube Mode - a third home layout (flat big-tile grid +
-  // chips + mobile avatar bar). Same bounded 'on'/'off' string; absent => off.
-  'modernMode',
-  // Wave G master toggle - RETIRED in v1.242 (audio now projects unconditionally).
-  // Intentionally RETAINED in the allowlist so a stale client's POST still 200s;
-  // NOTHING reads it any more (inert - do not gate behavior on it).
-  'musicIncludesLibrary',
-  ...glyphPool.LIBRARY_GLYPH_SLOTS.map((s) => s.key),
-]);
-
-// v1.79: net-new setups/accounts get the YouTube-style home feed out of the
-// box (Dean's intake default), while existing installs are UNCHANGED - the
-// store's settings_json default stays '{}', which the client resolves to
-// classic (absent => off). Only the two PRODUCT creation flows seed this; the
-// test-session mint (__mintTestSession) deliberately does NOT, so existing
-// suites that assume an empty settings_json are unaffected.
-const NEW_USER_DEFAULT_SETTINGS = { homeFeed: 'on' };
-app.post('/api/me/settings', (req, res) => {
-  const body = req.body || {};
-  const merged = parseUserSettings(req.user);
-  for (const key of Object.keys(body)) {
-    if (!MIRRORED_SETTING_KEYS.has(key)) {
-      return res.status(400).json({ error: `unknown setting '${key}'` });
-    }
-    const value = body[key];
-    if (value === null) {
-      delete merged[key]; // explicit null clears the mirror (pref reset)
-      continue;
-    }
-    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(value)) {
-      return res.status(400).json({ error: `invalid value for '${key}'` });
-    }
-    merged[key] = value;
-  }
-  userStore.setSettingsJson(req.user.id, merged);
-  return res.json({ success: true, settings: merged });
+// ---- the identity routes ----------------------------------------------------
+// Wave 7b (slice S1b): sign-in/sign-out and the current user (/api/auth), the
+// display-pref mirror (POST /api/me/settings) and admin user management
+// (/api/users) moved VERBATIM to lib/auth/routes.js and register from here, in
+// their original source order - AHEAD of the shell wildcard and the static
+// layer, which is the routing position this call site preserves. The login
+// dummy hash, the settings allowlist, the new-account default, the rule
+// messages, the restriction enums and the resolveTargetUser /
+// wouldRemoveLastAdmin / readAccessMode / unitRows helpers moved with them
+// (the routes were their only readers); requireAdmin, publicUser and the
+// session-cookie pair stayed here because other code reads them.
+authRoutes.registerRoutes(app, {
+  authCrypto,
+  avatarInfo, // GET /api/auth/me merges the photo's presence + cache-bust version
+  booksDb,
+  clearSessionCookie,
+  // The user-delete cascade drops that user's staged (un-flushed) pings before
+  // the row goes, so no flush batch ever carries a vanished user_id.
+  dropPendingProgressForUser,
+  glyphPool, // LIBRARY_GLYPH_SLOTS - the settings allowlist spreads from the registry
+  issueSessionCookie,
+  likedStore, // the frozen pre-auth likes /api/auth/setup adopts into the first admin
+  loginRateLimiter,
+  progressStore, // the frozen pre-auth positions, adopted by the same route
+  publicUser,
+  rateKey, // the (ip, username) login-rate bucket key
+  requireAdmin,
+  unlinkAvatar, // the user-delete cascade: no orphaned profile image / sticker
+  unlinkSticker,
+  userStore,
+  ytdlpDb,
 });
 
 // Test-only: mint a genuine session cookie for tests (see the export comment).
@@ -5917,9 +5813,13 @@ function publicUser(u) {
 }
 
 // ---- v1.43 chunk 4c: admin user management ---------------------------------
-// Everything below is admin-only (the gate already guarantees a signed-in
-// req.user; these add the role check). Response shapes reuse publicUser /
-// listUsers' projection — a password hash can never ride any of them.
+// The admin-only PREDICATES. The /api/users routes they gate moved to
+// lib/auth/routes.js in Wave 7b (slice S1b) - see the authRoutes.registerRoutes
+// call above - and reach these through `deps`; the predicates themselves stayed
+// because routes all over this file (and the ytdlp/podcasts modules) gate on
+// them. The gate already guarantees a signed-in req.user; these add the role
+// check. Response shapes there reuse publicUser / listUsers' projection — a
+// password hash can never ride any of them.
 
 function requireAdmin(req, res) {
   if (!req.user || req.user.role !== 'admin') {
@@ -5956,222 +5856,6 @@ function requireModifyLibrary(req, res) {
   res.status(403).json({ error: 'You do not have permission to modify the library.' });
   return false;
 }
-
-// The self-lockout guard for user management: refuse any change that would
-// leave the instance with ZERO enabled admins (disable/demote/delete of the
-// last one). Instant revocation (token_version bumps) makes such a mistake
-// unrecoverable from the UI — there would be nobody left who can undo it.
-function wouldRemoveLastAdmin(targetId, change) {
-  const target = userStore.getById(targetId);
-  if (!target) return false; // 404s elsewhere
-  const isEnabledAdmin = target.role === 'admin' && !target.disabled;
-  if (!isEnabledAdmin) return false;
-  const enabledAdmins = userStore.listUsers().filter((u) => u.role === 'admin' && !u.disabled);
-  if (enabledAdmins.length > 1) return false;
-  return change === 'disable' || change === 'demote' || change === 'delete';
-}
-
-const USERNAME_RULE_MESSAGE = 'Username can use letters, numbers, and . _ - (up to 64 characters).';
-const PASSWORD_RULE_MESSAGE = `Use a password of at least ${authCrypto.MIN_PASSWORD_LENGTH} characters.`;
-
-app.get('/api/users', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  res.json({ users: userStore.listUsers() });
-});
-
-app.post('/api/users', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const body = req.body || {};
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
-  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const role = body.role === 'admin' ? 'admin' : 'member';
-  const canManageSubscriptions = body.canManageSubscriptions === true;
-  // v1.81 write-RBAC: strict boolean coercion (AC8) - a truthy string/1/[] can
-  // never grant the capability. Default OFF when absent.
-  const canModifyLibrary = body.canModifyLibrary === true;
-  if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
-  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
-  if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
-  try {
-    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
-    // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
-    // behind the friendly pre-check above.
-    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions, canModifyLibrary }, new Date().toISOString());
-    userStore.setSettingsJson(user.id, NEW_USER_DEFAULT_SETTINGS); // v1.79: net-new account -> feed on
-    return res.status(201).json({ success: true, user: publicUser(user) });
-  } catch (err) {
-    if (String(err.message || '').includes('UNIQUE')) {
-      return res.status(409).json({ error: 'That username is already taken.' });
-    }
-    console.error('Error creating user:', err);
-    return res.status(500).json({ error: `Could not create the user: ${err.message}` });
-  }
-});
-
-// Shared target resolution: integer id, existing row.
-function resolveTargetUser(req, res) {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    res.status(400).json({ error: 'invalid user id' });
-    return null;
-  }
-  const target = userStore.getById(id);
-  if (!target) {
-    res.status(404).json({ error: 'No such user.' });
-    return null;
-  }
-  return target;
-}
-
-app.post('/api/users/:id/password', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
-  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
-  try {
-    const passwordHash = await authCrypto.hashPassword(password);
-    userStore.updatePassword(target.id, passwordHash); // bumps token_version -> every session revoked
-    // Resetting YOUR OWN password revokes your own cookie too — reissue it
-    // so the admin doing the reset is not bounced to /login mid-task.
-    if (target.id === req.user.id) {
-      issueSessionCookie(res, req, userStore.getById(target.id));
-    }
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('Error resetting password:', err);
-    return res.status(500).json({ error: `Could not reset the password: ${err.message}` });
-  }
-});
-
-app.post('/api/users/:id/disabled', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const disabled = req.body && req.body.disabled === true;
-  if (disabled && target.id === req.user.id) {
-    return res.status(409).json({ error: 'You cannot disable your own account.' });
-  }
-  if (disabled && wouldRemoveLastAdmin(target.id, 'disable')) {
-    return res.status(409).json({ error: 'That is the last enabled admin - disable is refused so the instance cannot lock itself out.' });
-  }
-  userStore.setDisabled(target.id, disabled); // bumps token_version -> instant revocation on disable
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-app.post('/api/users/:id/role', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const role = req.body && req.body.role;
-  if (role !== 'admin' && role !== 'member') return res.status(400).json({ error: "role must be 'admin' or 'member'" });
-  if (role === 'member' && wouldRemoveLastAdmin(target.id, 'demote')) {
-    return res.status(409).json({ error: 'That is the last enabled admin - demotion is refused so the instance cannot lock itself out.' });
-  }
-  userStore.setRole(target.id, role);
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-app.post('/api/users/:id/subscriptions-flag', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-// v1.81 write-RBAC: admin grants/revokes a user's library-WRITE capability.
-// Mirrors subscriptions-flag exactly (admin-only, strict boolean, self-safe -
-// nothing here can lock the instance out since admins bypass the flag anyway).
-app.post('/api/users/:id/modify-library-flag', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  userStore.setCanModifyLibrary(target.id, req.body && req.body.canModifyLibrary === true);
-  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
-});
-
-// v1.80 RBAC: admin management of a user's library restrictions (blocklist).
-const VALID_RESTRICTION_KINDS = new Set(['path', 'folder', 'show', 'library']);
-const VALID_LIBRARY_VALUES = new Set(['video', 'music', 'podcasts', 'books', 'tv']);
-const RESTRICTION_VALUE_MAX = 4096;
-
-// The stored mode is carried as a distinguished row {kind:'mode'} (no extra
-// schema); these helpers separate it from the unit rows at the API boundary.
-function readAccessMode(rows) {
-  return rows.some((r) => r.kind === 'mode' && r.value === 'allowlist') ? 'allowlist' : 'blocklist';
-}
-function unitRows(rows) {
-  return rows.filter((r) => r.kind !== 'mode');
-}
-
-app.get('/api/users/:id/restrictions', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const rows = userStore.getRestrictions(target.id);
-  return res.json({ mode: readAccessMode(rows), restrictions: unitRows(rows) });
-});
-
-// Replace a user's ENTIRE access config (the admin UI PUTs the desired set):
-//   { mode: 'blocklist'|'allowlist', restrictions: [{kind, value}, ...] }
-// mode 'blocklist' (default) => the listed units are BLOCKED; 'allowlist' => the
-// user sees ONLY the listed units (Dean's kid-account belt-and-suspenders).
-app.put('/api/users/:id/restrictions', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  const body = req.body || {};
-  const mode = body.mode === undefined ? 'blocklist' : body.mode;
-  if (mode !== 'blocklist' && mode !== 'allowlist') {
-    return res.status(400).json({ error: `invalid mode '${mode}'` });
-  }
-  const rows = Array.isArray(body.restrictions) ? body.restrictions : null;
-  if (!rows) return res.status(400).json({ error: 'restrictions must be an array' });
-  const clean = [];
-  for (const r of rows) {
-    if (!r || typeof r !== 'object') return res.status(400).json({ error: 'each restriction must be an object' });
-    if (!VALID_RESTRICTION_KINDS.has(r.kind)) return res.status(400).json({ error: `invalid restriction kind '${r.kind}'` });
-    if (typeof r.value !== 'string' || r.value === '' || r.value.length > RESTRICTION_VALUE_MAX) {
-      return res.status(400).json({ error: 'invalid restriction value' });
-    }
-    if (r.kind === 'library' && !VALID_LIBRARY_VALUES.has(r.value)) {
-      return res.status(400).json({ error: `invalid library '${r.value}'` });
-    }
-    clean.push({ kind: r.kind, value: r.value });
-  }
-  // Persist the mode as a row only when it overrides the default.
-  if (mode === 'allowlist') clean.push({ kind: 'mode', value: 'allowlist' });
-  userStore.setRestrictions(target.id, clean);
-  const stored = userStore.getRestrictions(target.id);
-  return res.json({ success: true, mode: readAccessMode(stored), restrictions: unitRows(stored) });
-});
-
-app.delete('/api/users/:id', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const target = resolveTargetUser(req, res);
-  if (!target) return;
-  if (target.id === req.user.id) {
-    return res.status(409).json({ error: 'You cannot delete your own account.' });
-  }
-  if (wouldRemoveLastAdmin(target.id, 'delete')) {
-    return res.status(409).json({ error: 'That is the last enabled admin - deletion is refused so the instance cannot lock itself out.' });
-  }
-  // Gate WARNING-1 (adversarial): drop this user's staged (un-flushed)
-  // pings BEFORE the row is deleted — otherwise the next flush would carry a
-  // ping whose user_id no longer exists. The batch flush filters vanished
-  // users too (defense in depth), but clearing at the source keeps the
-  // coalescer honest and avoids a wasted FK-filter round.
-  dropPendingProgressForUser(target.id);
-  // Hard delete: ON DELETE CASCADE clears the per-user state; AUTOINCREMENT
-  // guarantees the id is never reused, so any still-valid cookie for it can
-  // never inherit a future account (design-delta SUGGESTION-6).
-  userStore.deleteUser(target.id);
-  unlinkAvatar(target.id); // v1.82: no orphaned profile image for a reaped id
-  unlinkSticker(target.id); // v1.238: same, for the custom player sticker
-  return res.json({ success: true });
-});
 
 // Remove every staged (not-yet-flushed) progress/book-progress/music ping owned
 // by a user id, across all THREE coalescers — called when a user is deleted so
@@ -6774,133 +6458,25 @@ function currentBookScanState() {
   return bookScanState;
 }
 
-async function runBookScan() {
-  // Phase-1 read (no lock): folders + the previous items snapshot. All the
-  // slow work (walk, zip reads, cover extraction) happens against this
-  // snapshot, off the writer lock -- the media scan's own discipline.
-  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
-  const ns = booksDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables
-  const folders = ns.folders.slice();
-  if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
-  const { items, covers, survivingIds, missingRoots, erroredDirs } = await booksScan.collectBooks(folders, ns.items, getMediaId);
-  for (const root of missingRoots) {
-    console.warn(`books: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
-  }
-
-  // Cover writes BEFORE the db merge (an item never claims hasCover before
-  // its file exists) -- atomic tmp+rename, best-effort per cover.
-  if (covers.length > 0) {
-    fs.mkdirSync(BOOKCOVER_DIR, { recursive: true });
-    for (const cover of covers) {
-      const finalPath = path.join(BOOKCOVER_DIR, `${cover.id}${cover.ext}`);
-      const tmpPath = `${finalPath}.tmp`;
-      try {
-        fs.writeFileSync(tmpPath, cover.data);
-        fs.renameSync(tmpPath, finalPath);
-      } catch (err) {
-        console.warn(`books: failed to write cover for ${cover.id} (${err && err.code}) -- placeholder card`);
-        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-      }
-    }
-  }
-
-  const pruneMissing = !!scanSettings.pruneMissing;
-  const prunedIds = [];
-  const prunedAudioKeys = []; // v1.38.0: TTS cache keys of pruned books, deleted below
-  // Wave 5: the merge runs against a FRESH holder; the diff rides the doc commit.
-  await updateDatabase(() => booksDb.mutate((holder) => {
-    const freshNs = booksStore.ensureBooks(holder);
-    // v1.37.0 gate fix (QA CRITICAL #2 -- the v1.33 tech-debt-#10 Option-C
-    // lesson, now applied to books): a root whose mountpoint DIRECTORY
-    // still exists but yielded ZERO files this pass, while the library
-    // previously had items under it, is the classic unmounted-share-with-
-    // leftover-mountpoint signature -- treated as VANISHED (nothing under
-    // it prunes), never as a bulk deletion. Without this, an NFS/SMB
-    // hiccup + pruneMissing (default on) wiped every book AND its reading
-    // progress on the next scan -- the exact bug class the media scanner's
-    // detectVanishedRoots closed in v1.33.0.
-    const effectiveMissingRoots = new Set(missingRoots);
-    for (const root of folders) {
-      if (effectiveMissingRoots.has(root)) continue;
-      const hadItems = Object.values(freshNs.items).some((i) => i && i.rootFolder === root);
-      const hasSurvivors = Object.values(items).some((i) => i && i.rootFolder === root);
-      if (hadItems && !hasSurvivors) {
-        effectiveMissingRoots.add(root);
-        console.warn(`books: root ${root} exists but scanned EMPTY while the library has items under it -- treating as unmounted, pruning nothing beneath it`);
-      }
-    }
-    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
-    const next = {};
-    for (const [id, item] of Object.entries(items)) {
-      // The books-internal persist-gate carve-out (exec plan risk #1): the
-      // ONLY non-scan writer of item fields is the client cover/pageCount
-      // backfill (POST /api/books/:id/cover), which can land between this
-      // scan's Phase-1 snapshot and this merge. Carry those three fields
-      // forward from the FRESH row whenever this pass didn't produce them
-      // itself -- regression-locked in the books scanner integration test.
-      const freshItem = freshNs.items[id];
-      let merged = item;
-      if (freshItem) {
-        if (!merged.hasCover && freshItem.hasCover === true) {
-          merged = { ...merged, hasCover: true, coverExt: freshItem.coverExt || null };
-        }
-        if (merged.pageCount === undefined && freshItem.pageCount !== undefined) {
-          merged = { ...merged, pageCount: freshItem.pageCount };
-        }
-      }
-      next[id] = merged;
-    }
-    // Non-surviving items: kept unless genuinely prunable (mount-loss guard
-    // + the pruneMissing gate live inside selectPrunableBookIds).
-    for (const [id, item] of Object.entries(freshNs.items)) {
-      if (next[id]) continue;
-      if (prunable.has(id)) {
-        prunedIds.push(id);
-        delete freshNs.progress[id];
-        // v1.38.0 persist-gate carry: a pruned book must not leak its TTS audio
-        // status rows OR orphan its cache files. Capture the keys before the
-        // delete so the files can be swept after the db state is authoritative.
-        const audioMap = freshNs.audio[id];
-        if (audioMap && typeof audioMap === 'object') {
-          for (const entry of Object.values(audioMap)) {
-            if (entry && entry.key) prunedAudioKeys.push(entry.key);
-          }
-          delete freshNs.audio[id];
-        }
-        continue;
-      }
-      next[id] = item;
-    }
-    freshNs.items = next;
-    return true;
-  }));
-
-  // v1.43: per-user reading positions are book-id-keyed carriers -- pruned
-  // books shed them too (post-commit, the removeMediaState posture; one
-  // transaction for the set). Shelf pins are DIR-keyed, not book-keyed, so
-  // they are deliberately untouched here.
-  if (prunedIds.length > 0) {
-    try {
-      userStore.removeBookState(prunedIds);
-    } catch (err) {
-      console.error('books: failed to prune per-user reading positions (continuing):', err && err.message);
-    }
-  }
-
-  // Cover-file hygiene for genuinely pruned books -- best-effort, after the
-  // db state is authoritative.
-  for (const id of prunedIds) {
-    for (const ext of ['.jpg', '.png']) {
-      try { fs.unlinkSync(path.join(BOOKCOVER_DIR, `${id}${ext}`)); } catch (_) { /* best-effort */ }
-    }
-  }
-  // v1.38.0: sweep the pruned books' TTS cache files (m4a + blocks.json).
-  for (const key of prunedAudioKeys) {
-    for (const p of [ttsM4aPath(key), ttsBlocksPath(key)]) {
-      try { fs.unlinkSync(p); } catch (_) { /* best-effort */ }
-    }
-  }
-}
+// Wave 7b (slice S2): ONE pass - the walk, the cover writes, the merge and the
+// pruned books' hygiene - moved VERBATIM to lib/books/scanRunner.js. scanBooks
+// below is unchanged and stays here: it owns bookScanState, the single deferred
+// rescan timer and the follow-up budget, and other callers (the media scan, the
+// boot path) and the integration tests reach it through this file's exports.
+const { runBookScan } = booksScanRunner.createBookScanRunner({
+  BOOKCOVER_DIR,
+  booksDb,
+  booksScan,
+  booksStore,
+  fs,
+  getMediaId,
+  path,
+  settingsStore,
+  ttsBlocksPath, // the pruned books' TTS cache sweep
+  ttsM4aPath,
+  updateDatabase,
+  userStore,
+});
 
 // Overlap/coalescing guard -- the scanDirectories discipline (a scan
 // requested mid-scan runs exactly one follow-up pass, never a concurrent
@@ -6938,105 +6514,48 @@ async function scanBooks() {
   }
 }
 
-app.get('/api/books/config', (req, res) => {
-  const ns = booksDb.read();
-  const folders = ns.folders || [];
-  // v1.128 Wave B (L2): common.js reads this on every page to decide whether
-  // to show the Books nav tab, so members reach it - but it leaked every book
-  // ROOT abs path. For a restricted member, return only roots holding >=1
-  // visible book; admin + unrestricted member get the byte-identical list.
-  res.json({ folders: visibleConfigRoots(req, folders, Object.values(ns.items || {}), bookVisibleTo) });
-});
-
-app.post('/api/books/config', async (req, res) => {
-  if (!requireAdmin(req, res)) return; // v1.81 write-RBAC (gate CRITICAL): library config is admin-only
-  const { folders } = req.body || {};
-  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
-    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
-  }
-  const resolved = [];
-  const seen = new Set();
-  for (const raw of folders) {
-    const folder = path.resolve(raw.trim());
-    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
-      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
-    }
-    if (seen.has(folder)) continue;
-    seen.add(folder);
-    resolved.push(folder);
-  }
-  // HARD INVARIANT (exec plan §2): book roots may never overlap media roots
-  // in EITHER direction -- a file must have exactly one owner, or the two
-  // scanners' prune/merge semantics fight over it.
-  const cachedForBooks = getCachedDatabase();
-  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
-  for (const bookRoot of resolved) {
-    for (const mediaRoot of mediaFolders) {
-      if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
-        return res.status(400).json({ error: `Book folder overlaps a media folder: ${bookRoot} <-> ${mediaRoot}` });
-      }
-    }
-  }
-  // v1.44 music: reciprocal of the music-config guard -- a book root may not
-  // overlap a MUSIC root either (both directions), so the three collections
-  // stay mutually disjoint regardless of save order.
-  const musicFoldersForBooks = (musicDb.read().folders || []).map((f) => path.resolve(f));
-  for (const bookRoot of resolved) {
-    for (const musicRoot of musicFoldersForBooks) {
-      if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
-        return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
-      }
-    }
-  }
-  // v1.195 TV Shows: reciprocal of the tv-config net - a book root may not overlap
-  // a Shows root either (both directions).
-  const tvFoldersForBooks = (tvDb.read().folders || []).map((f) => path.resolve(f));
-  for (const bookRoot of resolved) {
-    for (const tvRoot of tvFoldersForBooks) {
-      if (foldersOverlap(bookRoot, tvRoot)) {
-        return res.status(400).json({ error: `Book folder overlaps a Shows folder: ${bookRoot} <-> ${tvRoot}` });
-      }
-    }
-  }
-  // v1.69 podcasts (D8): the four-way clause, same both-directions posture.
-  {
-    const podcastsRootForBooks = podcasts.resolvePodcastsRoot(cachedForBooks, { dataDir: DATA_DIR });
-    for (const bookRoot of resolved) {
-      if (bookRoot === podcastsRootForBooks || ytdlpArgs.isPathUnder(bookRoot, podcastsRootForBooks) || ytdlpArgs.isPathUnder(podcastsRootForBooks, bookRoot)) {
-        return res.status(400).json({ error: `Book folder overlaps the podcasts folder: ${bookRoot} <-> ${podcastsRootForBooks}` });
-      }
-    }
-  }
-  try {
-    await updateDatabase(() => booksDb.mutate((h) => { booksStore.ensureBooks(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
-  } catch (err) {
-    return res.status(500).json({ error: `Could not save book folders: ${err.message}` });
-  }
-  res.json({ folders: resolved });
-  scanBooks().catch(console.error);
-});
-
-app.post('/api/books/scan', (req, res) => {
-  if (!requireModifyLibrary(req, res)) return; // v1.81 write-RBAC (first guard)
-  const alreadyInProgress = bookScanState.scanning;
-  if (alreadyInProgress) {
-    bookScanState.rescanRequested = true;
-  } else {
-    scanBooks().catch(console.error);
-  }
-  res.status(202).json({ scanning: true, alreadyInProgress });
-});
-
-app.get('/api/books/scan-status', (req, res) => {
-  res.json(bookScanState);
-});
-
-// v1.38.0 TTS: the reader calls this to decide whether to light the "Listen
-// from Here" control. `available` is the SAME gate every synthesis route
-// enforces (engine binary + Piper model + ffmpeg). Static-segment route,
-// declared before the `/api/books/:id/...` params (route-order lesson).
-app.get('/api/books/tts/config', (req, res) => {
-  res.json({ available: ttsAvailable(), engine: ttsConfig.engine });
+// Wave 7b (slice S2): the books HTTP surface - /api/books, /book and
+// /bookcover - moved VERBATIM to lib/books/routes.js, together with the five
+// module-scope names the moved routes were the only referrers of
+// (BOOK_CONTENT_TYPES, BOOK_COVER_TYPES, BOOK_COVER_MAX_BYTES, sortBookList,
+// publicBookListItem). The three path groups interleave, so they register as
+// ONE ordered block here - exactly where GET /api/books/config sat - and the
+// reading-position ping registers separately further down, where it sat.
+booksRoutes.registerRoutes(app, {
+  BOOKCOVER_DIR,
+  DATA_DIR, // the podcasts-root probe in the book-folder overlap net
+  bookScanState, // the LIVE scan-state object (never reassigned, only mutated)
+  bookVisibleTo, // v1.80 RBAC: the per-user visibility gate for book items
+  booksDb,
+  booksStore,
+  contentDispositionAttachment,
+  effectiveBookProgress, // pending-first reading position, per user
+  escapeHtml,
+  express, // only for express.raw on the cover upload
+  folderStore,
+  foldersOverlap,
+  fs,
+  getCachedDatabase,
+  getMediaId,
+  markServed, // keeps a streaming TTS chapter out of the cache sweep
+  musicDb,
+  path,
+  podcasts,
+  queueChapterTts,
+  requireAdmin,
+  requireModifyLibrary,
+  resolveTtsChapter,
+  scanBooks, // the overlap/coalescing scan guard (still this file's)
+  ttsAvailable,
+  ttsBlocksPath,
+  ttsConfig,
+  ttsM4aPath,
+  ttsServeKey,
+  tvDb,
+  updateDatabase,
+  userStore,
+  visibleConfigRoots,
+  ytdlpArgs,
 });
 
 // ---- Books: progress coalescer (T6 -- the v1.30 A4 discipline, books-owned) --
@@ -7046,7 +6565,8 @@ app.get('/api/books/tts/config', (req, res) => {
 // cheap-to-lose, so they stage here and flush as ONE durable write per
 // window. Deliberately NOT routed through `POST /api/progress` -- its value
 // shape ({timestamp,duration}) cannot express a CFI locator, and its flush
-// guard is book membership (books live in db.books.items).
+// guard is book membership (the books catalog's own table since Wave 5 -
+// lib/books/store.js).
 //
 // v1.43 (chunk 4b): reading positions belong to a USER -- same rework as
 // the media coalescer above: keys are `<userId>:<bookId>`, entries carry
@@ -7105,409 +6625,6 @@ function effectiveBookProgress(userId, id) {
   return userStore.getOneBookProgress(userId, id);
 }
 
-// ---- Books: read APIs + file/cover serving (T5) ------------------------------
-
-// Sort comparators -- the /api/videos sort-key posture (unknown keys fall
-// back to the default) with book-native keys.
-function sortBookList(list, sortKey) {
-  const byTitle = (a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
-  switch (sortKey) {
-    case 'title-asc': return list.sort(byTitle);
-    case 'title-desc': return list.sort((a, b) => byTitle(b, a));
-    case 'author': return list.sort((a, b) => String(a.author || '').localeCompare(String(b.author || ''), undefined, { sensitivity: 'base' }) || byTitle(a, b));
-    case 'recent-progress': return list.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
-    case 'recent':
-    default: return list.sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
-  }
-}
-
-// The public item shape: everything the cards/reader need, progress overlaid
-// (effective = pending-first, per-user), spine included only on the detail
-// route (the list stays light for hundreds of books).
-function publicBookListItem(item, userId, likedSet, finishedMap) {
-  const progress = effectiveBookProgress(userId, item.id);
-  // v1.72: per-user liked + finished flags ride the shape (the
-  // publicTrackListItem posture: the caller passes the pre-fetched sets so
-  // a list render costs two queries, not two per item).
-  const liked = likedSet ? likedSet.has(item.id) : userStore.getBookLiked(userId).some((l) => l.bookId === item.id);
-  const finished = finishedMap
-    ? Object.prototype.hasOwnProperty.call(finishedMap, item.id)
-    : Object.prototype.hasOwnProperty.call(userStore.getBookFinished(userId), item.id);
-  return {
-    id: item.id,
-    title: item.title,
-    author: item.author,
-    format: item.format,
-    folderName: item.folderName,
-    rootFolder: item.rootFolder,
-    size: item.size,
-    addedAt: item.addedAt,
-    hasCover: item.hasCover === true,
-    pageCount: item.pageCount,
-    progress: progress ? { percent: progress.percent, updatedAt: progress.updatedAt } : null,
-    liked,
-    finished,
-  };
-}
-
-app.get('/api/books', (req, res) => {
-  const ns = booksDb.read();
-  let list = Object.values(ns.items).filter((i) => bookVisibleTo(req, i)); // v1.80 RBAC
-  const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
-  if (search !== '') {
-    list = list.filter((i) => [i.title, i.author, i.folderName]
-      .some((field) => typeof field === 'string' && field.toLowerCase().includes(search)));
-  }
-  const root = typeof req.query.root === 'string' ? req.query.root : '';
-  if (root !== '') {
-    // The home grid's `underFolder` idiom: the folder itself or anything
-    // beneath it (path-prefix on the item's file path).
-    list = list.filter((i) => typeof i.filePath === 'string' && (i.filePath === root || i.filePath.startsWith(root.endsWith(path.sep) ? root : root + path.sep)));
-  }
-  // Explicit lambda (NOT `list.map(publicBookListItem)`): map would pass the
-  // array INDEX as the second argument, which is now the userId parameter.
-  const likedSet = new Set(userStore.getBookLiked(req.user.id).map((l) => l.bookId));
-  const finishedMap = userStore.getBookFinished(req.user.id);
-  let shaped = list.map((item) => publicBookListItem(item, req.user.id, likedSet, finishedMap));
-  if (req.query.filter === 'reading') {
-    shaped = shaped.filter((i) => i.progress && i.progress.percent > 0 && i.progress.percent < 98);
-    shaped.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
-  } else {
-    sortBookList(shaped, typeof req.query.sort === 'string' ? req.query.sort : 'recent');
-  }
-  const total = shaped.length;
-  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
-  const rawLimit = parseInt(req.query.limit, 10);
-  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10000) : 100;
-  res.json({ items: shaped.slice(offset, offset + limit), total, offset, limit });
-});
-
-// ROUTE ORDER: the static-segment GETs (/folders, /pins) MUST register
-// before the /:id param route or Express matches :id="folders".
-// Shelf aggregation for the books page's chips: unique parent directories
-// with counts, joined against the shelf pins so the chip renders its pin
-// state (T10's pin gesture). Exposing shelf DIR paths to the operator's own
-// UI is the same trust level as /api/config exposing db.folders.
-app.get('/api/books/folders', (req, res) => {
-  const ns = booksDb.read();
-  const byDir = new Map();
-  for (const item of Object.values(ns.items)) {
-    if (typeof item.filePath !== 'string') continue;
-    // v1.128 Wave B (L4): filter BEFORE aggregating (the music/albums pattern)
-    // - this route emitted abs dir + folderName + count for EVERY book folder
-    // with no visibility check, so a books-restricted member saw hidden shelves.
-    if (!bookVisibleTo(req, item)) continue;
-    const dir = path.dirname(item.filePath);
-    const existing = byDir.get(dir);
-    if (existing) existing.count += 1;
-    else byDir.set(dir, { name: item.folderName || path.basename(dir), dir, count: 1 });
-  }
-  // v1.43: pin state is the signed-in user's own shelf pins.
-  const pinByDir = new Map(userStore.getBookPins(req.user.id).map((p) => [p.dir, p]));
-  const folders = [...byDir.values()].map((f) => {
-    const pin = pinByDir.get(f.dir);
-    return { ...f, pinned: Boolean(pin), pinId: pin ? pin.id : null };
-  });
-  res.json({ folders });
-});
-
-app.get('/api/books/pins', (req, res) => {
-  // Pre-shaped for the shared pinned-sidebar renderer: `channelDir` is the
-  // field name the renderer already keys on; `href` overrides its default
-  // `/?root=` link to the books page (the ONLY shared-renderer widening).
-  // v1.43: the signed-in user's own shelf pins (the store reads them
-  // pin_order-sorted, matching listShelfPins' order contract).
-  const pins = userStore.getBookPins(req.user.id);
-  res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
-});
-
-// ---- v1.72 books first-class: likes + the manual finished latch -------------
-// Per-user book likes (static segment -- declared BEFORE /api/books/:id,
-// the /api/music/liked route-order discipline). The POST is existence-gated
-// (the id persists into user_book_liked); the DELETE is idempotent like
-// every other unlike.
-app.post('/api/books/liked/:id', (req, res) => {
-  const ns = booksDb.read();
-  if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
-    return res.status(404).json({ error: 'Book not found' });
-  }
-  userStore.addBookLiked(req.user.id, req.params.id, new Date().toISOString());
-  res.json({ liked: true });
-});
-app.delete('/api/books/liked/:id', (req, res) => {
-  userStore.removeBookLiked(req.user.id, req.params.id);
-  res.json({ liked: false });
-});
-
-// The manual mark-finished latch (the podcast played-toggle contract:
-// {finished:false} clears, anything else sets). No auto threshold - a text
-// position's "end" is format-dependent (exec plan, morning question M1).
-app.post('/api/books/:id/finished', (req, res) => {
-  const ns = booksDb.read();
-  if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
-    return res.status(404).json({ error: 'Book not found' });
-  }
-  const wantFinished = !(req.body && req.body.finished === false);
-  if (wantFinished) userStore.setBookFinished(req.user.id, req.params.id, new Date().toISOString());
-  else userStore.clearBookFinished(req.user.id, req.params.id);
-  res.json({ ok: true, finished: wantFinished });
-});
-
-app.get('/api/books/:id', (req, res) => {
-  const ns = booksDb.read();
-  const item = ns.items[req.params.id];
-  if (!item) return res.status(404).json({ error: 'Book not found' });
-  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
-  res.json({
-    ...publicBookListItem(item, req.user.id),
-    filePath: item.filePath,
-    spine: Array.isArray(item.spine) ? item.spine : [],
-    locator: (effectiveBookProgress(req.user.id, item.id) || {}).locator || null,
-  });
-});
-
-const BOOK_CONTENT_TYPES = { epub: 'application/epub+zip', pdf: 'application/pdf' };
-
-// SECURITY INVARIANT (gate, adversarial S2): this route serves
-// item.filePath UNCHECKED because db.books.items rows are written
-// EXCLUSIVELY by the book scanner (paths confined to configured book
-// roots) and the cover-backfill route (which never touches filePath). Any
-// future writer of items[*].filePath MUST re-establish confinement here or
-// this becomes an arbitrary-file-read.
-app.get('/book/:id/file', (req, res) => {
-  const ns = booksDb.read();
-  const item = ns.items[req.params.id];
-  if (!item) return res.status(404).json({ error: 'Book not found' });
-  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC: private library
-  if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
-  res.setHeader('Content-Type', BOOK_CONTENT_TYPES[item.format] || 'application/octet-stream');
-  if (req.query.download === '1') {
-    // v1.72 (cap 7): the shared injection-safe helper replaces the old
-    // hand-rolled header - encodeURIComponent in a bare filename= produced
-    // percent-encoded garbage names for any non-ASCII title, and the
-    // helper's filename* form is exactly the fix it exists to provide.
-    res.setHeader('Content-Disposition', contentDispositionAttachment(item.title || 'book', `.${item.format}`));
-  }
-  // sendFile provides Accept-Ranges/206 natively -- what pdf.js range
-  // loading wants; harmless for the whole-file EPUB fetch.
-  res.sendFile(item.filePath);
-});
-
-// ---- v1.38.0 TTS "Listen from Here" routes ----------------------------------
-//
-// All file paths derive from the deterministic cache key over a
-// scanner-validated (bookId, spineIndex) -- never from a client path fragment,
-// so there is no arbitrary-file-read surface (mirrors /book/:id/file's own
-// membership check). The static `tts` segment sits under the already-matched
-// `:id`, so there is no route-order ambiguity with /book/:id/file.
-
-// Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
-// configured; 404 for an unknown/non-epub book or out-of-range chapter.
-app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
-  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC
-  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
-  if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
-  const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
-  if (!chapter) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
-  // Use the NORMALIZED integer index everywhere (not the raw route param) so
-  // '02'/'2e0'/' 2 ' all address the SAME cache key/status row that ensure
-  // synthesizes under (gate finding: raw-vs-normalized key mismatch).
-  const result = queueChapterTts(req.params.id, chapter.spineIndex);
-  res.json(result);
-});
-
-// Honest per-chapter status for the reader's poll.
-app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
-  const idx = Number(req.params.spineIndex);
-  if (!Number.isInteger(idx) || idx < 0) return res.json({ status: 'none', durationSec: null });
-  const audio = booksDb.parts.audio.get(req.params.id); // Wave 5 (gate pass B): a point query
-  const entry = audio && audio[String(idx)];
-  if (!entry) return res.json({ status: 'none', durationSec: null });
-  res.json({ status: entry.status, durationSec: typeof entry.durationSec === 'number' ? entry.durationSec : null });
-});
-
-// Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
-app.get('/book/:id/tts/:spineIndex', (req, res) => {
-  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC
-  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
-  const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
-  if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
-  const key = ttsServeKey(req.params.id, chapter.spineIndex);
-  const m4a = ttsM4aPath(key);
-  if (!fs.existsSync(m4a)) return res.status(404).json({ error: 'Audio not ready' });
-  // Protect an actively-streaming chapter from a concurrent "Clear cache now"
-  // (the RECENT_STREAM_MS set the transcode serve path already uses).
-  markServed(m4a);
-  res.setHeader('Content-Type', 'audio/mp4');
-  res.sendFile(m4a);
-});
-
-// The blockIndex -> startSec map the reader uses to seek to the right paragraph.
-app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
-  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC: private book TEXT
-  if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
-  const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
-  if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
-  const key = ttsServeKey(req.params.id, chapter.spineIndex);
-  const blocksPath = ttsBlocksPath(key);
-  if (!fs.existsSync(blocksPath)) return res.status(404).json({ error: 'Audio not ready' });
-  res.setHeader('Content-Type', 'application/json');
-  res.sendFile(blocksPath);
-});
-
-app.get('/bookcover/:id', (req, res) => {
-  const ns = booksDb.read();
-  const item = ns.items[req.params.id];
-  if (!item) return res.status(404).json({ error: 'Book not found' });
-  if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
-  if (item.hasCover === true && item.coverExt) {
-    const coverPath = path.join(BOOKCOVER_DIR, `${item.id}${item.coverExt}`);
-    if (fs.existsSync(coverPath)) {
-      res.setHeader('Content-Type', item.coverExt === '.png' ? 'image/png' : 'image/jpeg');
-      // Covers are immutable per id (a changed file gets a new path-hash id
-      // only if the path changes; a re-extracted cover overwrites in place,
-      // so cap the cache at a day rather than immutable).
-      // v1.123 T4 (security): `private`, not `public` - this route 404s per-user
-      // via bookVisibleTo, so a SHARED cache keyed on the URL alone could serve
-      // one user's (or a restricted book's) cover to another. Matches the
-      // /thumbnail posture. The user's OWN browser still caches it.
-      res.setHeader('Cache-Control', 'private, max-age=86400');
-      return res.sendFile(coverPath);
-    }
-  }
-  // Book-styled SVG placeholder -- title/author text, escaped exactly like
-  // the /thumbnail fallback (a hostile title must never become markup).
-  const title = String(item.title || 'Book');
-  const author = String(item.author || '');
-  const svg = `
-    <svg width="160" height="240" viewBox="0 0 160 240" xmlns="http://www.w3.org/2000/svg">
-      <rect width="160" height="240" fill="#3a3f58"/>
-      <rect x="8" y="8" width="144" height="224" fill="none" stroke="#8890b5" stroke-width="2"/>
-      <text x="80" y="110" font-family="Georgia, serif" font-size="13" fill="#e8e8f0" text-anchor="middle" font-weight="bold">
-        ${escapeHtml(title.length > 20 ? `${title.substring(0, 18)}...` : title)}
-      </text>
-      <text x="80" y="132" font-family="Georgia, serif" font-size="9" fill="#aab" text-anchor="middle">
-        ${escapeHtml(author.length > 26 ? `${author.substring(0, 24)}...` : author)}
-      </text>
-      <text x="80" y="220" font-family="Arial, sans-serif" font-size="8" fill="#778" text-anchor="middle">${item.format === 'pdf' ? 'PDF' : 'EPUB'}</text>
-    </svg>
-  `;
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.send(svg);
-});
-
-// PDF cover backfill (T5/§2): the reader has page 1 decoded anyway; it POSTs
-// a one-shot JPEG/PNG snapshot. Magic-byte sniffed, bounded, NO-CLOBBER
-// (the dimensions-backfill contract), atomic tmp+rename.
-// (Own sniffer literals rather than referencing CUSTOM_LOGO_TYPES: that
-// const is declared LATER in this file -- a module-load-time reference here
-// would be a temporal-dead-zone boot crash. Same magic bytes.)
-const BOOK_COVER_TYPES = {
-  'image/jpeg': (buf) => buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
-  'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
-};
-const BOOK_COVER_MAX_BYTES = 512 * 1024;
-
-app.post(
-  '/api/books/:id/cover',
-  express.raw({ type: Object.keys(BOOK_COVER_TYPES), limit: BOOK_COVER_MAX_BYTES }),
-  async (req, res) => {
-    const ns = booksDb.read();
-    const item = ns.items[req.params.id];
-    if (!item) return res.status(404).json({ error: 'Book not found' });
-    // v1.123 T3 (security): visibility axis - this writes a SHARED cover for the
-    // book, so a member restricted from it must not set it. Symmetric with the
-    // GET cover route's bookVisibleTo 404. Neutral (same 404 as a missing id).
-    if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' });
-    if (item.hasCover === true) return res.status(200).json({ applied: false, reason: 'already has a cover' });
-    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    const sniff = BOOK_COVER_TYPES[mime];
-    const bytes = req.body;
-    if (!sniff || !Buffer.isBuffer(bytes) || bytes.length === 0 || !sniff(bytes)) {
-      return res.status(400).json({ error: 'body must be a real JPEG or PNG image' });
-    }
-    const ext = mime === 'image/png' ? '.png' : '.jpg';
-    const finalPath = path.join(BOOKCOVER_DIR, `${item.id}${ext}`);
-    const tmpPath = `${finalPath}.tmp`;
-    try {
-      fs.mkdirSync(BOOKCOVER_DIR, { recursive: true });
-      fs.writeFileSync(tmpPath, bytes);
-      fs.renameSync(tmpPath, finalPath);
-    } catch (err) {
-      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
-      return res.status(500).json({ error: `Could not store cover: ${err.message}` });
-    }
-    // Optional pageCount rides along (?pages=), validated as a plausible
-    // positive integer -- the isValidMediaDimension posture.
-    const rawPages = parseInt(req.query.pages, 10);
-    const pageCount = Number.isInteger(rawPages) && rawPages > 0 && rawPages < 100000 ? rawPages : undefined;
-    try {
-      await updateDatabase(() => booksDb.mutate((db) => {
-        const freshNs = booksStore.ensureBooks(db);
-        const fresh = freshNs.items[item.id];
-        if (!fresh) return false; // pruned between read and write: drop
-        if (fresh.hasCover !== true) {
-          fresh.hasCover = true;
-          fresh.coverExt = ext;
-        }
-        if (pageCount !== undefined && fresh.pageCount === undefined) fresh.pageCount = pageCount;
-        return true;
-      }));
-    } catch (err) {
-      return res.status(500).json({ error: `Cover stored but the record update failed: ${err.message}` });
-    }
-    res.json({ applied: true });
-  },
-);
-
-// ---- Books: shelf pins (T10 server half -- the ytdlp pins route shapes) ----
-
-// v1.43 (chunk 4b): shelf pins are per-user. The routes keep booksStore's
-// PURE reducers as the single source of pin semantics (idempotent re-pin,
-// max(order)+1 tail append, FIFO cap, stable reorder partition) and persist
-// the reducer output to the user's user_book_pins rows -- the validation
-// (root confinement) is unchanged.
-app.post('/api/books/pins', (req, res) => {
-  const ns = booksDb.read();
-  const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
-  if (!validation.ok) return res.status(400).json({ error: validation.error });
-  try {
-    const { dir, label } = validation.value;
-    const result = booksStore.reduceAddShelfPin(userStore.getBookPins(req.user.id), {
-      id: getMediaId(dir), dir, label, pinnedAt: new Date().toISOString(),
-    });
-    if (result.changed) userStore.setBookPins(req.user.id, result.pins);
-    res.json(result.record);
-  } catch (err) {
-    res.status(500).json({ error: `Could not pin shelf: ${err.message}` });
-  }
-});
-
-app.delete('/api/books/pins/:id', (req, res) => {
-  try {
-    const result = booksStore.reduceRemoveShelfPin(userStore.getBookPins(req.user.id), req.params.id);
-    if (!result.changed) return res.status(404).json({ error: 'Pin not found' });
-    userStore.setBookPins(req.user.id, result.pins);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: `Could not unpin shelf: ${err.message}` });
-  }
-});
-
-app.post('/api/books/pins/reorder', (req, res) => {
-  const { orderedIds } = req.body || {};
-  if (!Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === 'string' && id !== '')) {
-    return res.status(400).json({ error: 'orderedIds must be an array of non-empty strings' });
-  }
-  try {
-    const reordered = booksStore.reduceReorderShelfPins(userStore.getBookPins(req.user.id), orderedIds);
-    userStore.setBookPins(req.user.id, reordered);
-    res.json(userStore.getBookPins(req.user.id));
-  } catch (err) {
-    res.status(500).json({ error: `Could not reorder shelf pins: ${err.message}` });
-  }
-});
-
 // The clean /books URL (express.static already serves /books.html; this
 // mirrors the ytdlp module's own /subscriptions sendFile).
 app.get('/tv', (req, res) => {
@@ -7526,43 +6643,11 @@ app.get('/podcasts', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'podcasts.html'));
 });
 
-app.post('/api/books/:id/progress', (req, res) => {
-  const ns = booksDb.read();
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_book_progress -- see POST /api/progress's identical guard.
-  const item = Object.prototype.hasOwnProperty.call(ns.items, req.params.id) ? ns.items[req.params.id] : undefined;
-  if (!item) return res.status(404).json({ error: 'Book not found' });
-  const { locator, percent } = req.body || {};
-  if (!locator || typeof locator !== 'object' || locator.kind !== item.format) {
-    return res.status(400).json({ error: `locator.kind must be '${item.format}' for this book` });
-  }
-  if (item.format === 'epub' && typeof locator.cfi !== 'string') {
-    return res.status(400).json({ error: 'locator.cfi must be a string for an epub' });
-  }
-  if (item.format === 'pdf' && !(Number.isInteger(locator.page) && locator.page > 0)) {
-    return res.status(400).json({ error: 'locator.page must be a positive integer for a pdf' });
-  }
-  if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0 || percent > 100) {
-    return res.status(400).json({ error: 'percent must be a number in [0, 100]' });
-  }
-  // Bound the stored locator to the known fields (a hostile ping must not
-  // grow the record with arbitrary keys), spineIndex/blockIndex validated as
-  // non-negative integers when present (the wave-2 listen-from-here keys).
-  const clean = { kind: locator.kind };
-  if (item.format === 'epub') {
-    clean.cfi = String(locator.cfi).slice(0, 2000);
-    if (Number.isInteger(locator.spineIndex) && locator.spineIndex >= 0) clean.spineIndex = locator.spineIndex;
-    if (Number.isInteger(locator.blockIndex) && locator.blockIndex >= 0) clean.blockIndex = locator.blockIndex;
-  } else {
-    clean.page = locator.page;
-  }
-  pendingBookProgress.set(pendingProgressKey(req.user.id, item.id), {
-    userId: req.user.id,
-    bookId: item.id,
-    value: { locator: clean, percent, updatedAt: new Date().toISOString() },
-  });
-  armBookProgressFlushTimerIfNeeded();
-  res.json({ success: true });
+booksRoutes.registerProgressRoute(app, {
+  armBookProgressFlushTimerIfNeeded, // arms the bookProgressFlushTimer flushPendingBookProgress owns
+  booksDb,
+  pendingBookProgress, // the coalescer's staging Map - the LIVE object, never a copy
+  pendingProgressKey,
 });
 
 // FR-3 (v1.18.0): bounds the `transcodeNames` list GET /api/scan-status
@@ -8385,42 +7470,27 @@ app.post('/api/music/resume', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- v1.265: cross-device preference sync -----------------------------------
-// The SYNCED allowlist (exec plan docs/exec-plans/active/cross-device-sync.md,
-// MACHINE-DERIVED, 21 keys). The server is the enforcement point: unknown keys
-// are rejected PER-ITEM (a junk key cannot poison a batch), values are capped,
-// and last-write-wins lives in the store's upsert WHERE guard. The client's
-// twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
-// v1.265 adversarial round: the list + caps moved to lib/prefs-allowlist.js so
-// the backup RESTORE loop (lib/auth/store.js) enforces the SAME defenses - the
-// seat measured the restore path bypassing all three (allowlist/cap/clamp).
-const { SYNCED_PREF_KEYS: SYNCED_PREF_KEY_LIST, PREF_VALUE_MAX_BYTES, PREF_CLOCK_SLACK_MS } = require('./lib/prefs-allowlist');
-const SYNCED_PREF_KEYS = new Set(SYNCED_PREF_KEY_LIST);
-
-app.get('/api/prefs', (req, res) => {
-  res.json({ prefs: userStore.getPrefs(req.user.id) });
-});
-
-app.post('/api/prefs', (req, res) => {
-  const body = req.body || {};
-  const raw = Array.isArray(body.entries) ? body.entries : [];
-  const entries = []; const rejected = [];
-  for (const e of raw.slice(0, 64)) { // batch cap: the allowlist is 21 keys
-    const key = e && typeof e.key === 'string' ? e.key : '';
-    const value = e && typeof e.value === 'string' ? e.value : null;
-    const updatedAt = e ? Number(e.updatedAt) : NaN;
-    if (!SYNCED_PREF_KEYS.has(key) || value === null || !Number.isFinite(updatedAt)
-      || Buffer.byteLength(value, 'utf8') > PREF_VALUE_MAX_BYTES) {
-      if (key) rejected.push(key);
-      continue;
-    }
-    // QA W3: a wrong-clock device must not WEDGE a key (a far-future stamp would
-    // win LWW forever and revert every other device on every refresh, with no
-    // in-app recovery). Stamps are clamped to now + 5min of ordinary skew.
-    entries.push({ key, value, updatedAt: Math.min(updatedAt, Date.now() + PREF_CLOCK_SLACK_MS) });
-  }
-  const { applied, skipped } = userStore.setPrefsLWW(req.user.id, entries);
-  res.json({ applied, skipped, rejected });
+// ---- the per-user state routes ----------------------------------------------
+// Wave 7b (slice S1a): the per-user state routes - /api/prefs, /api/watched,
+// /api/feed-hidden, /api/history, /api/search-history - moved VERBATIM to
+// lib/user/routes.js and register from here, in their original source order.
+// The prefs allowlist binding and the search-history cap +
+// normalizeSearchTerm moved with them (the routes were their only readers);
+// server.js still re-exports normalizeSearchTerm as the SAME function object.
+userRoutes.registerRoutes(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  // The progress coalescer's staging Map + its key builder: the history and
+  // feed-hidden reads overlay not-yet-flushed pings (read-your-writes) and
+  // the history/watched deletes purge them in the same synchronous handler.
+  pendingProgress,
+  pendingProgressKey,
+  resolveModernGridItem, // the modern-grid projection GET /api/feed-hidden renders through
+  restrictedVideoMutation, // v1.80 RBAC (S-b): no restricted-id oracle, no persist
+  userStore,
+  videoQuery, // normalizeLimit/normalizeOffset/deriveWatchState for the history page
+  ytdlp, // resolveItemChannelAvatarUrl for the history cards
+  ytdlpDb,
 });
 
 // Per-track progress ping -> staged into the music coalescer (no disk I/O on
@@ -9401,7 +8471,11 @@ app.delete('/api/settings/logo', async (req, res) => {
 // and with NO persisted metadata (so no schema/settings change): the file's
 // presence IS the state, its mtime is the cache-bust version, and the serve
 // route sniffs the real mime from magic bytes. An unset avatar -> the client
-// renders an initials monogram.
+// renders an initials monogram. Wave 7b (slice S1b): the three routes moved to
+// lib/auth/routes.js (registerAvatarRoutes, called below); these constants and
+// helpers stayed here because AVATARS_DIR has a reader outside the group
+// (POST /api/admin/restore), and splitting one file's machinery across two
+// would leave the directory constant defined in both.
 const AVATAR_MAX_BYTES = 1024 * 1024;
 const AVATARS_DIR = path.join(DATA_DIR, 'avatars');
 // Own allowlist + magic-byte sniffers (an intentional copy of the logo's, per
@@ -9438,81 +8512,39 @@ function unlinkAvatar(userId) {
   try { fs.unlinkSync(avatarPath(userId)); } catch { /* absent -- fine */ }
 }
 
-// Serve any user's avatar by id (a profile photo is low-sensitivity: the header
-// fetches the CURRENT user's; the admin Users list may show others'). Numeric id
-// only -> no path traversal. 404 when unset OR corrupt (never serve junk bytes).
-app.get('/api/users/:id/avatar', (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'No avatar' });
-  let bytes;
-  try { bytes = fs.readFileSync(avatarPath(id)); }
-  catch { return res.status(404).json({ error: 'No avatar' }); }
-  const mime = sniffAvatarMime(bytes);
-  if (!mime) return res.status(404).json({ error: 'No avatar' });
-  res.setHeader('Content-Type', mime);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'no-cache'); // the client cache-busts via ?v=<mtime>
-  return res.send(bytes);
-});
-
-// Upload the CURRENT user's avatar. Self-service by design: there is NO by-id
-// write route, so a member can only ever set their own photo.
-app.post(
-  '/api/me/avatar',
-  express.raw({ type: Object.keys(AVATAR_TYPES), limit: AVATAR_MAX_BYTES }),
-  (req, res) => {
-    // MIME types are case-insensitive (RFC 2045); express.raw's type-is already
-    // matched case-insensitively, so lowercase before the allowlist check.
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (!Object.prototype.hasOwnProperty.call(AVATAR_TYPES, mime)) {
-      return res.status(400).json({ error: 'Photo must be a PNG, JPEG, or WebP image' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
-      return res.status(400).json({ error: 'Empty upload' });
-    }
-    if (!AVATAR_TYPES[mime](bytes)) {
-      return res.status(400).json({ error: 'File content does not match its image type' });
-    }
-    const target = avatarPath(req.user.id);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      fs.mkdirSync(AVATARS_DIR, { recursive: true });
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target); // atomic replace
-    } catch (err) {
-      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
-      console.error('Error saving avatar:', err);
-      return res.status(500).json({ error: `Could not save photo: ${err.message}` });
-    }
-    return res.json({ ok: true, avatar: avatarInfo(req.user.id) });
-  },
-  // Oversized body -> clean JSON 413 (mirrors the logo route's mapping).
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'Photo too large (max 1 MB)' });
-    }
-    return next(err);
-  }
-);
-
-// Remove the current user's avatar -> back to the initials monogram.
-app.delete('/api/me/avatar', (req, res) => {
-  unlinkAvatar(req.user.id);
-  return res.json({ ok: true, avatar: { present: false, version: 0 } });
+// Wave 7b (slice S1b): the profile-photo routes - GET /api/users/:id/avatar,
+// POST|DELETE /api/me/avatar - moved VERBATIM to lib/auth/routes.js. They
+// register HERE, behind the shell wildcard and the static layer, because that
+// is where they have always been; the helpers and constants above stayed and
+// cross in through deps.
+authRoutes.registerAvatarRoutes(app, {
+  AVATARS_DIR,
+  AVATAR_MAX_BYTES,
+  AVATAR_TYPES, // the mime allowlist AND its magic-byte sniffers
+  avatarInfo,
+  avatarPath,
+  express, // express.raw - the upload parser, built at REGISTRATION time
+  fs,
+  sniffAvatarMime,
+  unlinkAvatar,
 });
 
 // ---- v1.238: per-user custom PLAYER STICKER (the speed-menu sticker icon) ----
 // A deliberate second copy of the avatar machinery above, not a shared helper:
 // the sticker and the profile photo are unrelated features that happen to share
-// an upload shape, and the avatar header (~9573) already documents WHY these
-// diverge rather than fold. Same properties: PER USER, self-service (no by-id
+// an upload shape, and the "v1.82: per-user profile avatar" header above in
+// this file already documents WHY these diverge rather than fold (a line
+// number would rot - Wave 7b moved this code once already). Same properties:
+// PER USER, self-service (no by-id
 // write route -> a member can only set THEIR OWN), disk-only (presence IS the
 // state, mtime is the cache-bust version, no persisted db metadata -> no schema
 // bump and, like avatars, NOT carried in the backup bundle), mime sniffed from
 // magic bytes on serve. The device-local `ft-sticker` choice decides logo vs
 // preset vs emoji vs THIS custom image; an unset/deleted file -> the client
 // falls back to whatever `ft-sticker` names (default: the FileTube logo).
+// Wave 7b (slice S1b): the three routes moved to lib/auth/routes.js
+// (registerStickerRoutes, called below); these constants and helpers stayed,
+// keeping this copy symmetric with the avatar machinery above.
 const STICKER_MAX_BYTES = 1024 * 1024;
 const STICKERS_DIR = path.join(DATA_DIR, 'stickers');
 // Own allowlist + magic-byte sniffers (SVG is deliberately excluded - an inline
@@ -9546,63 +8578,20 @@ function unlinkSticker(userId) {
   try { fs.unlinkSync(stickerPath(userId)); } catch { /* absent -- fine */ }
 }
 
-// Serve the CURRENT user's sticker only (self-only: a sticker is a personal
-// player decoration with no cross-user display surface, so unlike the avatar
-// there is NO by-id read route to widen the surface). 404 when unset OR corrupt.
-app.get('/api/me/sticker', (req, res) => {
-  let bytes;
-  try { bytes = fs.readFileSync(stickerPath(req.user.id)); }
-  catch { return res.status(404).json({ error: 'No sticker' }); }
-  const mime = sniffStickerMime(bytes);
-  if (!mime) return res.status(404).json({ error: 'No sticker' });
-  res.setHeader('Content-Type', mime);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'no-cache'); // the client cache-busts via ?v=<mtime>
-  return res.send(bytes);
-});
-
-// Upload the CURRENT user's sticker. Self-service by design: no by-id write route.
-app.post(
-  '/api/me/sticker',
-  express.raw({ type: Object.keys(STICKER_TYPES), limit: STICKER_MAX_BYTES }),
-  (req, res) => {
-    const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (!Object.prototype.hasOwnProperty.call(STICKER_TYPES, mime)) {
-      return res.status(400).json({ error: 'Sticker must be a PNG, JPEG, or WebP image' });
-    }
-    const bytes = req.body;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
-      return res.status(400).json({ error: 'Empty upload' });
-    }
-    if (!STICKER_TYPES[mime](bytes)) {
-      return res.status(400).json({ error: 'File content does not match its image type' });
-    }
-    const target = stickerPath(req.user.id);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      fs.mkdirSync(STICKERS_DIR, { recursive: true });
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target); // atomic replace
-    } catch (err) {
-      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
-      console.error('Error saving sticker:', err);
-      return res.status(500).json({ error: `Could not save sticker: ${err.message}` });
-    }
-    return res.json({ ok: true, sticker: stickerInfo(req.user.id) });
-  },
-  // Oversized body -> clean JSON 413 (mirrors the avatar/logo route mapping).
-  (err, req, res, next) => {
-    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-      return res.status(413).json({ error: 'Sticker too large (max 1 MB)' });
-    }
-    return next(err);
-  }
-);
-
-// Remove the current user's custom sticker -> back to the chosen preset/logo.
-app.delete('/api/me/sticker', (req, res) => {
-  unlinkSticker(req.user.id);
-  return res.json({ ok: true, sticker: { present: false, version: 0 } });
+// Wave 7b (slice S1b): the player-sticker routes - GET|POST|DELETE
+// /api/me/sticker - moved VERBATIM to lib/auth/routes.js, registering here for
+// the same reason the avatar routes do (their original position behind the
+// shell wildcard, and after the sticker constants above).
+authRoutes.registerStickerRoutes(app, {
+  STICKERS_DIR,
+  STICKER_MAX_BYTES,
+  STICKER_TYPES, // the mime allowlist AND its magic-byte sniffers (no SVG)
+  express, // express.raw - the upload parser, built at REGISTRATION time
+  fs,
+  sniffStickerMime,
+  stickerInfo,
+  stickerPath,
+  unlinkSticker,
 });
 
 // ---- v1.42: instance backup / restore ---------------------------------------
@@ -10316,484 +9305,47 @@ function notificationsFeatureEnabled(_db) {
   return settingsStore.getKey('notificationsEnabled') !== false; // Wave 4
 }
 
-// The badge count. Doubles as the client's boot probe, so it is the ONE
-// endpoint that must stay cheap: two point queries against the cache.
-app.get('/api/notifications/badge', (req, res) => {
-  const db = getCachedDatabase(); // hot poll reader (60s cadence per client)
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  // v1.146: engine rows are admin-only - the badge and the panel must agree
-  // (a member badge ticking for a row the panel filters out is a phantom
-  // badge that user could never clear by reading).
-  res.json({ count: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
+// ---- the bell, web push and the playback queue ------------------------------
+// Wave 7b (slice S1a): these three route groups moved VERBATIM to
+// lib/notifications/routes.js, lib/push/routes.js and lib/queue/routes.js and
+// register from here, in their original order. notificationsFeatureEnabled
+// (above) stayed in server.js - the push delivery bundle reads it too - and
+// crosses as the SAME function object to both modules.
+notificationsRoutes.registerRoutes(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  notificationsFeatureEnabled,
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  resolveItemChapters, // the panel's chapterCount for audio rows
+  trashStore, // the panel filters rows whose media is in the trash
+  userStore,
+  ytdlp, // resolveItemChannelAvatarUrl + the engine-row shaping
+  ytdlpDb,
 });
 
-// The panel list: feed rows joined against the CURRENT library item (title/
-// channel/thumbnail are never denormalized into the feed -- the item is the
-// source of truth and prune-on-delete keeps the join target alive). A row
-// whose item vanished mid-flight (delete committed, scan prune still
-// pending) is filtered here as the defensive net.
-app.get('/api/notifications', (req, res) => {
-  const db = getCachedDatabase();
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const { items } = userStore.listNotifications(req.user.id);
-  const metadata = db.metadata || {};
-  const rows = [];
-  const phantomMediaIds = [];
-  const phantomEpisodeIds = [];
-  // v1.73: podcast rows resolve against the episodes map, never db.metadata
-  // (the shapedQueue posture) - one ns read for the whole request.
-  const podcastNsForFeed = podcastsDb.read();
-  const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
-  for (const row of items) {
-    // v1.146 (downloader-engine T5): engine event rows - ADMIN-ONLY (an
-    // engine revert is an operator concern; members must see neither the
-    // row nor, via the badge/unseenCount above, its existence). The id
-    // carries the whole payload; a malformed one (crafted backup bundle)
-    // parses to null and renders NOTHING - never garbage.
-    if (row.kind === 'engine') {
-      if (!req.user || req.user.role !== 'admin') continue;
-      const parsed = ytdlp.parseEngineNotificationId(row.mediaId);
-      if (!parsed) continue;
-      rows.push({
-        id: row.id,
-        mediaId: row.mediaId,
-        createdAt: row.createdAt,
-        unread: row.unread,
-        kind: 'engine',
-        title: ytdlp.describeEngineEvent(parsed.event, parsed.version),
-        channelName: 'Downloader engine',
-        folderName: '',
-        channelAvatarUrl: '',
-        hasThumbnail: false,
-        type: 'engine',
-      });
-      continue;
-    }
-    if (row.kind === 'podcast') {
-      const ep = Object.prototype.hasOwnProperty.call(podcastNsForFeed.episodes, row.mediaId) ? podcastNsForFeed.episodes[row.mediaId] : null;
-      if (!ep) {
-        // The episode record is GONE (purged/unsubscribed with a failed
-        // carrier, or a restored feed referencing since-deleted episodes):
-        // prune via the episode carrier - the ONE deleter for this id
-        // space, idempotent over already-purged per-user rows. NEVER
-        // removeMediaState (a media item sharing the md5 id would lose
-        // every user's state - the kind-confusion class).
-        phantomEpisodeIds.push(row.mediaId);
-        continue;
-      }
-      if (ep.status !== 'downloaded') continue; // trashed/pending - HIDDEN, not phantom (restore brings it back)
-      if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show title in the bell
-      const showName = podcastSubNames.has(ep.subId) ? podcastSubNames.get(ep.subId) : '';
-      rows.push({
-        id: row.id,
-        mediaId: row.mediaId,
-        createdAt: row.createdAt,
-        unread: row.unread,
-        kind: 'podcast',
-        title: ep.title || '',
-        channelName: showName || 'Podcast',
-        folderName: showName || '',
-        channelAvatarUrl: '',
-        hasThumbnail: false,
-        artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
-        type: 'audio',
-        durationSec: Number(ep.durationSec) > 0 ? Number(ep.durationSec) : 0, // v1.208: the episode length for the panel badge
-      });
-      continue;
-    }
-    // Own-property lookup (gate round 2, adversarial): a feed row whose
-    // mediaId is a prototype key ('constructor', ...) -- reachable only via
-    // a crafted admin bundle -- must read as ABSENT, not as a truthy
-    // inherited junk item that the phantom-prune below would then skip
-    // forever (the v1.42 __proto__ row-key lesson).
-    const item = Object.prototype.hasOwnProperty.call(metadata, row.mediaId) ? metadata[row.mediaId] : undefined;
-    if (!item) {
-      // v1.65 gate fix (QA C1): a TRASHED item's feed row re-keyed to the
-      // trashId along with the other eight carriers -- it is HIDDEN, not
-      // phantom. The prune below calls removeMediaState, which would
-      // destroy every user's progress/likes/watched/queue for the trashed
-      // item and break restore's full-fidelity promise on the first
-      // bell-open (proven by the seat's runnable repro). Filter without
-      // pruning; restore re-keys the row home, purge retires it. (The
-      // badge counts the hidden row until then -- accepted, disclosed.)
-      if (trashStore.has(row.mediaId)) { // Wave 3: the table
-        continue;
-      }
-      // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
-      // whose removeMediaState call failed and was caught-and-continued, or
-      // a restored feed referencing since-deleted media) is not just
-      // filtered from this response -- it is collected and pruned below, so
-      // the badge (which counts feed rows without a metadata join) stops
-      // disagreeing with the panel after the first open. removeMediaState
-      // is the existing carrier-scrub; reusing it keeps ONE deleter.
-      phantomMediaIds.push(row.mediaId);
-      continue;
-    }
-    // v1.80 RBAC (security-gate CRITICAL): the bell is a global feed - a
-    // restricted member must not read a restricted item's TITLE here. Hide the
-    // row (it stays for other users); do NOT prune (it is visible content for
-    // someone). Admin's empty index hides nothing.
-    if (!mediaVisibleTo(req, item)) continue;
-    let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
-    if (channelAvatarUrl === '') {
-      // v1.85 #3a: resolveItemChannelAvatarUrl is READ-ONLY now (it reads via
-      // readYtdlpNamespace, never ensureYtdlp), so the shared getCachedDatabase()
-      // object can be handed in directly - no defensive deep-clone.
-      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
-    }
-    rows.push({
-      id: row.id,
-      mediaId: row.mediaId,
-      createdAt: row.createdAt,
-      unread: row.unread,
-      kind: 'media', // v1.73: carried on every row
-      title: item.title || item.name || '',
-      channelName: typeof item.channelName === 'string' ? item.channelName : '',
-      folderName: typeof item.folderName === 'string' ? item.folderName : '',
-      channelAvatarUrl,
-      hasThumbnail: item.hasThumbnail === true,
-      type: item.type === 'audio' ? 'audio' : 'video',
-      // v1.251: chapterCount for audio (the v1.236 fold, /api/videos parity) so the bell
-      // row's audio reroute opens a chaptered download AS ITS ALBUM (::c0), like every
-      // other surface. Audio-only - video rows never reroute.
-      ...(item.type === 'audio' ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
-      // v1.208 (Dean): the watch length, so the panel can show a small duration
-      // badge (triage before deleting). Seconds; 0 when unknown -> no badge.
-      durationSec: Number(item.duration) > 0 ? Number(item.duration) : 0,
-    });
-  }
-  if (phantomMediaIds.length > 0) {
-    // Wave 1 (deliberate EXEMPTION, both gate seats): the view-count row is
-    // NOT pruned here. This prune exists for badge/panel coherency - it scrubs
-    // per-user feed state for ids that no longer resolve to metadata. A
-    // view-count row feeds no count that can disagree with anything a user
-    // sees; its only effect is a resumed count on a same-path re-add (the
-    // class accepted at the delete route), and making a GET route a second
-    // deleter of media state is not worth that. Later waves: the same call
-    // applies - carrier removal belongs to the delete/prune/purge writers.
-    try {
-      userStore.removeMediaState(phantomMediaIds);
-    } catch (err) {
-      console.error('Notifications: failed to prune phantom feed rows (continuing):', err && err.message);
-    }
-  }
-  if (phantomEpisodeIds.length > 0) {
-    try {
-      userStore.removePodcastEpisodeState(phantomEpisodeIds);
-    } catch (err) {
-      console.error('Notifications: failed to prune phantom podcast feed rows (continuing):', err && err.message);
-    }
-  }
-  // v1.146: same admin-only engine-row inclusion as the badge route above.
-  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
+pushRoutes.registerRoutes(app, {
+  PUSH_VAPID,
+  getCachedDatabase,
+  notificationsFeatureEnabled,
+  // A live READER, not the value: __setPushGuardLookupForTests reassigns this
+  // `let` long after the routes register, so destructuring the value would
+  // freeze the subscribe route's SSRF-guard seam to its boot-time null.
+  pushGuardLookup: () => pushGuardLookupOverride,
+  pushShortlink,
+  userStore,
 });
 
-// Opening the panel zeroes the NUMBER badge (two-tier semantics, decision 3:
-// per-row dots survive until tapped).
-app.post('/api/notifications/seen', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  userStore.markNotificationsSeen(req.user.id, Date.now());
-  res.json({ success: true });
-});
-
-// Tapping a row drops its dot. A phantom id (evicted/pruned/fabricated) is a
-// 400, never a silently-banked read.
-app.post('/api/notifications/read', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const id = req.body ? req.body.id : undefined;
-  if (!Number.isInteger(id) || !userStore.markNotificationRead(req.user.id, id, Date.now())) {
-    return res.status(400).json({ error: 'invalid notification id' });
-  }
-  res.json({ success: true });
-});
-
-// v1.68 (Dean ruling 3): per-row dismissal - the row leaves THIS user's
-// panel and badge, survives for every other user. Same phantom-id 400
-// discipline as /read (evicted/pruned/fabricated ids are never banked).
-app.post('/api/notifications/dismiss', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const id = req.body ? req.body.id : undefined;
-  if (!Number.isInteger(id) || !userStore.dismissNotification(req.user.id, id, Date.now())) {
-    return res.status(400).json({ error: 'invalid notification id' });
-  }
-  res.json({ success: true });
-});
-
-// Clear-all: empties THIS user's panel view and zeroes their badge. The feed
-// rows themselves survive for every other user (per-user watermark, never a
-// global delete).
-app.post('/api/notifications/clear', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  userStore.clearNotifications(req.user.id, Date.now());
-  res.json({ success: true });
-});
-
-// ============ v1.66 web push =================================================
-// Same three-way feature gate as the bell (this is the bell's delivery
-// channel). Subscribe is the ONE route that accepts a client-supplied
-// remote URL, so it carries the full SSRF discipline: https-only, shape-
-// checked keys (decode + length, not regex), guardHop (literal-IP + DNS
-// resolve-all, fail-closed) - and delivery re-checks at send time.
-
-const PUSH_SUBSCRIPTIONS_PER_USER_CAP = 10;
-
-app.get('/api/push/key', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  res.json({ key: PUSH_VAPID.publicKeyB64url });
-});
-
-// ASYNC HANDLER: Express 4 never observes a rejected async handler, so an
-// uncaught throw here is a SOCKET THAT HANGS FOREVER, not a 500 (the class
-// this repo already documented at the ytdlp async routes). The whole body is
-// try/caught for that reason - the v1.66 QA seat measured the unguarded
-// version hanging on an array-wrapped key that passed String() coercion and
-// then threw in the store.
-app.post('/api/push/subscribe', async (req, res) => {
-  try {
-    const db = getCachedDatabase();
-    if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-    const body = req.body || {};
-    const endpoint = body.endpoint;
-    const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
-    if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
-      return res.status(400).json({ error: 'invalid endpoint' });
-    }
-    let parsed;
-    try { parsed = new URL(endpoint); } catch { return res.status(400).json({ error: 'invalid endpoint' }); }
-    // https only - push services are https, and http would leak the
-    // capability URL in cleartext. (guardHop alone would allow http.)
-    if (parsed.protocol !== 'https:') return res.status(400).json({ error: 'endpoint must be https' });
-    // The browser's keys, decoded and measured - a p256dh that is not an
-    // uncompressed P-256 point or an auth that is not 16 bytes could never
-    // decrypt anyway; refuse it at the door. TYPE first: String(['a']) is
-    // 'a', so a one-element array used to sail through this check and throw
-    // deeper in (QA W1).
-    let p256dhOk = false;
-    let authOk = false;
-    if (typeof keys.p256dh === 'string' && typeof keys.auth === 'string') {
-      try {
-        const p = Buffer.from(keys.p256dh, 'base64url');
-        p256dhOk = p.length === 65 && p[0] === 0x04;
-        authOk = Buffer.from(keys.auth, 'base64url').length === 16;
-      } catch { /* fall through to the 400 */ }
-    }
-    if (!p256dhOk || !authOk) return res.status(400).json({ error: 'invalid subscription keys' });
-    const guard = await pushShortlink.guardHop(endpoint, { lookup: pushGuardLookupOverride || undefined });
-    if (!guard.ok) return res.status(400).json({ error: 'endpoint refused' });
-    // Cap NEW endpoints per user (an unbounded roster is a delivery-time
-    // amplification primitive); re-registering an existing endpoint is free.
-    if (!userStore.getPushSubscription(endpoint)
-      && userStore.countPushSubscriptions(req.user.id) >= PUSH_SUBSCRIPTIONS_PER_USER_CAP) {
-      return res.status(409).json({ error: 'subscription limit reached for this account' });
-    }
-    // Cursor starts at the feed head: a fresh device is never back-flooded
-    // with history (ruling P1; the bell panel is the history surface).
-    userStore.upsertPushSubscription(
-      req.user.id,
-      { endpoint, p256dh: keys.p256dh, auth: keys.auth },
-      userStore.getMaxNotificationId(),
-      Date.now()
-    );
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('POST /api/push/subscribe failed:', err && err.message);
-    return res.status(500).json({ error: 'could not save the subscription' });
-  }
-});
-
-app.post('/api/push/unsubscribe', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const endpoint = (req.body || {}).endpoint;
-  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
-    return res.status(400).json({ error: 'invalid endpoint' });
-  }
-  // Owner-scoped: another user's endpoint is untouchable (removed:false,
-  // not a 403 - do not confirm the endpoint exists at all).
-  const removed = userStore.removeOwnPushSubscription(req.user.id, endpoint);
-  res.json({ removed });
-});
-
-// ============ v1.63 playback queue ("think YouTube" - Dean) ==================
-// One per-user queue; ALL semantics live in lib/queue/store.js's pure
-// reducers - these routes run reducer -> persist (userStore.setQueue,
-// whole-set transaction) -> respond with the shaped queue (the pin-routes
-// posture). Dead media ids are filtered at READ - belt to the
-// removeMediaState carrier's suspenders (a restore from another library,
-// or a delete racing a stale client, must never 500 the panel).
-
-// v1.128 Wave B (L9): shapedQueue now takes `req` (was userId) so it can drop
-// entries the requester cannot see. A hidden entry is SILENT-DROPPED exactly
-// like a dead/phantom id already is - hidden and dead are indistinguishable to
-// the client, which is the oracle-free posture the plan wants (a restricted
-// member with a hidden item queued before the restriction, or via a restored
-// bundle, simply never sees it echoed back with its title/path).
-function shapedQueue(db, req) {
-  const userId = req.user.id;
-  const raw = userStore.getQueue(userId);
-  const live = queueStore.normalize(raw);
-  const podcastNs = podcastsDb.read();
-  const musicNs = musicDb.read();
-  const entries = [];
-  for (const e of live.entries) {
-    if (e.kind === 'podcast') {
-      // v1.71: podcast entries resolve against the episodes map, never
-      // db.metadata. The SILENT-DROP is deliberately preserved for this id
-      // space too - a trashed/tombstoned/phantom episode disappears from
-      // the panel, belt to the delQueueByEpisode carrier's suspenders.
-      const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, e.mediaId) ? podcastNs.episodes[e.mediaId] : null;
-      if (ep && ep.status === 'downloaded' && podcastEpisodeVisibleTo(req, ep)) {
-        const sub = podcastNs.subscriptions.find((s) => s && s.id === ep.subId);
-        entries.push({
-          uid: e.uid,
-          mediaId: e.mediaId,
-          kind: 'podcast',
-          // The media-item projection the queue consumers expect, from
-          // podcast fields: show name as the channel label, show cover as
-          // artUrl (buildQueueRowModel's podcast thumb source).
-          item: {
-            title: ep.title,
-            name: ep.title,
-            channelName: sub ? sub.name : null,
-            folderName: sub ? sub.name : null,
-            artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
-            durationSec: Number.isFinite(ep.durationSec) ? ep.durationSec : null,
-            hasThumbnail: false,
-          },
-        });
-      }
-      continue;
-    }
-    if (e.kind === 'track') {
-      // v1.72: track entries resolve against ns.tracks, never db.metadata.
-      // The silent-drop is preserved for this id space too - a pruned/
-      // phantom track disappears from the panel, belt to the
-      // delQueueByTrack carrier's suspenders. (adversarial S3: the ns is
-      // hoisted like the podcast one, not re-read per entry.)
-      const track = ownTrack(musicNs.tracks, e.mediaId);
-      if (track && trackVisibleTo(req, track)) {
-        entries.push({
-          uid: e.uid,
-          mediaId: e.mediaId,
-          kind: 'track',
-          item: {
-            title: track.title,
-            name: track.title,
-            channelName: track.artist || null,
-            folderName: track.album || null,
-            artUrl: `/albumart/${encodeURIComponent(track.id)}`,
-            durationSec: Number.isFinite(track.durationSec) ? track.durationSec : null,
-            hasThumbnail: false,
-          },
-        });
-      }
-      continue;
-    }
-    // hasOwnProperty (gate S9): a restored bundle can carry prototype-chain
-    // keys as mediaIds; they must silent-drop like any dead id, never serve
-    // a garbage item from the prototype.
-    const item = Object.prototype.hasOwnProperty.call(db.metadata, e.mediaId) ? db.metadata[e.mediaId] : null;
-    if (item && mediaVisibleTo(req, item)) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
-  }
-  // Dead-id filtering can orphan the pointer; normalize AGAIN on the
-  // filtered view so the client never sees a pointer to a missing row.
-  const view = queueStore.normalize({ entries, pointerUid: live.pointerUid });
-  return { entries: view.entries, pointerUid: view.pointerUid, updatedAt: raw.updatedAt || 0 };
-}
-
-app.get('/api/queue', (req, res) => {
-  res.json(shapedQueue(getCachedDatabase(), req));
-});
-
-app.post('/api/queue/items', (req, res) => {
-  const db = getCachedDatabase();
-  const body = req.body || {};
-  const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
-  // v1.71: the entry's kind is CARRIED, never inferred (episode ids are
-  // md5 hex exactly like media ids). Each kind existence-checks its own
-  // id space; a podcast add requires a playable (downloaded) episode.
-  // v1.72: 'track' joins (music in the one queue) - the row must still
-  // exist in ns.tracks (the own-property ownTrack rule).
-  const kind = (body.kind === 'podcast' || body.kind === 'track') ? body.kind : 'media';
-  // v1.128 Wave B (L9): each kind visibility-checks after the existence check,
-  // returning the SAME 404 as a missing id so a restricted member cannot use
-  // the insert as an existence oracle for a hidden item (and never gets it
-  // echoed back through the shaped queue).
-  if (kind === 'podcast') {
-    const podcastNs = podcastsDb.read();
-    const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
-    if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
-  } else if (kind === 'track') {
-    const track = musicDb.parts.tracks.get(mediaId); // Wave 5 (gate pass B): a point query
-    if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
-  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
-    // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
-    // 'constructor', 'toString') must 404 like any phantom, never queue an
-    // item-less entry the shaped view then serves as garbage. Wave B: a hidden
-    // item 404s here too, indistinguishable from a missing one.
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const position = body.position === 'next' ? 'next' : 'end';
-  const result = queueStore.reduceAdd(userStore.getQueue(req.user.id), mediaId, position, kind);
-  if (!result.changed) {
-    return res.status(400).json({ error: result.error === 'queue-full' ? `Queue is full (${queueStore.QUEUE_CAP} items)` : 'Could not add to queue' });
-  }
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ added: result.added, queue: shapedQueue(db, req) });
-});
-
-app.delete('/api/queue/items/:uid', (req, res) => {
-  const result = queueStore.reduceRemove(userStore.getQueue(req.user.id), req.params.uid);
-  if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
-});
-
-// Strict uid bijection (the reducer refuses drops/inventions): a stale
-// client gets a 409 telling it to refresh, never a "helpful" merge.
-app.post('/api/queue/reorder', (req, res) => {
-  const orderedUids = req.body ? req.body.orderedUids : undefined;
-  if (!Array.isArray(orderedUids) || !orderedUids.every((u) => typeof u === 'string' && u !== '')) {
-    return res.status(400).json({ error: 'orderedUids must be an array of non-empty strings' });
-  }
-  // v1.65 (QA W1): lift the client's order over the VISIBLE entries back to
-  // the full raw multiset -- a trashed item's entry is hidden from the
-  // client but still lives in the raw queue (that is what buys restore
-  // fidelity), and without this every reorder after a trash 409s forever.
-  const rawQueue = userStore.getQueue(req.user.id);
-  const visibleUids = shapedQueue(getCachedDatabase(), req).entries.map((e) => e.uid);
-  const fullOrder = queueStore.expandVisibleOrder(rawQueue, visibleUids, orderedUids);
-  const result = queueStore.reduceReorder(rawQueue, fullOrder);
-  if (!result.changed) return res.status(409).json({ error: 'Queue changed - refresh and retry' });
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
-});
-
-// The now-playing pointer. body.uid = an entry uid, or null to restart
-// (not-started semantics: the head is up next).
-app.post('/api/queue/pointer', (req, res) => {
-  const uid = req.body ? req.body.uid : undefined;
-  if (uid !== null && (typeof uid !== 'string' || uid === '')) {
-    return res.status(400).json({ error: 'uid must be an entry uid or null' });
-  }
-  const result = queueStore.reduceSetPointer(userStore.getQueue(req.user.id), uid);
-  if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
-});
-
-// Clear = the whole queue dies (icon disappears). Ephemeral by design -
-// one confirm toast client-side, no modal ceremony (Dean ruling 4).
-app.delete('/api/queue', (req, res) => {
-  const result = queueStore.reduceClear();
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: { entries: [], pointerUid: null, updatedAt: Date.now() } });
+queueRoutes.registerRoutes(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  musicDb,
+  ownTrack, // the OWN-property track lookup shapedQueue uses (shared with the music routes)
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  queueStore,
+  trackVisibleTo,
+  userStore,
 });
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
@@ -11640,109 +10192,23 @@ app.get('/api/videos/:id', (req, res) => {
   });
 });
 
-// ---- v1.72 (cap 6): the manual watched latch --------------------------------
-// Videos' latch was write-only-by-threshold (POST /api/progress crossing
-// WATCHED_PCT); podcasts have had the manual toggle since v1.69. The parity
-// port: POST marks watched NOW (idempotent - markWatched no-ops on an
-// existing row, preserving the original completed_at). DELETE is the
-// un-watch verb with IDENTICAL semantics to the v1.64 history-row delete
-// (staged ping + progress + latch): clearing only the latch would leave a
-// >=90% live position still DERIVING 'watched' and the toggle would appear
-// stuck for exactly the fully-watched items it exists for.
-app.post('/api/watched/:id', (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
-  const db = getCachedDatabase(); // hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_watched -- see POST /api/liked/:id's identical guard.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
-  if (!item) return res.status(404).json({ error: 'Media file not found' });
-  userStore.markWatched(req.user.id, item.id, new Date().toISOString());
-  res.json({ success: true, watched: true });
-});
+// Wave 7b (slice S1a): POST|DELETE /api/watched/:id (the manual watched
+// latch) moved VERBATIM to lib/user/routes.js - see the
+// userRoutes.registerRoutes call beside the cross-device preference sync.
 
-app.delete('/api/watched/:id', (req, res) => {
-  pendingProgress.delete(pendingProgressKey(req.user.id, req.params.id));
-  userStore.removeHistory(req.user.id, req.params.id);
-  res.json({ success: true, watched: false });
-});
-
-// API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
-// `pendingProgress` entry (read-your-writes); see `effectiveProgress` above.
-// v1.43: scoped to the signed-in user (`req.user` is set by the auth gate on
-// every non-allowlisted route).
-app.get('/api/progress/:id', (req, res) => {
-  const progress = effectiveProgress(req.user.id, req.params.id) || { timestamp: 0 };
-  res.json(progress);
-});
-
-// API: Save watch progress
-// v1.30 A4 (AC4.1/AC4.2/AC4.3): rewritten from a per-ping `updateDatabase`
-// call (one atomic write+fsync every ~4s while a video plays) into the
-// progress-write coalescer -- validate, compute the value, stage it in
-// `pendingProgress`, arm the shared debounce timer if needed, and respond
-// immediately. No disk I/O happens on this request at all; the batched
-// write happens later, on `flushPendingProgress` (the timer, or a shutdown
-// handler). The 400 (bad input) / 404 (unknown id) semantics and the stored
-// value's shape (`{timestamp, duration, updatedAt}`, same duration-fallback
-// precedence) are BYTE-IDENTICAL to the pre-A4 per-ping behavior -- only the
-// persistence timing changed. Synchronous now (no `await`): there is nothing
-// left in this handler that can reject.
-app.post('/api/progress', (req, res) => {
-  const { id, timestamp, duration } = req.body;
-  if (!id || typeof timestamp !== 'number') {
-    return res.status(400).json({ error: 'id and numeric timestamp are required' });
-  }
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ row-key lesson): a plain truthiness
-  // probe lets id='__proto__'/'constructor' pass via Object.prototype
-  // inheritance, and v1.43 persists this client-supplied id into
-  // user_progress -- a stored junk-key row minted by any signed-in user.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;
-  if (!item) {
-    return res.status(404).json({ error: 'Media not found' });
-  }
-  // v1.50 gate (adversarial WARNING): normalize `duration` ONCE, up front,
-  // with the same finite-number-or-fallback posture the flush's num() has
-  // always applied. Before this, a crafted string duration ("100") was
-  // truthy enough to ride the staging fallback and coerce through the latch
-  // division, while filterByWatchState's strict number check excluded the
-  // same un-flushed entry from its bucket -- three readers, two answers.
-  // Now every reader (latch, watch buckets, flush, progress overlay) sees
-  // one numeric value. For every POSITIVE-FINITE numeric-duration caller
-  // (the real client sends video.duration) this is byte-identical to the
-  // old `duration || item.duration || 0`; a negative/Infinity/NaN numeric
-  // duration now falls back to the item's real duration instead of staging
-  // garbage (gate delta precision -- an improvement, not a preservation).
-  const effDuration = (typeof duration === 'number' && Number.isFinite(duration) && duration > 0)
-    ? duration
-    : (item.duration || 0);
-  pendingProgress.set(pendingProgressKey(req.user.id, id), {
-    userId: req.user.id,
-    mediaId: id,
-    value: {
-      timestamp,
-      duration: effDuration,
-      updatedAt: new Date().toISOString()
-    }
-  });
-  armProgressFlushTimerIfNeeded();
-  // v1.50 watched latch: the first ping that crosses WATCHED_PCT marks the
-  // item watched for this user, STICKY (a later loop-restart/rewatch ping
-  // near 0 never clears it -- that's what keeps a looping video from
-  // un-watching itself). Checked on the ping, NOT the coalesced flush: the
-  // flush only keeps the LAST value of the window, so a cross-then-restart
-  // inside one window would otherwise lose the crossing entirely. This is
-  // the one durable-write exception to this handler's "no disk I/O" rule,
-  // and it is bounded: one indexed point SELECT per ping while past the
-  // threshold, one tiny INSERT ever (markWatched is check-then-insert).
-  if (effDuration > 0 && (timestamp / effDuration) * 100 >= videoQuery.WATCHED_PCT) {
-    userStore.markWatched(req.user.id, id, new Date().toISOString());
-  }
-  // v1.78: presence, LAST - after every existing effect, and after the 400/404
-  // gates above, so a rejected ping mints no presence for an id this user was
-  // never allowed to write. Cannot change this response (see the helper).
-  recordPresenceFromPing(req, 'media', id, timestamp, effDuration);
-  res.json({ success: true });
+// Wave 7b (slice S1b): GET /api/progress/:id and POST /api/progress (the
+// write coalescer's ingress) moved VERBATIM to lib/media/user-routes.js.
+mediaUserRoutes.registerProgressRoutes(app, {
+  armProgressFlushTimerIfNeeded,
+  effectiveProgress, // the stored position with any un-flushed ping overlaid
+  getCachedDatabase,
+  // The coalescer's staging Map itself (never a snapshot): POST stages into
+  // the LIVE object the flush timer drains.
+  pendingProgress,
+  pendingProgressKey,
+  recordPresenceFromPing, // v1.78 device handoff, last - after every other effect
+  userStore,
+  videoQuery, // WATCHED_PCT - the watched latch's threshold
 });
 
 // v1.78 device handoff: resolve a presence entry into what the card RENDERS.
@@ -12465,481 +10931,41 @@ app.delete('/api/videos/:id', async (req, res) => {
   res.json({ success: true, message: 'File deleted successfully' });
 });
 
-// ---- v1.30 C2 (Visual polish cluster): Like -> "Liked" playlist --------
-//
-// Like state IS membership -- there is no separate boolean flag anywhere
-// (not on `db.metadata[id]`, not in settings) to ever drift out of sync
-// with it. v1.43 (chunk 4b): membership lives in the relational
-// `user_liked` table keyed by (user_id, media_id) -- a Like belongs to a
-// USER. The frozen pre-auth `liked` record (media_liked since Wave 4, was the
-// doc-table array) is retained untouched, adopted into the first admin at
-// /welcome; no reader
-// falls back to it (the total-cutover contract, design finding #6). The
-// mutations below are direct synchronous upserts/deletes on the warm
-// SQLite handle -- still exactly one durable write per invocation
-// (AC4.2's unbatched 1:1 posture), just against the user table instead of
-// a whole doc-table save.
-
-// API: Like an item (idempotent add). 404s exactly like the other single-id
-// routes above if the id isn't a real library item -- mirrors
-// `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
-app.post('/api/liked/:id', (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_liked -- see POST /api/progress's identical guard.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  userStore.addLiked(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent re-add
-  res.json({ success: true, liked: true });
+// Wave 7b (slice S1b): the Liked playlist - POST|DELETE /api/liked/:id and
+// GET /api/liked - moved VERBATIM to lib/media/user-routes.js, together with
+// the three shapedLiked*Items projections the listing is the only reader of.
+mediaUserRoutes.registerLikedRoutes(app, {
+  albumArtExists, // the liked-track arm's cover-art presence probe
+  bookVisibleTo,
+  booksDb,
+  effectiveBookProgress,
+  effectiveMusicProgress,
+  effectiveProgress,
+  getCachedDatabase,
+  mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
+  musicDb,
+  ownTrack, // the music store's own-track lookup (a track row by id)
+  pendingProgress, // the coalescer's staging Map - the LIVE object (read-your-writes)
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  previewClipEligible,
+  restrictedVideoMutation, // v1.80 RBAC (S-b): no restricted-id oracle, no persist
+  storyboardDescriptor,
+  trackVisibleTo,
+  userStore,
+  videoQuery,
+  ytdlp, // resolveItemChannelAvatarUrl for the Liked cards
+  ytdlpDb,
 });
 
-// API: Unlike an item (idempotent remove). No existence-in-metadata gate --
-// removing membership for an id that's already absent (or was since deleted
-// from the library entirely) is itself the desired end state, nothing to
-// 404 on.
-app.delete('/api/liked/:id', (req, res) => {
-  userStore.removeLiked(req.user.id, req.params.id);
-  res.json({ success: true, liked: false });
-});
+// Wave 7b (slice S1a): the three /api/feed-hidden routes moved VERBATIM to
+// lib/user/routes.js - see the userRoutes.registerRoutes call beside the
+// cross-device preference sync.
 
-// ---- v1.97 "Hide from feed" -----------------------------------------------
-//
-// A per-user, MANUAL prune of the MODERN home feed (GET /api/home?view=grid).
-// It is the member's OWN state (personal), NOT a visibility/RBAC control: a
-// feed-hidden item is NOT deleted and stays fully findable via search, channel,
-// playlist, folder, the classic/feed home views, and Liked - only the modern
-// feed omits it (server.js's grid arm). Media (video/audio) only, per-VIDEO
-// (channel-level hide is a separate future feature). Routes mirror /api/liked.
-
-// Hide a media item from THIS user's modern feed (idempotent add).
-app.post('/api/feed-hidden/:id', (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
-  const db = getCachedDatabase(); // hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_feed_hidden - the identical guard POST /api/liked/:id uses.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  userStore.addFeedHidden(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent
-  res.json({ success: true, hidden: true });
-});
-
-// Un-hide (the Undo/Restore verb). Idempotent, no existence gate - restoring
-// membership for an id that's already absent (or since deleted from the
-// library) is itself the desired end state, exactly like DELETE /api/liked/:id.
-app.delete('/api/feed-hidden/:id', (req, res) => {
-  userStore.removeFeedHidden(req.user.id, req.params.id);
-  res.json({ success: true, hidden: false });
-});
-
-// The You-tab "Hidden from feed" restore list. Read-only; never mutates. RBAC:
-// filtered through mediaVisibleTo so a SINCE-restricted item's id/title can
-// never leak here (the inverse of the v1.80 list-surface-leak class). Shaped as
-// modern-grid items (resolveModernGridItem) so the client renders the SAME
-// cards, newest-hidden first (getFeedHidden's order).
-app.get('/api/feed-hidden', (req, res) => {
-  const db = getCachedDatabase();
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const userId = req.user.id;
-  const likedSet = new Set(userStore.getLiked(userId));
-  const progressMap = userStore.getProgress(userId);
-  for (const entry of pendingProgress.values()) {
-    if (entry.userId === userId) progressMap[entry.mediaId] = entry.value; // read-your-writes
-  }
-  const items = [];
-  for (const id of userStore.getFeedHidden(userId)) { // newest-hidden first
-    const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
-    if (!item || typeof item !== 'object') continue;
-    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: never leak a since-restricted item
-    const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
-    const ts = p ? Number(p.timestamp) : 0;
-    const dur = p ? Number(p.duration) : 0;
-    const rec = {
-      id, kind: 'media', type: item.type === 'audio' ? 'audio' : 'video',
-      addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
-      progressPercent: dur > 0 ? (ts / dur) * 100 : 0, liked: likedSet.has(id),
-    };
-    const shaped = resolveModernGridItem(db, rec, ytView);
-    if (shaped) items.push(shaped);
-  }
-  res.json({ items, total: items.length });
-});
-
-// ---- v1.72 (#94): the Liked playlist is MIXED-KIND -------------------------
-//
-// Hearting content in ANY kind surfaces it in THE Liked playlist (/?liked=1,
-// the count-gated sidebar entry, and v1.75's opt-in bottom-bar entry). v1.75
-// (Dean's ruling): this is the ONE read surface - the kind-scoped lanes that
-// used to complement it (the podcasts place's Liked card, the music place's
-// Liked tab) are REMOVED, and docs/CONTRIBUTING.md's capability 4 now records
-// a new kind-scoped Liked lane as a defect to add, not a complement. The
-// per-kind HEARTS remain the write surfaces. Each arm below is a read-time projection
-// of that kind's OWN liked carrier into the card item shape the Liked grid
-// renders; `kind` is CARRIED on every item (podcast/track/book ids are md5
-// hex exactly like media ids - kind is never inferred from id shape), and
-// each id space keeps its own lane's exact silent-drop rule. Like/unlike
-// writes stay on the per-kind routes; these arms never mutate membership.
-
-// The podcast arm - the /api/podcasts/episodes?filter=liked drop rule
-// EXACTLY: the episode row must exist and be status 'downloaded' (a trashed/
-// tombstoned/pending episode keeps its user_podcast_liked row - v1.65's law:
-// trash keeps per-user state - but never renders in the playlist).
-function shapedLikedPodcastItems(db, userId) {
-  const ns = podcastsDb.read();
-  const likedRows = userStore.getPodcastLiked(userId);
-  if (!likedRows.length) return [];
-  const progress = userStore.getPodcastProgress(userId);
-  const played = userStore.getPodcastPlayed(userId);
-  const subNameById = new Map(ns.subscriptions.filter(Boolean).map((s) => [s.id, s.name]));
-  const items = [];
-  for (const row of likedRows) {
-    const id = row.episodeId;
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
-    if (!ep || ep.status !== 'downloaded') continue;
-    const prog = Object.prototype.hasOwnProperty.call(progress, id) ? progress[id] : null;
-    const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
-    items.push({
-      kind: 'podcast',
-      id: ep.id,
-      title: ep.title,
-      type: 'audio',
-      // The library-entry moment, like a video's addedAt (file birthtime):
-      // when the enclosure finished downloading; pubDateMs is the fallback
-      // for legacy rows that predate the downloadedAt stamp.
-      addedAt: Number.isFinite(ep.downloadedAt) ? ep.downloadedAt : (Number.isFinite(ep.pubDateMs) ? ep.pubDateMs : 0),
-      duration: Number.isFinite(ep.durationSec) ? ep.durationSec : 0,
-      size: Number.isFinite(ep.bytes) ? ep.bytes : 0,
-      subId: ep.subId,
-      showName: subNameById.has(ep.subId) ? subNameById.get(ep.subId) : null,
-      liked: true,
-      progress: prog ? Number(prog.position) : 0,
-      progressPercent: pct,
-      // The played latch IS this kind's watched latch - one derivation
-      // authority (videoQuery) for every kind.
-      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(played, id))
-    });
-  }
-  return items;
-}
-
-// The music arm - the /api/music?filter=liked drop rule EXACTLY: the track
-// row must still exist (own-property; a pruned track sheds its liked row via
-// removeMusicState, but a race between prune and read must never render a
-// ghost).
-function shapedLikedTrackItems(db, userId) {
-  const likedIds = userStore.getMusicLiked(userId);
-  if (!likedIds.length) return [];
-  const ns = musicDb.read();
-  const items = [];
-  for (const id of likedIds) {
-    const track = ownTrack(ns.tracks, id);
-    if (!track) continue;
-    // QA gate S3: read-your-writes like the media arm - the coalescer
-    // overlay beats the committed row (liked sets are small; per-id reads
-    // are fine here).
-    const prog = effectiveMusicProgress(userId, id);
-    const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
-    items.push({
-      kind: 'track',
-      id: track.id,
-      title: track.title,
-      type: 'audio',
-      // music scan stamps addedAt as an ISO string; the card/sort contract
-      // (sortItems, formatRelativeTime) is numeric ms like media addedAt.
-      addedAt: Date.parse(track.addedAt) || 0,
-      duration: Number.isFinite(track.durationSec) ? track.durationSec : 0,
-      size: 0,
-      artist: track.artist,
-      album: track.album,
-      hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
-      liked: true,
-      progress: prog ? Number(prog.position) : 0,
-      progressPercent: pct,
-      // Music has no played latch (morning question M2) - the live position
-      // is the only signal, same derivation authority.
-      watchState: videoQuery.deriveWatchState(pct, false)
-    });
-  }
-  return items;
-}
-
-// The books arm - drop rule mirrors music's: the item row must still exist
-// (the scan prune retires membership via removeBookState; a race between
-// prune and read must never render a ghost). Books carry NO `type`: the
-// format filter's documented ambiguous-inclusion rule applies (a book is
-// neither video nor audio and fails safe toward visible).
-function shapedLikedBookItems(db, userId) {
-  const likedRows = userStore.getBookLiked(userId);
-  if (!likedRows.length) return [];
-  const ns = booksDb.read();
-  const finishedMap = userStore.getBookFinished(userId);
-  const items = [];
-  for (const row of likedRows) {
-    const id = row.bookId;
-    const item = Object.prototype.hasOwnProperty.call(ns.items, id) ? ns.items[id] : null;
-    if (!item) continue;
-    // QA gate S3: read-your-writes like the media arm (coalescer overlay
-    // first) - the track arm's exact posture.
-    const prog = effectiveBookProgress(userId, id);
-    const pct = prog && typeof prog.percent === 'number' ? Math.min(100, Math.max(0, prog.percent)) : 0;
-    items.push({
-      kind: 'book',
-      id: item.id,
-      title: item.title,
-      author: item.author,
-      // The scanner stamps addedAt as an ISO string; the sort contract is
-      // numeric ms (the track-arm conversion).
-      addedAt: typeof item.addedAt === 'number' ? item.addedAt : (Date.parse(item.addedAt) || 0),
-      duration: 0,
-      size: Number.isFinite(item.size) ? item.size : 0,
-      liked: true,
-      progress: 0,
-      progressPercent: pct,
-      // Reading percent + the manual finished latch through the ONE
-      // derivation authority (the latch strictly widens 'watched').
-      watchState: videoQuery.deriveWatchState(pct, Object.prototype.hasOwnProperty.call(finishedMap, id))
-    });
-  }
-  return items;
-}
-
-// API: List liked items -- reuses the SAME `{items,total,offset,limit}`
-// shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
-// scoped down to the signed-in user's liked membership. Read-only; never
-// mutates membership. v1.72 (#94): the response is MIXED-KIND - liked
-// podcast episodes, music tracks and books ride the same list, sort,
-// filters and pagination as liked videos; media items carry kind:'media'
-// explicitly.
-app.get('/api/liked', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  // v1.43: membership is the signed-in user's user_liked rows (a warm
-  // prepared-statement read), never the frozen db.liked record.
-  const likedIds = new Set(userStore.getLiked(req.user.id));
-  const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const seed = videoQuery.normalizeSeed(req.query.seed);
-
-  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id) && mediaVisibleTo(req, item)); // v1.80 RBAC
-  // v1.32: the Liked view is now a real library scope (main.js's ?liked=1)
-  // -- honor the same format toggle the home grid forwards, so
-  // videos/audio/both filtering behaves identically in both views.
-  if (typeof req.query.format === 'string') {
-    list = videoQuery.filterByFormat(list, req.query.format);
-  }
-
-  // v1.50: honor the watched-state toggle too, for exactly the v1.32 reason
-  // above -- the home toolbar (which now carries the watch group) fronts
-  // BOTH endpoints, and a visible control that silently no-ops in one of
-  // the two views is the worse behavior. Same derivation as /api/videos.
-  // v1.72 (#94): the non-media arms. Shaped up-front (liked sets are small);
-  // the format/watch filters below apply to them through the SAME predicates
-  // (filterByFormat reads item.type; a shaped item's watchState was derived
-  // by the same videoQuery authority the media path uses at page-shaping
-  // time, so filtering on it is the identical decision).
-  let others = [
-    ...shapedLikedPodcastItems(db, req.user.id),
-    ...shapedLikedTrackItems(db, req.user.id),
-    ...shapedLikedBookItems(db, req.user.id)
-  ];
-  // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
-  // liked filtering lands with their libraries, T6/T7.)
-  // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
-  const likedMusicNs = musicDb.read();
-  const likedPodNs = podcastsDb.read();
-  const likedBooksNs = booksDb.read();
-  others = others.filter((o) => {
-    if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
-    if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
-    if (o.kind === 'book') return bookVisibleTo(req, likedBooksNs.items && likedBooksNs.items[o.id]);
-    return true;
-  });
-  if (typeof req.query.format === 'string') {
-    others = videoQuery.filterByFormat(others, req.query.format);
-  }
-
-  const watch = videoQuery.normalizeWatchFilter(req.query.watch);
-  const watchedSet = new Set(userStore.getWatchedIds(req.user.id));
-  if (watch !== 'all') {
-    const progressMap = userStore.getProgress(req.user.id);
-    for (const entry of pendingProgress.values()) {
-      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
-    }
-    list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
-    others = others.filter((o) => o.watchState === watch);
-  }
-
-  // `total` is the full liked-set length (after format/watch filtering),
-  // BEFORE slicing to a page -- same contract as GET /api/videos's `total`.
-  const total = list.length + others.length;
-
-  const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
-  // One merged sort: shaped items carry the same addedAt/title/size fields
-  // the media records do, so every toolbar sort (and the seeded shuffle's
-  // stable paging) treats the kinds uniformly.
-  const sorted = videoQuery.sortItems([...list, ...others], sort, rng);
-  const page = sorted.slice(offset, offset + limit);
-
-  const items = page.map(item => {
-    if (item.kind) return item; // a shaped non-media item - already complete
-    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
-    const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
-    return {
-      ...item,
-      // v1.113 (Fix A sweep): the Liked grid feeds the SAME buildCardHtml ->
-      // modernCardAvatar path as /api/videos, so resolve the avatar identically
-      // (read-only) or a registry-resolvable channel shows a monogram here.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
-      kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
-      liked: true, // every item in this listing is, by construction, a liked member
-      // v1.93.2: DERIVED storyboard descriptor - the Liked view feeds
-      // buildCardHtml, which renders the hover/in-view preview. Parity with
-      // /api/videos and the modern grid; without this, Liked cards lost their
-      // preview once the persisted field was removed.
-      storyboard: storyboardDescriptor(item) || undefined,
-      hasPreview: previewClipEligible(item) || undefined, // v1.94: hover clip eligibility
-      progress: progress.timestamp,
-      progressPercent,
-      // v1.50: same server-derived state as /api/videos (one authority).
-      watchState: videoQuery.deriveWatchState(progressPercent, watchedSet.has(item.id))
-    };
-  });
-
-  res.json({ items, total, offset, limit });
-});
-
-// ---- v1.64 watch history ---------------------------------------------------
-// Everything the signed-in user watched or started, newest first. The merged
-// set is user_progress (started) + user_watched (the completion latch); the
-// per-media order key is the freshest signal: a staged coalescer ping
-// (read-your-writes -- the overlay value carries its own updatedAt) beats
-// the committed row, and progress.updatedAt pairs with the latch's
-// completed_at via max(). ISO strings compare lexicographically, so string
-// max IS time max. Dead media ids are filtered at read time (the
-// shapedQueue posture): a row that outlives its file must never break the
-// page, and the media-delete prune remains the durable cleaner.
-app.get('/api/history', (req, res) => {
-  const db = getCachedDatabase(); // hot GET reader, same as /api/liked
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const progressMap = userStore.getProgress(req.user.id);
-  for (const entry of pendingProgress.values()) {
-    if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
-  }
-  const watchedTimes = userStore.getWatchedTimes(req.user.id);
-  const likedSet = new Set(userStore.getLiked(req.user.id));
-
-  // Per-media newest signal. A null updated_at (a legacy batch row) sorts
-  // as '' -- present in history, oldest possible position.
-  const lastById = Object.create(null);
-  for (const id of Object.keys(progressMap)) {
-    lastById[id] = typeof progressMap[id].updatedAt === 'string' ? progressMap[id].updatedAt : '';
-  }
-  for (const id of Object.keys(watchedTimes)) {
-    const at = typeof watchedTimes[id] === 'string' ? watchedTimes[id] : '';
-    if (!(id in lastById) || at > lastById[id]) lastById[id] = at;
-  }
-
-  const merged = Object.keys(lastById)
-    .filter((id) => Object.prototype.hasOwnProperty.call(db.metadata, id))
-    .filter((id) => mediaVisibleTo(req, db.metadata[id])) // v1.80 RBAC: no restricted items in history
-    .sort((a, b) => {
-      if (lastById[a] !== lastById[b]) return lastById[a] > lastById[b] ? -1 : 1;
-      return a < b ? -1 : 1; // deterministic tiebreak
-    });
-
-  const total = merged.length;
-  const page = merged.slice(offset, offset + limit);
-  const items = page.map((id) => {
-    const item = db.metadata[id];
-    const progress = progressMap[id] || { timestamp: 0, duration: 0 };
-    const dur = typeof progress.duration === 'number' && Number.isFinite(progress.duration) && progress.duration > 0 ? progress.duration : 0;
-    const progressPercent = dur > 0 ? (progress.timestamp / dur) * 100 : 0;
-    return {
-      ...item,
-      // v1.113 (Fix A sweep): History feeds the SAME buildCardHtml ->
-      // modernCardAvatar path, so resolve the avatar identically (read-only).
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
-      liked: likedSet.has(id),
-      progress: progress.timestamp || 0,
-      progressPercent,
-      watchState: videoQuery.deriveWatchState(progressPercent, id in watchedTimes),
-      lastWatchedAt: lastById[id] || null
-    };
-  });
-
-  res.json({ items, total, offset, limit });
-});
-
-// Per-item remove-from-history. Idempotent 200 (an already-gone or even
-// dead-media id is a no-op, not a 404 -- a row that outlived its file must
-// still be removable). The staged coalescer entry is purged IN THE SAME
-// synchronous handler as the row delete: a staged ping left behind would be
-// flushed <=PROGRESS_FLUSH_MS later and silently resurrect the row. A ping
-// arriving AFTER this response re-adds the item -- that is the user still
-// watching, not a bug (the latch re-marks on the next threshold cross too).
-app.delete('/api/history/:id', (req, res) => {
-  const id = req.params.id;
-  pendingProgress.delete(pendingProgressKey(req.user.id, id));
-  userStore.removeHistory(req.user.id, id);
-  res.json({ success: true });
-});
-
-// Clear-all, strictly this user: the staged-entry sweep filters on
-// entry.userId (deleting from a Map while iterating it is safe in JS) and
-// clearHistory's DELETEs are user-scoped by statement.
-app.delete('/api/history', (req, res) => {
-  // QA gate W1 (v1.64): Express non-strict routing aliases
-  // 'DELETE /api/history/' -- the per-item form with a MISSING id -- onto
-  // this handler. A caller that meant to remove ONE item must never wipe
-  // the whole history: refuse the ambiguous trailing-slash form outright.
-  if (req.path !== '/api/history') {
-    return res.status(400).json({ error: 'item id required' });
-  }
-  for (const [key, entry] of pendingProgress) {
-    if (entry.userId === req.user.id) pendingProgress.delete(key);
-  }
-  userStore.clearHistory(req.user.id);
-  res.json({ success: true });
-});
-
-// ---- v1.85 #1: per-user search history (the mobile magnifier) ---------------
-// term-keyed, exact-dedup, recency-ordered, capped. Individually deletable + a
-// clear-all guarded against the trailing-slash alias (the v1.64 lesson).
-const SEARCH_HISTORY_CAP = 20;
-const SEARCH_TERM_MAX = 200;
-// Pure + exported: collapse whitespace, trim, cap length. Empty -> '' (rejected).
-function normalizeSearchTerm(raw) {
-  if (typeof raw !== 'string') return '';
-  const t = raw.replace(/\s+/g, ' ').trim();
-  return t.length > SEARCH_TERM_MAX ? t.slice(0, SEARCH_TERM_MAX) : t;
-}
-app.get('/api/search-history', (req, res) => {
-  res.json({ terms: userStore.getSearchHistory(req.user.id, SEARCH_HISTORY_CAP) });
-});
-app.post('/api/search-history', (req, res) => {
-  const term = normalizeSearchTerm(req.body && req.body.term);
-  if (!term) return res.status(400).json({ error: 'term required' });
-  userStore.addSearchTerm(req.user.id, term, new Date().toISOString());
-  res.json({ success: true, term });
-});
-app.delete('/api/search-history/:term', (req, res) => {
-  userStore.removeSearchTerm(req.user.id, req.params.term);
-  res.json({ success: true });
-});
-app.delete('/api/search-history', (req, res) => {
-  // The same trailing-slash guard as DELETE /api/history: a missing :term must
-  // NOT be aliased onto this clear-all (Express non-strict routing).
-  if (req.path !== '/api/search-history') return res.status(400).json({ error: 'term required' });
-  userStore.clearSearchHistory(req.user.id);
-  res.json({ success: true });
-});
+// Wave 7b (slice S1a): GET|DELETE /api/history, DELETE /api/history/:id and
+// the four /api/search-history routes (with SEARCH_HISTORY_CAP and
+// normalizeSearchTerm) moved VERBATIM to lib/user/routes.js - see the
+// userRoutes.registerRoutes call beside the cross-device preference sync.
 
 // ---- v1.65 trash routes -----------------------------------------------------
 // GET lists newest-first (items render from the stored metadata snapshot, and
@@ -18761,7 +16787,10 @@ module.exports = {
   // beforeEach.
   resolveHandoffTarget,
   resolveHomeItem,
-  normalizeSearchTerm, // v1.85 #1: exported for the unit test
+  // v1.85 #1: exported for the unit test. Wave 7b (S1a): it moved to
+  // lib/user/routes.js with the search-history routes, so this re-export is
+  // the SAME function object through both doors (the Wave 6 extraction rule).
+  normalizeSearchTerm: userRoutes.normalizeSearchTerm,
 
   isFinishedPresence,
   HANDOFF_FINISHED_PCT,

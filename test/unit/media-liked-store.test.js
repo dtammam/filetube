@@ -24,10 +24,10 @@
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b R1 gate (QA W1): the liked surface lives in lib/media/user-routes.js + lib/auth/routes.js now
 const os = require('node:os');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const {
   SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
@@ -164,8 +164,12 @@ test('readPersistedDatabase: surfaces `liked` in like order only when rows exist
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names media_liked or the dead doc key in CODE; every carrier write rides inSaveTransaction; the adoption and the stats inventory read the table', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+test('source lock: the route surface never names media_liked or the dead doc key in CODE; every carrier write rides inSaveTransaction; the adoption and the stats inventory read the table', () => {
+  // Wave 7b: the adoption (POST /api/auth/setup) moved to lib/auth/routes.js and the
+  // liked routes to lib/media/user-routes.js - the lock reads server.js PLUS every
+  // extracted module (the gate's mutant: a doc-model read planted in the module sailed
+  // through a server.js-only read).
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
   assert.ok(!server.includes('media_liked'));
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|getCachedDatabase\(\)|loadDatabase\(\))\.liked\b/.test(server), 'no doc-model liked access survives');
   assert.strictEqual((server.match(/inSaveTransaction\(\(\) => likedStore\.rekey\(/g) || []).length, 3, 'rename, trash and restore re-key inside the commit');

@@ -12,8 +12,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
+// Wave 7b (the monolith split, slice S2): the book config route - one of the
+// three reciprocal overlap clauses this file locks - moved to
+// lib/books/routes.js. SURFACE is server.js PLUS every module server.js was
+// split into (derived from its own requires), so the reciprocal lock reads the
+// same sentence wherever the slice put it. The tv-owned locks keep reading
+// SERVER, which is still where the Shows glue lives.
+const { routeSurfaceSource } = require('../helpers/route-surface');
+
 const AUTH_STORE = fs.readFileSync(path.join(__dirname, '../../lib/auth/store.js'), 'utf8');
 const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+// The surface is read with EVERY comment gone (block, whole-line AND trailing) - the R1
+// gate's W4: raw, the reciprocal-overlap lock was satisfied by the sentence quoted in a
+// comment while the guard itself had been deleted. (Declared after `strip`: the first
+// prescription put it above and hit the TDZ.)
+const stripAll = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+const SURFACE = routeSurfaceSource((p) => stripAll(fs.readFileSync(p, 'utf8')));
 
 // ---- module wiring ----------------------------------------------------------
 
@@ -100,9 +114,9 @@ test('the RECIPROCAL overlap clause is present in the media/book/music config ro
   // route" completeness lesson). Podcasts' root is module-owned (no config route),
   // so the tv route's own check covers that direction.
   for (const label of ['Media', 'Book', 'Music']) {
-    assert.match(SERVER, new RegExp(`overlaps a Shows folder: \\$\\{\\w+Root\\} <-> \\$\\{tvRoot\\}`),
+    assert.match(SURFACE, new RegExp(`overlaps a Shows folder: \\$\\{\\w+Root\\} <-> \\$\\{tvRoot\\}`),
       'a Shows-overlap reciprocal clause exists');
-    assert.ok(SERVER.includes(`${label} folder overlaps a Shows folder`), `${label} config route rejects overlap with a Shows root`);
+    assert.ok(SURFACE.includes(`${label} folder overlaps a Shows folder`), `${label} config route rejects overlap with a Shows root`);
   }
 });
 

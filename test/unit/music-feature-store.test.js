@@ -34,6 +34,7 @@ const {
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + its registerRoutes modules
 const musicStore = require('../../lib/music/store');
 
 let dir;
@@ -150,14 +151,19 @@ test('readPersistedDatabase: surfaces `music` in its container shape only when s
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the music tables or the dead doc spellings in CODE; the scan merge, the config POST and the channel-mark route run through musicDb.mutate; the reads take musicDb.read()', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
-  for (const t of ['music_folders', 'music_tracks', 'music_settings', 'music_channels']) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.music\b/.test(server), 'no doc-model music access survives');
-  assert.ok(!/musicStore\.readMusic\(/.test(server), 'every read view moved to musicDb.read()');
-  assert.ok(!/musicStore\.ensureMusic\((db|fresh|freshDb)\)/.test(server), 'no ensureMusic over the doc object');
-  assert.strictEqual((server.match(/musicDb\.mutate\(/g) || []).length, 3, 'the scan merge, the config POST and the channel-mark route - the three writers');
-  assert.ok((server.match(/musicDb\.read\(\)/g) || []).length + (server.match(/musicDb\.parts\.tracks\.get\(/g) || []).length + (server.match(/musicDb\.readPart\(/g) || []).length >= 30, 'the reads (snapshots + the point queries + the one-table reads of gate pass B)');
-  assert.ok((server.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (server.match(/musicDb\.readPart\('channels'\)/g) || []).length >= 2, 'gate pass B: single-track lookups are point queries; the mark readers read one table');
-  assert.ok(/bundle\.music = musicDb\.read\(\)/.test(server), 'the bundle reads the tables');
+test('source lock: the route surface never names the music tables or the dead doc spellings in CODE; the scan merge, the config POST and the channel-mark route run through musicDb.mutate; the reads take musicDb.read()', () => {
+  // Wave 7b (the monolith split, slice S1a): shapedQueue's music reads left
+  // server.js with the /api/queue routes. The lock reads the whole ROUTE
+  // SURFACE - server.js plus every registerRoutes module it registers, derived
+  // from server.js's own requires - so the counts follow the code and the
+  // never-name-the-table checks now cover the modules too.
+  const surface = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')), ROOT);
+  for (const t of ['music_folders', 'music_tracks', 'music_settings', 'music_channels']) assert.ok(!surface.includes(t), t);
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.music\b/.test(surface), 'no doc-model music access survives');
+  assert.ok(!/musicStore\.readMusic\(/.test(surface), 'every read view moved to musicDb.read()');
+  assert.ok(!/musicStore\.ensureMusic\((db|fresh|freshDb)\)/.test(surface), 'no ensureMusic over the doc object');
+  assert.strictEqual((surface.match(/musicDb\.mutate\(/g) || []).length, 3, 'the scan merge, the config POST and the channel-mark route - the three writers');
+  assert.ok((surface.match(/musicDb\.read\(\)/g) || []).length + (surface.match(/musicDb\.parts\.tracks\.get\(/g) || []).length + (surface.match(/musicDb\.readPart\(/g) || []).length >= 30, 'the reads (snapshots + the point queries + the one-table reads of gate pass B)');
+  assert.ok((surface.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (surface.match(/musicDb\.readPart\('channels'\)/g) || []).length >= 2, 'gate pass B: single-track lookups are point queries; the mark readers read one table');
+  assert.ok(/bundle\.music = musicDb\.read\(\)/.test(surface), 'the bundle reads the tables');
 });

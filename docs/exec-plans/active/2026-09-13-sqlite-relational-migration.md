@@ -832,6 +832,143 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     bytes (cosmetic); `.gitignore`'s db.json comment was present-tense (fixed in the release
     commit). Dual-Node (sequential, reviewers idle): 22.23.1 8772 / 8772 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8772 / 8772 / 0 / 0; 24.14.0 8772 / 8772 / 0 / 0.
 
+### Wave 7b - the monolith split  (APPROVED by Dean 2026-09-14: "Let's do it. I like the Opus split")
+
+**Design (main session; the mechanical moves are Opus worktree subagents, one slice each,
+verified by machine - the Wave 6 extraction pattern).** Every number below is from
+`node scripts/monolith-split-census.js` (espree-parsed, re-run at every slice commit):
+
+| Metric at v1.296.0 (`bd56d0a8`) | Value |
+|---|---|
+| `server.js` lines | **19,064** |
+| top-level statements | 732 (176 route registrations = 5,186 lines; 283 functions = 8,523 lines; requires 68; declarations 356; other 716; the rest is comments/blank between statements) |
+| module-scope names (the deps universe) | 562 |
+| tests that `require` server.js | 234 files; tests that read its TEXT (source locks) | 22 files |
+| route middleware prefixes | exactly TWO (16 auth/users routes before the shell wildcard + static layer; 183 after) |
+
+**The shape:** every route group becomes a module exporting `registerRoutes(app, deps)` -
+the pattern lib/ytdlp/index.js and lib/podcasts/index.js already use - with an EXPLICIT deps
+object built in server.js at the call site; every giant function becomes a module function
+with its collaborators passed in. Route callback bodies and function bodies move BYTE-IDENTICAL
+(the free identifiers resolve from a destructured `deps` instead of module scope); a helper
+moves with a group only when the census shows the group is its sole referrer, otherwise it is
+a dep. server.js keeps re-exporting every moved function it exported before, as the SAME
+function object (test/unit/scan-helpers-extraction.test.js is the template).
+
+**Invariants, each machine-checked at every slice (the subagent runs them; the main session
+re-runs them on the commit):**
+1. **Bodies verbatim** - each moved route callback / function body is found byte-identical in
+   the new module and is gone from server.js.
+2. **Routing signature unchanged** - the per-route signature `<methods> <path> | <every
+   non-route layer registered before it>` (the instrument is recorded in the record) is the
+   same multiset before and after, and a moved group keeps its internal order. The
+   `registerRoutes` CALL sits where the group's first route was; the `require` may sit with
+   the other requires (module load has no side effects).
+3. **Re-exports identical** - `require('./server').<fn> === require('./lib/x').<fn>` for
+   every moved export.
+4. **Text locks re-pointed, never loosened** - a test that greps server.js's text for a moved
+   sentence greps the new file for the same sentence.
+5. **Suites green** (`npm run test:unit` in the worktree, `npm test` on the merged branch),
+   `npm run lint` clean, the census re-run shows the group gone and the deps list empty.
+
+**Slices (census line counts; the target module follows the repo's lib/ layout):**
+- **S1a user-state routers** (~515 route lines, deps <= 10 each): `/api/queue` (77) ->
+  lib/queue/routes.js; `/api/notifications` (194) -> lib/notifications/routes.js; `/api/push`
+  (69) -> lib/push/routes.js; `/api/history` (73), `/api/search-history` (20), `/api/watched`
+  (15), `/api/prefs` (24), `/api/feed-hidden` (43) -> lib/user/routes.js.
+- **S1b identity + pre-auth media state** (~526): `/api/auth` (72), `/api/users` (166),
+  `/api/me` (113) -> lib/auth/routes.js; `/api/liked` (114), `/api/progress` (61) ->
+  lib/media/user-routes.js.
+- **S2 books** (~545): `/api/books` (323), `/book` (55), `/bookcover` (40), `runBookScan`
+  (127) -> lib/books/routes.js.
+- **S3 music** (~430): `/api/music` (243), `/track`, `/albumart`, `/audio`, `runMusicScan`
+  (81) -> lib/music/routes.js.
+- **S4 tv** (~355): `/api/tv` (215), `/tvepisode` `/tvposter` `/tvaudio` `/tvthumb`,
+  `runTvScan` (67) -> lib/tv/routes.js.
+- **S5 trash / move / restore** (~1,400; FULL gate, data-loss): `moveItemToFolder` (546),
+  `trashItem` (306), `restoreTrashItem` (221), `purgeTrashItem` (94), `sweepTrash` (77),
+  `trashOrphanFile` (75), `computeMoveTarget` (47), `/api/trash` (81) -> lib/media/trash.js +
+  lib/media/move.js (the three deferred extractions from Waves 3 and 4).
+- **S6 import relocation / repull** (~830): `planImportRelocation` (177),
+  `relocateHydratedImportIntoChannelFolder` (143), `buildImportRelocationPreview` (129),
+  `migrateOneOffsIntoChannelFolders` (119), `recordRepulledItemMeta` (203),
+  `enumerateRepullableItems` (56) -> lib/ytdlp/relocation.js.
+- **S7 backup / restore** (~510; FULL gate): `/api/admin` (194), `validateBackupBundle`
+  (260), `buildStoreZip` (53), `validateFeatureBundle` -> lib/admin/backup.js.
+- **S8 transcode / cache / streams** (~700): `processTranscodeQueue` (98),
+  `processAudioExtractQueue` (83), `runChapterSynthesis` (77), `evictTranscodeCache` (50),
+  `sweepAgedTranscodes` (55), `processRokuCompatQueue` (50), `sendRangeable` (65), `/video`
+  (129), `/thumbnail`, `/storyboard`, `/preview`, `/api/cache` (92) -> lib/media/transcode.js +
+  lib/media/stream.js (tv-scan.test.js parses `TRANSCODE_EXTENSIONS` out of server.js's text -
+  the lock moves with the constant).
+- **S9 the scan orchestrator** (~1,900; FULL gate, the persist-gate seams):
+  `runScanDirectories` (1,566), `extractMetadataAndThumbnail` (125), `scanDirRecursive` (94),
+  the probes -> lib/scan/orchestrator.js.
+- **S10 videos / home / config / settings / search / stats** (~1,900): `/api/videos` (1,018),
+  `/api/home` (215), `/api/config` (307), `/api/settings` (198), `/api/stats` (99),
+  `/api/search` (37), `/api/folders` (93), `/api/channels` (66), the rest -> lib/media/routes.js
+  + lib/config/routes.js.
+- **Then #226** (the catalogs' read-through cache: a generation counter bumped by the ADAPTER
+  on every write path incl. exclusiveReplace and the migrations).
+
+**Releases (Dean's pacing: one slice-release at a time, stoppable at any slice with the tree
+shippable):** R1 = S1a + S1b + S2; R2 = S3 + S4 + S10; R3 = S5 + S6 + S7 (full gate, adversarial
+destroys the data on both sides of each moved seam); R4 = S8 + S9 + #226, then the `< 3,000`
+prediction is re-verified and the plan moves to completed/. Each release: full gate, dual-Node,
+device pass PENDING and disclosed.
+
+- **Wave 7b R1 record (2026-09-14, branch `feat/wave7b-r1`: the design commit + three slice
+  commits, each an Opus worktree subagent's move verified by the main session's machine
+  checks - bodies byte-identical modulo one indent level and in order, gone from server.js,
+  exports intact, the routing signature's sorted multiset identical to v1.296.0):**
+  - **S1a** (1023ce33, 34330dd4): `/api/queue` -> lib/queue/routes.js; `/api/notifications` ->
+    lib/notifications/routes.js; `/api/push` -> lib/push/routes.js; `/api/history`,
+    `/api/search-history`, `/api/watched`, `/api/prefs`, `/api/feed-hidden` -> lib/user/routes.js
+    (one call at the prefs site, so four groups register EARLIER in the stack - the sorted
+    signature and a first-match resolution probe over all 199 routes are identical; a named
+    gate surface). Helpers moved with grep proof (shapedQueue, the push cap, the prefs-allowlist
+    binding, the search-history cap + max, normalizeSearchTerm re-exported as the same function
+    object). ONE deliberate non-byte-identical token: lib/push/routes.js reads the test-only DNS
+    seam through a live `pushGuardLookup()` (destructuring the mutable `let` would freeze the
+    seam at boot - mutation-proven, 3 integration tests red with the frozen form). Six text
+    locks re-pointed onto the ROUTE SURFACE (server.js + every extracted module;
+    test/helpers/route-surface.js derives the list from the modules' header sentence); two
+    exact counts re-measured. server.js 19064 -> 18419.
+  - **S1b** (748dad55): `/api/auth`, `/api/users`, `/api/me` -> lib/auth/routes.js in THREE
+    register functions (identity ahead of the shell wildcard; avatar and sticker routes behind
+    it, each at its original site - forced by the wildcard boundary and the sticker constants'
+    declaration order); `/api/liked`, `/api/progress` -> lib/media/user-routes.js. Sixteen
+    private helpers moved (espree reference census + grep); no token deviation (an AST walk
+    found zero reassignments of any dep); UNSORTED signature identical to its base. It surfaced
+    and fixed a latent COMMENT POROSITY: the test files' copied `stripComments()` strips block
+    comments before line comments, so `// ... public/js/*)` opened a pseudo-block that swallowed
+    218 lines (898 after the move) from every text lock - the star is gone; two more remain
+    (tracker #228). server.js -> 17685.
+  - **S2** (3bfbedc9): `/api/books`, `/book`, `/bookcover` -> lib/books/routes.js (two register
+    functions: the interleaved block at its first route, the progress route at its own site
+    after the shell routes); `runBookScan` -> lib/books/scanRunner.js (`createBookScanRunner(deps)`);
+    `scanBooks` / `bookScanState` / the deferred-rescan timer STAY (three callers outside books,
+    exported; the state object crosses as the same instance). Five private helpers moved; the
+    census's `mime` was a scope-shadowed false positive (as in S1b). The bookcover placeholder
+    SVG template literal keeps its ORIGINAL whitespace (string content) - AST-proven
+    byte-identical. The route-surface helper now keys on the modules' header sentence, not the
+    require path (the first non-router extraction would otherwise have dropped out of every
+    lock - mutation-proven). server.js -> **17090** (census: 98 route registrations = 3727
+    lines, 270 functions = 8140 lines, 540 module-scope names).
+  - Deviations from the slice list, disclosed: the brief's helper candidates were refuted by grep
+    where refuted (notificationsFeatureEnabled, pendingBookProgress,
+    armBookProgressFlushTimerIfNeeded - it assigns a timer two other functions read - the TTS
+    cluster); the books progress-coalescer comment's doc-model reference fixed in the record
+    commit; the environment's 3 Playwright skips in a worktree are the worktree's missing nested
+    install, not a suite change (the release suites run in the main checkout).
+  - **Gate (both seats, one fix round, delta APPROVE x2):** Full gate, one fix round, both seats APPROVE on the delta. Both seats re-established the behaviour claim independently before finding anything: 175 of 176 registrations structurally identical to v1.296.0 (the one difference the disclosed push-seam line), 20,650 URL-by-method resolutions unchanged across the one stack reorder, every moved RBAC gate and every moved book-scan data-destruction guard mutation-killed, exports identical by name, by source and by object. What it caught, all in test and instrument code: two store locks that still read server.js alone after their sentences moved (a doc-model read planted in the module sailed through); nothing bound what the new route-surface helper RETURNED (a reworded module header silently dropped that module from every lock - a registry test now checks the derivation both ways); the reciprocal-overlap lock read the surface raw, so a comment quoting the sentence satisfied it with the guard deleted; the main session's own slice verifier indented string CONTENT lines (it would have blessed a changed placeholder SVG) and claimed a re-export identity it only regex-matched - it ships now as `scripts/verify-split-slice.js` with content-aware indent, a multi-line-literal byte check and require()-based identity; the signature instrument leaked its temp DATA_DIR on a piped run; the DIAGRAMS route count was unbound and had been wrong by 41 (live-derived now); three slash-stars, not two, remain in server.js line comments (one masked - #228 says so); the headline is 78 registrations, not 57. Fix commits 9cc2a742 +
+    the verifier nits. Residuals recorded: the tv-wiring lock inherits #228's blind spot in
+    the safe direction only; the verifier's identity check is vacuous for a slice with no
+    re-export (it prints the count - watch it); ~7,500 stale `/tmp/filetube-*` test DATA_DIRs
+    had accumulated since 2026-09-13 (reaped; the harness's exit hook reaps only its own
+    worker's dirs - a `find -mmin +60` before a release run is the cheap habit).
+    Dual-Node (sequential, reviewers idle): 22.23.1 8775 / 8775 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8775 / 8775 / 0 / 0; 24.14.0 8775 / 8775 / 0 / 0.
+
 ---
 
 ## 4. The per-namespace migration template (the proven pattern)

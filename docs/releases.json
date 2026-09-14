@@ -3004,5 +3004,11 @@
     "date": "2026-09-14",
     "title": "The old database layout is gone for good",
     "intent": "The move of your library into the new database layout is finished, so this version removes the old layout entirely - the two leftover empty tables are dropped the first time it starts, which keeps the database file lean and every future change simpler. Nothing changes on screen and a backup taken on the previous version restores normally. One thing to know if you are upgrading from a very old version (v1.41 or earlier, which kept the library in a db.json file): this version no longer reads that file. Run any version between v1.42 and v1.295 once first to bring the library across, then upgrade - the settings guide has the exact steps."
+  },
+  {
+    "version": "1.297.0",
+    "date": "2026-09-14",
+    "title": "Behind the scenes: the server code starts moving into smaller pieces",
+    "intent": "Nothing changes on screen. The part of the server that handles your account, the play queue, the bell, push alerts, watch history, likes, preferences and the books library has been moved out of one very large file into smaller ones, exactly as it was, so future fixes land faster and with less risk. Every page, button and download works as before, and a backup taken on the previous version restores normally."
   }
 ]

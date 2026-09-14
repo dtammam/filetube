@@ -25,6 +25,7 @@ const {
 } = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const booksStore = require('../../lib/books/store');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + its registerRoutes modules
 
 let dir;
 let adapter;
@@ -140,13 +141,24 @@ test('readPersistedDatabase: surfaces `books` in its container shape only when s
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the books tables or the dead doc spellings in CODE; every writer runs through booksDb.mutate (directly or through the store module\'s deps); the reads take booksDb.read()', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+test('source lock: the route surface never names the books tables or the dead doc spellings in CODE; every writer runs through booksDb.mutate (directly or through the store module\'s deps); the reads take booksDb.read()', () => {
+  // Wave 7b (the monolith split, slice S1b): POST /api/auth/setup's pre-auth
+  // adoption read and GET /api/liked's book arm left server.js with the
+  // identity and Liked routers. The lock reads the whole ROUTE SURFACE -
+  // server.js plus every module server.js was split into, derived from
+  // server.js's own requires - so the counts follow the code and the
+  // never-name-the-table checks now cover the modules too (the sibling
+  // music/podcasts/ytdlp locks were re-pointed the same way in S1a).
+  // Slice S2 then moved the ENTIRE books HTTP surface to lib/books/routes.js
+  // and the scan's one pass to lib/books/scanRunner.js, so three of the five
+  // writers below now live outside server.js - the same five writers, read
+  // through the same derived surface, not a relaxed count.
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')), ROOT);
   for (const t of TABLES) assert.ok(!server.includes(t), t);
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.books\b/.test(server), 'no doc-model books access survives');
   assert.ok(!/booksStore\.readBooks\(/.test(server), 'every read view moved to booksDb.read()');
   assert.ok(!/booksStore\.ensureBooks\((loadDatabase\(\)|fresh|freshDb)\)/.test(server), 'no ensureBooks over the doc object');
-  assert.strictEqual((server.match(/booksDb\.mutate\(/g) || []).length, 5, 'the scan merge, the config POST, the cover POST, the TTS boot reconcile and the clear-cache drop - the five in-file writers');
+  assert.strictEqual((server.match(/booksDb\.mutate\(/g) || []).length, 5, 'the scan merge, the config POST, the cover POST, the TTS boot reconcile and the clear-cache drop - the five writers on the surface');
   assert.strictEqual((server.match(/\{ updateDatabase, booksDb \}/g) || []).length, 2, 'the TTS status writers in lib/books/store.js get the store through deps');
   assert.ok((server.match(/booksDb\.read\(\)/g) || []).length + (server.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 30, 'the reads (snapshots + the single-lookup point queries of gate pass B)');
   assert.ok((server.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 6, 'gate pass B: the six single-book lookups are point queries, never a six-table read');
