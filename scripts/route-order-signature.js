@@ -28,6 +28,9 @@ const path = require('node:path');
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-route-order-'));
 process.env.DATA_DIR = dataDir;
+// The throwaway DATA_DIR goes on EVERY exit - a SIGPIPE from `| head`, a boot
+// throw - not only the happy timeout below (gate: two leaked dirs measured in /tmp).
+process.on('exit', () => { try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) { /* best effort */ } });
 const { app } = require(path.join(__dirname, '..', 'server.js'));
 
 const prefix = [];
@@ -44,7 +47,4 @@ for (const layer of app._router.stack) {
   }
 }
 process.stdout.write(`${sigs.join('\n')}\n`);
-setTimeout(() => {
-  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) { /* best effort */ }
-  process.exit(0);
-}, 50);
+setTimeout(() => process.exit(0), 50);

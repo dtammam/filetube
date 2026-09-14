@@ -56,10 +56,12 @@ function flattenComments(src) {
 function routeModulePaths(root = ROOT) {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const out = [];
-  const re = /require\('\.\/(lib\/[A-Za-z0-9_\-/]*)'\)/g;
+  // Either quote spelling (gate: a double-quoted require silently dropped its module
+  // from the surface - loud for an exact count, silent for a floor or a negative).
+  const re = /require\((['"])\.\/(lib\/[A-Za-z0-9_\-/]*)\1\)/g;
   let m = re.exec(server);
   while (m) {
-    const rel = resolveLibModule(root, m[1]);
+    const rel = resolveLibModule(root, m[2]);
     if (rel && SPLIT_MARKER.test(flattenComments(fs.readFileSync(path.join(root, rel), 'utf8')))) out.push(rel);
     m = re.exec(server);
   }

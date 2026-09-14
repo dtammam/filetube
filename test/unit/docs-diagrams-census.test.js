@@ -122,6 +122,26 @@ test('the headline counts DIAGRAMS.md states are the live-derived truth', () => 
     `the doc must state schema version ${schemaVersion} (live-derived)`);
 });
 
+// ---- 4. the module map's server.js registration count is live-derived ---------------
+// (Wave 7b R1 gate, adversarial S2: the old literal "135" was wrong by 41 and nothing
+// noticed; the split's census counts top-level app.<verb>() statements, so the doc's
+// current number is bound to the same count.)
+
+test('the module map states the live count of server.js route + middleware registrations', () => {
+  const espree = require('espree');
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const ast = espree.parse(src, { ecmaVersion: 'latest', sourceType: 'script' });
+  const VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'all', 'use']);
+  let n = 0;
+  for (const st of ast.body) {
+    if (st.type !== 'ExpressionStatement' || st.expression.type !== 'CallExpression') continue;
+    const c = st.expression.callee;
+    if (c.type === 'MemberExpression' && c.object.type === 'Identifier' && c.object.name === 'app' && !c.computed && VERBS.has(c.property.name)) n++;
+  }
+  assert.ok(n > 0, 'sanity: the count is real');
+  assert.ok(DOC.includes(`registrations (${n} at v`), `the module map must state ${n} registrations (live-derived from server.js)`);
+});
+
 // ---- mermaid hygiene --------------------------------------------------------
 
 test('every mermaid fence is balanced (an unclosed fence renders the rest of the doc as code)', () => {

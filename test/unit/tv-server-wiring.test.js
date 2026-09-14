@@ -20,9 +20,14 @@ const SERVER = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
 // SERVER, which is still where the Shows glue lives.
 const { routeSurfaceSource } = require('../helpers/route-surface');
 
-const SURFACE = routeSurfaceSource();
 const AUTH_STORE = fs.readFileSync(path.join(__dirname, '../../lib/auth/store.js'), 'utf8');
 const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+// The surface is read with EVERY comment gone (block, whole-line AND trailing) - the R1
+// gate's W4: raw, the reciprocal-overlap lock was satisfied by the sentence quoted in a
+// comment while the guard itself had been deleted. (Declared after `strip`: the first
+// prescription put it above and hit the TDZ.)
+const stripAll = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+const SURFACE = routeSurfaceSource((p) => stripAll(fs.readFileSync(p, 'utf8')));
 
 // ---- module wiring ----------------------------------------------------------
 

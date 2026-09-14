@@ -14,7 +14,7 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { routeSurfaceSource } = require('../helpers/route-surface');
 
-const AGENT_SRC =fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
+const AGENT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
 
 // The plan's 21 keys - the AUTHORITY all three lists are locked against.
 const PLAN_KEYS = [

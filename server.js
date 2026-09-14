@@ -5583,7 +5583,9 @@ app.use((req, res, next) => {
 // swallow grew to 898 lines and took a musicDb.mutate call with it (the
 // comment-porous source-lock class, v1.50/v1.77/v1.133). Removing the star
 // restores the locks' reach. Three more such stars remain in this file's line
-// comments (tech-debt: the shared stripper strips in the wrong order).]
+// comments - two active openers plus one that currently sits inside the first
+// one's swallow and would open its own the moment that one is removed
+// (tech-debt #228: the shared stripper strips in the wrong order).]
 // immediately AFTER `express.json()` intercepts a body-parser failure and
 // turns it into a clean JSON error response. Every OTHER error is passed
 // through UNTOUCHED via `next(err)` -- this never changes how any route's
