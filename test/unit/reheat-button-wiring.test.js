@@ -443,8 +443,13 @@ test('WARNING 5: the confirm binds the TRANSFER METHOD and size, not just the tw
 });
 
 test('WARNING 6: the relocation closes our own read streams before unlinking the source', () => {
-  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const body = functionBody(serverJs, 'moveItemToFolder');
+  // Wave 7b (slice S5): `moveItemToFolder` moved VERBATIM out of server.js into
+  // lib/media/move.js, so the lock follows the FUNCTION to its new file - same
+  // sentences, same ordering assertion, nothing loosened (and `functionBody`
+  // still finds the declaration: it is `async function moveItemToFolder(`
+  // inside the factory now, matched by the same needle).
+  const moveJs = fs.readFileSync(path.join(ROOT, 'lib', 'media', 'move.js'), 'utf8');
+  const body = functionBody(moveJs, 'moveItemToFolder');
   const destroyIdx = body.indexOf('await destroyMediaStreams(oldPath)');
   const unlinkIdx = body.indexOf('fsImpl.unlinkSync(oldPath)');
   assert.ok(destroyIdx > 0, 'an unlink with our own fd still open is the v1.41.10 DELETE_PENDING trap');
