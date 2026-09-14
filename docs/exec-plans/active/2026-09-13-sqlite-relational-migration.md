@@ -917,7 +917,51 @@ destroys the data on both sides of each moved seam); R4 = S8 + S9 + #226, then t
 prediction is re-verified and the plan moves to completed/. Each release: full gate, dual-Node,
 device pass PENDING and disclosed.
 
-- **Wave 7b R1 record (2026-09-14, branch `feat/wave7b-r1`):** (in progress)
+- **Wave 7b R1 record (2026-09-14, branch `feat/wave7b-r1`: the design commit + three slice
+  commits, each an Opus worktree subagent's move verified by the main session's machine
+  checks - bodies byte-identical modulo one indent level and in order, gone from server.js,
+  exports intact, the routing signature's sorted multiset identical to v1.296.0):**
+  - **S1a** (1023ce33, 34330dd4): `/api/queue` -> lib/queue/routes.js; `/api/notifications` ->
+    lib/notifications/routes.js; `/api/push` -> lib/push/routes.js; `/api/history`,
+    `/api/search-history`, `/api/watched`, `/api/prefs`, `/api/feed-hidden` -> lib/user/routes.js
+    (one call at the prefs site, so four groups register EARLIER in the stack - the sorted
+    signature and a first-match resolution probe over all 199 routes are identical; a named
+    gate surface). Helpers moved with grep proof (shapedQueue, the push cap, the prefs-allowlist
+    binding, the search-history cap + max, normalizeSearchTerm re-exported as the same function
+    object). ONE deliberate non-byte-identical token: lib/push/routes.js reads the test-only DNS
+    seam through a live `pushGuardLookup()` (destructuring the mutable `let` would freeze the
+    seam at boot - mutation-proven, 3 integration tests red with the frozen form). Six text
+    locks re-pointed onto the ROUTE SURFACE (server.js + every extracted module;
+    test/helpers/route-surface.js derives the list from the modules' header sentence); two
+    exact counts re-measured. server.js 19064 -> 18419.
+  - **S1b** (748dad55): `/api/auth`, `/api/users`, `/api/me` -> lib/auth/routes.js in THREE
+    register functions (identity ahead of the shell wildcard; avatar and sticker routes behind
+    it, each at its original site - forced by the wildcard boundary and the sticker constants'
+    declaration order); `/api/liked`, `/api/progress` -> lib/media/user-routes.js. Sixteen
+    private helpers moved (espree reference census + grep); no token deviation (an AST walk
+    found zero reassignments of any dep); UNSORTED signature identical to its base. It surfaced
+    and fixed a latent COMMENT POROSITY: the test files' copied `stripComments()` strips block
+    comments before line comments, so `// ... public/js/*)` opened a pseudo-block that swallowed
+    218 lines (898 after the move) from every text lock - the star is gone; two more remain
+    (tracker #228). server.js -> 17685.
+  - **S2** (3bfbedc9): `/api/books`, `/book`, `/bookcover` -> lib/books/routes.js (two register
+    functions: the interleaved block at its first route, the progress route at its own site
+    after the shell routes); `runBookScan` -> lib/books/scanRunner.js (`createBookScanRunner(deps)`);
+    `scanBooks` / `bookScanState` / the deferred-rescan timer STAY (three callers outside books,
+    exported; the state object crosses as the same instance). Five private helpers moved; the
+    census's `mime` was a scope-shadowed false positive (as in S1b). The bookcover placeholder
+    SVG template literal keeps its ORIGINAL whitespace (string content) - AST-proven
+    byte-identical. The route-surface helper now keys on the modules' header sentence, not the
+    require path (the first non-router extraction would otherwise have dropped out of every
+    lock - mutation-proven). server.js -> **17090** (census: 98 route registrations = 3727
+    lines, 270 functions = 8140 lines, 540 module-scope names).
+  - Deviations from the slice list, disclosed: the brief's helper candidates were refuted by grep
+    where refuted (notificationsFeatureEnabled, pendingBookProgress,
+    armBookProgressFlushTimerIfNeeded - it assigns a timer two other functions read - the TTS
+    cluster); the books progress-coalescer comment's doc-model reference fixed in the record
+    commit; the environment's 3 Playwright skips in a worktree are the worktree's missing nested
+    install, not a suite change (the release suites run in the main checkout).
+  - **Gate:** (filled after the gate)
 
 ---
 

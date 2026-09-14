@@ -6563,7 +6563,8 @@ booksRoutes.registerRoutes(app, {
 // cheap-to-lose, so they stage here and flush as ONE durable write per
 // window. Deliberately NOT routed through `POST /api/progress` -- its value
 // shape ({timestamp,duration}) cannot express a CFI locator, and its flush
-// guard is book membership (books live in db.books.items).
+// guard is book membership (the books catalog's own table since Wave 5 -
+// lib/books/store.js).
 //
 // v1.43 (chunk 4b): reading positions belong to a USER -- same rework as
 // the media coalescer above: keys are `<userId>:<bookId>`, entries carry
