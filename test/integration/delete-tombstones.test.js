@@ -27,7 +27,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, saveDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { app, scanDirectories, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -56,10 +57,10 @@ function baseSettings() {
   };
 }
 
-// Seed via the exported `saveDatabase()` (the established primitive; keeps
+// Seed via the exported `seedState()` (the established primitive; keeps
 // the in-process read cache coherent -- see scan-clobber.test.js).
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 function readDb() {

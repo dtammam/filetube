@@ -15,7 +15,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase } = require('../../server');
+const { app, updateDatabase } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const booksStore = require('../../lib/books/store');
@@ -36,7 +37,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
 
-  saveDatabase({
+  seedState({
     folders: [DATA_DIR], folderSettings: {},
     metadata: {
       vzw: { id: 'vzw', title: 'Zephyr Winds', filePath: path.join(DATA_DIR, 'zw.mp4'), folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 100, youtubeId: 'dQw4w9WgXcQ' },

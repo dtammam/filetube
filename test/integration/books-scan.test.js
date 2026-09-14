@@ -19,6 +19,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, scanBooks, currentBookScanState, BOOKCOVER_DIR,
 } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 // v1.37.0 gate fix (W2 made the scanner cooperative-async): a scanBooks()
@@ -136,7 +137,7 @@ test('T4: mid-scan cover/pageCount backfill survives the merge (the 3-field carr
 
 test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with pruneMissing on; a genuine delete prunes (progress included)', async () => {
   await updateDatabase((db) => {
-    db.settings.pruneMissing = true;
+    settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
     return true;
   });
   const items = loadDatabase().books.items;
@@ -177,7 +178,7 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
   assert.ok(Object.prototype.hasOwnProperty.call(userStore.getBookFinished(carrierUser.user.id), epub.id), 'and the finished latch');
   fs.renameSync(hiddenDir, booksDir);
   await updateDatabase((db) => {
-    db.settings.pruneMissing = false;
+    settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
     return true;
   });
 });
@@ -213,7 +214,7 @@ test('T4: POST /api/books/scan 202s and coalesces; scan-status reflects the stat
 });
 
 test('GATE FIX (QA CRITICAL #2, the v1.33 Option-C lesson): a root that EXISTS but scans EMPTY while the library has items under it prunes NOTHING', async () => {
-  await updateDatabase((db) => { db.settings.pruneMissing = true; return true; });
+  settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
   const itemsBefore = Object.values(loadDatabase().books.items).filter((i) => i.rootFolder === booksDir);
   assert.ok(itemsBefore.length >= 1, 'precondition: items exist under the root');
   const epub = itemsBefore.find((i) => i.title === 'Dune');
@@ -241,7 +242,7 @@ test('GATE FIX (QA CRITICAL #2, the v1.33 Option-C lesson): a root that EXISTS b
   for (const entry of moved) fs.renameSync(path.join(stash, entry), path.join(booksDir, entry));
   fs.rmSync(stash, { recursive: true, force: true });
   await scanBooksSettled();
-  await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
+  settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
 });
 
 // v1.124 R2: walkBookRoot RECORDS an unreadable subtree, and selectPrunableBookIds

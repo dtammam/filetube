@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, kid;
@@ -42,7 +43,7 @@ before(async () => {
   const open = vid(pubRoot, 'OpenChan', 'open.mp4', 'Open Channel', 'https://youtube.com/@open');
   const hidden = vid(hidRoot, 'SecretChan', 'secret.mp4', 'Secret Channel', 'https://youtube.com/@secret');
 
-  saveDatabase({
+  seedState({
     folders: [pubRoot, hidRoot], folderSettings: {},
     metadata: { [open.id]: open, [hidden.id]: hidden },
     liked: [],

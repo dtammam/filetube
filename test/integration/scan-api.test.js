@@ -17,11 +17,11 @@ const {
   armScanTimer,
   currentDeferredRescanTimer,
   loadDatabase,
-  saveDatabase,
   getMediaId,
   transcodedPath,
   __resetDatabaseForTests,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -150,7 +150,7 @@ test('C: a rescan requested while a scan is in flight results in exactly one coa
   fs.writeFileSync(path.join(dirA, 'a.mp4'), 'video-a-bytes');
   fs.writeFileSync(path.join(dirB, 'b.mp4'), 'video-b-bytes');
 
-  saveDatabase({
+  seedState({
     folders: [dirA],
     folderSettings: {},
     metadata: {},
@@ -163,7 +163,7 @@ test('C: a rescan requested while a scan is in flight results in exactly one coa
   // on its one await point, having already snapshotted db.folders = [dirA]):
   const db = loadDatabase();
   db.folders = [dirA, dirB];
-  saveDatabase(db);
+  seedState(db);
   // A second scanDirectories() call lands while scanState.scanning is still
   // true -- it must coalesce into a follow-up, not silently drop.
   await scanDirectories();
@@ -195,7 +195,7 @@ test('FR3.4: sustained scan requests during an in-flight scan do not chain unbou
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-livelock-'));
   fs.writeFileSync(path.join(dir, 'seed.mp4'), 'seed');
 
-  saveDatabase({
+  seedState({
     folders: [dir],
     folderSettings: {},
     metadata: {},
@@ -260,7 +260,7 @@ async function exhaustDrainWithPendingRescan(folder, triggerFolder) {
 
   const db = loadDatabase();
   db.folders = [...db.folders, triggerFolder];
-  saveDatabase(db);
+  seedState(db);
   await scanDirectories(); // sets rescanRequested = true (pass 1 still in flight)
   assert.equal(scanState.rescanRequested, true, 'pass 1 in flight must flag the one allowed follow-up');
 
@@ -301,7 +301,7 @@ test('deferred rescan (tech-debt #3): a budget-exhausted drain schedules exactly
   fs.writeFileSync(path.join(dirD, 'd.mp4'), 'd');
   fs.writeFileSync(path.join(dirC, 'c.mp4'), 'c');
 
-  saveDatabase({
+  seedState({
     folders: [dirA],
     folderSettings: {},
     metadata: {},
@@ -333,7 +333,7 @@ test('deferred rescan (tech-debt #3): a budget-exhausted drain schedules exactly
     // relying entirely on the deferred timer to ever pick it up.
     const dbBeforeFire = loadDatabase();
     dbBeforeFire.folders = [...dbBeforeFire.folders, dirC];
-    saveDatabase(dbBeforeFire);
+    seedState(dbBeforeFire);
 
     // Trigger the deferred pass deterministically instead of a flaky real
     // 5s wait: invoke the already-scheduled Timeout's callback directly (the
@@ -374,10 +374,10 @@ test('armScanTimer arms a 30-minute interval by default (old/fresh db.json with 
 });
 
 test('armScanTimer arms no timer when scanIntervalMinutes is Off (0)', () => {
-  // v1.30 A3 (in-memory DB read cache): seed via `saveDatabase()` (an
+  // v1.30 A3 (in-memory DB read cache): seed via `seedState()` (an
   // established test primitive, see CONTRIBUTING.md) rather than a raw
   // `fs.writeFileSync`, so the in-process db cache stays coherent.
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {},
@@ -425,7 +425,7 @@ test('GET /api/scan-status: transcodeNames reflects codec-flagged items via the 
     'ready-mp4': pendingItem('ready-mp4', 'already-ready', { ext: '.mp4', videoCodec: 'h264', audioCodec: 'aac', needsTranscode: false, transcodeStatus: undefined }),
     'not-flagged': pendingItem('not-flagged', 'never-needed-it', { needsTranscode: false, transcodeStatus: undefined }),
   };
-  saveDatabase({ folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  seedState({ folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
@@ -440,7 +440,7 @@ test('GET /api/scan-status: transcodeNames is capped at 10 with the remainder re
   for (let i = 0; i < 15; i++) {
     metadata[`item-${i}`] = pendingItem(`item-${i}`, `clip-${i}`);
   }
-  saveDatabase({ folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  seedState({ folders: [], folderSettings: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
@@ -451,7 +451,7 @@ test('GET /api/scan-status: transcodeNames is capped at 10 with the remainder re
 });
 
 test('GET /api/scan-status: an empty pending-transcode set returns an empty transcodeNames array and zero overflow', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  seedState({ folders: [], folderSettings: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
@@ -479,7 +479,7 @@ function baseFr33Settings() {
 function writeConcurrentTranscodeStatus(id, status) {
   const db = loadDatabase();
   db.metadata[id].transcodeStatus = status;
-  saveDatabase(db);
+  seedState(db);
 }
 
 test('FR3.3 HEADLINE: a mid-scan setTranscodeStatus write to \'failed\' survives the scan\'s final save, and GET /video/:id reports it without re-enqueuing', async () => {
@@ -497,7 +497,7 @@ test('FR3.3 HEADLINE: a mid-scan setTranscodeStatus write to \'failed\' survives
   const aviSize = fs.statSync(aviPath).size;
   const id = getMediaId(aviPath);
 
-  saveDatabase({
+  seedState({
     folders: [libDir],
     folderSettings: {},
     metadata: {
@@ -550,7 +550,7 @@ test('FR3.3: a legitimate \'ready\' (finished MP4 present on disk) still wins ov
   // scan even starts.
   fs.writeFileSync(transcodedPath(id), 'finished-mp4-bytes');
 
-  saveDatabase({
+  seedState({
     folders: [libDir],
     folderSettings: {},
     metadata: {
@@ -589,7 +589,7 @@ test('FR3.3: a stale \'ready\' status with no cached MP4 is still cleared by the
   const id = getMediaId(aviPath);
 
   // No cached MP4 on disk (never produced, or evicted) -- 'ready' is stale.
-  saveDatabase({
+  seedState({
     folders: [libDir],
     folderSettings: {},
     metadata: {
@@ -624,7 +624,7 @@ test('FR3.3 conflict edge: a finished MP4 present concurrently with a worker\'s 
   // The transcode actually finished before the scan started.
   fs.writeFileSync(transcodedPath(id), 'finished-mp4-bytes');
 
-  saveDatabase({
+  seedState({
     folders: [libDir],
     folderSettings: {},
     metadata: {

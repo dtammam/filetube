@@ -23,18 +23,18 @@ const {
   // F1 (two-reviewer gate, v1.27.0): the stale-'ready' healing helpers.
   clearAudioStatus,
   healStaleAudioReady,
-  saveDatabase,
   __getSaveDatabaseCallCount,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent with what
 // this test just wrote (a raw fs write is invisible to the cache -- this
 // process is the only writer db.json is ever supposed to have).
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 function readDb() {

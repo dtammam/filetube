@@ -15,10 +15,9 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-trashrout
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase,
-  scanDirectories, userStore, __resetDatabaseForTests,
+  app, getMediaId, loadDatabase, scanDirectories, userStore, __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, tombstoneStore, trashStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -47,7 +46,7 @@ function seedLibrary() {
   const filePath = path.join(ROOT, 'Chan', 'clip.mp4');
   fs.writeFileSync(filePath, 'clip-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT],
     folderSettings: {},
     metadata: {

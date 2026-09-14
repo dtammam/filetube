@@ -15,10 +15,10 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-trashret-
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase,
+  app, getMediaId, loadDatabase, updateDatabase,
   trashItem, sweepTrash, __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, tombstoneStore, trashStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -51,7 +51,7 @@ function seedLibrary(settingsOverrides) {
   };
   const a = mk('old.mp4');
   const b = mk('fresh.mp4');
-  saveDatabase({
+  seedState({
     folders: [ROOT],
     folderSettings: {},
     metadata: Object.fromEntries([a, b].map(({ id, filePath }) => [id, {

@@ -20,7 +20,7 @@ const path = require('node:path');
 const { DOC_KV_NAMESPACES, SINGLETON_NAMES } = require('../lib/db/sqlite');
 
 const ROOT = path.join(__dirname, '..');
-const HOLDERS = '(?:db|freshDb|fresh|current|state|snapshot|cached|next|prev)';
+const HOLDERS = '(?:db|freshDb|fresh|current|state|snapshot|cached|next|prev|getCachedDatabase\\(\\)|loadDatabase\\(\\))';
 
 function stripComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|[^:\\])\/\/.*$/, '$1')).join('\n');

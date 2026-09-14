@@ -14,7 +14,8 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, armScanTimer, currentScanTimer, saveDatabase, __resetDatabaseForTests, __failNextSaveForTests } = require('../../server');
+const { app, armScanTimer, currentScanTimer, __resetDatabaseForTests, __failNextSaveForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -32,11 +33,11 @@ function baseSettings(overrides) {
   return { ...DEFAULT_SETTINGS, ...overrides };
 }
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 // v1.42: persisted-state reads go through the sanctioned second-connection

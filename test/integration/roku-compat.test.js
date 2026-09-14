@@ -52,7 +52,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-roku-comp
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId } = require('../../server');
+const { app, getMediaId } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 const COMPAT_DIR = path.join(process.env.DATA_DIR, 'roku-compat');
@@ -90,7 +91,7 @@ function seedItem(name, extra = {}) {
 function seedDb(items) {
   const metadata = {};
   for (const item of items) metadata[item.id] = item;
-  saveDatabase({
+  seedState({
     folders: [mediaDir],
     folderSettings: {},
     metadata,

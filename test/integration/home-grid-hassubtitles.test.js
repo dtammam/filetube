@@ -13,7 +13,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-home-grid
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -31,7 +32,7 @@ after(async () => {
 test('GET /api/home?view=grid carries hasSubtitles: true for a captioned item and no key otherwise', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-home-grid-lib-'));
   const mk = (n) => { const p = path.join(root, `${n}.mp4`); fs.writeFileSync(p, 'x'); return p; };
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {}, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     metadata: {

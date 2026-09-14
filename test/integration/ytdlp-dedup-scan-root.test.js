@@ -43,7 +43,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
-const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { settingsStore, progressStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 const DATA_DIR = process.env.DATA_DIR;
@@ -157,7 +157,7 @@ test('FIX-1 regression (BLOCKER) (a): a symlinked db.folders root -- pre-existin
       return true;
     });
     assert.ok(progressStore().getAll()[id], 'sanity: the watch-progress entry was seeded');
-    assert.equal(loadDatabase().settings.pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
+    assert.equal(settingsStore().get().pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
 
     // Second scan (pruneMissing ON): the pre-fix bug realpath'd db.folders
     // entries BEFORE walking, which would have rewritten this alias to

@@ -11,7 +11,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-channels-
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId } = require('../../server');
+const { app, getMediaId } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -49,7 +50,7 @@ before(async () => {
   ];
   const metadata = {};
   for (const it of items) metadata[it.id] = it;
-  saveDatabase({
+  seedState({
     folders: [mediaDir, otherRoot, hiddenRoot],
     folderSettings: { [hiddenRoot]: { name: 'Hidden', hidden: true, order: 0 } },
     metadata,

@@ -19,6 +19,13 @@ const RELATIONAL = {
   deleteTombstones: (s) => s.tombstoneStore,
   trash: (s) => s.trashStore, // Wave 3
 };
+// Wave 4: the config singletons. A doc key that a fixture OMITS used to mean
+// "gone" (saveDatabase replaced the whole document, and loadDatabase
+// backfilled the default) - so these are ALWAYS replaced, an absent key
+// wiping the table, unlike the Waves 1-3 keys above (only when present).
+const DOC_SEMANTICS = {
+  settings: (s) => s.settingsStore,
+};
 
 function server() {
   return require('../../server');
@@ -31,12 +38,15 @@ function seedState(state) {
   const s = server();
   const doc = {};
   for (const key of Object.keys(state)) {
-    if (RELATIONAL[key]) continue;
+    if (RELATIONAL[key] || DOC_SEMANTICS[key]) continue;
     doc[key] = state[key];
   }
   s.saveDatabase(doc);
   for (const key of Object.keys(RELATIONAL)) {
     if (state[key] !== undefined) RELATIONAL[key](s).replaceAll(state[key]);
+  }
+  for (const key of Object.keys(DOC_SEMANTICS)) {
+    DOC_SEMANTICS[key](s).replaceAll(state[key] === undefined ? null : state[key]);
   }
   return doc;
 }
@@ -47,4 +57,5 @@ module.exports = {
   tombstoneStore: () => server().tombstoneStore,
   viewCountStore: () => server().viewCountStore,
   trashStore: () => server().trashStore, // Wave 3
+  settingsStore: () => server().settingsStore, // Wave 4
 };

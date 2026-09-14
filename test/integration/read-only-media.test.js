@@ -20,7 +20,7 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, getMediaId, scanDirectories, __resetDatabaseForTests,
+  app, getMediaId, scanDirectories, __resetDatabaseForTests,
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
@@ -57,7 +57,7 @@ function seedVideo(fileName) {
   const filePath = path.join(libDir, fileName);
   fs.writeFileSync(filePath, 'video-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [libDir], folderSettings: {},
     metadata: {
       [id]: {

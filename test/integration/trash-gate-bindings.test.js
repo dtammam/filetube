@@ -25,10 +25,10 @@ process.env.FILETUBE_YTDLP_ENABLED = 'true';
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
+  app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
   trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, settingsStore, tombstoneStore, trashStore   } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -58,7 +58,7 @@ function seedLibrary(settingsOverrides) {
   const filePath = path.join(ROOT, 'Chan', 'clip.mp4');
   fs.writeFileSync(filePath, 'clip-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT],
     folderSettings: {},
     metadata: {
@@ -176,7 +176,7 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
       originalId: 'x', originalPath: path.join(OUT1, 'planted.mp4'),
       trashPath: filePath, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'x', title: 'evil' },
     });
-    db.settings.trashRetentionDays = 1e-9; // the smuggled amplifier
+    settingsStore().set('trashRetentionDays', 1e-9); // the smuggled amplifier (Wave 4: the settings table)
   });
 
   // The retention clamp: 1e-9 is not in the allowed set -> treated as the
@@ -426,7 +426,7 @@ test('R2 BIND-cc: DIFFERENT-inode content at a TOMBSTONED record-covered path is
 test('R2 BIND-s: a smuggled out-of-set retention cannot rapid-purge LEGITIMATE records (the sweep clamp)', async () => {
   const { id } = seedLibrary();
   const tr = await trashItem(deps(), id, { nowMs: Date.now() - 5 * DAY }); // fresh under the 30d default
-  await updateDatabase((db) => { db.settings.trashRetentionDays = 1e-9; }); // past the POST validator
+  settingsStore().set('trashRetentionDays', 1e-9); // past the POST validator (Wave 4: the settings table)
 
   const purged = await sweepTrash(Date.now());
   assert.equal(purged, 0, 'THE binding: the clamp treats 1e-9 as the default, not as microseconds');

@@ -19,9 +19,10 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 const {
-  app, saveDatabase, loadDatabase, updateDatabase, __resetDatabaseForTests, __failNextSaveForTests,
+  app, loadDatabase, updateDatabase, __resetDatabaseForTests, __failNextSaveForTests,
   progressStore, tombstoneStore, inSaveTransaction,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -42,7 +43,7 @@ const item = (id) => ({
   id, title: id, name: `${id}.mp4`, filePath: path.join(DATA_DIR, `${id}.mp4`), folderName: 'M',
   rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 1,
 });
-const seed = (metadata) => saveDatabase({
+const seed = (metadata) => seedState({
   folders: [DATA_DIR], folderSettings: {}, liked: [], metadata,
   settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, trashRetentionDays: 30 },
 });

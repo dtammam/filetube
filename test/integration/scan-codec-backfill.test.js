@@ -32,7 +32,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-codec-bac
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { scanDirectories, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -45,11 +46,11 @@ function baseSettings(overrides) {
   };
 }
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 function readDb() {

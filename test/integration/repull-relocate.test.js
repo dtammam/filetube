@@ -61,12 +61,12 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
+  app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
   planImportRelocation, activeMediaStreams,
   flushPendingProgress, userStore,
 } = require('../../server');
-const { progressStore, tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, settingsStore, progressStore, tombstoneStore   } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
@@ -138,7 +138,7 @@ function seedHydratedImport(overrides = {}, dbOverrides = {}) {
     ...CHANNEL,
     ...(overrides.item || {}),
   };
-  saveDatabase({
+  seedState({
     folders: [libraryDir],
     folderSettings: {},
     metadata: { [id]: item },
@@ -372,7 +372,7 @@ test('genuine LOCAL MEDIA (no channel, no youtubeId) is never moved -- the file 
   const filePath = path.join(libraryDir, 'Family BBQ.mp4');
   fs.writeFileSync(filePath, 'home-video-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [libraryDir], folderSettings: {}, liked: [],
     metadata: {
       [id]: {
@@ -451,7 +451,7 @@ test('a NATIVE download (already under the download root) is never moved, even w
   const filePath = path.join(subDir, `Some Video [${VIDEO_ID}].mp4`);
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {}, liked: [],
     metadata: {
       [id]: {
@@ -487,7 +487,7 @@ test('the module being DISABLED is a hard no-op: no move, no folder, no db chang
 test('the settings toggle OFF stops the move (default is ON)', async () => {
   const config = ytdlp.parseYtdlpConfig();
   const { filePath, id } = seedHydratedImport();
-  await updateDatabase((db) => { db.settings.relocateHydratedImports = false; return true; });
+  settingsStore().update({ relocateHydratedImports: false }); // Wave 4: the settings table
 
   const result = await relocateHydratedImportIntoChannelFolder(DEPS, config, id);
   assert.equal(result.status, 'skipped');

@@ -29,7 +29,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-cornerapi
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -100,7 +101,7 @@ test('v1.204: cornerBR IS a mirrored key now (the bottom-right slot persists) - 
 // ---- (b) watchUrl on the list projection -----------------------------------
 
 test('/api/videos items carry the server-derived watchUrl exactly when a SAFE youtubeId exists, never otherwise', async () => {
-  saveDatabase({
+  seedState({
     folders: ['/media/Movies'],
     folderSettings: {},
     metadata: {

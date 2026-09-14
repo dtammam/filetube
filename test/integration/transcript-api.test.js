@@ -12,7 +12,8 @@ delete process.env.FILETUBE_YTDLP_ENABLED; // must work with the downloader modu
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -48,14 +49,14 @@ function seedItem(id, sidecarName, sidecarText, extra) {
   fs.writeFileSync(filePath, 'video-bytes');
   const sidecarPath = sidecarName ? path.join(root, sidecarName) : null;
   if (sidecarPath) fs.writeFileSync(sidecarPath, sidecarText);
-  saveDatabase(baseDb({
+  seedState(baseDb({
     [id]: { id, title: 'The Talk', type: 'video', ext: '.mp4', filePath, folderName: 'Some Folder', size: 1, addedAt: Date.UTC(2026, 7, 1), ...extra },
   }));
   return { filePath, sidecarPath };
 }
 
 test('GET /api/transcript/:id 404s for an unknown id and for an item with no sidecar (same shape as /api/subtitles)', async () => {
-  saveDatabase(baseDb({}));
+  seedState(baseDb({}));
   assert.equal((await fetch(`${base}/api/transcript/nope`)).status, 404);
   seedItem('bare', null, '');
   const res = await fetch(`${base}/api/transcript/bare`);

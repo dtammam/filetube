@@ -18,9 +18,10 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, updateDatabase, userStore,
+  app, updateDatabase, userStore,
   __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -48,7 +49,7 @@ function item(id, over = {}) {
   };
 }
 function seed(metadata, over = {}) {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

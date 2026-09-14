@@ -43,7 +43,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-transcode
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, loadDatabase, getMediaId, transcodedPath, scanDirectories } = require('../../server');
+const { app, loadDatabase, getMediaId, transcodedPath, scanDirectories } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -79,7 +80,7 @@ function seedItem(name, extra = {}) {
 function seedDb(items) {
   const metadata = {};
   for (const item of items) metadata[item.id] = item;
-  saveDatabase({
+  seedState({
     folders: [mediaDir],
     folderSettings: {},
     metadata,

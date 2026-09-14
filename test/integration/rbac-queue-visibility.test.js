@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -47,7 +48,7 @@ before(async () => {
   const open = vid(pubRoot, 'Fam', 'openclip.mp4');
   const hidden = vid(hidRoot, 'Vault', 'SECRETCLIP.mp4');
   openId = open.id; hiddenId = hidden.id;
-  saveDatabase({
+  seedState({
     folders: [pubRoot, hidRoot], folderSettings: {},
     metadata: { [open.id]: open, [hidden.id]: hidden },
     liked: [],

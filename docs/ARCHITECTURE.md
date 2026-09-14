@@ -61,7 +61,8 @@ Two buckets coexist in the one file:
    `doc_kv(namespace, key, json)` for per-item namespaces (`metadata`,
    `books.items`, `music.tracks`, `podcasts.episodes`,
    `ytdlp.downloadMeta`, ...) and `doc_single(name, json)` for small whole
-   objects (`folders`, `settings`, `podcasts.subscriptions`, ...). The two
+   objects (`folders`, `podcasts.subscriptions`, ...; `settings` left for
+   `app_settings` in Wave 4 - `lib/config/settings.js`). The two
    namespace lists are a LOCK: `assertNoUnknownKeys()` throws on any key
    outside them, so a new namespace can never be silently dropped. `save()` is
    a diff-save against a per-row snapshot - only changed rows are written, in

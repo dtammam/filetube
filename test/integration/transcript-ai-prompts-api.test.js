@@ -14,7 +14,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-transcrip
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __mintTestSession } = require('../../server');
+const { app, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -32,7 +33,7 @@ after(async () => {
 function baseDb(settings) {
   return { folders: [], folderSettings: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, ...(settings || {}) } };
 }
-beforeEach(() => saveDatabase(baseDb()));
+beforeEach(() => seedState(baseDb()));
 
 const DEFAULT_PROMPT = { id: 'summarize', name: 'Summarize', text: "I'm sharing a video transcript below. Summarize the narrative and key points, then note anything notable or questionable." };
 const post = (body) => fetch(`${base}/api/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

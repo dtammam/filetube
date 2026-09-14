@@ -24,8 +24,8 @@ const {
   cleanupOrphanTmp,
   evictTranscodeCache,
   sweepAgedTranscodes,
-  saveDatabase,
-} = require('../../server');
+  } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const f = (p, size, atimeMs) => ({ path: p, size, atimeMs });
@@ -145,7 +145,7 @@ test('sweepAgedTranscodes: age-retention sweep removes a stale .m4a sidecar via 
   fs.writeFileSync(p, Buffer.alloc(10));
   const staleTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   fs.utimesSync(p, staleTime, staleTime);
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { [id]: { id, lastServedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 } },
     settings: { cacheMaxAgeDays: 30 },
@@ -171,7 +171,7 @@ test('evictTranscodeCache: clears audioStatus for an EVICTED .m4a sidecar, leave
   const oldAudio = write(`${audioId}.m4a`, 100, 1000);
   const oldVideo = write(`${videoId}.mp4`, 100, 1100);
   const freshKeep = write('keep.m4a', 100, 9000);
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       [audioId]: { id: audioId, audioStatus: 'ready' },
@@ -202,7 +202,7 @@ test('sweepAgedTranscodes: clears audioStatus for an aged-out .m4a sidecar', asy
   fs.writeFileSync(p, Buffer.alloc(10));
   const staleTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   fs.utimesSync(p, staleTime, staleTime);
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { [id]: { id, audioStatus: 'ready', lastServedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 } },
     settings: { cacheMaxAgeDays: 30 },

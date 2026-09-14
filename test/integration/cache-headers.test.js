@@ -24,7 +24,8 @@ const PODROOT = process.env.FILETUBE_PODCASTS_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase } = require('../../server');
+const { app, updateDatabase } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -44,7 +45,7 @@ before(async () => {
   fs.writeFileSync(path.join(bookCoverDir, 'b1.jpg'), 'JPEGBYTES');
   fs.writeFileSync(path.join(albumArtDir, 'k1.jpg'), 'JPEGBYTES');
 
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {}, metadata: {}, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     books: { folders: [], items: { b1: { id: 'b1', title: 'Bk', author: 'A', hasCover: true, coverExt: '.jpg', filePath: path.join(DATA_DIR, 'b.epub'), folderName: 'B', rootFolder: DATA_DIR } }, progress: {}, pins: [], settings: {}, audio: {} },

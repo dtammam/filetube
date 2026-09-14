@@ -27,9 +27,10 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = EARLY_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, getMediaId, userStore, __mintTestSession,
+  app, getMediaId, userStore, __mintTestSession,
   enumerateRepullableItems, buildImportRelocationPreview, loadDatabase, updateDatabase,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const ytdlp = require('../../lib/ytdlp');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -65,7 +66,7 @@ before(async () => {
 
   const pub = seedItem(pubFile);
   const hid = seedItem(hidFile);
-  saveDatabase({
+  seedState({
     folders: [mediaDir], folderSettings: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
     liked: [],

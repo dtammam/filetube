@@ -40,6 +40,7 @@ beforeEach(() => {
     now: () => 1754150000000,
     loadDatabase: () => db,
     getCachedDatabase: () => db,
+    getSettings: () => db.settings || {}, // Wave 4: the sweep reads retention off the settings store
     updateDatabase: async (mutator) => { mutator(db); },
     runExclusive: (fn) => Promise.resolve(fn()),
     userStore: { removePodcastEpisodeState: () => {} },

@@ -500,9 +500,14 @@ function validateTranscriptAiPrompts(raw, existing) {
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
 // already has and only gets the missing ones defaulted (mirrors the
 // `folderSettings` backfill pattern below).
-function withDefaultSettings(settings) {
-  return { ...DEFAULT_SETTINGS, ...(settings || {}) };
-}
+// Wave 4 of the relational-migration arc: the app settings live in
+// app_settings (one row per key) behind lib/config/settings.js. The store
+// merges DEFAULT_SETTINGS (this file's policy) on every get(), which is what
+// `withDefaultSettings(db.settings)` did at load time. Reads are
+// `settingsStore.get()` / `getKey(k)`; writes inside a mutator ride
+// `inSaveTransaction` so a failed doc save rolls the setting back too.
+const createSettingsStore = require('./lib/config/settings');
+const settingsStore = createSettingsStore(dbAdapter, { defaults: DEFAULT_SETTINGS });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -572,7 +577,8 @@ function loadDatabase() {
   if (db.music && typeof db.music === 'object') {
     if (!db.music.channels || typeof db.music.channels !== 'object' || Array.isArray(db.music.channels)) db.music.channels = {};
   }
-  db.settings = withDefaultSettings(db.settings); // backfill for older databases
+  // (pre-v1.294: `settings` was backfilled here with DEFAULT_SETTINGS. Wave 4
+  // moved it to app_settings / settingsStore - no longer a key of this object.)
   return db;
 }
 
@@ -1405,7 +1411,7 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   // "Clear cache" button (POST /api/cache/clear) still removes them --
   // explicit user intent wins over the pin. They still COUNT toward the
   // displayed cache size (honest accounting).
-  const pinAudioSidecars = !!(getCachedDatabase().settings || {}).preExtractAudio;
+  const pinAudioSidecars = !!settingsStore.getKey('preExtractAudio'); // Wave 4
   // Gate QA-WARNING: the preExtractAudio pin protects VIDEO background-audio
   // sidecars only -- a music ALAC rendition (also `<id>.m4a` in TRANSCODE_DIR,
   // shared by design) must NOT be pinned, or a large ALAC library would grow
@@ -1707,13 +1713,14 @@ function sweepAgedTranscodes(now) {
   // T4's explicit "beyond the 10 routes" examples (transcode-cache-cap reads,
   // srcMeta lookups). Coherency-safe either way; kept as-is (minimal diff).
   const db = loadDatabase();
-  const cacheMaxAgeDays = db.settings && db.settings.cacheMaxAgeDays;
+  const settings = settingsStore.get(); // Wave 4: the table, read once for this sweep
+  const cacheMaxAgeDays = settings.cacheMaxAgeDays;
   const maxAgeMs = cacheMaxAgeDays ? cacheMaxAgeDays * 24 * 60 * 60 * 1000 : 0;
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
   // v1.35 (preExtractAudio): same sidecar pin as evictTranscodeCache -- see
   // its comment there.
-  const pinAudioSidecars = !!(db.settings || {}).preExtractAudio;
+  const pinAudioSidecars = !!settings.preExtractAudio;
   // Same video-only sidecar scoping as evictTranscodeCache (music ALAC
   // renditions must stay evictable) -- see that comment.
   const pinnableVideoMeta = pinAudioSidecars ? (db.metadata || {}) : null;
@@ -2624,7 +2631,7 @@ function processTranscodeQueue() {
         try {
           sweepAgedTranscodes(Date.now());
           // v1.30 A3: transcode-cache-cap read -- safe on the cache.
-          evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings), outPath);
+          evictTranscodeCache(effectiveCacheCap(settingsStore.get()), outPath); // Wave 4
         } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
@@ -2847,7 +2854,7 @@ function processAudioExtractQueue() {
         try {
           sweepAgedTranscodes(Date.now());
           // v1.30 A3: transcode-cache-cap read -- safe on the cache.
-          evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings), outPath);
+          evictTranscodeCache(effectiveCacheCap(settingsStore.get()), outPath); // Wave 4
         } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize audio extract for ${srcPath}:`, e.message);
@@ -2997,7 +3004,7 @@ function collectDownloadNotification(pending, item, nowMs = Date.now()) {
 const NOTIFICATION_SEED_COUNT = 30;
 async function seedNotificationHistoryOnce(nowMs = Date.now()) {
   const db = loadDatabase();
-  if (db.settings && db.settings.notificationsSeededAt !== undefined) return 0;
+  if (settingsStore.getKey('notificationsSeededAt') !== undefined) return 0; // Wave 4
   let seeded = 0;
   if (userStore.countNotifications() === 0) {
     const candidates = Object.values(db.metadata || {})
@@ -3015,10 +3022,10 @@ async function seedNotificationHistoryOnce(nowMs = Date.now()) {
     // up. Past rows keep their real ordering; future ones collapse to "now".
     seeded = userStore.seedNotifications(candidates.map((it) => ({ mediaId: it.id, createdAt: Math.min(it.addedAt, nowMs) })), nowMs);
   }
-  await updateDatabase((fresh) => {
-    if (!fresh.settings) fresh.settings = {};
-    if (fresh.settings.notificationsSeededAt !== undefined) return false;
-    fresh.settings.notificationsSeededAt = nowMs;
+  await updateDatabase(() => {
+    if (settingsStore.getKey('notificationsSeededAt') !== undefined) return false;
+    // Wave 4: the stamp is a settings row, written inside the same commit.
+    inSaveTransaction(() => settingsStore.set('notificationsSeededAt', nowMs));
   });
   return seeded;
 }
@@ -4106,6 +4113,10 @@ function normalizeScanRoot(p) {
 
 // Scan directories and sync with database
 async function runScanDirectories() {
+  // Wave 4: the settings this scan reads are captured ONCE, with the Phase-1
+  // snapshot below - a settings change mid-scan is not observed mid-scan,
+  // exactly as the old `db.settings` snapshot behaved.
+  const scanSettings = settingsStore.get();
   // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
   // cache -- this is the scan's own Phase-1 snapshot (background job, not a
   // request/serve-path read; runs once per scan pass, not per request). The
@@ -4701,7 +4712,7 @@ async function runScanDirectories() {
       // (Read from the scan's Phase-1 snapshot -- a toggle flipped ON
       // mid-scan catches the NEXT scan's fresh files; already-indexed items
       // stay lazy-on-first-watch by design. Accepted narrow window.)
-      if (db.settings && db.settings.preExtractAudio === true &&
+      if (scanSettings.preExtractAudio === true &&
           !isAudio && matchRootFolder(filePath, ytdlpDownloadRoots)) {
         preExtractCandidates.push({ id, filePath });
       }
@@ -4968,7 +4979,7 @@ async function runScanDirectories() {
       missingRoots,
       unreadablePaths,
       folders: currentFolders,
-      pruneMissing: db.settings.pruneMissing,
+      pruneMissing: scanSettings.pruneMissing,
     })
   );
 
@@ -5670,11 +5681,9 @@ function armScanTimer() {
     clearInterval(scanTimer);
     scanTimer = null;
   }
-  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
-  // cache -- called only at boot and on a scanIntervalMinutes settings
-  // change (infrequent, not a request/serve-path read).
-  const db = loadDatabase();
-  const ms = scanIntervalMs(db.settings.scanIntervalMinutes);
+  // Called only at boot and on a scanIntervalMinutes settings change
+  // (infrequent, not a request/serve-path read). Wave 4: the settings table.
+  const ms = scanIntervalMs(settingsStore.getKey('scanIntervalMinutes'));
   if (ms) {
     scanTimer = setInterval(() => {
       scanDirectories().catch(console.error);
@@ -7059,6 +7068,7 @@ async function runBookScan() {
   // slow work (walk, zip reads, cover extraction) happens against this
   // snapshot, off the writer lock -- the media scan's own discipline.
   const db = loadDatabase();
+  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
   const ns = booksStore.ensureBooks(db);
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
@@ -7084,7 +7094,7 @@ async function runBookScan() {
     }
   }
 
-  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   const prunedAudioKeys = []; // v1.38.0: TTS cache keys of pruned books, deleted below
   await updateDatabase((fresh) => {
@@ -8126,6 +8136,7 @@ async function extractAlbumArt(job) {
 
 async function runMusicScan() {
   const db = loadDatabase();
+  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
   const ns = musicStore.ensureMusic(db);
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
@@ -8134,7 +8145,7 @@ async function runMusicScan() {
     console.warn(`music: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
 
-  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   const prunedRecords = [];
   let finalTracks = tracks;
@@ -8904,6 +8915,7 @@ function extractTvThumb(job) {
 
 async function runTvScan() {
   const db = loadDatabase();
+  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
   const ns = tvStore.ensureTv(db);
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.episodes).length === 0) return; // Shows-less: total no-op
@@ -8913,7 +8925,7 @@ async function runTvScan() {
     console.warn(`tv: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
 
-  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   let finalEpisodes = episodes;
   await updateDatabase((fresh) => {
@@ -9553,7 +9565,6 @@ function customLogoMimeKey(variant) {
 // treats that as "keep the text logo"). `no-cache` so a replacement shows up
 // on the next load without a stale-cache fight.
 app.get('/logo', (req, res) => {
-  const db = getCachedDatabase();
   // v1.33.1: variant-aware with CROSS-FALLBACK -- ?variant=dark serves the
   // dark logo when set, else the light one; the plain /logo (light) likewise
   // falls back to a dark-only upload. "If only one is uploaded it is used
@@ -9566,7 +9577,8 @@ app.get('/logo', (req, res) => {
   const requested = resolveLogoVariant(req.query.variant);
   const fallback = requested === 'dark' ? 'light' : 'dark';
   const mimeFor = (v) => {
-    const m = db.settings && typeof db.settings[customLogoMimeKey(v)] === 'string' ? db.settings[customLogoMimeKey(v)] : '';
+    const stored = settingsStore.getKey(customLogoMimeKey(v)); // Wave 4
+    const m = typeof stored === 'string' ? stored : '';
     return m && Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, m) ? m : '';
   };
   let variant = requested;
@@ -9635,7 +9647,7 @@ app.post(
       await updateDatabase(db => {
         fs.writeFileSync(tmp, bytes);
         fs.renameSync(tmp, target);
-        db.settings = { ...db.settings, [customLogoMimeKey(variant)]: mime };
+        inSaveTransaction(() => settingsStore.set(customLogoMimeKey(variant), mime)); // Wave 4: rides the doc commit
         return true;
       });
     } catch (err) {
@@ -9665,11 +9677,8 @@ app.delete('/api/settings/logo', async (req, res) => {
   const mimeKey = customLogoMimeKey(variant);
   try {
     await updateDatabase(db => {
-      if (db.settings && mimeKey in db.settings) {
-        const next = { ...db.settings };
-        delete next[mimeKey];
-        db.settings = next;
-      }
+      // Wave 4: the mime key is a settings row; its removal rides the commit.
+      if (settingsStore.has(mimeKey)) inSaveTransaction(() => settingsStore.remove(mimeKey));
       return true;
     });
     try { fs.unlinkSync(customLogoPath(variant)); } catch { /* already gone -- fine */ }
@@ -9919,11 +9928,12 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'settings', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
+// Wave 4: `settings` - same key, the same merged object shape.
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9942,9 +9952,10 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.progress = progressStore.getAll();          // Wave 2: verbatim records
       bundle.deleteTombstones = tombstoneStore.getAll(); // Wave 2: verbatim records
       bundle.trash = trashStore.getAll();                // Wave 3: verbatim records
+      bundle.settings = settingsStore.get();             // Wave 4: the MERGED object, as the doc snapshot carried it
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
-        const mime = db.settings ? db.settings[customLogoMimeKey(variant)] : undefined;
+        const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
         if (typeof mime === 'string' && mime) {
           try {
             bundle.customLogo[variant] = { mime, b64: fs.readFileSync(customLogoPath(variant)).toString('base64') };
@@ -10109,6 +10120,16 @@ function validateBackupBundle(bundle) {
       if (rec.item !== undefined && (typeof rec.item !== 'object' || rec.item === null || Array.isArray(rec.item))) {
         return `${where}: item must be an object`;
       }
+    }
+  }
+  // Wave 4: `settings` restores into app_settings one row per key through the
+  // store handle - shape-checked HERE (an object with non-empty NUL-free keys)
+  // so a malformed bundle is a 400 BEFORE the wipe, never a mid-populate
+  // rollback (the Wave 2 posture).
+  if (bundle.settings !== undefined) {
+    if (typeof bundle.settings !== 'object' || bundle.settings === null || Array.isArray(bundle.settings)) return 'settings must be an object';
+    for (const key of Object.keys(bundle.settings)) {
+      if (key === '' || key.includes('\u0000')) return `settings['${key.split('\u0000').join('\\u0000')}']: invalid settings key`;
     }
   }
   // Same amplifier, settings side: the sweep also clamps (defense in depth),
@@ -10355,8 +10376,7 @@ app.post('/api/admin/restore', (req, res, next) => {
 
 // API: Read the Automation & Storage settings for Settings-page prefill.
 app.get('/api/settings', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  res.json(settingsResponse(db.settings));
+  res.json(settingsResponse(settingsStore.get())); // Wave 4: the table (defaults merged)
 });
 
 // API: Update the Automation & Storage settings. Body may be a PARTIAL object
@@ -10452,7 +10472,7 @@ app.post('/api/settings', async (req, res) => {
   // assigned) before the merge, so what persists is always the canonical
   // shape; a bad list rejects the WHOLE request (nothing partially persists).
   if ('transcriptAiPrompts' in body) {
-    const checked = validateTranscriptAiPrompts(body.transcriptAiPrompts, getCachedDatabase().settings.transcriptAiPrompts);
+    const checked = validateTranscriptAiPrompts(body.transcriptAiPrompts, settingsStore.getKey('transcriptAiPrompts')); // Wave 4
     if (!checked.ok) return res.status(400).json({ error: checked.error });
     body.transcriptAiPrompts = checked.value;
   }
@@ -10463,10 +10483,13 @@ app.post('/api/settings', async (req, res) => {
   let prevInterval;
   let saved;
   try {
-    await updateDatabase(db => {
-      prevInterval = db.settings.scanIntervalMinutes; // captured BEFORE the merge
-      db.settings = { ...db.settings, ...body };
-      saved = db.settings;
+    await updateDatabase(() => {
+      const before = settingsStore.get(); // Wave 4: the table, on the chained tick
+      prevInterval = before.scanIntervalMinutes; // captured BEFORE the merge
+      saved = { ...before, ...body };
+      // Only the touched keys are written, inside the doc commit's transaction
+      // (a failed save leaves the table exactly as it was).
+      inSaveTransaction(() => settingsStore.update(body));
       return true;
     });
   } catch (err) {
@@ -10499,7 +10522,7 @@ function notificationsFeatureEnabled(db) {
   if (!ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) return false;
   const subs = db && db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
   if (subs.length < 1) return false;
-  return !(db && db.settings && db.settings.notificationsEnabled === false);
+  return settingsStore.getKey('notificationsEnabled') !== false; // Wave 4
 }
 
 // The badge count. Doubles as the client's boot probe, so it is the ONE
@@ -10983,12 +11006,11 @@ app.delete('/api/queue', (req, res) => {
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
 app.get('/api/cache/size', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   res.json({
     // v1.46 (gate W2): honest accounting includes the roku-compat rendition
     // cache -- "Clear cache now" (below) sweeps it too.
     bytes: transcodeCacheSize(TRANSCODE_DIR) + transcodeCacheSize(ROKU_COMPAT_DIR),
-    effectiveCacheMaxBytes: effectiveCacheCap(db.settings)
+    effectiveCacheMaxBytes: effectiveCacheCap(settingsStore.get()) // Wave 4
   });
 });
 
@@ -13134,8 +13156,7 @@ app.delete('/api/search-history', (req, res) => {
 // the set a member can list is exactly the set they can destroy (admin's empty
 // index keeps everything).
 app.get('/api/trash', (req, res) => {
-  const db = getCachedDatabase();
-  const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
+  const retentionDays = Number(settingsStore.getKey('trashRetentionDays')); // Wave 4
   const items = Object.entries(trashStore.getAll()) // Wave 3: the table
     .filter(([, rec]) => trashRecordVisibleTo(req, rec)) // the ONE predicate (shared with purge/restore)
     .map(([tid, rec]) => ({
@@ -14869,7 +14890,7 @@ async function sweepTrash(now = Date.now()) {
   // allowed set, but a restored bundle's settings arrive verbatim -- a
   // smuggled 1e-9 would purge the whole trash on the next sweep. Clamp to
   // the SAME allowed set here; anything else falls back to the default.
-  const raw = db.settings ? db.settings.trashRetentionDays : undefined;
+  const raw = settingsStore.getKey('trashRetentionDays'); // Wave 4
   const days = TRASH_RETENTION_DAYS_VALID_VALUES.has(raw) ? raw : DEFAULT_SETTINGS.trashRetentionDays;
   if (days <= 0) return 0; // 0 = keep forever
   const maxAgeMs = days * 86400000;
@@ -15297,7 +15318,7 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
 
   // The operator's opt-out (ON by default -- see DEFAULT_SETTINGS). Read from
   // the FRESH db so flipping it off mid-batch stops the very next item.
-  if (db.settings && db.settings.relocateHydratedImports === false) {
+  if (settingsStore.getKey('relocateHydratedImports') === false) { // Wave 4: the table is always fresh
     return { action: 'skip', reason: 'setting-off', mediaId };
   }
 
@@ -17354,7 +17375,7 @@ app.post('/api/videos/:id/chapters', async (req, res) => {
 // job started while the flag was on must stay abortable after it is
 // turned off.
 function attributionFeatureOff(res) {
-  if (getCachedDatabase().settings.attributeControlEnabled === true) return false;
+  if (settingsStore.getKey('attributeControlEnabled') === true) return false; // Wave 4
   res.status(404).json({ error: 'Not found' });
   return true;
 }
@@ -18683,6 +18704,7 @@ podcasts.registerRoutes(app, {
   updateDatabase,
   loadDatabase,
   getCachedDatabase,
+  getSettings: () => settingsStore.get(), // Wave 4
   dataDir: DATA_DIR,
   userStore,
   // v1.73: the poll's notification bridge (route-triggered checks run the
@@ -18772,7 +18794,7 @@ if (require.main === module) {
   // here is exactly one `loadDatabase()` call (same as before) and has the
   // added benefit of pre-warming the cache before `app.listen` below, so the
   // very first request already hits a warm cache.
-  evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings));
+  evictTranscodeCache(effectiveCacheCap(settingsStore.get())); // Wave 4
   // v1.46 (gate W3): the roku-compat cache honors a LOWERED cap at boot too,
   // not only after the next successful build.
   evictRokuCompatCache();
@@ -18849,6 +18871,7 @@ if (require.main === module) {
       updateDatabase,
       loadDatabase,
       getCachedDatabase,
+      getSettings: () => settingsStore.get(), // Wave 4: app settings are a store
       dataDir: DATA_DIR,
       userStore,
       // v1.73: the timer-run poll notifies + pushes exactly like the
@@ -19057,6 +19080,7 @@ module.exports = {
   inSaveTransaction,
   // Wave 3: the trashed-item records.
   trashStore,
+  settingsStore, // Wave 4
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

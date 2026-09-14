@@ -15,7 +15,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-continuew
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __mintTestSession, userStore } = require('../../server');
+const { app, __mintTestSession, userStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, uid;
@@ -41,7 +42,7 @@ function seedItem(id) {
 const postJson = (p, body) => fetch(`${base}${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 test('recent-watching: position>0 items newest-update-first; finished (latched or >=90%) and untouched items excluded; overlay is read-your-writes', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { cwA: seedItem('cwA'), cwB: seedItem('cwB'), cwC: seedItem('cwC'), cwD: seedItem('cwD'), cwE: seedItem('cwE') },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

@@ -39,6 +39,7 @@ process.env.FILETUBE_TTS_PIPER_MODEL = modelPath;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, updateDatabase, loadDatabase, scanBooks } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const booksStore = require('../../lib/books/store');
 const { buildEpub } = require('../helpers/build-zip');
@@ -105,7 +106,7 @@ test('a rescan LEAVES a surviving book\'s audio status + cache files intact', as
 test('PRUNING a book (file gone + pruneMissing) deletes its audio rows AND cache files', async () => {
   const { m4a, blocks } = cacheFiles();
   // Turn on pruneMissing and remove the epub so the scan reaps it.
-  await updateDatabase((db) => { db.settings = { ...(db.settings || {}), pruneMissing: true }; return true; });
+  settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
   fs.unlinkSync(epubPath);
 
   await scanBooks();

@@ -20,6 +20,7 @@ const {
   flushPendingBookProgress, effectiveBookProgress,
   __getBookProgressFlushWriteCount, __mintTestSession, userStore,
 } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const { buildEpub } = require('../helpers/build-zip');
@@ -196,12 +197,12 @@ test('T6: a ping for a book deleted between ping and flush is DROPPED at flush (
   const doomedId = getMediaId(doomed);
   assert.equal((await postJson(`/api/books/${doomedId}/progress`, { locator: { kind: 'epub', cfi: 'x' }, percent: 5 })).status, 200);
   // Delete + prune before the flush lands.
-  await updateDatabase((db) => { db.settings.pruneMissing = true; return true; });
+  settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
   fs.unlinkSync(doomed);
   await scanBooks();
   await flushPendingBookProgress();
   assert.equal(userStore.getOneBookProgress(uid, doomedId), null, 'flush guard dropped the orphaned ping');
-  await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
+  settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
 });
 
 // ---- T8/T10 server half: folders aggregation + shelf pins + /books page -----
@@ -299,10 +300,10 @@ test('v1.43 carrier: the books scan prune removes EVERY user\'s reading position
   userStore.setBookProgress(uid, doomedId, { percent: 10, updatedAt: new Date().toISOString() });
   userStore.setBookProgress(second.user.id, doomedId, { percent: 30, updatedAt: new Date().toISOString() });
 
-  await updateDatabase((db) => { db.settings.pruneMissing = true; return true; });
+  settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
   fs.unlinkSync(doomed);
   await scanBooks();
-  await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
+  settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
 
   assert.equal(userStore.getOneBookProgress(uid, doomedId), null, 'the admin\'s position pruned with the book');
   assert.equal(userStore.getOneBookProgress(second.user.id, doomedId), null, 'every OTHER user\'s position too (no stale resurrection onto a same-path re-add)');

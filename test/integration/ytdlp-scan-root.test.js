@@ -48,7 +48,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
-const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { settingsStore, progressStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -161,7 +161,7 @@ test('D1 footgun-closed: disabling the module after a download preserves the id,
 
     // Sanity: pruneMissing is ON (the default) -- this is the exact toggle
     // state the footgun requires to reap anything at all.
-    assert.equal(loadDatabase().settings.pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
+    assert.equal(settingsStore().get().pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
 
     // 2. Disable the module -- the download dir on disk is untouched.
     delete process.env.FILETUBE_YTDLP_ENABLED;
@@ -227,7 +227,7 @@ test('E1 mount-loss regression: ENABLED module + downloadDir absent on disk (sim
 
     // Sanity: pruneMissing is ON (the default) -- the exact toggle state the
     // regression requires to reap anything at all.
-    assert.equal(loadDatabase().settings.pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
+    assert.equal(settingsStore().get().pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
 
     // 2. Simulate a transient unmount: the directory itself goes ABSENT from
     // disk, WHILE the module REMAINS ENABLED (this is the exact scenario D1's

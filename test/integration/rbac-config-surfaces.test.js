@@ -17,7 +17,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const booksStore = require('../../lib/books/store');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -53,7 +54,7 @@ before(async () => {
   const trkPub = { id: 'tpub', title: 'Open Song', artist: 'X', album: 'A', filePath: path.join(musicPubRoot, 'X', 'A', 'open.flac'), rootFolder: musicPubRoot, addedAt: 1 };
   const trkHid = { id: 'thid', title: 'Secret Song', artist: 'Y', album: 'B', filePath: path.join(musicHidRoot, 'Y', 'B', 'secret.flac'), rootFolder: musicHidRoot, addedAt: 2 };
 
-  saveDatabase({
+  seedState({
     folders: [pubRoot, hidRoot], folderSettings: { [pubRoot]: { name: 'Family' }, [hidRoot]: { name: 'Secret' } },
     folderDisplayNames: { FamilyChannel: 'Family Channel', SecretChannel: 'Secret Channel' },
     metadata: { [openVid.id]: openVid, [hidVid.id]: hidVid },

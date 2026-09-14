@@ -38,9 +38,9 @@ const {
   scanState,
   scanDirectories,
   loadDatabase,
-  saveDatabase,
   getMediaId,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -101,7 +101,7 @@ function buildUnchangedLibrary(count) {
       needsTranscode: false, releaseDate: Date.now(),
     };
   }
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {}, metadata,
     settings: baseSettings(),
   });
@@ -267,7 +267,7 @@ test('AC1.6/AC1.7: after the async conversion, an unchanged file still reuses it
   const changedId = getMediaId(changedPath);
   const changedRealSize = fs.statSync(changedPath).size;
 
-  saveDatabase({
+  seedState({
     folders: [root],
     folderSettings: {},
     metadata: {

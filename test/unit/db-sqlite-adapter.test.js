@@ -63,7 +63,7 @@ function fullFixture() {
       vid3: { id: 'vid3', name: 'zero.mp4', title: 'Zero views', viewCount: 0 },
     },
     liked: ['vid1'],
-    settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' },
+    // (settings: relational since Wave 4 - see importFixture)
     books: {
       folders: ['/media/books'],
       items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
@@ -100,6 +100,7 @@ function fullFixture() {
 function importFixture() {
   return {
     ...fullFixture(),
+    settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
     progress: { vid1: 42.5, vid2: 918 },
     deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000, youtubeId: 'abc123def45' } },
   };

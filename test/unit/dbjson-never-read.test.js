@@ -32,7 +32,8 @@ const jsonPath = () => path.join(dir, 'db.json');
 const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
 const GARBAGE = '{ this is not JSON - a read of me is FATAL by design';
-const SEED = { folders: ['/media/seeded'], settings: { theme: 'seeded' }, metadata: { vid1: { title: 'seeded item' } } };
+// (Wave 4: `settings` is relational now - the doc seed carries the doc keys only.)
+const SEED = { folders: ['/media/seeded'], metadata: { vid1: { title: 'seeded item' } } };
 
 // `null` seeds a schema-current, row-empty filetube.db (open + close only).
 function seedSqlite(db) {
@@ -97,7 +98,7 @@ test('rule 1: filetube.db present (non-empty) + a NON-JSON db.json beside it -> 
     assert.ok(lines.some((l) => l.includes('db.json is present and ignored')), 'the ignored line is logged');
     const loaded = result.adapter.load();
     assert.deepStrictEqual(loaded.folders, SEED.folders, 'state comes from filetube.db, not the file beside it');
-    assert.deepStrictEqual(loaded.settings, SEED.settings);
+    assert.strictEqual(loaded.settings, undefined, 'Wave 4: settings is not a doc key');
     assert.strictEqual(loaded.metadata.vid1.title, 'seeded item');
   } finally {
     result.adapter.close();

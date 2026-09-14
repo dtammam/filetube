@@ -17,7 +17,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-videos-pa
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -61,7 +62,7 @@ function buildFixture(count) {
       addedAt: 1700000000000 + i,
     };
   }
-  saveDatabase({ folders: [], folderSettings: {}, metadata });
+  seedState({ folders: [], folderSettings: {}, metadata });
   return metadata;
 }
 
@@ -140,7 +141,7 @@ test('AC3.2 (cross-window search match): an item findable only on a later page (
       addedAt: 1700000000000 + i,
     };
   }
-  saveDatabase({ folders: [], folderSettings: {}, metadata });
+  seedState({ folders: [], folderSettings: {}, metadata });
 
   const page0 = await getVideos('search=matchclip&sort=newest&limit=40&offset=0');
   assert.equal(page0.body.total, 80, 'sanity: the search narrows the library to the 80 matching items');

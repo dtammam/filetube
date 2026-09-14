@@ -131,6 +131,12 @@ refuses a v23 database at boot; bundles carry `trash` in the same
 `{ trashId: record }` shape on both sides of the line, and a bundle
 without the key still preserves the live records (the v1.65 rule).
 
+**Fifth floor - schema v24 (v1.294, Wave 4, first group).** The app
+settings (`settings`) moved from `doc_single` into `app_settings`, one row
+per key; the v24 migration splits the object and deletes the doc row. A
+v1.293-or-earlier build refuses a v24 database at boot; bundles carry
+`settings` as the same merged object on both sides of the line.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

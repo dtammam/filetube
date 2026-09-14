@@ -23,9 +23,10 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   app, trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, getMediaId, scanDirectories,
-  loadDatabase, updateDatabase, saveDatabase, __resetDatabaseForTests, __failNextSaveForTests,
+  loadDatabase, updateDatabase, __resetDatabaseForTests, __failNextSaveForTests,
   trashStore, progressStore, tombstoneStore,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
@@ -53,7 +54,7 @@ function seedLibrary(over) {
   const filePath = path.join(root, 'Chan', 'video one.mp4');
   fs.writeFileSync(filePath, 'media-bytes-1');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {}, liked: [], settings: settings(over),
     metadata: { [id]: { id, name: 'video one.mp4', title: 'video one', filePath, folderName: 'Chan', rootFolder: root, size: 13, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 100 } },
   });
@@ -149,7 +150,7 @@ test('deferred-retry mint (the scan trashing a tombstoned survivor): a FAILED do
   const old = new Date(Date.now() - 3600 * 1000);
   fs.utimesSync(filePath, old, old); // mtime older than the delete -> the retry TRASHES it
   const id = getMediaId(filePath);
-  saveDatabase({ folders: [root], folderSettings: {}, liked: [], metadata: {}, settings: settings({ pruneMissing: true }) });
+  seedState({ folders: [root], folderSettings: {}, liked: [], metadata: {}, settings: settings({ pruneMissing: true }) });
   tombstoneStore.set(id, { filePath, deletedAt: Date.now(), youtubeId: null });
   __failNextSaveForTests(new Error('orphan-mint save refused'));
   await scanDirectories();

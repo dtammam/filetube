@@ -30,11 +30,11 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
   app,
-  saveDatabase,
   getCachedDatabase,
   __getLoadDatabaseCallCount,
   setAudioStatus,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 function baseSettings(overrides) {
@@ -50,11 +50,11 @@ function baseSettings(overrides) {
   };
 }
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings(), ...db });
+  seedState({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings(), ...db });
 }
 
 let server;

@@ -21,7 +21,8 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId, scanState, userStore, __mintTestSession, storyboardDescriptor } = require('../../server');
+const { app, getMediaId, scanState, userStore, __mintTestSession, storyboardDescriptor } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, mediaDir;
@@ -82,7 +83,7 @@ beforeEach(async () => {
 
 test('GET /storyboard/:id: serves the real .sb.jpg when the item is eligible + file exists', async () => {
   const item = seedItem('has-sb.mp4'); // eligible: video, duration 120, NO persisted flag
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   writeSprite(item.id);
 
   const res = await fetch(`${base}/storyboard/${item.id}`);
@@ -94,7 +95,7 @@ test('GET /storyboard/:id: serves the real .sb.jpg when the item is eligible + f
 
 test('GET /storyboard/:id: 404 when eligible but the sprite file is missing', async () => {
   const item = seedItem('elig-nofile.mp4');
-  saveDatabase(baseDb({ [item.id]: item })); // NO writeSprite
+  seedState(baseDb({ [item.id]: item })); // NO writeSprite
   const res = await fetch(`${base}/storyboard/${item.id}`);
   assert.equal(res.status, 404);
 });
@@ -103,18 +104,18 @@ test('GET /storyboard/:id: 404 for an INELIGIBLE item even with a stray sprite f
   // The eligibility gate stops a stale sidecar under an audio/too-short id from
   // serving a preview the client can never map to (no derivable geometry).
   const audio = seedItem('song.mp3', { type: 'audio', duration: 200 });
-  saveDatabase(baseDb({ [audio.id]: audio }));
+  seedState(baseDb({ [audio.id]: audio }));
   writeSprite(audio.id); // a stray/leftover sidecar
   assert.equal((await fetch(`${base}/storyboard/${audio.id}`)).status, 404, 'audio is ineligible -> 404');
 
   const short = seedItem('clip.mp4', { duration: 1 });
-  saveDatabase(baseDb({ [short.id]: short }));
+  seedState(baseDb({ [short.id]: short }));
   writeSprite(short.id);
   assert.equal((await fetch(`${base}/storyboard/${short.id}`)).status, 404, 'too-short is ineligible -> 404');
 });
 
 test('GET /storyboard/:id: 404 for an unknown id (client degrades to poster)', async () => {
-  saveDatabase(baseDb());
+  seedState(baseDb());
   const res = await fetch(`${base}/storyboard/completely-unknown-id`);
   assert.equal(res.status, 404);
 });
@@ -123,7 +124,7 @@ test('GET /storyboard/:id: 404 for an unknown id (client degrades to poster)', a
 
 test('GET /storyboard/:id: a restricted member 404s; admin still serves it', async () => {
   const item = seedItem('adult-clip.mp4', { folderName: 'Adult' });
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   writeSprite(item.id);
 
   // admin (the patched fetch) sees it
@@ -140,7 +141,7 @@ test('GET /storyboard/:id: a restricted member 404s; admin still serves it', asy
 
 test('GET /api/videos/:id and /api/videos carry the DERIVED storyboard descriptor', async () => {
   const item = seedItem('proj.mp4'); // no persisted flag; geometry derived from duration
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   const expected = storyboardDescriptor(item); // what the client should receive
   assert.ok(expected && expected.count > 0, 'the fixture is eligible');
 
@@ -157,7 +158,7 @@ test('GET /api/liked carries the DERIVED descriptor (the Liked view feeds buildC
   // Regression bind for the v1.93.2 gate: the Liked view renders card previews,
   // so its projection must send the derived descriptor like /api/videos + grid.
   const item = seedItem('liked-clip.mp4');
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   const expected = storyboardDescriptor(item);
   assert.ok(expected && expected.count > 0, 'fixture is eligible');
 

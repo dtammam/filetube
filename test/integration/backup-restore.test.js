@@ -15,7 +15,7 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, loadDatabase, pendingProgress, pendingProgressKey,
+  app, loadDatabase, pendingProgress, pendingProgressKey,
   flushPendingProgress,
   scanDirectories,
   __resetDatabaseForTests,
@@ -25,6 +25,7 @@ const {
   progressStore, tombstoneStore, // Wave 2: the frozen pre-auth positions + the tombstones, likewise
   trashStore, // Wave 3: the trashed-item records, likewise
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -155,7 +156,7 @@ const FULL_TRASH = {
 const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
 function seedFullState(overrides) {
   const state = { ...fullState(), ...(overrides || {}) };
-  saveDatabase(state);
+  seedState(state);
   viewCountStore.replaceAll(FULL_VIEW_COUNTS);
   progressStore.replaceAll(FULL_PROGRESS);
   tombstoneStore.replaceAll(FULL_TOMBSTONES);
@@ -731,7 +732,7 @@ function prodScaleState(itemCount) {
 
 test('v1.43.1 A1: a prod-scale bundle (well over the global parser 100 kb cap) round-trips â€” the 32mb route-scoped limit is ALIVE', async () => {
   const { state: big, counts: bigCounts } = prodScaleState(3000);
-  saveDatabase(big);
+  seedState(big);
   viewCountStore.replaceAll(bigCounts);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
@@ -762,7 +763,7 @@ test('v1.43.1 A1 (QA gate WARNING): a bundle just UNDER the 32mb cap restores â€
       ext: '.mp4', filePath: `/media/videos/cap/cap-${i}.mp4`, duration: 60, folderName: 'Videos',
     };
   }
-  saveDatabase(big);
+  seedState(big);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
   assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
@@ -788,7 +789,7 @@ test('v1.44 T13: a large MUSIC library rides the bundle NEAR the cap and round-t
       rootFolder: '/media/music', ext: '.flac', albumArtKey: 'b'.repeat(32), durationSec: 200, year: 2001,
     };
   }
-  saveDatabase(big);
+  seedState(big);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
   assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
@@ -848,7 +849,7 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
     episodes: { ep1: { id: 'ep1', subId: 'podsub1', guid: 'g1', title: 'One', status: 'downloaded' } },
     settings: { pollMinutes: 60 },
   };
-  saveDatabase(state);
+  seedState(state);
 
   const bundle = await getBackup();
   assert.ok(bundle.podcasts, 'a v1.69 export carries podcasts');

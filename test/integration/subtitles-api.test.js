@@ -15,7 +15,8 @@ delete process.env.FILETUBE_YTDLP_ENABLED; // explicit: this route must work wit
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -34,11 +35,11 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 function baseDb(metadata) {

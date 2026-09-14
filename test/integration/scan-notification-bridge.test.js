@@ -21,9 +21,10 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  scanDirectories, loadDatabase, updateDatabase, getMediaId,
+  scanDirectories, updateDatabase, getMediaId,
   seedNotificationHistoryOnce, userStore,
 } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 
 let downloadDir;
@@ -105,7 +106,7 @@ test('one-shot seeding: newest 30 yt-dlp-provenance items land as read+seen hist
   const seeded = await seedNotificationHistoryOnce(seedNow);
   assert.equal(seeded, 30, 'capped at the 30 newest provenance items');
   assert.equal(userStore.countNotifications(), 30);
-  assert.equal(loadDatabase().settings.notificationsSeededAt, seedNow, 'stamp persisted');
+  assert.equal(settingsStore().get().notificationsSeededAt, seedNow, 'stamp persisted');
 
   const { items } = userStore.listNotifications(admin.id);
   assert.equal(items.length, 30);

@@ -19,6 +19,7 @@ const assert = require('node:assert');
 const {
   app, updateDatabase, userStore, __resetDatabaseForTests,
 } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -97,7 +98,7 @@ test('the three-way visibility gate: module off, zero subs, and toggle off each 
   // 3. Subs back, toggle off.
   await updateDatabase((db) => {
     store.ensureYtdlp(db).subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@x', name: 'X', order: 0 });
-    db.settings.notificationsEnabled = false;
+    settingsStore().update({ notificationsEnabled: false }); // Wave 4: the settings table
   });
   assert.equal((await fetch(`${base}/api/notifications/badge`)).status, 404, 'toggle off -> no bell');
 });

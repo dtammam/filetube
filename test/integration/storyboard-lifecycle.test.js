@@ -14,7 +14,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-sb-lifecy
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, getMediaId, saveDatabase, storyboardPath, __resetDatabaseForTests } = require('../../server');
+const { app, getMediaId, storyboardPath, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 const DESC = { v: 1, interval: 3, count: 30, cols: 10, rows: 3, tileW: 160, tileH: 90 };
@@ -37,7 +38,7 @@ function seedWithSprite() {
   const filePath = path.join(ROOT, 'Chan', 'movie.mp4');
   fs.writeFileSync(filePath, 'movie-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT], folderSettings: {},
     metadata: {
       [id]: {

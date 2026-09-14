@@ -14,7 +14,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, __resetDatabaseForTests } = require('../../server');
+const { app, updateDatabase, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth;
@@ -44,7 +45,7 @@ const getVideos = async (qs) => {
 };
 
 test('subs=1: only items under a subscription folder (folderName join)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       // inSub matches the subscription ONLY via folderName (its channelName
@@ -70,7 +71,7 @@ test('subs=1: only items under a subscription folder (folderName join)', async (
 });
 
 test('subs=1: matches on channelName too, and is empty with no subscriptions', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     // folderName sanitized differently from the channel; the channelName still matches.
     metadata: { byChannel: item('byChannel', { folderName: 'chanx_dir', channelName: 'Chan X' }) },

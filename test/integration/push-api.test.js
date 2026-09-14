@@ -18,6 +18,7 @@ const {
   app, updateDatabase, userStore,
   __resetDatabaseForTests, __setPushGuardLookupForTests, __mintTestSession,
 } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytStore = require('../../lib/ytdlp/store');
 const { publicKeyToUncompressedB64url } = require('../../lib/push/keys');
@@ -73,7 +74,7 @@ beforeEach(async () => {
 });
 
 test('feature gate: all three routes 404 when notifications are disabled (settings toggle)', async () => {
-  await updateDatabase((db) => { db.settings = { ...(db.settings || {}), notificationsEnabled: false }; });
+  settingsStore().update({ notificationsEnabled: false }); // Wave 4: the settings table
   assert.equal((await json('GET', '/api/push/key')).status, 404);
   assert.equal((await json('POST', '/api/push/subscribe', goodBody('https://push.example/wp/x'))).status, 404);
   assert.equal((await json('POST', '/api/push/unsubscribe', { endpoint: 'https://push.example/wp/x' })).status, 404);

@@ -23,8 +23,9 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, loadDatabase, updateDatabase, getMediaId, userStore, __mintTestSession,
+  app, loadDatabase, updateDatabase, getMediaId, userStore, __mintTestSession,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const activity = require('../../lib/ytdlp/activity');
 const { authenticateFetch } = require('../helpers/auth');
@@ -69,7 +70,7 @@ before(async () => {
   const pub = seedItem(pubFile);
   const hid = seedItem(hidFile);
   pubId = pub.id; hidId = hid.id;
-  saveDatabase({
+  seedState({
     folders: [mediaDir], folderSettings: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
     liked: [],

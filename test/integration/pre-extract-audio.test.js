@@ -33,9 +33,10 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  scanDirectories, loadDatabase, saveDatabase, getMediaId, audioPath,
+  scanDirectories, loadDatabase, getMediaId, audioPath,
   evictTranscodeCache, sweepAgedTranscodes,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 
 let downloadDir;
 let libDir;
@@ -77,7 +78,7 @@ test('setting ON: a fresh yt-dlp-rooted VIDEO gets its .m4a sidecar extracted at
     fs.writeFileSync(dlPath, 'video-bytes');
     const libPath = path.join(libDir, 'Home Movie.mp4');
     fs.writeFileSync(libPath, 'video-bytes');
-    saveDatabase({
+    seedState({
       folders: [libDir], folderSettings: {}, metadata: {},
       settings: baseSettings({ preExtractAudio: true }),
     });
@@ -102,7 +103,7 @@ test('setting OFF: no scan-time extraction happens at all (lazy-on-first-watch b
   try {
     const dlPath = path.join(downloadDir, 'Off Setting [bbbbbbbbbbb].mp4');
     fs.writeFileSync(dlPath, 'video-bytes');
-    saveDatabase({
+    seedState({
       folders: [], folderSettings: {}, metadata: {},
       settings: baseSettings({ preExtractAudio: false }),
     });
@@ -138,7 +139,7 @@ test('pinning: while ON, a VIDEO .m4a sidecar survives eviction/age-sweep, a MUS
   });
 
   // ON: the video sidecar is pinned; the mp4 AND the music rendition evict.
-  saveDatabase(withVideo({ preExtractAudio: true, cacheMaxAgeDays: 1 }));
+  seedState(withVideo({ preExtractAudio: true, cacheMaxAgeDays: 1 }));
   seed();
   evictTranscodeCache(1000); // cap far below the combined size
   assert.ok(fs.existsSync(m4a), 'size-cap eviction must skip a pinned VIDEO sidecar');
@@ -151,7 +152,7 @@ test('pinning: while ON, a VIDEO .m4a sidecar survives eviction/age-sweep, a MUS
   assert.ok(!fs.existsSync(mp4), 'the aged mp4 still sweeps');
 
   // OFF: the video sidecar becomes an ordinary cache entry again.
-  saveDatabase(withVideo({ preExtractAudio: false, cacheMaxAgeDays: 1 }));
+  seedState(withVideo({ preExtractAudio: false, cacheMaxAgeDays: 1 }));
   seed();
   sweepAgedTranscodes(Date.now());
   assert.ok(!fs.existsSync(m4a), 'turning the setting OFF un-pins the video sidecar (normal age sweep applies)');

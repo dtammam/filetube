@@ -19,10 +19,11 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, updateDatabase, userStore, effectiveProgress,
+  app, updateDatabase, userStore, effectiveProgress,
   __mintTestSession, __presenceForTests, resolveHandoffTarget, getCachedDatabase,
   isFinishedPresence, HANDOFF_FINISHED_PCT,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -69,7 +70,7 @@ function seedItem(id, over = {}) {
 }
 
 function seedDb() {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vid1: seedItem('vid1'), vid2: seedItem('vid2') },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },

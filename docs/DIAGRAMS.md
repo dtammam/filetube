@@ -92,11 +92,12 @@ store persists the legacy db.json object shape per row; everything
 user-scoped is relational, and so are the media namespaces the
 relational-migration arc has moved out of the document store so far (the
 view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
-tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box).
+tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
+the app settings in Wave 4 - see the CONFIG box).
 The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.293.0:
-9 `doc_kv` namespaces, 18 `doc_single` names, 34 relational tables,
-schema version 23. (The relational-migration arc, Wave 1 onward, moves the
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
+9 `doc_kv` namespaces, 17 `doc_single` names, 35 relational tables,
+schema version 24. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
@@ -104,7 +105,7 @@ media namespaces out of the document store one table at a time - see
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
         KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
@@ -120,6 +121,10 @@ flowchart LR
         TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
     end
 
+    subgraph CONFIG["Relational CONFIG tables (Wave 4; lib/config/*, lib/db/kvStore.js + orderedListStore.js shapes)"]
+        ST["lib/config/settings.js<br/>app_settings (key, json)<br/>the app settings, ONE ROW PER KEY;<br/>DEFAULT_SETTINGS (server.js) merged on read;<br/>a mutator's write rides the doc commit (inSaveTransaction)"]
+    end
+
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]
         FEEDS["podcast-feeds.json (0600)<br/>feed URLs are CREDENTIALS"]
         SS["session-secret (0600)"]
@@ -131,6 +136,7 @@ flowchart LR
     WRITERS --> DOC
     WRITERS --> REL
     WRITERS --> MEDIA
+    WRITERS --> CONFIG
 ```
 
 Ownership at a glance: `metadata`/`folders*` belong to the video core in

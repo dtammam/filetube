@@ -12,7 +12,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-libitems-
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, member;
@@ -23,7 +24,7 @@ before(async () => {
   authenticateFetch(server, base); // admin
   member = __mintTestSession({ username: 'libmember', role: 'member' });
 
-  saveDatabase({
+  seedState({
     folders: [process.env.DATA_DIR], folderSettings: {},
     metadata: {
       open: { id: 'open', title: 'Open Clip', name: 'open.mp4', filePath: path.join(process.env.DATA_DIR, 'Open', 'open.mp4'), folderName: 'Open', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.mp4', duration: 60, size: 100, addedAt: 1 },

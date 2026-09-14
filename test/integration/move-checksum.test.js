@@ -29,8 +29,9 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder,
+  getMediaId, loadDatabase, updateDatabase, moveItemToFolder,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 // v1.42: persisted-state assertions go through the sanctioned SQLite read
@@ -46,10 +47,10 @@ function baseSettings() {
   return { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', autoplayNext: false };
 }
 
-// v1.42: the seed goes through the exported saveDatabase (the adapter opened
+// v1.42: the seed goes through the exported seedState(the adapter opened
 // at require time, so a raw db.json write would be dead).
 function seedItem({ id, filePath, folders }) {
-  saveDatabase({
+  seedState({
     folders,
     folderSettings: {},
     metadata: {

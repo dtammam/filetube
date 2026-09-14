@@ -22,6 +22,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, scanMusic, currentMusicScanState, ALBUMART_DIR, userStore,
 } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const musicScanLib = require('../../lib/music/scan');
 const { authenticateFetch } = require('../helpers/auth');
@@ -60,8 +61,7 @@ beforeEach(async () => {
     const ns = musicStore.ensureMusic(db);
     ns.folders = [];
     ns.tracks = {};
-    if (!db.settings || typeof db.settings !== 'object') db.settings = {};
-    db.settings.pruneMissing = false;
+    settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
     return true;
   });
   libRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-musiclib-'));
@@ -81,7 +81,7 @@ async function setFolders(folders) {
   return res;
 }
 async function setPruneMissing(on) {
-  await updateDatabase((db) => { db.settings.pruneMissing = !!on; return true; });
+  settingsStore().update({ pruneMissing: !!on }); // Wave 4: the settings table
 }
 
 test('T4: music-less install is a total no-op', async () => {
