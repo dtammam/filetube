@@ -22,6 +22,14 @@ const SETUP_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 's
 const SETUP_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
 const SERVER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+// Wave 7b (the monolith split, slice S10b): POST /api/settings - and with it
+// the KNOWN_KEYS allowlist declared inside it - moved to lib/config/routes.js.
+// The allowlist lock reads the route SURFACE (server.js PLUS every module the
+// split carved out of it, derived from server.js's own requires) so it binds
+// the same declaration wherever the slice put it. DEFAULT_SETTINGS and the
+// localStorage-key negative still read server.js: both live there.
+const { routeSurfaceSource } = require('../helpers/route-surface');
+const ROUTE_SURFACE = routeSurfaceSource();
 
 // ---- setup.html: the checkbox exists, with a hint ---------------------
 
@@ -77,8 +85,8 @@ test('the change listener is wired inside wireStaticControls() and loadDebugLife
 
 // ---- NOT a server setting: absent from DEFAULT_SETTINGS/KNOWN_KEYS ----
 
-test('server.js: KNOWN_KEYS (the /api/settings POST allowlist) does not include a lifecycle-debug key', () => {
-  const match = /const KNOWN_KEYS = \[([^\]]*)\];/.exec(SERVER_JS);
+test('the route surface: KNOWN_KEYS (the /api/settings POST allowlist) does not include a lifecycle-debug key', () => {
+  const match = /const KNOWN_KEYS = \[([^\]]*)\];/.exec(ROUTE_SURFACE);
   assert.ok(match, 'expected to find the KNOWN_KEYS array declaration');
   assert.ok(!/debugLifecycle/i.test(match[1]), 'the client-local lifecycle-debug flag must never be added to the server settings allowlist');
   assert.ok(!/lifecycle/i.test(match[1]), 'no lifecycle-related key belongs in KNOWN_KEYS -- this is a localStorage-only preference');
