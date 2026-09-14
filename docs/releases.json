@@ -2980,5 +2980,11 @@
     "date": "2026-09-14",
     "title": "Your trash is kept in its own safer place",
     "intent": "The records behind the Trash page - the ones that let you restore something you trashed by mistake - move into the new database layout, automatically on first start. The record is now written in the very same step as the trash move itself, so a crash in the middle can no longer leave a file in the trash folder with no way back, and the automatic clean-up of old trash now checks each record's date directly instead of reading through the whole list. A trash entry with a broken name, which used to be able to stall the clean-up, is skipped and noted. Backups made before or after this version restore either way. Nothing changes on screen."
+  },
+  {
+    "version": "1.293.1",
+    "date": "2026-09-14",
+    "title": "The v1.293.0 update is actually available now",
+    "intent": "The previous release passed every check on our own machines but one automated check on the newest Node 24 failed, which stopped the Docker image from being published - so anyone pulling the latest image never received the trash-storage update. This release fixes that check; nothing changes in the app itself. If your server pulls the latest image, this is the one that carries everything from v1.293.0."
   }
 ]
