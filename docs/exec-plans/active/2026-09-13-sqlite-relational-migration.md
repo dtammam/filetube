@@ -961,7 +961,13 @@ device pass PENDING and disclosed.
     cluster); the books progress-coalescer comment's doc-model reference fixed in the record
     commit; the environment's 3 Playwright skips in a worktree are the worktree's missing nested
     install, not a suite change (the release suites run in the main checkout).
-  - **Gate:** (filled after the gate)
+  - **Gate (both seats, one fix round, delta APPROVE x2):** Full gate, one fix round, both seats APPROVE on the delta. Both seats re-established the behaviour claim independently before finding anything: 175 of 176 registrations structurally identical to v1.296.0 (the one difference the disclosed push-seam line), 20,650 URL-by-method resolutions unchanged across the one stack reorder, every moved RBAC gate and every moved book-scan data-destruction guard mutation-killed, exports identical by name, by source and by object. What it caught, all in test and instrument code: two store locks that still read server.js alone after their sentences moved (a doc-model read planted in the module sailed through); nothing bound what the new route-surface helper RETURNED (a reworded module header silently dropped that module from every lock - a registry test now checks the derivation both ways); the reciprocal-overlap lock read the surface raw, so a comment quoting the sentence satisfied it with the guard deleted; the main session's own slice verifier indented string CONTENT lines (it would have blessed a changed placeholder SVG) and claimed a re-export identity it only regex-matched - it ships now as `scripts/verify-split-slice.js` with content-aware indent, a multi-line-literal byte check and require()-based identity; the signature instrument leaked its temp DATA_DIR on a piped run; the DIAGRAMS route count was unbound and had been wrong by 41 (live-derived now); three slash-stars, not two, remain in server.js line comments (one masked - #228 says so); the headline is 78 registrations, not 57. Fix commits 9cc2a742 +
+    the verifier nits. Residuals recorded: the tv-wiring lock inherits #228's blind spot in
+    the safe direction only; the verifier's identity check is vacuous for a slice with no
+    re-export (it prints the count - watch it); ~7,500 stale `/tmp/filetube-*` test DATA_DIRs
+    had accumulated since 2026-09-13 (reaped; the harness's exit hook reaps only its own
+    worker's dirs - a `find -mmin +60` before a release run is the cheap habit).
+    Dual-Node (sequential, reviewers idle): 22.23.1 8775 / 8775 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8775 / 8775 / 0 / 0; 24.14.0 8775 / 8775 / 0 / 0.
 
 ---
 

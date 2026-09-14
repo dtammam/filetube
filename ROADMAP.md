@@ -93,6 +93,37 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.297.0 - Relational-migration arc, Wave 7b R1: the monolith split begins (2026-09-14)
+
+The first three slices of the server.js split. Seven route groups and the
+books feature left the monolith for `registerRoutes(app, deps)` modules -
+`lib/queue/routes.js`, `lib/notifications/routes.js`, `lib/push/routes.js`,
+`lib/user/routes.js` (history, watched, prefs, search history, feed-hidden),
+`lib/auth/routes.js` (auth, users, me), `lib/media/user-routes.js` (liked,
+progress), `lib/books/routes.js` + `lib/books/scanRunner.js` - 78 route and
+middleware registrations and one giant function, bodies byte-identical, an
+explicit deps object at every call site. server.js: **19,064 -> 17,090 lines**; route registrations 176 ->
+98. Every slice was an Opus worktree subagent's mechanical move, verified by
+machine (a statement-level byte-identity check against the base commit, the
+new routing-signature instrument, re-export identity) before it merged. Two
+new instruments ship under scripts/: the espree census of server.js the
+slice plan rests on, and the per-route middleware-prefix signature.
+
+What the slices surfaced: one mutable test seam that a destructured dep would
+have frozen (the push DNS override - crossed as a live reader,
+mutation-proven); a latent porosity in the text locks' comment stripper (a
+slash-star inside a line comment hid 218 lines of server.js from every lock -
+one star removed, two more tracked as #228); the census's scope-unaware deps
+list produced two false positives (a shadowed `mime`), caught by grep.
+
+Full gate, one fix round, both seats APPROVE on the delta. Both seats re-established the behaviour claim independently before finding anything: 175 of 176 registrations structurally identical to v1.296.0 (the one difference the disclosed push-seam line), 20,650 URL-by-method resolutions unchanged across the one stack reorder, every moved RBAC gate and every moved book-scan data-destruction guard mutation-killed, exports identical by name, by source and by object. What it caught, all in test and instrument code: two store locks that still read server.js alone after their sentences moved (a doc-model read planted in the module sailed through); nothing bound what the new route-surface helper RETURNED (a reworded module header silently dropped that module from every lock - a registry test now checks the derivation both ways); the reciprocal-overlap lock read the surface raw, so a comment quoting the sentence satisfied it with the guard deleted; the main session's own slice verifier indented string CONTENT lines (it would have blessed a changed placeholder SVG) and claimed a re-export identity it only regex-matched - it ships now as `scripts/verify-split-slice.js` with content-aware indent, a multi-line-literal byte check and require()-based identity; the signature instrument leaked its temp DATA_DIR on a piped run; the DIAGRAMS route count was unbound and had been wrong by 41 (live-derived now); three slash-stars, not two, remain in server.js line comments (one masked - #228 says so); the headline is 78 registrations, not 57. Dual-Node, sequential, reviewers idle: 22.23.1 8775 / 8775 / 0 fail / 0 skipped; 24.20.0 (the CI runner's minor) 8775 / 8775 / 0 / 0; 24.14.0 8775 / 8775 / 0 / 0.
+
+KNOWN GAPS (disclosed): DEVICE-PENDING until Dean's pass (probe list in the
+report); seven slices remain (music, tv, videos/config, trash/move/restore,
+import relocation, backup, transcode/streams, the scan orchestrator) across
+three more releases, then the `< 3,000` prediction is re-verified; #228 (the
+shared comment stripper) is its own slim-gated harness change.
+
 ### v1.296.0 - Relational-migration arc, Wave 7a: the document model is torn down (2026-09-14)
 
 The two document tables (`doc_kv`, `doc_single`) that v1.42 persisted the
