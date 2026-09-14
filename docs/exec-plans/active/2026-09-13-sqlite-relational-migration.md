@@ -1070,9 +1070,15 @@ disclosed.
     current line no `*/` follows to EOF, so the non-greedy block regex never matches) - the reword
     to `/api/<kind>/:id` is nonetheless a correct improvement, and the tree is measurably
     porosity-free (zero line-comment `/*` in any of the 14 extracted modules; #228's two remaining
-    openers are pre-existing server.js lines, reduced from three by this wave). Delta re-confirm:
-    pending (SendMessage to the same instances after this fix commit; ADV already APPROVE, QA to
-    flip on the comment fix). Dual-Node (sequential, reviewers idle): (filled at release).
+    openers are pre-existing server.js lines, reduced from three by this wave). Delta re-confirm
+    (fix commit 1c469884, comments + docs only): BOTH seats APPROVE - ADV re-measured the code
+    stream byte-identical to its approved tip and the doc numbers accurate; QA verified the three
+    comments now name the right file and independently confirmed the c9c503d2 magnitude claim was
+    0 lines masked, not 170. Dual-Node (sequential, reviewers idle): 22.23.1 8785 / 8785 / 0 fail
+    / 0 skipped; 24.20.0 (the CI runner's minor) 8785 / 8785 / 0 / 0. Shipped v1.298.0
+    (device pass PENDING). Known gap disclosed: books-api T6 is a pre-existing time-dependent test
+    that can red under parallel-suite load, proven independent of this diff (S5-alone + any added
+    test file reds the identical two tests) - tracked in the tech-debt tracker, not fixed here.
 
 ---
 
