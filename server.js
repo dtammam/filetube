@@ -1248,9 +1248,7 @@ function needsTranscode(ext, videoCodec, audioCodec) {
   if (TRANSCODE_EXTENSIONS.includes(ext)) return true;
   return codecNeedsTranscode(videoCodec, audioCodec);
 }
-function transcodedPath(id) {
-  return path.join(TRANSCODE_DIR, `${id}.mp4`);
-}
+// transcodedPath moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // v1.27.0 (background-audio-for-video, EXPERIMENTAL): sits right next to
 // transcodedPath -- same TRANSCODE_DIR, same id-keyed naming convention,
@@ -1309,41 +1307,9 @@ function parseCrf(raw) {
 }
 const TRANSCODE_CRF = parseCrf(process.env.TRANSCODE_CRF);
 
-// True for an in-flight (not-yet-finalized) write in TRANSCODE_DIR, either
-// kind: a pre-transcoded video (`*.tmp.mp4`) or a background-audio extract
-// (`*.tmp.m4a`, v1.27.0). Shared by every predicate below that must never
-// touch/delete/count an in-progress write, so the two kinds can't drift.
-function isInFlightTranscode(p) {
-  return p.endsWith('.tmp.mp4') || p.endsWith('.tmp.m4a');
-}
+// isInFlightTranscode + selectEvictions moved to lib/media/transcode.js (Wave 7b slice S8).
 
-// Pure: given files [{path, size, atimeMs}], return the paths to delete so the
-// total size drops to <= maxBytes. Never returns an in-flight write
-// (*.tmp.mp4/*.tmp.m4a — see isInFlightTranscode) or keepPath (the
-// just-produced file) — though keepPath's size still counts toward the
-// total. Evicts least-recently-used first (atime asc, then path).
-function selectEvictions(files, maxBytes, protectedPaths) {
-  // protectedPaths may be a single path, an array, or a Set — never evicted,
-  // though their size still counts toward the total.
-  const keep = protectedPaths instanceof Set
-    ? protectedPaths
-    : new Set(protectedPaths ? [].concat(protectedPaths) : []);
-  const eligible = files.filter(f => !isInFlightTranscode(f.path));
-  let total = eligible.reduce((sum, f) => sum + f.size, 0);
-  if (total <= maxBytes) return [];
-  const candidates = eligible
-    .filter(f => !keep.has(f.path))
-    .sort((a, b) => (a.atimeMs - b.atimeMs) || (a.path < b.path ? -1 : 1));
-  const toDelete = [];
-  for (const f of candidates) {
-    if (total <= maxBytes) break;
-    toDelete.push(f.path);
-    total -= f.size;
-  }
-  return toDelete;
-}
-
-// Delete orphaned *.tmp.mp4/*.tmp.m4a files (left if a transcode or
+// Delete orphaned *.tmp.mp4 / *.tmp.m4a files (left if a transcode or
 // background-audio extract process was killed mid-write). Returns the count
 // removed. Safe to call on startup.
 function cleanupOrphanTmp(dir) {
@@ -1367,84 +1333,7 @@ const recentlyServed = new Map();
 const RECENT_STREAM_MS = 10 * 60 * 1000; // 10 minutes
 function markServed(p) { recentlyServed.set(p, Date.now()); }
 
-// True for a finished transcoded MP4 OR a finished background-audio extract
-// (v1.27.0) — `*.mp4`/`*.m4a` that is NOT the in-flight `*.tmp.mp4`/`*.tmp.m4a`
-// write (see isInFlightTranscode). Shared by every site that enumerates
-// TRANSCODE_DIR (size display, eviction, age sweep, "clear cache now") so
-// the exclusion/inclusion can't drift between copies — this is what makes
-// the audio-extract cache ride the SAME lifecycle as the video transcode
-// cache rather than needing its own parallel set of predicates.
-function isCompletedTranscode(name) {
-  return (name.endsWith('.mp4') || name.endsWith('.m4a')) && !isInFlightTranscode(name);
-}
-
-// Paths served within RECENT_STREAM_MS (the live-watch protection set shared
-// by evictTranscodeCache, sweepAgedTranscodes, and POST /api/cache/clear),
-// pruning stale entries out of `recentlyServed` as it goes. A single source so
-// all three sites agree on both membership AND stale-entry pruning (the two
-// non-evict copies previously omitted the pruning).
-function activeProtectedPaths(now) {
-  const set = new Set();
-  for (const [p, t] of recentlyServed) {
-    if (now - t <= RECENT_STREAM_MS) set.add(p);
-    else recentlyServed.delete(p); // prune stale entries
-  }
-  return set;
-}
-
-// Enforce the cache cap by evicting LRU transcoded MP4s from TRANSCODE_DIR.
-// Never evicts justProducedPath or any recently-served file. Returns the count
-// deleted. (LRU order among evictable files is still atime-keyed — best-effort.)
-function evictTranscodeCache(maxBytes, justProducedPath) {
-  let entries;
-  try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
-  // v1.35 (preExtractAudio): while the setting is ON, .m4a background-audio
-  // sidecars are PINNED -- never candidates for the automatic size-cap
-  // eviction (this function) or the age sweep (below). The manual Settings
-  // "Clear cache" button (POST /api/cache/clear) still removes them --
-  // explicit user intent wins over the pin. They still COUNT toward the
-  // displayed cache size (honest accounting).
-  const pinAudioSidecars = !!settingsStore.getKey('preExtractAudio'); // Wave 4
-  // Gate QA-WARNING: the preExtractAudio pin protects VIDEO background-audio
-  // sidecars only -- a music ALAC rendition (also `<id>.m4a` in TRANSCODE_DIR,
-  // shared by design) must NOT be pinned, or a large ALAC library would grow
-  // eviction-immune. A sidecar's id is a db.metadata (video) id; a rendition's
-  // id is a db.music.tracks id, so metadata membership discriminates the two.
-  const pinnableVideoMeta = pinAudioSidecars ? (getCachedDatabase().metadata || {}) : null;
-  const isPinnedSidecar = (name) => pinAudioSidecars && name.endsWith('.m4a')
-    && Object.prototype.hasOwnProperty.call(pinnableVideoMeta, name.slice(0, -'.m4a'.length));
-  const files = [];
-  for (const name of entries) {
-    if (!isCompletedTranscode(name)) continue;
-    if (isPinnedSidecar(name)) continue;
-    const p = path.join(TRANSCODE_DIR, name);
-    try {
-      const st = fs.statSync(p);
-      files.push({ path: p, size: st.size, atimeMs: st.atimeMs || st.mtimeMs });
-    } catch (_) { /* file vanished between readdir and stat; skip */ }
-  }
-  // Protect the just-produced file and anything served in the recent window.
-  const now = Date.now();
-  const protectedPaths = activeProtectedPaths(now);
-  if (justProducedPath) protectedPaths.add(justProducedPath);
-  const victims = selectEvictions(files, maxBytes, protectedPaths);
-  let removed = 0;
-  for (const p of victims) {
-    try {
-      fs.unlinkSync(p);
-      removed++;
-      console.log(`Evicted from transcode cache: ${p}`);
-      // F1 (two-reviewer gate, v1.27.0): an evicted background-audio
-      // sidecar (`.m4a`) must not leave a stale `audioStatus: 'ready'`
-      // behind it -- see clearAudioStatus's own comment for why this is a
-      // deliberate strengthening beyond how `.mp4` deletion here already
-      // leaves `transcodeStatus` untouched (scan-lazy reconciliation).
-      if (p.endsWith('.m4a')) clearAudioStatus(path.basename(p, '.m4a'));
-    }
-    catch (e) { console.error(`Failed to evict ${p}:`, e.message); }
-  }
-  return removed;
-}
+// isCompletedTranscode + activeProtectedPaths + evictTranscodeCache moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // ---- Roku compatibility renditions (v1.46) ----
 // On-request, cache-only fixes for the two file classes Roku's hardware
@@ -1466,24 +1355,7 @@ function rokuCompatSidecarPath(id) {
   return path.join(ROKU_COMPAT_DIR, `${id}.json`);
 }
 
-const rokuCompatQueue = [];
-let rokuCompatBusyId = null; // id of the job ffmpeg is running RIGHT NOW
-const rokuCompatProbing = new Set(); // ids with an ffprobe in flight
-
-// The rendition cache dir must never live inside a scanned library root, or
-// the scan would index renditions as media (the v1.41.6 seam class). Config
-// folders can change at runtime, so this is checked per-request (cheap pure
-// prefix test), not just at boot; when violated the feature disables itself
-// (originals still serve) and logs once.
-let rokuCompatBlockLogged = false;
-function rokuCompatBlocked() {
-  const blocked = rokuCompatLib.isInsideAnyRoot(ROKU_COMPAT_DIR, configuredLibraryRoots(getCachedDatabase()), path);
-  if (blocked && !rokuCompatBlockLogged) {
-    rokuCompatBlockLogged = true;
-    console.error(`Roku-compat cache directory ${ROKU_COMPAT_DIR} is inside a configured media folder -- compatibility renditions are DISABLED (the scan would index renditions as media). Move it with ROKU_COMPAT_DIR.`);
-  }
-  return blocked;
-}
+// the roku-compat queue state + rokuCompatBlocked() moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // Sidecar reads treat any parse failure as "no verdict yet" -- which is also
 // why writes are a plain writeFileSync (no tmp+rename): a torn write from a
@@ -1505,142 +1377,7 @@ function probeForRokuCompat(filePath) {
   });
 }
 
-// The route's one entry point: -> { state: 'clean'|'ready'|'building'|'failed', path? }
-// 'clean'    serve the original (also every error path -- fail-open).
-// 'ready'    serve the cached rendition at .path.
-// 'building' 503 {error:'transcoding'} (same retry contract as transcodes).
-// 'failed'   a build broke; serve the original so the client shows its
-//            honest playback error instead of looping on 503s. A replaced
-//            source (new size/mtime) resets failed and re-probes.
-// The probe runs INLINE (await, ~100-300ms) rather than 503-first: every
-// Roku play carries ?compat=roku and most verdicts are 'clean', so a
-// 503-per-first-play would surface a bogus error dialog on every new video.
-async function resolveRokuCompat(item) {
-  try {
-    if (!ffmpegAvailable || rokuCompatBlocked()) return { state: 'clean' };
-    // Gate C1 (adversarial seat): renditions are MP4-FAMILY SOURCES ONLY.
-    // The Roku channel picks its demuxer from the ORIGINAL extension
-    // (streamFormat "mkv" for .mkv), so handing it MP4 rendition bytes for a
-    // matroska source would break files that play fine today (matroska
-    // attachments aren't tracks -- Roku ignores embedded art there). Both
-    // confirmed broken classes (yt-dlp cover-art MP4s, rotated phone
-    // recordings) are MP4-family; cover-art/rotated MKVs stay untouched, a
-    // DISCLOSED limitation rather than silent breakage.
-    const sourceExt = String(item.ext || '').toLowerCase();
-    if (sourceExt !== '.mp4' && sourceExt !== '.m4v' && sourceExt !== '.mov') return { state: 'clean' };
-    const stat = await fs.promises.stat(item.filePath);
-    const renditionPath = rokuCompatRenditionPath(item.id);
-    let meta = readRokuCompatSidecar(item.id);
-    // Re-probe when the source moved (size/mtime) OR when the verdict RULES
-    // changed since this sidecar was written (v mismatch) -- the latter
-    // auto-heals a file cached 'clean' by an older, narrower rule set.
-    if (!meta || meta.v !== rokuCompatLib.VERDICT_VERSION || !rokuCompatLib.signatureMatches(meta.source, stat)) {
-      // Concurrent first-touch: one request probes, the rest 503-retry.
-      if (rokuCompatProbing.has(item.id) || rokuCompatBusyId === item.id) return { state: 'building' };
-      rokuCompatProbing.add(item.id);
-      let stdout;
-      try { stdout = await probeForRokuCompat(item.filePath); }
-      finally { rokuCompatProbing.delete(item.id); }
-      const { verdict } = rokuCompatLib.rokuCompatVerdict(stdout);
-      meta = { v: rokuCompatLib.VERDICT_VERSION, source: rokuCompatLib.sourceSignature(stat), verdict, renditionReady: false, failed: false };
-      // A rendition built from an OLDER source must never survive the
-      // signature change -- drop it before the new verdict is persisted.
-      try { fs.unlinkSync(renditionPath); } catch (_) { /* none existed */ }
-      writeRokuCompatSidecar(item.id, meta);
-    }
-    if (meta.verdict === 'clean') return { state: 'clean' };
-    if (meta.renditionReady && fs.existsSync(renditionPath)) return { state: 'ready', path: renditionPath };
-    if (meta.failed) return { state: 'failed' };
-    queueRokuCompatBuild(item.id, item.filePath, meta);
-    return { state: 'building' };
-  } catch (err) {
-    console.error(`roku-compat: resolve failed for ${item.id}:`, err.message);
-    return { state: 'clean' };
-  }
-}
-
-function queueRokuCompatBuild(id, srcPath, meta) {
-  if (rokuCompatBusyId === id) return;
-  if (rokuCompatQueue.some(job => job.id === id)) return;
-  rokuCompatQueue.push({ id, srcPath, verdict: meta.verdict, source: meta.source });
-  processRokuCompatQueue();
-}
-
-function processRokuCompatQueue() {
-  if (rokuCompatBusyId !== null || rokuCompatQueue.length === 0) return;
-  const job = rokuCompatQueue.shift();
-  rokuCompatBusyId = job.id;
-  const renditionPath = rokuCompatRenditionPath(job.id);
-  const tmpPath = `${renditionPath}.tmp.mp4`; // same suffix convention as the transcode queue -> cleanupOrphanTmp sweeps it
-  const args = job.verdict === 'rotate'
-    ? rokuCompatLib.buildRotateArgs(job.srcPath, tmpPath, TRANSCODE_CRF)
-    : rokuCompatLib.buildStripArgs(job.srcPath, tmpPath);
-
-  // Gate W1: Node documents that 'close' "may or may not" fire after
-  // 'error' on the same spawn -- an unguarded double finish() would null
-  // rokuCompatBusyId twice and kick the queue into overlapping workers.
-  let settled = false;
-  const finish = (ok) => {
-    if (settled) return;
-    settled = true;
-    if (ok) {
-      try { fs.renameSync(tmpPath, renditionPath); } catch (e) { console.error(`roku-compat: finalize failed for ${job.id}:`, e.message); ok = false; }
-    }
-    if (!ok) { try { fs.unlinkSync(tmpPath); } catch (_) { /* nothing to clean */ } }
-    // Only update the sidecar if it still describes THIS job's source -- a
-    // replaced-mid-build file has already been re-probed under a new
-    // signature and must not have its fresh sidecar clobbered.
-    const meta = readRokuCompatSidecar(job.id);
-    if (meta && rokuCompatLib.signatureMatches(job.source, meta.source)) {
-      writeRokuCompatSidecar(job.id, { ...meta, renditionReady: ok, failed: !ok });
-    }
-    rokuCompatBusyId = null;
-    if (ok) evictRokuCompatCache(renditionPath);
-    processRokuCompatQueue();
-  };
-
-  let proc;
-  // stdio ignored: nothing parses compat-build progress, and an unread
-  // stderr pipe can fill and stall ffmpeg on chatty encodes.
-  try { proc = spawn('ffmpeg', args, { stdio: 'ignore' }); }
-  catch (e) { console.error(`roku-compat: spawn failed for ${job.id}:`, e.message); finish(false); return; }
-  proc.on('error', (e) => { console.error(`roku-compat: ffmpeg error for ${job.id}:`, e.message); finish(false); });
-  proc.on('close', (code) => {
-    let ok = code === 0 && fs.existsSync(tmpPath);
-    if (ok) {
-      // Paranoia: the source may have been replaced while ffmpeg ran; a
-      // rendition of vanished bytes must not be published under the old key.
-      try { ok = rokuCompatLib.signatureMatches(job.source, fs.statSync(job.srcPath)); }
-      catch (_) { ok = false; }
-    }
-    finish(ok);
-  });
-}
-
-// LRU cap eviction, mirroring evictTranscodeCache's protections (in-flight
-// tmp writes, recently-served, just-produced). Sidecars are tiny and kept:
-// an evicted rendition self-heals as a probe-free rebuild on next request.
-function evictRokuCompatCache(justProducedPath) {
-  let entries;
-  try { entries = fs.readdirSync(ROKU_COMPAT_DIR); } catch (_) { return 0; }
-  const files = [];
-  for (const name of entries) {
-    if (!name.endsWith('.mp4') || isInFlightTranscode(name)) continue;
-    const p = path.join(ROKU_COMPAT_DIR, name);
-    try {
-      const st = fs.statSync(p);
-      files.push({ path: p, size: st.size, atimeMs: st.atimeMs || st.mtimeMs });
-    } catch (_) { /* vanished between readdir and stat */ }
-  }
-  const protectedPaths = activeProtectedPaths(Date.now());
-  if (justProducedPath) protectedPaths.add(justProducedPath);
-  let removed = 0;
-  for (const p of selectEvictions(files, ROKU_COMPAT_CACHE_MAX_BYTES, protectedPaths)) {
-    try { fs.unlinkSync(p); removed++; console.log(`Evicted from roku-compat cache: ${p}`); }
-    catch (e) { console.error(`Failed to evict ${p}:`, e.message); }
-  }
-  return removed;
-}
+// resolveRokuCompat + queueRokuCompatBuild + processRokuCompatQueue + evictRokuCompatCache moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // Valid "scan every N minutes" choices for the Settings UI (0 = Off / manual
 // "Scan now" only). Anything not in this set (missing, unrecognized, negative)
@@ -1658,101 +1395,7 @@ function scanIntervalMs(minutes) {
   return DEFAULT_SCAN_INTERVAL_MINUTES * 60000;
 }
 
-// Pure: given transcoded-cache files [{path, lastServedAt?, atimeMs}], return
-// the paths eligible for age-based deletion — those whose most-recently-known
-// served time is older than `now - maxAgeMs`. `lastServedAt` (a persisted,
-// FileTube-controlled timestamp) is authoritative whenever it is a number;
-// `atimeMs` is only a fallback for pre-upgrade files that predate it. This
-// keeps the age sweep immune to the atime unreliability under relatime/
-// noatime (see the `recentlyServed` comment above). Never returns a
-// *.tmp.mp4 (in-flight write) or a protected path. maxAgeMs <= 0/falsy means
-// retention is "Off" -> always [].
-function selectAgedOut(files, maxAgeMs, now, protectedPaths) {
-  if (!maxAgeMs || maxAgeMs <= 0) return [];
-  const keep = protectedPaths instanceof Set
-    ? protectedPaths
-    : new Set(protectedPaths ? [].concat(protectedPaths) : []);
-  const cutoff = now - maxAgeMs;
-  const agedOut = [];
-  for (const f of files) {
-    if (isInFlightTranscode(f.path)) continue;
-    if (keep.has(f.path)) continue;
-    const effective = typeof f.lastServedAt === 'number' ? f.lastServedAt : f.atimeMs;
-    if (effective < cutoff) agedOut.push(f.path);
-  }
-  return agedOut;
-}
-
-// Filesystem wrapper around the pure `selectAgedOut` selector — the D3 age-
-// retention sweep. Structured like `evictTranscodeCache`, but kept as a
-// SEPARATE step (never folded in): reads the cacheMaxAgeDays setting (0/falsy
-// = "Off", in which case selectAgedOut always returns [] and nothing is
-// touched — evictTranscodeCache's size-cap LRU path stays completely
-// unaffected). Builds {path, lastServedAt, atimeMs} for every non-*.tmp.mp4
-// *.mp4 in TRANSCODE_DIR, looking up lastServedAt via
-// db.metadata[basename(path,'.mp4')].lastServedAt (falls back to atime for
-// files predating this feature). Protects the same recentlyServed-within-
-// RECENT_STREAM_MS set evictTranscodeCache builds, so a file actively being
-// watched is never aged out even if its recorded/atime age looks stale.
-// Call sites (post-produce, startup) run this immediately BEFORE
-// evictTranscodeCache — never inside it, so the frozen
-// test/unit/transcode-cache.test.js (which never invokes the age sweep)
-// keeps passing unmodified. Returns the count removed.
-function sweepAgedTranscodes(now) {
-  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
-  // cache -- this is a transcode/audio-extract job-completion (or startup)
-  // callback, not a request/serve-path read, and it iterates ALL of
-  // `db.metadata` rather than a single lookup, so it doesn't fit either of
-  // T4's explicit "beyond the 10 routes" examples (transcode-cache-cap reads,
-  // srcMeta lookups). Coherency-safe either way; kept as-is (minimal diff).
-  const db = loadDatabase();
-  const settings = settingsStore.get(); // Wave 4: the table, read once for this sweep
-  const cacheMaxAgeDays = settings.cacheMaxAgeDays;
-  const maxAgeMs = cacheMaxAgeDays ? cacheMaxAgeDays * 24 * 60 * 60 * 1000 : 0;
-  let entries;
-  try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
-  // v1.35 (preExtractAudio): same sidecar pin as evictTranscodeCache -- see
-  // its comment there.
-  const pinAudioSidecars = !!settings.preExtractAudio;
-  // Same video-only sidecar scoping as evictTranscodeCache (music ALAC
-  // renditions must stay evictable) -- see that comment.
-  const pinnableVideoMeta = pinAudioSidecars ? (db.metadata || {}) : null;
-  const files = [];
-  for (const name of entries) {
-    if (!isCompletedTranscode(name)) continue;
-    if (pinAudioSidecars && name.endsWith('.m4a') && Object.prototype.hasOwnProperty.call(pinnableVideoMeta, name.slice(0, -'.m4a'.length))) continue;
-    const p = path.join(TRANSCODE_DIR, name);
-    try {
-      const st = fs.statSync(p);
-      // v1.27.0: `name` is now either `<id>.mp4` (video transcode) or
-      // `<id>.m4a` (background-audio extract) -- derive the id via the
-      // file's own extension rather than a hardcoded `.mp4`, so both kinds
-      // resolve to the SAME db.metadata[id].lastServedAt this sweep already
-      // keys off (one coherent cache, not a forked one).
-      const id = path.basename(name, path.extname(name));
-      const meta = db.metadata[id];
-      files.push({ path: p, lastServedAt: meta && meta.lastServedAt, atimeMs: st.atimeMs || st.mtimeMs });
-    } catch (_) { /* file vanished between readdir and stat; skip */ }
-  }
-  // Same live-watch protection evictTranscodeCache uses — a file served
-  // within the recent window is never aged out either.
-  const protectedPaths = activeProtectedPaths(now);
-  const victims = selectAgedOut(files, maxAgeMs, now, protectedPaths);
-  let removed = 0;
-  for (const p of victims) {
-    try {
-      fs.unlinkSync(p);
-      removed++;
-      console.log(`Aged out of transcode cache: ${p}`);
-      // F1 (two-reviewer gate, v1.27.0): mirrors evictTranscodeCache's own
-      // clearAudioStatus call -- an aged-out `.m4a` sidecar must not leave a
-      // stale `audioStatus: 'ready'` behind it either.
-      if (p.endsWith('.m4a')) clearAudioStatus(path.basename(p, '.m4a'));
-    }
-    catch (e) { console.error(`Failed to remove aged-out transcode ${p}:`, e.message); }
-  }
-  return removed;
-}
+// selectAgedOut + sweepAgedTranscodes moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // selectPrunableIds moved to lib/scan/merge.js (Wave 6 scan extraction).
 
@@ -1760,31 +1403,9 @@ function sweepAgedTranscodes(now) {
 
 // mergeScannedMetadata moved to lib/scan/merge.js (Wave 6 scan extraction).
 
-// Sum of st.size for every completed transcode/audio-extract (isCompletedTranscode)
-// in dir — video *.mp4 AND background-audio *.m4a (v1.27.0), one coherent
-// total. Used for the Settings "current cache size" display. try/catch so a
-// missing/unreadable dir or a file that vanished mid-scan (readdir vs stat
-// race) never throws.
-function transcodeCacheSize(dir) {
-  let entries;
-  try { entries = fs.readdirSync(dir); } catch (_) { return 0; }
-  let total = 0;
-  for (const name of entries) {
-    if (!isCompletedTranscode(name)) continue;
-    try { total += fs.statSync(path.join(dir, name)).size; } catch (_) { /* vanished; skip */ }
-  }
-  return total;
-}
+// transcodeCacheSize moved to lib/media/transcode.js (Wave 7b slice S8).
 
-// Resolve the effective transcode-cache byte cap: a UI-set `cacheMaxBytes`
-// (positive integer) takes precedence; otherwise fall back to the existing
-// env-var-or-5GB-default module constant, so env-only deployments keep
-// working unchanged when no UI override is persisted.
-function effectiveCacheCap(settings) {
-  const uiCap = settings && settings.cacheMaxBytes;
-  if (Number.isInteger(uiCap) && uiCap > 0) return uiCap;
-  return TRANSCODE_CACHE_MAX_BYTES;
-}
+// effectiveCacheCap moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // matchRootFolder moved to lib/scan/roots.js (Wave 6 scan extraction).
 
@@ -2145,85 +1766,7 @@ function wavDurationSec(wavPath) {
   } catch (_) { return 0; }
 }
 
-// The synthesis pipeline for one chapter: extract XHTML -> chunk -> synth each
-// block -> concat to m4a -> write blocks.json. Atomic .tmp->rename finalize.
-async function runChapterSynthesis({ bookId, spineIndex, key }) {
-  const chapter = resolveTtsChapter(bookId, spineIndex);
-  if (!chapter) {
-    // The book was pruned/removed between enqueue and now. Drop the stale
-    // pending row WITHOUT recreating an audio map for a gone book
-    // (clearBookAudioStatus is a no-op when the map is already absent).
-    booksStore.clearBookAudioStatus({ updateDatabase, booksDb }, bookId, spineIndex)
-      .catch((err) => console.error(`TTS: failed to clear status for a vanished book ${bookId}/${spineIndex}:`, err && err.message));
-    return { ok: false };
-  }
-  setTtsStatus(bookId, spineIndex, { status: 'processing', key });
-
-  const buf = await fs.promises.readFile(chapter.book.filePath);
-  const entries = booksZip.listEntries(buf);
-  const xhtmlBuf = booksZip.extractEntryByName(buf, entries, chapter.spineEntry.href);
-  const blocks = booksTtsChunk.chunkChapter(xhtmlBuf ? xhtmlBuf.toString('utf8') : '');
-
-  fs.mkdirSync(TTS_CACHE_DIR, { recursive: true });
-  const workDir = path.join(TTS_CACHE_DIR, `.tmp-${key}`);
-  fs.rmSync(workDir, { recursive: true, force: true });
-  fs.mkdirSync(workDir, { recursive: true });
-
-  try {
-    const rate = ttsSettings().rate;
-    const wavFiles = [];
-    const blockOffsets = []; // {blockIndex, startSec} for EVERY block (incl. empty)
-    let cursorSec = 0;
-    for (const b of blocks) {
-      // Every block gets an offset (empty ancestor-only slots point at the
-      // start of the next real audio, i.e. the current cursor) so the reader's
-      // blockIndex always maps to a sane startSec.
-      blockOffsets.push({ blockIndex: b.blockIndex, startSec: Math.round(cursorSec * 1000) / 1000 });
-      if (!b.text) continue;
-      const wavPath = path.join(workDir, `b${b.blockIndex}.wav`);
-      await synthesizeBlock(b.text, wavPath, rate);
-      wavFiles.push(wavPath);
-      cursorSec += wavDurationSec(wavPath);
-    }
-
-    if (wavFiles.length === 0) {
-      // Nothing speakable in this chapter (an image-only/nav chapter) -- mark it
-      // FAILED explicitly (honest "audio unavailable") rather than serving a
-      // zero-length file. Without this the row would stay 'processing' forever
-      // and the reader's status poll would spin (gate finding, v1.38.0). ok:false
-      // means processTtsQueue does NOT chain a prefetch off this chapter.
-      setTtsStatus(bookId, spineIndex, { status: 'failed', key });
-      return { ok: false };
-    }
-
-    const listPath = path.join(workDir, 'concat.txt');
-    fs.writeFileSync(listPath, `${wavFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n')}\n`);
-    const tmpM4a = `${ttsM4aPath(key)}.tmp.m4a`;
-    await runFfmpeg(booksTtsEngine.buildTtsEncodeArgs(listPath, tmpM4a));
-    const durationSec = Math.round(cursorSec * 1000) / 1000;
-
-    // A book scan may have PRUNED this book while we were synthesizing. If so,
-    // finalizing here would recreate its audio row + leak cache files at a key
-    // the prune already swept (gate finding, v1.38.0). Re-validate as late as
-    // possible; if the book vanished, discard the temp and abort cleanly.
-    if (!resolveTtsChapter(bookId, spineIndex)) {
-      try { fs.unlinkSync(tmpM4a); } catch (_) { /* best-effort */ }
-      return { ok: false };
-    }
-
-    // Atomic finalize: audio first, then the index -- a reader only ever asks
-    // for blocks.json AFTER status is 'ready', which is written last.
-    fs.renameSync(tmpM4a, ttsM4aPath(key));
-    const tmpBlocks = `${ttsBlocksPath(key)}.tmp`;
-    fs.writeFileSync(tmpBlocks, JSON.stringify(blockOffsets));
-    fs.renameSync(tmpBlocks, ttsBlocksPath(key));
-
-    setTtsStatus(bookId, spineIndex, { status: 'ready', key, durationSec });
-    return { ok: true };
-  } finally {
-    fs.rmSync(workDir, { recursive: true, force: true });
-  }
-}
+// runChapterSynthesis moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // v1.38.0 T12: boot reconcile — the transcode-reconcile posture for TTS.
 // Sweeps orphaned work dirs / temp files from a killed synth, then resets stale
@@ -2258,25 +1801,9 @@ function reconcileTtsCacheAtBoot() {
 // ---- Pre-transcode queue (AVI and other non-web containers -> MP4) ----
 // Jobs run one at a time to avoid overloading a home server with parallel FFmpeg runs.
 const transcodeQueue = [];
-let transcodeBusy = false;
 const transcodeProgress = {}; // id -> percent complete (0-100) while a job runs
 
-// Persist a media item's transcode status without clobbering unrelated db
-// changes. Fire-and-forget from every production call site (none of them
-// await this) -- the write is still serialized through updateDatabase, so it
-// can never race another concurrent writer. Returns the updateDatabase
-// promise (already .catch-guarded against an unhandled rejection) so tests
-// that need to observe the persisted write can await it deterministically.
-function setTranscodeStatus(id, status) {
-  return updateDatabase(db => {
-    const m = db.metadata[id];
-    if (m && m.transcodeStatus !== status) {
-      m.transcodeStatus = status;
-      return true;
-    }
-    return false; // no-op: preserves today's "no write when unchanged" behavior
-  }).catch(err => console.error('Error persisting transcode status:', err));
-}
+// setTranscodeStatus moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // id -> last-PERSISTED lastServedAt (epoch ms), the WRITE-THROTTLE for
 // recordServed below. This is a DEDICATED map, deliberately separate from
@@ -2364,104 +1891,7 @@ function queueTranscode(id, srcPath) {
   processTranscodeQueue();
 }
 
-function processTranscodeQueue() {
-  if (transcodeBusy || transcodeQueue.length === 0) return;
-  const { id, srcPath } = transcodeQueue.shift();
-
-  // Skip if the source vanished or a finished MP4 already exists.
-  if (!fs.existsSync(srcPath)) { processTranscodeQueue(); return; }
-  const outPath = transcodedPath(id);
-  if (fs.existsSync(outPath)) { setTranscodeStatus(id, 'ready'); processTranscodeQueue(); return; }
-
-  transcodeBusy = true;
-  const tmpPath = outPath + '.tmp.mp4';
-  setTranscodeStatus(id, 'processing');
-  transcodeProgress[id] = 0;
-  // Total duration (from the scan's ffprobe) lets us turn FFmpeg's time= into a percentage.
-  // v1.30 A3: read-only lookup on the transcode hot path -- safe on the cache.
-  const srcMeta = getCachedDatabase().metadata[id];
-  const totalDuration = (srcMeta && srcMeta.duration) || 0;
-  console.log(`Transcoding to MP4: ${srcPath}`);
-
-  // H.264 + AAC in an MP4 with a front-loaded moov atom (+faststart) for smooth streaming.
-  // ultrafast + yuv420p: fastest conversion, broadly compatible (incl. iOS Safari).
-  const args = [
-    '-i', srcPath,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(TRANSCODE_CRF), '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
-    '-movflags', '+faststart',
-    '-y', tmpPath
-  ];
-
-  let proc;
-  try {
-    proc = spawn('ffmpeg', args);
-  } catch (e) {
-    console.error(`Failed to start FFmpeg for ${srcPath}:`, e.message);
-    setTranscodeStatus(id, 'failed');
-    transcodeBusy = false;
-    processTranscodeQueue();
-    return;
-  }
-
-  let errTail = '';
-  proc.stderr.on('data', d => {
-    const text = d.toString();
-    errTail = (errTail + text).slice(-1500);
-    // FFmpeg reports progress on stderr as "time=HH:MM:SS.xx"; convert to a percent.
-    if (totalDuration > 0) {
-      const m = text.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g);
-      if (m && m.length) {
-        const last = m[m.length - 1].match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
-        const secs = (+last[1]) * 3600 + (+last[2]) * 60 + parseFloat(last[3]);
-        transcodeProgress[id] = Math.max(0, Math.min(99, Math.round((secs / totalDuration) * 100)));
-      }
-    }
-  });
-
-  proc.on('error', (e) => {
-    console.error(`FFmpeg error for ${srcPath}:`, e.message);
-    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
-    delete transcodeProgress[id];
-    setTranscodeStatus(id, 'failed');
-    transcodeBusy = false;
-    processTranscodeQueue();
-  });
-
-  proc.on('close', (code) => {
-    if (code === 0 && fs.existsSync(tmpPath)) {
-      try {
-        fs.renameSync(tmpPath, outPath); // atomic: never serve a half-written file
-        setTranscodeStatus(id, 'ready');
-        console.log(`Transcode ready: ${outPath}`);
-        // A freshly-produced file starts with a fresh lastServedAt, so it
-        // isn't immediately eligible for the age sweep.
-        recordServed(id);
-        // Keep the cache under its cap now that we've added a file. Runs
-        // synchronously here (inside the single-worker close callback, before
-        // transcodeBusy is released) so it can't race another transcode. The
-        // just-produced file is protected from eviction. The age sweep runs
-        // as a SEPARATE step immediately before the size-cap eviction (never
-        // folded into evictTranscodeCache — see its comment above).
-        try {
-          sweepAgedTranscodes(Date.now());
-          // v1.30 A3: transcode-cache-cap read -- safe on the cache.
-          evictTranscodeCache(effectiveCacheCap(settingsStore.get()), outPath); // Wave 4
-        } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
-      } catch (e) {
-        console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
-        setTranscodeStatus(id, 'failed');
-      }
-    } else {
-      console.error(`Transcode failed (exit ${code}) for ${srcPath}:\n${errTail}`);
-      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
-      setTranscodeStatus(id, 'failed');
-    }
-    delete transcodeProgress[id];
-    transcodeBusy = false;
-    processTranscodeQueue();
-  });
-}
+// processTranscodeQueue moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // ---- Background-audio-for-video extract queue (v1.27.0, EXPERIMENTAL) -----
 // Mirrors the pre-transcode queue directly above -- single worker (never runs
@@ -2474,55 +1904,11 @@ function processTranscodeQueue() {
 // forked cache subsystem -- see audioPath's own comment and
 // isCompletedTranscode/isInFlightTranscode above.
 const audioExtractQueue = [];
-let audioExtractBusy = false;
 const audioExtractProgress = {}; // id -> percent complete (0-100) while a job runs
 
-// Persist a media item's background-audio extract status, mirroring
-// setTranscodeStatus's exact no-clobber/fire-and-forget contract (see its own
-// comment above) -- db.metadata[id].audioStatus: 'pending' | 'processing' |
-// 'ready' | 'failed'.
-function setAudioStatus(id, status) {
-  return updateDatabase(db => {
-    const m = db.metadata[id];
-    if (m && m.audioStatus !== status) {
-      m.audioStatus = status;
-      return true;
-    }
-    return false;
-  }).catch(err => console.error('Error persisting audio status:', err));
-}
+// setAudioStatus moved to lib/media/transcode.js (Wave 7b slice S8).
 
-// F1 (two-reviewer gate, v1.27.0): deletes db.metadata[id].audioStatus
-// entirely (never leaves a stale value behind). Called from every site that
-// deletes a `.m4a` sidecar OUTSIDE the normal extract-queue lifecycle --
-// evictTranscodeCache, sweepAgedTranscodes, POST /api/cache/clear (below) --
-// so a status claiming 'ready' can never survive the file it describes being
-// removed out from under it.
-//
-// This is a DELIBERATE strengthening beyond how the video transcode cache
-// treats `transcodeStatus` on `.mp4` deletion: `reconcileTranscode`'s own
-// comment shows `transcodeStatus` is left completely untouched by
-// evictTranscodeCache/sweepAgedTranscodes/POST /api/cache/clear and is only
-// ever reconciled LAZILY, at the next full library SCAN (via a fresh
-// `fs.existsSync(transcodedPath(id))` check). Background-audio extraction
-// has no scan-time equivalent to piggyback on -- it is entirely on-demand
-// (see queueAudioExtract's own comment) -- and the request-time self-heal
-// added to GET /audio/:id and POST /api/videos/:id/prepare-audio (see their
-// comments) only fires on the NEXT request for that specific item, which
-// could be a long time coming for a rarely-revisited one. Clearing eagerly
-// here closes that staleness window immediately, at the moment the file is
-// actually deleted, rather than waiting on either a future scan (there
-// isn't one) or a future request (there might not be one soon).
-function clearAudioStatus(id) {
-  return updateDatabase(db => {
-    const m = db.metadata[id];
-    if (m && m.audioStatus !== undefined) {
-      delete m.audioStatus;
-      return true;
-    }
-    return false;
-  }).catch(err => console.error('Error clearing audio status:', err));
-}
+// clearAudioStatus moved to lib/media/transcode.js (Wave 7b slice S8).
 
 // Pure: the exact FFmpeg argument ARRAY (never a shell string -- no
 // interpolation, no injection surface) for extracting an audio-only AAC/M4A
@@ -2602,119 +1988,43 @@ function queueAudioExtract(id, srcPath) {
   processAudioExtractQueue();
 }
 
-function processAudioExtractQueue() {
-  if (audioExtractBusy || audioExtractQueue.length === 0) return;
-  const { id, srcPath } = audioExtractQueue.shift();
+// processAudioExtractQueue moved to lib/media/transcode.js (Wave 7b slice S8).
 
-  // Skip if the source vanished or a finished sidecar already exists.
-  if (!fs.existsSync(srcPath)) { processAudioExtractQueue(); return; }
-  const outPath = audioPath(id);
-  if (fs.existsSync(outPath)) { setAudioStatus(id, 'ready'); processAudioExtractQueue(); return; }
+// The transcode / background-audio-extract / roku-compat rendition QUEUE machinery
+// moved VERBATIM to lib/media/transcode.js in Wave 7b (slice S8); server.js hands its
+// collaborators in through `deps` and keeps exporting every queue-API function it
+// exported before, as the SAME object. The queue arrays and progress maps STAY here
+// (isMediaJobInFlight + the lib/config/lib/media routes read them) and cross as the
+// same references; `ffmpegAvailable` is a `let` an async boot probe flips, so it
+// crosses as the live reader `ffmpegIsAvailable()` (the one non-byte-identical token).
+const transcodeQueues = require('./lib/media/transcode'); // Wave 7b S8: require at the call site so parallel slices never edit one hunk
+// `queueTranscode` / `queueAudioExtract` STAY in server.js (Rule 3: they read the
+// staying `ffmpegAvailable` let and the staying queue arrays, and only CALL the moved
+// process functions), so they stay byte-identical and exported as themselves.
+const {
+  transcodedPath, isInFlightTranscode, selectEvictions, isCompletedTranscode, activeProtectedPaths,
+  evictTranscodeCache, resolveRokuCompat, evictRokuCompatCache, selectAgedOut, sweepAgedTranscodes,
+  transcodeCacheSize, effectiveCacheCap, runChapterSynthesis, processTranscodeQueue, setAudioStatus,
+  clearAudioStatus, processAudioExtractQueue, reconcileTranscode,
+} = transcodeQueues.createTranscodeQueues({
+  fs, path, spawn, getCachedDatabase, loadDatabase, updateDatabase, settingsStore, recordServed,
+  TRANSCODE_DIR, TRANSCODE_CRF, TRANSCODE_CACHE_MAX_BYTES, RECENT_STREAM_MS, recentlyServed,
+  transcodeQueue, transcodeProgress, audioExtractQueue, audioExtractProgress,
+  audioPath, buildAudioExtractArgs, needsTranscode,
+  ROKU_COMPAT_DIR, ROKU_COMPAT_CACHE_MAX_BYTES, rokuCompatLib, rokuCompatRenditionPath,
+  readRokuCompatSidecar, writeRokuCompatSidecar, probeForRokuCompat, configuredLibraryRoots,
+  TTS_CACHE_DIR, booksDb, booksStore, booksTtsChunk, booksTtsEngine, booksZip,
+  resolveTtsChapter, runFfmpeg, setTtsStatus, synthesizeBlock, ttsBlocksPath, ttsM4aPath, ttsSettings, wavDurationSec,
+  ffmpegIsAvailable: () => ffmpegAvailable,
+});
 
-  audioExtractBusy = true;
-  const tmpPath = outPath + '.tmp.m4a';
-  setAudioStatus(id, 'processing');
-  audioExtractProgress[id] = 0;
-  // v1.30 A3: read-only lookup on the transcode/audio-extract hot path -- safe on the cache.
-  const srcMeta = getCachedDatabase().metadata[id];
-  const totalDuration = (srcMeta && srcMeta.duration) || 0;
-  console.log(`Extracting background-audio sidecar: ${srcPath}`);
-
-  const args = buildAudioExtractArgs(srcPath, tmpPath);
-
-  let proc;
-  try {
-    proc = spawn('ffmpeg', args);
-  } catch (e) {
-    console.error(`Failed to start FFmpeg audio extract for ${srcPath}:`, e.message);
-    setAudioStatus(id, 'failed');
-    audioExtractBusy = false;
-    processAudioExtractQueue();
-    return;
-  }
-
-  let errTail = '';
-  proc.stderr.on('data', d => {
-    const text = d.toString();
-    errTail = (errTail + text).slice(-1500);
-    // Same time=HH:MM:SS.xx progress parsing the video transcode queue uses.
-    if (totalDuration > 0) {
-      const m = text.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g);
-      if (m && m.length) {
-        const last = m[m.length - 1].match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
-        const secs = (+last[1]) * 3600 + (+last[2]) * 60 + parseFloat(last[3]);
-        audioExtractProgress[id] = Math.max(0, Math.min(99, Math.round((secs / totalDuration) * 100)));
-      }
-    }
-  });
-
-  proc.on('error', (e) => {
-    console.error(`FFmpeg audio-extract error for ${srcPath}:`, e.message);
-    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
-    delete audioExtractProgress[id];
-    setAudioStatus(id, 'failed');
-    audioExtractBusy = false;
-    processAudioExtractQueue();
-  });
-
-  proc.on('close', (code) => {
-    if (code === 0 && fs.existsSync(tmpPath)) {
-      try {
-        fs.renameSync(tmpPath, outPath); // atomic: never serve a half-written file
-        setAudioStatus(id, 'ready');
-        console.log(`Background-audio sidecar ready: ${outPath}`);
-        // A freshly-produced sidecar starts with a fresh lastServedAt, same
-        // as a freshly-produced video transcode (see processTranscodeQueue).
-        recordServed(id);
-        try {
-          sweepAgedTranscodes(Date.now());
-          // v1.30 A3: transcode-cache-cap read -- safe on the cache.
-          evictTranscodeCache(effectiveCacheCap(settingsStore.get()), outPath); // Wave 4
-        } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
-      } catch (e) {
-        console.error(`Failed to finalize audio extract for ${srcPath}:`, e.message);
-        setAudioStatus(id, 'failed');
-      }
-    } else {
-      console.error(`Audio extract failed (exit ${code}) for ${srcPath}:\n${errTail}`);
-      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
-      setAudioStatus(id, 'failed');
-    }
-    delete audioExtractProgress[id];
-    audioExtractBusy = false;
-    processAudioExtractQueue();
-  });
-}
-
-// Keep an item's transcode flag/status accurate WITHOUT pre-transcoding on scan.
-// Transcoding is now lazy — kicked off on demand when a mobile client requests playback
-// (see /video/:id). This avoids converting the entire library up front (huge disk cost).
-// Mutates the item in place; returns true if the status changed.
-function reconcileTranscode(item) {
-  if (!item || item.type === 'audio') {
-    if (item && item.transcodeStatus !== undefined) { delete item.transcodeStatus; return true; }
-    return false;
-  }
-  const before = item.transcodeStatus;
-  // FR-1b (v1.18.0): the authoritative recompute -- runs after the scan's
-  // probe has attached `videoCodec`/`audioCodec` to the item, so a nominally
-  // web-safe container with a non-allowlisted codec (HEVC, VP9, AC-3, ...)
-  // gets flagged here even though the scan-time seed (ext-only, codecs aren't
-  // known yet at that point) did not.
-  item.needsTranscode = needsTranscode(item.ext, item.videoCodec, item.audioCodec);
-  if (!item.needsTranscode) {
-    if (item.transcodeStatus !== undefined) { delete item.transcodeStatus; return true; }
-    return false;
-  }
-  if (fs.existsSync(transcodedPath(item.id))) {
-    // Cached MP4 present → ready.
-    if (item.transcodeStatus !== 'ready') { item.transcodeStatus = 'ready'; return true; }
-    return false;
-  }
-  // No cached MP4. Clear a stale 'ready'; leave in-flight (pending/processing/failed) alone.
-  if (item.transcodeStatus === 'ready') { delete item.transcodeStatus; return true; }
-  return before !== item.transcodeStatus;
-}
+// The byte-stream ROUTES (/thumbnail, /storyboard, /preview, /video) and the shared
+// Range helper `sendRangeable` moved VERBATIM to lib/media/streams.js in Wave 7b
+// (slice S8). `sendRangeable` is built here from the factory because it also feeds the
+// lib/tv and lib/music audio routes (registered below) and stays exported; the four
+// routes themselves register at their original spot (see mediaStreams.registerRoutes).
+const mediaStreams = require('./lib/media/streams'); // Wave 7b S8: require at the call site so parallel slices never edit one hunk
+const { sendRangeable } = mediaStreams.createMediaStreams({ fs, pipeline, registerMediaStream });
 
 // applyCapturedViewCount moved to lib/scan/captured.js (Wave 6 scan extraction).
 
@@ -8859,112 +8169,15 @@ function withEffectiveViewCounts(db) {
   return out;
 }
 
-// Serve extracted thumbnail or fallback placeholder
-app.get('/thumbnail/:id', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3 (AC3.3 headline route): hot GET reader
-  // v1.65 gate fix (QA W1): a TRASHED item's thumbnail sidecar re-keyed to
-  // the trashId, but this route required a live metadata entry -- so the
-  // Trash view's rows always fell to the SVG placeholder. A media_trash
-  // record's snapshot is as good an authority for its own id.
-  const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
-    ? (trashStore.get(req.params.id) || null) // Wave 3: the table
-    : null;
-  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
-  // v1.80 RBAC: never serve a restricted item's thumbnail (it reveals the
-  // content visually). Resolves via metadata OR the trash snapshot, so the
-  // check must run on either source.
-  if (item && !mediaVisibleTo(req, item)) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
-
-  if (item && item.hasThumbnail && fs.existsSync(thumbPath)) {
-    // v1.46: real thumbnails are content-addressed by media id and only
-    // change on a rescan -- let clients (the Roku grid especially) cache
-    // them for a day instead of re-fetching on every scroll-back. `private`
-    // because everything behind the auth wall is per-instance content.
-    res.setHeader('Cache-Control', 'private, max-age=86400');
-    return res.sendFile(thumbPath);
-  }
-
-  // Fallback: Generate SVG placeholder based on whether it is audio or video
-  const isAudio = item ? item.type === 'audio' : false;
-  // v1.65 gate round 2 (adversarial W5): a trash record's snapshot may lack
-  // a string title (an orphan record, or a sparse bundle record) -- the
-  // placeholder path below calls title.length and 500'd on it.
-  const title = (item && typeof item.title === 'string' && item.title !== '') ? item.title : 'Media';
-  const bgColor = isAudio ? '#2b3e50' : '#4a154b';
-  const icon = isAudio ? 
-    `<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#ffffff"/>` : 
-    `<path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" fill="#ffffff"/>`;
-
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" width="160" height="90">
-      <rect width="160" height="90" fill="${bgColor}"/>
-      <g transform="translate(68, 20) scale(1.2)">
-        ${icon}
-      </g>
-      <text x="80" y="70" font-family="Arial, sans-serif" font-size="7" fill="#cccccc" text-anchor="middle" font-weight="bold">
-        ${escapeHtml(title.length > 25 ? title.substring(0, 22) + '...' : title)}
-      </text>
-      <text x="80" y="80" font-family="Arial, sans-serif" font-size="5" fill="#888888" text-anchor="middle">
-        ${isAudio ? 'AUDIO' : 'VIDEO'}
-      </text>
-    </svg>
-  `;
-
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.send(svg);
-});
-
-// v1.92: GET /storyboard/:id - serve the scrub/card storyboard sprite JPEG.
-// Mirrors /thumbnail/:id's RBAC exactly (resolve via metadata OR a trash
-// snapshot; a restricted item 404s like a missing one so the route reveals
-// nothing) but has NO placeholder fallback: a 404 means "no preview" and the
-// client silently degrades to the static poster. Content-addressed by media id
-// (only changes on rescan) -> the same day-long private cache as the thumbnail.
-app.get('/storyboard/:id', (req, res) => {
-  const db = getCachedDatabase(); // hot GET reader
-  const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
-    ? (trashStore.get(req.params.id) || null) // Wave 3: the table
-    : null;
-  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
-  if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const sbPath = storyboardPath(req.params.id);
-  // v1.93.2: serve when the item is storyboard-ELIGIBLE (derived, not a
-  // persisted flag) and the sprite is on disk. Ineligible items (audio/too
-  // short) never have a valid sprite for this id, so the eligibility gate keeps
-  // a stale sidecar from serving.
-  if (item && storyboardDescriptor(item) && fs.existsSync(sbPath)) {
-    res.setHeader('Cache-Control', 'private, max-age=86400');
-    return res.sendFile(sbPath);
-  }
-  return res.status(404).json({ error: 'No storyboard' });
-});
-
-// v1.94: GET /preview/:id - serve the animated hover PREVIEW CLIP (muted MP4).
-// Same RBAC + disk-keyed model as /storyboard: resolve via metadata OR a trash
-// snapshot; restricted -> 404 like missing; serve only when the item is
-// preview-ELIGIBLE (derived from duration) and the clip is on disk; otherwise
-// 404 and the client stays on the poster (no black box). res.sendFile sets
-// Content-Type: video/mp4 from the .mp4 extension.
-app.get('/preview/:id', (req, res) => {
-  const db = getCachedDatabase(); // hot GET reader
-  const trashRec = !Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
-    ? (trashStore.get(req.params.id) || null) // Wave 3: the table
-    : null;
-  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
-  if (item && !mediaVisibleTo(req, item)) { // RBAC: restricted -> 404 like missing
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const pvPath = previewClipPath(req.params.id);
-  if (item && previewClipEligible(item) && fs.existsSync(pvPath)) {
-    res.setHeader('Cache-Control', 'private, max-age=86400');
-    return res.sendFile(pvPath);
-  }
-  return res.status(404).json({ error: 'No preview' });
+// The four byte-stream routes register HERE, in their original order (no app.use or
+// wildcard layer sits between /thumbnail and /video, so the routing signature is
+// unchanged). `sendRangeable` and its require were built right after the transcode
+// factory above (it also feeds the lib/tv + lib/music audio routes registered later).
+mediaStreams.registerRoutes(app, {
+  getCachedDatabase, mediaVisibleTo, trashStore, THUMBNAIL_DIR, escapeHtml, path, fs,
+  storyboardPath, storyboardDescriptor, previewClipPath, previewClipEligible,
+  transcodedPath, queueTranscode, resolveRokuCompat, streamLiveTranscode, markServed,
+  recordServed, mime, contentDispositionAttachment, sendRangeable,
 });
 
 // HTML escaping helper
@@ -9128,221 +8341,9 @@ function destroyMediaStreams(filePath, timeoutMs = 3000) {
   });
 }
 
-// Shared Range-request byte-serving helper (v1.27.0), factored out of
-// GET /video/:id's own Range-parsing/response-header logic so GET /audio/:id
-// (the background-audio sidecar, below) can reuse the EXACT same mechanics
-// rather than a forked copy that could silently drift. This owns ONLY the
-// bytes-on-disk half: the existence check (-> 404 "File does not exist on
-// disk", the same message/shape `/video/:id` already returns) and the
-// Range vs. whole-file response. It does NOT do any id -> filePath
-// resolution, db lookups, or the 404-on-unknown-id/503-in-progress handling
-// -- callers own those (they differ meaningfully between /video/:id's
-// transcode-in-progress branch and /audio/:id's extract-in-progress branch).
-// `onServe(filePath)`, when provided, is invoked once the file is confirmed
-// to exist and BEFORE any header is written -- both call sites use it for
-// the existing markServed/recordServed live-watch protection.
-//
-// `/video/:id` is regression-locked to be byte-identical before/after this
-// refactor (see test/integration/download-media.test.js and
-// test/integration/audio-endpoint.test.js's own /video/:id parity checks).
-function sendRangeable(req, res, filePath, contentType, onServe) {
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'File does not exist on disk' });
-  }
-  if (onServe) onServe(filePath);
+// sendRangeable moved to lib/media/streams.js (Wave 7b slice S8).
 
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-    // F4 (two-reviewer gate): a malformed/reversed Range header (e.g.
-    // `bytes=10-3` [end < start], `bytes=potato` [non-numeric -> NaN], or
-    // `bytes=-5` [a suffix-range shape this simple parser doesn't support --
-    // parses to a NaN start]) used to fall straight through to
-    // `fs.createReadStream(filePath, { start, end })` with a NaN or
-    // nonsensical range. That either threw synchronously -- an unhandled
-    // exception Express's default error handler turns into a 500 whose body
-    // includes a stack trace (leaking this server's absolute filesystem
-    // paths) to an UNAUTHENTICATED caller -- or produced an undefined
-    // stream. This was pre-existing on `/video/:id`; sharing this helper
-    // makes it newly reachable on `/audio/:id` too, so it's fixed once, here,
-    // for both. Every malformed shape (including the pre-existing
-    // out-of-bounds `start >= fileSize` case) is now rejected the SAME way:
-    // 416, with a `Content-Range: bytes */<size>` header giving the complete
-    // length, per RFC 7233 §4.4 ("MUST send a Content-Range header field
-    // with an unsatisfied-range value" alongside a 416) -- one unified,
-    // spec-compliant shape rather than two different bodies for two
-    // different malformed-input classes.
-    if (Number.isNaN(start) || Number.isNaN(end) || start < 0 || end < start || start >= fileSize) {
-      res.status(416).set('Content-Range', `bytes */${fileSize}`).send('Requested range not satisfiable');
-      return;
-    }
-
-    const chunksize = (end - start) + 1;
-    const file = fs.createReadStream(filePath, { start, end });
-    registerMediaStream(filePath, file);
-    const head = {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': contentType,
-    };
-
-    res.writeHead(206, head);
-    // pipeline, NOT .pipe(): destroys `file` when the response goes away first
-    // (every seek aborts the previous Range request) -- see the registry header
-    // above. The error argument is deliberately ignored: a premature client
-    // close is routine, and a mid-stream read error already destroyed both ends.
-    pipeline(file, res, () => {});
-  } else {
-    const head = {
-      'Content-Length': fileSize,
-      'Content-Type': contentType,
-    };
-    res.writeHead(200, head);
-    const file = fs.createReadStream(filePath);
-    registerMediaStream(filePath, file);
-    pipeline(file, res, () => {});
-  }
-}
-
-// Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
-// v1.46: async solely for the awaited roku-compat resolve below; every other
-// path through this handler is the same synchronous flow it always was.
-app.get('/video/:id', async (req, res) => {
-  try {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const item = db.metadata[req.params.id];
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  // v1.80 RBAC: the security-critical guard - a restricted user must not stream
-  // (or download) restricted bytes by direct URL. 404, never 403 (existence).
-  if (!mediaVisibleTo(req, item)) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-
-  // FR-3 (v1.19.0): a download-intent request (`?download=1`) ALWAYS
-  // bypasses the needsTranscode/live-transcode branch below and serves the
-  // ORIGINAL file (`item.filePath`) -- even when a cached transcode already
-  // exists -- because the transcode is a browser-playability sidecar, never
-  // the canonical file a "Download" click should hand back. This is the
-  // ONLY thing `download=1` changes: the id -> `db.metadata[id]` lookup, the
-  // 404s, and the Range-capable send below are otherwise identical to
-  // ordinary playback.
-  const isDownload = req.query.download === '1';
-
-  let filePath = item.filePath;
-
-  // Browser-incompatible containers (AVI, etc.):
-  //  - desktop asks for ?live=1 -> live transcode, plays instantly (not iOS-safe)
-  //  - otherwise -> serve the pre-transcoded MP4 (seekable; works on iOS)
-  if (item.needsTranscode && !isDownload) {
-    if (req.query.live === '1') {
-      return streamLiveTranscode(req, res, item);
-    }
-    const out = transcodedPath(item.id);
-    if (fs.existsSync(out)) {
-      filePath = out; // ready — stream it with full Range support
-    } else {
-      // Lazy transcode: kick off the conversion on first mobile request (not on scan),
-      // then tell the client to wait/poll. Only AVIs actually watched on mobile get cached.
-      if (item.transcodeStatus !== 'failed') {
-        queueTranscode(item.id, item.filePath);
-      }
-      return res.status(503).json({ error: 'transcoding', status: item.transcodeStatus || 'pending' });
-    }
-  }
-
-  // v1.46 Roku compatibility renditions: `?compat=roku` (sent only by the
-  // Roku channel, and only for video items) may swap in a CACHED rendition --
-  // a lossless remux dropping embedded cover-art tracks, or a rotation-baking
-  // re-encode -- because Roku's hardware rejects both classes while browsers
-  // play them fine. Guards: never for downloads (canonical bytes), never for
-  // audio items, and only when `filePath` is still the ORIGINAL (a
-  // needsTranscode item's cached transcode is already Roku-safe H.264/AAC).
-  // 'clean' AND 'failed' both fall through to the original: clean is the
-  // common case; failed means the build broke, and the original at least
-  // yields the client's honest playback error instead of a 503 loop.
-  let servingRokuCompat = false;
-  if (!isDownload && req.query.compat === 'roku' && item.type === 'video' && filePath === item.filePath) {
-    const compat = await resolveRokuCompat(item);
-    if (compat.state === 'ready') {
-      filePath = compat.path;
-      servingRokuCompat = true;
-    } else if (compat.state === 'building') {
-      return res.status(503).json({ error: 'transcoding', status: 'processing' });
-    }
-  }
-
-  // v1.27.0: this existence check (-> 404, byte-identical message) is kept
-  // HERE, in the exact same place it always was, rather than folded into
-  // `sendRangeable` below -- so this route's observable behavior (including
-  // response ORDER relative to `isDownload`'s Content-Disposition header,
-  // never set on a 404) is provably unchanged by the Range-serving refactor.
-  // `sendRangeable` re-checks existence too (its own contract, shared with
-  // GET /audio/:id below) -- a harmless, cheap redundant `fs.existsSync` on
-  // this path, not a behavior change.
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'File does not exist on disk' });
-  }
-
-  // Is the file we're about to send the cached transcoded copy? (Never true
-  // for a download request -- `isDownload` skips the branch above that's the
-  // only place `filePath` is ever set to `transcodedPath(item.id)`.)
-  const servingCachedTranscode = filePath === transcodedPath(item.id);
-  const contentType = (servingCachedTranscode || servingRokuCompat) ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
-
-  if (isDownload) {
-    res.setHeader('Content-Disposition', contentDispositionAttachment(item.title, item.ext));
-  }
-
-  // The actual Range-vs-whole-file response now lives in the shared
-  // `sendRangeable` helper (above) -- byte-identical to the inline version
-  // this replaced. Serving a cached transcode? Mark it recently-served so
-  // eviction leaves it alone while it's being watched, and persist the
-  // last-served timestamp (throttled/no-clobber) that the age-retention
-  // sweep keys off -- unchanged from before the refactor, just relocated
-  // into the shared `onServe` callback.
-  sendRangeable(req, res, filePath, contentType, () => {
-    // v1.41.6 (gate fix): mark the item's SOURCE path live-watched on EVERY
-    // serve, not just when a cached transcode is being served. `recentlyServed`
-    // was previously fed only by the cache paths it protects from eviction --
-    // there was no signal anywhere for "someone is watching this library file
-    // right now". The import-relocation needs exactly that signal: it must not
-    // move a file mid-playback (the client would keep using the old, now-dead id
-    // for the rest of the session -- see its `recently-watched` clause). Purely
-    // additive for the eviction/age-sweep readers of this set: they only ever
-    // test membership for files INSIDE the cache directory, and a library path
-    // is never one of those.
-    markServed(item.filePath);
-    if (servingCachedTranscode) {
-      markServed(filePath);
-      recordServed(item.id);
-    }
-    // v1.46: a roku-compat rendition being watched is protected from its
-    // cache's LRU eviction the same way (activeProtectedPaths reads this
-    // map). recordServed is NOT called -- that timestamp feeds the transcode
-    // cache's age sweep, which never enumerates ROKU_COMPAT_DIR.
-    if (servingRokuCompat) {
-      markServed(filePath);
-    }
-  });
-  } catch (err) {
-    // v1.46 (gate W2): Express 4 never observes a rejected async handler.
-    // Without this catch, any synchronous throw that used to become a 500
-    // (e.g. sendRangeable's statSync racing an eviction unlink) would now be
-    // a logged unhandledRejection plus a socket that hangs until client
-    // timeout -- for EVERY caller, compat or not.
-    console.error(`GET /video/${req.params.id} failed:`, err && err.message);
-    if (!res.headersSent) res.status(500).json({ error: 'internal error' });
-  }
-});
+// GET /video/:id moved to lib/media/streams.js (Wave 7b slice S8); it registers above with the other byte-stream routes.
 
 // GET /audio/:id (v1.27.0, background-audio-for-video, EXPERIMENTAL): serves
 // the audio-only sidecar extracted from a VIDEO item, for the mobile

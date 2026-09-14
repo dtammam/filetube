@@ -30,6 +30,8 @@ const EXPECTED = [
   'lib/config/routes.js',
   'lib/media/move.js',
   'lib/media/routes.js',
+  'lib/media/streams.js',
+  'lib/media/transcode.js',
   'lib/media/trash.js',
   'lib/media/user-routes.js',
   'lib/music/routes.js',
