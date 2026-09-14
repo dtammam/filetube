@@ -20,8 +20,8 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, saveDatabase, __resetDatabaseForTests, viewCountStore } = require('../../server');
-const { trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash reads
+const { app, __resetDatabaseForTests, viewCountStore } = require('../../server');
+const { seedState, trashStore  } = require('../helpers/seed-state'); // Wave 3: relational trash reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -42,7 +42,7 @@ const item = (id) => ({
   id, title: id, name: `${id}.mp4`, filePath: path.join(DATA_DIR, `${id}.mp4`), folderName: 'M',
   rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 1,
 });
-const seed = (metadata) => saveDatabase({
+const seed = (metadata) => seedState({
   folders: [DATA_DIR], folderSettings: {}, liked: [], metadata,
   settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, trashRetentionDays: 30 },
 });

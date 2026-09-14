@@ -9,7 +9,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, transcodedPath, saveDatabase, flushPendingProgress, loadDatabase, __failNextSaveForTests, userStore } = require('../../server');
+const { app, transcodedPath, flushPendingProgress, loadDatabase, __failNextSaveForTests, userStore } = require('../../server');
 const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -93,10 +93,10 @@ test('GET /api/videos preserves the fields the author resolver needs', async () 
   // The list cards resolve the "author" from rootFolder (+ folderSettings),
   // artist, then folderName (see common.js resolveChannelName). Lock the API
   // contract so those fields keep flowing to the client.
-  // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+  // v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
   // (an established test primitive, see CONTRIBUTING.md) rather than a raw
   // `fs.writeFileSync`, so the in-process db cache stays coherent.
-  saveDatabase({
+  seedState({
     folders: ['/media/Movies'],
     folderSettings: { '/media/Movies': { name: 'My Movies', hidden: false } },
     metadata: {
@@ -125,7 +125,7 @@ test('GET /api/videos preserves the fields the author resolver needs', async () 
 // the shared cached db, a named attack surface).
 test('GET /api/videos resolves the channel avatar from the registry (Fix A) without mutating the cached db', async () => {
   const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw'; // valid UC + 22-char shape (mirrors modern-grid-api.test.js)
-  saveDatabase({
+  seedState({
     folders: ['/media/Reg'],
     folderSettings: {},
     metadata: {
@@ -153,7 +153,7 @@ test('GET /api/videos resolves the channel avatar from the registry (Fix A) with
 // modernCardAvatar path, so the monogram bug was live there too. Sweep lock.
 test('GET /api/liked resolves the channel avatar too (Fix A sweep -- no monogram in Liked)', async () => {
   const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw';
-  saveDatabase({
+  seedState({
     folders: ['/media/Reg'], folderSettings: {},
     metadata: {
       regL: {
@@ -234,7 +234,7 @@ test('POST /api/progress returns 404 for unknown media', async () => {
 // This supersedes the pre-A4 "POST returns 500 on a persist failure" test:
 // that contract is inherently incompatible with a deferred/batched write.
 test('POST /api/progress returns 200 immediately even when the underlying disk write would fail (the write is deferred, not synchronous)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidFail: { id: 'vidFail', title: 'Clip', duration: 10 } },
   });
@@ -254,14 +254,14 @@ test('POST /api/progress returns 200 immediately even when the underlying disk w
   // reached saveDatabase. Burn it here (it self-disarms on this throw) so it
   // cannot kill an unrelated later write.
   assert.throws(
-    () => saveDatabase(loadDatabase()),
+    () => seedState(loadDatabase()),
     /simulated disk failure/,
     'the POST must not have consumed the armed save-failure shot -- the write is deferred, not synchronous'
   );
 });
 
 test('flushPendingProgress: a failed flush is caught and logged, never throws, and never wedges the NEXT flush', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidFlushFail: { id: 'vidFlushFail', title: 'Clip', duration: 10 } },
   });
@@ -304,9 +304,9 @@ test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata 
   // filePath deliberately points at a nonexistent file so the FS-unlink step
   // (already try/catch-guarded, unrelated to this fix) is a no-op and the
   // route proceeds to the db.metadata/progress cleanup this test targets.
-  // v1.30 A3: seed via `saveDatabase()` (an established test primitive, see
+  // v1.30 A3: seed via `seedState()` (an established test primitive, see
   // CONTRIBUTING.md) so the in-process db cache stays coherent.
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidDelFail: { id: 'vidDelFail', title: 'Clip', filePath: '/nonexistent/clip.mp4' } },
   });
@@ -325,7 +325,7 @@ test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata 
 
 function seedDeleteTarget(id, filePath) {
   fs.writeFileSync(filePath, 'video-bytes');
-  // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+  // v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
   // (an established test primitive, see CONTRIBUTING.md) rather than a raw
   // `fs.writeFileSync`, so the in-process db cache stays coherent.
   seedState({
@@ -503,10 +503,10 @@ test('DELETE /api/videos/:id happy path (unlink succeeds) still fully cleans up 
 });
 
 test('watch progress round-trips through save and read', async () => {
-  // Seed one known media item -- via the exported `saveDatabase()` (v1.30 A3,
+  // Seed one known media item -- via the exported `seedState()` (v1.30 A3,
   // an established test primitive, see CONTRIBUTING.md) rather than a raw
   // `fs.writeFileSync`, so the in-process db cache stays coherent.
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: { vid1: { id: 'vid1', title: 'Clip', duration: 120 } },

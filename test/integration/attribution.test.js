@@ -17,9 +17,9 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, loadDatabase, updateDatabase, getMediaId, scanDirectories,
-  recordRepulledItemMeta, scanState,
-} = require('../../server');
+  app, loadDatabase, updateDatabase, getMediaId, scanDirectories,
+  recordRepulledItemMeta, scanState, ytdlpDb } = require('../../server');
+const { seedState, folderStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const activity = require('../../lib/ytdlp/activity');
 const { authenticateFetch } = require('../helpers/auth');
@@ -85,7 +85,7 @@ function postAttribute(id, body) {
 test('attribute: identity lands as a UNIT with the sticky flag; validation refuses garbage; clear is manual-only', async () => {
   const filePath = seedFile(mediaDir, 'Orphan Vïdeo.mp4');
   const item = baseItem(filePath);
-  saveDatabase({ folders: [mediaDir], folderSettings: {}, metadata: { [item.id]: item }, settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', attributeControlEnabled: true /* v1.202: the feature is OPT-IN; this suite exercises it ON */ } });
+  seedState({ folders: [mediaDir], folderSettings: {}, metadata: { [item.id]: item }, settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', attributeControlEnabled: true /* v1.202: the feature is OPT-IN; this suite exercises it ON */ } });
 
   // Garbage refused at the boundary.
   assert.equal((await postAttribute(item.id, { target: { channelUrl: 'javascript:alert(1)', channelName: 'X' } })).status, 400);
@@ -118,7 +118,7 @@ test('attribute: identity lands as a UNIT with the sticky flag; validation refus
 test('manual attribution SURVIVES the scan: unchanged rescan AND the changed-file re-init carry', async () => {
   const filePath = seedFile(mediaDir, 'Stïcky Video.mp4');
   const item = baseItem(filePath);
-  await updateDatabase((db) => { db.metadata[item.id] = item; if (!db.folders.includes(mediaDir)) db.folders.push(mediaDir); });
+  await updateDatabase((db) => { db.metadata[item.id] = item; folderStore().add(mediaDir); });
   assert.equal((await postAttribute(item.id, { target: TARGET })).status, 200);
 
   await scanDirectories();
@@ -147,7 +147,7 @@ test('manual wins over the consume bridge: a fresh capture cannot re-point a man
 
     // A capture arrives for its bracket id, naming a DIFFERENT channel, and
     // the file changes (so the consume guard's freshlyScannedIds fires).
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta.bbbbbbbbbbb = {
         channelUrl: 'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa',
@@ -159,7 +159,7 @@ test('manual wins over the consume bridge: a fresh capture cannot re-point a man
         sourceViewCount: 777,
         capturedAt: Date.UTC(2026, 5, 1),
       };
-    });
+    }));
     fs.appendFileSync(filePath, 'grew');
     await scanDirectories();
     await waitForScanIdle();
@@ -187,10 +187,10 @@ test('gate round (M2/M3/M5): the UNIVERSAL and D1a consume lanes + the avatar wr
     const uItem = baseItem(uPath);
     await updateDatabase((db) => { db.metadata[uItem.id] = uItem; });
     assert.equal((await postAttribute(uItem.id, { target: TARGET })).status, 200);
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta[uBase] = { universal: true, sourceExtractor: 'Vimeo', sourceId: '8675309', channelName: 'Vïmeo Studio', capturedAt: Date.UTC(2026, 5, 2) };
-    });
+    }));
     fs.appendFileSync(uPath, 'grew');
 
     // D1a proxy-host lane (M3+M5): full identity + avatar guards.
@@ -199,7 +199,7 @@ test('gate round (M2/M3/M5): the UNIVERSAL and D1a consume lanes + the avatar wr
     const dItem = baseItem(dPath);
     await updateDatabase((db) => { db.metadata[dItem.id] = dItem; });
     assert.equal((await postAttribute(dItem.id, { target: TARGET })).status, 200);
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta.ccccccccccc = {
         channelUrl: 'https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb',
@@ -207,7 +207,7 @@ test('gate round (M2/M3/M5): the UNIVERSAL and D1a consume lanes + the avatar wr
         channelAvatarUrl: 'https://yt3.example/proxy.jpg',
         capturedAt: Date.UTC(2026, 5, 2),
       };
-    });
+    }));
     fs.appendFileSync(dPath, 'grew');
 
     await scanDirectories();
@@ -246,7 +246,7 @@ test('gate round: bulk root CONFINEMENT (C2) + preview (C3) + relocateSkipped wh
   const it1 = baseItem(f1);
   await updateDatabase((db) => {
     db.metadata[it1.id] = it1;
-    if (!db.folders.includes(pvDir)) db.folders.push(pvDir);
+    folderStore().add(pvDir);
   });
   const pv = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -270,7 +270,7 @@ test('gate round: bulk root CONFINEMENT (C2) + preview (C3) + relocateSkipped wh
 test('gate round 2 (M21/M24-half): the single-flight latch 409s a second bulk; cancel answers honestly when nothing runs', async () => {
   const { __setAttributeBulkInProgressForTests } = require('../../server');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attrib-latch-'));
-  await updateDatabase((db) => { if (!db.folders.includes(dir)) db.folders.push(dir); });
+  await updateDatabase((db) => { folderStore().add(dir); });
   try {
     __setAttributeBulkInProgressForTests(true);
     const res = await fetch(`${base}/api/videos/attribute-channel-bulk`, {
@@ -301,11 +301,14 @@ test('gate round 2 (M23): a re-run RESUMES - an attributed-but-unmoved item is c
     } });
     await updateDatabase((db) => {
       db.metadata[it.id] = it;
-      if (!db.folders.includes(resumeDir)) db.folders.push(resumeDir);
-      const ns = store.ensureYtdlp(db);
-      if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
-        ns.subscriptions.push({ id: 'subRez2', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: 'Résurrected Chännel', order: 10 });
-      }
+      folderStore().add(resumeDir);
+      ytdlpDb.mutate((h) => { // Wave 5: the ytdlp namespace is a feature store
+        const ns = store.ensureYtdlp(h);
+        if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
+          ns.subscriptions.push({ id: 'subRez2', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: 'Résurrected Chännel', order: 10 });
+        }
+        return true;
+      });
     });
 
     const pv = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
@@ -374,8 +377,7 @@ test('reheat conflict (decision 3): manual kept, conflict REPORTED via the out-f
 
 test('attribution targets: subscriptions + library identity groups, deduped, sorted', async () => {
   await updateDatabase((db) => {
-    const ns = store.ensureYtdlp(db);
-    ns.subscriptions.push({ id: 'subX', channelUrl: 'https://www.youtube.com/@zébra', name: 'Zébra Films', order: 0, channelAvatarUrl: 'https://yt3.example/z.jpg' });
+    ytdlpDb.mutate((h) => { store.ensureYtdlp(h).subscriptions.push({ id: 'subX', channelUrl: 'https://www.youtube.com/@zébra', name: 'Zébra Films', order: 0, channelAvatarUrl: 'https://yt3.example/z.jpg' }); return true; }); // Wave 5
     // A library-only identity group (dead channel, previously attributed).
     const fp = seedFile(mediaDir, 'Old Attributed.mp4');
     const it = baseItem(fp, { channelUrl: 'https://www.youtube.com/channel/UCdddddddddddddddddddddd', channelName: 'Äncient Channel', channelId: 'UCdddddddddddddddddddddd' });
@@ -402,13 +404,16 @@ test('bulk: unattributed items under root get the identity; attributed items are
     const c = baseItem(fpC, { channelUrl: 'https://www.youtube.com/channel/UCeeeeeeeeeeeeeeeeeeeeee', channelName: 'Kéep Me', channelAttributedManually: true });
     await updateDatabase((db) => {
       db.metadata[a.id] = a; db.metadata[b.id] = b; db.metadata[c.id] = c;
-      if (!db.folders.includes(bulkDir)) db.folders.push(bulkDir);
-      const ns = store.ensureYtdlp(db);
-      // A subscription matching the target -> the channel dir resolves
-      // deterministically under the download root.
-      if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
-        ns.subscriptions.push({ id: 'subRez', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: 'Résurrected Chännel', order: 9 });
-      }
+      folderStore().add(bulkDir);
+      ytdlpDb.mutate((h) => { // Wave 5: the ytdlp namespace is a feature store
+        const ns = store.ensureYtdlp(h);
+        // A subscription matching the target -> the channel dir resolves
+        // deterministically under the download root.
+        if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
+          ns.subscriptions.push({ id: 'subRez', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: 'Résurrected Chännel', order: 9 });
+        }
+        return true;
+      });
     });
 
     // Pre-place a collision: a file with Bulk Ä's name already at the destination.

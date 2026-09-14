@@ -21,25 +21,31 @@ const path = require('node:path');
 const podcasts = require('../../lib/podcasts');
 const store = require('../../lib/podcasts/store');
 const secrets = require('../../lib/podcasts/secrets');
+const { SqliteAdapter, SQLITE_FILENAME } = require('../../lib/db/sqlite');
 const feed = require('../../lib/podcasts/feed');
 const heavyGate = require('../../lib/heavyGate');
 
 const TOKEN = 'SuperSecretAuthToken99';
 const FEED_URL = `https://www.patreon.com/rss/show?auth=${TOKEN}`;
 
-let dataDir, mediaRoot, db, deps, downloads;
+let dataDir, mediaRoot, db, deps, downloads, storeDir, adapter, podcastsDb;
 
 beforeEach(() => {
   podcasts.resetPodcastsStateForTests();
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-podfix-'));
   mediaRoot = path.join(dataDir, 'podcasts');
   db = {};
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-podfix-store-'));
+  adapter = new SqliteAdapter(path.join(storeDir, SQLITE_FILENAME), { log: () => {} });
+  podcastsDb = store.createPodcastsStore(adapter); // Wave 5: a REAL feature store on a scratch database - the module reads + writes through it
   downloads = [];
   deps = {
     dataDir,
+    podcastsDb,
     now: () => 1754150000000,
     loadDatabase: () => db,
     getCachedDatabase: () => db,
+    getSettings: () => db.settings || {}, // Wave 4: the sweep reads retention off the settings store
     updateDatabase: async (mutator) => { mutator(db); },
     runExclusive: (fn) => Promise.resolve(fn()),
     userStore: { removePodcastEpisodeState: () => {} },
@@ -54,6 +60,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   podcasts.resetPodcastsStateForTests();
+  try { adapter.close(); } catch { /* closed by the test */ }
+  fs.rmSync(storeDir, { recursive: true, force: true });
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -73,10 +81,10 @@ async function addSub(backfill = 'all') {
   const input = store.validateAddInput({ feedUrl: FEED_URL, backfill });
   const id = store.subscriptionIdFor(input.feed.url);
   secrets.setFeedSecret(dataDir, id, input.feed.url);
-  await deps.updateDatabase((mdb) => {
+  await deps.updateDatabase(() => podcastsDb.mutate((mdb) => {
     const ns = store.ensurePodcasts(mdb);
     return store.reduceAddSubscription(ns, store.subscriptionRecordFrom({ id, feed: input.feed, name: '', backfill: input.backfill, nowMs: 1, order: 0 }));
-  });
+  }));
   return id;
 }
 
@@ -85,7 +93,7 @@ async function addSub(backfill = 'all') {
 test('#1: ALL episodes vanishing at once (root present + empty) tombstones NOTHING; a partial deletion still reconciles', async () => {
   const id = await addSub('all');
   await podcasts.runPodcastPoll(deps, id);
-  const eps = store.episodesForSub(store.readPodcasts(db).episodes, id);
+  const eps = store.episodesForSub(podcastsDb.read().episodes, id);
   assert.strictEqual(eps.length, 3);
 
   // Simulate the unmount: empty the whole root but leave the mountpoint.
@@ -95,7 +103,7 @@ test('#1: ALL episodes vanishing at once (root present + empty) tombstones NOTHI
   assert.ok(fs.existsSync(mediaRoot), 'the mountpoint survives the simulated unmount');
 
   await podcasts.reconcileDownloads(deps);
-  let after = store.episodesForSub(store.readPodcasts(db).episodes, id);
+  let after = store.episodesForSub(podcastsDb.read().episodes, id);
   assert.deepStrictEqual(after.map((e) => e.status), ['downloaded', 'downloaded', 'downloaded'],
     'the unmount signature tombstones nothing');
   assert.ok(after.every((e) => e.filePath !== ''), 'filePaths intact for the remount');
@@ -105,7 +113,7 @@ test('#1: ALL episodes vanishing at once (root present + empty) tombstones NOTHI
   fs.writeFileSync(after[1].filePath, 'FAKEAUDIO');
   fs.writeFileSync(after[2].filePath, 'FAKEAUDIO');
   await podcasts.reconcileDownloads(deps);
-  after = store.episodesForSub(store.readPodcasts(db).episodes, id);
+  after = store.episodesForSub(podcastsDb.read().episodes, id);
   assert.deepStrictEqual(after.map((e) => e.status), ['deleted-on-disk', 'downloaded', 'downloaded'],
     'one survivor defuses the signature; the genuinely-deleted file tombstones');
 });
@@ -121,7 +129,7 @@ test('#2/D2: a guid-less item stores a 32-hex identity (guidKey, not redaction);
     ]),
   });
   await podcasts.runPodcastPoll(deps, id);
-  const ns = store.readPodcasts(db);
+  const ns = podcastsDb.read();
   const json = JSON.stringify(ns);
   assert.ok(!json.includes(TOKEN), `the token appears NOWHERE in the namespace: ${json.slice(0, 400)}`);
   const eps = store.episodesForSub(ns.episodes, id);
@@ -136,7 +144,7 @@ test('#2/D2: a guid-less item stores a 32-hex identity (guidKey, not redaction);
   // Stability: a second poll of the same feed creates NO duplicate record
   // (the hashed guid is a stable archive key).
   await podcasts.runPodcastPoll(deps, id);
-  assert.strictEqual(store.episodesForSub(store.readPodcasts(db).episodes, id).length, 1);
+  assert.strictEqual(store.episodesForSub(podcastsDb.read().episodes, id).length, 1);
 });
 
 test('D2: episode identity is INDEPENDENT of the secrets map - an unrelated new subscription never re-keys another show', async () => {
@@ -144,15 +152,15 @@ test('D2: episode identity is INDEPENDENT of the secrets map - an unrelated new 
   const inputA = store.validateAddInput({ feedUrl: 'https://showa.invalid/rss' });
   const idA = store.subscriptionIdFor(inputA.feed.url);
   secrets.setFeedSecret(dataDir, idA, inputA.feed.url);
-  await deps.updateDatabase((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
-    store.subscriptionRecordFrom({ id: idA, feed: inputA.feed, name: 'Show A', backfill: 'all', nowMs: 1, order: 0 })));
+  await deps.updateDatabase(() => podcastsDb.mutate((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
+    store.subscriptionRecordFrom({ id: idA, feed: inputA.feed, name: 'Show A', backfill: 'all', nowMs: 1, order: 0 }))));
   const feedA = '<rss><channel><title>Show A</title>'
     + [1, 2, 3].map((n) => `<item><title>Ep ${n}</title><guid>https://showa.invalid/podcast/episode-${n}</guid><pubDate>Sun, 0${n} Aug 2026 15:00:00 GMT</pubDate><enclosure url="https://showa.invalid/audio/${n}.mp3" type="audio/mpeg"/></item>`).join('')
     + '</channel></rss>';
   deps.fetchFeedImpl = async () => ({ ok: true, body: feedA, finalUrl: 'https://x' });
   await podcasts.runPodcastPoll(deps, idA);
   assert.strictEqual(downloads.length, 3);
-  const guidsBefore = store.episodesForSub(store.readPodcasts(db).episodes, idA).map((e) => e.guid).sort();
+  const guidsBefore = store.episodesForSub(podcastsDb.read().episodes, idA).map((e) => e.guid).sort();
 
   // The user subscribes to an UNRELATED feed whose URL carries a mundane
   // query value ('podcast') that substring-matches Show A's guids - the
@@ -161,11 +169,11 @@ test('D2: episode identity is INDEPENDENT of the secrets map - an unrelated new 
   const inputB = store.validateAddInput({ feedUrl: 'https://showb.invalid/rss?format=podcast' });
   const idB = store.subscriptionIdFor(inputB.feed.url);
   secrets.setFeedSecret(dataDir, idB, inputB.feed.url);
-  await deps.updateDatabase((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
-    store.subscriptionRecordFrom({ id: idB, feed: inputB.feed, name: 'Show B', backfill: 'all', nowMs: 2, order: 0 })));
+  await deps.updateDatabase(() => podcastsDb.mutate((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
+    store.subscriptionRecordFrom({ id: idB, feed: inputB.feed, name: 'Show B', backfill: 'all', nowMs: 2, order: 0 }))));
 
   await podcasts.runPodcastPoll(deps, idA); // re-poll Show A with B's secret now in the map
-  const after = store.episodesForSub(store.readPodcasts(db).episodes, idA);
+  const after = store.episodesForSub(podcastsDb.read().episodes, idA);
   assert.strictEqual(after.length, 3, 'no duplicate records for the untouched show');
   assert.deepStrictEqual(after.map((e) => e.guid).sort(), guidsBefore, 'identities unchanged by the unrelated subscription');
   assert.strictEqual(downloads.length, 3, 'NO re-download of the untouched show');
@@ -202,7 +210,7 @@ test('#3: armPodcastsTimer arms (and re-arms idempotently) from the add path sta
   const armed = [];
   global.setInterval = (fn, ms) => { armed.push(ms); return { unref() {} }; };
   try {
-    db = { podcasts: { subscriptions: [{ id: 's1' }], episodes: {}, settings: {} } };
+    podcastsDb.replaceAll({ subscriptions: [{ id: 's1' }], episodes: {}, settings: {} });
     podcasts.armPodcastsTimer(deps);
     assert.deepStrictEqual(armed, [60 * 60 * 1000], 'armed at the default 60 minutes');
     podcasts.armPodcastsTimer(deps);
@@ -254,7 +262,7 @@ test('#6: an unsubscribe taken mid-backfill stops the loop at the next episode b
     calls += 1;
     if (calls === 1) {
       // The user unsubscribes while episode 1 is in flight.
-      await deps.updateDatabase((mdb) => store.reduceDeleteSubscription(store.ensurePodcasts(mdb), id) !== false);
+      await deps.updateDatabase(() => podcastsDb.mutate((mdb) => store.reduceDeleteSubscription(store.ensurePodcasts(mdb), id) !== false));
     }
     const p = path.join(destDir, finalName);
     fs.writeFileSync(p, 'FAKEAUDIO');
@@ -270,7 +278,7 @@ test('#6/E2: a pause taken mid-backfill stops the loop AND writes an honest term
   deps.downloadEnclosureImpl = async (url, destDir, finalName) => {
     calls += 1;
     if (calls === 1) {
-      await deps.updateDatabase((mdb) => store.reduceUpdateSubscription(store.ensurePodcasts(mdb), id, { paused: true }));
+      await deps.updateDatabase(() => podcastsDb.mutate((mdb) => store.reduceUpdateSubscription(store.ensurePodcasts(mdb), id, { paused: true })));
     }
     const p = path.join(destDir, finalName);
     fs.writeFileSync(p, 'FAKEAUDIO');
@@ -280,7 +288,7 @@ test('#6/E2: a pause taken mid-backfill stops the loop AND writes an honest term
   assert.strictEqual(calls, 1, 'pause stops the backfill at the boundary');
   // E2 lock (delta round 2, mutant MQ4): the stop path must not strand
   // "pending first check" - deleting the status write must fail here.
-  const sub = store.readPodcasts(db).subscriptions[0];
+  const sub = podcastsDb.read().subscriptions[0];
   assert.strictEqual(sub.lastStatus, 'paused mid-check: 1 downloaded, 2 still queued');
   assert.strictEqual(sub.lastCheckedAt, deps.now(), 'lastCheckedAt is stamped on the stop path');
 });
@@ -368,7 +376,7 @@ test('#8: podcast downloads serialize through the REAL heavy gate - a concurrent
 
 test('#14: a check-now on a PAUSED sub arriving mid-poll still runs after the poll (target preserved)', async () => {
   const id = await addSub('all');
-  await deps.updateDatabase((mdb) => store.reduceUpdateSubscription(store.ensurePodcasts(mdb), id, { paused: true }));
+  await deps.updateDatabase(() => podcastsDb.mutate((mdb) => store.reduceUpdateSubscription(store.ensurePodcasts(mdb), id, { paused: true })));
 
   let fetches = 0;
   let release;

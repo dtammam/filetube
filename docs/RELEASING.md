@@ -131,6 +131,58 @@ refuses a v23 database at boot; bundles carry `trash` in the same
 `{ trashId: record }` shape on both sides of the line, and a bundle
 without the key still preserves the live records (the v1.65 rule).
 
+**Fifth floor - schema v24 (v1.294, Wave 4, first group).** The app
+settings (`settings`) moved from `doc_single` into `app_settings`, one row
+per key; the v24 migration splits the object and deletes the doc row. A
+v1.293-or-earlier build refuses a v24 database at boot; bundles carry
+`settings` as the same merged object on both sides of the line.
+
+**Sixth floor - schema v25 (v1.294, Wave 4, second group).** The folder
+config (`folders`, `folderSettings`, `folderDisplayNames`) moved from
+`doc_single` into `library_folders`, `library_folder_settings` and
+`channel_folder_display_names`; the v25 migration splits the list and the
+two maps into rows and deletes the doc rows. A v1.293-or-earlier build
+refuses a v25 database at boot; bundles carry the three keys in their old
+shapes on both sides of the line.
+
+**Seventh floor - schema v26 (v1.294, Wave 4, third group).** The frozen
+pre-auth likes (`liked`) moved from `doc_single` into `media_liked` (one row
+per id, like order); the v26 migration copies the list and deletes the doc
+row. A v1.293-or-earlier build refuses a v26 database at boot; bundles carry
+`liked` as the same array on both sides of the line. After this floor no
+top-level `doc_single` name remains - only container sub-keys.
+
+**Eighth floor - schema v27 (v1.294, Wave 5, tv).** The Shows namespace
+(`tv.folders`, `tv.episodes`, `tv.settings`) moved into `tv_folders`,
+`tv_episodes` and `tv_settings`; the v27 migration copies the doc rows and
+deletes them. A v1.293-or-earlier build refuses a v27 database at boot;
+bundles carry `tv` in its old container shape on both sides of the line.
+
+**Ninth floor - schema v28 (v1.294, Wave 5, music).** The music namespace
+(`music.folders`, `music.tracks`, `music.settings`, `music.channels`) moved into
+`music_folders`, `music_tracks`, `music_settings` and `music_channels`; bundles
+carry `music` in its old container shape on both sides of the line.
+
+**Tenth floor - schema v29 (v1.294, Wave 5, books).** The books namespace
+(`books.folders/items/progress/pins/settings/audio`) moved into `books_folders`,
+`books_items`, `books_progress`, `books_pins`, `books_settings` and `books_audio`;
+bundles carry `books` in its old container shape on both sides of the line.
+
+**Eleventh floor - schema v30 (v1.294, Wave 5, podcasts).** The podcasts
+namespace (`podcasts.subscriptions/episodes/settings`) moved into
+`podcasts_subscriptions` (an ordered record list), `podcasts_episodes` and
+`podcasts_settings`; bundles carry `podcasts` in its old container shape on
+both sides of the line. Feed URLs were never in the database and still are not
+(the 0600 secrets file is untouched by this floor).
+
+**Twelfth floor - schema v31 (v1.294, Wave 5, ytdlp).** The downloader's
+namespace (`ytdlp.subscriptions/pins/downloadMeta/channelAvatars/
+allowMembersOnly`) moved into `ytdlp_subscriptions`, `ytdlp_pins`,
+`ytdlp_download_meta`, `ytdlp_channel_avatars` and `ytdlp_settings`; bundles
+carry `ytdlp` in its old container shape on both sides of the line. After this
+floor `metadata` is the only document-model namespace left (Wave 6), and no
+`doc_single` row exists at all (Wave 7 drops the table).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

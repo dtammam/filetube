@@ -18,13 +18,13 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, transcodedPath,
+  app, getMediaId, loadDatabase, updateDatabase, moveItemToFolder, transcodedPath,
 } = require('../../server');
-const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding
+const { seedState, likedStore } = require('../helpers/seed-state'); // Wave 2: relational seeding
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
-// v1.42: seeds go through the exported saveDatabase (the adapter opened at
+// v1.42: seeds go through the exported seedState(the adapter opened at
 // require time, so a raw db.json write would be dead); persisted-state
 // assertions go through the sanctioned SQLite read helper. An EMPTY doc_kv
 // namespace persists as zero rows (absent); backfill the ones this file
@@ -302,7 +302,7 @@ test('POST /api/videos/:id/move: a target outside every configured folder is rej
 });
 
 test('POST /api/videos/:id/move: 404 for an unknown id, no filesystem side effects', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
+  seedState({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/videos/does-not-exist/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -403,7 +403,7 @@ test('moveItemToFolder: TOCTOU race -- two moves that both pass the existsSync f
   const newPath = path.join(dstDir, 'clip.mp4');
   const newId1 = getMediaId(newPath);
 
-  saveDatabase({
+  seedState({
     folders: [srcDir1, srcDir2, dstDir],
     folderSettings: {},
     metadata: {
@@ -470,7 +470,7 @@ test('moveItemToFolder: a concurrent DELETE landing between the initial load and
   const deletingUpdateDatabase = (mutatorFn) => {
     const db = loadDatabase();
     delete db.metadata[oldId];
-    saveDatabase(db);
+    seedState(db);
     return updateDatabase(mutatorFn);
   };
 
@@ -577,7 +577,7 @@ test('v1.41.6 REGRESSION: a LIKED item keeps its Like across a move (db.liked is
   seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
   // A second, UNRELATED liked id -- the re-key must be surgical (in place, same
   // index) and must not disturb the rest of the list or its order.
-  await updateDatabase((db) => { db.liked = ['other-id', oldId]; return true; });
+  likedStore().replaceAll(['other-id', oldId]); // Wave 4: the frozen likes are a table
 
   const res = await fetch(`${base}/api/videos/${oldId}/move`, {
     method: 'POST',

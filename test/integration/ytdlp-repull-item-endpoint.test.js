@@ -24,6 +24,8 @@ const assert = require('node:assert');
 const express = require('express');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { featureStoreFor, docView } = require('../helpers/scratch-feature-store');
 const run = require('../../lib/ytdlp/run');
 const activity = require('../../lib/ytdlp/activity');
 
@@ -80,7 +82,8 @@ function makeDb(itemFields = {}) {
 function makeFakeDeps(initialDb = makeDb()) {
   const db = initialDb;
   return {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
     scanDirectories: async () => {},
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),

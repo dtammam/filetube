@@ -20,6 +20,8 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { scratchFeatureStore } = require('../helpers/scratch-feature-store');
 const run = require('../../lib/ytdlp/run');
 const activity = require('../../lib/ytdlp/activity');
 
@@ -42,7 +44,8 @@ afterEach(() => {
 
 function makeFakeDeps(overrides = {}) {
   return {
-    loadDatabase: () => ({ metadata: {}, ytdlp: {} }),
+    ytdlpDb: scratchFeatureStore(ytdlpStoreModule.FEATURE), // Wave 5: the namespace is a feature store
+    loadDatabase: () => ({ metadata: {} }),
     updateDatabase: (fn) => Promise.resolve(fn({ metadata: {}, ytdlp: { subscriptions: [], downloadMeta: {}, pins: [] } })),
     scanDirectories: async () => {},
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),

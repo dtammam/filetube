@@ -37,7 +37,8 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
-const { app, loadDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { app, loadDatabase, updateDatabase, getMediaId, __resetDatabaseForTests, ytdlpDb } = require('../../server');
+const { folderStore, folderSettingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const store = require('../../lib/ytdlp/store');
@@ -163,7 +164,7 @@ test('REGRESSION (mirrors the v1.20 FR-4 db.folders-invariant test): db.folders/
   await fetch(`${base}/api/subscriptions/pins`);
   await fetch(`${base}/api/subscriptions/pins`);
 
-  const midway = loadDatabase();
+  const midway = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
   assert.deepEqual(midway.folders || [], [], 'db.folders must remain empty -- a pin is never written there');
   assert.deepEqual(midway.folderSettings || {}, {}, 'db.folderSettings must remain empty -- a pin is never written there');
 
@@ -199,7 +200,7 @@ test('AC38 REGRESSION (mirrors the v1.20 FR-4 invariant test): POST /api/config 
   assert.equal(list.length, 1, 'the pin must survive a POST /api/config save untouched');
   assert.deepEqual(list[0], created);
 
-  const persisted = loadDatabase();
+  const persisted = { ...loadDatabase(), folders: folderStore().list(), folderSettings: folderSettingsStore().getAll() }; // Wave 4: the tables
   assert.deepEqual(persisted.folders || [], [], 'the pin\'s channelDir must never leak into db.folders via a config save');
   assert.deepEqual(persisted.folderSettings || {}, {}, 'the pin must never leak into db.folderSettings via a config save');
 
@@ -212,7 +213,7 @@ test('AC38 REGRESSION (mirrors the v1.20 FR-4 invariant test): POST /api/config 
 // avatar. This is the last hop that makes a captured channel avatar actually
 // show as the sidebar/playlists folder icon (C6's MANUAL AC).
 test('C6 render hop: a pin is enriched with its matching subscription\'s captured channelAvatarUrl', async () => {
-  const deps = { updateDatabase, getMediaId };
+  const deps = { updateDatabase, ytdlpDb, getMediaId }; // Wave 5
   const name = 'Avatar Pin Channel';
   const channelUrl = 'https://www.youtube.com/@avatarpinchannel';
   await store.addSubscription(deps, { channelUrl, name });
@@ -254,11 +255,11 @@ test('C6 render hop: a corrupted subscription avatar failing re-validation is NO
   const name = 'Hostile Pin Channel';
   const channelUrl = 'https://www.youtube.com/@hostilepinchannel';
   // Bypass recordSubscriptionChannelAvatar's own sanitizer to plant a hostile persisted value.
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.subscriptions.push({ id: 'hostile-pin-sub', channelUrl, name, channelAvatarUrl: 'javascript:alert(1)' });
     return true;
-  });
+  }));
 
   const channelDir = args.resolveChannelDir({ downloadDir }, { name });
   await fetch(`${base}/api/subscriptions/pins`, {
@@ -278,19 +279,19 @@ test('C6 render hop: a corrupted subscription avatar failing re-validation is NO
 // captured under a DIFFERENT identity (e.g. an item downloaded before this
 // subscription existed) still renders as the pin's icon.
 test('C6 render hop (registry fallback): a matched subscription with NO avatar of its own still gets one via the channelId registry', async () => {
-  const deps = { updateDatabase, getMediaId };
+  const deps = { updateDatabase, ytdlpDb, getMediaId }; // Wave 5
   const name = 'Registry Fallback Pin Channel';
   const channelUrl = 'https://www.youtube.com/@registryfallbackpin';
   await store.addSubscription(deps, { channelUrl, name });
 
   const channelId = 'UCregistryfallbackpinxxx';
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     const sub = ns.subscriptions.find((s) => s.channelUrl === channelUrl);
     sub.channelId = channelId; // the sub knows its own channelId but has no channelAvatarUrl of its own
     ns.channelAvatars[channelId] = { avatarUrl: 'https://yt3.ggpht.com/registry-only.jpg', fetchedAt: Date.now() };
     return true;
-  });
+  }));
 
   const channelDir = args.resolveChannelDir({ downloadDir }, { name });
   const addRes = await fetch(`${base}/api/subscriptions/pins`, {

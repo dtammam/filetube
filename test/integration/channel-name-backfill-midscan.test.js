@@ -25,9 +25,10 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, loadDatabase, saveDatabase, getMediaId, scanDirectories, scanState,
+  app, loadDatabase, getMediaId, scanDirectories, scanState,
   updateDatabase, recordChannelNameBackfillFanout,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 const UC = 'UCzzzzzzzzzzzzzzzzzzzzzz';
@@ -69,7 +70,7 @@ before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   authenticateFetch(server, base);
-  saveDatabase({
+  seedState({
     folders: [mediaDir], folderSettings: {}, metadata: md,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '' },
   });

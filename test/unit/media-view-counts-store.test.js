@@ -209,8 +209,8 @@ test('migration v21: re-running the block is a no-op (idempotent under a crash b
 // ---- 3. the save-lock --------------------------------------------------------
 
 test('save-lock: a doc object carrying `viewCounts` is REFUSED (the namespace left the document model)', () => {
-  assert.throws(() => adapter.save({ folders: [], viewCounts: { a: 1 } }), /unknown top-level db key 'viewCounts'/);
-  assert.throws(() => adapter.save({ folders: [], viewCounts: {} }), /unknown top-level db key 'viewCounts'/, 'even an empty one');
+  assert.throws(() => adapter.save({ metadata: {}, viewCounts: { a: 1 } }), /unknown top-level db key 'viewCounts'/);
+  assert.throws(() => adapter.save({ metadata: {}, viewCounts: {} }), /unknown top-level db key 'viewCounts'/, 'even an empty one');
 });
 
 // ---- 4. the bulk seams -------------------------------------------------------
@@ -229,7 +229,6 @@ function handlesInto(adapterInstance, { withViewCount = true } = {}) {
 test('importParsedJson: a bundle `viewCounts` map and a legacy embedded item.viewCount BOTH route through insertViewCount (usable values only); the summary counts them', () => {
   const { h, kv, vc } = handlesInto(adapter);
   const summary = importParsedJson({
-    folders: [],
     viewCounts: { fromBundle: 3, half: 2.5, zero: 0, junk: 'x' },
     metadata: { legacy: { id: 'legacy', title: 'L', viewCount: 4 }, plain: { id: 'plain' } },
   }, h, { source: 'bundle' });
@@ -280,10 +279,10 @@ test('readPersistedDatabase: surfaces the table as `viewCounts` only when rows e
   assert.deepStrictEqual(readPersistedDatabase(dir), {}, 'empty store, no key');
   const s = createViewCountStore(adapter);
   s.set('a', 6);
-  adapter.save({ folders: ['/x'] });
+  adapter.save({ metadata: { x: { id: 'x' } } }); // (folders is relational since Wave 4)
   const db = readPersistedDatabase(dir);
   assert.deepStrictEqual(db.viewCounts, { a: 6 });
-  assert.deepStrictEqual(db.folders, ['/x']);
+  assert.deepStrictEqual(db.metadata, { x: { id: 'x' } });
   s.remove('a');
   assert.strictEqual(readPersistedDatabase(dir).viewCounts, undefined, 'back to absent once the rows are gone');
 });

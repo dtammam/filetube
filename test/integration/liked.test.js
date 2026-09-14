@@ -34,13 +34,13 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
   app,
-  saveDatabase,
   loadDatabase,
   __getSaveDatabaseCallCount,
   __resetDatabaseForTests,
   __mintTestSession,
   userStore,
 } = require('../../server');
+const { settingsStore, seedState, likedStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -103,7 +103,7 @@ function clearUserLiked() {
 // ---- AC7.3: add / duplicate-add (idempotent) / remove round-trip ----------
 
 test('AC7.3: POST /api/liked/:id adds membership (per-user)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { likeA: seedItem('likeA') },
     liked: [],
@@ -118,11 +118,11 @@ test('AC7.3: POST /api/liked/:id adds membership (per-user)', async () => {
   assert.equal(body.liked, true);
 
   assert.deepEqual(userStore.getLiked(uid), ['likeA']);
-  assert.deepEqual(loadDatabase().liked, [], 'the frozen db.liked record is never written by the route');
+  assert.deepEqual(likedStore().list(), [], 'the frozen liked record (Wave 4: media_liked) is never written by the route');
 });
 
 test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { likeB: seedItem('likeB') },
     liked: [],
@@ -138,7 +138,7 @@ test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry
 });
 
 test('AC7.3: DELETE /api/liked/:id removes membership, and the round-trip leaves NO residual membership', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { likeC: seedItem('likeC') },
     liked: [],
@@ -158,7 +158,7 @@ test('AC7.3: DELETE /api/liked/:id removes membership, and the round-trip leaves
 });
 
 test('AC7.3: removing a non-member is a no-op (idempotent) and never throws/errors', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { likeD: seedItem('likeD'), someOtherId: seedItem('someOtherId') },
     liked: [],
@@ -173,7 +173,7 @@ test('AC7.3: removing a non-member is a no-op (idempotent) and never throws/erro
 });
 
 test('AC7.3: POST /api/liked/:id 404s for an id that is not a real library item', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: baseSettings() });
+  seedState({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: baseSettings() });
   clearUserLiked();
   const res = await like('ghost-id');
   assert.equal(res.status, 404);
@@ -183,7 +183,7 @@ test('AC7.3: POST /api/liked/:id 404s for an id that is not a real library item'
 // ---- GET /api/liked: T6 {items,total,offset,limit} shape, membership set --
 
 test('GET /api/liked lists exactly the current user\'s liked set in the {items,total,offset,limit} shape', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       lik1: seedItem('lik1', { addedAt: 1000 }),
@@ -210,7 +210,7 @@ test('GET /api/liked lists exactly the current user\'s liked set in the {items,t
 });
 
 test('GET /api/liked returns an empty page when nothing is liked', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { lonely: seedItem('lonely') },
     liked: [],
@@ -225,7 +225,7 @@ test('GET /api/liked returns an empty page when nothing is liked', async () => {
 // ---- v1.43: per-user isolation --------------------------------------------
 
 test('per-user isolation: each user\'s Liked view is their OWN -- likes never bleed across accounts', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { mineOnly: seedItem('mineOnly'), yoursOnly: seedItem('yoursOnly') },
     liked: [],
@@ -254,7 +254,7 @@ test('per-user isolation: each user\'s Liked view is their OWN -- likes never bl
 test('v1.43 carrier: DELETE /api/videos/:id removes the deleting user\'s AND every other user\'s like/progress rows for the item', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-liked-delete-${Date.now()}.mp4`);
   fs.writeFileSync(filePath, 'bytes');
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { delCarrier: seedItem('delCarrier', { filePath }) },
     liked: [],
@@ -286,7 +286,7 @@ test('v1.43 carrier: DELETE /api/videos/:id removes the deleting user\'s AND eve
 // ---- GET /api/videos/:id: derived `liked` field (not persisted) -----------
 
 test('GET /api/videos/:id derives `liked` from the user\'s membership at request time', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { derivedA: seedItem('derivedA') },
     liked: [],
@@ -307,7 +307,7 @@ test('GET /api/videos/:id derives `liked` from the user\'s membership at request
 // ---- Write posture: direct user-table writes, ZERO doc-table saves --------
 
 test('liked routes never issue a doc-table save (the frozen-record contract), while membership still commits durably', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { writeA: seedItem('writeA') },
     liked: [],
@@ -332,8 +332,7 @@ test('backfill: an empty (fresh) persisted store loads with liked: []', async ()
   // db.json and asserted the initial-create write; the eager write is
   // subsumed by the adapter, defaults persist on the first real save.)
   await __resetDatabaseForTests();
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'a fresh store must carry liked: []');
+  assert.deepEqual(likedStore().list(), [], 'a fresh store reads an empty frozen-likes list (Wave 4: media_liked)');
 });
 
 test('backfill: a legacy/partial persisted set missing `liked` loads with db.liked = []', () => {
@@ -341,7 +340,7 @@ test('backfill: a legacy/partial persisted set missing `liked` loads with db.lik
   // the same pre-C2 legacy shape the old raw-write seeded, now expressed
   // through the seam (the import path's raw-fixture leg is covered in
   // test/unit/db-sqlite-adapter.test.js's legacy-shape import test).
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { legacy: seedItem('legacy') },
     settings: baseSettings(),
@@ -349,7 +348,7 @@ test('backfill: a legacy/partial persisted set missing `liked` loads with db.lik
   });
 
   const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'a legacy set without `liked` must backfill to []');
+  assert.deepEqual(likedStore().list(), [], 'a legacy set without `liked` reads as an empty list');
   assert.ok(db.metadata.legacy, 'other fields must remain intact after backfill');
 });
 
@@ -360,9 +359,9 @@ test('v1.42 migration-path: a corrupt db.json beside the ACTIVE store is inert (
   // filetube.db is live — garbage in it must not perturb anything. (Corrupt
   // db.json at FIRST boot aborts the import instead — AC9, adapter suite.)
   fs.writeFileSync(DB_FILE, '{ not valid json', 'utf8');
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'load ignores the corrupt legacy file entirely');
-  assert.ok(db.settings, 'and still yields a settings-bearing DB');
+  assert.ok(loadDatabase(), 'load still works beside the corrupt legacy file');
+  assert.deepEqual(likedStore().list(), [], 'load ignores the corrupt legacy file entirely');
+  assert.ok(settingsStore().get().pruneMissing !== undefined, 'and the settings still read (Wave 4: from their own store)');
   fs.rmSync(DB_FILE);
 });
 

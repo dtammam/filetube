@@ -38,7 +38,8 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, ytdlpDb } = require('../../server');
+const { folderStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
@@ -65,7 +66,7 @@ after(async () => {
 });
 
 function ytdlpDeps() {
-  return { updateDatabase, getMediaId };
+  return { updateDatabase, ytdlpDb, getMediaId }; // Wave 5: the namespace is a feature store
 }
 
 test('AC16/AC20/AC80: an item indexed BEFORE its subscription existed (pre-v1.20 / periodic-scan-race gap) gets channelUrl+channelName backfilled on a LATER scan -- proving the pass is NOT scoped to freshlyScannedIds', async () => {
@@ -104,7 +105,7 @@ test('AC16/AC20/AC80: an item indexed BEFORE its subscription existed (pre-v1.20
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
-    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });
 
@@ -119,14 +120,14 @@ test('AC17: an item that ALREADY has a captured channelUrl is NEVER overwritten,
 
     // Seed a downloadMeta entry so the FIRST scan's freshlyScannedIds bridge
     // captures a genuine channelUrl for this item.
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.downloadMeta.bbbbbbbbbb1 = {
         channelUrl: 'https://www.youtube.com/channel/UCoriginal00000000000000',
         channelName: 'Original Creator',
         capturedAt: Date.now(),
       };
-    });
+    }));
     await scanDirectories();
     const id = getMediaId(filePath);
     let db = loadDatabase();
@@ -148,7 +149,7 @@ test('AC17: an item that ALREADY has a captured channelUrl is NEVER overwritten,
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
-    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });
 
@@ -170,7 +171,7 @@ test('a non-yt-dlp file under an ordinary library folder is NEVER backfilled, ev
     const filePath = path.join(coincidentalDir, 'Home Movie [cccccccccc1].mp4');
     fs.writeFileSync(filePath, 'not a real video');
 
-    await updateDatabase((db) => { db.folders = [libraryDir]; return true; });
+    folderStore().replaceAll([libraryDir]);
     await scanDirectories();
 
     const id = getMediaId(filePath);
@@ -183,7 +184,8 @@ test('a non-yt-dlp file under an ordinary library folder is NEVER backfilled, ev
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
     fs.rmSync(libraryDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    folderStore().replaceAll([]); // Wave 4
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });
 
@@ -193,14 +195,14 @@ test('AC18: a hand-edited/corrupted subscription channelUrl that fails re-valida
   try {
     // Bypass validateSubscriptionInput/addSubscription entirely to simulate
     // a corrupted persisted record.
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.subscriptions.push({
         id: 'hostile-sub',
         channelUrl: 'https://evil.com/@x; rm -rf /',
         name: 'Hostile Channel',
       });
-    });
+    }));
 
     const channelDir = args.resolveChannelDir({ downloadDir }, { name: 'Hostile Channel' });
     fs.mkdirSync(channelDir, { recursive: true });
@@ -218,7 +220,7 @@ test('AC18: a hand-edited/corrupted subscription channelUrl that fails re-valida
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
-    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });
 
@@ -271,6 +273,6 @@ test('AC81 (regression-lock): the save-to-device route (/video/:id?download=1) i
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
-    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });

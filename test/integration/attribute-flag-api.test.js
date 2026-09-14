@@ -14,7 +14,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attribute
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __mintTestSession } = require('../../server');
+const { app, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -33,7 +34,7 @@ function seed(flag) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attr-lib-'));
   const filePath = path.join(root, 'clip.mp4');
   fs.writeFileSync(filePath, 'x');
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {},
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30, ...(flag === undefined ? {} : { attributeControlEnabled: flag }) },
     metadata: { vid1: { id: 'vid1', title: 'Clip', type: 'video', ext: '.mp4', filePath, folderName: path.basename(root), rootFolder: root, size: 1, addedAt: 1 } },

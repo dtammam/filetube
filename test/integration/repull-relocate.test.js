@@ -61,12 +61,11 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
+  app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
   planImportRelocation, activeMediaStreams,
-  flushPendingProgress, userStore,
-} = require('../../server');
-const { progressStore, tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+  flushPendingProgress, userStore, ytdlpDb } = require('../../server');
+const { seedState, settingsStore, progressStore, tombstoneStore, likedStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
@@ -87,7 +86,7 @@ function baseSettings(overrides) {
   };
 }
 
-const DEPS = { loadDatabase, updateDatabase, getMediaId };
+const DEPS = { loadDatabase, updateDatabase, ytdlpDb, getMediaId }; // Wave 5: the namespace is a feature store
 
 let libraryDir; // an ORDINARY library root -- where MeTube put the file
 let downloadDir; // FileTube's own yt-dlp download dir
@@ -138,7 +137,7 @@ function seedHydratedImport(overrides = {}, dbOverrides = {}) {
     ...CHANNEL,
     ...(overrides.item || {}),
   };
-  saveDatabase({
+  seedState({
     folders: [libraryDir],
     folderSettings: {},
     metadata: { [id]: item },
@@ -175,7 +174,7 @@ test('HEADLINE: a hydrated MeTube import is moved into its channel folder with t
 
   await updateDatabase((db) => {
     progressStore().set(oldId, { timestamp: 55, duration: 213, updatedAt: '2026-07-01T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
-    db.liked = [oldId];
+    likedStore().replaceAll([oldId]); // Wave 4: the frozen likes are a table
     return true;
   });
 
@@ -205,7 +204,7 @@ test('HEADLINE: a hydrated MeTube import is moved into its channel folder with t
 
   assert.deepStrictEqual(db.progress[newId], { timestamp: 55, duration: 213, updatedAt: '2026-07-01T00:00:00.000Z' }, 'watch progress must survive under the new id');
   assert.ok(!db.progress[oldId]);
-  assert.deepStrictEqual(db.liked, [newId], 'the LIKE must survive the re-key (db.liked is an array of media ids)');
+  assert.deepStrictEqual(likedStore().list(), [newId], 'the LIKE must survive the re-key (db.liked is an array of media ids)');
 
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${newId}.jpg`)), 'the thumbnail must be re-keyed');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${oldId}.jpg`)));
@@ -249,7 +248,7 @@ test('a SUBSCRIBED channel\'s import lands in that subscription\'s EXISTING fold
     quality: 'best',
   };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);
@@ -268,11 +267,11 @@ test('an UNSUBSCRIBED channel\'s import lands in a folder derived from its displ
   const { id } = seedHydratedImport();
   await updateDatabase((db) => {
     // A subscription to a DIFFERENT channel must not attract this item.
-    db.ytdlp = {
+    ytdlpDb.replaceAll({
       allowMembersOnly: false,
       subscriptions: [{ id: 'sub-x', channelUrl: 'https://www.youtube.com/@SomeoneElse', channelId: 'UCzzzzzzzzzzzzzzzzzzzzzz', name: '@SomeoneElse' }],
       downloadMeta: {}, pins: [], channelAvatars: {},
-    };
+    }); // Wave 5: the namespace is a feature store
     return true;
   });
 
@@ -304,7 +303,7 @@ test('MANDATORY RE-KEY REGRESSION: move -> rescan -> the item survives under its
   const { id: oldId } = seedHydratedImport();
   await updateDatabase((db) => {
     progressStore().set(oldId, { timestamp: 90, duration: 213, updatedAt: '2026-07-02T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
-    db.liked = [oldId];
+    likedStore().replaceAll([oldId]); // Wave 4: the frozen likes are a table
     return true;
   });
 
@@ -320,7 +319,7 @@ test('MANDATORY RE-KEY REGRESSION: move -> rescan -> the item survives under its
   assert.ok(!db.metadata[oldId], 'the OLD id must never be resurrected');
   assert.equal(Object.keys(db.metadata).length, 1, 'exactly one entry -- not a prune + fresh re-add');
   assert.deepStrictEqual(db.progress[newId], { timestamp: 90, duration: 213, updatedAt: '2026-07-02T00:00:00.000Z' }, 'watch progress must be byte-identical after the scan');
-  assert.deepStrictEqual(db.liked, [newId], 'the Like must survive the scan');
+  assert.deepStrictEqual(likedStore().list(), [newId], 'the Like must survive the scan');
   assert.equal(db.metadata[newId].channelUrl, CHANNEL.channelUrl, 'the identity must survive the scan');
   assert.equal(db.metadata[newId].youtubeId, VIDEO_ID);
   assert.equal(db.metadata[newId].metadataRepulledAt, 1_800_000_000_000, 'the reheat marker must survive the scan');
@@ -344,7 +343,7 @@ test('a relocation that lands MID-SCAN is not wiped by the scan\'s wholesale met
   await scanDirectories(); // index the padding + the import
   await updateDatabase((db) => {
     progressStore().set(oldId, { timestamp: 12, duration: 213, updatedAt: '2026-07-03T00:00:00.000Z' }); // Wave 2: the relational store (was db.progress[...] =)
-    db.liked = [oldId];
+    likedStore().replaceAll([oldId]); // Wave 4: the frozen likes are a table
     return true;
   });
 
@@ -362,7 +361,7 @@ test('a relocation that lands MID-SCAN is not wiped by the scan\'s wholesale met
   assert.equal(db.metadata[newId].filePath, result.newPath);
   assert.equal(db.metadata[newId].channelUrl, CHANNEL.channelUrl, 'identity intact');
   assert.deepStrictEqual(db.progress[newId], { timestamp: 12, duration: 213, updatedAt: '2026-07-03T00:00:00.000Z' }, 'progress intact');
-  assert.deepStrictEqual(db.liked, [newId], 'the Like intact');
+  assert.deepStrictEqual(likedStore().list(), [newId], 'the Like intact');
 });
 
 // ---- INELIGIBLE: the things that must NEVER be moved ------------------------
@@ -372,7 +371,7 @@ test('genuine LOCAL MEDIA (no channel, no youtubeId) is never moved -- the file 
   const filePath = path.join(libraryDir, 'Family BBQ.mp4');
   fs.writeFileSync(filePath, 'home-video-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [libraryDir], folderSettings: {}, liked: [],
     metadata: {
       [id]: {
@@ -451,7 +450,7 @@ test('a NATIVE download (already under the download root) is never moved, even w
   const filePath = path.join(subDir, `Some Video [${VIDEO_ID}].mp4`);
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {}, liked: [],
     metadata: {
       [id]: {
@@ -487,7 +486,7 @@ test('the module being DISABLED is a hard no-op: no move, no folder, no db chang
 test('the settings toggle OFF stops the move (default is ON)', async () => {
   const config = ytdlp.parseYtdlpConfig();
   const { filePath, id } = seedHydratedImport();
-  await updateDatabase((db) => { db.settings.relocateHydratedImports = false; return true; });
+  settingsStore().update({ relocateHydratedImports: false }); // Wave 4: the settings table
 
   const result = await relocateHydratedImportIntoChannelFolder(DEPS, config, id);
   assert.equal(result.status, 'skipped');
@@ -940,7 +939,7 @@ test('THE SPLIT-LIBRARY CRITICAL, end to end: an import whose channel is subscri
   // EXACTLY what addSubscription writes: handle URL, no channelId.
   const sub = { id: 'sub-unpolled', channelUrl: 'https://www.youtube.com/@RickAstley', name: '@RickAstley', format: 'video', quality: 'best' };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);
@@ -961,11 +960,11 @@ test('when the subscription join is UNDECIDABLE (unpolled @handle sub, item with
   const config = ytdlp.parseYtdlpConfig();
   const { filePath, id } = seedHydratedImport({ item: { channelHandleUrl: undefined } });
   await updateDatabase((db) => {
-    db.ytdlp = {
+    ytdlpDb.replaceAll({
       allowMembersOnly: false,
       subscriptions: [{ id: 's1', channelUrl: 'https://www.youtube.com/@RickAstley', name: '@RickAstley' }],
       downloadMeta: {}, pins: [], channelAvatars: {},
-    };
+    }); // Wave 5: the namespace is a feature store
     return true;
   });
 
@@ -987,7 +986,7 @@ test('C2-RESIDUAL (gate round 2): an id-less /c/ subscription for this channel m
   // What the user actually added, never successfully polled -> no channelId.
   const sub = { id: 's1', channelUrl: 'https://www.youtube.com/c/RickAstley', name: 'RickAstley' };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);
@@ -1016,7 +1015,7 @@ test('QA REPRO (gate round 3): an item with NO channelId, whose channel is subsc
     format: 'video', quality: 'best',
   };
   await updateDatabase((db) => {
-    db.ytdlp = { allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} };
+    ytdlpDb.replaceAll({ allowMembersOnly: false, subscriptions: [sub], downloadMeta: {}, pins: [], channelAvatars: {} }); // Wave 5: the namespace is a feature store
     return true;
   });
   const subDir = ytdlpArgs.resolveChannelDir(config, sub);

@@ -17,7 +17,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession, musicDb, booksDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const booksStore = require('../../lib/books/store');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -53,7 +54,7 @@ before(async () => {
   const trkPub = { id: 'tpub', title: 'Open Song', artist: 'X', album: 'A', filePath: path.join(musicPubRoot, 'X', 'A', 'open.flac'), rootFolder: musicPubRoot, addedAt: 1 };
   const trkHid = { id: 'thid', title: 'Secret Song', artist: 'Y', album: 'B', filePath: path.join(musicHidRoot, 'Y', 'B', 'secret.flac'), rootFolder: musicHidRoot, addedAt: 2 };
 
-  saveDatabase({
+  seedState({
     folders: [pubRoot, hidRoot], folderSettings: { [pubRoot]: { name: 'Family' }, [hidRoot]: { name: 'Secret' } },
     folderDisplayNames: { FamilyChannel: 'Family Channel', SecretChannel: 'Secret Channel' },
     metadata: { [openVid.id]: openVid, [hidVid.id]: hidVid },
@@ -61,12 +62,16 @@ before(async () => {
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await updateDatabase((db) => {
-    const b = booksStore.ensureBooks(db);
+    booksDb.mutate((h) => { // Wave 5: the books namespace is a feature store
+    const b = booksStore.ensureBooks(h);
     b.folders = [bookPubRoot, bookHidRoot];
     b.items = { bpub: bookPub, bhid: bookHid };
-    const m = musicStore.ensureMusic(db);
+    return true; });
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    const m = musicStore.ensureMusic(h);
     m.folders = [musicPubRoot, musicHidRoot];
     m.tracks = { tpub: trkPub, thid: trkHid };
+    return true; });
     return true;
   });
 

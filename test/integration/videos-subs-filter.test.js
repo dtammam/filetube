@@ -14,7 +14,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, __resetDatabaseForTests } = require('../../server');
+const { app, updateDatabase, __resetDatabaseForTests, ytdlpDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth;
@@ -44,7 +45,7 @@ const getVideos = async (qs) => {
 };
 
 test('subs=1: only items under a subscription folder (folderName join)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       // inSub matches the subscription ONLY via folderName (its channelName
@@ -56,8 +57,7 @@ test('subs=1: only items under a subscription folder (folderName join)', async (
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await updateDatabase((db) => {
-    if (!db.ytdlp || typeof db.ytdlp !== 'object') db.ytdlp = { allowMembersOnly: false, subscriptions: [] };
-    db.ytdlp.subscriptions = [{ name: 'ChanX', order: 0 }];
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ id: 'subChanX', name: 'ChanX', order: 0 }]; return true; }); // Wave 5
     return true;
   });
 
@@ -70,7 +70,7 @@ test('subs=1: only items under a subscription folder (folderName join)', async (
 });
 
 test('subs=1: matches on channelName too, and is empty with no subscriptions', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     // folderName sanitized differently from the channel; the channelName still matches.
     metadata: { byChannel: item('byChannel', { folderName: 'chanx_dir', channelName: 'Chan X' }) },
@@ -80,8 +80,7 @@ test('subs=1: matches on channelName too, and is empty with no subscriptions', a
   assert.deepStrictEqual((await getVideos('subs=1')).body.items, []);
 
   await updateDatabase((db) => {
-    if (!db.ytdlp || typeof db.ytdlp !== 'object') db.ytdlp = { allowMembersOnly: false, subscriptions: [] };
-    db.ytdlp.subscriptions = [{ name: 'Chan X', order: 0 }];
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ id: 'subChanX2', name: 'Chan X', order: 0 }]; return true; }); // Wave 5
     return true;
   });
   assert.deepStrictEqual((await getVideos('subs=1')).body.items.map((i) => i.id), ['byChannel'], 'channelName join');

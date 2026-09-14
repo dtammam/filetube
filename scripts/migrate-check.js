@@ -93,6 +93,18 @@ try {
     if (parts.length === 1) dropEmpty(expected, parts[0]);
     else if (expected[parts[0]]) dropEmpty(expected[parts[0]], parts[1]);
   }
+  // The relational namespaces (Waves 1-4) read back only when rows exist - an
+  // empty map, or an empty root list, assembles as absent, exactly like an
+  // empty doc_kv namespace does.
+  for (const key of ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folderSettings', 'folderDisplayNames']) dropEmpty(expected, key);
+  // The two ordered lists: the importer collapses an exact duplicate keep-first
+  // (set semantics) and an empty list assembles as absent - compare what it
+  // will actually hold.
+  for (const [key, normalize] of [['folders', require('../lib/config/folders').normalizeList], ['liked', require('../lib/media/liked').normalizeList]]) {
+    if (!Array.isArray(expected[key])) continue;
+    const kept = normalize(expected[key]);
+    if (kept.length === 0) delete expected[key]; else expected[key] = kept;
+  }
 
   const assembled = readPersistedDatabase(tmpDir);
   const a = JSON.stringify(sortKeysDeep(assembled));

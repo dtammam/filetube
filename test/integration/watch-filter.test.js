@@ -18,7 +18,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-watchfilt
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __resetDatabaseForTests, __mintTestSession, flushPendingProgress, userStore } = require('../../server');
+const { app, __resetDatabaseForTests, __mintTestSession, flushPendingProgress, userStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
@@ -43,7 +44,7 @@ beforeEach(async () => {
 });
 
 function writeDb(db) {
-  saveDatabase({ folders: [], folderSettings: {}, ...db });
+  seedState({ folders: [], folderSettings: {}, ...db });
 }
 
 function seedItem(id, overrides) {

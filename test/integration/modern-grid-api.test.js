@@ -18,8 +18,8 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, updateDatabase, userStore, __mintTestSession, __resetDatabaseForTests,
-} = require('../../server');
+  app, updateDatabase, userStore, __mintTestSession, __resetDatabaseForTests, podcastsDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -46,7 +46,7 @@ function item(id, over = {}) {
   };
 }
 function seed(metadata, over = {}) {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {}, metadata, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     ...over,
@@ -72,7 +72,7 @@ function seedPodcast() {
   const subId = 'sub-S';
   const dlId = podcastStore.episodeIdFor(subId, 'g1');
   const pendId = podcastStore.episodeIdFor(subId, 'g2');
-  updateDatabase((db) => {
+  updateDatabase(() => podcastsDb.mutate((db) => {
     const p = podcastStore.ensurePodcasts(db);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'The Show', feedUrl: 'https://e.com/f.xml' });
@@ -80,7 +80,7 @@ function seedPodcast() {
     podcastStore.reduceEpisodeDownloaded(p, dlId, { fileName: 'ep.mp3', filePath: '/x/ep.mp3', bytes: 5, nowMs: 7000 });
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g2', title: 'Pending', pubDateMs: 2, durationSec: 10 }], 'pending', 7000);
     return db;
-  });
+  }));
   return { subId, dlId, pendId };
 }
 
@@ -203,7 +203,7 @@ test('T4: /api/channels flags subscribed channels (isSub) for the avatar bar', a
       s1: item('s1', { folderName: 'SubChan', channelName: 'SubChan', filePath: '/media/SubChan/s1.mp4', addedAt: 900 }),
       p1: item('p1', { folderName: 'PlainChan', channelName: 'PlainChan', filePath: '/media/PlainChan/p1.mp4', addedAt: 800 }),
     },
-    { ytdlp: { allowMembersOnly: false, subscriptions: [{ name: 'SubChan', order: 0 }] } },
+    { ytdlp: { allowMembersOnly: false, subscriptions: [{ id: 'subChan', name: 'SubChan', order: 0 }] } }, // Wave 5: records carry ids
   );
   const res = await fetch(`${base}/api/channels`);
   const { channels } = await res.json();
@@ -220,7 +220,7 @@ test('#3a: /api/channels resolves the avatar from the channelId registry, not ju
   const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw'; // valid UC + 22-char shape
   seed(
     { r1: item('r1', { folderName: 'Reg', channelName: 'Reg', channelId: CHID, channelAvatarUrl: '' }) },
-    { ytdlp: { allowMembersOnly: false, subscriptions: [{ name: 'Reg', order: 0 }], channelAvatars: { [CHID]: { avatarUrl: 'https://cdn/reg.jpg', channelUrl: '', fetchedAt: 1 } } } },
+    { ytdlp: { allowMembersOnly: false, subscriptions: [{ id: 'subReg', name: 'Reg', order: 0 }], channelAvatars: { [CHID]: { avatarUrl: 'https://cdn/reg.jpg', channelUrl: '', fetchedAt: 1 } } } },
   );
   const { channels } = await (await fetch(`${base}/api/channels`)).json();
   const reg = channels.find((c) => c.folder === 'Reg');

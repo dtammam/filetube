@@ -42,7 +42,6 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app,
-  saveDatabase,
   loadDatabase,
   scanDirectories,
   getMediaId,
@@ -57,7 +56,7 @@ const {
   __mintTestSession,
   userStore,
 } = require('../../server');
-const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, progressStore } = require('../helpers/seed-state'); // Waves 2+4: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -121,7 +120,7 @@ test('POST /api/progress still returns 404 for an unknown media id, and never st
 // ---- No per-ping write ----------------------------------------------------
 
 test('POST /api/progress performs NO synchronous write -- neither doc-table saves nor user_progress batches move immediately after the response', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidNoWrite: { id: 'vidNoWrite', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
@@ -140,7 +139,7 @@ test('POST /api/progress performs NO synchronous write -- neither doc-table save
 // ---- Preserved stored shape + duration fallback ------------------------
 
 test('the flushed value keeps the exact pre-A4 stored shape and duration-fallback precedence, in the user\'s own row', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidShape: { id: 'vidShape', title: 'Clip', duration: 42 } },
     settings: baseSettings(),
@@ -160,7 +159,7 @@ test('the flushed value keeps the exact pre-A4 stored shape and duration-fallbac
 });
 
 test('the flush guard skips an id deleted between its ping and the flush (never resurrects state for a removed item)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidDeletedBeforeFlush: { id: 'vidDeletedBeforeFlush', title: 'Clip', duration: 10 } },
     settings: baseSettings(),
@@ -173,7 +172,7 @@ test('the flush guard skips an id deleted between its ping and the flush (never 
   // concurrent delete would leave behind.
   const db = loadDatabase();
   delete db.metadata.vidDeletedBeforeFlush;
-  saveDatabase(db);
+  seedState(db);
 
   await flushPendingProgress();
   assert.equal(userStore.getOneProgress(uid, 'vidDeletedBeforeFlush'), null, 'a flush must never write a row for a deleted metadata entry');
@@ -182,7 +181,7 @@ test('the flush guard skips an id deleted between its ping and the flush (never 
 // ---- Read-your-writes overlay -------------------------------------------
 
 test('read-your-writes: GET /api/progress/:id sees a just-posted position BEFORE the flush fires', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidOverlay1: { id: 'vidOverlay1', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
@@ -198,7 +197,7 @@ test('read-your-writes: GET /api/progress/:id sees a just-posted position BEFORE
 });
 
 test('read-your-writes: GET /api/videos/:id sees a just-posted position BEFORE the flush fires', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidOverlay2: { id: 'vidOverlay2', title: 'Clip', type: 'video', ext: '.mp4', duration: 100 } },
     settings: baseSettings(),
@@ -211,7 +210,7 @@ test('read-your-writes: GET /api/videos/:id sees a just-posted position BEFORE t
 });
 
 test('read-your-writes: GET /api/videos per-item progress map sees a just-posted position BEFORE the flush fires', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       vidOverlay3: {
@@ -232,7 +231,7 @@ test('read-your-writes: GET /api/videos per-item progress map sees a just-posted
 });
 
 test('read-your-writes overlay never mutates the shared cache object in place', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidNoMutate: { id: 'vidNoMutate', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
@@ -258,7 +257,7 @@ test('read-your-writes overlay never mutates the shared cache object in place', 
 // ---- v1.43: per-user isolation --------------------------------------------
 
 test('per-user isolation: two users\' positions on the SAME media never touch each other, pending or committed', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidTwoUsers: { id: 'vidTwoUsers', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
@@ -288,7 +287,7 @@ test('per-user isolation: two users\' positions on the SAME media never touch ea
 });
 
 test('per-user isolation: a user with no position sees zero even when ANOTHER user has watched the item', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidOnlyAdmin: { id: 'vidOnlyAdmin', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
@@ -304,7 +303,7 @@ test('per-user isolation: a user with no position sees zero even when ANOTHER us
 // ---- AC4.1: batched writes ------------------------------------------------
 
 test('AC4.1: a burst of N rapid pings against the same id collapses into <= N/5 batch transactions, tied to the PROGRESS_FLUSH_MS window', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidBurst: { id: 'vidBurst', title: 'Clip', duration: 1000 } },
     settings: baseSettings(),
@@ -335,7 +334,7 @@ test('AC4.1: a burst of N rapid pings against the same id collapses into <= N/5 
 });
 
 test('AC4.1: many pings against DIFFERENT ids inside one window still collapse into a single batch transaction', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       multiA: { id: 'multiA', title: 'A', duration: 10 },
@@ -360,7 +359,7 @@ test('AC4.1: many pings against DIFFERENT ids inside one window still collapse i
 test('AC4.2: DELETE /api/videos/:id triggers exactly 1 saveDatabase call per invocation', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-progress-coalescer-delete-${Date.now()}.mp4`);
   fs.writeFileSync(filePath, 'bytes');
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidDel11: { id: 'vidDel11', title: 'Clip', filePath } },
     settings: baseSettings(),
@@ -372,7 +371,7 @@ test('AC4.2: DELETE /api/videos/:id triggers exactly 1 saveDatabase call per inv
 });
 
 test('AC4.2: POST /api/config triggers exactly 1 saveDatabase call per invocation', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
+  seedState({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const before = __getSaveDatabaseCallCount();
   const res = await fetch(`${base}/api/config`, {
     method: 'POST',
@@ -384,7 +383,7 @@ test('AC4.2: POST /api/config triggers exactly 1 saveDatabase call per invocatio
 });
 
 test('AC4.2: POST /api/settings triggers exactly 1 saveDatabase call per invocation', async () => {
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
+  seedState({ folders: [], folderSettings: {}, metadata: {}, settings: baseSettings() });
   const before = __getSaveDatabaseCallCount();
   const res = await fetch(`${base}/api/settings`, {
     method: 'POST',
@@ -402,7 +401,7 @@ test('AC4.2: the scan\'s final merge triggers exactly 1 saveDatabase call for an
   const id = getMediaId(filePath);
   const size = fs.statSync(filePath).size;
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.jpg`), 'thumb-bytes');
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {},
     metadata: {
       [id]: {
@@ -426,7 +425,7 @@ test('AC4.2: a simulated crash mid-write during POST /api/config never tears the
   // v1.42: the old fs.renameSync stub can't intercept SQLite; the sanctioned
   // replacement is __failNextSaveForTests() — the same one-shot "this write
   // dies" force, injected at the seam instead of under it.
-  saveDatabase({
+  seedState({
     folders: ['/keep-me'], folderSettings: {}, metadata: {}, settings: baseSettings(),
   });
   const before = readPersistedDatabase(process.env.DATA_DIR);
@@ -450,13 +449,13 @@ test('AC4.2: a simulated crash mid-write during POST /api/config never tears the
     body: JSON.stringify({ folders: [] }),
   });
   assert.equal(res2.status, 200);
-  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders, [], 'a later clean write proceeds normally');
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders || [], [], 'a later clean write proceeds normally (Wave 4: an empty root list has no rows)');
 });
 
 // ---- AC4.3 (converse): bounded, progress-only relaxation ------------------
 
 test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves the store intact, and the lost data is bounded to <= one flush window of watch position only', async () => {
-  saveDatabase({
+  seedState({
     folders: ['/untouched-folder'], folderSettings: {},
     metadata: {
       vidCrash: { id: 'vidCrash', title: 'Clip', duration: 100 },
@@ -483,7 +482,7 @@ test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves 
 });
 
 test('AC4.3: after a normal flush (not a crash), the position IS durable in the user\'s row and parses correctly', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidDurable: { id: 'vidDurable', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
@@ -503,7 +502,7 @@ test('AC4.3: after a normal flush (not a crash), the position IS durable in the 
 // exact primitive those handlers call.
 
 test('shutdown flush primitive: flushPendingProgress persists every staged id in one batch transaction and clears the queue', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       shutdownA: { id: 'shutdownA', title: 'A', duration: 10 },
@@ -540,7 +539,7 @@ test('flushPendingProgress is a safe no-op (no write) when nothing is pending', 
 // v1.43 persists these client-supplied ids into relational rows.
 
 test('a prototype-shaped id ("__proto__"/"constructor") 404s at POST /api/progress and never mints a row', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { realVid: { id: 'realVid', title: 'Clip', duration: 100 } },
     settings: baseSettings(),

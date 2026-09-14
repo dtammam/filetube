@@ -20,10 +20,10 @@ const {
   recordServed,
   clearPersistedServedAt,
   evictTranscodeCache,
-  saveDatabase,
   __resetDatabaseForTests,
   __getLoadDatabaseCallCount,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -42,11 +42,11 @@ function baseSettings(overrides) {
   };
 }
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 // v1.42: persisted-state reads go through the sanctioned second-connection

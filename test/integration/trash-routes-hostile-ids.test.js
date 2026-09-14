@@ -17,7 +17,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __resetDatabaseForTests, trashStore, progressStore, tombstoneStore, viewCountStore, userStore } = require('../../server');
+const { app, __resetDatabaseForTests, trashStore, progressStore, tombstoneStore, viewCountStore, userStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { SQLITE_FILENAME, __openRawForTests: openRaw } = require('../../lib/db/sqlite');
 
@@ -28,7 +29,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   authenticateFetch(server, base);
   await __resetDatabaseForTests();
-  saveDatabase({
+  seedState({
     folders: [DATA_DIR], folderSettings: {}, liked: [], metadata: {},
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     // The bell is a 404 unless the downloader module is on AND a subscription exists.

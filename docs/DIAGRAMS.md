@@ -92,19 +92,21 @@ store persists the legacy db.json object shape per row; everything
 user-scoped is relational, and so are the media namespaces the
 relational-migration arc has moved out of the document store so far (the
 view counter in Wave 1; the frozen pre-auth positions and the deferred-delete
-tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box).
+tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
+the app settings and the folder config in Wave 4 - see the CONFIG box; the
+frozen pre-auth likes in Wave 4 too - the MEDIA box).
 The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.293.0:
-9 `doc_kv` namespaces, 18 `doc_single` names, 34 relational tables,
-schema version 23. (The relational-migration arc, Wave 1 onward, moves the
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
+1 `doc_kv` namespaces (just `metadata`), 0 `doc_single` names, 60 relational tables,
+schema version 31. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata ·<br/>books.items · books.progress ·<br/>books.audio · music.tracks · podcasts.episodes ·<br/>tv.episodes · ytdlp.downloadMeta · ytdlp.channelAvatars"]
-        SINGLE["doc_single (name, json)<br/>whole small objects:<br/>folders · folderSettings · folderDisplayNames ·<br/>settings · liked · books.folders · books.settings ·<br/>books.pins · music.folders · music.settings · music.channels ·<br/>podcasts.subscriptions · podcasts.settings ·<br/>tv.folders · tv.settings ·<br/>ytdlp.subscriptions · ytdlp.pins · ytdlp.allowMembersOnly"]
+        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata (the last doc namespace - Wave 6 moves it)"]
+        SINGLE["doc_single (name, json)<br/>EMPTY since Wave 5 (every whole-object namespace is a feature-store table now);<br/>dropped in Wave 7"]
     end
 
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
@@ -118,6 +120,22 @@ flowchart LR
         PR["lib/media/progress.js<br/>media_progress (media_id, json)<br/>the FROZEN pre-auth positions the first admin adopts once;<br/>carried in-transaction with the doc commit"]
         DT["lib/media/deleteTombstones.js<br/>media_delete_tombstones (media_id, deleted_at, json)<br/>the deferred-delete records: minted/retired/consumed<br/>INSIDE the doc commit's transaction (inSaveTransaction)"]
         TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
+        LK["lib/media/liked.js<br/>media_liked (media_id, position)<br/>the FROZEN pre-auth likes the first admin adopts once;<br/>re-keyed/removed inside the doc commit by rename/trash/restore/purge"]
+    end
+
+    subgraph CONFIG["Relational CONFIG tables (Wave 4; lib/config/ stores on the lib/db/kvStore.js + lib/db/orderedListStore.js shapes)"]
+        ST["lib/config/settings.js<br/>app_settings (key, json)<br/>the app settings, ONE ROW PER KEY;<br/>DEFAULT_SETTINGS (server.js) merged on read;<br/>a mutator's write rides the doc commit (inSaveTransaction)"]
+        FO["lib/config/folders.js<br/>library_folders (path, position)<br/>the configured media roots in the operator's order;<br/>the config POST replaces the list inside the doc commit"]
+        FS["lib/config/folderSettings.js<br/>library_folder_settings (root_path, json)<br/>per-root name / hidden / hiddenFromSidebar / glyph / order,<br/>keyed by the root's STORED spelling (QW2)"]
+        FD["lib/config/folderDisplayNames.js<br/>channel_folder_display_names (folder_name, json)<br/>per-channel-folder display names; the channel heal<br/>writes one inside the doc commit (OVERWRITE posture)"]
+    end
+
+    subgraph FEATURES["Relational FEATURE stores (Wave 5; lib/db/featureStore.js - read() = the module's snapshot, mutate() = its reducers + a row DIFF inside the doc commit)"]
+        TV["lib/tv/store.js<br/>tv_folders (path, position) · tv_episodes (episode_id, json) · tv_settings (key, json)<br/>the Shows library: roots, one row per episode, settings"]
+        MU["lib/music/store.js<br/>music_folders · music_tracks (track_id, json) · music_settings · music_channels (folder_name, json)<br/>the music library: roots, one row per track, settings, the show-in-Music marks"]
+        BK["lib/books/store.js<br/>books_folders · books_items (book_id, json) · books_progress · books_pins (id, position, json) · books_settings · books_audio<br/>the books library: roots, one row per book, the frozen pre-auth positions + shelf pins, TTS status"]
+        PC["lib/podcasts/store.js<br/>podcasts_subscriptions (id, position, json) · podcasts_episodes (episode_id, json) · podcasts_settings (key, json)<br/>the podcast registry: the ordered subscriptions (no feed URLs - those stay in the 0600 secrets file), one row per episode (the download ARCHIVE, tombstones included), settings"]
+        YT["lib/ytdlp/store.js<br/>ytdlp_subscriptions (id, position, json) · ytdlp_pins (id, position, json) · ytdlp_download_meta (meta_key, json) · ytdlp_channel_avatars (channel_id, json) · ytdlp_settings (key, json)<br/>the downloader: the ordered channel subscriptions, the frozen pre-auth channel pins, the download->scan identity bridge (consumed by the scan inside its commit), the channel-avatar registry, the allowMembersOnly flag"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]
@@ -131,6 +149,8 @@ flowchart LR
     WRITERS --> DOC
     WRITERS --> REL
     WRITERS --> MEDIA
+    WRITERS --> CONFIG
+    WRITERS --> FEATURES
 ```
 
 Ownership at a glance: `metadata`/`folders*` belong to the video core in

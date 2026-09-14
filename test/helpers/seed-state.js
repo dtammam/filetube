@@ -2,10 +2,12 @@
 
 // Test seeding across the two data models (relational-migration arc, Wave 2).
 //
-// Until the arc finishes, a test's "state" fixture may carry BOTH doc-model
-// namespaces (folders/metadata/liked/settings/...) and namespaces that have
-// already become relational tables (viewCounts in Wave 1; progress and
-// deleteTombstones in Wave 2). The doc-model save-lock REFUSES the relational
+// Until the arc finishes, a test's "state" fixture may carry BOTH the doc-model
+// namespaces still left (metadata and the feature containers) and namespaces
+// that have already become relational tables (viewCounts in Wave 1; progress
+// and deleteTombstones in Wave 2; trash in Wave 3; settings, the folder config
+// and liked in Wave 4; the tv / music / books / podcasts / ytdlp containers in
+// Wave 5 - only `metadata` still goes through saveDatabase). The doc-model save-lock REFUSES the relational
 // keys (that refusal is the arc's net), so this helper is the one seam that
 // splits a legacy-shaped fixture: relational keys go through their stores -
 // the SAME API the routes use - and the rest goes through saveDatabase.
@@ -19,6 +21,24 @@ const RELATIONAL = {
   deleteTombstones: (s) => s.tombstoneStore,
   trash: (s) => s.trashStore, // Wave 3
 };
+// Wave 4: the config singletons - same rule as above (replaced only when the
+// fixture carries the key). A whole-state fixture that omits one relies on
+// the suite's __resetDatabaseForTests() (which wipes every table) for the
+// "absent = defaults" the whole-document save used to give; an object
+// derived from loadDatabase() (which no longer carries these keys) must NOT
+// wipe them on re-seed.
+const DOC_SEMANTICS = {
+  settings: (s) => s.settingsStore,
+  folders: (s) => s.folderStore,
+  folderSettings: (s) => s.folderSettingsStore,
+  folderDisplayNames: (s) => s.folderDisplayNameStore,
+  liked: (s) => s.likedStore,
+  tv: (s) => s.tvDb, // Wave 5: a feature store - replaceAll(ns) takes the container shape
+  music: (s) => s.musicDb,
+  books: (s) => s.booksDb,
+  podcasts: (s) => s.podcastsDb,
+  ytdlp: (s) => s.ytdlpDb,
+};
 
 function server() {
   return require('../../server');
@@ -31,12 +51,15 @@ function seedState(state) {
   const s = server();
   const doc = {};
   for (const key of Object.keys(state)) {
-    if (RELATIONAL[key]) continue;
+    if (RELATIONAL[key] || DOC_SEMANTICS[key]) continue;
     doc[key] = state[key];
   }
   s.saveDatabase(doc);
   for (const key of Object.keys(RELATIONAL)) {
     if (state[key] !== undefined) RELATIONAL[key](s).replaceAll(state[key]);
+  }
+  for (const key of Object.keys(DOC_SEMANTICS)) {
+    if (state[key] !== undefined) DOC_SEMANTICS[key](s).replaceAll(state[key]);
   }
   return doc;
 }
@@ -47,4 +70,14 @@ module.exports = {
   tombstoneStore: () => server().tombstoneStore,
   viewCountStore: () => server().viewCountStore,
   trashStore: () => server().trashStore, // Wave 3
+  settingsStore: () => server().settingsStore, // Wave 4
+  folderStore: () => server().folderStore, // Wave 4
+  folderSettingsStore: () => server().folderSettingsStore, // Wave 4
+  folderDisplayNameStore: () => server().folderDisplayNameStore, // Wave 4
+  likedStore: () => server().likedStore, // Wave 4
+  tvDb: () => server().tvDb, // Wave 5
+  musicDb: () => server().musicDb, // Wave 5
+  booksDb: () => server().booksDb, // Wave 5
+  podcastsDb: () => server().podcastsDb, // Wave 5
+  ytdlpDb: () => server().ytdlpDb, // Wave 5
 };

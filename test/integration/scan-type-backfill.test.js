@@ -57,7 +57,8 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { scanDirectories, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -71,7 +72,7 @@ function baseSettings(overrides) {
 }
 
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 function readDb() {

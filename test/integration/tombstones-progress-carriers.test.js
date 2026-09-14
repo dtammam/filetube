@@ -27,9 +27,10 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   app, trashItem, restoreTrashItem, purgeTrashItem, moveItemToFolder, scanDirectories, getMediaId,
-  loadDatabase, updateDatabase, saveDatabase, __resetDatabaseForTests, __clearUsersForTests,
+  loadDatabase, updateDatabase, __resetDatabaseForTests, __clearUsersForTests,
   progressStore, tombstoneStore, inSaveTransaction, userStore, DELETE_TOMBSTONE_CAP,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { computeTrashTarget } = require('../../lib/trashPaths');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -58,7 +59,7 @@ function seedLibrary() {
   const filePath = path.join(root, 'Chan', 'video one.mp4');
   fs.writeFileSync(filePath, 'media-bytes-1');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {}, liked: [], settings,
     metadata: { [id]: { id, name: 'video one.mp4', title: 'video one', filePath, folderName: 'Chan', rootFolder: root, size: 13, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 100 } },
   });
@@ -125,7 +126,7 @@ test('move: the position re-keys and the stale tombstone under the OLD id is dro
 
 test('delete route: the mint applies the growth bound INSIDE the delete (CAP rows + 1 mint -> the OLDEST is pruned)', async () => {
   const goneId = 'gone1';
-  saveDatabase({
+  seedState({
     folders: [DATA_DIR], folderSettings: {}, liked: [], settings,
     metadata: { [goneId]: { id: goneId, title: 'g', name: 'g.mp4', filePath: path.join(DATA_DIR, 'g.mp4'), folderName: 'M', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 1, size: 1, addedAt: 1 } },
   });
@@ -162,7 +163,7 @@ test('scan LIVE re-verify: a tombstone retired AFTER the Phase-1 snapshot must N
   fs.utimesSync(tombed, OLD, OLD); // mtime OLDER than deletedAt -> the reap arm
   fs.writeFileSync(path.join(lib, 'newer.mp4'), 'newer-bytes'); // processed first (recency order) -> the yield point
   const idT = getMediaId(tombed);
-  saveDatabase({ folders: [lib], folderSettings: {}, metadata: {}, liked: [], settings: baseSettings() });
+  seedState({ folders: [lib], folderSettings: {}, metadata: {}, liked: [], settings: baseSettings() });
   tombstoneStore.set(idT, tomb(tombed));
   const hook = snapshotHook();
   const scan = scanDirectories();
@@ -188,7 +189,7 @@ test('scan Phase-1 snapshot: a tombstone minted MID-SCAN survives the final merg
   fs.writeFileSync(consumedFile, 'c');
   fs.utimesSync(consumedFile, OLD, OLD);
   const idC = getMediaId(consumedFile);
-  saveDatabase({
+  seedState({
     folders: [lib], folderSettings: {}, liked: [], settings: baseSettings(),
     metadata: { [idG]: { id: idG, title: 'gone', name: 'gone.mp4', filePath: gone, folderName: path.basename(lib), rootFolder: lib, type: 'video', ext: '.mp4', size: 1, addedAt: 1, duration: 1 } },
   });
@@ -214,7 +215,7 @@ test('adoption: createFirstAdmin reads the frozen record from its table - every 
     pos: { position: 42 },
     bare: 918, // a bare number was never adopted (skipped) - unchanged
   };
-  saveDatabase({ folders: [], folderSettings: {}, metadata: Object.fromEntries(Object.keys(FIX).map((id) => [id, { id, name: `${id}.mp4` }])), liked: [], settings: {} });
+  seedState({ folders: [], folderSettings: {}, metadata: Object.fromEntries(Object.keys(FIX).map((id) => [id, { id, name: `${id}.mp4` }])), liked: [], settings: {} });
   progressStore.replaceAll(FIX);
   const res = await fetch(`${base}/api/auth/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'adopter', displayName: 'A', password: 'a-good-password' }) });
   assert.strictEqual(res.status, 200, await res.text());
@@ -232,7 +233,7 @@ test('adoption: createFirstAdmin reads the frozen record from its table - every 
 });
 
 test('restore validation: hostile progress / tombstone shapes are a 400 BEFORE the wipe - the live rows survive every refusal', async () => {
-  saveDatabase({ folders: [DATA_DIR], folderSettings: {}, liked: [], metadata: { v: { id: 'v', title: 'v', filePath: path.join(DATA_DIR, 'v.mp4'), folderName: 'M', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } }, settings });
+  seedState({ folders: [DATA_DIR], folderSettings: {}, liked: [], metadata: { v: { id: 'v', title: 'v', filePath: path.join(DATA_DIR, 'v.mp4'), folderName: 'M', rootFolder: DATA_DIR, type: 'video', ext: '.mp4' } }, settings });
   progressStore.replaceAll({ v: { timestamp: 3 } });
   tombstoneStore.replaceAll({ t: { filePath: '/t', deletedAt: 1 } });
   const good = await (await fetch(`${base}/api/admin/backup`)).json();

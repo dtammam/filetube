@@ -21,9 +21,10 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, loadDatabase, saveDatabase, getMediaId, scanDirectories, scanState,
-  updateDatabase, recordLocalChannelHealFanout,
+  app, loadDatabase, getMediaId, scanDirectories, scanState,
+  updateDatabase, inSaveTransaction, recordLocalChannelHealFanout, folderDisplayNameStore,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const ytdlp = require('../../lib/ytdlp');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -71,7 +72,7 @@ before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   authenticateFetch(server, base);
-  saveDatabase({
+  seedState({
     folders: [mediaDir], folderSettings: {}, metadata: md,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '' },
   });
@@ -91,7 +92,8 @@ test('a local heal landing DURING a scan keeps its channelId + name through the 
   const scan = scanDirectories();
   await new Promise((r) => setTimeout(r, 5));
   const duringScan = scanState.scanning;
-  const n = await recordLocalChannelHealFanout({ updateDatabase }, target);
+  // Wave 4: the heal's display-name seam, in the production posture (the write rides the commit).
+  const n = await recordLocalChannelHealFanout({ updateDatabase, setFolderDisplayName: (name, value) => inSaveTransaction(() => folderDisplayNameStore.set(name, value)) }, target);
   assert.ok(n >= 1, 'the heal wrote at least the victim');
   await scan;
   await waitIdle();

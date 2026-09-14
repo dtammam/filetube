@@ -25,10 +25,9 @@ process.env.FILETUBE_YTDLP_ENABLED = 'true';
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
-  trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests,
-} = require('../../server');
-const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+  app, getMediaId, loadDatabase, updateDatabase, scanDirectories,
+  trashItem, restoreTrashItem, purgeTrashItem, sweepTrash, userStore, __resetDatabaseForTests, ytdlpDb } = require('../../server');
+const { seedState, settingsStore, tombstoneStore, trashStore, folderStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -58,7 +57,7 @@ function seedLibrary(settingsOverrides) {
   const filePath = path.join(ROOT, 'Chan', 'clip.mp4');
   fs.writeFileSync(filePath, 'clip-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT],
     folderSettings: {},
     metadata: {
@@ -81,8 +80,7 @@ test('QA C1: opening the bell while an item sits in Trash leaves every carrier i
   const { id } = seedLibrary();
   // The feature gate needs >=1 subscription (the seat's repro's own seed).
   await updateDatabase((db) => {
-    db.ytdlp = db.ytdlp || {};
-    db.ytdlp.subscriptions = [{ url: 'https://youtube.com/@chan', channelId: 'UCx', title: 'Chan' }];
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ id: 'subChan', url: 'https://youtube.com/@chan', channelId: 'UCx', title: 'Chan' }]; return true; }); // Wave 5
   });
   userStore.recordNotifications([{ mediaId: id, createdAt: Date.now() }]);
   userStore.setProgress(uid, id, { timestamp: 44, duration: 60, updatedAt: ISO });
@@ -176,7 +174,7 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
       originalId: 'x', originalPath: path.join(OUT1, 'planted.mp4'),
       trashPath: filePath, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'x', title: 'evil' },
     });
-    db.settings.trashRetentionDays = 1e-9; // the smuggled amplifier
+    settingsStore().set('trashRetentionDays', 1e-9); // the smuggled amplifier (Wave 4: the settings table)
   });
 
   // The retention clamp: 1e-9 is not in the allowed set -> treated as the
@@ -426,7 +424,7 @@ test('R2 BIND-cc: DIFFERENT-inode content at a TOMBSTONED record-covered path is
 test('R2 BIND-s: a smuggled out-of-set retention cannot rapid-purge LEGITIMATE records (the sweep clamp)', async () => {
   const { id } = seedLibrary();
   const tr = await trashItem(deps(), id, { nowMs: Date.now() - 5 * DAY }); // fresh under the 30d default
-  await updateDatabase((db) => { db.settings.trashRetentionDays = 1e-9; }); // past the POST validator
+  settingsStore().set('trashRetentionDays', 1e-9); // past the POST validator (Wave 4: the settings table)
 
   const purged = await sweepTrash(Date.now());
   assert.equal(purged, 0, 'THE binding: the clamp treats 1e-9 as the default, not as microseconds');
@@ -532,7 +530,7 @@ test('R3 CRITICAL-1b: removing the library folder does not make a trashed item u
   const { id, filePath } = seedLibrary();
   const tr = await trashItem(deps(), id, { nowMs: Date.now() - 5 * DAY });
   assert.equal(tr.ok, true);
-  await updateDatabase((db) => { db.folders = []; }); // the user removes the folder
+  folderStore().replaceAll([]); // the user removes the folder
 
   // Still inside its window: the sweep leaves it alone regardless.
   assert.equal(await sweepTrash(Date.now()), 0);

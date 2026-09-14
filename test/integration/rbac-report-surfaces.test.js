@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, kid, unrestricted;
@@ -46,7 +47,7 @@ before(async () => {
   const hidden = vid(hidRoot, 'Vault', 'SECRETMOVIE.avi', { needsTranscode: true, transcodeStatus: 'pending' });
   const hiddenDupe = vid(hidRoot, 'Vault2', 'dupe.mp4');
 
-  saveDatabase({
+  seedState({
     folders: [pubRoot, hidRoot], folderSettings: {},
     metadata: { [openA.id]: openA, [openB.id]: openB, [hidden.id]: hidden, [hiddenDupe.id]: hiddenDupe },
     liked: [],

@@ -41,7 +41,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, ytdlpDb } = require('../../server');
 const store = require('../../lib/ytdlp/store');
 const run = require('../../lib/ytdlp/run');
 const args = require('../../lib/ytdlp/args');
@@ -65,7 +65,7 @@ after(async () => {
 });
 
 function ytdlpDeps() {
-  return { updateDatabase, getMediaId };
+  return { updateDatabase, ytdlpDb, getMediaId }; // Wave 5
 }
 
 test('a REAL FTCHMETA line, parsed by the REAL parseChannelMetaLine, flows all the way to db.metadata[id].releaseDate via the real scan bridge (Path 1) -- no channel_thumbnail key at all, matching a real yt-dlp payload', async () => {
@@ -197,7 +197,7 @@ test('C6 Path 2: a matched subscription\'s OWN channelAvatarUrl heals an identit
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
-    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });
 
@@ -208,7 +208,7 @@ test('C6 Path 2: a hand-edited/corrupted subscription channelAvatarUrl that fail
     // Bypass recordSubscriptionChannelAvatar's own sanitizer entirely to
     // simulate a corrupted persisted record (same posture as the sibling
     // AC18 hostile-channelUrl test in ytdlp-folder-backfill.test.js).
-    await updateDatabase((db) => {
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
       const ns = store.ensureYtdlp(db);
       ns.subscriptions.push({
         id: 'hostile-avatar-sub',
@@ -216,7 +216,7 @@ test('C6 Path 2: a hand-edited/corrupted subscription channelAvatarUrl that fail
         name: 'Hostile Avatar Channel',
         channelAvatarUrl: 'javascript:alert(1)',
       });
-    });
+    }));
 
     const channelDir = args.resolveChannelDir({ downloadDir }, { name: 'Hostile Avatar Channel' });
     fs.mkdirSync(channelDir, { recursive: true });
@@ -234,6 +234,6 @@ test('C6 Path 2: a hand-edited/corrupted subscription channelAvatarUrl that fail
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
-    await updateDatabase((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; });
+    await updateDatabase(() => ytdlpDb.mutate((db) => { const ns = store.ensureYtdlp(db); ns.subscriptions = []; return true; }));
   }
 });

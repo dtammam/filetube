@@ -18,7 +18,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, flagless, writerRestricted, writerPathRestricted;
@@ -28,7 +29,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base); // admin via patched global fetch
 
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {}, folderDisplayNames: {},
     metadata: {
       // An UNHEALABLE folder: no channelName anywhere -> /api/channels name

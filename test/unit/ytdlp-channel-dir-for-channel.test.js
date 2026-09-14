@@ -25,6 +25,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 
 const ytdlp = require('../../lib/ytdlp');
+const ytdlpStoreModule = require('../../lib/ytdlp/store');
+const { featureStoreFor, docView } = require('../helpers/scratch-feature-store');
 const ytdlpArgs = require('../../lib/ytdlp/args');
 
 const CONFIG = ytdlp.parseYtdlpConfig({
@@ -130,13 +132,14 @@ test('AMBIGUITY: it is FALSE whenever the question is actually decidable', () =>
 test('the opportunistic channelId backfill writes the id onto an UNPOLLED matched subscription (so the ambiguity above can only ever cost ONE deferral)', async () => {
   const db = dbWith([{ ...UNPOLLED_HANDLE_SUB }]);
   const deps = {
-    loadDatabase: () => db,
+    ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), // Wave 5: the namespace is a feature store - a scratch database seeded from the fixture's ytdlp key
+    loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)),
     updateDatabase: (fn) => Promise.resolve(fn(db)),
   };
 
   const changed = await ytdlp.backfillSubscriptionChannelIdForChannel(deps, ITEM);
   assert.equal(changed, true);
-  assert.equal(db.ytdlp.subscriptions[0].channelId, ITEM.channelId, 'the subscription now carries the canonical channelId');
+  assert.equal(deps.ytdlpDb.read().subscriptions[0].channelId, ITEM.channelId, 'the subscription now carries the canonical channelId (in its table)');
 
   // Write-once (the AC17 posture `recordSubscriptionChannelId` already enforces)
   // and idempotent on a re-run.
@@ -146,11 +149,11 @@ test('the opportunistic channelId backfill writes the id onto an UNPOLLED matche
 
 test('the channelId backfill is a no-op when the channel is not subscribed, or when we hold no id', async () => {
   const db = dbWith([{ id: 's5', channelUrl: 'https://www.youtube.com/@Other', name: 'x' }]);
-  const deps = { loadDatabase: () => db, updateDatabase: (fn) => Promise.resolve(fn(db)) };
+  const deps = { ytdlpDb: featureStoreFor(ytdlpStoreModule.FEATURE, db), loadDatabase: () => docView(db, featureStoreFor(ytdlpStoreModule.FEATURE, db)), updateDatabase: (fn) => Promise.resolve(fn(db)) }; // Wave 5
 
   assert.equal(await ytdlp.backfillSubscriptionChannelIdForChannel(deps, ITEM), false, 'not subscribed');
   assert.equal(await ytdlp.backfillSubscriptionChannelIdForChannel(deps, { channelUrl: ITEM.channelUrl }), false, 'no channelId in hand');
-  assert.equal(db.ytdlp.subscriptions[0].channelId, undefined, 'and the unrelated subscription is untouched');
+  assert.equal(deps.ytdlpDb.read().subscriptions[0].channelId, undefined, 'and the unrelated subscription is untouched');
 });
 
 // ---- GATE FIX ROUND 2: ambiguity is about COMPARABILITY, not about `/@` -----

@@ -14,17 +14,13 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const {
-  app, saveDatabase, loadDatabase, pendingProgress, pendingProgressKey,
-  flushPendingProgress,
-  scanDirectories,
-  __resetDatabaseForTests,
-  __getPersistedStateEpoch,
-  userStore,
-  viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
+const { app, loadDatabase, pendingProgress, pendingProgressKey, flushPendingProgress, scanDirectories, __resetDatabaseForTests, __getPersistedStateEpoch, userStore, viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
   progressStore, tombstoneStore, // Wave 2: the frozen pre-auth positions + the tombstones, likewise
   trashStore, // Wave 3: the trashed-item records, likewise
+  musicDb, // Wave 5: the music namespace, likewise
+  __failNextRestorePopulateForTests, // Wave 5: the mid-populate rollback seam
 } = require('../../server');
+const { seedState, podcastsDb } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -102,6 +98,14 @@ function fullState() {
       subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
       downloadMeta: {}, pins: [], channelAvatars: {},
     },
+    // Wave 5: the podcasts namespace rides the bundle from its tables (a
+    // non-empty value so the deep-equal proves carriage; the bundle key is
+    // ALWAYS present now, like tv/music/books, so restoredNamespaces names it).
+    podcasts: {
+      subscriptions: [{ id: 'podsubA', name: 'Show A', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 0, paused: false, backfill: 'all' }],
+      episodes: { podepA: { id: 'podepA', subId: 'podsubA', guid: 'gA', title: 'A', status: 'tombstone' } },
+      settings: { pollMinutes: 60 },
+    },
     // v1.195: the tv namespace rides the bundle - restore wipes the doc tables
     // wholesale, so an un-bundled 'tv' would erase the entire Shows library +
     // config on any backup/restore (the gate's data-loss finding).
@@ -155,7 +159,7 @@ const FULL_TRASH = {
 const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
 function seedFullState(overrides) {
   const state = { ...fullState(), ...(overrides || {}) };
-  saveDatabase(state);
+  seedState(state);
   viewCountStore.replaceAll(FULL_VIEW_COUNTS);
   progressStore.replaceAll(FULL_PROGRESS);
   tombstoneStore.replaceAll(FULL_TOMBSTONES);
@@ -352,10 +356,12 @@ test('a restore that fails mid-populate ROLLS BACK completely — db state AND t
   const beforeSnap = readPersistedDatabase(DATA_DIR);
 
   const bundle = await getBackup();
-  // Passes validateBackupBundle (books IS an object) but fails INSIDE the
-  // exclusive section: books.items is not a per-key map, so importParsedJson
-  // refuses mid-populate — after the wipe, before the logo file ops.
-  bundle.books = { items: 'not-a-map' };
+  // The bundle passes validateBackupBundle whole; the failure is injected
+  // INSIDE the exclusive section - after the wipe, before the logo file ops.
+  // (Until Wave 5 a malformed container sub-key did this job; every container
+  // is a feature store shape-checked BEFORE the wipe now, so no bundle shape
+  // reaches the populate unvalidated - the seam is the only way in.)
+  __failNextRestorePopulateForTests(new Error('simulated mid-populate failure'));
   const res = await postRestore(bundle);
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /rolled back/);
@@ -509,7 +515,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.equal(restoredQueue.pointerUid, 'qü-2', 'the now-playing pointer came back');
   assert.equal(restoredQueue.updatedAt, 1753900000000, 'updatedAt rides verbatim');
   assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc tables restored in the same transaction');
-  assert.equal(loadDatabase().music.tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
+  assert.equal(musicDb.read().tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
 });
 
 test('v1.51: the notification feed + per-user seen/read state round-trip through backup -> wipe -> restore (EIGHTH carrier)', async () => {
@@ -731,7 +737,7 @@ function prodScaleState(itemCount) {
 
 test('v1.43.1 A1: a prod-scale bundle (well over the global parser 100 kb cap) round-trips — the 32mb route-scoped limit is ALIVE', async () => {
   const { state: big, counts: bigCounts } = prodScaleState(3000);
-  saveDatabase(big);
+  seedState(big);
   viewCountStore.replaceAll(bigCounts);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
@@ -762,7 +768,7 @@ test('v1.43.1 A1 (QA gate WARNING): a bundle just UNDER the 32mb cap restores �
       ext: '.mp4', filePath: `/media/videos/cap/cap-${i}.mp4`, duration: 60, folderName: 'Videos',
     };
   }
-  saveDatabase(big);
+  seedState(big);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
   assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
@@ -788,15 +794,15 @@ test('v1.44 T13: a large MUSIC library rides the bundle NEAR the cap and round-t
       rootFolder: '/media/music', ext: '.flac', albumArtKey: 'b'.repeat(32), durationSec: 200, year: 2001,
     };
   }
-  saveDatabase(big);
+  seedState(big);
   const bundle = await getBackup();
   const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
   assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
     `the music payload must sit between every plausible regression value and the 32mb cap (got ${wireBytes} bytes)`);
   const res = await postRestore(bundle);
   assert.equal(res.status, 200, `a large-music restore must parse (got ${res.status})`);
-  assert.equal(Object.keys(loadDatabase().music.tracks).length, 24001, 'every music row landed (24000 + the fullState seed)');
-  assert.equal(loadDatabase().music.tracks.mtrk23999.artist, 'Artist 499', 'deep music content survived the round-trip');
+  assert.equal(Object.keys(musicDb.read().tracks).length, 24001, 'every music row landed (24000 + the fullState seed)');
+  assert.equal(musicDb.read().tracks.mtrk23999.artist, 'Artist 499', 'deep music content survived the round-trip');
 });
 
 test('v1.43.1 A1 (adversarial WARNING-1): a MEMBER posting an oversized body gets 403 BEFORE the parse — 403, never 413', async () => {
@@ -848,7 +854,7 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
     episodes: { ep1: { id: 'ep1', subId: 'podsub1', guid: 'g1', title: 'One', status: 'downloaded' } },
     settings: { pollMinutes: 60 },
   };
-  saveDatabase(state);
+  seedState(state);
 
   const bundle = await getBackup();
   assert.ok(bundle.podcasts, 'a v1.69 export carries podcasts');
@@ -856,9 +862,9 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
 
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
-  const after = loadDatabase();
-  assert.deepEqual(after.podcasts.subscriptions, state.podcasts.subscriptions, 'subscriptions survive a pre-v1.69 restore');
-  assert.deepEqual(after.podcasts.episodes, state.podcasts.episodes, 'the episode archive survives (no forced 42GB re-download)');
+  const after = podcastsDb().read(); // Wave 5: the tables
+  assert.deepEqual(after.subscriptions, state.podcasts.subscriptions, 'subscriptions survive a pre-v1.69 restore');
+  assert.deepEqual(after.episodes, state.podcasts.episodes, 'the episode archive survives (no forced 42GB re-download)');
 
   // The users-restore bumped the operator's token_version (the CRITICAL-1
   // floor) - re-sync the patched-fetch cookie, the suite's standing pattern.
@@ -871,5 +877,5 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
   bundle2.podcasts = { subscriptions: [], episodes: {}, settings: {} };
   const res2 = await postRestore(bundle2);
   assert.equal(res2.status, 200);
-  assert.deepEqual(loadDatabase().podcasts.subscriptions, [], 'an explicit podcasts key restores verbatim');
+  assert.deepEqual(podcastsDb().read().subscriptions, [], 'an explicit podcasts key restores verbatim');
 });

@@ -32,8 +32,7 @@ process.env.FILETUBE_YTDLP_POLL_MINUTES = '0'; // manual-only: no real timer dur
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, loadDatabase, updateDatabase, getMediaId, transcodedPath,
-} = require('../../server');
+  app, loadDatabase, updateDatabase, getMediaId, transcodedPath, ytdlpDb } = require('../../server');
 const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
@@ -75,6 +74,7 @@ function makeDeps() {
   return {
     loadDatabase,
     updateDatabase,
+    ytdlpDb, // Wave 5: the namespace is a feature store
     getMediaId,
     scanDirectories: async () => {},
   };

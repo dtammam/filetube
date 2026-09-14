@@ -11,6 +11,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const store = require('../../lib/ytdlp/store');
+const ytdlpStore = require('../../lib/ytdlp/store');
+const { sharedScratchStore, docView } = require('../helpers/scratch-feature-store');
+const scratchYtdlp = sharedScratchStore(ytdlpStore.FEATURE); // Wave 5: the namespace is a feature store - one scratch database per file, re-seeded per fake deps
+
 
 // A minimal fake of server.js's updateDatabase/loadDatabase pair: one
 // in-memory `db` object, mutated synchronously, "saved" by simply keeping
@@ -18,8 +22,11 @@ const store = require('../../lib/ytdlp/store');
 // backfill + CRUD logic without a real server/db.json.
 function makeFakeDeps(initialDb = {}) {
   let db = initialDb;
+  const ytdlpDb = scratchYtdlp.seed(db.ytdlp); // the fixture's namespace becomes the store's rows; the doc keeps the rest
+  delete db.ytdlp;
   return {
-    loadDatabase: () => db,
+    ytdlpDb,
+    loadDatabase: () => docView(db, ytdlpDb),
     updateDatabase: (mutatorFn) => {
       const result = mutatorFn(db);
       // Mirrors the real primitive: a `false` return skips the "save" (here,
@@ -1010,10 +1017,14 @@ test('consumeDownloadChannelMeta: is safe to call from INSIDE a synchronous upda
   const deps = makeFakeDeps();
   await store.recordDownloadChannelMeta(deps, validMeta());
   let consumed;
-  await deps.updateDatabase((fresh) => {
-    consumed = store.consumeDownloadChannelMeta(fresh, 'dQw4w9WgXcQ');
-  });
+  // Wave 5: the scan consumes on the feature-store holder inside its commit
+  // (server.js: ytScan + a queued syncFrom); the same shape here.
+  await deps.updateDatabase(() => deps.ytdlpDb.mutate((h) => {
+    consumed = store.consumeDownloadChannelMeta(h, 'dQw4w9WgXcQ');
+    return true;
+  }));
   assert.ok(consumed);
+  assert.equal(deps.ytdlpDb.read().downloadMeta.dQw4w9WgXcQ, undefined, 'consumed -> the row is gone');
   assert.equal(consumed.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
 });
 
@@ -2136,17 +2147,18 @@ test('registerChannelAvatar: overwrites a previously-registered avatar for the S
 
 test('registerChannelAvatar: FIFO cap evicts the OLDEST entry once MAX_CHANNEL_AVATARS is exceeded', async () => {
   const deps = makeFakeDeps();
-  const db = deps.loadDatabase();
-  const ns = store.ensureYtdlp(db);
   const oldestId = mkChannelId('oldest');
   // Pre-populate right up to the cap directly (bypassing the mutator -- pure
   // setup, not exercising registerChannelAvatar's own write path) so the test
   // doesn't need MAX_CHANNEL_AVATARS real async writes to prove eviction.
-  ns.channelAvatars[oldestId] = { avatarUrl: 'https://yt3.ggpht.com/oldest.jpg', fetchedAt: 1 };
+  // (Wave 5: the rows are seeded into the store whole.)
+  const channelAvatars = { [oldestId]: { avatarUrl: 'https://yt3.ggpht.com/oldest.jpg', fetchedAt: 1 } };
   for (let i = 0; i < store.MAX_CHANNEL_AVATARS - 1; i += 1) {
     const id = mkChannelId(`fifo${i}`);
-    ns.channelAvatars[id] = { avatarUrl: `https://yt3.ggpht.com/${i}.jpg`, fetchedAt: 1000 + i };
+    channelAvatars[id] = { avatarUrl: `https://yt3.ggpht.com/${i}.jpg`, fetchedAt: 1000 + i };
   }
+  deps.ytdlpDb.replaceAll({ channelAvatars });
+  const ns = store.ensureYtdlp(deps.loadDatabase());
   assert.equal(Object.keys(ns.channelAvatars).length, store.MAX_CHANNEL_AVATARS, 'sanity: exactly at the cap before the triggering write');
 
   const newestId = mkChannelId('newest');
@@ -2310,14 +2322,15 @@ test('v1.41.13 sanitize: a proxy-host YouTube capture (source Youtube) still tak
 });
 
 test('v1.41.13 bridge round-trip: record a universal capture, consume it by composite key', async () => {
-  let db = { ytdlp: { downloadMeta: {} } };
-  const deps = { updateDatabase: async (fn) => { fn(db); return db; } };
+  const ytdlpDb = scratchYtdlp.seed({ downloadMeta: {} }); // Wave 5: the namespace is a feature store
+  const deps = { ytdlpDb, updateDatabase: async (fn) => fn() };
   const ok = await store.recordDownloadChannelMeta(deps, { source: 'Vimeo', videoId: '76979871', uploader: 'Studio X', title: 'Doc' });
   assert.equal(ok, true);
   const key = store.compositeMetaKey('Vimeo', '76979871');
   assert.equal(key, 'vimeo 76979871');
-  assert.ok(db.ytdlp.downloadMeta[key] && db.ytdlp.downloadMeta[key].universal === true, 'stored under the composite key');
+  assert.ok(ytdlpDb.read().downloadMeta[key] && ytdlpDb.read().downloadMeta[key].universal === true, 'stored under the composite key (a spaced row key)');
 
+  const db = ytdlpDb.holder(); // the scan consumes on a holder
   const consumed = store.consumeUniversalDownloadMeta(db, key);
   assert.ok(consumed);
   assert.equal(consumed.sourceExtractor, 'Vimeo');
@@ -2329,8 +2342,8 @@ test('v1.41.13 bridge round-trip: record a universal capture, consume it by comp
 });
 
 test('v1.41.13 bridge (W3): a capture WITH a filePath is keyed by the RENDERED BASENAME, consumed by path.basename -- not the composite', () => {
-  let db = { ytdlp: { downloadMeta: {} } };
-  const deps = { updateDatabase: async (fn) => { fn(db); return db; } };
+  const ytdlpDb = scratchYtdlp.seed({ downloadMeta: {} }); // Wave 5
+  const deps = { ytdlpDb, updateDatabase: async (fn) => fn() };
   // A non-round-tripping raw id: '/' sanitizes on disk, so the composite
   // (raw) key != the on-disk basename key. Only the basename key lets the scan
   // find it (design D5 / gate W3 -- a composite-only key would silently miss).
@@ -2338,6 +2351,7 @@ test('v1.41.13 bridge (W3): a capture WITH a filePath is keyed by the RENDERED B
   const diskBasename = 'Talk [Vimeo=austrian⧸page=1].mp4'; // '/' sanitized to U+29F8
   const filePath = '/media/ytdlp/Vimeo/' + diskBasename;
   return store.recordDownloadChannelMeta(deps, { source: 'Vimeo', videoId: rawId, uploader: 'Studio', filePath }).then(() => {
+    const db = ytdlpDb.holder();
     assert.ok(db.ytdlp.downloadMeta[diskBasename], 'keyed by the rendered basename');
     assert.equal(db.ytdlp.downloadMeta[store.compositeMetaKey('Vimeo', rawId)], undefined, 'NOT keyed by the raw composite');
     // The scan consumes by path.basename(item.filePath) -- exactly the key.

@@ -38,7 +38,8 @@ process.env.FILETUBE_TTS_PIPER_MODEL = modelPath;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, loadDatabase, scanBooks } = require('../../server');
+const { app, updateDatabase, scanBooks, booksDb } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const booksStore = require('../../lib/books/store');
 const { buildEpub } = require('../helpers/build-zip');
@@ -58,9 +59,9 @@ before(async () => {
   // A second book so deleting `story` doesn't scan the whole root EMPTY (which
   // the Option-C mount-loss guard would treat as an unmount, pruning nothing).
   fs.writeFileSync(path.join(booksDir, 'keeper.epub'), buildEpub({ title: 'Keeper', chapters: ['<p>Kept.</p>'] }));
-  await updateDatabase((db) => { booksStore.ensureBooks(db).folders = [booksDir]; return true; });
+  await updateDatabase(() => booksDb.mutate((db) => { booksStore.ensureBooks(db).folders = [booksDir]; return true; }));
   await scanBooks();
-  const items = booksStore.readBooks(loadDatabase()).items;
+  const items = booksDb.read().items;
   bookId = Object.keys(items).find((id) => items[id].title === 'Story');
 
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -92,12 +93,12 @@ function cacheFiles() {
 test('a rescan LEAVES a surviving book\'s audio status + cache files intact', async () => {
   const { m4a, blocks } = cacheFiles();
   assert.ok(fs.existsSync(m4a) && fs.existsSync(blocks), 'precondition: chapter synthesized');
-  const audioBefore = booksStore.readBooks(loadDatabase()).audio[bookId];
+  const audioBefore = booksDb.read().audio[bookId];
   assert.ok(audioBefore && audioBefore['0'] && audioBefore['0'].status === 'ready');
 
   await scanBooks(); // file still present -> nothing pruned
 
-  const audioAfter = booksStore.readBooks(loadDatabase()).audio[bookId];
+  const audioAfter = booksDb.read().audio[bookId];
   assert.deepStrictEqual(audioAfter, audioBefore, 'surviving book audio must be untouched by a scan');
   assert.ok(fs.existsSync(m4a) && fs.existsSync(blocks), 'cache files survive');
 });
@@ -105,12 +106,12 @@ test('a rescan LEAVES a surviving book\'s audio status + cache files intact', as
 test('PRUNING a book (file gone + pruneMissing) deletes its audio rows AND cache files', async () => {
   const { m4a, blocks } = cacheFiles();
   // Turn on pruneMissing and remove the epub so the scan reaps it.
-  await updateDatabase((db) => { db.settings = { ...(db.settings || {}), pruneMissing: true }; return true; });
+  settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
   fs.unlinkSync(epubPath);
 
   await scanBooks();
 
-  const ns = booksStore.readBooks(loadDatabase());
+  const ns = booksDb.read();
   assert.strictEqual(ns.items[bookId], undefined, 'the pruned book is gone from items');
   assert.strictEqual(ns.audio[bookId], undefined, 'the pruned book\'s audio rows are gone (no leak)');
   assert.ok(!fs.existsSync(m4a) && !fs.existsSync(blocks), 'the pruned book\'s cache files are swept');

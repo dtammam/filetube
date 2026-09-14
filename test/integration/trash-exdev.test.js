@@ -14,9 +14,9 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-trashexde
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  trashItem, getMediaId, loadDatabase, saveDatabase, updateDatabase, __resetDatabaseForTests,
+  trashItem, getMediaId, loadDatabase, updateDatabase, __resetDatabaseForTests,
 } = require('../../server');
-const { trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
+const { seedState, trashStore  } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
 let ROOT;
@@ -31,7 +31,7 @@ function seedLibrary() {
   const filePath = path.join(ROOT, 'Chan', 'xdev.mp4');
   fs.writeFileSync(filePath, 'GENUINE-BYTES-OF-THE-ORIGINAL');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT], folderSettings: {},
     metadata: { [id]: { id, name: 'xdev.mp4', title: 'X', filePath, folderName: 'Chan', rootFolder: ROOT, size: 29, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 5 } },
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, trashRetentionDays: 30 },

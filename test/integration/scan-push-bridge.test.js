@@ -27,8 +27,7 @@ const crypto = require('node:crypto');
 const {
   scanDirectories, updateDatabase, getMediaId,
   seedNotificationHistoryOnce, userStore,
-  __setPushTransportForTests, __setPushGuardLookupForTests,
-} = require('../../server');
+  __setPushTransportForTests, __setPushGuardLookupForTests, ytdlpDb } = require('../../server');
 const store = require('../../lib/ytdlp/store');
 const { publicKeyToUncompressedB64url } = require('../../lib/push/keys');
 
@@ -58,10 +57,10 @@ before(async () => {
   // still passes. (Its refusal path is covered in the unit suite.)
   __setPushGuardLookupForTests((host, opts, cb) => cb(null, [{ address: '203.0.113.9', family: 4 }]));
   // The feature gate needs >=1 subscription in db.ytdlp; give it one.
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.subscriptions.push({ id: 'sub1', channelUrl: 'https://www.youtube.com/@bridge', name: 'Bridge', paused: false });
-  });
+  }));
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
 });
@@ -120,14 +119,14 @@ test('boot seeding never pushes (the trigger is bound to the flush site, not the
 
 test('a consumed download pushes through the real scan: encrypted body, VAPID auth for the endpoint origin, cursor advanced', async () => {
   const filePath = plantDownload('Fresh Push Video', 'nnnnnnnnnnn');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.nnnnnnnnnnn = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       channelName: 'Püsh Channel',
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
   await waitFor(() => sends.length >= 1, 'the detached delivery round');
@@ -156,14 +155,14 @@ test('a HANGING push endpoint never blocks the scan (detached trigger), and deli
   sends.length = 0;
 
   const filePath = plantDownload('Slow Endpoint Video', 'ssssssssss1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.ssssssssss1 = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       channelName: 'Püsh Channel',
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   const t0 = Date.now();
   await scanDirectories();
@@ -185,27 +184,27 @@ test('a 410 from the real chain prunes the subscription; the next scan pushes to
   sends.length = 0;
 
   plantDownload('Gone Device Video', 'ggggggggggg');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.ggggggggggg = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       channelName: 'Püsh Channel',
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
   await scanDirectories();
   await waitFor(() => userStore.getPushSubscription(ENDPOINT) === null, 'the 410 prune');
 
   sends.length = 0;
   plantDownload('Nobody Listens Video', 'qqqqqqqqqq1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.qqqqqqqqqq1 = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       channelName: 'Püsh Channel',
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
   await scanDirectories();
   await new Promise((r) => setTimeout(r, 150));
   assert.equal(sends.length, 0, 'no subscriptions, no POSTs - and the scan itself stayed green');

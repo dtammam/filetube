@@ -26,7 +26,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const store = require('../../lib/ytdlp/store');
 
@@ -113,7 +113,7 @@ test('bridge: a seeded downloadMeta sourceTitle supersedes the filename-derived 
   fs.writeFileSync(filePath, 'not a real video');
   const realTitle = 'Never Gonna Give You Up 🎵🕺 (Official Video)';
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.ccccccccccc = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -121,7 +121,7 @@ test('bridge: a seeded downloadMeta sourceTitle supersedes the filename-derived 
       sourceTitle: realTitle,
       capturedAt: Date.now(),
     };
-  });
+  }));
 
   await scanDirectories();
 

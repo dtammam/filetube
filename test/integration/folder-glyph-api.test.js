@@ -26,7 +26,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-glyph-'))
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, loadDatabase, updateDatabase } = require('../../server');
+const { app } = require('../../server');
+const { folderSettingsStore, folderStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, realA, realB;
@@ -51,11 +52,8 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await updateDatabase((db) => {
-    db.folders = [realA, realB];
-    db.folderSettings = {};
-    return true;
-  });
+  folderStore().replaceAll([realA, realB]); // Wave 4: the tables
+    folderSettingsStore().replaceAll({});
 });
 
 async function postConfig(folderSettings) {
@@ -74,7 +72,7 @@ test('a chosen glyph round-trips: POST -> database -> GET', async () => {
   });
   assert.equal(status, 200);
 
-  const stored = loadDatabase().folderSettings;
+  const stored = folderSettingsStore().getAll();
   assert.equal(stored[realA].glyph, 'shows', 'the glyph must survive the whitelist rebuild');
   assert.equal(stored[realB].glyph, 'school');
 
@@ -84,7 +82,7 @@ test('a chosen glyph round-trips: POST -> database -> GET', async () => {
 
 test('the glyph does not disturb the fields that were already whitelisted', async () => {
   await postConfig({ [realA]: { name: 'Shows', glyph: 'shows', hidden: true, hiddenFromSidebar: true } });
-  const s = loadDatabase().folderSettings[realA];
+  const s = folderSettingsStore().getAll()[realA];
   assert.equal(s.name, 'Shows');
   assert.equal(s.hidden, true);
   assert.equal(s.hiddenFromSidebar, true);
@@ -95,14 +93,14 @@ test('a folder with no glyph stores none - absence is the default, no backfill',
   // Every folder on an existing install is in this state. It must stay clean
   // rather than acquiring a written-in default.
   await postConfig({ [realA]: { name: 'Plain' } });
-  const s = loadDatabase().folderSettings[realA];
+  const s = folderSettingsStore().getAll()[realA];
   assert.ok(!('glyph' in s), `expected no glyph key, got ${JSON.stringify(s)}`);
 });
 
 test('REJECTED: a glyph outside the registry is dropped, not stored', async () => {
   const { status } = await postConfig({ [realA]: { name: 'X', glyph: 'definitely-not-a-glyph' } });
   assert.equal(status, 200, 'the save still succeeds - only the bad field is dropped');
-  assert.ok(!('glyph' in loadDatabase().folderSettings[realA]),
+  assert.ok(!('glyph' in folderSettingsStore().getAll()[realA]),
     'an unknown glyph id must never reach the database');
 });
 
@@ -118,7 +116,7 @@ test('REJECTED: injection payloads and wrong types never persist', async () => {
   ];
   for (const glyph of payloads) {
     await postConfig({ [realA]: { name: 'X', glyph } });
-    const s = loadDatabase().folderSettings[realA];
+    const s = folderSettingsStore().getAll()[realA];
     assert.ok(!('glyph' in s),
       `payload ${JSON.stringify(glyph)} was persisted as ${JSON.stringify(s.glyph)}`);
   }
@@ -126,12 +124,12 @@ test('REJECTED: injection payloads and wrong types never persist', async () => {
 
 test('a previously-set glyph can be cleared back to the default', async () => {
   await postConfig({ [realA]: { name: 'X', glyph: 'shows' } });
-  assert.equal(loadDatabase().folderSettings[realA].glyph, 'shows');
+  assert.equal(folderSettingsStore().getAll()[realA].glyph, 'shows');
   await postConfig({ [realA]: { name: 'X', glyph: 'folder' } });
-  assert.equal(loadDatabase().folderSettings[realA].glyph, 'folder',
+  assert.equal(folderSettingsStore().getAll()[realA].glyph, 'folder',
     'picking Folder explicitly is a real choice and must persist as one');
   await postConfig({ [realA]: { name: 'X' } });
-  assert.ok(!('glyph' in loadDatabase().folderSettings[realA]),
+  assert.ok(!('glyph' in folderSettingsStore().getAll()[realA]),
     'omitting the field clears it (the picker never has to send a sentinel)');
 });
 
@@ -141,7 +139,7 @@ test('EVERY registry id is actually accepted by the server', async () => {
   const { GLYPH_POOL } = require('../../public/js/glyph-pool.js');
   for (const g of GLYPH_POOL) {
     await postConfig({ [realA]: { name: 'X', glyph: g.id } });
-    assert.equal(loadDatabase().folderSettings[realA].glyph, g.id,
+    assert.equal(folderSettingsStore().getAll()[realA].glyph, g.id,
       `the server rejected registry id '${g.id}', which the picker offers`);
   }
 });

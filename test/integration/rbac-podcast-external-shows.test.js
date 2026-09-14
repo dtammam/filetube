@@ -20,7 +20,7 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
-const { app, updateDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, ytdlpDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth, kid, unrestricted;
@@ -50,14 +50,13 @@ before(async () => {
   const openEp = seedItem(OPEN_CHAN, 'Open Episode [abcdefghij1].mp3');
   const hidEp = seedItem(HID_CHAN, 'SECRET Episode [abcdefghij2].mp3');
   await updateDatabase((db) => {
-    db.ytdlp = db.ytdlp || {};
-    db.ytdlp.subscriptions = [
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [ // Wave 5: the ytdlp namespace is a feature store
       { id: OPEN_SUB, channelUrl: 'https://youtube.com/@openpod', name: OPEN_CHAN, format: 'audio', quality: 'best', paused: false, order: 1, libraryPlace: 'podcasts', lastStatus: 'ok' },
       { id: HID_SUB, channelUrl: 'https://youtube.com/@secretpod', name: HID_CHAN, format: 'audio', quality: 'best', paused: false, order: 2, libraryPlace: 'podcasts', lastStatus: 'ok' },
       // A genuinely EMPTY external show (subscribed, nothing downloaded yet) -
       // must stay visible for admin AND unrestricted member (gate WARNING-1).
       { id: EMPTY_SUB, channelUrl: 'https://youtube.com/@emptypod', name: EMPTY_CHAN, format: 'audio', quality: 'best', paused: false, order: 3, libraryPlace: 'podcasts', lastStatus: 'ok' },
-    ];
+    ]; return true; });
     db.metadata = db.metadata || {};
     db.metadata[openEp.id] = openEp;
     db.metadata[hidEp.id] = hidEp;

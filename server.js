@@ -35,6 +35,7 @@ const { formatBodyParserError } = require('./lib/bodyParserErrors');
 // resolve a captured channel's confined target folder the identical way
 // every other channel-dir consumer (subscriptions, one-shot downloads) does.
 const ytdlpArgs = require('./lib/ytdlp/args');
+const ytdlpStore = require('./lib/ytdlp/store'); // Wave 5: the ytdlp namespace's feature store (FEATURE, createYtdlpStore)
 // Metadata+subtitle re-pull backfill (v1.25 QoL follow-up): `buildWatchUrl` is
 // a pure, side-effect-free helper (lib/ytdlp/url.js's own module comment) that
 // `lib/ytdlp/index.js` already requires internally but does not re-export --
@@ -292,10 +293,9 @@ function resolvePushMeta(db, row) {
   const mediaId = row && typeof row === 'object' ? row.mediaId : row; // tolerate the pre-v1.73 call shape
   const kind = row && typeof row === 'object' && row.kind === 'podcast' ? 'podcast' : 'media';
   if (kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, mediaId) ? ns.episodes[mediaId] : null;
+    const ep = podcastsDb.parts.episodes.get(mediaId) || null; // Wave 5 (gate pass B): a point query, never the whole table per push row
     if (!ep || ep.status !== 'downloaded') return null; // pruned/trashed between insert and delivery - skip
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return { title: ep.title, channel: sub ? sub.name : 'Podcast', kind: 'podcast' };
   }
   const item = db.metadata && db.metadata[mediaId];
@@ -497,12 +497,39 @@ function validateTranscriptAiPrompts(raw, existing) {
   return { ok: true, value: out };
 }
 
-// Per-key merge so a partial/older `settings` object keeps whatever keys it
-// already has and only gets the missing ones defaulted (mirrors the
-// `folderSettings` backfill pattern below).
-function withDefaultSettings(settings) {
-  return { ...DEFAULT_SETTINGS, ...(settings || {}) };
-}
+// Wave 4 of the relational-migration arc: the app settings live in
+// app_settings (one row per key) behind lib/config/settings.js. The store
+// merges DEFAULT_SETTINGS (this file's policy) on every get(), which is what
+// `withDefaultSettings(db.settings)` did at load time. Reads are
+// `settingsStore.get()` / `getKey(k)`; writes inside a mutator ride
+// `inSaveTransaction` so a failed doc save rolls the setting back too.
+const createSettingsStore = require('./lib/config/settings');
+const settingsStore = createSettingsStore(dbAdapter, { defaults: DEFAULT_SETTINGS });
+// Wave 4 (second group): the folder config - the root list (library_folders,
+// operator order), the per-root settings map (library_folder_settings) and
+// the per-channel-folder display names (channel_folder_display_names). The
+// config POST replaces the first two inside the doc commit's transaction;
+// the channel heal writes a display name the same way.
+const createFolderStore = require('./lib/config/folders');
+const createFolderSettingsStore = require('./lib/config/folderSettings');
+const createFolderDisplayNameStore = require('./lib/config/folderDisplayNames');
+const folderStore = createFolderStore(dbAdapter);
+const folderSettingsStore = createFolderSettingsStore(dbAdapter);
+const folderDisplayNameStore = createFolderDisplayNameStore(dbAdapter);
+// Wave 4 (third group): the FROZEN pre-auth likes (media_liked) - read once by
+// the first admin's adoption, otherwise only carried by the rename / trash /
+// restore / purge mutators (in-transaction re-keys), like the Wave 2 carriers.
+const createLikedStore = require('./lib/media/liked');
+const likedStore = createLikedStore(dbAdapter);
+// Wave 5: the content modules' namespaces as feature stores - read() is the
+// readX(db) snapshot, mutate() runs the module's own normaliser + reducers on
+// a fresh holder and writes the DIFF inside the doc commit (the hook is
+// hoisted; every mutate() runs inside an updateDatabase tick).
+const tvDb = tvStore.createTvStore(dbAdapter, { inSaveTransaction });
+const musicDb = musicStore.createMusicStore(dbAdapter, { inSaveTransaction });
+const booksDb = booksStore.createBooksStore(dbAdapter, { inSaveTransaction });
+const podcastsDb = podcastStore.createPodcastsStore(dbAdapter, { inSaveTransaction });
+const ytdlpDb = ytdlpStore.createYtdlpStore(dbAdapter, { inSaveTransaction });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -530,17 +557,16 @@ function loadDatabase() {
   // normalization — see lib/db/sqlite.js's load() comment) can never make a
   // mutator throw a TypeError against a missing `folders`/`progress`/
   // `metadata`.
-  if (!Array.isArray(db.folders)) db.folders = [];
-  if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
-  // v1.126: backfill `folderDisplayNames` ({ [folderName]: displayName }) like
-  // every other top-level key - the per-channel-folder display map.
-  if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object' || Array.isArray(db.folderDisplayNames)) db.folderDisplayNames = {};
+  // (pre-v1.294: `folders`, `folderSettings` and `folderDisplayNames` were
+  // backfilled here. Wave 4 moved them to library_folders /
+  // library_folder_settings / channel_folder_display_names behind
+  // folderStore / folderSettingsStore / folderDisplayNameStore - no longer
+  // keys of this object.)
   // (v1.42-v1.291: `progress` was backfilled here. Wave 2 moved it to
   // media_progress / progressStore - no longer a key of this object.)
   if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
-  // v1.30 C2: backfill `liked` (array of media ids) the same way every other
-  // top-level key above is backfilled.
-  if (!Array.isArray(db.liked)) db.liked = [];
+  // (v1.30-v1.293: `liked` was backfilled here. Wave 4 moved it to media_liked
+  // / likedStore - no longer a key of this object.)
   // (v1.41.3-v1.291: `deleteTombstones` was backfilled here. Wave 2 moved it
   // to media_delete_tombstones / tombstoneStore - no longer a key of this object.)
   // (v1.42-v1.290: `viewCounts` was backfilled here. Wave 1 of the relational
@@ -548,31 +574,22 @@ function loadDatabase() {
   // of this object, and the save-lock refuses it if one appears.)
   // (v1.65-v1.292: `trash` was backfilled here. Wave 3 moved it to
   // media_trash / trashStore - no longer a key of this object.)
-  // v1.42: when a container namespace EXISTS, backfill its per-key
-  // sub-namespaces the same way. Under db.json, ensureBooks/ensureYtdlp
-  // created these keys once and the empty `{}` persisted forever; under
-  // SQLite an empty doc_kv namespace has zero rows and assembles as absent,
-  // which would silently break every consumer that (correctly, per the old
-  // invariant) assumes `db.books.progress` exists whenever `db.books` does.
-  // The containers themselves stay lazy (ensure* call-site-owned, as today).
-  if (db.books && typeof db.books === 'object') {
-    for (const k of ['items', 'progress', 'audio']) {
-      if (!db.books[k] || typeof db.books[k] !== 'object' || Array.isArray(db.books[k])) db.books[k] = {};
-    }
-  }
-  if (db.ytdlp && typeof db.ytdlp === 'object') {
-    for (const k of ['downloadMeta', 'channelAvatars']) {
-      if (!db.ytdlp[k] || typeof db.ytdlp[k] !== 'object' || Array.isArray(db.ytdlp[k])) db.ytdlp[k] = {};
-    }
-  }
+  // (v1.42-v1.294: when a container namespace EXISTED, its per-key sub-
+  // namespaces were backfilled here, because an empty doc_kv namespace has
+  // zero rows and assembles as absent. Wave 5 moved every container to its
+  // feature-store tables - nothing is backfilled on this object any more.)
+  // (v1.42-v1.293: the books sub-keys were backfilled here. Wave 5 moved the
+  // books namespace to its tables behind booksDb - no longer a key of this object.)
+  // (v1.42-v1.294: the ytdlp sub-keys were backfilled here. Wave 5 moved the
+  // ytdlp namespace to its tables behind ytdlpDb - no longer a key of this object.)
   // Wave G: when the music container exists, backfill `channels` (the per-folder
   // "show in Music" marks) the same way books.progress/ytdlp.downloadMeta are
   // backfilled - so the eligibility predicate and the write route never touch an
   // undefined. music.tracks/folders/settings stay musicStore-owned (lazy ensure).
-  if (db.music && typeof db.music === 'object') {
-    if (!db.music.channels || typeof db.music.channels !== 'object' || Array.isArray(db.music.channels)) db.music.channels = {};
-  }
-  db.settings = withDefaultSettings(db.settings); // backfill for older databases
+  // (Wave G-v1.293: `music.channels` was backfilled here. Wave 5 moved the music
+  // namespace to its tables behind musicDb - no longer a key of this object.)
+  // (pre-v1.294: `settings` was backfilled here with DEFAULT_SETTINGS. Wave 4
+  // moved it to app_settings / settingsStore - no longer a key of this object.)
   return db;
 }
 
@@ -627,6 +644,13 @@ let saveDatabaseCallCount = 0;
 // call throws before touching the adapter, exercising the exact
 // route-returns-500 / prior-state-intact / chain-not-wedged contracts the
 // old stubs exercised. Self-disarms after one shot; inert in production.
+// Wave 5: with every container a feature store, no bundle shape reaches the
+// exclusive section unvalidated any more - so the "mid-populate rollback"
+// test needs an injected failure to prove the wipe rolls back whole.
+let failNextRestorePopulateError = null;
+function __failNextRestorePopulateForTests(err) {
+  failNextRestorePopulateError = err instanceof Error ? err : new Error('simulated restore populate failure (test injection)');
+}
 let failNextSaveError = null;
 function __failNextSaveForTests(err) {
   failNextSaveError = err instanceof Error ? err : new Error('simulated save failure (test injection)');
@@ -1405,7 +1429,7 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   // "Clear cache" button (POST /api/cache/clear) still removes them --
   // explicit user intent wins over the pin. They still COUNT toward the
   // displayed cache size (honest accounting).
-  const pinAudioSidecars = !!(getCachedDatabase().settings || {}).preExtractAudio;
+  const pinAudioSidecars = !!settingsStore.getKey('preExtractAudio'); // Wave 4
   // Gate QA-WARNING: the preExtractAudio pin protects VIDEO background-audio
   // sidecars only -- a music ALAC rendition (also `<id>.m4a` in TRANSCODE_DIR,
   // shared by design) must NOT be pinned, or a large ALAC library would grow
@@ -1686,7 +1710,7 @@ function selectAgedOut(files, maxAgeMs, now, protectedPaths) {
 
 // Filesystem wrapper around the pure `selectAgedOut` selector — the D3 age-
 // retention sweep. Structured like `evictTranscodeCache`, but kept as a
-// SEPARATE step (never folded in): reads db.settings.cacheMaxAgeDays (0/falsy
+// SEPARATE step (never folded in): reads the cacheMaxAgeDays setting (0/falsy
 // = "Off", in which case selectAgedOut always returns [] and nothing is
 // touched — evictTranscodeCache's size-cap LRU path stays completely
 // unaffected). Builds {path, lastServedAt, atimeMs} for every non-*.tmp.mp4
@@ -1707,13 +1731,14 @@ function sweepAgedTranscodes(now) {
   // T4's explicit "beyond the 10 routes" examples (transcode-cache-cap reads,
   // srcMeta lookups). Coherency-safe either way; kept as-is (minimal diff).
   const db = loadDatabase();
-  const cacheMaxAgeDays = db.settings && db.settings.cacheMaxAgeDays;
+  const settings = settingsStore.get(); // Wave 4: the table, read once for this sweep
+  const cacheMaxAgeDays = settings.cacheMaxAgeDays;
   const maxAgeMs = cacheMaxAgeDays ? cacheMaxAgeDays * 24 * 60 * 60 * 1000 : 0;
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
   // v1.35 (preExtractAudio): same sidecar pin as evictTranscodeCache -- see
   // its comment there.
-  const pinAudioSidecars = !!(db.settings || {}).preExtractAudio;
+  const pinAudioSidecars = !!settings.preExtractAudio;
   // Same video-only sidecar scoping as evictTranscodeCache (music ALAC
   // renditions must stay evictable) -- see that comment.
   const pinnableVideoMeta = pinAudioSidecars ? (db.metadata || {}) : null;
@@ -2163,7 +2188,7 @@ const ttsQueue = [];
 let ttsBusy = false;
 
 function ttsSettings() {
-  return booksStore.readBooks(getCachedDatabase()).settings || {};
+  return booksDb.read().settings || {};
 }
 
 // The cache key folds in engine/voice/rate/ttsRev, so a settings change
@@ -2186,7 +2211,7 @@ function ttsBlocksPath(key) { return path.join(TTS_CACHE_DIR, `${key}.blocks.jso
 // /status reported 'ready' for -> a spurious 404 (gate finding, v1.38.0). Falls
 // back to the current-settings key only when no status row exists yet.
 function ttsServeKey(bookId, spineIndex) {
-  const audio = booksStore.readBooks(getCachedDatabase()).audio[bookId];
+  const audio = booksDb.parts.audio.get(bookId); // Wave 5 (gate pass B): a point query
   const entry = audio && audio[String(spineIndex)];
   return (entry && entry.key) ? entry.key : ttsCacheKey(bookId, spineIndex);
 }
@@ -2195,7 +2220,7 @@ function ttsServeKey(bookId, spineIndex) {
 // an unknown/non-epub book or an out-of-range chapter -- every caller (worker
 // AND routes) funnels validation through this ONE place.
 function resolveTtsChapter(bookId, spineIndex) {
-  const book = booksStore.readBooks(getCachedDatabase()).items[bookId];
+  const book = booksDb.parts.items.get(bookId); // Wave 5 (gate pass B): a point query
   if (!book || book.format !== 'epub' || !Array.isArray(book.spine)) return null;
   const idx = Number(spineIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= book.spine.length) return null;
@@ -2205,7 +2230,7 @@ function resolveTtsChapter(bookId, spineIndex) {
 // Set status without awaiting -- the no-clobber mutator is idempotent and the
 // worker's own control flow never depends on the write having landed.
 function setTtsStatus(bookId, spineIndex, patch) {
-  booksStore.setBookAudioStatus({ updateDatabase }, bookId, spineIndex, { ...patch, updatedAt: new Date().toISOString() })
+  booksStore.setBookAudioStatus({ updateDatabase, booksDb }, bookId, spineIndex, { ...patch, updatedAt: new Date().toISOString() })
     .catch((err) => console.error(`TTS: failed to persist status for ${bookId}/${spineIndex}:`, err && err.message));
 }
 
@@ -2331,7 +2356,7 @@ async function runChapterSynthesis({ bookId, spineIndex, key }) {
     // The book was pruned/removed between enqueue and now. Drop the stale
     // pending row WITHOUT recreating an audio map for a gone book
     // (clearBookAudioStatus is a no-op when the map is already absent).
-    booksStore.clearBookAudioStatus({ updateDatabase }, bookId, spineIndex)
+    booksStore.clearBookAudioStatus({ updateDatabase, booksDb }, bookId, spineIndex)
       .catch((err) => console.error(`TTS: failed to clear status for a vanished book ${bookId}/${spineIndex}:`, err && err.message));
     return { ok: false };
   }
@@ -2416,7 +2441,7 @@ function reconcileTtsCacheAtBoot() {
       }
     }
   } catch (_) { /* no tts-cache dir yet */ }
-  updateDatabase((db) => {
+  updateDatabase(() => booksDb.mutate((db) => {
     const ns = booksStore.ensureBooks(db);
     let changed = false;
     for (const bookId of Object.keys(ns.audio)) {
@@ -2430,7 +2455,7 @@ function reconcileTtsCacheAtBoot() {
       if (Object.keys(chapters).length === 0) { delete ns.audio[bookId]; changed = true; }
     }
     return changed;
-  }).catch((err) => console.error('TTS boot reconcile failed:', err && err.message));
+  })).catch((err) => console.error('TTS boot reconcile failed:', err && err.message));
 }
 
 // ---- Pre-transcode queue (AVI and other non-web containers -> MP4) ----
@@ -2624,7 +2649,7 @@ function processTranscodeQueue() {
         try {
           sweepAgedTranscodes(Date.now());
           // v1.30 A3: transcode-cache-cap read -- safe on the cache.
-          evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings), outPath);
+          evictTranscodeCache(effectiveCacheCap(settingsStore.get()), outPath); // Wave 4
         } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
@@ -2847,7 +2872,7 @@ function processAudioExtractQueue() {
         try {
           sweepAgedTranscodes(Date.now());
           // v1.30 A3: transcode-cache-cap read -- safe on the cache.
-          evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings), outPath);
+          evictTranscodeCache(effectiveCacheCap(settingsStore.get()), outPath); // Wave 4
         } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize audio extract for ${srcPath}:`, e.message);
@@ -2997,7 +3022,7 @@ function collectDownloadNotification(pending, item, nowMs = Date.now()) {
 const NOTIFICATION_SEED_COUNT = 30;
 async function seedNotificationHistoryOnce(nowMs = Date.now()) {
   const db = loadDatabase();
-  if (db.settings && db.settings.notificationsSeededAt !== undefined) return 0;
+  if (settingsStore.getKey('notificationsSeededAt') !== undefined) return 0; // Wave 4
   let seeded = 0;
   if (userStore.countNotifications() === 0) {
     const candidates = Object.values(db.metadata || {})
@@ -3015,10 +3040,10 @@ async function seedNotificationHistoryOnce(nowMs = Date.now()) {
     // up. Past rows keep their real ordering; future ones collapse to "now".
     seeded = userStore.seedNotifications(candidates.map((it) => ({ mediaId: it.id, createdAt: Math.min(it.addedAt, nowMs) })), nowMs);
   }
-  await updateDatabase((fresh) => {
-    if (!fresh.settings) fresh.settings = {};
-    if (fresh.settings.notificationsSeededAt !== undefined) return false;
-    fresh.settings.notificationsSeededAt = nowMs;
+  await updateDatabase(() => {
+    if (settingsStore.getKey('notificationsSeededAt') !== undefined) return false;
+    // Wave 4: the stamp is a settings row, written inside the same commit.
+    inSaveTransaction(() => settingsStore.set('notificationsSeededAt', nowMs));
   });
   return seeded;
 }
@@ -4106,6 +4131,11 @@ function normalizeScanRoot(p) {
 
 // Scan directories and sync with database
 async function runScanDirectories() {
+  // Wave 4: the settings this scan reads are captured ONCE, with the Phase-1
+  // snapshot below - a settings change mid-scan is not observed mid-scan,
+  // exactly as the old `db.settings` snapshot behaved.
+  const scanSettings = settingsStore.get();
+  const scanFolders = folderStore.list(); // Wave 4: the root list, captured with the snapshot too
   // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
   // cache -- this is the scan's own Phase-1 snapshot (background job, not a
   // request/serve-path read; runs once per scan pass, not per request). The
@@ -4177,7 +4207,7 @@ async function runScanDirectories() {
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
   const currentFolders = [];
   const seenScanRootKeys = new Set();
-  for (const rawRoot of [...(db.folders || []), ...ytdlp.extraScanRoots(ytdlpConfig)]) {
+  for (const rawRoot of [...scanFolders, ...ytdlp.extraScanRoots(ytdlpConfig)]) {
     const key = normalizeScanRoot(rawRoot);
     if (seenScanRootKeys.has(key)) continue; // same real tree as an earlier entry -- drop, never re-walk
     seenScanRootKeys.add(key);
@@ -4701,7 +4731,7 @@ async function runScanDirectories() {
       // (Read from the scan's Phase-1 snapshot -- a toggle flipped ON
       // mid-scan catches the NEXT scan's fresh files; already-indexed items
       // stay lazy-on-first-watch by design. Accepted narrow window.)
-      if (db.settings && db.settings.preExtractAudio === true &&
+      if (scanSettings.preExtractAudio === true &&
           !isAudio && matchRootFolder(filePath, ytdlpDownloadRoots)) {
         preExtractCandidates.push({ id, filePath });
       }
@@ -4968,7 +4998,7 @@ async function runScanDirectories() {
       missingRoots,
       unreadablePaths,
       folders: currentFolders,
-      pruneMissing: db.settings.pruneMissing,
+      pruneMissing: scanSettings.pruneMissing,
     })
   );
 
@@ -5029,8 +5059,9 @@ async function runScanDirectories() {
   // Re-read-merge-on-save, now formalized as ONE serialized updateDatabase
   // mutator: the scan holds its own Phase-1 `db` snapshot across many awaited
   // extractMetadataAndThumbnail calls, so writing it back directly would
-  // clobber ANY db.settings/folders/folderSettings/progress/lastServedAt/
-  // transcodeStatus written concurrently (POST /api/settings, POST
+  // clobber ANY metadata field written concurrently (lastServedAt /
+  // transcodeStatus; the settings, folder config and progress are their own
+  // tables since Waves 2-4 and never ride this object) (POST /api/settings, POST
   // /api/config, recordServed, watch-progress, a transcode worker's
   // setTranscodeStatus) during the scan. `updateDatabase` hands the mutator a
   // FRESH db loaded INSIDE the lock -- there is no separate `loadDatabase()`
@@ -5045,6 +5076,11 @@ async function runScanDirectories() {
   // updateDatabase call. Phase 1 above (the FFmpeg-awaiting extraction loop)
   // never holds this lock -- writes stay unblocked for the whole scan.
   await updateDatabase(fresh => {
+    // Wave 5: the yt-dlp bridge map (downloadMeta, consumed below) and the
+    // subscriptions (the folder backfill) come from their tables as ONE
+    // snapshot holder; the consumed entries' diff is queued into this same
+    // commit at the end (never a separate write, never on a skipped save).
+    const ytScan = ytdlpDb.holder();
     // v1.42 (gate W4): if a RESTORE (or the tests' reset) wiped-and-replaced
     // the persisted state while this scan was walking, every decision below
     // -- phase1Ids, newMetadata, prunable -- was computed against a snapshot
@@ -5336,8 +5372,10 @@ async function runScanDirectories() {
 
       // v1.20.0 FR-2: bridge each freshly-scanned yt-dlp download's captured
       // channel identity onto its db.metadata item, inside the SAME
-      // serialized mutator that already owns db.ytdlp -- ytdlp.consumeDownloadChannelMeta
-      // reads+re-validates+DELETES fresh.ytdlp.downloadMeta[videoId]
+      // serialized mutator -- ytdlp.consumeDownloadChannelMeta reads+re-validates+
+      // DELETES the entry on the `ytScan` holder (Wave 5: the bridge map is
+      // ytdlp_download_meta; the deletions land through the syncFrom queued
+      // into this commit below)
       // (read-validate-delete, bounding the map's growth to "lives only
       // until first index"). Scoped to items that are (a) genuinely
       // new/updated this scan (freshlyScannedIds -- an already-indexed
@@ -5362,7 +5400,7 @@ async function runScanDirectories() {
         const mediaRef = !videoId ? extractMediaRef(path.basename(item.name, item.ext)) : null;
         if (mediaRef && mediaRef.source) {
           const isYt = mediaRef.source.toLowerCase() === 'youtube';
-          const consumedU = ytdlp.consumeUniversalDownloadMeta(fresh, path.basename(item.filePath));
+          const consumedU = ytdlp.consumeUniversalDownloadMeta(ytScan, path.basename(item.filePath));
           if (consumedU) {
             item.sourceExtractor = consumedU.sourceExtractor;
             item.sourceId = consumedU.sourceId;
@@ -5404,7 +5442,7 @@ async function runScanDirectories() {
           // channelUrl/channelId/channelName/avatar reach the item (gate W2).
           if (isYt && isSafeVideoId(mediaRef.id)) {
             item.youtubeId = mediaRef.id;
-            const consumedYt = ytdlp.consumeDownloadChannelMeta(fresh, mediaRef.id);
+            const consumedYt = ytdlp.consumeDownloadChannelMeta(ytScan, mediaRef.id);
             if (consumedYt) {
               // v1.53: identity written as a UNIT only when no MANUAL
               // attribution holds it (manual wins forever, decision 3); the
@@ -5431,7 +5469,7 @@ async function runScanDirectories() {
           // bracket, but this also covers the AC20 race window where the
           // item was indexed before this bridge pass).
           item.youtubeId = videoId;
-          const consumed = ytdlp.consumeDownloadChannelMeta(fresh, videoId);
+          const consumed = ytdlp.consumeDownloadChannelMeta(ytScan, videoId);
           if (consumed) {
             // v1.53: same manual-wins unit guard as the D1a site above.
             if (!item.channelAttributedManually) {
@@ -5499,7 +5537,7 @@ async function runScanDirectories() {
       // check makes the invariant survive any future manual shape that
       // doesn't (a name-only attribution, a cleared-URL edge).
       if (!item.channelUrl && !item.channelAttributedManually && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
-        const backfilled = ytdlp.backfillChannelIdentityFromFolder(fresh, item, ytdlpConfig);
+        const backfilled = ytdlp.backfillChannelIdentityFromFolder(ytScan, item, ytdlpConfig);
         if (backfilled) {
           item.channelUrl = backfilled.channelUrl;
           // AC80: writing channelName here is what makes the real creator
@@ -5522,6 +5560,7 @@ async function runScanDirectories() {
     }
 
     if (!dbChanged) return false;
+    inSaveTransaction(() => ytdlpDb.syncFrom(ytScan.ytdlp)); // Wave 5: the consumed bridge entries land in this commit (a no-op diff when nothing was consumed)
 
     // HR1b (finding D): never resurrect an id DELETEd concurrently during this
     // scan. An id in the Phase-1 snapshot (phase1Ids) that is now ABSENT from
@@ -5670,11 +5709,9 @@ function armScanTimer() {
     clearInterval(scanTimer);
     scanTimer = null;
   }
-  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
-  // cache -- called only at boot and on a scanIntervalMinutes settings
-  // change (infrequent, not a request/serve-path read).
-  const db = loadDatabase();
-  const ms = scanIntervalMs(db.settings.scanIntervalMinutes);
+  // Called only at boot and on a scanIntervalMinutes settings change
+  // (infrequent, not a request/serve-path read). Wave 4: the settings table.
+  const ms = scanIntervalMs(settingsStore.getKey('scanIntervalMinutes'));
   if (ms) {
     scanTimer = setInterval(() => {
       scanDirectories().catch(console.error);
@@ -6026,12 +6063,11 @@ app.post('/api/auth/setup', async (req, res) => {
   try {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // Read the pre-auth global state to adopt (once, before the tx).
-    const db = getCachedDatabase();
-    const books = booksStore.readBooks(db);
-    const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
+    const books = booksDb.read();
+    const ytd = ytdlpDb.read(['pins']); // Wave 5: the frozen pre-auth channel pins, from their table
     const adoption = {
       progress: progressStore.getAll(), // Wave 2: the frozen pre-auth positions, from their table
-      liked: Array.isArray(db.liked) ? db.liked : [],
+      liked: likedStore.list(), // Wave 4: the frozen likes, from their table (like order)
       bookProgress: books.progress || {},
       bookPins: Array.isArray(books.pins) ? books.pins : [],
       channelPins: Array.isArray(ytd.pins) ? ytd.pins : [],
@@ -6602,8 +6638,8 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // (AC4/46).
 app.get('/api/config', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const folders = [...(db.folders || [])];
-  const folderSettings = { ...(db.folderSettings || {}) };
+  const folders = folderStore.list(); // Wave 4: the tables (fresh arrays/maps per call)
+  const folderSettings = folderSettingsStore.getAll();
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
   const synthRoots = ytdlp.extraScanRoots(ytdlpConfig); // [] when disabled & dir absent
   for (const root of synthRoots) {
@@ -6642,7 +6678,8 @@ app.get('/api/config', (req, res) => {
   // POST /api/folders/display-name below.
   let outFolders = folders;
   let outFolderSettings = folderSettings;
-  let outDisplayNames = db.folderDisplayNames || {};
+  const allDisplayNames = folderDisplayNameStore.getAll(); // Wave 4
+  let outDisplayNames = allDisplayNames;
   // v1.128 Wave B (L1): this response drives the MEMBER sidebar nav, so it
   // can't be admin-gated - but for a RESTRICTED member it leaked every root
   // abs path + folderSettings + folder/channel display name, hidden ones
@@ -6665,8 +6702,8 @@ app.get('/api/config', (req, res) => {
     outFolderSettings = {};
     for (const f of outFolders) if (folderSettings[f] !== undefined) outFolderSettings[f] = folderSettings[f];
     outDisplayNames = {};
-    for (const name of Object.keys(db.folderDisplayNames || {})) {
-      if (visibleFolderNames.has(name)) outDisplayNames[name] = db.folderDisplayNames[name];
+    for (const name of Object.keys(allDisplayNames)) {
+      if (visibleFolderNames.has(name)) outDisplayNames[name] = allDisplayNames[name];
     }
   }
   res.json({
@@ -6708,18 +6745,25 @@ app.post('/api/folders/display-name', async (req, res) => {
   if (!visibleExists) return res.status(404).json({ error: 'No such folder' });
   const rawName = typeof body.name === 'string' ? body.name.trim() : '';
   const name = rawName.slice(0, 150); // the pin-label bound
-  await updateDatabase((mdb) => {
-    if (!mdb.folderDisplayNames || typeof mdb.folderDisplayNames !== 'object') mdb.folderDisplayNames = {};
-    const current = mdb.folderDisplayNames[folderName];
-    if (name === '') {
-      if (current === undefined) return false; // nothing to clear - skip the save
-      delete mdb.folderDisplayNames[folderName];
+  try {
+    await updateDatabase(() => {
+      // Wave 4: the map is a table; the write rides the doc commit's transaction.
+      const current = folderDisplayNameStore.get(folderName);
+      if (name === '') {
+        if (current === undefined) return false; // nothing to clear - skip the save
+        inSaveTransaction(() => folderDisplayNameStore.remove(folderName));
+        return true;
+      }
+      if (current === name) return false; // unchanged - skip the save
+      inSaveTransaction(() => folderDisplayNameStore.set(folderName, name));
       return true;
-    }
-    if (current === name) return false; // unchanged - skip the save
-    mdb.folderDisplayNames[folderName] = name;
-    return true;
-  });
+    });
+  } catch (err) {
+    // Express 4 never observes a rejected async handler: an unguarded failed
+    // save HUNG this request (gate pass A fix round, the Wave 3 class) - 500.
+    console.error('Error saving folder display name:', err);
+    return res.status(500).json({ error: `Could not save display name: ${err.message}` });
+  }
   res.json({ success: true, folderName, name: name === '' ? null : name });
 });
 
@@ -6734,7 +6778,7 @@ app.get('/api/folders/music-flag', (req, res) => {
   const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
   const db = getCachedDatabase();
-  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
   // Visibility-scoped: the toggle only renders for a channel the user can see.
   const hasVisibleAudio = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
@@ -6770,19 +6814,24 @@ app.post('/api/folders/music-flag', async (req, res) => {
   const visibleAudioExists = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
   if (!visibleAudioExists) return res.status(404).json({ error: 'No such folder' });
-  await updateDatabase((mdb) => {
-    if (!mdb.music || typeof mdb.music !== 'object') mdb.music = {};
-    if (!mdb.music.channels || typeof mdb.music.channels !== 'object') mdb.music.channels = {};
-    const current = mdb.music.channels[folderName];
-    if (music === null) {
-      if (current === undefined) return false; // nothing to clear
-      delete mdb.music.channels[folderName];
+  try {
+    await updateDatabase(() => musicDb.mutate((mdb) => { // Wave 5: the mark's diff rides the doc commit
+      const current = mdb.music.channels[folderName];
+      if (music === null) {
+        if (current === undefined) return false; // nothing to clear
+        delete mdb.music.channels[folderName];
+        return true;
+      }
+      if (current === music) return false; // unchanged
+      mdb.music.channels[folderName] = music;
       return true;
-    }
-    if (current === music) return false; // unchanged
-    mdb.music.channels[folderName] = music;
-    return true;
-  });
+    }));
+  } catch (err) {
+    // Express 4 never observes a rejected async handler: an unguarded failed
+    // save HUNG this request (the Wave 3 class, found by the Wave 5 binding) - 500.
+    console.error('Error saving the music mark:', err);
+    return res.status(500).json({ error: `Could not save the music mark: ${err.message}` });
+  }
   res.json({ success: true, folderName, music });
 });
 
@@ -6894,7 +6943,7 @@ app.post('/api/config', async (req, res) => {
     // inside a configured BOOK root is rejected, or a later media save
     // could silently double-own a subtree the two scanners' prune/merge
     // semantics would then fight over.
-    const bookRoots = booksStore.ensureBooks(loadDatabase()).folders;
+    const bookRoots = booksDb.read().folders; // Wave 5: the books roots are a table
     for (const bookRoot of bookRoots) {
       const resolvedBookRoot = path.resolve(bookRoot);
       if (resolved === resolvedBookRoot || ytdlpArgs.isPathUnder(resolved, resolvedBookRoot) || ytdlpArgs.isPathUnder(resolvedBookRoot, resolved)) {
@@ -6905,7 +6954,7 @@ app.post('/api/config', async (req, res) => {
     // guard -- a media folder may not equal/contain/live inside a MUSIC root
     // either, so ownership stays order-independent (whichever config saves
     // second is the one that catches the overlap).
-    const musicRoots = musicStore.readMusic(loadDatabase()).folders;
+    const musicRoots = musicDb.read().folders;
     for (const musicRoot of musicRoots) {
       const resolvedMusicRoot = path.resolve(musicRoot);
       if (resolved === resolvedMusicRoot || ytdlpArgs.isPathUnder(resolved, resolvedMusicRoot) || ytdlpArgs.isPathUnder(resolvedMusicRoot, resolved)) {
@@ -6914,7 +6963,7 @@ app.post('/api/config', async (req, res) => {
     }
     // v1.195 TV Shows: the reciprocal of POST /api/tv/config's own net - a media
     // folder may not equal/contain/live inside a Shows root either.
-    for (const tvRoot of tvStore.readTv(loadDatabase()).folders) {
+    for (const tvRoot of tvDb.read().folders) {
       if (foldersOverlap(resolved, path.resolve(tvRoot))) {
         return res.status(400).json({ error: `Media folder overlaps a Shows folder: ${trimmed} <-> ${tvRoot}` });
       }
@@ -6991,9 +7040,13 @@ app.post('/api/config', async (req, res) => {
   }
 
   try {
-    await updateDatabase(db => {
-      db.folders = validFolders;
-      db.folderSettings = cleanSettings;
+    await updateDatabase(() => {
+      // Wave 4: both maps land inside the doc commit's transaction (a failed
+      // save leaves the tables exactly as they were).
+      inSaveTransaction(() => {
+        folderStore.replaceAll(validFolders);
+        folderSettingsStore.replaceAll(cleanSettings);
+      });
       return true;
     });
   } catch (err) {
@@ -7058,8 +7111,8 @@ async function runBookScan() {
   // Phase-1 read (no lock): folders + the previous items snapshot. All the
   // slow work (walk, zip reads, cover extraction) happens against this
   // snapshot, off the writer lock -- the media scan's own discipline.
-  const db = loadDatabase();
-  const ns = booksStore.ensureBooks(db);
+  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
+  const ns = booksDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
   const { items, covers, survivingIds, missingRoots, erroredDirs } = await booksScan.collectBooks(folders, ns.items, getMediaId);
@@ -7084,11 +7137,12 @@ async function runBookScan() {
     }
   }
 
-  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   const prunedAudioKeys = []; // v1.38.0: TTS cache keys of pruned books, deleted below
-  await updateDatabase((fresh) => {
-    const freshNs = booksStore.ensureBooks(fresh);
+  // Wave 5: the merge runs against a FRESH holder; the diff rides the doc commit.
+  await updateDatabase(() => booksDb.mutate((holder) => {
+    const freshNs = booksStore.ensureBooks(holder);
     // v1.37.0 gate fix (QA CRITICAL #2 -- the v1.33 tech-debt-#10 Option-C
     // lesson, now applied to books): a root whose mountpoint DIRECTORY
     // still exists but yielded ZERO files this pass, while the library
@@ -7152,7 +7206,7 @@ async function runBookScan() {
     }
     freshNs.items = next;
     return true;
-  });
+  }));
 
   // v1.43: per-user reading positions are book-id-keyed carriers -- pruned
   // books shed them too (post-commit, the removeMediaState posture; one
@@ -7218,7 +7272,7 @@ async function scanBooks() {
 }
 
 app.get('/api/books/config', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const folders = ns.folders || [];
   // v1.128 Wave B (L2): common.js reads this on every page to decide whether
   // to show the Books nav tab, so members reach it - but it leaked every book
@@ -7248,7 +7302,7 @@ app.post('/api/books/config', async (req, res) => {
   // in EITHER direction -- a file must have exactly one owner, or the two
   // scanners' prune/merge semantics fight over it.
   const cachedForBooks = getCachedDatabase();
-  const mediaFolders = (cachedForBooks.folders || []).map((f) => path.resolve(f));
+  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
   for (const bookRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
       if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
@@ -7259,7 +7313,7 @@ app.post('/api/books/config', async (req, res) => {
   // v1.44 music: reciprocal of the music-config guard -- a book root may not
   // overlap a MUSIC root either (both directions), so the three collections
   // stay mutually disjoint regardless of save order.
-  const musicFoldersForBooks = (musicStore.readMusic(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  const musicFoldersForBooks = (musicDb.read().folders || []).map((f) => path.resolve(f));
   for (const bookRoot of resolved) {
     for (const musicRoot of musicFoldersForBooks) {
       if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
@@ -7269,7 +7323,7 @@ app.post('/api/books/config', async (req, res) => {
   }
   // v1.195 TV Shows: reciprocal of the tv-config net - a book root may not overlap
   // a Shows root either (both directions).
-  const tvFoldersForBooks = (tvStore.readTv(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  const tvFoldersForBooks = (tvDb.read().folders || []).map((f) => path.resolve(f));
   for (const bookRoot of resolved) {
     for (const tvRoot of tvFoldersForBooks) {
       if (foldersOverlap(bookRoot, tvRoot)) {
@@ -7287,10 +7341,7 @@ app.post('/api/books/config', async (req, res) => {
     }
   }
   try {
-    await updateDatabase((db) => {
-      booksStore.ensureBooks(db).folders = resolved;
-      return true;
-    });
+    await updateDatabase(() => booksDb.mutate((h) => { booksStore.ensureBooks(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
   } catch (err) {
     return res.status(500).json({ error: `Could not save book folders: ${err.message}` });
   }
@@ -7357,7 +7408,7 @@ function flushPendingBookProgress() {
   const snapshot = [...pendingBookProgress.values()];
   pendingBookProgress.clear();
   return updateDatabase((db) => {
-    const ns = booksStore.readBooks(db);
+    const ns = booksDb.read();
     // Same deleted-between-ping-and-flush guard as the media coalescer: a
     // flush must never resurrect progress for a pruned book. OWN-property
     // (the v1.42 __proto__ lesson), same as the media flush above.
@@ -7433,7 +7484,7 @@ function publicBookListItem(item, userId, likedSet, finishedMap) {
 }
 
 app.get('/api/books', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   let list = Object.values(ns.items).filter((i) => bookVisibleTo(req, i)); // v1.80 RBAC
   const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
   if (search !== '') {
@@ -7471,7 +7522,7 @@ app.get('/api/books', (req, res) => {
 // state (T10's pin gesture). Exposing shelf DIR paths to the operator's own
 // UI is the same trust level as /api/config exposing db.folders.
 app.get('/api/books/folders', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const byDir = new Map();
   for (const item of Object.values(ns.items)) {
     if (typeof item.filePath !== 'string') continue;
@@ -7509,7 +7560,7 @@ app.get('/api/books/pins', (req, res) => {
 // (the id persists into user_book_liked); the DELETE is idempotent like
 // every other unlike.
 app.post('/api/books/liked/:id', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -7525,7 +7576,7 @@ app.delete('/api/books/liked/:id', (req, res) => {
 // {finished:false} clears, anything else sets). No auto threshold - a text
 // position's "end" is format-dependent (exec plan, morning question M1).
 app.post('/api/books/:id/finished', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   if (!Object.prototype.hasOwnProperty.call(ns.items, req.params.id)) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -7536,7 +7587,7 @@ app.post('/api/books/:id/finished', (req, res) => {
 });
 
 app.get('/api/books/:id', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
@@ -7557,7 +7608,7 @@ const BOOK_CONTENT_TYPES = { epub: 'application/epub+zip', pdf: 'application/pdf
 // future writer of items[*].filePath MUST re-establish confinement here or
 // this becomes an arbitrary-file-read.
 app.get('/book/:id/file', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC: private library
@@ -7586,7 +7637,7 @@ app.get('/book/:id/file', (req, res) => {
 // Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
 // configured; 404 for an unknown/non-epub book or out-of-range chapter.
 app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
-  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
   if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
@@ -7602,7 +7653,7 @@ app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
 app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
   const idx = Number(req.params.spineIndex);
   if (!Number.isInteger(idx) || idx < 0) return res.json({ status: 'none', durationSec: null });
-  const audio = booksStore.readBooks(getCachedDatabase()).audio[req.params.id];
+  const audio = booksDb.parts.audio.get(req.params.id); // Wave 5 (gate pass B): a point query
   const entry = audio && audio[String(idx)];
   if (!entry) return res.json({ status: 'none', durationSec: null });
   res.json({ status: entry.status, durationSec: typeof entry.durationSec === 'number' ? entry.durationSec : null });
@@ -7610,7 +7661,7 @@ app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
 
 // Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
 app.get('/book/:id/tts/:spineIndex', (req, res) => {
-  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC
+  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
@@ -7626,7 +7677,7 @@ app.get('/book/:id/tts/:spineIndex', (req, res) => {
 
 // The blockIndex -> startSec map the reader uses to seek to the right paragraph.
 app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
-  const rbacBook = booksStore.readBooks(getCachedDatabase()).items[req.params.id]; // v1.80 RBAC: private book TEXT
+  const rbacBook = booksDb.parts.items.get(req.params.id); /* Wave 5 gate pass B: a point query */ // v1.80 RBAC: private book TEXT
   if (rbacBook && !bookVisibleTo(req, rbacBook)) return res.status(404).json({ error: 'No such book chapter' });
   const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
   if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
@@ -7638,7 +7689,7 @@ app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
 });
 
 app.get('/bookcover/:id', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!bookVisibleTo(req, item)) return res.status(404).json({ error: 'Book not found' }); // v1.80 RBAC
@@ -7694,7 +7745,7 @@ app.post(
   '/api/books/:id/cover',
   express.raw({ type: Object.keys(BOOK_COVER_TYPES), limit: BOOK_COVER_MAX_BYTES }),
   async (req, res) => {
-    const ns = booksStore.readBooks(getCachedDatabase());
+    const ns = booksDb.read();
     const item = ns.items[req.params.id];
     if (!item) return res.status(404).json({ error: 'Book not found' });
     // v1.123 T3 (security): visibility axis - this writes a SHARED cover for the
@@ -7724,7 +7775,7 @@ app.post(
     const rawPages = parseInt(req.query.pages, 10);
     const pageCount = Number.isInteger(rawPages) && rawPages > 0 && rawPages < 100000 ? rawPages : undefined;
     try {
-      await updateDatabase((db) => {
+      await updateDatabase(() => booksDb.mutate((db) => {
         const freshNs = booksStore.ensureBooks(db);
         const fresh = freshNs.items[item.id];
         if (!fresh) return false; // pruned between read and write: drop
@@ -7734,7 +7785,7 @@ app.post(
         }
         if (pageCount !== undefined && fresh.pageCount === undefined) fresh.pageCount = pageCount;
         return true;
-      });
+      }));
     } catch (err) {
       return res.status(500).json({ error: `Cover stored but the record update failed: ${err.message}` });
     }
@@ -7750,7 +7801,7 @@ app.post(
 // the reducer output to the user's user_book_pins rows -- the validation
 // (root confinement) is unchanged.
 app.post('/api/books/pins', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
@@ -7809,7 +7860,7 @@ app.get('/podcasts', (req, res) => {
 });
 
 app.post('/api/books/:id/progress', (req, res) => {
-  const ns = booksStore.readBooks(getCachedDatabase());
+  const ns = booksDb.read();
   // OWN-property check (v1.42 __proto__ lesson): this id persists into
   // user_book_progress -- see POST /api/progress's identical guard.
   const item = Object.prototype.hasOwnProperty.call(ns.items, req.params.id) ? ns.items[req.params.id] : undefined;
@@ -7864,8 +7915,8 @@ app.get('/api/scan-status', (req, res) => {
   const visibleMap = visibleMetadataFor(req, db.metadata);
   const items = Object.values(visibleMap);
   const folderCount = requesterHasRestrictions(req)
-    ? visibleConfigRoots(req, db.folders || [], items, mediaVisibleTo).length
-    : (db.folders || []).length;
+    ? visibleConfigRoots(req, folderStore.list(), items, mediaVisibleTo).length
+    : folderStore.size(); // Wave 4
   // Same filter that has always produced the `transcoding` count -- this is
   // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
   // codec-flagged HEVC .mp4 rides this exact filter, not a divergent one).
@@ -8125,8 +8176,8 @@ async function extractAlbumArt(job) {
 }
 
 async function runMusicScan() {
-  const db = loadDatabase();
-  const ns = musicStore.ensureMusic(db);
+  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
+  const ns = musicDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
   const { tracks, survivingIds, missingRoots, erroredDirs } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
@@ -8134,12 +8185,13 @@ async function runMusicScan() {
     console.warn(`music: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
 
-  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   const prunedRecords = [];
   let finalTracks = tracks;
-  await updateDatabase((fresh) => {
-    const freshNs = musicStore.ensureMusic(fresh);
+  // Wave 5: the merge runs against a FRESH holder; the diff rides the doc commit.
+  await updateDatabase(() => musicDb.mutate((holder) => {
+    const freshNs = musicStore.ensureMusic(holder);
     // The books/media Option-C mount-loss guard, applied to music: a root
     // whose directory still exists but yielded ZERO files this pass while the
     // library previously had tracks under it is the unmounted-share signature
@@ -8169,7 +8221,7 @@ async function runMusicScan() {
     freshNs.tracks = next;
     finalTracks = next;
     return true;
-  });
+  }));
 
   // Per-user music state is track-id-keyed -- pruned tracks shed liked/progress
   // and null any resume pointer that referenced them (post-commit, the
@@ -8239,7 +8291,7 @@ async function scanMusic() {
 }
 
 app.get('/api/music/config', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const folders = ns.folders || [];
   // v1.128 Wave B (L3): same as books/config - common.js reads it for the
   // Music nav tab, so filter to roots holding >=1 visible track for a
@@ -8270,8 +8322,8 @@ app.post('/api/music/config', async (req, res) => {
   // reciprocal clauses in the media/book config routes (T5) close the other
   // direction so ownership is order-independent.
   const cached = getCachedDatabase();
-  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
-  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
+  const bookFolders = (booksDb.read().folders || []).map((f) => path.resolve(f));
   for (const musicRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
       if (musicRoot === mediaRoot || ytdlpArgs.isPathUnder(musicRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, musicRoot)) {
@@ -8289,17 +8341,14 @@ app.post('/api/music/config', async (req, res) => {
       return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
     }
     // v1.195 TV Shows: reciprocal of the tv-config net.
-    for (const tvRoot of (tvStore.readTv(cached).folders || []).map((f) => path.resolve(f))) {
+    for (const tvRoot of (tvDb.read().folders || []).map((f) => path.resolve(f))) {
       if (foldersOverlap(musicRoot, tvRoot)) {
         return res.status(400).json({ error: `Music folder overlaps a Shows folder: ${musicRoot} <-> ${tvRoot}` });
       }
     }
   }
   try {
-    await updateDatabase((db) => {
-      musicStore.ensureMusic(db).folders = resolved;
-      return true;
-    });
+    await updateDatabase(() => musicDb.mutate((h) => { musicStore.ensureMusic(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
   } catch (err) {
     return res.status(500).json({ error: `Could not save music folders: ${err.message}` });
   }
@@ -8349,7 +8398,7 @@ function flushPendingMusicProgress() {
   const snapshot = [...pendingMusicProgress.values()];
   pendingMusicProgress.clear();
   return updateDatabase((db) => {
-    const ns = musicStore.readMusic(db);
+    const ns = musicDb.read();
     // Deleted-between-ping-and-flush guard (OWN-property, the __proto__ lesson):
     // never resurrect progress for a pruned track.
     const rows = snapshot.filter((entry) => Object.prototype.hasOwnProperty.call(ns.tracks, entry.trackId));
@@ -8460,7 +8509,8 @@ function projectedLibraryTracks(req, nativeTracks) {
   // marked 'off'. Instant + library-wide (this reads db.metadata live). RBAC (mediaVisibleTo)
   // below is UNCHANGED, so a restricted user still cannot see hidden audio.
   const db = getCachedDatabase();
-  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
+  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
@@ -8476,7 +8526,7 @@ function projectedLibraryTracks(req, nativeTracks) {
     // Music redesign Slice 1: carry the channel avatar so the artist circle has a
     // real picture (the resolver is READ-ONLY: item -> channelId registry ->
     // subscription). Native music tracks have no channel, so no avatar.
-    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
     for (const track of tracks) { track.avatarUrl = avatarUrl; out.push(track); }
   }
   return out;
@@ -8533,7 +8583,7 @@ function musicListProgressMap(userId, tracks) {
 }
 
 app.get('/api/music', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -8571,7 +8621,7 @@ app.get('/api/music', (req, res) => {
 });
 
 app.get('/api/music/albums', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -8589,7 +8639,7 @@ app.get('/api/music/albums', (req, res) => {
 });
 
 app.get('/api/music/artists', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -8611,9 +8661,9 @@ app.get('/api/music/artists', (req, res) => {
 // channel-level booleans the projection uses (single source of truth).
 app.get('/api/music/channels', (req, res) => {
   const db = getCachedDatabase();
-  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const marks = musicDb.readPart('channels'); // Wave 5: the music_channels table (one table, not four)
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
-  const displayNames = (db.folderDisplayNames && typeof db.folderDisplayNames === 'object') ? db.folderDisplayNames : {};
+  const displayNames = folderDisplayNameStore.getAll(); // Wave 4
   const visibleCount = new Map(); // folderName -> visible audio count
   for (const it of allAudio) {
     if (typeof it.folderName !== 'string' || it.folderName === '') continue;
@@ -8637,13 +8687,13 @@ app.get('/api/music/channels', (req, res) => {
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
 app.get('/api/music/liked', (req, res) => {
   // v1.80 RBAC: a restricted track's id must not leak into the liked set.
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const trackIds = userStore.getMusicLiked(req.user.id).filter((id) => trackVisibleTo(req, ownTrack(ns.tracks, id)));
   res.json({ trackIds });
 });
 
 app.post('/api/music/liked/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   if (!ownTrack(ns.tracks, req.params.id)) return res.status(404).json({ error: 'no such track' });
   userStore.addMusicLiked(req.user.id, req.params.id, new Date().toISOString());
   res.json({ liked: true });
@@ -8735,7 +8785,7 @@ app.get('/api/music/progress/:id', (req, res) => {
 });
 
 app.get('/api/music/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const track = ownTrack(ns.tracks, req.params.id);
   if (track) {
     if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
@@ -8764,7 +8814,7 @@ app.get('/api/music/:id', (req, res) => {
 // AVI->MP4 precedent, audio flavor) and answering 503 until the rendition is
 // ready (the client retries).
 app.get('/track/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
   if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC: restricted -> 404
@@ -8797,7 +8847,7 @@ app.get('/track/:id', (req, res) => {
 // placeholder (mirrors /bookcover/:id).
 app.get('/albumart/:id', (req, res) => {
   const db = getCachedDatabase();
-  const ns = musicStore.readMusic(db);
+  const ns = musicDb.read();
   const track = ownTrack(ns.tracks, req.params.id);
   if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
@@ -8903,8 +8953,8 @@ function extractTvThumb(job) {
 }
 
 async function runTvScan() {
-  const db = loadDatabase();
-  const ns = tvStore.ensureTv(db);
+  const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
+  const ns = tvDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables (no doc snapshot needed)
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.episodes).length === 0) return; // Shows-less: total no-op
   const { episodes, survivingIds, missingRoots, erroredDirs } = await tvScan.collectEpisodes(
@@ -8913,11 +8963,13 @@ async function runTvScan() {
     console.warn(`tv: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
 
-  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const pruneMissing = !!scanSettings.pruneMissing;
   const prunedIds = [];
   let finalEpisodes = episodes;
-  await updateDatabase((fresh) => {
-    const freshNs = tvStore.ensureTv(fresh);
+  // Wave 5: the merge runs against a FRESH holder and its diff (changed +
+  // pruned episode rows only) rides the doc commit's transaction.
+  await updateDatabase(() => tvDb.mutate((holder) => {
+    const freshNs = tvStore.ensureTv(holder); // the LIVE rows, read inside the lock
     // The music/books Option-C mount-loss guard: a root that still EXISTS but
     // yielded ZERO files this pass while the library previously had episodes under
     // it is the unmounted-share signature -- treat as VANISHED (prune nothing).
@@ -8942,7 +8994,7 @@ async function runTvScan() {
     freshNs.episodes = next;
     finalEpisodes = next;
     return true;
-  });
+  }));
 
   // Per-user episode state is episode-id-keyed -- pruned episodes shed
   // progress/played/liked (post-commit, the removeMusicState posture).
@@ -9007,7 +9059,7 @@ app.get('/api/tv/config', (req, res) => {
   // GATED (route-read-classification): the nav gate reads this, so a restricted
   // member sees only roots holding >=1 visible episode; admin + unrestricted member
   // get the list byte-identical (visibleConfigRoots short-circuits when no restriction).
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   res.json({ folders: visibleConfigRoots(req, ns.folders || [], Object.values(ns.episodes || {}), tvEpisodeVisibleTo) });
 });
 
@@ -9033,9 +9085,9 @@ app.post('/api/tv/config', async (req, res) => {
   // reciprocal clauses in the media/book/music/podcast config routes close the
   // other direction (adding one of THOSE under a Shows root).
   const cached = getCachedDatabase();
-  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
-  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
-  const musicFolders = (musicStore.readMusic(cached).folders || []).map((f) => path.resolve(f));
+  const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
+  const bookFolders = (booksDb.read().folders || []).map((f) => path.resolve(f));
+  const musicFolders = (musicDb.read().folders || []).map((f) => path.resolve(f));
   const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
   for (const tvRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
@@ -9050,7 +9102,7 @@ app.post('/api/tv/config', async (req, res) => {
     if (foldersOverlap(tvRoot, podcastsRoot)) return res.status(400).json({ error: `Shows folder overlaps the podcasts folder: ${tvRoot} <-> ${podcastsRoot}` });
   }
   try {
-    await updateDatabase((db) => { tvStore.ensureTv(db).folders = resolved; return true; });
+    await updateDatabase(() => tvDb.mutate((h) => { tvStore.ensureTv(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
   } catch (err) {
     return res.status(500).json({ error: `Could not save Shows folders: ${err.message}` });
   }
@@ -9203,7 +9255,7 @@ function tvPosterPlaceholderSvg(name) {
 
 // The visible-episode array for the requester (the SINGLE visibility decision).
 function visibleTvEpisodes(req) {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   return Object.values(ns.episodes || {}).filter((ep) => tvEpisodeVisibleTo(req, ep));
 }
 
@@ -9222,7 +9274,7 @@ app.get('/api/tv', (req, res) => {
 // or absent episode is 404 (no title/existence oracle), same as /tvepisode/:id.
 // Static segment 'episode' registered BEFORE /api/tv/:showId (route-order scar).
 app.get('/api/tv/episode/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9276,7 +9328,7 @@ app.get('/api/tv/episode/:id', (req, res) => {
 // repoll simply never resolves to ready - fail-safe, feature stays off).
 // Registered BEFORE /api/tv/:showId (the route-order scar).
 app.post('/api/tv/episode/:id/prepare-audio', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9298,7 +9350,7 @@ app.post('/api/tv/progress', (req, res) => {
   // here for a tv source).
   const { id, timestamp, duration } = req.body || {};
   if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' });
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, id);
   if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
   const pos = Number(timestamp) || 0;
@@ -9314,7 +9366,7 @@ app.post('/api/tv/progress', (req, res) => {
 app.post('/api/tv/played', (req, res) => {
   const { episodeId } = req.body || {};
   if (typeof episodeId !== 'string' || episodeId === '') return res.status(400).json({ error: 'episodeId required' });
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, episodeId);
   if (!ep || !tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' });
   userStore.setTvPlayed(req.user.id, episodeId, new Date().toISOString());
@@ -9334,7 +9386,7 @@ app.get('/api/tv/continue', (req, res) => {
   // GATED: the requester's in-progress episodes (a resume position, not finished,
   // not watched), over ONLY episodes they may see, most-recent activity first,
   // joined with the episode's display fields. Powers the Shows-home Continue row.
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const progress = userStore.getTvProgress(req.user.id);
   const played = userStore.getTvPlayed(req.user.id);
   const rows = [];
@@ -9392,7 +9444,7 @@ app.get('/api/tv/:showId', (req, res) => {
 // placeholder - never a broken img. Gated exactly like /tvepisode (restricted or
 // absent -> 404, no oracle); private-cached like /tvposter.
 app.get('/tvthumb/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9423,7 +9475,7 @@ app.get('/tvposter/:showId', (req, res) => {
 });
 
 app.get('/tvepisode/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9458,7 +9510,7 @@ app.get('/tvepisode/:id', (req, res) => {
 // AND the source, the video route's exact shape); absent -> enqueue the extract
 // and 503 {error:'extracting'} (the client's repoll converges on 'ready').
 app.get('/tvaudio/:id', (req, res) => {
-  const ns = tvStore.readTv(getCachedDatabase());
+  const ns = tvDb.read();
   const ep = ownEpisode(ns.episodes, req.params.id);
   if (!ep || typeof ep.filePath !== 'string') return res.status(404).json({ error: 'no such episode' });
   if (!tvEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'no such episode' }); // RBAC: restricted -> 404
@@ -9553,7 +9605,6 @@ function customLogoMimeKey(variant) {
 // treats that as "keep the text logo"). `no-cache` so a replacement shows up
 // on the next load without a stale-cache fight.
 app.get('/logo', (req, res) => {
-  const db = getCachedDatabase();
   // v1.33.1: variant-aware with CROSS-FALLBACK -- ?variant=dark serves the
   // dark logo when set, else the light one; the plain /logo (light) likewise
   // falls back to a dark-only upload. "If only one is uploaded it is used
@@ -9566,7 +9617,8 @@ app.get('/logo', (req, res) => {
   const requested = resolveLogoVariant(req.query.variant);
   const fallback = requested === 'dark' ? 'light' : 'dark';
   const mimeFor = (v) => {
-    const m = db.settings && typeof db.settings[customLogoMimeKey(v)] === 'string' ? db.settings[customLogoMimeKey(v)] : '';
+    const stored = settingsStore.getKey(customLogoMimeKey(v)); // Wave 4
+    const m = typeof stored === 'string' ? stored : '';
     return m && Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, m) ? m : '';
   };
   let variant = requested;
@@ -9635,7 +9687,7 @@ app.post(
       await updateDatabase(db => {
         fs.writeFileSync(tmp, bytes);
         fs.renameSync(tmp, target);
-        db.settings = { ...db.settings, [customLogoMimeKey(variant)]: mime };
+        inSaveTransaction(() => settingsStore.set(customLogoMimeKey(variant), mime)); // Wave 4: rides the doc commit
         return true;
       });
     } catch (err) {
@@ -9665,11 +9717,8 @@ app.delete('/api/settings/logo', async (req, res) => {
   const mimeKey = customLogoMimeKey(variant);
   try {
     await updateDatabase(db => {
-      if (db.settings && mimeKey in db.settings) {
-        const next = { ...db.settings };
-        delete next[mimeKey];
-        db.settings = next;
-      }
+      // Wave 4: the mime key is a settings row; its removal rides the commit.
+      if (settingsStore.has(mimeKey)) inSaveTransaction(() => settingsStore.remove(mimeKey));
       return true;
     });
     try { fs.unlinkSync(customLogoPath(variant)); } catch { /* already gone -- fine */ }
@@ -9919,11 +9968,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'folderDisplayNames', 'metadata', 'liked', 'settings', 'books', 'music', 'podcasts', 'tv', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata']; // Wave 5: the last doc-model key (Wave 6 moves it too)
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
+// Wave 4: `settings` - same key, the same merged object shape.
+// Wave 4 (second group): the folder config keys - same keys, same shapes.
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music', 'books', 'podcasts', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9942,9 +9993,19 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.progress = progressStore.getAll();          // Wave 2: verbatim records
       bundle.deleteTombstones = tombstoneStore.getAll(); // Wave 2: verbatim records
       bundle.trash = trashStore.getAll();                // Wave 3: verbatim records
+      bundle.settings = settingsStore.get();             // Wave 4: the MERGED object, as the doc snapshot carried it
+      bundle.folders = folderStore.list();               // Wave 4: the root list, operator order
+      bundle.folderSettings = folderSettingsStore.getAll();
+      bundle.folderDisplayNames = folderDisplayNameStore.getAll();
+      bundle.liked = likedStore.list();                  // Wave 4: the frozen likes, like order
+      bundle.tv = tvDb.read();                           // Wave 5: the Shows namespace, its old container shape
+      bundle.music = musicDb.read();                     // Wave 5: the music namespace, its old container shape
+      bundle.books = booksDb.read();                     // Wave 5: the books namespace, its old container shape
+      bundle.podcasts = podcastsDb.read();               // Wave 5: the podcasts namespace, its old container shape (no feed URLs - never in the db)
+      bundle.ytdlp = ytdlpDb.read();                     // Wave 5: the ytdlp namespace, its old container shape (allowMembersOnly included)
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
-        const mime = db.settings ? db.settings[customLogoMimeKey(variant)] : undefined;
+        const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
         if (typeof mime === 'string' && mime) {
           try {
             bundle.customLogo[variant] = { mime, b64: fs.readFileSync(customLogoPath(variant)).toString('base64') };
@@ -9980,6 +10041,39 @@ app.get('/api/admin/backup', async (req, res) => {
 // Validation is strict and field-level: an unknown top-level key or a users
 // array this version cannot restore REFUSES the whole bundle (never a lossy
 // partial restore — the same posture as the boot importer).
+function validateFeatureBundle(def, ns) {
+  const badKey = (k) => typeof k !== 'string' || k === '' || k.includes('\u0000');
+  const show = (k) => String(k).split('\u0000').join('\\u0000');
+  if (typeof ns !== 'object' || ns === null || Array.isArray(ns)) return `bundle key '${def.name}' must be an object`;
+  for (const part of Object.keys(ns)) {
+    const spec = def.parts[part];
+    if (!spec) return `unknown bundle key '${def.name}.${part}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
+    const v = ns[part];
+    if (v === undefined || v === null) continue;
+    if (spec.kind === 'list') {
+      if (!Array.isArray(v)) return `${def.name}.${part} must be an array`;
+      for (const e of v) if (badKey(e)) return `${def.name}.${part}: every entry must be a non-empty string`;
+    } else if (spec.kind === 'records') {
+      if (!Array.isArray(v)) return `${def.name}.${part} must be an array`;
+      // Wave 5 (gate pass B): a legacy id-less yt-dlp subscription that carries a
+      // channelUrl is accepted - the importer mints the id the migration would
+      // (mintLegacyYtdlpSubscriptionIds) instead of refusing the whole bundle.
+      const idlessOk = (r) => def.name === 'ytdlp' && part === 'subscriptions' && (r.id === undefined || r.id === '') && !badKey(r.channelUrl);
+      for (const r of v) if (!r || typeof r !== 'object' || Array.isArray(r) || (badKey(r.id) && !idlessOk(r))) return `${def.name}.${part}: every entry must be an object with a non-empty string id`;
+    } else if (spec.kind === 'value') {
+      // A value part restores as its scalar shape (the flag is a boolean) - never an object.
+      if (typeof v !== typeof spec.defaultValue) return `${def.name}.${part} must be a ${typeof spec.defaultValue}`;
+    } else if (spec.kind === 'map' || spec.kind === 'kv') {
+      if (typeof v !== 'object' || Array.isArray(v)) return `${def.name}.${part} must be an object`;
+      for (const k of Object.keys(v)) {
+        if (badKey(k)) return `${def.name}.${part}['${show(k)}']: invalid key`;
+        if (v[k] === undefined) return `${def.name}.${part}['${k}']: record is missing`;
+      }
+    }
+  }
+  return null;
+}
+
 function validateBackupBundle(bundle) {
   if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return 'bundle must be a JSON object';
   if (bundle.schema !== BACKUP_SCHEMA) return `unsupported schema '${bundle.schema}' (expected ${BACKUP_SCHEMA})`;
@@ -10111,6 +10205,34 @@ function validateBackupBundle(bundle) {
       }
     }
   }
+  // Wave 4: `settings` restores into app_settings one row per key through the
+  // store handle - shape-checked HERE (an object with non-empty NUL-free keys)
+  // so a malformed bundle is a 400 BEFORE the wipe, never a mid-populate
+  // rollback (the Wave 2 posture).
+  if (bundle.settings !== undefined) {
+    if (typeof bundle.settings !== 'object' || bundle.settings === null || Array.isArray(bundle.settings)) return 'settings must be an object';
+    for (const key of Object.keys(bundle.settings)) {
+      if (key === '' || key.includes('\u0000')) return `settings['${key.split('\u0000').join('\\u0000')}']: invalid settings key`;
+    }
+  }
+  // Wave 4 (second group): the folder config. `folders` restores as an
+  // ordered list of root paths, the two maps one row per key - shape-checked
+  // before the wipe like everything else.
+  for (const key of ['folders', 'liked']) {
+    if (bundle[key] === undefined) continue;
+    if (!Array.isArray(bundle[key])) return `${key} must be an array`;
+    for (const f of bundle[key]) {
+      if (typeof f !== 'string' || f === '' || f.includes('\u0000')) return `${key}: every entry must be a non-empty string`;
+    }
+  }
+  for (const key of ['folderSettings', 'folderDisplayNames']) {
+    if (bundle[key] === undefined) continue;
+    if (typeof bundle[key] !== 'object' || bundle[key] === null || Array.isArray(bundle[key])) return `${key} must be an object`;
+    for (const k of Object.keys(bundle[key])) {
+      if (k === '' || k.includes('\u0000')) return `${key}['${k.split('\u0000').join('\\u0000')}']: invalid key`;
+      if (bundle[key][k] === undefined) return `${key}['${k}']: record is missing`;
+    }
+  }
   // Same amplifier, settings side: the sweep also clamps (defense in depth),
   // but a bundle with an out-of-set retention gets the clean 400 here.
   if (bundle.settings && typeof bundle.settings === 'object' && !Array.isArray(bundle.settings)
@@ -10162,13 +10284,19 @@ function validateBackupBundle(bundle) {
       if (key === 'deleteTombstones' && (rec === null || typeof rec !== 'object' || Array.isArray(rec))) return `${key}['${id}']: must be an object`;
     }
   }
-  // Container namespaces must be objects when present (delta-round
-  // residual): catching a malformed shape HERE means a 400 before the wipe
-  // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'podcasts', 'tv', 'ytdlp']) {
-    if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
-      return `bundle key '${container}' must be an object`;
-    }
+  // (The container-object check that lived here is subsumed: every container
+  // is a feature store since Wave 5 and validateFeatureBundle below checks
+  // each one part by part.)
+  // Wave 5: a relational feature container - shape-checked part by part
+  // BEFORE the wipe (the same posture as the record namespaces): known parts
+  // only; a list is an array of non-empty NUL-free strings; a map / kv is an
+  // object with such keys and no undefined values; a record list is an array
+  // of objects with such ids.
+  for (const def of sqliteDb.FEATURE_DEFS) {
+    const ns = bundle[def.name];
+    if (ns === undefined) continue;
+    const problem = validateFeatureBundle(def, ns);
+    if (problem) return problem;
   }
   if (bundle.customLogo !== undefined) {
     if (typeof bundle.customLogo !== 'object' || bundle.customLogo === null || Array.isArray(bundle.customLogo)) return 'customLogo must be an object';
@@ -10264,17 +10392,19 @@ app.post('/api/admin/restore', (req, res, next) => {
   // destroy the subscription list and the whole episode archive (forcing a
   // full re-download) while orphaning the tokened secrets file.
   if (bundle.podcasts === undefined) {
-    const current = loadDatabase();
-    if (current.podcasts && (
-      (Array.isArray(current.podcasts.subscriptions) && current.podcasts.subscriptions.length > 0)
-      || (current.podcasts.episodes && Object.keys(current.podcasts.episodes).length > 0)
-    )) {
-      dbPart.podcasts = current.podcasts;
+    const current = podcastsDb.read(); // Wave 5: the tables, in the container shape the restore handle takes
+    if (current.subscriptions.length > 0 || Object.keys(current.episodes).length > 0) {
+      dbPart.podcasts = current;
     }
   }
 
   try {
     await replacePersistedState((handles) => {
+      if (failNextRestorePopulateError) { // test seam: a mid-populate failure, after the wipe (see __failNextRestorePopulateForTests)
+        const injected = failNextRestorePopulateError;
+        failNextRestorePopulateError = null;
+        throw injected;
+      }
       // Import FIRST (delta-round residual, adversarial seat): any import
       // refusal/throw must roll back with the FILESYSTEM untouched — the
       // original ordering destroyed the old logo bytes before the import
@@ -10355,8 +10485,7 @@ app.post('/api/admin/restore', (req, res, next) => {
 
 // API: Read the Automation & Storage settings for Settings-page prefill.
 app.get('/api/settings', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  res.json(settingsResponse(db.settings));
+  res.json(settingsResponse(settingsStore.get())); // Wave 4: the table (defaults merged)
 });
 
 // API: Update the Automation & Storage settings. Body may be a PARTIAL object
@@ -10452,7 +10581,7 @@ app.post('/api/settings', async (req, res) => {
   // assigned) before the merge, so what persists is always the canonical
   // shape; a bad list rejects the WHOLE request (nothing partially persists).
   if ('transcriptAiPrompts' in body) {
-    const checked = validateTranscriptAiPrompts(body.transcriptAiPrompts, getCachedDatabase().settings.transcriptAiPrompts);
+    const checked = validateTranscriptAiPrompts(body.transcriptAiPrompts, settingsStore.getKey('transcriptAiPrompts')); // Wave 4
     if (!checked.ok) return res.status(400).json({ error: checked.error });
     body.transcriptAiPrompts = checked.value;
   }
@@ -10463,10 +10592,13 @@ app.post('/api/settings', async (req, res) => {
   let prevInterval;
   let saved;
   try {
-    await updateDatabase(db => {
-      prevInterval = db.settings.scanIntervalMinutes; // captured BEFORE the merge
-      db.settings = { ...db.settings, ...body };
-      saved = db.settings;
+    await updateDatabase(() => {
+      const before = settingsStore.get(); // Wave 4: the table, on the chained tick
+      prevInterval = before.scanIntervalMinutes; // captured BEFORE the merge
+      saved = { ...before, ...body };
+      // Only the touched keys are written, inside the doc commit's transaction
+      // (a failed save leaves the table exactly as it was).
+      inSaveTransaction(() => settingsStore.update(body));
       return true;
     });
   } catch (err) {
@@ -10495,11 +10627,11 @@ app.post('/api/settings', async (req, res) => {
 // subscriptions nav link. GENERATION is deliberately not gated here (the
 // feed keeps accumulating while the bell is off -- decision 8); this gate is
 // about what a browser can see.
-function notificationsFeatureEnabled(db) {
+function notificationsFeatureEnabled(_db) {
   if (!ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) return false;
-  const subs = db && db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subs = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table (one point query)
   if (subs.length < 1) return false;
-  return !(db && db.settings && db.settings.notificationsEnabled === false);
+  return settingsStore.getKey('notificationsEnabled') !== false; // Wave 4
 }
 
 // The badge count. Doubles as the client's boot probe, so it is the ONE
@@ -10520,6 +10652,7 @@ app.get('/api/notifications/badge', (req, res) => {
 // pending) is filtered here as the defensive net.
 app.get('/api/notifications', (req, res) => {
   const db = getCachedDatabase();
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   const { items } = userStore.listNotifications(req.user.id);
   const metadata = db.metadata || {};
@@ -10528,7 +10661,7 @@ app.get('/api/notifications', (req, res) => {
   const phantomEpisodeIds = [];
   // v1.73: podcast rows resolve against the episodes map, never db.metadata
   // (the shapedQueue posture) - one ns read for the whole request.
-  const podcastNsForFeed = podcastStore.readPodcasts(db);
+  const podcastNsForFeed = podcastsDb.read();
   const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
   for (const row of items) {
     // v1.146 (downloader-engine T5): engine event rows - ADMIN-ONLY (an
@@ -10625,7 +10758,7 @@ app.get('/api/notifications', (req, res) => {
       // v1.85 #3a: resolveItemChannelAvatarUrl is READ-ONLY now (it reads via
       // readYtdlpNamespace, never ensureYtdlp), so the shared getCachedDatabase()
       // object can be handed in directly - no defensive deep-clone.
-      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item) || '';
+      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
     }
     rows.push({
       id: row.id,
@@ -10823,8 +10956,8 @@ function shapedQueue(db, req) {
   const userId = req.user.id;
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
-  const podcastNs = podcastStore.readPodcasts(db);
-  const musicNs = musicStore.readMusic(db);
+  const podcastNs = podcastsDb.read();
+  const musicNs = musicDb.read();
   const entries = [];
   for (const e of live.entries) {
     if (e.kind === 'podcast') {
@@ -10911,11 +11044,11 @@ app.post('/api/queue/items', (req, res) => {
   // the insert as an existence oracle for a hidden item (and never gets it
   // echoed back through the shaped queue).
   if (kind === 'podcast') {
-    const podcastNs = podcastStore.readPodcasts(db);
+    const podcastNs = podcastsDb.read();
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
   } else if (kind === 'track') {
-    const track = ownTrack(musicStore.readMusic(db).tracks, mediaId);
+    const track = musicDb.parts.tracks.get(mediaId); // Wave 5 (gate pass B): a point query
     if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
   } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
@@ -10983,12 +11116,11 @@ app.delete('/api/queue', (req, res) => {
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
 app.get('/api/cache/size', (req, res) => {
-  const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   res.json({
     // v1.46 (gate W2): honest accounting includes the roku-compat rendition
     // cache -- "Clear cache now" (below) sweeps it too.
     bytes: transcodeCacheSize(TRANSCODE_DIR) + transcodeCacheSize(ROKU_COMPAT_DIR),
-    effectiveCacheMaxBytes: effectiveCacheCap(db.settings)
+    effectiveCacheMaxBytes: effectiveCacheCap(settingsStore.get()) // Wave 4
   });
 });
 
@@ -11078,7 +11210,7 @@ app.post('/api/cache/clear', (req, res) => {
   }
   // Drop the status rows whose files we deleted, but KEEP a spared (actively
   // streaming) chapter's row so its /status stays truthful while it plays on.
-  updateDatabase((db) => {
+  updateDatabase(() => booksDb.mutate((db) => {
     const ns = booksStore.ensureBooks(db);
     for (const bookId of Object.keys(ns.audio)) {
       const chapters = ns.audio[bookId];
@@ -11089,7 +11221,7 @@ app.post('/api/cache/clear', (req, res) => {
       if (Object.keys(chapters).length === 0) delete ns.audio[bookId];
     }
     return true;
-  }).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
+  })).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
   res.json({ success: true, removed, freedBytes });
 });
 
@@ -11130,8 +11262,11 @@ app.get('/api/search', (req, res) => {
     // results - a downloaded track (and each CHAPTER TITLE) is findable + plays via
     // the music player. Lazy (only the music arm calls it); v1.242: the same
     // unconditional eligibility + RBAC as /api/music (no opt-in).
+    musicTracks: () => musicDb.read().tracks, // Wave 5: the native music tracks, from their table
+    booksItems: () => booksDb.read().items, // Wave 5: the book items, from their table
+    podcastsNs: (() => { let memo = null; return () => (memo || (memo = podcastsDb.read())); })(), // Wave 5: the podcasts namespace (shows + episodes), from its tables - ONE read per query (shows + episodes both ask)
     musicLibraryTracks: () => {
-      const ns = musicStore.readMusic(db);
+      const ns = musicDb.read();
       const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
       return projectedLibraryTracks(req, native);
     },
@@ -11155,6 +11290,7 @@ app.get('/api/search', (req, res) => {
 // -> respond with `total` = the full filtered length (before slicing).
 app.get('/api/videos', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const search = (req.query.search || '').toLowerCase().trim();
   const folderFilter = req.query.folder || '';
   const rootFilter = req.query.root || ''; // a configured folder path — matches everything under it (recursive)
@@ -11179,7 +11315,7 @@ app.get('/api/videos', (req, res) => {
   // On the default (home/recent) view — no explicit filter — hide files from folders
   // the user marked hidden (their whole subtree). Opening a folder still shows everything.
   if (!search && !folderFilter && !rootFilter) {
-    const settings = db.folderSettings || {};
+    const settings = folderSettingsStore.getAll(); // Wave 4
     const hiddenFolders = Object.keys(settings).filter(f => settings[f] && settings[f].hidden);
     if (hiddenFolders.length > 0) {
       list = list.filter(item => !hiddenFolders.some(hf => underFolder(item.filePath, hf)));
@@ -11193,7 +11329,7 @@ app.get('/api/videos', (req, res) => {
   // human knows finds its items even when the on-disk folder differs).
   if (search) {
     const searchScope = videoQuery.normalizeSearchScope(req.query.searchIn);
-    const searchDisplayNames = db.folderDisplayNames || {};
+    const searchDisplayNames = folderDisplayNameStore.getAll(); // Wave 4
     list = list.filter(item => videoQuery.matchesSearch(item, search, {
       scope: searchScope,
       displayName: searchDisplayNames[item.folderName],
@@ -11219,7 +11355,7 @@ app.get('/api/videos', (req, res) => {
   // global until the v1.44 RBAC tranche (tech-debt #122); this shares that
   // limitation by construction. Read the names straight off the namespace.
   if (req.query.subs === '1') {
-    const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+    const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
     const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
     list = list.filter((item) => item && ((item.folderName && subNames.has(item.folderName)) || (item.channelName && subNames.has(item.channelName))));
   }
@@ -11307,7 +11443,7 @@ app.get('/api/videos', (req, res) => {
       // shared buildCardHtml->modernCardAvatar path reads item.channelAvatarUrl
       // on all three). READ-ONLY (store.js): no cached-db mutation, no clone;
       // bounded to the page `limit`.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
       ...(watchUrl ? { watchUrl } : {}),
       // v1.93.2: DERIVED storyboard descriptor (eligible videos only), so the
       // list projection carries the same geometry as the grid/watch payloads
@@ -11355,16 +11491,14 @@ app.get('/api/videos', (req, res) => {
 function resolveHomeItem(db, id, kind, progressPercent) {
   const enc = encodeURIComponent(id);
   if (kind === 'track') {
-    const ns = musicStore.readMusic(db);
-    const track = ownTrack(ns.tracks, id);
+    const track = musicDb.parts.tracks.get(id); // Wave 5 (gate pass B): a point query - this runs once PER ITEM of every home row
     if (!track) return null;
     return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: `/albumart/${enc}`, href: `/music?play=${enc}`, progressPercent };
   }
   if (kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    const ep = podcastsDb.parts.episodes.get(id) || null; // Wave 5 (gate pass B): a point query, per item
     if (!ep || ep.status !== 'downloaded') return null;
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return { id, kind, title: ep.title || 'Episode', subtitle: sub ? sub.name : 'Podcast', thumbnailUrl: `/podcastart/${encodeURIComponent(ep.subId)}`, href: `/podcasts?play=${enc}`, progressPercent };
   }
   const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
@@ -11394,12 +11528,11 @@ function resolveHomeItem(db, id, kind, progressPercent) {
 // them. Returns null when the id is no longer resolvable (the dead-link drop).
 // The `rec` already carries the per-user progress/watch booleans the gather
 // computed under RBAC, so this never re-derives them.
-function resolveModernGridItem(db, rec) {
+function resolveModernGridItem(db, rec, ytView) {
   if (rec.kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, rec.id) ? ns.episodes[rec.id] : null;
+    const ep = podcastsDb.parts.episodes.get(rec.id) || null; // Wave 5 (gate pass B): a point query, per card
     if (!ep || ep.status !== 'downloaded') return null;
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return {
       id: rec.id, kind: 'podcast', title: ep.title || 'Episode',
       subId: ep.subId, showName: sub ? sub.name : 'Podcast',
@@ -11419,7 +11552,7 @@ function resolveModernGridItem(db, rec) {
   return {
     id: rec.id, kind: 'media', title: item.title || item.name || 'Video',
     folderName: item.folderName || '', channelName: item.channelName || '',
-    channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+    channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
     sourceViewCount: typeof item.sourceViewCount === 'number' ? item.sourceViewCount : undefined,
     sourceViewCountCapturedAt: item.sourceViewCountCapturedAt,
     addedAt: rec.addedAt, progressPercent: rec.progressPercent, liked: rec.liked,
@@ -11445,6 +11578,7 @@ function resolveModernGridItem(db, rec) {
 
 app.get('/api/home', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const userId = req.user.id;
 
   // ---- per-user reads (ONE query each, shared across the candidate build) ----
@@ -11464,7 +11598,7 @@ app.get('/api/home', (req, res) => {
 
   // Home view hides files under folders the user marked hidden (mirrors
   // /api/videos' home arm). Opening a folder still shows everything.
-  const folderSettings = db.folderSettings || {};
+  const folderSettings = folderSettingsStore.getAll(); // Wave 4
   const hiddenFolders = Object.keys(folderSettings).filter((f) => folderSettings[f] && folderSettings[f].hidden);
   const underFolder = (filePath, folder) => filePath === folder || (typeof filePath === 'string' && (filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\')));
 
@@ -11472,7 +11606,7 @@ app.get('/api/home', (req, res) => {
   // shared until the v1.44 RBAC tranche - disclosed in the exec plan). Read the
   // names straight off the namespace - the feed needs the channel NAMES only,
   // not the full enriched records the poll path builds.
-  const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
   const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
 
   // ---- v1.84 Modern Mode: the FLAT grid view (short-circuits the rows) ------
@@ -11514,7 +11648,7 @@ app.get('/api/home', (req, res) => {
     }
     // podcasts (downloaded) - only for the chips that can contain them
     if (filter === 'all' || filter === 'podcasts' || filter === 'continue') {
-      const podNs = podcastStore.readPodcasts(db);
+      const podNs = podcastsDb.read();
       const podProgress = userStore.getPodcastProgress(userId);
       const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
       for (const id of Object.keys(podNs.episodes || {})) {
@@ -11555,7 +11689,7 @@ app.get('/api/home', (req, res) => {
     const total = sortedCand.length;
     const offset = videoQuery.normalizeOffset(req.query.offset);
     const limit = videoQuery.normalizeLimit(req.query.limit);
-    const items = sortedCand.slice(offset, offset + limit).map((rec) => resolveModernGridItem(db, rec)).filter(Boolean);
+    const items = sortedCand.slice(offset, offset + limit).map((rec) => resolveModernGridItem(db, rec, ytView)).filter(Boolean);
     return res.json({ items, filter, sort, total, offset, limit });
   }
 
@@ -11604,7 +11738,7 @@ app.get('/api/home', (req, res) => {
 
   // ---- TRACK candidates (only the ones the mixed rows can use: in-progress
   // OR liked). Tracks have no watched latch and no channel/sub identity. ----
-  const musicNs = musicStore.readMusic(db);
+  const musicNs = musicDb.read();
   const musicProgress = userStore.getMusicProgress(userId);
   const musicLiked = new Set(userStore.getMusicLiked(userId));
   for (const id of Object.keys(musicNs.tracks || {})) {
@@ -11623,7 +11757,7 @@ app.get('/api/home', (req, res) => {
   }
 
   // ---- PODCAST candidates (downloaded, in-progress OR liked) ----
-  const podNs = podcastStore.readPodcasts(db);
+  const podNs = podcastsDb.read();
   const podProgress = userStore.getPodcastProgress(userId);
   const podLiked = new Set(userStore.getPodcastLiked(userId).map((l) => l.episodeId));
   for (const id of Object.keys(podNs.episodes || {})) {
@@ -11673,14 +11807,15 @@ app.get('/api/home', (req, res) => {
 // cache; no new persistence, no writes.
 app.get('/api/channels', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const rootFilter = typeof req.query.root === 'string' && req.query.root !== '' ? req.query.root : null;
-  const settingsByRoot = db.folderSettings || {};
+  const settingsByRoot = folderSettingsStore.getAll(); // Wave 4
   const hiddenRoots = new Set(Object.keys(settingsByRoot).filter(p => settingsByRoot[p] && settingsByRoot[p].hidden === true));
   const underRoot = (fp) => fp === rootFilter || (typeof fp === 'string' && fp.startsWith(rootFilter + path.sep));
   // v1.84: name-based subscription set (same join as /api/home) so consumers can
   // pick the subscribed channels - the Modern-mode mobile avatar bar shows the
   // recently-active SUBSCRIPTIONS.
-  const subsList = db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  const subsList = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
   const subNames = new Set(subsList.map((s) => s && s.name).filter(Boolean));
   const groups = new Map(); // folderName -> { folder, name, avatarUrl, count, latestAddedAt, isSub }
   for (const id of Object.keys(db.metadata || {})) {
@@ -11716,7 +11851,7 @@ app.get('/api/channels', (req, res) => {
       // resolveItemChannelAvatarUrl checks the baked item.channelAvatarUrl FIRST
       // (step 1), then the channelId/URL registry - so this one call subsumes
       // the old baked-field-only assignment.
-      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(db, item);
+      const resolvedAvatar = ytdlp.resolveItemChannelAvatarUrl(ytView, item);
       if (resolvedAvatar) g.avatarUrl = resolvedAvatar;
     }
     if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
@@ -11725,7 +11860,7 @@ app.get('/api/channels', (req, res) => {
   // ever captured a channelName - the permanently-unhealable folders) takes the
   // per-folder display map, mirroring resolveChannelName's fallback order
   // client-side (channelName wins, then the map, then the raw folder).
-  const displayNames = db.folderDisplayNames || {};
+  const displayNames = folderDisplayNameStore.getAll(); // Wave 4
   for (const g of groups.values()) {
     if (g.name === g.folder && typeof displayNames[g.folder] === 'string' && displayNames[g.folder].trim() !== '') {
       g.name = displayNames[g.folder].trim();
@@ -11740,6 +11875,7 @@ app.get('/api/channels', (req, res) => {
 // API: Get details for single video/audio
 app.get('/api/videos/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
@@ -11772,7 +11908,7 @@ app.get('/api/videos/:id', (req, res) => {
     // place, so this route deep-cloned the namespace to protect the read-cache
     // coherency invariant; both the mutation and the clone are gone, and the
     // v1.85 /api/channels + modern-grid callers pass the raw cached db too.)
-    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item);
+    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item);
   }
   // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
   // serve time from the persisted `youtubeId` through the same buildWatchUrl
@@ -11948,12 +12084,11 @@ function resolveHandoffTarget(db, seen) {
   const enc = encodeURIComponent(id);
 
   if (seen.kind === 'podcast') {
-    const ns = podcastStore.readPodcasts(db);
-    const ep = Object.prototype.hasOwnProperty.call(ns.episodes, id) ? ns.episodes[id] : null;
+    const ep = podcastsDb.parts.episodes.get(id) || null; // Wave 5 (gate pass B): a point query
     // Same rule as the push resolver: a non-downloaded episode is not
     // playable, so it is not offerable.
     if (!ep || ep.status !== 'downloaded') return null;
-    const sub = ns.subscriptions.find((x) => x && x.id === ep.subId);
+    const sub = podcastsDb.readPart('subscriptions').find((x) => x && x.id === ep.subId);
     return {
       title: ep.title || 'Episode',
       subtitle: sub ? sub.name : 'Podcast',
@@ -11967,8 +12102,7 @@ function resolveHandoffTarget(db, seen) {
   }
 
   if (seen.kind === 'track') {
-    const ns = musicStore.readMusic(db);
-    const track = ownTrack(ns.tracks, id);
+    const track = musicDb.parts.tracks.get(id); // Wave 5 (gate pass B): a point query
     if (!track) return null;
     return {
       title: track.title || 'Track',
@@ -12034,12 +12168,11 @@ app.get('/api/handoff', (req, res) => {
   if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
     return res.json({ presence: null });
   }
-  if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicStore.readMusic(handoffDb).tracks, seen.mediaId))) {
+  if (seen.kind === 'track' && !trackVisibleTo(req, musicDb.parts.tracks.get(seen.mediaId))) { // Wave 5 (gate pass B): a point query
     return res.json({ presence: null });
   }
   if (seen.kind === 'podcast') {
-    const pns = podcastStore.readPodcasts(handoffDb);
-    if (!podcastEpisodeVisibleTo(req, pns.episodes && pns.episodes[seen.mediaId])) return res.json({ presence: null });
+    if (!podcastEpisodeVisibleTo(req, podcastsDb.parts.episodes.get(seen.mediaId))) return res.json({ presence: null }); // Wave 5 (gate pass B): a point query
   }
 
   res.json({
@@ -12656,8 +12789,9 @@ app.delete('/api/videos/:id', async (req, res) => {
 // (not on `db.metadata[id]`, not in settings) to ever drift out of sync
 // with it. v1.43 (chunk 4b): membership lives in the relational
 // `user_liked` table keyed by (user_id, media_id) -- a Like belongs to a
-// USER. The doc-table `db.liked` array is retained untouched as the frozen
-// pre-auth record (adopted into the first admin at /welcome); no reader
+// USER. The frozen pre-auth `liked` record (media_liked since Wave 4, was the
+// doc-table array) is retained untouched, adopted into the first admin at
+// /welcome; no reader
 // falls back to it (the total-cutover contract, design finding #6). The
 // mutations below are direct synchronous upserts/deletes on the warm
 // SQLite handle -- still exactly one durable write per invocation
@@ -12727,6 +12861,7 @@ app.delete('/api/feed-hidden/:id', (req, res) => {
 // cards, newest-hidden first (getFeedHidden's order).
 app.get('/api/feed-hidden', (req, res) => {
   const db = getCachedDatabase();
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const userId = req.user.id;
   const likedSet = new Set(userStore.getLiked(userId));
   const progressMap = userStore.getProgress(userId);
@@ -12746,7 +12881,7 @@ app.get('/api/feed-hidden', (req, res) => {
       addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
       progressPercent: dur > 0 ? (ts / dur) * 100 : 0, liked: likedSet.has(id),
     };
-    const shaped = resolveModernGridItem(db, rec);
+    const shaped = resolveModernGridItem(db, rec, ytView);
     if (shaped) items.push(shaped);
   }
   res.json({ items, total: items.length });
@@ -12772,7 +12907,7 @@ app.get('/api/feed-hidden', (req, res) => {
 // tombstoned/pending episode keeps its user_podcast_liked row - v1.65's law:
 // trash keeps per-user state - but never renders in the playlist).
 function shapedLikedPodcastItems(db, userId) {
-  const ns = podcastStore.readPodcasts(db);
+  const ns = podcastsDb.read();
   const likedRows = userStore.getPodcastLiked(userId);
   if (!likedRows.length) return [];
   const progress = userStore.getPodcastProgress(userId);
@@ -12816,7 +12951,7 @@ function shapedLikedPodcastItems(db, userId) {
 function shapedLikedTrackItems(db, userId) {
   const likedIds = userStore.getMusicLiked(userId);
   if (!likedIds.length) return [];
-  const ns = musicStore.readMusic(db);
+  const ns = musicDb.read();
   const items = [];
   for (const id of likedIds) {
     const track = ownTrack(ns.tracks, id);
@@ -12858,7 +12993,7 @@ function shapedLikedTrackItems(db, userId) {
 function shapedLikedBookItems(db, userId) {
   const likedRows = userStore.getBookLiked(userId);
   if (!likedRows.length) return [];
-  const ns = booksStore.readBooks(db);
+  const ns = booksDb.read();
   const finishedMap = userStore.getBookFinished(userId);
   const items = [];
   for (const row of likedRows) {
@@ -12899,6 +13034,7 @@ function shapedLikedBookItems(db, userId) {
 // explicitly.
 app.get('/api/liked', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   // v1.43: membership is the signed-in user's user_liked rows (a warm
   // prepared-statement read), never the frozen db.liked record.
   const likedIds = new Set(userStore.getLiked(req.user.id));
@@ -12932,9 +13068,9 @@ app.get('/api/liked', (req, res) => {
   // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
   // liked filtering lands with their libraries, T6/T7.)
   // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
-  const likedMusicNs = musicStore.readMusic(db);
-  const likedPodNs = podcastStore.readPodcasts(db);
-  const likedBooksNs = booksStore.readBooks(db);
+  const likedMusicNs = musicDb.read();
+  const likedPodNs = podcastsDb.read();
+  const likedBooksNs = booksDb.read();
   others = others.filter((o) => {
     if (o.kind === 'track') return trackVisibleTo(req, ownTrack(likedMusicNs.tracks, o.id));
     if (o.kind === 'podcast') return podcastEpisodeVisibleTo(req, likedPodNs.episodes && likedPodNs.episodes[o.id]);
@@ -12976,7 +13112,7 @@ app.get('/api/liked', (req, res) => {
       // v1.113 (Fix A sweep): the Liked grid feeds the SAME buildCardHtml ->
       // modernCardAvatar path as /api/videos, so resolve the avatar identically
       // (read-only) or a registry-resolvable channel shows a monogram here.
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
       kind: 'media', // v1.72: kind is CARRIED on every item, never inferred
       liked: true, // every item in this listing is, by construction, a liked member
       // v1.93.2: DERIVED storyboard descriptor - the Liked view feeds
@@ -13007,6 +13143,7 @@ app.get('/api/liked', (req, res) => {
 // page, and the media-delete prune remains the durable cleaner.
 app.get('/api/history', (req, res) => {
   const db = getCachedDatabase(); // hot GET reader, same as /api/liked
+  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
   const limit = videoQuery.normalizeLimit(req.query.limit);
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const progressMap = userStore.getProgress(req.user.id);
@@ -13046,7 +13183,7 @@ app.get('/api/history', (req, res) => {
       ...item,
       // v1.113 (Fix A sweep): History feeds the SAME buildCardHtml ->
       // modernCardAvatar path, so resolve the avatar identically (read-only).
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(db, item) || '',
+      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
       liked: likedSet.has(id),
       progress: progress.timestamp || 0,
       progressPercent,
@@ -13134,8 +13271,7 @@ app.delete('/api/search-history', (req, res) => {
 // the set a member can list is exactly the set they can destroy (admin's empty
 // index keeps everything).
 app.get('/api/trash', (req, res) => {
-  const db = getCachedDatabase();
-  const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
+  const retentionDays = Number(settingsStore.getKey('trashRetentionDays')); // Wave 4
   const items = Object.entries(trashStore.getAll()) // Wave 3: the table
     .filter(([, rec]) => trashRecordVisibleTo(req, rec)) // the ONE predicate (shared with purge/restore)
     .map(([tid, rec]) => ({
@@ -13239,9 +13375,9 @@ app.delete('/api/trash/:id', async (req, res) => {
 // functions below exist specifically to prevent that: `computeMoveTarget`
 // resolves + CONFINES the destination (pure, zero filesystem access) before
 // any FS op ever runs; `moveItemToFolder` does the FS move, then re-keys
-// `db.metadata`/`db.liked` (doc) plus the progress / tombstone / view-count rows
-// (relational since Waves 1-2: the first two inside the same save transaction,
-// the counter post-commit in rekeyInFlightState) and renames the
+// `db.metadata` (doc) plus the progress / tombstone / frozen-like rows
+// (relational since Waves 2-4, inside the same save transaction) and the
+// view counter (post-commit in rekeyInFlightState) and renames the
 // thumbnail/transcode/background-audio/subtitle sidecars from the OLD
 // path-derived id to the NEW one, all inside ONE `updateDatabase` mutator --
 // so the next scan finds the file already indexed under its new-path id and
@@ -13270,9 +13406,11 @@ app.delete('/api/trash/:id', async (req, res) => {
  * membership check, not something walked), so no `normalizeScanRoot` dedup
  * pass is needed.
  */
-function configuredLibraryRoots(db) {
+// Wave 4: the root list comes from the table; the doc snapshot is no longer
+// consulted (the parameter stays for the ten callers' shape).
+function configuredLibraryRoots(_db) {
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
-  return [...((db && db.folders) || []), ...ytdlp.extraScanRoots(ytdlpConfig)];
+  return [...folderStore.list(), ...ytdlp.extraScanRoots(ytdlpConfig)];
 }
 
 /**
@@ -13722,10 +13860,9 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       // for the user to know why. Written back in place (same index) so the
       // liked-view's array order -- which is what `likedItems` renders by --
       // is preserved rather than bumping the item to the end.
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(oldId);
-        if (likedIndex !== -1) freshDb.liked[likedIndex] = newId;
-      }
+      // Wave 4: the frozen likes are a table; the re-key keeps the slot (the
+      // liked-view's order) and rides the doc commit's transaction.
+      inSaveTransaction(() => likedStore.rekey(oldId, newId));
 
       // (v1.42: `viewCounts` followed the re-key HERE as a doc carry - added
       // after the adversarial seat proved a move zeroed the moved item's count
@@ -14200,10 +14337,7 @@ async function trashItem(deps, id, opts = {}) {
         progressStore.rekey(id, trashId);
         tombstoneStore.remove([trashId, id]);
       });
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(id);
-        if (likedIndex !== -1) freshDb.liked[likedIndex] = trashId;
-      }
+      inSaveTransaction(() => likedStore.rekey(id, trashId)); // Wave 4: the frozen likes follow the item into the trash
       // (Wave 1: the view counter is relational - it re-keys id -> trashId
       // post-commit in rekeyInFlightState with the per-user carriers.)
       // (Gate W8 note: the crash window between this commit and the source
@@ -14637,10 +14771,7 @@ async function restoreTrashItem(deps, trashId) {
         progressStore.rekey(trashId, originalId);
         tombstoneStore.remove([originalId, trashId]);
       });
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(trashId);
-        if (likedIndex !== -1) freshDb.liked[likedIndex] = originalId;
-      }
+      inSaveTransaction(() => likedStore.rekey(trashId, originalId)); // Wave 4: and back out of it
       // (Wave 1: the view counter is relational - it re-keys trashId ->
       // originalId post-commit in rekeyInFlightState with the per-user carriers.)
 
@@ -14823,10 +14954,7 @@ async function purgeTrashItem(deps, trashId) {
         tombstoneStore.remove(trashId);
       });
       // (Wave 1: the relational view counter is removed post-commit below.)
-      if (Array.isArray(freshDb.liked)) {
-        const likedIndex = freshDb.liked.indexOf(trashId);
-        if (likedIndex !== -1) freshDb.liked.splice(likedIndex, 1);
-      }
+      inSaveTransaction(() => likedStore.remove(trashId)); // Wave 4: the frozen like goes with the purge
       clearPersistedServedAt(trashId);
       return true;
     });
@@ -14869,7 +14997,7 @@ async function sweepTrash(now = Date.now()) {
   // allowed set, but a restored bundle's settings arrive verbatim -- a
   // smuggled 1e-9 would purge the whole trash on the next sweep. Clamp to
   // the SAME allowed set here; anything else falls back to the default.
-  const raw = db.settings ? db.settings.trashRetentionDays : undefined;
+  const raw = settingsStore.getKey('trashRetentionDays'); // Wave 4
   const days = TRASH_RETENTION_DAYS_VALID_VALUES.has(raw) ? raw : DEFAULT_SETTINGS.trashRetentionDays;
   if (days <= 0) return 0; // 0 = keep forever
   const maxAgeMs = days * 86400000;
@@ -15297,7 +15425,7 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
 
   // The operator's opt-out (ON by default -- see DEFAULT_SETTINGS). Read from
   // the FRESH db so flipping it off mid-batch stops the very next item.
-  if (db.settings && db.settings.relocateHydratedImports === false) {
+  if (settingsStore.getKey('relocateHydratedImports') === false) { // Wave 4: the table is always fresh
     return { action: 'skip', reason: 'setting-off', mediaId };
   }
 
@@ -15392,13 +15520,14 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
 
   // When even the both-URL-forms + id join can't decide, don't guess -- a
   // skipped file is recoverable, a split library is not.
-  if (ytdlp.hasAmbiguousChannelSubscription(db, channelForJoin)) {
+  const ytSubs = ytdlpDb.holder(['subscriptions']); // Wave 5: the subscriptions, from their table
+  if (ytdlp.hasAmbiguousChannelSubscription(ytSubs, channelForJoin)) {
     return skipWithItem('ambiguous-subscription');
   }
 
   let targetDir;
   try {
-    targetDir = ytdlp.resolveChannelDirForChannel(db, config, channelForJoin);
+    targetDir = ytdlp.resolveChannelDirForChannel(ytSubs, config, channelForJoin);
   } catch (err) {
     // The executor treats this as a hard FAILURE, not a skip.
     return {
@@ -15634,7 +15763,7 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId, op
   try {
     if (typeof plan.channelId === 'string' && plan.channelId !== '') {
       await ytdlp.backfillSubscriptionChannelIdForChannel(
-        { loadDatabase: loadDb, updateDatabase: updateDb },
+        { loadDatabase: loadDb, updateDatabase: updateDb, ytdlpDb }, // Wave 5: the subscription lives in its table
         { channelUrl: plan.channelUrlValidated, channelHandleUrl: plan.channelHandleUrl, channelId: plan.channelId },
       );
     }
@@ -16497,13 +16626,13 @@ async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Da
 // holding the lock); returns the count of pins relabelled. Never throws; a
 // blank/absent name is a no-op. RESPECTS the snapshot design -- a deliberate
 // label write keyed by the folder match, not a conversion to a live join.
-function refreshPinLabelsForBackfilledChannel(db, target, name) {
+function refreshPinLabelsForBackfilledChannel(db, target, name, pinsHolder = db) { // Wave 5: the items come from `db` (the doc), the pins from `pinsHolder` = { ytdlp: { pins } } (a feature-store holder inside ytdlpDb.mutate; defaults to db for a holder-shaped caller)
   // v1.115 gate fix (both seats): the pin label is a durable write too -- strip
   // control chars/NUL here as well (the pin-label reducer store.js:2071 does).
   // eslint-disable-next-line no-control-regex
   const trimmed = typeof name === 'string' ? name.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
   if (trimmed === '') return 0;
-  const pins = db && db.ytdlp && Array.isArray(db.ytdlp.pins) ? db.ytdlp.pins : null;
+  const pins = pinsHolder && pinsHolder.ytdlp && Array.isArray(pinsHolder.ytdlp.pins) ? pinsHolder.ytdlp.pins : null;
   if (!pins || pins.length === 0) return 0;
   const t = target && typeof target === 'object' ? target : {};
   // v1.115 gate fix (adversarial SUGGESTION-1): key on the channel's item FOLDER
@@ -16544,7 +16673,9 @@ async function recordChannelNameBackfillFanout(deps, target, probed, nowMs = Dat
   let updated = 0;
   await d.updateDatabase((db) => {
     updated = ytdlp.applyBackfilledChannelName((db && db.metadata) || {}, target, name);
-    if (updated > 0) refreshPinLabelsForBackfilledChannel(db, target, name);
+    // Wave 5: the frozen pre-auth pins live in ytdlp_pins - the relabel is a
+    // nested feature mutate riding this same commit (skipped when nothing matched).
+    if (updated > 0) ytdlpDb.mutate((yh) => refreshPinLabelsForBackfilledChannel(db, target, name, yh) > 0);
     return updated > 0;
   });
   return updated;
@@ -16566,7 +16697,7 @@ async function recordLocalChannelHealFanout(deps, target) {
       // The pin re-label already keys on the channel's item folder full paths,
       // and the healed items now carry the canonical id -- pass the canonical
       // identity so the pin adopts the real name.
-      refreshPinLabelsForBackfilledChannel(db, { channelId: target.identity.channelId }, target.identity.channelName);
+      ytdlpDb.mutate((yh) => refreshPinLabelsForBackfilledChannel(db, { channelId: target.identity.channelId }, target.identity.channelName, yh) > 0); // Wave 5: ytdlp_pins, same commit
       // v1.126: a folder that healed to ONE canonical name also writes the
       // per-folder display map, so every folder-LABEL surface (the `?folder=`
       // header, the channels bar, pins' fallback) heals with it. folderName
@@ -16580,8 +16711,9 @@ async function recordLocalChannelHealFanout(deps, target) {
           if (!it || typeof it.folderName !== 'string' || it.folderName === '') continue;
           if (it.channelId !== target.identity.channelId) continue;
           if (ytdlp.folderKeyOf(it) !== target.folderKey) continue;
-          if (!db.folderDisplayNames || typeof db.folderDisplayNames !== 'object') db.folderDisplayNames = {};
-          db.folderDisplayNames[it.folderName] = healName;
+          // Wave 4: the map is a table; the write rides the doc commit through
+          // the deps seam (the unit harness supplies its own).
+          d.setFolderDisplayName(it.folderName, healName);
           break;
         }
       }
@@ -16989,13 +17121,13 @@ app.get('/api/critters/archive', (req, res) => {
 
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
-  const books = booksStore.readBooks(db);
+  const books = booksDb.read();
   // v1.41.0 (Dean): the Stats page is now the whole-library + About hub --
   // fold in book inventory and the version/links "system" block. yt-dlp version
   // moved here from the Subscriptions page; rows the client hides when a thing
   // isn't installed (ytdlp not enabled -> null; TTS not available).
   const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
-  const music = musicStore.readMusic(db);
+  const music = musicDb.read();
   // v1.80 RBAC (security-gate finding): stats leaked restricted-item TITLES
   // (mostWatched) and COUNTS to a restricted member. Filter the CONTENT
   // namespaces to what req.user may see before computing; admin's empty index
@@ -17039,7 +17171,7 @@ app.get('/api/stats', (req, res) => {
   if (isAdmin) {
     inventoryInput = {
       metadata: visibleMetadata, progress: progressStore.getAll(), viewCounts: viewCountStore.getAll(), // Waves 1-2: the tables
-      liked: db.liked, deleteTombstones: tombstoneStore.getAll(), folders: db.folders,
+      liked: likedStore.list(), deleteTombstones: tombstoneStore.getAll(), folders: folderStore.list(), // Wave 4
       books: { items: visibleBookItems, progress: books.progress, audio: books.audio },
       music: { tracks: visibleTracks, folders: music.folders },
       users: userStore.countUsers(),
@@ -17354,7 +17486,7 @@ app.post('/api/videos/:id/chapters', async (req, res) => {
 // job started while the flag was on must stay abortable after it is
 // turned off.
 function attributionFeatureOff(res) {
-  if (getCachedDatabase().settings.attributeControlEnabled === true) return false;
+  if (settingsStore.getKey('attributeControlEnabled') === true) return false; // Wave 4
   res.status(404).json({ error: 'Not found' });
   return true;
 }
@@ -17374,7 +17506,7 @@ app.get('/api/attribution-targets', (req, res) => {
     byUrl.set(t.channelUrl, t);
     if (t.channelId) seenChannelIds.add(t.channelId);
   };
-  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions)) ? db.ytdlp.subscriptions : [];
+  const subs = ytdlpDb.readPart('subscriptions'); // Wave 5: from its table
   for (const sub of subs) {
     if (!sub || typeof sub.channelUrl !== 'string' || sub.channelUrl === '') continue;
     addTarget({
@@ -17464,12 +17596,10 @@ function proposeAttributionMove(db, item, identity) {
   const config = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(config)) return { available: false, reason: 'module-disabled' };
   try {
-    // The SAME cache-coherency dance GET /api/videos/:id documents:
-    // resolveChannelDirForChannel -> ensureYtdlp backfills IN PLACE, and the
-    // shared getCachedDatabase() object must never be mutated (the test
-    // runner's throwing Proxy is the enforcement).
-    const dbForLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
-    const destinationDir = ytdlp.resolveChannelDirForChannel(dbForLookup, config, identity);
+    // Wave 5: the subscriptions come from their table as a fresh snapshot
+    // holder - resolveChannelDirForChannel -> ensureYtdlp normalises THAT, never
+    // the shared getCachedDatabase() object (the cache-coherency rule holds).
+    const destinationDir = ytdlp.resolveChannelDirForChannel(ytdlpDb.holder(['subscriptions']), config, identity);
     if (!destinationDir) return { available: false, reason: 'channel-dir-unresolvable' };
     if (path.dirname(item.filePath) === destinationDir) return { available: false, reason: 'already-there' };
     return { available: true, destinationDir };
@@ -18501,6 +18631,7 @@ ytdlp.registerRoutes(app, {
   // same decision in a form that survives past the 202 response.
   mediaVisiblePredicate,
   updateDatabase,
+  ytdlpDb, // Wave 5: the namespace's feature store - every read + write in the module goes through it
   loadDatabase,
   scanDirectories,
   getMediaId,
@@ -18515,6 +18646,9 @@ ytdlp.registerRoutes(app, {
   // v1.116 (Dean): the LOCAL-heal fan-out writer (adopts the canonical identity
   // UNIT from a same-folder sibling), deps-injected into the same batch.
   recordLocalChannelHealFanout,
+  // Wave 4: the heal's display-name write goes to channel_folder_display_names
+  // INSIDE the doc commit (this dep is called from within the mutator above).
+  setFolderDisplayName: (name, value) => inSaveTransaction(() => folderDisplayNameStore.set(name, value)),
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -18527,7 +18661,7 @@ ytdlp.registerRoutes(app, {
     replace: (userId, pins) => userStore.setChannelPins(userId, pins),
   },
   // v1.41.6: the reheat's import-relocation seam -- server.js owns the move +
-  // id re-key machinery (`moveItemToFolder`) and `db.settings`, so the yt-dlp
+  // id re-key machinery (`moveItemToFolder`) and the settings store, so the yt-dlp
   // module gets this deps-injected like every other server-owned primitive
   // (the same circular-require-avoiding bridge `recordRepulledItemMeta` uses).
   // The batch calls it per item, AFTER that item's hydration has persisted.
@@ -18539,7 +18673,7 @@ ytdlp.registerRoutes(app, {
   // killing the text-wordmark FOUC there too.
   sendShellHtml,
   // v1.41.7 (Dean has NO media backup): the DRY-RUN preview seam. server.js owns
-  // the shared `planImportRelocation` decision + `db.settings`, so the yt-dlp
+  // the shared `planImportRelocation` decision + the settings store, so the yt-dlp
   // module's `POST /api/ytdlp/repull-metadata/preview` route gets this deps-
   // injected like every other server-owned primitive. It is READ-ONLY -- it
   // never writes db.json, moves a file, or spawns anything.
@@ -18602,7 +18736,7 @@ function ytdlpPodcastItemsUnder(db, dir, itemVisible) {
 function listYtdlpPodcastShows(db, itemVisible) {
   const cfg = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(cfg)) return [];
-  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
+  const subs = ytdlpDb.readPart('subscriptions') // Wave 5: from its table
     .filter((s) => s && s.libraryPlace === 'podcasts');
   return subs.map((sub) => {
     // v1.128 Wave B (L10, gate WARNING-1 fix): decide the show-level drop from
@@ -18646,7 +18780,7 @@ function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
   const shows = listYtdlpPodcastShows(db, itemVisible);
   const show = shows.find((s) => s.id === showId);
   if (!show) return null;
-  const sub = db.ytdlp.subscriptions.find((s) => s && `yt:${s.id}` === showId);
+  const sub = ytdlpDb.readPart('subscriptions').find((s) => s && `yt:${s.id}` === showId);
   let items = [];
   try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub), itemVisible); } catch (_) { items = []; }
   const progress = userStore.getProgress(userId);
@@ -18681,8 +18815,13 @@ function listYtdlpPodcastEpisodes(db, showId, userId, itemVisible) {
 // yt-dlp polls/one-shots instead of competing for disk and network.
 podcasts.registerRoutes(app, {
   updateDatabase,
+  podcastsDb, // Wave 5: the namespace's feature store - every read + write in the module goes through it
   loadDatabase,
   getCachedDatabase,
+  getSettings: () => settingsStore.get(), // Wave 4
+  getLibraryFolders: () => folderStore.list(), // Wave 4
+  getMusicFolders: () => musicDb.read().folders, // Wave 5
+  getBookFolders: () => booksDb.read().folders, // Wave 5
   dataDir: DATA_DIR,
   userStore,
   // v1.73: the poll's notification bridge (route-triggered checks run the
@@ -18772,7 +18911,7 @@ if (require.main === module) {
   // here is exactly one `loadDatabase()` call (same as before) and has the
   // added benefit of pre-warming the cache before `app.listen` below, so the
   // very first request already hits a warm cache.
-  evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings));
+  evictTranscodeCache(effectiveCacheCap(settingsStore.get())); // Wave 4
   // v1.46 (gate W3): the roku-compat cache honors a LOWERED cap at boot too,
   // not only after the next successful build.
   evictRokuCompatCache();
@@ -18838,7 +18977,15 @@ if (require.main === module) {
     // v1.146: + recordEngineEvent so the engine's boot recovery and daily
     // auto-update tick can bell their outcomes (same producer as the
     // routes bundle - each bundle carries its own reference, v1.29 lesson).
-    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent });
+    ytdlp.startBackground({
+      updateDatabase, ytdlpDb, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR, recordEngineEvent, // Wave 5: ytdlpDb
+      // Wave 4: the root list is a table; the stale-downloadDir migration reads and prunes it here.
+      getLibraryFolders: () => folderStore.list(),
+      removeLibraryFolder: (p) => folderStore.remove(p),
+      inSaveTransaction,
+      // (the channel heal's setFolderDisplayName dep lives in the ROUTES bundle -
+      // the heal batch runs from there, never from the timer poll.)
+    });
 
     // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll
     // timer. Early-returns doing NOTHING (no dir, no timer) with zero
@@ -18847,8 +18994,13 @@ if (require.main === module) {
     // never arm a poll timer.
     podcasts.startBackground({
       updateDatabase,
+      podcastsDb, // Wave 5
       loadDatabase,
       getCachedDatabase,
+      getSettings: () => settingsStore.get(), // Wave 4: app settings are a store
+      getLibraryFolders: () => folderStore.list(), // Wave 4: the root list is a table
+      getMusicFolders: () => musicDb.read().folders, // Wave 5
+      getBookFolders: () => booksDb.read().folders, // Wave 5
       dataDir: DATA_DIR,
       userStore,
       // v1.73: the timer-run poll notifies + pushes exactly like the
@@ -19057,6 +19209,17 @@ module.exports = {
   inSaveTransaction,
   // Wave 3: the trashed-item records.
   trashStore,
+  settingsStore, // Wave 4
+  folderStore, // Wave 4
+  folderSettingsStore, // Wave 4
+  folderDisplayNameStore, // Wave 4
+  likedStore, // Wave 4
+  tvDb, // Wave 5
+  musicDb, // Wave 5
+  booksDb, // Wave 5
+  podcastsDb, // Wave 5
+  ytdlpDb, // Wave 5
+  __failNextRestorePopulateForTests, // Wave 5: the mid-populate rollback seam
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

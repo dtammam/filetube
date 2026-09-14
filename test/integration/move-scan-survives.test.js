@@ -19,12 +19,12 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, scanDirectories,
+  getMediaId, loadDatabase, updateDatabase, moveItemToFolder, scanDirectories,
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
-// v1.42: seeds go through the exported saveDatabase (the adapter opened at
+// v1.42: seeds go through the exported seedState(the adapter opened at
 // require time, so a raw db.json write would be dead); persisted-state
 // assertions go through the sanctioned SQLite read helper. An EMPTY doc_kv
 // namespace persists as zero rows (absent); backfill the ones this file
@@ -107,7 +107,7 @@ test('a moved item with NO prior watch progress: single entry, no duplicate, aft
   const newPath = path.join(dstDir, 'clip.mp4');
   const newId = getMediaId(newPath);
 
-  saveDatabase({
+  seedState({
     folders: [srcDir, dstDir],
     folderSettings: {},
     metadata: {

@@ -15,7 +15,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase } = require('../../server');
+const { app, updateDatabase, tvDb, musicDb, booksDb, podcastsDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const booksStore = require('../../lib/books/store');
@@ -36,7 +37,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
 
-  saveDatabase({
+  seedState({
     folders: [DATA_DIR], folderSettings: {},
     metadata: {
       vzw: { id: 'vzw', title: 'Zephyr Winds', filePath: path.join(DATA_DIR, 'zw.mp4'), folderName: 'F', rootFolder: DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 1, addedAt: 100, youtubeId: 'dQw4w9WgXcQ' },
@@ -46,27 +47,33 @@ before(async () => {
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await updateDatabase((db) => {
-    musicStore.ensureMusic(db).tracks = {
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    musicStore.ensureMusic(h).tracks = {
       // two exact-title 'Zephyr' hits with ISO-string addedAt (the real store
       // shape) - the NEWER must rank first (gate WARNING 2 e2e bind).
       tz: { id: 'tz', title: 'Zephyr', artist: 'Band', album: 'Al', filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, folderName: 'F', ext: '.flac', codec: 'flac', durationSec: 3, albumArtKey: null, addedAt: '2024-01-01T00:00:00Z' },
       tzNew: { id: 'tzNew', title: 'Zephyr', artist: 'Band2', album: 'Al2', filePath: path.join(DATA_DIR, 'za.mp3'), rootFolder: DATA_DIR, folderName: 'F', ext: '.mp3', codec: 'mp3', durationSec: 3, albumArtKey: null, addedAt: '2026-08-01T00:00:00Z' },
     };
-    const p = podcastStore.ensurePodcasts(db); p.subscriptions = []; p.episodes = {};
-    podcastStore.reduceAddSubscription(p, { id: subId, name: 'Zephyr Cast', feedUrl: 'https://e.com/f.xml' });
+    return true; });
     const epId = podcastStore.episodeIdFor(subId, 'g1');
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h); p.subscriptions = []; p.episodes = {};
+    podcastStore.reduceAddSubscription(p, { id: subId, name: 'Zephyr Cast', feedUrl: 'https://e.com/f.xml' });
     // g1 downloaded (surfaces); g2 stays pending (must NOT surface - WARNING 1).
     podcastStore.reduceUpsertEpisodes(p, subId, [
       { guid: 'g1', title: 'Zephyr Episode One', pubDateMs: 500, durationSec: 1 },
       { guid: 'g2', title: 'Zephyr Pending Ep', pubDateMs: 400, durationSec: 1 },
     ], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(DATA_DIR, 'podcasts', 'ZCast', 'ep.mp3'), bytes: 1, nowMs: 6000 });
-    tvStore.ensureTv(db).episodes = {
+    return true; });
+    tvDb.mutate((h) => { tvStore.ensureTv(h).episodes = { // Wave 5: the Shows namespace is a feature store
       tve: { id: 'tve', showId: 'shZ', showName: 'Zephyr Chronicles', title: 'The Storm', seasonNum: 1, episodeNum: 1, filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, ext: '.mp4', codec: 'h264', durationSec: 20, addedAt: 200 },
-    };
-    booksStore.ensureBooks(db).items = {
+    }; return true; });
+    booksDb.mutate((h) => { // Wave 5: the books namespace is a feature store
+    booksStore.ensureBooks(h).items = {
       bz: { id: 'bz', title: 'Zephyr', author: 'Writer', filePath: path.join(DATA_DIR, 'zb.epub'), folderName: 'F', format: 'epub', addedAt: 50 },
     };
+    return true; });
     return true;
   });
 });

@@ -13,7 +13,8 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId, scanState, userStore, __mintTestSession, __resetDatabaseForTests, previewClipPath, previewClipEligible } = require('../../server');
+const { app, getMediaId, scanState, userStore, __mintTestSession, __resetDatabaseForTests, previewClipPath, previewClipEligible } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, mediaDir;
@@ -72,7 +73,7 @@ beforeEach(async () => {
 
 test('GET /preview/:id: serves the .pv.mp4 (video/mp4) when eligible + file exists', async () => {
   const item = seedItem('has-pv.mp4'); // eligible: video, duration 120
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   writeClip(item.id);
 
   const res = await fetch(`${base}/preview/${item.id}`);
@@ -84,18 +85,18 @@ test('GET /preview/:id: serves the .pv.mp4 (video/mp4) when eligible + file exis
 
 test('GET /preview/:id: 404 when eligible but the clip file is missing', async () => {
   const item = seedItem('elig-noclip.mp4');
-  saveDatabase(baseDb({ [item.id]: item })); // NO writeClip
+  seedState(baseDb({ [item.id]: item })); // NO writeClip
   assert.equal((await fetch(`${base}/preview/${item.id}`)).status, 404);
 });
 
 test('GET /preview/:id: 404 for an INELIGIBLE item even with a stray clip file', async () => {
   const audio = seedItem('song.mp3', { type: 'audio', duration: 200 });
-  saveDatabase(baseDb({ [audio.id]: audio }));
+  seedState(baseDb({ [audio.id]: audio }));
   writeClip(audio.id); // a stray sidecar
   assert.equal((await fetch(`${base}/preview/${audio.id}`)).status, 404, 'audio is ineligible -> 404');
 
   const short = seedItem('tiny.mp4', { duration: 3 }); // below PV_MIN_DURATION
-  saveDatabase(baseDb({ [short.id]: short }));
+  seedState(baseDb({ [short.id]: short }));
   writeClip(short.id);
   assert.equal((await fetch(`${base}/preview/${short.id}`)).status, 404, 'too-short is ineligible -> 404');
   // sanity: the eligibility helper agrees
@@ -104,7 +105,7 @@ test('GET /preview/:id: 404 for an INELIGIBLE item even with a stray clip file',
 });
 
 test('GET /preview/:id: 404 for an unknown id (client stays on poster)', async () => {
-  saveDatabase(baseDb());
+  seedState(baseDb());
   assert.equal((await fetch(`${base}/preview/completely-unknown`)).status, 404);
 });
 
@@ -112,7 +113,7 @@ test('GET /preview/:id: 404 for an unknown id (client stays on poster)', async (
 
 test('GET /preview/:id: a restricted member 404s; admin still serves it', async () => {
   const item = seedItem('adult.mp4', { folderName: 'Adult' });
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   writeClip(item.id);
 
   assert.equal((await fetch(`${base}/preview/${item.id}`)).status, 200, 'admin sees it');
@@ -132,7 +133,7 @@ test('preview-clip sidecar follows the id through trash -> restore -> purge', as
   const filePath = path.join(root, 'Chan', 'movie.mp4');
   fs.writeFileSync(filePath, 'movie-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [root], folderSettings: {},
     metadata: { [id]: { id, name: 'movie.mp4', title: 'The Movie', filePath, folderName: 'Chan', rootFolder: root, size: 11, ext: '.mp4', type: 'video', addedAt: 1700000000000, duration: 90 } },
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0 },

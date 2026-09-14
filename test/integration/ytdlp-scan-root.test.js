@@ -47,8 +47,8 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, transcodedPath } = require('../../server');
-const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { app, scanDirectories, loadDatabase, updateDatabase, inSaveTransaction, getMediaId, transcodedPath } = require('../../server');
+const { settingsStore, progressStore, folderStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -88,7 +88,7 @@ test('disabled AND dir absent: extraScanRoots contributes nothing -- a file in a
     const db = loadDatabase();
     const paths = Object.values(db.metadata || {}).map((m) => m.filePath);
     assert.ok(!paths.some((p) => p && p.startsWith(neverCreatedDir)), 'a never-created download dir must never contribute to the scan');
-    assert.deepEqual(db.folders || [], [], 'db.folders must be untouched');
+    assert.deepEqual(folderStore().list(), [], 'db.folders must be untouched');
     assert.deepEqual(ytdlp.extraScanRoots(ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: neverCreatedDir })), []);
   } finally {
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
@@ -116,7 +116,7 @@ test('D1: disabled AND dir EXISTS with content -- still scanned/indexed (preserv
     const db = loadDatabase();
     const paths = Object.values(db.metadata || {}).map((m) => m.filePath);
     assert.ok(paths.includes(path.join(downloadDir, 'preserved.mp4')), 'a disabled module must still scan a download dir that exists with content (D1)');
-    assert.deepEqual(db.folders || [], [], 'db.folders must still never be written to, even in the D1 disabled-but-scanned case');
+    assert.deepEqual(folderStore().list(), [], 'db.folders must still never be written to, even in the D1 disabled-but-scanned case');
   } finally {
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   }
@@ -142,7 +142,7 @@ test('D1 footgun-closed: disabling the module after a download preserves the id,
     const id = getMediaId(filePath);
     let db = loadDatabase();
     assert.ok(db.metadata[id], 'sanity: the downloaded file must be indexed while enabled');
-    assert.deepEqual(db.folders || [], [], 'sanity: still never written into db.folders');
+    assert.deepEqual(folderStore().list(), [], 'sanity: still never written into db.folders');
 
     // Simulate the rest of a real download's footprint: a thumbnail, a
     // transcode sidecar, and a watch-progress entry -- exactly the sinks
@@ -161,7 +161,7 @@ test('D1 footgun-closed: disabling the module after a download preserves the id,
 
     // Sanity: pruneMissing is ON (the default) -- this is the exact toggle
     // state the footgun requires to reap anything at all.
-    assert.equal(loadDatabase().settings.pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
+    assert.equal(settingsStore().get().pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
 
     // 2. Disable the module -- the download dir on disk is untouched.
     delete process.env.FILETUBE_YTDLP_ENABLED;
@@ -208,7 +208,7 @@ test('E1 mount-loss regression: ENABLED module + downloadDir absent on disk (sim
     let db = loadDatabase();
     assert.ok(db.metadata[id], 'sanity: the downloaded file must be indexed while enabled and mounted');
     assert.equal(db.metadata[id].rootFolder, path.resolve(unmountDir), 'sanity: rootFolder must be the resolved download dir, matching what extraScanRoots contributes');
-    assert.deepEqual(db.folders || [], [], 'sanity: still never written into db.folders');
+    assert.deepEqual(folderStore().list(), [], 'sanity: still never written into db.folders');
 
     // Simulate the rest of a real download's footprint: a thumbnail, a
     // transcode sidecar, and a watch-progress entry -- exactly the sinks
@@ -227,7 +227,7 @@ test('E1 mount-loss regression: ENABLED module + downloadDir absent on disk (sim
 
     // Sanity: pruneMissing is ON (the default) -- the exact toggle state the
     // regression requires to reap anything at all.
-    assert.equal(loadDatabase().settings.pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
+    assert.equal(settingsStore().get().pruneMissing, true, 'sanity: pruneMissing must be ON for this regression to be meaningful');
 
     // 2. Simulate a transient unmount: the directory itself goes ABSENT from
     // disk, WHILE the module REMAINS ENABLED (this is the exact scenario D1's
@@ -281,10 +281,8 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
     // Simulate the pre-fix branch's leftover: downloadDir pushed straight
     // into the client-owned db.folders (what `updateDatabase` looked like
     // before the C3+C7 module-owned scan root replaced it).
-    await updateDatabase((db) => {
-      db.folders = Array.from(new Set([...(db.folders || []), upgradeDir]));
-    });
-    assert.ok(loadDatabase().folders.includes(upgradeDir), 'sanity: the stale entry was seeded');
+    folderStore().add(upgradeDir); // Wave 4: the root list is a table
+    assert.ok(folderStore().list().includes(upgradeDir), 'sanity: the stale entry was seeded');
 
     const filePath = path.join(upgradeDir, 'legacy-download.mp4');
     fs.writeFileSync(filePath, 'not a real video');
@@ -292,15 +290,14 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
     process.env.FILETUBE_YTDLP_ENABLED = 'true';
     process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = upgradeDir;
     const config = ytdlp.parseYtdlpConfig(process.env);
-    const deps = { updateDatabase, loadDatabase, scanDirectories, getMediaId };
+    const deps = { updateDatabase, loadDatabase, scanDirectories, getMediaId, getLibraryFolders: () => folderStore().list(), removeLibraryFolder: (p) => folderStore().remove(p), inSaveTransaction }; // Wave 4: the root list is a table behind a deps seam (the prune rides the commit)
 
     // Directly await the migration (the production function `startBackground`
     // itself calls) for a deterministic assertion, independent of any timer
     // arming/interval side effects `startBackground` would also trigger.
     await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
 
-    const migratedDb = loadDatabase();
-    assert.ok(!migratedDb.folders.includes(upgradeDir), 'the stale downloadDir entry must be removed from db.folders');
+    assert.ok(!folderStore().list().includes(upgradeDir), 'the stale downloadDir entry must be removed from db.folders');
 
     // FR-G part 2 (v1.12.0, Dean-approved C7(ii) softening): the migrated-out
     // dir DOES still appear in the GET /api/config RESPONSE -- but only as
@@ -310,7 +307,7 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
     const configRes = await fetch(`${base}/api/config`);
     const configBody = await configRes.json();
     assert.ok(configBody.folders.includes(path.resolve(upgradeDir)), 'GET /api/config must surface the migrated dir as the FR-G synthetic folder (not because it was re-added to db.folders)');
-    assert.ok(!loadDatabase().folders.includes(upgradeDir), 'the underlying db.folders must still never contain it -- the GET response merge is display-only');
+    assert.ok(!folderStore().list().includes(upgradeDir), 'the underlying db.folders must still never contain it -- the GET response merge is display-only');
 
     // Content must still be scanned -- via extraScanRoots, independent of
     // db.folders now being clean.
@@ -320,7 +317,7 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
 
     // Idempotent: calling it again with a clean db.folders is a true no-op.
     await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
-    assert.ok(!loadDatabase().folders.includes(upgradeDir));
+    assert.ok(!folderStore().list().includes(upgradeDir));
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
@@ -340,7 +337,7 @@ test('enabled: a file placed directly in FILETUBE_YTDLP_DOWNLOAD_DIR is scanned/
     const db = loadDatabase();
     const paths = Object.values(db.metadata || {}).map((m) => m.filePath);
     assert.ok(paths.includes(filePath), 'the file in the module-owned download dir must be indexed by the existing scanner');
-    assert.ok(!(db.folders || []).includes(downloadDir), 'downloadDir must NEVER be written into db.folders (C3+C7)');
+    assert.ok(!folderStore().list().includes(downloadDir), 'downloadDir must NEVER be written into db.folders (C3+C7)');
 
     // FR-G part 2 (v1.12.0, Dean-approved C7(ii) softening): GET /api/config
     // NOW surfaces the module's download dir in its response folders array,
@@ -376,10 +373,7 @@ test('FIX-9 regression: a non-yt-dlp library file with a coincidentally 11-char 
     const downloadFilePath = path.join(downloadDir, 'Amazing_Video_Title [dQw4w9WgXcQ].mp4');
     fs.writeFileSync(downloadFilePath, 'not a real video');
 
-    await updateDatabase((db) => {
-      db.folders = [libraryDir];
-      return true;
-    });
+    folderStore().replaceAll([libraryDir]); // Wave 4: the root list is a table
 
     await scanDirectories();
 
@@ -395,7 +389,7 @@ test('FIX-9 regression: a non-yt-dlp library file with a coincidentally 11-char 
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
     fs.rmSync(libraryDir, { recursive: true, force: true });
-    await updateDatabase((db) => { db.folders = []; return true; });
+    folderStore().replaceAll([]);
   }
 });
 

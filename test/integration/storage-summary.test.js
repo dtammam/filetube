@@ -15,7 +15,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-storagesu
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, userStore, __mintTestSession } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, member;
@@ -27,7 +28,7 @@ before(async () => {
   member = __mintTestSession({ username: 'storagemember', role: 'member' });
 
   // Two media items: an open one (100) and a restricted-folder one (400).
-  saveDatabase({
+  seedState({
     folders: [process.env.DATA_DIR], folderSettings: {},
     metadata: {
       open: { id: 'open', title: 'Open', name: 'open.mp4', filePath: path.join(process.env.DATA_DIR, 'Open', 'open.mp4'), folderName: 'Open', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.mp4', duration: 10, size: 100, addedAt: 1 },

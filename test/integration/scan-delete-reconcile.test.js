@@ -46,7 +46,7 @@ function baseSettings(overrides) {
   };
 }
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {

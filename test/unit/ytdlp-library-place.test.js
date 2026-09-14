@@ -7,6 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 
 const store = require('../../lib/ytdlp/store');
+const { scratchFeatureStore } = require('../helpers/scratch-feature-store');
 
 test('validateSubscriptionPatch: libraryPlace is a strict two-value allowlist', () => {
   assert.deepStrictEqual(store.validateSubscriptionPatch({ libraryPlace: 'podcasts' }).value, { libraryPlace: 'podcasts' });
@@ -21,13 +22,14 @@ test('validateSubscriptionPatch: libraryPlace is a strict two-value allowlist', 
 });
 
 test('addSubscription: a new sub starts libraryPlace default', async () => {
-  let saved = null;
+  const ytdlpDb = scratchFeatureStore(store.FEATURE); // Wave 5: the namespace is a feature store
   const deps = {
-    updateDatabase: async (mutator) => { const db = {}; mutator(db); saved = db; },
+    ytdlpDb,
+    updateDatabase: async (mutator) => { mutator({}); },
     getMediaId: (s) => require('crypto').createHash('md5').update(s).digest('hex'),
   };
   await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@example' });
-  assert.strictEqual(saved.ytdlp.subscriptions[0].libraryPlace, 'default');
+  assert.strictEqual(ytdlpDb.read().subscriptions[0].libraryPlace, 'default');
 });
 
 test('ensureYtdlp backfills libraryPlace on pre-v1.69 records; junk migrates to default', () => {

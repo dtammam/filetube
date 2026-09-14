@@ -13,7 +13,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, musicDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -27,15 +28,15 @@ before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
-  saveDatabase({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
-  await updateDatabase((db) => {
+  seedState({ folders: [], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {
       blk: { id: 'blk', title: 'Explicit', artist: 'X', album: 'A', filePath: blockedFile, rootFolder: path.join(DATA_DIR, 'adult'), folderName: 'adult', ext: '.mp3', codec: 'mp3', durationSec: 100, albumArtKey: null, addedAt: '2026-01-02T00:00:00Z' },
       ok: { id: 'ok', title: 'Nursery', artist: 'Y', album: 'B', filePath: allowedFile, rootFolder: path.join(DATA_DIR, 'kids'), folderName: 'kids', ext: '.mp3', codec: 'mp3', durationSec: 100, albumArtKey: null, addedAt: '2026-01-01T00:00:00Z' },
     };
     return true;
-  });
+  }));
   member = __mintTestSession({ username: 'kidmusic', role: 'member' });
   userStore.addMusicLiked(member.user.id, 'blk', '2026-08-05T00:00:00Z');
   userStore.addMusicLiked(member.user.id, 'ok', '2026-08-05T00:00:00Z');

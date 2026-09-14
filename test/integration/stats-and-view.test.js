@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { app, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -40,11 +41,11 @@ beforeEach(async () => {
   await __resetDatabaseForTests();
 });
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase({ folders: [], folderSettings: {}, ...db });
+  seedState({ folders: [], folderSettings: {}, ...db });
 }
 
 function seedItem(id, overrides) {

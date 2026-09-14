@@ -23,14 +23,14 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories, migrateOneOffsIntoChannelFolders,
+  getMediaId, loadDatabase, updateDatabase, scanDirectories, migrateOneOffsIntoChannelFolders,
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const ytdlpArgs = require('../../lib/ytdlp/args');
 
-// v1.42: seeds go through the exported saveDatabase (the adapter opened at
+// v1.42: seeds go through the exported seedState(the adapter opened at
 // require time, so a raw db.json write would be dead); persisted-state
 // assertions go through the sanctioned SQLite read helper. An EMPTY doc_kv
 // namespace persists as zero rows (absent); backfill the ones this file
@@ -131,7 +131,7 @@ test('idempotent: a second migration run moves nothing', async () => {
   fs.writeFileSync(filePath, 'bytes');
   const oldId = getMediaId(filePath);
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {
@@ -163,7 +163,7 @@ test('an item already sitting in its resolved channel folder is skipped (no move
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {
@@ -193,7 +193,7 @@ test('an item with NO captured channel identity is left untouched', async () => 
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {
@@ -224,7 +224,7 @@ test('a non-ytdlp library file (outside the download root) is never touched, eve
     fs.writeFileSync(filePath, 'bytes');
     const id = getMediaId(filePath);
 
-    saveDatabase({
+    seedState({
       folders: [libDir],
       folderSettings: {},
       metadata: {
@@ -259,7 +259,7 @@ test('migration is a no-op when the yt-dlp module is disabled: no db change, no 
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {
@@ -297,7 +297,7 @@ test('GATE-FIX ADVERSARIAL SCENARIO: an item already foldered under a subscripti
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {
@@ -341,7 +341,7 @@ test('a flat one-off sitting in the legacy pre-T3 "One-Off" folder with a captur
   const newPath = path.join(targetDir, path.basename(filePath));
   const newId = getMediaId(newPath);
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {
@@ -392,7 +392,7 @@ test('a same-basename collision loser is skipped/counted separately (not `errors
   const targetDir = ytdlpArgs.resolveChannelDir(config, { name: 'Collision Channel' });
   const targetPath = path.join(targetDir, 'clash.mp4');
 
-  saveDatabase({
+  seedState({
     folders: [],
     folderSettings: {},
     metadata: {

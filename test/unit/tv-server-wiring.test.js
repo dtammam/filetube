@@ -83,7 +83,8 @@ test('POST /api/tv/config: admin-only + rejects overlap with media/book/music/po
   assert.match(body, /foldersOverlap\(tvRoot, bookRoot\)/);
   assert.match(body, /foldersOverlap\(tvRoot, musicRoot\)/);
   assert.match(body, /foldersOverlap\(tvRoot, podcastsRoot\)/, 'a Shows root may not overlap the podcasts root');
-  assert.match(body, /tvStore\.ensureTv\(db\)\.folders = resolved;/);
+  // Wave 5: the write goes through the feature store's mutate (the diff rides the doc commit).
+  assert.match(body, /tvDb\.mutate\(\(h\) => \{ tvStore\.ensureTv\(h\)\.folders = resolved; return true; \}\)/);
   assert.match(body, /scanTv\(\)\.catch\(console\.error\);/, 'a config save triggers a scan');
 });
 

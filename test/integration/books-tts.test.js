@@ -51,7 +51,7 @@ process.env.FILETUBE_TTS_DEFER_POLL_MS = '100'; // fast defer re-check for the T
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, loadDatabase, scanBooks, reconcileTtsCacheAtBoot } = require('../../server');
+const { app, updateDatabase, scanBooks, reconcileTtsCacheAtBoot, booksDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const booksStore = require('../../lib/books/store');
 const ytdlp = require('../../lib/ytdlp');
@@ -76,9 +76,9 @@ before(async () => {
       '<figure><img src="plate.jpg" alt=""/></figure>', // chapter 3: image-only, NO speakable text
     ],
   }));
-  await updateDatabase((db) => { booksStore.ensureBooks(db).folders = [booksDir]; return true; });
+  await updateDatabase(() => booksDb.mutate((db) => { booksStore.ensureBooks(db).folders = [booksDir]; return true; }));
   await scanBooks();
-  const items = booksStore.readBooks(loadDatabase()).items;
+  const items = booksDb.read().items;
   bookId = Object.keys(items).find((id) => items[id].title === 'Novel');
 
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -194,17 +194,17 @@ test('an image-only chapter (no speakable text) settles to "failed", never stuck
 
 test('T12: boot reconcile clears a stale "processing" and a file-less "ready", keeps a valid ready', async () => {
   // A crashed-mid-synth 'processing' entry + a 'ready' whose file was deleted.
-  await updateDatabase((db) => {
+  await updateDatabase(() => booksDb.mutate((db) => {
     const ns = booksStore.ensureBooks(db);
     ns.audio.ghost = { 0: { status: 'processing', key: 'nofile-processing' } };
     ns.audio[bookId] = ns.audio[bookId] || {};
     ns.audio[bookId]['5'] = { status: 'ready', key: 'nofile-ready', durationSec: 9 };
     return true;
-  });
+  }));
   reconcileTtsCacheAtBoot();
   await new Promise((r) => setTimeout(r, 100)); // let the reconcile updateDatabase land
 
-  const audio = booksStore.readBooks(loadDatabase()).audio;
+  const audio = booksDb.read().audio;
   assert.strictEqual(audio.ghost, undefined, 'a stale processing book is swept (and its empty map dropped)');
   assert.strictEqual(audio[bookId] && audio[bookId]['5'], undefined, 'a file-less ready entry is cleared');
   // Chapter 0's genuinely-ready entry (real file on disk) survives.
@@ -213,7 +213,7 @@ test('T12: boot reconcile clears a stale "processing" and a file-less "ready", k
 
 test('T12: POST /api/cache/clear purges unprotected tts-cache + resets status, but spares a recently-served chapter', async () => {
   const cacheDir = path.join(process.env.DATA_DIR, 'tts-cache');
-  const audioBefore = booksStore.readBooks(loadDatabase()).audio[bookId];
+  const audioBefore = booksDb.read().audio[bookId];
   const key0 = audioBefore['0'].key; // chapter 0 was served in earlier tests
   const key1 = audioBefore['1'].key; // chapter 1 (one-ahead) was never served
   const m4a0 = path.join(cacheDir, `${key0}.m4a`);
@@ -227,7 +227,7 @@ test('T12: POST /api/cache/clear purges unprotected tts-cache + resets status, b
 
   assert.ok(fs.existsSync(m4a0), 'a recently-served chapter is SPARED (active-stream protection)');
   assert.ok(!fs.existsSync(m4a1), 'an unprotected chapter IS purged');
-  const audio = booksStore.readBooks(loadDatabase()).audio;
+  const audio = booksDb.read().audio;
   // The spared chapter keeps its status row (truthful while it plays on); the
   // purged chapters' rows are dropped.
   assert.ok(audio[bookId] && audio[bookId]['0'] && audio[bookId]['0'].status === 'ready', 'spared chapter keeps its ready status');

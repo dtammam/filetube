@@ -11,11 +11,22 @@ const crypto = require('node:crypto');
 
 const store = require('../../lib/books/store');
 
+// Wave 5: the deps carry a REAL feature store on a scratch database (the
+// tables are the migration's); `loadDatabase()` hands back a holder VIEW of
+// it so the assertions below read the rows the same way they read the doc.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { SQLITE_FILENAME, SqliteAdapter } = require('../../lib/db/sqlite');
 function makeFakeDeps(initialDb = {}) {
-  let db = initialDb;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-books-store-'));
+  const adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
+  const booksDb = store.createBooksStore(adapter);
+  if (initialDb.books) booksDb.replaceAll(initialDb.books);
   return {
-    loadDatabase: () => db,
-    updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
+    booksDb,
+    loadDatabase: () => ({ books: booksDb.read() }),
+    updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn()),
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),
   };
 }

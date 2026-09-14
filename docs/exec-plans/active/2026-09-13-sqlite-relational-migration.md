@@ -393,15 +393,240 @@ the full gate and the bundle round-trip are unchanged - only the cadence.
     **19,217**, tests 8,368 / 665 + the 2 new files. Full suite Node 22 before the gate:
     8538 / 8535 / 0 fail / 3 skipped.
 
-### Wave 4 - config singletons, batched  (full gate)
-- `settings` (48), `folders` (39), `folderDisplayNames` (22), `liked` (12),
-  `folderSettings` (10) -> `settings` (KV or typed columns), `folders`, `folder_display_names`,
-  `media_liked`, `folder_settings`. Extract `moveItemToFolder` into `lib/media/folders`.
+### Wave 4 - config singletons  (batched with Wave 5 on ONE branch - Dean's pacing change)
+- Kickoff figures: `settings` (48), `folders` (39), `folderDisplayNames` (22), `liked` (12),
+  `folderSettings` (10). **Measured at the wave's start** (`node scripts/relational-arc-refs.js`,
+  comments stripped, HEAD d5a80dce): server.js `settings` 46 / `folders` 11 /
+  `folderDisplayNames` 16 / `liked` 15 / `folderSettings` 8; lib `settings` 2 / `folders` 10
+  (3 code sites in `lib/ytdlp/index.js` + `lib/podcasts/index.js`, the rest log strings).
+  Test blast radius: fixture files carrying `folders:` **148**, `folderSettings:` 128,
+  `settings:` 122, `liked:` 64; `db.<key>` spellings inside tests: folders 207,
+  folderSettings 43, settings 39, liked 28, folderDisplayNames 4; `saveDatabase(<variable>)`
+  94 sites. The test side is the larger half of this wave.
+- **Design (2026-09-14):**
+  - Two new shared primitives beside `lib/media/jsonRowStore.js`, same contract (adapter
+    in, statements cached on the adapter, joins an open transaction, ids by the ONE
+    `isPersistableId` rule, tolerant reads / asserting writes):
+    `lib/db/kvStore.js` - `defineKvStore({label, table})`: an object of key -> JSON value
+    as one row per key (`get()` merges construction-time defaults, `update(patch)` writes
+    only the touched keys, `replaceAll` refuse-whole); and `lib/db/orderedListStore.js` -
+    `defineOrderedListStore({label, table, column})`: an ordered list of strings as
+    `(value PK, position)` rows (`list()` in position order, `add` appends at max+1,
+    `remove`, `rekey` OR REPLACE, `replaceAll` dedupes keep-first - a list has set
+    semantics, so a legacy duplicate collapses instead of refusing an old export).
+    `jsonRowStore` gains a `keyColumn` option (default `media_id`) so a store keyed by a
+    path or a folder name does not carry a lying column name.
+  - Tables (one schema bump per group, each its own rollback floor, each a separate commit):
+    **v24** `app_settings (key TEXT PK, json)` <- `settings` (`lib/config/settings.js`;
+    `DEFAULT_SETTINGS` stays in server.js and is handed to the store, so `get()` is what
+    `withDefaultSettings(db.settings)` was; the bundle keeps exporting the MERGED object);
+    **v25** `library_folders (path PK, position)` <- `folders`,
+    `library_folder_settings (root_path PK, json)` <- `folderSettings`,
+    `channel_folder_display_names (folder_name PK, json)` <- `folderDisplayNames`
+    (`lib/config/folders.js`, `folderSettings.js`, `folderDisplayNames.js`);
+    **v26** `media_liked (media_id PK, position)` <- `liked` (`lib/media/liked.js` - the
+    FROZEN pre-auth likes the first admin adopts once, Wave 2's progress posture; its
+    carriers are the four in-mutator rename/trash/restore/purge re-keys, which ride
+    `inSaveTransaction`).
+  - Consumers: reads become store reads at the same site (a mutator that read `db.settings`
+    reads `settingsStore.get()`); a long-lived snapshot (the scan's `db` taken at scan
+    start) captures `settingsStore.get()` / `folderStore.list()` ONCE where it captured
+    `db`, so a mid-scan config change is still not observed mid-scan (unchanged semantics).
+    Writes inside mutators ride `inSaveTransaction` (config POST, settings POST, the logo
+    mime keys, the notifications seed stamp, the scan's display-name heal, the four liked
+    re-keys). The backup bundle keeps every key and shape; `BACKUP_NAMESPACE_KEYS` shrinks
+    to `metadata` + the containers and the five join `RELATIONAL_BUNDLE_KEYS`; restore
+    routes them through handles (`insertSetting`, `replaceFolders`, `insertFolderSetting`,
+    `insertFolderDisplayName`, `replaceLiked`) - validated field-level before the wipe.
+  - Tests: `test/helpers/seed-state.js` routes the five keys; a codemod turns
+    `saveDatabase({` fixtures into `seedState({` and `loadDatabase().<key>` reads into
+    store reads; mutator/variable spellings are hand-fixed (the Wave 3 rule: a codemod
+    never rewrites an assignment TARGET). `readPersistedDatabase` surfaces the five under
+    their old keys when rows exist (tests only).
+  - **`moveItemToFolder` extraction deferred to Wave 7**, same reason as Wave 3's
+    `trashItem`: a deps-bag threading of ~20 server.js internals is a second risk class
+    on a data-moving wave; storage move only here. Disclosed.
+- **Wave 4 record (2026-09-14, branch `feat/wave4-5-config-and-catalogs`, three commits, one
+  per group; Dean's overnight authorization the same day: "continuing on through the rest of
+  the waves" - the per-wave device pass is waived until the arc completes, every release ships
+  DEVICE-PENDING and disclosed):**
+  - **Group 1 (v24)** `settings` -> `app_settings`: 48 server.js sites (the 46 doc spellings
+    + the `getCachedDatabase().settings` ones the first census missed - it counts them now),
+    one lib site (the podcasts trash sweep reads retention via a `getSettings` dep). The
+    scans capture `settingsStore.get()` once beside their Phase-1 snapshot (a mid-scan
+    change still not observed mid-scan). The bundle keeps the MERGED object.
+  - **Group 2 (v25)** the folder config -> `library_folders` / `library_folder_settings` /
+    `channel_folder_display_names`: 35 server.js sites + lib/podcasts (boot overlap warning)
+    + lib/ytdlp (the stale-downloadDir migration, through `getLibraryFolders` /
+    `removeLibraryFolder` + `inSaveTransaction` deps); the config POST writes both maps in
+    ONE `inSaveTransaction`; the rename route and the channel heal write a display name the
+    same way (the heal through a `setFolderDisplayName` dep so its unit harness stays
+    deterministic). **Three reads hid behind holder names the census did not know**
+    (`cachedForBooks.folders`, `cached.folders` x2, `mdb.folderDisplayNames`) - caught by the
+    feature-config overlap tests; the census and the new source locks now enumerate every
+    holder spelling. A `/*` inside a comment silently truncated the diagrams census's view
+    of `lib/db/sqlite.js` (9 names / 12 tables until reworded).
+  - **Group 3 (v26)** `liked` -> `media_liked` (`lib/media/liked.js`): the adoption and the
+    stats inventory read `list()`; the four carriers (rename / trash / restore / purge)
+    re-key or remove inside the commit; `rekey` keeps the SLOT (the array idiom wrote the
+    new id back at the same index). After it NO top-level `doc_single` name remains.
+  - Tests: `saveDatabase(` fixtures -> `seedState(` in 97 files (codemod), the folder
+    spellings in 11 files (codemod) + ~40 hand sites, the liked spellings in 7 files; the
+    seed helper routes the five keys REPLACE-ONLY-WHEN-PRESENT (a `loadDatabase()`-derived
+    object no longer carries them - the first cut wiped them on re-seed); the crash probe
+    writes two kv rows per burst; the adapter test's upgrade cases plant a v17 doc row raw.
+    Six new test files (`db-kv-list-stores`, `app-settings-store`, `library-folders-stores`,
+    `media-liked-store`, `app-settings-atomicity`, `media-liked-carriers`) + the gate's two
+    (`library-folders-atomicity`, the move carrier case in `media-liked-carriers`).
+  - Baseline after: doc_kv **9**, doc_single **13**, total **22**, schema **26**, server.js
+    **19296** lines, tests 8426 / 674 files (re-derived at the gate; the first figure was a stale run). Full suite Node 22 before the gate:
+    8581 / 8581 / 0 fail / 0 skipped. `moveItemToFolder` extraction deferred to Wave 7.
+  - **Gate pass A (both seats, one fix round + delta).** No CRITICAL. QA W1: two of the
+    three new source locks had an INERT holder arm (`cached\\w*` typed into a regex
+    literal - a backslash and zero-or-more `w`; the mutant "reinstate `cached.folders`"
+    survived) - fixed, re-verified by `re.test('cachedForBooks.folders')`. QA W2 = ADV W2:
+    `scripts/migrate-check.js` refused every db.json with `liked: []` (the shape every
+    v1.30+ file carries) and a duplicated list entry - it now normalizes the two lists
+    like the importer and drops the empties (test-bound). ADV W1: the migration stamp was
+    written once at the END, so a v25/v26 failure left v24 COMMITTED under a v23 stamp and
+    v1.293.1 booted that partial database, defaulted the settings it no longer found and a
+    re-run of v24 overwrote the migrated rows (measured settings loss) - v24/v25/v26 now
+    stamp their own floor inside their commit (test-bound: v24 lands, v25 fails -> stamp
+    24, rows kept, doc row gone). The v21-v23 blocks keep the end stamp (append-only
+    rule; their partial states crash the old build rather than default). ADV W3 = QA W3:
+    the config POST's atomicity was bound only by a regex (the hoisted-writes mutant
+    survived 106 tests) - the seat's probes are adopted as
+    `test/integration/library-folders-atomicity.test.js` (both tables under a failed
+    save, a throw in the second replaceAll rolling back the first, the dedupe-by-resolved
+    spelling, NUL paths dropped). ADV W4: the MOVE carrier's failure axis was unbound
+    (the out-of-transaction mutant survived 74 tests) - bound in
+    `media-liked-carriers`. Writing those tests found a REAL bug the seats' probes had
+    not driven: `POST /api/folders/display-name` had no try/catch around its save, so a
+    failed save HUNG the request (the Wave 3 class) - guarded, 500. Non-blocking, all
+    applied: the notifications stamp and the rename route now have failed-save axes; the
+    yt-dlp stale-prune requires the in-transaction hook (its direct-write fallback and the
+    dead `setFolderDisplayName` in the timer bundle are gone); the podcasts sweep guards
+    `getSettings` like `getLibraryFolders`; nine stale comments (the orphaned
+    `withDefaultSettings` note, `db.liked` in three places, the clobber list, the version
+    ladder); the record's test counts re-derived (8426 / 674). Disclosed: the bundle
+    validator is deliberately tighter - v1.293.1 accepted a NUL folder path and an
+    empty-string folderSettings key verbatim, this build 400s both; the source locks
+    shell out to `git ls-files` and need a repo checkout (all waves' locks do); v25/v26
+    log a collapsed duplicate now.
+- **Gate pacing on the shared branch:** the two waves are gated in TWO passes by the SAME
+  reviewer agents (pass A after the Wave 4 commits, pass B after Wave 5), so each review
+  is bounded; ONE release (v1.294.0) at the end, no device pass between 3 and 4. Split
+  trigger (disclosed if it fires): if pass A needs a third fix round, or pass B's diff is
+  more than a seat can honestly cover in one pass, Wave 5 releases separately.
 
-### Wave 5 - feature catalogs, batched (sub-waved per feature)  (full gate)
-- The `books.*`, `music.*`, `podcasts.*`, `tv.*`, `ytdlp.*` content namespaces (each
-  already has a `lib/<feature>` owner) -> relational tables owned by that module. May
-  ship as one sub-wave per feature if the batch is too large for a single gate.
+### Wave 5 - feature catalogs  (same branch; sub-waved per feature, smallest first)
+- The `books.*`, `music.*`, `podcasts.*`, `tv.*`, `ytdlp.*` namespaces (each already has a
+  `lib/<feature>` owner). Measured at the wave's start (same census): per-feature code
+  sites server/lib - tv 0/20 (+ `readTv` 13 / `ensureTv` 3 accessor calls in server.js),
+  music 13/24 (+23/3), books 0/57 (+25/7), podcasts 4/90 (+12/0; `ensurePodcasts` 22 in
+  lib), ytdlp 15/95 (+ `ensureYtdlp` 25 in lib). Order: tv -> music -> books -> podcasts
+  -> ytdlp (the security-gated downloader last, with the most probes).
+- Per feature: the id-keyed catalogs (`items`/`tracks`/`episodes`/`progress`/`audio`/
+  `downloadMeta`/`channelAvatars`) become `jsonRowStore` tables `<feature>_<name>`; the
+  root lists (`folders`) become `orderedListStore` tables; the `settings` objects (and
+  `ytdlp.allowMembersOnly`) become `kvStore` tables; `pins` / `subscriptions` /
+  `music.channels` become jsonRow tables keyed by id with a `position` column derived
+  from array order. The feature's `readX(db)` becomes `store.read()` (the same snapshot
+  shape, so the GET routes change mechanically); every `ensureX(db)` mutation site is
+  hand-rewritten to store writes inside `inSaveTransaction`. The doc container key
+  (`db.books`) leaves `CONTAINER_KEYS` when its last sub-key moves.
+- Each feature = one schema bump (v27 tv, v28 music, v29 books, v30 podcasts, v31 ytdlp),
+  one commit, its own rollback floor, its own migration + atomicity + bundle tests.
+- **Wave 5 record (2026-09-14, same branch, six commits: the primitives + one per feature;
+  overnight, Dean's standing authorization):**
+  - **The primitive (`lib/db/featureStore.js`, `lib/db/recordListStore.js`).** A namespace is a
+    set of tables on the shared shapes (`list` / `map` / `kv` / `records` / `value`); `read()`
+    is the module's old `readX(db)` snapshot, `holder(only)` wraps it as `{ [name]: snapshot }`
+    so the module's own `ensureX(holder)` normaliser and reducers keep running UNCHANGED, and
+    `mutate(fn)` writes back the DIFF (changed rows only, per part) through
+    `inSaveTransaction` - one commit with the doc. `migrateFromDoc` copies the doc rows
+    verbatim (only the parts that have rows; never wipes - a re-run is a no-op), per-block
+    stamps as in Wave 4. A `value` part (ytdlp.allowMembersOnly) lives in an `internal` kv
+    table that is never a namespace key; an unset value IS its default (no row, no diff).
+  - **v27 tv** (2 server writers: the scan merge, the config POST) · **v28 music** (+ the
+    channel-mark route; `music.channels` was a doc_single MAP - `docSingleMap`) · **v29
+    books** (the five deps-mutators in `lib/books/store.js` take `booksDb` through deps; the
+    scan merge, the config POST, the cover POST, the TTS boot reconcile, the clear-cache
+    drop) · **v30 podcasts** (the module's 21 writers, a string/comment-aware codemod +
+    hand edits; `subscriptions` is an ORDERED record list - a position column, never a
+    sort; the search registry takes a `podcastsNs` dep; the restore's absent-key
+    PRESERVATION reads the tables; the three simple mutating routes 500 on a failed
+    commit instead of hanging) · **v31 ytdlp** (the 13 store writers; the index's reads take
+    a holder or a VIEW - the doc snapshot with the namespace attached - because
+    `collectDistinctChannelAvatarTargets` and friends read db.metadata AND the namespace;
+    server.js hoists ONE `ytdlpDb.holder(['subscriptions','channelAvatars'])` per request
+    for the 8 avatar-resolver loops, the scan takes one holder for the bridge map + the
+    folder backfill and queues `syncFrom` into its own commit, the relocation joins and the
+    attribution proposal take a subscriptions holder (the deep-clone dance is gone), the
+    two fanout writers relabel the frozen pins through a NESTED feature mutate, an id-less
+    legacy subscription gets `md5(channelUrl)` minted by the migration instead of falling
+    through the record list's id floor). After v31: `CONTAINER_KEYS = []`,
+    `SINGLETON_NAMES = []`, `DOC_KV_NAMESPACES = ['metadata']` - the doc model is one
+    namespace; the container-object check in the bundle validator is subsumed by
+    `validateFeatureBundle` (every container shape-checked BEFORE the wipe), so the
+    mid-populate rollback test needs an injected failure (`__failNextRestorePopulateForTests`).
+  - Tests: the per-feature unit harnesses that faked the doc object now hand the module a
+    REAL store on a scratch database (`test/helpers/scratch-feature-store.js`:
+    `featureStoreFor(FEATURE, db)` seeds one shared scratch store per feature per process
+    from the fixture's key and `docView` attaches the snapshot to the doc IN PLACE - the
+    21 yt-dlp module-only harnesses converted by a one-line codemod, the four `makeFakeDeps`
+    builders by hand); the integration mutators wrapped by the Wave-4 codemod (extended to
+    the `fresh` param) + ~30 mixed sites by hand; seeds carry ids (records need them);
+    the adapter test's doc-model cases run on `metadata` now (the one doc_kv namespace);
+    the fanout unit test's pin case runs through the REAL writer. New: five
+    `<feature>-feature-store` unit suites (migration verbatim incl. order, re-run no-op,
+    corrupt-row rollback of every CREATE TABLE, save-lock, import route, exclusiveReplace,
+    test read, mutate diff, source locks on server.js AND the module) + five
+    `<feature>-feature-atomicity` integration suites (failed-save axes through the REAL
+    routes/writers, the order survival, the bundle round-trip + 400-before-wipe, the
+    absent-key semantics: podcasts PRESERVES, the rest restore empty) + `db-feature-store`.
+  - Baseline after the pass-B fix round: doc_kv **1**, doc_single **0**, total **1**
+    (`node scripts/relational-arc-baseline.js`), schema **31**, 60 relational tables,
+    server.js **19382** lines, tests 8502 / 687 files (the baseline script's count at the
+    fix commit; the suite's own count is in the release notes). `scripts/migrate-check.js` passes a db.json carrying
+    every container (all five route through `replaceFeature`).
+  - Deferred to Wave 7 (disclosed): the doc-model seams that still exist for `metadata`
+    alone (`BACKUP_NAMESPACE_KEYS = ['metadata']`, the save-lock's container walk over an
+    empty list, `doc_single` as an empty table); the podcasts episode DELETE / restore
+    routes still hang on a failed commit after their file move (pre-existing, the Wave 3
+    class, not this wave's change - tracked in #224's revisit).
+  - **Gate pass B (both seats FRESH instances - pass A's did not survive a context
+    compaction; one fix round + delta).** No CRITICAL. **ADV W1 (data loss, a surviving
+    mutant):** `syncFrom` treated a part absent from the snapshot as "emptied", so a PARTIAL
+    holder (`holder(only)` - the very optimisation the `only` parameter invites) reaching
+    the scan commit wiped the pins, the avatar registry and the flag; six suites stayed
+    green under the mutant because no scan test seeded those parts. Fixed as prescribed: a
+    partial snapshot is tagged (a non-enumerable Symbol) with the parts it read and
+    `syncFrom` skips the rest; bound by a primitive-level case and by a scan case that
+    seeds pins + avatars + flag and asserts them untouched. **ADV W2 = QA W2:** the scan
+    bridge's "inside its own commit" was bound only by a source lock (the out-of-
+    transaction mutant survived every executing test) - a failed-save scan case now binds
+    it (the bridge row survives, no item lands, the next scan consumes). **ADV W3 = QA W1
+    (perf):** whole-table reads per ITEM in the home row resolver, the grid card resolver,
+    the push resolver and the handoff resolvers (measured: `musicDb.read()` at 10k tracks
+    = ~50 ms per call) - every single-lookup site is a prepared point query now
+    (`xDb.parts.<map>.get(id)`, six books routes included), the mark readers read one
+    table, search reads the podcasts namespace once per query; the remaining per-request
+    LIST reads are disclosed in tracker #226 with a Wave 6 revisit. **ADV W4:** the v31
+    block minted an id for an id-less legacy yt-dlp subscription while the db.json boot
+    import and the bundle restore REFUSED the same record (a boot that never opens) -
+    one exported repair (`mintLegacyYtdlpSubscriptionIds`, md5 of the NORMALIZED url -
+    QA W5's finding: the raw-url mint would have made a later re-add a duplicate) runs at
+    all three seams; the validator accepts the shape. **QA W3:** the record's test count
+    was stale - re-derived at the fix commit. **QA W4:** the podcasts feed-url route hung
+    on a failed commit (undisclosed) - 500 now, test-bound. **QA W5:** five stale comments
+    (the sqlite header's `books.audio` bullet, the scan bridge's `fresh.ytdlp` prose, the
+    dead boot backfill's lead, the index's "server.js never reads the namespace",
+    the mint comment). Non-blocking, applied: a `value` part is shape-checked in the
+    bundle validator and coerced by the v31 block (QA S2 / ADV S7); the lock lists carry
+    `handoffDb|srcMeta` (ADV S6); the fanout unit tests start each fake-deps case with an
+    empty pin table (QA S3); the one-mutate-per-tick rule is stated in the primitive's
+    header and recorded in #226 with a revisit (ADV S5); the double reads (QA S1).
 
 ### Wave 6 - `metadata` -> `media_items`  (SOLO, FULL gate, adversarial destroys the catalog)
 - The crown jewel: 172 refs, 284 rows, written by the 1,533-line `runScanDirectories`.

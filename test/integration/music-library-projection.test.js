@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, userStore, __mintTestSession, musicDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -45,7 +46,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   auth = authenticateFetch(server, base);
   actingUser = auth.user;
-  saveDatabase({ folders: [ROOT], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  seedState({ folders: [ROOT], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
   await updateDatabase((db) => {
     // Library audio: NESTALGIA (genre Gaming - needs a mark), Tonzak (genre
     // Music - default on), Zarchivo (genre Comedy - default off), a blocked-
@@ -72,13 +73,15 @@ before(async () => {
       pc2: audioItem('pc2', 'partialchan', 'Gaming', 'PartialChan'),
       pc3: Object.assign(audioItem('pc3', 'partialchan', 'Gaming', 'PartialChan'), { filePath: path.join(blockedRoot, 'pc3.mp3') }),
     };
-    const ns = musicStore.ensureMusic(db);
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    const ns = musicStore.ensureMusic(h);
     ns.folders = [ROOT];
     ns.tracks = {
       // A native music track whose id collides with a projected audio id (dup1).
       dup1: { id: 'dup1', title: 'NATIVE dup', artist: 'Real Artist', albumArtist: 'Real Artist', album: 'Real Album', filePath: path.join(ROOT, 'native/dup1.flac'), rootFolder: ROOT, folderName: 'native', ext: '.flac', codec: 'flac', durationSec: 300, albumArtKey: null, addedAt: '2026-01-01T00:00:00.000Z' },
     };
-    db.music.channels = { nestalgiamusic: 'on' }; // Dean flips the Gaming music channel on
+    h.music.channels = { nestalgiamusic: 'on' }; // Dean flips the Gaming music channel on
+    return true; });
     return true;
   });
   member = __mintTestSession({ username: 'kidproj', role: 'member' });

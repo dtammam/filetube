@@ -8,9 +8,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = process.env.DATA_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-heal-fanout-'));
 
-const { test } = require('node:test');
+const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { recordLocalChannelHealFanout } = require('../../server');
+const { recordLocalChannelHealFanout, updateDatabase, saveDatabase, ytdlpDb, __resetDatabaseForTests } = require('../../server');
+// The fake-deps cases below drive the REAL module-level ytdlpDb for the pin
+// relabel (a nested feature mutate); a leftover pin from another case would make
+// that nested write need a real commit the fake has none of - start each case empty.
+beforeEach(() => ytdlpDb.replaceAll(null));
 
 const UC = 'UC-6oT0FOyAqCGfdNLi4fmXA';
 const HANDLE = 'https://www.youtube.com/@nestalgiamusic';
@@ -20,10 +24,14 @@ const FOLDER = '/music/nestalgiamusic';
 function makeDeps(metadata, ytdlp) {
   const db = { metadata, ytdlp: ytdlp || { pins: [] } };
   const returns = [];
+  const names = {}; // Wave 4: the display-name map is a table behind a deps seam
   let calls = 0;
   return {
-    db, returns, get calls() { return calls; },
-    deps: { updateDatabase: (fn) => { calls += 1; returns.push(fn(db)); return Promise.resolve(); } },
+    db, returns, names, get calls() { return calls; },
+    deps: {
+      updateDatabase: (fn) => { calls += 1; returns.push(fn(db)); return Promise.resolve(); },
+      setFolderDisplayName: (name, value) => { names[name] = value; },
+    },
   };
 }
 const target = () => ({
@@ -48,11 +56,16 @@ test('heal fanout: adopts id+name+url+avatar onto bad siblings, persists on chan
   assert.deepEqual(h.returns, [true], 'persisted');
 });
 
-test('heal fanout: re-labels the channel pin to the real name', async () => {
-  const pins = [{ id: 'p1', channelDir: FOLDER, label: '@nestalgiamusic', pinnedAt: 1 }];
-  const h = makeDeps({ b: frag() }, { pins });
-  await recordLocalChannelHealFanout(h.deps, target());
-  assert.equal(pins[0].label, 'NESTALGIA', 'pin snapshot re-labelled');
+test('heal fanout: re-labels the channel pin to the real name - Wave 5: through the REAL writer, into ytdlp_pins', async () => {
+  // The pins live in their table since Wave 5 and the relabel is a nested
+  // feature mutate riding the doc commit, so this case runs the real
+  // updateDatabase (the fake above has no commit for the nested write to ride).
+  await __resetDatabaseForTests();
+  saveDatabase({ metadata: { b: frag() } });
+  ytdlpDb.replaceAll({ pins: [{ id: 'p1', channelDir: FOLDER, label: '@nestalgiamusic', pinnedAt: 1 }] });
+  const n = await recordLocalChannelHealFanout({ updateDatabase, setFolderDisplayName: () => {} }, target());
+  assert.equal(n, 1, 'the fragment healed');
+  assert.equal(ytdlpDb.read().pins[0].label, 'NESTALGIA', 'pin snapshot re-labelled, in its table');
 });
 
 test('heal fanout: a no-op target (no writes) never persists; a bad/absent target is 0', async () => {
@@ -66,7 +79,8 @@ test('heal fanout: a no-op target (no writes) never persists; a bad/absent targe
 // ---- v1.126: the heal ALSO writes the per-folder display map ---------------
 // A folder healing to one canonical name is exactly the signal the folder-label
 // surfaces (the ?folder= header, the channels bar, pins' fallback) need - the
-// fanout writes db.folderDisplayNames[folderName] = canonical name, OVERWRITE
+// fanout writes folderDisplayNames[folderName] = canonical name (Wave 4: through
+// the deps' setFolderDisplayName seam, into channel_folder_display_names), OVERWRITE
 // posture (a re-run with a fresher name wins; never gated on absence).
 
 test('v1.126: a successful heal writes folderDisplayNames[folderName] (and OVERWRITES a stale entry)', async () => {
@@ -74,10 +88,10 @@ test('v1.126: a successful heal writes folderDisplayNames[folderName] (and OVERW
     b1: frag({ folderName: 'nestalgiamusic' }),
     good: { type: 'audio', filePath: FOLDER + '/g.mp3', folderName: 'nestalgiamusic', channelName: 'NESTALGIA', channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE },
   });
-  h.db.folderDisplayNames = { nestalgiamusic: 'Stale Old Name' };
+  h.names.nestalgiamusic = 'Stale Old Name';
   const n = await recordLocalChannelHealFanout(h.deps, target());
   assert.equal(n, 1, 'the bad sibling healed');
-  assert.equal(h.db.folderDisplayNames.nestalgiamusic, 'NESTALGIA',
+  assert.equal(h.names.nestalgiamusic, 'NESTALGIA',
     'the display map takes the canonical name, overwriting the stale entry');
 });
 
@@ -86,5 +100,5 @@ test('v1.126: a no-op heal (nothing written) never touches the display map', asy
     good: { type: 'audio', filePath: FOLDER + '/g.mp3', folderName: 'nestalgiamusic', channelName: 'NESTALGIA', channelId: UC, channelUrl: CANON_URL, channelHandleUrl: HANDLE },
   });
   await recordLocalChannelHealFanout(h.deps, target());
-  assert.equal(h.db.folderDisplayNames, undefined, 'no heal -> no map write, no key created');
+  assert.deepEqual(h.names, {}, 'no heal -> no map write, no key created');
 });

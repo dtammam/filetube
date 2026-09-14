@@ -16,7 +16,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-watchedto
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, __mintTestSession, userStore } = require('../../server');
+const { app, __mintTestSession, userStore } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, uid;
@@ -26,7 +27,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   const auth = authenticateFetch(server, base);
   uid = auth.user.id;
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {
       wtA: { id: 'wtA', title: 'wtA', filePath: '/media/wtA.mp4', folderName: 'media', type: 'video', ext: '.mp4', duration: 100, size: 1000, addedAt: 5000 },

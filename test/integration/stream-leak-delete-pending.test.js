@@ -41,10 +41,10 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-pending-'
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, getMediaId, scanDirectories, activeMediaStreams,
+  app, getMediaId, scanDirectories, activeMediaStreams,
   __resetDatabaseForTests,
 } = require('../../server');
-const { tombstoneStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, tombstoneStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -97,7 +97,7 @@ function seedVideo(fileName, bytes = BIG) {
   const filePath = path.join(libDir, fileName);
   fs.writeFileSync(filePath, Buffer.alloc(bytes, 7));
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [libDir],
     folderSettings: {},
     metadata: {

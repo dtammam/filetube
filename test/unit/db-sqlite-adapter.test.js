@@ -34,6 +34,7 @@ const {
   readPersistedDatabase,
   SCHEMA_VERSION,
 } = require('../../lib/db/sqlite');
+const podcastStore = require('../../lib/podcasts/store');
 
 let dir;
 beforeEach(() => {
@@ -51,44 +52,15 @@ const jsonPath = () => path.join(dir, 'db.json');
 // import must extract it from.
 function fullFixture() {
   return {
-    folders: ['/media/videos', '/media/music'],
-    folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
-    // v1.126/v1.127: the per-channel-folder display-name map (the namespace
-    // whose missing fixture coverage external review round 2 flagged).
-    folderDisplayNames: { NESTALGIA: 'Nestalgia Music' },
+    // (folders / folderSettings / folderDisplayNames: relational since Wave 4 - see importFixture)
     // (progress / deleteTombstones: relational since Wave 2 - see importFixture)
     metadata: {
       vid1: { id: 'vid1', name: 'clip.mp4', title: 'Clip', filePath: '/media/videos/clip.mp4', viewCount: 7, chaptersManual: [{ t: 0, title: 'Intro' }] },
       vid2: { id: 'vid2', name: 'song.mp3', title: 'Song', filePath: '/media/music/song.mp3' },
       vid3: { id: 'vid3', name: 'zero.mp4', title: 'Zero views', viewCount: 0 },
     },
-    liked: ['vid1'],
-    settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' },
-    books: {
-      folders: ['/media/books'],
-      items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
-      progress: { bk1: { spineIndex: 3, offset: 0.5 } },
-      pins: [{ id: 'pin1', dir: '/media/books', label: 'Shelf', order: 0 }],
-      settings: {},
-      audio: { bk1: { 0: { status: 'ready', key: 'k0' } } },
-    },
-    music: {
-      folders: ['/media/tunes'],
-      tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
-      settings: {},
-      // Wave G: per-folder "show in Music" marks (singleton, folderName-keyed,
-      // like folderDisplayNames). Exercised through the round-trip + every
-      // upgrade test (both consume this fixture) - proving the namespace is
-      // registered and save()/load() preserve it byte-equal.
-      channels: { NESTALGIA: 'on', Zarchivo: 'off' },
-    },
-    ytdlp: {
-      allowMembersOnly: false,
-      subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
-      downloadMeta: { yt1: { channelName: 'X', capturedAt: 1752600000000 } },
-      pins: [],
-      channelAvatars: { UC123: { avatarUrl: 'https://a/b.jpg', fetchedAt: 1752600000000 } },
-    },
+    // (settings / liked: relational since Wave 4 - see importFixture)
+    // (books / music / podcasts / ytdlp: relational since Wave 5 - see importFixture)
   };
 }
 
@@ -100,6 +72,43 @@ function fullFixture() {
 function importFixture() {
   return {
     ...fullFixture(),
+    settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
+    liked: ['vid1'], // Wave 4: an ordered list (the frozen pre-auth likes)
+    folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
+    ytdlp: { // Wave 5: a feature container (the tables) - the LAST container to leave the doc model
+      allowMembersOnly: true,
+      subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false, order: 0 }],
+      downloadMeta: { yt1: { channelName: 'X', capturedAt: 1752600000000 }, 'reddit abc123': { universal: true } },
+      pins: [{ id: 'pin1', channelDir: '/media/videos/X', label: 'X', pinnedAt: 't', order: 0 }],
+      channelAvatars: { UC123: { avatarUrl: 'https://a/b.jpg', fetchedAt: 1752600000000 } },
+    },
+    podcasts: { // Wave 5: a feature container (the tables); no feed URLs, ever
+      subscriptions: [{ id: 'psub1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
+      episodes: { pep1: { id: 'pep1', subId: 'psub1', guid: 'g1', title: 'One', status: 'downloaded' } },
+      settings: { pollMinutes: 45 },
+    },
+    books: { // Wave 5: a feature container (the tables)
+      folders: ['/media/books'],
+      items: { bk1: { id: 'bk1', title: 'A Book', filePath: '/media/books/a.epub' } },
+      progress: { bk1: { spineIndex: 3, offset: 0.5 } },
+      pins: [{ id: 'pin1', dir: '/media/books', label: 'Shelf', order: 0 }],
+      settings: {},
+      audio: { bk1: { 0: { status: 'ready', key: 'k0' } } },
+    },
+    music: { // Wave 5: a feature container (the tables)
+      folders: ['/media/tunes'],
+      tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
+      settings: {},
+      // Wave G: per-folder "show in Music" marks (singleton, folderName-keyed,
+      // like folderDisplayNames). Exercised through the round-trip + every
+      // upgrade test (both consume this fixture) - proving the namespace is
+      // registered and save()/load() preserve it byte-equal.
+      channels: { NESTALGIA: 'on', Zarchivo: 'off' },
+    },
+    folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
+    // v1.126/v1.127: the per-channel-folder display-name map (the namespace
+    // whose missing fixture coverage external review round 2 flagged).
+    folderDisplayNames: { NESTALGIA: 'Nestalgia Music' },
     progress: { vid1: 42.5, vid2: 918 },
     deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000, youtubeId: 'abc123def45' } },
   };
@@ -321,13 +330,15 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     assert.deepStrictEqual(s2, { rowsWritten: 0, rowsDeleted: 1 });
     assert.strictEqual(readPersistedDatabase(dir).metadata.vid3, undefined);
 
-    // absent namespace: a mutator tick that never ensured books must not
-    // delete the books rows (absence = "not loaded", not "deleted")
+    // absent namespace: a mutator tick that never touched the namespace must
+    // not delete its rows (absence = "not loaded", not "deleted"). (books,
+    // then ytdlp, carried this case until Wave 5 moved them to their tables;
+    // `metadata` is the one doc_kv namespace left.)
     const db3 = a.load();
-    delete db3.books;
+    delete db3.metadata;
     const s3 = a.save(db3);
     assert.deepStrictEqual(s3, { rowsWritten: 0, rowsDeleted: 0 });
-    assert.ok(readPersistedDatabase(dir).books.items.bk1, 'books rows survive an absent-namespace save');
+    assert.ok(readPersistedDatabase(dir).metadata.vid1, 'metadata rows survive an absent-namespace save');
 
     // present-but-empty: a deliberate wipe deletes rows. NOTE the documented
     // normalization: an EMPTY doc_kv namespace has zero rows, so it assembles
@@ -335,13 +346,13 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
     // server.js's load-time backfills (top-level keys) and the lazy ensure*
     // creators (books/ytdlp) re-supply `{}` before any consumer touches it,
     // making the post-load object identical either way.
-    // (Wave 2: deleteTombstones is relational; ytdlp.downloadMeta plays the
-    // one-row doc_kv namespace here.)
+    // (Wave 2: deleteTombstones is relational; Wave 5: so is ytdlp - the
+    // two metadata rows left play the doc_kv namespace here.)
     const db4 = a.load();
-    db4.ytdlp.downloadMeta = {};
+    db4.metadata = {};
     const s4 = a.save(db4);
-    assert.deepStrictEqual(s4, { rowsWritten: 0, rowsDeleted: 1 });
-    assert.strictEqual(readPersistedDatabase(dir).ytdlp.downloadMeta, undefined,
+    assert.deepStrictEqual(s4, { rowsWritten: 0, rowsDeleted: 2 });
+    assert.strictEqual(readPersistedDatabase(dir).metadata, undefined,
       'empty kv namespace normalizes to absent at the adapter layer (backfill restores {} at load)');
   } finally {
     a.close();
@@ -351,34 +362,31 @@ test('deleting a key deletes its row; absent namespace keeps rows; empty namespa
 test('unknown keys throw instead of being silently dropped (top-level and container sub-key)', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    assert.throws(() => a.save({ folders: [], mystery: {} }), /unknown top-level db key 'mystery'/);
-    assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
-    assert.throws(() => a.save({ music: { playlists: {} } }), /unknown db key 'music\.playlists'/);
-    assert.throws(() => a.save({ podcasts: { feedUrls: {} } }), /unknown db key 'podcasts\.feedUrls'/,
-      'the namespace lock guards podcasts sub-keys too - a feed-URL map in the db would be a secret leak, not just drift');
+    assert.throws(() => a.save({ metadata: {}, mystery: {} }), /unknown top-level db key 'mystery'/);
+    assert.throws(() => a.save({ podcasts: { subscriptions: [] } }), /unknown top-level db key 'podcasts'/, 'Wave 5: the podcasts container left the lock');
+    assert.throws(() => a.save({ ytdlp: { subscriptions: [] } }), /unknown top-level db key 'ytdlp'/, 'Wave 5: the last container left the lock - no sub-key walk is left');
   } finally {
     a.close();
   }
 });
 
-test('v1.69: the podcasts namespace round-trips (subscriptions/settings singletons + per-episode kv rows)', () => {
+test('Wave 5: the podcasts namespace round-trips through its feature store (ordered subscriptions + per-episode rows + settings)', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    const db = {
-      podcasts: {
-        subscriptions: [{ id: 'p1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
-        episodes: {
-          ep1: { id: 'ep1', subId: 'p1', guid: 'g1', title: 'One', status: 'downloaded' },
-          ep2: { id: 'ep2', subId: 'p1', guid: 'g2', title: 'Two', status: 'pending' },
-        },
-        settings: { pollMinutes: 60 },
+    const ns = {
+      subscriptions: [
+        { id: 'p2', name: 'Second', feedUrlDisplay: 'https://y.example/rss', feedHost: 'y.example', order: 2, paused: false, backfill: 'all' },
+        { id: 'p1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' },
+      ],
+      episodes: {
+        ep1: { id: 'ep1', subId: 'p1', guid: 'g1', title: 'One', status: 'downloaded' },
+        ep2: { id: 'ep2', subId: 'p1', guid: 'g2', title: 'Two', status: 'pending' },
       },
+      settings: { pollMinutes: 60 },
     };
-    a.save(db);
+    podcastStore.createPodcastsStore(a).replaceAll(ns);
     const back = readPersistedDatabase(dir);
-    assert.deepStrictEqual(back.podcasts.subscriptions, db.podcasts.subscriptions);
-    assert.deepStrictEqual(back.podcasts.episodes, db.podcasts.episodes);
-    assert.deepStrictEqual(back.podcasts.settings, db.podcasts.settings);
+    assert.deepStrictEqual(back.podcasts, ns, 'verbatim, the array ORDER included (position column, not a sort)');
   } finally {
     a.close();
   }
@@ -393,14 +401,17 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     a.save(db);
     const before = readPersistedDatabase(dir);
 
-    // Stub the kv upsert so it fails AFTER the singleton writes of the same
-    // save have already executed inside the open transaction — the rollback
-    // must discard those too, and the diff snapshot must not advance.
+    // Stub the kv upsert so it fails on the SECOND row of the same save -
+    // the first row has already executed inside the open transaction, and
+    // the rollback must discard it too; the diff snapshot must not advance.
+    // (Until Wave 5 a doc_single write played the "row before the poison";
+    // no doc_single name is left, so two metadata rows carry the lesson.)
     const realUpsertKv = a.stmts.upsertKv;
-    a.stmts.upsertKv = { run: () => { throw new Error('simulated statement failure'); } };
+    let upserts = 0;
+    a.stmts.upsertKv = { run: (...args) => { if (++upserts === 2) throw new Error('simulated statement failure'); return realUpsertKv.run(...args); } };
     const db2 = a.load();
-    db2.folders = ['/never-committed']; // singleton write, executes before the kv poison
-    db2.metadata.vid2.title = 'never';  // kv write, hits the stub
+    db2.metadata.vid1.title = 'never'; // the row before the poison
+    db2.metadata.vid2.title = 'never'; // the poison
     try {
       assert.throws(() => a.save(db2), /simulated statement failure/);
     } finally {
@@ -408,12 +419,12 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     }
 
     assert.deepStrictEqual(readPersistedDatabase(dir), before,
-      'EVERY row of the failed transaction rolled back — including the singleton written before the poison');
+      'EVERY row of the failed transaction rolled back — including the row written before the poison');
 
     // Snapshot must still reflect disk: the same change saved cleanly now
     // must write BOTH rows (had the snapshot advanced, the diff would skip them).
     const db3 = a.load();
-    db3.folders = ['/never-committed'];
+    db3.metadata.vid1.title = 'never';
     db3.metadata.vid2.title = 'never';
     const stats = a.save(db3);
     assert.deepStrictEqual(stats, { rowsWritten: 2, rowsDeleted: 0 });
@@ -434,34 +445,33 @@ test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are RE
   //    would be silently corrupted — the adapter must REFUSE it loudly.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
+    // (Wave 5: ytdlp.downloadMeta - the namespace whose keys carry spaces - is
+    // a feature-store table now; `metadata` is the one doc_kv namespace left,
+    // and the separator lesson is the ADAPTER's, so metadata keys carry it.)
     a.save({
-      folders: [],
-      ytdlp: {
-        allowMembersOnly: false, subscriptions: [], pins: [], channelAvatars: {},
-        downloadMeta: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
-      },
+      metadata: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
     });
     assert.deepStrictEqual(
-      Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta).sort(),
+      Object.keys(readPersistedDatabase(dir).metadata).sort(),
       ['plain', 'reddit abc123'],
       'the spaced key persisted as its own distinct row'
     );
 
     const db = a.load();
-    delete db.ytdlp.downloadMeta['reddit abc123'];
+    delete db.metadata['reddit abc123'];
     const stats = a.save(db);
     assert.deepStrictEqual(stats, { rowsWritten: 0, rowsDeleted: 1 });
-    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta), ['plain'],
+    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).metadata), ['plain'],
       'exactly the right row deleted — no truncated-key mistargeting');
-    assert.deepStrictEqual(Object.keys(a.load().ytdlp.downloadMeta), ['plain'],
+    assert.deepStrictEqual(Object.keys(a.load().metadata), ['plain'],
       'and the next load agrees (no resurrect)');
 
     // NUL-bearing key (escape sequence, per the source-hygiene lock):
     // refused loudly, nothing persisted from the save.
     const db2 = a.load();
-    db2.ytdlp.downloadMeta['evil\u0000key'] = { h: 1 };
+    db2.metadata['evil\u0000key'] = { h: 1 };
     assert.throws(() => a.save(db2), /contains U\+0000.*truncates TEXT at NUL/s);
-    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta), ['plain'],
+    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).metadata), ['plain'],
       'the refused save persisted nothing');
   } finally {
     a.close();
@@ -518,7 +528,7 @@ test('save: an undefined value is dropped silently — matching JSON.stringify\'
   // crash or a literal "undefined" string row.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
-    a.save({ folders: [], metadata: { real: { id: 'real' }, ghost: undefined } });
+    a.save({ metadata: { real: { id: 'real' }, ghost: undefined } });
     assert.deepStrictEqual(readPersistedDatabase(dir).metadata, { real: { id: 'real' } });
   } finally {
     a.close();
@@ -575,7 +585,9 @@ test('import: legacy-shape db.json (no liked/deleteTombstones/books/ytdlp) assem
   fs.writeFileSync(jsonPath(), JSON.stringify(legacy, null, 2), 'utf8');
   importDbJson(jsonPath(), dbPath(), { log: () => {} });
   const db = readPersistedDatabase(dir);
-  assert.deepStrictEqual(db, legacy, 'raw import: no invented keys — backfill stays load-time-owned (review F3)');
+  const expected = { ...legacy };
+  delete expected.folderSettings; // Wave 4: an empty map has no rows (surfaced only when rows exist)
+  assert.deepStrictEqual(db, expected, 'raw import: no invented keys — backfill stays load-time-owned (review F3)');
   assert.strictEqual(db.liked, undefined);
   assert.strictEqual(db.books, undefined);
 });
@@ -659,8 +671,8 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
 
     // success leg + snapshot rebuild: after replace, a save() diff must be
     // computed against the RESTORED rows, not the pre-restore snapshot.
-    a.exclusiveReplace(({ insertKv, insertSingle }) => {
-      insertSingle('folders', ['/restored']);
+    a.exclusiveReplace(({ insertKv, replaceFolders }) => {
+      replaceFolders(['/restored']); // Wave 4: the root list is a table
       insertKv('metadata', 'r1', { id: 'r1', name: 'restored.mp4' });
     });
     assert.deepStrictEqual(readPersistedDatabase(dir), {
@@ -687,12 +699,13 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
 // can't be repaired; these tests bind the two forward fixes: the v18 stamp
 // and the loud refusal of any database from the future.
 
-test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames at v17) upgrades and round-trips', () => {
-  // Simulate exactly what a v1.126 instance leaves behind: the new namespace
-  // persisted, the version stamp still 17.
+test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames at v17) upgrades; Wave 4 then carries the doc row into its table', () => {
+  // Simulate exactly what a v1.126 instance leaves behind: the namespace
+  // persisted as a doc row (planted raw - the save-lock refuses the key since
+  // Wave 4), the version stamp still 17.
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
-  const shape = fullFixtureForUpgrade();
-  a.save(shape);
+  a.save(fullFixtureForUpgrade());
+  a.sql.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('folderDisplayNames', JSON.stringify({ NESTALGIA: 'Nestalgia Music' }));
   a.sql.exec('PRAGMA user_version = 17');
   a.close();
 
@@ -700,14 +713,13 @@ test('v17 -> v18 marker migration: a v1.126-shaped database (folderDisplayNames 
   try {
     assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION,
       'the marker migration stamps the current version (no structural change to run)');
-    const loaded = b.load();
-    assert.deepStrictEqual(loaded.folderDisplayNames, shape.folderDisplayNames,
-      'the v1.126 namespace survives the marker migration');
-    // And the file is still WRITABLE end-to-end after the stamp (the exact
+    assert.strictEqual(b.load().folderDisplayNames, undefined, 'Wave 4: no longer a doc key');
+    assert.deepStrictEqual(readPersistedDatabase(dir).folderDisplayNames, { NESTALGIA: 'Nestalgia Music' },
+      'the v1.126 namespace survives the marker migration - carried into channel_folder_display_names by v25');
+    // And the file is still WRITABLE end-to-end after the stamps (the exact
     // axis the downgrade outage broke).
-    loaded.folderDisplayNames.NEWDIR = 'New Display Name';
-    b.save(loaded);
-    assert.strictEqual(b.load().folderDisplayNames.NEWDIR, 'New Display Name', 'durable write after the marker migration');
+    require('../../lib/config/folderDisplayNames')(b).set('NEWDIR', 'New Display Name');
+    assert.strictEqual(readPersistedDatabase(dir).folderDisplayNames.NEWDIR, 'New Display Name', 'durable write after the migrations');
   } finally {
     b.close();
   }

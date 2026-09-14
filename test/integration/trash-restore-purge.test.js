@@ -19,11 +19,11 @@ fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase,
+  app, getMediaId, loadDatabase, updateDatabase,
   scanDirectories, userStore, __resetDatabaseForTests,
   viewCountStore,
 } = require('../../server');
-const { tombstoneStore, trashStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { seedState, tombstoneStore, trashStore  } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 const { TRASH_DIR_NAME } = require('../../lib/trashPaths');
 
@@ -52,7 +52,7 @@ function seedLibrary() {
   const filePath = path.join(ROOT, 'Chan', 'movie.mp4');
   fs.writeFileSync(filePath, 'movie-bytes');
   const id = getMediaId(filePath);
-  saveDatabase({
+  seedState({
     folders: [ROOT],
     folderSettings: {},
     metadata: {

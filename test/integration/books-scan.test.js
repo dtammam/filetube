@@ -16,9 +16,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-books-'))
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const {
-  app, loadDatabase, updateDatabase, getMediaId, scanBooks, currentBookScanState, BOOKCOVER_DIR,
-} = require('../../server');
+const { app, updateDatabase, getMediaId, scanBooks, currentBookScanState, BOOKCOVER_DIR, booksDb } = require('../../server');
+const { settingsStore, folderStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 // v1.37.0 gate fix (W2 made the scanner cooperative-async): a scanBooks()
@@ -62,7 +61,7 @@ function postJson(urlPath, body) {
 
 test('T4: books-less install is a total no-op -- no db.books writes, scan settles instantly', async () => {
   await scanBooksSettled();
-  assert.ok(!loadDatabase().books || Object.keys((loadDatabase().books || {}).items || {}).length === 0);
+  assert.ok(!booksDb.read() || Object.keys((booksDb.read() || {}).items || {}).length === 0);
 });
 
 test('T4: config + scan discovers EPUB (full metadata + cover) and PDF (filename title, placeholder), correct item shape', async () => {
@@ -79,7 +78,7 @@ test('T4: config + scan discovers EPUB (full metadata + cover) and PDF (filename
   // Config save fire-and-forgets a scan; run one explicitly for determinism.
   await scanBooksSettled();
 
-  const items = loadDatabase().books.items;
+  const items = booksDb.read().items;
   const epub = Object.values(items).find((i) => i.format === 'epub');
   const pdf = Object.values(items).find((i) => i.format === 'pdf');
   assert.ok(epub && pdf, 'both books discovered');
@@ -98,17 +97,17 @@ test('T4: config + scan discovers EPUB (full metadata + cover) and PDF (filename
 });
 
 test('T4: an unchanged rescan REUSES items (same object content, addedAt stable)', async () => {
-  const beforeItems = loadDatabase().books.items;
+  const beforeItems = booksDb.read().items;
   const epubBefore = Object.values(beforeItems).find((i) => i.format === 'epub');
   await scanBooksSettled();
-  const epubAfter = Object.values(loadDatabase().books.items).find((i) => i.format === 'epub');
+  const epubAfter = Object.values(booksDb.read().items).find((i) => i.format === 'epub');
   assert.deepEqual(epubAfter, epubBefore, 'unchanged path+size = full reuse, no re-extraction churn');
 });
 
 test('T4: a malformed "epub" (not a zip) indexes by filename -- the scan NEVER aborts', async () => {
   fs.writeFileSync(path.join(booksDir, 'Broken_Book.epub'), 'this is not a zip at all');
   await scanBooksSettled();
-  const broken = Object.values(loadDatabase().books.items).find((i) => i.title === 'Broken Book');
+  const broken = Object.values(booksDb.read().items).find((i) => i.title === 'Broken Book');
   assert.ok(broken, 'still indexed');
   assert.equal(broken.hasCover, false);
   assert.deepEqual(broken.spine, []);
@@ -119,16 +118,16 @@ test('T4: mid-scan cover/pageCount backfill survives the merge (the 3-field carr
   // FRESH db while a scan pass (whose Phase-1 snapshot predates it) is
   // rebuilding the same item. The scan's own pass produces hasCover:false
   // for this PDF -- the carry-forward must preserve the backfill.
-  const pdf = Object.values(loadDatabase().books.items).find((i) => i.format === 'pdf');
-  await updateDatabase((db) => {
+  const pdf = Object.values(booksDb.read().items).find((i) => i.format === 'pdf');
+  await updateDatabase(() => booksDb.mutate((db) => {
     db.books.items[pdf.id] = { ...db.books.items[pdf.id], hasCover: true, coverExt: '.jpg', pageCount: 42 };
     return true;
-  });
+  }));
   // Force a re-extract of this item so the scanner's own pass would produce
   // hasCover:false (touch the size).
   fs.appendFileSync(pdf.filePath, ' padding');
   await scanBooksSettled();
-  const after = loadDatabase().books.items[getMediaId(pdf.filePath)];
+  const after = booksDb.read().items[getMediaId(pdf.filePath)];
   assert.equal(after.hasCover, true, 'carry-forward preserved the backfilled cover flag');
   assert.equal(after.coverExt, '.jpg');
   assert.equal(after.pageCount, 42, 'and the page count');
@@ -136,17 +135,17 @@ test('T4: mid-scan cover/pageCount backfill survives the merge (the 3-field carr
 
 test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with pruneMissing on; a genuine delete prunes (progress included)', async () => {
   await updateDatabase((db) => {
-    db.settings.pruneMissing = true;
+    settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
     return true;
   });
-  const items = loadDatabase().books.items;
+  const items = booksDb.read().items;
   // Deliberately the DUNE item -- Broken_Book is ALSO format 'epub', and its
   // progress legitimately prunes with it below.
   const epub = Object.values(items).find((i) => i.title === 'Dune');
-  await updateDatabase((db) => {
+  await updateDatabase(() => booksDb.mutate((db) => {
     db.books.progress[epub.id] = { locator: { kind: 'epub', cfi: 'x' }, percent: 10, updatedAt: 't' };
     return true;
-  });
+  }));
 
   // v1.72: the liked + finished carriers ride removeBookState with progress
   // - seed BOTH books' per-user rows so the delete-prunes/mount-preserves
@@ -162,7 +161,7 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
   // Genuine delete: remove the broken epub file -> pruned.
   fs.unlinkSync(path.join(booksDir, 'Broken_Book.epub'));
   await scanBooksSettled();
-  assert.ok(!Object.values(loadDatabase().books.items).some((i) => i.title === 'Broken Book'), 'genuinely deleted file pruned');
+  assert.ok(!Object.values(booksDb.read().items).some((i) => i.title === 'Broken Book'), 'genuinely deleted file pruned');
   assert.ok(!userStore.getBookLiked(carrierUser.user.id).some((l) => l.bookId === broken.id), 'the pruned book shed its like (removeBookState carrier)');
   assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getBookFinished(carrierUser.user.id), broken.id), 'and its finished latch');
 
@@ -170,24 +169,21 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
   const hiddenDir = `${booksDir}.hidden`;
   fs.renameSync(booksDir, hiddenDir);
   await scanBooksSettled();
-  const preserved = loadDatabase().books.items;
+  const preserved = booksDb.read().items;
   assert.ok(Object.values(preserved).some((i) => i.title === 'Dune'), 'unmounted root items preserved');
-  assert.ok(loadDatabase().books.progress[epub.id], 'progress preserved too');
+  assert.ok(booksDb.read().progress[epub.id], 'progress preserved too');
   assert.ok(userStore.getBookLiked(carrierUser.user.id).some((l) => l.bookId === epub.id), 'mount loss preserves the like (the v1.69 inherit-prior-guards lesson)');
   assert.ok(Object.prototype.hasOwnProperty.call(userStore.getBookFinished(carrierUser.user.id), epub.id), 'and the finished latch');
   fs.renameSync(hiddenDir, booksDir);
   await updateDatabase((db) => {
-    db.settings.pruneMissing = false;
+    settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
     return true;
   });
 });
 
 test('T4: config rejects overlap with media folders in BOTH directions', async () => {
   const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-mediadir-'));
-  await updateDatabase((db) => {
-    db.folders = [mediaDir];
-    return true;
-  });
+  folderStore().replaceAll([mediaDir]); // Wave 4: the root list is a table
   const inside = path.join(mediaDir, 'books');
   fs.mkdirSync(inside, { recursive: true });
   const r1 = await postJson('/api/books/config', { folders: [inside] });
@@ -196,10 +192,7 @@ test('T4: config rejects overlap with media folders in BOTH directions', async (
   assert.equal(r2.status, 400, 'book root ABOVE a media root rejected');
   const r3 = await postJson('/api/books/config', { folders: ['/definitely/not/a/real/dir'] });
   assert.equal(r3.status, 400, 'nonexistent dir rejected');
-  await updateDatabase((db) => {
-    db.folders = [];
-    return true;
-  });
+  folderStore().replaceAll([]); // Wave 4: the root list is a table
   fs.rmSync(mediaDir, { recursive: true, force: true });
 });
 
@@ -213,14 +206,14 @@ test('T4: POST /api/books/scan 202s and coalesces; scan-status reflects the stat
 });
 
 test('GATE FIX (QA CRITICAL #2, the v1.33 Option-C lesson): a root that EXISTS but scans EMPTY while the library has items under it prunes NOTHING', async () => {
-  await updateDatabase((db) => { db.settings.pruneMissing = true; return true; });
-  const itemsBefore = Object.values(loadDatabase().books.items).filter((i) => i.rootFolder === booksDir);
+  settingsStore().update({ pruneMissing: true }); // Wave 4: the settings table
+  const itemsBefore = Object.values(booksDb.read().items).filter((i) => i.rootFolder === booksDir);
   assert.ok(itemsBefore.length >= 1, 'precondition: items exist under the root');
   const epub = itemsBefore.find((i) => i.title === 'Dune');
-  await updateDatabase((db) => {
+  await updateDatabase(() => booksDb.mutate((db) => {
     db.books.progress[epub.id] = { locator: { kind: 'epub', cfi: 'x' }, percent: 33, updatedAt: 't' };
     return true;
-  });
+  }));
 
   // Simulate the unmounted-share-with-leftover-mountpoint signature: move
   // every file OUT of the root but keep the directory itself present.
@@ -233,15 +226,15 @@ test('GATE FIX (QA CRITICAL #2, the v1.33 Option-C lesson): a root that EXISTS b
   assert.ok(fs.existsSync(booksDir), 'the mountpoint dir still exists');
 
   await scanBooksSettled();
-  const itemsAfter = Object.values(loadDatabase().books.items).filter((i) => i.rootFolder === booksDir);
+  const itemsAfter = Object.values(booksDb.read().items).filter((i) => i.rootFolder === booksDir);
   assert.equal(itemsAfter.length, itemsBefore.length, 'an empty-but-present root must prune NOTHING (treated as unmounted)');
-  assert.ok(loadDatabase().books.progress[epub.id], 'reading progress preserved');
+  assert.ok(booksDb.read().progress[epub.id], 'reading progress preserved');
 
   // Restore + a normal scan sees everything again.
   for (const entry of moved) fs.renameSync(path.join(stash, entry), path.join(booksDir, entry));
   fs.rmSync(stash, { recursive: true, force: true });
   await scanBooksSettled();
-  await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
+  settingsStore().update({ pruneMissing: false }); // Wave 4: the settings table
 });
 
 // v1.124 R2: walkBookRoot RECORDS an unreadable subtree, and selectPrunableBookIds

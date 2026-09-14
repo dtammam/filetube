@@ -27,11 +27,10 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app,
-  saveDatabase,
   updateDatabase,
   __mintTestSession,
-  userStore,
-} = require('../../server');
+  userStore, musicDb, podcastsDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -86,7 +85,7 @@ const epFile = path.join(process.env.DATA_DIR, 'ep.mp3');
 // (episodeIdFor - the same md5 derivation the poll pipeline uses).
 async function seedDownloadedEpisode(guid, opts = {}) {
   const epId = podcastStore.episodeIdFor(subId, guid);
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     podcastStore.reduceUpsertEpisodes(ns, subId, [
       { guid, title: opts.title || `Ep ${guid}`, pubDateMs: opts.pubDateMs || 1000, durationSec: opts.durationSec || 300 },
@@ -95,7 +94,7 @@ async function seedDownloadedEpisode(guid, opts = {}) {
       podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'ep.mp3', filePath: epFile, bytes: 9, nowMs: opts.nowMs || 6000 });
     }
     return true;
-  });
+  }));
   return epId;
 }
 
@@ -108,17 +107,17 @@ function clearAllLiked(userId) {
 beforeEach(() => clearAllLiked(uid));
 
 test('the merge: one liked video + episode + track = three kind-carried items, total 3', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vidA: seedItem('vidA') },
     liked: [], settings: baseSettings(),
   });
   const epId = await seedDownloadedEpisode('merge-g1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = { trkA: seedTrack('trkA') };
     return true;
-  });
+  }));
 
   assert.strictEqual((await postJson('/api/liked/vidA', {})).status, 200);
   assert.strictEqual((await postJson(`/api/podcasts/episodes/${epId}/liked`, {})).status, 200);
@@ -142,7 +141,7 @@ test('the merge: one liked video + episode + track = three kind-carried items, t
 });
 
 test('silent-drop scoping: a liked-but-not-downloaded episode and a liked-but-pruned track are dropped; their membership rows SURVIVE', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {}, liked: [], settings: baseSettings(),
   });
@@ -151,11 +150,11 @@ test('silent-drop scoping: a liked-but-not-downloaded episode and a liked-but-pr
   // nothing here - the row exists; only the playlist projection drops it).
   userStore.addPodcastLiked(uid, pendingEp, new Date().toISOString());
   // A liked track id with no surviving ns.tracks row (pruned library).
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {};
     return true;
-  });
+  }));
   userStore.addMusicLiked(uid, 'ghostTrack', new Date().toISOString());
 
   const body = await (await get('/api/liked')).json();
@@ -170,7 +169,7 @@ test('same-id-both-kinds collision: one id live as BOTH media and episode lists 
   // doc tables wholesale, so it must run before the podcasts seeding. Both
   // rows are live from here on; no re-key ever happens in this test.
   const epId = podcastStore.episodeIdFor(subId, 'collide-g1');
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { [epId]: seedItem(epId) },
     liked: [], settings: baseSettings(),
@@ -197,17 +196,17 @@ test('same-id-both-kinds collision: one id live as BOTH media and episode lists 
 });
 
 test('actor isolation: a second real session sees NONE of the first user\'s mixed likes (route layer)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { isoVid: seedItem('isoVid') },
     liked: [], settings: baseSettings(),
   });
   const epId = await seedDownloadedEpisode('iso-g1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = { isoTrk: seedTrack('isoTrk') };
     return true;
-  });
+  }));
   await postJson('/api/liked/isoVid', {});
   await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
   await fetch(`${base}/api/music/liked/isoTrk`, { method: 'POST' });
@@ -222,7 +221,7 @@ test('actor isolation: a second real session sees NONE of the first user\'s mixe
 });
 
 test('filters over the merged set: format=video hides audio kinds; watch=watched surfaces a PLAYED episode (the latch is the watched authority)', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { fmtVid: seedItem('fmtVid') },
     liked: [], settings: baseSettings(),
@@ -251,15 +250,15 @@ test('filters over the merged set: format=video hides audio kinds; watch=watched
 });
 
 test('adversarial W2 bind: prototype-chain liked rows (a hostile restore can mint them) silent-drop in EVERY arm - own-property, never a plain lookup', async () => {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: {}, liked: [], settings: baseSettings(),
   });
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {};
     return true;
-  });
+  }));
   // The carriers accept these (validateBackupBundle string-checks only) -
   // proven by the adversarial seat's matrix. The VIEW must drop them: a
   // plain `ns.x[id]` lookup would find Object.prototype for '__proto__'

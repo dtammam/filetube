@@ -21,9 +21,9 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  scanDirectories, loadDatabase, updateDatabase, getMediaId,
-  seedNotificationHistoryOnce, userStore,
-} = require('../../server');
+  scanDirectories, updateDatabase, getMediaId,
+  seedNotificationHistoryOnce, userStore, ytdlpDb } = require('../../server');
+const { settingsStore } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 
 let downloadDir;
@@ -105,7 +105,7 @@ test('one-shot seeding: newest 30 yt-dlp-provenance items land as read+seen hist
   const seeded = await seedNotificationHistoryOnce(seedNow);
   assert.equal(seeded, 30, 'capped at the 30 newest provenance items');
   assert.equal(userStore.countNotifications(), 30);
-  assert.equal(loadDatabase().settings.notificationsSeededAt, seedNow, 'stamp persisted');
+  assert.equal(settingsStore().get().notificationsSeededAt, seedNow, 'stamp persisted');
 
   const { items } = userStore.listNotifications(admin.id);
   assert.equal(items.length, 30);
@@ -129,14 +129,14 @@ test('bridge (YouTube lane): a consumed download notifies, dated by the CONSUME 
   // the consume moment, NOT this stale birthtime, or it is born pre-seen.
   const staleMs = Date.now() - 45 * 60 * 1000;
   fs.utimesSync(filePath, staleMs / 1000, staleMs / 1000);
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.nnnnnnnnnnn = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       channelName: 'Nötif Channel',
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   const beforeScan = Date.now();
   await scanDirectories();
@@ -156,7 +156,7 @@ test('bridge (universal lane): a composite-keyed consume notifies too', () => wi
   const base = 'A Vimeo Film [Vimeo=76979871].mp4';
   const filePath = path.join(downloadDir, base);
   fs.writeFileSync(filePath, 'not a real video');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta[base] = {
       universal: true,
@@ -165,7 +165,7 @@ test('bridge (universal lane): a composite-keyed consume notifies too', () => wi
       channelName: 'Söme Studio',
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 

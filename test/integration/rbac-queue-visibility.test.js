@@ -16,7 +16,8 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession, musicDb, podcastsDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -47,7 +48,7 @@ before(async () => {
   const open = vid(pubRoot, 'Fam', 'openclip.mp4');
   const hidden = vid(hidRoot, 'Vault', 'SECRETCLIP.mp4');
   openId = open.id; hiddenId = hidden.id;
-  saveDatabase({
+  seedState({
     folders: [pubRoot, hidRoot], folderSettings: {},
     metadata: { [open.id]: open, [hidden.id]: hidden },
     liked: [],
@@ -66,12 +67,15 @@ before(async () => {
   openEpId = podcastStore.episodeIdFor(OPEN_SUB, 'og');
   hidEpId = podcastStore.episodeIdFor(HID_SUB, 'hg');
   await updateDatabase((db) => {
-    const m = musicStore.ensureMusic(db);
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    const m = musicStore.ensureMusic(h);
     m.tracks = {
       opentrk: { id: 'opentrk', title: 'Open Track', artist: 'A', album: 'Al', filePath: openTrackFile, rootFolder: pubRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' },
       hidtrk: { id: 'hidtrk', title: 'SECRETTRACK', artist: 'B', album: 'Bl', filePath: hidTrackFile, rootFolder: hidRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-02T00:00:00Z' },
     };
-    const p = podcastStore.ensurePodcasts(db);
+    return true; });
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: OPEN_SUB, name: 'Open Show', feedUrl: 'https://e.com/o.xml' });
     podcastStore.reduceAddSubscription(p, { id: HID_SUB, name: 'Secret Show', feedUrl: 'https://e.com/s.xml' });
@@ -79,6 +83,7 @@ before(async () => {
     podcastStore.reduceUpsertEpisodes(p, HID_SUB, [{ guid: 'hg', title: 'SECRETEP', pubDateMs: 2, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, openEpId, { fileName: 'openep.mp3', filePath: openEpFile, bytes: 5, nowMs: 6000 });
     podcastStore.reduceEpisodeDownloaded(p, hidEpId, { fileName: 'SECRETEP.mp3', filePath: hidEpFile, bytes: 5, nowMs: 6000 });
+    return true; });
     return true;
   });
 

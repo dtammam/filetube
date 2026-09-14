@@ -21,10 +21,10 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-purgeall-
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, saveDatabase, userStore,
+  app, getMediaId, userStore,
   __mintTestSession, __resetDatabaseForTests,
 } = require('../../server');
-const { trashStore } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
+const { seedState, trashStore  } = require('../helpers/seed-state'); // Wave 3: relational trash seeding/reads
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, member;
@@ -66,7 +66,7 @@ async function seedAndTrash(folders) {
     };
     files[folder] = { id, filePath, size };
   }
-  saveDatabase({
+  seedState({
     folders: [ROOT], folderSettings: {}, metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0 },
   });

@@ -31,8 +31,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scan-clob
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, recordServed, loadDatabase, saveDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
-const { progressStore } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
+const { scanDirectories, recordServed, loadDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { seedState, settingsStore, progressStore   } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -45,11 +45,11 @@ function baseSettings(overrides) {
   };
 }
 
-// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// v1.30 A3 (in-memory DB read cache): seed via the exported `seedState()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
 // `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  saveDatabase(db);
+  seedState(db);
 }
 
 function readDb() {
@@ -103,7 +103,7 @@ test('HEADLINE: a settings write AND a recordServed lastServedAt write made duri
   // loadDatabase/mutate/saveDatabase sequence).
   const concurrentDb = loadDatabase();
   concurrentDb.settings = { ...concurrentDb.settings, scanIntervalMinutes: 720 };
-  saveDatabase(concurrentDb);
+  seedState(concurrentDb);
 
   await scanPromise;
 
@@ -202,7 +202,7 @@ test('T1 HEADLINE: a settings write, a progress write, a recordServed write, and
 
   // Mirrors POST /api/settings' own updateDatabase call.
   const settingsPromise = updateDatabase(db => {
-    db.settings = { ...db.settings, scanIntervalMinutes: 720 };
+    settingsStore().update({ scanIntervalMinutes: 720 }); // Wave 4: the settings table
     return true;
   });
 

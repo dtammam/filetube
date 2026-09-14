@@ -18,9 +18,9 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, updateDatabase, userStore,
-  __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase,
-} = require('../../server');
+  app, updateDatabase, userStore,
+  __mintTestSession, __resetDatabaseForTests, resolveHomeItem, getCachedDatabase, musicDb, podcastsDb, ytdlpDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -48,7 +48,7 @@ function item(id, over = {}) {
   };
 }
 function seed(metadata, over = {}) {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
@@ -121,11 +121,11 @@ test('AC3: continue-watching includes in-progress, excludes finished/latched', a
 test('AC3: continue-watching spans a music track (cross-kind)', async () => {
   seed({ v: item('v') });
   const trackId = 'a'.repeat(32);
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = { [trackId]: { id: trackId, filePath: '/music/s.mp3', rootFolder: '/music', ext: '.mp3', title: 'Song', artist: 'Artist', album: 'Album', albumArtKey: null, codec: 'mp3', durationSec: 200, addedAt: '2026-01-01T00:00:00Z' } };
     return true;
-  });
+  }));
   userStore.setProgress(uid, 'v', { timestamp: 30, duration: 100, updatedAt: '2026-08-01T00:00:00Z' });
   userStore.setMusicProgress(uid, trackId, { position: 50, duration: 200, updatedAt: '2026-08-02T00:00:00Z' });
 
@@ -163,8 +163,7 @@ test('AC4: new-from-subs only when a subscription folder matches; absent with no
   await __resetDatabaseForTests();
   seed({ a: item('a', { folderName: 'Chan', channelName: 'Chan', addedAt: 30 }), b: item('b', { folderName: 'Other', channelName: 'Other', addedAt: 40 }) });
   await updateDatabase((db) => {
-    if (!db.ytdlp || typeof db.ytdlp !== 'object') db.ytdlp = { allowMembersOnly: false, subscriptions: [] };
-    db.ytdlp.subscriptions = [{ name: 'Chan', order: 0 }];
+    ytdlpDb.mutate((h) => { h.ytdlp.subscriptions = [{ id: 'subChan', name: 'Chan', order: 0 }]; return true; }); // Wave 5: a feature store (records need ids)
     return true;
   });
   const sub = rowOf((await getHome()).body, 'new-from-subs');
@@ -257,15 +256,19 @@ test('resolveHomeItem: media/track/podcast arms + dead-link nulls', async () => 
   fs.writeFileSync(mediaFile, 'BYTES');
   const epId = podcastStore.episodeIdFor(subId, 'g1');
   await updateDatabase((db) => {
-    const m = musicStore.ensureMusic(db);
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    const m = musicStore.ensureMusic(h);
     m.tracks = { [trackId]: { id: trackId, filePath: '/music/s.mp3', rootFolder: '/music', ext: '.mp3', title: 'T', artist: 'A', album: 'Al', albumArtKey: null, codec: 'mp3', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' } };
-    const p = podcastStore.ensurePodcasts(db);
+    return true; });
+    const pendingEp = podcastStore.episodeIdFor(subId, 'g2');
+    podcastsDb.mutate((h) => { // Wave 5: the podcasts namespace is a feature store
+    const p = podcastStore.ensurePodcasts(h);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'The Show', feedUrl: 'https://e.com/f.xml' });
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Ep', pubDateMs: 1, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: mediaFile, bytes: 5, nowMs: 6000 });
-    const pendingEp = podcastStore.episodeIdFor(subId, 'g2');
     podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g2', title: 'Pending', pubDateMs: 2, durationSec: 10 }], 'pending', 5000);
+    return true; });
     return { pendingEp };
   });
   const db = getCachedDatabase();

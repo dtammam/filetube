@@ -51,9 +51,10 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  scanDirectories, getMediaId, saveDatabase, loadDatabase, updateDatabase, recordRepulledItemMeta,
+  scanDirectories, getMediaId, loadDatabase, updateDatabase, recordRepulledItemMeta,
   enumerateRepullableItems, __resetDatabaseForTests,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -98,7 +99,7 @@ function readItem(id) {
 async function seedAndHydrate(fileName, bytes) {
   const filePath = path.join(libraryDir, fileName);
   fs.writeFileSync(filePath, bytes);
-  saveDatabase({
+  seedState({
     folders: [libraryDir],
     folderSettings: {},
     metadata: {},
@@ -163,7 +164,7 @@ test('hydrate -> rescan (file CHANGED: same path, new size -> the scan RE-INITS 
 test('a plain library file that was NEVER hydrated still gets no channel identity from a rescan (the carry-forward invents nothing)', async () => {
   const filePath = path.join(libraryDir, 'Family BBQ.mp4');
   fs.writeFileSync(filePath, 'home-video-bytes');
-  saveDatabase({
+  seedState({
     folders: [libraryDir],
     folderSettings: {},
     metadata: {},
@@ -198,7 +199,7 @@ test('a reheat that lands MID-SCAN keeps its channel identity (Phase-2 merge ado
   const target = path.join(libraryDir, 'Never Gonna Give You Up.mp4');
   fs.writeFileSync(target, 'metube-video-bytes');
 
-  saveDatabase({
+  seedState({
     folders: [libraryDir],
     folderSettings: {},
     metadata: {},
@@ -243,7 +244,7 @@ test('a reheat that lands MID-SCAN keeps its channel identity (Phase-2 merge ado
 test('an ordinary, non-YouTube library MP3 is enumerated with NO source id (network-free) -- its curated title is never at risk', async () => {
   const song = path.join(libraryDir, 'Beethoven - Symphony No. 5.mp3');
   fs.writeFileSync(song, 'ripped-cd-bytes');
-  saveDatabase({
+  seedState({
     folders: [libraryDir],
     folderSettings: {},
     metadata: {},

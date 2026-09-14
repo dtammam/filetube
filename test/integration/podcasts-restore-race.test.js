@@ -17,15 +17,19 @@ const assert = require('node:assert');
 
 const podcasts = require('../../lib/podcasts');
 const store = require('../../lib/podcasts/store');
+const { SqliteAdapter, SQLITE_FILENAME } = require('../../lib/db/sqlite');
 
-let server, base, dataDir, db, deps, updateImpl;
+let server, base, dataDir, db, deps, updateImpl, adapter, podcastsDb;
 
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-restore-race-'));
-  db = { podcasts: { subscriptions: [], episodes: {}, settings: {} } };
+  db = {};
+  adapter = new SqliteAdapter(path.join(dataDir, SQLITE_FILENAME), { log: () => {} });
+  podcastsDb = store.createPodcastsStore(adapter); // Wave 5: a REAL feature store on a scratch database
   updateImpl = async (m) => { m(db); };
   deps = {
     dataDir,
+    podcastsDb,
     now: () => 1754150000000,
     loadDatabase: () => db,
     getCachedDatabase: () => db,
@@ -46,6 +50,7 @@ before(async () => {
 after(async () => {
   server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
+  try { adapter.close(); } catch { /* closed */ }
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -58,10 +63,13 @@ test('QA W5: a restore that loses the serialized-write race to the sweep answers
   const filePath = path.join(showDir, 'ep.mp3');
   const trashPath = path.join(trashDir, '1-ep1-ep.mp3');
   fs.writeFileSync(trashPath, 'THEBYTES');
-  db.podcasts.episodes.ep1 = {
-    id: 'ep1', subId: 's1', guid: 'g1', status: 'trashed',
-    filePath, trashPath, trashedAt: 1000,
-  };
+  podcastsDb.mutate((h) => {
+    h.podcasts.episodes.ep1 = {
+      id: 'ep1', subId: 's1', guid: 'g1', status: 'trashed',
+      filePath, trashPath, trashedAt: 1000,
+    };
+    return true;
+  });
 
   // Arm the race: the next updateDatabase call (the restore route's own
   // mutation) is preceded by the sweep's tombstone landing first in the
@@ -69,7 +77,7 @@ test('QA W5: a restore that loses the serialized-write race to the sweep answers
   const realImpl = updateImpl;
   updateImpl = async (m) => {
     updateImpl = realImpl;
-    store.reduceEpisodeStatus(store.ensurePodcasts(db), 'ep1', 'tombstone', { from: 'trashed' });
+    podcastsDb.mutate((h) => store.reduceEpisodeStatus(store.ensurePodcasts(h), 'ep1', 'tombstone', { from: 'trashed' }));
     await realImpl(m);
   };
 
@@ -78,7 +86,7 @@ test('QA W5: a restore that loses the serialized-write race to the sweep answers
   const body = await r.json();
   assert.notStrictEqual(body.ok, true, 'no false success');
   assert.match(body.error, /changed state/, 'names the race');
-  assert.strictEqual(db.podcasts.episodes.ep1.status, 'tombstone', 'the sweep\'s outcome stands');
+  assert.strictEqual(podcastsDb.read().episodes.ep1.status, 'tombstone', 'the sweep\'s outcome stands');
   // The bytes the route had already moved out of trash went BACK - never
   // stranded at a path the tombstoned record no longer points to.
   assert.strictEqual(fs.existsSync(filePath), false, 'nothing left at the original path');
@@ -90,13 +98,16 @@ test('sanity: with no race the same seed restores to downloaded (the harness is 
   const filePath = path.join(root, 'Show', 'ep2.mp3');
   const trashPath = path.join(root, '.filetube-trash', '1-ep2-ep2.mp3');
   fs.writeFileSync(trashPath, 'BYTES2');
-  db.podcasts.episodes.ep2 = {
-    id: 'ep2', subId: 's1', guid: 'g2', status: 'trashed',
-    filePath, trashPath, trashedAt: 1000,
-  };
+  podcastsDb.mutate((h) => {
+    h.podcasts.episodes.ep2 = {
+      id: 'ep2', subId: 's1', guid: 'g2', status: 'trashed',
+      filePath, trashPath, trashedAt: 1000,
+    };
+    return true;
+  });
   const r = await fetch(`${base}/api/podcasts/episodes/ep2/restore`, { method: 'POST' });
   assert.strictEqual(r.status, 200);
   assert.strictEqual((await r.json()).status, 'downloaded');
   assert.strictEqual(fs.readFileSync(filePath, 'utf8'), 'BYTES2');
-  assert.strictEqual(db.podcasts.episodes.ep2.status, 'downloaded');
+  assert.strictEqual(podcastsDb.read().episodes.ep2.status, 'downloaded');
 });

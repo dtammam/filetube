@@ -61,3 +61,23 @@ test('migrate-check: a missing path fails with usage guidance (exit 1)', () => {
   assert.equal(res.status, 1);
   assert.match(res.stderr, /no db\.json found/);
 });
+
+test('migrate-check: the common legacy shape passes - `liked: []` (every v1.30+ db.json) and an exact duplicate in folders/liked (which the importer collapses keep-first) are not fidelity mismatches (gate pass A W2)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-mc-'));
+  try {
+    const jsonPath = path.join(dir, 'db.json');
+    fs.writeFileSync(jsonPath, JSON.stringify({
+      folders: ['/media', '/media'], liked: [], folderSettings: {}, folderDisplayNames: {}, settings: {},
+      metadata: { v1: { id: 'v1', title: 'T' } },
+    }, null, 2), 'utf8');
+    const res = runCli(jsonPath);
+    assert.equal(res.status, 0, `expected exit 0, got ${res.status}; stderr: ${res.stderr}`);
+    assert.match(res.stdout, /MIGRATION CHECK PASSED/);
+    const empty = path.join(dir, 'empty.json');
+    fs.writeFileSync(empty, JSON.stringify({ folders: [], liked: ['a', 'a', 'b'], folderSettings: {}, folderDisplayNames: {}, settings: {}, metadata: {} }), 'utf8');
+    const res2 = runCli(empty);
+    assert.equal(res2.status, 0, `expected exit 0, got ${res2.status}; stderr: ${res2.stderr}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -12,7 +12,8 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dupes-'))
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -39,7 +40,7 @@ before(async () => {
       videoCodec: 'h264', audioCodec: 'aac', needsTranscode: false, youtubeId: null,
     };
   }
-  saveDatabase({
+  seedState({
     folders: ['/lib'], folderSettings: {}, metadata, liked: [],
     settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });

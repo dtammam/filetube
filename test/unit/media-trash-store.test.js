@@ -157,8 +157,8 @@ test('migration v23: a doc row whose key fails the id rule (empty / NUL - a <=v1
 // ---- 3. the save-lock -------------------------------------------------------------
 
 test('save-lock: `trash` on the doc object is REFUSED', () => {
-  assert.throws(() => adapter.save({ folders: [], trash: {} }), /unknown top-level db key 'trash'/);
-  assert.throws(() => adapter.save({ folders: [], trash: { t: rec() } }), /unknown top-level db key 'trash'/);
+  assert.throws(() => adapter.save({ metadata: {}, trash: {} }), /unknown top-level db key 'trash'/);
+  assert.throws(() => adapter.save({ metadata: {}, trash: { t: rec() } }), /unknown top-level db key 'trash'/);
 });
 
 // ---- 4. the bulk seams ---------------------------------------------------------------
@@ -167,7 +167,7 @@ test('importParsedJson: routes `trash` verbatim through insertTrash (never doc_k
   const kv = [];
   const trash = [];
   const h = { insertKv: (ns, k, v) => kv.push([ns, k, v]), insertSingle: () => {}, insertViewCount: () => {}, insertProgress: () => {}, insertTombstone: () => {}, insertTrash: (id, r) => trash.push([id, r]) };
-  const summary = importParsedJson({ folders: [], trash: { t1: rec(), t2: { originalPath: '/m' } } }, h, { source: 'bundle' });
+  const summary = importParsedJson({ metadata: {}, trash: { t1: rec(), t2: { originalPath: '/m' } } }, h, { source: 'bundle' });
   assert.deepStrictEqual(trash, [['t1', rec()], ['t2', { originalPath: '/m' }]]);
   assert.strictEqual(summary.trash, 2);
   assert.ok(!kv.some(([ns]) => ns === 'trash'));
@@ -217,7 +217,9 @@ test('source lock: server.js never names media_trash or the dead doc key in CODE
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
     .filter((p) => !p.startsWith('test/') && !/(^|\/)(vendor|node_modules)\//.test(p));
   const writers = tracked.filter((p) => /(INSERT\s+INTO|UPDATE(\s+OR\s+REPLACE)?)\s+(media_trash|\$\{table\}|\$\{def\.table\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
-  assert.deepStrictEqual(writers, ['lib/media/jsonRowStore.js']);
+  // Wave 4: the two sibling primitives (kv / ordered-list) interpolate their
+  // own `${table}` - shared definitions, not drifting copies of THIS table's text.
+  assert.deepStrictEqual(writers, ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/recordListStore.js', 'lib/media/jsonRowStore.js']);
   const deleters = tracked.filter((p) => /DELETE\s+FROM\s+(media_trash|\$\{trashDef\.TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
   assert.deepStrictEqual(deleters, ['lib/db/sqlite.js'], 'only the adapter\'s wipe-and-replace DELETEs by name; the store deletes through the shared definition');
 });

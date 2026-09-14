@@ -15,7 +15,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-queueapi-
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __resetDatabaseForTests } = require('../../server');
+const { app, updateDatabase, userStore, __resetDatabaseForTests, musicDb, podcastsDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth;
@@ -159,13 +159,13 @@ const podStore = require('../../lib/podcasts/store');
 
 test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, and silently drops when trashed', async () => {
   const epId = podStore.episodeIdFor('süb-q', 'g-q1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podStore.ensurePodcasts(db);
     ns.subscriptions.push({ id: 'süb-q', name: 'Qüeue Show', feedUrlDisplay: 'https://q.invalid/f', addedAt: 1, backfill: 'all' });
     podStore.reduceUpsertEpisodes(ns, 'süb-q', [{ guid: 'g-q1', title: 'Qüeued Ep', pubDateMs: 1000, durationSec: 60 }], 'pending', 2000);
     podStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'f.mp3', filePath: '/tmp/qf.mp3', bytes: 3, nowMs: 3000 });
     return true;
-  });
+  }));
 
   // Kind discipline at the door: a phantom episode 404s; the SAME id posted
   // as media kind 404s too (disjoint id spaces, never inferred).
@@ -202,10 +202,10 @@ test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, 
 
   // Trash the episode: the row vanishes from the shaped view (silent drop,
   // the belt) while the raw store keeps it (restore fidelity)...
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podStore.ensurePodcasts(db);
     return podStore.reduceEpisodeTrashed(ns, epId, { trashPath: '/tmp/.filetube-trash/qf.mp3', nowMs: 4000 });
-  });
+  }));
   q = await GET();
   assert.deepEqual(q.entries.map((e) => e.kind), ['media'], 'the trashed episode left the panel');
   assert.equal(userStore.getQueue(auth.user.id).entries.length, 2, 'the raw entry survives for restore fidelity');
@@ -217,13 +217,13 @@ test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, 
 
 test('v1.71: media queue semantics are untouched by the widening (pointer, reorder, remove run mixed)', async () => {
   const epId = podStore.episodeIdFor('süb-q2', 'g-q2');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podStore.ensurePodcasts(db);
     ns.subscriptions.push({ id: 'süb-q2', name: 'S2', feedUrlDisplay: 'https://q2.invalid/f', addedAt: 1, backfill: 'all' });
     podStore.reduceUpsertEpisodes(ns, 'süb-q2', [{ guid: 'g-q2', title: 'E2', pubDateMs: 1000, durationSec: 60 }], 'pending', 2000);
     podStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'f2.mp3', filePath: '/tmp/qf2.mp3', bytes: 3, nowMs: 3000 });
     return true;
-  });
+  }));
   await add('vid-1');
   await fetch(`${base}/api/queue/items`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -276,7 +276,7 @@ const addKind = (mediaId, kind) => fetch(`${base}/api/queue/items`, {
 }).then(j);
 
 test('v1.72: a track queues under entry kind track with the album-art projection; a phantom track id 404s', async () => {
-  await updateDatabase((db) => { seedTrackT9(db, 'trkQ1'); return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { seedTrackT9(db, 'trkQ1'); return true; }));
   assert.equal((await addKind('nope', 'track')).status, 404, 'phantom track id refused at its OWN id space');
   const a = await addKind('trkQ1', 'track');
   assert.equal(a.status, 200);
@@ -299,7 +299,7 @@ test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queu
       filePath: '/lib/Shared.mp4', size: 10, addedAt: Date.UTC(2026, 5, 21),
       folderName: 'Chan', channelName: 'Chan',
     };
-    seedTrackT9(db, sharedId, { title: 'Shared Song' });
+    musicDb.mutate((h) => { seedTrackT9(h, sharedId, { title: 'Shared Song' }); return true; }); // Wave 5: the music namespace is a feature store
     return true;
   });
   assert.equal((await addKind(sharedId, 'media')).status, 200);
@@ -317,7 +317,7 @@ test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queu
   assert.equal(q.entries[0].kind, 'media');
 
   // And the mirror image: removeMediaState must not touch a track row.
-  await updateDatabase((db) => { seedTrackT9(db, sharedId, { title: 'Shared Song' }); return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { seedTrackT9(db, sharedId, { title: 'Shared Song' }); return true; }));
   assert.equal((await addKind(sharedId, 'track')).status, 200);
   userStore.removeMediaState(sharedId);
   const raw2 = userStore.getQueue(auth.user.id);
@@ -325,10 +325,10 @@ test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queu
 });
 
 test('v1.72: a pruned track silent-drops from the shaped view (belt) even before the carrier fires (suspenders)', async () => {
-  await updateDatabase((db) => { seedTrackT9(db, 'trkGone'); return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { seedTrackT9(db, 'trkGone'); return true; }));
   await addKind('trkGone', 'track');
   // Remove the ns row WITHOUT running the carrier - the read must drop it.
-  await updateDatabase((db) => { delete musicStoreT9.ensureMusic(db).tracks.trkGone; return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { delete musicStoreT9.ensureMusic(db).tracks.trkGone; return true; }));
   const q = await GET();
   assert.deepEqual(q.entries, [], 'shaped view silent-drops the dead track id');
   assert.equal(userStore.getQueue(auth.user.id).entries.length, 1, 'the raw row still exists (the carrier remains the durable cleaner)');

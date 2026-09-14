@@ -35,7 +35,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { scanDirectories, loadDatabase, updateDatabase, getMediaId, ytdlpDb } = require('../../server');
 const store = require('../../lib/ytdlp/store');
 
 let downloadDir;
@@ -68,7 +68,7 @@ test('bridge (YouTube lane): a seeded downloadMeta viewCount lands on the item a
   const filePath = path.join(downloadDir, 'Some Video [eeeeeeeeeee].mp4');
   fs.writeFileSync(filePath, 'not a real video');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.eeeeeeeeeee = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -76,7 +76,7 @@ test('bridge (YouTube lane): a seeded downloadMeta viewCount lands on the item a
       sourceViewCount: 1672000000,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 
@@ -94,7 +94,7 @@ test('bridge (YouTube lane): a seeded downloadMeta viewCount lands on the item a
 test('v1.54: the FOLLOWER count rides both lanes as a unit with its capture date', () => withYtdlpEnv(async () => {
   const filePath = path.join(downloadDir, 'Follower Video [ffffffffff2].mp4');
   fs.writeFileSync(filePath, 'not a real video');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.ffffffffff2 = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -103,17 +103,17 @@ test('v1.54: the FOLLOWER count rides both lanes as a unit with its capture date
       sourceFollowerCount: 24000,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
   const uBase = 'Follower Universal [Vimeo=424242].mp4';
   const uPath = path.join(downloadDir, uBase);
   fs.writeFileSync(uPath, 'not a real video');
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta[uBase] = {
       universal: true, sourceExtractor: 'Vimeo', sourceId: '424242',
       channelName: 'Fôllowed Studio', sourceFollowerCount: 313, capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 
@@ -130,7 +130,7 @@ test('bridge (universal lane): a composite-keyed capture lands on the item too',
   const filePath = path.join(downloadDir, base);
   fs.writeFileSync(filePath, 'not a real video');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     // Universal entries are keyed by the RENDERED on-disk basename (design D5).
     ns.downloadMeta[base] = {
@@ -141,7 +141,7 @@ test('bridge (universal lane): a composite-keyed capture lands on the item too',
       sourceViewCount: 4242,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 
@@ -155,7 +155,7 @@ test('a captured count survives an UNCHANGED rescan (reuse fast path)', () => wi
   const filePath = path.join(downloadDir, 'Stable File [fffffffffff].mp4');
   fs.writeFileSync(filePath, 'not a real video');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.fffffffffff = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -163,7 +163,7 @@ test('a captured count survives an UNCHANGED rescan (reuse fast path)', () => wi
       sourceFollowerCount: 66000,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
   const id = getMediaId(filePath);
@@ -198,7 +198,7 @@ test('a captured count survives a CHANGED file (re-init carry-forward OR the Pha
   const filePath = path.join(downloadDir, 'Re-encoded [ggggggggggg].mp4');
   fs.writeFileSync(filePath, 'original bytes');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.ggggggggggg = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -206,7 +206,7 @@ test('a captured count survives a CHANGED file (re-init carry-forward OR the Pha
       sourceFollowerCount: 24000,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
   const id = getMediaId(filePath);
@@ -252,7 +252,7 @@ test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fil
   const filePath = path.join(downloadDir, 'Carry Forward Only [ooooooooooo].mp4');
   fs.writeFileSync(filePath, 'original bytes');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.ooooooooooo = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -260,7 +260,7 @@ test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fil
       sourceFollowerCount: 313313,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
   const id = getMediaId(filePath);
@@ -316,14 +316,14 @@ test('a ZERO captured count survives the scan as a real 0, not as "absent"', () 
   const filePath = path.join(downloadDir, 'Brand New [hhhhhhhhhhh].mp4');
   fs.writeFileSync(filePath, 'v');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.hhhhhhhhhhh = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       sourceViewCount: 0,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 
@@ -336,14 +336,14 @@ test('a hostile/invalid captured count is rejected at the boundary and never rea
   const filePath = path.join(downloadDir, 'Hostile Capture [iiiiiiiiiii].mp4');
   fs.writeFileSync(filePath, 'v');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.iiiiiiiiiii = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       sourceViewCount: -999,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 
@@ -370,7 +370,7 @@ test('D1a proxy-host lane: a [Youtube=<id>]-bracketed file still receives its ca
   const filePath = path.join(downloadDir, base);
   fs.writeFileSync(filePath, 'not a real video');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
     const ns = store.ensureYtdlp(db);
     // Keyed by the BARE id (the YouTube branch's key), NOT the composite.
     ns.downloadMeta.jjjjjjjjjjj = {
@@ -380,7 +380,7 @@ test('D1a proxy-host lane: a [Youtube=<id>]-bracketed file still receives its ca
       sourceFollowerCount: 777000,
       capturedAt: CAPTURED_AT,
     };
-  });
+  }));
 
   await scanDirectories();
 

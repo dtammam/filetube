@@ -21,13 +21,14 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId, scanState } = require('../../server');
+const { app, getMediaId, scanState } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
 // v1.51 (tech-debt #53, the repo's most-observed flake): POST /api/config
 // kicks a FIRE-AND-FORGET background scan (server.js ~5635), and
 // mergeScannedMetadata is membership-authoritative -- so a scan still
-// walking mediaDir when a LATER test seeds an item + saveDatabase()s can
+// walking mediaDir when a LATER test seeds an item + seedState()s can
 // merge that item straight back out of the cache, and GET /thumbnail/:id
 // then serves the SVG placeholder instead of the seeded .jpg. That is the
 // exact recorded failure ("image/svg+xml instead of image/jpeg"), and it is
@@ -95,7 +96,7 @@ beforeEach(async () => {
 // ---- POST /api/config -------------------------------------------------------
 
 test('POST /api/config: a non-array folders body is a 400, and nothing is persisted', async () => {
-  saveDatabase(baseDb());
+  seedState(baseDb());
   for (const bad of ['/not/an/array', 42, { nested: true }, null]) {
     const res = await fetch(`${base}/api/config`, {
       method: 'POST',
@@ -110,7 +111,7 @@ test('POST /api/config: a non-array folders body is a 400, and nothing is persis
 });
 
 test('POST /api/config: nonexistent and non-string entries are dropped; duplicates dedupe by resolved key but the ORIGINAL spelling persists', async () => {
-  saveDatabase(baseDb());
+  seedState(baseDb());
   const trailing = mediaDir + path.sep; // same root, non-canonical spelling
   const res = await fetch(`${base}/api/config`, {
     method: 'POST',
@@ -131,7 +132,7 @@ test('POST /api/config: nonexistent and non-string entries are dropped; duplicat
 
 test('GET /thumbnail/:id: serves the real .jpg when the item has one', async () => {
   const item = seedItem('has-thumb.mp4', { hasThumbnail: true });
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${item.id}.jpg`), 'jpeg-bytes');
 
   const res = await fetch(`${base}/thumbnail/${item.id}`);
@@ -143,7 +144,7 @@ test('GET /thumbnail/:id: serves the real .jpg when the item has one', async () 
 test('GET /thumbnail/:id: SVG placeholder fallback -- hasThumbnail flag with a MISSING file, typed per item, and the unknown-id variant', async () => {
   const video = seedItem('no-thumb-video.mp4', { hasThumbnail: true }); // flag set, file missing
   const audio = seedItem('no-thumb-audio.mp3', { type: 'audio' });
-  saveDatabase(baseDb({ [video.id]: video, [audio.id]: audio }));
+  seedState(baseDb({ [video.id]: video, [audio.id]: audio }));
 
   const videoRes = await fetch(`${base}/thumbnail/${video.id}`);
   assert.equal(videoRes.status, 200);
@@ -162,7 +163,7 @@ test('GET /thumbnail/:id: SVG placeholder fallback -- hasThumbnail flag with a M
 
 test('GET /thumbnail/:id: a hostile title is HTML-escaped inside the SVG (no markup injection)', async () => {
   const item = seedItem('hostile.mp4', { title: '<script>alert(1)</script>' });
-  saveDatabase(baseDb({ [item.id]: item }));
+  seedState(baseDb({ [item.id]: item }));
 
   const svg = await (await fetch(`${base}/thumbnail/${item.id}`)).text();
   assert.ok(!svg.includes('<script>'), 'raw markup must never survive into the SVG');
@@ -172,7 +173,7 @@ test('GET /thumbnail/:id: a hostile title is HTML-escaped inside the SVG (no mar
 // ---- GET /api/cache/size + POST /api/cache/clear ----------------------------
 
 test('cache size counts completed transcodes (.mp4 AND .m4a) but never an in-flight .tmp.mp4; clear removes exactly the completed set', async () => {
-  saveDatabase(baseDb());
+  seedState(baseDb());
   fs.writeFileSync(path.join(TRANSCODE_DIR, 'aaaa1111.mp4'), Buffer.alloc(1000));
   fs.writeFileSync(path.join(TRANSCODE_DIR, 'bbbb2222.m4a'), Buffer.alloc(500));
   fs.writeFileSync(path.join(TRANSCODE_DIR, 'cccc3333.mp4.tmp.mp4'), Buffer.alloc(9999)); // in-flight

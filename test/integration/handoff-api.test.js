@@ -19,10 +19,10 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, updateDatabase, userStore, effectiveProgress,
+  app, updateDatabase, userStore, effectiveProgress,
   __mintTestSession, __presenceForTests, resolveHandoffTarget, getCachedDatabase,
-  isFinishedPresence, HANDOFF_FINISHED_PCT,
-} = require('../../server');
+  isFinishedPresence, HANDOFF_FINISHED_PCT, musicDb, podcastsDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
 const { authenticateFetch } = require('../helpers/auth');
@@ -69,7 +69,7 @@ function seedItem(id, over = {}) {
 }
 
 function seedDb() {
-  saveDatabase({
+  seedState({
     folders: [], folderSettings: {},
     metadata: { vid1: seedItem('vid1'), vid2: seedItem('vid2') },
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
@@ -275,7 +275,7 @@ test('#6: a play ping that arrives late (older presenceAt) cannot un-pause a new
 test('kind track: a music ping mints presence resolving to the music surface', async () => {
   seedDb();
   const trackId = 'a'.repeat(32);
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {};
     ns.tracks[trackId] = {
@@ -284,7 +284,7 @@ test('kind track: a music ping mints presence resolving to the music surface', a
       albumArtKey: null, codec: 'mp3', durationSec: 383, addedAt: '2026-01-01T00:00:00Z',
     };
     return true;
-  });
+  }));
 
   assert.strictEqual((await postJson('/api/music/progress', {
     id: trackId, position: 120, duration: 383, deviceId: DEV_A, deviceLabel: 'Mac', presenceAt: 1000,
@@ -310,7 +310,7 @@ test('kind podcast: an episode ping mints presence resolving to the podcasts sur
   fs.writeFileSync(mediaFile, 'MP3BYTES');
   const epId = podcastStore.episodeIdFor(subId, 'guid-1');
 
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     ns.subscriptions = [];
     ns.episodes = {};
@@ -318,7 +318,7 @@ test('kind podcast: an episode ping mints presence resolving to the podcasts sur
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'guid-1', title: 'Bowl Turning', pubDateMs: 1000, durationSec: 1800 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(mediaFile), filePath: mediaFile, bytes: 8, nowMs: 6000 });
     return true;
-  });
+  }));
 
   assert.strictEqual((await postJson('/api/podcasts/progress', {
     episodeId: epId, position: 300, duration: 1800, deviceId: DEV_A, deviceLabel: 'iPad', presenceAt: 1000,
@@ -338,14 +338,14 @@ test('podcasts: a ping without device fields still behaves byte-identically (AC1
   seedDb();
   const subId = 'c'.repeat(32);
   const epId = podcastStore.episodeIdFor(subId, 'guid-x');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     ns.subscriptions = [];
     ns.episodes = {};
     podcastStore.reduceAddSubscription(ns, { id: subId, name: 'S', feedUrl: 'https://example.com/g.xml' });
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'guid-x', title: 'E', pubDateMs: 1000, durationSec: 100 }], 'pending', 5000);
     return true;
-  });
+  }));
 
   assert.strictEqual((await postJson('/api/podcasts/progress', { episodeId: epId, position: 50, duration: 100 })).status, 200);
   assert.strictEqual(userStore.getOnePodcastProgress(uid, epId).position, 50, 'progress stored exactly as before');
@@ -396,14 +396,14 @@ test('isFinishedPresence: the boundary is exact and an unknown duration never su
 test('resolveHandoffTarget: a non-downloaded episode is not offerable (bindable, both arms)', async () => {
   const subId = 'd'.repeat(32);
   const epId = podcastStore.episodeIdFor(subId, 'guid-p');
-  await updateDatabase((db) => {
+  await updateDatabase(() => podcastsDb.mutate((db) => {
     const ns = podcastStore.ensurePodcasts(db);
     ns.subscriptions = [];
     ns.episodes = {};
     podcastStore.reduceAddSubscription(ns, { id: subId, name: 'S2', feedUrl: 'https://example.com/h.xml' });
     podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'guid-p', title: 'Pending One', pubDateMs: 1, durationSec: 10 }], 'pending', 5000);
     return true;
-  });
+  }));
 
   const db = getCachedDatabase();
   assert.strictEqual(resolveHandoffTarget(db, { kind: 'podcast', mediaId: epId, duration: 0 }), null,

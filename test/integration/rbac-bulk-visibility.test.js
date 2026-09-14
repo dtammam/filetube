@@ -23,8 +23,8 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, loadDatabase, updateDatabase, getMediaId, userStore, __mintTestSession,
-} = require('../../server');
+  app, loadDatabase, updateDatabase, getMediaId, userStore, __mintTestSession, ytdlpDb } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const store = require('../../lib/ytdlp/store');
 const activity = require('../../lib/ytdlp/activity');
 const { authenticateFetch } = require('../helpers/auth');
@@ -69,7 +69,7 @@ before(async () => {
   const pub = seedItem(pubFile);
   const hid = seedItem(hidFile);
   pubId = pub.id; hidId = hid.id;
-  saveDatabase({
+  seedState({
     folders: [mediaDir], folderSettings: {},
     metadata: { [pub.id]: pub, [hid.id]: hid },
     liked: [],
@@ -149,10 +149,13 @@ test('relocate: the hidden stranded item is invisible to the restricted writer a
     hid.channelName = TARGET.channelName;
     hid.channelId = TARGET.channelId;
     hid.channelAttributedManually = true;
-    const ns = store.ensureYtdlp(db);
-    if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
-      ns.subscriptions.push({ id: 'subBulkVis', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: TARGET.channelName, order: 1 });
-    }
+    ytdlpDb.mutate((h) => { // Wave 5: the ytdlp namespace is a feature store
+      const ns = store.ensureYtdlp(h);
+      if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
+        ns.subscriptions.push({ id: 'subBulkVis', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: TARGET.channelName, order: 1 });
+      }
+      return true;
+    });
     return true;
   });
   process.env.FILETUBE_YTDLP_ENABLED = 'true';

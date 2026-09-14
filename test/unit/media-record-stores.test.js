@@ -252,8 +252,8 @@ test('migration v22: re-running the block is a no-op (crash between COMMIT and t
 // ---- 4. the save-lock ---------------------------------------------------------
 
 test('save-lock: `progress` and `deleteTombstones` on the doc object are REFUSED', () => {
-  assert.throws(() => adapter.save({ folders: [], progress: {} }), /unknown top-level db key 'progress'/);
-  assert.throws(() => adapter.save({ folders: [], deleteTombstones: { a: {} } }), /unknown top-level db key 'deleteTombstones'/);
+  assert.throws(() => adapter.save({ metadata: {}, progress: {} }), /unknown top-level db key 'progress'/);
+  assert.throws(() => adapter.save({ metadata: {}, deleteTombstones: { a: {} } }), /unknown top-level db key 'deleteTombstones'/);
 });
 
 // ---- 5. the bulk seams ---------------------------------------------------------
@@ -269,7 +269,6 @@ function handles(with_ = ['insertProgress', 'insertTombstone']) {
 test('importParsedJson: routes both record namespaces verbatim through their handles, counts them, and never writes them to doc_kv', () => {
   const { h, seen } = handles();
   const summary = importParsedJson({
-    folders: [],
     progress: { v1: { timestamp: 1 }, v2: 918 },
     deleteTombstones: { t1: { filePath: '/x', deletedAt: 1 } },
     metadata: { v1: { id: 'v1' } },
@@ -313,12 +312,12 @@ test('readPersistedDatabase: surfaces both tables under their old keys only when
   const p = createProgressStore(adapter);
   const t = createTombstoneStore(adapter);
   p.set('a', { timestamp: 1 });
-  adapter.save({ folders: ['/x'] });
-  assert.deepStrictEqual(readPersistedDatabase(dir), { folders: ['/x'], progress: { a: { timestamp: 1 } } });
+  adapter.save({ metadata: { x: { id: 'x' } } }); // (folders is relational since Wave 4)
+  assert.deepStrictEqual(readPersistedDatabase(dir), { metadata: { x: { id: 'x' } }, progress: { a: { timestamp: 1 } } });
   t.set('b', { filePath: '/b', deletedAt: 2 });
   assert.deepStrictEqual(readPersistedDatabase(dir).deleteTombstones, { b: { filePath: '/b', deletedAt: 2 } });
   p.remove('a'); t.remove('b');
-  assert.deepStrictEqual(readPersistedDatabase(dir), { folders: ['/x'] });
+  assert.deepStrictEqual(readPersistedDatabase(dir), { metadata: { x: { id: 'x' } } });
 });
 
 // ---- 7. the in-transaction save hook ----------------------------------------------
@@ -326,20 +325,20 @@ test('readPersistedDatabase: surfaces both tables under their old keys only when
 test('save(db, { alsoInTransaction }): the callback runs INSIDE the doc transaction - a throw rolls back doc rows AND relational rows; no doc change still commits the callback', () => {
   const p = createProgressStore(adapter);
   const t = createTombstoneStore(adapter);
-  adapter.save({ folders: ['/a'], metadata: { m1: { id: 'm1' } } });
+  adapter.save({ metadata: { m1: { id: 'm1', v: 'a' } } }); // (the doc field is a metadata row - folders is relational since Wave 4)
   // happy path: doc change + relational writes, one transaction
-  adapter.save({ folders: ['/b'], metadata: { m1: { id: 'm1' } } }, { alsoInTransaction: () => { t.set('m1', { filePath: '/m1', deletedAt: 1 }); p.remove('nothing'); } });
-  assert.deepStrictEqual(readPersistedDatabase(dir).folders, ['/b']);
+  adapter.save({ metadata: { m1: { id: 'm1', v: 'b' } } }, { alsoInTransaction: () => { t.set('m1', { filePath: '/m1', deletedAt: 1 }); p.remove('nothing'); } });
+  assert.strictEqual(readPersistedDatabase(dir).metadata.m1.v, 'b');
   assert.deepStrictEqual(t.getAll(), { m1: { filePath: '/m1', deletedAt: 1 } });
-  // a throw inside the callback: the doc write (folders -> /c) must NOT land
-  assert.throws(() => adapter.save({ folders: ['/c'], metadata: { m1: { id: 'm1' } } }, { alsoInTransaction: () => { p.set('x', 1); throw new Error('boom'); } }), /boom/);
-  assert.deepStrictEqual(readPersistedDatabase(dir).folders, ['/b'], 'doc rows rolled back with the callback');
+  // a throw inside the callback: the doc write (v -> c) must NOT land
+  assert.throws(() => adapter.save({ metadata: { m1: { id: 'm1', v: 'c' } } }, { alsoInTransaction: () => { p.set('x', 1); throw new Error('boom'); } }), /boom/);
+  assert.strictEqual(readPersistedDatabase(dir).metadata.m1.v, 'b', 'doc rows rolled back with the callback');
   assert.strictEqual(p.has('x'), false, 'the relational write rolled back too');
   // the snapshot did not advance: the same doc change now writes its row
-  const stats = adapter.save({ folders: ['/c'], metadata: { m1: { id: 'm1' } } });
+  const stats = adapter.save({ metadata: { m1: { id: 'm1', v: 'c' } } });
   assert.deepStrictEqual(stats, { rowsWritten: 1, rowsDeleted: 0 });
   // no doc change at all + a callback: still a real transaction
-  const s2 = adapter.save({ folders: ['/c'], metadata: { m1: { id: 'm1' } } }, { alsoInTransaction: () => t.remove('m1') });
+  const s2 = adapter.save({ metadata: { m1: { id: 'm1', v: 'c' } } }, { alsoInTransaction: () => t.remove('m1') });
   assert.deepStrictEqual(s2, { rowsWritten: 0, rowsDeleted: 0 });
   assert.strictEqual(t.has('m1'), false, 'the callback ran');
   assert.strictEqual(adapter.inTransaction, false, 'nothing left open');
@@ -364,7 +363,7 @@ test('source lock: server.js never names the two tables or the dead doc keys in 
   // store's own prune (DELETE on the typed column) - nothing else.
   // (`${TABLE}` is the view-count store's own constant - Wave 1's lock covers it.)
   const writers = tracked.filter((p) => /(INSERT\s+INTO|UPDATE(\s+OR\s+REPLACE)?)\s+(media_progress|media_delete_tombstones|\$\{table\}|\$\{def\.table\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
-  assert.deepStrictEqual(writers, ['lib/media/jsonRowStore.js'], 'one INSERT/UPDATE text, in the shared store definition');
+  assert.deepStrictEqual(writers, ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/recordListStore.js', 'lib/media/jsonRowStore.js'], 'one INSERT/UPDATE text per shape, in the shared store definitions (Wave 4 added the kv / ordered-list siblings, Wave 5 the record-list one)');
   const deleters = tracked.filter((p) => /DELETE\s+FROM\s+(media_progress|media_delete_tombstones|\$\{table\}|\$\{def\.table\}|\$\{progressDef\.TABLE\}|\$\{tombstoneDef\.TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
-  assert.deepStrictEqual(deleters.sort(), ['lib/db/sqlite.js', 'lib/media/deleteTombstones.js', 'lib/media/jsonRowStore.js'], 'DELETEs: the shared store, the tombstone prune, and the adapter\'s wipe-and-replace - nothing else');
+  assert.deepStrictEqual(deleters.sort(), ['lib/db/kvStore.js', 'lib/db/orderedListStore.js', 'lib/db/recordListStore.js', 'lib/db/sqlite.js', 'lib/media/deleteTombstones.js', 'lib/media/jsonRowStore.js'], 'DELETEs: the shared store definitions (Waves 4-5 siblings included), the tombstone prune, and the adapter\'s wipe-and-replace - nothing else');
 });

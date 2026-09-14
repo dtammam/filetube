@@ -2986,5 +2986,11 @@
     "date": "2026-09-14",
     "title": "The v1.293.0 update is actually available now",
     "intent": "The previous release passed every check on our own machines but one automated check on the newest Node 24 failed, which stopped the Docker image from being published - so anyone pulling the latest image never received the trash-storage update. This release fixes that check; nothing changes in the app itself. If your server pulls the latest image, this is the one that carries everything from v1.293.0."
+  },
+  {
+    "version": "1.294.0",
+    "date": "2026-09-14",
+    "title": "Your settings, folders, likes and every library move into the new database layout",
+    "intent": "Everything except the main video index now lives in the new database layout: your settings, your configured folders and their names, the likes from before accounts existed, and the whole Shows, Music, Books, Podcasts and Downloads libraries - subscriptions, pinned shelves and channels, podcast episodes and their history, the downloader's channel registry. The move happens automatically on first start and keeps every record and its order exactly as it was. Each change to one of these libraries is now written in the same step as the rest of the database, so a crash mid-way can no longer leave a library half-updated. Backups made before this version restore normally, and a backup without a podcasts section still keeps your downloaded episodes. Nothing changes on screen."
   }
 ]

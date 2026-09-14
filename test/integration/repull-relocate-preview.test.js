@@ -35,11 +35,12 @@ cp.exec = function mockExec(cmd, cb) {
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, saveDatabase, updateDatabase,
+  getMediaId, loadDatabase, updateDatabase,
   planImportRelocation, buildImportRelocationPreview, classifyMetadataEffect,
   relocateHydratedImportIntoChannelFolder, enumerateRepullableItems,
   __getLoadDatabaseCallCount,
 } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -93,7 +94,7 @@ function seedDb({ item = {}, dbOverrides = {}, writeFile = true } = {}) {
     sourceTitle: 'Never Gonna Give You Up', youtubeId: VIDEO_ID, metadataRepulledAt: 1_800_000_000_000,
     ...CHANNEL, ...(item.record || {}),
   };
-  saveDatabase({
+  seedState({
     folders: [libraryDir], folderSettings: {},
     metadata: { [id]: record }, liked: [],
     // v1.42: pre-SQLite, saveDatabase was a whole-file replace, so a seed
@@ -270,7 +271,7 @@ test('the preview groups moves and skips and rolls up the summary counts', () =>
   fs.writeFileSync(localFile, 'home-bytes');
   const localId = getMediaId(localFile);
 
-  saveDatabase({
+  seedState({
     folders: [libraryDir], folderSettings: {},
     metadata: {
       [movableId]: {
@@ -340,7 +341,7 @@ test('metadata anti-drift: metadataEffect up-to-date iff enumerateRepullableItem
     rootFolder: libraryDir, size: 1, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 1,
     hasThumbnail: false, artist: '', youtubeId: VIDEO_ID, ...CHANNEL,
   };
-  saveDatabase(db);
+  seedState(db);
 
   const enumMap = new Map(enumerateRepullableItems(loadDatabase(), config).items.map((it) => [it.mediaId, it]));
   for (const mediaId of [hydrated.id, freshId]) {
@@ -388,7 +389,7 @@ test('PERF: buildImportRelocationPreview loads the database ONCE regardless of i
       sourceTitle: `Video ${i}`, youtubeId: VIDEO_ID, metadataRepulledAt: 1_800_000_000_000, ...CHANNEL,
     };
   }
-  saveDatabase({
+  seedState({
     folders: [libraryDir], folderSettings: {},
     metadata, liked: [], settings: baseSettings(),
   });

@@ -58,10 +58,14 @@ database stamped newer than itself. Rollback floor: databases touched by
 Two buckets coexist in the one file:
 
 1. **The document store** - the old db.json object shape, persisted per row:
-   `doc_kv(namespace, key, json)` for per-item namespaces (`metadata`,
-   `books.items`, `music.tracks`, `podcasts.episodes`,
-   `ytdlp.downloadMeta`, ...) and `doc_single(name, json)` for small whole
-   objects (`folders`, `settings`, `podcasts.subscriptions`, ...). The two
+   `doc_kv(namespace, key, json)` for per-item namespaces (only `metadata`
+   is left, until Wave 6) and `doc_single(name, json)` for small whole
+   objects (EMPTY since Wave 5: the tv / music / books / podcasts / ytdlp
+   containers left for their feature stores - `lib/db/featureStore.js` -
+   and Wave 7 drops the table; `settings`, the folder
+   config and the frozen `liked` list left for `app_settings` / `library_folders` /
+   `library_folder_settings` / `channel_folder_display_names` / `media_liked`
+   in Wave 4 - the `lib/config/` stores and `lib/media/liked.js`). The two
    namespace lists are a LOCK: `assertNoUnknownKeys()` throws on any key
    outside them, so a new namespace can never be silently dropped. `save()` is
    a diff-save against a per-row snapshot - only changed rows are written, in
