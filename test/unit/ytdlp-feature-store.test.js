@@ -221,8 +221,14 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // backup bundle's `ytdlpDb.read()` (asserted above) to lib/admin/backup.js -
   // server.js's one new deps-bundle entry plus the one destructure there, two
   // more. 15 -> 19 re-measured on the merged tree (each slice was 15 -> 17 in
-  // isolation), all crossings of the SAME store, no new store anywhere.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 19, 'every crossing carries the store, never the doc namespace');
+  // isolation), all crossings of the SAME store, no new store anywhere. Wave 7b
+  // (slice S9) moved the scan orchestrator (runScanDirectories) to
+  // lib/scan/orchestrator.js, which joins the surface via the marker sentence:
+  // the factory hands it ytdlpDb (server.js's new deps-object entry plus the
+  // module's own destructure), one net new crossing of the SAME store, so
+  // 19 -> 20. The scan's per-request `ytdlpDb.holder(...)` read rode along into
+  // the same surface, so the holder count below stays 12.
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 20, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);

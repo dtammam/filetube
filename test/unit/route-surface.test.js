@@ -39,6 +39,7 @@ const EXPECTED = [
   'lib/notifications/routes.js',
   'lib/push/routes.js',
   'lib/queue/routes.js',
+  'lib/scan/orchestrator.js',
   'lib/tv/routes.js',
   'lib/tv/scanRunner.js',
   'lib/user/routes.js',
