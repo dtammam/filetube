@@ -260,7 +260,7 @@ test('save-lock: `progress` and `deleteTombstones` on the doc object are REFUSED
 
 function handles(with_ = ['insertProgress', 'insertTombstone']) {
   const seen = { kv: [], progress: [], tombstones: [] };
-  const h = { insertKv: (ns, key, value) => seen.kv.push([ns, key, value]), insertSingle: () => {}, insertViewCount: () => {} };
+  const h = { insertKv: (ns, key, value) => seen.kv.push([ns, key, value]), insertSingle: () => {}, insertViewCount: () => {}, insertItem: () => {} }; // (insertItem: Wave 6 - the media index)
   if (with_.includes('insertProgress')) h.insertProgress = (id, rec) => seen.progress.push([id, rec]);
   if (with_.includes('insertTombstone')) h.insertTombstone = (id, rec) => seen.tombstones.push([id, rec]);
   return { h, seen };

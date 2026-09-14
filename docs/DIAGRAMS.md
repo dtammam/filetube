@@ -96,16 +96,16 @@ tombstones in Wave 2; the trashed-item records in Wave 3 - see the MEDIA box;
 the app settings and the folder config in Wave 4 - see the CONFIG box; the
 frozen pre-auth likes in Wave 4 too - the MEDIA box).
 The namespace lists in `lib/db/sqlite.js` are a
-LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.294.0:
-1 `doc_kv` namespaces (just `metadata`), 0 `doc_single` names, 60 relational tables,
-schema version 31. (The relational-migration arc, Wave 1 onward, moves the
+LOCK (`assertNoUnknownKeys()` throws on strangers). Measured at v1.295.0 (Wave 6):
+0 `doc_kv` namespaces, 0 `doc_single` names, 61 relational tables,
+schema version 32. (The relational-migration arc, Wave 1 onward, moves the
 media namespaces out of the document store one table at a time - see
 `docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph DOC["Document store (the db.json shape, per-row)"]
-        KV["doc_kv (namespace, key, json)<br/>per-item rows:<br/>metadata (the last doc namespace - Wave 6 moves it)"]
+        KV["doc_kv (namespace, key, json)<br/>EMPTY since Wave 6 (the media index is media_items);<br/>dropped in Wave 7"]
         SINGLE["doc_single (name, json)<br/>EMPTY since Wave 5 (every whole-object namespace is a feature-store table now);<br/>dropped in Wave 7"]
     end
 
@@ -121,6 +121,7 @@ flowchart LR
         DT["lib/media/deleteTombstones.js<br/>media_delete_tombstones (media_id, deleted_at, json)<br/>the deferred-delete records: minted/retired/consumed<br/>INSIDE the doc commit's transaction (inSaveTransaction)"]
         TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
         LK["lib/media/liked.js<br/>media_liked (media_id, position)<br/>the FROZEN pre-auth likes the first admin adopts once;<br/>re-keyed/removed inside the doc commit by rename/trash/restore/purge"]
+        MI["lib/media/items.js<br/>media_items (media_id, json)<br/>the MEDIA INDEX - the last namespace out of the document model (Wave 6):<br/>one row per indexed file, verbatim, in rowid order;<br/>the routes still read it as the `{ metadata }` object load() assembles,<br/>the mutators still write that object, the adapter diffs it back ROW BY ROW<br/>inside the same commit as every inSaveTransaction effect"]
     end
 
     subgraph CONFIG["Relational CONFIG tables (Wave 4; lib/config/ stores on the lib/db/kvStore.js + lib/db/orderedListStore.js shapes)"]

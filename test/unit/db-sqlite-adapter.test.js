@@ -406,16 +406,19 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
     // the rollback must discard it too; the diff snapshot must not advance.
     // (Until Wave 5 a doc_single write played the "row before the poison";
     // no doc_single name is left, so two metadata rows carry the lesson.)
-    const realUpsertKv = a.stmts.upsertKv;
+    // (Wave 6: the metadata rows are media_items; the items store's upsert is
+    // the statement the diff runs - stub it through the store's own seam.)
+    const itemStmts = a.items.__diffStmts;
+    const realUpsert = itemStmts.upsertJson;
     let upserts = 0;
-    a.stmts.upsertKv = { run: (...args) => { if (++upserts === 2) throw new Error('simulated statement failure'); return realUpsertKv.run(...args); } };
+    itemStmts.upsertJson = { run: (...args) => { if (++upserts === 2) throw new Error('simulated statement failure'); return realUpsert.run(...args); } };
     const db2 = a.load();
     db2.metadata.vid1.title = 'never'; // the row before the poison
     db2.metadata.vid2.title = 'never'; // the poison
     try {
       assert.throws(() => a.save(db2), /simulated statement failure/);
     } finally {
-      a.stmts.upsertKv = realUpsertKv;
+      itemStmts.upsertJson = realUpsert;
     }
 
     assert.deepStrictEqual(readPersistedDatabase(dir), before,
@@ -671,9 +674,9 @@ test('exclusiveReplace: rollback-on-throw preserves prior data; success rebuilds
 
     // success leg + snapshot rebuild: after replace, a save() diff must be
     // computed against the RESTORED rows, not the pre-restore snapshot.
-    a.exclusiveReplace(({ insertKv, replaceFolders }) => {
+    a.exclusiveReplace(({ insertItem, replaceFolders }) => {
       replaceFolders(['/restored']); // Wave 4: the root list is a table
-      insertKv('metadata', 'r1', { id: 'r1', name: 'restored.mp4' });
+      insertItem('r1', { id: 'r1', name: 'restored.mp4' }); // Wave 6: the media index is a table
     });
     assert.deepStrictEqual(readPersistedDatabase(dir), {
       folders: ['/restored'],

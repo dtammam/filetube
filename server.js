@@ -44,7 +44,10 @@ const ytdlpStore = require('./lib/ytdlp/store'); // Wave 5: the ytdlp namespace'
 // into a canonical watch URL for the re-pull job to fetch.
 // v1.33 T1/T2: `classifySingleVideo` turns an embedded `purl`/`comment` tag's
 // URL into a validated {videoId, watchUrl} (the ONLY id source for a
-// bracket-less metube-era filename); `isSafeVideoId` guards the persisted
+// bracket-less metube-era filename) -- Wave 6 moved its ONE caller here
+// (`youtubeIdFromUrlString`) into lib/scan/identity.js, which now requires it
+// from lib/ytdlp/url.js directly with exactly this posture, so it is no longer
+// destructured in this file; `isSafeVideoId` guards the persisted
 // `youtubeId` field on both write paths -- same direct-require posture as
 // `buildWatchUrl` below.
 // v1.41.6: `validateChannelUrl` -- the SINGLE channel-URL validator this app
@@ -53,7 +56,7 @@ const ytdlpStore = require('./lib/ytdlp/store'); // Wave 5: the ytdlp namespace'
 // re-validates a persisted `item.channelUrl` at the one boundary where it
 // decides whether a USER FILE gets physically moved. See
 // `relocateHydratedImportIntoChannelFolder`.
-const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, extractMediaRef } = require('./lib/ytdlp/url');
+const { buildWatchUrl, isSafeVideoId, validateChannelUrl, extractMediaRef } = require('./lib/ytdlp/url');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -64,6 +67,33 @@ const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, e
 // `require()` it directly without any circular dependency.
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 const { TRASH_DIR_NAME, computeTrashTarget } = require('./lib/trashPaths');
+
+// Wave 6 of the relational-migration arc: the scan pipeline's PURE helpers now
+// live in lib/scan/ as small, directly-testable modules. They are re-exported
+// from this file's module.exports unchanged (the SAME function objects), so
+// every existing `require('../../server').<helper>` keeps working, and the
+// call sites below are untouched - the names are identical.
+//
+// Two scan helpers deliberately did NOT move and still live below:
+// `reconcileTranscode` (it reads TRANSCODE_DIR through `transcodedPath` and
+// stats the cache, so it is not pure) and `needsTranscode`/
+// `codecNeedsTranscode` (their non-native-container list is source-locked OUT
+// OF THIS FILE'S TEXT by test/unit/tv-scan.test.js, which parses that array's
+// declaration straight out of server.js to prove TV_EXTENSIONS never drifts
+// from it - moving the constant silently breaks that lock; note that naming
+// the declaration verbatim in a comment breaks it too, which is how this was
+// found).
+const scanRoots = require('./lib/scan/roots');
+const scanMerge = require('./lib/scan/merge');
+const scanIdentity = require('./lib/scan/identity');
+const scanCaptured = require('./lib/scan/captured');
+const scanProbe = require('./lib/scan/probe');
+const { matchRootFolder, normalizeScanRoot, detectVanishedRoots } = scanRoots;
+const { selectPrunableIds, mergeScannedMetadata } = scanMerge;
+const { extractYtdlpVideoId, youtubeIdFromUrlString, deriveScanYoutubeId, deriveReleaseDate } = scanIdentity;
+const { applyCapturedViewCount, applyCapturedFollowerCount, collectDownloadNotification } = scanCaptured;
+const { applyHasSubtitlesDetection } = scanProbe;
+
 // v1.77 glyph pool: the SAME registry the browser loads as a plain script
 // (public/js/glyph-pool.js is dual-mode). Requiring it here rather than
 // re-declaring the valid ids server-side is the whole point - a folder glyph
@@ -1779,126 +1809,11 @@ function sweepAgedTranscodes(now) {
   return removed;
 }
 
-// Pure: decide which old-metadata ids are safe to prune during a scan.
-// `oldMetadata` is the previous db.metadata object; `survivingIds` is the set
-// of ids the current scan actually found on disk. `opts` = { missingRoots,
-// unreadablePaths, folders, pruneMissing } (all normalized single/array/Set).
-// Guards run, IN ORDER, BEFORE the pruneMissing toggle check, so each of them
-// holds regardless of the toggle:
-//   1. survives on disk                                  -> keep
-//   2. root (backfilled, or derived via matchRootFolder
-//      for legacy pre-backfill entries) is missing        -> keep (mount-loss, depth 0)
-//   3. root cannot be attributed to any configured folder -> keep (conservative;
-//      covers legacy falsy-rootFolder entries whose derived root is null)
-//   4. filePath falls under any unreadablePaths prefix     -> keep (incomplete
-//      enumeration -- a swallowed readdir/stat error anywhere in that
-//      subtree must never be mistaken for a bulk deletion, at any depth)
-//   5. pruneMissing === false                              -> keep
-//   6. otherwise (present, readable root + file individually gone + prune ON) -> prune
-function selectPrunableIds(oldMetadata, survivingIds, opts) {
-  const { missingRoots, unreadablePaths, folders, pruneMissing } = opts || {};
-  const surviving = survivingIds instanceof Set ? survivingIds : new Set(survivingIds);
-  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots || []);
-  const incomplete = unreadablePaths instanceof Set ? unreadablePaths : new Set(unreadablePaths || []);
-  const allFolders = folders || [];
-  const under = (p, prefix) =>
-    p === prefix || p.startsWith(prefix + '/') || p.startsWith(prefix + '\\');
-  const prune = [];
-  for (const [id, entry] of Object.entries(oldMetadata)) {
-    if (surviving.has(id)) continue;                       // (1) file still on disk -> keep
-    const filePath = entry && entry.filePath;
-    let root = entry && entry.rootFolder;
-    if (!root && filePath) root = matchRootFolder(filePath, allFolders); // (iii) derive for legacy entries
-    if (root && missing.has(root)) continue;                // (2) MOUNT-LOSS GUARD
-    if (!root) continue;                                    // (3) unattributable -> retain
-    if (filePath && [...incomplete].some((pre) => under(filePath, pre))) continue; // (4) any-depth guard
-    if (!pruneMissing) continue;                            // (5) toggle OFF -> retain stale entry
-    prune.push(id);                                         // (6) root present + readable + file gone + prune ON
-  }
-  return prune;
-}
+// selectPrunableIds moved to lib/scan/merge.js (Wave 6 scan extraction).
 
-// v1.33 T4 (tech-debt #10, Dean's Option C): the EMPTY-BUT-PRESENT
-// mountpoint detector. An unmounted network share often leaves its
-// mountpoint directory in place -- `fs.existsSync(root)` stays true, readdir
-// returns zero entries -- so the root never lands in `missingRoots` and,
-// before this guard, every id under it looked individually deleted and was
-// pruned (progress/thumbnail/transcode sidecars reaped). The signature this
-// detects: a configured root that PREVIOUSLY held indexed items contributed
-// ZERO files to this scan (not one survivor, not one new file) while the
-// directory itself still exists. That is an unmount/mount-wedge shape, not a
-// plausible organic library change -- so the root is treated exactly like a
-// missing root (protect, don't reap).
-//
-// Deliberate, accepted cost: genuinely emptying a configured folder's ENTIRE
-// content out-of-band (outside FileTube) now retains its stale entries
-// instead of pruning them, with a loud per-scan warning. The escape hatch is
-// removing the folder from Settings (an entry whose root is no longer a
-// configured folder but still carries `rootFolder` falls through to
-// selectPrunableIds' normal pruning) -- or deleting the items through
-// FileTube itself, which never routes through prune at all. Partial
-// deletions of any size are unaffected: one surviving OR new file under the
-// root defuses the signature entirely.
-//
-// Pure: no FS I/O (the "directory still exists" half is established by the
-// caller's own walk -- a root that failed existsSync is already in
-// `missingRoots` and is skipped here). Attribution matches
-// selectPrunableIds exactly (entry.rootFolder, matchRootFolder fallback for
-// legacy entries) so the two can never disagree about which root owns an id.
-// `newMetadata` at the call site is exactly this scan's found-on-disk items
-// (retention copy-back happens after), so "contributed zero files" is a
-// plain per-root count over it.
-// @returns {string[]} configured roots showing the vanished signature
-function detectVanishedRoots(oldMetadata, newMetadata, folders, missingRoots) {
-  const allFolders = folders || [];
-  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots || []);
-  const priorCounts = new Map();
-  for (const entry of Object.values(oldMetadata || {})) {
-    const filePath = entry && entry.filePath;
-    let root = entry && entry.rootFolder;
-    if (!root && filePath) root = matchRootFolder(filePath, allFolders);
-    if (!root) continue;
-    priorCounts.set(root, (priorCounts.get(root) || 0) + 1);
-  }
-  const currentCounts = new Map();
-  for (const entry of Object.values(newMetadata || {})) {
-    const filePath = entry && entry.filePath;
-    let root = entry && entry.rootFolder;
-    if (!root && filePath) root = matchRootFolder(filePath, allFolders);
-    if (!root) continue;
-    currentCounts.set(root, (currentCounts.get(root) || 0) + 1);
-  }
-  const vanished = [];
-  for (const folder of allFolders) {
-    if (missing.has(folder)) continue; // already protected (existsSync failed)
-    if ((priorCounts.get(folder) || 0) > 0 && (currentCounts.get(folder) || 0) === 0) {
-      vanished.push(folder);
-    }
-  }
-  return vanished;
-}
+// detectVanishedRoots moved to lib/scan/roots.js (Wave 6 scan extraction).
 
-// Pure: reconcile a scan's freshly-built metadata map with a FRESHLY re-read
-// on-disk metadata map (taken immediately before the final save, see the
-// `runScanDirectories` save block). `newMetadata` is authoritative for
-// membership (a scan-pruned id stays pruned even if it still exists in
-// `freshMetadata`) and every scan-derived field, EXCEPT `lastServedAt`: a
-// concurrent `recordServed` call may have persisted a NEWER timestamp on
-// `freshMetadata[id]` while the scan was still running (the scan's own
-// snapshot of that entry is stale). Adopt the newer of the two so a serve
-// recorded mid-scan is never reverted -- on-disk `lastServedAt` is the single
-// source of truth and this merge only ever advances it, never regresses it.
-// Mutates and returns `newMetadata`; does no FS I/O (pure).
-function mergeScannedMetadata(freshMetadata, newMetadata) {
-  for (const [id, entry] of Object.entries(newMetadata)) {
-    const prior = freshMetadata[id];
-    if (prior && typeof prior.lastServedAt === 'number' &&
-        (typeof entry.lastServedAt !== 'number' || prior.lastServedAt > entry.lastServedAt)) {
-      entry.lastServedAt = prior.lastServedAt;
-    }
-  }
-  return newMetadata;
-}
+// mergeScannedMetadata moved to lib/scan/merge.js (Wave 6 scan extraction).
 
 // Sum of st.size for every completed transcode/audio-extract (isCompletedTranscode)
 // in dir — video *.mp4 AND background-audio *.m4a (v1.27.0), one coherent
@@ -1926,16 +1841,7 @@ function effectiveCacheCap(settings) {
   return TRANSCODE_CACHE_MAX_BYTES;
 }
 
-// Which configured folder does this file live under? (longest matching prefix)
-function matchRootFolder(filePath, folders) {
-  let best = null;
-  for (const f of folders) {
-    if (filePath === f || filePath.startsWith(f + '/') || filePath.startsWith(f + '\\')) {
-      if (!best || f.length > best.length) best = f;
-    }
-  }
-  return best;
-}
+// matchRootFolder moved to lib/scan/roots.js (Wave 6 scan extraction).
 
 // Generate deterministic ID from filepath
 function getMediaId(filePath) {
@@ -1992,23 +1898,7 @@ function cleanDisplayTitle(baseName) {
   return m[1].replace(/_+/g, ' ').trim();
 }
 
-// v1.20.0 FR-2: sibling to cleanDisplayTitle, above -- extracts the yt-dlp
-// video id from the SAME trailing ` [<11-char id>]` bracket suffix
-// cleanDisplayTitle recognizes (and strips), reusing the identical bracket
-// shape rather than a second, forked regex, so the two helpers can never
-// disagree about what counts as a yt-dlp-shaped filename. Returns the
-// bracketed id -- already charset/length-bounded by the regex itself
-// (exactly 11 characters of `[A-Za-z0-9_-]`, the same shape
-// `url.isSafeVideoId` accepts) -- or `null` when the basename doesn't match
-// this shape at all (an ordinary, non-yt-dlp library file). Scan-time-only:
-// callers are expected to scope this to files actually rooted under the
-// yt-dlp module's own download dir first (mirroring cleanDisplayTitle's own
-// FIX-9 scoping), so a coincidentally-bracketed non-yt-dlp file is never fed
-// through this at all.
-function extractYtdlpVideoId(baseName) {
-  const m = /^(.*?)[ _]\[([A-Za-z0-9_-]{11})\]$/.exec(baseName);
-  return m ? m[2] : null;
-}
+// extractYtdlpVideoId moved to lib/scan/identity.js (Wave 6 scan extraction).
 
 // ---- v1.41.3: deletion tombstones (tech-debt #32 + #35a) -------------------
 //
@@ -2081,45 +1971,7 @@ function extractYtdlpVideoId(baseName) {
 // govern; `tombstoneStore.prune()` applies them to the rows. The names are
 // re-exported from there (see the store construction near userStore).
 
-// v1.33 T1: scan-time YouTube-id derivation, shared by the new/updated
-// branch's probe path and its probe-failure path. Two sources, in trust
-// order: (1) the filename's `[id]` bracket -- scoped to yt-dlp-rooted files
-// exactly like the bridge/cleanDisplayTitle (a coincidentally-bracketed
-// library file elsewhere is never fed through extractYtdlpVideoId); (2) the
-// embedded `purl`/`comment` source URL off the file's own probe -- an
-// EXPLICIT downloader-written provenance tag, trusted from any root, but
-// only after it survives the classifySingleVideo gate. Returns the id or
-// `null` -- callers persist the `null` too (probed-once convention).
-//
-// ACCEPTED trust boundary (v1.33 gate, conscious decision): the embedded tag
-// is only ever a claim about which YouTube video this file CAME FROM --
-// anyone with write access to the media files themselves (already full
-// control in this LAN-only, single-user app) could edit it to point the
-// Share link / reheat metadata at a different-but-legitimate YouTube video.
-// The gate guarantees it can only ever be a well-formed YouTube video URL
-// (never another host, a playlist, or a credentialed URL); content-vs-id
-// agreement is not (and cannot be) verified. Revisit if multi-user/untrusted
-// library roots ever land (see ROADMAP's accounts item).
-//
-// v1.41.5 WIDENED (Dean's explicit call): this id is now also what makes an
-// item eligible for the reheat's NETWORK pass from ANY library root, not just
-// the module's own download dir -- see `enumerateRepullableItems`. That makes
-// this the FIRST code path that aims a yt-dlp network call at a file FileTube
-// did not download itself (Dean's MeTube-era .mp3/.mp4 imports, whose only
-// link back to YouTube is exactly this tag). The blast radius of a forged tag
-// is unchanged in KIND (a well-formed YouTube video URL, fetched read-only,
-// `--skip-download`; the media file is never touched) and now also covers the
-// channel identity written back onto the item -- which the never-overwrite
-// guard in `recordRepulledItemMeta` keeps from ever re-pointing an item that
-// already has one. A file with NO such tag and no `[id]` bracket is never
-// fetched at all (its local probe finds nothing and the item is skipped).
-function deriveScanYoutubeId(filePath, info, ytdlpRoots, embeddedSourceUrl) {
-  if (matchRootFolder(filePath, ytdlpRoots)) {
-    const bracketId = extractYtdlpVideoId(path.basename(info.name, info.ext));
-    if (bracketId) return bracketId;
-  }
-  return youtubeIdFromUrlString(embeddedSourceUrl);
-}
+// deriveScanYoutubeId moved to lib/scan/identity.js (Wave 6 scan extraction).
 
 // Check if ffmpeg is available
 let ffmpegAvailable = false;
@@ -2919,96 +2771,11 @@ function reconcileTranscode(item) {
   return before !== item.transcodeStatus;
 }
 
-// v1.48 item 2: carry a captured day-of view count from a consumed downloadMeta
-// bridge entry onto the library item. ONE writer for all three consume sites
-// (universal, the D1a proxy-host YouTube recovery, and the plain YouTube
-// bracket path) -- the v1.41.4 lesson was a seat that forgot to CALL the shared
-// helper, so there is exactly one to call and it is called from every site.
-//
-// THE FIELD IS `sourceViewCount`, NOT `viewCount`, AND THAT IS LOAD-BEARING.
-// `item.viewCount` is ALREADY TAKEN, with completely different semantics: it is
-// the legacy pre-v1.42 LOCAL watch counter, and `effectiveViewCount` (below)
-// still honors a leftover embedded `item.viewCount` as the starting value for
-// how many times DEAN has played that file. Writing a YouTube view count into
-// that name would have been read straight back as a local play count -- a
-// freshly-downloaded video would have reported ~12 million local watches on the
-// stats page, and `withEffectiveViewCounts` would have propagated it. The two
-// numbers are unrelated and must never share a key. `sourceViewCount` also
-// matches the existing `sourceTitle`/`sourceId`/`sourceExtractor` convention
-// for "this value came from the SOURCE, not from us".
-//
-// The count and its capture date are written as a UNIT, and only when the count
-// itself survives re-validation: an item must never end up with a number and no
-// date (the UI would have to invent one for the "when downloaded" label) or a
-// date with no number. The date falls back to now only when the bridge entry
-// carried no usable `capturedAt` of its own.
-//
-// `consumed.sourceViewCount` has already crossed `store.parseCapturedViewCount` at
-// the read boundary; the `typeof`/`Number.isInteger` re-check here is the same
-// re-validate-at-the-write-boundary posture every sibling field above uses.
-function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
-  if (!item || !consumed) return false;
-  const views = consumed.sourceViewCount;
-  if (typeof views !== 'number' || !Number.isInteger(views) || views < 0) return false;
-  const capturedAt = consumed.sourceViewCountCapturedAt;
-  item.sourceViewCount = views;
-  item.sourceViewCountCapturedAt =
-    (typeof capturedAt === 'number' && Number.isFinite(capturedAt) && capturedAt > 0)
-      ? capturedAt
-      : nowMs;
-  return true;
-}
+// applyCapturedViewCount moved to lib/scan/captured.js (Wave 6 scan extraction).
 
-// v1.54 (Dean's real subscriber counts): the follower-count sibling of
-// applyCapturedViewCount above -- ONE writer for all three consume sites
-// (the v1.41.4 discipline), the count and its capture moment written as a
-// UNIT. Field is `sourceFollowerCount` (collision-grepped clean; the v1.48
-// name-already-taken lesson).
-function applyCapturedFollowerCount(item, consumed, nowMs = Date.now()) {
-  if (!item || !consumed) return false;
-  const followers = consumed.sourceFollowerCount;
-  if (typeof followers !== 'number' || !Number.isInteger(followers) || followers < 0) return false;
-  const capturedAt = consumed.sourceFollowerCountCapturedAt;
-  item.sourceFollowerCount = followers;
-  item.sourceFollowerCountCapturedAt =
-    (typeof capturedAt === 'number' && Number.isFinite(capturedAt) && capturedAt > 0)
-      ? capturedAt
-      : nowMs;
-  return true;
-}
+// applyCapturedFollowerCount moved to lib/scan/captured.js (Wave 6 scan extraction).
 
-// v1.51 notification bell: ONE collector for all three downloadMeta consume
-// sites (the v1.41.4 lesson is a seat that forgot to CALL the shared helper,
-// so there is exactly one to call and every site calls it). Only ever invoked
-// right after a consume SUCCEEDED inside the scan's Phase-2 mutator — that is
-// the load-bearing scoping: a consume fires only for a freshly-indexed file
-// under the yt-dlp download roots whose bridge entry still existed, so
-// reheats, re-encodes, hand-dropped files and plain re-scans can never
-// notify. createdAt is the CONSUME moment (nowMs), NOT item.addedAt.
-//
-// GATE FIX (adversarial W1, repro'd): addedAt is the file's birthtime, and
-// on yt-dlp's single-format path that is the moment the `.part` download
-// STARTED (the rename preserves the inode's btime) -- so a long download
-// finishing after Dean opened the bell was born already-seen (badge never
-// increments), a Clear mid-download hid it forever, and with 200 newer rows
-// it was evicted inside its own insert transaction. A birthtime AHEAD of
-// the server clock (NAS mount skew) was worse: a badge that mark-seen could
-// not zero until wall-clock caught up. The watermark algebra is strictly
-// `created_at > last_seen_at`, so the only value that is always correct on
-// both sides of "now" is the moment the event actually entered the feed --
-// the v1.50 lesson: normalize a client-supplied number ONCE at the staging
-// boundary. Seeding (seedNotificationHistoryOnce) deliberately still uses
-// addedAt: history ORDERING is what matters there and every seeded row is
-// born read+seen, so the algebra never touches it.
-//
-// De-dups by mediaId because ONE item can legitimately hit two consume
-// sites in one pass (universal + the D1a proxy-host YouTube recovery).
-function collectDownloadNotification(pending, item, nowMs = Date.now()) {
-  if (!Array.isArray(pending) || !item || typeof item.id !== 'string' || item.id === '') return false;
-  if (pending.some((p) => p.mediaId === item.id)) return false;
-  pending.push({ mediaId: item.id, createdAt: nowMs });
-  return true;
-}
+// collectDownloadNotification moved to lib/scan/captured.js (Wave 6 scan extraction).
 
 // v1.51 notification bell, exec-plan decision 4: one-shot upgrade seeding.
 // The first boot after the upgrade pre-populates the feed with the newest
@@ -3160,23 +2927,7 @@ function parseEmbeddedReleaseDateMs(input) {
   return null;
 }
 
-// C5-local (v1.24): the release-date PRECEDENCE helper -- embedded date (from
-// a probe the scan already ran) wins; filesystem `mtime` is the fragile-but-
-// honest last resort (it resets on copy, but every local file has one).
-// Pure and deliberately tiny/decoupled from `parseEmbeddedReleaseDateMs` so
-// the SCHEMA-ONLY BACKFILL PATH (an already-indexed item whose entry
-// predates this field) can call it with `embeddedMs=null` to force the
-// mtime-only branch WITHOUT spawning a fresh probe -- see the scan loop's
-// backfill branches below, which pass `null` here on purpose (the
-// thumbnail-backfill-regression lesson: adding this field to an existing
-// item must never trigger re-processing). Returns epoch ms, or `null` only
-// if `mtimeMs` itself is unusable (never expected in practice -- every
-// scanned file has a `stat` result).
-function deriveReleaseDate(embeddedMs, mtimeMs) {
-  if (Number.isFinite(embeddedMs)) return embeddedMs;
-  if (Number.isFinite(mtimeMs) && mtimeMs > 0) return mtimeMs;
-  return null;
-}
+// deriveReleaseDate moved to lib/scan/identity.js (Wave 6 scan extraction).
 
 // v1.33 T1: pull the ORIGINAL source URL out of ffprobe's format tags.
 // yt-dlp's `--embed-metadata` (and metube, which wraps yt-dlp) writes the
@@ -3211,17 +2962,7 @@ function parseEmbeddedSourceUrl(input) {
   return null;
 }
 
-// v1.33 T1: validate an untrusted URL-ish string (an embedded `purl`/`comment`
-// tag, typically) down to a safe YouTube video id, through the SAME
-// `classifySingleVideo` gate every other untrusted URL in the yt-dlp module
-// crosses -- never a home-grown regex. Returns the 11-char id, or `null` for
-// anything that is not a well-formed single-video YouTube URL. Pure, never
-// throws (classifySingleVideo fails closed on garbage input).
-function youtubeIdFromUrlString(raw) {
-  if (typeof raw !== 'string' || raw === '') return null;
-  const classified = classifySingleVideo(raw);
-  return classified.ok ? classified.videoId : null;
-}
+// youtubeIdFromUrlString moved to lib/scan/identity.js (Wave 6 scan extraction).
 
 // ---- v1.34 T3 (Dean): chapters -----------------------------------------------
 //
@@ -3948,31 +3689,7 @@ async function restoreMissingPreviewClip(existing, id, filePath) {
   }
 }
 
-// A6 (v1.24 UX Round, Wave 5): additive `hasSubtitles` detection, shared by
-// every scan branch below that reuses an `existing` entry. SCHEMA-ONLY --
-// `findSubtitleSidecar` only stats/reads the containing directory (no
-// ffmpeg, no thumbnail/transcode work), so calling this can never trigger
-// the thumbnail-backfill-regression class of bug. Deliberately recomputed on
-// EVERY scan (unlike the one-time `releaseDate` backfill above, which only
-// fills a missing field once) -- a subtitle sidecar a user drops in, or
-// removes, later is picked up (or cleared) on the very next scan, not just
-// once. Mutates `existing.hasSubtitles` in place and returns `true` iff the
-// value actually changed (so callers know whether to set `dbChanged`).
-// `dirCache` (v1.30, A1 / AC1.3): an OPTIONAL per-scan `Map<dir, string[]>`
-// (see `runScanDirectories`) forwarded straight into `findSubtitleSidecar`
-// -- memoizes each directory's listing across every file scanned from it
-// THIS PASS, closing the O(N^2) `readdirSync` storm at Dean's ~1300-item
-// scale. It is discarded at the end of the scan pass (see call site), so a
-// sidecar dropped/removed between scans is still picked up on the very next
-// one -- this does NOT change the "recomputed every scan" contract
-// described above, only how many times the directory is actually listed on
-// disk within a single pass.
-function applyHasSubtitlesDetection(existing, filePath, dirCache) {
-  const hasSubtitles = !!subtitles.findSubtitleSidecar(filePath, undefined, dirCache);
-  if (existing.hasSubtitles === hasSubtitles) return false;
-  existing.hasSubtitles = hasSubtitles;
-  return true;
-}
+// applyHasSubtitlesDetection moved to lib/scan/probe.js (Wave 6 scan extraction).
 
 // Live scan state, surfaced via /api/scan-status for the setup/home UI.
 // `rescanRequested` is an internal bookkeeping flag (never serialized by
@@ -4100,34 +3817,7 @@ async function scanDirectories() {
   }
 }
 
-// FR-G hardening (v1.12.0, yt-dlp module parity): normalize a scan root to
-// its canonical, real filesystem path BEFORE the `Set`-dedup below, which
-// otherwise only collapses byte-identical strings. Root cause of the
-// duplicate-library-row bug this closes: media ids are `md5(absolute path)`
-// (`getMediaId`), and `db.folders` entries were historically persisted
-// as-typed/unresolved while `ytdlp.extraScanRoots()` always returns
-// `path.resolve(downloadDir)` -- so a bind-mount/symlink/relative
-// re-spelling of the SAME real directory tree produced two different root
-// strings, which walked the same files twice under two different absolute
-// paths -> two different path-based ids -> duplicate rows. `fs.realpathSync`
-// resolves symlinks and `..`/relative segments to one canonical path, so
-// divergent spellings of the same real tree collapse to the same string
-// here; two genuinely DISTINCT trees still resolve to two distinct
-// realpaths (never falsely collapsed). On ANY error (most commonly ENOENT --
-// a root that is missing/unmounted right now) this falls back to
-// `path.resolve(p)` rather than dropping the root: the caller's
-// `fs.existsSync` check still needs a stable string to mark as a
-// `missingRoot` so the E1 mount-loss guard (`selectPrunableIds`) can protect
-// that root's previously-scanned ids instead of silently losing the root
-// (and thus the guard) entirely. Cheap: called once per scan ROOT (a
-// handful of configured folders), never per file.
-function normalizeScanRoot(p) {
-  try {
-    return fs.realpathSync(p);
-  } catch (_) {
-    return path.resolve(p);
-  }
-}
+// normalizeScanRoot moved to lib/scan/roots.js (Wave 6 scan extraction).
 
 // Scan directories and sync with database
 async function runScanDirectories() {
@@ -4221,7 +3911,7 @@ async function runScanDirectories() {
   const ytdlpDownloadRoots = ytdlp.extraScanRoots(ytdlpConfig);
   const scannedFiles = new Map(); // path -> file info
   // Configured root folders that are absent/unmounted this scan (the single
-  // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
+  // existence-check seam, reused by selectPrunableIds' mount-loss guard - lib/scan/merge.js).
   const missingRoots = new Set();
   // Directories that are un-enumerable this scan (EACCES/EIO/ESTALE etc.) --
   // populated both when a directory's OWN readdir throws AND when a per-FILE
@@ -4768,7 +4458,7 @@ async function runScanDirectories() {
         artist: '',
         needsTranscode: !isAudio && needsTranscode(info.ext),
         // A6 (v1.24 UX Round, Wave 5): additive, schema-only -- see
-        // applyHasSubtitlesDetection's comment above for why this cheap
+        // applyHasSubtitlesDetection's comment (lib/scan/probe.js) for why this cheap
         // directory check never counts as "re-processing". Threads the same
         // per-scan `perScanReaddirCache` (v1.30, A1) as the reuse fast-paths
         // above so a NEW file sharing a directory with already-indexed
@@ -10287,6 +9977,20 @@ function validateBackupBundle(bundle) {
   // (The container-object check that lived here is subsumed: every container
   // is a feature store since Wave 5 and validateFeatureBundle below checks
   // each one part by part.)
+  // Wave 6: the media index (`metadata`, a table now) - shape-checked BEFORE
+  // the wipe like every other namespace: a per-id map of item OBJECTS with
+  // non-empty NUL-free ids. (Until Wave 6 a malformed `metadata` reached the
+  // populate and became a 500 "rolled back"; a 400 before the wipe is the
+  // arc's posture.)
+  if (bundle.metadata !== undefined) {
+    const m = bundle.metadata;
+    if (typeof m !== 'object' || m === null || Array.isArray(m)) return "bundle key 'metadata' must be an object";
+    for (const id of Object.keys(m)) {
+      if (id === '' || id.includes('\u0000')) return `metadata['${id.split('\u0000').join('\\u0000')}']: invalid id`;
+      const item = m[id];
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) return `metadata['${id}']: must be an object`;
+    }
+  }
   // Wave 5: a relational feature container - shape-checked part by part
   // BEFORE the wipe (the same posture as the record namespaces): known parts
   // only; a list is an array of non-empty NUL-free strings; a map / kv is an
@@ -16165,7 +15869,7 @@ function resolveRelocationTitle(item) {
  *   2. else a persisted `item.youtubeId` that survives `isSafeVideoId` --
  *      trusted from ANY root, because it can only have come from the
  *      downloader's own embedded provenance tag (the trust boundary
- *      `deriveScanYoutubeId` documents, above) or a prior reheat.
+ *      `deriveScanYoutubeId` documents - lib/scan/identity.js) or a prior reheat.
  *   3. else `null` id -- still enumerated (never a network call: the worker
  *      gates its spawn on a watch URL) purely so the worker's LOCAL,
  *      network-free ffprobe tags pass can still upgrade it from an embedded
@@ -19260,6 +18964,12 @@ module.exports = {
   // v1.48 gate fix (adversarial SUGGESTION S1): exported for direct testing,
   // mirroring parseFfprobeTags/reconcileTranscode's own testability posture.
   applyCapturedViewCount,
+  // Wave 6 (scan extraction): the follower-count sibling and the subtitle
+  // detection were the only two moved helpers this list did not already carry.
+  // Both are re-exported for the same reason every sibling above is - a test
+  // must be able to reach the SAME function object through either door.
+  applyCapturedFollowerCount,
+  applyHasSubtitlesDetection,
   // v1.51 notification bell (unit/integration surface; userStore is already
   // exported above).
   collectDownloadNotification,

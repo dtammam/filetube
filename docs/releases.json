@@ -2992,5 +2992,11 @@
     "date": "2026-09-14",
     "title": "Your settings, folders, likes and every library move into the new database layout",
     "intent": "Everything except the main video index now lives in the new database layout: your settings, your configured folders and their names, the likes from before accounts existed, and the whole Shows, Music, Books, Podcasts and Downloads libraries - subscriptions, pinned shelves and channels, podcast episodes and their history, the downloader's channel registry. The move happens automatically on first start and keeps every record and its order exactly as it was. Each change to one of these libraries is now written in the same step as the rest of the database, so a crash mid-way can no longer leave a library half-updated. Backups made before this version restore normally, and a backup without a podcasts section still keeps your downloaded episodes. Nothing changes on screen."
+  },
+  {
+    "version": "1.295.0",
+    "date": "2026-09-14",
+    "title": "The video index moves into the new database layout - the move is complete",
+    "intent": "The main index of your videos and audio files - every file the scan has found - now lives in the new database layout too, which finishes the move that started with view counts a few releases ago. It happens automatically on first start and keeps every record exactly as it was, in the same order. Nothing changes on screen, scans behave as before, and a backup taken on the previous version restores normally."
   }
 ]

@@ -93,6 +93,52 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.295.0 - Relational-migration arc, Wave 6: the media index leaves the document model (2026-09-14)
+
+The library index (`metadata` - one record per indexed file, the scan's final
+merge writes it in the thousands per pass, every listing route reads it) was the
+LAST namespace riding the document model. It is the `media_items` table now
+(`lib/media/items.js`, verbatim rows in rowid order), schema **v32**, thirteenth
+rollback floor (docs/RELEASING.md). Both document tables are EMPTY; Wave 7 drops
+them. Legacy namespaces 1 -> **0** (`node scripts/relational-arc-baseline.js`).
+
+What deliberately did NOT change: the routes keep reading the index as the same
+`{ metadata }` object, the mutators keep writing it inside an `updateDatabase`
+tick, and the adapter diffs it back ROW BY ROW inside the same commit as every
+carrier effect - so the 150 read sites and the scan's merge are textually
+unchanged, the persist-gate seams are untouched, and the read cache is exactly as
+fast as before. The scan's pure helpers moved into `lib/scan/` - 13 functions, five modules
+(`roots`, `merge`, `identity`, `captured`, `probe`), bodies byte-identical and
+re-exported from server.js as the same function objects - with 105 new test
+cases; the orchestrator itself and the transcode cluster stay in server.js
+(disclosed; the monolith split is Wave 7). That extraction was an Opus worktree
+subagent's job (Dean's split), machine-verified by the main session.
+
+Full gate, one fix round, both seats APPROVE on the delta. What it caught: the
+adversarial seat's migration repro - the v32 skip rule decided on the JS-side key,
+which node:sqlite hands back TRUNCATED on Node 24.14 and older, so a hostile
+`abc\0` doc row could CLOBBER the real `abc` item (unreachable through any writer,
+fixed anyway: the rule runs in SQL on the stored bytes, test-bound with an impostor
+row); the restore validator's item-object rule was present but unbound (a string
+item restored 200 under the mutant - four new 400 cases); "an unchanged rescan
+writes zero rows" was claimed by a disk deep-equal that a rewrite-everything
+mutant passed (measured on the adapter's save accounting now); the "only writer"
+lock missed the template spelling; a dead guard with a false comment; five
+positional comments pointing at code that had moved; two stale sqlite.js prose
+lines; a doc headline stamped against the wrong release; a mis-typed suite count
+in a commit message, corrected by a message-only amend (disclosed in the record).
+Dual-Node, sequential, reviewers idle: 22.23.1 8772 tests / 8772 pass / 0 fail /
+0 skipped; 24.20.0 (the CI runner's minor) 8772 / 8772 / 0 / 0; 24.14.0 8772 / 8772 /
+0 / 0.
+
+KNOWN GAPS (disclosed): DEVICE-PENDING until Dean's pass (the probe list is in
+the report; a device pass is recommended before Wave 7); the doc-model seams that
+remain for the empty tables (`BACKUP_NAMESPACE_KEYS = ['metadata']`, the
+save-lock's namespace walk over empty lists, `doc_kv` / `doc_single` themselves)
+go in Wave 7; the list routes' per-request reads for the feature catalogs (#226)
+are unchanged by this wave (the index never had that cost - its cached object is
+the cache).
+
 ### v1.294.0 - Relational-migration arc, Waves 4 + 5: the config singletons and every feature catalog leave the document model (2026-09-14)
 
 Two waves on one branch, one release (Dean's pacing ruling), each gated in its own
