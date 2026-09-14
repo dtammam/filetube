@@ -162,21 +162,21 @@ test('source lock: the route surface never names the podcasts tables or the dead
   // - server.js plus every registerRoutes module it registers, derived from
   // server.js's own requires - so the counts follow the code and the
   // never-name-the-table checks now cover the modules too.
-  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
-  for (const t of TABLES) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.podcasts\b/.test(server), 'no doc-model podcasts access survives');
-  assert.ok(!/podcastStore\.readPodcasts\(/.test(server), 'every read view moved to podcastsDb.read()');
-  assert.ok(!/podcastStore\.ensurePodcasts\(/.test(server), 'server.js never mutates the namespace itself');
-  assert.ok((server.match(/podcastsDb\.read\(\)/g) || []).length + (server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length + (server.match(/podcastsDb\.readPart\(/g) || []).length >= 18, 'the reads (snapshots + the point queries of gate pass B)');
-  assert.ok((server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5, 'gate pass B: the per-item episode lookups (home row, grid card, push row, handoff) are point queries, never the whole archive per item');
-  assert.ok(/bundle\.podcasts = podcastsDb\.read\(\)/.test(server), 'the bundle reads the tables');
-  assert.ok(/podcastsNs: \(\(\) => \{ let memo = null; return \(\) => \(memo \|\| \(memo = podcastsDb\.read\(\)\)\); \}\)\(\)/.test(server), 'search reaches the namespace through the dep - memoised per query (gate pass B)');
+  const surface = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
+  for (const t of TABLES) assert.ok(!surface.includes(t), t);
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.podcasts\b/.test(surface), 'no doc-model podcasts access survives');
+  assert.ok(!/podcastStore\.readPodcasts\(/.test(surface), 'every read view moved to podcastsDb.read()');
+  assert.ok(!/podcastStore\.ensurePodcasts\(/.test(surface), 'server.js never mutates the namespace itself');
+  assert.ok((surface.match(/podcastsDb\.read\(\)/g) || []).length + (surface.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length + (surface.match(/podcastsDb\.readPart\(/g) || []).length >= 18, 'the reads (snapshots + the point queries of gate pass B)');
+  assert.ok((surface.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5, 'gate pass B: the per-item episode lookups (home row, grid card, push row, handoff) are point queries, never the whole archive per item');
+  assert.ok(/bundle\.podcasts = podcastsDb\.read\(\)/.test(surface), 'the bundle reads the tables');
+  assert.ok(/podcastsNs: \(\(\) => \{ let memo = null; return \(\) => \(memo \|\| \(memo = podcastsDb\.read\(\)\)\); \}\)\(\)/.test(surface), 'search reaches the namespace through the dep - memoised per query (gate pass B)');
   // Wave 7b (S1a): 7 across the surface - server.js's five (the queue and
   // notification deps bundles, lib/podcasts's registerRoutes bundle,
   // startBackground, the export) and the two destructures that receive them in
   // lib/queue/routes.js and lib/notifications/routes.js. Still an EXACT count:
   // a new crossing has to be a deliberate edit here, not a silent one.
-  assert.strictEqual((server.match(/\bpodcastsDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
+  assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');
   assert.strictEqual((lib.match(/\.updateDatabase\(\(\) => (deps|d)\.podcastsDb\.mutate\(\(mdb\) =>/g) || []).length, 21, 'every one of them runs its reducers through the store');

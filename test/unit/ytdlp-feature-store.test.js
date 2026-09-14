@@ -194,27 +194,27 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // lock reads the whole ROUTE SURFACE - server.js plus every registerRoutes
   // module it registers, derived from server.js's own requires - so the counts
   // follow the code and the never-name-the-table checks now cover the modules.
-  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
-  for (const t of TABLES) assert.ok(!server.includes(t), t);
-  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|dbSnapshot|getCachedDatabase\(\)|loadDatabase\(\))\.ytdlp\b/.test(server), 'no doc-model ytdlp access survives');
-  assert.ok(!/ytdlp\.ensureYtdlp\(|ytdlp\.readYtdlpNamespace\(/.test(server), 'server.js never normalises the namespace itself');
-  assert.ok((server.match(/ytdlpDb\.readPart\('subscriptions'\)/g) || []).length >= 6, 'the subscription-name reads');
-  assert.ok((server.match(/ytdlpDb\.holder\(/g) || []).length >= 11, 'the per-request holders (avatar resolver, relocation joins, the scan)');
-  assert.ok(/bundle\.ytdlp = ytdlpDb\.read\(\)/.test(server), 'the bundle reads the tables');
+  const surface = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
+  for (const t of TABLES) assert.ok(!surface.includes(t), t);
+  assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|dbSnapshot|getCachedDatabase\(\)|loadDatabase\(\))\.ytdlp\b/.test(surface), 'no doc-model ytdlp access survives');
+  assert.ok(!/ytdlp\.ensureYtdlp\(|ytdlp\.readYtdlpNamespace\(/.test(surface), 'server.js never normalises the namespace itself');
+  assert.ok((surface.match(/ytdlpDb\.readPart\('subscriptions'\)/g) || []).length >= 6, 'the subscription-name reads');
+  assert.ok((surface.match(/ytdlpDb\.holder\(/g) || []).length >= 11, 'the per-request holders (avatar resolver, relocation joins, the scan)');
+  assert.ok(/bundle\.ytdlp = ytdlpDb\.read\(\)/.test(surface), 'the bundle reads the tables');
   // Wave 7b (S1a): 7 across the surface - server.js's five (the user-state and
   // notification deps bundles, lib/ytdlp's registerRoutes bundle,
   // startBackground, the export) and the two destructures that receive them in
   // lib/user/routes.js and lib/notifications/routes.js. Still an EXACT count:
   // a new crossing has to be a deliberate edit here, not a silent one.
-  assert.strictEqual((server.match(/\bytdlpDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
-  assert.strictEqual((server.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
-  assert.strictEqual((server.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
-  assert.strictEqual((server.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);
-  assert.ok(/inSaveTransaction\(\(\) => ytdlpDb\.syncFrom\(ytScan\.ytdlp\)\)/.test(server), 'the consumed entries ride the scan commit');
-  assert.strictEqual((server.match(/ytdlpDb\.mutate\(\(yh\) => refreshPinLabelsForBackfilledChannel\(db, /g) || []).length, 2, 'both fanout writers relabel the pins through a nested feature mutate (items from the doc, pins from the holder)');
-  assert.ok(!/const dbForLookup = /.test(server), 'the deep-clone dance is gone (a holder is a fresh snapshot)');
-  assert.ok(!/podcastsDb\.read\(\)\.episodes\[|const ns = podcastsDb\.read\(\);\n\s*const ep = /.test(server), 'gate pass B: no per-item whole-table read of the episodes map is left (point queries)');
-  assert.ok((server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5 && (server.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (server.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 6, 'the single-lookup sites are point queries');
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
+  assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
+  assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
+  assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);
+  assert.ok(/inSaveTransaction\(\(\) => ytdlpDb\.syncFrom\(ytScan\.ytdlp\)\)/.test(surface), 'the consumed entries ride the scan commit');
+  assert.strictEqual((surface.match(/ytdlpDb\.mutate\(\(yh\) => refreshPinLabelsForBackfilledChannel\(db, /g) || []).length, 2, 'both fanout writers relabel the pins through a nested feature mutate (items from the doc, pins from the holder)');
+  assert.ok(!/const dbForLookup = /.test(surface), 'the deep-clone dance is gone (a holder is a fresh snapshot)');
+  assert.ok(!/podcastsDb\.read\(\)\.episodes\[|const ns = podcastsDb\.read\(\);\n\s*const ep = /.test(surface), 'gate pass B: no per-item whole-table read of the episodes map is left (point queries)');
+  assert.ok((surface.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5 && (surface.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (surface.match(/booksDb\.parts\.(items|audio)\.get\(/g) || []).length >= 6, 'the single-lookup sites are point queries');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'store.js'), 'utf8'));
   assert.strictEqual((lib.match(/deps\.updateDatabase\(/g) || []).length, 13, 'the store module\'s 13 writers');
   assert.strictEqual((lib.match(/deps\.updateDatabase\(\(\) => deps\.ytdlpDb\.mutate\(\(db\) =>/g) || []).length, 13, 'every one of them runs on the holder');

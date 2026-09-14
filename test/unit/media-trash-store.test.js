@@ -213,12 +213,12 @@ test('source lock: the route surface never names media_trash or the dead doc key
   // - server.js plus every registerRoutes module it registers, derived from
   // server.js's own requires - so the seam checks follow the code and the
   // never-name-the-table checks now cover the modules too.
-  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
-  assert.ok(!/media_trash/.test(server));
-  assert.ok(!/\b(db|freshDb|fresh|current|state)\.trash\b/.test(server), 'no doc-model trash access survives');
-  assert.ok(!/getCachedDatabase\(\)\.trash\b/.test(server), 'nor through the read cache (the route lookup the first cut missed)');
+  const surface = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
+  assert.ok(!/media_trash/.test(surface));
+  assert.ok(!/\b(db|freshDb|fresh|current|state)\.trash\b/.test(surface), 'no doc-model trash access survives');
+  assert.ok(!/getCachedDatabase\(\)\.trash\b/.test(surface), 'nor through the read cache (the route lookup the first cut missed)');
   for (const call of ['trashStore.getAll(', 'trashStore.get(', 'trashStore.has(', 'trashStore.set(', 'trashStore.remove(', 'trashStore.expiredBefore(']) {
-    assert.ok(server.includes(call), `server.js calls ${call}`);
+    assert.ok(surface.includes(call), `the route surface calls ${call}`);
   }
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
     .filter((p) => !p.startsWith('test/') && !/(^|\/)(vendor|node_modules)\//.test(p));
