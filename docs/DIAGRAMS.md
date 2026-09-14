@@ -32,7 +32,7 @@ flowchart TD
 
     subgraph SERVER["Node process - server.js (the monolith host)"]
         GATE["lib/auth/gate.js<br/>ONE app.use(authGate): cookies, rate limit,<br/>per-request user re-check, pre-login allowlist"]
-        ROUTES["server.js route + middleware registrations (79 at v1.297.0 + Wave 7b R2 slice S3; 98 at v1.297.0; 176 at v1.296.0 - the census counts top-level app.use too)<br/>media/music/tv browse + bytes, scan, trash,<br/>move, backup, stats, config"]
+        ROUTES["server.js route + middleware registrations (63 at v1.298.0, the R2 merges in flight; 98 at v1.297.0; 176 at v1.296.0 - the census counts top-level app.use too)<br/>media/music/tv browse + bytes, scan, trash,<br/>move, backup, stats, config"]
         W7B["Wave 7b route modules - registerRoutes(app, deps)<br/>lib/queue/routes.js lib/notifications/routes.js lib/push/routes.js<br/>lib/user/routes.js lib/auth/routes.js lib/media/user-routes.js<br/>lib/books/routes.js + lib/books/scanRunner.js"]
         PODR["lib/podcasts/ routes<br/>registerRoutes(app, deps)"]
         YTDR["lib/ytdlp/ routes<br/>registerRoutes(app, deps)"]

@@ -26,13 +26,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const {
   SQLITE_FILENAME, SqliteAdapter, SCHEMA_VERSION, FEATURE_DEFS, readPersistedDatabase, importParsedJson,
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
 const tvStore = require('../../lib/tv/store');
+const { routeSurfaceSource } = require('../helpers/route-surface');
 
 let dir;
 let adapter;
@@ -145,8 +145,15 @@ test('readPersistedDatabase: surfaces `tv` in its container shape only when some
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the tv tables or the dead doc spellings in CODE; the scan merge and the config POST run through tvDb.mutate; the reads take tvDb.read()', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+test('source lock: the route surface never names the tv tables or the dead doc spellings in CODE; the scan merge and the config POST run through tvDb.mutate; the reads take tvDb.read()', () => {
+  // Wave 7b slice S4 (the monolith split): the config POST moved to
+  // lib/tv/routes.js and the scan merge to lib/tv/scanRunner.js, so both
+  // tvDb.mutate() writers left server.js. A moved sentence is not a deleted
+  // sentence: the lock now reads the SURFACE (server.js PLUS every module the
+  // split carved out of it, derived from server.js's own requires), so the
+  // exact-2 writer count and the negative spellings still cover the code they
+  // were written for wherever the slice put it.
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
   for (const t of ['tv_folders', 'tv_episodes', 'tv_settings']) assert.ok(!server.includes(t), t);
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.tv\b/.test(server), 'no doc-model tv access survives');
   assert.ok(!/tvStore\.readTv\(/.test(server), 'every read view moved to tvDb.read()');
