@@ -119,6 +119,15 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
+// Wave 7b, slice S1a (the monolith split, docs/exec-plans/active/
+// 2026-09-13-sqlite-relational-migration.md): four route groups now live in
+// their own modules and register through `registerRoutes(app, deps)` - the
+// lib/ytdlp + lib/podcasts pattern. Requiring them has no side effects (pure
+// leaves over the deps this file hands in at each call site below).
+const queueRoutes = require('./lib/queue/routes');
+const notificationsRoutes = require('./lib/notifications/routes');
+const pushRoutes = require('./lib/push/routes');
+const userRoutes = require('./lib/user/routes');
 // Wave G: the pure projection of library audio (db.metadata type 'audio') into
 // the Music library - eligibility + track shaping, no I/O.
 const libraryAudio = require('./lib/music/libraryAudio');
@@ -8385,42 +8394,27 @@ app.post('/api/music/resume', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- v1.265: cross-device preference sync -----------------------------------
-// The SYNCED allowlist (exec plan docs/exec-plans/active/cross-device-sync.md,
-// MACHINE-DERIVED, 21 keys). The server is the enforcement point: unknown keys
-// are rejected PER-ITEM (a junk key cannot poison a batch), values are capped,
-// and last-write-wins lives in the store's upsert WHERE guard. The client's
-// twin list is in public/js/prefs-sync.js; a lock test binds both to the plan.
-// v1.265 adversarial round: the list + caps moved to lib/prefs-allowlist.js so
-// the backup RESTORE loop (lib/auth/store.js) enforces the SAME defenses - the
-// seat measured the restore path bypassing all three (allowlist/cap/clamp).
-const { SYNCED_PREF_KEYS: SYNCED_PREF_KEY_LIST, PREF_VALUE_MAX_BYTES, PREF_CLOCK_SLACK_MS } = require('./lib/prefs-allowlist');
-const SYNCED_PREF_KEYS = new Set(SYNCED_PREF_KEY_LIST);
-
-app.get('/api/prefs', (req, res) => {
-  res.json({ prefs: userStore.getPrefs(req.user.id) });
-});
-
-app.post('/api/prefs', (req, res) => {
-  const body = req.body || {};
-  const raw = Array.isArray(body.entries) ? body.entries : [];
-  const entries = []; const rejected = [];
-  for (const e of raw.slice(0, 64)) { // batch cap: the allowlist is 21 keys
-    const key = e && typeof e.key === 'string' ? e.key : '';
-    const value = e && typeof e.value === 'string' ? e.value : null;
-    const updatedAt = e ? Number(e.updatedAt) : NaN;
-    if (!SYNCED_PREF_KEYS.has(key) || value === null || !Number.isFinite(updatedAt)
-      || Buffer.byteLength(value, 'utf8') > PREF_VALUE_MAX_BYTES) {
-      if (key) rejected.push(key);
-      continue;
-    }
-    // QA W3: a wrong-clock device must not WEDGE a key (a far-future stamp would
-    // win LWW forever and revert every other device on every refresh, with no
-    // in-app recovery). Stamps are clamped to now + 5min of ordinary skew.
-    entries.push({ key, value, updatedAt: Math.min(updatedAt, Date.now() + PREF_CLOCK_SLACK_MS) });
-  }
-  const { applied, skipped } = userStore.setPrefsLWW(req.user.id, entries);
-  res.json({ applied, skipped, rejected });
+// ---- the per-user state routes ----------------------------------------------
+// Wave 7b (slice S1a): the per-user state routes - /api/prefs, /api/watched,
+// /api/feed-hidden, /api/history, /api/search-history - moved VERBATIM to
+// lib/user/routes.js and register from here, in their original source order.
+// The prefs allowlist binding and the search-history cap +
+// normalizeSearchTerm moved with them (the routes were their only readers);
+// server.js still re-exports normalizeSearchTerm as the SAME function object.
+userRoutes.registerRoutes(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  // The progress coalescer's staging Map + its key builder: the history and
+  // feed-hidden reads overlay not-yet-flushed pings (read-your-writes) and
+  // the history/watched deletes purge them in the same synchronous handler.
+  pendingProgress,
+  pendingProgressKey,
+  resolveModernGridItem, // the modern-grid projection GET /api/feed-hidden renders through
+  restrictedVideoMutation, // v1.80 RBAC (S-b): no restricted-id oracle, no persist
+  userStore,
+  videoQuery, // normalizeLimit/normalizeOffset/deriveWatchState for the history page
+  ytdlp, // resolveItemChannelAvatarUrl for the history cards
+  ytdlpDb,
 });
 
 // Per-track progress ping -> staged into the music coalescer (no disk I/O on
@@ -10316,484 +10310,47 @@ function notificationsFeatureEnabled(_db) {
   return settingsStore.getKey('notificationsEnabled') !== false; // Wave 4
 }
 
-// The badge count. Doubles as the client's boot probe, so it is the ONE
-// endpoint that must stay cheap: two point queries against the cache.
-app.get('/api/notifications/badge', (req, res) => {
-  const db = getCachedDatabase(); // hot poll reader (60s cadence per client)
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  // v1.146: engine rows are admin-only - the badge and the panel must agree
-  // (a member badge ticking for a row the panel filters out is a phantom
-  // badge that user could never clear by reading).
-  res.json({ count: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
+// ---- the bell, web push and the playback queue ------------------------------
+// Wave 7b (slice S1a): these three route groups moved VERBATIM to
+// lib/notifications/routes.js, lib/push/routes.js and lib/queue/routes.js and
+// register from here, in their original order. notificationsFeatureEnabled
+// (above) stayed in server.js - the push delivery bundle reads it too - and
+// crosses as the SAME function object to both modules.
+notificationsRoutes.registerRoutes(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  notificationsFeatureEnabled,
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  resolveItemChapters, // the panel's chapterCount for audio rows
+  trashStore, // the panel filters rows whose media is in the trash
+  userStore,
+  ytdlp, // resolveItemChannelAvatarUrl + the engine-row shaping
+  ytdlpDb,
 });
 
-// The panel list: feed rows joined against the CURRENT library item (title/
-// channel/thumbnail are never denormalized into the feed -- the item is the
-// source of truth and prune-on-delete keeps the join target alive). A row
-// whose item vanished mid-flight (delete committed, scan prune still
-// pending) is filtered here as the defensive net.
-app.get('/api/notifications', (req, res) => {
-  const db = getCachedDatabase();
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const { items } = userStore.listNotifications(req.user.id);
-  const metadata = db.metadata || {};
-  const rows = [];
-  const phantomMediaIds = [];
-  const phantomEpisodeIds = [];
-  // v1.73: podcast rows resolve against the episodes map, never db.metadata
-  // (the shapedQueue posture) - one ns read for the whole request.
-  const podcastNsForFeed = podcastsDb.read();
-  const podcastSubNames = new Map(podcastNsForFeed.subscriptions.filter(Boolean).map((sub) => [sub.id, sub.name]));
-  for (const row of items) {
-    // v1.146 (downloader-engine T5): engine event rows - ADMIN-ONLY (an
-    // engine revert is an operator concern; members must see neither the
-    // row nor, via the badge/unseenCount above, its existence). The id
-    // carries the whole payload; a malformed one (crafted backup bundle)
-    // parses to null and renders NOTHING - never garbage.
-    if (row.kind === 'engine') {
-      if (!req.user || req.user.role !== 'admin') continue;
-      const parsed = ytdlp.parseEngineNotificationId(row.mediaId);
-      if (!parsed) continue;
-      rows.push({
-        id: row.id,
-        mediaId: row.mediaId,
-        createdAt: row.createdAt,
-        unread: row.unread,
-        kind: 'engine',
-        title: ytdlp.describeEngineEvent(parsed.event, parsed.version),
-        channelName: 'Downloader engine',
-        folderName: '',
-        channelAvatarUrl: '',
-        hasThumbnail: false,
-        type: 'engine',
-      });
-      continue;
-    }
-    if (row.kind === 'podcast') {
-      const ep = Object.prototype.hasOwnProperty.call(podcastNsForFeed.episodes, row.mediaId) ? podcastNsForFeed.episodes[row.mediaId] : null;
-      if (!ep) {
-        // The episode record is GONE (purged/unsubscribed with a failed
-        // carrier, or a restored feed referencing since-deleted episodes):
-        // prune via the episode carrier - the ONE deleter for this id
-        // space, idempotent over already-purged per-user rows. NEVER
-        // removeMediaState (a media item sharing the md5 id would lose
-        // every user's state - the kind-confusion class).
-        phantomEpisodeIds.push(row.mediaId);
-        continue;
-      }
-      if (ep.status !== 'downloaded') continue; // trashed/pending - HIDDEN, not phantom (restore brings it back)
-      if (!podcastEpisodeVisibleTo(req, ep)) continue; // v1.80 RBAC: no restricted show title in the bell
-      const showName = podcastSubNames.has(ep.subId) ? podcastSubNames.get(ep.subId) : '';
-      rows.push({
-        id: row.id,
-        mediaId: row.mediaId,
-        createdAt: row.createdAt,
-        unread: row.unread,
-        kind: 'podcast',
-        title: ep.title || '',
-        channelName: showName || 'Podcast',
-        folderName: showName || '',
-        channelAvatarUrl: '',
-        hasThumbnail: false,
-        artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
-        type: 'audio',
-        durationSec: Number(ep.durationSec) > 0 ? Number(ep.durationSec) : 0, // v1.208: the episode length for the panel badge
-      });
-      continue;
-    }
-    // Own-property lookup (gate round 2, adversarial): a feed row whose
-    // mediaId is a prototype key ('constructor', ...) -- reachable only via
-    // a crafted admin bundle -- must read as ABSENT, not as a truthy
-    // inherited junk item that the phantom-prune below would then skip
-    // forever (the v1.42 __proto__ row-key lesson).
-    const item = Object.prototype.hasOwnProperty.call(metadata, row.mediaId) ? metadata[row.mediaId] : undefined;
-    if (!item) {
-      // v1.65 gate fix (QA C1): a TRASHED item's feed row re-keyed to the
-      // trashId along with the other eight carriers -- it is HIDDEN, not
-      // phantom. The prune below calls removeMediaState, which would
-      // destroy every user's progress/likes/watched/queue for the trashed
-      // item and break restore's full-fidelity promise on the first
-      // bell-open (proven by the seat's runnable repro). Filter without
-      // pruning; restore re-keys the row home, purge retires it. (The
-      // badge counts the hidden row until then -- accepted, disclosed.)
-      if (trashStore.has(row.mediaId)) { // Wave 3: the table
-        continue;
-      }
-      // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
-      // whose removeMediaState call failed and was caught-and-continued, or
-      // a restored feed referencing since-deleted media) is not just
-      // filtered from this response -- it is collected and pruned below, so
-      // the badge (which counts feed rows without a metadata join) stops
-      // disagreeing with the panel after the first open. removeMediaState
-      // is the existing carrier-scrub; reusing it keeps ONE deleter.
-      phantomMediaIds.push(row.mediaId);
-      continue;
-    }
-    // v1.80 RBAC (security-gate CRITICAL): the bell is a global feed - a
-    // restricted member must not read a restricted item's TITLE here. Hide the
-    // row (it stays for other users); do NOT prune (it is visible content for
-    // someone). Admin's empty index hides nothing.
-    if (!mediaVisibleTo(req, item)) continue;
-    let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
-    if (channelAvatarUrl === '') {
-      // v1.85 #3a: resolveItemChannelAvatarUrl is READ-ONLY now (it reads via
-      // readYtdlpNamespace, never ensureYtdlp), so the shared getCachedDatabase()
-      // object can be handed in directly - no defensive deep-clone.
-      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
-    }
-    rows.push({
-      id: row.id,
-      mediaId: row.mediaId,
-      createdAt: row.createdAt,
-      unread: row.unread,
-      kind: 'media', // v1.73: carried on every row
-      title: item.title || item.name || '',
-      channelName: typeof item.channelName === 'string' ? item.channelName : '',
-      folderName: typeof item.folderName === 'string' ? item.folderName : '',
-      channelAvatarUrl,
-      hasThumbnail: item.hasThumbnail === true,
-      type: item.type === 'audio' ? 'audio' : 'video',
-      // v1.251: chapterCount for audio (the v1.236 fold, /api/videos parity) so the bell
-      // row's audio reroute opens a chaptered download AS ITS ALBUM (::c0), like every
-      // other surface. Audio-only - video rows never reroute.
-      ...(item.type === 'audio' ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
-      // v1.208 (Dean): the watch length, so the panel can show a small duration
-      // badge (triage before deleting). Seconds; 0 when unknown -> no badge.
-      durationSec: Number(item.duration) > 0 ? Number(item.duration) : 0,
-    });
-  }
-  if (phantomMediaIds.length > 0) {
-    // Wave 1 (deliberate EXEMPTION, both gate seats): the view-count row is
-    // NOT pruned here. This prune exists for badge/panel coherency - it scrubs
-    // per-user feed state for ids that no longer resolve to metadata. A
-    // view-count row feeds no count that can disagree with anything a user
-    // sees; its only effect is a resumed count on a same-path re-add (the
-    // class accepted at the delete route), and making a GET route a second
-    // deleter of media state is not worth that. Later waves: the same call
-    // applies - carrier removal belongs to the delete/prune/purge writers.
-    try {
-      userStore.removeMediaState(phantomMediaIds);
-    } catch (err) {
-      console.error('Notifications: failed to prune phantom feed rows (continuing):', err && err.message);
-    }
-  }
-  if (phantomEpisodeIds.length > 0) {
-    try {
-      userStore.removePodcastEpisodeState(phantomEpisodeIds);
-    } catch (err) {
-      console.error('Notifications: failed to prune phantom podcast feed rows (continuing):', err && err.message);
-    }
-  }
-  // v1.146: same admin-only engine-row inclusion as the badge route above.
-  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id, { includeEngine: req.user.role === 'admin' }) });
+pushRoutes.registerRoutes(app, {
+  PUSH_VAPID,
+  getCachedDatabase,
+  notificationsFeatureEnabled,
+  // A live READER, not the value: __setPushGuardLookupForTests reassigns this
+  // `let` long after the routes register, so destructuring the value would
+  // freeze the subscribe route's SSRF-guard seam to its boot-time null.
+  pushGuardLookup: () => pushGuardLookupOverride,
+  pushShortlink,
+  userStore,
 });
 
-// Opening the panel zeroes the NUMBER badge (two-tier semantics, decision 3:
-// per-row dots survive until tapped).
-app.post('/api/notifications/seen', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  userStore.markNotificationsSeen(req.user.id, Date.now());
-  res.json({ success: true });
-});
-
-// Tapping a row drops its dot. A phantom id (evicted/pruned/fabricated) is a
-// 400, never a silently-banked read.
-app.post('/api/notifications/read', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const id = req.body ? req.body.id : undefined;
-  if (!Number.isInteger(id) || !userStore.markNotificationRead(req.user.id, id, Date.now())) {
-    return res.status(400).json({ error: 'invalid notification id' });
-  }
-  res.json({ success: true });
-});
-
-// v1.68 (Dean ruling 3): per-row dismissal - the row leaves THIS user's
-// panel and badge, survives for every other user. Same phantom-id 400
-// discipline as /read (evicted/pruned/fabricated ids are never banked).
-app.post('/api/notifications/dismiss', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const id = req.body ? req.body.id : undefined;
-  if (!Number.isInteger(id) || !userStore.dismissNotification(req.user.id, id, Date.now())) {
-    return res.status(400).json({ error: 'invalid notification id' });
-  }
-  res.json({ success: true });
-});
-
-// Clear-all: empties THIS user's panel view and zeroes their badge. The feed
-// rows themselves survive for every other user (per-user watermark, never a
-// global delete).
-app.post('/api/notifications/clear', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  userStore.clearNotifications(req.user.id, Date.now());
-  res.json({ success: true });
-});
-
-// ============ v1.66 web push =================================================
-// Same three-way feature gate as the bell (this is the bell's delivery
-// channel). Subscribe is the ONE route that accepts a client-supplied
-// remote URL, so it carries the full SSRF discipline: https-only, shape-
-// checked keys (decode + length, not regex), guardHop (literal-IP + DNS
-// resolve-all, fail-closed) - and delivery re-checks at send time.
-
-const PUSH_SUBSCRIPTIONS_PER_USER_CAP = 10;
-
-app.get('/api/push/key', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  res.json({ key: PUSH_VAPID.publicKeyB64url });
-});
-
-// ASYNC HANDLER: Express 4 never observes a rejected async handler, so an
-// uncaught throw here is a SOCKET THAT HANGS FOREVER, not a 500 (the class
-// this repo already documented at the ytdlp async routes). The whole body is
-// try/caught for that reason - the v1.66 QA seat measured the unguarded
-// version hanging on an array-wrapped key that passed String() coercion and
-// then threw in the store.
-app.post('/api/push/subscribe', async (req, res) => {
-  try {
-    const db = getCachedDatabase();
-    if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-    const body = req.body || {};
-    const endpoint = body.endpoint;
-    const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
-    if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
-      return res.status(400).json({ error: 'invalid endpoint' });
-    }
-    let parsed;
-    try { parsed = new URL(endpoint); } catch { return res.status(400).json({ error: 'invalid endpoint' }); }
-    // https only - push services are https, and http would leak the
-    // capability URL in cleartext. (guardHop alone would allow http.)
-    if (parsed.protocol !== 'https:') return res.status(400).json({ error: 'endpoint must be https' });
-    // The browser's keys, decoded and measured - a p256dh that is not an
-    // uncompressed P-256 point or an auth that is not 16 bytes could never
-    // decrypt anyway; refuse it at the door. TYPE first: String(['a']) is
-    // 'a', so a one-element array used to sail through this check and throw
-    // deeper in (QA W1).
-    let p256dhOk = false;
-    let authOk = false;
-    if (typeof keys.p256dh === 'string' && typeof keys.auth === 'string') {
-      try {
-        const p = Buffer.from(keys.p256dh, 'base64url');
-        p256dhOk = p.length === 65 && p[0] === 0x04;
-        authOk = Buffer.from(keys.auth, 'base64url').length === 16;
-      } catch { /* fall through to the 400 */ }
-    }
-    if (!p256dhOk || !authOk) return res.status(400).json({ error: 'invalid subscription keys' });
-    const guard = await pushShortlink.guardHop(endpoint, { lookup: pushGuardLookupOverride || undefined });
-    if (!guard.ok) return res.status(400).json({ error: 'endpoint refused' });
-    // Cap NEW endpoints per user (an unbounded roster is a delivery-time
-    // amplification primitive); re-registering an existing endpoint is free.
-    if (!userStore.getPushSubscription(endpoint)
-      && userStore.countPushSubscriptions(req.user.id) >= PUSH_SUBSCRIPTIONS_PER_USER_CAP) {
-      return res.status(409).json({ error: 'subscription limit reached for this account' });
-    }
-    // Cursor starts at the feed head: a fresh device is never back-flooded
-    // with history (ruling P1; the bell panel is the history surface).
-    userStore.upsertPushSubscription(
-      req.user.id,
-      { endpoint, p256dh: keys.p256dh, auth: keys.auth },
-      userStore.getMaxNotificationId(),
-      Date.now()
-    );
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('POST /api/push/subscribe failed:', err && err.message);
-    return res.status(500).json({ error: 'could not save the subscription' });
-  }
-});
-
-app.post('/api/push/unsubscribe', (req, res) => {
-  const db = getCachedDatabase();
-  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
-  const endpoint = (req.body || {}).endpoint;
-  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
-    return res.status(400).json({ error: 'invalid endpoint' });
-  }
-  // Owner-scoped: another user's endpoint is untouchable (removed:false,
-  // not a 403 - do not confirm the endpoint exists at all).
-  const removed = userStore.removeOwnPushSubscription(req.user.id, endpoint);
-  res.json({ removed });
-});
-
-// ============ v1.63 playback queue ("think YouTube" - Dean) ==================
-// One per-user queue; ALL semantics live in lib/queue/store.js's pure
-// reducers - these routes run reducer -> persist (userStore.setQueue,
-// whole-set transaction) -> respond with the shaped queue (the pin-routes
-// posture). Dead media ids are filtered at READ - belt to the
-// removeMediaState carrier's suspenders (a restore from another library,
-// or a delete racing a stale client, must never 500 the panel).
-
-// v1.128 Wave B (L9): shapedQueue now takes `req` (was userId) so it can drop
-// entries the requester cannot see. A hidden entry is SILENT-DROPPED exactly
-// like a dead/phantom id already is - hidden and dead are indistinguishable to
-// the client, which is the oracle-free posture the plan wants (a restricted
-// member with a hidden item queued before the restriction, or via a restored
-// bundle, simply never sees it echoed back with its title/path).
-function shapedQueue(db, req) {
-  const userId = req.user.id;
-  const raw = userStore.getQueue(userId);
-  const live = queueStore.normalize(raw);
-  const podcastNs = podcastsDb.read();
-  const musicNs = musicDb.read();
-  const entries = [];
-  for (const e of live.entries) {
-    if (e.kind === 'podcast') {
-      // v1.71: podcast entries resolve against the episodes map, never
-      // db.metadata. The SILENT-DROP is deliberately preserved for this id
-      // space too - a trashed/tombstoned/phantom episode disappears from
-      // the panel, belt to the delQueueByEpisode carrier's suspenders.
-      const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, e.mediaId) ? podcastNs.episodes[e.mediaId] : null;
-      if (ep && ep.status === 'downloaded' && podcastEpisodeVisibleTo(req, ep)) {
-        const sub = podcastNs.subscriptions.find((s) => s && s.id === ep.subId);
-        entries.push({
-          uid: e.uid,
-          mediaId: e.mediaId,
-          kind: 'podcast',
-          // The media-item projection the queue consumers expect, from
-          // podcast fields: show name as the channel label, show cover as
-          // artUrl (buildQueueRowModel's podcast thumb source).
-          item: {
-            title: ep.title,
-            name: ep.title,
-            channelName: sub ? sub.name : null,
-            folderName: sub ? sub.name : null,
-            artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
-            durationSec: Number.isFinite(ep.durationSec) ? ep.durationSec : null,
-            hasThumbnail: false,
-          },
-        });
-      }
-      continue;
-    }
-    if (e.kind === 'track') {
-      // v1.72: track entries resolve against ns.tracks, never db.metadata.
-      // The silent-drop is preserved for this id space too - a pruned/
-      // phantom track disappears from the panel, belt to the
-      // delQueueByTrack carrier's suspenders. (adversarial S3: the ns is
-      // hoisted like the podcast one, not re-read per entry.)
-      const track = ownTrack(musicNs.tracks, e.mediaId);
-      if (track && trackVisibleTo(req, track)) {
-        entries.push({
-          uid: e.uid,
-          mediaId: e.mediaId,
-          kind: 'track',
-          item: {
-            title: track.title,
-            name: track.title,
-            channelName: track.artist || null,
-            folderName: track.album || null,
-            artUrl: `/albumart/${encodeURIComponent(track.id)}`,
-            durationSec: Number.isFinite(track.durationSec) ? track.durationSec : null,
-            hasThumbnail: false,
-          },
-        });
-      }
-      continue;
-    }
-    // hasOwnProperty (gate S9): a restored bundle can carry prototype-chain
-    // keys as mediaIds; they must silent-drop like any dead id, never serve
-    // a garbage item from the prototype.
-    const item = Object.prototype.hasOwnProperty.call(db.metadata, e.mediaId) ? db.metadata[e.mediaId] : null;
-    if (item && mediaVisibleTo(req, item)) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
-  }
-  // Dead-id filtering can orphan the pointer; normalize AGAIN on the
-  // filtered view so the client never sees a pointer to a missing row.
-  const view = queueStore.normalize({ entries, pointerUid: live.pointerUid });
-  return { entries: view.entries, pointerUid: view.pointerUid, updatedAt: raw.updatedAt || 0 };
-}
-
-app.get('/api/queue', (req, res) => {
-  res.json(shapedQueue(getCachedDatabase(), req));
-});
-
-app.post('/api/queue/items', (req, res) => {
-  const db = getCachedDatabase();
-  const body = req.body || {};
-  const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
-  // v1.71: the entry's kind is CARRIED, never inferred (episode ids are
-  // md5 hex exactly like media ids). Each kind existence-checks its own
-  // id space; a podcast add requires a playable (downloaded) episode.
-  // v1.72: 'track' joins (music in the one queue) - the row must still
-  // exist in ns.tracks (the own-property ownTrack rule).
-  const kind = (body.kind === 'podcast' || body.kind === 'track') ? body.kind : 'media';
-  // v1.128 Wave B (L9): each kind visibility-checks after the existence check,
-  // returning the SAME 404 as a missing id so a restricted member cannot use
-  // the insert as an existence oracle for a hidden item (and never gets it
-  // echoed back through the shaped queue).
-  if (kind === 'podcast') {
-    const podcastNs = podcastsDb.read();
-    const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
-    if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
-  } else if (kind === 'track') {
-    const track = musicDb.parts.tracks.get(mediaId); // Wave 5 (gate pass B): a point query
-    if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
-  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
-    // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
-    // 'constructor', 'toString') must 404 like any phantom, never queue an
-    // item-less entry the shaped view then serves as garbage. Wave B: a hidden
-    // item 404s here too, indistinguishable from a missing one.
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  const position = body.position === 'next' ? 'next' : 'end';
-  const result = queueStore.reduceAdd(userStore.getQueue(req.user.id), mediaId, position, kind);
-  if (!result.changed) {
-    return res.status(400).json({ error: result.error === 'queue-full' ? `Queue is full (${queueStore.QUEUE_CAP} items)` : 'Could not add to queue' });
-  }
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ added: result.added, queue: shapedQueue(db, req) });
-});
-
-app.delete('/api/queue/items/:uid', (req, res) => {
-  const result = queueStore.reduceRemove(userStore.getQueue(req.user.id), req.params.uid);
-  if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
-});
-
-// Strict uid bijection (the reducer refuses drops/inventions): a stale
-// client gets a 409 telling it to refresh, never a "helpful" merge.
-app.post('/api/queue/reorder', (req, res) => {
-  const orderedUids = req.body ? req.body.orderedUids : undefined;
-  if (!Array.isArray(orderedUids) || !orderedUids.every((u) => typeof u === 'string' && u !== '')) {
-    return res.status(400).json({ error: 'orderedUids must be an array of non-empty strings' });
-  }
-  // v1.65 (QA W1): lift the client's order over the VISIBLE entries back to
-  // the full raw multiset -- a trashed item's entry is hidden from the
-  // client but still lives in the raw queue (that is what buys restore
-  // fidelity), and without this every reorder after a trash 409s forever.
-  const rawQueue = userStore.getQueue(req.user.id);
-  const visibleUids = shapedQueue(getCachedDatabase(), req).entries.map((e) => e.uid);
-  const fullOrder = queueStore.expandVisibleOrder(rawQueue, visibleUids, orderedUids);
-  const result = queueStore.reduceReorder(rawQueue, fullOrder);
-  if (!result.changed) return res.status(409).json({ error: 'Queue changed - refresh and retry' });
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
-});
-
-// The now-playing pointer. body.uid = an entry uid, or null to restart
-// (not-started semantics: the head is up next).
-app.post('/api/queue/pointer', (req, res) => {
-  const uid = req.body ? req.body.uid : undefined;
-  if (uid !== null && (typeof uid !== 'string' || uid === '')) {
-    return res.status(400).json({ error: 'uid must be an entry uid or null' });
-  }
-  const result = queueStore.reduceSetPointer(userStore.getQueue(req.user.id), uid);
-  if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: shapedQueue(getCachedDatabase(), req) });
-});
-
-// Clear = the whole queue dies (icon disappears). Ephemeral by design -
-// one confirm toast client-side, no modal ceremony (Dean ruling 4).
-app.delete('/api/queue', (req, res) => {
-  const result = queueStore.reduceClear();
-  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
-  res.json({ queue: { entries: [], pointerUid: null, updatedAt: Date.now() } });
+queueRoutes.registerRoutes(app, {
+  getCachedDatabase,
+  mediaVisibleTo,
+  musicDb,
+  ownTrack, // the OWN-property track lookup shapedQueue uses (shared with the music routes)
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  queueStore,
+  trackVisibleTo,
+  userStore,
 });
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
@@ -11640,31 +11197,9 @@ app.get('/api/videos/:id', (req, res) => {
   });
 });
 
-// ---- v1.72 (cap 6): the manual watched latch --------------------------------
-// Videos' latch was write-only-by-threshold (POST /api/progress crossing
-// WATCHED_PCT); podcasts have had the manual toggle since v1.69. The parity
-// port: POST marks watched NOW (idempotent - markWatched no-ops on an
-// existing row, preserving the original completed_at). DELETE is the
-// un-watch verb with IDENTICAL semantics to the v1.64 history-row delete
-// (staged ping + progress + latch): clearing only the latch would leave a
-// >=90% live position still DERIVING 'watched' and the toggle would appear
-// stuck for exactly the fully-watched items it exists for.
-app.post('/api/watched/:id', (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
-  const db = getCachedDatabase(); // hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_watched -- see POST /api/liked/:id's identical guard.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
-  if (!item) return res.status(404).json({ error: 'Media file not found' });
-  userStore.markWatched(req.user.id, item.id, new Date().toISOString());
-  res.json({ success: true, watched: true });
-});
-
-app.delete('/api/watched/:id', (req, res) => {
-  pendingProgress.delete(pendingProgressKey(req.user.id, req.params.id));
-  userStore.removeHistory(req.user.id, req.params.id);
-  res.json({ success: true, watched: false });
-});
+// Wave 7b (slice S1a): POST|DELETE /api/watched/:id (the manual watched
+// latch) moved VERBATIM to lib/user/routes.js - see the
+// userRoutes.registerRoutes call beside the cross-device preference sync.
 
 // API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
 // `pendingProgress` entry (read-your-writes); see `effectiveProgress` above.
@@ -12505,69 +12040,9 @@ app.delete('/api/liked/:id', (req, res) => {
   res.json({ success: true, liked: false });
 });
 
-// ---- v1.97 "Hide from feed" -----------------------------------------------
-//
-// A per-user, MANUAL prune of the MODERN home feed (GET /api/home?view=grid).
-// It is the member's OWN state (personal), NOT a visibility/RBAC control: a
-// feed-hidden item is NOT deleted and stays fully findable via search, channel,
-// playlist, folder, the classic/feed home views, and Liked - only the modern
-// feed omits it (server.js's grid arm). Media (video/audio) only, per-VIDEO
-// (channel-level hide is a separate future feature). Routes mirror /api/liked.
-
-// Hide a media item from THIS user's modern feed (idempotent add).
-app.post('/api/feed-hidden/:id', (req, res) => {
-  if (restrictedVideoMutation(req, res, req.params.id)) return; // v1.80 RBAC (S-b): no restricted-id oracle/persist
-  const db = getCachedDatabase(); // hot GET reader (existence check only)
-  // OWN-property check (v1.42 __proto__ lesson): this id persists into
-  // user_feed_hidden - the identical guard POST /api/liked/:id uses.
-  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
-  if (!item) {
-    return res.status(404).json({ error: 'Media file not found' });
-  }
-  userStore.addFeedHidden(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent
-  res.json({ success: true, hidden: true });
-});
-
-// Un-hide (the Undo/Restore verb). Idempotent, no existence gate - restoring
-// membership for an id that's already absent (or since deleted from the
-// library) is itself the desired end state, exactly like DELETE /api/liked/:id.
-app.delete('/api/feed-hidden/:id', (req, res) => {
-  userStore.removeFeedHidden(req.user.id, req.params.id);
-  res.json({ success: true, hidden: false });
-});
-
-// The You-tab "Hidden from feed" restore list. Read-only; never mutates. RBAC:
-// filtered through mediaVisibleTo so a SINCE-restricted item's id/title can
-// never leak here (the inverse of the v1.80 list-surface-leak class). Shaped as
-// modern-grid items (resolveModernGridItem) so the client renders the SAME
-// cards, newest-hidden first (getFeedHidden's order).
-app.get('/api/feed-hidden', (req, res) => {
-  const db = getCachedDatabase();
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const userId = req.user.id;
-  const likedSet = new Set(userStore.getLiked(userId));
-  const progressMap = userStore.getProgress(userId);
-  for (const entry of pendingProgress.values()) {
-    if (entry.userId === userId) progressMap[entry.mediaId] = entry.value; // read-your-writes
-  }
-  const items = [];
-  for (const id of userStore.getFeedHidden(userId)) { // newest-hidden first
-    const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null;
-    if (!item || typeof item !== 'object') continue;
-    if (!mediaVisibleTo(req, item)) continue; // v1.80 RBAC: never leak a since-restricted item
-    const p = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
-    const ts = p ? Number(p.timestamp) : 0;
-    const dur = p ? Number(p.duration) : 0;
-    const rec = {
-      id, kind: 'media', type: item.type === 'audio' ? 'audio' : 'video',
-      addedAt: typeof item.addedAt === 'number' ? item.addedAt : 0,
-      progressPercent: dur > 0 ? (ts / dur) * 100 : 0, liked: likedSet.has(id),
-    };
-    const shaped = resolveModernGridItem(db, rec, ytView);
-    if (shaped) items.push(shaped);
-  }
-  res.json({ items, total: items.length });
-});
+// Wave 7b (slice S1a): the three /api/feed-hidden routes moved VERBATIM to
+// lib/user/routes.js - see the userRoutes.registerRoutes call beside the
+// cross-device preference sync.
 
 // ---- v1.72 (#94): the Liked playlist is MIXED-KIND -------------------------
 //
@@ -12813,133 +12288,10 @@ app.get('/api/liked', (req, res) => {
   res.json({ items, total, offset, limit });
 });
 
-// ---- v1.64 watch history ---------------------------------------------------
-// Everything the signed-in user watched or started, newest first. The merged
-// set is user_progress (started) + user_watched (the completion latch); the
-// per-media order key is the freshest signal: a staged coalescer ping
-// (read-your-writes -- the overlay value carries its own updatedAt) beats
-// the committed row, and progress.updatedAt pairs with the latch's
-// completed_at via max(). ISO strings compare lexicographically, so string
-// max IS time max. Dead media ids are filtered at read time (the
-// shapedQueue posture): a row that outlives its file must never break the
-// page, and the media-delete prune remains the durable cleaner.
-app.get('/api/history', (req, res) => {
-  const db = getCachedDatabase(); // hot GET reader, same as /api/liked
-  const ytView = ytdlpDb.holder(['subscriptions', 'channelAvatars']); // Wave 5: the avatar registry + subscriptions, ONE read per request (resolveItemChannelAvatarUrl is read-only)
-  const limit = videoQuery.normalizeLimit(req.query.limit);
-  const offset = videoQuery.normalizeOffset(req.query.offset);
-  const progressMap = userStore.getProgress(req.user.id);
-  for (const entry of pendingProgress.values()) {
-    if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
-  }
-  const watchedTimes = userStore.getWatchedTimes(req.user.id);
-  const likedSet = new Set(userStore.getLiked(req.user.id));
-
-  // Per-media newest signal. A null updated_at (a legacy batch row) sorts
-  // as '' -- present in history, oldest possible position.
-  const lastById = Object.create(null);
-  for (const id of Object.keys(progressMap)) {
-    lastById[id] = typeof progressMap[id].updatedAt === 'string' ? progressMap[id].updatedAt : '';
-  }
-  for (const id of Object.keys(watchedTimes)) {
-    const at = typeof watchedTimes[id] === 'string' ? watchedTimes[id] : '';
-    if (!(id in lastById) || at > lastById[id]) lastById[id] = at;
-  }
-
-  const merged = Object.keys(lastById)
-    .filter((id) => Object.prototype.hasOwnProperty.call(db.metadata, id))
-    .filter((id) => mediaVisibleTo(req, db.metadata[id])) // v1.80 RBAC: no restricted items in history
-    .sort((a, b) => {
-      if (lastById[a] !== lastById[b]) return lastById[a] > lastById[b] ? -1 : 1;
-      return a < b ? -1 : 1; // deterministic tiebreak
-    });
-
-  const total = merged.length;
-  const page = merged.slice(offset, offset + limit);
-  const items = page.map((id) => {
-    const item = db.metadata[id];
-    const progress = progressMap[id] || { timestamp: 0, duration: 0 };
-    const dur = typeof progress.duration === 'number' && Number.isFinite(progress.duration) && progress.duration > 0 ? progress.duration : 0;
-    const progressPercent = dur > 0 ? (progress.timestamp / dur) * 100 : 0;
-    return {
-      ...item,
-      // v1.113 (Fix A sweep): History feeds the SAME buildCardHtml ->
-      // modernCardAvatar path, so resolve the avatar identically (read-only).
-      channelAvatarUrl: ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '',
-      liked: likedSet.has(id),
-      progress: progress.timestamp || 0,
-      progressPercent,
-      watchState: videoQuery.deriveWatchState(progressPercent, id in watchedTimes),
-      lastWatchedAt: lastById[id] || null
-    };
-  });
-
-  res.json({ items, total, offset, limit });
-});
-
-// Per-item remove-from-history. Idempotent 200 (an already-gone or even
-// dead-media id is a no-op, not a 404 -- a row that outlived its file must
-// still be removable). The staged coalescer entry is purged IN THE SAME
-// synchronous handler as the row delete: a staged ping left behind would be
-// flushed <=PROGRESS_FLUSH_MS later and silently resurrect the row. A ping
-// arriving AFTER this response re-adds the item -- that is the user still
-// watching, not a bug (the latch re-marks on the next threshold cross too).
-app.delete('/api/history/:id', (req, res) => {
-  const id = req.params.id;
-  pendingProgress.delete(pendingProgressKey(req.user.id, id));
-  userStore.removeHistory(req.user.id, id);
-  res.json({ success: true });
-});
-
-// Clear-all, strictly this user: the staged-entry sweep filters on
-// entry.userId (deleting from a Map while iterating it is safe in JS) and
-// clearHistory's DELETEs are user-scoped by statement.
-app.delete('/api/history', (req, res) => {
-  // QA gate W1 (v1.64): Express non-strict routing aliases
-  // 'DELETE /api/history/' -- the per-item form with a MISSING id -- onto
-  // this handler. A caller that meant to remove ONE item must never wipe
-  // the whole history: refuse the ambiguous trailing-slash form outright.
-  if (req.path !== '/api/history') {
-    return res.status(400).json({ error: 'item id required' });
-  }
-  for (const [key, entry] of pendingProgress) {
-    if (entry.userId === req.user.id) pendingProgress.delete(key);
-  }
-  userStore.clearHistory(req.user.id);
-  res.json({ success: true });
-});
-
-// ---- v1.85 #1: per-user search history (the mobile magnifier) ---------------
-// term-keyed, exact-dedup, recency-ordered, capped. Individually deletable + a
-// clear-all guarded against the trailing-slash alias (the v1.64 lesson).
-const SEARCH_HISTORY_CAP = 20;
-const SEARCH_TERM_MAX = 200;
-// Pure + exported: collapse whitespace, trim, cap length. Empty -> '' (rejected).
-function normalizeSearchTerm(raw) {
-  if (typeof raw !== 'string') return '';
-  const t = raw.replace(/\s+/g, ' ').trim();
-  return t.length > SEARCH_TERM_MAX ? t.slice(0, SEARCH_TERM_MAX) : t;
-}
-app.get('/api/search-history', (req, res) => {
-  res.json({ terms: userStore.getSearchHistory(req.user.id, SEARCH_HISTORY_CAP) });
-});
-app.post('/api/search-history', (req, res) => {
-  const term = normalizeSearchTerm(req.body && req.body.term);
-  if (!term) return res.status(400).json({ error: 'term required' });
-  userStore.addSearchTerm(req.user.id, term, new Date().toISOString());
-  res.json({ success: true, term });
-});
-app.delete('/api/search-history/:term', (req, res) => {
-  userStore.removeSearchTerm(req.user.id, req.params.term);
-  res.json({ success: true });
-});
-app.delete('/api/search-history', (req, res) => {
-  // The same trailing-slash guard as DELETE /api/history: a missing :term must
-  // NOT be aliased onto this clear-all (Express non-strict routing).
-  if (req.path !== '/api/search-history') return res.status(400).json({ error: 'term required' });
-  userStore.clearSearchHistory(req.user.id);
-  res.json({ success: true });
-});
+// Wave 7b (slice S1a): GET|DELETE /api/history, DELETE /api/history/:id and
+// the four /api/search-history routes (with SEARCH_HISTORY_CAP and
+// normalizeSearchTerm) moved VERBATIM to lib/user/routes.js - see the
+// userRoutes.registerRoutes call beside the cross-device preference sync.
 
 // ---- v1.65 trash routes -----------------------------------------------------
 // GET lists newest-first (items render from the stored metadata snapshot, and
@@ -18761,7 +18113,10 @@ module.exports = {
   // beforeEach.
   resolveHandoffTarget,
   resolveHomeItem,
-  normalizeSearchTerm, // v1.85 #1: exported for the unit test
+  // v1.85 #1: exported for the unit test. Wave 7b (S1a): it moved to
+  // lib/user/routes.js with the search-history routes, so this re-export is
+  // the SAME function object through both doors (the Wave 6 extraction rule).
+  normalizeSearchTerm: userRoutes.normalizeSearchTerm,
 
   isFinishedPresence,
   HANDOFF_FINISHED_PCT,

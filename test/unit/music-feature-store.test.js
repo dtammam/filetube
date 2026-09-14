@@ -34,6 +34,7 @@ const {
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + its registerRoutes modules
 const musicStore = require('../../lib/music/store');
 
 let dir;
@@ -150,8 +151,13 @@ test('readPersistedDatabase: surfaces `music` in its container shape only when s
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the music tables or the dead doc spellings in CODE; the scan merge, the config POST and the channel-mark route run through musicDb.mutate; the reads take musicDb.read()', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+test('source lock: the route surface never names the music tables or the dead doc spellings in CODE; the scan merge, the config POST and the channel-mark route run through musicDb.mutate; the reads take musicDb.read()', () => {
+  // Wave 7b (the monolith split, slice S1a): shapedQueue's music reads left
+  // server.js with the /api/queue routes. The lock reads the whole ROUTE
+  // SURFACE - server.js plus every registerRoutes module it registers, derived
+  // from server.js's own requires - so the counts follow the code and the
+  // never-name-the-table checks now cover the modules too.
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')), ROOT);
   for (const t of ['music_folders', 'music_tracks', 'music_settings', 'music_channels']) assert.ok(!server.includes(t), t);
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.music\b/.test(server), 'no doc-model music access survives');
   assert.ok(!/musicStore\.readMusic\(/.test(server), 'every read view moved to musicDb.read()');

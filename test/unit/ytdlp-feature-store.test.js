@@ -30,6 +30,7 @@ const {
 } = require('../../lib/db/sqlite');
 const sqliteModule = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + its registerRoutes modules
 const ytdlpStore = require('../../lib/ytdlp/store');
 
 let dir;
@@ -187,15 +188,25 @@ test('mutate: the module\'s own writers run on the holder and the value part wri
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the ytdlp tables or the dead doc spellings in CODE; the reads take the store; the scan consumes the bridge on a holder and queues its diff into the commit; the module writes ONLY through ytdlpDb.mutate', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+test('source lock: the route surface never names the ytdlp tables or the dead doc spellings in CODE; the reads take the store; the scan consumes the bridge on a holder and queues its diff into the commit; the module writes ONLY through ytdlpDb.mutate', () => {
+  // Wave 7b (the monolith split, slice S1a): the notification and history
+  // routes took their per-request `ytdlpDb.holder(...)` reads with them. The
+  // lock reads the whole ROUTE SURFACE - server.js plus every registerRoutes
+  // module it registers, derived from server.js's own requires - so the counts
+  // follow the code and the never-name-the-table checks now cover the modules.
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
   for (const t of TABLES) assert.ok(!server.includes(t), t);
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|dbSnapshot|getCachedDatabase\(\)|loadDatabase\(\))\.ytdlp\b/.test(server), 'no doc-model ytdlp access survives');
   assert.ok(!/ytdlp\.ensureYtdlp\(|ytdlp\.readYtdlpNamespace\(/.test(server), 'server.js never normalises the namespace itself');
   assert.ok((server.match(/ytdlpDb\.readPart\('subscriptions'\)/g) || []).length >= 6, 'the subscription-name reads');
   assert.ok((server.match(/ytdlpDb\.holder\(/g) || []).length >= 11, 'the per-request holders (avatar resolver, relocation joins, the scan)');
   assert.ok(/bundle\.ytdlp = ytdlpDb\.read\(\)/.test(server), 'the bundle reads the tables');
-  assert.strictEqual((server.match(/\bytdlpDb,/g) || []).length, 3, 'the two deps bundles (routes + startBackground) and the export carry the store');
+  // Wave 7b (S1a): 7 across the surface - server.js's five (the user-state and
+  // notification deps bundles, lib/ytdlp's registerRoutes bundle,
+  // startBackground, the export) and the two destructures that receive them in
+  // lib/user/routes.js and lib/notifications/routes.js. Still an EXACT count:
+  // a new crossing has to be a deliberate edit here, not a silent one.
+  assert.strictEqual((server.match(/\bytdlpDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((server.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((server.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((server.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);

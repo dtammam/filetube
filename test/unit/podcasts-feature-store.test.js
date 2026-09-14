@@ -25,6 +25,7 @@ const {
   __openRawForTests: openRaw,
 } = require('../../lib/db/sqlite');
 const { ensureLegacyDocTables, countLegacyDocTables } = require('../helpers/legacy-doc-tables');
+const { routeSurfaceSource } = require('../helpers/route-surface'); // Wave 7b: the source locks read server.js + its registerRoutes modules
 const podcastStore = require('../../lib/podcasts/store');
 
 let dir;
@@ -155,8 +156,13 @@ test('mutate: the module\'s reducers run on the holder and only the CHANGED rows
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
-test('source lock: server.js never names the podcasts tables or the dead doc spellings in CODE; the reads take podcastsDb.read(); the bundle + the restore preservation read the tables; the module writes ONLY through podcastsDb.mutate', () => {
-  const server = stripComments(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'));
+test('source lock: the route surface never names the podcasts tables or the dead doc spellings in CODE; the reads take podcastsDb.read(); the bundle + the restore preservation read the tables; the module writes ONLY through podcastsDb.mutate', () => {
+  // Wave 7b (the monolith split, slice S1a): the queue and notification routes
+  // took their podcast reads with them. The lock reads the whole ROUTE SURFACE
+  // - server.js plus every registerRoutes module it registers, derived from
+  // server.js's own requires - so the counts follow the code and the
+  // never-name-the-table checks now cover the modules too.
+  const server = routeSurfaceSource((p) => stripComments(fs.readFileSync(p, 'utf8')));
   for (const t of TABLES) assert.ok(!server.includes(t), t);
   assert.ok(!/\b(db|freshDb|fresh|current|state|next|prev|cached\w*|mdb|loaded|persisted|snapshot|handoffDb|srcMeta|getCachedDatabase\(\)|loadDatabase\(\))\.podcasts\b/.test(server), 'no doc-model podcasts access survives');
   assert.ok(!/podcastStore\.readPodcasts\(/.test(server), 'every read view moved to podcastsDb.read()');
@@ -165,7 +171,12 @@ test('source lock: server.js never names the podcasts tables or the dead doc spe
   assert.ok((server.match(/podcastsDb\.parts\.episodes\.get\(/g) || []).length >= 5, 'gate pass B: the per-item episode lookups (home row, grid card, push row, handoff) are point queries, never the whole archive per item');
   assert.ok(/bundle\.podcasts = podcastsDb\.read\(\)/.test(server), 'the bundle reads the tables');
   assert.ok(/podcastsNs: \(\(\) => \{ let memo = null; return \(\) => \(memo \|\| \(memo = podcastsDb\.read\(\)\)\); \}\)\(\)/.test(server), 'search reaches the namespace through the dep - memoised per query (gate pass B)');
-  assert.strictEqual((server.match(/\bpodcastsDb,/g) || []).length, 3, 'the two deps bundles (routes + startBackground) and the export carry the store');
+  // Wave 7b (S1a): 7 across the surface - server.js's five (the queue and
+  // notification deps bundles, lib/podcasts's registerRoutes bundle,
+  // startBackground, the export) and the two destructures that receive them in
+  // lib/queue/routes.js and lib/notifications/routes.js. Still an EXACT count:
+  // a new crossing has to be a deliberate edit here, not a silent one.
+  assert.strictEqual((server.match(/\bpodcastsDb,/g) || []).length, 7, 'every crossing carries the store, never the doc namespace');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');
   assert.strictEqual((lib.match(/\.updateDatabase\(\(\) => (deps|d)\.podcastsDb\.mutate\(\(mdb\) =>/g) || []).length, 21, 'every one of them runs its reducers through the store');
