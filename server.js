@@ -526,6 +526,7 @@ const likedStore = createLikedStore(dbAdapter);
 // a fresh holder and writes the DIFF inside the doc commit (the hook is
 // hoisted; every mutate() runs inside an updateDatabase tick).
 const tvDb = tvStore.createTvStore(dbAdapter, { inSaveTransaction });
+const musicDb = musicStore.createMusicStore(dbAdapter, { inSaveTransaction });
 
 // Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
 // every `loadDatabase()` call anywhere in this file increments it, including
@@ -591,9 +592,8 @@ function loadDatabase() {
   // "show in Music" marks) the same way books.progress/ytdlp.downloadMeta are
   // backfilled - so the eligibility predicate and the write route never touch an
   // undefined. music.tracks/folders/settings stay musicStore-owned (lazy ensure).
-  if (db.music && typeof db.music === 'object') {
-    if (!db.music.channels || typeof db.music.channels !== 'object' || Array.isArray(db.music.channels)) db.music.channels = {};
-  }
+  // (Wave G-v1.293: `music.channels` was backfilled here. Wave 5 moved the music
+  // namespace to its tables behind musicDb - no longer a key of this object.)
   // (pre-v1.294: `settings` was backfilled here with DEFAULT_SETTINGS. Wave 4
   // moved it to app_settings / settingsStore - no longer a key of this object.)
   return db;
@@ -6770,7 +6770,7 @@ app.get('/api/folders/music-flag', (req, res) => {
   const folderName = typeof req.query.folderName === 'string' ? req.query.folderName.trim() : '';
   if (folderName === '') return res.status(400).json({ error: 'folderName is required' });
   const db = getCachedDatabase();
-  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const marks = musicDb.read().channels; // Wave 5: the music_channels table
   // Visibility-scoped: the toggle only renders for a channel the user can see.
   const hasVisibleAudio = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
@@ -6806,19 +6806,24 @@ app.post('/api/folders/music-flag', async (req, res) => {
   const visibleAudioExists = Object.values(db.metadata || {}).some(
     (it) => it && it.type === 'audio' && it.folderName === folderName && mediaVisibleTo(req, it));
   if (!visibleAudioExists) return res.status(404).json({ error: 'No such folder' });
-  await updateDatabase((mdb) => {
-    if (!mdb.music || typeof mdb.music !== 'object') mdb.music = {};
-    if (!mdb.music.channels || typeof mdb.music.channels !== 'object') mdb.music.channels = {};
-    const current = mdb.music.channels[folderName];
-    if (music === null) {
-      if (current === undefined) return false; // nothing to clear
-      delete mdb.music.channels[folderName];
+  try {
+    await updateDatabase(() => musicDb.mutate((mdb) => { // Wave 5: the mark's diff rides the doc commit
+      const current = mdb.music.channels[folderName];
+      if (music === null) {
+        if (current === undefined) return false; // nothing to clear
+        delete mdb.music.channels[folderName];
+        return true;
+      }
+      if (current === music) return false; // unchanged
+      mdb.music.channels[folderName] = music;
       return true;
-    }
-    if (current === music) return false; // unchanged
-    mdb.music.channels[folderName] = music;
-    return true;
-  });
+    }));
+  } catch (err) {
+    // Express 4 never observes a rejected async handler: an unguarded failed
+    // save HUNG this request (the Wave 3 class, found by the Wave 5 binding) - 500.
+    console.error('Error saving the music mark:', err);
+    return res.status(500).json({ error: `Could not save the music mark: ${err.message}` });
+  }
   res.json({ success: true, folderName, music });
 });
 
@@ -6941,7 +6946,7 @@ app.post('/api/config', async (req, res) => {
     // guard -- a media folder may not equal/contain/live inside a MUSIC root
     // either, so ownership stays order-independent (whichever config saves
     // second is the one that catches the overlap).
-    const musicRoots = musicStore.readMusic(loadDatabase()).folders;
+    const musicRoots = musicDb.read().folders;
     for (const musicRoot of musicRoots) {
       const resolvedMusicRoot = path.resolve(musicRoot);
       if (resolved === resolvedMusicRoot || ytdlpArgs.isPathUnder(resolved, resolvedMusicRoot) || ytdlpArgs.isPathUnder(resolvedMusicRoot, resolved)) {
@@ -7300,7 +7305,7 @@ app.post('/api/books/config', async (req, res) => {
   // v1.44 music: reciprocal of the music-config guard -- a book root may not
   // overlap a MUSIC root either (both directions), so the three collections
   // stay mutually disjoint regardless of save order.
-  const musicFoldersForBooks = (musicStore.readMusic(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  const musicFoldersForBooks = (musicDb.read().folders || []).map((f) => path.resolve(f));
   for (const bookRoot of resolved) {
     for (const musicRoot of musicFoldersForBooks) {
       if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
@@ -8166,9 +8171,8 @@ async function extractAlbumArt(job) {
 }
 
 async function runMusicScan() {
-  const db = loadDatabase();
   const scanSettings = settingsStore.get(); // Wave 4: captured with the snapshot
-  const ns = musicStore.ensureMusic(db);
+  const ns = musicDb.read(); // Wave 5: the Phase-1 snapshot comes from the tables
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
   const { tracks, survivingIds, missingRoots, erroredDirs } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
@@ -8180,8 +8184,9 @@ async function runMusicScan() {
   const prunedIds = [];
   const prunedRecords = [];
   let finalTracks = tracks;
-  await updateDatabase((fresh) => {
-    const freshNs = musicStore.ensureMusic(fresh);
+  // Wave 5: the merge runs against a FRESH holder; the diff rides the doc commit.
+  await updateDatabase(() => musicDb.mutate((holder) => {
+    const freshNs = musicStore.ensureMusic(holder);
     // The books/media Option-C mount-loss guard, applied to music: a root
     // whose directory still exists but yielded ZERO files this pass while the
     // library previously had tracks under it is the unmounted-share signature
@@ -8211,7 +8216,7 @@ async function runMusicScan() {
     freshNs.tracks = next;
     finalTracks = next;
     return true;
-  });
+  }));
 
   // Per-user music state is track-id-keyed -- pruned tracks shed liked/progress
   // and null any resume pointer that referenced them (post-commit, the
@@ -8281,7 +8286,7 @@ async function scanMusic() {
 }
 
 app.get('/api/music/config', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const folders = ns.folders || [];
   // v1.128 Wave B (L3): same as books/config - common.js reads it for the
   // Music nav tab, so filter to roots holding >=1 visible track for a
@@ -8338,10 +8343,7 @@ app.post('/api/music/config', async (req, res) => {
     }
   }
   try {
-    await updateDatabase((db) => {
-      musicStore.ensureMusic(db).folders = resolved;
-      return true;
-    });
+    await updateDatabase(() => musicDb.mutate((h) => { musicStore.ensureMusic(h).folders = resolved; return true; })); // Wave 5: the diff rides the commit
   } catch (err) {
     return res.status(500).json({ error: `Could not save music folders: ${err.message}` });
   }
@@ -8391,7 +8393,7 @@ function flushPendingMusicProgress() {
   const snapshot = [...pendingMusicProgress.values()];
   pendingMusicProgress.clear();
   return updateDatabase((db) => {
-    const ns = musicStore.readMusic(db);
+    const ns = musicDb.read();
     // Deleted-between-ping-and-flush guard (OWN-property, the __proto__ lesson):
     // never resurrect progress for a pruned track.
     const rows = snapshot.filter((entry) => Object.prototype.hasOwnProperty.call(ns.tracks, entry.trackId));
@@ -8502,7 +8504,7 @@ function projectedLibraryTracks(req, nativeTracks) {
   // marked 'off'. Instant + library-wide (this reads db.metadata live). RBAC (mediaVisibleTo)
   // below is UNCHANGED, so a restricted user still cannot see hidden audio.
   const db = getCachedDatabase();
-  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const marks = musicDb.read().channels; // Wave 5: the music_channels table
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
   const nativeIds = new Set(nativeTracks.map((t) => t.id));
   const out = [];
@@ -8575,7 +8577,7 @@ function musicListProgressMap(userId, tracks) {
 }
 
 app.get('/api/music', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -8613,7 +8615,7 @@ app.get('/api/music', (req, res) => {
 });
 
 app.get('/api/music/albums', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -8631,7 +8633,7 @@ app.get('/api/music/albums', (req, res) => {
 });
 
 app.get('/api/music/artists', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t)); // v1.80 RBAC
   list = list.concat(projectedLibraryTracks(req, list)); // Wave G projection (v1.242: unconditional - all audio unless channel opted-out)
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -8653,7 +8655,7 @@ app.get('/api/music/artists', (req, res) => {
 // channel-level booleans the projection uses (single source of truth).
 app.get('/api/music/channels', (req, res) => {
   const db = getCachedDatabase();
-  const marks = (db.music && db.music.channels && typeof db.music.channels === 'object') ? db.music.channels : {};
+  const marks = musicDb.read().channels; // Wave 5: the music_channels table
   const allAudio = Object.values(db.metadata || {}).filter((it) => it && it.type === 'audio');
   const displayNames = folderDisplayNameStore.getAll(); // Wave 4
   const visibleCount = new Map(); // folderName -> visible audio count
@@ -8679,13 +8681,13 @@ app.get('/api/music/channels', (req, res) => {
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
 app.get('/api/music/liked', (req, res) => {
   // v1.80 RBAC: a restricted track's id must not leak into the liked set.
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const trackIds = userStore.getMusicLiked(req.user.id).filter((id) => trackVisibleTo(req, ownTrack(ns.tracks, id)));
   res.json({ trackIds });
 });
 
 app.post('/api/music/liked/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   if (!ownTrack(ns.tracks, req.params.id)) return res.status(404).json({ error: 'no such track' });
   userStore.addMusicLiked(req.user.id, req.params.id, new Date().toISOString());
   res.json({ liked: true });
@@ -8777,7 +8779,7 @@ app.get('/api/music/progress/:id', (req, res) => {
 });
 
 app.get('/api/music/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const track = ownTrack(ns.tracks, req.params.id);
   if (track) {
     if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
@@ -8806,7 +8808,7 @@ app.get('/api/music/:id', (req, res) => {
 // AVI->MP4 precedent, audio flavor) and answering 503 until the rendition is
 // ready (the client retries).
 app.get('/track/:id', (req, res) => {
-  const ns = musicStore.readMusic(getCachedDatabase());
+  const ns = musicDb.read();
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
   if (!trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC: restricted -> 404
@@ -8839,7 +8841,7 @@ app.get('/track/:id', (req, res) => {
 // placeholder (mirrors /bookcover/:id).
 app.get('/albumart/:id', (req, res) => {
   const db = getCachedDatabase();
-  const ns = musicStore.readMusic(db);
+  const ns = musicDb.read();
   const track = ownTrack(ns.tracks, req.params.id);
   if (track && !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' }); // v1.80 RBAC
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
@@ -9079,7 +9081,7 @@ app.post('/api/tv/config', async (req, res) => {
   const cached = getCachedDatabase();
   const mediaFolders = folderStore.list().map((f) => path.resolve(f)); // Wave 4: the root list is a table
   const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
-  const musicFolders = (musicStore.readMusic(cached).folders || []).map((f) => path.resolve(f));
+  const musicFolders = (musicDb.read().folders || []).map((f) => path.resolve(f));
   const podcastsRoot = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
   for (const tvRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
@@ -9960,13 +9962,13 @@ const BACKUP_SCHEMA = 'filetube-backup-v1';
 // bundle key and shape ({ id: count }), so a bundle exported on either side
 // of v1.291 restores on the other. RELATIONAL_BUNDLE_KEYS is the list the
 // restore routes through their store handles (validated below).
-const BACKUP_NAMESPACE_KEYS = ['metadata', 'books', 'music', 'podcasts', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['metadata', 'books', 'podcasts', 'ytdlp'];
 // Wave 2: `progress` (the frozen pre-auth positions) and `deleteTombstones`
 // joined viewCounts here; Wave 3: `trash` - same bundle keys and shapes as
 // before (validateBackupBundle's trash section is unchanged).
 // Wave 4: `settings` - same key, the same merged object shape.
 // Wave 4 (second group): the folder config keys - same keys, same shapes.
-const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv'];
+const RELATIONAL_BUNDLE_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'settings', 'folders', 'folderSettings', 'folderDisplayNames', 'liked', 'tv', 'music'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -9991,6 +9993,7 @@ app.get('/api/admin/backup', async (req, res) => {
       bundle.folderDisplayNames = folderDisplayNameStore.getAll();
       bundle.liked = likedStore.list();                  // Wave 4: the frozen likes, like order
       bundle.tv = tvDb.read();                           // Wave 5: the Shows namespace, its old container shape
+      bundle.music = musicDb.read();                     // Wave 5: the music namespace, its old container shape
       bundle.customLogo = {};
       for (const variant of ['light', 'dark']) {
         const mime = settingsStore.getKey(customLogoMimeKey(variant)); // Wave 4
@@ -10268,7 +10271,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'podcasts', 'ytdlp']) {
+  for (const container of ['books', 'podcasts', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -10940,7 +10943,7 @@ function shapedQueue(db, req) {
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
   const podcastNs = podcastStore.readPodcasts(db);
-  const musicNs = musicStore.readMusic(db);
+  const musicNs = musicDb.read();
   const entries = [];
   for (const e of live.entries) {
     if (e.kind === 'podcast') {
@@ -11031,7 +11034,7 @@ app.post('/api/queue/items', (req, res) => {
     const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
     if (!ep || ep.status !== 'downloaded' || !podcastEpisodeVisibleTo(req, ep)) return res.status(404).json({ error: 'Episode not found' });
   } else if (kind === 'track') {
-    const track = ownTrack(musicStore.readMusic(db).tracks, mediaId);
+    const track = ownTrack(musicDb.read().tracks, mediaId);
     if (!track || !trackVisibleTo(req, track)) return res.status(404).json({ error: 'no such track' });
   } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId) || !mediaVisibleTo(req, db.metadata[mediaId])) {
     // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
@@ -11245,8 +11248,9 @@ app.get('/api/search', (req, res) => {
     // results - a downloaded track (and each CHAPTER TITLE) is findable + plays via
     // the music player. Lazy (only the music arm calls it); v1.242: the same
     // unconditional eligibility + RBAC as /api/music (no opt-in).
+    musicTracks: () => musicDb.read().tracks, // Wave 5: the native music tracks, from their table
     musicLibraryTracks: () => {
-      const ns = musicStore.readMusic(db);
+      const ns = musicDb.read();
       const native = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
       return projectedLibraryTracks(req, native);
     },
@@ -11470,7 +11474,7 @@ app.get('/api/videos', (req, res) => {
 function resolveHomeItem(db, id, kind, progressPercent) {
   const enc = encodeURIComponent(id);
   if (kind === 'track') {
-    const ns = musicStore.readMusic(db);
+    const ns = musicDb.read();
     const track = ownTrack(ns.tracks, id);
     if (!track) return null;
     return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: `/albumart/${enc}`, href: `/music?play=${enc}`, progressPercent };
@@ -11719,7 +11723,7 @@ app.get('/api/home', (req, res) => {
 
   // ---- TRACK candidates (only the ones the mixed rows can use: in-progress
   // OR liked). Tracks have no watched latch and no channel/sub identity. ----
-  const musicNs = musicStore.readMusic(db);
+  const musicNs = musicDb.read();
   const musicProgress = userStore.getMusicProgress(userId);
   const musicLiked = new Set(userStore.getMusicLiked(userId));
   for (const id of Object.keys(musicNs.tracks || {})) {
@@ -12082,7 +12086,7 @@ function resolveHandoffTarget(db, seen) {
   }
 
   if (seen.kind === 'track') {
-    const ns = musicStore.readMusic(db);
+    const ns = musicDb.read();
     const track = ownTrack(ns.tracks, id);
     if (!track) return null;
     return {
@@ -12149,7 +12153,7 @@ app.get('/api/handoff', (req, res) => {
   if (seen.kind === 'media' && !mediaVisibleTo(req, handoffDb.metadata && handoffDb.metadata[seen.mediaId])) {
     return res.json({ presence: null });
   }
-  if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicStore.readMusic(handoffDb).tracks, seen.mediaId))) {
+  if (seen.kind === 'track' && !trackVisibleTo(req, ownTrack(musicDb.read().tracks, seen.mediaId))) {
     return res.json({ presence: null });
   }
   if (seen.kind === 'podcast') {
@@ -12932,7 +12936,7 @@ function shapedLikedPodcastItems(db, userId) {
 function shapedLikedTrackItems(db, userId) {
   const likedIds = userStore.getMusicLiked(userId);
   if (!likedIds.length) return [];
-  const ns = musicStore.readMusic(db);
+  const ns = musicDb.read();
   const items = [];
   for (const id of likedIds) {
     const track = ownTrack(ns.tracks, id);
@@ -13048,7 +13052,7 @@ app.get('/api/liked', (req, res) => {
   // v1.80 RBAC: a restricted track must not ride the Liked view. (Podcast/book
   // liked filtering lands with their libraries, T6/T7.)
   // shaped liked items carry `id`, not `mediaId` (see shapedLiked*Items).
-  const likedMusicNs = musicStore.readMusic(db);
+  const likedMusicNs = musicDb.read();
   const likedPodNs = podcastStore.readPodcasts(db);
   const likedBooksNs = booksStore.readBooks(db);
   others = others.filter((o) => {
@@ -17103,7 +17107,7 @@ app.get('/api/stats', (req, res) => {
   // moved here from the Subscriptions page; rows the client hides when a thing
   // isn't installed (ytdlp not enabled -> null; TTS not available).
   const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
-  const music = musicStore.readMusic(db);
+  const music = musicDb.read();
   // v1.80 RBAC (security-gate finding): stats leaked restricted-item TITLES
   // (mostWatched) and COUNTS to a restricted member. Filter the CONTENT
   // namespaces to what req.user may see before computing; admin's empty index
@@ -18796,6 +18800,7 @@ podcasts.registerRoutes(app, {
   getCachedDatabase,
   getSettings: () => settingsStore.get(), // Wave 4
   getLibraryFolders: () => folderStore.list(), // Wave 4
+  getMusicFolders: () => musicDb.read().folders, // Wave 5
   dataDir: DATA_DIR,
   userStore,
   // v1.73: the poll's notification bridge (route-triggered checks run the
@@ -18972,6 +18977,7 @@ if (require.main === module) {
       getCachedDatabase,
       getSettings: () => settingsStore.get(), // Wave 4: app settings are a store
       getLibraryFolders: () => folderStore.list(), // Wave 4: the root list is a table
+      getMusicFolders: () => musicDb.read().folders, // Wave 5
       dataDir: DATA_DIR,
       userStore,
       // v1.73: the timer-run poll notifies + pushes exactly like the
@@ -19186,6 +19192,7 @@ module.exports = {
   folderDisplayNameStore, // Wave 4
   likedStore, // Wave 4
   tvDb, // Wave 5
+  musicDb, // Wave 5
   // v1.66: push test seams - swap the transport (capture/starve sends with
   // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
   // drive a delivery round directly.

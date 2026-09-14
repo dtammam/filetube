@@ -21,8 +21,7 @@ const assert = require('node:assert');
 const {
   app, updateDatabase, userStore, effectiveProgress,
   __mintTestSession, __presenceForTests, resolveHandoffTarget, getCachedDatabase,
-  isFinishedPresence, HANDOFF_FINISHED_PCT,
-} = require('../../server');
+  isFinishedPresence, HANDOFF_FINISHED_PCT, musicDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -276,7 +275,7 @@ test('#6: a play ping that arrives late (older presenceAt) cannot un-pause a new
 test('kind track: a music ping mints presence resolving to the music surface', async () => {
   seedDb();
   const trackId = 'a'.repeat(32);
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {};
     ns.tracks[trackId] = {
@@ -285,7 +284,7 @@ test('kind track: a music ping mints presence resolving to the music surface', a
       albumArtKey: null, codec: 'mp3', durationSec: 383, addedAt: '2026-01-01T00:00:00Z',
     };
     return true;
-  });
+  }));
 
   assert.strictEqual((await postJson('/api/music/progress', {
     id: trackId, position: 120, duration: 383, deviceId: DEV_A, deviceLabel: 'Mac', presenceAt: 1000,

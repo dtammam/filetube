@@ -29,8 +29,7 @@ const {
   app,
   updateDatabase,
   __mintTestSession,
-  userStore,
-} = require('../../server');
+  userStore, musicDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const podcastStore = require('../../lib/podcasts/store');
 const musicStore = require('../../lib/music/store');
@@ -114,11 +113,11 @@ test('the merge: one liked video + episode + track = three kind-carried items, t
     liked: [], settings: baseSettings(),
   });
   const epId = await seedDownloadedEpisode('merge-g1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = { trkA: seedTrack('trkA') };
     return true;
-  });
+  }));
 
   assert.strictEqual((await postJson('/api/liked/vidA', {})).status, 200);
   assert.strictEqual((await postJson(`/api/podcasts/episodes/${epId}/liked`, {})).status, 200);
@@ -151,11 +150,11 @@ test('silent-drop scoping: a liked-but-not-downloaded episode and a liked-but-pr
   // nothing here - the row exists; only the playlist projection drops it).
   userStore.addPodcastLiked(uid, pendingEp, new Date().toISOString());
   // A liked track id with no surviving ns.tracks row (pruned library).
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {};
     return true;
-  });
+  }));
   userStore.addMusicLiked(uid, 'ghostTrack', new Date().toISOString());
 
   const body = await (await get('/api/liked')).json();
@@ -203,11 +202,11 @@ test('actor isolation: a second real session sees NONE of the first user\'s mixe
     liked: [], settings: baseSettings(),
   });
   const epId = await seedDownloadedEpisode('iso-g1');
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = { isoTrk: seedTrack('isoTrk') };
     return true;
-  });
+  }));
   await postJson('/api/liked/isoVid', {});
   await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
   await fetch(`${base}/api/music/liked/isoTrk`, { method: 'POST' });
@@ -255,11 +254,11 @@ test('adversarial W2 bind: prototype-chain liked rows (a hostile restore can min
     folders: [], folderSettings: {},
     metadata: {}, liked: [], settings: baseSettings(),
   });
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {};
     return true;
-  });
+  }));
   // The carriers accept these (validateBackupBundle string-checks only) -
   // proven by the adversarial seat's matrix. The VIEW must drop them: a
   // plain `ns.x[id]` lookup would find Object.prototype for '__proto__'

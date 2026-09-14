@@ -14,16 +14,10 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const {
-  app, loadDatabase, pendingProgress, pendingProgressKey,
-  flushPendingProgress,
-  scanDirectories,
-  __resetDatabaseForTests,
-  __getPersistedStateEpoch,
-  userStore,
-  viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
+const { app, loadDatabase, pendingProgress, pendingProgressKey, flushPendingProgress, scanDirectories, __resetDatabaseForTests, __getPersistedStateEpoch, userStore, viewCountStore, // Wave 1: view counts are seeded/read through the store, never the doc object
   progressStore, tombstoneStore, // Wave 2: the frozen pre-auth positions + the tombstones, likewise
   trashStore, // Wave 3: the trashed-item records, likewise
+  musicDb, // Wave 5: the music namespace, likewise
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -510,7 +504,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.equal(restoredQueue.pointerUid, 'qü-2', 'the now-playing pointer came back');
   assert.equal(restoredQueue.updatedAt, 1753900000000, 'updatedAt rides verbatim');
   assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc tables restored in the same transaction');
-  assert.equal(loadDatabase().music.tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
+  assert.equal(musicDb.read().tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
 });
 
 test('v1.51: the notification feed + per-user seen/read state round-trip through backup -> wipe -> restore (EIGHTH carrier)', async () => {
@@ -796,8 +790,8 @@ test('v1.44 T13: a large MUSIC library rides the bundle NEAR the cap and round-t
     `the music payload must sit between every plausible regression value and the 32mb cap (got ${wireBytes} bytes)`);
   const res = await postRestore(bundle);
   assert.equal(res.status, 200, `a large-music restore must parse (got ${res.status})`);
-  assert.equal(Object.keys(loadDatabase().music.tracks).length, 24001, 'every music row landed (24000 + the fullState seed)');
-  assert.equal(loadDatabase().music.tracks.mtrk23999.artist, 'Artist 499', 'deep music content survived the round-trip');
+  assert.equal(Object.keys(musicDb.read().tracks).length, 24001, 'every music row landed (24000 + the fullState seed)');
+  assert.equal(musicDb.read().tracks.mtrk23999.artist, 'Artist 499', 'deep music content survived the round-trip');
 });
 
 test('v1.43.1 A1 (adversarial WARNING-1): a MEMBER posting an oversized body gets 403 BEFORE the parse — 403, never 413', async () => {

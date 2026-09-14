@@ -15,7 +15,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-queueapi-
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, __resetDatabaseForTests } = require('../../server');
+const { app, updateDatabase, userStore, __resetDatabaseForTests, musicDb } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server, base, auth;
@@ -276,7 +276,7 @@ const addKind = (mediaId, kind) => fetch(`${base}/api/queue/items`, {
 }).then(j);
 
 test('v1.72: a track queues under entry kind track with the album-art projection; a phantom track id 404s', async () => {
-  await updateDatabase((db) => { seedTrackT9(db, 'trkQ1'); return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { seedTrackT9(db, 'trkQ1'); return true; }));
   assert.equal((await addKind('nope', 'track')).status, 404, 'phantom track id refused at its OWN id space');
   const a = await addKind('trkQ1', 'track');
   assert.equal(a.status, 200);
@@ -299,7 +299,7 @@ test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queu
       filePath: '/lib/Shared.mp4', size: 10, addedAt: Date.UTC(2026, 5, 21),
       folderName: 'Chan', channelName: 'Chan',
     };
-    seedTrackT9(db, sharedId, { title: 'Shared Song' });
+    musicDb.mutate((h) => { seedTrackT9(h, sharedId, { title: 'Shared Song' }); return true; }); // Wave 5: the music namespace is a feature store
     return true;
   });
   assert.equal((await addKind(sharedId, 'media')).status, 200);
@@ -317,7 +317,7 @@ test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queu
   assert.equal(q.entries[0].kind, 'media');
 
   // And the mirror image: removeMediaState must not touch a track row.
-  await updateDatabase((db) => { seedTrackT9(db, sharedId, { title: 'Shared Song' }); return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { seedTrackT9(db, sharedId, { title: 'Shared Song' }); return true; }));
   assert.equal((await addKind(sharedId, 'track')).status, 200);
   userStore.removeMediaState(sharedId);
   const raw2 = userStore.getQueue(auth.user.id);
@@ -325,10 +325,10 @@ test('v1.72 collision, both rows LIVE at the destructive moment: one md5 id queu
 });
 
 test('v1.72: a pruned track silent-drops from the shaped view (belt) even before the carrier fires (suspenders)', async () => {
-  await updateDatabase((db) => { seedTrackT9(db, 'trkGone'); return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { seedTrackT9(db, 'trkGone'); return true; }));
   await addKind('trkGone', 'track');
   // Remove the ns row WITHOUT running the carrier - the read must drop it.
-  await updateDatabase((db) => { delete musicStoreT9.ensureMusic(db).tracks.trkGone; return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { delete musicStoreT9.ensureMusic(db).tracks.trkGone; return true; }));
   const q = await GET();
   assert.deepEqual(q.entries, [], 'shaped view silent-drops the dead track id');
   assert.equal(userStore.getQueue(auth.user.id).entries.length, 1, 'the raw row still exists (the carrier remains the durable cleaner)');

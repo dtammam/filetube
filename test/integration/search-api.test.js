@@ -15,7 +15,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, tvDb } = require('../../server');
+const { app, updateDatabase, tvDb, musicDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -47,12 +47,14 @@ before(async () => {
     liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await updateDatabase((db) => {
-    musicStore.ensureMusic(db).tracks = {
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    musicStore.ensureMusic(h).tracks = {
       // two exact-title 'Zephyr' hits with ISO-string addedAt (the real store
       // shape) - the NEWER must rank first (gate WARNING 2 e2e bind).
       tz: { id: 'tz', title: 'Zephyr', artist: 'Band', album: 'Al', filePath: path.join(DATA_DIR, 'zt.flac'), rootFolder: DATA_DIR, folderName: 'F', ext: '.flac', codec: 'flac', durationSec: 3, albumArtKey: null, addedAt: '2024-01-01T00:00:00Z' },
       tzNew: { id: 'tzNew', title: 'Zephyr', artist: 'Band2', album: 'Al2', filePath: path.join(DATA_DIR, 'za.mp3'), rootFolder: DATA_DIR, folderName: 'F', ext: '.mp3', codec: 'mp3', durationSec: 3, albumArtKey: null, addedAt: '2026-08-01T00:00:00Z' },
     };
+    return true; });
     const p = podcastStore.ensurePodcasts(db); p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'Zephyr Cast', feedUrl: 'https://e.com/f.xml' });
     const epId = podcastStore.episodeIdFor(subId, 'g1');

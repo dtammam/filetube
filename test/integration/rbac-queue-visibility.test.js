@@ -16,7 +16,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession, musicDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
@@ -67,11 +67,13 @@ before(async () => {
   openEpId = podcastStore.episodeIdFor(OPEN_SUB, 'og');
   hidEpId = podcastStore.episodeIdFor(HID_SUB, 'hg');
   await updateDatabase((db) => {
-    const m = musicStore.ensureMusic(db);
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    const m = musicStore.ensureMusic(h);
     m.tracks = {
       opentrk: { id: 'opentrk', title: 'Open Track', artist: 'A', album: 'Al', filePath: openTrackFile, rootFolder: pubRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' },
       hidtrk: { id: 'hidtrk', title: 'SECRETTRACK', artist: 'B', album: 'Bl', filePath: hidTrackFile, rootFolder: hidRoot, folderName: 'Music', ext: '.mp3', durationSec: 100, addedAt: '2026-01-02T00:00:00Z' },
     };
+    return true; });
     const p = podcastStore.ensurePodcasts(db);
     p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: OPEN_SUB, name: 'Open Show', feedUrl: 'https://e.com/o.xml' });

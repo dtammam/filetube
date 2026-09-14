@@ -158,6 +158,11 @@ top-level `doc_single` name remains - only container sub-keys.
 deletes them. A v1.293-or-earlier build refuses a v27 database at boot;
 bundles carry `tv` in its old container shape on both sides of the line.
 
+**Ninth floor - schema v28 (v1.294, Wave 5, music).** The music namespace
+(`music.folders`, `music.tracks`, `music.settings`, `music.channels`) moved into
+`music_folders`, `music_tracks`, `music_settings` and `music_channels`; bundles
+carry `music` in its old container shape on both sides of the line.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

@@ -67,16 +67,7 @@ function fullFixture() {
       settings: {},
       audio: { bk1: { 0: { status: 'ready', key: 'k0' } } },
     },
-    music: {
-      folders: ['/media/tunes'],
-      tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
-      settings: {},
-      // Wave G: per-folder "show in Music" marks (singleton, folderName-keyed,
-      // like folderDisplayNames). Exercised through the round-trip + every
-      // upgrade test (both consume this fixture) - proving the namespace is
-      // registered and save()/load() preserve it byte-equal.
-      channels: { NESTALGIA: 'on', Zarchivo: 'off' },
-    },
+    // (music: relational since Wave 5 - see importFixture)
     ytdlp: {
       allowMembersOnly: false,
       subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
@@ -98,6 +89,16 @@ function importFixture() {
     settings: { defaultView: 'grid', defaultSort: 'newest', customLogoMime: 'image/png' }, // Wave 4: one row per key
     liked: ['vid1'], // Wave 4: an ordered list (the frozen pre-auth likes)
     folders: ['/media/videos', '/media/music'], // Wave 4: an ordered list
+    music: { // Wave 5: a feature container (the tables)
+      folders: ['/media/tunes'],
+      tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
+      settings: {},
+      // Wave G: per-folder "show in Music" marks (singleton, folderName-keyed,
+      // like folderDisplayNames). Exercised through the round-trip + every
+      // upgrade test (both consume this fixture) - proving the namespace is
+      // registered and save()/load() preserve it byte-equal.
+      channels: { NESTALGIA: 'on', Zarchivo: 'off' },
+    },
     folderSettings: { '/media/videos': { name: 'Videos', hidden: false } },
     // v1.126/v1.127: the per-channel-folder display-name map (the namespace
     // whose missing fixture coverage external review round 2 flagged).
@@ -355,7 +356,7 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
   try {
     assert.throws(() => a.save({ metadata: {}, mystery: {} }), /unknown top-level db key 'mystery'/);
     assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
-    assert.throws(() => a.save({ music: { playlists: {} } }), /unknown db key 'music\.playlists'/);
+    assert.throws(() => a.save({ books: { playlists: {} } }), /unknown db key 'books\.playlists'/);
     assert.throws(() => a.save({ podcasts: { feedUrls: {} } }), /unknown db key 'podcasts\.feedUrls'/,
       'the namespace lock guards podcasts sub-keys too - a feed-URL map in the db would be a secret leak, not just drift');
   } finally {

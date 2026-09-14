@@ -15,8 +15,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, updateDatabase, ALBUMART_DIR, userStore, audioPath,
-  flushPendingMusicProgress, effectiveMusicProgress, __getMusicProgressFlushWriteCount,
-} = require('../../server');
+  flushPendingMusicProgress, effectiveMusicProgress, __getMusicProgressFlushWriteCount, musicDb } = require('../../server');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -50,12 +49,12 @@ async function seedLibrary() {
   const t1 = mk('Floyd/Wall/01 Mother.flac', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'The Wall', title: 'Mother', trackNo: 1, discNo: 1, year: 1979 });
   const t2 = mk('Floyd/Wall/02 Hey You.flac', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'The Wall', title: 'Hey You', trackNo: 2, discNo: 1, year: 1979 });
   const t3 = mk('Floyd/Animals/01 Pigs.flac', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'Animals', title: 'Pigs', trackNo: 1, discNo: 1, year: 1977 });
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks = {}; ns.folders = [libRoot];
     for (const t of [t1, t2, t3]) ns.tracks[t.id] = t;
     return true;
-  });
+  }));
   return { t1, t2, t3 };
 }
 
@@ -159,12 +158,12 @@ test('GATE QA-CRITICAL: the track list item surfaces needsTranscode so the clien
   const alacFull = path.join(libRoot, 'Floyd/Wall/09 Alac.m4a');
   fs.writeFileSync(alacFull, 'X');
   const alacId = require('crypto').createHash('md5').update(alacFull).digest('hex');
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks[alacId] = { id: alacId, filePath: alacFull, rootFolder: libRoot, ext: '.m4a', title: 'Alac', artist: 'Pink Floyd', album: 'The Wall', albumArtKey: 'z'.repeat(32), codec: 'alac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
     ns.tracks.natTest = { id: 'natTest', filePath: path.join(libRoot, 'n.flac'), rootFolder: libRoot, ext: '.flac', title: 'Nat', artist: 'A', album: 'B', albumArtKey: 'y'.repeat(32), codec: 'flac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
     return true;
-  });
+  }));
   assert.equal((await (await get(`/api/music/${alacId}`)).json()).needsTranscode, true, 'ALAC -> needsTranscode true');
   assert.equal((await (await get('/api/music/natTest')).json()).needsTranscode, false, 'FLAC -> needsTranscode false');
 });
@@ -212,11 +211,11 @@ test('T7: an ALAC track with no cached rendition answers 503 transcoding; a nati
   const alacFull = path.join(libRoot, 'Floyd/Wall/03 Alac.m4a');
   fs.writeFileSync(alacFull, 'ALACBYTES');
   const alacId = require('crypto').createHash('md5').update(alacFull).digest('hex');
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks[alacId] = { id: alacId, filePath: alacFull, rootFolder: libRoot, ext: '.m4a', title: 'Alac', artist: 'Pink Floyd', album: 'The Wall', albumArtKey: 'z'.repeat(32), codec: 'alac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
     return true;
-  });
+  }));
   // No rendition on disk -> 503 (CI has no ffmpeg, so the enqueue is a no-op
   // and it STAYS 503 — the correct "would transcode" signal).
   let r = await get(`/track/${alacId}`);
@@ -260,7 +259,7 @@ test('T8: POST /api/music/progress stages (read-your-writes), coalesces many pin
 
   // A ping for a track deleted between ping and flush is dropped, not resurrected.
   await postJson('/api/music/progress', { id: t1.id, position: 99, duration: 200 });
-  await updateDatabase((db) => { delete musicStore.ensureMusic(db).tracks[t1.id]; return true; });
+  await updateDatabase(() => musicDb.mutate((db) => { delete musicStore.ensureMusic(db).tracks[t1.id]; return true; }));
   await flushPendingMusicProgress();
   // t1's committed position stays at the last pre-delete flush (25), never 99.
   const after = userStore.getOneMusicProgress(user.id, t1.id);
@@ -284,11 +283,11 @@ test('v1.72: ?download=1 bypasses the transcode branch - an ALAC track downloads
   const alacFull = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-alacdl-')), 'a.m4a');
   fs.writeFileSync(alacFull, 'ALACSOURCE');
   const alacId = 'b'.repeat(32);
-  await updateDatabase((db) => {
+  await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
     ns.tracks[alacId] = { id: alacId, filePath: alacFull, rootFolder: path.dirname(alacFull), ext: '.m4a', title: 'Alac DL', artist: 'A', album: 'B', albumArtKey: null, codec: 'alac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
     return true;
-  });
+  }));
   // The STREAM route would 503 (no rendition, no ffmpeg on CI) - the
   // download arm must serve the source instead.
   assert.equal((await get(`/track/${alacId}`)).status, 503, 'precondition: streaming this codec needs a rendition');

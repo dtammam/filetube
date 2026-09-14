@@ -17,7 +17,7 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, getMediaId, userStore, __mintTestSession } = require('../../server');
+const { app, updateDatabase, getMediaId, userStore, __mintTestSession, musicDb } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const booksStore = require('../../lib/books/store');
 const musicStore = require('../../lib/music/store');
@@ -65,9 +65,11 @@ before(async () => {
     const b = booksStore.ensureBooks(db);
     b.folders = [bookPubRoot, bookHidRoot];
     b.items = { bpub: bookPub, bhid: bookHid };
-    const m = musicStore.ensureMusic(db);
+    musicDb.mutate((h) => { // Wave 5: the music namespace is a feature store
+    const m = musicStore.ensureMusic(h);
     m.folders = [musicPubRoot, musicHidRoot];
     m.tracks = { tpub: trkPub, thid: trkHid };
+    return true; });
     return true;
   });
 
