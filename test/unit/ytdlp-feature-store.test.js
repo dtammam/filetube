@@ -213,8 +213,13 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // (GET /api/videos + GET /api/channels, the subscription-derived channel
   // identity) and the attribution cluster moved to lib/media/routes.js, so
   // their two call sites in server.js and the two destructures that receive
-  // them there are four new crossings of the SAME store.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 15, 'every crossing carries the store, never the doc namespace');
+  // them there are four new crossings of the SAME store. Wave 7b (slice S6)
+  // took it from 15 to 17: the import-relocation planners moved to
+  // lib/ytdlp/relocation.js (planImportRelocation's subscription holder and the
+  // executor's channelId backfill), adding the factory call site's dep entry in
+  // server.js and the destructure that receives it in the module - two more
+  // crossings of the SAME store, and no new store anywhere.
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 17, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);
