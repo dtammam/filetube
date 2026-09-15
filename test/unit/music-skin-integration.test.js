@@ -399,6 +399,9 @@ test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediate
   // v1.301 (Dean): the cover paints the skin's DEVICE CHROME (renderFull with the no-current
   // ctx) as the launch frame, not a bare empty body that read as a jarring grey slab.
   assert.match(h[1], /SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)/, 'the cover paints the skin device chrome, not an empty slab');
+  // v1.301 (slim-gate SUGGESTION): the chrome render is wrapped in try/catch with a blank-cover
+  // fallback, so a skin render that ever threw can never break the launch path. Bind the net.
+  assert.match(h[1], /try \{[\s\S]*?SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)[\s\S]*?\} catch \(_\) \{ nowPlayingPanel\.innerHTML = ''; \}/, 'the device-chrome render is guarded so a throw falls back to the blank cover');
   const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
   assert.match(m[1], /var coverEarly = mountEarlyCover\(\);/, 'the continue arm rides the shared cover');
