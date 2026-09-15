@@ -3046,5 +3046,11 @@
     "date": "2026-09-15",
     "title": "The Click wheel test now sets how the real click wheel feels",
     "intent": "The retro iPod-style click wheel now takes its feel from the 'Click wheel test' in Settings > Experimental: pick an engine, tick spacing, swing and grab behaviour there and the actual wheel in the music player adopts it. Leave it alone and the wheel feels exactly as it did before. It's a per-device setting, so you can tune each phone."
+  },
+  {
+    "version": "1.304.0",
+    "date": "2026-09-15",
+    "title": "Continue Watching or Listening now reopens in the right player on your other device",
+    "intent": "When something is playing on another device, the 'Continue here' card now tells you whether you were watching or listening, and tapping it reopens the item in the matching player. So if you were listening to a song, a podcast, or a video's audio on the pocket player, continuing on another device drops you straight back into the listening player instead of a video screen. A plain audio file always opens in the listening player, since there's nothing to watch."
   }
 ]
