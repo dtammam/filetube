@@ -1027,7 +1027,8 @@
     // anywhere on the ghost's ancestor chain (the mms-haptic carve-out + a body scroll
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
-    var HAPTIC_STEP_DEG = 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
+    var WHEEL_CFG = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null; // v1.303: the wheel's source of truth (the Click wheel test writes it; read fresh per gesture below)
+    var HAPTIC_STEP_DEG = (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
     // v1.271 (Dean: "I want there to be more haptic feedback than not... it really
     // should feel like the real thing"). Was 30, which pegged delivery at a FLAT ~30
     // ticks/second no matter how fast the wheel turned - 69% of the ticks a 1 rev/s
@@ -1045,7 +1046,19 @@
     // What IS evidenced: Dean device-confirmed the engine DROPS rather than queues
     // (ticks stop dead when his finger does), which is what makes lowering it safe -
     // a queueing engine would buzz on after the stop.
-    var HAPTIC_MIN_MS = 8;
+    var HAPTIC_MIN_MS = (WHEEL_CFG && WHEEL_CFG.CONST.MIN_MS) || 8;
+    var HAPTIC_BIAS = (WHEEL_CFG && WHEEL_CFG.CONST.BIAS_DEFAULT) || 18; // v1.303: default ghost/sweep amplitude (px); the live dither per gesture comes from the config
+    var DEAD_FRAC = (WHEEL_CFG && WHEEL_CFG.CONST.DEAD_FRAC) || 0.20; // v1.303: centre (Select) dead-zone, sourced from the shared module (was a magic 0.2)
+    // v1.303: the live wheel config, read FRESH per gesture (device-local; the Click wheel
+    // test is the source of truth) - a fresh read so a config saved AFTER this engine mounted
+    // is honoured on the next spin, no re-create needed. Absent module or config -> today's
+    // EXACT feel (Ghost / Fine-96 3.75deg / capture-after-8px / buzz on): an unset wheel is a no-op.
+    function readWheelCfg() {
+      var WC = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null;
+      if (!WC) return { engine: 'ghost', detentDeg: HAPTIC_STEP_DEG, dither: HAPTIC_BIAS, capture: '8px', buzz: true };
+      var c = WC.read();
+      return { engine: WC.effectiveEngine(c), detentDeg: c.detent, dither: c.dither, capture: c.capture, buzz: c.buzz };
+    }
     var wheelGhost = null;
     var bodyScrollLock = null; // {y} while the haptic skin owns the body
     var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
@@ -1177,23 +1190,49 @@
     function hapticGestureStart(st, e) {
       if (!wheelGhost || !wheelGhost.isConnected) return;
       st.hapAccum = 0; st.hapLast = 0; st.hapBias = 1;
+      if (st.buzz === false) return; // v1.303: buzz OFF -> no haptic ghost tracking (rotation still scrubs/cursors)
+      if (st.engine === 'sweep') { hapticPlaceSweep(st, e.clientX, e.clientY); return; } // v1.303: the tracked-switch sweep engine
       hapticPlaceGhost(st, e.clientX, e.clientY, false);
     }
     function hapticPlaceGhost(st, x, y, flip) {
       if (!wheelGhost || !wheelGhost.isConnected) return;
       var r = st.wheel.getBoundingClientRect();
       if (flip) st.hapBias = -st.hapBias;
-      // unscaled under the finger, biased +-18px past the track midline (the probe-C math)
-      var tx = (x - (r.left + r.width / 2)) + st.hapBias * 18;
+      // unscaled under the finger, biased past the track midline (the probe-C math); the
+      // bias amplitude is the config's Dither (default HAPTIC_BIAS = 18) - v1.303.
+      var tx = (x - (r.left + r.width / 2)) + st.hapBias * (st.dither || HAPTIC_BIAS);
       var ty = y - (r.top + r.height / 2);
       wheelGhost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
     }
-    function hapticOnMove(st, e, absD) {
+    // v1.303: the SWEEP engine on the real wheel - the single tracked switch moved
+    // smoothly under the finger, its midline carried past once per detent by a sine
+    // (WHEEL_CFG.sweepOffset - the SAME feel math the Click wheel test's placeSweep uses,
+    // so the tuned combo feels identical here). No bias flip; the switch genuinely sweeps.
+    function hapticPlaceSweep(st, x, y) {
       if (!wheelGhost || !wheelGhost.isConnected) return;
+      var r = st.wheel.getBoundingClientRect();
+      var WC = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null;
+      var off = WC
+        ? WC.sweepOffset(st.sweepAngle, st.dither, st.detentDeg)
+        : (st.dither * Math.sin((st.sweepAngle / (st.detentDeg || HAPTIC_STEP_DEG)) * Math.PI));
+      var tx = (x - (r.left + r.width / 2)) + off;
+      var ty = y - (r.top + r.height / 2);
+      wheelGhost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+    }
+    function hapticOnMove(st, e, absD, signedD) {
+      if (!wheelGhost || !wheelGhost.isConnected) return;
+      if (st.buzz === false) return; // v1.303: buzz off -> no haptic
+      if (st.engine === 'sweep') {
+        // signed accumulation: the switch sweeps WITH the finger (reverses when it reverses).
+        st.sweepAngle += (typeof signedD === 'number' ? signedD : absD);
+        hapticPlaceSweep(st, e.clientX, e.clientY);
+        return;
+      }
       st.hapAccum += absD;
       var flip = false;
-      while (st.hapAccum >= HAPTIC_STEP_DEG) {
-        st.hapAccum -= HAPTIC_STEP_DEG;
+      var step = st.detentDeg || HAPTIC_STEP_DEG; // v1.303: the config's Detent (default 3.75)
+      while (st.hapAccum >= step) {
+        st.hapAccum -= step;
         var now = nowMs();
         if (now - st.hapLast >= HAPTIC_MIN_MS) { flip = true; st.hapLast = now; } // throttle: drop, never queue
       }
@@ -1243,7 +1282,7 @@
       var r = wheel.getBoundingClientRect();
       var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
       // ignore a press on the dead center (the Select button): let its tap pass through.
-      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.2) return;
+      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * DEAD_FRAC) return;
       var st = {
         wheel: wheel, id: e.pointerId, captured: false, moved: false,
         // Now Playing is never idle: the wheel SCRUBS the timeline on EVERY surface
@@ -1254,6 +1293,15 @@
         win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
         onDocUp: null, ended: false,
       };
+      // v1.303: read the wheel config ONCE for THIS gesture (engine/detent/dither/capture/buzz),
+      // set on st so onMove + the haptic path honour it. Works even without a ghost (non-haptic
+      // devices still need st.capture for the pointer-capture branch below).
+      var wcfg = readWheelCfg();
+      st.engine = wcfg.engine; st.detentDeg = wcfg.detentDeg; st.dither = wcfg.dither;
+      st.capture = wcfg.capture; st.buzz = wcfg.buzz; st.sweepAngle = 0;
+      // capture:'press' grabs the pointer immediately (the test's "On press"); '8px' waits for a
+      // real rotation (below); 'off' never grabs. Default '8px' == today's behaviour.
+      if (st.capture === 'press') { try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ } }
       // v1.242 fastScan: HOLD the rewind/ffwd zone to FAST-SCAN the timeline (~2x, audio keeps
       // playing); release resumes where it landed. Independent of st.mode - keyed off the
       // pressed ZONE. A quick TAP still skips a track (the hold never fires); a ROTATE becomes
@@ -1269,6 +1317,9 @@
           var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
           if (!d0) return; // nothing to scan (still loading) - leave it a plain tap/skip
           st.scanning = true; st.moved = true; // moved => the release's skip click is suppressed
+          // v1.303: fast-scan (a HOLD on rewind/ffwd) ALWAYS captures, independent of st.capture -
+          // the capture config governs the ROTATION grab; a hold-scan structurally needs the
+          // pointer to keep stepping if the finger drifts off the zone. endWheel still releases it.
           try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
           var step = function () {
             var m = hostCtl('media-player');
@@ -1291,7 +1342,7 @@
         var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
         var now = nowMs(); var dt = Math.max(1, now - st.lastT); st.lastT = now;
         st.accum += d;
-        hapticOnMove(st, ev, Math.abs(d)); // v1.256: ticks in BOTH modes (cursor + scrub)
+        hapticOnMove(st, ev, Math.abs(d), d); // v1.256: ticks in BOTH modes (cursor + scrub); v1.303 signed d for the sweep engine
         // v1.270: ONE generic WHEEL TAKEOVER, deliberately not game-aware. While set it
         // consumes rotation (the haptic above already fired, which is the point - a
         // takeover gets the wheel AND its ticks for free), and MENU/Select route to it
@@ -1306,7 +1357,9 @@
           st.moved = true;
           // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
           if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
-          try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
+          // v1.303: capture mode. '8px' (default == today) grabs the pointer HERE, once a real
+          // rotation is confirmed; 'press' already grabbed on down; 'off' never grabs.
+          if (st.capture !== 'press' && st.capture !== 'off') { try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ } }
         }
         if (st.mode === 'scrub') {
           var mps = hostCtl('media-player');

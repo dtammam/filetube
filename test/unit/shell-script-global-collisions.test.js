@@ -123,3 +123,24 @@ for (const shell of SHELLS) {
     }
   });
 }
+
+// v1.303 (wheel config): the real mobile wheel (skin-surface.js) reads
+// window.FileTubeWheelConfig at gesture start, so EVERY shell that loads
+// skin-surface.js must load wheel-config.js EARLIER in source order - else the
+// wheel reads an undefined config on that shell. Dynamic over the enumerated
+// SHELLS (the v1.250 SHELL-PARITY class: a hand-kept list rots; a NEW shell that
+// hosts the skin is caught automatically).
+for (const shell of SHELLS) {
+  test(`wheel-config.js loads before skin-surface.js wherever the wheel ships: ${shell}`, () => {
+    const html = fs.readFileSync(path.join(ROOT, shell), 'utf8');
+    const srcs = scriptSrcsInOrder(html);
+    const surfaceIdx = srcs.findIndex((s) => s.endsWith('/skin-surface.js'));
+    if (surfaceIdx < 0) return; // this shell does not host the skin - nothing to require
+    const configIdx = srcs.findIndex((s) => s.endsWith('/wheel-config.js'));
+    assert.ok(configIdx >= 0,
+      `${shell} loads skin-surface.js but not wheel-config.js - the wheel reads FileTubeWheelConfig`);
+    assert.ok(configIdx < surfaceIdx,
+      `${shell} loads wheel-config.js (idx ${configIdx}) AFTER skin-surface.js (idx ${surfaceIdx}) - ` +
+      'the wheel would read an undefined config at gesture start');
+  });
+}

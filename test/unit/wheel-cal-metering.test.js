@@ -22,29 +22,43 @@ const {
 
 const SKIN_SURFACE_JS = fs.readFileSync(
   path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+const SETUP_JS = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
 
 // ---- the constants still match the real wheel (the anti-drift lock) --------
 
-test('WHEEL_CAL constants are the SAME values skin-surface.js ships — a drifted copy would make the tool lie about the real wheel', () => {
-  // skin-surface.js: `var HAPTIC_STEP_DEG = 3.75;` and `var HAPTIC_MIN_MS = 8;`
-  const stepMatch = /var HAPTIC_STEP_DEG = ([\d.]+);/.exec(SKIN_SURFACE_JS);
-  const minMatch = /var HAPTIC_MIN_MS = (\d+);/.exec(SKIN_SURFACE_JS);
-  assert.ok(stepMatch, 'skin-surface.js must declare HAPTIC_STEP_DEG');
-  assert.ok(minMatch, 'skin-surface.js must declare HAPTIC_MIN_MS');
-  assert.strictEqual(WHEEL_CAL.HAPTIC_STEP_DEG, Number(stepMatch[1]));
-  assert.strictEqual(WHEEL_CAL.HAPTIC_MIN_MS, Number(minMatch[1]));
-  // the ±18px probe-C bias the ghost placement uses
-  assert.match(SKIN_SURFACE_JS, new RegExp('hapBias \\* ' + WHEEL_CAL.BIAS_PX + '\\b'));
+test('the wheel constants come from ONE shared source (wheel-config.js) — drift is impossible by construction, not by a hand-synced copy', () => {
+  // v1.303: skin-surface.js (the real wheel) now SOURCES its haptic constants from
+  // FileTubeWheelConfig.CONST instead of hard-coding them, so a drifted copy can no longer
+  // exist - the tool (WHEEL_CAL) and the wheel read the SAME module. This replaces the old
+  // "the two literals happen to be equal" lock with a structural one. Source-lock the refs:
+  const WC = require('../../public/js/wheel-config.js');
+  assert.match(SKIN_SURFACE_JS, /HAPTIC_STEP_DEG = \(WHEEL_CFG && WHEEL_CFG\.CONST\.STEP_DEFAULT\)/, 'skin-surface sources the tick step from the shared module');
+  assert.match(SKIN_SURFACE_JS, /HAPTIC_MIN_MS = \(WHEEL_CFG && WHEEL_CFG\.CONST\.MIN_MS\)/, 'skin-surface sources the throttle floor from the shared module');
+  assert.match(SKIN_SURFACE_JS, /HAPTIC_BIAS = \(WHEEL_CFG && WHEEL_CFG\.CONST\.BIAS_DEFAULT\)/, 'skin-surface sources the bias amplitude from the shared module');
+  assert.match(SKIN_SURFACE_JS, /DEAD_FRAC = \(WHEEL_CFG && WHEEL_CFG\.CONST\.DEAD_FRAC\)/, 'skin-surface sources the centre dead-zone from the shared module');
+  // the ghost placement now uses the config's Dither (default HAPTIC_BIAS), never a magic 18.
+  assert.match(SKIN_SURFACE_JS, /st\.hapBias \* \(st\.dither \|\| HAPTIC_BIAS\)/, 'the ghost bias is the config Dither, not a hard-coded literal');
+  // v1.303 (gate WARNING 1): the SWEEP feel math is genuinely shared - BOTH the real wheel's
+  // hapticPlaceSweep AND the tool's placeSweep call FileTubeWheelConfig.sweepOffset, so neither
+  // keeps a hand-copy of the sine that could drift from the other.
+  assert.match(SKIN_SURFACE_JS, /WC\.sweepOffset\(st\.sweepAngle, st\.dither, st\.detentDeg\)/, 'the real wheel routes the sweep through the shared sweepOffset');
+  assert.match(SETUP_JS, /wc\.sweepOffset\(st\.sweepAngle, cfg\.sweepDither, cfg\.sweepStep\)/, 'the Click wheel test routes the sweep through the shared sweepOffset (no hand-copy)');
+  // and the tool's WHEEL_CAL equals that same shared CONST, so the meter still matches the wheel.
+  assert.strictEqual(WHEEL_CAL.HAPTIC_STEP_DEG, WC.CONST.STEP_DEFAULT);
+  assert.strictEqual(WHEEL_CAL.HAPTIC_MIN_MS, WC.CONST.MIN_MS);
+  assert.strictEqual(WHEEL_CAL.BIAS_PX, WC.CONST.BIAS_DEFAULT);
+  assert.strictEqual(WHEEL_CAL.DEAD_FRAC, WC.CONST.DEAD_FRAC);
 });
 
-test('the centre dead-zone fraction is NUMERICALLY equal to skin-surface.js pointerdown Select guard (a 0.20-0.29 drift must not slip a substring match)', () => {
-  // Extract the REAL multiplier, don't substring-match it: `r.width * 0.25`
-  // still contains `r.width * 0.2`, so a plausible Select-guard widening would
-  // slip past a bare /r\.width \* 0\.2/ while the tool kept metering against a
-  // stale 0.20 (adversarial WARNING 2).
-  const m = /Math\.hypot\([^)]*\) < r\.width \* ([\d.]+)\)/.exec(SKIN_SURFACE_JS);
-  assert.ok(m, 'skin-surface.js must guard the centre with a `r.width * <frac>` dead-zone');
-  assert.strictEqual(Number(m[1]), WHEEL_CAL.DEAD_FRAC, 'the tool dead-zone must equal the real wheel\'s exactly');
+test('the centre dead-zone comes from the shared CONST and equals the tool\'s (no drift, by construction)', () => {
+  // v1.303: the real wheel's Select guard now applies the SOURCED `DEAD_FRAC` (= CONST.DEAD_FRAC),
+  // not a magic 0.2 - so the tool + wheel share one value structurally. Bind that it is applied
+  // as the dead-zone multiplier (a widened Select guard would have to change the shared CONST,
+  // which reds the first cross-lock too), and that the tool's WHEEL_CAL equals the same CONST.
+  const WC = require('../../public/js/wheel-config.js');
+  assert.match(SKIN_SURFACE_JS, /Math\.hypot\([^)]*\) < r\.width \* DEAD_FRAC\)/, 'the Select guard applies the sourced DEAD_FRAC');
+  assert.strictEqual(WHEEL_CAL.DEAD_FRAC, WC.CONST.DEAD_FRAC, 'the tool dead-zone equals the shared CONST exactly');
 });
 
 // ---- wheelCalShortAngle: the wrap boundaries ------------------------------
