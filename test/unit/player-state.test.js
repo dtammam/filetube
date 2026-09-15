@@ -246,7 +246,14 @@ test('v1.304 client-seam tripwire: the listen path routes through loadTrack, whi
   assert.match(musicSrc, /resumeMode:\s*'music'/, "loadTrack must stamp resumeMode 'music' for the listening surface");
   // (b) a LISTENED video actually reaches that loader: playListenItem enqueues
   //     and plays through the same queue loader (playAt -> loadTrack), so the
-  //     listened video inherits the 'music' flavor and stamps 'listen'.
-  assert.match(musicSrc, /async function playListenItem[\s\S]*?playAt\(/,
+  //     listened video inherits the 'music' flavor and stamps 'listen'. The span
+  //     is BOUNDED to playListenItem's own body (the tempered token stops at the
+  //     next sibling function decl) so it cannot false-pass on a LATER function's
+  //     playAt( - the #213 distance-lock trap the adversarial seat proved a raw
+  //     [\s\S]*? span falls into. Trade-off (disclosed): it keys on the (mediaId)
+  //     signature + 4-space sibling indent, so a signature/indent refactor yields
+  //     a LOUD false-red, never a silent false-green - the safe direction.
+  assert.match(musicSrc,
+    /async function playListenItem\(mediaId\)\s*\{(?:(?!\n {4}(?:async )?function )[\s\S])*?playAt\(/,
     'playListenItem plays the listened video through the queue loader that stamps the flavor');
 });
