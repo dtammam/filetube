@@ -5480,9 +5480,7 @@ const {
   isMediaJobInFlight, // reads transcodeQueue/audioExtractQueue, which stay here
   isSafeVideoId,
   matchRootFolder,
-  // LAZY: slice S5 turns this hoisted declaration into a `const` from a factory
-  // call BELOW this line, so a direct binding would be a boot-time TDZ error.
-  moveItemToFolder: (...args) => moveItemToFolder(...args),
+  moveItemToFolder, // lib/media/move.js's mover (S5): createMoveOps sits ABOVE this call (line ~5275), so it is already initialized - a direct binding boots, like the other call sites; a `const` never reassigned, so no live accessor is needed
   normalizeChapter,
   path,
   resolveRelocationTitle,

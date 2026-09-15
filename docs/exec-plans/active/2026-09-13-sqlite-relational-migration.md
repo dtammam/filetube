@@ -1095,9 +1095,11 @@ dual-Node, device pass PENDING and disclosed.
     (`planImportRelocation`, `relocateHydratedImportIntoChannelFolder`,
     `buildImportRelocationPreview`, `migrateOneOffsIntoChannelFolders`, `recordRepulledItemMeta`,
     `enumerateRepullableItems`) -> lib/ytdlp/relocation.js `createRelocation(deps)`. Zero
-    reassigned deps (all cross as the same reference); `moveItemToFolder` crossed as a lazy
-    wrapper (load-bearing once S5 is present - boot-verified on the merged tree). A FUNCTION
-    module, not a route module.
+    reassigned deps (all cross as the same reference); `moveItemToFolder` was briefed as a lazy
+    wrapper, but on the actual merge order `createMoveOps` lands ABOVE `createRelocation`, so it is
+    already initialized - the R3 gate (ADV-1) measured the wrapper INERT (de-lazying boots cleanly)
+    and the fix round made it a direct binding, matching the three other call sites that already
+    pass it directly. A FUNCTION module, not a route module.
   - **S7 backup** (ee0b2b89, DATA-LOSS): `/api/admin` (backup + restore) + `validateBackupBundle`
     (260) + `validateFeatureBundle` + `buildStoreZip` + the bundle-format constants ->
     lib/admin/backup.js. The restore ordering (validate -> self-lockout guard -> missing-key
@@ -1119,14 +1121,20 @@ dual-Node, device pass PENDING and disclosed.
   - **S9 the scan orchestrator** (58f81178, the persist-gate seams - RISKIEST): `runScanDirectories`
     (1,566), `extractMetadataAndThumbnail`, `scanDirRecursive`, `extractStoryboard`,
     `parseFfprobeStreams`, `resolveLeafByBracketId`, `resolveOnDiskPath` -> lib/scan/orchestrator.js
-    `createScanOrchestrator(deps)`. Bodies BYTE-IDENTICAL; nothing improved. Documented seams:
+    `createScanOrchestrator(deps)`. Bodies BYTE-IDENTICAL (nothing improved) except the documented
+    seams and ONE comment re-point (below). Seams:
     `ffmpegAvailable` -> `ffmpegIsAvailable()` (3 functions - the hidden data-loss seam: frozen it
     would silently disable ALL thumbnail/storyboard/faststart extraction), `persistedStateEpoch`
     -> the live `__getPersistedStateEpoch()`; `scanState` crosses as the SAME const object;
     `scanDirectories` (lock + interval) STAYS in server.js and calls the factory result. The
     lib/scan/ Wave-6 helpers required directly with re-rooted specifiers (same objects by module
     cache - scan-helpers-extraction identity lock stays green). S8's queue API passed as LAZY
-    wrappers (survive S8's parallel factory conversion).
+    wrappers (survive S8's parallel factory conversion). Disclosed (QA R3): a THIRD in-body edit in
+    runScanDirectories - a comment re-point `(recordRepulledItemMeta, below)` -> `(...,
+    lib/ytdlp/relocation.js)` (S6 moved it, so `below` would be a lying comment); comment text only,
+    no code line. Deferred (ADV-2, tech-debt #229): the S9 ffmpeg seam is bound by a text-lock + the
+    crash-on-frozen-value path but lacks R2's runtime flip-detection test - the shipped code is
+    `() => ffmpegAvailable` (live by construction), a test-strength gap not a defect.
   - **The merges:** S6 conflict-free; S7 conflicts on DIAGRAMS (count re-measured 16 on merged
     tree, not summed) + ytdlp-feature-store count (the auto-merge left 17, but S6 +2 and S7 +2 =
     19 re-measured; caught and fixed); S8 fast-forwarded; S9 conflict-free. main->r3 brought the
