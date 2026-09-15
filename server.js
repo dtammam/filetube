@@ -4980,7 +4980,6 @@ function resolveHandoffTarget(db, seen) {
       thumbnailUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
       href: `/podcasts?play=${enc}`,
       listen: true, // a podcast is always listened to - the card reads this for the "Listening" verb
-
       // `durationSec` is the stored field on both podcast episodes and music
       // tracks (media items use `duration`). The ping's own duration wins when
       // it has one - it came from the real decoded media element.

@@ -230,3 +230,23 @@ test('presenceSurfaceForResumeMode binding: saveProgressToServer STAMPS body.pre
   assert.match(playerSrc, /body\.presenceSurface = presenceSurfaceForResumeMode\(currentData && currentData\.resumeMode\);/,
     'the progress ping stamps presenceSurface from resumeMode');
 });
+
+test('v1.304 client-seam tripwire: the listen path routes through loadTrack, which stamps resumeMode "music" (QA suggestion)', () => {
+  // The server-side surface tests inject `surface` at the store, so they stay
+  // green even if music.js stops stamping resumeMode 'music' for a listened
+  // video - at which point the browser silently reverts to sending 'watch' and
+  // the handoff regresses to the ORIGINAL bug with no red. This binds the one
+  // client fact those tests cannot see (the INERT-FEATURE class, forward-armed).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const musicSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  // (a) the track loader stamps the audio surface flavor - the field the ping
+  //     reads to send presenceSurface 'listen'.
+  assert.match(musicSrc, /resumeMode:\s*'music'/, "loadTrack must stamp resumeMode 'music' for the listening surface");
+  // (b) a LISTENED video actually reaches that loader: playListenItem enqueues
+  //     and plays through the same queue loader (playAt -> loadTrack), so the
+  //     listened video inherits the 'music' flavor and stamps 'listen'.
+  assert.match(musicSrc, /async function playListenItem[\s\S]*?playAt\(/,
+    'playListenItem plays the listened video through the queue loader that stamps the flavor');
+});
