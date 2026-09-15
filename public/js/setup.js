@@ -3730,7 +3730,7 @@ async function loadEngineSection(signal) {
   }
 }
 
-// ===== Pocket Classic wheel test — the diagnostic's pure metering core =====
+// ===== Click wheel test — the diagnostic's pure metering core =====
 // A device-local tool (Settings › Experimental) that reproduces the iPod
 // wheel's native "ghost switch" haptic so the tick behaviour can be felt AND
 // measured on a real phone. (An off-origin sandbox — e.g. a hosted artifact —
@@ -3839,7 +3839,7 @@ function closeWheelCal() {
 function wheelCalTemplate() {
   return '' +
     '<div class="whcal-head">' +
-      '<h2 class="whcal-title">Pocket Classic wheel test</h2>' +
+      '<h2 class="whcal-title">Click wheel test</h2>' +
       '<div class="whcal-headbtns">' +
         '<button type="button" class="btn whcal-guide-btn">How to read</button>' +
         '<button type="button" class="btn whcal-close-btn">Close</button>' +
@@ -3932,7 +3932,7 @@ function openWheelCal(signal) {
   const overlay = document.createElement('div');
   overlay.className = 'whcal-overlay';
   overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-label', 'Pocket Classic wheel test');
+  overlay.setAttribute('aria-label', 'Click wheel test');
   overlay.innerHTML = wheelCalTemplate();
   document.body.appendChild(overlay);
   wheelCalOverlay = overlay;
@@ -4208,7 +4208,7 @@ function init(root) {
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
-  wireWheelCalControl(controller.signal); // Pocket Classic wheel test (Experimental)
+  wireWheelCalControl(controller.signal); // Click wheel test (Experimental)
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
@@ -4278,7 +4278,7 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    // Pocket Classic wheel test — the pure metering core (boundary- and
+    // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
     // shell is device-validated).
     WHEEL_CAL, wheelCalShortAngle, wheelCalBandOf, wheelCalMeterQuantum,

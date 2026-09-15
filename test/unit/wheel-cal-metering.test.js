@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] Pocket Classic wheel test — the pure metering core (setup.js).
+// [UNIT] Click wheel test — the pure metering core (setup.js).
 //
 // The tool reproduces the iPod wheel's native "ghost switch" haptic and lets
 // the wheel be metered by ANGLE (the shipping behaviour) or ARC-LENGTH (the

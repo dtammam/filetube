@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] Pocket Classic wheel test — the overlay lifecycle (setup.js).
+// [UNIT] Click wheel test — the overlay lifecycle (setup.js).
 //
 // The DOM/native-switch shell is device-validated, but its LIFECYCLE is bound
 // here because it holds two things that must be released: the overlay DOM
@@ -38,8 +38,8 @@ function unload(dom) {
 
 // ---- the button exists and is wired into the view lifecycle ----------------
 
-test('setup.html: an "Open Pocket Classic wheel test" button lives in Experimental (#wheel-cal-open)', () => {
-  assert.match(SETUP_HTML, /<button type="button" class="btn" id="wheel-cal-open">Open Pocket Classic wheel test<\/button>/);
+test('setup.html: an "Open Click wheel test" button lives in Experimental (#wheel-cal-open)', () => {
+  assert.match(SETUP_HTML, /<button type="button" class="btn" id="wheel-cal-open">Open Click wheel test<\/button>/);
   const exp = /data-collapse-key="experimental"[\s\S]*?<\/details>/.exec(SETUP_HTML);
   assert.ok(exp && /id="wheel-cal-open"/.test(exp[0]), 'the button sits inside the Experimental section');
 });

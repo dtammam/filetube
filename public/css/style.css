@@ -138,7 +138,7 @@ summary,
   --md-nav-width: 250px;
   --md-divider-inset: 56px; /* row divider starts past the icon tile + gap */
   --tracking-caps: 0.05em;  /* uppercase group titles / badges */
-  /* Pocket Classic wheel test (Settings › Experimental): a self-contained
+  /* Click wheel test (Settings › Experimental): a self-contained
      dark instrument surface, one visual world in every era/theme. These are
      token DEFINITIONS (census-exempt); every .whcal-* rule consumes them. */
   --whcal-bg: #0d1014;
@@ -11058,7 +11058,7 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-sheen-a:rgba(255,255,255,.5); --mms-ipod-sheen-b:rgba(255,255,255,.14);
   --mms-ipod-sheen-c:rgba(255,255,255,.35); --mms-ipod-sheen-d:rgba(255,255,255,.6);
   --mms-ipod-sheen-0:rgba(255,255,255,0);
-  /* v1.232.2 silver Pocket Classic gloss (reads on the WHITE body): a crisp top
+  /* v1.232.2 silver Click gloss (reads on the WHITE body): a crisp top
      highlight + a soft bottom-edge shadow for the domed, reflective look. */
   --mms-ipod-gloss-hi:rgba(255,255,255,.9); --mms-ipod-gloss-shadow:rgba(0,0,0,.08);
   /* v1.232 iPod BLACK variant - body + wheel palette only (screen unchanged). */
@@ -11333,7 +11333,7 @@ html[data-modern="on"] .video-uploader {
      below, the flat gray CLICK WHEEL - tap zones (MENU/prev/next/play) + a Select
      center. The play STATE reflects in the status bar (▶/❚❚). */
   /* the warm-white body carries the glossy SHEEN (in the background so it needs no
-     z-index). v1.232.2 (Dean: give the silver Pocket Classic gloss like the black one):
+     z-index). v1.232.2 (Dean: give the silver Click gloss like the black one):
      on a WHITE body a white-on-white sheen is invisible, so the gloss reads from a
      crisp top HIGHLIGHT band + a soft bottom-edge SHADOW (the domed, reflective look),
      over the soft diagonal sheen + body gradient. (The black variant overrides this
@@ -14387,7 +14387,7 @@ a.queue-upnext-next:hover {
   .search-clear-btn { min-width: var(--size-touch); min-height: var(--size-touch); }
 }
 
-/* ===== Pocket Classic wheel test (Settings › Experimental) =================
+/* ===== Click wheel test (Settings › Experimental) =================
    A self-contained dark instrument overlay, built in JS and appended to
    <body> on demand (setup.js openWheelCal). One visual world in every era
    theme by design, so it defines no per-theme variants - it paints its own

@@ -120,7 +120,7 @@ const CONTRACT = {
   '--mms-ipod-sheen-a': 'rgba(255,255,255,.5)', '--mms-ipod-sheen-b': 'rgba(255,255,255,.14)',
   '--mms-ipod-sheen-c': 'rgba(255,255,255,.35)', '--mms-ipod-sheen-d': 'rgba(255,255,255,.6)',
   '--mms-ipod-sheen-0': 'rgba(255,255,255,0)',
-  // v1.232.2 silver Pocket Classic gloss (reads on the white body).
+  // v1.232.2 silver Click gloss (reads on the white body).
   '--mms-ipod-gloss-hi': 'rgba(255,255,255,.9)', '--mms-ipod-gloss-shadow': 'rgba(0,0,0,.08)',
   // v1.232 iPod BLACK variant - body + wheel palette only (screen unchanged).
   '--mms-ipodk-body1': '#343436', '--mms-ipodk-body2': '#161618', '--mms-ipodk-edge': '#0a0a0b',

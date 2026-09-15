@@ -599,7 +599,7 @@
       if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
         try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
       }
-      var chipSkins = trayActive ? skins.filter(function (s) { return s.id === 'ipod' || s.id === 'ipod-black'; }) : skins;
+      var chipSkins = trayActive ? skins.filter(function (s) { return s.id === 'ipod' || s.id === 'ipod-black' || s.id === 'ipod-matte'; }) : skins;
       var chips = chipSkins.map(function (s) {
         var on = s.id === active;
         return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
@@ -1536,10 +1536,10 @@
         ec.getSkinId = function () {
           var id = null;
           try { id = origGetSkin ? origGetSkin() : null; } catch (_) { id = null; }
-          // v1.260: the tray is the POCKET CLASSIC Nano - the colorway family is the
-          // explicit iPod pair (Seattle Classic shares base 'ipod' for the wheel CSS
-          // but is deliberately NOT a Nano colorway; one line here if Dean wants it).
-          if (id === 'ipod' || id === 'ipod-black') return id;
+          // v1.260: the tray is the Click Nano - the colorway family is the Click trio
+          // (ipod / ipod-black / ipod-matte). Seattle (base 'ipod') shares the wheel CSS
+          // but is deliberately NOT a Nano colorway.
+          if (id === 'ipod' || id === 'ipod-black' || id === 'ipod-matte') return id;
           return 'ipod';
         };
       }

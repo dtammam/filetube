@@ -1802,10 +1802,11 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const tray = holder.pip;
     pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
-    // v1.258: the chips are the COLORWAYS in tray - the ipod family only (those picks
-    // genuinely restyle the tray body; apple/spotify would visibly no-op)
+    // v1.258: the chips are the COLORWAYS in tray - the Click family only (those picks
+    // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.300: the
+    // Click trio incl. the new Matte colorway.
     const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
-    assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black'], 'exactly the two colorway chips inside the tray');
+    assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black', 'ipod-matte'], 'exactly the three colorway chips inside the tray');
     assert.match(pipPanelOf(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
     // the HEADLINE interaction: tapping a colorway restyles the LIVE tray (kills the
     // memoized-donor mutant - the wrap must consult the pick on every paint)
