@@ -6866,7 +6866,19 @@ function injectAccountMenu() {
         && window.FileTube && typeof window.FileTube.navigate === 'function') {
         e.preventDefault();
         setOpen(false);
-        window.FileTube.navigate(u.href);
+        // v1.305 (gate): when we are ALREADY on the target path+search and only
+        // the hash differs (e.g. "N items in trash" -> /setup.html#trash while
+        // already on Settings), navigate() no-ops - its same-location check
+        // ignores the hash - so the section would never open. Set the hash
+        // directly instead; the master-detail hashchange listener then drives
+        // selectFromHash to open the section. Every cross-page click still
+        // routes through navigate() (which preserves the hash for init()).
+        const samePathSearch = (u.pathname + u.search) === (window.location.pathname + window.location.search);
+        if (samePathSearch && u.hash && u.hash !== window.location.hash) {
+          window.location.hash = u.hash;
+        } else {
+          window.FileTube.navigate(u.href);
+        }
       }
     });
     document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });

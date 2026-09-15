@@ -14,12 +14,12 @@ const { JSDOM } = require('jsdom');
 const COMMON = require.resolve('../../public/js/common.js');
 let dom, savedFetch;
 
-function fresh(mePayload) {
+function fresh(mePayload, url) {
   // Require while `document` is undefined so the shell boot never runs.
   delete global.document; delete global.window; delete global.sessionStorage;
   delete require.cache[COMMON];
   const common = require(COMMON);
-  dom = new JSDOM('<!DOCTYPE html><header><div class="header-right"></div></header>', { url: 'http://localhost/' });
+  dom = new JSDOM('<!DOCTYPE html><header><div class="header-right"></div></header>', { url: url || 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
   global.sessionStorage = dom.window.sessionStorage;
@@ -532,4 +532,41 @@ test('v1.305: a trash-row click SPA-navigates to /setup.html#trash + closes the 
   assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
   assert.deepStrictEqual(navd, ['http://localhost/setup.html#trash'], 'routed through the in-app SPA navigate (hash preserved)');
   assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
+});
+
+test('v1.305 (gate): clicking "N items in trash" while ALREADY on Settings sets the hash directly (navigate would no-op), so Trash still opens', async () => {
+  // The gate (both seats) flagged: from /setup.html itself, navigate() no-ops a
+  // same-path hash-only change, so the section never opened. The intercept now
+  // sets window.location.hash directly -> the master-detail hashchange listener
+  // drives selectFromHash. Here we prove the hash is set and navigate is NOT called.
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } }, 'http://localhost/setup.html');
+  const navd = [];
+  global.window.FileTube = { navigate: (url) => { navd.push(url); } }; // in prod this would no-op the same-location nav
+  injectAccountMenu();
+  await tick();
+  const trash = global.document.querySelector('a.account-menu-trash');
+  assert.ok(trash, 'the trash link exists');
+  global.document.querySelector('.account-menu-trigger').click();
+  const evt = new global.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  trash.dispatchEvent(evt);
+  assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
+  assert.strictEqual(global.window.location.hash, '#trash', 'the hash is set directly (hashchange -> selectFromHash opens Trash)');
+  assert.deepStrictEqual(navd, [], 'navigate() is NOT called for a same-path hash-only change (it would no-op)');
+  assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
+});
+
+test('v1.305: refreshAvatars swaps the disc WITHIN the wrapper (source lock - the badge must survive the swap)', () => {
+  // The badge survives a post-upload avatar refresh ONLY because refreshAvatars
+  // replaceChild's the disc inside .account-menu-avatar-wrap, not on .account-menu-
+  // head. A regression to `head.replaceChild(...)` would throw NotFoundError at
+  // runtime (headAvatar is not a child of head) and ship a broken avatar update -
+  // which no behavioural test drives (crop/canvas is browser-only). Bind it at the
+  // source: the refresh must target avatarWrap, never head. (Mirrors the applyTheme
+  // source-lock test above.)
+  const src = require('node:fs').readFileSync(COMMON, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const refreshBody = /const refreshAvatars = \([\s\S]*?\n {4}\};/.exec(src);
+  assert.ok(refreshBody, 'refreshAvatars found');
+  assert.match(refreshBody[0], /avatarWrap\.replaceChild\(/, 'the head-avatar refresh swaps the disc INSIDE the wrapper');
+  assert.doesNotMatch(refreshBody[0], /head\.replaceChild\(/, 'never on .head (that would throw and strand/duplicate the badge)');
 });
