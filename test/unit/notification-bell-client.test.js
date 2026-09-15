@@ -180,11 +180,15 @@ test('v1.73: a podcast row deep-links /podcasts?play= and wears the SHOW cover; 
   assert.equal(ep.href, '/podcasts?play=' + encodeURIComponent('ëp-1'), 'the ?play= contract, encoded');
   assert.equal(ep.thumbnailUrl, '/podcastart/süb', 'show cover, never /thumbnail');
   assert.equal(ep.thumbnailIsIcon, false, 'real show art is a photo (cover-fit), not a logo');
-  const med = buildNotificationRowModel({ id: 10, mediaId: 'vid1', title: 'V', channelName: 'C', hasThumbnail: true, createdAt: 1000, unread: false });
+  // v1.302 (Dean): the AVATAR is the SHOW COVER too, not a monogram - the show art is its
+  // identity. Mutation guard: dropping the isPodcast->artUrl avatar branch reds this.
+  assert.equal(ep.channelAvatarUrl, '/podcastart/süb', 'the avatar is the show cover, not a C/H/T monogram');
+  const med = buildNotificationRowModel({ id: 10, mediaId: 'vid1', title: 'V', channelName: 'C', channelAvatarUrl: 'https://yt3/av.jpg', hasThumbnail: true, createdAt: 1000, unread: false });
   assert.equal(med.kind, 'media');
   assert.equal(med.href, '/watch.html?v=vid1');
   assert.equal(med.thumbnailUrl, '/thumbnail/vid1');
   assert.equal(med.thumbnailIsIcon, false, 'a real thumbnail is a photo (cover-fit), not a logo');
+  assert.equal(med.channelAvatarUrl, 'https://yt3/av.jpg', 'a media/YT row keeps its CAPTURED channel avatar, not the thumbnail');
 });
 
 test('v1.288: a podcast row with no resolvable show art falls back to the FileTube logo, icon-fit', () => {
@@ -192,6 +196,9 @@ test('v1.288: a podcast row with no resolvable show art falls back to the FileTu
   const noArt = buildNotificationRowModel({ id: 11, mediaId: 'ëp-2', kind: 'podcast', title: 'Ep', channelName: 'Show', artUrl: '', createdAt: 1000, unread: true });
   assert.equal(noArt.thumbnailUrl, '/icons/icon-192.png', 'the guaranteed floor - never blank');
   assert.equal(noArt.thumbnailIsIcon, true, 'the logo fallback is icon-fit (contain, no badge)');
+  // v1.302: an art-less podcast has no cover to be the avatar, so it still falls to the
+  // monogram (empty channelAvatarUrl) - the avatar upgrade must not manufacture a bad URL.
+  assert.equal(noArt.channelAvatarUrl, '', 'no show art -> the avatar stays the monogram fallback');
   // artUrl missing entirely (not just empty) is the same defensive floor.
   const undef = buildNotificationRowModel({ id: 12, mediaId: 'ëp-3', kind: 'podcast', title: 'Ep', channelName: 'Show', createdAt: 1000, unread: true });
   assert.equal(undef.thumbnailUrl, '/icons/icon-192.png');

@@ -3608,7 +3608,15 @@ function buildNotificationRowModel(row) {
     href: isPodcast ? `/podcasts?play=${encodeURIComponent(row.mediaId)}` : mediaHref,
     title: typeof row.title === 'string' ? row.title : '',
     channelLabel: channelName || folderName || 'Library',
-    channelAvatarUrl: typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : '',
+    // v1.302 (Dean, on device): a podcast row's AVATAR (the left circle) is the SHOW
+    // COVER (its artUrl), not a monogram - the show art IS its identity (the Apple/Spotify
+    // Podcasts posture), and the server sends no channelAvatarUrl for shows so the row
+    // otherwise fell to the deterministic C/H/T monogram. Media/YT rows keep the captured
+    // channel avatar unchanged; an art-less podcast still falls back to the monogram (''),
+    // and a 404 on the cover self-heals to the monogram via the avatar img's onerror.
+    channelAvatarUrl: isPodcast
+      ? (typeof row.artUrl === 'string' && row.artUrl !== '' ? row.artUrl : '')
+      : (typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : ''),
     // v1.288: every row carries a picture. A podcast uses its show art (which
     // itself falls back to a 🎧 placeholder server-side); a media row with a real
     // thumbnail uses it; a thumbnail-less media row (or the defensive empty-artUrl
