@@ -244,3 +244,59 @@ test('SCROLL OWNERSHIP: opening a section snaps the window to top; Back restores
       'Back restores the FRESH offset - the save re-arms on every open');
   } finally { teardown(dom); }
 });
+
+// ---- v1.305 (Dean): deep-link a section by URL hash (#<collapse-key>) --------
+// The account menu's "N items in trash" links to /setup.html#trash; wireMasterDetail
+// opens that section directly on the hash instead of dumping the user at the top.
+
+function setupAt(html, url) {
+  const dom = new JSDOM('<!DOCTYPE html><html data-theme="2021"><body>' + html + '</body></html>', { url });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.MutationObserver = dom.window.MutationObserver;
+  global.localStorage = dom.window.localStorage;
+  const controller = new dom.window.AbortController();
+  return { dom, doc: dom.window.document, signal: controller.signal, controller };
+}
+
+test('v1.305: a #<collapse-key> hash opens that section (deep-link) instead of the default first', () => {
+  const { dom, doc, signal } = setupAt(FIXTURE, 'http://localhost/setup.html#music');
+  try {
+    wireMasterDetail('setup', doc, signal);
+    const mdRoot = doc.querySelector('.md-root');
+    assert.strictEqual(doc.querySelector('details[data-collapse-key="music"]').classList.contains('md-active'), true,
+      'the hashed section is selected, not the default (appearance)');
+    assert.strictEqual(doc.querySelector('details[data-collapse-key="appearance"]').classList.contains('md-active'), false);
+    assert.strictEqual(mdRoot.getAttribute('data-md-open'), 'true', 'the detail is opened (mobile drill-in)');
+  } finally { teardown(dom); }
+});
+
+test('v1.305: an unknown or still-HIDDEN hash key does NOT hijack the selection (stays on the default)', () => {
+  // #users targets an admin section that is `hidden` for this (non-admin) fixture,
+  // and #nope matches nothing - neither may select; the default first row wins.
+  for (const url of ['http://localhost/setup.html#users', 'http://localhost/setup.html#nope']) {
+    const { dom, doc, signal } = setupAt(FIXTURE, url);
+    try {
+      wireMasterDetail('setup', doc, signal);
+      assert.strictEqual(doc.querySelector('details[data-collapse-key="appearance"]').classList.contains('md-active'), true,
+        `${url}: no hijack - the default first visible section stays active`);
+      assert.strictEqual(doc.querySelector('.md-root').getAttribute('data-md-open'), 'false', `${url}: no detail forced open`);
+    } finally { teardown(dom); }
+  }
+});
+
+test('v1.305: a later hashchange re-opens the matching section', () => {
+  const { dom, doc, signal } = setupAt(FIXTURE, 'http://localhost/setup.html');
+  try {
+    wireMasterDetail('setup', doc, signal);
+    // default: appearance active, menu closed
+    assert.strictEqual(doc.querySelector('details[data-collapse-key="appearance"]').classList.contains('md-active'), true);
+    assert.strictEqual(doc.querySelector('.md-root').getAttribute('data-md-open'), 'false');
+    // navigate the hash (as an in-app /setup.html#video would) and fire hashchange
+    dom.window.location.hash = '#video';
+    dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'));
+    assert.strictEqual(doc.querySelector('details[data-collapse-key="video"]').classList.contains('md-active'), true,
+      'the hashchange selected the Video section');
+    assert.strictEqual(doc.querySelector('.md-root').getAttribute('data-md-open'), 'true', 'and opened its detail');
+  } finally { teardown(dom); }
+});

@@ -76,7 +76,9 @@ test('injectAccountMenu: builds the trigger + full dropdown, once, with account 
   // v1.153: Stats joined the quick links (mobile's way in, sidebar-only otherwise).
   // Subscriptions is NOT here because this fixture has no subscriptions nav entry
   // (the enabled-module gate) - covered by its own test below.
-  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Stats', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
+  // v1.305 (Dean): "Change photo" ROW retired - the avatar is now edited via a
+  // pencil badge on the disc (asserted below), so it is no longer a menu item.
+  assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
   assert.strictEqual(root.querySelector('.account-menu-name').textContent, 'Dean');
   assert.strictEqual(root.querySelector('.account-menu-role').textContent, 'Admin');
   const links = [...root.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));
@@ -97,7 +99,7 @@ test('injectAccountMenu: the Subscriptions quick link appears only when the modu
   await tick();
   const root = global.document.getElementById('account-menu-root');
   const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
-  assert.deepStrictEqual(labels, ['Change photo', 'Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
+  assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
     'Subscriptions joins the quick links when enabled');
   const subs = [...root.querySelectorAll('a.account-menu-item')].find((a) => a.textContent.includes('Subscriptions'));
   assert.strictEqual(subs.getAttribute('href'), '/subscriptions');
@@ -132,7 +134,7 @@ test('v1.153.1: Subscriptions is added to an ALREADY-BUILT menu when the module 
   assert.ok(!labelsOf().includes('Subscriptions'), 'not present at build time (cold cache)');
   // the /health probe resolves later -> injectSubscriptionsNavNodes patches the menu
   ensureAccountMenuSubscriptionsRow();
-  assert.deepStrictEqual(labelsOf(), ['Change photo', 'Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
+  assert.deepStrictEqual(labelsOf(), ['Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
     'Subscriptions inserted after Stats, before Settings');
   assert.strictEqual([...global.document.querySelectorAll('a.account-menu-item[href="/subscriptions"]')].length, 1);
   // idempotent: a second call never duplicates
@@ -375,4 +377,159 @@ test('v1.230: the account menu has NO music-skin picker (it moved to the Setting
   assert.ok(!root.querySelector('.account-menu-skinpicker'), 'no in-menu skin picker anymore');
   const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
   assert.ok(!labels.includes('Music skin'), 'and the item-label net is unchanged');
+});
+
+// ---- v1.305 (Dean): the avatar pencil badge + the "N items in trash" footer ----
+
+test('formatTrashCountLabel: only ONE is singular (Dean\'s spelling); 0 and N are "items"', () => {
+  const { formatTrashCountLabel } = fresh({});
+  assert.strictEqual(formatTrashCountLabel(0), '0 items in trash');
+  assert.strictEqual(formatTrashCountLabel(1), '1 item in trash', 'exactly one is singular');
+  assert.strictEqual(formatTrashCountLabel(2), '2 items in trash');
+  assert.strictEqual(formatTrashCountLabel(42), '42 items in trash');
+  // bounded: junk/negative floor to "0 items" (never a NaN/undefined label in the UI)
+  assert.strictEqual(formatTrashCountLabel(-3), '0 items in trash');
+  assert.strictEqual(formatTrashCountLabel(NaN), '0 items in trash');
+  assert.strictEqual(formatTrashCountLabel('5'), '0 items in trash', 'a string is not a count');
+  assert.strictEqual(formatTrashCountLabel(2.9), '2 items in trash', 'floored');
+});
+
+test('v1.305: the "Change photo" ROW is retired; a pencil badge on the avatar opens the same file picker', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
+  injectAccountMenu();
+  await tick();
+  const root = global.document.getElementById('account-menu-root');
+  const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
+  assert.ok(!labels.includes('Change photo'), 'no Change photo menu row anymore');
+  const wrap = root.querySelector('.account-menu-head .account-menu-avatar-wrap');
+  assert.ok(wrap, 'the head avatar is wrapped for the badge');
+  assert.ok(wrap.querySelector('.account-avatar-lg'), 'the wrapper holds the large avatar disc');
+  const edit = wrap.querySelector('.account-menu-avatar-edit');
+  assert.ok(edit, 'the pencil badge exists on the disc');
+  assert.strictEqual(edit.getAttribute('aria-label'), 'Change photo', 'the badge carries the accessible name');
+  assert.ok(edit.querySelector('svg'), 'it renders the inline pencil glyph');
+  // clicking the badge opens the SAME hidden file input the old row drove
+  const fileInput = root.querySelector('input[type="file"]');
+  assert.ok(fileInput, 'the hidden avatar file input still exists');
+  let opened = 0;
+  fileInput.click = () => { opened += 1; };
+  edit.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(opened, 1, 'the badge opens the picker (the crop + POST /api/me/avatar flow is unchanged)');
+});
+
+test('v1.305: the disc + badge share the wrapper (the contract refreshAvatars swaps within)', () => {
+  // refreshAvatars replaceChild's the DISC inside the wrapper, so both the disc
+  // and the badge must be direct children of .account-menu-avatar-wrap. If the
+  // badge were a sibling in .account-menu-head instead, a disc swap could not
+  // preserve it; if two badges existed, a swap would strand one.
+  const { injectAccountMenu } = fresh({ user: { id: 9, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
+  injectAccountMenu();
+  return tick().then(() => {
+    const wrap = global.document.querySelector('.account-menu-head .account-menu-avatar-wrap');
+    assert.ok(wrap, 'the wrapper is inside the head');
+    assert.strictEqual(wrap.querySelectorAll('.account-menu-avatar-edit').length, 1, 'exactly one badge, in the wrapper');
+    assert.strictEqual(wrap.querySelector('.account-avatar-lg').parentNode, wrap, 'the disc is a direct child of the wrapper');
+  });
+});
+
+function stubEndpoints({ bytes = 100, trash = { total: 0, items: [] } } = {}) {
+  global.fetch = async (url) => {
+    if (url === '/api/storage-summary') return { ok: true, status: 200, json: async () => ({ totalSizeBytes: bytes }) };
+    if (url === '/api/trash') {
+      return trash === null
+        ? { ok: false, status: 500, json: async () => ({}) }
+        : { ok: true, status: 200, json: async () => trash };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+}
+
+test('v1.305: "N items in trash" is an account-menu-trash LINK to /setup.html#trash, between the disk and version rows, shimmering before open', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  const trash = global.document.querySelector('.account-menu-trash');
+  assert.ok(trash, 'the trash row rendered');
+  assert.strictEqual(trash.tagName, 'A');
+  assert.strictEqual(trash.getAttribute('href'), '/setup.html#trash', 'deep-links the Trash section');
+  assert.strictEqual(trash.getAttribute('aria-label'), 'Review trash');
+  assert.ok(trash.querySelector('.account-menu-disk-shimmer.skeleton-shimmer'), 'shimmers until the lazy count resolves');
+  const disk = global.document.querySelector('.account-menu-disk');
+  const ver = global.document.querySelector('.account-menu-version');
+  assert.ok(disk.compareDocumentPosition(trash) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, 'trash comes AFTER the disk row');
+  assert.ok(trash.compareDocumentPosition(ver) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, 'the version row comes AFTER trash');
+});
+
+test('v1.305: on first open the count resolves from body.total (divergent items.length), singular at 1', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  // total=1 but items has 4 entries -> reads TOTAL (=> "1 item"), not items.length
+  stubEndpoints({ trash: { total: 1, items: [{}, {}, {}, {}] } });
+  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  const trash = global.document.querySelector('.account-menu-trash');
+  assert.strictEqual(trash.hidden, false, 'the row stays visible');
+  assert.strictEqual(trash.querySelector('.skeleton-shimmer'), null, 'the shimmer cleared');
+  assert.strictEqual(trash.textContent, '1 item in trash', 'reads body.total and uses the singular');
+});
+
+test('v1.305: the count falls back to items.length when body.total is absent', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  stubEndpoints({ trash: { items: [{}, {}] } }); // no `total` field
+  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  assert.strictEqual(global.document.querySelector('.account-menu-trash').textContent, '2 items in trash');
+});
+
+test('v1.305: the trash count is lazy (only on open) and fetched at most once across opens', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  let hits = 0;
+  global.fetch = async (url) => {
+    if (url === '/api/trash') hits += 1;
+    if (url === '/api/storage-summary') return { ok: true, status: 200, json: async () => ({ totalSizeBytes: 1 }) };
+    return { ok: true, status: 200, json: async () => ({ total: 0, items: [] }) };
+  };
+  assert.strictEqual(hits, 0, 'no fetch before the menu is ever opened');
+  const trigger = global.document.querySelector('.account-menu-trigger');
+  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await tick(); // open
+  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));               // close
+  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await tick(); // open again
+  assert.strictEqual(hits, 1, 'fetched exactly once (first open), not on every open');
+});
+
+test('v1.305: a failed trash count hides the trash row ONLY (disk row + shared divider untouched)', async () => {
+  const { injectAccountMenu } = withDiskMenu();
+  injectAccountMenu();
+  await tick();
+  const trash = global.document.querySelector('.account-menu-trash');
+  const disk = global.document.querySelector('.account-menu-disk');
+  const divider = disk.previousElementSibling;
+  assert.ok(divider.classList.contains('account-menu-divider'), 'precondition: the footer divider sits above the disk row');
+  stubEndpoints({ bytes: 100, trash: null }); // /api/trash -> 500
+  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  assert.strictEqual(trash.hidden, true, 'the trash row hides on a failed count (never a wrong "0 items")');
+  assert.strictEqual(disk.hidden, false, 'the disk row is unaffected by the trash failure');
+  assert.strictEqual(divider.hidden, false, 'the shared footer divider stays (it belongs to the disk row)');
+});
+
+test('v1.305: a trash-row click SPA-navigates to /setup.html#trash + closes the menu (keeps the mini-player)', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
+  const navd = [];
+  global.window.FileTube = { navigate: (url) => navd.push(url) };
+  injectAccountMenu();
+  await tick();
+  const trash = global.document.querySelector('a.account-menu-trash');
+  assert.ok(trash, 'the trash link exists');
+  global.document.querySelector('.account-menu-trigger').click();
+  const evt = new global.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  trash.dispatchEvent(evt);
+  assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
+  assert.deepStrictEqual(navd, ['http://localhost/setup.html#trash'], 'routed through the in-app SPA navigate (hash preserved)');
+  assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
 });
