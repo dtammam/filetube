@@ -12750,6 +12750,36 @@ html[data-modern="on"] .video-uploader {
    then, so the "You" button never paints an empty box first. */
 .account-avatar img:not(.is-loaded) { opacity: 0; }
 .account-avatar img.is-loaded { opacity: 1; }
+/* v1.305 (Dean): the avatar edit affordance - a pencil BADGE pinned to the large
+   avatar disc (replaced the "Change photo" row, which felt derpy). The wrapper is
+   sized to the disc so the badge pins to its bottom-right; refreshAvatars swaps
+   only the inner disc, leaving the badge in place. */
+.account-menu-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.account-menu-avatar-edit {
+  position: absolute;
+  right: -2px; /* token-exempt: badge nudge onto the disc corner */
+  bottom: -2px; /* token-exempt: badge nudge onto the disc corner */
+  width: 20px; /* control geometry (width/height ungoverned) */
+  height: 20px;
+  padding: 0;
+  border: 2px solid var(--bg-sidebar); /* a ring in the menu bg so the badge reads as lifted off the disc */
+  border-radius: var(--radius-full);
+  background: var(--yt-red);
+  color: var(--btn-primary-text, #fff); /* token-exempt: pencil glyph on the accent disc (matches the monogram rule) */
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.account-menu-avatar-edit svg {
+  width: 12px; /* icon box (width/height ungoverned) */
+  height: 12px;
+}
+.account-menu-avatar-edit:hover { filter: brightness(1.08); }
 .account-menu-dropdown {
   position: absolute;
   top: calc(100% + var(--space-2));
@@ -12857,6 +12887,25 @@ html[data-modern="on"] .video-uploader {
   height: 0.9em;
   border-radius: var(--radius);
 }
+/* v1.305 (Dean): the "N items in trash" footer link into Settings -> Trash. Sits
+   directly under the disk figure and is styled identically to it (a quiet footer
+   info-link into a section). */
+.account-menu-trash {
+  display: block;
+  text-decoration: none;
+  padding: var(--space-2) var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.account-menu-trash:hover { text-decoration: underline; }
+/* Both footer info-links hide on a failed lazy fetch (el.hidden = true). An
+   author `display` rule (above) OUTRANKS the UA `[hidden] { display:none }`, so
+   the hide needs this explicit guard or the row would stay visible (the crown-
+   jewel `[hidden]` lesson - and the disk row had the same latent gap). */
+.account-menu-disk[hidden],
+.account-menu-trash[hidden] { display: none !important; }
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
   display: inline-flex;

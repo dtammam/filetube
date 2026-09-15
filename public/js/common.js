@@ -5547,6 +5547,25 @@ function wireMasterDetail(pageKey, root, signal) {
   if (signal) signal.addEventListener('abort', () => { if (hiddenObs) hiddenObs.disconnect(); }, { once: true });
 
   buildNav();
+
+  // v1.305 (Dean): deep-link a section by URL hash (#<collapse-key>), so the
+  // account menu's "N items in trash" (-> /setup.html#trash) opens the Trash
+  // section directly instead of dumping you at the top of Settings. Generic - any
+  // md section is now reachable by its key; a full page load runs this via init()
+  // (bootRouter), and an in-app SPA nav runs it via swapToView's init() with the
+  // hash already on window.location (navigate() pushes the href before swapping).
+  // No-ops for an empty, unknown, or still-hidden (admin-gated) key.
+  function selectFromHash() {
+    if (typeof window === 'undefined' || !window.location) return;
+    const key = String(window.location.hash || '').replace(/^#/, '');
+    if (!key) return;
+    const target = sections.filter((s) => s.getAttribute('data-collapse-key') === key && !s.hidden)[0];
+    if (target) selectKey(key, true);
+  }
+  selectFromHash();
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('hashchange', selectFromHash, signal ? { signal } : undefined);
+  }
 }
 
 function formatOneOffStatusText(entry) {
@@ -6089,6 +6108,15 @@ function formatDiskBytes(bytes) {
   return `${parseFloat((value / Math.pow(k, exponent)).toFixed(1))} ${units[exponent]}`;
 }
 
+// v1.305 (Dean): the account-menu "N items in trash" footer label. Dean's
+// spelling: only ONE is singular ("1 item in trash"); everything else - INCLUDING
+// zero - is "items" ("0 items in trash", "2 items in trash"). Pure + bounded (a
+// non-finite/negative count floors to 0), exported for node:test.
+function formatTrashCountLabel(count) {
+  const n = (typeof count === 'number' && Number.isFinite(count) && count >= 0) ? Math.floor(count) : 0;
+  return n === 1 ? '1 item in trash' : n + ' items in trash';
+}
+
 function buildAccountMenuRow(tag, label, iconClass) {
   const row = document.createElement(tag);
   row.className = 'account-menu-item';
@@ -6593,8 +6621,27 @@ function injectAccountMenu() {
     // Header: large avatar + name + role.
     const head = document.createElement('div');
     head.className = 'account-menu-head';
+    // v1.305 (Dean): the avatar is edited via a pencil BADGE on the disc itself -
+    // the old "Change photo" ROW felt derpy (Dean). A positioned wrapper holds the
+    // avatar + the badge so refreshAvatars can swap ONLY the avatar (replaceChild)
+    // and leave the badge untouched. The badge opens the same hidden file input +
+    // crop + POST /api/me/avatar flow wired just below.
+    const avatarWrap = document.createElement('div');
+    avatarWrap.className = 'account-menu-avatar-wrap';
     let headAvatar = buildAccountAvatarEl(user, true);
-    head.appendChild(headAvatar);
+    avatarWrap.appendChild(headAvatar);
+    const editAvatar = document.createElement('button');
+    editAvatar.type = 'button';
+    editAvatar.className = 'account-menu-avatar-edit';
+    editAvatar.setAttribute('aria-label', 'Change photo');
+    editAvatar.title = 'Change photo';
+    // Inline pencil SVG (self-contained, like the master-detail back chevron) -
+    // the mask-icon set has no pencil, and inlining avoids a new asset + class.
+    editAvatar.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+    avatarWrap.appendChild(editAvatar);
+    head.appendChild(avatarWrap);
     const who = document.createElement('div');
     who.className = 'account-menu-who';
     const nameEl = document.createElement('div');
@@ -6620,7 +6667,7 @@ function injectAccountMenu() {
       trigger.replaceChild(t2, triggerAvatar);
       triggerAvatar = t2;
       const h2 = buildAccountAvatarEl(user, true);
-      head.replaceChild(h2, headAvatar);
+      avatarWrap.replaceChild(h2, headAvatar); // swap the disc only; the pencil badge stays
       headAvatar = h2;
     };
     fileInput.addEventListener('change', async () => {
@@ -6641,12 +6688,8 @@ function injectAccountMenu() {
         showToast('Could not update your photo (network error).');
       }
     });
-    const changePhoto = buildAccountMenuRow('button', 'Change photo', 'icon-photo');
-    changePhoto.addEventListener('click', () => fileInput.click());
-    menu.appendChild(changePhoto);
-    menu.appendChild(fileInput);
-
-    menu.appendChild(accountMenuDivider());
+    editAvatar.addEventListener('click', () => fileInput.click());
+    menu.appendChild(fileInput); // hidden; the head's border-bottom now separates the head from the quick links (no divider)
 
     // Quick links to the library pages. Hrefs to known routes; the menu's own
     // click handler (below) SPA-navigates them in-app -- the delegated document
@@ -6740,6 +6783,37 @@ function injectAccountMenu() {
         .catch(() => { diskRow.hidden = true; diskDivider.hidden = true; });
     };
 
+    // v1.305 (Dean): "N items in trash" - a one-tap route into the Trash section
+    // (Settings -> Trash was too many taps). Sits directly UNDER the disk figure,
+    // sharing the same footer divider, styled like it (a quiet footer info-link).
+    // Links to /setup.html#trash: wireMasterDetail deep-links that section open on
+    // the hash. ALWAYS shown (Dean: "0 items in trash" / "1 item" / "2 items"),
+    // lazily counted on first open like the disk row; a failed count hides the row
+    // only (never a wrong "0 items"), leaving the disk row + divider untouched.
+    const trashRow = document.createElement('a');
+    trashRow.className = 'account-menu-trash';
+    trashRow.href = '/setup.html#trash';
+    trashRow.setAttribute('role', 'menuitem');
+    trashRow.setAttribute('aria-label', 'Review trash');
+    const trashLabel = document.createElement('span');
+    trashLabel.className = 'account-menu-disk-shimmer skeleton-shimmer'; // reuse the disk row's loading-bar sizing
+    trashRow.appendChild(trashLabel);
+    menu.appendChild(trashRow);
+    let trashLoaded = false;
+    const loadTrashCount = () => {
+      if (trashLoaded) return; // fetch once per menu instance, on first open
+      trashLoaded = true;
+      fetch('/api/trash')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('trash ' + r.status))))
+        .then((body) => {
+          const count = body && Number(Number.isFinite(Number(body.total)) ? body.total : (body.items || []).length);
+          if (!Number.isFinite(count)) throw new Error('bad count');
+          trashLabel.className = ''; // drop the shimmer, reveal the value
+          trashLabel.textContent = formatTrashCountLabel(count);
+        })
+        .catch(() => { trashRow.hidden = true; });
+    };
+
     const version = appVersionString();
     const notesUrl = releaseNotesUrl(version);
     if (version && notesUrl) {
@@ -6764,7 +6838,7 @@ function injectAccountMenu() {
     const setOpen = (open) => {
       menu.hidden = !open;
       trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open) loadDiskUsage(); // v1.158: lazily resolve the on-disk total on first open
+      if (open) { loadDiskUsage(); loadTrashCount(); } // v1.158 / v1.305: lazily resolve the on-disk total + trash count on first open
     };
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -6782,7 +6856,7 @@ function injectAccountMenu() {
     // mirroring shouldInterceptLinkClick -- so the mini-player survives.
     menu.addEventListener('click', (e) => {
       e.stopPropagation();
-      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href], a.account-menu-disk[href]') : null;
+      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href], a.account-menu-disk[href], a.account-menu-trash[href]') : null;
       if (!a) return;
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
       let u;
@@ -6792,7 +6866,19 @@ function injectAccountMenu() {
         && window.FileTube && typeof window.FileTube.navigate === 'function') {
         e.preventDefault();
         setOpen(false);
-        window.FileTube.navigate(u.href);
+        // v1.305 (gate): when we are ALREADY on the target path+search and only
+        // the hash differs (e.g. "N items in trash" -> /setup.html#trash while
+        // already on Settings), navigate() no-ops - its same-location check
+        // ignores the hash - so the section would never open. Set the hash
+        // directly instead; the master-detail hashchange listener then drives
+        // selectFromHash to open the section. Every cross-page click still
+        // routes through navigate() (which preserves the hash for init()).
+        const samePathSearch = (u.pathname + u.search) === (window.location.pathname + window.location.search);
+        if (samePathSearch && u.hash && u.hash !== window.location.hash) {
+          window.location.hash = u.hash;
+        } else {
+          window.FileTube.navigate(u.href);
+        }
       }
     });
     document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });
@@ -15439,6 +15525,8 @@ if (typeof module !== 'undefined' && module.exports) {
     injectAccountMenu, ensureAccountMenuSubscriptionsRow, buildAccountAvatarEl, accountSignOut, updateAccountMenuThemeItem,
     // v1.158: the account-menu disk-size formatter (byte-exact vs stats.js's).
     formatDiskBytes,
+    // v1.305: the account-menu trash-count label ("1 item"/"N items in trash").
+    formatTrashCountLabel,
     // v1.159: the reusable sortable/filterable table + its pure core.
     buildSortableTable, sortTableRows, filterTableRows, defaultSortDir,
     // v1.83: the pure avatar-crop geometry + the crop modal.
