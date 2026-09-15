@@ -3022,5 +3022,11 @@
     "date": "2026-09-15",
     "title": "Behind the scenes: the big server-code cleanup is finished",
     "intent": "Nothing changes on screen. This finishes the long project of moving the server out of one enormous file into focused pieces: the trash and restore, the folder mover, the backup and restore, the video and audio transcoding, and the library scanner now each live in their own module, exactly as before. Every page, playback, download, scan, trash-and-restore and backup works the same, and a backup taken on the previous version restores normally."
+  },
+  {
+    "version": "1.300.0",
+    "date": "2026-09-15",
+    "title": "A new matte skin for the iPod-style music player, and clearer skin names",
+    "intent": "The retro iPod-style music player gets a new 'Click (Matte)' skin - a soft matte-graphite body with a dark wheel, modeled on a real classic iPod - and the skin names are tidied up: the iPod skins are now Click, Click (Black) and Click (Matte), and 'Seattle Classic' is simply 'Seattle'. An older, unused Seattle skin has been removed; if it happened to be your current pick, the player just falls back to the default. Nothing else changes."
   }
 ]

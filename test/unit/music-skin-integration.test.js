@@ -1793,7 +1793,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'spotify', 'zune', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. both Seattles (adversarial W1: in-pip must not mean in-tray)');
+    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'ipod-matte', 'spotify', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. every Click colorway and Seattle (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
@@ -1802,10 +1802,11 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const tray = holder.pip;
     pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
-    // v1.258: the chips are the COLORWAYS in tray - the ipod family only (those picks
-    // genuinely restyle the tray body; apple/spotify would visibly no-op)
+    // v1.258: the chips are the COLORWAYS in tray - the Click family only (those picks
+    // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.300: the
+    // Click trio incl. the new Matte colorway.
     const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
-    assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black'], 'exactly the two colorway chips inside the tray');
+    assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black', 'ipod-matte'], 'exactly the three colorway chips inside the tray');
     assert.match(pipPanelOf(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
     // the HEADLINE interaction: tapping a colorway restyles the LIVE tray (kills the
     // memoized-donor mutant - the wrap must consult the pick on every paint)
@@ -1848,7 +1849,7 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
 });
 
 
-test('v1.258 colorways: a Pocket Classic (Black) pick keeps its BLACK body in the tray (the variant-aware donor)', async () => {
+test('v1.258 colorways: a Click (Black) pick keeps its BLACK body in the tray (the variant-aware donor)', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod-black', run: async (dom) => {
     dom.window.localStorage.setItem('ft-tray-mode', '1');
     const holder = { pip: makePipWindow() };
@@ -1860,9 +1861,21 @@ test('v1.258 colorways: a Pocket Classic (Black) pick keeps its BLACK body in th
   } });
 });
 
-test('v1.260: a Seattle Classic pick does NOT become the tray donor - the Nano stays a Pocket Classic (base silver fallback)', async () => {
+test('v1.300 colorways: a Click (Matte) pick keeps its MATTE body in the tray (the variant-aware donor)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod-matte', run: async (dom) => {
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const pip = holder.pip;
+    assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
+    assert.match(pipPanelOf(pip).className, /mms-ipod-matte/, 'the MATTE colorway rides the family pick (drop ipod-matte from the tray getSkinId donor and this reds)');
+  } });
+});
+
+test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
   // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
-  // the explicit iPod pair - loosen the donor back to base-family and this reds.
+  // the explicit iPod pair (ipod + ipod-black) - loosen the donor back to base-family and this reds.
   await boot({ mobile: false, isMusic: true, skin: 'zune-classic', run: async (dom) => {
     dom.window.localStorage.setItem('ft-tray-mode', '1');
     const holder = { pip: makePipWindow() };

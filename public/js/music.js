@@ -939,7 +939,7 @@ if (typeof module !== 'undefined' && module.exports) {
           },
           // v1.270 BRICK (Dean: "almost a little easter egg"). The VIEW owns the
           // question the engine must not: which skins have a wheel to play it with.
-          // Pocket Classic only - Seattle Classic shares the wheel chassis but its
+          // The Click skins only - Seattle shares the wheel chassis but its
           // pad is half the usable ring (#207), and the flat skins have no wheel.
           brick: {
             visible: function () { var w = brickWiring(); return !!w && w.visible(); },

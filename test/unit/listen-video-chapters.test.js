@@ -2,7 +2,7 @@
 
 // [UNIT] v1.280 (Dean): a VIDEO (mp4) with chapters, played via the Listen button, now
 // expands into one `::c` track per chapter in the music skins - the SAME shape a chaptered
-// library-audio album uses - so Pocket Classic / Seattle show ALL the chapters (a tap jumps
+// library-audio album uses - so Click / Seattle show ALL the chapters (a tap jumps
 // to one, Loop chapter works), instead of collapsing to a single track. buildListenChapterTracks
 // is the pure expansion (parity with lib/music/libraryAudio expandAudioToTracks); the wiring
 // (playListenItem uses it; watchBackTap strips ::c for the watch page) is source-locked.

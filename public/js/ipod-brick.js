@@ -1,5 +1,5 @@
 'use strict';
-// v1.270 - BRICK. The iPod's hidden game, as an easter egg on the Pocket Classic
+// v1.270 - BRICK. The iPod's hidden game, as an easter egg on the Click
 // skins (Dean: "keep extremely small and modular... almost a little easter egg").
 //
 // DELIBERATELY SELF-CONTAINED. Nothing else in the app imports this; the skin
@@ -281,9 +281,9 @@
   //
   // The engine stays generic: it never learns what a takeover is talking to. What
   // this adds is only what a VIEW would otherwise have to repeat.
-  var WHEEL_SKINS = ['ipod', 'ipod-black']; // Pocket Classic pair. Seattle Classic
+  var WHEEL_SKINS = ['ipod', 'ipod-black', 'ipod-matte']; // the Click wheel trio. Seattle
   // shares the chassis but its pad is half the usable rotation ring (tech-debt #207),
-  // and Dean scoped this to "specifically the pocket classic"; flat skins have no wheel.
+  // and Dean scoped this to the Click skins; flat skins have no wheel.
 
   function activeSkinId() {
     try {
