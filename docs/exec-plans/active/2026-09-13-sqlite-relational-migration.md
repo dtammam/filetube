@@ -921,11 +921,13 @@ on each and resolving the one expected conflict (the route-surface registry list
 releases remain: **R2 = S3 music + S4 tv + S10a media browse (`/api/videos`, `/api/home`,
 `/api/search`, `/api/stats`, `/api/channels` and the small media reads) + S10b config
 (`/api/config`, `/api/settings`, `/api/folders`, `/api/scan`, `/api/cache`)** - four parallel
-slices, one gate; **R3 = S5 + S6 + S7 + S8 + S9 in parallel + #226** (full gate, adversarial
-destroys the data on both sides of every moved seam), then the `< 3,000` prediction is
-re-verified and the plan moves to completed/. A slice that fails the machine check is dropped
-from its release, never held for. Each release: full gate, dual-Node, device pass PENDING and
-disclosed.
+slices, one gate; **R3 = S5 + S6 + S7 + S8 + S9** (full gate, adversarial destroys the data on
+both sides of every moved seam), then the `< 3,000` prediction is re-verified and the plan moves
+to completed/. **#226 was DEFERRED out of R3 (Dean's ruling 2026-09-15): the catalog list-route
+read-through cache is orthogonal perf with cache-staleness risk and gets its own wave with a real
+before/after measurement + data-safety gate; it stays tracked as tech-debt #226.** A slice that
+fails the machine check is dropped from its release, never held for. Each release: full gate,
+dual-Node, device pass PENDING and disclosed.
 
 - **Wave 7b R1 record (2026-09-14, branch `feat/wave7b-r1`: the design commit + three slice
   commits, each an Opus worktree subagent's move verified by the main session's machine
@@ -1079,6 +1081,72 @@ disclosed.
     (device pass PENDING). Known gap disclosed: books-api T6 is a pre-existing time-dependent test
     that can red under parallel-suite load, proven independent of this diff (S5-alone + any added
     test file reds the identical two tests) - tracked in the tech-debt tracker, not fixed here.
+- **Wave 7b R3 record (2026-09-15, branch `feat/wave7b-r3`: base = main at v1.298.0, then FIVE
+  slices - S5 (already on the branch), S6 + S7 (Opus worktree subagents), S8 + S9 (Opus worktree
+  subagents run in parallel from the S5+S6+S7 tip 93657641), each machine-verified by the main
+  session before merge. #226 DEFERRED to its own wave (Dean's ruling 2026-09-15: ship the split;
+  #226 - the catalog list-route read-through cache - is orthogonal perf with cache-staleness risk
+  and deserves its own before/after measurement + data-safety gate; stays tracked as tech-debt
+  #226).**
+  - **S5 trash/move** (4f21e93b): `moveItemToFolder`, `trashItem`, `restoreTrashItem`,
+    `purgeTrashItem`, `sweepTrash`, `trashOrphanFile`, `computeMoveTarget`, `/api/trash` ->
+    lib/media/trash.js + lib/media/move.js (the three deferred extractions from Waves 3-4).
+  - **S6 relocation** (eaf80826): six import-relocation / repull planners
+    (`planImportRelocation`, `relocateHydratedImportIntoChannelFolder`,
+    `buildImportRelocationPreview`, `migrateOneOffsIntoChannelFolders`, `recordRepulledItemMeta`,
+    `enumerateRepullableItems`) -> lib/ytdlp/relocation.js `createRelocation(deps)`. Zero
+    reassigned deps (all cross as the same reference); `moveItemToFolder` crossed as a lazy
+    wrapper (load-bearing once S5 is present - boot-verified on the merged tree). A FUNCTION
+    module, not a route module.
+  - **S7 backup** (ee0b2b89, DATA-LOSS): `/api/admin` (backup + restore) + `validateBackupBundle`
+    (260) + `validateFeatureBundle` + `buildStoreZip` + the bundle-format constants ->
+    lib/admin/backup.js. The restore ordering (validate -> self-lockout guard -> missing-key
+    preservation -> exclusiveReplace) is byte-identical; the `failNextRestorePopulateError` test
+    seam moved WHOLE (both touch points in-slice). `zlib` require deleted from server.js (dead
+    after buildStoreZip left); taken through the module's own require.
+  - **S8 transcode/streams** (eff68410): 22 queue functions (`processTranscodeQueue`,
+    `processAudioExtractQueue`, `runChapterSynthesis`, `evictTranscodeCache`,
+    `sweepAgedTranscodes`, `processRokuCompatQueue`, `resolveRokuCompat`, the roku cache
+    machinery, the status setters, `reconcileTranscode`, `isInFlight/isCompletedTranscode`,
+    `transcodedPath`, `activeProtectedPaths`, `selectEvictions/selectAgedOut`,
+    `effectiveCacheCap`, `transcodeCacheSize`) -> lib/media/transcode.js
+    `createTranscodeQueues(deps)`; `sendRangeable` + the byte-stream routes /video /thumbnail
+    /storyboard /preview -> lib/media/streams.js. ONE documented seam: `ffmpegAvailable` crosses
+    to `resolveRokuCompat` as the live `ffmpegIsAvailable()` (not exported). `queueTranscode` /
+    `queueAudioExtract` deliberately STAY in server.js (Rule 3 "the function stays" branch - keeps
+    the ffmpeg seam off the EXPORTED queue-entry functions). Two #228 slash-star comment
+    neutralizations. 4 route registrations left server.js.
+  - **S9 the scan orchestrator** (58f81178, the persist-gate seams - RISKIEST): `runScanDirectories`
+    (1,566), `extractMetadataAndThumbnail`, `scanDirRecursive`, `extractStoryboard`,
+    `parseFfprobeStreams`, `resolveLeafByBracketId`, `resolveOnDiskPath` -> lib/scan/orchestrator.js
+    `createScanOrchestrator(deps)`. Bodies BYTE-IDENTICAL; nothing improved. Documented seams:
+    `ffmpegAvailable` -> `ffmpegIsAvailable()` (3 functions - the hidden data-loss seam: frozen it
+    would silently disable ALL thumbnail/storyboard/faststart extraction), `persistedStateEpoch`
+    -> the live `__getPersistedStateEpoch()`; `scanState` crosses as the SAME const object;
+    `scanDirectories` (lock + interval) STAYS in server.js and calls the factory result. The
+    lib/scan/ Wave-6 helpers required directly with re-rooted specifiers (same objects by module
+    cache - scan-helpers-extraction identity lock stays green). S8's queue API passed as LAZY
+    wrappers (survive S8's parallel factory conversion).
+  - **The merges:** S6 conflict-free; S7 conflicts on DIAGRAMS (count re-measured 16 on merged
+    tree, not summed) + ytdlp-feature-store count (the auto-merge left 17, but S6 +2 and S7 +2 =
+    19 re-measured; caught and fixed); S8 fast-forwarded; S9 conflict-free. main->r3 brought the
+    v1.298.0 ceremony so the ledger is complete against the v1.298.0 tag (a bare feat/wave7b-r2
+    merge reddened release-ledger.test.js - deterministic, caught and re-routed to merging main).
+  - **State after (main checkout numbers pending; measured in the r3 worktree):** server.js
+    **7,228** lines (13,563 at v1.298.0; 19,064 at arc start), **12** route + middleware
+    registrations (22 at v1.298.0), functionCount 204. Seven new modules: lib/media/trash.js,
+    lib/media/move.js, lib/ytdlp/relocation.js, lib/admin/backup.js, lib/media/transcode.js,
+    lib/media/streams.js, lib/scan/orchestrator.js. Merged tree (worktree, no parallel load):
+    8803 / 8800 / 0 fail / 3 skipped (the 3 = worktree Playwright env skips). Each slice
+    boot-verified; the routing signature is byte-identical to every slice base. ytdlpDb crossing
+    count 20; DIAGRAMS live registration count 12.
+  - **Judgment call for Dean at arc close:** server.js lands at 7,228, NOT < 3,000 (Section 1's
+    aspiration). What remains is the boot/wiring spine: the express + gate setup, the deps objects
+    handed to every module, `scanDirectories`' lock + interval, the queue-entry functions, byte
+    helpers, the scheduler. Recommendation: record 7,228 as the honest floor rather than force
+    further indirection; the < 3,000 target is met in spirit (the top-10 giant functions all live
+    in tested lib/ modules). Dean's call: settle, or a further slim-gated helper sweep.
+  - **Gate:** (filled after the gate)
 
 ---
 
