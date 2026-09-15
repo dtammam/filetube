@@ -1048,6 +1048,7 @@
     // a queueing engine would buzz on after the stop.
     var HAPTIC_MIN_MS = (WHEEL_CFG && WHEEL_CFG.CONST.MIN_MS) || 8;
     var HAPTIC_BIAS = (WHEEL_CFG && WHEEL_CFG.CONST.BIAS_DEFAULT) || 18; // v1.303: default ghost/sweep amplitude (px); the live dither per gesture comes from the config
+    var DEAD_FRAC = (WHEEL_CFG && WHEEL_CFG.CONST.DEAD_FRAC) || 0.20; // v1.303: centre (Select) dead-zone, sourced from the shared module (was a magic 0.2)
     // v1.303: the live wheel config, read FRESH per gesture (device-local; the Click wheel
     // test is the source of truth) - a fresh read so a config saved AFTER this engine mounted
     // is honoured on the next spin, no re-create needed. Absent module or config -> today's
@@ -1281,7 +1282,7 @@
       var r = wheel.getBoundingClientRect();
       var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
       // ignore a press on the dead center (the Select button): let its tap pass through.
-      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.2) return;
+      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * DEAD_FRAC) return;
       var st = {
         wheel: wheel, id: e.pointerId, captured: false, moved: false,
         // Now Playing is never idle: the wheel SCRUBS the timeline on EVERY surface
@@ -1316,6 +1317,9 @@
           var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
           if (!d0) return; // nothing to scan (still loading) - leave it a plain tap/skip
           st.scanning = true; st.moved = true; // moved => the release's skip click is suppressed
+          // v1.303: fast-scan (a HOLD on rewind/ffwd) ALWAYS captures, independent of st.capture -
+          // the capture config governs the ROTATION grab; a hold-scan structurally needs the
+          // pointer to keep stepping if the finger drifts off the zone. endWheel still releases it.
           try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ }
           var step = function () {
             var m = hostCtl('media-player');

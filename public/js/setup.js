@@ -4034,7 +4034,12 @@ function openWheelCal(signal) {
   // findings; whether iOS tolerates transform updates mid-track is what it tests.
   function placeSweep(x, y, g) {
     if (!ghost) return;
-    const dither = cfg.sweepDither * Math.sin((st.sweepAngle / cfg.sweepStep) * Math.PI); // amplitude + detent size are tunable
+    // v1.303: route through the SHARED sweepOffset (wheel-config.js) - the SAME feel math the
+    // real wheel (skin-surface.js hapticPlaceSweep) uses - so the tool and the wheel cannot
+    // drift on the sweep curve. Falls back to the inline sine only if the module failed to load.
+    const wc = wheelCfgApi();
+    const dither = wc ? wc.sweepOffset(st.sweepAngle, cfg.sweepDither, cfg.sweepStep)
+      : (cfg.sweepDither * Math.sin((st.sweepAngle / cfg.sweepStep) * Math.PI));
     ghost.style.transform = 'translate(' + ((x - g.cx) + dither) + 'px,' + (y - g.cy) + 'px)';
   }
 

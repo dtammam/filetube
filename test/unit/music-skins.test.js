@@ -375,7 +375,7 @@ test('v1.250 (Dean): ONE Now-Playing wheel behavior - SCRUB - on every surface; 
   // arms, cursor (list) and scrub (Now Playing) - no volume, nowhere.
   const { body } = wheelHandlerSrc();
   assert.match(body, /mode: listMode \? 'cursor' : 'scrub'/, 'list -> cursor, Now Playing -> scrub; no third mode');
-  assert.match(body, /r\.width \* 0\.2[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through');
+  assert.match(body, /r\.width \* DEAD_FRAC[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through (DEAD_FRAC sourced from the shared module, v1.303)');
 });
 
 test('v1.233: center-select in the list PLAYS the cursor row (not the current), then returns to Now Playing', () => {

@@ -1031,8 +1031,12 @@ test('v1.303 wheel config: GRID is test-only -> the real wheel runs Ghost (effec
     const wheel = panel(b.dom).querySelector('.ip-wheel');
     const s = atDeg(0);
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
-    // grid -> ghost, so gesture start shows the +18 bias, not the sweep's 0 offset.
-    assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'grid falls back to Ghost on the real wheel (+18 bias, not sweep)');
+    // grid runs as GHOST on the real wheel (not sweep): gesture start shows the +18 bias, not
+    // the sweep's 0 offset. Also pin the effectiveEngine mapping DIRECTLY here (gate SUGGESTION 1:
+    // skin-surface only branches on 'sweep', so the behavioural assert alone can't tell grid from
+    // ghost - this direct assert binds the grid->ghost mapping at this site too).
+    assert.strictEqual(WHEELCFG.effectiveEngine({ engine: 'grid' }), 'ghost', 'grid maps to ghost - Grid is a test-only engine');
+    assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'grid runs Ghost on the real wheel (+18 bias, never sweep)');
   } finally { b.restore(); }
 });
 
