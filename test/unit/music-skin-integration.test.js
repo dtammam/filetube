@@ -1793,7 +1793,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'spotify', 'zune', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. both Seattles (adversarial W1: in-pip must not mean in-tray)');
+    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'ipod-matte', 'spotify', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. every Click colorway and Seattle (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
@@ -1848,7 +1848,7 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
 });
 
 
-test('v1.258 colorways: a Pocket Classic (Black) pick keeps its BLACK body in the tray (the variant-aware donor)', async () => {
+test('v1.258 colorways: a Click (Black) pick keeps its BLACK body in the tray (the variant-aware donor)', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod-black', run: async (dom) => {
     dom.window.localStorage.setItem('ft-tray-mode', '1');
     const holder = { pip: makePipWindow() };
@@ -1860,9 +1860,9 @@ test('v1.258 colorways: a Pocket Classic (Black) pick keeps its BLACK body in th
   } });
 });
 
-test('v1.260: a Seattle Classic pick does NOT become the tray donor - the Nano stays a Pocket Classic (base silver fallback)', async () => {
+test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
   // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
-  // the explicit iPod pair - loosen the donor back to base-family and this reds.
+  // the explicit iPod pair (ipod + ipod-black) - loosen the donor back to base-family and this reds.
   await boot({ mobile: false, isMusic: true, skin: 'zune-classic', run: async (dom) => {
     dom.window.localStorage.setItem('ft-tray-mode', '1');
     const holder = { pip: makePipWindow() };

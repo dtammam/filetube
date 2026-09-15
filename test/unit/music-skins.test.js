@@ -19,8 +19,8 @@ const CTX = {
   playing: true, posSec: 96, durSec: 337, posLabel: '1:36', remLabel: '-4:01',
 };
 
-test('registry exposes the six skins with render funcs (incl. the v1.260 Seattle Classic on the wheel chassis)', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune', 'zune-classic']);
+test('registry exposes the six skins with render funcs (incl. the Click (Matte) colorway on the wheel chassis)', () => {
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'zune-classic']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
@@ -30,16 +30,40 @@ test('registry exposes the six skins with render funcs (incl. the v1.260 Seattle
   // the black iPod shares the silver iPod's render + declares a `base` so the panel
   // also carries the shared .mms-ipod CSS class (music.js reads it).
   assert.strictEqual(skins.skinById('ipod-black').base, 'ipod', 'black iPod bases on the silver iPod CSS');
-  assert.strictEqual(skins.skinById('zune-classic').base, 'ipod', 'Seattle Classic rides the wheel chassis the same way (v1.260)');
-  assert.notStrictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'v1.261: Seattle Classic is now its OWN renderer (the Zune pad + flanks), no longer the iPod wheel verbatim');
+  // the matte Click colorway is the ipod-black pattern exactly: base 'ipod' (shared CSS)
+  // + renderIpod (identical structure), only the .mms-ipod-matte palette differs.
+  assert.strictEqual(skins.skinById('ipod-matte').base, 'ipod', 'matte Click bases on the silver iPod CSS too');
+  assert.strictEqual(skins.skinById('ipod-matte').renderFull, skins.skinById('ipod').renderFull, 'matte is the same render as silver/black - only the palette differs');
+  assert.strictEqual(skins.skinById('zune-classic').base, 'ipod', 'Seattle rides the wheel chassis the same way (v1.260)');
+  assert.notStrictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'v1.261: Seattle is now its OWN renderer (the Zune pad + flanks), no longer the iPod wheel verbatim');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
   const labels = skins.IDS.map((id) => skins.skinById(id).label);
-  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Pocket Classic', 'Pocket Classic (Black)', 'Seattle', 'Seattle Classic']);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Seattle']);
   for (const l of labels) {
     assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(l), 'label "' + l + '" avoids the real product/company names');
   }
+});
+
+test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette CSS is source-locked (jsdom-invisible)', () => {
+  // Mirrors the ipod-black colorway: renderIpod structure + a .mms-ipod-matte palette-only
+  // override (the silver LCD screen is reused). Paint is jsdom-invisible, so the palette
+  // rules and their reused stops (--mms-ipod-sheen-0 chamfer, --mms-ipodk-edge rim) are
+  // locked in source; without this a dropped/retuned matte rule stays green.
+  const matte = skins.renderFull('ipod-matte', CTX);
+  assert.strictEqual(matte, skins.renderFull('ipod', CTX), 'matte renders byte-identical to silver iPod - the palette lives entirely in CSS, keyed off the .mms-ipod-matte panel class');
+  assert.match(matte, /class="ip-wheel"/, 'the FULL click wheel (not the Zune pad)');
+  assert.match(matte, /data-skin-menu/, 'the wheel MENU/back zone (the wheel exit)');
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-ipod-matte\{ background:[\s\S]*?var\(--mms-ipodm-chamfer\)[\s\S]*?var\(--mms-ipod-sheen-0\)[\s\S]*?var\(--mms-ipodm-t1\)[\s\S]*?var\(--mms-ipodm-t7\) 100%\);\s*box-shadow:inset 0 0 0 1px var\(--mms-ipodk-edge\); \}/, 'the matte body: photo ramp t1..t7 + the reused white-transparent chamfer stop + the ipodk 1px inset rim');
+  assert.match(css, /\.mms-ipod-matte \.ip-wheel\{ background:[\s\S]*?var\(--mms-ipodm-wheel-sheen\)[\s\S]*?var\(--mms-ipodm-wheel1\), var\(--mms-ipodm-wheel2\) 100%\); \}/, 'the dark wheel with its top sheen');
+  assert.match(css, /\.mms-ipod-matte \.ip-zone\{ color:var\(--mms-ipodm-wheel-lbl\); \}/, 'the wheel labels tint');
+  assert.match(css, /\.mms-ipod-matte \.ip-center\{ background:radial-gradient\(circle at 50% 38%, var\(--mms-ipodm-center1\), var\(--mms-ipodm-center2\)\); \}/, 'the center button');
+  // the palette override must sit AFTER the shared .mms-ipod base (and beside its ipod-black
+  // sibling) so it wins at equal specificity - reorder and the matte body silently vanishes.
+  assert.ok(css.indexOf('.mms-ipod-matte{') > css.indexOf('.mms-ipod-black{'), 'the matte override follows the ipod-black block (both after the .mms-ipod base)');
 });
 
 test('v1.232.1: the iPod LCD is height-capped so a long song list scrolls INSIDE it (not out of bounds)', () => {
@@ -77,6 +101,13 @@ test('the per-device setting round-trips and normalizes junk to the default', ()
   assert.strictEqual(skins.activeSkinId(store), 'spotify');
   skins.setActiveSkin('bogus', store);
   assert.strictEqual(skins.activeSkinId(store), 'apple', 'junk id normalizes to default');
+  // a pref saved before the Metro 'zune' skin was removed now falls back to the default
+  // (normalizeSkinId gates on the live IDS, so a dropped id can never render a missing skin).
+  assert.strictEqual(skins.normalizeSkinId('zune'), 'apple', 'the removed zune id normalizes to the default');
+  bag[skins.SKIN_KEY] = 'zune';
+  assert.strictEqual(skins.activeSkinId(store), 'apple', 'a stored (now-removed) zune pref reads back as the default');
+  // the matte Click id is a REAL skin - it must round-trip, not fall back
+  assert.strictEqual(skins.normalizeSkinId('ipod-matte'), 'ipod-matte', 'the new matte id is valid and round-trips');
 });
 
 test('the GATE is true for mobile + a music item (desktop / non-audio are default chrome)', () => {
@@ -142,12 +173,6 @@ test('per-skin controls: Apple/Spotify have a swap-glyph play + collapse + tap-s
   assert.match(ipod, /data-skin-select/, 'iPod: Select zone (list toggle)');
   assert.match(ipod, /class="mms-playind"/, 'iPod: status-bar play indicator (reflect target)');
   assert.match(ipod, /data-skin-seek/, 'iPod: the LCD bar is tap-to-seek since v1.258.1 (was display-only)');
-  // v1.259 (slim W4): the Seattle/zune controls - the collapse button is the skin's
-  // ONLY exit (no MENU zone), so its absence would trap the user full-screen.
-  const zune = skins.renderFull('zune', CTX);
-  assert.match(zune, /class="mms-play"/, 'zune: the swap-glyph play');
-  assert.match(zune, /data-skin-collapse/, 'zune: the collapse exit (the ONLY way out)');
-  assert.match(zune, /data-skin-seek/, 'zune: tap-to-seek bar');
   assert.ok(!/data-skin-collapse/.test(ipod), 'iPod exits via MENU, not the collapse chevron');
   assert.ok(!/class="mms-play"/.test(ipod), 'iPod has no swap-glyph play (the wheel bottom keeps its ▶❚❚)');
 });
@@ -230,9 +255,9 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
   // The registry the Settings picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'zune', 'zune-classic']);
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'zune-classic']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
-  assert.strictEqual(skins.skinById('ipod').label, 'Pocket Classic', 'cheeky label (not the real product name) for the picker');
+  assert.strictEqual(skins.skinById('ipod').label, 'Click', 'cheeky label (not the real product name) for the picker');
 });
 
 test('the pause glyph shows only when playing; play glyph when paused', () => {
@@ -243,8 +268,8 @@ test('the pause glyph shows only when playing; play glyph when paused', () => {
 });
 
 test('EVERY skin render ESCAPES track/queue text (no HTML injection from a crafted tag/title)', () => {
-  // v1.259 (slim W4): iterate ALL skins - the zune path LOWERCASES before escaping
-  // (lc-then-esc), and a divergent single-skin fixture left that axis unbound.
+  // Iterate ALL skins so a divergent single-skin fixture cannot leave one path unbound
+  // (the case-insensitive assert below tolerates any per-skin text transform).
   const evil = { track: { title: '<IMG SRC=x onerror=alert(1)>', artist: '"><b>', album: 'A&B', artUrl: '/x' },
     upNext: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }],
     fullList: [{ index: 0, title: '<script>', durLabel: '', state: 'current' }], playing: false, posSec: 0, durSec: 100 };
@@ -411,19 +436,6 @@ test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freez
   // teardown clears it on the window that created it.
   assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
 });
-
-test('v1.259 source-lock: the zune queue CAN scroll - the flex chain and row layout exist (jsdom cannot measure layout)', () => {
-  // Adversarial W1/W2's functional findings: without the .mms-zn-queue flex chain the
-  // qlist auto-heights and .mms-full's overflow:hidden crops rows unreachably; without
-  // the row layout the four spans mash into UA-default buttons. Lock the load-bearers.
-  const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-zune \.mms-zn-queue\{ flex:1; min-height:0; display:flex; flex-direction:column; \}/, 'the queue flex chain (the spotify idiom) - the scroll rides it');
-  assert.match(css, /\.mms-zune \.mms-qlist\{ overflow-y:auto; flex:1; min-height:0;/, 'the list scrolls within the chain');
-  assert.match(css, /\.mms-zune \.mms-row\{ display:flex; align-items:center; width:100%;/, 'rows have real layout, not UA-default buttons');
-  assert.match(css, /\.mms-zune \.mms-row\{[^}]*text-transform:lowercase/, 'the lowercase rows claim is CSS-true');
-});
-
 
 test('v1.261 Seattle Classic: the REAL Zune control - a clean pad flanked by Back + Play, on the shared screen (not a brown iPod)', () => {
   const html = skins.renderFull('zune-classic', CTX);
