@@ -101,7 +101,7 @@ the media index in Wave 6 - the MEDIA box). The doc-object key list in
 (`assertNoUnknownKeys()` throws on strangers). Measured at v1.296.0 (Wave 7):
 no document tables (`doc_kv` and `doc_single` were dropped in schema v33),
 61 relational tables, schema version 33. (The arc's plan:
-`docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`.)
+`docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR

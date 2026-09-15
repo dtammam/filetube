@@ -2,7 +2,7 @@
 'use strict';
 
 // Re-derives the machine-derived baseline of the relational-migration arc
-// (docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md, Section 1)
+// (docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md, Section 1)
 // so every wave commit re-verifies the plan's predictions with the SAME
 // commands, never a hand count. Prints one JSON object; pass --pretty for a
 // table. Read-only: touches no data.

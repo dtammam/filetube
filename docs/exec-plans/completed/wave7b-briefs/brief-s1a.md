@@ -3,7 +3,7 @@
 You are an Opus worktree subagent doing ONE mechanical slice of the monolith split.
 Repo: /home/coder/projects/filetube. Base branch: `feat/wave7b-r1` (its tip is the design
 commit; read the Wave 7b section of
-docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md FIRST - it is the spec).
+docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md FIRST - it is the spec).
 Export the Node PATH before every node/npm/git command:
 `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
 
