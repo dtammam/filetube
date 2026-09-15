@@ -1,7 +1,9 @@
 # Wheel config: the Click wheel test becomes the real wheel's source of truth
 
-Status: ACTIVE (2026-09-15). Owner: main session. Gate: FULL (device haptics + a
-config that changes real wheel behavior). Device pass: Dean's (the haptic feel).
+Status: SHIPPED v1.303.0 (2026-09-15, DEVICE-PENDING). Owner: main session. Gate: FULL
+(both seats APPROVE after 1 fix round - the gate caught the sweep math NOT actually shared
+[a lying comment on the headline scar] + a vacuous re-anchored source-lock; both fixed +
+mutation-verified). Device pass: Dean's (the haptic feel; default == today, so safe pending).
 
 ## Intent (Dean, agreed all 4 intake points)
 The "Click wheel test" (Settings > Experimental) is a dead-end diagnostic. Make its

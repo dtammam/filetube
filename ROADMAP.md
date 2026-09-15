@@ -93,6 +93,39 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.303.0 - The Click wheel test drives the real wheel (a shared source of truth) (2026-09-15)
+
+The "Click wheel test" (Settings > Experimental) stops being a dead-end diagnostic: its
+selections now WRITE a saved wheel config that the real mobile iPod wheel READS on every skin
+mount, so the bench is the source of truth. New shared module public/js/wheel-config.js owns the
+5 tunable fields (engine, dither, detent, capture, buzz), their defaults (== today's Ghost /
+Fine-96 3.75deg / capture-after-8px / buzz-on feel EXACTLY), the ex-duplicated physical constants,
+and the shared sweepOffset() feel math. Both the test tool (setup.js, the writer) and the real
+wheel (skin-surface.js, the reader) now source from this ONE module, so the setup/wheel constant
+DRIFT scar dies by construction (the metering cross-lock binds it). The Sweep engine - previously
+test-tool-only - is ported into the real wheel (the same sweepOffset sine, SIGNED accumulation so
+it sweeps with the finger); Grid stays test-only and falls back to Ghost on the real wheel (iOS
+target-lock makes a grid impossible). Capture mode (press/8px/off) and Buzz on/off are honoured;
+meter-by/step/grid-density stay diagnostic-only. Config is device-local (localStorage), read FRESH
+per gesture. Default (an unset / never-opened config) is a byte-for-byte no-op, so nobody who never
+touches the test feels a change.
+
+Wired into all 10 app shells (wheel-config.js before skin-surface.js, preserving the
+music-skins->skin-surface adjacency), guarded by a dynamic shell-parity test. FULL gate (both
+seats): one fix round, delta APPROVE both. The gate caught two real things in my work - the Sweep
+"feel" math was NOT actually shared (setup.js kept a hand-copy of the sine while a comment claimed
+"no drift by construction" - a lying comment on the wave's HEADLINE scar), and a source-lock I'd
+relaxed had gone vacuous (its regex spanned from endWheel's clearTimeout to onDown's press-capture,
+so deleting the guard it named survived). Both fixed and mutation-verified (neither was a
+shippable-behaviour bug - each was guarded elsewhere - but both were caught, not shipped). Tests:
+the module (normalize/read/write/effectiveEngine/sweepOffset + a DEFAULT==today lock); 5
+REACHABILITY bindings driving the REAL onDown/onMove (sweep runs the sine not the +-18 bias;
+buzz-off never tracks the ghost; press/8px/off capture; a Coarse-8 detent does NOT flip at 3.75deg;
+grid->ghost); setup persist + open-on-saved-combo + meter-only-writes-nothing; the cross-lock binds
+both files' sweep to the shared function + the sourced dead-zone. Dual-Node, sequential, reviewers
+idle: 22.23.1 8830/8830/0 fail/0 skipped; 24.20.0 8830/8830/0/0. Device pass PENDING - Dean tunes
+Sweep on-device and the combo sticks.
+
 ### v1.302.0 - Podcast notification rows wear the show cover as their avatar (2026-09-15)
 
 A client-only notification-bell fix; no server change. A podcast row's LEFT avatar (the small

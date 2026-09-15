@@ -3040,5 +3040,11 @@
     "date": "2026-09-15",
     "title": "Podcast shows now show their cover art in notifications, not just a letter",
     "intent": "In your notifications, a new podcast episode now shows the show's cover art as its little round icon, the same way a YouTube channel shows its picture - instead of a plain coloured letter. If a show has no artwork, it still falls back to the letter."
+  },
+  {
+    "version": "1.303.0",
+    "date": "2026-09-15",
+    "title": "The Click wheel test now sets how the real click wheel feels",
+    "intent": "The retro iPod-style click wheel now takes its feel from the 'Click wheel test' in Settings > Experimental: pick an engine, tick spacing, swing and grab behaviour there and the actual wheel in the music player adopts it. Leave it alone and the wheel feels exactly as it did before. It's a per-device setting, so you can tune each phone."
   }
 ]
