@@ -1861,6 +1861,18 @@ test('v1.258 colorways: a Click (Black) pick keeps its BLACK body in the tray (t
   } });
 });
 
+test('v1.300 colorways: a Click (Matte) pick keeps its MATTE body in the tray (the variant-aware donor)', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod-matte', run: async (dom) => {
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const pip = holder.pip;
+    assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
+    assert.match(pipPanelOf(pip).className, /mms-ipod-matte/, 'the MATTE colorway rides the family pick (drop ipod-matte from the tray getSkinId donor and this reds)');
+  } });
+});
+
 test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
   // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
   // the explicit iPod pair (ipod + ipod-black) - loosen the donor back to base-family and this reds.

@@ -751,6 +751,7 @@ test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it
   const WHEEL = '<div class="ip-lcd-in"></div><div class="ip-wheelwrap"><div class="ip-wheel"></div></div>';
   assert.strictEqual(mk('ipod', WHEEL).visible(), true, 'Click (silver) offers it');
   assert.strictEqual(mk('ipod-black', WHEEL).visible(), true, '...and black');
+  assert.strictEqual(mk('ipod-matte', WHEEL).visible(), true, '...and Click (Matte) (drop ipod-matte from WHEEL_SKINS and this reds)');
   assert.strictEqual(mk('seattle-classic', WHEEL).visible(), false,
     'Seattle does NOT - it shares the wheel chassis but its pad is half the usable rotation ring (#207)');
   assert.strictEqual(mk('apple', WHEEL).visible(), false, 'a flat skin never offers it');
