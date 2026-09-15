@@ -3052,5 +3052,11 @@
     "date": "2026-09-15",
     "title": "Continue Watching or Listening now reopens in the right player on your other device",
     "intent": "When something is playing on another device, the 'Continue here' card now tells you whether you were watching or listening, and tapping it reopens the item in the matching player. So if you were listening to a song, a podcast, or a video's audio on the pocket player, continuing on another device drops you straight back into the listening player instead of a video screen. A plain audio file always opens in the listening player, since there's nothing to watch."
+  },
+  {
+    "version": "1.305.0",
+    "date": "2026-09-15",
+    "title": "Change your photo with a pencil on the avatar, and jump to Trash from the account menu",
+    "intent": "The account menu got two small touches. Your profile photo now has a little pencil on the avatar circle - tap it to change your picture, instead of the old 'Change photo' line. And right under the 'on disk' number you'll now see how much is in your trash, like '3 items in trash'. Tap it and you go straight to the Trash section of Settings, so you can empty it without hunting through the settings page."
   }
 ]

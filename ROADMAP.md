@@ -93,6 +93,52 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.305.0 - Account menu: a pencil to change your photo + "N items in trash" one tap from Trash (2026-09-15)
+
+Two small account-menu asks from Dean. (1) The "Change photo" ROW felt derpy, so
+it is retired: the avatar is now edited via a pencil BADGE pinned to the large
+avatar disc in the open menu. A positioned wrapper (.account-menu-avatar-wrap)
+holds the disc + badge so the post-upload refresh (refreshAvatars) swaps only the
+disc and the badge survives; the crop + POST /api/me/avatar flow is byte-identical
+to what the row drove. (2) A "N items in trash" footer row sits directly under the
+"on disk" figure, styled the same (a quiet footer info-link), lazily counted from
+GET /api/trash on first menu-open (reads body.total, falls back to items.length).
+ALWAYS shown, in Dean's exact spelling - "0 items in trash", "1 item in trash"
+(the sole singular), "2 items in trash"; a failed count hides the trash row only
+(never a wrong "0 items"), leaving the disk row + shared divider untouched.
+
+Clicking it deep-links to /setup.html#trash and opens the Trash section directly
+instead of dumping you at the top of Settings: wireMasterDetail gained a generic
+hash deep-link (#<collapse-key> selects + opens that section), wired to run on
+both the full-page-load path (bootRouter -> init) and the in-app SPA path
+(swapToView -> init, with navigate() preserving the hash), plus a hashchange
+listener. The row rides the existing account-menu SPA intercept, so the mini-player
+keeps playing. Also fixed a latent [hidden] gap the disk row shared since v1.158:
+an author display:block outranks the UA [hidden]{display:none}, so a failed-fetch
+hide needed an explicit [hidden]{display:none!important} guard (added for both the
+trash and disk rows) or the row would have stayed visible.
+
+FULL gate (both seats). Both APPROVED round 1 (QA APPROVE; adversarial REQUEST
+CHANGES on one real thing: from the Settings page ITSELF, tapping "N items in
+trash" hit navigate()'s same-location no-op - which ignores the hash - so the
+section never opened. Fixed: a same path+search, hash-only target now sets
+window.location.hash directly (the hashchange listener drives the open); cross-page
+clicks are unchanged. Both seats re-APPROVED after mutation-tested re-verification
+(the hash-set branch and a refreshAvatars source-lock both proven red under the
+matching mutants). Reachability was proven against SOURCE - setup.html's real
+Trash section carries data-collapse-key="trash" and wireMasterDetail runs on setup
+init on every shell - not just green unit tests.
+
+Tests: formatTrashCountLabel spelling spec (singular only at 1; 0/N plural;
+bounded against junk/negative/float); the pencil badge presence + picker wiring +
+wrapper contract; the trash row structure / count-from-total (divergent
+items.length fixture) / items.length fallback / lazy-once / failure-hide / SPA
+route + hash; the same-page hash-set fix; the refreshAvatars source-lock;
+master-detail deep-link by hash, hidden/unknown-key no-op, and hashchange
+re-select. Dual-Node GREEN: Node 22.23.1 and 24.20.0 each 8853/8853, 0 fail, 0
+skipped; lint 0 errors; design-token census TOTAL 0. Known gap: DEVICE-PENDING
+Dean's on-device pass.
+
 ### v1.304.0 - "Continue here" resumes in the right player: Listening vs Watching (2026-09-15)
 
 The cross-device handoff card ("Continue here") chose BOTH its destination and its headline purely
