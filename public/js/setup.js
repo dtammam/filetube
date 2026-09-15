@@ -3745,16 +3745,19 @@ async function loadEngineSection(signal) {
 // compared side by side. It is a DIAGNOSTIC only — it never changes the live
 // wheel; that is a separate follow-up once the direction is confirmed here.
 //
-// These constants MUST track skin-surface.js's own — a drifted copy would make
-// the tool lie about the real wheel — so the metering test cross-locks them.
+// v1.303: these constants + the tunable defaults now come from the SHARED wheel-config module
+// (public/js/wheel-config.js) - the SINGLE source of truth the real wheel (skin-surface.js) also
+// reads, so the tool and the wheel CANNOT drift (the metering cross-lock binds this structurally).
+// The literals are only the fallback if the module failed to load (it ships before setup.js).
+const WHEEL_CFG = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null;
 const WHEEL_CAL = {
-  HAPTIC_STEP_DEG: 3.75, // == skin-surface.js HAPTIC_STEP_DEG (Classic 96/rev)
-  HAPTIC_MIN_MS: 8,      // == skin-surface.js HAPTIC_MIN_MS (throttle floor)
-  BIAS_PX: 18,           // == skin-surface.js placeGhost ±18 (probe-C bias)
-  DEAD_FRAC: 0.20,       // == skin-surface.js pointerdown centre (Select) guard
-  BAND_INNER_MAX: 0.47,  // ring band edges as a fraction of wheel radius…
-  BAND_MID_MAX: 0.73,    // …inner < 0.47 ≤ mid < 0.73 ≤ outer
-  DEFAULT_STEP_ARC_PX: 6,
+  HAPTIC_STEP_DEG: (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75,
+  HAPTIC_MIN_MS: (WHEEL_CFG && WHEEL_CFG.CONST.MIN_MS) || 8,
+  BIAS_PX: (WHEEL_CFG && WHEEL_CFG.CONST.BIAS_DEFAULT) || 18,
+  DEAD_FRAC: (WHEEL_CFG && WHEEL_CFG.CONST.DEAD_FRAC) || 0.20,
+  BAND_INNER_MAX: (WHEEL_CFG && WHEEL_CFG.CONST.BAND_INNER_MAX) || 0.47,  // ring band edges (metering only)
+  BAND_MID_MAX: (WHEEL_CFG && WHEEL_CFG.CONST.BAND_MID_MAX) || 0.73,      // inner < 0.47 ≤ mid < 0.73 ≤ outer
+  DEFAULT_STEP_ARC_PX: (WHEEL_CFG && WHEEL_CFG.CONST.DEFAULT_STEP_ARC_PX) || 6,
 };
 
 // Shortest signed angular delta in degrees (mirrors skin-surface.js's
@@ -3992,8 +3995,23 @@ function openWheelCal(signal) {
   function syncGridBaseline() { for (let i = 0; i < gridSwitches.length; i++) gridLast[i] = gridSwitches[i].checked; }
 
   // ---- config + accumulators ----
-  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX, capMode: '8px', ghostOn: true, engine: 'ghost',
-    sweepDither: WHEEL_CAL.BIAS_PX, sweepStep: WHEEL_CAL.HAPTIC_STEP_DEG }; // Sweep tuning: dither swing (px) + degrees per detent
+  // v1.303: the 5 wheel-DRIVING fields SEED from the saved config (this menu is now the source
+  // of truth), so the tool OPENS on the combo the real wheel is running. mode/stepAngle/stepArc
+  // are diagnostic-only (they tune the METER, never the wheel) and keep their neutral defaults.
+  // Read window.FileTubeWheelConfig FRESH at open (not the module-load capture) so a config saved
+  // this session, or injected in a test, is honoured.
+  const wheelCfgApi = () => (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null;
+  const savedWheel = wheelCfgApi() ? wheelCfgApi().read()
+    : { engine: 'ghost', dither: WHEEL_CAL.BIAS_PX, detent: WHEEL_CAL.HAPTIC_STEP_DEG, capture: '8px', buzz: true };
+  const cfg = { mode: 'angle', stepAngle: WHEEL_CAL.HAPTIC_STEP_DEG, stepArc: WHEEL_CAL.DEFAULT_STEP_ARC_PX,
+    capMode: savedWheel.capture, ghostOn: savedWheel.buzz, engine: savedWheel.engine,
+    sweepDither: savedWheel.dither, sweepStep: savedWheel.detent }; // Sweep tuning: dither swing (px) + degrees per detent
+  // v1.303: persist the current wheel-driving fields to the shared config so the REAL wheel adopts
+  // them (called after each engine/dither/detent/cap/ghost selection). meter-by/step never persist.
+  function persistWheelCfg() {
+    const wc = wheelCfgApi(); if (!wc) return;
+    wc.write({ engine: cfg.engine, dither: cfg.sweepDither, detent: cfg.sweepStep, capture: cfg.capMode, buzz: cfg.ghostOn });
+  }
   const bands = { inner: { ticks: 0, travel: 0 }, mid: { ticks: 0, travel: 0 }, outer: { ticks: 0, travel: 0 } };
   let offWheel = 0;
   let flashLevel = 0;
@@ -4124,8 +4142,31 @@ function openWheelCal(signal) {
       } else if (kind === 'detent') {
         cfg.sweepStep = parseFloat(b.getAttribute('data-detent')) || WHEEL_CAL.HAPTIC_STEP_DEG; // Sweep degrees per detent
       }
+      // v1.303: a wheel-DRIVING selection persists to the shared config (the real wheel adopts
+      // it on its next spin). 'mode' (meter-by) and 'density' (the grid meter) are diagnostic-only.
+      if (kind === 'engine' || kind === 'cap' || kind === 'ghost' || kind === 'dither' || kind === 'detent') persistWheelCfg();
     }, { signal });
   });
+  // v1.303: open the tool on the SAVED combo (the config is the source of truth), not the
+  // template's hardcoded aria-pressed defaults. Reflect cfg into the 5 wheel segs + the engine's
+  // display side-effects (mirrors the click handler's branches for the initial state).
+  (function syncWheelUIToConfig() {
+    const setPressed = (segName, attr, val) => {
+      const seg = overlay.querySelector('.whcal-seg[data-seg="' + segName + '"]'); if (!seg) return;
+      seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x.getAttribute(attr) === String(val))));
+    };
+    setPressed('engine', 'data-engine', cfg.engine);
+    setPressed('cap', 'data-cap', cfg.capMode);
+    setPressed('dither', 'data-dither', cfg.sweepDither);
+    setPressed('detent', 'data-detent', cfg.sweepStep);
+    setPressed('ghost', 'data-ghost', cfg.ghostOn ? 'on' : 'off');
+    const isGrid = cfg.engine === 'grid';
+    if (grid) grid.hidden = !isGrid;
+    if (ghost) ghost.style.pointerEvents = isGrid ? 'none' : '';
+    if (isGrid) syncGridBaseline();
+    if (!cfg.ghostOn && ghost) ghostRest();
+    const cs = $('.whcal-capstate'); if (cs) cs.textContent = 'capture: ' + (cfg.capMode === 'press' ? 'on press' : (cfg.capMode === 'off' ? 'off (never grabs)' : 'after 8px'));
+  })();
   const range = $('.whcal-step');
   range.addEventListener('input', () => {
     const val = $('.whcal-step-val');

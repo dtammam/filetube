@@ -36,6 +36,15 @@ function unload(dom) {
   dom.window.close();
 }
 
+// v1.303: inject the shared wheel-config module onto the loaded window (setup.js reads
+// window.FileTubeWheelConfig FRESH at tool-open), optionally seeding a saved combo.
+const wheelConfigPath = require.resolve('../../public/js/wheel-config.js');
+function injectWheelCfg(dom, seed) {
+  delete require.cache[wheelConfigPath];
+  dom.window.FileTubeWheelConfig = require(wheelConfigPath); // global.window === dom.window (load() set it)
+  if (seed) dom.window.FileTubeWheelConfig.write(seed, dom.window.localStorage);
+}
+
 // ---- the button exists and is wired into the view lifecycle ----------------
 
 test('setup.html: an "Open Click wheel test" button lives in Experimental (#wheel-cal-open)', () => {
@@ -403,5 +412,49 @@ test('Sweep counts the ghost switch\'s GENUINE flips live, and switching engines
     selectEngine(doc, 'ghost');                 // engine switch resets
     await frame();
     assert.strictEqual(doc.querySelector('.whcal-gtoggles').textContent, '0', 'switching engines reset the count');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+// ---- v1.303: the tool is the REAL wheel's source of truth (persist + seed) ----------
+
+test('v1.303: a Sweep + Dither/Detent/Capture/Buzz selection PERSISTS to the shared config (the real wheel adopts it)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    injectWheelCfg(dom);
+    setup.openWheelCal(signal);
+    const pick = (seg, attr, val) => { const b = [...doc.querySelectorAll(`[data-seg="${seg}"] button`)].find((x) => x.getAttribute(attr) === val); assert.ok(b, `${seg}=${val} button exists`); b.click(); };
+    pick('engine', 'data-engine', 'sweep');
+    pick('dither', 'data-dither', '24');
+    pick('detent', 'data-detent', '8');
+    pick('cap', 'data-cap', 'off');
+    pick('ghost', 'data-ghost', 'off');
+    const saved = JSON.parse(dom.window.localStorage.getItem('ft-wheel-config'));
+    assert.deepEqual(saved, { engine: 'sweep', dither: 24, detent: 8, capture: 'off', buzz: false }, 'every wheel-driving pick persisted to ft-wheel-config');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('v1.303: the tool OPENS on the SAVED combo (aria-pressed reflects the config, not the template defaults)', () => {
+  const { dom, doc, signal } = load();
+  try {
+    injectWheelCfg(dom, { engine: 'sweep', dither: 24, detent: 8, capture: 'press', buzz: false });
+    setup.openWheelCal(signal);
+    const pressed = (seg) => [...doc.querySelectorAll(`[data-seg="${seg}"] button`)].find((b) => b.getAttribute('aria-pressed') === 'true');
+    assert.equal(pressed('engine').getAttribute('data-engine'), 'sweep', 'engine opens on Sweep');
+    assert.equal(pressed('dither').getAttribute('data-dither'), '24', 'dither opens on 24');
+    assert.equal(pressed('detent').getAttribute('data-detent'), '8', 'detent opens on Coarse 8');
+    assert.equal(pressed('cap').getAttribute('data-cap'), 'press', 'capture opens on On press');
+    assert.equal(pressed('ghost').getAttribute('data-ghost'), 'off', 'buzz opens on Off');
+  } finally { setup.closeWheelCal(); unload(dom); }
+});
+
+test('v1.303: meter-by + density are diagnostic-only - they NEVER write the wheel config', () => {
+  const { dom, doc, signal } = load();
+  try {
+    injectWheelCfg(dom); // no seed -> localStorage empty
+    setup.openWheelCal(signal);
+    const pick = (seg, attr, val) => { const b = [...doc.querySelectorAll(`[data-seg="${seg}"] button`)].find((x) => x.getAttribute(attr) === val); assert.ok(b, `${seg}=${val} button exists`); b.click(); };
+    pick('mode', 'data-mode', 'arc');
+    pick('density', 'data-density', '24');
+    assert.equal(dom.window.localStorage.getItem('ft-wheel-config'), null, 'a meter-only change writes no wheel config');
   } finally { setup.closeWheelCal(); unload(dom); }
 });
