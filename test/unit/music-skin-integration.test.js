@@ -537,7 +537,9 @@ test('v1.242: a pointercancel mid-scan does NOT commit (no lost seek)', async ()
 test('v1.242 source-lock: a rotate cancels the pending hold; endWheel clears the scan timer + interval', () => {
   // v1.250 (F-UNIFY): the fast-scan gesture lives in the shared engine now.
   const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
-  assert.match(js, /if \(st\.scanTimer\) \{ try \{ st\.win\.clearTimeout\(st\.scanTimer\)[\s\S]*?\}\s*\n\s*try \{ st\.wheel\.setPointerCapture/, 'the moved (rotate) branch clears the pending hold-timer before capturing');
+  // v1.303: a capture-mode gate (st.capture !== 'press'/'off') now sits between the
+  // hold-timer clear and the capture, so the lock binds the ORDER (clear -> capture), not adjacency.
+  assert.match(js, /if \(st\.scanTimer\) \{ try \{ st\.win\.clearTimeout\(st\.scanTimer\)[\s\S]*?st\.wheel\.setPointerCapture/, 'the moved (rotate) branch clears the pending hold-timer before capturing');
   const ew = /function endWheel\(st, suppress\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(ew, 'endWheel exists');
   assert.match(ew[1], /clearTimeout\(st\.scanTimer\)/, 'endWheel clears the hold-timer (both end arms)');

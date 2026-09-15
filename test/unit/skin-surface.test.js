@@ -15,6 +15,8 @@ const { JSDOM } = require('jsdom');
 
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
+const wheelConfigPath = require.resolve('../../public/js/wheel-config.js');
+const WHEELCFG = require('../../public/js/wheel-config.js'); // for sweepOffset expectations
 
 // A minimal host: the hidden controls the skin proxies to + a panel to render into.
 const HTML = `<body>
@@ -928,6 +930,110 @@ test('v1.271 haptics: the tick engine - one bias flip per detent (3.75deg Classi
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointercancel', { bubbles: true }));
     assert.strictEqual(g.style.transform, 'scale(7.5)', 'cancel restores the arming cover (the dual-arm teardown discipline)');
   } finally { global.performance = savedPerf; b.restore(); }
+});
+
+// ---- v1.303 WHEEL CONFIG: the real wheel HONOURS the Click wheel test's saved combo ----
+// Reachability (the INERT-FEATURE scar): these drive the REAL onDown/onMove and prove the
+// wheel actually reads window.FileTubeWheelConfig and changes behaviour - not a unit test of
+// a function that never runs. readWheelCfg reads the config FRESH per gesture, so injecting
+// after boot takes effect on the next spin.
+function withWheelCfg(dom, cfg) {
+  delete require.cache[wheelConfigPath];
+  const saved = global.window; global.window = dom.window;
+  try { dom.window.FileTubeWheelConfig = require(wheelConfigPath); } finally { global.window = saved; }
+  dom.window.FileTubeWheelConfig.write(cfg, dom.window.localStorage); // seed the saved combo
+}
+const atDeg = (deg) => { const r = deg * Math.PI / 180; return { clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) }; };
+
+test('v1.303 wheel config: a SWEEP pick runs the sweep engine on the real wheel (continuous sine, no +-18 bias flip)', () => {
+  const b = bootHaptic({ skin: 'ipod' });
+  try {
+    withWheelCfg(b.dom, { engine: 'sweep', detent: 3.75, dither: 18, capture: '8px', buzz: true });
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const s = atDeg(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    // gesture start: sweepAngle 0 -> offset 0 (NOT the ghost engine's +18 bias). jsdom rect=0 -> tx = clientX + offset.
+    assert.strictEqual(g.style.transform, `translate(${s.clientX}px,${s.clientY}px)`, 'sweep start offset is 0, not +18 (proves the sweep branch, not ghost)');
+    const q = atDeg(6);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY }));
+    // after a 6deg move: sweepAngle 6 -> the SHARED sweepOffset math, never a discrete +-18.
+    const off = WHEELCFG.sweepOffset(6, 18, 3.75);
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + off}px,${q.clientY}px)`, 'the move follows the shared sweepOffset sine (identical to the test tool)');
+    assert.ok(Math.abs(off) !== 18, 'the sweep offset is a continuous value, not the ghost bias');
+  } finally { b.restore(); }
+});
+
+test('v1.303 wheel config: BUZZ OFF -> the wheel never places the haptic ghost (rotation still works)', () => {
+  const b = bootHaptic({ skin: 'ipod' });
+  try {
+    withWheelCfg(b.dom, { engine: 'ghost', detent: 3.75, dither: 18, capture: '8px', buzz: false });
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const rest = g.style.transform; // the arming cover scale, pre-gesture
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const s = atDeg(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    assert.strictEqual(g.style.transform, rest, 'buzz off: gesture start does NOT move the ghost under the finger');
+    [6, 12, 24].forEach((d) => { const q = atDeg(d); wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); });
+    assert.strictEqual(g.style.transform, rest, 'buzz off: a full spin never tracks the ghost -> no haptic');
+  } finally { b.restore(); }
+});
+
+test('v1.303 wheel config: CAPTURE mode drives when the wheel grabs the pointer (press/8px/off)', () => {
+  for (const [mode, expectOnDown, expectAfterMove] of [['press', true, true], ['8px', false, true], ['off', false, false]]) {
+    const b = bootHaptic({ skin: 'ipod' });
+    try {
+      withWheelCfg(b.dom, { engine: 'ghost', detent: 3.75, dither: 18, capture: mode, buzz: true });
+      b.engine.paint();
+      const wheel = panel(b.dom).querySelector('.ip-wheel');
+      const caps = [];
+      wheel.setPointerCapture = (id) => caps.push(id);
+      wheel.releasePointerCapture = () => {};
+      const s = atDeg(0);
+      wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, pointerId: 7, clientX: s.clientX, clientY: s.clientY }));
+      assert.strictEqual(caps.length > 0, expectOnDown, `capture=${mode}: grab-on-press = ${expectOnDown}`);
+      // a real rotation (>8px of travel)
+      const q = atDeg(40);
+      wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, pointerId: 7, clientX: q.clientX, clientY: q.clientY }));
+      assert.strictEqual(caps.length > 0, expectAfterMove, `capture=${mode}: grabbed-by-end = ${expectAfterMove}`);
+    } finally { b.restore(); }
+  }
+});
+
+test('v1.303 wheel config: DETENT sets the tick spacing (a Coarse 8deg pick does not flip at 3.75deg)', () => {
+  const b = bootHaptic({ skin: 'ipod' });
+  const savedPerf = global.performance; let t = 1000; global.performance = { now: () => t };
+  try {
+    withWheelCfg(b.dom, { engine: 'ghost', detent: 8, dither: 18, capture: '8px', buzz: true });
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const s = atDeg(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'start: +18 bias');
+    // a 6deg move: at the DEFAULT 3.75 detent this would flip; at Coarse 8 it must NOT yet.
+    let q = atDeg(6); t += 100; wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY }));
+    assert.strictEqual(g.style.transform, `translate(${q.clientX + 18}px,${q.clientY}px)`, 'detent 8: 6deg has NOT crossed a detent -> no flip (proves the detent is honoured)');
+    // past 8deg: now it crosses and flips to -18.
+    q = atDeg(10); t += 100; wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY }));
+    assert.strictEqual(g.style.transform, `translate(${q.clientX - 18}px,${q.clientY}px)`, 'detent 8: crossing 8deg flips the bias (one tick)');
+  } finally { global.performance = savedPerf; b.restore(); }
+});
+
+test('v1.303 wheel config: GRID is test-only -> the real wheel runs Ghost (effectiveEngine), never grid', () => {
+  const b = bootHaptic({ skin: 'ipod' });
+  try {
+    withWheelCfg(b.dom, { engine: 'grid', detent: 3.75, dither: 18, capture: '8px', buzz: true });
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    const s = atDeg(0);
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    // grid -> ghost, so gesture start shows the +18 bias, not the sweep's 0 offset.
+    assert.strictEqual(g.style.transform, `translate(${s.clientX + 18}px,${s.clientY}px)`, 'grid falls back to Ghost on the real wheel (+18 bias, not sweep)');
+  } finally { b.restore(); }
 });
 
 test('v1.256 haptics: a click landing on the ghost ROUTES to the real control under it (zones/center survive the overlay)', () => {
