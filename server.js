@@ -115,7 +115,7 @@ const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
 const musicScan = require('./lib/music/scan');
 const musicQuery = require('./lib/music/query');
-// Wave 7b, slice S1a (the monolith split, docs/exec-plans/active/
+// Wave 7b, slice S1a (the monolith split, docs/exec-plans/completed/
 // 2026-09-13-sqlite-relational-migration.md): four route groups now live in
 // their own modules and register through `registerRoutes(app, deps)` - the
 // lib/ytdlp + lib/podcasts pattern. Requiring them has no side effects (pure
@@ -4770,7 +4770,7 @@ configRoutes.registerCacheRoutes(app, {
   updateDatabase,
 });
 
-// Wave 7b (slice S10a of the monolith split, docs/exec-plans/active/
+// Wave 7b (slice S10a of the monolith split, docs/exec-plans/completed/
 // 2026-09-13-sqlite-relational-migration.md): the media BROWSE routes -
 // GET /api/search, GET /api/videos, GET /api/home, GET /api/channels and
 // GET /api/videos/:id - moved VERBATIM to lib/media/routes.js. The call sits
