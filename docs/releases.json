@@ -3034,5 +3034,11 @@
     "date": "2026-09-15",
     "title": "The retro music player no longer flashes a blank panel while a song loads",
     "intent": "When you open a song into one of the full-screen retro skins on your phone, the player now shows its device - the click wheel and screen - right away while the track loads, instead of a plain grey panel for a moment. A small thing, but the launch feels like the player powering on rather than a blank screen."
+  },
+  {
+    "version": "1.302.0",
+    "date": "2026-09-15",
+    "title": "Podcast shows now show their cover art in notifications, not just a letter",
+    "intent": "In your notifications, a new podcast episode now shows the show's cover art as its little round icon, the same way a YouTube channel shows its picture - instead of a plain coloured letter. If a show has no artwork, it still falls back to the letter."
   }
 ]

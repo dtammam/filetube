@@ -93,6 +93,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.302.0 - Podcast notification rows wear the show cover as their avatar (2026-09-15)
+
+A client-only notification-bell fix; no server change. A podcast row's LEFT avatar (the small
+round icon) now uses the show cover art (row.artUrl) instead of the deterministic C/H/T monogram.
+The row model already carried the show cover as the right-hand thumbnail, but channelAvatarUrl was
+only ever the captured channel avatar - which the server never sends for podcast shows - so the
+avatar fell to the monogram. Media/YouTube rows are byte-unchanged (they keep their captured
+channel avatar, never borrow the thumbnail); an art-less podcast still falls back to the monogram
+(''), and a 404 on the cover self-heals to the logo via the avatar img's onerror. Dean, on device:
+"the little avatar should show for the show."
+
+Slim gate (adversarial), APPROVE, no findings - a differential harness (parent vs commit over 12
+row shapes) proved every media/audio/engine row byte-identical and only 'podcast with art' changed.
+Tests: the v1.73 podcast row asserts the avatar == the show cover (+ a media row keeps its captured
+avatar), the v1.288 art-less podcast asserts the monogram fallback ('') - each mutation-proven.
+Dual-Node, sequential, reviewer idle: 22.23.1 8804/8804/0 fail/0 skipped; 24.20.0 8804/8804/0/0.
+Device pass PENDING.
+
 ### v1.301.0 - The mobile skin launch cover paints device chrome, not a bare body (2026-09-15)
 
 A mobile-only music-skin polish; no server or data change. Opening a track into a full-screen
