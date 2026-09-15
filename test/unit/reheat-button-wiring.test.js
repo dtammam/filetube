@@ -30,7 +30,22 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { routeSurfaceSource } = require('../helpers/route-surface');
+
 const ROOT = path.join(__dirname, '..', '..');
+
+// Wave 7b (slice S6): `planImportRelocation` and
+// `relocateHydratedImportIntoChannelFolder` moved out of server.js into
+// lib/ytdlp/relocation.js. The four server-side locks below are RE-POINTED at
+// the split's ROUTE SURFACE (server.js plus every module the split carved out of
+// it, derived from server.js's own requires - test/helpers/route-surface.js), so
+// they read the SAME sentences they were written for wherever the split puts
+// them next. Two of them are also TIGHTENED on the way: they used to match
+// anywhere in a 13,000-line file and now match inside the named function's own
+// body (the S10a lesson: widening a lock's corpus can make it vacuous, so a
+// re-point scopes to the statement it is about).
+const splitSurface = () => routeSurfaceSource();
+
 const watchJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'watch.js'), 'utf8');
 const watchHtml = fs.readFileSync(path.join(ROOT, 'public', 'watch.html'), 'utf8');
 const styleCss = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
@@ -237,7 +252,9 @@ test('CRITICAL 2: the relocation offer refuses to open on top of another modal',
 
 test('CRITICAL 1: the per-video proposal and confirm pass allowRecentlyWatched; nothing else does', () => {
   const ytdlpIndex = fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'index.js'), 'utf8');
-  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  // Wave 7b S6: the clause lives in planImportRelocation, now in
+  // lib/ytdlp/relocation.js - read the surface, and scope to that function.
+  const planBody = functionBody(splitSurface(), 'planImportRelocation');
 
   // The watch page streams the video on mount, so without this the proposal is
   // always 'recently-watched' and the whole relocation half is unreachable.
@@ -245,7 +262,7 @@ test('CRITICAL 1: the per-video proposal and confirm pass allowRecentlyWatched; 
     'exactly two: the per-video proposal and the per-video confirm');
   // ...and the guard is still OFF by default, so the unattended batch and the
   // whole-library preview keep refusing to move a file someone is streaming.
-  assert.ok(/!\(opts && opts\.allowRecentlyWatched === true\)/.test(serverJs),
+  assert.ok(/!\(opts && opts\.allowRecentlyWatched === true\)/.test(planBody),
     'the clause must default to ON (i.e. only an explicit === true lifts it)');
   assert.ok(!/allowRecentlyWatched/.test(functionBody(ytdlpIndex, 'runRepullMetadataBatch')),
     'the library batch must never lift the guard');
@@ -266,8 +283,7 @@ test('CRITICAL 3: the confirm echoes back the exact move it displayed, and the s
   assert.ok(/status === 409 && body && body\.status === 'stale'/.test(body),
     'a stale proposal must re-ask, not fail and not silently proceed');
 
-  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const relocBody = functionBody(serverJs, 'relocateHydratedImportIntoChannelFolder');
+  const relocBody = functionBody(splitSurface(), 'relocateHydratedImportIntoChannelFolder'); // Wave 7b S6: lib/ytdlp/relocation.js
   assert.ok(/status: 'stale'/.test(relocBody), 'the executor is what refuses -- not the route');
   assert.ok(/e\.currentPath !== plan\.currentPath \|\| e\.destinationPath !== plan\.destinationPath/.test(relocBody),
     'both ends of the move are bound, not just the destination');
@@ -436,15 +452,19 @@ test('WARNING 5: the confirm binds the TRANSFER METHOD and size, not just the tw
     'hard-link-vs-copy is the safety sentence the dialog shows, and it can flip with both paths unchanged');
   assert.ok(/sizeBytes: relocation\.sizeBytes/.test(body));
 
-  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const relocBody = functionBody(serverJs, 'relocateHydratedImportIntoChannelFolder');
+  const relocBody = functionBody(splitSurface(), 'relocateHydratedImportIntoChannelFolder'); // Wave 7b S6: lib/ytdlp/relocation.js
   assert.ok(/e\.transfer !== plan\.transfer/.test(relocBody), 'and the executor compares it');
   assert.ok(/e\.sizeBytes !== plan\.sizeBytes/.test(relocBody));
 });
 
 test('WARNING 6: the relocation closes our own read streams before unlinking the source', () => {
-  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const body = functionBody(serverJs, 'moveItemToFolder');
+  // Wave 7b (slice S5): `moveItemToFolder` moved VERBATIM out of server.js into
+  // lib/media/move.js, so the lock follows the FUNCTION to its new file - same
+  // sentences, same ordering assertion, nothing loosened (and `functionBody`
+  // still finds the declaration: it is `async function moveItemToFolder(`
+  // inside the factory now, matched by the same needle).
+  const moveJs = fs.readFileSync(path.join(ROOT, 'lib', 'media', 'move.js'), 'utf8');
+  const body = functionBody(moveJs, 'moveItemToFolder');
   const destroyIdx = body.indexOf('await destroyMediaStreams(oldPath)');
   const unlinkIdx = body.indexOf('fsImpl.unlinkSync(oldPath)');
   assert.ok(destroyIdx > 0, 'an unlink with our own fd still open is the v1.41.10 DELETE_PENDING trap');
@@ -452,11 +472,16 @@ test('WARNING 6: the relocation closes our own read streams before unlinking the
 });
 
 test('WARNING 7: the retired-guard rationale discloses the multi-user break instead of denying it', () => {
-  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const clause = serverJs.slice(serverJs.indexOf('v1.49 GATE FIX (adversarial CRITICAL 1)'), serverJs.indexOf("return skipWithItem('recently-watched')"));
+  // Wave 7b S6: the clause travelled with planImportRelocation into
+  // lib/ytdlp/relocation.js. Scoped to that function's own body (a TIGHTENING -
+  // it used to slice a whole 13,000-line file between two markers); the negative
+  // still reads the WHOLE surface, where a wider corpus is stricter, not weaker.
+  const surface = splitSurface();
+  const planBody = functionBody(surface, 'planImportRelocation');
+  const clause = planBody.slice(planBody.indexOf('v1.49 GATE FIX (adversarial CRITICAL 1)'), planBody.indexOf("return skipWithItem('recently-watched')"));
   assert.ok(/multi-user|another user/i.test(clause),
     'the set is global and path-keyed, so a concurrent viewer IS affected -- the comment must say so');
-  assert.ok(!/the one client that could be harmed/.test(serverJs),
+  assert.ok(!/the one client that could be harmed/.test(surface),
     'the false claim must be gone');
 });
 

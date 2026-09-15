@@ -50,11 +50,15 @@ const MOVED = {
 // Helpers that were CANDIDATES for the move and deliberately stayed in
 // server.js. Pinned so a later extraction has to face the reason rather than
 // discover it again:
-//   - reconcileTranscode reads TRANSCODE_DIR (through transcodedPath) and
-//     stats the cache, so it is not pure.
 //   - needsTranscode's TRANSCODE_EXTENSIONS list is source-locked out of
 //     server.js's own TEXT by test/unit/tv-scan.test.js.
-const STAYED = ['reconcileTranscode', 'needsTranscode', 'codecNeedsTranscode'];
+//   - codecNeedsTranscode is the codec-allowlist half needsTranscode calls.
+// reconcileTranscode was pinned here through Wave 6, but Wave 7b slice S8 moved
+// the WHOLE transcode-queue machinery (including transcodedPath, the very reason
+// it was impure) into lib/media/transcode.js, so reconcileTranscode moved with
+// it - see the dedicated S8 lock below, which records the move and guards the
+// re-export the way the Wave 6 MOVED helpers above are guarded.
+const STAYED = ['needsTranscode', 'codecNeedsTranscode'];
 
 // Crude but sufficient comment stripper (the same shape the other source locks
 // in this suite use): it can only ever over-strip string literals that look
@@ -108,6 +112,20 @@ test('Wave 6 lock: the helpers that deliberately STAYED are still defined in ser
     assert.ok(defined.test(SERVER_SRC),
       `${name} was expected to stay in server.js - if it moved, update this lock and say why in the commit`);
   }
+});
+
+test('Wave 7b S8 lock: reconcileTranscode moved to lib/media/transcode.js - gone from server.js text, still re-exported', () => {
+  // reconcileTranscode was a Wave 6 STAYED helper; slice S8 moved the transcode
+  // queue machinery (and transcodedPath, its impurity) out, so it moved too. The
+  // byte-identity + factory-return re-export are bound by the Wave 7b machine
+  // verifiers (scripts/verify-split-functions.js); here we bind the two things a
+  // unit lock can: it is no longer DEFINED in server.js (no leftover fork), and
+  // server.js still re-exports it as a function (the dozen callers keep working).
+  const defined = new RegExp('^(async )?function reconcileTranscode\\(', 'm');
+  assert.ok(!defined.test(SERVER_SRC),
+    'reconcileTranscode is still defined in server.js - a leftover copy forks from lib/media/transcode.js');
+  assert.strictEqual(typeof server.reconcileTranscode, 'function',
+    'server.js must still re-export reconcileTranscode (it is exported and a dozen tests import it)');
 });
 
 test('Wave 6 lock: TRANSCODE_EXTENSIONS stays in server.js text (test/unit/tv-scan.test.js parses it from there)', () => {

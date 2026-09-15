@@ -3016,5 +3016,11 @@
     "date": "2026-09-14",
     "title": "Behind the scenes: more of the server moves into smaller pieces",
     "intent": "Nothing changes on screen. More of the large server file has been split into smaller ones, exactly as it was: the Music and Shows libraries with their scans, the video browsing, search and stats pages, and the settings and maintenance controls. Every page, button, scan and download works as before, and a backup taken on the previous version restores normally."
+  },
+  {
+    "version": "1.299.0",
+    "date": "2026-09-15",
+    "title": "Behind the scenes: the big server-code cleanup is finished",
+    "intent": "Nothing changes on screen. This finishes the long project of moving the server out of one enormous file into focused pieces: the trash and restore, the folder mover, the backup and restore, the video and audio transcoding, and the library scanner now each live in their own module, exactly as before. Every page, playback, download, scan, trash-and-restore and backup works the same, and a backup taken on the previous version restores normally."
   }
 ]

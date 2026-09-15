@@ -23,20 +23,27 @@ const ROOT = path.join(__dirname, '..', '..');
 // commit (the v1.259 lesson: a registry add that misses a hand-kept list is
 // inert - here the derivation and the list check each other).
 const EXPECTED = [
+  'lib/admin/backup.js',
   'lib/auth/routes.js',
   'lib/books/routes.js',
   'lib/books/scanRunner.js',
   'lib/config/routes.js',
+  'lib/media/move.js',
   'lib/media/routes.js',
+  'lib/media/streams.js',
+  'lib/media/transcode.js',
+  'lib/media/trash.js',
   'lib/media/user-routes.js',
   'lib/music/routes.js',
   'lib/music/scanRunner.js',
   'lib/notifications/routes.js',
   'lib/push/routes.js',
   'lib/queue/routes.js',
+  'lib/scan/orchestrator.js',
   'lib/tv/routes.js',
   'lib/tv/scanRunner.js',
   'lib/user/routes.js',
+  'lib/ytdlp/relocation.js',
 ];
 
 test('the route surface is exactly the registry of extracted modules (both directions), each required by server.js and carrying the marker sentence', () => {
