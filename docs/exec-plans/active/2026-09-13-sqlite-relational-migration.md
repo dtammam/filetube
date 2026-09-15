@@ -1141,20 +1141,41 @@ dual-Node, device pass PENDING and disclosed.
     v1.298.0 ceremony so the ledger is complete against the v1.298.0 tag (a bare feat/wave7b-r2
     merge reddened release-ledger.test.js - deterministic, caught and re-routed to merging main).
   - **State after (main checkout numbers pending; measured in the r3 worktree):** server.js
-    **7,228** lines (13,563 at v1.298.0; 19,064 at arc start), **12** route + middleware
+    **7,226** lines (13,563 at v1.298.0; 19,064 at arc start), **12** route + middleware
     registrations (22 at v1.298.0), functionCount 204. Seven new modules: lib/media/trash.js,
     lib/media/move.js, lib/ytdlp/relocation.js, lib/admin/backup.js, lib/media/transcode.js,
     lib/media/streams.js, lib/scan/orchestrator.js. Merged tree (worktree, no parallel load):
     8803 / 8800 / 0 fail / 3 skipped (the 3 = worktree Playwright env skips). Each slice
     boot-verified; the routing signature is byte-identical to every slice base. ytdlpDb crossing
     count 20; DIAGRAMS live registration count 12.
-  - **Judgment call for Dean at arc close:** server.js lands at 7,228, NOT < 3,000 (Section 1's
+  - **Judgment call for Dean at arc close:** server.js lands at 7,226, NOT < 3,000 (Section 1's
     aspiration). What remains is the boot/wiring spine: the express + gate setup, the deps objects
     handed to every module, `scanDirectories`' lock + interval, the queue-entry functions, byte
-    helpers, the scheduler. Recommendation: record 7,228 as the honest floor rather than force
+    helpers, the scheduler. Recommendation: record 7,226 as the honest floor rather than force
     further indirection; the < 3,000 target is met in spirit (the top-10 giant functions all live
     in tested lib/ modules). Dean's call: settle, or a further slim-gated helper sweep.
-  - **Gate:** (filled after the gate)
+  - **Gate (FULL, data-loss; both seats APPROVE, one fix round, delta APPROVE x2):** Fresh QA +
+    adversarial seats on the whole branch. The adversarial seat was briefed to DESTROY the data
+    across every moved trash/move/restore/backup/scan seam and could not: the routing signature is
+    byte-identical to v1.298.0 (199 routes); the verifier over all 32 moved functions + 6 route
+    groups fails ONLY on the documented live-accessor seams (ffmpegIsAvailable x4, the epoch getter
+    x2); every data guard is mutation-killed - freezing `__getPersistedStateEpoch()` reds the
+    mid-scan wipe test (W4), dropping a carrier rekey reds the move (3) and trash (2) tests,
+    neutering `validateBackupBundle` reds the library-intact-on-malformed-bundle test, a bad
+    re-rooted require reds the scan; no fourth frozen seam (AST-walk of every deps object); the
+    lazy wrappers S9 passes for S8's queue API resolve correctly (de-lazying trashOrphanFile
+    ReferenceErrors at boot - genuinely load-bearing). What it caught (both non-blocking, NO
+    CRITICAL, NO WARNING): ADV-1 a lying comment on the relocation `moveItemToFolder` lazy wrapper
+    that is actually INERT on the merge order (createMoveOps lands above createRelocation) - fixed
+    to a direct binding matching the three sibling call sites, mutation-verified live (neutering it
+    reds 28/56 relocation tests); QA a third in-body edit in runScanDirectories (a comment re-point)
+    now disclosed. Deferred: ADV-2 the S9 ffmpeg seam lacks R2's runtime flip-detection test
+    (bound by a text-lock + the crash-on-frozen-value path; shipped code live by construction) ->
+    tech-debt #229 with a revisit trigger. Fix commit 19ee0a43, delta APPROVE from both seats.
+    Dual-Node (sequential, reviewers idle, MAIN checkout): 22.23.1 8803 / 8803 / 0 fail / 0
+    skipped; 24.20.0 (the CI runner's minor) 8803 / 8803 / 0 / 0. Shipped v1.299.0 (device pass
+    PENDING). Known gaps disclosed: #226 deferred to its own wave (Dean 2026-09-15); tech-debt
+    #229 (the scan ffmpeg flip test); books-api T6 (#212, a pre-existing load flake).
 
 ---
 
