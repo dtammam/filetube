@@ -76,9 +76,9 @@ test('a dismissal suppresses exactly its own (item, device, state) and nothing e
   assert.equal(shouldShowHandoffCard(presence({ mediaId: 'vid9' }), ctx({ dismissedToken: token })), true);
   // A different DEVICE playing the same item is new news.
   assert.equal(shouldShowHandoffCard(presence({ deviceId: 'dev-z' }), ctx({ dismissedToken: token })), true);
-  // A STATE FLIP is new news - dismissing "Playing on iPhone" must not also
-  // swallow the "Paused on iPhone" that follows (ruling 2: "until the state
-  // changes").
+  // A STATE FLIP is new news - dismissing "Watching on iPhone" must not also
+  // swallow the "Paused watching on iPhone" that follows (ruling 2: "until the
+  // state changes").
   assert.equal(shouldShowHandoffCard(presence({ state: 'paused' }), ctx({ dismissedToken: token })), true);
 });
 
@@ -97,12 +97,23 @@ test('handoffSuppressionToken: distinct on every axis, stable across irrelevant 
 // The rendered strings
 // ---------------------------------------------------------------------------
 
-test('headline names the DEVICE, and the paused arm carries the age', () => {
-  assert.equal(formatHandoffHeadline(presence()), 'Playing on iPhone');
+test('headline names the DEVICE + the MODALITY, and the paused arm carries the age', () => {
+  // v1.304: the default presence has no `listen` field -> watched.
+  assert.equal(formatHandoffHeadline(presence()), 'Watching on iPhone');
   assert.equal(formatHandoffHeadline(presence({ state: 'paused', ageSeconds: 18 * 60 })),
-    'Paused on iPhone - 18 min ago');
-  assert.equal(formatHandoffHeadline(presence({ deviceLabel: '' })), 'Playing on another device');
-  assert.equal(formatHandoffHeadline(null), 'Playing on another device');
+    'Paused watching on iPhone - 18 min ago');
+  assert.equal(formatHandoffHeadline(presence({ deviceLabel: '' })), 'Watching on another device');
+  assert.equal(formatHandoffHeadline(null), 'Watching on another device');
+});
+
+test('v1.304: a LISTENED item reads "Listening", in both the playing and paused arms', () => {
+  assert.equal(formatHandoffHeadline(presence({ listen: true })), 'Listening on iPhone');
+  assert.equal(formatHandoffHeadline(presence({ listen: true, state: 'paused', ageSeconds: 18 * 60 })),
+    'Paused listening on iPhone - 18 min ago');
+  // The verb is BOUND to presence.listen, not to kind or href: flip only the
+  // flag and the word flips (mutation floor - a hardcoded "Watching" survives
+  // the default case above but dies here).
+  assert.equal(formatHandoffHeadline(presence({ listen: false })), 'Watching on iPhone');
 });
 
 test('headline uses a plain hyphen, never an em dash (repo norm)', () => {

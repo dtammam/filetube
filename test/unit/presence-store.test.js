@@ -56,6 +56,23 @@ test('record + readOther: another device\'s playback comes back with state playi
   assert.equal(seen.ageSeconds, 0);
 });
 
+test('v1.304 modality: surface is persisted and returned, and defaults to watch', () => {
+  const { store } = mk();
+
+  store.record(1, ping({ surface: 'listen' }));
+  assert.equal(store.readOther(1, 'dev-b').surface, 'listen', 'an explicit listen survives the round-trip');
+
+  store.record(1, ping({ surface: 'watch' }));
+  assert.equal(store.readOther(1, 'dev-b').surface, 'watch');
+
+  // An old client that never sends it, or a garbage value, must land on watch
+  // so the handoff stays on the video surface (byte-identical to pre-v1.304).
+  store.record(1, ping()); // no surface field at all
+  assert.equal(store.readOther(1, 'dev-b').surface, 'watch', 'absent -> watch');
+  store.record(1, ping({ surface: 'bogus' }));
+  assert.equal(store.readOther(1, 'dev-b').surface, 'watch', 'unknown value -> watch');
+});
+
 test('self-exclusion: a device is NEVER offered its own playback (AC7)', () => {
   const { store } = mk();
   store.record(1, ping());

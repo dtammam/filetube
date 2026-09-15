@@ -9944,13 +9944,19 @@ function formatHandoffAge(ageSeconds) {
   return hrs === 1 ? '1 hour ago' : `${hrs} hours ago`;
 }
 
-// The headline names the DEVICE, because the device is the news (the UI spec).
+// The headline names the DEVICE (the news) AND the MODALITY (v1.304): a
+// LISTENED item reads "Listening on <device>", a watched one "Watching on
+// <device>", so Dean can tell at a glance that continuing will land in the
+// audio player, not the video player. `presence.listen` is stamped by the
+// server resolver (true for tracks/podcasts and for a media item played via
+// Listen); absent/false means watch.
 function formatHandoffHeadline(presence) {
   const label = (presence && presence.deviceLabel) || 'another device';
+  const verb = presence && presence.listen ? 'Listening' : 'Watching';
   if (presence && presence.state === 'paused') {
-    return `Paused on ${label} - ${formatHandoffAge(presence.ageSeconds)}`;
+    return `Paused ${verb.toLowerCase()} on ${label} - ${formatHandoffAge(presence.ageSeconds)}`;
   }
-  return `Playing on ${label}`;
+  return `${verb} on ${label}`;
 }
 
 // "12:34 / 45:06", or just the position when the duration is unknown (a live
@@ -9967,9 +9973,9 @@ function handoffProgressPercent(position, duration) {
 }
 
 // The dismissal identity. It carries the STATE as well as the item and device
-// so that dismissing "Playing on iPhone" does not also swallow the later
-// "Paused on iPhone" - a state flip is new news (Dean's ruling 2: dismiss
-// hides it "until the state changes").
+// so that dismissing "Watching on iPhone" does not also swallow the later
+// "Paused watching on iPhone" - a state flip is new news (Dean's ruling 2:
+// dismiss hides it "until the state changes").
 function handoffSuppressionToken(presence) {
   if (!presence) return '';
   return `${presence.mediaId}|${presence.deviceId}|${presence.state}`;

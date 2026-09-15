@@ -141,6 +141,20 @@ function applyAdoptFlavor(currentData, data) {
   return currentData;
 }
 
+// v1.304 handoff modality: which SURFACE flavor a progress ping should stamp,
+// derived from the loaded item's resumeMode. 'music'/'podcast' are the
+// audio/listening surfaces (the iPod/music and podcasts skins, and a VIDEO
+// played via Listen - which stamps resumeMode 'music'); 'tv', plain video
+// (null/absent), and anything else are watched. The presence store defaults a
+// missing value to 'watch', so only 'listen' is load-bearing - but returning
+// both spellings keeps the single ping writer branch-free. Pure over its one
+// input, so the resume-in-the-right-player rule is unit-bindable without a
+// browser (the INERT-FEATURE guard: this helper's output is the field the
+// server routes on).
+function presenceSurfaceForResumeMode(resumeMode) {
+  return (resumeMode === 'music' || resumeMode === 'podcast') ? 'listen' : 'watch';
+}
+
 // Should leaving `fromView` for `toView` dock the persistent player? This is
 // the pure half of `applyPlayerTransition` (public/js/common.js) -- only
 // ever true when actually leaving the watch view for a DIFFERENT known view.
@@ -1573,6 +1587,7 @@ if (typeof module !== 'undefined' && module.exports) {
     computeQueuePrev,
     isAdoptLoad,
     applyAdoptFlavor,
+    presenceSurfaceForResumeMode, // v1.304 handoff modality: the ping's watch/listen flavor
     shouldDockOnTransition,
     nextPlayerState,
     shouldPauseForLifecycleEvent,
@@ -4519,8 +4534,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (mediaPlayer && currentAbsTime() > 0) {
       // v1.78: this final save doubles as the explicit pause BEACON. It is
       // the one place the user genuinely paused, so it is the only place that
-      // flips presence to 'paused' - which is why the card can say "Paused on
-      // iPhone" instantly instead of waiting out the 15s active TTL.
+      // flips presence to 'paused' - which is why the card can show its paused
+      // headline ("Paused watching/listening on iPhone") instantly instead of
+      // waiting out the 15s active TTL.
       //
       // Deliberately NOT marked on the background-lifecycle checkpoints: when
       // a video hands off to background AUDIO the media keeps playing, and
@@ -4582,6 +4598,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // Set only by the pause path (`stopProgressSaver`). Absent = a live
       // play ping.
       if (opts && opts.presenceState) body.presenceState = opts.presenceState;
+      // v1.304 handoff modality: stamp which surface this playback is on (watch
+      // vs listen) so the handoff card resumes in the matching player and reads
+      // "Listening"/"Watching". Derived from the loaded item's resumeMode; this
+      // is the ONE ping writer, so every kind is covered exactly once.
+      body.presenceSurface = presenceSurfaceForResumeMode(currentData && currentData.resumeMode);
     }
     var fetchOpts = {
       method: 'POST',

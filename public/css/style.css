@@ -758,7 +758,7 @@ html {
      this, Safari inflates the computed px of "text blocks" whenever it re-runs its
      autosizing pass against a changed layout width -- e.g. exiting fullscreen
      reflows the page (header/bottom-nav un-hide, overflow restores) and iOS boosts
-     the #handoff-card "Playing on X" text until an in-app nav rebuilds the card.
+     the #handoff-card headline text until an in-app nav rebuilds the card.
      100% = the default measure, so this only DISABLES the boost, never scales down. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -4313,7 +4313,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 /* ---- v1.78 device handoff card -------------------------------------------
-   The "Playing on iPhone" offer, built at runtime by common.js's handoff
+   The "Watching/Listening on iPhone" offer, built at runtime by common.js's handoff
    controller and appended to <body> -- NEVER inside #view-root, or in-app
    navigation would tear it down while a full refresh kept it (the v1.38 SPA
    bug class).

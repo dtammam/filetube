@@ -200,3 +200,33 @@ test('applyAdoptFlavor bindings: the adopt branch APPLIES it, and watch.js\'s tw
   const stamps = watchSrc.match(/readerHref: null, resumeMode: null/g) || [];
   assert.strictEqual(stamps.length, 2, 'BOTH adopt-capable watch load calls (the early adopt probe + the full initWatch call) claim the plain-video flavor');
 });
+
+// ---- presenceSurfaceForResumeMode (v1.304: the handoff ping's watch/listen) -
+//
+// A LISTENED video keeps its video extension, so the server cannot tell watch
+// from listen - the playing device is the source of truth. This pure helper is
+// the field the /api/handoff resolver routes on, so its output IS the modality
+// the continue-here button lands in.
+const { presenceSurfaceForResumeMode } = require('../../public/js/player.js');
+
+test('presenceSurfaceForResumeMode: music and podcast are LISTEN; tv, plain video, and junk are WATCH', () => {
+  assert.strictEqual(presenceSurfaceForResumeMode('music'), 'listen', 'the iPod/music skin + a Listen-a-video');
+  assert.strictEqual(presenceSurfaceForResumeMode('podcast'), 'listen');
+  assert.strictEqual(presenceSurfaceForResumeMode('tv'), 'watch', 'TV is watched');
+  assert.strictEqual(presenceSurfaceForResumeMode(null), 'watch', 'plain video');
+  assert.strictEqual(presenceSurfaceForResumeMode(undefined), 'watch', 'no flavor loaded');
+  assert.strictEqual(presenceSurfaceForResumeMode(''), 'watch');
+  assert.strictEqual(presenceSurfaceForResumeMode('books'), 'watch', 'an unknown mode is never mislabelled listen');
+});
+
+test('presenceSurfaceForResumeMode binding: saveProgressToServer STAMPS body.presenceSurface via the helper (not inert; comments stripped)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  // The one ping writer must derive the surface from the loaded item's
+  // resumeMode through THIS helper - the pure tests above are vacuous if the
+  // ping never carries the field (the INERT-FEATURE guard).
+  assert.match(playerSrc, /body\.presenceSurface = presenceSurfaceForResumeMode\(currentData && currentData\.resumeMode\);/,
+    'the progress ping stamps presenceSurface from resumeMode');
+});
