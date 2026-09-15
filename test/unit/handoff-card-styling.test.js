@@ -167,7 +167,8 @@ test('the card carries no [data-theme]-scoped rules of its own (residual #103 po
     'the card must follow the eras through base tokens, not through per-era consumer rules the census cannot see');
 });
 
-// v1.194 (Dean): the handoff card's "Playing on X" text ballooned after a
+// v1.194 (Dean): the handoff card's headline text ("Playing on X" at the time;
+// "Watching/Listening on X" since v1.304) ballooned after a
 // fullscreen exit. Root cause was NOT in the card - iOS Safari font-boosts any
 // text block when a reflow (the fullscreen-exit un-hide) re-runs its autosizing
 // pass, and text-size-adjust was pinned NOWHERE. The fix pins it on the html

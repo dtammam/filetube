@@ -1221,6 +1221,11 @@ function recordPresenceFromPing(req, kind, mediaId, position, duration) {
     deviceLabel: body.deviceLabel,
     mediaId,
     kind,
+    // v1.304 handoff modality: the playback SURFACE ('watch'|'listen'), so the
+    // card can resume a LISTENED item in the listening player and say
+    // "Listening" not "Watching". The store whitelists+defaults it, so a client
+    // that never sends it stays byte-identical (attack surface #5).
+    surface: body.presenceSurface,
     position,
     duration,
     // 'paused' is the explicit stop beacon; anything else (including absent)
@@ -4974,6 +4979,7 @@ function resolveHandoffTarget(db, seen) {
       subtitle: sub ? sub.name : 'Podcast',
       thumbnailUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
       href: `/podcasts?play=${enc}`,
+      listen: true, // a podcast is always listened to - the card reads this for the "Listening" verb
       // `durationSec` is the stored field on both podcast episodes and music
       // tracks (media items use `duration`). The ping's own duration wins when
       // it has one - it came from the real decoded media element.
@@ -4989,6 +4995,7 @@ function resolveHandoffTarget(db, seen) {
       subtitle: track.artist || '',
       thumbnailUrl: `/albumart/${enc}`,
       href: `/music?play=${enc}`,
+      listen: true, // a music track is always listened to
       duration: seen.duration || track.durationSec || 0,
     };
   }
@@ -5000,11 +5007,24 @@ function resolveHandoffTarget(db, seen) {
     ? db.metadata[id]
     : null;
   if (!item) return null;
+  // v1.304 handoff modality: a media item is the ONLY kind that can be either
+  // watched (the video player) or listened to (the iPod/music "Listen" surface,
+  // resumeMode 'music' on the source device). Two ways it resumes as LISTEN:
+  //   1. the playing device stamped surface 'listen' - a VIDEO played via
+  //      Listen keeps its video extension, so only the device knows this; and
+  //   2. the item is an audio-only file (type 'audio') - it has no video, so
+  //      it ALWAYS belongs in the listening player (Dean's ruling), whichever
+  //      surface it happened to be played on.
+  // Listen resumes via the existing `/music?play=<id>&listen=1` deep-link
+  // (music.js's playListenItem, already the production path for audio-only
+  // media since v1.246); watch keeps the pre-v1.304 `/watch.html?v=<id>`.
+  const listen = seen.surface === 'listen' || item.type === 'audio';
   return {
     title: item.title || item.name || 'Video',
     subtitle: item.folderName || '',
     thumbnailUrl: `/thumbnail/${enc}`,
-    href: `/watch.html?v=${enc}`,
+    href: listen ? `/music?play=${enc}&listen=1` : `/watch.html?v=${enc}`,
+    listen,
     duration: seen.duration || item.duration || 0,
   };
 }

@@ -93,6 +93,43 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.304.0 - "Continue here" resumes in the right player: Listening vs Watching (2026-09-15)
+
+The cross-device handoff card ("Continue here") chose BOTH its destination and its headline purely
+from the presence KIND (media/track/podcast). Songs and podcasts already resumed in an audio
+surface, but a media item being LISTENED to - a video opened via the iPod/music "Listen" surface,
+or an audio-only file - resumed at /watch.html, so continuing an audio session on another device
+dropped you into a VIDEO player, and the card read "Playing on X" with no watch-vs-listen cue.
+Dean's repro: listening on the Brick Classic / iPod skin, "Continue here" reopened a video.
+
+Fix: one SURFACE flavor ('watch'|'listen') now rides the SINGLE presence pipeline. The progress
+ping (saveProgressToServer, the one ping writer) stamps it from the loaded item's resumeMode
+('music'/'podcast' -> listen; tv/plain video -> watch) via a new pure helper
+presenceSurfaceForResumeMode; the presence store carries it (whitelisted, 'watch' default, so an
+old client and the plain-video case stay byte-identical); resolveHandoffTarget routes a listened
+media item to the existing /music?play=<id>&listen=1 deep-link (music.js's playListenItem) and a
+WATCHED one to the unchanged /watch.html; formatHandoffHeadline reads a `listen` flag to say
+"Listening on X" / "Watching on X" (+ "Paused listening/watching on X - Yago"). An audio-only file
+(type 'audio') always resumes as listen - it has no video (Dean's ruling). Tracks and podcasts
+resume unchanged, now correctly labelled "Listening". The /api/handoff route spreads the resolver's
+return, so the new flag reaches the card with no route change.
+
+FULL gate (both seats). Both APPROVED the feature in round 1; the gate then caught a real thing in
+my OWN fix round - a client-seam tripwire test I added (at QA's suggestion, to forward-arm the
+INERT-FEATURE class against a future music.js change) had a VACUOUS second assertion: its raw
+[\s\S]*? span reached into a later function's playAt(, so the adversarial seat's mutant
+(neutralise playListenItem's own playAt(0)) survived green. Fixed with a tempered-token span bounded
+to playListenItem's body (the #213 distance-lock lesson), mutation-verified red from both seats.
+Reachability was proven against SOURCE (a listened video really loads resumeMode 'music' via
+loadTrack), not just green unit tests. Three commits: the feature, the gate-round tidy + tripwire,
+and the tripwire tightening.
+
+Tests: presence-store surface round-trip + 'watch' default (absent/garbage); the headline verb both
+ways across play/pause; resolveHandoffTarget's two media arms diverging on the SAME item; audio-only
+forces listen; the client-seam tripwire (mutation-bound on both anchors). Dual-Node GREEN: Node
+22.23.1 and 24.20.0 each 8839/8839, 0 fail. Known gap: DEVICE-PENDING Dean's on-device pass (the
+Brick Classic / iPod repro, and the "Listening"/"Watching" card copy).
+
 ### v1.303.0 - The Click wheel test drives the real wheel (a shared source of truth) (2026-09-15)
 
 The "Click wheel test" (Settings > Experimental) stops being a dead-end diagnostic: its

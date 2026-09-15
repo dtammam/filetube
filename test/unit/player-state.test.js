@@ -200,3 +200,60 @@ test('applyAdoptFlavor bindings: the adopt branch APPLIES it, and watch.js\'s tw
   const stamps = watchSrc.match(/readerHref: null, resumeMode: null/g) || [];
   assert.strictEqual(stamps.length, 2, 'BOTH adopt-capable watch load calls (the early adopt probe + the full initWatch call) claim the plain-video flavor');
 });
+
+// ---- presenceSurfaceForResumeMode (v1.304: the handoff ping's watch/listen) -
+//
+// A LISTENED video keeps its video extension, so the server cannot tell watch
+// from listen - the playing device is the source of truth. This pure helper is
+// the field the /api/handoff resolver routes on, so its output IS the modality
+// the continue-here button lands in.
+const { presenceSurfaceForResumeMode } = require('../../public/js/player.js');
+
+test('presenceSurfaceForResumeMode: music and podcast are LISTEN; tv, plain video, and junk are WATCH', () => {
+  assert.strictEqual(presenceSurfaceForResumeMode('music'), 'listen', 'the iPod/music skin + a Listen-a-video');
+  assert.strictEqual(presenceSurfaceForResumeMode('podcast'), 'listen');
+  assert.strictEqual(presenceSurfaceForResumeMode('tv'), 'watch', 'TV is watched');
+  assert.strictEqual(presenceSurfaceForResumeMode(null), 'watch', 'plain video');
+  assert.strictEqual(presenceSurfaceForResumeMode(undefined), 'watch', 'no flavor loaded');
+  assert.strictEqual(presenceSurfaceForResumeMode(''), 'watch');
+  assert.strictEqual(presenceSurfaceForResumeMode('books'), 'watch', 'an unknown mode is never mislabelled listen');
+});
+
+test('presenceSurfaceForResumeMode binding: saveProgressToServer STAMPS body.presenceSurface via the helper (not inert; comments stripped)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  // The one ping writer must derive the surface from the loaded item's
+  // resumeMode through THIS helper - the pure tests above are vacuous if the
+  // ping never carries the field (the INERT-FEATURE guard).
+  assert.match(playerSrc, /body\.presenceSurface = presenceSurfaceForResumeMode\(currentData && currentData\.resumeMode\);/,
+    'the progress ping stamps presenceSurface from resumeMode');
+});
+
+test('v1.304 client-seam tripwire: the listen path routes through loadTrack, which stamps resumeMode "music" (QA suggestion)', () => {
+  // The server-side surface tests inject `surface` at the store, so they stay
+  // green even if music.js stops stamping resumeMode 'music' for a listened
+  // video - at which point the browser silently reverts to sending 'watch' and
+  // the handoff regresses to the ORIGINAL bug with no red. This binds the one
+  // client fact those tests cannot see (the INERT-FEATURE class, forward-armed).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const musicSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  // (a) the track loader stamps the audio surface flavor - the field the ping
+  //     reads to send presenceSurface 'listen'.
+  assert.match(musicSrc, /resumeMode:\s*'music'/, "loadTrack must stamp resumeMode 'music' for the listening surface");
+  // (b) a LISTENED video actually reaches that loader: playListenItem enqueues
+  //     and plays through the same queue loader (playAt -> loadTrack), so the
+  //     listened video inherits the 'music' flavor and stamps 'listen'. The span
+  //     is BOUNDED to playListenItem's own body (the tempered token stops at the
+  //     next sibling function decl) so it cannot false-pass on a LATER function's
+  //     playAt( - the #213 distance-lock trap the adversarial seat proved a raw
+  //     [\s\S]*? span falls into. Trade-off (disclosed): it keys on the (mediaId)
+  //     signature + 4-space sibling indent, so a signature/indent refactor yields
+  //     a LOUD false-red, never a silent false-green - the safe direction.
+  assert.match(musicSrc,
+    /async function playListenItem\(mediaId\)\s*\{(?:(?!\n {4}(?:async )?function )[\s\S])*?playAt\(/,
+    'playListenItem plays the listened video through the queue loader that stamps the flavor');
+});

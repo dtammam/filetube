@@ -296,6 +296,7 @@ test('kind track: a music ping mints presence resolving to the music surface', a
   assert.strictEqual(presence.title, 'Comfortably Numb');
   assert.strictEqual(presence.subtitle, 'Pink Floyd');
   assert.strictEqual(presence.href, `/music?play=${trackId}`);
+  assert.strictEqual(presence.listen, true, 'v1.304: a track always reads as Listening');
   assert.strictEqual(presence.thumbnailUrl, `/albumart/${trackId}`);
   assert.strictEqual(presence.position, 120);
   assert.strictEqual(presence.duration, 383);
@@ -330,8 +331,62 @@ test('kind podcast: an episode ping mints presence resolving to the podcasts sur
   assert.strictEqual(presence.title, 'Bowl Turning');
   assert.strictEqual(presence.subtitle, 'The Woodworkers');
   assert.strictEqual(presence.href, `/podcasts?play=${epId}`);
+  assert.strictEqual(presence.listen, true, 'v1.304: a podcast always reads as Listening');
   assert.strictEqual(presence.thumbnailUrl, `/podcastart/${subId}`);
   assert.strictEqual(presence.position, 300);
+});
+
+// ---------------------------------------------------------------------------
+// v1.304 handoff modality: a LISTENED media item resumes in the listening
+// player and the card reads "Listening"; a watched one keeps the video player.
+// The surface flavor is stamped by the playing device (a listened VIDEO keeps
+// its video extension, so only the device knows); an audio-only file is always
+// listen. Deep-link `/music?play=<id>&listen=1` is music.js's existing
+// playListenItem entry-point.
+// ---------------------------------------------------------------------------
+
+test('media LISTEN: a video played via Listen resumes on the music surface, not /watch.html', async () => {
+  seedDb(); // vid1 is type:'video'
+  assert.strictEqual((await postJson('/api/progress',
+    devicePing({ presenceSurface: 'listen' }))).status, 200);
+
+  const { presence } = await (await getHandoff(DEV_B)).json();
+  assert.ok(presence, 'device B sees the listened video');
+  assert.strictEqual(presence.href, '/music?play=vid1&listen=1',
+    'a listened video continues in the listening player (playListenItem deep-link)');
+  assert.strictEqual(presence.listen, true, 'the card reads "Listening"');
+});
+
+test('media WATCH: a plain video ping (no surface) resumes on /watch.html - the pre-v1.304 floor', async () => {
+  seedDb();
+  assert.strictEqual((await postJson('/api/progress', devicePing())).status, 200); // no presenceSurface
+
+  const { presence } = await (await getHandoff(DEV_B)).json();
+  assert.strictEqual(presence.href, '/watch.html?v=vid1', 'watch is byte-identical to pre-v1.304');
+  assert.strictEqual(presence.listen, false, 'the card reads "Watching"');
+});
+
+test('media modality is BOUND to the surface (both arms diverge on the SAME item, not hardcoded)', () => {
+  seedDb();
+  const db = getCachedDatabase();
+  const listen = resolveHandoffTarget(db, { kind: 'media', mediaId: 'vid1', surface: 'listen', duration: 0 });
+  const watch = resolveHandoffTarget(db, { kind: 'media', mediaId: 'vid1', surface: 'watch', duration: 0 });
+  assert.strictEqual(listen.href, '/music?play=vid1&listen=1');
+  assert.strictEqual(listen.listen, true);
+  assert.strictEqual(watch.href, '/watch.html?v=vid1');
+  assert.strictEqual(watch.listen, false);
+});
+
+test('audio-only media is ALWAYS listen, even when the ping said watch (Dean Q3: an mp3 has no video)', () => {
+  seedState({
+    folders: [], folderSettings: {},
+    metadata: { aud1: seedItem('aud1', { type: 'audio', ext: '.mp3', filePath: '/media/aud1.mp3' }) },
+    liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
+  });
+  const db = getCachedDatabase();
+  const watched = resolveHandoffTarget(db, { kind: 'media', mediaId: 'aud1', surface: 'watch', duration: 0 });
+  assert.strictEqual(watched.href, '/music?play=aud1&listen=1', 'an audio file forces the listening surface');
+  assert.strictEqual(watched.listen, true);
 });
 
 test('podcasts: a ping without device fields still behaves byte-identically (AC10, third handler)', async () => {
