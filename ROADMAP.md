@@ -468,7 +468,7 @@ wave (carrier calls + validator); the weight leaves in Waves 6/7. Device pass is
 ### v1.290.0 - Relational-migration arc, Wave 0: honest-zero comment debt + db.json proven inert (2026-09-13)
 
 Groundwork for retiring the document model inside `filetube.db` (the plan is
-`docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md`, landed through this
+`docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md`, landed through this
 gate). No data touched, `server.js` delta 0 lines; the wave exists so the arc's baseline
 predictions are machine-verified and its two floors are enforced before any table moves.
 

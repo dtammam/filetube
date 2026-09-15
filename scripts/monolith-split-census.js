@@ -3,7 +3,7 @@
 
 // Wave 7b of the relational-migration arc (the monolith split): the
 // MACHINE-DERIVED census the split's slice plan rests on
-// (docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md, Wave 7b).
+// (docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md, Wave 7b).
 // Parses server.js (espree - eslint's own parser, already a dev dependency),
 // and reports, per top-level statement:
 //   - what it is (a route registration `app.<verb>(path, ...)`, a top-level

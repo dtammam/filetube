@@ -1,7 +1,7 @@
 # Wave 7b R2 gate brief - four parallel slices of the monolith split (v1.298.0 candidate)
 
 Branch `feat/wave7b-r2` off main `c5b91c31` (v1.297.0). Spec: the "Wave 7b - the monolith
-split" section of docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md incl. its R1
+split" section of docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md incl. its R1
 and R2 records (the R2 record on the branch tip is the full claim list). Instruments:
 `node scripts/monolith-split-census.js`, `node scripts/route-order-signature.js`,
 `node scripts/verify-split-slice.js <base> <tree> <group>=<module> ...` (run from the checkout;

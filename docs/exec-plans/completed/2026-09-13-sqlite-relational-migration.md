@@ -1,7 +1,7 @@
 # Exec plan: retire the document model, relationalize the store, thin the monolith
 
 - **Created:** 2026-09-13
-- **Status:** ACTIVE (intake agreed with Dean 2026-09-13; Wave 0 in flight 2026-09-13)
+- **Status:** SHIPPED (arc closed 2026-09-15, Dean's ruling SETTLE; Waves 0-7b shipped v1.290.0 -> v1.299.0; server.js 19,064 -> 7,226, the `< 3,000` line target settled as the honest floor; #226 deferred to its own wave; device pass pending)
 - **Owner:** main session (lean mode)
 - **Baseline commit:** `963f0ca2` (v1.289.0), `schema user_version = 20`
 
@@ -1228,7 +1228,17 @@ Each namespace migration MUST do all of these; a test binds each:
 
 ## 6. Definition of done (the arc closes when)
 
-- `wc -l server.js` < 3,000; the top-10 giant functions live in tested `lib/` modules.
+> ARC CLOSED 2026-09-15 (Dean's ruling: SETTLE). All criteria met except the `< 3,000` line
+> target, closed as an HONEST FLOOR at **7,226** (from 19,064 - a 62% cut). The top-10 giant
+> functions and every feature's routes live in tested `lib/` modules; what remains in server.js is
+> the boot/wiring spine (express + gate setup, the deps objects handed to every module,
+> `scanDirectories`' lock + interval, the queue-entry functions, byte helpers, the scheduler),
+> which does not decompose into feature modules without indirection for its own sake. A further
+> helper sweep to chase `< 3,000` was judged diminishing-returns and declined; #226 (the catalog
+> read-through cache) was deferred to its own wave. Device pass PENDING (v1.297 passed).
+
+- `wc -l server.js` = **7,226** (target was `< 3,000` - CLOSED as the honest floor above); the
+  top-10 giant functions live in tested `lib/` modules.
 - `DOC_KV_NAMESPACES` and `SINGLETON_NAMES` are gone; `doc_kv` + `doc_single` tables
   dropped; no shipped code references `db.json`.
 - Genuine marker count 0, lint-enforced; test ratio >= 1.48:1; full suite green on both

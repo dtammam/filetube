@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] Wave 0 of the relational-migration arc (2026-09-13) - the honest-zero
-// comment-debt census (docs/exec-plans/active/2026-09-13-sqlite-relational-migration.md,
+// comment-debt census (docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md,
 // Section 1: "Genuine TODO/FIXME/HACK markers: 0, lint-enforced").
 //
 // Two floors, scanned over the tracked file list derived each run (never a

@@ -4,7 +4,7 @@
 // db.json file is INVISIBLE to boot. Wave 0 bound "when filetube.db exists its
 // CONTENT is never read" while boot rule 2 (the one-time import when
 // filetube.db is absent) stayed as the arc's rollback net; Wave 7 removed rule
-// 2 with the document model (docs/exec-plans/active/2026-09-13-sqlite-
+// 2 with the document model (docs/exec-plans/completed/2026-09-13-sqlite-
 // relational-migration.md, Wave 7), so this file now proves the stronger
 // claim on BOTH arms: with or without filetube.db, openAdapter never names,
 // probes or reads a file called db.json - and the DoD's source lock: no
