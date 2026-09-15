@@ -396,6 +396,12 @@ test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediate
   assert.ok(h, 'mountEarlyCover exists');
   assert.match(h[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
   assert.match(h[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
+  // v1.301 (Dean): the cover paints the skin's DEVICE CHROME (renderFull with the no-current
+  // ctx) as the launch frame, not a bare empty body that read as a jarring grey slab.
+  assert.match(h[1], /SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)/, 'the cover paints the skin device chrome, not an empty slab');
+  // v1.301 (slim-gate SUGGESTION): the chrome render is wrapped in try/catch with a blank-cover
+  // fallback, so a skin render that ever threw can never break the launch path. Bind the net.
+  assert.match(h[1], /try \{[\s\S]*?SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)[\s\S]*?\} catch \(_\) \{ nowPlayingPanel\.innerHTML = ''; \}/, 'the device-chrome render is guarded so a throw falls back to the blank cover');
   const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
   assert.match(m[1], /var coverEarly = mountEarlyCover\(\);/, 'the continue arm rides the shared cover');
@@ -419,6 +425,12 @@ test('v1.244 (adversarial CRITICAL): the ?play cover SURVIVES init\'s synchronou
       assert.ok(dom.window.document.body.classList.contains('mms-on'), 'body.mms-on stays set through init\'s epilogue');
       assert.match(p.className, /\bmms-full\b/, 'the full-screen skin cover is STILL mounted (not torn down before the skin paints)');
       assert.strictEqual(p.hidden, false, 'the cover is visible');
+      // v1.301 (Dean, "the screen that launches before it loads"): the cover paints the skin's
+      // DEVICE CHROME while the track loads, not a bare grey body. For the iPod skin that's the
+      // click wheel + transport. Mutation guard: reverting mountEarlyCover to innerHTML='' drops
+      // these and reds the test.
+      assert.ok(p.querySelector('.ip-wheel'), 'the launch cover shows the click wheel (device chrome), not an empty slab');
+      assert.ok(p.querySelector('[data-skin-play]'), 'the launch cover shows the transport while the track loads');
     },
   });
 });

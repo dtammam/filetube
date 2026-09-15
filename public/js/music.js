@@ -2620,7 +2620,20 @@ if (typeof module !== 'undefined' && module.exports) {
         var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
         var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
         nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
-        nowPlayingPanel.innerHTML = '';
+        // v1.301 (Dean, "the screen that launches before it loads"): paint the skin's DEVICE
+        // CHROME (the wheel + an empty LCD / the player transport) as the launch frame rather
+        // than leaving the cover empty. The bare .mms-<skin> body alone read as a jarring grey
+        // slab during the async load gap, and it hit EVERY skin (each flashed its own empty
+        // background). renderFull with the no-current ctx (buildSkinCtx(-1)) is the SAME frame
+        // the engine itself paints on an idle repaint - an already-exercised, safe pure call -
+        // so the iPod/player silhouette appears at once; the real engine repaints over it the
+        // instant the track loads (renderNowPlayingSkin -> inTabEngine.paint(), which also binds
+        // the gestures this static frame deliberately omits). try/catch falls back to the old
+        // blank cover so a skin render can never break the launch path.
+        try {
+          nowPlayingPanel.innerHTML = (typeof SKINS.renderFull === 'function' && typeof buildSkinCtx === 'function')
+            ? SKINS.renderFull(_sid, buildSkinCtx(-1)) : '';
+        } catch (_) { nowPlayingPanel.innerHTML = ''; }
         nowPlayingPanel.hidden = false;
       }
       return coverEarly;

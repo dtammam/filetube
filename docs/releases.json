@@ -3028,5 +3028,11 @@
     "date": "2026-09-15",
     "title": "A new matte skin for the iPod-style music player, and clearer skin names",
     "intent": "The retro iPod-style music player gets a new 'Click (Matte)' skin - a soft matte-graphite body with a dark wheel, modeled on a real classic iPod - and the skin names are tidied up: the iPod skins are now Click, Click (Black) and Click (Matte), and 'Seattle Classic' is simply 'Seattle'. An older, unused Seattle skin has been removed; if it happened to be your current pick, the player just falls back to the default. Nothing else changes."
+  },
+  {
+    "version": "1.301.0",
+    "date": "2026-09-15",
+    "title": "The retro music player no longer flashes a blank panel while a song loads",
+    "intent": "When you open a song into one of the full-screen retro skins on your phone, the player now shows its device - the click wheel and screen - right away while the track loads, instead of a plain grey panel for a moment. A small thing, but the launch feels like the player powering on rather than a blank screen."
   }
 ]

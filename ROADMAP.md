@@ -93,6 +93,36 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.301.0 - The mobile skin launch cover paints device chrome, not a bare body (2026-09-15)
+
+A mobile-only music-skin polish; no server or data change. Opening a track into a full-screen
+skin (?play=, a Jump-back-in tile, or a listen item) mounts the straight-to-player cover
+(mountEarlyCover) synchronously, before the track's async load resolves. It used to render an
+EMPTY cover (innerHTML='') carrying only the skin class - so during the load gap the bare
+.mms-&lt;skin&gt; body showed alone, which for the graphite Click (Black)/(Matte) skins read as a
+jarring grey gradient slab and hit every skin (each flashed its own empty background). Dean, on
+device: "the screen that launches before it loads."
+
+The cover now paints the skin's device chrome via renderFull(_sid, buildSkinCtx(-1)) - the SAME
+no-current-track frame the shared engine already paints on an idle repaint, so it is an
+already-exercised, pure call (not a new render path). The iPod silhouette (wheel + empty LCD) or
+the player's framed art + transport appears at once; the real engine repaints over it, and binds
+the gestures, the instant the track loads (renderNowPlayingSkin -&gt; inTabEngine.paint()). Wrapped
+in try/catch so a skin render can never break the launch path (falls back to the old blank cover).
+All six skins' empty-ctx frames were rendered at phone width and eyeballed - each reads as the
+device powering on.
+
+Slim gate (adversarial); one test-only fix round applying its non-blocking SUGGESTION (bind the
+try/catch fallback), delta APPROVE. Named surfaces measured clean: the mms-on leak / frozen-scroll
+scar (v1.227), the list-flash prevention (v1.243/244), premature gesture arming (the static frame
+carries no listeners; the real engine paint() rebinds once), buildSkinCtx(-1) safety on an empty
+AND a populated queue (no false current/played marking; try/catch fallback proven to hold on a
+forced throw), and reachability (mountEarlyCover is the ONLY view-side .mms-full writer, reached by
+all three arms). Tests: two source-locks (renderFull with the no-current ctx; the try/catch net) +
+a behavioral jsdom binding (the iPod launch cover contains .ip-wheel + [data-skin-play]) - each of
+the three mutation-proven to red on its own distinct mutant. Dual-Node, sequential, reviewer idle:
+22.23.1 8804/8804/0 fail/0 skipped; 24.20.0 (the CI runner's minor) 8804/8804/0/0. Device pass PENDING.
+
 ### v1.300.0 - Click (Matte) music skin + skin-registry tidy (2026-09-15)
 
 A new music-player skin and a registry cleanup; no server or data change. Adds "Click (Matte)" (id ipod-matte), a matte-graphite iPod colorway sampled pixel-for-pixel from Dean's reference photo: a top-lit graphite body that curves darker at the edges and bottom (no corner hotspot), a dark matte click wheel, and a graphite center button - all token-based (17 new --mms-ipodm-* tokens; the design-token census stays at 0 raw literals). It shares the .mms-ipod chassis via base:'ipod' exactly like Click (Black), and is wired into all three hand-maintained wheel/tray sibling lists (WHEEL_SKINS so the Brick easter egg runs on it, the tray chipSkins filter and the tray getSkinId donor so it appears and renders as a Nano colorway) - each addition mutation-bound by a test. Renames: Pocket Classic -> Click, Pocket Classic (Black) -> Click (Black), Seattle Classic -> Seattle, and the "Pocket Classic wheel test" diagnostic -> "Click wheel test". Removes the unused Metro "Seattle" (Zune) skin - its registry entry, renderZune, the .mms-zune CSS block and its setup blurb; the shared --mms-zn-pink/-dim/-ink tokens are kept (Seattle / zune-classic still uses them), and a saved pref for the removed skin falls back to the default (bound).
