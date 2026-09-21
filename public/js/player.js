@@ -1143,6 +1143,24 @@ function computeQueuePrev(queue) {
   return null;
 }
 
+// (Dean, tech-debt #230): does the just-ended / just-stepped item ARE the
+// queue's now-playing pointer entry? A chaptered video played as audio carries
+// a synthetic `<vid>::c<idx>` current id, but its /api/queue entry records the
+// BASE media id (`<vid>`) - so a raw `pointerEntry.mediaId === playingId` can
+// NEVER match for a chaptered item, and the server-queue advance to the NEXT
+// queued item is silently skipped (playback falls back to in-video chapter nav,
+// which walks/loops WITHIN the same file). Match on the BASE id when the loaded
+// item is a chapter track (baseMediaId is set - the SAME base id the progress
+// save path already resolves to, see saveProgressToServer). Non-chapter items
+// pass baseMediaId falsy and match on the raw id exactly as before. Pure;
+// exported for node:test. BOTH queue-advance guards (the 'ended' cascade AND
+// manualTrackStep) route through this - one match rule, no drift.
+function queuePointerMatchesPlaying(pointerEntry, playingId, baseMediaId) {
+  if (!pointerEntry || typeof pointerEntry.mediaId !== 'string') return false;
+  var effectiveId = baseMediaId || playingId;
+  return pointerEntry.mediaId === effectiveId;
+}
+
 // ---- v1.41.12 (Dean): chapter loop pure helper ------------------------------
 // Resolve the [start, end) bounds of the chapter at `index`: end is the NEXT
 // chapter's startTime, or `duration` for the last chapter. Returns null on
@@ -1585,6 +1603,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // of the server's nextEntry (the server reducers stay the authority).
     computeQueueNext,
     computeQueuePrev,
+    // (Dean, tech-debt #230): the base-id-aware queue pointer match - a chaptered
+    // video's `::c` current id must match its base-id queue entry, or it never advances.
+    queuePointerMatchesPlaying,
     isAdoptLoad,
     applyAdoptFlavor,
     presenceSurfaceForResumeMode, // v1.304 handoff modality: the ping's watch/listen flavor
@@ -2938,7 +2959,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (entries[i] && entries[i].uid === pointerUid) { pointerEntry = entries[i]; break; }
         }
         var neighbor = dir === 'prev' ? computeQueuePrev(queue) : computeQueueNext(queue);
-        if (pointerEntry && pointerEntry.mediaId === steppedId && neighbor) {
+        if (queuePointerMatchesPlaying(pointerEntry, steppedId, currentData && currentData.baseMediaId) && neighbor) {
           advanceIntoQueueEntry(neighbor);
           return;
         }
@@ -4775,7 +4796,7 @@ if (typeof module !== 'undefined' && module.exports) {
             if (entries[i] && entries[i].uid === pointerUid) { pointerEntry = entries[i]; break; }
           }
           var queueNext = computeQueueNext(queue);
-          if (pointerEntry && pointerEntry.mediaId === endedId && queueNext && currentId === endedId) {
+          if (queuePointerMatchesPlaying(pointerEntry, endedId, currentData && currentData.baseMediaId) && queueNext && currentId === endedId) {
             // v1.72 (#91): SAME-kind advances stay unconditional (music/
             // podcasts autoplay through their own queue by default), but a
             // CROSS-KIND advance (podcast/track -> a VIDEO on the watch
