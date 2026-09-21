@@ -1,8 +1,15 @@
 # Performance diagnostics suite (Settings > Experimental)
 
-Status: IN GATE (branch `exp/perf-diagnostics`). Owner: main session. Gate: FULL
-(adversary + qa + security-brief - escalated to add security-brief: new network
-boundary, admin/RBAC surface, client-POST file-writing store, byte-serving probes).
+Status: GATE PASSED @804de7f3 (branch `exp/perf-diagnostics`, r2). Owner: main
+session. Gate: FULL - all three seats (adversary + qa + security-brief, the last
+escalated in for the network/RBAC/file-write/byte-serving surface) APPROVED at
+804de7f3 after ONE fix round. r1 CHANGES (adversary + qa) were 4 stale comments
+from the first env-gated build; fixed, plus the two disclosed suggestions folded
+in (malformed :id -> 404 not 500, bound by 2 new tests; admin-self XSS escaped).
+Full suite green (8854/0). One NON-BLOCKING residual (adversary SUGGESTION, safe
+to ship): a runStore.js comment under-states that list() also lazily creates
+.diag (sentence 2 already names both writers). Device pass: N/A (dev instrument,
+off by default). Awaiting Dean: proceed to /release, and decide the comment nit.
 
 ## Intent (Dean)
 FileTube feels slow on mobile over an always-on VPN. Before building fixes, Dean
@@ -76,15 +83,15 @@ handlers) consults it.
    existing install (kvStore defaults-merge) and not strip on partial writes.
 
 ## Acceptance criteria
-- [ ] Default OFF: no shell injection, no Server-Timing, diag routes 404; a
+- [x] Default OFF: no shell injection, no Server-Timing, diag routes 404; a
       normal/ test build is behaviourally unchanged (full suite green: 8854/0).
-- [ ] Toggle in Settings > Experimental persists, projects, validates, and gates
+- [x] Toggle in Settings > Experimental persists, projects, validates, and gates
       the surface live BOTH ways (bound by settings-cache-api.test.js).
-- [ ] Admin-only: members 403 on every diag route (bound by route-write
+- [x] Admin-only: members 403 on every diag route (bound by route-write
       enforcement census).
-- [ ] Non-content-serving: RBAC census (count + read/write classification)
+- [x] Non-content-serving: RBAC census (count + read/write classification)
       satisfied.
-- [ ] Probes/store enforce their caps; no traversal; no unauth path.
+- [x] Probes/store enforce their caps; no traversal; no unauth path.
 
 ## Gate verdicts (seats append; bound to the reviewed sha)
 Gate: APPROVED r1 @2a30957a — security-brief
@@ -96,6 +103,17 @@ Gate: APPROVED r1 @2a30957a — security-brief
 - S6 Shell injection — CLEARED. Injection is a fixed literal `<script src="/js/perf-collector.js">` via `</body>` regex replace, only inside `isDiagEnabled()`. No caller/user input flows into the replacement; a shell lacking `</body>` merely no-ops (functional, not security).
 - S7 Setting write path — CLEARED. POST /api/settings calls `requireAdmin` first (member → 403), rejects unknown keys, and `perfDiagnosticsEnabled` must be a strict boolean (400 otherwise). No coercion/bypass.
 - INFO (non-blocking): GET/DELETE `/api/diag/runs/:id` with an id that sanitizes to empty (e.g. `/api/diag/runs/...`) makes `runPath` throw uncaught → 500 (get/remove lack the try/catch the POST handler has). Admin-only, no data impact — cosmetic robustness nit.
+
+Gate: APPROVED r2 @804de7f3 — security-brief (delta re-review of fix diff 2a30957a..804de7f3)
+- S1 Path traversal — CLEAR (unchanged posture). Refactor into `safeSlug()` keeps the IDENTICAL strip regex `[^a-zA-Z0-9_-]`; still no `.`/`/`/NUL survives, `run-<slug>.json` prefix/suffix unescapable. `runPath` throw now only reachable via server-minted `save` id (always valid).
+- S2 Resource exhaustion — CLEAR (untouched by the fix diff).
+- S3 AuthZ/RBAC — CLEAR (untouched).
+- S4 Stored XSS — FIXED-AS-PRESCRIBED, residual closed. New `esc()` escapes `& < > " '` in one pass and is applied at every admin-free-text innerHTML sink (label 261/311/343/353, note 314, scenario 244/355). Every other innerHTML site traced renders only static `SCENARIOS` constants or numeric/fixed-enum probe data — none missed. Now effectively no residual (was LOW admin-self).
+- S5 Global middleware — CLEAR (untouched).
+- S6 Shell injection — CLEAR (untouched).
+- S7 Setting write path — CLEAR (untouched).
+- Prior INFO (empty-slug 500) — FIXED: `get()`/`remove()` pre-check `safeSlug(id)` and return null/false → clean 404, not 500.
+- No new surface opened by the diff (two functional edits to runStore.js/diag-page.js + comment-only changes; verified the security-relevant functions directly).
 
 Gate: CHANGES r1 @2a30957a — qa
 
@@ -204,3 +222,77 @@ Findings:
 
 The four comment fixes + two try/catch guards are cheap; behavior is otherwise
 correct and fully bound. Re-engage this instance for the r2 delta.
+
+Gate: APPROVED r2 @804de7f3 — qa (delta re-review of fix diff 2a30957a..804de7f3)
+
+Instruments re-run at @804de7f3, all green:
+- `npm test`: tests 8854 / pass 8854 / fail 0 / skipped 0 (incl. the 2 new
+  malformed-id 404 assertions in settings-cache-api.test.js).
+- `node scripts/css-token-lint.js --enforce`: TOTAL 0, exit 0.
+- `node scripts/route-order-signature.js`: exit 0.
+
+r1 findings — resolution (all three fixed-as-prescribed, comments now match code):
+- lib/diag/routes.js:3-9 — FIXED. Header now states routes register
+  UNCONDITIONALLY, gated per-request (requireAdmin FIRST → 403, then
+  isDiagEnabled → 404 while off), authGate 401s unauth. Accurate.
+- lib/diag/runStore.js:11-13 — FIXED. Now ".diag created lazily... only when an
+  admin saves a run with the setting (or FT_DIAG) on"; matches ensureDir()'s
+  reachability (save/list are gated). Accurate.
+- server.js:208-210 — FIXED. Now "reads the setting directly (a single indexed
+  app_settings point-query, no cache)", consistent with the sibling comment at
+  server.js:~531; matches isDiagEnabled()'s direct settingsStore.getKey() call.
+  Contradiction gone.
+
+Also verified (were disclosed by me / adversary):
+- perf-collector.js:1-5 — comment corrected to "when diagnostics are enabled (the
+  perfDiagnosticsEnabled setting, or FT_DIAG)"; the env-only framing is gone.
+- runStore get/remove now pre-check safeSlug(id) → null/false → clean 404 (not a
+  500) on a malformed :id; bound by the 2 new assertions. runPath's throw is now
+  reachable only from the server-minted save id (always valid). No regression.
+- diag-page.js esc() escapes & < > " ' in one pass, applied at every
+  admin-free-text innerHTML sink (label/note/scenario); numeric/fixed-enum fields
+  untouched. Hardens the admin-self residual; no behavior change for valid input.
+
+No NEW inaccuracy or standards/comment issue introduced by the fix. Tree carries
+only the seat r1/r2 verdict appends. Signing off.
+
+Gate: APPROVED r2 @804de7f3 — adversary (delta re-review of fix diff 2a30957a..804de7f3)
+
+Full suite at 804de7f3: tests 8854 / pass 8854 / fail 0 / skipped 0, exit 0.
+Each r1 finding re-verified against the fix commit; no new surface introduced.
+
+- WARNING (lying comments) - RESOLVED. All four rewrites now match the code:
+  - lib/diag/routes.js header: "registered UNCONDITIONALLY ... requireAdmin
+    FIRST then isDiagEnabled(); authGate fronts everything (401 first)" -
+    accurate.
+  - server.js:~208: "reads the setting directly (a single indexed app_settings
+    point-query, no cache)" - accurate; matches kvStore.getKey (st().get.get)
+    and the sibling comment at ~531, contradiction gone.
+  - public/js/perf-collector.js:3: "when diagnostics are enabled (the setting,
+    or FT_DIAG)" - accurate.
+  - lib/diag/runStore.js: ".diag created lazily ... feature off never calls
+    save()/list(), so never created" - the security claim (off -> never
+    created) is correct. Minor imprecision (SUGGESTION, non-blocking): sentence
+    1 says "only when an admin actually saves a run" but ensureDir() also fires
+    from list() (GET /api/diag/runs), so a first LIST with the feature on also
+    creates the dir; sentence 2 correctly names both. No lie, no security
+    impact.
+- SUGGESTION (empty-sanitized :id -> 500) - RESOLVED as prescribed. safeSlug()
+  added; get() returns null and remove() returns false for an id that sanitizes
+  to empty. Mutation-verified in a /tmp git-archive sandbox at 804de7f3:
+  dropping the get() guard reds "malformed run id -> 404 not 500" (actual 500);
+  dropping the remove() guard reds the DELETE assertion (actual 500). Both new
+  assertions bind. safeSlug uses the IDENTICAL strip regex, so traversal is
+  unchanged - re-confirmed: get/remove of ../../etc/passwd, /etc/passwd, ..,
+  %2e%2e%2fpasswd all return null/false (no read outside DATA_DIR/.diag).
+- SUGGESTION (admin-self XSS) - RESOLVED as prescribed. esc() escapes & < > " '
+  in a single pass (no double-escape) and is applied at every admin-free-text
+  innerHTML sink: run label (261/311/343/353), note (314), scenario
+  (244/261/355). Remaining innerHTML sites render only the fixed SCENARIOS
+  constants (278) or numeric/fixed-enum probe data (295-297) - no free text.
+  Media event src/filenames (the surface-4 concern) never reach a render sink:
+  deriveMetrics emits only numeric aggregates + the (escaped) scenario name.
+
+No other files moved (fix diff = routes.js/runStore.js/diag-page.js/
+perf-collector.js/server.js comments + the two bound test assertions). All r1
+bindings from the prior round remain intact. Approving; bound to 804de7f3.
