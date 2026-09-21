@@ -93,7 +93,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
-### v1.306.0 - The account-menu trash line shows how much space it would free (2026-09-21)
+### v1.307.0 - A new Experimental tool for measuring why the app feels slow (2026-09-21)
+
+A performance-diagnostics suite, gated behind a new persisted Experimental
+setting (Settings > Experimental > Performance diagnostics, default OFF,
+admin-only). When on, it exposes a /diag control page and rides a passive
+collector on every shell (injected once from sendShellHtml, inert until a run is
+armed) so real navigation and playback can be measured on the device and network
+you actually use - built to attribute mobile-over-VPN slowness to a cause (round-
+trip latency vs per-view request fan-out vs throughput ceiling vs time-to-first-
+frame vs stalls) instead of a theory. Three active probes (RTT ping, throughput
+blob, compression delta), a Server-Timing middleware splitting server-compute out
+of TTFB, and a per-run JSON store under DATA_DIR/.diag; the page arms/labels
+runs, walks guided scenarios, and renders an isolation matrix with LAN-vs-VPN
+compare. isDiagEnabled() (the setting, or the FT_DIAG headless override) is the
+single predicate every entry point consults, so the toggle takes effect live
+with no restart, and a normal install carries zero added script or timing cost.
+
+FULL gate (adversary + qa + security-brief - the last escalated in for the new
+network boundary, admin/access-control surface, client-POST file-writing store
+and byte-serving probes). One fix round: round 1 CHANGES (adversary + qa) were
+four stale comments left from an earlier env-gated build; round 2 corrected them
+and folded in the two disclosed suggestions (a malformed run id now 404s instead
+of 500, bound by new assertions; admin-authored labels/notes escaped before
+render); a one-line comment round 3 closed the last nit. All three seats APPROVED
+bound to the same final code sha, every binding mutation-proven (the gate's both
+axes, the access-control census counts, default-off inertness, the path-id
+sanitizer). No data-loss, no persisted-namespace change (a setting key on the
+existing store; no rollback-floor bump).
 
 A one-line follow-on to v1.305's account-menu trash row: it now shows the
 reclaimable size alongside the count - "2 items in trash (1.5 GB)" - so you can

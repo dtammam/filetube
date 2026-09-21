@@ -1,9 +1,10 @@
 # Performance diagnostics suite (Settings > Experimental)
 
-Status: GATE PASSED @e9fb5aff (branch `exp/perf-diagnostics`, r3). Owner: main
-session. Gate: FULL - all three seats (adversary + qa + security-brief, the last
-escalated in for the network/RBAC/file-write/byte-serving surface) APPROVED bound
-to the SAME final sha e9fb5aff. r1 CHANGES (adversary + qa) were 4 stale comments
+Status: SHIPPED v1.307.0 (2026-09-21). Gate: FULL - all three seats (adversary +
+qa + security-brief, the last escalated in for the network/access-control/file-
+write/byte-serving surface) APPROVED bound to the SAME final code sha e9fb5aff.
+Device pass: N/A (dev instrument, off by default). Owner: main session. Branch:
+exp/perf-diagnostics. r1 CHANGES (adversary + qa) were 4 stale comments
 from the first env-gated build; r2 fixed them + folded in the two disclosed
 suggestions (malformed :id -> 404 not 500, bound by 2 new tests; admin-self XSS
 escaped); r3 was a one-line comment-only fix (adversary's .diag lazy-create nit,
