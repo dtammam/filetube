@@ -200,6 +200,16 @@ const PORT = process.env.PORT || 3000;
 
 // Dynamic data directory for Docker volume persistence
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (fs.existsSync('/app/data') ? '/app/data' : __dirname);
+// Perf-diagnostics suite: gated at RUNTIME by the persisted experimental
+// setting `perfDiagnosticsEnabled` (Settings > Experimental), with FT_DIAG=1 as
+// a headless force-on override. isDiagEnabled() (defined once settingsStore
+// exists) is the single predicate every entry point consults - timing
+// middleware, shell injection, and the /diag route handlers - so flipping the
+// toggle takes effect live, no restart. isDiagEnabled() reads the setting
+// directly (a single indexed app_settings point-query, no cache) - the same
+// order of cost as the app's other per-request settings reads.
+const DIAG_ENV_FORCE = process.env.FT_DIAG === '1' || process.env.FT_DIAG === 'true';
+const DIAG_DIR = path.join(DATA_DIR, '.diag');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 // v1.37.0 books: covers live in a BOOKS-OWNED dir -- never THUMBNAIL_DIR,
 // so the media scan's thumbnail unlink loop can never touch a book cover
@@ -498,7 +508,12 @@ const DEFAULT_SETTINGS = {
   // the watch-page Attribute button and the folder-view bulk tool, and the
   // attribution routes answer 404 (after the admin check). Settings ->
   // Experimental.
-  attributeControlEnabled: false
+  attributeControlEnabled: false,
+  // Perf-diagnostics suite (Settings > Experimental). OFF hides /diag and its
+  // probes (they answer 404) and stops the perf-collector riding the shells,
+  // so a normal install carries zero diagnostic script/timing cost until an
+  // admin opts in. FT_DIAG=1 force-enables headlessly. See isDiagEnabled().
+  perfDiagnosticsEnabled: false
 };
 
 // Wave 4 of the relational-migration arc: the app settings live in
@@ -509,6 +524,22 @@ const DEFAULT_SETTINGS = {
 // `inSaveTransaction` so a failed doc save rolls the setting back too.
 const createSettingsStore = require('./lib/config/settings');
 const settingsStore = createSettingsStore(dbAdapter, { defaults: DEFAULT_SETTINGS });
+
+// Perf-diagnostics gate (see the DIAG_* notes near DATA_DIR). Single predicate:
+// the persisted `perfDiagnosticsEnabled` setting OR the FT_DIAG force-on env.
+// The read is a single indexed app_settings lookup (settingsStore.getKey) - the
+// same order of cost as the many other per-request settings reads the app
+// already does - so it is called directly, no cache: the toggle takes effect
+// instantly and the gate is deterministically testable.
+function isDiagEnabled() {
+  if (DIAG_ENV_FORCE) return true;
+  try { return settingsStore.getKey('perfDiagnosticsEnabled') === true; }
+  catch (_) { return false; }
+}
+// Installed before any route so its res.writeHead wrapper can stamp
+// Server-Timing on every downstream handler; the middleware itself no-ops when
+// isDiagEnabled() is false, so a normal install pays only the predicate check.
+app.use(require('./lib/diag/timing').createDiagTiming({ isEnabled: isDiagEnabled }));
 // Wave 4 (second group): the folder config - the root list (library_folders,
 // operator order), the per-root settings map (library_folder_settings) and
 // the per-channel-folder display names (channel_folder_display_names). The
@@ -3354,9 +3385,32 @@ function sendShellHtml(res, absFilePath) {
   // the safety fallback.
   html = injectCustomLogoClass(html);
   html = injectVersionMeta(html); // v1.90: expose the running version to the client
+  if (isDiagEnabled()) {
+    // Perf-diagnostics: ride the collector on EVERY shell from this ONE choke
+    // point, so a soft-nav'd view can never land on a shell that lacks it (the
+    // shell-parity trap). Inert unless the /diag page has armed a run.
+    html = html.replace(/<\/body>/i, '<script src="/js/perf-collector.js"></script></body>');
+  }
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(html);
   return true;
+}
+{
+  // Perf-diagnostics HTTP surface (page + probes + run store). Registered
+  // UNCONDITIONALLY (route registration is one-time at boot) but every handler
+  // is gated by isDiagEnabled() so the feature is 404 until the experimental
+  // toggle is on - which makes it flip live, no restart. Registered before the
+  // shell catch-all so GET /diag resolves to its own control page. requireAdmin
+  // here is a boolean GUARD, not middleware, so adapt it.
+  const diagRoutes = require('./lib/diag/routes');
+  const { createRunStore } = require('./lib/diag/runStore');
+  diagRoutes.registerDiagRoutes(app, {
+    path,
+    publicDir: path.join(__dirname, 'public'),
+    isDiagEnabled,
+    requireAdmin: (req, res, next) => { if (requireAdmin(req, res)) next(); },
+    runStore: createRunStore({ fs, path, diagDir: DIAG_DIR }),
+  });
 }
 app.get('*', (req, res, next) => {
   const shell = shellHtmlForRequestPath(req.path);

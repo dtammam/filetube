@@ -71,6 +71,10 @@ const DEFAULT_SETTINGS = {
   // v1.202 DELIBERATE key-set change: manual channel attribution is OPT-IN,
   // OFF by default (Dean: a clean-from-the-start library never needs it).
   attributeControlEnabled: false,
+  // DELIBERATE key-set change: the performance-diagnostics suite (Settings >
+  // Experimental) is OPT-IN, OFF by default. Gates /diag, the probes, and the
+  // shell perf-collector. See server.js DEFAULT_SETTINGS.
+  perfDiagnosticsEnabled: false,
 };
 
 test('loadDatabase: yields a fully-defaulted db when the store is empty (no eager write needed)', () => {

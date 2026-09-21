@@ -1602,6 +1602,13 @@ async function loadAutomationSettings() {
     // v1.202: manual-attribution opt-in, OFF by default (same prefill shape).
     const attributeControlCheck = document.getElementById('attribute-control-check');
     if (attributeControlCheck) attributeControlCheck.checked = !!s.attributeControlEnabled;
+    // Performance diagnostics opt-in, OFF by default (same prefill shape). The
+    // "Open" button is revealed only when the feature is on (the /diag page 404s
+    // otherwise), so mirror the checkbox state onto it.
+    const perfDiagCheck = document.getElementById('perf-diag-check');
+    if (perfDiagCheck) perfDiagCheck.checked = !!s.perfDiagnosticsEnabled;
+    const perfDiagOpenBtn = document.getElementById('perf-diag-open-btn');
+    if (perfDiagOpenBtn) perfDiagOpenBtn.hidden = !s.perfDiagnosticsEnabled;
     // v1.35: deterministic background audio, OFF by default.
     const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
     if (preExtractAudioCheck) preExtractAudioCheck.checked = !!s.preExtractAudio;
@@ -2376,6 +2383,20 @@ function wireStaticControls(signal) {
     attributeControlCheck.addEventListener('change', (e) => {
       saveAutomationSetting('attributeControlEnabled', e.target.checked,
         document.getElementById('attribute-control-error'));
+    }, { signal });
+  }
+
+  // Performance diagnostics opt-in - saves immediately, and reveals/hides the
+  // "Open" button to match (the /diag page 404s while the feature is off). The
+  // server gate reads the setting directly, so /diag goes live as soon as the
+  // save lands.
+  const perfDiagCheck = document.getElementById('perf-diag-check');
+  if (perfDiagCheck) {
+    perfDiagCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('perfDiagnosticsEnabled', e.target.checked,
+        document.getElementById('perf-diag-error'));
+      const openBtn = document.getElementById('perf-diag-open-btn');
+      if (openBtn) openBtn.hidden = !e.target.checked;
     }, { signal });
   }
 

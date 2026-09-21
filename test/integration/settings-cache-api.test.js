@@ -125,7 +125,42 @@ test('GET /api/settings returns the full-shape settings projection with backfill
     // v1.202 DELIBERATE key-set change: manual channel attribution is OPT-IN,
     // OFF by default (Dean: a clean-from-the-start library never needs it).
     attributeControlEnabled: false,
+    // DELIBERATE key-set change: performance-diagnostics suite, OPT-IN, OFF by
+    // default. Mirrored in test/unit/database.test.js's DEFAULT_SETTINGS.
+    perfDiagnosticsEnabled: false,
   });
+});
+
+// perfDiagnosticsEnabled is not just persisted - it GATES the /diag surface.
+// This binds presence-vs-binding AND both axes (on -> live, off -> 404), so a
+// future edit that persists the flag but forgets to gate on it goes red.
+test('perfDiagnosticsEnabled persists, validates, and gates the /diag surface both ways', async () => {
+  const postSetting = (v) => fetch(`${base}/api/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ perfDiagnosticsEnabled: v }),
+  });
+
+  // Default OFF: the diag surface answers 404 (feature invisible).
+  assert.equal((await fetch(`${base}/api/diag/ping`)).status, 404, 'diag is 404 while the toggle is off');
+
+  // Validation: a non-boolean is rejected (the allowlist + type block bind).
+  assert.equal((await postSetting('yes')).status, 400, 'non-boolean rejected');
+
+  // Enable: POST projects it back, GET persists it, and the surface goes LIVE.
+  const post = await postSetting(true);
+  assert.equal(post.status, 200);
+  assert.equal((await post.json()).perfDiagnosticsEnabled, true, 'POST response projects the new value');
+  assert.equal((await (await fetch(`${base}/api/settings`)).json()).perfDiagnosticsEnabled, true, 'GET projects the persisted value');
+  const ping = await fetch(`${base}/api/diag/ping`);
+  assert.equal(ping.status, 200, 'diag surface is live once the toggle is on');
+  assert.equal(typeof (await ping.json()).now, 'number', 'ping returns a timestamp');
+  // A run id that sanitizes to empty is a clean 404 (no such run), never a 500.
+  assert.equal((await fetch(`${base}/api/diag/runs/...`)).status, 404, 'malformed run id -> 404 not 500');
+  assert.equal((await fetch(`${base}/api/diag/runs/...`, { method: 'DELETE' })).status, 404, 'malformed run id DELETE -> 404 not 500');
+
+  // Disable: the surface re-closes (the second axis of the gate).
+  await postSetting(false);
+  assert.equal((await fetch(`${base}/api/diag/ping`)).status, 404, 'toggling back off re-closes the surface');
 });
 
 test('GET /api/settings surfaces a UI-set cacheMaxBytes as effectiveCacheMaxBytes', async () => {

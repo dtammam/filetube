@@ -3064,5 +3064,11 @@
     "date": "2026-09-21",
     "title": "The account-menu trash line now shows how much space it would free",
     "intent": "The 'items in trash' line in the account menu now also shows how much room they're taking up, like '2 items in trash (1.5 GB)'. So at a glance you can see both how many things you could empty and how much disk space you'd get back, right there in the menu."
+  },
+  {
+    "version": "1.307.0",
+    "date": "2026-09-21",
+    "title": "A new Experimental tool for measuring why the app feels slow on your network",
+    "intent": "There's a new Experimental setting - Settings > Experimental > Performance diagnostics - that turns on a page for measuring how quickly FileTube moves between pages and starts playing on whatever network you're on. It's handy when things feel sluggish out and about on mobile or over a VPN: you label a run, follow a few guided steps, and it shows where the time actually goes - the round-trip delay to your server, how many requests a page makes, your download speed, and how long a video takes to start. It's off by default and only an admin can switch it on."
   }
 ]

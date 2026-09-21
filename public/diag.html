@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FileTube Perf Diagnostics</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0b0e14; color: #e6e8eb;
+      font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; padding-block: 20px; }
+    h1 { font-size: 20px; margin: 0 0 2px; }
+    h2 { font-size: 15px; margin: 22px 0 8px; color: #9fb3c8; text-transform: uppercase; letter-spacing: .05em; }
+    .sub { color: #7c8a99; margin: 0 0 16px; font-size: 13px; }
+    .card { background: #131826; border: 1px solid #222b3d; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+    label { display: block; font-size: 12px; color: #9fb3c8; margin: 0 0 4px; }
+    input[type=text], textarea { width: 100%; background: #0b0e14; border: 1px solid #2a3548;
+      color: #e6e8eb; border-radius: 7px; padding: 8px 10px; font: inherit; }
+    textarea { resize: vertical; min-height: 44px; }
+    button { background: #1f2937; color: #e6e8eb; border: 1px solid #34415a; border-radius: 7px;
+      padding: 8px 12px; font: 600 13px/1 inherit; cursor: pointer; }
+    button:hover { background: #263449; }
+    button.primary { background: #2563eb; border-color: #2563eb; }
+    button.primary:hover { background: #1d4ed8; }
+    button.danger { background: #7f1d1d; border-color: #991b1b; }
+    button:disabled { opacity: .5; cursor: default; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .chips button { background: #0b0e14; border: 1px solid #2a3548; padding: 5px 10px; font-weight: 500; }
+    .chips button.on { background: #2563eb; border-color: #2563eb; }
+    .status { font-size: 13px; padding: 8px 10px; border-radius: 7px; background: #0b0e14; border: 1px solid #2a3548; }
+    .status.live { border-color: #b91c1c; color: #fca5a5; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #222b3d; vertical-align: top; }
+    th { color: #9fb3c8; font-weight: 600; }
+    td.num { font-variant-numeric: tabular-nums; }
+    .muted { color: #7c8a99; }
+    .lever { color: #7c8a99; font-size: 12px; }
+    .scenario-list { list-style: none; margin: 0; padding: 0; }
+    .scenario-list li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #1b2233; }
+    .scenario-list li:last-child { border-bottom: 0; }
+    .scenario-list .desc { flex: 1; }
+    .scenario-list .desc small { color: #7c8a99; display: block; }
+    .scenario-list button { white-space: nowrap; }
+    .scenario-list li.on .desc strong { color: #60a5fa; }
+    .runs { list-style: none; margin: 0; padding: 0; }
+    .runs li { display: flex; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid #1b2233; }
+    .runs .meta { flex: 1; }
+    .runs .meta small { color: #7c8a99; }
+    .pill { display: inline-block; background: #0b0e14; border: 1px solid #2a3548; border-radius: 999px; padding: 1px 8px; font-size: 11px; margin-left: 6px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+    .good { color: #4ade80; } .warn { color: #fbbf24; } .bad { color: #f87171; }
+    code { background: #0b0e14; padding: 1px 5px; border-radius: 4px; }
+    .hint { font-size: 12px; color: #7c8a99; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FileTube Perf Diagnostics</h1>
+    <p class="sub">Measurement-first. Arm a labeled run, follow the scenarios in the app, fire the probes, stop, then read the isolation matrix. Run the same scenarios on LAN and on 5G/VPN and compare.</p>
+
+    <div class="card">
+      <div id="status" class="status">Idle - no run armed.</div>
+    </div>
+
+    <h2>1 &middot; Arm a run</h2>
+    <div class="card">
+      <div class="grid2">
+        <div>
+          <label>Network label (what conditions is this run?)</label>
+          <input id="label" type="text" placeholder="e.g. 5G + VPN (out and about)">
+          <div class="chips row" style="margin-top:8px">
+            <button data-label="LAN (home wifi, no VPN)">LAN</button>
+            <button data-label="5G + VPN">5G + VPN</button>
+            <button data-label="5G, no VPN">5G no VPN</button>
+            <button data-label="Home wifi + VPN">WiFi + VPN</button>
+          </div>
+        </div>
+        <div>
+          <label>Note (optional - device, signal bars, anything)</label>
+          <textarea id="note" placeholder="iPhone, 3 bars, WireGuard, home upload ~20Mbps..."></textarea>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="startBtn" class="primary">Arm run &amp; start recording</button>
+        <button id="stopBtn" class="danger" disabled>Stop &amp; save</button>
+        <button id="openAppBtn">Open FileTube in new tab &#8599;</button>
+      </div>
+      <div class="hint">The red <strong>REC</strong> badge appears in the app tab while a run is armed. Do your scenarios there; this page keeps recording across full section loads.</div>
+    </div>
+
+    <h2>2 &middot; Guided scenarios</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0">Click a scenario to tag what you're about to do, then perform it in the app tab. Every request and media event gets attributed to the active scenario.</p>
+      <ul id="scenarios" class="scenario-list"></ul>
+      <div class="row" style="margin-top:8px">
+        <button id="clearScenario">Clear active scenario</button>
+      </div>
+    </div>
+
+    <h2>3 &middot; Active probes (isolate one variable each)</h2>
+    <div class="card">
+      <div class="row">
+        <button id="probeRtt">Measure RTT (20&times;)</button>
+        <button id="probeThroughput">Throughput (1 / 5 / 20 MB)</button>
+        <button id="probeCompression">Compression delta</button>
+        <span id="probeStatus" class="muted"></span>
+      </div>
+      <div id="probeResults" style="margin-top:12px"></div>
+    </div>
+
+    <h2>4 &middot; Saved runs &amp; isolation matrix</h2>
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <button id="refreshRuns">Refresh</button>
+        <button id="compareBtn" disabled>Compare selected (2)</button>
+        <span class="muted">Tick two runs (e.g. LAN + VPN) to compare.</span>
+      </div>
+      <ul id="runs" class="runs"></ul>
+      <div id="matrix" style="margin-top:14px"></div>
+    </div>
+  </div>
+  <script src="/js/diag-page.js"></script>
+</body>
+</html>

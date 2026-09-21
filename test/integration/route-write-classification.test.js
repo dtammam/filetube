@@ -182,6 +182,10 @@ const CLASSIFICATION = {
   // from PyPI) - admin, never a lesser capability.
   'POST /api/ytdlp/engine': 'admin',
   'POST /api/ytdlp/engine/update': 'admin',
+  // Perf-diagnostics run store (Settings > Experimental): admin on both axes.
+  // The gate is requireAdmin FIRST, then the feature check, so a member 403s.
+  'POST /api/diag/runs': 'admin',
+  'DELETE /api/diag/runs/:id': 'admin',
 };
 
 // Categories whose routes MUST refuse a member holding none of the capabilities.
@@ -428,6 +432,8 @@ const VISIBILITY = {
   'POST /api/users/:id/subscriptions-flag': na('user administration (capability flag); admin-only'),
   'POST /api/users/:id/modify-library-flag': na('user administration (capability flag); admin-only'),
   'PUT /api/users/:id/restrictions': na('user administration (the restriction rows themselves); admin-only'),
+  'POST /api/diag/runs': na('perf-diagnostics run store write; admin-only, stores a synthetic timing capture, no library item addressed'),
+  'DELETE /api/diag/runs/:id': na('perf-diagnostics run store delete; admin-only, removes a synthetic timing capture, no library item addressed'),
 };
 
 function liveMutatingRoutes() {

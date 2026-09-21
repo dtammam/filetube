@@ -59,6 +59,14 @@ const READ = {
   '/api/duplicates.csv': 'GATED',
   '/api/critters': 'NO_CONTENT', // v1.166: decorative critter-folder listing (asset filenames only, no library/user data)
   '/api/critters/archive': 'ADMIN', // v1.171 (QA S1): requireAdmin-gated zip of the decorative asset pool; behavioral member-403 probe in critter-admin-gate.test.js
+  // Perf-diagnostics suite (Settings > Experimental, requireAdmin + feature
+  // gate): synthetic probes and diagnostic run data, NO library/user content.
+  // 404 when the feature is off, requireAdmin when on - never content-serving.
+  '/api/diag/blob': 'ADMIN',
+  '/api/diag/payload': 'ADMIN',
+  '/api/diag/ping': 'ADMIN',
+  '/api/diag/runs': 'ADMIN',
+  '/api/diag/runs/:id': 'ADMIN',
   '/api/feed-hidden': 'GATED',
   '/api/folders/music-flag': 'GATED', // Wave G: per-folder "show in Music" state, scoped to the user's VISIBLE audio (mediaVisibleTo)
   '/api/handoff': 'GATED',
@@ -133,6 +141,7 @@ const READ = {
   '/book/:id/tts/:spineIndex/blocks': 'GATED',
   '/bookcover/:id': 'GATED',
   '/books': 'NO_CONTENT',
+  '/diag': 'ADMIN', // perf-diagnostics control page (requireAdmin + feature gate); no library/user content
   '/episode/:id': 'GATED',
   '/js/subscriptions.js': 'NO_CONTENT',
   '/logo': 'NO_CONTENT',
