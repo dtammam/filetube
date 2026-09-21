@@ -205,8 +205,9 @@ const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (fs
 // a headless force-on override. isDiagEnabled() (defined once settingsStore
 // exists) is the single predicate every entry point consults - timing
 // middleware, shell injection, and the /diag route handlers - so flipping the
-// toggle takes effect live, no restart. The read is TTL-cached so the hot path
-// stays a variable compare.
+// toggle takes effect live, no restart. isDiagEnabled() reads the setting
+// directly (a single indexed app_settings point-query, no cache) - the same
+// order of cost as the app's other per-request settings reads.
 const DIAG_ENV_FORCE = process.env.FT_DIAG === '1' || process.env.FT_DIAG === 'true';
 const DIAG_DIR = path.join(DATA_DIR, '.diag');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');

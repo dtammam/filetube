@@ -218,6 +218,14 @@
   }
 
   // ---- formatting ----------------------------------------------------------
+  // Escape any admin-authored free text (run label/note, scenario name) before
+  // it goes into innerHTML. The blast radius is admin-self, but escaping keeps a
+  // stray '<' in a label from breaking the render and closes the residual.
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
   function fmtMs(n) { return (n == null) ? '<span class="muted">-</span>' : Math.round(n) + ' ms'; }
   function fmtBytes(n) { if (n == null) return '-'; if (n > 1e6) return (n / 1e6).toFixed(1) + ' MB'; if (n > 1e3) return (n / 1e3).toFixed(1) + ' KB'; return n + ' B'; }
 
@@ -233,7 +241,7 @@
         return fmtBytes(n) + ' &rarr; ' + (b ? fmtBytes(b) : '?') + (save != null ? ' <span class="good">(-' + save + '%)</span>' : ''); } },
     { k: 'Nav fan-out (worst view)', lever: 'aggregated bootstrap endpoint', get: function (m) {
         if (!m.navWorst) return '-';
-        return m.navWorst.apiCount + ' API reqs, ' + m.navWorst.reqCount + ' total, ' + Math.round(m.navWorst.wallMs) + ' ms <span class="muted">(' + m.navWorst.scenario + ')</span>'; } },
+        return m.navWorst.apiCount + ' API reqs, ' + m.navWorst.reqCount + ' total, ' + Math.round(m.navWorst.wallMs) + ' ms <span class="muted">(' + esc(m.navWorst.scenario) + ')</span>'; } },
     { k: 'Time-to-first-frame', lever: 'confirms faststart is fine', get: function (m) { return m.ttff != null ? fmtMs(m.ttff) : '-'; } },
     { k: 'Stalls (60s play)', lever: 'adaptive bitrate', get: function (m) { return m.stalls ? (m.stalls.count + ' stalls, ' + m.stalls.ms + ' ms') : '-'; } },
     { k: 'Cold vs warm Home', lever: 'service-worker shell/thumb caching', get: function (m) { return m.coldWarm ? (Math.round(m.coldWarm.cold || 0) + ' ms cold / ' + Math.round(m.coldWarm.warm || 0) + ' ms warm') : '-'; } },
@@ -250,7 +258,7 @@
       var n = jget(KEY_EVENTS, []).length;
       var sc = lsGet(KEY_SCENARIO) || '(none)';
       s.className = 'status live';
-      s.innerHTML = '● RECORDING - <strong>' + (run.label || 'unlabelled') + '</strong> &middot; scenario: <strong>' + sc + '</strong> &middot; ' + n + ' events captured';
+      s.innerHTML = '● RECORDING - <strong>' + esc(run.label || 'unlabelled') + '</strong> &middot; scenario: <strong>' + esc(sc) + '</strong> &middot; ' + n + ' events captured';
       el('startBtn').disabled = true; el('stopBtn').disabled = false;
     } else {
       s.className = 'status';
@@ -300,10 +308,10 @@
         var cb = document.createElement('input'); cb.type = 'checkbox';
         cb.onchange = function () { toggleSelect(r.id, cb.checked); };
         var meta = document.createElement('div'); meta.className = 'meta';
-        meta.innerHTML = '<strong>' + (r.label || '(unlabelled)') + '</strong>' +
+        meta.innerHTML = '<strong>' + esc(r.label || '(unlabelled)') + '</strong>' +
           '<span class="pill">' + r.eventCount + ' ev</span>' +
           '<span class="pill">' + r.scenarioCount + ' scen</span>' +
-          '<br><small>' + new Date(r.createdAt).toLocaleString() + (r.note ? ' - ' + r.note : '') + '</small>';
+          '<br><small>' + new Date(r.createdAt).toLocaleString() + (r.note ? ' - ' + esc(r.note) : '') + '</small>';
         var view = document.createElement('button'); view.textContent = 'View'; view.onclick = function () { viewRun(r.id); };
         var del = document.createElement('button'); del.textContent = 'Delete'; del.className = 'danger';
         del.onclick = function () { fetch('/api/diag/runs/' + r.id, { method: 'DELETE' }).then(function () { loadRuns(); }); };
@@ -332,7 +340,7 @@
 
   function renderMatrix(cols) {
     var box = el('matrix');
-    var head = '<tr><th>Dimension</th>' + cols.map(function (c) { return '<th>' + (c.run.label || '(unlabelled)') + '</th>'; }).join('') + '<th>Lever it points to</th></tr>';
+    var head = '<tr><th>Dimension</th>' + cols.map(function (c) { return '<th>' + esc(c.run.label || '(unlabelled)') + '</th>'; }).join('') + '<th>Lever it points to</th></tr>';
     var rows = MATRIX_ROWS.map(function (row) {
       return '<tr><td>' + row.k + '</td>' + cols.map(function (c) { return '<td class="num">' + row.get(c.m) + '</td>'; }).join('') + '<td class="lever">' + row.lever + '</td></tr>';
     }).join('');
@@ -342,9 +350,9 @@
     var st = cols[0].m.scenarioTable || [];
     var detail = '';
     if (st.length) {
-      detail = '<h2>Per-scenario detail <span class="muted" style="text-transform:none;letter-spacing:0">(' + (cols[0].run.label || '') + ')</span></h2>' +
+      detail = '<h2>Per-scenario detail <span class="muted" style="text-transform:none;letter-spacing:0">(' + esc(cols[0].run.label || '') + ')</span></h2>' +
         '<table><tr><th>Scenario</th><th>Wall</th><th>API reqs</th><th>Total reqs</th><th>&Sigma; TTFB</th><th>Bytes</th><th>TTFF</th><th>Stalls</th></tr>' +
-        st.map(function (r) { return '<tr><td>' + r.scenario + '</td><td class="num">' + Math.round(r.wallMs) + ' ms</td><td class="num">' + r.apiCount + '</td><td class="num">' + r.reqCount + '</td><td class="num">' + r.sumTtfb + ' ms</td><td class="num">' + fmtBytes(r.bytes) + '</td><td class="num">' + (r.ttff != null ? Math.round(r.ttff) + ' ms' : '-') + '</td><td class="num">' + r.stallCount + '/' + r.stallMs + 'ms</td></tr>'; }).join('') +
+        st.map(function (r) { return '<tr><td>' + esc(r.scenario) + '</td><td class="num">' + Math.round(r.wallMs) + ' ms</td><td class="num">' + r.apiCount + '</td><td class="num">' + r.reqCount + '</td><td class="num">' + r.sumTtfb + ' ms</td><td class="num">' + fmtBytes(r.bytes) + '</td><td class="num">' + (r.ttff != null ? Math.round(r.ttff) + ' ms' : '-') + '</td><td class="num">' + r.stallCount + '/' + r.stallMs + 'ms</td></tr>'; }).join('') +
         '</table>';
     }
     box.innerHTML = matrix + detail;

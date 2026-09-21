@@ -1,6 +1,7 @@
 /* perf-collector.js - the passive half of the perf-diagnostics suite
  * (branch exp/perf-diagnostics). This file is injected into EVERY app shell by
- * server.js's sendShellHtml (behind FT_DIAG=1), so a soft-nav'd view can never
+ * server.js's sendShellHtml when diagnostics are enabled (the
+ * perfDiagnosticsEnabled setting, or FT_DIAG), so a soft-nav'd view can never
  * land on a shell that lacks it - the shell-parity trap. It is INERT unless a
  * run is active: the /diag control page arms a run by writing localStorage, and
  * this collector, on each shell load, notices that and records Resource /

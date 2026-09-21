@@ -154,6 +154,9 @@ test('perfDiagnosticsEnabled persists, validates, and gates the /diag surface bo
   const ping = await fetch(`${base}/api/diag/ping`);
   assert.equal(ping.status, 200, 'diag surface is live once the toggle is on');
   assert.equal(typeof (await ping.json()).now, 'number', 'ping returns a timestamp');
+  // A run id that sanitizes to empty is a clean 404 (no such run), never a 500.
+  assert.equal((await fetch(`${base}/api/diag/runs/...`)).status, 404, 'malformed run id -> 404 not 500');
+  assert.equal((await fetch(`${base}/api/diag/runs/...`, { method: 'DELETE' })).status, 404, 'malformed run id DELETE -> 404 not 500');
 
   // Disable: the surface re-closes (the second axis of the gate).
   await postSetting(false);
