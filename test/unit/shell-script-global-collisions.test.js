@@ -46,9 +46,15 @@ const ROOT = path.join(__dirname, '..', '..');
 // subscriptions.html lives OUTSIDE public/ (a res.sendFile route), which is the
 // exact reason its script set historically drifts from the rest - so the
 // second directory is deliberate, not incidental.
+// diag.html is the standalone perf-diagnostics control page (served at /diag,
+// gated by the experimental toggle). It loads ONLY its own /js/diag-page.js -
+// none of the shared app globals - so there is no shared global scope for it to
+// collide in, and it is deliberately not an app shell. Excluded here (an
+// exclusion for a known-standalone page, not a rot-prone inclusion list).
+const NON_SHELL_PAGES = new Set(['diag.html']);
 const SHELLS = [
   ...fs.readdirSync(path.join(ROOT, 'public'))
-    .filter((f) => f.endsWith('.html'))
+    .filter((f) => f.endsWith('.html') && !NON_SHELL_PAGES.has(f))
     .sort()
     .map((f) => `public/${f}`),
   ...fs.readdirSync(path.join(ROOT, 'lib', 'ytdlp', 'views'))

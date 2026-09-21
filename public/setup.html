@@ -1136,6 +1136,23 @@
             A diagnostic for the click-wheel's Taptic feedback on the Click skins. Spin the on-screen wheel to feel the haptic and watch where ticks thin out toward the rim - it helps pin why the buzz can feel inconsistent further from the centre. Reading only; it never changes the real wheel.
           </small>
         </div>
+        <!-- Performance diagnostics: a device-real measurement suite for
+             navigation/playback latency across networks (LAN vs 5G/VPN). When
+             on, it exposes the /diag control page and rides a passive collector
+             on the shells; off by default so a normal install carries no cost. -->
+        <div class="form-group">
+          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="perf-diag-check" />
+            Performance diagnostics (experimental)
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Turns on a measurement suite for how fast content navigates and starts to play, across different networks. When on, opens the <a href="/diag" id="perf-diag-open-link">/diag</a> control page - arm a labelled run (LAN, 5G+VPN...), follow the guided scenarios, fire the RTT / throughput / compression probes, then read the isolation matrix to see which fix would help most. Adds a small timing header to responses and a passive collector to pages while on. Admin-only; off by default.
+          </small>
+          <small id="perf-diag-error" class="field-error"></small>
+          <div style="margin-top:8px;">
+            <a class="btn" href="/diag" id="perf-diag-open-btn" target="_blank" rel="noopener" hidden>Open performance diagnostics &#8599;</a>
+          </div>
+        </div>
       </details>
 
       <!-- v1.201 (Dean): "Share transcript with AI" - named preamble prompts

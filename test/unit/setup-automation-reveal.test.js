@@ -30,6 +30,7 @@ const SETTINGS_FED = [
   'bg-audio-sync-check', // v1.121: the position pre-sync toggle joins the fed set
   'relocate-hydrated-check', 'notifications-enabled-check', 'mobile-custom-player-check',
   'prune-missing-check',
+  'perf-diag-check', // performance-diagnostics opt-in, fed by /api/settings perfDiagnosticsEnabled
 ];
 // Controls in the SAME card fed by OTHER fetches / localStorage - must NOT be
 // barriered by the /api/settings reveal.
@@ -55,10 +56,11 @@ test('setup.html: NO foreign-fetch control carries the barrier (no early-reveal 
   }
 });
 
-test('setup.html: exactly 9 reveal-toggle barriers exist (matches the /api/settings-fed set)', () => {
+test('setup.html: exactly 10 reveal-toggle barriers exist (matches the /api/settings-fed set)', () => {
   // v1.121 DELIBERATE count bump (7 -> 8): the bg-audio-sync-check toggle.
   // v1.202 DELIBERATE count bump (8 -> 9): the attribute-control-check opt-in.
-  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 9);
+  // DELIBERATE count bump (9 -> 10): the perf-diag-check opt-in.
+  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 10);
 });
 
 test('style.css: .reveal-toggle[data-loading] reuses the shared v1.96 sweep barrier', () => {
@@ -87,7 +89,7 @@ const barrierCount = (doc) => doc.querySelectorAll('.reveal-toggle[data-loading]
 
 test('loadAutomationSettings: reveals every toggle AND applies the server values (success)', async () => {
   const { mod, dom } = loadSetupInDom();
-  assert.strictEqual(barrierCount(dom.window.document), 9, 'all 8 shimmer before the fetch'); // v1.121: +bg-audio-sync-check
+  assert.strictEqual(barrierCount(dom.window.document), 10, 'all shimmer before the fetch'); // +perf-diag-check
 
   global.fetch = async () => ({
     json: async () => ({
