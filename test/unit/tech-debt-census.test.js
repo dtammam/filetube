@@ -42,11 +42,11 @@ function parseTracker() {
     // The LAST cell (trailing `| ... |`) carries the status in the ledger
     // layout; the legacy Active table has no status cell (presence = open).
     const lastMatch = line.match(/\|\s*([^|]*)\|\s*$/);
-    // Strip leading emphasis markup before the OPEN test (gate W2: a bolded
-    // `**OPEN**` cell silently vanished from BOTH this parse and the hook's
-    // grep - the divergent-spelling class inside the very census built to
-    // kill it). The hook's grep tolerates the same markup; if the two ever
-    // disagree on a new variant, the hook-truth test below goes red.
+    // Strip leading emphasis markup before the OPEN test (gate W2): a bolded
+    // `**OPEN**` status cell must still be recognized as open by the `openCell`
+    // check below, or the divergent-spelling class - the same status slipping
+    // past a naive match - lets an open row read as closed. The strip is what
+    // this census exists to keep honest.
     const lastCell = (lastMatch ? lastMatch[1] : '').trim().replace(/^[*_]+/, '');
     rows.push({ id: Number(r[1]), heading, inActiveTable, openCell: /^OPEN\b/.test(lastCell) });
   }
