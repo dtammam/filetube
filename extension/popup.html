@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download to FileTube</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 13px/1.4 system-ui, sans-serif;
+      margin: 0;
+      padding: 14px;
+      width: 320px;
+    }
+    h1 { font-size: 14px; margin: 0 0 10px; }
+    .url {
+      font-size: 12px;
+      word-break: break-all;
+      background: rgba(127, 127, 127, 0.12);
+      border-radius: 6px;
+      padding: 8px;
+      margin-bottom: 12px;
+      max-height: 60px;
+      overflow: auto;
+    }
+    .buttons { display: flex; gap: 8px; }
+    button {
+      flex: 1;
+      font: inherit;
+      font-weight: 600;
+      padding: 10px;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #cc0000;
+      color: #fff;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { margin-top: 12px; font-size: 12px; min-height: 16px; }
+    .status.error { color: #cc0000; }
+    .status.ok { color: #0a7d28; }
+    .reason { margin-top: 8px; font-size: 11px; opacity: 0.75; }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+  <h1>Download to FileTube</h1>
+  <div id="url" class="url">Reading current tab...</div>
+  <div class="buttons">
+    <button id="audio" disabled>Audio</button>
+    <button id="video" disabled>Video</button>
+  </div>
+  <div id="reason" class="reason"></div>
+  <div id="status" class="status"></div>
+  <div class="reason"><a href="#" id="open-options">Options</a></div>
+  <script src="popup.js"></script>
+</body>
+</html>

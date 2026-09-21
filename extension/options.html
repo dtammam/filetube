@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FileTube Downloader - Options</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px; max-width: 520px; }
+    h1 { font-size: 18px; }
+    label { display: block; font-weight: 600; margin: 16px 0 4px; }
+    input { width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
+      border: 1px solid rgba(127,127,127,0.5); border-radius: 6px; background: transparent; color: inherit; }
+    .hint { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+    button { margin-top: 20px; font: inherit; font-weight: 600; padding: 10px 18px;
+      border: 0; border-radius: 6px; cursor: pointer; background: #cc0000; color: #fff; }
+    .status { margin-top: 14px; min-height: 18px; font-size: 13px; }
+    .status.error { color: #cc0000; }
+    .status.ok { color: #0a7d28; }
+  </style>
+</head>
+<body>
+  <h1>FileTube Downloader</h1>
+  <p class="hint">
+    Point this at your own FileTube instance. Your instance must be started with
+    <code>FILETUBE_YTDLP_ENABLED</code> and <code>FILETUBE_API_TOKEN</code> set;
+    the token below is that value. It is stored locally in the extension and is
+    only sent to the instance URL you configure here.
+  </p>
+
+  <label for="instanceUrl">FileTube instance URL</label>
+  <input id="instanceUrl" type="url" placeholder="https://filetube.example.com" autocomplete="off" />
+  <div class="hint">e.g. https://filetube.example.com (no trailing path).</div>
+
+  <label for="apiToken">API token (X-FileTube-Token)</label>
+  <input id="apiToken" type="password" placeholder="FILETUBE_API_TOKEN value" autocomplete="off" />
+  <div class="hint">The value of your server's FILETUBE_API_TOKEN env var.</div>
+
+  <button id="save">Save</button>
+  <button id="test" style="background:#444;">Test connection</button>
+  <div id="status" class="status"></div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

@@ -466,4 +466,32 @@ module.exports = [
       globals: { ...globals.serviceworker, module: 'writable' },
     },
   },
+
+  // The Chromium (MV3) browser extension (extension/**) - a self-contained
+  // client that lives OUTSIDE the server image (explicit Docker COPYs never
+  // pull it in). It is ES-module source (ftClient.js `export`; background.js and
+  // the popup/options pages `import` via `type=module`), so it is the one JS set
+  // here that is `sourceType: 'module'`. Globals: BROWSER (document, window, URL,
+  // fetch, localStorage, console...) + WEBEXTENSIONS (chrome). Scoped tightly to
+  // extension/** so no other file set's lint changes.
+  {
+    files: ['extension/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: { ...globals.browser, ...globals.webextensions },
+    },
+  },
+  // The extension's own unit suite is CommonJS (node:test + `require`), run
+  // standalone by node:test - so it gets the Node env and `sourceType: script`
+  // (CommonJS). This later, more specific block overrides the module block above
+  // for just this file.
+  {
+    files: ['extension/**/*.test.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
+    },
+  },
 ];
