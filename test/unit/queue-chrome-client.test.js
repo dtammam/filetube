@@ -131,7 +131,9 @@ test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before f
   // comment instead of the first settings fetch.
   const branch = playerSrc.slice(branchStart, playerSrc.indexOf("OFF (default)", branchStart));
   assert.ok(branch.includes("fetch('/api/queue')"), 'the branch consults the queue');
-  assert.ok(branch.includes('pointerEntry.mediaId === endedId'), 'queue precedence keys on THIS item being the now-playing entry');
+  // tech-debt #230: the match is BASE-id-aware (a chaptered `::c` current id
+  // must match its base-id queue entry, or a queued chaptered video never advances).
+  assert.ok(branch.includes('queuePointerMatchesPlaying(pointerEntry, endedId, currentData && currentData.baseMediaId)'), 'queue precedence keys on THIS item (base-id-aware) being the now-playing entry');
   assert.ok(branch.includes('fallbackToTrackNav'), 'and the show-list flow survives as the fallback');
   assert.ok(branch.indexOf("fetch('/api/queue')") < branch.indexOf('fallbackToTrackNav();'), 'consult-first ordering, not mere presence');
   // v1.72 (#91): same-kind advances stay unconditional; a cross-kind
@@ -248,7 +250,9 @@ test('v1.73 (ruling 6): the audio Prev/Next pair - queue-aware steps, audio-mode
   assert.ok(stepStart >= 0, 'manualTrackStep exists');
   const step = playerSrc.slice(stepStart, playerSrc.indexOf('function setTrackNav', stepStart));
   assert.ok(step.includes('if (currentId !== steppedId) return;'), 'staleness re-checked after the queue fetch (the C6 law)');
-  assert.ok(step.includes('pointerEntry.mediaId === steppedId && neighbor'), 'queue precedence keys on the CURRENT item being now-playing');
+  // tech-debt #230: base-id-aware (same reason as the ended path - a chaptered
+  // `::c` id must match its base-id queue entry for a manual step to advance the queue).
+  assert.ok(step.includes('queuePointerMatchesPlaying(pointerEntry, steppedId, currentData && currentData.baseMediaId) && neighbor'), 'queue precedence keys on the CURRENT item (base-id-aware) being now-playing');
   assert.ok(step.includes('advanceIntoQueueEntry(neighbor)'), 'a queue step rides the ONE kind-aware advance seam');
   assert.ok(step.indexOf('advanceIntoQueueEntry') < step.indexOf('trackNavHandlers && (dir'), 'queue consult precedes the context fallback');
   // Visibility (v1.73 round 1, adversarial W2 + QA W1): the WHOLE show
