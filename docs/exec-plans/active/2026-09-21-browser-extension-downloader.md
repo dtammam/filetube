@@ -1,11 +1,12 @@
 ---
 plan: browser-extension-downloader
 harness: v2 · spec
-branch: feat/browser-extension-downloader
+branch: feat/downloader-extension
 anchor: spec
-status: Building
-next: Client end-to-end path is built and unit-proven (extension/ftClient.test.js, 6/6 on Node 22+24). Remaining before gate: decide where extension tests live in CI (D8), add extension icons (D9), then take the branch to the gate (client-only diff - no server change, so no full server suite triggered; adversary + qa seats).
-gate: pending
+status: Gate:APPROVED r1 @7636c5ed
+next: awaiting Dean's call to merge/release (he may dev-load and try it first; needs FILETUBE_API_TOKEN set on the instance). Non-blocking follow-ups deferred: D8 CI wiring for extension tests, D9 icons, M7 one-line 202-without-accepted test, options.js prior-origin permission cleanup, optional fetch redirect:'error' hardening.
+gate: APPROVED r1 @7636c5ed — adversary, qa, security-brief
+design: Approved 2026-09-21 @7636c5ed
 ---
 
 # Chromium (MV3) browser extension: download the current tab into FileTube
@@ -307,3 +308,24 @@ qa; no server change = no full server suite, but the security-brief standing
 section still applies - token-at-rest, host-permission scoping, verbatim-error
 relay, no new unauthenticated surface). Manual verification steps are in the
 report accompanying this pass.
+
+## Gate
+
+Full gate (forced by scrutiny.toml's network/`*client*` rule + the token/credential surface); all required seats APPROVED at the reviewed sha.
+
+```
+Gate: APPROVED r1 @7636c5ed — security-brief
+Gate: APPROVED r1 @7636c5ed — qa
+Gate: APPROVED r1 @7636c5ed — adversary
+```
+
+- **security-brief:** no CRITICAL/HIGH/MEDIUM/LOW. Token never sent to any origin but the configured instance (endpoint derived from stored instanceUrl; tab URL only in the body); no content scripts / externally_connectable, so no page/content-script can read the token or drive the worker; manifest permissions minimal (activeTab + storage; origin-scoped optional host permission, gesture-gated); no secret logged; verbatim-error relay can't crash on non-JSON. 3 INFO advisories: fetch `redirect:'error'` hardening, http-instance plaintext caveat, all advisory.
+- **qa:** contract PROVEN against source (lib/auth/gate.js:244 token path for exactly POST /api/ytdlp/download; lib/ytdlp/index.js download handler; empty-url test truly 400s before queuing); ftClient tests 6/6 on Node 22.23.1 AND 24.20.0; lint 0 errors; doc claims accurate; extension not in the Docker image. No new attack surface.
+- **adversary:** sandbox mutation proved coverage real (drop token header / method / format / normalization / guards all RED); lint override tightly scoped (verified via `eslint --print-config`, does not leak to server.js); token/origin binding holds under hostile scenarios. 1 SUGGESTION (M7: a 202-without-`accepted` mutant survives - benign, worth a one-line test).
+
+### Non-blocking follow-ups (deferred; none warrants a round)
+- D8: extension tests are not in the `npm test` glob (`test/*/*.test.js`) - add a `test:extension` script + CI step before any packed/distributed build.
+- D9: add 16/32/48/128 icons before a packed build (cosmetic for dev-load).
+- M7 (adversary): add a test for a 202 response lacking `{accepted:true}`.
+- options.js: `chrome.permissions.remove` the prior origin when instanceUrl changes (permission hygiene, not a leak).
+- security INFO: consider `redirect:'error'` on the download fetch; prefer an https instance.
