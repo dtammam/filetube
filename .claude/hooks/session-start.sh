@@ -1,53 +1,32 @@
 #!/usr/bin/env bash
-# SessionStart hook — injects repo context at the start of every conversation.
-# Keep this fast (<500ms). No network calls.
+# SessionStart hook — inject only git-derived and marker-derived facts, never
+# stored state. Anything that can silently rot does not belong here.
+set -uo pipefail
 
-set -euo pipefail
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+cd "$root" || exit 0
 
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+branch="$(git branch --show-current 2>/dev/null || true)"
+echo "Branch: ${branch:-(detached)}"
 
-# Branch and working tree state
-BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')"
-DIRTY="$(git status --short 2>/dev/null | wc -l | tr -d ' ' || echo '0')"
-
-# Active execution plans
-ACTIVE_DIR="$ROOT/docs/exec-plans/active"
-PLANS=""
-if [ -d "$ACTIVE_DIR" ]; then
-  PLANS="$(find "$ACTIVE_DIR" -maxdepth 1 -name '*.md' -not -name 'README.md' -not -name '.*' -exec basename {} \; 2>/dev/null | sort)"
-fi
-PLAN_COUNT="$(echo "$PLANS" | grep -c . || true)"
-
-# Tech debt OPEN count (v1.129 C4): the legacy Active table's rows (presence =
-# open; it has no status cell) PLUS every row anywhere whose LAST cell starts
-# with OPEN (the chronological Ledger mixes OPEN and CLOSED; the status cell
-# is authoritative). The old expression counted only the Active section and
-# injected 42 while ~111 items were open - test/unit/tech-debt-census.test.js
-# now EXECUTES this hook and fails if this count drifts from its own parse.
-DEBT_FILE="$ROOT/docs/exec-plans/tech-debt-tracker.md"
-DEBT_COUNT=0
-if [ -f "$DEBT_FILE" ]; then
-  ACTIVE_ROWS="$(awk '/^## Active/,/^## Closed/' "$DEBT_FILE" | grep -cE '^\| *[0-9]' || true)"
-  # [*_]* tolerates emphasis markup around OPEN (gate W2: a bolded **OPEN**
-  # cell silently dropped from the count; the census test strips the same
-  # markup and goes red if this grep and its parse ever disagree).
-  OPEN_ROWS="$(grep -E '^\| *[0-9]+ \|' "$DEBT_FILE" | grep -cE '\| *[*_]*OPEN[^|]*\| *$' || true)"
-  DEBT_COUNT=$((ACTIVE_ROWS + OPEN_ROWS))
+# Active plan(s) and their real status, read from the doc markers themselves.
+# Spine files: flat active/*.md (legacy) + active/<slug>/plan.md (v2.1 directories).
+# A plain glob is non-recursive and misses the directory shape — use find.
+plans=()
+while IFS= read -r p; do plans+=("$p"); done < <(
+  { find docs/exec-plans/active -maxdepth 1 -type f -name '*.md' 2>/dev/null
+    find docs/exec-plans/active -mindepth 2 -type f -name 'plan.md' 2>/dev/null; } | sort -u )
+if [ "${#plans[@]}" -gt 0 ]; then
+  echo "Active plans (${#plans[@]}):"
+  for p in "${plans[@]}"; do
+    name="$(basename "$p")"; [ "$name" = plan.md ] && name="$(basename "$(dirname "$p")")"
+    status="$(grep -m1 '^status:' "$p" 2>/dev/null | sed 's/^status:[[:space:]]*//')"
+    next="$(grep -m1 '^next:' "$p" 2>/dev/null | sed 's/^next:[[:space:]]*//')"
+    echo "  - $name: ${status:-no status}${next:+ — next: $next}"
+  done
 fi
 
-# Output
-echo "=== Session Context ==="
-echo "Branch: $BRANCH ($DIRTY uncommitted changes)"
-echo "Active plans: $PLAN_COUNT"
-if [ -n "$PLANS" ]; then
-  echo "$PLANS" | sed 's/^/  - /'
+# Marker health — report, never block. Stale markers surface here first.
+if [ -x .harness/lib/check-markers.sh ]; then
+  .harness/lib/check-markers.sh docs/exec-plans 2>&1 | sed 's/^/  /' || true
 fi
-echo "Tech debt items: $DEBT_COUNT"
-# Unfilled placeholder detection (the /seed auto-configure command was
-# deleted in the 2026-08-01 harness cleanup - placeholders are filled by
-# hand when this harness seeds a new repo)
-CLAUDE_MD="$ROOT/CLAUDE.md"
-if [ -f "$CLAUDE_MD" ] && grep -q '{{' "$CLAUDE_MD" 2>/dev/null; then
-  echo "Unfilled {{placeholders}} detected in CLAUDE.md - fill them in before working."
-fi
-echo "======================"
