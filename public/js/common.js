@@ -6112,9 +6112,17 @@ function formatDiskBytes(bytes) {
 // spelling: only ONE is singular ("1 item in trash"); everything else - INCLUDING
 // zero - is "items" ("0 items in trash", "2 items in trash"). Pure + bounded (a
 // non-finite/negative count floors to 0), exported for node:test.
-function formatTrashCountLabel(count) {
+// v1.306 (Dean): append the reclaimable size as a parenthetical - "(X GB)" - so
+// the row shows BOTH how many items can be emptied AND how much disk that frees,
+// matching the Settings > Trash toolbar. Uses formatDiskBytes (defined above, the
+// same formatter the adjacent "on disk" footer row uses, so the two read alike).
+// The size arg is optional: absent/zero/junk bytes -> no parenthetical (never a
+// bare "(0 B)"), so a single-arg call is byte-identical to the v1.305 label.
+function formatTrashCountLabel(count, totalSizeBytes) {
   const n = (typeof count === 'number' && Number.isFinite(count) && count >= 0) ? Math.floor(count) : 0;
-  return n === 1 ? '1 item in trash' : n + ' items in trash';
+  const noun = n === 1 ? '1 item in trash' : n + ' items in trash';
+  const bytes = (typeof totalSizeBytes === 'number' && Number.isFinite(totalSizeBytes) && totalSizeBytes > 0) ? totalSizeBytes : 0;
+  return bytes > 0 ? noun + ' (' + formatDiskBytes(bytes) + ')' : noun;
 }
 
 function buildAccountMenuRow(tag, label, iconClass) {
@@ -6809,7 +6817,9 @@ function injectAccountMenu() {
           const count = body && Number(Number.isFinite(Number(body.total)) ? body.total : (body.items || []).length);
           if (!Number.isFinite(count)) throw new Error('bad count');
           trashLabel.className = ''; // drop the shimmer, reveal the value
-          trashLabel.textContent = formatTrashCountLabel(count);
+          // v1.306: /api/trash already returns totalSizeBytes (summed server-side);
+          // pass it so the label shows the reclaimable size alongside the count.
+          trashLabel.textContent = formatTrashCountLabel(count, Number(body.totalSizeBytes));
         })
         .catch(() => { trashRow.hidden = true; });
     };

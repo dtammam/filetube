@@ -394,6 +394,23 @@ test('formatTrashCountLabel: only ONE is singular (Dean\'s spelling); 0 and N ar
   assert.strictEqual(formatTrashCountLabel(2.9), '2 items in trash', 'floored');
 });
 
+// v1.306 (Dean): the reclaimable size parenthetical - shows how much disk emptying
+// the trash frees, alongside the count. Optional: single-arg calls (above) are
+// unchanged; a zero/junk size adds NO parenthetical (never a bare "(0 B)").
+test('formatTrashCountLabel: appends the reclaimable size as "(X GB)" when bytes > 0', () => {
+  const { formatTrashCountLabel, formatDiskBytes } = fresh({});
+  // matches the adjacent "on disk" footer formatter character-for-character
+  assert.strictEqual(
+    formatTrashCountLabel(2, 1610612736),
+    '2 items in trash (' + formatDiskBytes(1610612736) + ')');
+  assert.strictEqual(formatTrashCountLabel(1, 5242880), '1 item in trash (' + formatDiskBytes(5242880) + ')');
+  // zero / unknown / junk size -> the bare count, no "(0 B)"
+  assert.strictEqual(formatTrashCountLabel(3, 0), '3 items in trash');
+  assert.strictEqual(formatTrashCountLabel(3, -100), '3 items in trash');
+  assert.strictEqual(formatTrashCountLabel(3, NaN), '3 items in trash');
+  assert.strictEqual(formatTrashCountLabel(0, 0), '0 items in trash');
+});
+
 test('v1.305: the "Change photo" ROW is retired; a pencil badge on the avatar opens the same file picker', async () => {
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
   injectAccountMenu();
