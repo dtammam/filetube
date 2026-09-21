@@ -3,9 +3,10 @@ plan: chaptered-queue-advance
 harness: v2 · lean
 branch: fix/chaptered-queue-advance
 anchor: spec
-status: Building
-next: run the review gate (adversary + qa + security-brief) at the committed sha
-gate: pending
+status: Gate:APPROVED r1 @f1b60d61
+next: merge --no-ff to main + run the FileTube release ceremony (awaiting Dean's go)
+gate: APPROVED r1 @f1b60d61 — adversary, qa, security-brief
+design: Approved 2026-09-21 @f1b60d61
 ---
 
 # Chaptered video played from "Queued" never advances to the next item
@@ -85,4 +86,18 @@ id exactly as before.
 
 ## Gate
 
-(seats write their verdicts here, bound to the reviewed sha)
+Full gate (forced by scrutiny.toml's network/`*client*` rule); all required seats APPROVED at the reviewed sha.
+
+```
+Gate: APPROVED r1 @f1b60d61 — security-brief
+Gate: APPROVED r1 @f1b60d61 — adversary
+Gate: APPROVED r1 @f1b60d61 — qa
+```
+
+- **security-brief:** no findings. Base-id match is a client-side gating decision only; advance target is the server-visibility-filtered `/api/queue` response, not the matched pointer; no untrusted field reaches a URL/DOM/fetch sink; no auth/secret code touched.
+- **adversary:** no CRITICAL/WARNING. Sandbox mutation kills confirmed the base-id branch and both call sites are bound (M1–M5), reachability ruled IN (`currentData.baseMediaId` populated when `ended` fires for a chaptered queued video), no harmful over-match, non-chapter path byte-identical, TOCTOU not weakened, source-lock comment-robust. Full suite 8861/8861 (Node 22), targeted 25/25 (Node 24).
+- **qa:** all focus surfaces PASS. Full suite 8861/8861 on Node 22.23.1 AND 24.20.0 (verbatim, `#` and `ℹ` reporters); lint 0 errors (7 pre-existing warnings in common.js); comment accuracy verified against saveProgressToServer; rebound locks bind the new behavior; no security surface.
+
+### Non-blocking suggestions (deferred; neither warrants a round — both seats concur)
+- (adversary) The two rebound locks in `test/unit/queue-chrome-client.test.js` (~:136, :255) assert on a non-comment-stripped `.includes`. Already netted by the comment-stripped removal net in `player-queue-chapter-advance.test.js` (proven by mutant M5). Tighten opportunistically on next touch — note its slice end-boundary keys on a comment (`OFF (default)`), so the boundaries must move to code anchors first.
+- (qa) The helper comment at player.js:1146 reads "does the ... item ARE ...": grammar slip, no factual inaccuracy. One-word cleanup on next touch.
