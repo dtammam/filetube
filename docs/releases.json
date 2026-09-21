@@ -3058,5 +3058,11 @@
     "date": "2026-09-15",
     "title": "Change your photo with a pencil on the avatar, and jump to Trash from the account menu",
     "intent": "The account menu got two small touches. Your profile photo now has a little pencil on the avatar circle - tap it to change your picture, instead of the old 'Change photo' line. And right under the 'on disk' number you'll now see how much is in your trash, like '3 items in trash'. Tap it and you go straight to the Trash section of Settings, so you can empty it without hunting through the settings page."
+  },
+  {
+    "version": "1.306.0",
+    "date": "2026-09-21",
+    "title": "The account-menu trash line now shows how much space it would free",
+    "intent": "The 'items in trash' line in the account menu now also shows how much room they're taking up, like '2 items in trash (1.5 GB)'. So at a glance you can see both how many things you could empty and how much disk space you'd get back, right there in the menu."
   }
 ]
