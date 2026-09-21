@@ -3,9 +3,9 @@ plan: browser-extension-downloader
 harness: v2 · spec
 branch: feat/downloader-extension
 anchor: spec
-status: Gate:APPROVED r1 @7636c5ed
-next: awaiting Dean's call to merge/release (he may dev-load and try it first; needs FILETUBE_API_TOKEN set on the instance). Non-blocking follow-ups deferred: D8 CI wiring for extension tests, D9 icons, M7 one-line 202-without-accepted test, options.js prior-origin permission cleanup, optional fetch redirect:'error' hardening.
-gate: APPROVED r1 @7636c5ed — adversary, qa, security-brief
+status: Building
+next: Dean confirmed it works end-to-end (YouTube tested). D9 DONE - the FileTube cube logo (from public/icons/icon-512.png, resized to 16/32/48/128) added under extension/icons/ + wired into manifest icons + action.default_icon. This changed the code AFTER the r1 gate, so a DELTA re-confirm at the new sha is needed before merge (delta = static PNG assets + a manifest icons block; the logic was already 3/3 APPROVED @7636c5ed). Then merge/release on Dean's go. Still-deferred nits: D8 CI wiring, M7 test, options.js prior-origin permission cleanup, optional fetch redirect:'error'.
+gate: APPROVED r1 @7636c5ed (STALE - icons added after; delta re-confirm pending at the new sha before merge)
 design: Approved 2026-09-21 @7636c5ed
 ---
 
