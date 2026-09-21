@@ -93,6 +93,32 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.306.0 - The account-menu trash line shows how much space it would free (2026-09-21)
+
+A one-line follow-on to v1.305's account-menu trash row: it now shows the
+reclaimable size alongside the count - "2 items in trash (1.5 GB)" - so you can
+see at a glance BOTH how many items you can empty AND how much disk that frees,
+matching the Settings > Trash toolbar. Client-only: GET /api/trash already
+returns totalSizeBytes (summed server-side); the account-menu fetcher was
+fetching it and discarding it. formatTrashCountLabel gained an optional
+totalSizeBytes and appends " (X)" via formatDiskBytes - the SAME formatter the
+adjacent "on disk" footer row uses, so the two rows read alike. A zero, unknown,
+negative or NaN size adds NO parenthetical (never a bare "(0 B)"), and a
+single-arg call stays byte-identical to the v1.305 label.
+
+Slim gate (adversary only - the scrutiny table's seat set for a public/ client
+display change: no data-loss, auth, schema, or network surface). APPROVED round
+1, no findings, every named attack surface mutation-proven: the anti-"(0 B)"
+guard (mutants dropping or loosening `bytes > 0` go red), the single-arg
+contract, the no-divergent-fixture test (expected strings derived from the real
+formatDiskBytes, never a hand-typed "1.5 GB"), and production reachability of the
+size branch on menu open.
+
+Tests: the formatTrashCountLabel size-parenthetical spec (appends "(X)" for
+bytes > 0; NO parenthetical for 0 / negative / NaN; singular + plural). Dual-Node
+GREEN: Node 22.23.1 and 24.20.0 each 8853/8853, 0 fail, 0 skipped; lint 0 errors;
+design-token census TOTAL 0. Known gap: DEVICE-PENDING Dean's on-device pass.
+
 ### v1.305.0 - Account menu: a pencil to change your photo + "N items in trash" one tap from Trash (2026-09-15)
 
 Two small account-menu asks from Dean. (1) The "Change photo" ROW felt derpy, so
