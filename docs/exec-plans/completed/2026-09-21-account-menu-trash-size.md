@@ -1,6 +1,7 @@
 # Account-menu trash row: show reclaimable size
 
 ## Status
+- status: Shipped v1.306.0 (2026-09-21)
 - anchor: outcome
 - branch: `feat/account-menu-trash-size`
 - base sha: `360cc84830d990b264f84c7087a3cd9ccaae1189`
