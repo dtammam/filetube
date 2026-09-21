@@ -3,8 +3,8 @@ plan: chaptered-queue-advance
 harness: v2 · lean
 branch: fix/chaptered-queue-advance
 anchor: spec
-status: Gate:APPROVED r1 @f1b60d61
-next: merge --no-ff to main + run the FileTube release ceremony (awaiting Dean's go)
+status: Shipped v1.308.0
+next: DEVICE-PENDING — Dean plays a chaptered video from Queued with another item queued after it; confirm it advances at the file's end AND on Next
 gate: APPROVED r1 @f1b60d61 — adversary, qa, security-brief
 design: Approved 2026-09-21 @f1b60d61
 ---

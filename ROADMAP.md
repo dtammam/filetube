@@ -93,6 +93,42 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.308.0 - Queued chaptered videos advance to the next item instead of repeating (2026-09-21)
+
+A fix for chaptered videos played from the "Queued" queue (tech-debt #230, Dean
+intake). A chaptered video played as audio has a synthetic per-chapter current id
+(`<vid>::c<idx>`), while its queue entry records the base video id (`<vid>`). The
+two server-queue advance guards (the 'ended' autoplay cascade in
+`handleAutoplayNext`, and the manual Prev/Next `manualTrackStep`) compared the
+queue pointer's `mediaId` against the RAW current id, so `"<vid>" === "<vid>::c0"`
+was always false: a queued chaptered video never advanced to the next queued item
+and fell back to in-video chapter nav, which walked/looped WITHIN the same file -
+Dean's "it looped back into the same album instead of playing the next one". Both
+guards now route through one pure helper, `queuePointerMatchesPlaying`, which
+matches on the base id (`currentData.baseMediaId`) when a chapter track is loaded
+- the SAME base id the progress-save path already resolves to. Non-chapter items
+match on the raw id exactly as before. One match rule for both siblings, no drift.
+
+FULL gate (adversary + qa + security-brief - forced by the scrutiny table's
+network/client rule, and the change sits around the /api/queue advance). APPROVED
+round 1 by all three seats bound to the same code sha, no findings beyond two
+non-blocking cosmetic suggestions (deferred by both seats' concurrence). Every
+binding mutation-proven in a sandbox: the base-id branch (M1), the malformed-
+pointer guard (M2), both call sites (M3/M4), and the comment-robustness of the new
+source-lock (M5); reachability RULED IN (`currentData.baseMediaId` is populated
+when 'ended' fires for a chaptered queued video). No over-match (the advance
+target is the server-visibility-filtered /api/queue neighbor, not the matched
+pointer); TOCTOU staleness re-check unchanged; non-chapter path byte-identical.
+No data-loss, no persisted-namespace change, no rollback-floor bump (client-only).
+
+Tests: new `player-queue-chapter-advance.test.js` (the pure helper + comment-
+stripped source-locks on both guards + a "the old raw compare is GONE" removal
+net); the two `queue-chrome-client.test.js` locks rebound to the base-id-aware
+guard. Dual-Node GREEN: Node 22.23.1 and 24.20.0 each 8861/8861, 0 fail, 0
+skipped; lint 0 errors. Known gap: DEVICE-PENDING Dean's on-device pass (play a
+chaptered video from Queued with another item queued after it; confirm it advances
+at the end and on Next).
+
 ### v1.307.0 - A new Experimental tool for measuring why the app feels slow (2026-09-21)
 
 A performance-diagnostics suite, gated behind a new persisted Experimental

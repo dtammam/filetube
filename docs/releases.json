@@ -3070,5 +3070,11 @@
     "date": "2026-09-21",
     "title": "A new Experimental tool for measuring why the app feels slow on your network",
     "intent": "There's a new Experimental setting - Settings > Experimental > Performance diagnostics - that turns on a page for measuring how quickly FileTube moves between pages and starts playing on whatever network you're on. It's handy when things feel sluggish out and about on mobile or over a VPN: you label a run, follow a few guided steps, and it shows where the time actually goes - the round-trip delay to your server, how many requests a page makes, your download speed, and how long a video takes to start. It's off by default and only an admin can switch it on."
+  },
+  {
+    "version": "1.308.0",
+    "date": "2026-09-21",
+    "title": "Queued chaptered videos now move on to the next item instead of repeating",
+    "intent": "If you added a chaptered video - like an album or a long mix played as audio - to your queue and let it finish, it used to jump back into the same video instead of moving on to the next thing you had lined up. Now a chaptered video that reaches its end, or when you press Next, correctly advances to the next item in your queue."
   }
 ]
