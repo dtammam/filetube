@@ -1,15 +1,14 @@
 # Performance diagnostics suite (Settings > Experimental)
 
-Status: GATE PASSED @804de7f3 (branch `exp/perf-diagnostics`, r2). Owner: main
+Status: GATE PASSED @e9fb5aff (branch `exp/perf-diagnostics`, r3). Owner: main
 session. Gate: FULL - all three seats (adversary + qa + security-brief, the last
-escalated in for the network/RBAC/file-write/byte-serving surface) APPROVED at
-804de7f3 after ONE fix round. r1 CHANGES (adversary + qa) were 4 stale comments
-from the first env-gated build; fixed, plus the two disclosed suggestions folded
-in (malformed :id -> 404 not 500, bound by 2 new tests; admin-self XSS escaped).
-Full suite green (8854/0). One NON-BLOCKING residual (adversary SUGGESTION, safe
-to ship): a runStore.js comment under-states that list() also lazily creates
-.diag (sentence 2 already names both writers). Device pass: N/A (dev instrument,
-off by default). Awaiting Dean: proceed to /release, and decide the comment nit.
+escalated in for the network/RBAC/file-write/byte-serving surface) APPROVED bound
+to the SAME final sha e9fb5aff. r1 CHANGES (adversary + qa) were 4 stale comments
+from the first env-gated build; r2 fixed them + folded in the two disclosed
+suggestions (malformed :id -> 404 not 500, bound by 2 new tests; admin-self XSS
+escaped); r3 was a one-line comment-only fix (adversary's .diag lazy-create nit,
+fixed at Dean's call). No residual. Full suite green (8854/0). Device pass: N/A
+(dev instrument, off by default). Next: /release.
 
 ## Intent (Dean)
 FileTube feels slow on mobile over an always-on VPN. Before building fixes, Dean
@@ -114,6 +113,9 @@ Gate: APPROVED r2 @804de7f3 — security-brief (delta re-review of fix diff 2a30
 - S7 Setting write path — CLEAR (untouched).
 - Prior INFO (empty-slug 500) — FIXED: `get()`/`remove()` pre-check `safeSlug(id)` and return null/false → clean 404, not 500.
 - No new surface opened by the diff (two functional edits to runStore.js/diag-page.js + comment-only changes; verified the security-relevant functions directly).
+
+Gate: APPROVED r3 @e9fb5aff — security-brief (final re-affirm of comment-only delta 804de7f3..e9fb5aff)
+- Delta is a runStore.js header-comment accuracy fix (names save() AND list() as the lazy `.diag` creators). No functional code changed; safeSlug/runPath byte-identical to r2. All 7 surfaces (S1-S7) and both prior notes carry forward CLEAR/FIXED from r2. Nothing security-relevant moved.
 
 Gate: CHANGES r1 @2a30957a — qa
 
@@ -296,3 +298,24 @@ Each r1 finding re-verified against the fix commit; no new surface introduced.
 No other files moved (fix diff = routes.js/runStore.js/diag-page.js/
 perf-collector.js/server.js comments + the two bound test assertions). All r1
 bindings from the prior round remain intact. Approving; bound to 804de7f3.
+
+Gate: APPROVED r3 @e9fb5aff — qa (comment-only delta 804de7f3..e9fb5aff)
+
+Verified the sole code delta (lib/diag/runStore.js:11-13, comment-only): the
+lazy-creation note now names BOTH .diag writers - ensureDir() is called from
+save() (line 48) and list() (line 74) only; get()/remove() never create the dir.
+The comment is accurate. No source behavior moved (comment-only; suite was 8854/0
+at 804de7f3, my r2 APPROVE, and this range touches only that comment + the doc).
+My r2 approval carries forward unchanged. Signing off.
+
+Gate: APPROVED r3 @e9fb5aff — adversary (final re-affirm of comment-only delta 804de7f3..e9fb5aff)
+
+Sole code delta is lib/diag/runStore.js:11-13 (comment-only). Verified against
+the source: ensureDir() is defined at line 19 and called ONLY from save()
+(line 48) and list() (line 74); get() (98) and remove() (105) never create the
+dir. The revised comment - ".diag created lazily by ensureDir() ... save()
+persisting a run, OR list() reading the run browser" - is now accurate, closing
+my r2 imprecision note. No functional code moved (safeSlug/runPath/esc and all
+gates byte-identical to the r2-approved sha); the only other file in the range
+is this doc. My r2 approval and every prior binding carry forward. Approving;
+bound to e9fb5aff.
