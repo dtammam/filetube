@@ -2,20 +2,7 @@
 
 ## Planned
 
-### 🐞 Bugs
-
-- [ ] **Mobile video fullscreen button shifted slightly right** — on mobile, the video fullscreen `#fs-btn` sits a little to the right of where it should (still usable). Likely a knock-on from the v1.24.0 button polish and/or the mobile control-hiding (vol/mute hidden) altering the control-bar spacing. Small CSS positioning fix. _(Dean, noticed on v1.24.0)_
-
-### 📱 Mobile polish
-
-- [ ] **Subscriptions page slightly too large on mobile (NOT zoom)** — distinct from the zoom item above: the subs page's content/elements render a touch oversized on mobile (padding / font / row sizing), not a viewport-zoom issue. Tighten the mobile sizing on the subscriptions view. _(Dean)_
-- [ ] **Favicon still not showing on all browsers** — the v1.22.2 PNG `rel="icon"` fallbacks helped but some browsers still don't pick it up. Add a real multi-res `favicon.ico` (the format legacy/some desktop browsers reliably use for tabs + bookmarks) and re-check the full `apple-touch-icon` / `sizes` / `shortcut icon` set across all four shells. _(Dean)_
-
-### 🧹 Tech-debt (see [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md))
-
-- [ ] **yt-dlp narrow-config edges** (#12–14) — dedup-collapse discards a duplicate alias's ephemeral progress; download-dir == a mapped folder loses its mount-loss row; cosmetic title-clean when the download dir is an ancestor of a library folder. Mitigated by "use a dedicated download dir."
-- [ ] **v1.20.0 channel-capture edges** (#16–18) — a manually-named `[<id>].mp4` under the download root can absorb an unconsumed channel identity; the subscription fallback records identity for failed-download survivors; `channelDir` discloses an absolute server path. All LOW/bounded.
-- [ ] **v1.22.0 FR-2 folder-match hardening** — the creator re-association matches an item's parent dir to a subscription's `channelDir` by exact string equality with neither side `realpath`-resolved, so a symlinked download dir silently no-ops the backfill (safe under the never-overwrite guard — a missed heal, not corruption); and two subscription names that sanitize to the same folder can first-match mis-attribute. Both LOW. _(adversarial-review follow-up, v1.22.0)_
+_Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
 ## Resolved
 
@@ -24,6 +11,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🐞 Bugs
 
+- [x] **Mobile video fullscreen button shifted slightly right** - ✅ RESOLVED per Dean (roadmap reconcile 2026-09-22): fixed (the mobile control bar was re-slotted since - v1.50.5 pinned `#fs-btn` to the corner and v1.112 put settings just before it). - on mobile, the video fullscreen `#fs-btn` sits a little to the right of where it should (still usable). Likely a knock-on from the v1.24.0 button polish and/or the mobile control-hiding (vol/mute hidden) altering the control-bar spacing. Small CSS positioning fix. _(Dean, noticed on v1.24.0)_
 - [x] **"Release date" sort + trust chain** — ✅ SHIPPED v1.33.0: `youtubeId` persisted per item (filename bracket / embedded purl-comment source URL), Reheat gained a LOCAL ffprobe tags pass (embedded date/purl/title, network fallback where an id exists, precedence network > embedded > mtime), bracket-less metube imports now reheat-eligible; sort verified with parity tests. Dean's on-device backfill run is the arbiter of coverage. Merged with the capture item below: verify the whole chain (yt-dlp upload_date capture correctness; local fallback sanity), add release-date capture to REHEAT so Dean's migrated metube-era library backfills (network re-pull and/or local embedded ffprobe tags — the files may already carry date/purl metadata), fix the sort with sensible missing-date fallback. — the Release-date sort option (shipped v1.24.0 as an available sort; local capture v1.24.0, yt-dlp `upload_date`/`release_date` capture v1.24.2) doesn't visibly order the library by release date on-device. Investigate what `db.metadata.releaseDate` actually holds: local files may only carry the weak mtime fallback (or nothing), and the yt-dlp `releaseDate` only lands on items downloaded/re-pulled AFTER v1.24.2 — so pre-existing items likely have no captured date at all. Check (a) the `sortItems` release-date case reads/compares the value correctly, (b) how many items actually have a populated `releaseDate`, and (c) whether an additive backfill from metadata the scan already has is warranted (no re-processing pass — thumbnail-backfill lesson). **Capture ACCURACY (Dean, v1.24.6):** beyond the sort not visibly working, Dean suspects the captured value itself may be wrong — "the source looks odd." So verify the whole chain end-to-end, not just the sort: is yt-dlp's `upload_date`/`release_date` actually landing as the correct epoch-ms on the right item (spot-check a known video against its real upload date), and is the local-file fallback (embedded ffprobe date → mtime) producing a sane value or a garbage/near-now timestamp? The real deliverable is a `releaseDate` you can trust, then the sort. _(Dean, noticed on v1.24.2; accuracy concern added v1.24.6)_
 - [x] **Video PWA experience on app-minimize** — ✅ RESOLVED per Dean (2026-07-12): "we worked through it, it's better now." Reopen with fresh on-device specifics if it degrades again. — on the installed iPhone PWA, backgrounding / app-switching away from a playing VIDEO and returning has degraded recently (Dean, on v1.24.7). "Flakier" needs on-device specifics when picked up (video not resuming, losing position, black frame / not repainting on return, not pausing/resuming cleanly, MediaSession state, or the player host not re-mounting). Because it's a regression, first bisect against the recent player-lifecycle changes: v1.24.4's T12 **synchronous host reparent** on SPA nav, v1.24.4 T13 resume/dock changes, and the v1.24.5/.6 mobile CSS (`html { overflow-x: clip }`, dock/overlay rules) — any of which could interact with iOS's inline-video suspend/`visibilitychange`/`pagehide` handling. Grounding: FileTube pauses video + saves position on background via `shouldPauseForLifecycleEvent` (audio keeps playing via MediaSession); the persistent single `<video>` host is reparented across FULL/DOCKED/close. Related to the parked "Background audio for video" item below (same lifecycle surface). **Concrete repro (Dean, v1.24.7):** (1) previously he could **exit/minimize the app and playback would CONTINUE** (background audio kept going); **now it STOPS** on exit — a real background-playback regression. (2) Pressing **Play from the iOS media controls / lock screen (MediaSession)** is now **hit-or-miss** (flaky). Both symptoms point at the player LIFECYCLE + MediaSession binding, and the strongest suspect is v1.24.4's **T12 synchronous persistent-`<video>`-host reparent** on SPA nav — reparenting the media element can drop/not-re-establish the `MediaSession` action handlers (`setActionHandler('play'/'pause')`) and can trip iOS's "user gesture / same element" rules that keep background audio alive, which would explain BOTH the stop-on-background and the flaky remote Play. Verify the MediaSession handlers are (re)bound to the live host after every reparent/load. **KEY clarification (Dean):** it DOES still work if he **full-screens the video (the NATIVE iOS video player) and locks while that native player is focused** — so the reliable background path is the native fullscreen/PiP video element (iOS grants native video players background audio), while the **INLINE custom player gets suspended by iOS on background** (the fundamental inline-web-`<video>` limitation). That reframes it: this is less a pure T12/MediaSession bug and more the inline-vs-native background-video reality. It ties DIRECTLY to two items below — **"Optional mobile control style — custom bar vs native iOS"** (native controls would give free fullscreen + background audio) and **"Background audio for video"** (the PiP / audio-context levers). Open question to settle first: is it a genuine regression (did the INLINE player used to keep audio alive on background and a recent change — audio-mode/MediaSession/lifecycle — broke it) or has inline always required fullscreen? If regression → bisect the audio-mode/MediaSession/`shouldPauseForLifecycleEvent` handling; if fundamental → the real fix is a design call (native mobile controls, or a PiP/hidden-`<audio>` background approach), NOT a quick patch. Daily-use degradation. _(Dean, noticed on v1.24.7; repro + native-fullscreen clarification added same day)_
 
@@ -40,11 +28,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **Background audio for video (keep playing on lock / app-switch)** — ✅ SHIPPED in **v1.27.0** (see Shipped) as the Lever-3 video→hidden-`<audio>` swap, behind the **"Background audio for video (experimental)"** setting (default OFF — flip it in Settings whenever you're ready to test; the sequencing + mutual-exclusion requirements below were honored). **AWAITING DEAN'S ON-DEVICE VALIDATION** — see the Shipped entry's checklist. Original item kept below for context. — today mobile VIDEO pauses when you lock the screen or switch apps (iOS suspends inline web video, so FileTube pauses cleanly + saves position via `shouldPauseForLifecycleEvent`), while AUDIO keeps playing (background audio + MediaSession). Dean wants videos to OPTIONALLY keep playing their **audio** in the background, YouTube-Premium style. **Not trivial on iOS web** — Apple blocks background inline video; the only levers are native Picture-in-Picture (limited on iPhone) or swapping the video to an audio context / hidden `<audio>` on background (fragile, iOS-version-dependent). Treat as exploratory, scope carefully. **On-device confirmation (Dean, 2026-07-10, on v1.25.6 w/ native controls):** FULLSCREEN video → lock or app-switch → **keeps playing** (the reliable v1.25.2 native path works). INLINE (non-fullscreen main-page) video → lock → **pauses** (finicky/inconsistent resume). So "must be fullscreen" is the missing link for _proper_ background play — Dean wants inline to keep going too. A delta/feasibility analysis is underway (levers: auto-PiP-on-background [likely gesture-blocked], auto-fullscreen-on-background [gesture-blocked + jarring], video→hidden-`<audio>`-swap on background [most promising, fragile], or simply NOT pausing inline + relying on MediaSession [only works if iOS doesn't suspend regardless — the crux]). Same lifecycle surface as the force-close-stops-audio bug + rotation-pause fix — design together. **DELTA ANALYSIS DONE + DEAN'S DECISION (2026-07-10): FIX IT.** Verdict: our `pause()` is NOT the sole cause — iOS suspends any inline element with a video track regardless (proven: same `<video>` element + same route keeps audio-track-less mp3 items alive but suspends video). Levers 1/2/4/5 (auto-PiP, auto-fullscreen, don't-pause, WebAudio) are all DEAD on iOS 2026 (user-gesture wall or no-op). **Lever 3 (swap video → hidden audio-only playback on background) is the ONLY viable mechanism** — but it's a real BACKEND feature: a new audio-only serve endpoint (FFmpeg audio extraction + a transcode-cache sidecar, mirroring `transcodedPath`) + a hidden `<audio>` element + a dual-element position-swap/re-sync state machine, and its key property (survives lock) is iOS-version-dependent + the swap-in `play()` may itself hit the gesture wall — so it needs Dean's on-device validation and may need iteration. Dean chose to build it anyway (not just the fullscreen-hint alternative). **SEQUENCING (mandatory):** land the **force-close-stops-audio** teardown FIRST (a backgrounded-and-playing swap element is exactly the leak force-close-stop must kill), and keep the new background path MUTUALLY EXCLUSIVE with the fullscreen/PiP path (`inNativePresentation`) so the two "keep playing" mechanisms don't double-fire and fight over the element. Reuse the `isAudio` conceptual boundary rather than forking a third state. _(Dean — "I want us to fix it", 2026-07-10)_
 - [x] **Player flash on Prev/Next** — ✅ CLOSED per Dean (2026-07-12): considered good as-is. — not FOUC, but a brief moment where the player isn't visible when tapping Prev/Next. The persistent single `<video>` host should stay mounted continuously across SPA navigations; investigate why prev/next briefly blanks/re-shows it (likely the watch-view re-render tears down and re-mounts the host, or the new media load clears the frame before the poster/first frame paints). Keep the player element continuously visible across the navigation. _(Dean)_
 - [x] **Skip the resume prompt for short saved progress** — ✅ CLOSED per Dean (2026-07-12): considered good as-is. — if saved playback is within the first ~1 minute, don't show the "Resume at…" prompt — just start from the top. `shouldShowResumeOverlay` currently prompts at >5s; raise the threshold (e.g. skip under ~60s) and expose it as a Settings option. _(Dean)_
-- [ ] **~~Tapping the mini-player doesn't reliably restore FULL from video~~ (DISREGARDED — likely a one-time close/reopen fluke)** — Dean saw the docked mini-player not restore the video once, but after closing/reopening the app couldn't reliably reproduce it and said to disregard it — not a confirmed bug. Only revisit if it recurs consistently; do NOT spend time on it now. _(Dean, 2026-07-10 — disregarded)_
+- [x] **~~Tapping the mini-player doesn't reliably restore FULL from video~~ (DISREGARDED — likely a one-time close/reopen fluke)** — Dean saw the docked mini-player not restore the video once, but after closing/reopening the app couldn't reliably reproduce it and said to disregard it — not a confirmed bug. Only revisit if it recurs consistently; do NOT spend time on it now. _(Dean, 2026-07-10 — disregarded)_
 - [x] **Resume prompt is too small in the docked MiniPlayer** — ✅ CLOSED per Dean (2026-07-12): considered good as-is. — when a "Resume at…" prompt fires while the player is DOCKED (mini-player), the overlay renders inside the tiny docked box and is too small to read/tap. Handle it better: e.g. suppress the resume prompt while docked and only show it in FULL (or auto-resume in the mini-player), or expand the player to FULL when a resume decision is actually needed. _(Dean)_
 
 ### 📱 Mobile polish
 
+- [x] **Subscriptions page slightly too large on mobile (NOT zoom)** - ✅ RESOLVED per Dean (roadmap reconcile 2026-09-22): no longer a problem. - distinct from the zoom item above: the subs page's content/elements render a touch oversized on mobile (padding / font / row sizing), not a viewport-zoom issue. Tighten the mobile sizing on the subscriptions view. _(Dean)_
+- [x] **Favicon still not showing on all browsers** - ✅ RESOLVED (roadmap reconcile 2026-09-22): the multi-res `public/favicon.ico` shipped v1.24.0 (`2367c49e`) and every app shell links it (svg + 192/512 png + `.ico` `sizes="any"`). Only the standalone `/diag.html` perf tool (v1.307) carries no icon links. - the v1.22.2 PNG `rel="icon"` fallbacks helped but some browsers still don't pick it up. Add a real multi-res `favicon.ico` (the format legacy/some desktop browsers reliably use for tabs + bookmarks) and re-check the full `apple-touch-icon` / `sizes` / `shortcut icon` set across all four shells. _(Dean)_
 - [x] **Subscriptions-page base zoom** — ✅ RESOLVED in v1.24.6. The subs page rendered "slightly more zoomed out" because a **stale `.mobile-logo` favicon `<img>`** (an unstyled, uncapped 512px SVG) was left behind on only the subscriptions shell, blowing its mobile header past the viewport → iOS fit-to-width shrink. Deleted it (restoring four-shell parity) + added an `html { overflow-x: clip }` shell guard so every page pins to 1.0 zoom. _(Dean — was low-priority "interesting"; fixed while chasing the broader per-page-zoom inconsistency)_
 - [x] **"Playlists" label clarify** — ✅ RESOLVED (appears already satisfied): the bottom-nav Playlists control renders a "Playlists" text label under its icon, which is what the ask described. Reopen with a specific affordance if Dean meant a different control. _(clarify — closed as satisfied at the v1.83 roadmap reconcile)_
 
@@ -89,9 +79,71 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🧹 Tech-debt (see [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md))
 
+- [x] **v1.20.0 channel-capture edges** (#16–18) - ✅ ACCEPTED per Dean (roadmap reconcile 2026-09-22): #16 + #18 not a problem in practice (tracker rows closed as won't-fix); #17 was already CLOSED by v1.29.0 T3a. - a manually-named `[<id>].mp4` under the download root can absorb an unconsumed channel identity; the subscription fallback records identity for failed-download survivors; `channelDir` discloses an absolute server path. All LOW/bounded.
+- [x] **v1.22.0 FR-2 folder-match hardening** - ✅ ACCEPTED per Dean (roadmap reconcile 2026-09-22): not a problem in practice (a missed heal, never corruption). - the creator re-association matches an item's parent dir to a subscription's `channelDir` by exact string equality with neither side `realpath`-resolved, so a symlinked download dir silently no-ops the backfill (safe under the never-overwrite guard — a missed heal, not corruption); and two subscription names that sanitize to the same folder can first-match mis-attribute. Both LOW. _(adversarial-review follow-up, v1.22.0)_
+- [x] **yt-dlp narrow-config edges** (#12–14) - ✅ ACCEPTED (roadmap reconcile 2026-09-22): all three tracker rows are "accepted narrow limitation"; the operator answer stays "use a dedicated download dir." - dedup-collapse discards a duplicate alias's ephemeral progress; download-dir == a mapped folder loses its mount-loss row; cosmetic title-clean when the download dir is an ancestor of a library folder. Mitigated by "use a dedicated download dir."
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.311.1 - A way back from the performance tool, and an honest roadmap (2026-09-22)
+
+A small patch. **The /diag performance tool had no way out:** Settings opens it in a
+new tab and the page carried no navigation, so in the installed iPhone app (no
+browser chrome) it was a dead end (Dean). A "Back to Settings" link now sits above
+its heading and deep-links `/setup.html#experimental`, which the v1.305 hash
+deep-link opens directly. The page also gained the favicon set every app shell
+carries - it was the only page without one.
+
+**Roadmap reconcile.** Every Planned item was walked against git: the favicon
+(`.ico` shipped v1.24.0) and yt-dlp edges #12-14 (accepted in the tracker) closed on
+the record; Dean ruled the mobile `#fs-btn` offset fixed, the subscriptions mobile
+sizing no longer a problem, and FR-2 folder-match + channel-capture #16/#18 accepted
+(tracker rows #16/#18 closed to match). Planned is empty. This pass also found the
+Shipped section had stopped at v1.308.0 - the v1.309.0 through v1.311.0 entries
+below are backfilled from their release commits.
+
+Gate: slim (adversary), APPROVED r2 @58b277c0 over two rounds. r1 caught the new
+test binding only the EXISTENCE of the deep-link target and a `hidden` attribute
+(two surviving mutants each); r2 drives the setup page's real master-detail wiring
+at the link's own href and binds the page stylesheet - every r1 mutant now reds.
+Known gap, disclosed (S5): the visibility lock reads the stylesheet as text, so a
+`.back{display:none}` nested inside an `@media` block would slip past it. Device
+pass: open Settings > Experimental > performance diagnostics in the installed app,
+tap "Back to Settings", land on the Experimental section.
+
+### v1.311.0 - Chaptered albums play on to the next album; a picked chapter plays just that part (2026-09-22)
+
+First-class chapters (Dean intake, /music; closes tech-debt #230 part i). A chaptered
+album (one file split into `::c` parts) played through with Loop chapter OFF now
+stations on to a related album at the file end instead of looping onto itself:
+`reflectChapter` re-registers Prev/Next and the endless-autoplay arm around the LIVE
+chapter on every boundary. A chapter selected from a list plays only its own segment
+and then exits to a related station; the album Play button still plays straight
+through. Gate: adversary APPROVED r3 @312f9993 + qa APPROVED r2 @d7f9807f (5
+findings fixed, each mutation-verified). Device pass pending.
+
+### v1.310.0 - Panels no longer bleed over their headers (2026-09-22)
+
+The systemic anti-bleed wave: an overlay-containment contract for scrolling panels
+(header fixed, list scrolls under it, nothing escapes the rounded top corners), a
+zero-ceiling lint (`overlay-containment-lint`) with 3 fixes and 9 honest exemptions.
+Gate: adversary + qa APPROVED r1 @71f510a9. Device pass pending: momentum-scroll the
+notification, queue and playlists sheets on iOS.
+
+### v1.309.1 - Notification duration badge no longer overlaps the sticky header (2026-09-22)
+
+Follow-up to v1.309.0: the duration badge escaped its wrapper and painted over the
+sticky header on scroll; `.notif-row-thumb-wrap` now isolates its stacking context
+(`isolation: isolate`). Gate: adversary APPROVED r1 @b51ae3ae.
+
+### v1.309.0 - Notification list scroll glitch fixed; companion browser extension (2026-09-22)
+
+The sticky notification/queue panel header now paints above the rows scrolling under
+it. Plus a sideloadable Manifest V3 Chromium downloader extension (`extension/`) that
+sends the current tab to the instance's yt-dlp endpoint, with its API token held only
+in the background worker; documented in the README, not shipped in the Docker image.
+Gate: adversary + qa + security-brief APPROVED @d6c45c49.
 
 ### v1.308.0 - Queued chaptered videos advance to the next item instead of repeating (2026-09-21)
 

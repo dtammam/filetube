@@ -3100,5 +3100,11 @@
     "date": "2026-09-22",
     "title": "Chaptered albums play on to the next album, and tapping one chapter plays just that part",
     "intent": "When you play a chaptered album (a single file split into parts) and let it run with ‘Loop chapter’ off, it now carries on to a related album at the end instead of quietly starting itself over. And if you tap a single chapter from the list, it plays just that part and then moves on to something new, rather than rolling through the rest of the file. Chapters now behave like real tracks."
+  },
+  {
+    "version": "1.311.1",
+    "date": "2026-09-22",
+    "title": "A way back from the performance tool",
+    "intent": "The performance diagnostics page (Settings > Experimental) now has a Back to Settings link at the top, so you are never stuck on it in the installed app, and it shows the FileTube icon in its tab like every other page."
   }
 ]
