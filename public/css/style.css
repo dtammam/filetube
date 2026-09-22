@@ -12483,6 +12483,7 @@ html[data-modern="on"] .video-uploader {
   border-bottom: 1px solid var(--bg-secondary);
   position: sticky;
   top: 0;
+  z-index: 1; /* token-exempt: local stacking - outrank the positioned rows (.notif-row-thumb-wrap) that scroll under it; both are z-index:auto so DOM order paints the thumbs OVER the header without this */
   background: var(--bg-sidebar);
 }
 
@@ -13139,6 +13140,7 @@ html[data-modern="on"] .video-uploader {
   border-bottom: 1px solid var(--bg-secondary);
   position: sticky;
   top: 0;
+  z-index: 1; /* token-exempt: local stacking - outrank the positioned rows that scroll under it; mirrors .notif-panel-header (panel-chrome-mirror lock) */
   background: var(--bg-sidebar);
 }
 

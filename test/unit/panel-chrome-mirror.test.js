@@ -91,6 +91,24 @@ for (const [queueSel, notifSel] of [
   });
 }
 
+// ---- the sticky panel headers outrank their scrolling rows ------------------
+//
+// The bug (Dean, on-device): the notif/queue panel header is `position: sticky`
+// and its rows carry positioned descendants (`.notif-row-thumb-wrap` is
+// `position: relative` for the duration badge). Both default to `z-index: auto`,
+// so CSS paint order draws the later-in-DOM thumbnails OVER the sticky header as
+// they scroll under it - the "17:32" thumbnail bled across "Notifications /
+// Clear all". A `z-index` on the header restores the header as the top layer.
+// The mirror lock above would NOT catch a regression that drops z-index from
+// BOTH (still identical, still green), so bind the property directly.
+for (const sel of ['.notif-panel-header', '.queue-panel-header']) {
+  test(`${sel} declares a z-index so it paints above the positioned rows scrolling under it`, () => {
+    const decls = declarations(STYLE_CSS, sel);
+    assert.ok(decls.some((d) => /^z-index: \S/.test(d)),
+      `${sel} must carry a z-index - a sticky header with z-index:auto is painted UNDER later positioned rows`);
+  });
+}
+
 // ---- the queue empty posture (comment-stripped source locks) ----------------
 
 const STRIPPED_COMMON = COMMON_JS
