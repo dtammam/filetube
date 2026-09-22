@@ -12,11 +12,43 @@ const videoBtn = document.getElementById('video');
 
 let currentUrl = '';
 
+// A small, hand-picked set of well-known yt-dlp-supported sites, used ONLY as a
+// POSITIVE hint ("we recognize this one") - never as a gate. yt-dlp supports
+// ~1800 sites, so an unrecognized host is NOT rejected; it simply gets the
+// permissive "yt-dlp will decide" message. Matched by hostname suffix so
+// subdomains (m.youtube.com, www.vimeo.com) still resolve.
+const KNOWN_SITES = [
+  { name: 'YouTube', hosts: ['youtube.com', 'youtu.be'] },
+  { name: 'Vimeo', hosts: ['vimeo.com'] },
+  { name: 'SoundCloud', hosts: ['soundcloud.com'] },
+  { name: 'Twitch', hosts: ['twitch.tv'] },
+  { name: 'Dailymotion', hosts: ['dailymotion.com', 'dai.ly'] },
+  { name: 'TikTok', hosts: ['tiktok.com'] },
+  { name: 'X (Twitter)', hosts: ['twitter.com', 'x.com'] },
+  { name: 'Reddit', hosts: ['reddit.com'] },
+  { name: 'Facebook', hosts: ['facebook.com', 'fb.watch'] },
+  { name: 'Instagram', hosts: ['instagram.com'] },
+  { name: 'Bandcamp', hosts: ['bandcamp.com'] },
+  { name: 'BiliBili', hosts: ['bilibili.com'] },
+];
+
+// The display names shown in the always-visible "supported sites" hint.
+const SITE_HINT = 'YouTube, Vimeo, SoundCloud, Twitch, TikTok';
+
+// Return the friendly name of a recognized site for `host`, or null.
+function recognizeSite(host) {
+  for (const site of KNOWN_SITES) {
+    if (site.hosts.some((h) => host === h || host.endsWith('.' + h))) return site.name;
+  }
+  return null;
+}
+
 // Client compatibility heuristic. Intentionally PERMISSIVE - it mirrors the
 // server's isPlausibleMediaUrl (lib/ytdlp/url.js) rather than a curated host
 // list (which would rot against yt-dlp's ~1800 extractors). It only hard-blocks
-// pages yt-dlp can never take. The authoritative verdict is the server's own
-// response to the download POST (see the design doc, "Compatibility-check").
+// pages yt-dlp can never take, and RECOGNIZES a few well-known sites for a
+// friendlier message. The authoritative verdict is the server's own response to
+// the download POST (see the design doc, "Compatibility-check").
 function checkCompatible(rawUrl) {
   let u;
   try { u = new URL(rawUrl); } catch { return { ok: false, reason: 'No page URL available.' }; }
@@ -38,7 +70,11 @@ function checkCompatible(rawUrl) {
   // NOTE: we do NOT try to detect the FileTube instance origin here - that check
   // belongs alongside the configured instanceUrl and can be added once options
   // are wired end-to-end. Permissive by design.
-  return { ok: true, reason: 'yt-dlp will make the final call when you download.' };
+  const site = recognizeSite(host);
+  if (site) {
+    return { ok: true, site, reason: `✓ ${site} — a supported site.` };
+  }
+  return { ok: true, site: null, reason: 'yt-dlp will make the final call when you download.' };
 }
 
 function setStatus(text, kind) {
@@ -50,6 +86,11 @@ async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentUrl = (tab && tab.url) || '';
   urlEl.textContent = currentUrl || 'No active tab URL.';
+
+  // Always show which sites are supported (a positive hint, shown even when the
+  // extension isn't configured yet).
+  const hintEl = document.getElementById('sites-hint');
+  if (hintEl) hintEl.textContent = `Supported: ${SITE_HINT} — & ~1800 more via yt-dlp.`;
 
   // Not-configured takes precedence: no point enabling buttons that can't reach
   // an instance. Asking the worker (rather than reading storage here) keeps the
@@ -66,6 +107,7 @@ async function init() {
 
   const compat = checkCompatible(currentUrl);
   reasonEl.textContent = compat.reason;
+  reasonEl.classList.toggle('compat-yes', !!compat.site);
   audioBtn.disabled = !compat.ok;
   videoBtn.disabled = !compat.ok;
 }

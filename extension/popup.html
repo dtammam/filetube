@@ -40,6 +40,8 @@
     .status.error { color: #cc0000; }
     .status.ok { color: #0a7d28; }
     .reason { margin-top: 8px; font-size: 11px; opacity: 0.75; }
+    .reason.compat-yes { color: #0a7d28; opacity: 1; font-weight: 600; }
+    .hint { margin-top: 10px; font-size: 11px; opacity: 0.6; }
     a { color: inherit; }
   </style>
 </head>
@@ -52,6 +54,7 @@
   </div>
   <div id="reason" class="reason"></div>
   <div id="status" class="status"></div>
+  <div id="sites-hint" class="hint"></div>
   <div class="reason"><a href="#" id="open-options">Options</a></div>
   <script src="popup.js"></script>
 </body>
