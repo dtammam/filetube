@@ -88,17 +88,26 @@ async function boot(url, run, opts) {
     },
   };
   global.window.addToQueue = () => {};
+  // v1.311 gate r3 (F5 flake fix): every fetch body's json() promise is TRACKED so a test can drain
+  // the async station prefetch DETERMINISTICALLY before driving the segment boundary - the solo-exit
+  // hand-off is one-shot at the boundary tick (reflect advances chapterViewId right after), so if the
+  // prefetch has not resolved by then it degrades and the reveal never fires. `drain` awaits all
+  // outstanding json() promises, re-looping to catch the picker's SEQUENTIAL artist-then-library
+  // fetches (the library one is not even issued until the artist json resolves).
+  const jsonPending = [];
+  const body = (items) => ({ ok: true, json: () => { const p = Promise.resolve({ items: items }); jsonPending.push(p); return p; } });
   // v1.311: opts.radio feeds the endless-autoplay picker's random library fetch, so a test can
   // prove a natural chapter playthrough stations on (append tracks) at the last chapter.
   global.fetch = (url2) => {
     const s = String(url2);
-    if (s.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: albumOrder }) });
-    if (opts.radio && s.indexOf('/api/music?') !== -1 && s.indexOf('sort=random') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: opts.radio }) });
-    if (opts.songsList && s.indexOf('/api/music?') !== -1 && s.indexOf('artist=') === -1 && s.indexOf('filter=') === -1) return Promise.resolve({ ok: true, json: async () => ({ items: CHAPTERS }) });
+    if (s.indexOf('album=') !== -1) return Promise.resolve(body(albumOrder));
+    if (opts.radio && s.indexOf('/api/music?') !== -1 && s.indexOf('sort=random') !== -1) return Promise.resolve(body(opts.radio));
+    if (opts.songsList && s.indexOf('/api/music?') !== -1 && s.indexOf('artist=') === -1 && s.indexOf('filter=') === -1) return Promise.resolve(body(CHAPTERS));
     return fetchMap()(url2);
   };
+  const drain = async () => { for (let k = 0; k < 30 && jsonPending.length; k++) { const batch = jsonPending.splice(0); await Promise.allSettled(batch); await settle(); } await settle(); };
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { playerState, dom, getNav: () => lastNav, reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 10; i++) await settle(); } };
+  const ctx = { playerState, dom, getNav: () => lastNav, drain, reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 10; i++) await settle(); } };
   try {
     if (opts.mobile) {
       // production script order: music-skins.js -> skin-surface.js -> music.js
@@ -268,7 +277,7 @@ test('v1.311: a natural playthrough to the LAST chapter arms the radio (stations
     dom.window.FileTube.player.isLoopEnabled = () => false;
     set(130); await settle();  // -> chapter two
     set(250); await settle();  // -> chapter three (the LAST chapter): the radio arm must finally fire
-    for (let i = 0; i < 10; i++) await settle(); // let the picker's async fetch + append + re-register settle
+    await ctx.drain();         // deterministically settle the picker's fetch + append + re-register
     const nav = ctx.getNav();
     assert.ok(nav && typeof nav.onNext === 'function', 'the last chapter now has a Next (the appended radio track)');
     nav.onNext();
@@ -288,13 +297,13 @@ test('v1.311: tapping ONE chapter row exits to the station at that chapter\'s en
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
     // the album drill is rendered (rows c0/c1/c2). Tap the MIDDLE chapter row -> a solo select.
     clickSel(dom, '#music-content .music-song-row[data-index="1"]');
-    for (let i = 0; i < 10; i++) await settle(); // let playAt + the pre-fetched station settle
+    await ctx.drain(); // deterministically settle playAt + the pre-fetched station BEFORE the boundary
     assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'the tapped chapter is loaded');
     const { set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => false;
     set(130); await settle(); // playing inside chapter two [120,240)
     set(240); await settle(); // reach chapter two's END boundary -> must EXIT, not roll into c2
-    for (let i = 0; i < 6; i++) await settle();
+    await ctx.drain();
     assert.strictEqual(ctx.playerState.currentId, 'station-track', 'exited to the station track at the segment end');
     assert.notStrictEqual(ctx.playerState.currentId, 'film::c2', 'did NOT bleed into the next chapter of the same file');
   }, { radio: RADIO });
@@ -304,7 +313,7 @@ test('v1.311: Loop chapter OUTRANKS the solo-chapter exit (loop the segment, nev
   const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
     clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
-    for (let i = 0; i < 10; i++) await settle();
+    await ctx.drain(); // the station IS primed and ready - so the assertion proves Loop OUTRANKS a ready exit
     const { mp, set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => true; // Loop chapter ON
     set(130); await settle();
@@ -315,17 +324,38 @@ test('v1.311: Loop chapter OUTRANKS the solo-chapter exit (loop the segment, nev
   }, { radio: RADIO });
 });
 
-test('v1.311: the album PLAY button plays straight through - a middle boundary does NOT exit', async () => {
+test('v1.311: the album PLAY button plays straight through - the FIRST chapter\'s own boundary does NOT exit', async () => {
+  // gate r2 F2: drive chapter ONE's OWN end band (119.9), where a misclassified-solo mutant WOULD
+  // fire the exit - the r1 version drove set(130), past c0's band, so the mutant slipped through.
   const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
-    clickSel(dom, '#music-content .music-drill-play'); // play the whole album from the top
-    for (let i = 0; i < 10; i++) await settle();
+    clickSel(dom, '#music-content .music-drill-play'); // play the whole album from the top (NOT solo)
+    await ctx.drain();
     const { set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => false;
-    set(130); await settle(); // cross into chapter two
-    for (let i = 0; i < 4; i++) await settle();
-    assert.strictEqual(ctx.playerState.currentId, 'film::c0', 'straight-through: no reload/exit at a mid-album boundary (same file keeps playing)');
+    set(60); await settle();    // inside chapter ONE
+    set(119.9); await settle(); // chapter ONE's END BAND - a solo would exit HERE (radio is primed & ready)
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c0', 'play-all did NOT exit at chapter one\'s own boundary band');
+    set(130); await settle();   // cross into chapter two
+    assert.strictEqual(ctx.playerState.currentId, 'film::c0', 'straight-through: the same file keeps playing');
     assert.strictEqual(playingId(dom), 'film::c1', 'the displayed chapter advanced (reflect), but playback did not exit');
+  }, { radio: RADIO });
+});
+
+test('v1.311 (gate r2 F2): a continue-listening RESUME of a mid-album chapter plays straight through (not solo)', async () => {
+  // ?play=film::c1 -> playTrackFromContinue -> playTrackInAlbum(c1) with NO opts -> resume, NOT a
+  // single-chapter select. A misclassify (solo on every chapter load) would exit at c1's boundary.
+  const RADIO = [{ id: 'station-track', title: 'S', artist: 'A', album: 'O', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c1'), async (dom, ctx) => {
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'resumed onto chapter two');
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle();   // inside chapter two
+    set(239.9); await settle(); // chapter two's END BAND - a misclassified resume-as-solo would exit here
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'the resume plays straight through the boundary (not a solo exit)');
   }, { radio: RADIO });
 });
 
@@ -335,13 +365,13 @@ test('v1.311 (gate r2 F3): a chapter tapped from the SONGS list exits after its 
   await boot('http://localhost/music', async (dom, ctx) => {
     // booted on the Songs tab: c0/c1/c2 as a flat list, drill=null. Tap c1 -> NOT-in-album path.
     clickSel(dom, '#music-content .music-song-row[data-index="1"]');
-    for (let i = 0; i < 14; i++) await settle(); // drill render + play + station prime
+    await ctx.drain(); // drill render + play + station prime, deterministically
     assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'the tapped chapter plays inside its album');
     const { set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => false;
     set(130); await settle();
     set(240); await settle();
-    for (let i = 0; i < 6; i++) await settle();
+    await ctx.drain();
     assert.strictEqual(ctx.playerState.currentId, 'station-track', 'the songs-list solo callsite passed the flag - exited to the station');
   }, { radio: RADIO, songsList: true });
 });
@@ -367,7 +397,7 @@ test('v1.311 (gate r2 F1): solo-selecting the LAST chapter does NOT arm a solo-e
   ];
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
     clickSel(dom, '#music-content .music-song-row[data-index="2"]'); // tap the LAST chapter
-    for (let i = 0; i < 12; i++) await settle();
+    await ctx.drain();
     assert.strictEqual(ctx.playerState.currentId, 'film::c2', 'the last chapter is playing');
     const nav = ctx.getNav();
     assert.ok(nav && typeof nav.onNext === 'function', 'the last-index endless-autoplay armed a Next (the ONE station run)');
@@ -375,7 +405,7 @@ test('v1.311 (gate r2 F1): solo-selecting the LAST chapter does NOT arm a solo-e
     dom.window.FileTube.player.isLoopEnabled = () => false;
     set(250); await settle();   // inside the last chapter [240,360)
     set(359.9); await settle(); // reach the file/last-segment end
-    for (let i = 0; i < 6; i++) await settle();
+    await ctx.drain();
     // The last chapter is EXCLUDED from the solo-exit (nothing to skip) - so enforceChapterExit must
     // NOT fire here. Its end is the whole-file end, handled by player.js's ended-advance (not this
     // jsdom seam). Without the exclusion, a solo-exit would fire at 359.9 and append a DUPLICATE
@@ -384,16 +414,40 @@ test('v1.311 (gate r2 F1): solo-selecting the LAST chapter does NOT arm a solo-e
   }, { radio: RADIO });
 });
 
+test('v1.311 (gate r3 F1b): with a station already in up-next, a chapter tap lands on the EXISTING station (no duplicate, no skipped rows)', async () => {
+  const RADIO = [];
+  for (let n = 1; n <= 7; n++) RADIO.push({ id: 'st' + n, title: 'S' + n, artist: 'A', album: 'O', albumKey: 'X', durationSec: 200, source: 'library' });
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    // play-all to the LAST chapter so maybeExtendQueueForAutoplay appends st1..st5 to the VISIBLE up-next
+    set(250); await settle();
+    await ctx.drain();
+    const navAfterExtend = ctx.getNav();
+    assert.ok(navAfterExtend && typeof navAfterExtend.onNext === 'function', 'the play-all extend appended a visible station');
+    // now tap a MIDDLE chapter row (still c0/c1/c2 in the drill; the station is not rendered there)
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]');
+    await ctx.drain(); // solo prime (fetches st6/st7, excluding the already-queued st1..st5)
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'the middle chapter is loaded');
+    set(130); await settle(); // back inside chapter two
+    set(240); await settle(); // its end boundary
+    await ctx.drain();
+    // Must land on st1 - the FIRST already-visible station row - not append st6/st7 over the top and
+    // jump onto them (which would skip st1..st5 the user can see: the r2 F1b finding).
+    assert.strictEqual(ctx.playerState.currentId, 'st1', 'exited onto the EXISTING first up-next station, not a freshly-appended duplicate');
+  }, { radio: RADIO });
+});
+
 test('v1.311 (gate r2 F2): a forward SEEK into a later chapter does NOT trigger the exit (bounded fire window)', async () => {
   const RADIO = [{ id: 'station-track', title: 'S', artist: 'A', album: 'O', albumKey: 'X', durationSec: 200, source: 'library' }];
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
     clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
-    for (let i = 0; i < 10; i++) await settle();
+    await ctx.drain(); // ensure the station IS primed, so a false-fire would actually reach a station
     const { set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => false;
     set(130); await settle();          // playing inside chapter two
     set(300); await settle();          // SEEK far forward into chapter THREE (delta 170 >> a normal step)
-    for (let i = 0; i < 6; i++) await settle();
+    await ctx.drain();
     assert.notStrictEqual(ctx.playerState.currentId, 'station-track', 'a deliberate seek past the segment did NOT throw us to a station');
     assert.strictEqual(playingId(dom), 'film::c2', 'the seek landed in chapter three (reflect advanced), exit intent dropped');
   }, { radio: RADIO });
@@ -406,12 +460,12 @@ test('v1.311 (gate r2 F4): with autoplay OFF a solo chapter has no station - it 
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
     try { dom.window.localStorage.setItem('ft-music-autoplay', '0'); } catch (_) { /* ignore */ }
     clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two, autoplay OFF
-    for (let i = 0; i < 10; i++) await settle();
+    await ctx.drain();
     const { set } = loopable(dom, 360);
     dom.window.FileTube.player.isLoopEnabled = () => false;
     set(130); await settle();
     set(240); await settle(); // reach the boundary with no station primed
-    for (let i = 0; i < 6; i++) await settle();
+    await ctx.drain();
     assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'no station -> stayed on the file (degrade to straight-through); the display then advances via reflect');
     assert.strictEqual(playingId(dom), 'film::c2', 'playback rolled into chapter three (not exited, not crashed)');
   }, { radio: RADIO });

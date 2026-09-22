@@ -1145,6 +1145,20 @@ if (typeof module !== 'undefined' && module.exports) {
     // the band/delta test rejects; reflectChapter (next in the tick) then advances chapterViewId off
     // the solo chapter, and the mismatch clear below drops the intent. Exactly enforceChapterLoop's
     // v1.240/v1.279 shape, for the same reason.
+    // v1.311 gate r3: does a LATER chapter of the SAME backing file sit after index `i`? "Exit after
+    // this bit" only applies when there is a rest-of-the-album to skip. A chapter with no later
+    // sibling (the last chapter, OR a chapter whose only successors are appended non-chapter station
+    // tracks) is handled by the normal last-index/ended station-on, so it is never solo - which
+    // avoids both the double-prime and jumping over the visible up-next.
+    function laterSameBaseChapterExists(item, i) {
+      if (!item || item.source !== 'library-chapter') return false;
+      var base = String(item.id).replace(/::c\d+$/, '');
+      for (var j = i + 1; j < queue.length; j++) {
+        var q = queue[j];
+        if (q && q.source === 'library-chapter' && String(q.id).replace(/::c\d+$/, '') === base) return true;
+      }
+      return false;
+    }
     var EXIT_MAX_STEP = 4; // a normal playback step; a seek/scrub jumps far more (mirrors LOOP_MAX_STEP)
     function enforceChapterExit() {
       if (!soloChapterExitId) return;
@@ -1168,11 +1182,27 @@ if (typeof module !== 'undefined' && module.exports) {
       //     a huge delta (frozen `last` during a wheel scrub, or a raw jump for the seek-bar) -> rejected.
       var crossed = (last >= b.start && last < b.end && t >= b.end && (t - last) > 0 && (t - last) <= EXIT_MAX_STEP);
       if (!(inBand || crossed)) return;
+      var soloId = soloChapterExitId;
       var picks = soloExitPicks;
       soloChapterExitId = null; soloExitPicks = null; // ONE-SHOT: clear before any load so a re-entrant tick can't re-fire
-      if (!picks || !picks.length) return; // no station available (autoplay off, or the picker came back empty) -> degrade to a straight-through listen
+      // Gate r3 (adversary F1b): if the queue ALREADY has an entry after this file's chapters (a
+      // station the play-all extend appended, and one the user can SEE in up-next), station on to
+      // THAT - never append a second station over it and skip the visible rows (v1.254 see-and-skip).
+      // Append the pre-fetched picks ONLY when the album is genuinely the queue tail.
+      var base = String(soloId).replace(/::c\d+$/, '');
+      var lastChapIdx = -1;
+      for (var j = 0; j < queue.length; j++) {
+        var q = queue[j];
+        if (q && q.source === 'library-chapter' && String(q.id).replace(/::c\d+$/, '') === base) lastChapIdx = j;
+      }
+      var afterIdx = lastChapIdx + 1;
+      if (lastChapIdx >= 0 && afterIdx < queue.length) {
+        playAt(afterIdx, { keepPosition: true }); // land on the first EXISTING up-next row past the album
+        return;
+      }
+      if (!picks || !picks.length) return; // no existing station AND nothing pre-fetched -> degrade to a straight-through listen
       var startIdx = queue.length;
-      queue = queue.concat(picks); // append after the album (existing rows' data-index unchanged - no wrong-track desync)
+      queue = queue.concat(picks); // the album is the tail: append the station (existing rows' data-index unchanged)
       playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
     }
     var chapterReflectBound = false;
@@ -2312,12 +2342,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // shared file straight through as before. Every load re-derives the flag, so a play-all or a
       // non-chapter track clears any prior solo intent; the station is pre-fetched for a zero-latency
       // hand-off at the segment boundary (enforceChapterExit).
-      // Gate r1 (adversary+qa): EXCLUDE the LAST queue entry - a solo select of the last chapter has
-      // no later chapter to skip, so its "exit after that bit" IS the normal end-of-file station-on
-      // that maybeExtendQueueForAutoplay (armed on the last index) + the ended-advance already
-      // deliver. Priming here too would double-fetch and append DUPLICATE station tracks, jumping the
-      // visible up-next. `i < queue.length - 1` = there is a real later chapter this solo will skip.
-      soloChapterExitId = (isChapter && opts.soloChapter && i >= 0 && i < queue.length - 1) ? item.id : null;
+      // Gate r1/r3 (adversary+qa): solo applies ONLY when a LATER chapter of the same file exists to
+      // skip. The last chapter - or a chapter whose only successors are appended non-chapter station
+      // tracks (a play-all extend already ran) - has no rest-of-album to skip, so its "exit after that
+      // bit" IS the normal last-index/ended station-on; priming it too would double-fetch and jump the
+      // visible up-next. laterSameBaseChapterExists is chapter-based, not queue-tail-based (r3 F1b).
+      soloChapterExitId = (opts.soloChapter && laterSameBaseChapterExists(item, i)) ? item.id : null;
       soloExitPicks = null;
       lastExitTime = -1; // fresh segment: no prior tick, so the first boundary delta can't be a stale carry
       if (soloChapterExitId) primeSoloExitStation(item);

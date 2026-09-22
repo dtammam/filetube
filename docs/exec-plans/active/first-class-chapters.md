@@ -74,6 +74,39 @@ behavioral tests: 2 loop-fix axes, 3 solo-exit axes). ESLint 0 errors.
 - **F4** (guard tests): added the seek-cancel, autoplay-OFF-degrade, and last-chapter no-exit tests.
 - Mutation-verified each new test reds against the mutant it claims to kill (F1 exclusion, F2 cap,
   M6b solo flag, M6c/M6d classification, F4 autoplay gate). `music-chapter-reflect` now 29/29.
+- Gate: CHANGES r2 @d7f9807f322c0349500ec7447db61170972d5b09 - adversary (Fable). Full suite 6836/6836,
+  lint 0 errors, tree byte-identical. r1 findings all confirmed fixed (F1 simple case, F2, F3, F4).
+  Two NEW WARNINGs:
+  1. F1's exclusion is "last QUEUE entry" not "last CHAPTER" - with a trailing station already in the
+     queue (a prior play-all extend), tapping a chapter still primes and the exit appends MORE picks,
+     jumping over the VISIBLE up-next rows (the v1.254 see-and-skip ruling). Fix: classify solo as
+     "a later same-base CHAPTER exists after i"; at exit, prefer an already-present non-chapter entry
+     over appending.
+  2. The "album Play plays straight through" test went VACUOUS under the bounded window (drives past
+     c0's band, so the M7 misclassify mutant survives), and there is no continue-resume test. Fix:
+     drive the play-all test inside c0's own band; add a `?play=film::c1` resume test. (Test-only.)
+  Remaining: M3/M4 singles, M8/M9/M11/M14/M15, crossed-arm (N2/N4) - SUGGESTIONs, harness-limited.
+- Gate: APPROVED r2 @d7f9807f - qa (1 WARNING disclosed non-blocking). Full suite 6836/6836, lint 0
+  errors. F1 (its r1 SUGGESTION) + adversary F2 confirmed fixed-as-prescribed; maybeExtend refactor +
+  TOCTOU guards untouched; no new security surface. WARNING F5: the solo-exit reveal tests flaked once
+  in ~35 runs on a fixed-settle budget racing the async prefetch - test-harness artifact, safe to ship
+  disclosed; recommends polling. (Addressed in r3 via ctx.drain.)
+
+## r3 - fixes for the adversary's r2 findings (Dean ruled "fix it + final round")
+- **F1b** (exclusion was queue-tail-based, jumped visible up-next): solo is now classified by
+  `laterSameBaseChapterExists(item, i)` - a LATER chapter of the same file must exist to skip - and
+  `enforceChapterExit` prefers an ALREADY-PRESENT entry after the album's chapters (an existing
+  station the play-all extend appended, visible in up-next) over appending a fresh one; it appends the
+  pre-fetched picks only when the album is genuinely the queue tail.
+- **F2** (vacuous play-all test + no resume test): the play-all test now drives chapter one's OWN end
+  band (where a misclassified-solo mutant would fire); added a `?play=film::c1` continue-resume test.
+- **F5** (test flake): the harness now tracks every fetch body's `json()` promise and `ctx.drain()`
+  awaits them (re-looping for the picker's sequential artist-then-library fetches), so a reveal test
+  settles the async prefetch DETERMINISTICALLY before the one-shot boundary tick - no fixed settle
+  budget. Verified: 5 serial + 6 parallel-under-load runs all 31/31; the flaky tests no longer race.
+- Mutation-verified: F1b (exit always-append), M7 (classification drops the opts.soloChapter gate -
+  now caught by BOTH the play-all-band and resume tests), and the later-check helper each red their
+  test. `music-chapter-reflect` 31/31.
 
 ## Gate
 - Gate: CHANGES r1 @9ce1a71af3def8e6172fbed5e9db66e3160bb35d — adversary (Fable). Full suite 6831/6831, lint 0 errors, tree byte-identical. Findings:
