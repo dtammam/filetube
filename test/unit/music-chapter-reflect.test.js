@@ -71,6 +71,7 @@ async function boot(url, run, opts) {
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
   let registered = null;
+  let lastNav = null; // v1.311: the most recent setTrackNav({onPrev,onNext}) - so a test can bind the ended-advance target
   dom.window.FileTube = {
     registerView: (n, m) => { registered = m; },
     encodeListContext: (c) => JSON.stringify(c), decodeListContext: (s) => { try { return JSON.parse(s); } catch (_) { return null; } }, shimmerArt: () => {},
@@ -79,13 +80,21 @@ async function boot(url, run, opts) {
       getCurrentMeta: () => playerState.meta,
       // opts.mobile: the REAL player expands itself on a fresh play (straight-to-player);
       // this stub mirrors that so the skin (which needs state 'full') actually paints.
-      load: (id) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.meta = metaById(id); if (opts.mobile) playerState.state = 'full'; }, setTrackNav: () => {},
+      load: (id) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.meta = metaById(id); if (opts.mobile) playerState.state = 'full'; },
+      setTrackNav: (h) => { lastNav = h || null; },
     },
   };
   global.window.addToQueue = () => {};
-  global.fetch = (url2) => (String(url2).indexOf('album=') !== -1 ? Promise.resolve({ ok: true, json: async () => ({ items: albumOrder }) }) : fetchMap()(url2));
+  // v1.311: opts.radio feeds the endless-autoplay picker's random library fetch, so a test can
+  // prove a natural chapter playthrough stations on (append tracks) at the last chapter.
+  global.fetch = (url2) => {
+    const s = String(url2);
+    if (s.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: albumOrder }) });
+    if (opts.radio && s.indexOf('/api/music?') !== -1 && s.indexOf('sort=random') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: opts.radio }) });
+    return fetchMap()(url2);
+  };
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { playerState, dom, reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 10; i++) await settle(); } };
+  const ctx = { playerState, dom, getNav: () => lastNav, reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 10; i++) await settle(); } };
   try {
     if (opts.mobile) {
       // production script order: music-skins.js -> skin-surface.js -> music.js
@@ -104,6 +113,8 @@ async function boot(url, run, opts) {
 }
 
 const playingId = (dom) => { const r = dom.window.document.querySelector('#music-content .music-song-row.playing'); return r ? r.getAttribute('data-id') : null; };
+// v1.311: click a rendered drill control/row (bubbles to the #music-content delegation).
+const clickSel = (dom, sel) => { const el = dom.window.document.querySelector(sel); if (!el) throw new Error('no element: ' + sel); el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); return el; };
 
 test('v1.237: playback rolling across a chapter boundary re-reflects the CURRENT chapter (no reload)', async () => {
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
@@ -220,6 +231,98 @@ test('v1.240: with Loop OFF, crossing a boundary ADVANCES normally (no seek-back
     assert.strictEqual(mp.currentTime, 119.9, 'no seek-back when Loop is off (even inside the band)');
     assert.strictEqual(playingId(dom), 'film::c1', 'advanced to chapter two as usual');
   });
+});
+
+// ---- v1.311 (Dean, tech-debt #230 part i): a natural chapter playthrough re-registers nav ----
+// The bug: registerTrackNav ran once at LOAD (on the started chapter); reflectChapter advanced
+// the displayed identity WITHOUT re-registering, so onNext/onPrev froze at the load index and the
+// last-index-only radio arm never fired on a natural playthrough. The whole-file ended-advance
+// then replayed the frozen onNext (back into THIS file) instead of stationing on. These bind the
+// re-registration behaviourally (the nav CLOSURE, not a source-lock), both axes: mid-album Next
+// tracks the playhead, and the LAST chapter arms the radio.
+test('v1.311: rolling to a middle chapter re-registers Next around the LIVE chapter (not the load index)', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle();                     // roll into chapter two (index 1)
+    assert.strictEqual(playingId(dom), 'film::c1', 'displayed chapter advanced to two');
+    const nav = ctx.getNav();
+    assert.ok(nav && typeof nav.onNext === 'function', 'Next is registered on chapter two');
+    assert.ok(typeof nav.onPrev === 'function', 'Prev is registered on chapter two (it is no longer the first)');
+    nav.onNext();                                  // the ended-advance / lock-screen Next fires this
+    await settle();
+    // Without the reflect re-register, onNext was frozen at the load index (c0) -> onNext = playAt(1)
+    // -> c1, i.e. it would REPLAY chapter two. The fix advances it to chapter THREE.
+    assert.strictEqual(ctx.playerState.currentId, 'film::c2', 'Next from chapter two loads chapter THREE, not a replay');
+  });
+});
+
+test('v1.311: a natural playthrough to the LAST chapter arms the radio (stations on, does not loop the file)', async () => {
+  const RADIO = [{ id: 'next-album-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle();  // -> chapter two
+    set(250); await settle();  // -> chapter three (the LAST chapter): the radio arm must finally fire
+    for (let i = 0; i < 10; i++) await settle(); // let the picker's async fetch + append + re-register settle
+    const nav = ctx.getNav();
+    assert.ok(nav && typeof nav.onNext === 'function', 'the last chapter now has a Next (the appended radio track)');
+    nav.onNext();
+    await settle();
+    // Before the fix the last chapter never armed the radio on a natural playthrough, so the whole-file
+    // ended-advance replayed a chapter of THIS file. The fix stations on to the appended track.
+    assert.strictEqual(ctx.playerState.currentId, 'next-album-track', 'Next from the last chapter plays the stationed-on radio track, not this file');
+  }, { radio: RADIO });
+});
+
+// ---- v1.311 (Dean, first-class chapters): a SELECTED chapter exits after its own segment -------
+// Tapping ONE chapter row plays only that chapter's segment and then EXITS to the station (a related
+// new album), never bleeding into the rest of the shared file. The album's Play button still plays
+// straight through. These bind the boundary hand-off behaviourally (queue + player state), all axes.
+test('v1.311: tapping ONE chapter row exits to the station at that chapter\'s end (does not bleed into the next chapter)', async () => {
+  const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    // the album drill is rendered (rows c0/c1/c2). Tap the MIDDLE chapter row -> a solo select.
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]');
+    for (let i = 0; i < 10; i++) await settle(); // let playAt + the pre-fetched station settle
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'the tapped chapter is loaded');
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle(); // playing inside chapter two [120,240)
+    set(240); await settle(); // reach chapter two's END boundary -> must EXIT, not roll into c2
+    for (let i = 0; i < 6; i++) await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'station-track', 'exited to the station track at the segment end');
+    assert.notStrictEqual(ctx.playerState.currentId, 'film::c2', 'did NOT bleed into the next chapter of the same file');
+  }, { radio: RADIO });
+});
+
+test('v1.311: Loop chapter OUTRANKS the solo-chapter exit (loop the segment, never exit)', async () => {
+  const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
+    for (let i = 0; i < 10; i++) await settle();
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => true; // Loop chapter ON
+    set(130); await settle();
+    set(239.9); await settle(); // hit the end band with loop ON
+    for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(mp.currentTime, 120, 'looped back to chapter two start, not exited');
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'stayed on chapter two - the exit did not fire');
+  }, { radio: RADIO });
+});
+
+test('v1.311: the album PLAY button plays straight through - a middle boundary does NOT exit', async () => {
+  const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    clickSel(dom, '#music-content .music-drill-play'); // play the whole album from the top
+    for (let i = 0; i < 10; i++) await settle();
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle(); // cross into chapter two
+    for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c0', 'straight-through: no reload/exit at a mid-album boundary (same file keeps playing)');
+    assert.strictEqual(playingId(dom), 'film::c1', 'the displayed chapter advanced (reflect), but playback did not exit');
+  }, { radio: RADIO });
 });
 
 test('v1.240 (QA WARNING): a far position past the boundary is NOT yanked back - the loop trigger is upper-capped', async () => {
