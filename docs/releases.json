@@ -3082,5 +3082,11 @@
     "date": "2026-09-22",
     "title": "Notification list scroll glitch fixed; a companion browser extension",
     "intent": "Fixed a visual glitch in the notifications panel where a video thumbnail could briefly draw over the ‘Notifications’ header while you scrolled — the header now stays cleanly on top. This release also adds a companion browser extension for Chromium browsers (Chrome, Edge, Brave): from any tab it sends the current page to your FileTube instance as an audio or video download. It is a load-it-yourself developer extension, documented in the README."
+  },
+  {
+    "version": "1.309.1",
+    "date": "2026-09-22",
+    "title": "Notification header scroll fix, part two: the time badge no longer overlaps it",
+    "intent": "A follow-up to the last release: the small duration time on a notification’s thumbnail (like “1:38:12”) could still briefly overlap the ‘Notifications’ header while you scrolled the list. Now it stays inside its own row, so the header stays clean as you scroll."
   }
 ]
