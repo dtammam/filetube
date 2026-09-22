@@ -16,7 +16,7 @@ Your videos, music, and books - on every screen in the house, and nowhere else.
 [![Docker Pulls](https://img.shields.io/docker/pulls/deantammam/filetube)](https://hub.docker.com/r/deantammam/filetube)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Quick Start](#quick-start-docker) · [Features](#features) · [Screenshots](#screenshots) · [Roku](#-on-your-tv-the-roku-channel) · [Configuration](docs/CONFIGURATION.md) · [Roadmap](ROADMAP.md)
+[Quick Start](#quick-start-docker) · [Features](#features) · [Screenshots](#screenshots) · [Roku](#-on-your-tv-the-roku-channel) · [Extension](#-in-your-browser-the-downloader-extension) · [Configuration](docs/CONFIGURATION.md) · [Roadmap](ROADMAP.md)
 
 </div>
 
@@ -97,6 +97,20 @@ phone videos) with cache-only renditions that never touch your originals.
 The channel is video-first: music, books, and podcasts live on the web app
 and PWA, not (yet) on the TV.
 Setup and deploy: [roku/README.md](roku/README.md).
+
+## 🧩 In your browser: the downloader extension
+
+FileTube ships a sideloadable [Chromium browser extension](extension/) - a
+Manifest V3 dev/unpacked add-on (Chrome, Edge, Brave, and other Chromium-based
+browsers), validated and confirmed working. From any tab it offers a one-tap
+**Audio** or **Video** download of the current page into your library: it POSTs
+the tab URL to your instance's existing yt-dlp download endpoint, authenticated
+with an API token held only inside the extension's background worker. The popup
+recognizes well-known yt-dlp sites (YouTube, Vimeo, SoundCloud, Twitch, TikTok,
+and ~1800 more) as a positive hint - it never gates, so the server makes the
+final call. Like the Roku channel, it is a companion surface: load it unpacked
+in your browser rather than from a store.
+Setup and load: [extension/](extension/).
 
 ## Quick Start (Docker)
 
