@@ -86,6 +86,65 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.311.1 - A way back from the performance tool, and an honest roadmap (2026-09-22)
+
+A small patch. **The /diag performance tool had no way out:** Settings opens it in a
+new tab and the page carried no navigation, so in the installed iPhone app (no
+browser chrome) it was a dead end (Dean). A "Back to Settings" link now sits above
+its heading and deep-links `/setup.html#experimental`, which the v1.305 hash
+deep-link opens directly. The page also gained the favicon set every app shell
+carries - it was the only page without one.
+
+**Roadmap reconcile.** Every Planned item was walked against git: the favicon
+(`.ico` shipped v1.24.0) and yt-dlp edges #12-14 (accepted in the tracker) closed on
+the record; Dean ruled the mobile `#fs-btn` offset fixed, the subscriptions mobile
+sizing no longer a problem, and FR-2 folder-match + channel-capture #16/#18 accepted
+(tracker rows #16/#18 closed to match). Planned is empty. This pass also found the
+Shipped section had stopped at v1.308.0 - the v1.309.0 through v1.311.0 entries
+below are backfilled from their release commits.
+
+Gate: slim (adversary), APPROVED r2 @58b277c0 over two rounds. r1 caught the new
+test binding only the EXISTENCE of the deep-link target and a `hidden` attribute
+(two surviving mutants each); r2 drives the setup page's real master-detail wiring
+at the link's own href and binds the page stylesheet - every r1 mutant now reds.
+Known gap, disclosed (S5): the visibility lock reads the stylesheet as text, so a
+`.back{display:none}` nested inside an `@media` block would slip past it. Device
+pass: open Settings > Experimental > performance diagnostics in the installed app,
+tap "Back to Settings", land on the Experimental section.
+
+### v1.311.0 - Chaptered albums play on to the next album; a picked chapter plays just that part (2026-09-22)
+
+First-class chapters (Dean intake, /music; closes tech-debt #230 part i). A chaptered
+album (one file split into `::c` parts) played through with Loop chapter OFF now
+stations on to a related album at the file end instead of looping onto itself:
+`reflectChapter` re-registers Prev/Next and the endless-autoplay arm around the LIVE
+chapter on every boundary. A chapter selected from a list plays only its own segment
+and then exits to a related station; the album Play button still plays straight
+through. Gate: adversary APPROVED r3 @312f9993 + qa APPROVED r2 @d7f9807f (5
+findings fixed, each mutation-verified). Device pass pending.
+
+### v1.310.0 - Panels no longer bleed over their headers (2026-09-22)
+
+The systemic anti-bleed wave: an overlay-containment contract for scrolling panels
+(header fixed, list scrolls under it, nothing escapes the rounded top corners), a
+zero-ceiling lint (`overlay-containment-lint`) with 3 fixes and 9 honest exemptions.
+Gate: adversary + qa APPROVED r1 @71f510a9. Device pass pending: momentum-scroll the
+notification, queue and playlists sheets on iOS.
+
+### v1.309.1 - Notification duration badge no longer overlaps the sticky header (2026-09-22)
+
+Follow-up to v1.309.0: the duration badge escaped its wrapper and painted over the
+sticky header on scroll; `.notif-row-thumb-wrap` now isolates its stacking context
+(`isolation: isolate`). Gate: adversary APPROVED r1 @b51ae3ae.
+
+### v1.309.0 - Notification list scroll glitch fixed; companion browser extension (2026-09-22)
+
+The sticky notification/queue panel header now paints above the rows scrolling under
+it. Plus a sideloadable Manifest V3 Chromium downloader extension (`extension/`) that
+sends the current tab to the instance's yt-dlp endpoint, with its API token held only
+in the background worker; documented in the README, not shipped in the Docker image.
+Gate: adversary + qa + security-brief APPROVED @d6c45c49.
+
 ### v1.308.0 - Queued chaptered videos advance to the next item instead of repeating (2026-09-21)
 
 A fix for chaptered videos played from the "Queued" queue (tech-debt #230, Dean

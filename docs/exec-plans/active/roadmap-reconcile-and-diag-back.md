@@ -56,3 +56,8 @@ Gate: CHANGES r1 @b929ad8e — adversary
 - S2 ROADMAP fs-btn reason cites v1.133; #fs-btn order:9 is v1.50.5 (fec3f807), #settings-btn order:8 is v1.112 (ca6f6ba3). v1.133 only pinned prev/next.
 - S3 A1 "original text kept verbatim" is false for the channel-capture item (body rewritten: #16-18 -> #16, #18, sentence moved, "All" -> "Both"). Keep the original body verbatim + append the note, or amend A1.
 - S4 tech-debt tracker row #16 still sits in Active with no status change while ROADMAP records it ACCEPTED per Dean - reconcile the tracker (ROADMAP defers to it).
+
+Gate: APPROVED r2 @58b277c0 — adversary
+- W1 fixed as prescribed: section `hidden`, section nested, no-op selectFromHash, selectKey(key,false), href #video all red. W2 fixed: `.back{display:none}`, inline style, a separate `#diag-back{visibility:hidden}` rule all red. S1-S4 verified (512 png mutant red; v1.50.5 fec3f807 / v1.112 ca6f6ba3 match blame; all six original bodies found verbatim, 0 `- [ ]`; tracker #16/#18 moved to Closed with 8 fields like their neighbours, tech-debt-census green).
+- S5 (non-blocking, disclosed): the static CSS check still misses a hide nested in `@media`, `opacity: 0.0`, an off-screen position, or a selector that does not name .back/#diag-back. Cheapest improvement: test the selector text right before the innermost `{`, so rules inside `@media` are checked too. The rest is beyond a static check.
+- npm run test:unit (main checkout, Node 22.23.1): 6843 tests, 6843 pass, 0 fail, 0 skipped.
