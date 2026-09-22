@@ -621,6 +621,17 @@ if (typeof module !== 'undefined' && module.exports) {
   // currentTime and repaints); it can run ahead of the loaded id WITHOUT reloading. null when
   // not playing a chaptered file. The now-playing/skin renders prefer it over player.currentId.
   var chapterViewId = null;
+  // v1.311 (Dean, first-class chapters): the chapter id whose segment, when it ENDS, must EXIT
+  // the album and station on to a related new track - set ONLY when a single chapter is SELECTED
+  // from a list (a row/skin/up-next tap), never when the album's Play button plays straight
+  // through. `soloExitPicks` is the station pre-fetched at select time so the boundary hand-off is
+  // instant (the v1.254 "append EARLY" posture). Both null on any play-all / nav / non-chapter load.
+  var soloChapterExitId = null;
+  var soloExitPicks = null;
+  // v1.311 gate r2: the playhead position enforceChapterExit saw on its PREVIOUS non-scrub tick, so
+  // a FAR seek past the segment end (a seek-bar/MediaSession jump into a later chapter) is rejected
+  // by delta exactly the way enforceChapterLoop's lastLoopTime rejects a far scrub. Reset on arm.
+  var lastExitTime = -1;
   // v1.217 (in-view back-stack): the LIVE onPopState handler for the mounted
   // init() closure (it needs init's `drill`/render/setActiveTab). Module-scoped
   // so the stable module.onPopState the router calls can delegate to whichever
@@ -907,7 +918,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getSkinId: function () { return SKINS.activeSkinId(); },
         getCtx: function () { return buildSkinCtx(currentSkinIndex()); },
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
-        onSelectIndex: function (i) { playAt(i); },
+        onSelectIndex: function (i) { playAt(i, { soloChapter: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onShuffle: function () { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); },
         fastScan: true,
@@ -1051,9 +1062,21 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!id || id === chapterViewId) return;
       chapterViewId = id;
       playingId = id;
-      var t = null;
-      for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; break; } }
+      var t = null, ti = -1;
+      for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; ti = i; break; } }
       if (t) nowPlaying = { id: id, title: t.title || '', artist: t.artist || '', album: t.album || '', albumKey: t.albumKey || '' };
+      // v1.311 (Dean, tech-debt #230 part i): a chaptered album is ONE file whose `::c`
+      // chapters are queue entries; the playhead rolls through them WITHOUT a reload, so
+      // registerTrackNav ran exactly once (at load, on the STARTED chapter) and never again.
+      // That froze onNext/onPrev at the load-time index AND left maybeExtendQueueForAutoplay
+      // (which only arms on the LAST queue index) forever unarmed on a natural playthrough -
+      // so at the whole-file end the ended-advance's fallbackToTrackNav replayed the frozen
+      // onNext (back INTO this same file) instead of stationing on to the next album. Manually
+      // tapping the last row worked only because that playAt re-ran registerTrackNav. Re-register
+      // around the LIVE chapter index on every boundary cross so the neighbors track the playhead
+      // and, on reaching the last chapter, the radio finally arms. (registerTrackNav only touches
+      // MediaSession handlers + the best-effort autoplay fetch - it never reloads or seeks the file.)
+      if (ti >= 0) registerTrackNav(ti);
       applyPlayingHighlight();
       updateNowPlayingPanel();
       updateNowPlaying(); // v1.237: keep the "Playing from <Album>" line in step (it keys off the current id too)
@@ -1106,6 +1129,82 @@ if (typeof module !== 'undefined' && module.exports) {
         try { mp.currentTime = b.start; lastLoopTime = b.start; } catch (_) { /* ignore a bad set */ }
       }
     }
+    // v1.311 (Dean, first-class chapters): a chapter SELECTED from a list plays only its OWN
+    // segment and then EXITS the album, stationing on to a related new track - it must not bleed
+    // into the rest of the shared file the way the album's Play button (a straight-through listen)
+    // does. When the playhead reaches the selected chapter's end boundary by NORMAL playback, hand
+    // off to the pre-fetched station. Bound to timeupdate BEFORE reflectChapter (which is NOT
+    // scrub-guarded and would otherwise advance chapterViewId past the solo chapter on this same
+    // tick, defeating the identity guard below) and AFTER enforceChapterLoop (Loop chapter outranks
+    // the exit: with Loop on the loop seeks back and this never reaches the boundary; the
+    // isLoopEnabled guard is belt-and-braces).
+    // Gate r2 (adversary): the fire window is BOUNDED (band + delta), not "any t past end-0.25". A
+    // deliberate forward SEEK into a later chapter - the WHEEL scrub, the seek-bar `change`, or a
+    // MediaSession `seekto` (the last two are NOT wheel scrubs, so the isScrubbing() guard misses
+    // them) - jumps `t` far past the boundary with a large delta from the frozen lastExitTime, which
+    // the band/delta test rejects; reflectChapter (next in the tick) then advances chapterViewId off
+    // the solo chapter, and the mismatch clear below drops the intent. Exactly enforceChapterLoop's
+    // v1.240/v1.279 shape, for the same reason.
+    // v1.311 gate r3: does a LATER chapter of the SAME backing file sit after index `i`? "Exit after
+    // this bit" only applies when there is a rest-of-the-album to skip. A chapter with no later
+    // sibling (the last chapter, OR a chapter whose only successors are appended non-chapter station
+    // tracks) is handled by the normal last-index/ended station-on, so it is never solo - which
+    // avoids both the double-prime and jumping over the visible up-next.
+    function laterSameBaseChapterExists(item, i) {
+      if (!item || item.source !== 'library-chapter') return false;
+      var base = String(item.id).replace(/::c\d+$/, '');
+      for (var j = i + 1; j < queue.length; j++) {
+        var q = queue[j];
+        if (q && q.source === 'library-chapter' && String(q.id).replace(/::c\d+$/, '') === base) return true;
+      }
+      return false;
+    }
+    var EXIT_MAX_STEP = 4; // a normal playback step; a seek/scrub jumps far more (mirrors LOOP_MAX_STEP)
+    function enforceChapterExit() {
+      if (!soloChapterExitId) return;
+      // mid-scrub: freeze lastExitTime (return before updating it) so the post-release far-delta tick
+      // is rejected below - mirror enforceChapterLoop's live-scrub skip.
+      if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return;
+      var pl = window.FileTube && window.FileTube.player;
+      try { if (pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()) return; } catch (_) { return; }
+      // The displayed chapter is no longer the solo one (a seek/jump moved past it and reflect
+      // advanced it) - the "just this bit" intent no longer applies. Clear it.
+      if (chapterViewId !== soloChapterExitId) { soloChapterExitId = null; soloExitPicks = null; return; }
+      var b = currentChapterBounds(); if (!b) return;
+      var mp = hostCtl('media-player'); if (!mp) return;
+      var t = Number(mp.currentTime) || 0;
+      var last = lastExitTime;
+      lastExitTime = t; // track playback so the NEXT tick's delta is meaningful (frozen only by the scrub-skip above)
+      // (1) the end BAND [end-0.25, end+1): a normal-speed tick landing at/just past the boundary.
+      var inBand = (t >= b.end - 0.25 && t < b.end + 1 && t > b.start);
+      // (2) a SPARSE-but-normal step that jumped the tight band (iOS throttles timeupdate): the
+      //     previous tick was inside this chapter and this one is just past its end. A far SEEK gives
+      //     a huge delta (frozen `last` during a wheel scrub, or a raw jump for the seek-bar) -> rejected.
+      var crossed = (last >= b.start && last < b.end && t >= b.end && (t - last) > 0 && (t - last) <= EXIT_MAX_STEP);
+      if (!(inBand || crossed)) return;
+      var soloId = soloChapterExitId;
+      var picks = soloExitPicks;
+      soloChapterExitId = null; soloExitPicks = null; // ONE-SHOT: clear before any load so a re-entrant tick can't re-fire
+      // Gate r3 (adversary F1b): if the queue ALREADY has an entry after this file's chapters (a
+      // station the play-all extend appended, and one the user can SEE in up-next), station on to
+      // THAT - never append a second station over it and skip the visible rows (v1.254 see-and-skip).
+      // Append the pre-fetched picks ONLY when the album is genuinely the queue tail.
+      var base = String(soloId).replace(/::c\d+$/, '');
+      var lastChapIdx = -1;
+      for (var j = 0; j < queue.length; j++) {
+        var q = queue[j];
+        if (q && q.source === 'library-chapter' && String(q.id).replace(/::c\d+$/, '') === base) lastChapIdx = j;
+      }
+      var afterIdx = lastChapIdx + 1;
+      if (lastChapIdx >= 0 && afterIdx < queue.length) {
+        playAt(afterIdx, { keepPosition: true }); // land on the first EXISTING up-next row past the album
+        return;
+      }
+      if (!picks || !picks.length) return; // no existing station AND nothing pre-fetched -> degrade to a straight-through listen
+      var startIdx = queue.length;
+      queue = queue.concat(picks); // the album is the tail: append the station (existing rows' data-index unchanged)
+      playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
+    }
     var chapterReflectBound = false;
     function ensureChapterReflect() {
       if (chapterReflectBound) return;
@@ -1115,7 +1214,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // (where the skin, hence ensureSkinReflect, never engages). timeupdate is enough - the
       // chapter boundary is a position threshold. enforceChapterLoop is bound FIRST so a loop
       // seek-back lands before reflectChapter can advance the displayed chapter past the boundary.
+      // enforceChapterExit is bound between them (v1.311): after the loop (Loop chapter outranks the
+      // exit) and before reflect (so the solo-chapter identity guard still holds on the boundary tick).
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
+      mp.addEventListener('timeupdate', enforceChapterExit, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
     }
     // v1.278 (Dean): the "Watch" way back, hoisted from the sticker config so the desktop
@@ -1436,7 +1538,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var row = e.target.closest('.mnp-queue-row');
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);
-        if (!isNaN(idx)) playAt(idx);
+        if (!isNaN(idx)) playAt(idx, { soloChapter: true }); // v1.311: an up-next row tap is a single-chapter SELECT (exit after that segment)
       }, { signal: signal });
     }
 
@@ -2234,6 +2336,21 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.237: a real load resets the chapter-view baseline - to the loaded chapter for a
       // chaptered file (the watcher advances it as playback rolls), else null (not chaptered).
       chapterViewId = isChapter ? item.id : null;
+      // v1.311 (Dean, first-class chapters): a chapter SELECTED from a list (opts.soloChapter) is a
+      // first-class track - play THIS segment, then exit the album and station on. The album's Play
+      // button and every nav/continue/resume path leave opts.soloChapter falsy, so they play the
+      // shared file straight through as before. Every load re-derives the flag, so a play-all or a
+      // non-chapter track clears any prior solo intent; the station is pre-fetched for a zero-latency
+      // hand-off at the segment boundary (enforceChapterExit).
+      // Gate r1/r3 (adversary+qa): solo applies ONLY when a LATER chapter of the same file exists to
+      // skip. The last chapter - or a chapter whose only successors are appended non-chapter station
+      // tracks (a play-all extend already ran) - has no rest-of-album to skip, so its "exit after that
+      // bit" IS the normal last-index/ended station-on; priming it too would double-fetch and jump the
+      // visible up-next. laterSameBaseChapterExists is chapter-based, not queue-tail-based (r3 F1b).
+      soloChapterExitId = (opts.soloChapter && laterSameBaseChapterExists(item, i)) ? item.id : null;
+      soloExitPicks = null;
+      lastExitTime = -1; // fresh segment: no prior tick, so the first boundary delta can't be a stale carry
+      if (soloChapterExitId) primeSoloExitStation(item);
       applyPlayingHighlight();
       // v1.106 (Dean): SELECTING a track opens the EXPANDED now-playing view
       // (mount FULL into #player-slot) instead of the docked mini-player - the
@@ -2303,6 +2420,67 @@ if (typeof module !== 'undefined' && module.exports) {
     var AUTOPLAY_APPEND_COUNT = 5;   // tracks appended per exhaustion
     var AUTOPLAY_ARTIST_MAX = 3;     // cap on the ARTIST-ARM picks (the library fill may add more same-artist)
     var autoplayFetchInFlight = false;
+    // v1.311: the picker's fetch+pick core, extracted so BOTH consumers - the end-of-queue
+    // extension (maybeExtendQueueForAutoplay) AND the solo-chapter exit (primeSoloExitStation) -
+    // route through ONE truth (the "hand-copied sibling drifts" bug class). Same-artist first,
+    // then a shuffled library page, then a RECYCLE arm that relaxes the no-repeat rule rather than
+    // ending in silence (QA S3, Dean's radio intent). Excludes what's already queued + everything
+    // this session has played. Best-effort: a fetch failure just yields fewer picks, never throws.
+    async function fetchAutoplayPicks(cur) {
+      var exclude = {};
+      for (var q = 0; q < queue.length; q++) exclude[queue[q].id] = true;
+      for (var s = 0; s < autoplayPlayedIds.length; s++) exclude[autoplayPlayedIds[s]] = true;
+      var seed = String(Date.now() % 100000);
+      var picks = [];
+      function takeFrom(items, cap) {
+        for (var k = 0; k < items.length && picks.length < cap; k++) {
+          var t = items[k];
+          if (!t || !t.id || exclude[t.id]) continue;
+          exclude[t.id] = true;
+          picks.push(t);
+        }
+      }
+      if (cur.artist) {
+        try {
+          var a = await fetchJson('/api/music?artist=' + encodeURIComponent(cur.artist) + '&sort=random&seed=' + seed + '&limit=30');
+          takeFrom((a && a.items) || [], AUTOPLAY_ARTIST_MAX);
+        } catch (_) { /* artist arm is best-effort */ }
+      }
+      var libItems = [];
+      if (picks.length < AUTOPLAY_APPEND_COUNT) {
+        try {
+          var lib = await fetchJson('/api/music?sort=random&seed=' + seed + '&limit=60');
+          libItems = (lib && lib.items) || [];
+          takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
+        } catch (_) { /* library arm is best-effort */ }
+      }
+      // RECYCLE arm (QA S3, Dean's radio intent): a fully-played library must not end in silence -
+      // his original complaint recurring at library scale. When BOTH arms produced nothing, relax
+      // the no-repeat rule to "not what's in the queue right now" and re-walk the already-fetched
+      // library page. No extra request.
+      if (picks.length === 0 && libItems.length) {
+        exclude = {};
+        for (var q2 = 0; q2 < queue.length; q2++) exclude[queue[q2].id] = true;
+        takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
+      }
+      return picks;
+    }
+    // v1.311 (Dean, first-class chapters): pre-fetch the station a SELECTED chapter will exit to,
+    // so the boundary hand-off (enforceChapterExit) is instant instead of stalling on a fetch while
+    // the shared file audibly bleeds into the next chapter. Guarded so a superseding play (a newer
+    // chapter tap, a non-chapter load, or a view teardown) drops the stale picks.
+    function primeSoloExitStation(item) {
+      if (!item || item.listen || !autoplayEnabled()) return; // listen-mode excluded; no station without autoplay
+      // No in-flight guard: a rapid re-tap (chapter A then B) must be able to prime B even while A's
+      // fetch is still out. Concurrent fetches are cheap and best-effort; the forId staleness check
+      // is the arbiter, so only the LATEST solo selection's picks are ever stored (last write wins).
+      var forId = item.id;
+      Promise.resolve(fetchAutoplayPicks(item)).then(function (picks) {
+        if (signal.aborted) return;             // this VIEW instance was torn down mid-fetch
+        if (soloChapterExitId !== forId) return; // a newer play superseded this solo selection
+        soloExitPicks = (picks && picks.length) ? picks : null;
+      }, function () { /* best-effort */ });
+    }
     async function maybeExtendQueueForAutoplay(i) {
       if (i < 0 || i !== queue.length - 1) return;   // only the LAST track arms it
       if (!autoplayEnabled()) return;
@@ -2311,42 +2489,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (autoplayFetchInFlight) return;
       autoplayFetchInFlight = true;
       try {
-        var exclude = {};
-        for (var q = 0; q < queue.length; q++) exclude[queue[q].id] = true;
-        for (var s = 0; s < autoplayPlayedIds.length; s++) exclude[autoplayPlayedIds[s]] = true;
-        var seed = String(Date.now() % 100000);
-        var picks = [];
-        function takeFrom(items, cap) {
-          for (var k = 0; k < items.length && picks.length < cap; k++) {
-            var t = items[k];
-            if (!t || !t.id || exclude[t.id]) continue;
-            exclude[t.id] = true;
-            picks.push(t);
-          }
-        }
-        if (cur.artist) {
-          try {
-            var a = await fetchJson('/api/music?artist=' + encodeURIComponent(cur.artist) + '&sort=random&seed=' + seed + '&limit=30');
-            takeFrom((a && a.items) || [], AUTOPLAY_ARTIST_MAX);
-          } catch (_) { /* artist arm is best-effort */ }
-        }
-        var libItems = [];
-        if (picks.length < AUTOPLAY_APPEND_COUNT) {
-          try {
-            var lib = await fetchJson('/api/music?sort=random&seed=' + seed + '&limit=60');
-            libItems = (lib && lib.items) || [];
-            takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
-          } catch (_) { /* library arm is best-effort */ }
-        }
-        // RECYCLE arm (QA S3, Dean's radio intent): a fully-played library must not end
-        // in silence - his original complaint recurring at library scale. When BOTH arms
-        // produced nothing, relax the no-repeat rule to "not what's in the queue right
-        // now" and re-walk the already-fetched library page. No extra request.
-        if (picks.length === 0 && libItems.length) {
-          exclude = {};
-          for (var q2 = 0; q2 < queue.length; q2++) exclude[queue[q2].id] = true;
-          takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
-        }
+        var picks = await fetchAutoplayPicks(cur);
         // TOCTOU (the v1.104/v1.105 class): re-check the REAL preconditions after the
         // awaits. QA gate W2: the queue-tail check alone is NOT enough - a same-queue
         // track switch mid-fetch (playAt never mutates `queue`) would pass it, and the
@@ -2486,7 +2629,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // and next/prev walk the album. This is the SAME path as clicking the album
     // card (drill = album -> render()), just triggered by playing a track;
     // reusing render() keeps the queue/browseCtx/sort/observer machinery intact.
-    async function playTrackInAlbum(item) {
+    async function playTrackInAlbum(item, opts) {
+      // v1.311: `opts.solo` = the user tapped ONE chapter row (exit after that segment). A
+      // continue-listening / open-from-home resume (playTrackFromContinue) passes no opts and
+      // plays the album straight through - it is NOT a single-chapter select.
+      var solo = !!(opts && opts.solo);
       var myGen = ++playSelectGen; // claim this select BEFORE the async album load
       drill = { type: 'album', key: item.albumKey, label: item.album || 'Album' };
       await render(); // loads the album into `queue` + renders the drill (render never throws)
@@ -2505,10 +2652,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // it.
         queue = [item];
         renderSongList();
-        playAt(0);
+        playAt(0, { soloChapter: solo });
         return;
       }
-      playAt(ai);
+      playAt(ai, { soloChapter: solo }); // v1.311: a row-tap select exits after this chapter; a resume plays through
     }
 
     // A fresh user SELECT of a song row. Unless the track has no album, or we
@@ -2527,10 +2674,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // the INTERACTIVE path only; the ?play= init path calls playTrackInAlbum
         // directly (no push -> no per-load history spam).
         pushDrillLevel({ type: 'album', key: item.albumKey, label: item.album || 'Album' });
-        playTrackInAlbum(item);
+        playTrackInAlbum(item, { solo: true }); // v1.311: a row tap = a single-chapter SELECT
         return;
       }
-      playAt(i);
+      playAt(i, { soloChapter: true }); // v1.311: an in-album chapter re-tap = exit after that segment
     }
 
     // v1.252 (Dean, LISTEN-MODE): play a VIDEO as audio in the full music presentation.
