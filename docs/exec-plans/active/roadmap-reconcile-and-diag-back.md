@@ -48,3 +48,11 @@ Branch `docs/roadmap-reconcile`, base `eba2ce8f` (main, v1.311.0).
 
 ## Gate
 
+
+Gate: CHANGES r1 @b929ad8e — adversary
+- W1 diag-page-nav test: deep-link reachability unbound - mutants "experimental section `hidden`" and "section not a direct .md-root child" stay 4/4 green, yet selectFromHash then no-ops (lands at top of Settings). Bind by driving wireMasterDetail on the REAL setup.html at /setup.html#experimental (asserts md-active=experimental, data-md-open=true; verified this passes at HEAD).
+- W2 diag-page-nav test: "must be visible" binds only the `hidden` attr - `.back { display: none }` and an inline `style="display:none"` both survive. Bind the .back rule + no style attr, or drop the claim.
+- S1 A4 names the 512 png; dropping it survives (want-list omits /icons/icon-512.png).
+- S2 ROADMAP fs-btn reason cites v1.133; #fs-btn order:9 is v1.50.5 (fec3f807), #settings-btn order:8 is v1.112 (ca6f6ba3). v1.133 only pinned prev/next.
+- S3 A1 "original text kept verbatim" is false for the channel-capture item (body rewritten: #16-18 -> #16, #18, sentence moved, "All" -> "Both"). Keep the original body verbatim + append the note, or amend A1.
+- S4 tech-debt tracker row #16 still sits in Active with no status change while ROADMAP records it ACCEPTED per Dean - reconcile the tracker (ROADMAP defers to it).
