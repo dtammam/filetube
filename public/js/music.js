@@ -628,6 +628,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // instant (the v1.254 "append EARLY" posture). Both null on any play-all / nav / non-chapter load.
   var soloChapterExitId = null;
   var soloExitPicks = null;
+  // v1.311 gate r2: the playhead position enforceChapterExit saw on its PREVIOUS non-scrub tick, so
+  // a FAR seek past the segment end (a seek-bar/MediaSession jump into a later chapter) is rejected
+  // by delta exactly the way enforceChapterLoop's lastLoopTime rejects a far scrub. Reset on arm.
+  var lastExitTime = -1;
   // v1.217 (in-view back-stack): the LIVE onPopState handler for the mounted
   // init() closure (it needs init's `drill`/render/setActiveTab). Module-scoped
   // so the stable module.onPopState the router calls can delegate to whichever
@@ -1128,26 +1132,42 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.311 (Dean, first-class chapters): a chapter SELECTED from a list plays only its OWN
     // segment and then EXITS the album, stationing on to a related new track - it must not bleed
     // into the rest of the shared file the way the album's Play button (a straight-through listen)
-    // does. When the playhead reaches the selected chapter's end boundary, hand off to the
-    // pre-fetched station. Bound to timeupdate BEFORE reflectChapter (which is NOT scrub-guarded and
-    // would otherwise advance chapterViewId past the solo chapter on this same tick, defeating the
-    // identity guard below) and AFTER enforceChapterLoop (Loop chapter outranks the exit: with Loop
-    // on the loop seeks back and this never reaches the boundary; the isLoopEnabled guard is the
-    // belt-and-braces). A deliberate forward SCRUB past the solo chapter (reflect advances the
-    // displayed chapter during the drag) cancels the exit intent - you overrode "just this bit".
+    // does. When the playhead reaches the selected chapter's end boundary by NORMAL playback, hand
+    // off to the pre-fetched station. Bound to timeupdate BEFORE reflectChapter (which is NOT
+    // scrub-guarded and would otherwise advance chapterViewId past the solo chapter on this same
+    // tick, defeating the identity guard below) and AFTER enforceChapterLoop (Loop chapter outranks
+    // the exit: with Loop on the loop seeks back and this never reaches the boundary; the
+    // isLoopEnabled guard is belt-and-braces).
+    // Gate r2 (adversary): the fire window is BOUNDED (band + delta), not "any t past end-0.25". A
+    // deliberate forward SEEK into a later chapter - the WHEEL scrub, the seek-bar `change`, or a
+    // MediaSession `seekto` (the last two are NOT wheel scrubs, so the isScrubbing() guard misses
+    // them) - jumps `t` far past the boundary with a large delta from the frozen lastExitTime, which
+    // the band/delta test rejects; reflectChapter (next in the tick) then advances chapterViewId off
+    // the solo chapter, and the mismatch clear below drops the intent. Exactly enforceChapterLoop's
+    // v1.240/v1.279 shape, for the same reason.
+    var EXIT_MAX_STEP = 4; // a normal playback step; a seek/scrub jumps far more (mirrors LOOP_MAX_STEP)
     function enforceChapterExit() {
       if (!soloChapterExitId) return;
-      // mid-scrub: do not hand off on a stale/live drag tick (mirror enforceChapterLoop's guard).
+      // mid-scrub: freeze lastExitTime (return before updating it) so the post-release far-delta tick
+      // is rejected below - mirror enforceChapterLoop's live-scrub skip.
       if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return;
       var pl = window.FileTube && window.FileTube.player;
       try { if (pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()) return; } catch (_) { return; }
-      // The playhead moved OFF the solo chapter without hitting its boundary here (a scrub jump,
-      // or a jump the loop-band missed) - the "just this bit" intent no longer applies. Clear it.
+      // The displayed chapter is no longer the solo one (a seek/jump moved past it and reflect
+      // advanced it) - the "just this bit" intent no longer applies. Clear it.
       if (chapterViewId !== soloChapterExitId) { soloChapterExitId = null; soloExitPicks = null; return; }
       var b = currentChapterBounds(); if (!b) return;
       var mp = hostCtl('media-player'); if (!mp) return;
       var t = Number(mp.currentTime) || 0;
-      if (t < b.end - 0.25) return; // not at the segment end yet
+      var last = lastExitTime;
+      lastExitTime = t; // track playback so the NEXT tick's delta is meaningful (frozen only by the scrub-skip above)
+      // (1) the end BAND [end-0.25, end+1): a normal-speed tick landing at/just past the boundary.
+      var inBand = (t >= b.end - 0.25 && t < b.end + 1 && t > b.start);
+      // (2) a SPARSE-but-normal step that jumped the tight band (iOS throttles timeupdate): the
+      //     previous tick was inside this chapter and this one is just past its end. A far SEEK gives
+      //     a huge delta (frozen `last` during a wheel scrub, or a raw jump for the seek-bar) -> rejected.
+      var crossed = (last >= b.start && last < b.end && t >= b.end && (t - last) > 0 && (t - last) <= EXIT_MAX_STEP);
+      if (!(inBand || crossed)) return;
       var picks = soloExitPicks;
       soloChapterExitId = null; soloExitPicks = null; // ONE-SHOT: clear before any load so a re-entrant tick can't re-fire
       if (!picks || !picks.length) return; // no station available (autoplay off, or the picker came back empty) -> degrade to a straight-through listen
@@ -2292,8 +2312,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // shared file straight through as before. Every load re-derives the flag, so a play-all or a
       // non-chapter track clears any prior solo intent; the station is pre-fetched for a zero-latency
       // hand-off at the segment boundary (enforceChapterExit).
-      soloChapterExitId = (isChapter && opts.soloChapter) ? item.id : null;
+      // Gate r1 (adversary+qa): EXCLUDE the LAST queue entry - a solo select of the last chapter has
+      // no later chapter to skip, so its "exit after that bit" IS the normal end-of-file station-on
+      // that maybeExtendQueueForAutoplay (armed on the last index) + the ended-advance already
+      // deliver. Priming here too would double-fetch and append DUPLICATE station tracks, jumping the
+      // visible up-next. `i < queue.length - 1` = there is a real later chapter this solo will skip.
+      soloChapterExitId = (isChapter && opts.soloChapter && i >= 0 && i < queue.length - 1) ? item.id : null;
       soloExitPicks = null;
+      lastExitTime = -1; // fresh segment: no prior tick, so the first boundary delta can't be a stale carry
       if (soloChapterExitId) primeSoloExitStation(item);
       applyPlayingHighlight();
       // v1.106 (Dean): SELECTING a track opens the EXPANDED now-playing view
