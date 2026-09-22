@@ -3094,5 +3094,11 @@
     "date": "2026-09-22",
     "title": "Pop-up panels no longer bleed content over their headers as you scroll",
     "intent": "Finished off a class of small visual glitches where scrolling a pop-up list - notifications, the play queue, or the playlists sheet - could briefly draw a thumbnail or its time badge over the panel’s title bar or spill it past the rounded top corners. These panels now keep the header fixed and scroll cleanly underneath it, so nothing bleeds over the top. There is also a new automatic check that stops this kind of glitch from creeping back in."
+  },
+  {
+    "version": "1.311.0",
+    "date": "2026-09-22",
+    "title": "Chaptered albums play on to the next album, and tapping one chapter plays just that part",
+    "intent": "When you play a chaptered album (a single file split into parts) and let it run with ‘Loop chapter’ off, it now carries on to a related album at the end instead of quietly starting itself over. And if you tap a single chapter from the list, it plays just that part and then moves on to something new, rather than rolling through the rest of the file. Chapters now behave like real tracks."
   }
 ]

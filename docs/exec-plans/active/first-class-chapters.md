@@ -54,6 +54,16 @@ index) never fired. Clicking the last row worked only because that `playAt` re-r
 - DISCLOSED degrade: with autoplay OFF (or the picker empty), a solo chapter has no station,
   so it plays straight through (old behavior) - no forced stop in v1.
 
+- Gate: APPROVED r3 @312f9993443f2b0871bf73ab5a959b2b38a9bc19 - adversary (Fable). Full suite
+  6838/6838, lint 0 errors, tree byte-identical. r2 findings fixed-as-prescribed (F1b both halves,
+  F2 both tests now red M7); F5 drain harness proven non-vacuous (N12 reds both reveal tests). 1
+  WARNING disclosed non-blocking -> tracker: in an INTERLEAVED shuffle-all queue the existing-station
+  exit lands after the LAST same-base chapter (skips rows between), AND that flow is already broken
+  pre-diff (currentChapterBounds derives the segment from the QUEUE, not the file's chapter list, so a
+  solo tap there already bleeds) - a separate wave: (a) afterIdx = first non-same-base entry > i;
+  (b) derive chapter bounds from the file's chapter list. 2 SUGGESTIONs (crossed-arm N2, same-base
+  clause N1b/c). GATE CLEARED: adversary APPROVED r3 + qa APPROVED r2 (F5 addressed in r3).
+
 ## Verification (builder, pre-gate)
 Node 22 full unit suite 6831/6831. `music-chapter-reflect.test.js` 24/24 (5 new v1.311
 behavioral tests: 2 loop-fix axes, 3 solo-exit axes). ESLint 0 errors.
