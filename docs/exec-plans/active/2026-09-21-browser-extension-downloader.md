@@ -319,7 +319,21 @@ Gate: APPROVED r1 @7636c5ed — qa
 Gate: APPROVED r1 @7636c5ed — adversary
 ```
 
-- **security-brief:** no CRITICAL/HIGH/MEDIUM/LOW. Token never sent to any origin but the configured instance (endpoint derived from stored instanceUrl; tab URL only in the body); no content scripts / externally_connectable, so no page/content-script can read the token or drive the worker; manifest permissions minimal (activeTab + storage; origin-scoped optional host permission, gesture-gated); no secret logged; verbatim-error relay can't crash on non-JSON. 3 INFO advisories: fetch `redirect:'error'` hardening, http-instance plaintext caveat, all advisory.
+### r2 delta re-confirmation @ d6c45c49
+
+Delta since r1 (all landed after the r1 sha): `e5a3d4be` icons+manifest, `688daa21` popup "known-supported sites" positive hint, `7afde5fa` the sticky notif/queue panel-header z-index fix + its guard, `d6c45c49` README + extension/README docs. The approved auth core is byte-identical (`git diff 7636c5ed..d6c45c49 -- lib/ server.js extension/background.js extension/ftClient.js` is EMPTY). All required seats APPROVED at the reviewed sha.
+
+```
+Gate: APPROVED r2 @d6c45c49 — security-brief
+Gate: APPROVED r2 @d6c45c49 — qa
+Gate: APPROVED r2 @d6c45c49 — adversary
+```
+
+- **security-brief (r2):** no CRITICAL/HIGH/MEDIUM/LOW; none of the three r1 concerns regressed. popup hint has no network / no token access / no new permissions, DOM writes via `textContent`, `recognizeSite` suffix-match has no lookalike bypass and is non-gating anyway; manifest permissions unchanged (activeTab+storage, optional origin-scoped host perm); no secret in docs/icons; CSS is presentation-only. (Seat had no Bash - CSS confirmed by file read + no active constructs; adversary/qa covered it by diff/mutation.) r1 INFO advisories carry forward unchanged.
+- **qa (r2):** panel-chrome-mirror 10/10 (incl. both new z-index guards AND the declaration-identical mirror lock) and ftClient 6/6, each on Node 24.14.0 AND 22.23.1; `npm run lint` 0 errors / 7 pre-existing warnings (none in touched files). recognizeSite verified hint-only with no false positives (notyoutube.com/youtube.com.evil.com→false; m.youtube.com→true); buttons stay enabled for unrecognized hosts; manifest valid MV3 with all four PNG icons; doc claims + file map accurate. Tree byte-identical.
+- **adversary (r2):** MUTATION-VERIFIED the z-index guard in a `git archive` sandbox - strip from BOTH headers → the two guards go RED while the mirror lock stays GREEN (proving the direct binding is necessary); strip from one → mirror + that guard RED. Sticky-scan claim confirmed (the 4 sticky rules all carry a z-index). popup hint executed against hostile/unrecognized inputs → `ok:true` unchanged, no host newly blocked. Icons/manifest/docs all verified against the tree. 1 non-blocking SUGGESTION (carried from r1's coverage theme): recognizeSite/KNOWN_SITES remain popup-local, outside the node:test net - optional move into ftClient.js for a committed regression test; carries no security weight.
+
+- **security-brief (r1):** no CRITICAL/HIGH/MEDIUM/LOW. Token never sent to any origin but the configured instance (endpoint derived from stored instanceUrl; tab URL only in the body); no content scripts / externally_connectable, so no page/content-script can read the token or drive the worker; manifest permissions minimal (activeTab + storage; origin-scoped optional host permission, gesture-gated); no secret logged; verbatim-error relay can't crash on non-JSON. 3 INFO advisories: fetch `redirect:'error'` hardening, http-instance plaintext caveat, all advisory.
 - **qa:** contract PROVEN against source (lib/auth/gate.js:244 token path for exactly POST /api/ytdlp/download; lib/ytdlp/index.js download handler; empty-url test truly 400s before queuing); ftClient tests 6/6 on Node 22.23.1 AND 24.20.0; lint 0 errors; doc claims accurate; extension not in the Docker image. No new attack surface.
 - **adversary:** sandbox mutation proved coverage real (drop token header / method / format / normalization / guards all RED); lint override tightly scoped (verified via `eslint --print-config`, does not leak to server.js); token/origin binding holds under hostile scenarios. 1 SUGGESTION (M7: a 202-without-`accepted` mutant survives - benign, worth a one-line test).
 
