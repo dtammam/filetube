@@ -3088,5 +3088,11 @@
     "date": "2026-09-22",
     "title": "Notification header scroll fix, part two: the time badge no longer overlaps it",
     "intent": "A follow-up to the last release: the small duration time on a notification’s thumbnail (like “1:38:12”) could still briefly overlap the ‘Notifications’ header while you scrolled the list. Now it stays inside its own row, so the header stays clean as you scroll."
+  },
+  {
+    "version": "1.310.0",
+    "date": "2026-09-22",
+    "title": "Pop-up panels no longer bleed content over their headers as you scroll",
+    "intent": "Finished off a class of small visual glitches where scrolling a pop-up list - notifications, the play queue, or the playlists sheet - could briefly draw a thumbnail or its time badge over the panel’s title bar or spill it past the rounded top corners. These panels now keep the header fixed and scroll cleanly underneath it, so nothing bleeds over the top. There is also a new automatic check that stops this kind of glitch from creeping back in."
   }
 ]
