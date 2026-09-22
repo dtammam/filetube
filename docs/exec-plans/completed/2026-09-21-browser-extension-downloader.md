@@ -3,9 +3,9 @@ plan: browser-extension-downloader
 harness: v2 · spec
 branch: feat/downloader-extension
 anchor: spec
-status: Building
-next: Dean confirmed it works end-to-end (YouTube tested). D9 DONE - the FileTube cube logo (from public/icons/icon-512.png, resized to 16/32/48/128) added under extension/icons/ + wired into manifest icons + action.default_icon. This changed the code AFTER the r1 gate, so a DELTA re-confirm at the new sha is needed before merge (delta = static PNG assets + a manifest icons block; the logic was already 3/3 APPROVED @7636c5ed). Then merge/release on Dean's go. Also added (Dean request): the popup recognizes ~12 well-known sites (YouTube/Vimeo/SoundCloud/Twitch/TikTok/etc.) and shows a green "supported site" line + an always-visible supported-sites footer hint - a POSITIVE hint only, never a gate (unrecognized hosts stay enabled and let yt-dlp decide). `recognizeSite`/`KNOWN_SITES` are popup-local; consider moving them into the pure `ftClient.js` for node:test coverage during the merge delta. Still-deferred nits: D8 CI wiring, M7 test, options.js prior-origin permission cleanup, optional fetch redirect:'error'.
-gate: APPROVED r1 @7636c5ed (STALE - icons added after; delta re-confirm pending at the new sha before merge)
+status: Shipped v1.309.0
+next: SHIPPED in v1.309.0 (bundled with the notif/queue sticky-header z-index fix). Deferred nits carry forward: D8 (extension tests not in the `npm test` glob - add a `test:extension` CI step), M7 (a 202-without-`accepted` test), options.js prior-origin permission cleanup, optional fetch redirect:'error', and the r2 SUGGESTION (move `recognizeSite`/`KNOWN_SITES` from popup-local into the pure `ftClient.js` for node:test coverage).
+gate: APPROVED r2 @d6c45c49 (adversary, qa, security-brief); r1 @7636c5ed was the auth core
 design: Approved 2026-09-21 @7636c5ed
 ---
 

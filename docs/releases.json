@@ -3076,5 +3076,11 @@
     "date": "2026-09-21",
     "title": "Queued chaptered videos now move on to the next item instead of repeating",
     "intent": "If you added a chaptered video - like an album or a long mix played as audio - to your queue and let it finish, it used to jump back into the same video instead of moving on to the next thing you had lined up. Now a chaptered video that reaches its end, or when you press Next, correctly advances to the next item in your queue."
+  },
+  {
+    "version": "1.309.0",
+    "date": "2026-09-22",
+    "title": "Notification list scroll glitch fixed; a companion browser extension",
+    "intent": "Fixed a visual glitch in the notifications panel where a video thumbnail could briefly draw over the ‘Notifications’ header while you scrolled — the header now stays cleanly on top. This release also adds a companion browser extension for Chromium browsers (Chrome, Edge, Brave): from any tab it sends the current page to your FileTube instance as an audio or video download. It is a load-it-yourself developer extension, documented in the README."
   }
 ]
