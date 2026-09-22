@@ -109,6 +109,26 @@ for (const sel of ['.notif-panel-header', '.queue-panel-header']) {
   });
 }
 
+// The header z-index alone is NOT sufficient (Dean, second on-device report):
+// the notif rows' `.duration-badge` is `position: absolute; z-index: 2` (base
+// rule ~line 1630). `.notif-row-thumb-wrap` is only `position: relative`, which
+// does NOT create a stacking context, so the badge's z-index:2 escapes to the
+// panel root and beats the header's z-index:1 - the "1:38:12" badge bled across
+// the header even after the header fix. `.notif-row-thumb-wrap` must establish a
+// stacking context (isolation / z-index / transform / opacity<1 / filter) so the
+// badge is contained WITHIN the row and the header always wins. Bind that.
+test('.notif-row-thumb-wrap establishes a stacking context so the z-index:2 duration badge cannot escape over the sticky header', () => {
+  const decls = declarations(STYLE_CSS, '.notif-row-thumb-wrap');
+  const createsStackingContext = decls.some((d) =>
+    /^isolation: isolate$/.test(d) ||
+    /^z-index: \S/.test(d) ||
+    /^transform: (?!none$)\S/.test(d) ||
+    /^filter: (?!none$)\S/.test(d) ||
+    /^opacity: 0?\.\d/.test(d));
+  assert.ok(createsStackingContext,
+    '.notif-row-thumb-wrap must create a stacking context (e.g. isolation: isolate) - otherwise the absolute z-index:2 .duration-badge inside it paints OVER the sticky panel header');
+});
+
 // ---- the queue empty posture (comment-stripped source locks) ----------------
 
 const STRIPPED_COMMON = COMMON_JS

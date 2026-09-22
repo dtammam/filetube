@@ -12678,6 +12678,13 @@ html[data-modern="on"] .video-uploader {
   position: relative;
   flex-shrink: 0;
   line-height: 0; /* token-exempt: kill the inline-image baseline gap */
+  /* Contain the child .duration-badge's z-index:2 WITHIN the row. Without a
+     stacking context here, position:relative alone does not create one, so the
+     badge's z-index:2 escapes to the panel root and paints OVER the sticky
+     .notif-panel-header (z-index:1) as the row scrolls under it (Dean device
+     report - the header z-index fix beat the plain thumb but not the badge).
+     isolate flattens the row's internal stacking so the header always wins. */
+  isolation: isolate;
 }
 
 /* The SAME .duration-badge system as the cards, scaled to the 72x40 notif thumb
