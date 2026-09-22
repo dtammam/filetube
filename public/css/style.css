@@ -3566,6 +3566,7 @@ select {
 }
 
 .folder-list-builder {
+  /* corner-clip-safe: in-flow Setup config list, not an overlay edge; a lifted drag row's transform is transient */
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);
   border-radius: var(--radius);
@@ -4126,7 +4127,7 @@ a.sub-row-channel-link:focus-visible {
      tall-modal improvement, not a regression. */
   max-height: calc(100vh - var(--space-16));
   max-height: calc(100dvh - var(--space-16) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  overflow-y: auto;
+  overflow-y: auto; /* corner-clip-safe: centered modal, no sticky/absolute descendant; the open scale-in is a transient transform on the clip box itself */
   /* Keep the last row (Save/Cancel) clear of the PWA home-indicator when the
      modal is scrolled to its bottom -- same idiom as the mobile nav/sheet. */
   padding-bottom: calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
@@ -4184,6 +4185,7 @@ a.sub-row-channel-link:focus-visible {
   max-width: 720px; /* token-exempt: layout geometry (modal width cap) */
 }
 .transcript-textarea {
+  /* corner-clip-safe: native <textarea>, replaced content with no child boxes to escape the corners */
   width: 100%;
   min-height: 40vh; /* token-exempt: layout geometry (viewport-relative height) */
   font-family: var(--mono-font);
@@ -4584,7 +4586,7 @@ a.sub-row-channel-link:focus-visible {
      the page behind it) so a short viewport (a phone in landscape, or a
      small desktop window) never clips the Download button off-screen. */
   max-height: 85vh;
-  overflow-y: auto;
+  overflow-y: auto; /* corner-clip-safe: centered modal, no sticky/absolute/transform descendant */
 }
 
 .oneoff-modal-header {
@@ -5576,23 +5578,33 @@ a.sub-row-channel-link:focus-visible {
      fade) -- `translateY(100%)` (fully off-screen, below the viewport) to
      `translateY(0)` on `.sheet-open`. */
   .playlists-sheet:not([hidden]) {
-    display: block;
+    display: flex; /* v1.310 anti-bleed: column = static header + inner scrolling list (was block+overflow-y:auto on the rounded sheet = iOS corner-clip escape) */
+    flex-direction: column;
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: calc(var(--z-sheet) + 1); /* the sheet rides one above its own backdrop (--z-sheet) */
     max-height: 70vh;
-    overflow-y: auto;
+    overflow: hidden; /* clip children to the rounded top; the LIST scrolls, not the sheet */
     background: var(--bg-sidebar);
     border-top: 1px solid var(--border-color);
     border-top-left-radius: var(--radius-lg);
     border-top-right-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
-    padding-bottom: env(safe-area-inset-bottom);
     font-family: var(--font-family);
     transform: translateY(100%);
     transition: transform var(--dur-fast) ease-out;
+  }
+
+  /* v1.310 anti-bleed: the scroll region. overflow + the safe-area pad live
+     HERE (no border-radius); min-height:0 lets the flex item shrink so the list
+     scrolls instead of the sheet overflowing. The header stays pinned above it. */
+  .playlists-sheet-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .playlists-sheet:not([hidden]).sheet-open {
@@ -6991,7 +7003,7 @@ body.ft-audio-expanded {
   min-width: 220px;
   max-width: 80%;
   max-height: 45vh;
-  overflow-y: auto;
+  overflow-y: auto; /* corner-clip-safe: small popover, plain block items, no positioned descendant */
   background: var(--header-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
@@ -7138,6 +7150,7 @@ body.ft-audio-expanded {
   justify-content: flex-end; /* slide up from the bottom */
 }
 .speed-sheet {
+  /* corner-clip-safe: capped menu that never scrolls in practice, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list on a short viewport) */
   background: var(--header-bg);
   border-top: 1px solid var(--border-dark);
   border-radius: var(--radius) var(--radius) 0 0;
@@ -8509,7 +8522,7 @@ body.ft-audio-expanded {
   box-shadow: var(--shadow-lg);
   box-sizing: border-box;
   max-height: 85vh;
-  overflow-y: auto;
+  overflow-y: auto; /* corner-clip-safe: centered modal, no sticky/absolute/transform descendant */
 }
 
 .hard-delete-modal-title {
@@ -8726,7 +8739,7 @@ body.ft-audio-expanded {
   margin-bottom: var(--space-3);
   padding: var(--space-4);
   max-height: 60vh;
-  overflow-y: auto;
+  overflow-y: auto; /* corner-clip-safe: only animated child is a width-based fill inside an inner overflow:hidden track - cannot reach the corners */
   background-color: var(--bg-color);
   border-top: 1px solid var(--border-dark);
   border-left: 1px solid var(--border-dark);
@@ -11088,7 +11101,7 @@ html[data-modern="on"] .video-uploader {
      the mobile POSITIONING (bottom-anchored over the corner sticker; the tray overlay)
      stays in the @media (max-width:768px) block below. */
   .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
-  .mms-sticker-menu{ min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
+  .mms-sticker-menu{ min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
     background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--radius-lg); box-shadow:var(--shadow-modal); padding:var(--space-6); font-family:var(--font-family); }
   /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
      sets it explicitly (.account-menu-item, settings-menu-item, .md-row's font:inherit).
@@ -12459,7 +12472,9 @@ html[data-modern="on"] .video-uploader {
   width: 400px;
   max-width: calc(100vw - 32px);
   max-height: min(70vh, 560px);
-  overflow-y: auto;
+  display: flex; /* v1.310 anti-bleed: column = static header + inner scrolling list */
+  flex-direction: column;
+  overflow: hidden; /* clip children to the rounded corners; the LIST scrolls, not the panel - so no iOS rounded-corner clip-escape, and rows never scroll under the header */
   background: var(--bg-sidebar);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
@@ -12467,6 +12482,17 @@ html[data-modern="on"] .video-uploader {
   opacity: 0;
   transform: translateY(-6px);
   transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
+}
+
+/* v1.310 anti-bleed: the scroll region. overflow lives HERE (no border-radius),
+   never on the rounded .notif-panel - the split that stops the iOS corner-clip
+   escape. min-height:0 is load-bearing: a flex item defaults to min-height:auto
+   and refuses to shrink below its content, so without it the list never scrolls
+   and the panel overflows. */
+.notif-panel-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .notif-panel.notif-open {
@@ -13027,9 +13053,15 @@ html[data-modern="on"] .video-uploader {
     max-width: none;
     max-height: 70vh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding-bottom: env(safe-area-inset-bottom);
     transform: translateY(100%);
     transition: transform var(--dur-slow) var(--ease-ui);
+  }
+
+  /* v1.310 anti-bleed: the safe-area pad moved off the (now overflow:hidden)
+     panel onto the scrolling list, so the last row clears the home indicator
+     instead of scrolling into a clipped dead band. */
+  .notif-panel-list {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .notif-panel.notif-open {
@@ -13115,7 +13147,9 @@ html[data-modern="on"] .video-uploader {
   width: 400px;
   max-width: calc(100vw - 32px);
   max-height: min(70vh, 560px);
-  overflow-y: auto;
+  display: flex; /* v1.310 anti-bleed: mirrors .notif-panel - static header + inner scrolling list */
+  flex-direction: column;
+  overflow: hidden; /* clip children to the rounded corners; the LIST scrolls, not the panel (iOS corner-clip-safe) */
   background: var(--bg-sidebar);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
@@ -13123,6 +13157,15 @@ html[data-modern="on"] .video-uploader {
   opacity: 0;
   transform: translateY(-6px);
   transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
+}
+
+/* v1.310 anti-bleed: the scroll region (mirrors .notif-panel-list). overflow
+   lives HERE (no border-radius). min-height:0 lets the flex item shrink so the
+   list scrolls instead of the panel overflowing. */
+.queue-panel-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .queue-panel.queue-open {
@@ -13298,6 +13341,12 @@ html[data-modern="on"] .video-uploader {
     max-height: 75vh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     transform: translateY(12px);
+  }
+
+  /* v1.310 anti-bleed: home-indicator clearance on the scrolling list (parity
+     with .notif-panel-list). */
+  .queue-panel-list {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .queue-panel.queue-open {

@@ -103,6 +103,14 @@ blood more than once:
   `location.hash` directly); Express static-segment routes before `/:id`.
 - **Design-token census** — `npm run lint:css` ceiling is ZERO; new raw literals
   in governed properties must be tokenized or `token-exempt`-annotated.
+- **Overlay containment census (anti-bleed)** — `node scripts/overlay-containment-lint.js
+  --enforce` ceiling is ZERO. A rounded overlay that scrolls SPLITS clip from
+  scroll (`overflow:hidden` + `border-radius` on the outer element; `overflow:auto`
+  on an inner child with no radius) — combining them on one rule is the iOS
+  corner-clip-escape shape; exempt a proven-safe surface with `/* corner-clip-safe:
+  <reason> */`. Every `position:sticky` rule declares a `z-index`. Isolation stays
+  scoped to row/badge containers, never a large ancestor (#173). Full rule:
+  `docs/CONTRIBUTING.md`.
 
 ### Lessons / standing decisions
 - **The review gate is the floor and uses the harness seats.** Spawn the harness

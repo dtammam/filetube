@@ -10,6 +10,7 @@
     "test:unit": "node --require ./test/helpers/tmp-cleanup.js --test test/unit/*.test.js",
     "lint": "eslint .",
     "lint:css": "node scripts/css-token-lint.js",
+    "lint:overlay": "node scripts/overlay-containment-lint.js --enforce",
     "ledger:check": "node scripts/ledger-check.js",
     "audit:check": "node scripts/audit-check.js"
   },

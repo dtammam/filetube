@@ -65,6 +65,28 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
   derive with `calc(var(--z-X) +/- N)`. Never a new raw rung. Local
   in-component stacking (0-40 band) stays literal with a
   `token-exempt: local stacking` comment.
+- **Overlay containment (anti-bleed).** The z-ladder governs stacking BETWEEN
+  surfaces; these rules stop a surface bleeding over its OWN chrome (the class
+  behind v1.309-v1.310). Two invariants, enforced by the ratchet
+  `node scripts/overlay-containment-lint.js --enforce`
+  (`test/unit/overlay-containment.test.js`):
+  - **Split clip from scroll.** A rounded overlay that scrolls puts the
+    `border-radius` + `overflow:hidden` on the OUTER (clipping) element and the
+    `overflow:auto` on an INNER child that has NO `border-radius`. Combining a
+    non-zero `border-radius` with `overflow:auto/scroll` on one rule is the iOS
+    Safari rounded-corner clip-escape shape and FAILS the census. The panels and
+    sheets do this with a flex column: `overflow:hidden` on the panel, a static
+    header, and `overflow-y:auto; flex:1; min-height:0` on the list (see
+    `.notif-panel` / `.notif-panel-list`). A surface proven to have no
+    compositing-layer descendant that can reach a corner (a centered modal, a
+    native `<textarea>`, a short menu) is exempted with a
+    `/* corner-clip-safe: <reason> */` comment - the `token-exempt` convention.
+    Never "fix" a capped scroll menu by adding a bare `overflow:hidden`: that
+    clips its own content unreachable - split or exempt.
+  - **A `position:sticky` element declares a `z-index`** (else it paints under
+    later positioned siblings that scroll beneath it).
+  - Scope isolation (`isolation:isolate`) to small row/badge containers, NEVER a
+    large layout ancestor - it traps every fixed overlay inside it (tech-debt #173).
 - **The linter is the drift detector, and since v1.62.0 it is THE
   RATCHET:** the census reached ZERO at v1.61.0 and is enforced there -
   `node scripts/css-token-lint.js --enforce` runs in pre-commit and CI,
