@@ -86,6 +86,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.313.0 - Ambient glow polished: one soft halo, no band ends, no corner notches (2026-09-23)
+
+Dean's verdict on v1.312.0 (iPhone + desktop): the picture stays, but the glow "looks worse
+on hard borders/edges - look at the player corners". The eight CSS gradients (one averaged
+swatch per edge band / corner ellipse) had hard band ENDS where each one-axis fade stopped,
+a seam + notch where the bright corner cell showed through the player's 12px rounded
+corners, and a flat grey tint (one swatch per band + a 0.30 lightness floor). Now the
+sprite tile / poster is drawn STRETCHED over a 64x36 off-DOM bitmap that stands for the
+whole glow box, every pixel is lifted (floor 0.12), a rounded-rect vignette is written
+into the alpha channel (opaque under the player, zero on the outermost ring, hypot falloff
+at gamma 1.5 - the measured YouTube profile) and the PNG data URL becomes the layer's
+`background-image` at 100% 100% - the browser's bilinear upscale is the blur, YouTube's own
+mechanism (110x75 canvases under scale(1.5, 2)) minus the DOM canvas and the transform. The
+v1.312 constraint is untouched and still test-locked: the `<video>` is never read; no
+filter/transform/mask/will-change on any rule naming `ambient-glow` or `watch-player-stage`
+- and the locks now catch Safari's own spellings (`-webkit-filter`, `-webkit-backdrop-filter`,
+`-webkit-mask`, `scale`/`translate`, `FILTER:`, a `@keyframes` transform), the gate r1
+adversary finding. The CSS reach (12% / 22%) is test-bound to the JS constants (one number,
+no hand copy). Measured (headless Chromium, uniform-colour clip): the right and bottom
+edges are symmetric, the corner diagonal is dimmer than both edges at every fraction of the
+reach, the tint is continuous through the rounded-corner gap, and the halo is gone by 11%
+of the width / 18% of the height (YouTube ~11% / ~20%). Mutation rounds: 51 mutants, every
+non-equivalent one killed. Full gate (adversary + qa): r1 CHANGES on both, r2 APPROVED on
+both @cfa22480; four lock-quality suggestions ship DISCLOSED (tracker #232). Dual-Node
+8968/8968. **Shipped on Dean's "ship as is" BEFORE his iPhone check** - the falsifier
+(the picture goes black again with the bitmap glow) is still his phone's to rule on; R2
+(the faux-fullscreen drag page move) also awaits that pass.
+Plan: `docs/exec-plans/completed/2026-09-23-ambient-glow-polish.md`.
+
 ### v1.312.0 - Ambient mode rebuilt: the glow no longer blacks out video on iPhone (2026-09-23)
 
 Dean's device: with Ambient mode ON, EVERY video on his iPhone showed its picture for ~1s

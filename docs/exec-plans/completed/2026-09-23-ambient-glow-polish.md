@@ -3,8 +3,8 @@ plan: ambient-glow-polish
 harness: v2 · lean
 branch: fix/ambient-glow-polish
 anchor: spec
-status: Gate:APPROVED r2 @cfa22480
-next: Dean's call - (a) ship at cfa22480 with the four r2 lock-quality suggestions DISCLOSED (tech-debt tracker) or a round 3; (b) iPhone check before the tag or release straight; then release per docs/RELEASING.md
+status: Shipped v1.313.0
+next: Dean's iPhone check on v1.313.0 (ambient ON, dark: the picture stays inline + faux fullscreen; corners + band ends look right; R2 drag page move); if black returns, re-root-cause (never patch the theory). Lock-quality follow-ups = tracker #232
 design: Approved 2026-09-23 @cf3e65d3 (Dean: "go" on the plan as presented)
 gate: APPROVED r2 @cfa22480 — adversary, qa
 ---
