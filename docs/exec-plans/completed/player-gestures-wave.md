@@ -2,8 +2,8 @@
 
 Branch `fix/player-gestures`, base `22a313dc` (main, v1.311.1).
 
-status: Approved 2026-09-22 (Dean: "This all makes tons of sense. Please go.") · anchor: outcome · gate: FULL (adversary + qa)
-next: gate r1 fix round (both seats CHANGES) -> delta re-review r2 by the same seats.
+status: Shipped v1.311.2 (2026-09-23) · anchor: outcome · gate: FULL (adversary + qa) APPROVED r2 @bb9ac23c
+next: Dean's device pass (see ROADMAP v1.311.2); then #6 (bottom nav after rotate) only if it still reproduces.
 
 ## Intake (Dean, 2026-09-22, iPhone PWA, custom player controls ON)
 
@@ -184,3 +184,11 @@ Not changed, disclosed:
   so it is flagged for Dean.
 - ADV S5: the action-row probe cannot see the player overlay. Button absence there is
   bound by the census test, not by the probe.
+
+Fix-round mutants (@bb9ac23c, sandbox): R1 close() without the faux exit, R2a lock
+NET removed, R2b `.whcal-overlay` dropped, R3a chain re-arm removed, R3b last-tap
+re-arm removed, R4 cursor NET removed, R5 critter geometry back to raw scrollY,
+R6 QA's router hand-off deleted, R7 grace widened to +70ms, R8 `.btn` dropped,
+R9 lock left/right dropped: all 11 KILLED.
+Gate: APPROVED r2 @bb9ac23c — qa
+Gate: APPROVED r2 @bb9ac23c — adversary
