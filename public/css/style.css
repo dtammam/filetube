@@ -9054,9 +9054,30 @@ body.ft-audio-expanded {
    sideways while ambient runs. Clip X at the stage on mobile ONLY: overflow-y stays
    visible so the vertical glow above/below the player is preserved, desktop keeps
    the intended v1.188 sidebar bleed, and `clip` (not hidden) creates no containing
-   block, so the fixed .css-fullscreen overlay still escapes. */
+   block, so the fixed .css-fullscreen overlay still escapes.
+   v1.314 (Dean, iPhone: "look at left and right of ambient on mobile, make it
+   spread"): MEASURED at 390px (plan: ambient-mobile-spread-and-pace) the stage
+   box WAS the player box (x 16, w 358), so the clip edge sat ON the player's edge
+   and the 43px side reach was clipped to NOTHING - every gutter pixel read the
+   page colour. Removing the clip tints the gutter but grows scrollWidth 390 -> 417
+   (the sideways scroll above). So the stage grows by the page gutter on each side
+   (negative margin + matching padding: `.main-content`'s mobile padding, the same
+   --space-8 token) and the clip edge becomes the VIEWPORT edge - the glow fills
+   the gutter and nothing can overflow the page. Margin and padding create no
+   containing block (the fixed overlay still escapes; the phone probe checks it).
+   The glow's containing block is now that padding box, one gutter wider than the
+   player on each side, so its x insets are re-anchored below: the bitmap's inner
+   rectangle must still land exactly on the player (gutter minus the reach as a
+   fraction of the PLAYER's width = 100% minus two gutters). */
 @media (max-width: 768px) {
-  .watch-player-stage { overflow-x: clip; }
+  .watch-player-stage {
+    --ambient-gutter: var(--space-8);
+    overflow-x: clip;
+    margin-left: calc(-1 * var(--ambient-gutter));
+    margin-right: calc(-1 * var(--ambient-gutter));
+    padding-left: var(--ambient-gutter);
+    padding-right: var(--ambient-gutter);
+  }
 }
 /* THE GEOMETRY. The glow element is the player's box grown by the REACH on each
    side (negative insets: the stage is the containing block, so reach-y is a % of
@@ -9070,7 +9091,7 @@ body.ft-audio-expanded {
 .ambient-glow {
   --ambient-reach-x: 12%;
   --ambient-reach-y: 22%;
-  --ambient-fade: 1.2s;
+  --ambient-fade: 2.4s; /* = watch.js AMBIENT_FADE_MS (test-bound): the engine never repaints a layer mid-fade */
   --ambient-opacity: 0.3; /* MEASURED (Step 4): 0.55 peaked ~3x YouTube's edge; 0.3 lands on its ~+25/255 */
   position: absolute;
   top: calc(-1 * var(--ambient-reach-y)); /* token-exempt: glow reach (geometry), not a spacing token */
@@ -9083,11 +9104,25 @@ body.ft-audio-expanded {
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
 .ambient-glow.is-on { opacity: var(--ambient-opacity); }
+/* v1.314 MOBILE x insets (the stage grew by the gutter above). This block must
+   sit AFTER the base rule: same specificity, so source order decides - an
+   earlier copy was inert and the probe measured the glow at -12% of the
+   viewport (x -46.8) instead of -12% of the player (x -27.0). Test-bound. */
+@media (max-width: 768px) {
+  .ambient-glow {
+    left: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = watch.js AMBIENT_REACH_X (test-bound) */
+    right: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = watch.js AMBIENT_REACH_X (test-bound) */
+  }
+}
 /* One layer = one painted source. watch.js sets the vignetted PNG data URL as
    the BACK layer's background-image, then swaps `is-front`, so a tile change is
-   a cross-fade, never a pop (YouTube cross-fades two canvases continuously; a
-   1.2s fade on a 2-10s tile cadence keeps the "gently shifting" feel without a
-   permanent animation). The bitmap is stretched to the whole layer (its inner
+   a cross-fade, never a pop (YouTube cross-fades two canvases continuously, one
+   swap per ~3.5s). v1.314 (Dean: "ambient changes too much and is slow"): the
+   fade is 2.4s and the engine now SMOOTHS in media time (each tile is blended
+   into the running field with a 15s time constant), absorbs a step that barely
+   moves the field, and never repaints a layer before its fade has ended - so a
+   swap is a small, slow drift, never a visible morph to a new picture. The
+   bitmap is stretched to the whole layer (its inner
    rectangle IS the player's box); an unpainted layer has no image and stays
    invisible. No image-rendering override: the default bilinear upscale is the
    softness. */

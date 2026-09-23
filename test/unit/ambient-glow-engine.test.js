@@ -158,6 +158,9 @@ function makeLayer(name) {
   l.classList = { add: (c) => l.classes.add(c), remove: (c) => l.classes.delete(c), contains: (c) => l.classes.has(c) };
   return l;
 }
+// The fake tile colour: the tile's position (sx + sy) decides its red - tile 0 is
+// [40,80,120], row 1 col 0 (sy 180) [73.75,80,120], row 1 col 1 (sx 320 + sy 180) [133.75,80,120].
+const TILE_RED = (shade) => Math.min(255, 40 + (shade / 320) * 60);
 function harness(opts) {
   const layers = [makeLayer('A'), makeLayer('B')];
   const glow = { querySelectorAll: () => layers };
@@ -165,11 +168,12 @@ function harness(opts) {
   const timers = [];
   const draws = [];
   let shade = 0;
+  let wall = 0; // the injected wall clock (ms); tick() advances it by the clock period
   const puts = []; // every putImageData's buffer (the vignetted bitmap the PNG is made of)
   const ctx = {
-    drawImage(...args) { draws.push(args); shade = args[1] + args[2]; }, // the tile position (sx + sy) decides the colour below
+    drawImage(...args) { draws.push(args); shade = args[1] + args[2]; },
     getImageData(x, y, w, h) {
-      return { data: paintedBuffer(w, h, () => [Math.min(255, 40 + (shade / 320) * 20), 80, 120]), width: w, height: h };
+      return { data: paintedBuffer(w, h, () => [TILE_RED(shade), 80, 120]), width: w, height: h };
     },
     putImageData(id) { puts.push(id.data); },
   };
@@ -196,15 +200,26 @@ function harness(opts) {
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearTimeout: (id) => { if (timers[id - 1]) timers[id - 1].cancelled = true; },
     clockMs: 1000,
+    now: () => wall,
+    fadeMs: opts && 'fadeMs' in opts ? opts.fadeMs : undefined,
+    smoothTauS: opts && 'smoothTauS' in opts ? opts.smoothTauS : undefined,
+    minDelta: opts && 'minDelta' in opts ? opts.minDelta : undefined,
     onHardFail: () => { hardFails++; },
   });
-  const tick = () => { const t = timers.pop(); assert.ok(t && !t.cancelled, 'a live clock is armed'); timers.length = 0; t.fn(); };
+  // One clock period: the wall advances 1s, then the armed tick runs (the real
+  // setTimeout order). Tests that need the fade gap (2.4s) to have passed tick
+  // past it, exactly as the production clock would.
+  const tick = () => { const t = timers.pop(); assert.ok(t && !t.cancelled, 'a live clock is armed'); timers.length = 0; wall += 1000; t.fn(); };
   const settle = () => new Promise((r) => setImmediate(r));
   const front = () => layers.find((l) => l.classes.has('is-front')) || null;
   const release = () => { const r = pendingLoads.splice(0); r.forEach((fn) => fn()); };
   const liveTimers = () => timers.filter((t) => !t.cancelled).length;
-  return { engine, layers, video, timers, draws, loads, tick, settle, front, images, release, liveTimers, hardFails: () => hardFails, ctx, canvas, puts };
+  // The centre pixel (under the player, alpha 255) of the last written bitmap = the lifted running field.
+  const centre = () => { const b = puts[puts.length - 1]; const i = (18 * 64 + 32) * 4; return [b[i], b[i + 1], b[i + 2]]; };
+  return { engine, layers, video, timers, draws, loads, tick, settle, front, images, release, liveTimers, hardFails: () => hardFails, ctx, canvas, puts, centre, wall: () => wall };
 }
+// Tick the clock past the fade gap so the next source change can paint at once.
+async function pastFade(h) { for (let i = 0; i < 3; i++) { h.tick(); await h.settle(); } }
 
 test('v1.312 gate F1: the engine with the tv REAL shape (mediaId null, artUrl) LOADS and paints the poster', async () => {
   const h = harness({ mediaId: null, mediaData: TV_DESCRIPTOR, images: { '/tvposter/show1': { naturalWidth: 600, naturalHeight: 900 } } });
@@ -233,26 +248,132 @@ test('v1.312 engine: start() loads the sprite and paints the FIRST tile onto a l
   assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 320, 180, 0, 0, 64, 36], 'tile 0 = the top-left 320x180 cell of the 3200x720 sprite, stretched over the 64x36 bitmap');
 });
 
-test('v1.312 engine: a tile change swaps the front layer with NEW colours; the same tile on the clock paints NOTHING', async () => {
+test('v1.312 engine: a tile change swaps the front layer with NEW colours; the same tile on the clock paints NOTHING (v1.314: never inside the fade, smoothed in media time, a tiny step absorbed)', async () => {
   const h = harness();
   h.engine.start(); await h.settle();
   const first = h.front();
+  assert.deepStrictEqual(h.centre(), W.ambientLift([40, 80, 120]), 'the first paint IS tile 0 (no history -> a snap)');
   h.tick(); await h.settle();
   assert.strictEqual(h.draws.length, 1, 'same tile (t=0) on the next clock -> no re-sample');
   assert.strictEqual(h.front(), first, 'and no layer swap');
   h.video.currentTime = 27; // frame 10 -> column 0, row 1
   h.tick(); await h.settle();
-  assert.strictEqual(h.draws.length, 2, 'a new tile index -> one new sample');
+  // v1.314: the previous cross-fade (2.4s) is still running at wall 2s - the tile WAITS
+  assert.strictEqual(h.wall(), 2000);
+  assert.strictEqual(h.draws.length, 1, 'a tile that lands inside the fade is NOT sampled yet (the back layer is still fading out)');
+  assert.strictEqual(h.engine.painted().index, 0, 'and is not marked: the next clock re-checks it');
+  h.tick(); await h.settle();
+  assert.strictEqual(h.wall(), 3000);
+  assert.strictEqual(h.draws.length, 2, 'past the fade: a new tile index -> one new sample');
   assert.deepStrictEqual(h.draws[1].slice(1, 5), [0, 180, 320, 180], 'row 1 column 0 of the sprite');
   const second = h.front();
   assert.notStrictEqual(second, first, 'the OTHER layer is now the front (a cross-fade, never a pop)');
   assert.notStrictEqual(second.vars['background-image'], first.vars['background-image'], 'with a DIFFERENT bitmap (the new tile)');
   assert.ok(!first.classes.has('is-front'), 'the old front stepped back');
   assert.strictEqual(h.engine.painted().index, 10);
-  h.video.currentTime = 29; // still frame 11? 29/2.5 = 11.6 -> frame 11 -> a change
+  // v1.314 SMOOTHING: the painted field is NOT tile 10 - it is tile 0 moved toward tile 10 by
+  // 1 - exp(-27s / tau): the glow drifts in media time instead of morphing to each new picture.
+  const k1 = W.ambientSmoothing(27, W.AMBIENT_SMOOTH_TAU_S);
+  const acc1 = 40 + k1 * (TILE_RED(180) - 40);
+  assert.ok(k1 > 0.8 && k1 < 0.9, 'a 27s jump is nearly a snap: ' + k1);
+  assert.deepStrictEqual(h.centre(), W.ambientLift([Math.round(acc1), 80, 120]), 'the bitmap carries the BLENDED field (' + acc1.toFixed(2) + '), not the raw tile (' + TILE_RED(180) + ')');
+  h.video.currentTime = 29; // 29/2.5 = 11.6 -> frame 11 (column 1, row 1): a change, 2s of media later
+  h.tick(); await h.settle(); h.tick(); await h.settle();
+  assert.strictEqual(h.draws.length, 2, 'inside the new fade (wall 4s, 5s vs a paint at 3s): still waiting');
   h.tick(); await h.settle();
-  assert.strictEqual(h.engine.painted().index, 11);
-  assert.strictEqual(h.front(), first, 'alternates back');
+  assert.strictEqual(h.wall(), 6000);
+  assert.strictEqual(h.draws.length, 3, 'past the fade: tile 11 sampled');
+  assert.deepStrictEqual(h.draws[2].slice(1, 5), [320, 180, 320, 180], 'row 1 column 1');
+  // 2s of media at tau 15s blends in ~12% of tile 11: the field moves ~2.7/255 - UNDER the threshold
+  const k2 = W.ambientSmoothing(2, W.AMBIENT_SMOOTH_TAU_S);
+  const acc2 = acc1 + k2 * (TILE_RED(500) - acc1);
+  assert.ok((acc2 - acc1) / 3 < W.AMBIENT_MIN_DELTA, 'the step is below the threshold: ' + ((acc2 - acc1) / 3).toFixed(2));
+  assert.strictEqual(h.engine.painted().index, 11, 'the absorbed tile is MARKED (never re-sampled)');
+  assert.strictEqual(h.front(), second, 'but NO layer swap: a step this small is absorbed, not cross-faded (the churn Dean saw)');
+  assert.strictEqual(h.puts.length, 2, 'and no bitmap was encoded for it');
+  h.tick(); await h.settle();
+  assert.strictEqual(h.draws.length, 3, 'the absorbed tile is not sampled again on the next clock');
+  h.video.currentTime = 31; // frame 12 (column 2, row 1): the field keeps integrating...
+  h.tick(); await h.settle();
+  assert.strictEqual(h.draws.length, 4);
+  const acc3 = acc2 + W.ambientSmoothing(2, W.AMBIENT_SMOOTH_TAU_S) * (TILE_RED(820) - acc2);
+  assert.ok((acc3 - acc1) / 3 >= W.AMBIENT_MIN_DELTA, '...until the accumulated drift crosses the threshold: ' + ((acc3 - acc1) / 3).toFixed(2));
+  assert.strictEqual(h.engine.painted().index, 12);
+  assert.strictEqual(h.front(), first, 'alternates back: the drift is painted as ONE small cross-fade');
+  assert.deepStrictEqual(h.centre(), W.ambientLift([Math.round(acc3), 80, 120]), 'carrying the whole accumulated field (the absorbed tile included)');
+});
+
+test('v1.314 pure: ambientSmoothing / ambientBlend / ambientMeanDelta', () => {
+  assert.strictEqual(W.AMBIENT_SMOOTH_TAU_S, 15, 'the pace knob: a 15s media-time constant');
+  assert.strictEqual(W.AMBIENT_MIN_DELTA, 4, 'the absorb threshold (mean |change| per channel, 0-255)');
+  assert.strictEqual(W.AMBIENT_FADE_MS, 2400, 'the cross-fade = the minimum paint gap');
+  const s = (dt) => W.ambientSmoothing(dt, W.AMBIENT_SMOOTH_TAU_S);
+  assert.strictEqual(s(undefined), 1, 'no history -> a snap');
+  assert.strictEqual(s(NaN), 1);
+  assert.strictEqual(s(0), 0, 'no media time passed -> no movement');
+  assert.ok(Math.abs(s(2) - 0.1248) < 0.001, 'a 2s tile cadence moves ~12% per tile: ' + s(2));
+  assert.ok(Math.abs(s(10) - 0.4866) < 0.001, 'a 10s cadence ~49%: ' + s(10));
+  assert.ok(s(36) > 0.9, 'an hour-long clip\'s 36s tiles are nearly a snap: ' + s(36));
+  assert.ok(s(60) > 0.98, 'a seek a minute away snaps');
+  assert.strictEqual(s(-2), s(2), 'a backward step blends by |dt|');
+  assert.ok(W.ambientSmoothing(2, 30) < W.ambientSmoothing(2, 15), 'a larger tau is lazier');
+  assert.strictEqual(W.ambientSmoothing(2, 0), s(2), 'tau <= 0 falls back to the constant');
+  // blend: no field -> a copy (weight ignored); a field -> acc += (new - acc) * k, per channel, alpha ignored
+  const rgba = (r, g, b) => new Uint8ClampedArray([r, g, b, 255, r, g, b, 255]);
+  const a0 = W.ambientBlend(null, rgba(40, 80, 120), 0.1, 2);
+  assert.ok(a0 instanceof Float32Array && a0.length === 6);
+  assert.deepStrictEqual([...a0], [40, 80, 120, 40, 80, 120], 'the first tile is copied whole');
+  const a1 = W.ambientBlend(a0, rgba(140, 80, 20), 0.25, 2);
+  assert.strictEqual(a1, a0, 'blended IN PLACE (no per-paint allocation)');
+  assert.deepStrictEqual([...a1], [65, 80, 95, 65, 80, 95], '25% of the way: 40 -> 65, 120 -> 95');
+  assert.deepStrictEqual([...W.ambientBlend(a1, rgba(140, 80, 20), 1, 2)], [140, 80, 20, 140, 80, 20], 'k=1 snaps');
+  assert.deepStrictEqual([...W.ambientBlend(new Float32Array(3), rgba(9, 9, 9), 0.5, 2)], [9, 9, 9, 9, 9, 9], 'a field of the wrong size is replaced, not blended');
+  assert.strictEqual(W.ambientMeanDelta(a1, null), Infinity, 'nothing shown yet -> paint');
+  assert.strictEqual(W.ambientMeanDelta(new Float32Array([1, 2, 3]), new Float32Array([1, 2])), Infinity, 'mismatched -> paint');
+  assert.strictEqual(W.ambientMeanDelta(new Float32Array([10, 20, 30]), new Float32Array([13, 14, 36])), 5, 'mean |delta| over every channel');
+});
+
+test('v1.314 engine: a RUNG change (sprite -> poster) SNAPS the field - the poster paints as itself, never blended with the old sprite field', async () => {
+  // The descriptor is read LAZILY by the engine (getMediaData), so it can change mid-view: here the
+  // storyboard geometry disappears and the ladder falls to the thumbnail rung (a different url/kind).
+  let media = VIDEO_ITEM;
+  const h = harness({ get mediaData() { return media; }, images: { '/storyboard/vid1': { naturalWidth: 3200, naturalHeight: 720 }, '/thumbnail/vid1': { naturalWidth: 640, naturalHeight: 360 } } });
+  h.engine.start(); await h.settle();
+  await pastFade(h);
+  h.video.currentTime = 27; h.tick(); await h.settle(); // tile 10: the field moves to ~68 red
+  const moved = h.centre();
+  assert.notDeepStrictEqual(moved, W.ambientLift([40, 80, 120]), 'the field has moved away from tile 0');
+  await pastFade(h);
+  media = { id: 'vid1', type: 'video', duration: 100 }; // no storyboard -> the poster (/thumbnail/vid1), fake colour [40,80,120]
+  h.tick(); await h.settle(); await h.settle();
+  assert.strictEqual(h.engine.painted().kind, 'image');
+  assert.deepStrictEqual(h.draws[h.draws.length - 1].slice(1, 5), [0, 0, 640, 360], 'the whole poster');
+  // dt is 0 here (same media time), so a same-rung blend would have moved NOTHING (k = 0) and kept ~68;
+  // a rung change carries weight 1 regardless of dt.
+  assert.deepStrictEqual(h.centre(), W.ambientLift([40, 80, 120]), 'the poster paints as itself (weight 1 on a rung change)');
+});
+
+test('v1.314 engine: the fade gap is bound to the CSS cross-fade, and a paint deferred by it lands on the next clock with the tile of NOW', async () => {
+  const layer = glowRules().find((r) => r.selector === '.ambient-glow-layer');
+  assert.match(layer.body, /transition:\s*opacity var\(--ambient-fade\) linear/);
+  const base = glowRules().find((r) => r.selector === '.ambient-glow' && /--ambient-fade/.test(r.body));
+  const fade = /--ambient-fade:\s*([0-9.]+)s/.exec(base.body);
+  assert.ok(fade, '--ambient-fade declared in seconds');
+  assert.strictEqual(Number(fade[1]) * 1000, W.AMBIENT_FADE_MS, 'the CSS fade and the engine\'s minimum paint gap are ONE number (a shorter gap repaints the back layer while it is still fading out = a pop)');
+  assert.ok(W.AMBIENT_FADE_MS > W.AMBIENT_CLOCK_MS, 'the fade outlasts the clock, so the gap really defers');
+  const h = harness();
+  h.engine.start(); await h.settle();
+  h.video.currentTime = 27; h.tick(); await h.settle(); // wall 1s: deferred
+  h.video.currentTime = 52; h.tick(); await h.settle(); // wall 2s: still deferred (frame 20)
+  assert.strictEqual(h.draws.length, 1);
+  h.tick(); await h.settle(); // wall 3s
+  assert.strictEqual(h.draws.length, 2);
+  assert.strictEqual(h.engine.painted().index, 20, 'the tile of NOW (t=52), never the tile that was deferred (t=27)');
+  // a zero gap (the reduced-motion shape is CSS-side; here the knob itself) paints on the very next clock
+  const z = harness({ fadeMs: 0 });
+  z.engine.start(); await z.settle();
+  z.video.currentTime = 27; z.tick(); await z.settle();
+  assert.strictEqual(z.draws.length, 2, 'fadeMs 0 -> no deferral');
 });
 
 test('v1.312 engine: stop() cancels the clock; start() again re-arms; a stopped engine ignores a late image', async () => {
@@ -313,6 +434,7 @@ test('v1.312 gate F4 (M13): a SYNC sample throw on the clock never re-arms the c
   const h = harness();
   h.engine.start(); await h.settle();
   assert.ok(h.front(), 'first tile painted with a healthy canvas');
+  await pastFade(h);
   h.ctx.getImageData = () => { throw new Error('canvas gone'); }; // the image is cached now, so the next sample is synchronous inside tick()
   h.video.currentTime = 27;
   h.tick();
@@ -360,6 +482,7 @@ test('v1.313 gate QA-2: a toDataURL that yields no PNG (WebKit\'s "data:," on an
 test('v1.312 THE CONSTRAINT: the engine never hands the VIDEO element to drawImage - only the loaded image', async () => {
   const h = harness();
   h.engine.start(); await h.settle();
+  await pastFade(h);
   h.video.currentTime = 27; h.tick(); await h.settle();
   assert.ok(h.draws.length >= 2);
   for (const d of h.draws) {
@@ -385,6 +508,13 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /requestAnimationFrame/, 'no frame-loop residency (the v1.187.2 cost floor)');
   assert.match(ENGINE_SRC, /timerId = setT\(tick, clockMs\)/, 'a plain 1s clock');
   assert.strictEqual(W.AMBIENT_CLOCK_MS, 1000);
+  // v1.314: the pace pipeline is IN the engine's sample/check path (not a green helper nothing calls)
+  assert.match(ENGINE_SRC, /acc = ambientBlend\(sameRung \? acc : null, id\.data, k, n\)/, 'every sample is blended into the running field; a rung change starts a fresh one');
+  assert.match(ENGINE_SRC, /var k = sameRung && lastT !== null \? ambientSmoothing\(t - lastT, smoothTauS\) : 1/, 'the weight comes from the MEDIA time since the last integrated sample');
+  assert.match(ENGINE_SRC, /if \(ambientMeanDelta\(acc, shown\) < minDelta\) return \{ skip: true \}/, 'a step under the threshold is absorbed before any vignette/encode');
+  assert.match(ENGINE_SRC, /if \(now\(\) - lastPaintAt < fadeMs\) return;/, 'no paint inside the previous fade');
+  assert.match(ENGINE_SRC, /if \(bitmap\.skip\) \{ painted = \{ kind: src\.kind, url: src\.url, index: src\.index \}; return; \}/, 'an absorbed tile is marked, never swapped');
+  assert.doesNotMatch(ENGINE_SRC, /new Date|performance\.now/, 'wall time comes only through the injected now()');
 });
 
 test('v1.312 WIRING LOCK: setupAmbientMode builds the engine from the view (lazy mediaData, the player\'s storyboard geometry, an OFF-DOM canvas) and funnels start/stop', () => {
@@ -415,18 +545,32 @@ test('v1.312 WIRING LOCK: setupAmbientMode builds the engine from the view (lazy
   assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /ambient-level-row|settings-menu-select|data-ambient="/, 'no ladder CSS (rows, picker, rungs)');
 });
 
-// Every rule whose selector mentions .ambient-glow, comment-stripped, as {selector, body}.
+// The comment-stripped sheet and the character ranges of every `@media (max-width: 768px)`
+// block in it (brace-balanced), so a rule can be told MOBILE from base (v1.314: the glow
+// has a mobile override with the same selector).
+const CSS_STRIPPED = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+const MOBILE_RANGES = (() => {
+  const out = [];
+  const re = /@media \(max-width:\s*768px\)\s*\{/g;
+  let m;
+  while ((m = re.exec(CSS_STRIPPED))) {
+    let depth = 1, i = m.index + m[0].length;
+    for (; i < CSS_STRIPPED.length && depth > 0; i++) { if (CSS_STRIPPED[i] === '{') depth++; else if (CSS_STRIPPED[i] === '}') depth--; }
+    out.push([m.index, i]);
+  }
+  return out;
+})();
+const inMobile = (idx) => MOBILE_RANGES.some(([a, b]) => idx > a && idx < b);
+// Every rule whose selector mentions .ambient-glow, comment-stripped, as {selector, body, mobile}.
 function glowRules() {
-  const css = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
-  return [...css.matchAll(/([^{}]*\.ambient-glow[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+  return [...CSS_STRIPPED.matchAll(/([^{}]*\.ambient-glow[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2], mobile: inMobile(m.index + m[0].indexOf('{')), index: m.index + m[0].indexOf('{') }));
 }
 // Gate r1 (adversary F3): the constraint must cover EVERY rule that can reach the glow
 // or the video's ancestor stage - by id, by class, by child/attribute selectors, or
 // via the stage itself (`#ambient-glow {…}`, `.watch-player-stage > div:first-child`,
 // a `transform` on `.watch-player-stage` all shipped gate-green under the class-only sweep).
 function stageAndGlowRules() {
-  const css = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
-  return [...css.matchAll(/([^{}]*(?:ambient-glow|watch-player-stage)[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+  return [...CSS_STRIPPED.matchAll(/([^{}]*(?:ambient-glow|watch-player-stage)[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2], mobile: inMobile(m.index + m[0].indexOf('{')) }));
 }
 
 test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a filter / transform / mask / backdrop-filter / will-change (the second iOS suspect)', () => {
@@ -450,7 +594,7 @@ test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a f
 });
 
 test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the reach re-expressed in ELEMENT terms; ONE YouTube-matched opacity, no ladder', () => {
-  const base = glowRules().find((r) => r.selector === '.ambient-glow');
+  const base = glowRules().find((r) => r.selector === '.ambient-glow' && !r.mobile);
   assert.ok(base, 'the base rule');
   const num = (body, name) => { const m = new RegExp('--ambient-' + name + ':\\s*([0-9.]+)%').exec(body); assert.ok(m, name + ' declared'); return Number(m[1]); };
   const check = (body, label) => {
@@ -476,6 +620,55 @@ test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the
   // 0.3 lands on YouTube. Dean, 2026-09-23: "YouTube style", no ladder.
   assert.ok(op >= 0.25 && op <= 0.35, 'the single opacity sits at YouTube\'s measured peak (0.3), not the old 0.55: ' + op);
   assert.strictEqual(glowRules().filter((r) => /data-ambient=/.test(r.selector)).length, 0, 'no rung rules remain');
+});
+
+// v1.314 (Dean, iPhone: "look at left and right of ambient on mobile, make it spread").
+// MEASURED (plan: ambient-mobile-spread-and-pace, headless Chromium at 390x844): the
+// stage box WAS the player box (x 16, w 358) and the v1.194.3 `overflow-x: clip` sat on
+// it, so the 43px side reach was clipped to NOTHING - every gutter pixel read the page
+// [18,18,18]; removing the clip tinted the gutter but grew scrollWidth 390 -> 417 (the
+// sideways scroll). The fix moves the CLIP EDGE to the viewport edge: the stage grows by
+// the page gutter (negative margin + matching padding) and the glow's x insets are
+// re-anchored so its bitmap still lands exactly on the player.
+test('v1.314 CSS MOBILE SPREAD: the stage clip edge is the VIEWPORT edge (grown by the page gutter) and the glow x insets are re-anchored on the player - geometry identical to desktop', () => {
+  const stage = stageAndGlowRules().find((r) => r.selector === '.watch-player-stage' && r.mobile);
+  assert.ok(stage, 'the mobile stage rule exists inside a max-width: 768px block');
+  assert.match(stage.body, /overflow-x:\s*clip/, 'the v1.194.3 clip stays (nothing may overflow the page sideways)');
+  assert.doesNotMatch(stage.body, /overflow-y|overflow:\s*hidden|overflow:\s*clip/, 'x only: the vertical bloom must survive');
+  assert.match(stage.body, /--ambient-gutter:\s*var\(--space-8\)/, 'the gutter is a token, --space-8');
+  // ...and it is THE token .main-content pads with on mobile (a hand-copy of the gutter would drift)
+  const mainMobile = [...CSS_STRIPPED.matchAll(/\.main-content\s*\{([^}]*)\}/g)].filter((m) => inMobile(m.index));
+  assert.ok(mainMobile.some((m) => /padding:\s*var\(--space-8\);/.test(m[1])), '.main-content pads var(--space-8) on mobile: the gutter the stage grows into');
+  for (const side of ['left', 'right']) {
+    assert.match(stage.body, new RegExp('margin-' + side + ':\\s*calc\\(-1 \\* var\\(--ambient-gutter\\)\\)'), 'margin-' + side + ' pulls the stage to the viewport edge');
+    assert.match(stage.body, new RegExp('padding-' + side + ':\\s*var\\(--ambient-gutter\\)'), 'padding-' + side + ' keeps the player where it was');
+  }
+  assert.doesNotMatch(stage.body, /position|z-index|width|height/, 'nothing else moves on the stage (position/z-index stay on the base rule)');
+  const glowM = glowRules().find((r) => r.selector === '.ambient-glow' && r.mobile);
+  assert.ok(glowM, 'the mobile glow override exists');
+  // THE CASCADE (measured: an override placed BEFORE the base rule was inert - same
+  // specificity, so source order decides - and the probe read the glow at -12% of the
+  // VIEWPORT, x -46.8, instead of -12% of the player, x -27.0). Bind the order.
+  const glowBase = glowRules().find((r) => r.selector === '.ambient-glow' && !r.mobile);
+  assert.ok(glowM.index > glowBase.index, 'the mobile .ambient-glow override comes AFTER the base rule in the sheet, or the base left/right win the cascade');
+  assert.match(glowBase.body, /left:\s*calc\(-1 \* var\(--ambient-reach-x\)\)/, 'and the base rule still declares the desktop insets it must override');
+  const fracs = [];
+  for (const side of ['left', 'right']) {
+    const m = new RegExp(side + ':\\s*calc\\(var\\(--ambient-gutter\\) - \\(100% - 2 \\* var\\(--ambient-gutter\\)\\) \\* ([0-9.]+)\\)').exec(glowM.body);
+    assert.ok(m, side + ' is re-anchored: gutter minus the reach as a fraction of the PLAYER width (100% minus two gutters)');
+    fracs.push(Number(m[1]));
+  }
+  for (const f of fracs) assert.strictEqual(f, W.AMBIENT_REACH_X, 'the mobile x reach fraction equals watch.js AMBIENT_REACH_X (the vignette\'s inner rectangle)');
+  assert.doesNotMatch(glowM.body, /top:|bottom:|--ambient-reach|--ambient-opacity|--ambient-fade|overflow/, 'only the x insets change on mobile (the padding is horizontal, so the y reach is still a % of the player height)');
+  // The numbers: at a 390px viewport with a 16px gutter the mobile formula puts the glow's edge
+  // exactly where the base formula puts it for the 358px player - the glow is byte-identical
+  // (probe: x -27.0, w 443.9 both before and after); only the CLIP box changed (358 -> 390).
+  const vw = 390, g = 16, player = vw - 2 * g;
+  const baseLeft = -W.AMBIENT_REACH_X * player;                 // relative to the player's left edge
+  const mobileLeft = g - (vw - 2 * g) * fracs[0];               // relative to the stage padding box = the viewport
+  assert.ok(Math.abs((mobileLeft - g) - baseLeft) < 1e-9, 'same glow edge: ' + (mobileLeft - g) + ' vs ' + baseLeft);
+  assert.ok(-baseLeft > g, 'the reach (' + (-baseLeft).toFixed(1) + 'px) exceeds the gutter (' + g + 'px): the whole gutter is lit to the screen edge');
+  assert.ok(vw + 2 * -mobileLeft > vw, 'the glow still overflows the clip box, which now ends at the viewport - so scrollWidth stays the viewport width');
 });
 
 test('v1.313 CSS PAINT: the layer is a plain background-image slot (100% 100%, no-repeat, NO gradients / colour vars), and the layers cross-fade on opacity', () => {
