@@ -52,7 +52,9 @@ items and their bound markers (one piece, one plan).
   from the RESPONSE (never the request), patches `sub.pushBell` + the `currentSubs` entry by
   id (the next tap reads it; a search-keystroke re-render rebuilds from it), then updates the
   row in place. A non-2xx logs `data.error || status` and leaves the row. `rowElementsById`
-  is read at RESPONSE time, so a re-render mid-flight still lands on the live row.
+  is read at RESPONSE time, so a re-render mid-flight still lands on the live row. The tapped
+  bell is disabled for its own flight; a rebuild mid-flight (Pause / Retry / search) builds a
+  fresh enabled bell, and a second flight from it converges on server truth (#233 class).
 - **B2.** A `.btn-chip` variant right after `.btn:active`: squares the box
   (`--size-control-sm`), drops the text padding, centres the glyph, rest colour
   `--text-secondary`. It declares NO background, border, radius or shadow of its own, so those
@@ -83,6 +85,25 @@ items and their bound markers (one piece, one plan).
   byte-identical before/after (`scripts/action-row-probe.js` at 390 and 1280).
 - AC6: the existing v1.314 row tests keep passing with the new class shape (bell before the
   kebab, after the pin; off/on/junk/no-id arms; click never opens the settings sheet).
+- AC7 (gate r1, adversary MB): a list rebuild MID-FLIGHT (Pause -> `loadSubscriptions`) - the
+  held bell response lands on the NEW row and patches the NEW `currentSubs` record, so the next
+  tap sends the flipped value. `test/unit/sub-bell-in-place.test.js` (the drive the seat
+  prescribed). AC1 now also binds the in-flight `disabled` BEFORE the response (adversary ME/ME2).
+
+## Gate r1 fixes (one commit after be9de1be)
+
+- Adversary W1 (in-flight disable unbound): AC1 asserts `bell.disabled === true` right after
+  the click, before the settle (not by double-dispatch: jsdom delivers synthetic clicks to
+  disabled buttons). W2 (`currentSubs` patch unbound): AC7 above, the Pause-mid-flight drive.
+  #3 + QA #4 (census gaps): `BOX_PROP` widened (min/max box, margin, inset, aspect-ratio,
+  flex-*, box-sizing, opacity, transform/scale/translate/filter/mask/clip-path, `-o-`); a
+  divergent-selector census (`.sub-row > button`, `.sub-list .btn` shapes) reaching the chips
+  through an ancestor; the `.btn-chip` base rule may declare no min/max/margin/opacity either
+  (MJ2). #4 (timing-vacuous skeleton assert): removed; the identity asserts bind no-rebuild.
+  #5 / QA #3 / security INFO (re-render mid-flight leaves a fresh enabled bell): code unchanged,
+  the toggleBell comment and the Design line now say exactly that (the #233 class, disclosed).
+- QA #1: probe header `bottom-4`. QA #2: the two legacy CSS comments (FR-5 pin note, the
+  `#dl-status-chip` note) now say the chips' box/bevel comes from `.btn.btn-chip`.
 
 ## Out of scope
 Pause's page reload (same shape as B1, later); per-user bells; #233's in-flight race across an

@@ -118,6 +118,10 @@ test('AC1: a bell tap = ONE PATCH, NO list re-fetch, the SAME row element, and t
     assert.strictEqual(bell.textContent, '🔕');
 
     click(window, bell);
+    // Gate r1 (adversary ME/ME2): the in-flight disable is bound HERE, before the
+    // response lands. (Do NOT bind it by double-dispatching clicks and counting
+    // PATCHes - jsdom delivers synthetic clicks to disabled buttons.)
+    assert.strictEqual(bell.disabled, true, 'the bell is disabled for the flight');
     await settle(() => patches(calls).length === 1 && bell.textContent === '🔔', 'the in-place update after the PATCH');
 
     assert.strictEqual(patches(calls).length, 1, 'exactly one PATCH');
@@ -129,7 +133,8 @@ test('AC1: a bell tap = ONE PATCH, NO list re-fetch, the SAME row element, and t
     assert.strictEqual(bell.getAttribute('aria-pressed'), 'true');
     assert.strictEqual(bell.getAttribute('aria-label'), 'Push notifications on for this channel - turn off');
     assert.strictEqual(bell.disabled, false, 're-enabled after the flight');
-    assert.strictEqual(document.querySelectorAll('.sub-row-skeleton, .skeleton-row').length, 0, 'no skeleton rows were painted');
+    // (The row/bell identity asserts above are what bind "no rebuild" - a
+    // "no skeleton rows" check here is timing-vacuous, gate r1 adversary #4.)
 
     // The record was patched: the SECOND tap sends the flipped value.
     click(window, bell);
@@ -192,6 +197,48 @@ test('AC2: a 403 leaves the row byte-identical (class/aria/glyph/identity), logs
     assert.deepStrictEqual(patches(calls)[1].body, { pushBell: false });
   } finally {
     console.error = origError;
+    handlers.destroy();
+  }
+});
+
+test('AC7 (gate r1 adversary MB): a list rebuild MID-FLIGHT (Pause -> loadSubscriptions) - the response lands on the NEW row and the NEW record, so the next tap sends the flipped value', async () => {
+  // The bell PATCH is held open; the pause PATCH answers at once (togglePause
+  // then reloads the list, rebuilding every row from fresh server objects).
+  let releaseBell = null;
+  const { window, document, handlers, calls } = mountView((m, url, body) => {
+    if (body && Object.prototype.hasOwnProperty.call(body, 'pushBell')) {
+      return new Promise((resolve) => { releaseBell = () => resolve(jsonRes(200, { id: 's1', pushBell: body.pushBell })); });
+    }
+    return jsonRes(200, { id: 's1', paused: true });
+  });
+  try {
+    await settle(() => !!rowOf(document, 's1'), 'the initial list render');
+    const oldRow = rowOf(document, 's1');
+    const oldBell = bellOf(oldRow);
+    click(window, oldBell);
+    await settle(() => patches(calls).length === 1 && typeof releaseBell === 'function', 'the bell PATCH is in flight');
+
+    // Mid-flight: open the row's settings sheet and Pause -> the list reloads.
+    click(window, oldRow.querySelector('.sub-row-kebab'));
+    const pauseBtn = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Pause');
+    assert.ok(pauseBtn, 'the settings sheet offers Pause');
+    click(window, pauseBtn);
+    await settle(() => listFetches(calls) === 2 && rowOf(document, 's1') && rowOf(document, 's1') !== oldRow, 'the list was rebuilt after Pause');
+    const newRow = rowOf(document, 's1');
+    const newBell = bellOf(newRow);
+    assert.notStrictEqual(newBell, oldBell, 'a fresh bell was built');
+    assert.strictEqual(newBell.textContent, '🔕', 'rebuilt from the server list (still off)');
+
+    // Now the bell response lands: the NEW row flips, the NEW record is patched.
+    releaseBell();
+    await settle(() => newBell.textContent === '🔔', 'the in-place update lands on the rebuilt row');
+    assert.strictEqual(rowOf(document, 's1'), newRow, 'no further rebuild');
+    assert.strictEqual(newBell.className, 'btn btn-chip sub-row-bell sub-row-bell-active');
+    click(window, newBell);
+    await settle(() => patches(calls).filter((p) => p.body && 'pushBell' in p.body).length === 2, 'the next bell PATCH');
+    const bellPatches = patches(calls).filter((p) => p.body && 'pushBell' in p.body);
+    assert.deepStrictEqual(bellPatches[1].body, { pushBell: false }, 'the rebuilt record carries the response state, so the next tap flips it OFF');
+  } finally {
     handlers.destroy();
   }
 });

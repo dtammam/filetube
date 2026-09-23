@@ -8352,7 +8352,8 @@ body.ft-audio-expanded {
      1. `.sub-row-pin` -- the star/pin toggle on a subscription row
         (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), sitting
         between `.sub-row-info` and `.sub-row-kebab`. Mirrors `.sub-row-kebab`'s
-        chunky/beveled 32x32 silhouette (line ~1901 above) for visual
+        chunky 32x32 silhouette (since v1.316 both are `.btn.btn-chip`, so
+        the box/bevel comes from `.btn-chip` near `.btn`, not from here) for visual
         consistency, but stays visually distinct via its glyph alone (a plain
         textContent star, not an icon-set mask) so pin (quick-access shortcut)
         reads as a clearly different action from the kebab (settings), per the
@@ -8595,7 +8596,8 @@ body.ft-audio-expanded {
    (while staying AFTER it in DOM/source order, so the summary button is
    still first in tab order) -- "dock as a slim bottom strip that expands
    upward" per docs/references/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
-   bevels (mirrors `.sub-row-pin`'s beveled treatment above), a
+   bevels (the two-tone hand bevel `.sub-row-pin` carried before v1.316 moved
+   the chips into `.btn.btn-chip`; this chip keeps its own copy), a
    repeating-gradient segmented/striped progress fill (never a plain smooth
    `background-color` bar), era tokens only -- no hardcoded surface colors,
    so every era/light-dark combination stays themed. */

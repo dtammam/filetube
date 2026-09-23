@@ -18,7 +18,7 @@
 //     border-radius / box-shadow of the reference button and of each chip
 //     (pin, bell, kebab), plus a `match` map (chip property === reference);
 //   - pixel samples (RGBA) at a TOP band point and a BOTTOM band point inside
-//     each element (x = left+6, y = top+3 and bottom-3: inside the border,
+//     each element (x = left+6, y = top+3 and bottom-4: inside the border,
 //     outside the corner radius, off the glyph), plus `pixelMatch` (chip
 //     top/bottom pixel === reference top/bottom pixel). The 2009 gloss is a
 //     top-lighter / bottom-darker gradient, so on 2009 the reference's own

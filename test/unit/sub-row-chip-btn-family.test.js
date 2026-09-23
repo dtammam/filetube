@@ -45,7 +45,25 @@ function rulesTargeting(css, sel) {
 }
 // The box properties that carry an era's control treatment. Case-insensitive
 // and vendor-prefix-aware (the v1.313 lesson: a lower-case list is porous).
-const BOX_PROP = /(^|[;\s])(-(?:webkit|moz|ms)-)?(background(?:-[a-z]+)?|border(?:-[a-z-]+)?|box-shadow|width|height|min-width|min-height|padding(?:-[a-z]+)?|outline(?:-[a-z]+)?)\s*:/i;
+// Gate r1 (qa #4, adversary #3): widened past the first cut - min/max box,
+// margin/inset, aspect-ratio, flex-basis, box-sizing, opacity, transform/scale/
+// translate/filter/mask, the `-o-` prefix - so a deforming or repainting rule on
+// a role class cannot ship with AC4 green.
+const BOX_PROP = /(^|[;\s])(-(?:webkit|moz|ms|o)-)?(background(?:-[a-z]+)?|border(?:-[a-z-]+)?|box-shadow|box-sizing|(?:min-|max-)?(?:width|height)|padding(?:-[a-z]+)?|margin(?:-[a-z]+)?|inset(?:-[a-z]+)?|aspect-ratio|flex(?:-[a-z]+)?|outline(?:-[a-z]+)?|opacity|transform|scale|translate|filter|mask(?:-[a-z]+)?|clip-path)\s*:/i;
+// A DIVERGENT selector that could still reach a chip: any rule whose selector
+// list names a subscription-row ancestor AND a bare `button`/`.btn` descendant
+// (e.g. `.sub-row > button`, `.sub-list .btn`) - the adversary's MI3 survivor.
+function rulesReachingChipsByAncestor(css) {
+  const out = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(css))) {
+    const selectors = m[1].trim();
+    if (/@(media|supports|container)/.test(selectors)) continue;
+    if (/\.sub-(row|list|section)(?![\w-])[^,]*(\bbutton\b|\.btn(?![\w-]))/.test(selectors)) out.push({ selectors, body: m[2] });
+  }
+  return out;
+}
 
 test('AC4: createSubscriptionRow builds pin, bell and kebab as `btn btn-chip <role>` (executed, real DOM)', () => {
   const { document } = new JSDOM('<!doctype html><body></body>').window;
@@ -73,6 +91,9 @@ test('AC4: no rule targeting a chip role class declares a box property - the era
       assert.doesNotMatch(r.body, /gradient|filter|transform|mask|clip-path|scale|translate/i, `${role}: no paint/transform of its own`);
     }
   }
+  for (const r of rulesReachingChipsByAncestor(CSS)) {
+    assert.doesNotMatch(r.body, BOX_PROP, `${r.selectors.replace(/\s+/g, ' ')} reaches the chips through an ancestor selector and must not declare a box property (got: ${r.body.trim().replace(/\s+/g, ' ')})`);
+  }
 });
 
 test('AC4: .btn-chip exists, declares NO background/border/radius/shadow (any spelling), sits AFTER .btn so its padding/size win, and its only other rule is the phone touch-floor exemption', () => {
@@ -85,7 +106,7 @@ test('AC4: .btn-chip exists, declares NO background/border/radius/shadow (any sp
   }
   assert.strictEqual(chip.length, 2, 'the base rule + the phone floor exemption, nothing else');
   const body = chip[0].body;
-  assert.doesNotMatch(body, /(^|[;\s])(-(?:webkit|moz|ms)-)?(background(?:-[a-z]+)?|border(?:-[a-z-]+)?|box-shadow)\s*:/i, '.btn-chip declares no fill/border/shadow of its own');
+  assert.doesNotMatch(body, /(^|[;\s])(-(?:webkit|moz|ms|o)-)?(background(?:-[a-z]+)?|border(?:-[a-z-]+)?|box-shadow|box-sizing|min-(?:width|height)|max-(?:width|height)|margin(?:-[a-z]+)?|inset(?:-[a-z]+)?|aspect-ratio|opacity|transform|scale|translate|filter|mask(?:-[a-z]+)?|clip-path)\s*:/i, '.btn-chip declares no fill/border/shadow and no second box constraint of its own (adversary MJ2: a min-width would stretch the square)');
   assert.doesNotMatch(body, /gradient|filter|transform|mask|opacity/i);
   assert.match(body, /width:\s*var\(--size-control-sm\)/);
   assert.match(body, /height:\s*var\(--size-control-sm\)/);
