@@ -3,10 +3,10 @@ plan: ambient-glow-polish
 harness: v2 · lean
 branch: fix/ambient-glow-polish
 anchor: spec
-status: Building
-next: dual-Node full suites, then the gate (adversary + qa; escalated from the table's floor per Dean's standing "full gate"), then Dean's iPhone, then release
+status: Gate:CHANGES r1 @9ff7e151
+next: gate r2 (re-engage the same adversary + qa instances at the fix sha), then dual-Node suites at that sha, then Dean's iPhone, then release
 design: Approved 2026-09-23 @cf3e65d3 (Dean: "go" on the plan as presented)
-gate: pending
+gate: CHANGES r1 @9ff7e151 — adversary, qa (fix committed c5e5ff03 + 11b1644e; r2 pending)
 ---
 
 # Ambient glow visual polish - vignetted bitmap instead of eight gradients
@@ -190,3 +190,173 @@ GEOMETRY lock binds the CSS reach to the JS constants.
     are the composite of both layers and are what the eye sees. The synthetic clips'
     saturated primaries make the peak read higher than YouTube's meadow, exactly as in
     v1.312; the ONE knob stays `--ambient-opacity`.
+
+## Gate
+
+Seats per `.harness/scrutiny.toml` against `git diff --name-only cf3e65d3`: the diff touches
+only `public/**`, `test/**` and this doc, so the table's baseline is the floor (adversary
+only; no `lib/**`, no `**/*client*` / `**/*token*` path). ESCALATED by the builder to
+adversary + qa per Dean's standing "full gate" rule for this repo; the dedicated
+security seat is not forced and was not added (QA applies the security brief as a
+standing section).
+
+### QA r1 @9ff7e151
+
+Verified (ran, saw): lint:css TOTAL 0; overlay-containment 0 violations; `node --test` on
+ambient-glow-engine + watch-chrome-ambient = 33/33 pass, 0 fail on Node 22.23.1 AND
+24.20.0. Not run by QA (disclosed): the full suite and the mutation rounds (the plan's
+6916/8967 and 18/18 figures are the builder's). Spot-checked against the tree: 64x36
+(watch.js:104-105, test:114), lift floor 0.12 (watch.js:193, test:139), CSS reach bound to
+JS (test:432-433), PNG-only guard (watch.js:285, lock test:358), image-rendering sweep
+(test:459) - all supported.
+
+1. WARNING - comment accuracy - public/js/watch.js:2366-2371 (setupAmbientMode header,
+   untouched by the diff): "sampled on an OFF-DOM canvas and painted as CSS gradients on
+   two cross-fading divs" describes v1.312 as CURRENT. Scenario: the next tuner reads the
+   wiring block, hunts for the gradient stack / `--ag-*` and finds none. Prescription:
+   one-line edit to "vignetted onto a tiny bitmap set as the layer's background-image".
+   Safe to ship disclosed if Dean prefers to fold it into the release commit.
+2. SUGGESTION - test binding - the non-PNG `toDataURL` branch (watch.js:285 ->
+   `images[url]='failed'` -> ladder) is bound by a SOURCE-text lock only (test:358), never
+   driven. Prescription: a harness with `toDataURL: () => 'data:,'` asserting the sprite
+   falls to the poster and a failing poster paints nothing.
+
+Security surface: same-origin image -> off-DOM canvas -> base64 PNG data URL -> inline
+`url("...")`. No CSP header exists (grep server.js/lib/public/js empty) so `data:` is not
+blocked; base64 cannot escape the quoted url(); every server `artUrl` writer is a relative
+path (lib/tv/routes.js:338 etc.) so taint is unreachable, and a taint/encode throw is caught
+-> hard-fail -> stop() (tested, test:292). No new server route, no user input into a
+command. No shell surface in this diff.
+
+Gate: CHANGES r1 @9ff7e151 — qa
+
+
+### Adversary r1 @9ff7e151
+
+Instruments (all run by the seat, verbatim): `node --test test/unit/ambient-glow-engine.test.js
+test/unit/watch-chrome-ambient.test.js` 33 pass / 0 fail on Node 22.23.1 AND 33/0 on Node
+24.20.0; `npm run lint:css` TOTAL 0; `overlay-containment-lint.js --enforce` clean (0).
+Mutants ran in a git-archive sandbox of 9ff7e151 (17 JS + 16 CSS, each `diff` non-empty
+before crediting); the working tree was never edited. Primary source for the Safari
+spellings: WebKit main `Source/WebCore/css/CSSProperties.json` (fetched): `filter` aliases
+`-webkit-filter`, `transform` aliases `-webkit-transform`, `mask-image` aliases
+`-webkit-mask-image`, `-webkit-backdrop-filter` is its own property, `-webkit-mask` is a
+shorthand over `mask-image`, `scale` / `translate` / `rotate` are real properties.
+
+VERIFIED (ran, saw): (2) real shapes through `createAmbientEngine` with fakes - sprite,
+poster (no sprite), tv (`mediaId` null + artUrl), audio - all four paint a
+`url("data:image/png;base64,...")` on the front layer; a non-PNG `toDataURL` marks the
+source failed and falls sprite -> poster with NO re-sample loop (2 draws total across 5
+ticks); a null `getContext` hard-fails once. (4) 50 same-tile ticks = 1 draw / 1
+getImageData / 1 putImageData / 1 toDataURL / 1 setProperty; a tile change = +1 each.
+(3) exhaustive pixel check: 0 pixels with u<=ux, v<=uy below 255; 0 non-zero pixels on the
+outermost ring; all four corners 0; mid row + mid column monotone. (7) reduced-motion,
+the light belt, the sidebar bleed, the toggle-row belts are re-bound in the PAINT test.
+(6) the fake `toDataURL` on a paint with no putImageData throws (`last` undefined) ->
+hard-fail -> `front()` null, so J15/J16 die on the front assertion, not the `puts` count -
+killed either way. Killed as claimed: J3 ux drift, J4 y-normalisation, J5 floor 0.30,
+J6/J7 gamma, J11 null-never-failed, J12 sameSource index, J13 max-not-hypot, J14
+pixel-centre, J15/J16 vignette skipped, J17 JPEG, C9 CSS reach drift, C10 background-size,
+C11 `filter`, C12 `@supports`-wrapped `#ambient-glow > div { filter }`.
+
+**F1 WARNING - the iOS CSS constraint lock (test/unit/ambient-glow-engine.test.js:411-419)
+does not see Safari's own spellings.** The sweep matches `(^|[\s;])<prop>\s*:` on a fixed
+list, so every prefixed alias and every non-`transform` transform property slips.
+Survivors, each appended to style.css, each 33/33 green: C1 `.ambient-glow {
+-webkit-filter: blur(20px); }` · C4 `.watch-player-stage { -webkit-backdrop-filter:
+blur(4px); }` (the only spelling Safari < 18 honours) · C7 `.ambient-glow { -webkit-mask:
+linear-gradient(#000, transparent); }` · C13 `.ambient-glow { mask-border: url(x.png)
+10; }` · C2 `.ambient-glow { scale: 1.1; }` · C8 `.ambient-glow { translate: 0 10px; }` ·
+C3 `.ambient-glow { FILTER: blur(20px); }` (CSS property names are case-insensitive) · C16
+`@keyframes agspin { to { transform: rotate(1deg); } } .ambient-glow { animation: agspin 1s
+infinite; }`. The origin plan (ambient-glow-rebuild, lines 159/191) listed
+`-webkit-mask-image` explicitly, so prefixed forms were in the constraint's scope from the
+start; the regex cannot match them by construction. Also (b): acceptance 3's "never
+`-webkit-canvas()` / `element()` ... (a new lock)" exists JS-side only - C5
+`.ambient-glow-layer.is-front { background-image: -webkit-canvas(glow); }`, C15 `...
+-moz-element(#media-player)` and C6 `... linear-gradient(red, transparent)` (a gradient
+back on a sibling rule) all 33/33 green. Prescription (one sweep, both parts): in the CSS
+LOCK loop replace the per-prop regex with a case-insensitive
+`/(^|[\s;])(?:-webkit-|-moz-)?(?:filter|backdrop-filter|transform|mask(?:-[a-z-]+)?|mask-border|will-change|mix-blend-mode|scale|translate|rotate|offset-path|animation(?:-name)?)\s*:/i`
+over every `stageAndGlowRules()` body, and add
+`assert.doesNotMatch(r.body, /-webkit-canvas\(|element\(|gradient\(|image-set\(|cross-fade\(|paint\(/)`
+to the same loop; re-run C1-C8, C13, C15, C16 and confirm red.
+
+**F2 WARNING - the vignette's VERTICAL inner rectangle is unbound (watch.js:154, test
+:110-136).** Mutant J1 `uy = 1 / (1 + 3 * ry)` and J2 `uy = 1 / (1 + ry)` both 33/33
+green; the x-axis twin J3 dies only because the "mid alpha" range assertion at (outX, cy)
+happens to move, not because the inner-rect edge is asserted. The GEOMETRY lock binds the
+CSS reach to the JS constant (D4), but the constant's USE in the maths is where the peak
+lands: with J2 the alpha-255 plateau runs ~1.4 bitmap px (~30 desktop px) past the
+player's top/bottom edge before any falloff; with J1 the falloff starts inside the
+player. The test's "just inside the corner" probe sits at `cy - iy + 1` = y 7, one pixel
+further in than the true edge pixel (y 6), so it never touches the boundary. Measured
+plateau on the committed tree: mid row 255 from x=7..56, mid column from y=6..29 (the
+player's edge is at 6.19 px / 5.50 px - the `(half - 0.5)` normalisation pushes the
+plateau ~0.8 / ~0.5 px outward, which is the design, not a finding). Prescription:
+derive the expected plateau bounds from the constants (first index whose centre satisfies
+`|c - half| / (half - 0.5) <= 1/(1+2*reach)`) and assert, on BOTH the mid row and the
+mid column, 255 at that index and < 255 at the index one further out; re-run J1/J2/J3.
+
+**F3 SUGGESTION - the JS source lock (test :360) is case-sensitive and lists only
+`filter|transform`.** J8 `back.style.webkitFilter = 'blur(8px)'` and J10 `back.style.scale
+= '1.3'` in `paint()` are 33/33 green. Prescription: `doesNotMatch(ENGINE_SRC +
+WIRING_SRC, /filter|transform|(?:^|[^a-z])(?:scale|translate|rotate)\b/i)` plus a separate
+case-sensitive `/-webkit-canvas|element\(/` (a `/i` there would trip on
+`document.createElement(`).
+
+**F4 SUGGESTION (suspicion, inherent to name-based locks) - C14 `#player-slot ~
+div[aria-hidden] { filter: blur(20px); }` reaches the glow without naming it and is 33/33
+green;** the v1.312 gate already recorded this as inherent (rebuild plan line 433). The
+Step 4 desktop probe's computed-style check is the behavioural net but is a one-off, not
+a test. No prescription required this round.
+
+Surface 5 (data URL size): no primary source located for any Safari length limit that a
+5.7 KB `background-image` data URL could approach; the per-paint cost is one tiny PNG
+decode on a 2-10 s cadence. Suspicion, unmeasured: WebKit's memory cache keys decoded
+images by URL, so a long session accrues one small entry per distinct tile until pressure
+eviction - not a finding. J18 (`>` -> `>=` at the inner edge) survived but is equivalent
+at these floats (no pixel centre lands exactly on `ux`/`uy`).
+
+Tree: the only write is this section; `git status --short` shows only this file.
+
+Gate: CHANGES r1 @9ff7e151 — adversary
+
+### Gate r1 findings -> the r2 fix (@9ff7e151 -> c5e5ff03 + 11b1644e)
+- Adversary F1 (WARNING, the iOS CSS constraint lock blind to Safari's spellings): the
+  sweep is now ONE case-insensitive regex over every rule naming `ambient-glow` or
+  `watch-player-stage` covering the `-webkit-`/`-moz-`/`-ms-` prefixes, every
+  `mask*`/`transform*`/`animation*`/`offset*` property, `scale`/`translate`/
+  `rotate`, `perspective`, `contain`, `isolation`; a second regex forbids any paint
+  function in those rule bodies (`-webkit-canvas(`, `element(`, `gradient(`,
+  `image-set(`, `cross-fade(`, `paint(`, `url(`) - the sheet never paints the glow,
+  only the engine's inline PNG does; and no `@keyframes` names the glow/stage.
+  Re-run at c5e5ff03: C1 -webkit-filter, C2 scale, C3 FILTER:, C4 -webkit-backdrop-filter,
+  C5 -webkit-canvas(), C6 a sibling gradient, C7 -webkit-mask, C8 translate, C13
+  mask-border, C15 -moz-element(), C16 @keyframes+animation - **11/11 killed**.
+- Adversary F2 (WARNING, the vertical plateau unbound): the vignette test derives the
+  plateau EDGE pixel from the constants on BOTH axes (the last pixel whose centre,
+  normalised to the outermost pixel, is inside `1/(1+2*reach)`), asserts 255 at that
+  pixel on all four sides and at the player's own corner pixels, and <255 one pixel
+  further out on each side. Re-run: J1 `uy = 1/(1+3ry)`, J2 `uy = 1/(1+ry)`, J3
+  `ux = 1/(1+3rx)` - **3/3 killed**.
+- Adversary F3 (SUGGESTION, the JS lock case-sensitive): now case-insensitive, guarded on
+  a word start OR a vendor camelCase prefix (`webkit|moz|ms`), covering filter /
+  transform / backdrop / will-change / scale / translate / rotate / offset-path /
+  animation; a separate string-scoped lock forbids `-webkit-canvas`, `-moz-element`
+  and any quoted `element(` / `image-set(` / `cross-fade(` / `paint(`. First cut
+  tripped on the wiring's own `attributeFilter:` and the engine's own `paint()` -
+  hence the word-start guard and the string scoping. Re-run: J8 `style.webkitFilter`
+  (11b1644e), J8b `style.WebkitTransform`, J10 `style.scale` - **3/3 killed**.
+- Adversary F4 (suspicion, inherent): a rule reaching the glow without naming it
+  (`#player-slot ~ div[aria-hidden]`) - accepted as inherent to name-based locks, as
+  the v1.312 gate recorded; not chased.
+- QA-1 (WARNING, stale wiring comment): the `setupAmbientMode` header now describes the
+  bitmap + background-image pipeline.
+- QA-2 (SUGGESTION, the non-PNG branch source-locked only): a driven test - the fake
+  `toDataURL` returns WebKit's `data:,`; the sprite falls to the poster, nothing is
+  ever painted, no hard-fail, no re-sample loop, the clock stays armed. Re-run: the
+  guard removed -> 2 tests red.
+- Round totals across r1 + the fix: 18 (builder) + 33 (adversary) + 18 (fix re-runs)
+  mutants; every non-equivalent mutant killed at 11b1644e. Ambient files 34/34 on Node
+  22.23.1. lint:css 0.
