@@ -879,3 +879,33 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
   assert.equal(res2.status, 200);
   assert.deepEqual(podcastsDb().read().subscriptions, [], 'an explicit podcasts key restores verbatim');
 });
+
+// ---- v1.314: the per-subscription push bell rides the bundle -----------------
+// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC7).
+test('v1.314 pushBell: a restore of a PRE-BELL bundle (field absent) reads the bell OFF; a bundle with the bell ON restores ON', async () => {
+  const state = seedFullState({
+    ytdlp: {
+      allowMembersOnly: false,
+      subscriptions: [
+        { id: 'sub-old', channelUrl: 'https://youtube.com/@old', name: 'Old', paused: false }, // written before the bell existed
+        { id: 'sub-on', channelUrl: 'https://youtube.com/@on', name: 'On', paused: false, pushBell: true },
+      ],
+      downloadMeta: {}, pins: [], channelAvatars: {},
+    },
+  });
+  assert.ok(state.ytdlp.subscriptions.length === 2, 'fixture sanity');
+  const bundle = await getBackup();
+  assert.equal(bundle.ytdlp.subscriptions.find((s) => s.id === 'sub-on').pushBell, true, 'the bundle carries an ON bell');
+  assert.ok(!('pushBell' in bundle.ytdlp.subscriptions.find((s) => s.id === 'sub-old')) || bundle.ytdlp.subscriptions.find((s) => s.id === 'sub-old').pushBell === false, 'the pre-bell record rides with no/false bell');
+  await __resetDatabaseForTests();
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200);
+  // The yt-dlp module is disabled in this app (no /api/subscriptions), so read the
+  // restored rows the way the delivery path and listSubscriptions do: through the
+  // store's ensureYtdlp over the feature-store holder (the backfill runs there).
+  const { ytdlpDb } = require('../../server');
+  const listed = require('../../lib/ytdlp/store').ensureYtdlp(ytdlpDb.holder(['subscriptions'])).subscriptions;
+  const byId = Object.fromEntries(listed.map((s) => [s.id, s]));
+  assert.strictEqual(byId['sub-old'].pushBell, false, 'a pre-bell record reads OFF after restore (opt-in; the backfill runs on the restored rows)');
+  assert.strictEqual(byId['sub-on'].pushBell, true, 'an ON bell survives the round trip');
+});

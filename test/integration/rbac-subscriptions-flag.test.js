@@ -51,6 +51,7 @@ test('T9: a plain member is 403 on every subscription-mutation route', async () 
   assert.strictEqual((await req('POST', '/api/subscriptions', plain.cookie, { channelUrl: 'https://youtube.com/@x' })).status, 403, 'add');
   assert.strictEqual((await req('DELETE', '/api/subscriptions/abc', plain.cookie)).status, 403, 'remove');
   assert.strictEqual((await req('PATCH', '/api/subscriptions/abc', plain.cookie, { paused: true })).status, 403, 'edit');
+  assert.strictEqual((await req('PATCH', '/api/subscriptions/abc', plain.cookie, { pushBell: true })).status, 403, 'v1.314: the push bell rides the same PATCH gate (D8)');
   assert.strictEqual((await req('POST', '/api/subscriptions/reorder', plain.cookie, { order: [] })).status, 403, 'reorder');
   assert.strictEqual((await req('POST', '/api/subscriptions/settings', plain.cookie, { allowMembersOnly: true })).status, 403, 'settings');
   assert.strictEqual((await req('POST', '/api/subscriptions/repull', plain.cookie)).status, 403, 'check-all');
