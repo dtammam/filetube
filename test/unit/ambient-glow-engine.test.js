@@ -8,11 +8,17 @@
 // is colour-only: sample a same-origin IMAGE (storyboard sprite tile at the current
 // time, else the poster) OFF-DOM, paint CSS gradients on two cross-fading divs.
 //
-// Bound here: (1) the pure source ladder + swatch maths, (2) the engine driven
-// end to end with fakes (paints on a tile change, never on the same tile, falls
-// to the poster, hard-fails safely, and NEVER draws the video), (3) the CSS /
-// HTML / wiring locks that keep the two iOS suspects out of the tree.
-// Plan: docs/exec-plans/active/2026-09-23-ambient-glow-rebuild.md
+// v1.313 POLISH (Dean: "hard borders/edges, look at the player corners"): the
+// eight gradients became ONE vignetted tiny bitmap (the tile stretched over the
+// glow box, alpha 1 under the player -> 0 at the box edge, rounded corners) set
+// as the layer's background-image; the bilinear upscale is the blur.
+//
+// Bound here: (1) the pure source ladder + the vignette maths, (2) the engine
+// driven end to end with fakes (paints on a tile change, never on the same tile,
+// falls to the poster, hard-fails safely, and NEVER draws the video), (3) the
+// CSS / HTML / wiring locks that keep the two iOS suspects out of the tree.
+// Plans: docs/exec-plans/completed/2026-09-23-ambient-glow-rebuild.md,
+//        docs/exec-plans/active/2026-09-23-ambient-glow-polish.md
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -98,38 +104,44 @@ function paintedBuffer(w, h, fn) {
   return data;
 }
 
-test('v1.312 ambientEdgeColors: the eight swatches average their OWN region (edges + corners)', () => {
+// Read a pixel's alpha off a vignetted buffer.
+const alphaAt = (data, w, x, y) => data[(y * w + x) * 4 + 3];
+
+test('v1.313 ambientVignette: opaque under the player, ZERO on the outermost ring, monotonic outward, rounded at the corners', () => {
   const w = W.AMBIENT_SAMPLE_W, h = W.AMBIENT_SAMPLE_H;
-  assert.deepStrictEqual([w, h], [16, 9], 'the off-DOM sample is 16x9 (tiny: the cost floor)');
-  // top rows red, bottom rows blue, left columns green, right columns yellow, the
-  // corners white - a corner cell is 4x3 (w/4 x h/3), an edge band the rest.
-  const data = paintedBuffer(w, h, (x, y) => {
-    const corner = (x < 4 || x >= 12) && (y < 3 || y >= 6);
-    if (corner) return [255, 255, 255];
-    if (y < 3) return [255, 0, 0];
-    if (y >= 6) return [0, 0, 255];
-    if (x < 4) return [0, 255, 0];
-    if (x >= 12) return [255, 255, 0];
-    return [0, 0, 0];
-  });
-  const c = W.ambientEdgeColors(data, w, h);
-  assert.deepStrictEqual(c.t, [255, 0, 0]);
-  assert.deepStrictEqual(c.b, [0, 0, 255]);
-  assert.deepStrictEqual(c.l, [0, 255, 0]);
-  assert.deepStrictEqual(c.r, [255, 255, 0]);
-  for (const k of ['tl', 'tr', 'bl', 'br']) assert.deepStrictEqual(c[k], [255, 255, 255], k + ' is the corner cell');
+  assert.deepStrictEqual([w, h], [64, 36], 'the off-DOM bitmap is 64x36 (tiny: the upscale is the blur, the per-paint cost is microseconds)');
+  assert.deepStrictEqual([W.AMBIENT_REACH_X, W.AMBIENT_REACH_Y], [0.12, 0.22], 'YouTube\'s measured reach (~11% / ~20%)');
+  const data = W.ambientVignette(paintedBuffer(w, h, () => [120, 60, 200]), w, h, null);
+  const cx = w / 2, cy = h / 2;
+  // the inner rectangle = the player: 1/(1+2*reach) of each half-axis
+  const ix = Math.floor((w / 2) / (1 + 2 * W.AMBIENT_REACH_X)), iy = Math.floor((h / 2) / (1 + 2 * W.AMBIENT_REACH_Y));
+  assert.strictEqual(alphaAt(data, w, cx, cy), 255, 'the centre is opaque');
+  assert.strictEqual(alphaAt(data, w, cx - ix + 1, cy - iy + 1), 255, 'just inside the player\'s corner is opaque (the rounded-corner gap shows the frame, not a notch)');
+  for (let x = 0; x < w; x++) { assert.strictEqual(alphaAt(data, w, x, 0), 0, 'top ring x=' + x); assert.strictEqual(alphaAt(data, w, x, h - 1), 0, 'bottom ring x=' + x); }
+  for (let y = 0; y < h; y++) { assert.strictEqual(alphaAt(data, w, 0, y), 0, 'left ring y=' + y); assert.strictEqual(alphaAt(data, w, w - 1, y), 0, 'right ring y=' + y); }
+  // monotonic non-increasing outward along the mid row and the mid column
+  for (let x = cx; x < w - 1; x++) assert.ok(alphaAt(data, w, x + 1, cy) <= alphaAt(data, w, x, cy), 'mid row falls outward at x=' + x);
+  for (let y = cy; y < h - 1; y++) assert.ok(alphaAt(data, w, cx, y + 1) <= alphaAt(data, w, cx, y), 'mid column falls outward at y=' + y);
+  // the corner diagonal is dimmer than the edge midpoint at the same outward fraction (hypot, not max)
+  const outX = w - 1 - Math.round((w / 2 - ix) / 2), outY = h - 1 - Math.round((h / 2 - iy) / 2); // halfway across the reach
+  assert.ok(alphaAt(data, w, outX, outY) < alphaAt(data, w, outX, cy), 'corner (' + alphaAt(data, w, outX, outY) + ') < right edge (' + alphaAt(data, w, outX, cy) + ') at the same fraction');
+  assert.ok(alphaAt(data, w, outX, outY) < alphaAt(data, w, cx, outY), 'corner < bottom edge at the same fraction');
+  assert.ok(alphaAt(data, w, outX, cy) > 60 && alphaAt(data, w, outX, cy) < 200, 'halfway across the reach is a mid alpha (a real ramp, not a step): ' + alphaAt(data, w, outX, cy));
+  // the colour was lifted in place (the same pixel colour everywhere; a hue survives)
+  assert.ok(data[2] > data[0] && data[0] > data[1], 'the purple stays purple after the lift: ' + [data[0], data[1], data[2]].join(','));
+  // a steeper gamma falls faster
+  const steep = W.ambientVignette(paintedBuffer(w, h, () => [120, 60, 200]), w, h, { rx: 0.12, ry: 0.22, gamma: 3 });
+  assert.ok(alphaAt(steep, w, outX, cy) < alphaAt(data, w, outX, cy), 'gamma is the falloff knob');
+  assert.strictEqual(W.AMBIENT_VIGNETTE_GAMMA, 1.5, 'YouTube\'s measured falloff (~half at 37% of the reach, ~15% at 73%)');
 });
 
-test('v1.312 ambientLift / ambientGlowVars: black still tints, white never washes out, a hue survives; eight rgb() vars', () => {
-  assert.deepStrictEqual(W.ambientLift([0, 0, 0]), [77, 77, 77], 'lightness floor 0.30 -> a dark scene still reads as faint light');
+test('v1.313 ambientLift: a dark scene glows DIMLY (floor 0.12, not the old grey 0.30), white never washes out, a hue survives', () => {
+  assert.deepStrictEqual(W.ambientLift([0, 0, 0]), [31, 31, 31], 'lightness floor 0.12 -> a black scene barely tints (the v1.312 0.30 floor was the grey slab)');
   assert.deepStrictEqual(W.ambientLift([255, 255, 255]), [158, 158, 158], 'lightness ceiling 0.62 -> a white scene does not wash the page');
   const red = W.ambientLift([200, 30, 30]);
   assert.ok(red[0] > red[1] + 60 && red[0] > red[2] + 60, 'a red scene stays red: ' + red.join(','));
-  const vars = W.ambientGlowVars({ t: [255, 0, 0], b: [0, 0, 255], l: [0, 255, 0], r: [255, 255, 0], tl: [0, 0, 0], tr: [0, 0, 0], bl: [0, 0, 0], br: [0, 0, 0] });
-  assert.deepStrictEqual(Object.keys(vars).sort(), ['--ag-b', '--ag-bl', '--ag-br', '--ag-l', '--ag-r', '--ag-t', '--ag-tl', '--ag-tr']);
-  for (const v of Object.values(vars)) assert.match(v, /^rgb\(\d+, \d+, \d+\)$/, v);
-  assert.strictEqual(W.ambientGlowVars({}).t, undefined, 'missing swatches default to black-lifted, never a throw');
-  assert.strictEqual(W.ambientGlowVars({})['--ag-t'], 'rgb(77, 77, 77)');
+  const dim = W.ambientLift([40, 20, 60]);
+  assert.ok(dim[2] > dim[0] && dim[0] > dim[1] && dim[2] < 110, 'a dim purple stays a DIM purple, not a lifted grey: ' + dim.join(','));
 });
 
 // ---- (2) the engine, driven with fakes -----------------------------------------
@@ -147,13 +159,19 @@ function harness(opts) {
   const timers = [];
   const draws = [];
   let shade = 0;
+  const puts = []; // every putImageData's buffer (the vignetted bitmap the PNG is made of)
   const ctx = {
-    drawImage(...args) { draws.push(args); shade = args[1]; }, // the last sx decides the colour below
+    drawImage(...args) { draws.push(args); shade = args[1] + args[2]; }, // the tile position (sx + sy) decides the colour below
     getImageData(x, y, w, h) {
-      return { data: paintedBuffer(w, h, () => [Math.min(255, 40 + (shade / 320) * 20), 80, 120]) };
+      return { data: paintedBuffer(w, h, () => [Math.min(255, 40 + (shade / 320) * 20), 80, 120]), width: w, height: h };
     },
+    putImageData(id) { puts.push(id.data); },
   };
-  const canvas = { getContext: () => (opts && opts.throwOnRead ? { drawImage() {}, getImageData() { throw new Error('tainted'); } } : ctx) };
+  // A content-addressed fake PNG: the same bitmap -> the same URL, a different tile -> a different URL.
+  const canvas = {
+    getContext: () => (opts && opts.throwOnRead ? { drawImage() {}, getImageData() { throw new Error('tainted'); } } : ctx),
+    toDataURL: (type) => { const last = puts[puts.length - 1]; let hsh = 0; for (let i = 0; i < last.length; i++) hsh = (hsh * 31 + last[i]) >>> 0; return 'data:' + type + ';base64,' + hsh.toString(36); },
+  };
   const loads = [];
   const pendingLoads = []; // when opts.slowLoads: resolvers, released by h.release()
   const images = (opts && opts.images) || { '/storyboard/vid1': { naturalWidth: 3200, naturalHeight: 720 } };
@@ -179,7 +197,7 @@ function harness(opts) {
   const front = () => layers.find((l) => l.classes.has('is-front')) || null;
   const release = () => { const r = pendingLoads.splice(0); r.forEach((fn) => fn()); };
   const liveTimers = () => timers.filter((t) => !t.cancelled).length;
-  return { engine, layers, video, timers, draws, loads, tick, settle, front, images, release, liveTimers, hardFails: () => hardFails, ctx, canvas };
+  return { engine, layers, video, timers, draws, loads, tick, settle, front, images, release, liveTimers, hardFails: () => hardFails, ctx, canvas, puts };
 }
 
 test('v1.312 gate F1: the engine with the tv REAL shape (mediaId null, artUrl) LOADS and paints the poster', async () => {
@@ -189,7 +207,7 @@ test('v1.312 gate F1: the engine with the tv REAL shape (mediaId null, artUrl) L
   await h.settle();
   assert.ok(h.front(), 'and painted');
   assert.deepStrictEqual(h.engine.painted(), { kind: 'image', url: '/tvposter/show1', index: 0 });
-  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 600, 900, 0, 0, 16, 9], 'the whole poster is sampled');
+  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 600, 900, 0, 0, 64, 36], 'the whole poster is sampled');
 });
 
 test('v1.312 engine: start() loads the sprite and paints the FIRST tile onto a layer that becomes the front', async () => {
@@ -200,10 +218,13 @@ test('v1.312 engine: start() loads the sprite and paints the FIRST tile onto a l
   await h.settle();
   const f = h.front();
   assert.ok(f, 'the resolved image was sampled and a layer is now the front');
-  assert.match(f.vars['--ag-t'], /^rgb\(/, 'the eight colour vars landed on the front layer');
+  assert.match(f.vars['background-image'], /^url\("data:image\/png;base64,[^"]+"\)$/, 'the vignetted PNG data URL landed on the front layer as its background-image');
+  assert.strictEqual(h.puts.length, 1, 'the vignetted bitmap was written back before encoding');
+  assert.strictEqual(alphaAt(h.puts[0], 64, 0, 0), 0, 'its outermost ring is transparent');
+  assert.strictEqual(alphaAt(h.puts[0], 64, 32, 18), 255, 'its centre (under the player) is opaque');
   assert.deepStrictEqual(h.engine.painted(), { kind: 'sprite', url: '/storyboard/vid1', index: 0 });
   assert.strictEqual(h.draws.length, 1, 'ONE draw for the first tile');
-  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 320, 180, 0, 0, 16, 9], 'tile 0 = the top-left 320x180 cell of the 3200x720 sprite, into the 16x9 sample');
+  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 320, 180, 0, 0, 64, 36], 'tile 0 = the top-left 320x180 cell of the 3200x720 sprite, stretched over the 64x36 bitmap');
 });
 
 test('v1.312 engine: a tile change swaps the front layer with NEW colours; the same tile on the clock paints NOTHING', async () => {
@@ -219,6 +240,7 @@ test('v1.312 engine: a tile change swaps the front layer with NEW colours; the s
   assert.deepStrictEqual(h.draws[1].slice(1, 5), [0, 180, 320, 180], 'row 1 column 0 of the sprite');
   const second = h.front();
   assert.notStrictEqual(second, first, 'the OTHER layer is now the front (a cross-fade, never a pop)');
+  assert.notStrictEqual(second.vars['background-image'], first.vars['background-image'], 'with a DIFFERENT bitmap (the new tile)');
   assert.ok(!first.classes.has('is-front'), 'the old front stepped back');
   assert.strictEqual(h.engine.painted().index, 10);
   h.video.currentTime = 29; // still frame 11? 29/2.5 = 11.6 -> frame 11 -> a change
@@ -251,7 +273,7 @@ test('v1.312 engine: a sprite that fails to load FALLS to the poster for the res
   await h.settle();
   assert.ok(h.front(), 'the poster painted');
   assert.strictEqual(h.engine.painted().kind, 'image');
-  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 640, 360, 0, 0, 16, 9], 'the WHOLE poster is sampled');
+  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 640, 360, 0, 0, 64, 36], 'the WHOLE poster is sampled');
   h.video.currentTime = 50; h.tick(); await h.settle();
   assert.strictEqual(h.loads.length, 2, 'later tile changes never retry the sprite');
   assert.strictEqual(h.draws.length, 1, 'and a static poster is never re-sampled');
@@ -331,6 +353,11 @@ test('v1.312 THE CONSTRAINT: the engine never hands the VIDEO element to drawIma
 test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambient code (engine + wiring), and the video is read for time only', () => {
   const draws = [...ENGINE_SRC.matchAll(/drawImage\(\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1]);
   assert.deepStrictEqual(draws, ['img'], 'exactly one drawImage in the engine and its source is the loaded IMAGE');
+  assert.match(ENGINE_SRC, /ambientVignette\(id\.data, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H, null\)/, 'v1.313: the bitmap is vignetted with the shared reach constants');
+  assert.match(ENGINE_SRC, /c\.putImageData\(id, 0, 0\)[\s\S]*canvas\.toDataURL\('image\/png'\)/, 'written back, then encoded as a PNG');
+  assert.match(ENGINE_SRC, /url\.indexOf\('data:image\/png'\) === 0/, 'anything but a PNG data URL is a failed sample (never a canvas/element() paint reference)');
+  assert.match(ENGINE_SRC, /back\.style\.setProperty\('background-image', 'url\("' \+ dataUrl \+ '"\)'\)/, 'the back layer paints the bitmap as a plain background-image');
+  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|element\(|filter|transform/, 'no paint reference to a live canvas/element and no filter/transform from JS either');
   assert.doesNotMatch(WIRING_SRC, /drawImage|getContext|captureStream|requestVideoFrameCallback/, 'the wiring never touches a canvas or the video\'s frames');
   assert.doesNotMatch(ENGINE_SRC, /video\.(videoWidth|videoHeight|captureStream|requestVideoFrameCallback)/, 'the engine reads the video for currentTime only');
   assert.match(ENGINE_SRC, /Number\(video\.currentTime\)/, 'currentTime is the ONLY thing read off the video');
@@ -399,9 +426,12 @@ test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the
   assert.ok(base, 'the base rule');
   const num = (body, name) => { const m = new RegExp('--ambient-' + name + ':\\s*([0-9.]+)%').exec(body); assert.ok(m, name + ' declared'); return Number(m[1]); };
   const check = (body, label) => {
-    const rx = num(body, 'reach-x'), ry = num(body, 'reach-y'), bx = num(body, 'band-x'), by = num(body, 'band-y');
-    assert.ok(Math.abs(bx - (rx / (100 + 2 * rx)) * 100) < 0.01, label + ': band-x ' + bx + ' must be reach-x/(100+2*reach-x) = ' + (rx / (100 + 2 * rx)) * 100);
-    assert.ok(Math.abs(by - (ry / (100 + 2 * ry)) * 100) < 0.01, label + ': band-y ' + by + ' must be reach-y/(100+2*reach-y)');
+    const rx = num(body, 'reach-x'), ry = num(body, 'reach-y');
+    // v1.313: the CSS reach and the JS vignette's inner rectangle are ONE number (a
+    // hand-copy that drifts lands the glow's peak off the player's edge).
+    assert.strictEqual(rx, W.AMBIENT_REACH_X * 100, label + ': --ambient-reach-x equals watch.js AMBIENT_REACH_X');
+    assert.strictEqual(ry, W.AMBIENT_REACH_Y * 100, label + ': --ambient-reach-y equals watch.js AMBIENT_REACH_Y');
+    assert.doesNotMatch(body, /--ambient-band-/, label + ': no band vars remain (nothing reads them)');
     assert.ok(rx > 0 && ry > 0, label + ': reach > 0 on both axes (the v1.187.1 reach invariant, now by construction)');
     return { rx, ry };
   };
@@ -420,20 +450,14 @@ test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the
   assert.strictEqual(glowRules().filter((r) => /data-ambient=/.test(r.selector)).length, 0, 'no rung rules remain');
 });
 
-test('v1.312 CSS PAINT: the layer stacks eight gradients (four edge bands + four corner ellipses), every colour var falls back to transparent, and the layers cross-fade on opacity', () => {
+test('v1.313 CSS PAINT: the layer is a plain background-image slot (100% 100%, no-repeat, NO gradients / colour vars), and the layers cross-fade on opacity', () => {
   const layer = glowRules().find((r) => r.selector === '.ambient-glow-layer');
   assert.ok(layer, 'the layer rule');
-  const bg = /background:\s*([\s\S]*?);\s*(?:\n|$)/.exec(layer.body);
-  assert.ok(bg, 'a background stack');
-  const parts = bg[1].split(/,\s*\n\s*/);
-  assert.strictEqual(parts.length, 8, 'eight gradient layers');
-  const linear = parts.filter((p) => /^linear-gradient\(/.test(p)), radial = parts.filter((p) => /^radial-gradient\(/.test(p));
-  assert.strictEqual(linear.length, 4, 'four edge bands');
-  assert.strictEqual(radial.length, 4, 'four corner ellipses');
-  for (const dir of ['top', 'bottom', 'left', 'right']) assert.ok(linear.some((p) => p.startsWith('linear-gradient(to ' + dir + ',')), 'a band fading outward ' + dir);
-  for (const k of ['t', 'b', 'l', 'r', 'tl', 'tr', 'bl', 'br']) assert.ok(parts.some((p) => p.includes('var(--ag-' + k + ', transparent)')), '--ag-' + k + ' is used with a transparent fallback');
-  for (const p of parts) assert.match(p, /, transparent\)/, 'every gradient ends transparent (no hard cut): ' + p.slice(0, 40));
-  for (const p of parts) assert.match(p, /no-repeat$/, p.slice(0, 40));
+  assert.match(layer.body, /background-size:\s*100% 100%/, 'the bitmap is stretched to the whole layer (its inner rectangle IS the player box)');
+  assert.match(layer.body, /background-repeat:\s*no-repeat/);
+  assert.doesNotMatch(layer.body, /gradient\(|--ag-|background-image:|background:/, 'no CSS-side paint: the image is set inline by the engine, one continuous bitmap (v1.313: the eight gradients had hard band ends + corner notches)');
+  assert.doesNotMatch(layer.body, /image-rendering/, 'the default bilinear upscale IS the softness');
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /--ag-[a-z]+|--ambient-band-/, 'the swatch vars and band vars are gone from the sheet');
   assert.match(layer.body, /transition:\s*opacity var\(--ambient-fade\) linear/, 'the cross-fade');
   assert.match(layer.body, /opacity:\s*0/, 'a layer is invisible until it is the front');
   const front = glowRules().find((r) => r.selector === '.ambient-glow-layer.is-front');
