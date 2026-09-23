@@ -3,9 +3,9 @@ plan: subscription-push-bell
 harness: v2 · lean
 branch: feat/subscription-push-bell
 anchor: spec
-status: Draft
-next: Dean's go on the decision register D1-D9 below (the three defaulted calls are D3, D4, D5); then Step 1 (store field + validators) on this branch
-design: pending
+status: Approved @360f8e7f
+next: Step 1 - the store field (ensureYtdlp backfill, addSubscription literal, validateSubscriptionPatch + updateSubscription) with ytdlp-store tests
+design: Approved 2026-09-23 @360f8e7f (Dean: "Please go")
 gate: pending
 ---
 
