@@ -3,10 +3,10 @@ plan: ambient-glow-rebuild
 harness: v2 · lean
 branch: fix/ambient-glow-rebuild
 anchor: spec
-status: Gate:CHANGES r1 @97d6f542
-next: gate r2 - re-engage the SAME three seats at the fix sha (F1 tv poster rung, F2/W1 onHardFail, F3 lock scope, F4 guards, hygiene)
+status: Gate:APPROVED r2 @33275a31
+next: Dean iPhone check (ambient ON, dark: the picture stays; faux-fullscreen drag) on an edge build, then release v1.312.0 per docs/RELEASING.md
 design: Approved 2026-09-23 @bd9c476f
-gate: pending
+gate: APPROVED r2 @33275a31 — adversary, qa, security-brief
 ---
 
 # Ambient mode rebuild - the glow must not touch the video layer
@@ -432,3 +432,13 @@ Gate: CHANGES r1 @97d6f542 — adversary
 - adversary suspicion M1b (`var v = video; v.captureStream()` slips the source lock):
   inherent to source locks; the fake-driven constraint test binds drawImage's source,
   not captureStream. Accepted, not chased.
+
+Gate: APPROVED r2 @33275a31 — security-brief
+
+Gate: APPROVED r2 @33275a31 — qa
+
+Gate: APPROVED r2 @33275a31 — adversary
+
+Gate r2 close: all three seats APPROVED @33275a31. Dual-Node full suites at that sha:
+Node 22.23.1 8967/8967/0 (exit 0), Node 24.20.0 8967/8967/0 (exit 0). Remaining before
+release: acceptance bullet 1 - Dean's iPhone confirms the picture stays with ambient ON.
