@@ -3,10 +3,10 @@ plan: subscription-push-bell
 harness: v2 · lean
 branch: feat/subscription-push-bell
 anchor: spec
-status: Gate:CHANGES r1 @7c76380d
-next: gate r2 delta re-review by the same three seat instances at the r2 fix sha; on APPROVED release as v1.314.0
+status: Gate:APPROVED r2 @d7342962
+next: dual-Node full suites on the tip, then release v1.314.0 per docs/RELEASING.md (npm version, ROADMAP Shipped entry, releases.json ledger, plan to completed/, merge --no-ff, tag, one push, branch delete)
 design: Approved 2026-09-23 @360f8e7f (Dean: "Please go")
-gate: pending
+gate: APPROVED r2 @d7342962 — adversary, qa, security-brief
 ---
 
 # Per-subscription web push opt-in bell (off by default)
@@ -250,6 +250,26 @@ Notes (INFO, verified unless marked otherwise):
 
 Gate: APPROVED r1 @7c76380d — security-brief
 
+## Security-brief r2 @d7342962 (delta re-confirmation)
+
+Same tooling gap as r1 (no Bash; the delta was read from the tip's files on
+disk, not a literal diff). Re-verified against the fix commit:
+- S1-S7 all still hold. No new writer of the subscription record: `ensureBell`
+  (watch.js:2659) builds/relabels the same literal-only button and `removeBell`
+  (:2674) drops it; neither issues a request. The subscribe POST response's
+  `pushBell` is consumed only as `data.pushBell === true` (:2578, :2597), and
+  the new cache entry still goes through `scrubSubsForCache`'s boolean filter.
+  `removeBell` on the unsubscribe ok arm also closes a benign stale-id PATCH
+  (would have been a 404 under the same RBAC gate).
+- deliver.js walk arm (:294-297): the `Number.isInteger(row.id)` guard only
+  tightens termination - a non-integer id is neither advanced nor counted, so
+  `advanced` can never claim progress the store did not record. No content or
+  count change to any push body.
+- Test-only files: not security-relevant.
+Nothing new introduced by the fix. No findings.
+
+Gate: APPROVED r2 @d7342962 — security-brief
+
 ## Gate r1 - qa findings @7c76380d
 
 Instruments (verified, Node 22.23.1): `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations); `check-markers` 1 issue = the known "stale approval @360f8e7f" note on this active plan. Targeted suites: 6 unit files (push-delivery, ytdlp-store, capability-cache, watch-init-behavioral, ytdlp-subscriptions-client, ambient-glow-engine) 646/646 pass; 5 integration files (notifications-api, scan-push-bridge, ytdlp-patch-pause, rbac-subscriptions-flag, backup-restore) 62/62 pass. Full `npm test` NOT re-run by this seat (the build record's dual-Node 8988/8988 at 5dafcbea stands; the only later commit is the plan doc). No em dashes in any added line (grep of the diff's `+` lines: empty).
@@ -312,3 +332,49 @@ arm, W3 lock strength). Fixes, one commit (the r2 sha in the Gate lines below):
 - Not taken: qa S2 / adversary S2 (`decideDeliveries.maxId` is still bound by its own unit
   test and harmless), qa S3 (per-round subscriptions memo - a later nicety, the table is tiny
   and rows are manager-generated), qa S5 (viewer-only bell hint - D8 stands, disclosed).
+
+## Gate r2 - qa delta re-confirmation @d7342962
+
+Instruments (verified, Node 22.23.1): `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations); `check-markers` 2 issues = the two stale-approval notes (@360f8e7f, @7c76380d) on this active plan, the known r1 artifacts. Targeted unit (push-delivery, ytdlp-store, capability-cache, watch-init-behavioral, ytdlp-subscriptions-client, ambient-glow-engine): 650/650 pass (646 + 4 new). Targeted integration (notifications-api, scan-push-bridge, ytdlp-patch-pause, rbac-subscriptions-flag, backup-restore): 62/62 pass. No em dashes in any added line of the fix commit (grep count 0). Full `npm test` not re-run by this seat.
+
+- **W1 - fixed as prescribed.** `ensureBell`/`removeBell` are the single seam; the applier, `handleUnsubscribe`'s ok arm and the modal success arm route through them, and the cached write-through carries `pushBell`. The three watch-init cases are DRIVEN (the shim now records the last listener per type; the DELETE/POST/PATCH fetches are routed, the modal captured via `overrides`). Binding proven in a scratchpad `git archive` sandbox (the working tree was never touched): with `removeBell()` and the modal's `ensureBell(...)` reverted, `not ok 13` (unsubscribe) and `not ok 14` (subscribe) - 13/15 pass vs 15/15 at HEAD. The S1 case verifies the PATCH body `{pushBell:true}`, the label from the RESPONSE, the cache write-through and the 403 no-flip.
+- **W2 - fixed as prescribed (plus more).** Re-probed in the scratchpad against the r2 matchers: all five r1 slips (`+=`, `||=`, aliased `const s = el.style`, `Object.assign(el.style, ...)`, non-literal `setProperty(p, ...)`) now RED, plus `??=` and a style passed to a function; the direct literal and vendor camelCase still red; a legitimate `items.filter(...)` with a trailing `// no transform` comment and the real `background-image` setProperty stay GREEN (9 red / 2 green). Tracker row 232 records the r2 probe.
+- **S1 - fixed (adversary W2).** The walk arm advances and counts only an integer id, mirroring the none arm; the comment at deliver.js:229-232 is now true in both arms. The new push-delivery case (199 muted string-id rows + one sendable) is bounded: sent=0 (applyResult refuses the string id), advanced=0, no re-run.
+- **S3 - accepted declined** (tiny manager-generated table; a later nicety). **S2 - accepted declined** (`maxId` harmless, test-bound). **S5 - accepted declined** (D8 disclosed). **S4 - fixed** (dead `classList.toggle` gone). **S6 - disclosed** in the r1 record. D4 now names the `/c/`-URL closing mechanism; the pointer resolves (`recordSubscriptionChannelId` write at lib/ytdlp/index.js ~3462).
+- **New regression check: none found.** The shim's listener recording adds only an `_l` property; no earlier watch-init assertion snapshots element keys (the file's only deepEquals are `seedCalls` and the PATCH body), and `overrides` defaults to an empty object. The fix commit touches no route, store or RBAC surface: the security posture is unchanged from r1.
+
+Gate: APPROVED r2 @d7342962 — qa
+
+## Gate r2 - adversary delta findings @d7342962
+
+Method: fresh `git archive d7342962` sandboxes under a PRIVATE scratchpad subdirectory (the shared scratchpad's `sb/` was deleted by another seat mid-run in r2; nine baselines of that batch therefore ran with cwd = the working tree, which `git status` proved identical to d7342962 apart from this doc), Node 22.23.1. Working tree already carried the security-brief r2 (APPROVED) and qa r2 (APPROVED) sections, uncommitted, before this seat wrote.
+
+Baselines at d7342962 (measured): push-delivery 29/29, watch-init-behavioral 15/15, ambient-glow-engine 22/22, ytdlp-store 259/259, capability-cache 5/5, ytdlp-subscriptions-client 320/320, uploader-channel-link 9/9, watch-pin-from-channel 4/4; scan-push-bridge 7/7, notifications-api 13/13, backup-restore 25/25, ytdlp-patch-pause 15/15, rbac-subscriptions-flag 2/2. `lint:css` TOTAL 0; `lint:overlay` clean; eslint on the touched files 0 errors; `check-markers` 2 issues = the design approval @360f8e7f and the security-brief r1 approval @7c76380d, both expected until the r2 markers are committed.
+
+r1 findings against the fix:
+- **W1 - fixed as prescribed (measured).** `ensureBell`/`removeBell` route the applier, `handleUnsubscribe`'s ok arm and the modal success arm; the r1 repro (DELETE 200 then tap) now shows no bell. Fix-binding mutants: `removeBell()` dropped from the unsubscribe arm -> W1 test A red; `ensureBell(...)` dropped from the modal arm -> W1 test B red; `pushBell` dropped from the modal's cache write -> red; write-through no-op'd -> S1 test red (r1 SUGGESTION 1 closed for that arm). `ensureBell` early-returns on a null `subscribeBtnContainer` (verified by reading; the modal arm respects it).
+- **W2 - fixed as prescribed (measured).** All seven r1 spin scenarios terminate: string ids + sendable LAST = 1 round / 1 POST (was 41 / 40); string ids sendable first 1/1; string ids all muted 1/0; int 1 sendable + 199 muted + 5 behind = 2 rounds, 1 POST, cursor 205; int 500 mid-walk = cursor 99, 2 rounds; int summary 500 = cursor 0, 1 round; int 205 all muted = 2 rounds, 0 POSTs, cursor 205. Dropping the new `Number.isInteger(row.id)` guard reds the new push-delivery case (28/29).
+- **W3 - fixed as prescribed (measured).** `Object.assign(back.style, {filter})`, `back.style.filter += ...`, `back.style.filter ||= ...`, `setProperty(p, ...)` with a variable, `back.style = '...'`, and `var st = back.style; st.filter = ...` are ALL red on the lock assertion now; `[].filter()` + trailing `// transform` comment and a style READ (`var w = back.style.opacity;`) stay green. Tracker row 232 amended.
+- r1 S3 taken (D4 names the closing mechanism). S2 declined (`decideDeliveries.maxId` dead but harmless, bound by its own unit test) - agreed. qa S3/S5 declined - agreed, no refutation.
+
+Full r1 mutant set re-run at d7342962: deliver.js M1-M8, server.js M11/M12, store.js M14/M15/M16/M16b, subscriptions.js M17/M17b/M17c, common.js M20, CSS C1/C2 all RED as before; C3 green as required.
+
+New, introduced by the fix (measured in a scratch copy of the watch-init harness):
+- **WARNING 1 (new, argued safe to ship DISCLOSED) - public/js/watch.js:2679-2708 `handleToggleBell` reads LIVE `bellBtn`/`currentBellState` after its await, so `removeBell`/`ensureBell` firing while the PATCH is in flight leave a dangling label.** Race A: tap the bell, tap Subscribed (DELETE 200) before the PATCH settles -> `removeBell` nulls `bellBtn`; when the PATCH settles (404 in prod) `.finally` throws `TypeError: Cannot set properties of null (setting 'disabled')` (an unhandled rejection in the console; the bell is already gone, so nothing visible). Race B: tap the bell, unsubscribe, re-subscribe via the modal (POST 201, new id, `pushBell:false`) all before the PATCH settles; the old PATCH resolves `{pushBell:true}` -> the NEW subscription's bell reads "🔔 Notifying" and the cache's new record is written `pushBell:true` while the server's record is OFF. Why disclosed-shippable: three taps inside one request's flight, no data loss, the label and cache self-heal on the next watch load (the confirmed fetch overwrites both), and the server's truth is never wrong. Fix (three lines, a slim follow-up or fold-in): capture `const btn = bellBtn; const subId = currentBellState.subId;` at click time and bail in `.then` and `.finally` when `bellBtn !== btn || currentBellState.subId !== subId`; bind with the two races above (the harness now supports them: a PATCH whose promise the test resolves after the DELETE/POST).
+- SUGGESTION 1 - the S1 test's "label follows the RESPONSE" is a lookalike: the route echoes `body.pushBell`, so `on: next` (ignoring the response) stays GREEN (mutant M19b). Have the fake route return a value that differs from the request (or a clamped one) to bind the response.
+- SUGGESTION 2 - test/unit/ambient-glow-engine.test.js:398 alias ban `[=,(]\s*ident\.style\s*[,;)\n]` false-trips a plain truthiness read: `if (back.style) { ... }` in the engine reds the lock (measured). Exempt a `.style)` preceded by `if (`/`&&`/`||`, or accept and note it.
+- SUGGESTION 3 (carried from r1 S1) - the applier's confirmed-disabled removal (:2811) and the applier's `else removeBell()` (:2848) still survive deletion across watch-init-behavioral + uploader-channel-link (the harness cannot reach the confirmed pass; hydration stops after /api/videos in the shim). Verified by reading only.
+
+Gate: APPROVED r2 @d7342962 — adversary
+
+## Gate close (2026-09-23)
+
+All three seats APPROVED r2 @d7342962 (security-brief, qa, adversary). Shipped DISCLOSED,
+per the two-round gate norm, as tracker #233: the adversary's r2 WARNING 1 (a bell PATCH
+still in flight when the user unsubscribes / re-subscribes can throw in `.finally` on a
+nulled button, or relabel + cache the NEW record from the OLD response; three taps inside
+one request, no data loss, server truth never wrong, self-heals on the next watch load) with
+its 3-line fix (capture button + subId at click, bail after the await when either moved),
+plus adversary S1 (the S1 test's echoing fake route makes "label follows the response" a
+lookalike - return a differing value) and S2 (the alias ban false-trips a bare
+`if (el.style)` truthiness read). Adversary S3 / qa S6 stand as disclosed.
