@@ -3400,6 +3400,9 @@ function scrubSubsForCache(subs) {
       ...(typeof s.channelHandleUrl === 'string' ? { channelHandleUrl: s.channelHandleUrl } : {}),
       ...(typeof s.channelDir === 'string' ? { channelDir: s.channelDir } : {}),
       ...(typeof s.name === 'string' ? { name: s.name } : {}),
+      // v1.314: the push bell rides the cache so the watch page's frame-one
+      // render (from this cache) shows the same bell the confirmed fetch will.
+      ...(typeof s.pushBell === 'boolean' ? { pushBell: s.pushBell } : {}),
     }));
 }
 

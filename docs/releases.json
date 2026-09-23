@@ -3130,5 +3130,11 @@
     "date": "2026-09-23",
     "title": "Ambient mode's glow is now smooth around the whole player",
     "intent": "The rebuilt Ambient glow worked, but it had hard edges where each side's light stopped, a visible notch at the player's rounded corners, and a flat greyish tint. The glow is now one soft halo drawn from the video's preview frame: it wraps continuously around all four corners, keeps the picture's own colours instead of averaging them into grey, and dims gently the further it gets from the player - the same softening trick YouTube uses. Nothing about the video itself changed, so the picture stays put on iPhone exactly as in the last update."
+  },
+  {
+    "version": "1.314.0",
+    "date": "2026-09-23",
+    "title": "Choose which channels send you push notifications",
+    "intent": "Push notifications used to arrive for every new download from every channel. Now each subscription has its own bell, off to start with, so only the channels you switch on will ping your phone or browser; everything else still shows up in the in-app notifications list as before. Turn a channel's bell on from the Subscriptions page or from the Notify button next to Pin on any of its videos."
   }
 ]
