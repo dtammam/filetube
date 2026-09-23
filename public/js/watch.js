@@ -2573,6 +2573,9 @@ if (typeof module !== 'undefined' && module.exports) {
                 closeSubscribeModal();
                 currentSubState = { ...currentSubState, subscribed: true, subId: data.id };
                 applySubscribeButtonLabel(true);
+                // v1.314 gate r1 W1: the new record's bell appears NOW (off by
+                // default, D9 "one tap after adding"), from the POST response.
+                ensureBell({ id: data.id, pushBell: data.pushBell === true });
                 // v1.54 A2 write-through: the cache learns the new
                 // subscription NOW, so the next page render never flashes
                 // the stale "Subscribe" (the reported FOUC's root cause).
@@ -2591,6 +2594,7 @@ if (typeof module !== 'undefined' && module.exports) {
                     {
                       id: data.id, channelUrl: identity.channelUrl || '', name: currentChannelName,
                       ...(identity.channelId ? { channelId: identity.channelId } : {}),
+                      pushBell: data.pushBell === true, // v1.314: the cached record carries its bell
                     }]),
                 });
               })
@@ -2617,6 +2621,7 @@ if (typeof module !== 'undefined' && module.exports) {
           const removedSubId = subId;
           currentSubState = { ...currentSubState, subscribed: false, subId: null };
           applySubscribeButtonLabel(false);
+          removeBell(); // v1.314 gate r1 W1: no record, no bell (it would PATCH a deleted id)
           // v1.54 A2 write-through (the unsubscribe mirror).
           const capAfterUnsub = readCapabilityCache();
           if (capAfterUnsub && Array.isArray(capAfterUnsub.subs)) {
@@ -2645,7 +2650,30 @@ if (typeof module !== 'undefined' && module.exports) {
       bellBtn.textContent = on ? '🔔 Notifying' : '🔕 Notify';
       bellBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
       bellBtn.setAttribute('aria-label', on ? 'Push notifications for this channel are on' : 'Push notifications for this channel are off');
-      bellBtn.classList.toggle('btn-primary', false);
+    }
+
+    // Gate r1 (adversary W1 + qa W1): the bell is a property of the subscription
+    // RECORD, so every arm that changes "subscribed" in-page must create/remove
+    // it too - the applier (reload / confirmed answers), the unsubscribe ok arm,
+    // and the subscribe modal's success arm all route through these two.
+    function ensureBell(matchedSub) {
+      if (!matchedSub || !subscribeBtnContainer) return;
+      currentBellState = { subId: matchedSub.id, on: matchedSub.pushBell === true };
+      if (!bellBtn) {
+        bellBtn = document.createElement('button');
+        bellBtn.type = 'button';
+        bellBtn.id = 'notify-channel-btn';
+        bellBtn.className = 'btn';
+        bellBtn.style.marginLeft = 'var(--space-4)';
+        subscribeBtnContainer.appendChild(bellBtn);
+        bellBtn.addEventListener('click', handleToggleBell, { signal });
+      }
+      bellBtn.hidden = false;
+      applyBellButtonLabel(currentBellState.on);
+    }
+    function removeBell() {
+      if (bellBtn) { bellBtn.remove(); bellBtn = null; }
+      currentBellState = { subId: null, on: false };
     }
 
     function handleToggleBell() {
@@ -2816,22 +2844,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // subscription record) - created/removed here, from the same answer set,
       // before the Pin block's own channelDir gate (Pin needs a resolved
       // directory; the bell needs only the record).
-      if (matchedSub) {
-        currentBellState = { subId: matchedSub.id, on: matchedSub.pushBell === true };
-        if (!bellBtn) {
-          bellBtn = document.createElement('button');
-          bellBtn.type = 'button';
-          bellBtn.id = 'notify-channel-btn';
-          bellBtn.className = 'btn';
-          bellBtn.style.marginLeft = 'var(--space-4)';
-          subscribeBtnContainer.appendChild(bellBtn);
-          bellBtn.addEventListener('click', handleToggleBell, { signal });
-        }
-        applyBellButtonLabel(currentBellState.on);
-      } else if (bellBtn) {
-        bellBtn.remove(); bellBtn = null;
-        currentBellState = { subId: null, on: false };
-      }
+      if (matchedSub) ensureBell(matchedSub);
+      else removeBell();
       const channelDir = (matchedSub && typeof matchedSub.channelDir === 'string' && matchedSub.channelDir !== '')
         ? matchedSub.channelDir
         : resolveChannelDirFromFilePath(item.filePath);

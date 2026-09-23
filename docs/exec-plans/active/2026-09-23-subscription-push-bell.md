@@ -3,8 +3,8 @@ plan: subscription-push-bell
 harness: v2 · lean
 branch: feat/subscription-push-bell
 anchor: spec
-status: Building
-next: gate r1 (adversary + qa + security-brief) on the tip; on APPROVED release per docs/RELEASING.md as v1.314.0
+status: Gate:CHANGES r1 @7c76380d
+next: gate r2 delta re-review by the same three seat instances at the r2 fix sha; on APPROVED release as v1.314.0
 design: Approved 2026-09-23 @360f8e7f (Dean: "Please go")
 gate: pending
 ---
@@ -90,7 +90,7 @@ is NOT gated: it keeps listing every download as it does today.
 | D1 | The field | `pushBell: boolean` on the subscription JSON record, default `false`; backfilled in `ensureYtdlp` like `paused`; added to `validateSubscriptionPatch` AND `updateSubscription` AND the `addSubscription` literal | No DDL, no migration, backup round-trips it; the three-writer list is the persist-gate class |
 | D2 | Where the gate runs | At DELIVERY, per row, in `deliverRound` BEFORE `decideDeliveries`; `resolvePushMeta` (server.js) resolves the item to its subscription and returns `pushMuted: true` when the sub exists and `pushBell !== true` | Rows carry no channel; the feed stays complete for the in-app bell; the one seam every producer already flows through |
 | D3 | Scope of the flag | ONE flag per subscription, not per user | Dean's ask is about channels; per-user needs a new table and settings UI; a self-hosted family server rarely wants both |
-| D4 | Items that match NO subscription | keep pushing (one-off `POST /api/ytdlp/download`, non-YouTube items, the `/c/`-URL blind spot) | The bell is a per-channel opt-in, not a global mute; a one-off download is an explicit act |
+| D4 | Items that match NO subscription | keep pushing (one-off `POST /api/ytdlp/download`, non-YouTube items, the `/c/`-URL blind spot - which CLOSES after the subscription's first successful poll captures its channelId, lib/ytdlp/index.js ~3464, before that poll's scan trigger; gate r1 adversary S3) | The bell is a per-channel opt-in, not a global mute; a one-off download is an explicit act |
 | D5 | Podcasts | out of scope (kind `podcast`, their own path) | Different store and UI; a later wave can mirror the field |
 | D6 | Cursor + re-run under filtering | A muted row advances the cursor exactly like a vanished row; the summary's `maxId` is the last row READ (not the last row that passed); the individual path walks ALL rows in feed order and stops at the first send failure; `counters.advanced` counts cursor moves without a send and the truncation re-run gates on `sent > 0 \|\| advanced > 0` | Otherwise a full read of muted rows strands the cursor until the next trigger; the walk order keeps "cursor holds at the last success" true when muted and failing rows interleave |
 | D7 | UI surfaces | (a) watch page: a bell button beside Pin, only when subscribed (`currentSubState.subscribed`), label "Notify 🔔" / "Notify off 🔕" with `aria-pressed`; (b) /subscriptions row: a bell icon button beside the pin star, same glyph pair; both PATCH `{pushBell}` and re-render from the response. `scrubSubsForCache` carries `pushBell` | Both places a subscription is already controlled; one control per surface (the settings sheet is not extended in this wave) |
@@ -201,3 +201,114 @@ there and by the row test on the /subscriptions side; the row anatomy lock
 (`ytdlp-subscriptions-client` "single trailing kebab") was updated to the new
 `[avatar, info, bell, kebab]` shape - the bell renders for every row with an id, the
 pin still only for a navigable row.
+
+## Security-brief r1 @7c76380d
+
+Tooling gap, stated first: this seat has no Bash, so the review is of the tip's
+files on disk (every `pushBell` / `pushMuted` site found by grep), not a literal
+`git diff 92d48874`. No tests were run by this seat.
+
+Findings that block (CRITICAL/HIGH): none.
+Findings to fix-or-accept (MEDIUM/LOW): none.
+
+Notes (INFO, verified unless marked otherwise):
+- S1 PATCH boundary (verified): `pushBell` is accepted only by `validatePushBell`
+  (boolean or absent) inside `validateSubscriptionPatch`, and `updateSubscription`
+  re-validates before mutating. Every route that writes a subscription record
+  (POST, PATCH, DELETE, reorder, settings, repull, skip, cancel, failures) carries
+  `requireManageSubscriptions` (admin or `canManageSubscriptions`); the add body
+  ignores the field (`addSubscription` literal `false`). The settings sheet `onSave`
+  builds its patch from its own inputs and never carries the field; the
+  channelId/avatar backfills mutate one field each. `reduceReorder` re-sorts the
+  same objects (should-be-safe: only its head was read). No unguarded writer found.
+- S2 Read exposure (verified): `GET /api/subscriptions` had no RBAC before this
+  branch (v1.80 ruling: a plain member may browse the registry). The new field is a
+  boolean preference; it reveals nothing about which users/browsers hold a push
+  registration. Not a new exposure class. The capability cache is `sessionStorage`
+  (not localStorage as briefed), `scrubSubsForCache` carries the flag only when it
+  is a boolean, and `sanitizeCapabilityCache` remains the flat-primitive scrub.
+- S3 Renderers (verified): both bells use fixed literal `textContent` / `aria-label`
+  strings; the only record-derived input is `sub.pushBell === true` as a branch
+  condition. `#notify-channel-btn` id/class are literals. No interpolation.
+- S4 Push content (verified): `decideDeliveries` runs on `sendable` only, so the
+  "N new videos" count excludes muted and vanished rows; `payloadForRow` is called
+  only when `c.send`, so a muted row's title/channel never enters an encrypted
+  body. Cursor targets (last row read) carry no content.
+- S5 Delivery loop (verified): `pushMutedForItem` is wrapped in try/catch and fails
+  open; `findSubscriptionForChannel` -> `nonEmpty` / `new URL` /
+  `normalizeChannelUrl` / `extractChannelIdFromUrl` are pure string ops, no spawn
+  or shell. Perf (advisory): each media row does a fresh
+  `ytdlpDb.holder(['subscriptions'])` table read, up to 200 rows x N browsers per
+  detached round; small table, and only a manager can generate rows, so not an
+  attacker-reachable DoS. A per-round memo is a later nicety, not a fix.
+- S6 Backup/restore (verified): the bundle carries `ytdlpDb.read()` whole and the
+  restore is `replaceAll`; every reader (`listSubscriptions`,
+  `findSubscriptionForChannel`) goes through `ensureYtdlp`, which coerces a
+  non-boolean `pushBell` to `false`; backup-restore.test.js:885 binds it.
+- S7 D8 disclosure stands: a viewer-only user sees a bell they cannot flip; the
+  403 surfaces as a console error and the label reverts. Usability, not security.
+
+Gate: APPROVED r1 @7c76380d — security-brief
+
+## Gate r1 - qa findings @7c76380d
+
+Instruments (verified, Node 22.23.1): `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations); `check-markers` 1 issue = the known "stale approval @360f8e7f" note on this active plan. Targeted suites: 6 unit files (push-delivery, ytdlp-store, capability-cache, watch-init-behavioral, ytdlp-subscriptions-client, ambient-glow-engine) 646/646 pass; 5 integration files (notifications-api, scan-push-bridge, ytdlp-patch-pause, rbac-subscriptions-flag, backup-restore) 62/62 pass. Full `npm test` NOT re-run by this seat (the build record's dual-Node 8988/8988 at 5dafcbea stands; the only later commit is the plan doc). No em dashes in any added line (grep of the diff's `+` lines: empty).
+
+Security (standing brief): no new surface. PATCH keeps `requireManageSubscriptions` (T9 extended with a pushBell 403); the field is validated at the route AND re-validated at mutate (junk is dropped, not written); `GET /api/subscriptions` sits behind the global `authGate` and exposed the whole record spread before this diff, so a non-sensitive boolean preference on it is a pre-existing exposure class, not a new one; `pushMutedForItem` typeof-guards the item strings, builds no SQL/shell, and fails open inside try/catch (a bug there over-notifies, never silently mutes); both client PATCHes `encodeURIComponent` the id; console logging carries only the server's error string.
+
+- **WARNING 1 - public/js/watch.js:2611-2627 and :2573-2575 (D7 "created/removed from the same answer set" is only true on a reload).** The bell is created/removed ONLY inside `applySubscribeAndPinState`, but the in-page transitions bypass it: `handleUnsubscribe` flips `currentSubState.subscribed=false` and relabels Subscribe without touching `bellBtn`/`currentBellState`, and the subscribe modal's success arm sets `subscribed: true, subId` without re-running the applier. Scenario A: subscribed watch page -> tap Unsubscribe (200) -> "🔕 Notify" stays on screen bound to the DELETED subId -> tap -> `PATCH /api/subscriptions/<deleted>` -> 404 "Subscription not found" -> console error, label unchanged: a live control for a subscription that no longer exists. Scenario B: unsubscribed page -> Subscribe via the modal (201) -> no bell until a reload/nav, so D9's "the toggle is one tap after adding" is false on the watch page (Pin has the same gap pre-existing, but Pin is keyed to channelDir, not the record; the bell is a record property and the plan promises removal). Fix: in `handleUnsubscribe`'s ok arm remove `bellBtn` and reset `currentBellState`; in the modal's success arm create the bell (e.g. re-run `applySubscribeAndPinState` with the cache's subs, or a small `ensureBell(matchedSub)` helper shared with the applier). Bind both in watch-init-behavioral (drive the unsubscribe fetch resolve and assert `#notify-channel-btn` is gone; drive the subscribe success and assert it appears OFF).
+- **WARNING 2 - test/unit/ambient-glow-engine.test.js:380-395 (#232 edit: the JS constraint lock got WEAKER than v1.313's).** The v1.313 lock matched the keyword anywhere in ENGINE+WIRING source; the replacement binds only `.style.<prop> =` (single `=`) and `.style.setProperty('<literal>'`. Measured in a scratchpad probe against both regexes: `back.style.transform += ' scale(1.2)'`, `back.style.filter ||= 'blur(8px)'`, `const s = back.style; s.filter = ...`, `Object.assign(back.style, { filter: ... })`, and `const p = 'filter'; back.style.setProperty(p, ...)` were ALL caught by the old lock and ALL slip the new one (5 of 7 mutant spellings; only the direct literal and the vendor camelCase still red). The tracker row says CLOSED with a mutation list that never tried these. Fix: make the property-write matcher `\.style\.([A-Za-z][\w-]*)\s*(?:[+\-*/|&?]{1,2})?=[^=]`; add to the UNSCOPED ban `Object\.assign\(\s*[^,]*\.style\b`, `setProperty\(\s*[^'"\s)]` (non-literal first arg) and a style-alias ban `\.style\s*(?:[;,)]|\s*$)` (a bare `.style` stored or passed rather than dotted); re-run the 7-mutant probe and record it in the tracker row. No runtime effect; a test-strength regression on the surface #232 was opened to strengthen.
+- SUGGESTION 1 - lib/push/deliver.js:284-290 vs :265-268: the walk arm does `advancePushCursor(row.id); counters.advanced++` with no `Number.isInteger` guard while the `none` arm guards `lastReadId`; the comment at :229-232 ("a non-zero value implies a real cursor advance") is therefore only true for integer ids. Unreachable in prod (INTEGER AUTOINCREMENT) and the prior code advanced unguarded there too, but the trigger re-run now keys on `advanced`, so mirror the guard for the belt's consistency.
+- SUGGESTION 2 - lib/push/deliver.js:73: `decideDeliveries` still returns `maxId`, which `deliverRound` no longer reads (the summary advances to `lastReadId`); only push-delivery.test.js:30 binds it. Drop it (and the test's expectation) or note it as test-only.
+- SUGGESTION 3 - server.js:378 + deliver.js:270: `pushMutedForItem` reads `ytdlpDb.holder(['subscriptions'])` (a fresh table read) per ROW, and `deliverRound` now resolves meta for EVERY row read (up to 200 per device per round) where the summary path previously resolved none. Small sync table today; consider one subscriptions snapshot per round (memoise inside deliverRound or hand the finder a cached holder).
+- SUGGESTION 4 - public/js/watch.js:2648: `bellBtn.classList.toggle('btn-primary', false)` is a dead statement (the bell is born `btn` and never gains `btn-primary`).
+- SUGGESTION 5 - UX (D8 disclosed): a viewer-only user's 403 on either surface is console-only; the button re-enables with the same label and nothing tells the user why. Parity with Pin today; an inline hint or hiding the bell when `canManageSubscriptions` is false would be the honest surface. Not blocking.
+- SUGGESTION 6 - test/unit/ytdlp-subscriptions-client.test.js:959-967: AC9's "a click PATCHes `{pushBell: !current}`" is bound by a comment-stripped SOURCE LOCK on `toggleBell` (it lives inside the `initSubscriptionsView` closure), not by driving a fetch; acceptable, disclose as a lock rather than a behavioural binding.
+
+Acceptance audit: AC1-AC3 bound by real-scan cases in scan-push-bridge (sends counted, cursor asserted); AC4-AC6 + AC10 by push-delivery (decrypted titles, cursor visit order, breaker harness `rounds === 2`); AC7 by ytdlp-store backfill + backup-restore (pre-bell OFF, ON survives); AC8 by ytdlp-patch-pause (400 naming the field, GET shows it) + rbac T9 + the store's persisted-field assertion; AC9 by watch-init frame-one ON/OFF/unsubscribed (label-bound; the shim's setAttribute is a no-op as disclosed, aria-pressed is bound on the row side), the row anatomy/glyph/click tests and capability-cache. Every one would go red with the feature removed. Comment accuracy: the "lesson at the bottom of updateSubscription" pointer resolves to the libraryPlace block (the last field arm before `record = sub`); v1.314 markers consistent; `pushBell` spelled identically across store, routes, both clients, cache scrub and CSS.
+
+Gate: CHANGES r1 @7c76380d — qa
+
+## Gate r1 - adversary findings @7c76380d
+
+Method: every mutant ran in a /tmp sandbox from `git archive 7c76380d` (never the working tree), Node 22.23.1; the working tree already carried the security-brief and qa sections above, uncommitted, before this seat wrote anything.
+
+Instruments (measured): targeted suites at 7c76380d all green - unit push-delivery 28/28, ytdlp-store 259/259, ambient-glow-engine 22/22, capability-cache 5/5, watch-init-behavioral 12/12, ytdlp-subscriptions-client 320/320; integration scan-push-bridge 7/7, notifications-api 13/13, backup-restore 25/25, ytdlp-patch-pause 15/15, rbac-subscriptions-flag 2/2. `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0); `eslint` on the touched files 0 errors (7 pre-existing warnings); `check-markers` 1 issue = the front-matter design approval @360f8e7f (not a finding).
+
+Mutants that went RED as claimed (all restored): deliver.js none-arm no-op (2 red), summary cursor = decision.maxId (1), walk-arm `advanced++` dropped (1), trigger re-run on `sent` only (1), `continue` instead of `break` after a failed send (2), `pushMuted` ignored in classifyRow (5), collapse on all rows read (5); server.js `pushMuted: false` / field dropped (api 1-2 red + bridge AC1+AC2 red); store.js apply line dropped (store 1 + patch route 1), backfill dropped (store 1 + backup-restore 1), validator subset dropped (store 1 + route 1), add literal `true` (1); subscriptions.js `onToggleBell: toggleBell` unwired (lock red), optimistic no-reload (red), glyph inverted (red); common.js scrub drops the flag (capability-cache red). #232 locks: `style.webkitFilter`, `setProperty('-webkit-mask')`, `style.cssText`, `Element.animate`, `@keyframes stage-x`, `contain: paint` on the stage all RED; `[].filter(...)` + a trailing `// transform` comment + a keyframes step BODY mentioning "stage" all stay GREEN.
+
+Reachability (verified by reading + the bridge): `resolvePushMeta` reads `getCachedDatabase().metadata[mediaId]`; a yt-dlp download's channelUrl/channelId reaches the item through `downloadMeta` (store.js:1296, written by `persistCapturedChannelMeta` for one-offs AND the subscription poll's `recordSurvivorChannelMetaFallback`, index.js:2544/2602, audio included) and is consumed by the orchestrator at :1673/:1698; `ytdlpDb.holder(['subscriptions'])` is a fresh table read per call (featureStore.js:120-128), and the flip-through-store cases in notifications-api + bridge AC2 bind that no stale snapshot is read. The `/c/`,`/user/` blind spot (D4) is accurately disclosed: the first poll's list capture records the channelId (index.js:3464) BEFORE the scan is triggered (:3534-3536), and the avatar probe (:3411) backfills it too, so it closes after the first successful poll; the residual gap is a `/c/` sub whose list capture yields no id while the per-video capture does.
+
+- **WARNING 1 (measured) - public/js/watch.js:2611-2627 handleUnsubscribe + :2573-2575 modal success arm: the in-page transitions bypass the bell.** Driven in a scratch copy of the watch-init harness (makeEl's `addEventListener` recording the listener, DELETE resolved 200, everything else hanging): after tapping Subscribed on a warm-cache page the button reads "Subscribe" but `#notify-channel-btn` stays connected, visible, labelled "🔕 Notify", and tapping it fires `PATCH /api/subscriptions/s1` for the subscription just deleted (a 404 in prod). The modal's success arm (:2573) sets `currentSubState` + the label only, so a fresh in-page subscribe shows no bell until a reload (D9's "one tap after adding" is false on the watch page). Fix: in handleUnsubscribe's ok arm `if (bellBtn) { bellBtn.remove(); bellBtn = null; } currentBellState = { subId: null, on: false };` and in the modal's success arm create the bell (re-run `applySubscribeAndPinState` with the just-written cache subs, or a shared `ensureBell(matchedSub)`); bind both in watch-init-behavioral - the harness needs only a listener-recording `addEventListener(t, fn) { (el._l = el._l || {})[t] = fn; }` on makeEl and a `fetchImpl` resolving the DELETE/POST.
+- **WARNING 2 (measured) - lib/push/deliver.js:284-290: `counters.advanced++` in the walk arm counts a cursor move the store refused.** The real `advancePushCursor` (lib/auth/store.js:1223) IGNORES a non-integer id; the none-arm guards `Number.isInteger(lastReadId)` but the walk arm does not, and trigger() now re-runs on `advanced > 0`. Repro (createPushDelivery, store advancing only integer ids, 200 rows with string ids, 199 muted + the ONE sendable row LAST): 41 rounds / 40 POSTs to one endpoint until the breaker (unbounded in prod); sendable-first and all-muted variants terminate. Unreachable with today's INTEGER AUTOINCREMENT ids, but it is exactly the class deliver.js's own comment (:199-207) says the belt's termination must not rest on. Fix: `if (Number.isInteger(row.id)) { deps.store.advancePushCursor(sub.endpoint, row.id); counters.advanced++; }` and a harness case with string ids + a trailing sendable row. Integer-id scenarios measured clean: 1 sendable + 199 muted + 5 behind -> 2 rounds, 1 POST, cursor 205; a 500 on the summary -> cursor holds, 1 round; a 500 mid-walk -> cursor 99, 2 rounds (the re-run is real progress, bounded).
+- **WARNING 3 (measured) - test/unit/ambient-glow-engine.test.js:385-395 (#232): the scoped JS lock is WEAKER than the v1.313 lock it replaced.** Surviving mutants in the engine body: `Object.assign(back.style, { filter: 'blur(2px)' })` GREEN, `back.style.filter += 'blur(2px)'` GREEN, `var p = 'filter'; back.style.setProperty(p, 'blur(2px)')` GREEN; `back.style = 'filter: blur(2px)'` reds only by accident (an engine behaviour test, not the lock). Probe of the pre-#232 regex against the same four strings: all four caught. The tracker #232 row now says CLOSED "mutation-checked" with a list that never tried these. Fix: property-write matcher `\.style\.([A-Za-z][\w-]*)\s*(?:[+\-*/|&?]{1,2})?=[^=]`; add to the unscoped ban `Object\.assign\(\s*[^,)]*\.style\b`, `\.style\s*=[^=]`, and `setProperty\(\s*[^'"\s)]` (non-literal first arg); re-run these four plus the six above; amend the tracker row's mutation list. Test-strength only, no runtime effect.
+- SUGGESTION 1 - unbound client arms (verified by reading only): dropping the bell removal in the confirmed-disabled arm (watch.js:2783), the `else if (bellBtn)` unsubscribed arm (:2832) and the cache write-through (:2672) all stay GREEN across watch-init-behavioral, uploader-channel-link, watch-pin-from-channel and capability-cache. The existing harness cannot reach the confirmed pass (hydration stops after /api/videos in the shim). The PATCH body `{"pushBell":true}`, the label-from-response, the cache write-through and the 403-leaves-label arm WERE driven green in the scratch harness above - worth landing as a real test alongside W1's fix.
+- SUGGESTION 2 - lib/push/deliver.js:73 `decideDeliveries` still returns `maxId`; deliverRound no longer reads it (summary advances to `lastReadId`); only push-delivery.test.js:30 binds it. Drop or mark test-only.
+- SUGGESTION 3 - the plan's D4 / Out-of-scope lines could name the closing mechanism for the `/c/` blind spot (channelId capture on the first poll, :3464 before :3534) so the next reader does not re-derive it.
+
+Gate: CHANGES r1 @7c76380d — adversary
+
+## Gate r1 -> r2 fix record (2026-09-23)
+
+r1 verdicts @7c76380d: security-brief APPROVED; qa CHANGES (W1 watch-page bell arms, W2 lock
+strength); adversary CHANGES (W1 same arms, W2 non-integer id counted as progress in the walk
+arm, W3 lock strength). Fixes, one commit (the r2 sha in the Gate lines below):
+
+- **W1 (both seats):** public/js/watch.js gains `ensureBell(matchedSub)` / `removeBell()`;
+  the applier, `handleUnsubscribe`'s ok arm (removeBell) and the subscribe modal's success arm
+  (ensureBell from the POST response, off by default) all route through them; the new record's
+  cache write-through carries `pushBell`. Bound by three DRIVEN cases in
+  test/unit/watch-init-behavioral.test.js (the shim now records listeners; `buildWatchRealm`
+  takes `overrides` so the modal is captured): DELETE 200 removes the bell; modal confirm +
+  POST 201 creates it OFF and caches it; the bell tap PATCHes `{pushBell:true}`, relabels from
+  the response, writes through, and a 403 leaves the label (adversary S1 landed).
+- **Adversary W2:** lib/push/deliver.js walk arm advances + counts `advanced` only for an
+  integer id (mirrors the none arm); push-delivery case: 199 muted string-id rows + one
+  sendable last -> bounded (<= 2 rounds, <= 1 POST; was 41 rounds / 40 POSTs).
+- **W3 / qa W2 (#232 lock):** compound-assignment matcher + unscoped bans for
+  `Object.assign(…style…)`, whole-style assignment, non-literal `setProperty`, a style alias;
+  probed 7 red / 2 green; tracker row 232 amended.
+- **S3:** D4 now names the closing mechanism of the `/c/`-URL blind spot.
+- Not taken: qa S2 / adversary S2 (`decideDeliveries.maxId` is still bound by its own unit
+  test and harmless), qa S3 (per-round subscriptions memo - a later nicety, the table is tiny
+  and rows are manager-generated), qa S5 (viewer-only bell hint - D8 stands, disclosed).

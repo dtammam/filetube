@@ -741,3 +741,32 @@ test('v1.314 bell AC10: a row whose meta carries NO pushMuted (a podcast, an unm
   assert.deepEqual(sends.map((b) => decryptSent(b).title), ['Ep', 'One-off']);
   assert.deepEqual(seen, ['b1', 'b2'], 'one resolve per row (the classification and the payload share it)');
 });
+
+test('v1.314 gate r1 (adversary W2): a NON-INTEGER row id in the walk arm is neither advanced nor counted as progress - 199 muted string-id rows + one sendable LAST terminate (no re-run spin)', async () => {
+  const rows = [];
+  for (let i = 1; i <= FEED_READ_LIMIT; i++) rows.push({ id: 'r' + i, mediaId: 'n' + i, createdAt: NOW - i });
+  const meta = {};
+  for (const r of rows) meta[r.mediaId] = { title: 'T', channel: 'C', kind: 'media', pushMuted: r.id !== 'r' + FEED_READ_LIMIT };
+  let cursor = 0;
+  const counts = { rounds: 0, posts: 0 };
+  const delivery = createPushDelivery({
+    store: {
+      listPushSubscriptionsForDelivery() {
+        counts.rounds++;
+        if (counts.rounds > ROUND_BREAKER) throw new Error('round breaker tripped (spin)');
+        return [{ endpoint: 'https://push.example/wp/strid', p256dh: UA_P256DH, auth: UA_AUTH, lastPushedId: cursor, cooldownUntil: 0, settingsJson: '{}' }];
+      },
+      listNotificationsAfter: (c, l) => rows.slice(0, l), // string ids: the real store would compare nothing meaningful; serve the same batch
+      advancePushCursor: (e, id) => { if (Number.isInteger(id)) cursor = Math.max(cursor, id); }, // the REAL store ignores non-integers
+      setPushCooldown() {}, removePushSubscription() {},
+    },
+    vapidKeys: VAPID_KEYS, guardHop: async () => ({ ok: true }), enabled: () => true,
+    resolveMeta: (row) => meta[row.mediaId] || null,
+    transport: async () => { counts.posts++; await new Promise((r) => setTimeout(r, 0)); return { statusCode: 201, headers: {} }; },
+    now: () => NOW, log: () => {},
+  });
+  delivery.trigger('test');
+  await settleRounds(counts);
+  assert.ok(counts.rounds <= 2, 'bounded: ' + counts.rounds + ' rounds (was 41 before the guard)');
+  assert.ok(counts.posts <= 1, 'at most the one sendable row was POSTed: ' + counts.posts);
+});

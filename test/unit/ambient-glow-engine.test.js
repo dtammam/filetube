@@ -386,14 +386,18 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   // do. Trailing `//` comments are stripped first (the standing comment-porosity
   // lesson: stripComments drops only full-line comments).
   const jsSrc = (ENGINE_SRC + '\n' + WIRING_SRC).replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  // Gate r1 (adversary W3 / qa W2): compound assignment (+=, ||=, ??=) is a write
+  // too, and a style write can hide behind an alias, Object.assign, or a
+  // non-literal setProperty name - those forms are banned outright below.
   const styleWrites = [
-    ...[...jsSrc.matchAll(/\.style\.([A-Za-z][\w-]*)\s*=[^=]/g)].map((m) => m[1]),
+    ...[...jsSrc.matchAll(/\.style\.([A-Za-z][\w-]*)\s*(?:[+\-*/%|&^?]{1,2})?=[^=]/g)].map((m) => m[1]),
     ...[...jsSrc.matchAll(/\.style\.setProperty\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]),
   ];
   assert.deepStrictEqual(styleWrites, ['background-image'], 'the ONLY style write in the ambient JS is the back layer\'s background-image');
   const FORBIDDEN_JS_STYLE = /^-?(?:webkit|moz|ms)?-?(?:filter|transform|backdrop|will-?change|scale|translate|rotate|offset|animation|mask|mix-?blend)/i;
   for (const p of styleWrites) assert.doesNotMatch(p, FORBIDDEN_JS_STYLE, 'style write "' + p + '": no filter/transform/scale/translate/rotate/animation/mask/mix-blend-mode from JS, in any spelling incl. the vendor camelCase');
   assert.doesNotMatch(jsSrc, /\.style\.cssText|\.style\s*\[|setAttribute\(\s*['"]style['"]|insertRule\(|\.cssText\s*=|\.animate\(/, 'no UNSCOPED style write (cssText / computed key / style attribute / insertRule / Element.animate) that the per-property lock could not see');
+  assert.doesNotMatch(jsSrc, /Object\.assign\(\s*[^,)]*\.style\b|\.style\s*=[^=]|\.style\.setProperty\(\s*[^'"\s)]|[=,(]\s*[A-Za-z_$][\w$]*\.style\s*[,;)\n]/, 'no style write the per-property lock cannot SEE: Object.assign onto a style, a whole-style assignment, a non-literal setProperty name, or a style object stored/passed under an alias');
   assert.doesNotMatch(WIRING_SRC, /drawImage|getContext|captureStream|requestVideoFrameCallback/, 'the wiring never touches a canvas or the video\'s frames');
   assert.doesNotMatch(ENGINE_SRC, /video\.(videoWidth|videoHeight|captureStream|requestVideoFrameCallback)/, 'the engine reads the video for currentTime only');
   assert.match(ENGINE_SRC, /Number\(video\.currentTime\)/, 'currentTime is the ONLY thing read off the video');
