@@ -1624,6 +1624,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
     activePopoutTeardown = teardownPopout; // destroy() closes the pop-out on a cross-view swap
+    // v1.311.3 (Dean: a rotate in music mode locked all scrolling): a crossing of the
+    // mobile skin gate re-runs the panel update, so the full-screen skin un-renders on a
+    // rotate to landscape (its body lock goes with its ghost) and paints again on the way
+    // back. The shared helper - podcasts.js routes through the same one.
+    if (SkinSurface && typeof SkinSurface.watchSkinViewport === 'function') {
+      SkinSurface.watchSkinViewport(window, function () { updateNowPlayingPanel(); }, signal);
+    }
 
     // Tapping the line drills into the playing track's album.
     if (nowPlayingEl) {

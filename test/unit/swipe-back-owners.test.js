@@ -83,7 +83,7 @@ test('Dean\'s repro: a rightward scrub of the watch page #seek-bar never goes ba
   assert.strictEqual(backs.n, 1, 'content outside the player still goes back');
 });
 
-test('every shell: every range/slider stands down, and so does the whole player host', () => {
+test('every shell: every range/slider stands down, and the player host itself does NOT (v1.311.3 scrubbers only)', () => {
   // QA r1 S7: the yt-dlp module's subscriptions shell is a real player shell too.
   const SUBS = path.join(__dirname, '../../lib/ytdlp/views');
   const shells = fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html')).map((f) => path.join(PUBLIC, f))
@@ -96,8 +96,10 @@ test('every shell: every range/slider stands down, and so does the whole player 
       ranges += 1;
       assert.ok(swipeBackStandDownReason(el, doc, win), `${file}: #${el.id || el.className} must stand the swipe-back down`);
     });
-    const host = doc.getElementById('player-wrapper');
-    if (host) assert.strictEqual(swipeBackStandDownReason(host, doc, win), 'owner', `${file}: the player host itself`);
+    // v1.311.3 (Dean, "scrubbers only"): the video surface is not a scrubber - a clear
+    // rightward swipe on it goes back again. Only the sliders inside the host own it.
+    const video = doc.getElementById('media-player');
+    if (video) assert.strictEqual(swipeBackStandDownReason(video, doc, win), null, `${file}: the video itself is not an owner`);
     dom.window.close(); dom = null;
   }
   assert.ok(ranges >= 18, `the census actually walked the shells' sliders (saw ${ranges})`);
@@ -130,50 +132,65 @@ test('a range/slider OUTSIDE any player (the wheel-calibration slider, a setting
   assert.strictEqual(backs.n, 0, 'dragging a bare slider right is a slide, never a back');
 });
 
-test('gate W2 (adversary): the wheel-calibration tool, and ANY overlay holding the shared body lock, owns every drag', () => {
+test('the wheel-calibration spin stage owns its drag; a held body lock no longer blocks the back (v1.311.3: the escape)', () => {
   const BL = require('../../public/js/body-scroll-lock.js');
-  const { doc, win, backs } = boot('<body><p id="p">x</p><div class="whcal-overlay"><div class="whcal-wheel" id="wh"></div></div></body>');
-  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('wh'), doc, win), 'owner', 'the wheel-cal overlay is named');
+  const { doc, win, backs } = boot('<body><p id="p">x</p><div class="whcal-overlay"><div class="whcal-head" id="head">h</div><div class="whcal-stage"><div class="whcal-wheel" id="wh"></div></div></div></body>');
   win.FileTubeBodyLock = BL; // as the shells load it
-  dragRight(win, doc.getElementById('p'));
-  assert.strictEqual(backs.n, 1, 'control: no lock held -> plain content still goes back');
   BL.lock(doc, win, 'wheel-cal');
+  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('wh'), doc, win), 'owner', 'the spin stage is named');
+  dragRight(win, doc.getElementById('wh'));
+  assert.strictEqual(backs.n, 0, 'spinning the calibration wheel right is a spin, never a back');
+  dragRight(win, doc.getElementById('head'));
+  assert.strictEqual(backs.n, 1, 'the rest of the overlay is not a scrubber - the back fires even with the lock held');
   dragRight(win, doc.getElementById('p'));
-  assert.strictEqual(backs.n, 1, 'a held body lock (an overlay over a pinned page) stands the back down everywhere');
-  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('p'), doc, win), 'immersive');
+  assert.strictEqual(backs.n, 2, 'plain content under a held lock goes back (a stranded lock is never a trap)');
   BL.release(doc, win, 'wheel-cal');
-  dragRight(win, doc.getElementById('p'));
-  assert.strictEqual(backs.n, 2, 'released -> back works again (never sticky)');
 });
 
-test('the full-screen skin panel and the Brick are owners', () => {
-  const { doc, win } = boot('<body><div class="music-nowplaying-panel mms mms-full mms-haptic"><p id="in">x</p></div><div class="ipod-brick"><canvas id="c"></canvas></div></body>');
-  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('in'), doc, win), 'owner', 'haptic skins LIFT touch-action, so .mms-full must be named');
-  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('c'), doc, win), 'owner');
+test('the full-screen skin is NOT an owner, only its scrubbers are - haptic or not (v1.311.3)', () => {
+  const CTX = { track: { title: 'T', artist: 'A' }, upNext: [], fullList: [], posLabel: '0:00', remLabel: '-1:00', playing: true };
+  for (const haptic of [false, true]) {
+    for (const id of skins.IDS) {
+      // The REAL .mms-full page lock: touch-action:none on the shell (lifted to auto when
+      // haptic), pan-y on its lists - read as the NET, both would re-own the whole skin.
+      const { doc, win, backs } = boot('<body><div id="panel" class="music-nowplaying-panel mms mms-full' + (haptic ? ' mms-haptic' : '') + '"' +
+        (haptic ? '' : ' style="touch-action:none"') + '></div></body>');
+      const panel = doc.getElementById('panel');
+      panel.innerHTML = skins.renderFull(id, CTX);
+      panel.querySelectorAll('.mms-qlist, .ip-listview').forEach((el) => { el.style.touchAction = 'pan-y'; });
+      const plain = doc.createElement('p'); panel.appendChild(plain);
+      assert.strictEqual(swipeBackStandDownReason(plain, doc, win), null, `skin ${id} (haptic ${haptic}): a non-scrubber spot is not an owner`);
+      dragRight(win, plain);
+      assert.strictEqual(backs.n, 1, `skin ${id} (haptic ${haptic}): a swipe on the skin goes back - the way out of a stuck skin`);
+      const list = panel.querySelector('.mms-qlist, .ip-listview');
+      if (list) assert.strictEqual(swipeBackStandDownReason(list, doc, win), null, `skin ${id}: a pan-y list inside the skin is not a horizontal owner`);
+      const seek = panel.querySelector('[data-skin-seek], .ip-wheel, [role="slider"]');
+      assert.ok(seek, `skin ${id} draws a scrubber`);
+      assert.strictEqual(swipeBackStandDownReason(seek, doc, win), 'owner', `skin ${id}: its scrubber still owns the drag`);
+      dom.window.close(); dom = null;
+    }
+  }
+  const { doc, win } = boot('<body><div class="ipod-brick"><canvas id="c"></canvas></div></body>');
+  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('c'), doc, win), 'owner', 'the Brick paddle is a scrubber');
 });
 
-test('immersive views own every drag: faux fullscreen, expanded audio, native fullscreen, and one entered MID-drag', () => {
+test('the touch-action NET still works OUTSIDE the skin (an unlisted drag handle)', () => {
+  const { doc, win, backs } = boot('<body><div style="touch-action:none"><span id="h">handle</span></div><div class="mms-full" style="touch-action:none"><span id="in">art</span></div></body>');
+  dragRight(win, doc.getElementById('h'));
+  assert.strictEqual(backs.n, 0, 'outside .mms-full the NET owns the drag');
+  dragRight(win, doc.getElementById('in'));
+  assert.strictEqual(backs.n, 1, 'inside .mms-full the same touch-action is the page lock - the back fires');
+});
+
+test('immersive views no longer swallow the back; their scrubbers still do (v1.311.3 scrubbers only)', () => {
   for (const cls of ['ft-css-fullscreen', 'ft-audio-expanded']) {
-    const { doc, win, backs } = boot('<body><p id="p">x</p></body>');
+    const { doc, win, backs } = boot(shellBody('watch.html'));
     doc.body.classList.add(cls);
-    dragRight(win, doc.getElementById('p'));
-    assert.strictEqual(backs.n, 0, `${cls}: no back`);
-    doc.body.classList.remove(cls);
-    dragRight(win, doc.getElementById('p'));
-    assert.strictEqual(backs.n, 1, `${cls} off again: back works (the stand-down is not sticky)`);
+    dragRight(win, doc.getElementById('seek-bar'));
+    assert.strictEqual(backs.n, 0, `${cls}: scrubbing the seek bar is still a seek`);
+    dragRight(win, doc.getElementById('media-player'));
+    assert.strictEqual(backs.n, 1, `${cls}: a swipe on the video goes back`);
     dom.window.close(); dom = null;
-  }
-  {
-    const { doc, win, backs } = boot('<body><p id="p">x</p></body>');
-    Object.defineProperty(doc, 'fullscreenElement', { value: doc.body, configurable: true });
-    dragRight(win, doc.getElementById('p'));
-    assert.strictEqual(backs.n, 0, 'native fullscreen: no back');
-  }
-  dom.window.close(); dom = null;
-  {
-    const { doc, win, backs } = boot('<body><p id="p">x</p></body>');
-    dragRight(win, doc.getElementById('p'), { mid: () => doc.body.classList.add('ft-css-fullscreen') });
-    assert.strictEqual(backs.n, 0, 'a rotate into faux fullscreen mid-drag owns the release');
   }
 });
 

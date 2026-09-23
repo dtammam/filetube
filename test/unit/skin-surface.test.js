@@ -1627,3 +1627,98 @@ test('v1.311.2: the skin releases ONLY its own hold - a player owner that also h
     assert.strictEqual(doc.body.style.position, '', 'the last player release unpins');
   } finally { b.restore(); }
 });
+
+// ---- v1.311.3 (Dean: "rotating the phone in music mode locks all scrolling") --------------
+// The full-screen skin is position:fixed only inside style.css's max-width:768px block, so a
+// rotate to landscape un-fixes the panel WITHOUT removing the ghost: the v1.256 observer never
+// fired and the body stayed pinned. jsdom never matches media queries, so the fixture models
+// the rotate with a <style> the test flips - the fixture must carry the REAL rule (fixed), or a
+// "still covers" assertion would be vacuous.
+function withCoverRule(b) {
+  const st = b.dom.window.document.createElement('style');
+  st.textContent = '.mms-full{position:fixed}';
+  b.dom.window.document.head.appendChild(st);
+  return {
+    rotateWide: () => { st.textContent = '.mms-full{position:static}'; },
+    rotateNarrow: () => { st.textContent = '.mms-full{position:fixed}'; },
+  };
+}
+const fire = (b, type) => b.dom.window.dispatchEvent(new b.dom.window.Event(type));
+
+test('v1.311.3 rotate: a viewport change that un-fixes the skin releases the ghost lock - paused, no reflect', () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const body = b.dom.window.document.body;
+    b.engine.paint();
+    assert.strictEqual(body.style.position, 'fixed', 'the haptic skin pinned the body (the precondition)');
+    fire(b, 'resize');
+    assert.strictEqual(body.style.position, 'fixed', 'CONTROL: a resize while the skin still covers keeps the lock');
+    assert.ok(ghostOf(b.dom), 'CONTROL: and keeps the ghost');
+    cover.rotateWide();
+    fire(b, 'resize'); // no reflect, no click - the paused-dock shape of the v1.256 QA CRITICAL
+    assert.strictEqual(body.style.position, '', 'the rotate unpinned the body');
+    assert.strictEqual(ghostOf(b.dom), null, 'the ghost that needs the lock is gone too');
+    assert.ok(!panel(b.dom).classList.contains('mms-haptic'), 'the touch-action carve-out is lifted');
+    cover.rotateNarrow();
+    b.engine.paint(); // the view's watchSkinViewport hook re-runs its panel update
+    assert.strictEqual(body.style.position, 'fixed', 'rotating back re-paints and re-locks');
+    assert.ok(ghostOf(b.dom), 'with a fresh ghost');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 rotate: orientationchange alone releases too, and destroy() drops the viewport listener', () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const body = b.dom.window.document.body;
+    b.engine.paint();
+    cover.rotateWide();
+    fire(b, 'orientationchange');
+    assert.strictEqual(body.style.position, '', 'orientationchange un-pins as well (iOS may report it before resize)');
+    cover.rotateNarrow();
+    b.engine.paint();
+    b.engine.destroy();
+    assert.strictEqual(body.style.position, '', 'destroy released');
+    // a player owner pins the body AFTER the skin is gone: a stale skin listener must not touch it
+    const BL = require('../../public/js/body-scroll-lock.js');
+    BL.lock(b.dom.window.document, b.dom.window, 'audio-expanded');
+    cover.rotateWide();
+    fire(b, 'resize');
+    assert.strictEqual(BL.holds(b.dom.window.document, 'audio-expanded'), true, 'a destroyed skin never releases another owner');
+    BL.release(b.dom.window.document, b.dom.window, 'audio-expanded');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 watchSkinViewport: fires once per crossing of the 768px gate, never on a same-side resize, and dies with its signal', () => {
+  const b = bootEngine({});
+  try {
+    const w = b.dom.window;
+    let narrow = true;
+    w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? narrow : false });
+    const calls = [];
+    const ctl = new w.AbortController();
+    assert.strictEqual(w.FileTubeSkinSurface.watchSkinViewport(w, (n) => calls.push(n), ctl.signal), true);
+    fire(b, 'resize');
+    assert.deepStrictEqual(calls, [], 'a resize that stays narrow (the iOS URL bar) is not a crossing');
+    narrow = false; fire(b, 'orientationchange'); fire(b, 'resize');
+    assert.deepStrictEqual(calls, [false], 'narrow -> wide fires once, however many events report it');
+    narrow = true; fire(b, 'resize');
+    assert.deepStrictEqual(calls, [false, true], 'wide -> narrow fires again');
+    ctl.abort();
+    narrow = false; fire(b, 'resize');
+    assert.deepStrictEqual(calls, [false, true], 'a torn-down view hears nothing');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 both skin views route a viewport crossing to their panel update through the ONE shared helper', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+  for (const f of ['music.js', 'podcasts.js']) {
+    const src = strip(fs.readFileSync(path.join(__dirname, '../../public/js', f), 'utf8'));
+    assert.match(src, /watchSkinViewport\(window,\s*function \(\) \{ updateNowPlayingPanel\(\); \},\s*signal\)/,
+      `${f}: a crossing re-runs updateNowPlayingPanel, bound to the view's signal`);
+    assert.doesNotMatch(src, /matchMedia\(['"]\(max-width: 768px\)['"]\)\.addEventListener/, `${f}: no hand-copied gate listener`);
+  }
+});

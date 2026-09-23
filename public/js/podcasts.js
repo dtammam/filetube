@@ -331,6 +331,11 @@
       }, { signal });
     }
     activePodcastPopoutTeardown = popoutShell ? function () { popoutShell.teardown(); } : null; // destroy() closes it on a cross-view swap
+    // v1.311.3: re-run the panel update when the viewport crosses the mobile skin gate (a
+    // rotate), so the skin un-renders / re-paints - music.js parity, the same shared helper.
+    if (window.FileTubeSkinSurface && typeof window.FileTubeSkinSurface.watchSkinViewport === 'function') {
+      window.FileTubeSkinSurface.watchSkinViewport(window, function () { updateNowPlayingPanel(); }, signal);
+    }
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -946,6 +951,9 @@
           });
         }
       }
+      // v1.311.3: the desktop panel never wears the skin's full-screen body class (music's
+      // renderNowPlayingSkin parity) - a rotate out of the mobile skin lands here.
+      try { document.body.classList.remove('mms-on'); } catch (_) { /* ignore */ }
       var S = window.FileTubeSkinSurface;
       var subline = [nowPlaying.showName, formatEpisodeMeta(nowPlaying)].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
       nowPlayingPanel.innerHTML = (S && typeof S.buildPanelHtml === 'function')
