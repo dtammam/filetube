@@ -3,9 +3,9 @@ plan: music-channel-chapters-wave
 harness: v2 · lean
 branch: feat/music-channel-chapters
 anchor: spec
-status: Draft
-next: Dean's intake on the decision register (D1-D14; the architect challenges are inline) in a NEW session via /handoff; nothing is built. Suggested order: B1+B2 (bell polish, one slim branch first), then T1, M1, M2, M4, M3.
-design: pending
+status: Approved @ef42a6d4
+next: this doc is the WAVE umbrella + the M1+M2 plan. Build order per D1 (Dean's go 2026-09-23): (1) fix/sub-bell-polish B1+B2 (own plan doc, own branch off main, v1.316.0), (2) T1 own slim branch, (3) M1+M2 HERE on feat/music-channel-chapters, (4) M3 own branch full gate, (5) M4 own branch last. Before building M1+M2: merge main, re-verify the survey anchors, flip status to Building.
+design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on the whole register D1-D15 as recommended, D15 as adjusted by the intake finding below)
 gate: pending
 ---
 
@@ -204,9 +204,27 @@ by reading; re-verify before building). Dean's asks, in his words:
 | D10 | M3 existence check | POST accepts `<id>::c<n>` iff `db.metadata[id]` exists AND `n` is a valid chapter index of that item | Closes the 404 without opening a free-text key |
 | D11 | M3 readers + cleanup | `GET /api/liked` gains a chapter arm (expand the base item's chapter n into a track-shaped entry); `delLikedByMedia`/`rekeyLiked` match `id` OR `id::c%`; the backup bundle round-trips; the row heart checks `r.ok` (fix the silent flip) and the Extras Like on a chapter row likes the CHAPTER, not the base | Access-control completeness + the data-loss class: every reader, every cleanup, the bundle |
 | D12 | M3 gate | FULL gate (adversary + qa + security-brief), Adversary briefed to orphan/duplicate/leak likes across delete, move, rekey, restore | Destructive class, never dialed down |
-| D15 | T1 | One theatre control in the music view: the in-player standard button (`#theater-btn`) wired to the music `.is-theater` toggle on desktop widths, the header duplicate removed; below the desktop breakpoint the button is hidden (theatre has no meaning there) rather than inert | Dean's ask; an inert visible control is a defect; one control = one writer |
+| D15 | T1 | One theatre control in the music view: the in-player standard button (`#theater-btn`), INJECTED by music.js into the persistent control bar when absent (same markup as watch.js's `ensureCogControlsInjected`, factored so there is one writer of the SVG) and bound on the music view's own abort signal to the music `.is-theater` toggle; the header duplicate `#music-theater-btn` removed; below the desktop breakpoint the button is hidden (theatre has no meaning there) rather than inert; watch's wiring unchanged | Intake finding: the in-player button is a watch.js injection into the PERSISTENT player host, its listener dies with the watch view's abort signal (so it is inert after a soft-nav into Music and ABSENT on a cold-load of /music). An inert visible control is a defect; one control = one writer |
 | D13 | M4 shape | A music-host copy of the wiring (or factor `setupAmbientMode` into a shared `createAmbientHost(opts)` in a new public/js/ambient.js loaded on EVERY shell) driving the SAME engine with the album art as the image rung; a toggle row in the desktop skin's settings; dark mode only (the engine's rule) | Shared factoring beats a second hand-copy; shell parity guard needed |
 | D14 | M4 order | After v1.315.0 lands; measure with the ambient probe scripts; Dean's device check before tag | The engine is mid-change on the other branch |
+
+## Intake record (2026-09-23, at ef42a6d4 = main 8536f399 v1.315.0 + this doc)
+
+- Presented D1-D15 with recommendations; Dean: "GO." (the whole register as recommended).
+- The T1 question answered BEFORE the register (read, not theorised): watch.js
+  `ensureCogControlsInjected` (watch.js:2350-2390) inserts `#theater-btn` before the cog in
+  `#player-controls`, which is the PERSISTENT player host (parity-locked across the nine shells,
+  survives SPA navigation); `setupTheatreToggle` (:2405) binds its click via the watch view's
+  AbortController signal. Consequences: after any watch visit + a soft-nav into Music the popcorn
+  button is present but DEAD ("doesn't work"); on a cold-load of /music it does not exist
+  ("doesn't always show", together with the header duplicate's desktop-only + track-expanded
+  reveal at music.js:759-786). D15 adjusted accordingly.
+- Branch plan (D1): B1+B2 get their own plan doc `2026-09-23-sub-bell-polish.md` on
+  `fix/sub-bell-polish` (off main); T1, M3, M4 each clone their sections from here when opened;
+  M1+M2 build on this branch under this doc. This doc keeps the register as the wave's source of
+  truth; per-branch docs carry their own bound gate markers (one piece, one plan).
+- Out of scope confirmed: a dedicated channel page/route, per-user bells, Pause's reload, podcast
+  chapter likes, mobile music ambient.
 
 ## Acceptance (draft; each names its binding test once designed)
 
