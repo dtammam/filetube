@@ -54,8 +54,8 @@ is NOT gated: it keeps listing every download as it does today.
   `ensureYtdlp` (lib/ytdlp/store.js:94; per-sub backfill loop :137-185) is where
   `paused`/`skipShorts`/`libraryPlace`/`order`/`cutoffDate` get their in-memory
   defaults for records written before the field existed. `validateSubscriptionPatch`
-  (:483) validates a PATCH body and `updateSubscription` (:1949; paused applied at :1996, skipShorts :2002 - was
-  ) applies it: a field must be in BOTH or the patch validates
+  (:483) validates a PATCH body and `updateSubscription` (:1949; paused applied at :1996,
+  skipShorts at :2002) applies it: a field must be in BOTH or the patch validates
   and never applies (the lesson recorded at :2026-2030). `addSubscription`'s record
   literal is at :1569.
 - **Routes:** `PATCH /api/subscriptions/:id` (lib/ytdlp/index.js:5601) already carries
