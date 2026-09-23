@@ -9020,11 +9020,17 @@ body.ft-audio-expanded {
    on every build; OFF = picture). The old glow was a canvas fed by
    drawImage(video) under a blurred + masked + scaled composited layer - both
    known iOS video/canvas/GPU-process breakage shapes. Now: NO filter, NO
-   transform, NO mask, NO will-change on anything here. The glow is a div pair
-   whose `background` stacks eight plain gradients (four edge bands + four
-   corner ellipses) from colours watch.js samples OFF-DOM from the storyboard
-   sprite tile / the poster and writes as the --ag-* custom properties; the two
-   layers cross-fade on opacity when the source changes. Numbers come from
+   transform, NO mask, NO will-change on anything here. The glow is a div pair;
+   watch.js draws the storyboard sprite tile / the poster OFF-DOM onto a tiny
+   bitmap standing for this whole box, vignettes its alpha (opaque at the
+   player's edge, transparent at this box's edge, rounded at the corners) and
+   sets the PNG data URL as the layer's background-image at 100% 100% - the
+   browser's bilinear upscale IS the blur (YouTube's own mechanism: two 110x75
+   canvases under scale(1.5, 2), no CSS filter). The two layers cross-fade on
+   opacity when the source changes. v1.313 (Dean: "hard borders/edges, look at
+   the player corners"): this replaced eight CSS gradients (one swatch per edge
+   band / corner ellipse) whose band ENDS were hard lines and whose corner cells
+   showed through the player's rounded corners as a notch. Numbers come from
    YouTube's REAL glow measured side by side (plan: ambient-glow-rebuild): it
    reaches ~11% of the player width sideways and ~20% of its height vertically,
    peaking at only ~+25/255 at the edge. */
@@ -9054,17 +9060,16 @@ body.ft-audio-expanded {
 }
 /* THE GEOMETRY. The glow element is the player's box grown by the REACH on each
    side (negative insets: the stage is the containing block, so reach-y is a % of
-   the player's height and reach-x of its width). Inside it, each gradient band is
-   exactly the reach thick, expressed as a % of the ELEMENT (band = reach / (100 +
-   2 * reach)); the band pairs below are derived from the reach pairs and a test
-   binds the derivation. The inner rectangle is covered by #player-slot, so only
-   the bands ever show, and every band fades to transparent at the element's own
-   edge - no hard cut anywhere (Dean's v1.187 complaint). */
+   the player's height and reach-x of its width). The reach pair MUST equal
+   watch.js's AMBIENT_REACH_X / AMBIENT_REACH_Y (a test binds them): the bitmap's
+   vignette puts its opaque inner rectangle exactly where the player sits, so a
+   drift here would land the glow's peak off the player's edge. The inner
+   rectangle is covered by #player-slot (its rounded corners show the bitmap's
+   own corner colour - continuous with the band, never a notch), and the alpha
+   reaches zero on the bitmap's outermost ring - no hard cut anywhere. */
 .ambient-glow {
   --ambient-reach-x: 12%;
   --ambient-reach-y: 22%;
-  --ambient-band-x: 9.677%;
-  --ambient-band-y: 15.278%;
   --ambient-fade: 1.2s;
   --ambient-opacity: 0.3; /* MEASURED (Step 4): 0.55 peaked ~3x YouTube's edge; 0.3 lands on its ~+25/255 */
   position: absolute;
@@ -9078,25 +9083,21 @@ body.ft-audio-expanded {
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
 .ambient-glow.is-on { opacity: var(--ambient-opacity); }
-/* One layer = one painted source. watch.js writes the eight --ag-* colours on the
-   BACK layer, then swaps `is-front`, so a tile change is a cross-fade, never a pop
-   (YouTube cross-fades two canvases continuously; a 1.2s fade on a 2-10s tile
-   cadence keeps the "gently shifting" feel without a permanent animation).
-   `transparent` fallbacks keep an unpainted layer invisible. */
+/* One layer = one painted source. watch.js sets the vignetted PNG data URL as
+   the BACK layer's background-image, then swaps `is-front`, so a tile change is
+   a cross-fade, never a pop (YouTube cross-fades two canvases continuously; a
+   1.2s fade on a 2-10s tile cadence keeps the "gently shifting" feel without a
+   permanent animation). The bitmap is stretched to the whole layer (its inner
+   rectangle IS the player's box); an unpainted layer has no image and stays
+   invisible. No image-rendering override: the default bilinear upscale is the
+   softness. */
 .ambient-glow-layer {
   position: absolute;
   inset: 0;
   opacity: 0;
   transition: opacity var(--ambient-fade) linear; /* token-exempt: the cross-fade length is the glow's own tuning knob (--ambient-fade), not a UI motion token */
-  background:
-    linear-gradient(to top, var(--ag-t, transparent), transparent) top center / calc(100% - 2 * var(--ambient-band-x)) var(--ambient-band-y) no-repeat,
-    linear-gradient(to bottom, var(--ag-b, transparent), transparent) bottom center / calc(100% - 2 * var(--ambient-band-x)) var(--ambient-band-y) no-repeat,
-    linear-gradient(to left, var(--ag-l, transparent), transparent) left center / var(--ambient-band-x) calc(100% - 2 * var(--ambient-band-y)) no-repeat,
-    linear-gradient(to right, var(--ag-r, transparent), transparent) right center / var(--ambient-band-x) calc(100% - 2 * var(--ambient-band-y)) no-repeat,
-    radial-gradient(farthest-side at bottom right, var(--ag-tl, transparent), transparent) top left / var(--ambient-band-x) var(--ambient-band-y) no-repeat,
-    radial-gradient(farthest-side at bottom left, var(--ag-tr, transparent), transparent) top right / var(--ambient-band-x) var(--ambient-band-y) no-repeat,
-    radial-gradient(farthest-side at top right, var(--ag-bl, transparent), transparent) bottom left / var(--ambient-band-x) var(--ambient-band-y) no-repeat,
-    radial-gradient(farthest-side at top left, var(--ag-br, transparent), transparent) bottom right / var(--ambient-band-x) var(--ambient-band-y) no-repeat;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 .ambient-glow-layer.is-front { opacity: 1; }
 /* v1.312 (Dean): ONE look. The v1.187 subtle/normal/intense/extreme ladder and

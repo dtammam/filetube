@@ -3124,5 +3124,11 @@
     "date": "2026-09-23",
     "title": "Ambient mode no longer blacks out video on your phone",
     "intent": "If you had Ambient mode on, videos on iPhone were going black a second in while the sound kept playing - an earlier note blamed the previous update, but it turned out to be Ambient mode itself, on every version. The glow has been rebuilt from the ground up so it never touches the video: it now takes its colours from the video's own preview frames and spreads them as a soft light around the player, closer to how YouTube does it - gentler and reaching a little way past the edges rather than a blurred copy. The 'Ambient amount' picker is gone; there's one calibrated look now, and the Ambient switch in the player's gear menu works exactly as before."
+  },
+  {
+    "version": "1.313.0",
+    "date": "2026-09-23",
+    "title": "Ambient mode's glow is now smooth around the whole player",
+    "intent": "The rebuilt Ambient glow worked, but it had hard edges where each side's light stopped, a visible notch at the player's rounded corners, and a flat greyish tint. The glow is now one soft halo drawn from the video's preview frame: it wraps continuously around all four corners, keeps the picture's own colours instead of averaging them into grey, and dims gently the further it gets from the player - the same softening trick YouTube uses. Nothing about the video itself changed, so the picture stays put on iPhone exactly as in the last update."
   }
 ]

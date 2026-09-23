@@ -83,13 +83,29 @@ function isDarkMode(doc) {
 // REBUILD as YouTube's subtle edge glow, and NEVER read the video element.
 //
 // The rebuilt pipeline is COLOUR-ONLY: sample a same-origin IMAGE (the storyboard
-// sprite tile at the current time, else the item's poster) on an OFF-DOM 16x9
-// canvas, average its edges + corners, and paint those as CSS gradients on two
-// plain divs that cross-fade. No drawImage from a media element, no filter /
-// transform / mask on anything beside the video. Everything below is pure or
-// injected so the unit suite drives the real pipeline with fakes.
-var AMBIENT_SAMPLE_W = 16;
-var AMBIENT_SAMPLE_H = 9;
+// sprite tile at the current time, else the item's poster) on an OFF-DOM canvas
+// and paint the result on two plain divs that cross-fade. No drawImage from a
+// media element, no filter / transform / mask on anything beside the video.
+// Everything below is pure or injected so the unit suite drives the real
+// pipeline with fakes.
+//
+// v1.313 POLISH (Dean, device + desktop screenshots of v1.312: "looks worse on
+// hard borders/edges, and look at the player corners"): the eight CSS gradients
+// (one averaged swatch per edge band / corner ellipse) had hard band ENDS, a
+// visible seam + notch at the player's rounded corners and a flat grey colour.
+// Now the tile is drawn STRETCHED over a tiny off-DOM bitmap that stands for the
+// whole glow box (player + reach), a rounded-rect VIGNETTE is written into its
+// alpha channel (opaque at the player's edge, transparent at the box edge), and
+// the PNG data URL becomes the layer's background-image at 100% 100%. The
+// browser's bilinear UPSCALE is the blur - YouTube's own mechanism (it upscales
+// two 110x75 canvases by scale(1.5, 2) with no CSS filter), minus the DOM canvas
+// and minus any transform. One continuous 2D alpha field: no band ends, no corner
+// seams, and the frame's own spatial variation survives.
+var AMBIENT_SAMPLE_W = 64;
+var AMBIENT_SAMPLE_H = 36;
+var AMBIENT_REACH_X = 0.12; // the glow reaches 12% of the player's WIDTH each side (style.css --ambient-reach-x, test-bound)
+var AMBIENT_REACH_Y = 0.22; // ...and 22% of its HEIGHT above/below (--ambient-reach-y) - YouTube's measured extent
+var AMBIENT_VIGNETTE_GAMMA = 1.5; // alpha = (1 - f)^gamma across the reach: YouTube's measured falloff (~half at 37%, ~15% at 73%)
 var AMBIENT_CLOCK_MS = 1000; // the tile-change clock; NOT a paint rate (a paint happens only on a source change)
 
 // What to sample for this item at time t: the sprite tile (video with a
@@ -122,39 +138,44 @@ function ambientSourceFor(mediaData, mediaId, t, storyboard) {
   return { kind: 'image', url: art || ('/thumbnail/' + encodeURIComponent(mediaId)), index: 0 };
 }
 
-// Average RGB of a run of pixels in a flat RGBA buffer (the getImageData shape).
-function ambientAvg(data, w, x0, y0, x1, y1) {
-  var r = 0, g = 0, b = 0, n = 0;
-  for (var y = y0; y < y1; y++) {
-    for (var x = x0; x < x1; x++) {
+// THE VIGNETTE (pure, in place). `data` is the WxH RGBA buffer of the tile drawn
+// STRETCHED over the glow box, so the inner rectangle `1/(1+2*reach)` of each
+// axis is where the player sits and the ring outside it is the reach. Every
+// pixel is lifted (below), then its alpha becomes `(1 - f)^gamma` where `f` is
+// how far OUTSIDE the inner rectangle it lies, as a fraction of the reach on
+// each axis combined by hypot (so the falloff is rounded at the corners and a
+// corner reads dimmer than an edge midpoint - YouTube measured [18,18,15] at the
+// corner vs [31,40,28] at the edge). Alpha is 255 under the player (the rounded
+// corner gap shows a tint continuous with the band, not a notch) and 0 on the
+// outermost ring, so the box edge is never a hard line.
+function ambientVignette(data, w, h, reach) {
+  var rx = reach && reach.rx > 0 ? reach.rx : AMBIENT_REACH_X;
+  var ry = reach && reach.ry > 0 ? reach.ry : AMBIENT_REACH_Y;
+  var gamma = reach && reach.gamma > 0 ? reach.gamma : AMBIENT_VIGNETTE_GAMMA;
+  var ux = 1 / (1 + 2 * rx), uy = 1 / (1 + 2 * ry); // the inner rect's half-extent, as a fraction of the half-box
+  var hw = w / 2, hh = h / 2;
+  // Pixel CENTRES, normalised so the outermost row/column sits at exactly 1
+  // (alpha 0): the bitmap's own edge is then never a visible line.
+  for (var y = 0; y < h; y++) {
+    var v = Math.abs(y + 0.5 - hh) / (hh - 0.5);
+    var fy = v > uy ? (v - uy) / (1 - uy) : 0;
+    for (var x = 0; x < w; x++) {
+      var u = Math.abs(x + 0.5 - hw) / (hw - 0.5);
+      var fx = u > ux ? (u - ux) / (1 - ux) : 0;
+      var f = Math.min(1, Math.sqrt(fx * fx + fy * fy));
       var i = (y * w + x) * 4;
-      r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+      var c = ambientLift([data[i], data[i + 1], data[i + 2]]);
+      data[i] = c[0]; data[i + 1] = c[1]; data[i + 2] = c[2];
+      data[i + 3] = Math.round(255 * Math.pow(1 - f, gamma));
     }
   }
-  if (!n) return [0, 0, 0];
-  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  return data;
 }
 
-// The eight swatches the glow is painted from: the four edge bands (top/bottom
-// rows, left/right columns) and the four corner cells of the WxH sample.
-function ambientEdgeColors(data, w, h) {
-  var cw = Math.max(1, Math.floor(w / 4)); // corner cell width
-  var ch = Math.max(1, Math.floor(h / 3)); // corner cell height
-  return {
-    t: ambientAvg(data, w, cw, 0, w - cw, ch),
-    b: ambientAvg(data, w, cw, h - ch, w - cw, h),
-    l: ambientAvg(data, w, 0, ch, cw, h - ch),
-    r: ambientAvg(data, w, w - cw, ch, w, h - ch),
-    tl: ambientAvg(data, w, 0, 0, cw, ch),
-    tr: ambientAvg(data, w, w - cw, 0, w, ch),
-    bl: ambientAvg(data, w, 0, h - ch, cw, h),
-    br: ambientAvg(data, w, w - cw, h - ch, w, h),
-  };
-}
-
-// A mild lift so the glow reads as tinted LIGHT at every scene: saturation
-// x1.15 (capped), lightness clamped to [0.30, 0.62] - a black scene still tints
-// faintly, a white scene does not wash the page out. The glow's single opacity
+// A mild lift so the glow reads as tinted LIGHT: saturation x1.15 (capped),
+// lightness clamped to [0.12, 0.62] - a black scene glows only faintly (v1.313:
+// the old 0.30 floor turned every dark scene into the same grey slab), a white
+// scene does not wash the page out. The glow's single opacity
 // (`--ambient-opacity` in style.css) does the rest, tuned so the edge peak lands
 // near YouTube's measured ~+25/255.
 function ambientLift(rgb) {
@@ -169,7 +190,7 @@ function ambientLift(rgb) {
     else h = ((r - g) / d + 4) / 6;
   }
   s = Math.min(1, s * 1.15);
-  l = Math.min(0.62, Math.max(0.30, l));
+  l = Math.min(0.62, Math.max(0.12, l));
   function hue(p, q, tt) {
     if (tt < 0) tt += 1;
     if (tt > 1) tt -= 1;
@@ -181,17 +202,6 @@ function ambientLift(rgb) {
   var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
   var p = 2 * l - q;
   return [Math.round(hue(p, q, h + 1 / 3) * 255), Math.round(hue(p, q, h) * 255), Math.round(hue(p, q, h - 1 / 3) * 255)];
-}
-
-// Swatches -> the custom properties the CSS gradients read (one per band/corner).
-function ambientGlowVars(colors) {
-  var out = {};
-  var keys = ['t', 'b', 'l', 'r', 'tl', 'tr', 'bl', 'br'];
-  for (var i = 0; i < keys.length; i++) {
-    var c = ambientLift(colors[keys[i]] || [0, 0, 0]);
-    out['--ag-' + keys[i]] = 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
-  }
-  return out;
 }
 
 // The engine. Injected collaborators (all overridable for the unit suite):
@@ -253,7 +263,10 @@ function createAmbientEngine(opts) {
     ctx = canvas.getContext('2d');
     return ctx;
   }
-  // Draw the tile (or the whole poster) into the 16x9 sample and read it back.
+  // Draw the tile (or the whole poster) STRETCHED over the tiny bitmap that
+  // stands for the glow box, vignette it in place, and hand back the PNG data
+  // URL the layer paints (v1.313). Same-origin images only, so toDataURL never
+  // throws for taint; a throw here still hard-fails the engine (the caller's try).
   function sample(img, src) {
     var c = ensureCanvas();
     var iw = img.naturalWidth || img.width || 0, ih = img.naturalHeight || img.height || 0;
@@ -264,15 +277,17 @@ function createAmbientEngine(opts) {
       sx = src.col * sw; sy = src.row * sh;
     }
     c.drawImage(img, sx, sy, sw, sh, 0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
-    var data = c.getImageData(0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H).data;
-    return ambientEdgeColors(data, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
+    var id = c.getImageData(0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
+    ambientVignette(id.data, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H, null);
+    c.putImageData(id, 0, 0);
+    var url = canvas.toDataURL('image/png');
+    return (typeof url === 'string' && url.indexOf('data:image/png') === 0) ? url : null;
   }
-  function paint(colors, src) {
+  function paint(dataUrl, src) {
     var ls = layers();
     if (!ls) return;
-    var vars = ambientGlowVars(colors);
     var back = ls[front === 0 ? 1 : 0];
-    for (var k in vars) if (Object.prototype.hasOwnProperty.call(vars, k)) back.style.setProperty(k, vars[k]);
+    back.style.setProperty('background-image', 'url("' + dataUrl + '")');
     back.classList.add('is-front');
     ls[front].classList.remove('is-front');
     front = front === 0 ? 1 : 0;
@@ -303,10 +318,10 @@ function createAmbientEngine(opts) {
       return;
     }
     if (img === 'loading') return;
-    var colors;
-    try { colors = sample(img, src); } catch (_) { fail(); return; }
-    if (!colors) { images[src.url] = 'failed'; return; }
-    paint(colors, src);
+    var bitmap;
+    try { bitmap = sample(img, src); } catch (_) { fail(); return; }
+    if (!bitmap) { images[src.url] = 'failed'; return; }
+    paint(bitmap, src);
   }
   function tick() {
     timerId = null;
@@ -890,12 +905,14 @@ if (typeof module !== 'undefined' && module.exports) {
     ambientShouldRun,
     isDarkMode,
     ambientSourceFor,
-    ambientEdgeColors,
-    ambientGlowVars,
+    ambientVignette,
     ambientLift,
     createAmbientEngine,
     AMBIENT_SAMPLE_W,
     AMBIENT_SAMPLE_H,
+    AMBIENT_REACH_X,
+    AMBIENT_REACH_Y,
+    AMBIENT_VIGNETTE_GAMMA,
     AMBIENT_CLOCK_MS,
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
@@ -2348,9 +2365,9 @@ if (typeof module !== 'undefined' && module.exports) {
     //
     // v1.312 REBUILD (Dean, device: ambient ON blacked out every video on iOS):
     // this is now only the WIRING. The pipeline lives in createAmbientEngine
-    // (module level, unit-driven): colours come from the storyboard sprite tile
-    // at the current time (else the poster), sampled on an OFF-DOM canvas and
-    // painted as CSS gradients on two cross-fading divs. The <video> element is
+    // (module level, unit-driven): the storyboard sprite tile at the current
+    // time (else the poster) is drawn OFF-DOM onto a tiny bitmap, vignetted, and
+    // set as the layer's background-image (v1.313; two cross-fading divs). The <video> element is
     // read for currentTime/paused only - its pixels are NEVER drawn, and nothing
     // beside it carries a filter/transform/mask (the two iOS suspects).
     function setupAmbientMode() {
