@@ -97,9 +97,15 @@ var AMBIENT_CLOCK_MS = 1000; // the tile-change clock; NOT a paint rate (a paint
 // player's pure geometry pair ({ frameForTime, tile } on window.FileTube.storyboard);
 // absent -> the image rung. The poster follows player.js's own poster rule:
 // an explicit artUrl (tv episodes, books) wins over /thumbnail/<id>.
+// Gate r1 (adversary F1, CRITICAL): the `?tv=` watch path has NO mediaId
+// (resolveWatchMediaId reads only ?v=/?id=), so an id-gated ladder left tv
+// episodes INERT - the DOM lit up with nothing painted. A tv descriptor always
+// carries `artUrl`, so the poster rung needs the ART, not an id; only the
+// sprite/thumbnail rungs need the id.
 function ambientSourceFor(mediaData, mediaId, t, storyboard) {
-  if (!mediaId) return null;
-  var geom = mediaData && mediaData.type === 'video' ? mediaData.storyboard : null;
+  var art = (mediaData && typeof mediaData.artUrl === 'string' && mediaData.artUrl) ? mediaData.artUrl : '';
+  if (!mediaId && !art) return null;
+  var geom = (mediaId && mediaData && mediaData.type === 'video') ? mediaData.storyboard : null;
   if (geom && geom.count > 0 && storyboard && typeof storyboard.frameForTime === 'function' && typeof storyboard.tile === 'function') {
     var index = storyboard.frameForTime(t, geom, mediaData.duration);
     var tile = storyboard.tile(index, geom);
@@ -113,8 +119,7 @@ function ambientSourceFor(mediaData, mediaId, t, storyboard) {
       rows: Math.max(1, geom.rows | 0),
     };
   }
-  var art = (mediaData && typeof mediaData.artUrl === 'string' && mediaData.artUrl) ? mediaData.artUrl : ('/thumbnail/' + encodeURIComponent(mediaId));
-  return { kind: 'image', url: art, index: 0 };
+  return { kind: 'image', url: art || ('/thumbnail/' + encodeURIComponent(mediaId)), index: 0 };
 }
 
 // Average RGB of a run of pixels in a flat RGBA buffer (the getImageData shape).
@@ -149,8 +154,9 @@ function ambientEdgeColors(data, w, h) {
 
 // A mild lift so the glow reads as tinted LIGHT at every scene: saturation
 // x1.15 (capped), lightness clamped to [0.30, 0.62] - a black scene still tints
-// faintly, a white scene does not wash the page out. The ladder's opacity does the
-// rest; YouTube's measured edge peak (~+25/255) is the ceiling `normal` aims at.
+// faintly, a white scene does not wash the page out. The glow's single opacity
+// (`--ambient-opacity` in style.css) does the rest, tuned so the edge peak lands
+// near YouTube's measured ~+25/255.
 function ambientLift(rgb) {
   var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
   var max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -193,11 +199,15 @@ function ambientGlowVars(colors) {
 //   video       the media element (read for currentTime ONLY - never drawn)
 //   getMediaData() -> the view's descriptor (read lazily: the v1.197.1 TDZ lesson)
 //   mediaId, storyboard, loadImage(url) -> Promise<img|null>, makeCanvas() -> canvas,
-//   setTimeout/clearTimeout, clockMs
+//   setTimeout/clearTimeout, clockMs, onHardFail()
 // Contract: start() paints the first source immediately, then re-checks the
 // source on the clock and paints ONLY when the tile index / url changes; stop()
-// cancels the clock. A throw in sampling hard-fails this engine (never re-armed).
+// cancels the clock. A throw in sampling hard-fails this engine (never re-armed)
+// AND reports it through onHardFail - the sample runs after an ASYNC image load,
+// so the caller's DOM state (is-on, the sidebar bleed) would otherwise stay lit
+// with nothing painting (gate r1, adversary F2 / QA W1).
 function createAmbientEngine(opts) {
+  var onHardFail = typeof opts.onHardFail === 'function' ? opts.onHardFail : null;
   var glow = opts.glow;
   var video = opts.video;
   var getMediaData = opts.getMediaData || function () { return null; };
@@ -271,6 +281,7 @@ function createAmbientEngine(opts) {
   function fail() {
     hardFailed = true;
     stop();
+    if (onHardFail) { try { onHardFail(); } catch (_) { /* the caller's teardown must not re-throw into the sampler */ } }
   }
   // One evaluation: paint iff the source changed and its image is ready.
   function check() {
@@ -2390,6 +2401,7 @@ if (typeof module !== 'undefined' && module.exports) {
         storyboard: (window.FileTube && window.FileTube.storyboard) || null,
         loadImage: loadImage,
         makeCanvas: function () { return document.createElement('canvas'); },
+        onHardFail: function () { stop(); }, // an async sample failure tears the DOM down too (gate r1 F2/W1)
       });
 
       function start() {

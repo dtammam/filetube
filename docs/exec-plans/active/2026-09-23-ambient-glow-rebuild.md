@@ -3,8 +3,8 @@ plan: ambient-glow-rebuild
 harness: v2 · lean
 branch: fix/ambient-glow-rebuild
 anchor: spec
-status: Gate:pending r1 @d2ac8876
-next: gate r1 (adversary + qa + security-brief) against HEAD, then Dean iPhone check, then release
+status: Gate:CHANGES r1 @97d6f542
+next: gate r2 - re-engage the SAME three seats at the fix sha (F1 tv poster rung, F2/W1 onHardFail, F3 lock scope, F4 guards, hygiene)
 design: Approved 2026-09-23 @bd9c476f
 gate: pending
 ---
@@ -60,8 +60,8 @@ disclosure, which attributes the black video to v1.311.2.
    A rebuild that keeps EITHER may keep the bug. Design must remove both: colours are
    sampled from an IMAGE (sprite tile / thumbnail) on an off-DOM canvas, and the glow
    is painted as plain CSS gradients on an unfiltered, untransformed element.
-4. **Things that must keep working (regression surface):** the `ft-ambient` and
-   `ft-ambient-intensity` localStorage keys and their prefs-sync membership
+4. **Things that must keep working (regression surface):** the `ft-ambient` key and its
+   prefs-sync membership (`ft-ambient-intensity` was later REMOVED - D5 superseded)
    (`public/js/prefs-sync.js:26`, bound by `test/unit/prefs-sync-client.test.js`);
    the dark-only toggle row + the "amount" row gated on the effect being on
    (`syncRowVisibility`); the `ambientShouldRun` predicate (off when paused, hidden,
@@ -214,8 +214,8 @@ clock (1s, only while running)
                       (CSS transitions opacity over --ambient-fade)
 ```
 Pure, exported, unit-tested: `ambientSourceFor`, `ambientEdgeColors`, `ambientGlowVars`,
-plus the existing `isAmbientEnabled`/`ambientStorageValue`/`ambientShouldRun`/
-`resolveAmbientLevel`/`AMBIENT_LEVELS`.
+plus the existing `isAmbientEnabled`/`ambientStorageValue`/`ambientShouldRun`
+(~~`resolveAmbientLevel`/`AMBIENT_LEVELS`~~ removed with the ladder, D5 superseded).
 
 ### Components & interfaces
 - **watch.html**: the `<canvas id="ambient-glow">` becomes
@@ -246,10 +246,9 @@ plus the existing `isAmbientEnabled`/`ambientStorageValue`/`ambientShouldRun`/
   (`ellipse at 0 0`, colour -> transparent 70%). The player's own box (the inner
   rectangle) is covered by `#player-slot`, so only the reach band shows - the same
   reach invariant as v1.187.1, now trivially true (reach > 0 by construction).
-  Ladder (data-ambient on `#ambient-glow`): subtle 0.35 · normal 0.55 · intense 0.75 ·
-  extreme 1.0 for `--ambient-opacity`; reach-x 12% / reach-y 22% of the player box at
-  every rung (matches the measured YouTube extent; the rung changes brightness, not
-  reach - reach at `extreme` grows to 18%/30%). `--ambient-fade: 1.2s` (YouTube's
+  ~~Ladder (data-ambient on `#ambient-glow`): subtle 0.35 · normal 0.55 · intense 0.75 ·
+  extreme 1.0; extreme reach 18%/30%~~ SUPERSEDED (D5, Dean): ONE look - `--ambient-opacity:
+  0.3`, reach-x 12% / reach-y 22% of the player box (the measured YouTube extent). `--ambient-fade: 1.2s` (YouTube's
   continuous 3.5s ramp reads as a slow drift; a 1.2s fade on a 2-10s cadence keeps
   the "gently shifting" feel without a permanent animation). Reduced motion:
   `transition: none`. The dark-only belt (`:root:not([data-mode="dark"]) .ambient-glow
@@ -300,7 +299,9 @@ None persisted. The only stored state is the two existing localStorage keys.
   on both Nodes; the R1 source lock green; mutants red.
 - Step 4: headless Chromium desktop run + screenshot; numbers into this doc. Demo: a
   falling-off tint outside the player.
-- Step 5: ROADMAP + ledger correction text drafted (lands with the release entry).
+- Step 5: ROADMAP + ledger correction text drafted (lands with the release entry -
+  DISCLOSED: not in the gated diff; drafted in the session scratchpad `release-texts.md`,
+  committed in the release commit per docs/RELEASING.md, acceptance bullet 7).
 - Step 6: gate (full: adversary + qa), then Dean's iPhone check, then release.
 
 ## Follow-ups noted (not this wave)
@@ -386,3 +387,48 @@ Seats per `.harness/scrutiny.toml` against `git diff --name-only bd9c476f`: `lib
 (prefs-allowlist, user/routes) -> core-logic FULL (adversary + qa); the forced
 `**/*client*` row matches `test/unit/prefs-sync-client.test.js` -> security-brief unions
 in. Three seats, r1.
+
+Gate: APPROVED r1 @97d6f542 — security-brief
+
+Gate: CHANGES r1 @97d6f542 — qa
+
+Gate: CHANGES r1 @97d6f542 — adversary
+
+### Gate r1 findings and the r2 fix (@97d6f542 -> the fix commit)
+- security-brief: APPROVED. INFO-1 stale "21-key" prose (fixed: prefs-sync.js comment,
+  cross-device-sync.md); INFO-2 pre-existing `ft-ambient-intensity` rows stay in
+  `user_prefs` for existing users - served by GET /api/prefs, ignored by the client,
+  rejected on POST, dropped on restore: harmless, DISCLOSED, no cleanup shipped.
+- adversary F1 CRITICAL (own goal - the INERT FEATURE class I named in blind-spot 2 and
+  then drove with a divergent fixture): the `?tv=` path has no `mediaId`
+  (resolveWatchMediaId reads ?v=/?id= only) and every rung was id-gated, so tv episodes
+  lit the DOM with nothing painted. FIX: `ambientSourceFor` takes the poster rung on a
+  non-empty `artUrl` with no id (the tv descriptor always carries one; `lib/tv/routes.js`
+  source-locked); only sprite/thumbnail need the id. Bound by driving the REAL shape
+  (mediaId null + the tv descriptor) through both the pure ladder and the engine, and a
+  wiring lock that `mediaId: mediaId,` reaches the engine.
+- adversary F2 = QA W1: an ASYNC sample failure stopped the engine's clock but the wiring's
+  `is-on` / `hidden=false` / root `data-ambient-on` stayed set until the next off-signal.
+  FIX: the engine takes `onHardFail`; `fail()` calls it once; the wiring routes it to its
+  own `stop()`. Bound: the callback fires exactly once after the load, never on a refused
+  re-start; wiring regexes for `onHardFail: function () { stop(); }` and the
+  `engine.hardFailed()` guard in `start()` (M17).
+- adversary F3: the CSS constraint lock swept only selectors containing `.ambient-glow`;
+  `#ambient-glow {...}`, `.watch-player-stage > div:first-child` and a `transform` on
+  `.watch-player-stage` shipped green. FIX: the sweep now covers every rule whose
+  selector mentions `ambient-glow` OR `watch-player-stage` in any form (9+ rules,
+  the stage base rule asserted present).
+- adversary F4 (M13/M14/M16): tests added - a sync sample throw on the clock never re-arms;
+  a zero-size image is a failed source and falls to the poster; a slow sprite is
+  requested once across many clocks and paints the CURRENT tile when it lands.
+- QA W2: the stale "ladder" sentence in `ambientLift` rewritten. QA S1 / adversary F5:
+  plan frontmatter sha, the Design's ladder text and blind-spot 4 struck/annotated;
+  Step 5 disclosed as landing in the release commit. QA S2: the prefs test title and
+  the tv-harness comment reworded. QA S3: the Ambient row's light belt + `[hidden]
+  !important` override re-locked. QA S4 DISCLOSED: the old per-tick `shouldRun` belt
+  is gone - a buffering stall (no pause event) keeps the glow lit at one no-paint
+  check per second; the battery floor holds (no paint on the same tile), and every
+  real off-signal still tears down.
+- adversary suspicion M1b (`var v = video; v.captureStream()` slips the source lock):
+  inherent to source locks; the fake-driven constraint test binds drawImage's source,
+  not captureStream. Accepted, not chased.

@@ -144,7 +144,7 @@ test('the visibility leg: becoming visible refreshes', async () => {
   assert.ok(!b.calls[b.calls.length - 1].opts || !b.calls[b.calls.length - 1].opts.method, 'a GET, not a POST');
 });
 
-test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 20 keys (QA W1; v1.312 dropped ft-ambient-intensity: the writer-less legacy theme key removed - a key nothing writes can never sync)', () => {
+test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 20 keys (QA W1 removed the writer-less legacy theme key; v1.312 removed ft-ambient-intensity with the ambient amount ladder - a key nothing writes can never sync)', () => {
   const clientSrc = AGENT_SRC;
   const b = boot();
   assert.deepEqual([...b.api.SYNCED].sort(), [...PLAN_KEYS].sort(), 'client === plan');

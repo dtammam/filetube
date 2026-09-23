@@ -69,7 +69,22 @@ test('v1.312 ambientSourceFor: the POSTER rung - no storyboard, audio, tv artUrl
     { kind: 'image', url: '/tvposter/show1', index: 0 }, 'a tv episode (no storyboard, an explicit artUrl) samples its poster - /thumbnail/<episodeId> would 404');
   assert.strictEqual(W.ambientSourceFor({ type: 'video', artUrl: '' }, 'v', 5, STORYBOARD).url, '/thumbnail/v', 'an EMPTY artUrl falls to the thumbnail (player.js\'s own poster rule)');
   assert.strictEqual(W.ambientSourceFor(VIDEO_ITEM, 'vid1', 5, null).kind, 'image', 'no geometry helpers (player module absent) -> the image rung, never a throw');
-  assert.strictEqual(W.ambientSourceFor(VIDEO_ITEM, '', 5, STORYBOARD), null, 'no id -> nothing to sample');
+  assert.strictEqual(W.ambientSourceFor({ type: 'video' }, '', 5, STORYBOARD), null, 'no id AND no art -> nothing to sample');
+});
+
+// Gate r1 (adversary F1, CRITICAL): the `?tv=` path has NO mediaId - resolveWatchMediaId
+// reads only ?v=/?id= - and the first cut gated EVERY rung on the id, so tv episodes
+// lit the DOM with nothing painted (a divergent fixture had passed 'ep1'). Drive the
+// REAL production shape: mediaId null, the tv descriptor (type 'video', artUrl, no
+// storyboard), and lock that the tv route really emits that artUrl.
+const TV_DESCRIPTOR = { type: 'video', artUrl: '/tvposter/show1', duration: 1200, channelName: 'Show' };
+test('v1.312 gate F1: the tv REAL shape (no mediaId, artUrl) takes the POSTER rung - and the tv route really carries artUrl', () => {
+  assert.deepStrictEqual(W.ambientSourceFor(TV_DESCRIPTOR, null, 5, STORYBOARD), { kind: 'image', url: '/tvposter/show1', index: 0 });
+  assert.deepStrictEqual(W.ambientSourceFor(TV_DESCRIPTOR, undefined, 5, STORYBOARD), { kind: 'image', url: '/tvposter/show1', index: 0 });
+  assert.strictEqual(W.ambientSourceFor({ type: 'video', storyboard: GEOM, artUrl: '/x.jpg' }, null, 5, STORYBOARD).kind, 'image', 'without an id there is no sprite URL to build - the art wins');
+  const tvRoutes = stripComments(fs.readFileSync(path.join(REPO, 'lib/tv/routes.js'), 'utf8'));
+  assert.match(tvRoutes, /artUrl: `\/tvposter\/\$\{encodeURIComponent\(ep\.showId\)\}`/, 'the tv episode descriptor carries the poster artUrl the rung relies on');
+  assert.match(stripComments(WATCH_JS), /const mediaId = resolveWatchMediaId\(window\.location\.search\);/, 'and the watch id really is ?v=/?id= only (why tv has none)');
 });
 
 // A 16x9 RGBA buffer painted by regions so every swatch is distinguishable.
@@ -140,23 +155,42 @@ function harness(opts) {
   };
   const canvas = { getContext: () => (opts && opts.throwOnRead ? { drawImage() {}, getImageData() { throw new Error('tainted'); } } : ctx) };
   const loads = [];
+  const pendingLoads = []; // when opts.slowLoads: resolvers, released by h.release()
   const images = (opts && opts.images) || { '/storyboard/vid1': { naturalWidth: 3200, naturalHeight: 720 } };
+  let hardFails = 0;
   const engine = W.createAmbientEngine({
     glow, video,
     getMediaData: () => (opts && 'mediaData' in opts ? opts.mediaData : VIDEO_ITEM),
     mediaId: opts && 'mediaId' in opts ? opts.mediaId : 'vid1',
     storyboard: STORYBOARD,
-    loadImage: (url) => { loads.push(url); return Promise.resolve(images[url] || null); },
+    loadImage: (url) => {
+      loads.push(url);
+      if (opts && opts.slowLoads) return new Promise((resolve) => { pendingLoads.push(() => resolve(images[url] || null)); });
+      return Promise.resolve(images[url] || null);
+    },
     makeCanvas: () => canvas,
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearTimeout: (id) => { if (timers[id - 1]) timers[id - 1].cancelled = true; },
     clockMs: 1000,
+    onHardFail: () => { hardFails++; },
   });
   const tick = () => { const t = timers.pop(); assert.ok(t && !t.cancelled, 'a live clock is armed'); timers.length = 0; t.fn(); };
   const settle = () => new Promise((r) => setImmediate(r));
   const front = () => layers.find((l) => l.classes.has('is-front')) || null;
-  return { engine, layers, video, timers, draws, loads, tick, settle, front, images };
+  const release = () => { const r = pendingLoads.splice(0); r.forEach((fn) => fn()); };
+  const liveTimers = () => timers.filter((t) => !t.cancelled).length;
+  return { engine, layers, video, timers, draws, loads, tick, settle, front, images, release, liveTimers, hardFails: () => hardFails, ctx, canvas };
 }
+
+test('v1.312 gate F1: the engine with the tv REAL shape (mediaId null, artUrl) LOADS and paints the poster', async () => {
+  const h = harness({ mediaId: null, mediaData: TV_DESCRIPTOR, images: { '/tvposter/show1': { naturalWidth: 600, naturalHeight: 900 } } });
+  assert.strictEqual(h.engine.start(), true);
+  assert.deepStrictEqual(h.loads, ['/tvposter/show1'], 'the poster is requested with NO id in play');
+  await h.settle();
+  assert.ok(h.front(), 'and painted');
+  assert.deepStrictEqual(h.engine.painted(), { kind: 'image', url: '/tvposter/show1', index: 0 });
+  assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 600, 900, 0, 0, 16, 9], 'the whole poster is sampled');
+});
 
 test('v1.312 engine: start() loads the sprite and paints the FIRST tile onto a layer that becomes the front', async () => {
   const h = harness();
@@ -240,6 +274,45 @@ test('v1.312 engine: a sample throw (tainted/zero canvas) HARD-FAILS this engine
   assert.strictEqual(h.engine.running(), false, 'the clock is gone');
   assert.strictEqual(h.engine.start(), false, 'start() refuses after a hard failure (no throw/catch/re-arm spin)');
   assert.strictEqual(h.front(), null);
+  // Gate r1 (adversary F2 / QA W1): the sample runs AFTER the async image load, so
+  // the wiring cannot see the failure by return value - it must be told, once.
+  assert.strictEqual(h.hardFails(), 1, 'onHardFail fired exactly once, after the load resolved');
+  assert.strictEqual(h.engine.start(), false); await h.settle();
+  assert.strictEqual(h.hardFails(), 1, 'a refused re-start does not fire it again');
+});
+
+test('v1.312 gate F4 (M13): a SYNC sample throw on the clock never re-arms the clock', async () => {
+  const h = harness();
+  h.engine.start(); await h.settle();
+  assert.ok(h.front(), 'first tile painted with a healthy canvas');
+  h.ctx.getImageData = () => { throw new Error('canvas gone'); }; // the image is cached now, so the next sample is synchronous inside tick()
+  h.video.currentTime = 27;
+  h.tick();
+  assert.strictEqual(h.engine.hardFailed(), true);
+  assert.strictEqual(h.liveTimers(), 0, 'tick() did not arm another clock after the failure');
+  assert.strictEqual(h.hardFails(), 1);
+});
+
+test('v1.312 gate F4 (M14): a ZERO-SIZE image is a failed source - it falls to the poster instead of re-sampling forever', async () => {
+  const h = harness({ images: { '/storyboard/vid1': { naturalWidth: 0, naturalHeight: 0 }, '/thumbnail/vid1': { naturalWidth: 640, naturalHeight: 360 } } });
+  h.engine.start(); await h.settle();
+  for (let i = 0; i < 5; i++) { h.tick(); await h.settle(); }
+  assert.deepStrictEqual(h.loads, ['/storyboard/vid1', '/thumbnail/vid1'], 'the broken sprite dropped to the thumbnail, once');
+  assert.strictEqual(h.engine.painted().kind, 'image');
+  assert.strictEqual(h.draws.length, 1, 'the poster painted once; the zero-size sprite was never drawn');
+});
+
+test('v1.312 gate F4 (M16): a SLOW sprite is requested ONCE across many clocks, then paints the CURRENT tile when it lands', async () => {
+  const h = harness({ slowLoads: true });
+  h.engine.start();
+  for (let i = 0; i < 4; i++) { h.tick(); await h.settle(); }
+  assert.strictEqual(h.loads.length, 1, 'one in-flight load, no duplicates while it is pending');
+  assert.strictEqual(h.front(), null);
+  h.video.currentTime = 27; // the tile moved on while the sprite was loading
+  h.release(); await h.settle(); await h.settle();
+  assert.ok(h.front(), 'painted once the sprite landed');
+  assert.strictEqual(h.engine.painted().index, 10, 'with the tile of NOW (t=27), not the tile of the request (t=0)');
+  assert.strictEqual(h.loads.length, 1);
 });
 
 test('v1.312 THE CONSTRAINT: the engine never hands the VIDEO element to drawImage - only the loaded image', async () => {
@@ -271,6 +344,9 @@ test('v1.312 WIRING LOCK: setupAmbientMode builds the engine from the view (lazy
   assert.match(WIRING_SRC, /getMediaData: function \(\) \{ return mediaData; \}/, 'mediaData is read LAZILY (the v1.197.1 TDZ lesson)');
   assert.match(WIRING_SRC, /storyboard: \(window\.FileTube && window\.FileTube\.storyboard\) \|\| null/, 'the sprite geometry comes from the player module, guarded');
   assert.match(WIRING_SRC, /makeCanvas: function \(\) \{ return document\.createElement\('canvas'\); \}/, 'the sample canvas is created OFF-DOM (never appended)');
+  assert.match(WIRING_SRC, /mediaId: mediaId,/, 'the view id reaches the engine (the sprite/thumbnail rungs need it; tv has none and rides artUrl)');
+  assert.match(WIRING_SRC, /onHardFail: function \(\) \{ stop\(\); \}/, 'gate r1 F2/W1: an async hard failure tears the DOM down through the wiring\'s own stop()');
+  assert.match(fnBody(WIRING_SRC, 'function start() {', '      '), /if \(engine\.hardFailed\(\)\) return;/, 'a hard-failed engine is never re-lit (M17)');
   assert.doesNotMatch(WIRING_SRC, /appendChild\(|insertBefore\(|insertAdjacentElement\(/, 'nothing is ever inserted into the document by ambient');
   const startFn = fnBody(WIRING_SRC, 'function start() {', '      ');
   const stopFn = fnBody(WIRING_SRC, 'function stop() {', '      ');
@@ -296,10 +372,19 @@ function glowRules() {
   const css = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
   return [...css.matchAll(/([^{}]*\.ambient-glow[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
 }
+// Gate r1 (adversary F3): the constraint must cover EVERY rule that can reach the glow
+// or the video's ancestor stage - by id, by class, by child/attribute selectors, or
+// via the stage itself (`#ambient-glow {…}`, `.watch-player-stage > div:first-child`,
+// a `transform` on `.watch-player-stage` all shipped gate-green under the class-only sweep).
+function stageAndGlowRules() {
+  const css = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...css.matchAll(/([^{}]*(?:ambient-glow|watch-player-stage)[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+}
 
-test('v1.312 CSS LOCK: NO .ambient-glow rule carries a filter / transform / mask / backdrop-filter / will-change (the second iOS suspect)', () => {
-  const rules = glowRules();
-  assert.ok(rules.length >= 6, 'the glow rules exist (' + rules.length + ')'); // base, is-on, layer, is-front, the light belt, reduced-motion
+test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a filter / transform / mask / backdrop-filter / will-change (the second iOS suspect)', () => {
+  const rules = stageAndGlowRules();
+  assert.ok(rules.length >= 9, 'the glow + stage rules exist (' + rules.length + ')'); // glow: base, is-on, layer, is-front, light belt, reduced-motion; stage: base, mobile clip, the fullscreen z-index drop
+  assert.ok(rules.some((r) => /^\.watch-player-stage$/.test(r.selector)), 'the stage base rule is in the sweep');
   for (const r of rules) {
     for (const prop of ['filter', 'transform', 'mask-image', '-webkit-mask-image', 'mask', 'backdrop-filter', 'will-change', 'mix-blend-mode']) {
       assert.doesNotMatch(r.body, new RegExp('(^|[\\s;])' + prop.replace(/[-]/g, '\\-') + '\\s*:'), r.selector + ' must not declare ' + prop);
@@ -357,4 +442,9 @@ test('v1.312 CSS PAINT: the layer stacks eight gradients (four edge bands + four
   // the light belt + the sidebar bleed survive the rebuild
   assert.ok(glowRules().some((r) => r.selector === ':root:not([data-mode="dark"]) .ambient-glow' && /opacity:\s*0 !important/.test(r.body)), 'the dark-only belt');
   assert.match(STYLE_CSS, /:root\[data-ambient-on\] \.sidebar \{/, 'the v1.188 sidebar bleed');
+  // QA r1 S3: the toggle row's belts were bound by a retired v1.187 test - re-lock them
+  // (gate W5 there: `[hidden]` loses to the label's `display: inline-flex`, so the
+  // !important override is load-bearing).
+  assert.match(STYLE_CSS, /:root:not\(\[data-mode="dark"\]\) #ambient-toggle-row \{ display: none; \}/, 'the light-theme belt on the Ambient row');
+  assert.match(STYLE_CSS, /#ambient-toggle-row\[hidden\] \{ display: none !important; \}/, 'the [hidden] !important override on the Ambient row');
 });

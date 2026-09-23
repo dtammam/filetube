@@ -19,7 +19,7 @@
 (function () {
   if (window.__ftPrefsSync) return; // double-load guard (QA S2): a second eval must not wrap the first patch
   // The client twin of server.js's SYNCED_PREF_KEYS (a lock test binds both
-  // to the exec plan's 21-key list - drift = a key that silently never syncs).
+  // to the exec plan's 20-key list - drift = a key that silently never syncs).
   var SYNCED = [
     'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
     'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
