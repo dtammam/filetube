@@ -600,3 +600,144 @@ test('v1.73/v1.246: a podcast row -> /podcasts?play=, an AUDIO row -> /music?pla
   const server = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
   assert.match(server, /kind: 'media', type: item\.type, chaptered/, 'resolvePushMeta carries the media type + chaptered flag');
 });
+
+// ---- v1.314: the per-subscription push BELL (meta.pushMuted) ----------------
+// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (D2, D6; AC4-6, AC10).
+// resolveMeta (the server's resolvePushMeta) marks a row whose channel's
+// subscription has the bell OFF with `pushMuted: true`. The deliverer must skip
+// it SILENTLY but still pass the cursor over it, and the collapse must count
+// only the rows it will actually send.
+
+const UA_PRIVATE_JWK = ua.privateKey.export({ format: 'jwk' });
+// Test-side decrypt (the same RFC 8291 reverse derivation push-crypto.test.js
+// binds against vectors) so the titles that were SENT can be read back.
+function decryptSent(body) {
+  const salt = body.subarray(0, 16);
+  const idlen = body.readUInt8(20);
+  const asPublicPoint = body.subarray(21, 21 + idlen);
+  const ciphertext = body.subarray(21 + idlen);
+  const uaPrivate = crypto.createPrivateKey({ key: UA_PRIVATE_JWK, format: 'jwk' });
+  const uaPublicPoint = Buffer.concat([Buffer.from([0x04]), Buffer.from(UA_PRIVATE_JWK.x, 'base64url'), Buffer.from(UA_PRIVATE_JWK.y, 'base64url')]);
+  const asPublic = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: asPublicPoint.subarray(1, 33).toString('base64url'), y: asPublicPoint.subarray(33, 65).toString('base64url') }, format: 'jwk' });
+  const ecdh = crypto.diffieHellman({ privateKey: uaPrivate, publicKey: asPublic });
+  const hk = (s, ikm, info, len) => Buffer.from(crypto.hkdfSync('sha256', ikm, s, info, len));
+  const ikm = hk(Buffer.from(UA_AUTH, 'base64url'), ecdh, Buffer.concat([Buffer.from('WebPush: info\0'), uaPublicPoint, asPublicPoint]), 32);
+  const cek = hk(salt, ikm, Buffer.from('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = hk(salt, ikm, Buffer.from('Content-Encoding: nonce\0'), 12);
+  const de = crypto.createDecipheriv('aes-128-gcm', cek, nonce);
+  de.setAuthTag(ciphertext.subarray(ciphertext.length - 16));
+  const padded = Buffer.concat([de.update(ciphertext.subarray(0, ciphertext.length - 16)), de.final()]);
+  return JSON.parse(padded.subarray(0, padded.length - 1).toString('utf8'));
+}
+
+function bellFeed(n) {
+  const rows = [];
+  for (let i = 1; i <= n; i++) rows.push({ id: 9 + i, mediaId: `b${i}`, createdAt: NOW - (n - i) * 1000 });
+  return rows;
+}
+function bellMeta(rows, mutedIds) {
+  const meta = {};
+  for (const r of rows) meta[r.mediaId] = { title: `Title ${r.id}`, channel: 'Bell Channel', kind: 'media', type: 'video', pushMuted: mutedIds.includes(r.id) };
+  return meta;
+}
+const advances = (store) => store.calls.filter((x) => x[0] === 'advance').map((x) => x[2]);
+
+test('v1.314 bell AC4: the collapse counts ONLY rows that pass - 5 read, 3 muted = 2 INDIVIDUAL pushes (not a summary), every row passed by the cursor in feed order', async () => {
+  const feed = bellFeed(5); // ids 10..14
+  const { store, sends, delivery } = harness({ subs: [{ ...SUB, lastPushedId: 9 }], feed, responses: [], meta: bellMeta(feed, [10, 12, 14]) });
+  const c = await delivery.deliverRound();
+  assert.equal(sends.length, 2, 'two sends');
+  assert.deepEqual(sends.map((s) => decryptSent(s.body).title), ['Title 11', 'Title 13'], 'the two UNMUTED rows, in order, as individual pushes');
+  assert.equal(c.sent, 2);
+  assert.equal(c.advanced, 3, 'three silent cursor moves');
+  assert.deepEqual(advances(store), [10, 11, 12, 13, 14], 'the cursor visits EVERY row in feed order, muted ones included');
+  assert.equal(store.state.get(SUB.endpoint).lastPushedId, 14);
+});
+
+test('v1.314 bell AC4: 4 passing + 3 muted = ONE "4 new videos" summary whose cursor lands on the LAST ROW READ (a muted tail is passed too)', async () => {
+  const feed = bellFeed(7); // ids 10..16
+  const { store, sends, delivery } = harness({ subs: [{ ...SUB, lastPushedId: 9 }], feed, responses: [], meta: bellMeta(feed, [11, 14, 16]) });
+  const c = await delivery.deliverRound();
+  assert.equal(sends.length, 1, 'one summary send');
+  assert.equal(decryptSent(sends[0].body).title, '4 new videos', 'the count is the PASSING rows, never the rows read');
+  assert.equal(c.sent, 1);
+  assert.deepEqual(advances(store), [16], 'the cursor target is the last row READ (id 16 is muted) - not the last passing row (15)');
+});
+
+test('v1.314 bell: a round where EVERY row is muted sends nothing, passes the cursor to the last row read, and reports advanced (not sent)', async () => {
+  const feed = bellFeed(3);
+  const { store, sends, delivery } = harness({ subs: [{ ...SUB, lastPushedId: 9 }], feed, responses: [], meta: bellMeta(feed, [10, 11, 12]) });
+  const c = await delivery.deliverRound();
+  assert.equal(sends.length, 0, 'silent');
+  assert.equal(c.sent, 0);
+  assert.equal(c.advanced, 1);
+  assert.deepEqual(advances(store), [12]);
+  assert.equal(store.state.get(SUB.endpoint).lastPushedId, 12, 'the cursor never re-reads muted rows');
+});
+
+test('v1.314 bell AC6: the cursor HOLDS at the last success - rows [muted, ok, muted, FAIL, muted] end the cursor before the failure, the trailing muted row is NOT passed', async () => {
+  const feed = bellFeed(5); // 10 muted, 11 ok, 12 muted, 13 fails (500), 14 muted
+  const { store, sends, delivery } = harness({
+    subs: [{ ...SUB, lastPushedId: 9 }], feed,
+    responses: [{ statusCode: 201, headers: {} }, { statusCode: 500, headers: {} }],
+    meta: bellMeta(feed, [10, 12, 14]),
+  });
+  const c = await delivery.deliverRound();
+  assert.deepEqual(sends.map((s) => decryptSent(s.body).title), ['Title 11', 'Title 13'], 'both unmuted rows were attempted, in order');
+  assert.equal(c.sent, 1);
+  assert.equal(c.skipped, 1, 'the 500');
+  assert.deepEqual(advances(store), [10, 11, 12], 'advanced past 10 (muted), 11 (sent), 12 (muted); STOPPED at 13; 14 never passed');
+  assert.equal(store.state.get(SUB.endpoint).lastPushedId, 12, 'row 13 is retried next round, row 14 still behind it');
+});
+
+test('v1.314 bell AC5: a FULL read of all-muted rows does not strand the cursor - trigger() re-runs on cursor PROGRESS (advanced), reaches the rows behind, then terminates (no spin, zero POSTs)', async () => {
+  const total = FEED_READ_LIMIT + 5;
+  const rows = [];
+  for (let i = 1; i <= total; i++) rows.push({ id: i, mediaId: `m${i}`, createdAt: NOW - i });
+  const meta = {};
+  for (const r of rows) meta[r.mediaId] = { title: 'T', channel: 'C', kind: 'media', pushMuted: true };
+  let cursor = 0;
+  const counts = { rounds: 0, posts: 0 };
+  const delivery = createPushDelivery({
+    store: {
+      listPushSubscriptionsForDelivery() {
+        counts.rounds++;
+        if (counts.rounds > ROUND_BREAKER) throw new Error('round breaker tripped (spin)');
+        return [{ endpoint: 'https://push.example/wp/muted', p256dh: UA_P256DH, auth: UA_AUTH, lastPushedId: cursor, cooldownUntil: 0, settingsJson: '{}' }];
+      },
+      listNotificationsAfter: (c, l) => rows.filter((r) => r.id > c).slice(0, l),
+      advancePushCursor: (e, id) => { cursor = Math.max(cursor, id); },
+      setPushCooldown() {}, removePushSubscription() {},
+    },
+    vapidKeys: VAPID_KEYS,
+    guardHop: async () => ({ ok: true }),
+    enabled: () => true,
+    resolveMeta: (row) => meta[row.mediaId] || null,
+    transport: async () => { counts.posts++; await new Promise((r) => setTimeout(r, 0)); return { statusCode: 201, headers: {} }; },
+    now: () => NOW,
+    log: () => {},
+  });
+  delivery.trigger('test');
+  await settleRounds(counts);
+  assert.equal(counts.posts, 0, 'nothing was ever pushed');
+  assert.equal(cursor, total, 'the cursor reached the LAST row - the 5 rows behind the full read were not stranded');
+  assert.equal(counts.rounds, 2, 'exactly one re-run (the truncated first read), then quiet');
+});
+
+test('v1.314 bell AC10: a row whose meta carries NO pushMuted (a podcast, an unmatched one-off, a non-YouTube item) pushes exactly as before; resolveMeta runs ONCE per row', async () => {
+  const feed = bellFeed(2);
+  const seen = [];
+  const meta = { b1: { title: 'Ep', channel: 'Pod', kind: 'podcast' }, b2: { title: 'One-off', channel: 'Folder', kind: 'media', type: 'video' } };
+  const store = fakeStore([{ ...SUB, lastPushedId: 9 }], feed);
+  const sends = [];
+  const delivery = createPushDelivery({
+    store, vapidKeys: VAPID_KEYS, guardHop: async () => ({ ok: true }), enabled: () => true,
+    resolveMeta: (row) => { seen.push(row.mediaId); return meta[row.mediaId]; },
+    transport: async ({ body }) => { sends.push(body); return { statusCode: 201, headers: {} }; },
+    now: () => NOW, log: () => {},
+  });
+  const c = await delivery.deliverRound();
+  assert.equal(c.sent, 2);
+  assert.deepEqual(sends.map((b) => decryptSent(b).title), ['Ep', 'One-off']);
+  assert.deepEqual(seen, ['b1', 'b2'], 'one resolve per row (the classification and the payload share it)');
+});
