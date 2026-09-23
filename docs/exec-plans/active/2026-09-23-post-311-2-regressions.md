@@ -3,8 +3,8 @@ plan: post-311-2-regressions
 harness: v2 · filetube
 branch: fix/post-311-2-regressions
 anchor: outcome
-status: Gate:pending r1 @54cc993b
-next: dual-Node full suites @54cc993b, then FULL gate r1 (adversary + qa); R0/R2 await Dean's device answers
+status: Gate:CHANGES r1 @de29fc19
+next: gate r2 delta re-confirmation (same adversary + qa instances) on the r1 fix round; then release v1.311.3
 gate: pending
 ---
 
@@ -59,12 +59,16 @@ play a video and do NOT enter fullscreen).
   orientationchange) and the full-screen skin panel no longer computes
   `position:fixed`, the engine releases its body lock, removes its ghost and lifts
   `mms-haptic`, even while paused (no reflect/click). A same-side resize keeps the
-  lock. `destroy()` removes the viewport listener. Bound in `skin-surface.test.js`.
+  lock. `destroy()` removes the viewport listener (unbound on purpose: a stale listener
+  is inert; the test binds that a destroyed skin never releases another owner). A rotate
+  DURING a wheel scrub never re-locks when the finger lifts (gate r1 W1). Bound in
+  `skin-surface.test.js`.
 - **A2 the views re-render on a crossing.** music.js and podcasts.js both route a
   crossing of the 768px gate through ONE shared `SkinSurface.watchSkinViewport` to
   their `updateNowPlayingPanel` (bound to the view signal). The helper fires once per
   crossing, never on a same-side resize, and not after abort. The podcasts desktop
-  branch drops `body.mms-on` (music parity).
+  branch drops `body.mms-on` (music parity), and both desktop branches reset the panel's
+  skin classes. Bound behaviourally through each REAL view (gate r1 W2).
 - **A3 swipe-back: scrubbers only (Dean's ruling).** Owners are `[data-skin-seek]`,
   `.ip-wheel`, `.ipod-brick`, `.whcal-stage`, `input[type=range]`, `[role=slider]`,
   plus the touch-action NET outside `.mms-full` (inside it, touch-action is the page
@@ -83,6 +87,24 @@ play a video and do NOT enter fullscreen).
   chapter head. An earlier saved place still resumes (v1.222). `chapterResumeSecFor` is the
   one producer of `chapterResumeSec`. Bound by a real row-click test and boundary checks.
 - **R0 / R2:** no code until a device observation names the cause.
+
+## R0 / R2 device evidence (Dean, 2026-09-23) and the WebKit bisect
+
+- Dean: black video happens INLINE too, on EVERY video, mobile only. That **falsifies**
+  the body-lock hypothesis (inline takes no lock). He cannot pin `:1.311.1` right now, and
+  declined an on-device diagnostics readout. R2: after a drag in video fullscreen the page
+  STAYS moved (not a rubber-band spring-back).
+- Source bisect v1.309.0..HEAD: no change touches the video element's visibility, opacity,
+  transform or layers. The `mms-on` rules that hide player parts are scoped to
+  `#view-root[data-view="music"]` (cannot reach the watch page).
+- Playwright WebKit 1.58.2 (WebKitGTK, "Version/26.0", iPhone 13 emulation), a real
+  H.264/AAC mp4, sandboxes from `git archive v1.311.1`, `v1.311.2`, `de29fc19`: every build
+  paints the picture (videoWidth 640, readyState 4, 1/121 near-black samples) inline with
+  native controls, inline custom, in faux fullscreen and after exit; no hidden ancestor;
+  the video is the top element. Only difference: v1.311.2+ pins the body in faux
+  fullscreen (expected). Synthetic vertical drags in faux fullscreen: no scroll leak.
+- **Conclusion: R0 and R2 are NOT diagnosed and NOT fixed.** WebKitGTK is not iOS's
+  AVFoundation compositing, so an iOS-only cause is not ruled out. They ship DISCLOSED.
 
 ## R4 end-to-end findings (headless Chromium, a real 4-chapter mp3 + 3 other tracks)
 
@@ -137,3 +159,37 @@ static ffmpeg 7.0.2; logs in the session scratchpad `r4/`, `r5/`).
 - Album-end mutants (sandbox): H1 hold check removed · H2 hold never set · H3 play never
   clears: all KILLED. Tail-rule mutants: T1 rule removed · T2 builder bypasses the helper
   · T3 `>` for `>=` · T4 tail 10s: all KILLED.
+
+Gate: APPROVED r1 @de29fc19 — qa
+
+Gate: CHANGES r1 @de29fc19 — adversary
+
+## Verification (@de29fc19, builder)
+
+- `npm test` Node 22.23.1: 8946/8946 pass, 0 fail, 0 skipped. Node 24.20.0: 8946/8946
+  pass, 0 fail, 0 skipped (sequential, before the gate).
+
+## Gate r1 fix round
+
+| Finding | Fix | Binding |
+|---|---|---|
+| ADV W1 rotate mid-scrub re-locks on the finger lift | `endWheel` flushes a deferred paint only into a panel still wearing `mms-full`; `onViewportChange` drops the deferred paint + ends the spin when the panel stops covering (before the release, lock or not: a real resize lets the ghost observer release first) | W1 test (view re-render, microtask order), W1 no-re-render test (DOM sentinel + lock count), dock sibling test |
+| ADV W2 view wiring only source-locked | - | music-skin-integration + podcast-nowplaying-view rotate tests through the real views (panel classes, transport, `mms-on`, both directions) |
+| QA S2 desktop panel kept skin classes | both desktop branches reset `className` | killed by the W2 tests (F6, F7) |
+| ADV S1 watcher start state / S2 orientationchange | - | start-wide + orientationchange-alone test |
+| ADV S3 `loadstart` clear unbound / S4 paused seek after the end | `seeked` above 0.5s releases the hold and re-reflects | hold test; the end-rewind test now fires the rewind's own `seeked` at 0 |
+| QA S1 over-claiming test title | retitled; A1 says the listener removal is unbound | - |
+| QA S5 stale player.js comment | "no swipe-back" dropped | - |
+| QA S6 / ADV S5 stale plan markers | fixed; the de29fc19 dual-Node record added | - |
+| QA S3 hold until play | fixed by S4 | - |
+| QA S4 source lock | superseded by behavioural W2 tests | - |
+
+Found while fixing W1 (sibling, same seam): a spin that outlived a view-side DOCK flushed
+its deferred paint into the docked panel (un-hiding it). Closed by the same flush guard.
+
+Fix-round mutants (sandbox from `git archive 3b4a9b12` + the final tests): F1 flush guard
+removed · F2 viewport keeps the deferred paint · F3 music watch call dead · F4 podcasts
+watch call dead · F5 podcasts `mms-on` removal dropped · F6/F7 className resets dropped ·
+F8 watcher starts narrow · F9 no orientationchange · F10 `loadstart` clear dropped · F11
+seek release dropped · F12 seek release at 0: all 12 KILLED (F2 and F12 survived the
+first run and were bound before this record).

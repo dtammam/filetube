@@ -1785,3 +1785,30 @@ test('v1.311.3 gate r1 W1 (sibling): a spin that outlives a view-side DOCK never
     assert.ok(panel(b.dom).querySelector('.ip-wheel'), 'a later paint renders normally (nothing frozen)');
   } finally { b.restore(); }
 });
+
+test('v1.311.3 gate r1 W1 (no view re-render): the viewport release drops the deferred paint itself', () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const w = b.dom.window;
+    const body = w.document.body;
+    const BL = require('../../public/js/body-scroll-lock.js');
+    let locks = 0;
+    w.FileTubeBodyLock = Object.assign({}, BL, { lock: (...a) => { locks += 1; return BL.lock(...a); } });
+    b.engine.paint();
+    assert.strictEqual(locks, 1, 'precondition: the skin took the lock once');
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 0, clientY: 100 }));
+    b.engine.paint(); // deferred
+    wheel.setAttribute('data-sentinel', '1'); // a repaint would replace the whole skin DOM
+    cover.rotateWide();
+    fire(b, 'resize'); // a host with no watchSkinViewport hook: the skin DOM (and mms-full) stays
+    assert.strictEqual(locks, 1, 'no second lock acquisition');
+    assert.ok(panel(b.dom).querySelector('.ip-wheel[data-sentinel]'), 'the release never flushed the deferred paint (no re-draw into a non-covering panel)');
+    assert.strictEqual(body.style.position, '', 'released');
+    w.document.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(body.style.position, '', 'the lift found no deferred paint to flush - no re-lock');
+    assert.strictEqual(ghostOf(b.dom), null, 'no ghost came back');
+  } finally { b.restore(); }
+});

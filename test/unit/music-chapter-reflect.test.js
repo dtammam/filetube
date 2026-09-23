@@ -305,6 +305,7 @@ test('v1.311.3: the whole-file END rewind does not re-register nav - the ended a
     set(360); await settle();
     mp.dispatchEvent(new dom.window.Event('ended'));
     set(0); await settle();    // the cascade's el.currentTime = 0 -> its timeupdate
+    mp.dispatchEvent(new dom.window.Event('seeked')); await settle(); // ...and the rewind's own seeked (at 0)
     await ctx.drain();
     assert.strictEqual(playingId(dom), 'film::c2', 'the rewind is not a cross: the last chapter stays shown');
     ctx.getNav().onNext();     // the ended advance (handleAutoplayNext -> fallbackToTrackNav)
