@@ -3,9 +3,9 @@ plan: post-311-2-regressions
 harness: v2 · filetube
 branch: fix/post-311-2-regressions
 anchor: outcome
-status: Gate:CHANGES r1 @de29fc19
-next: gate r2 delta re-confirmation (same adversary + qa instances) on the r1 fix round; then release v1.311.3
-gate: pending
+status: Shipped v1.311.3
+next: Dean's device pass (rotate in a wheel skin and in Cider, listen+rotate+rotate back, swipe-back on a skin, a chaptered album end); R0 black video + R2 fullscreen page move stay open (need a device observation or a :1.311.1 pin)
+gate: FULL (adversary + qa) APPROVED r2 @bf1e9015
 ---
 
 # Post-v1.311.2 regressions (target v1.311.3)
@@ -214,3 +214,7 @@ first run and were bound before this record).
 
 - `npm test` Node 22.23.1: 8954/8954 pass, 0 fail, 0 skipped. Node 24.20.0: 8954/8954 pass,
   0 fail, 0 skipped (sequential).
+
+Gate: APPROVED r2 @bf1e9015 — qa
+
+Gate: APPROVED r2 @bf1e9015 — adversary

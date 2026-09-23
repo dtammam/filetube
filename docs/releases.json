@@ -3112,5 +3112,11 @@
     "date": "2026-09-23",
     "title": "Smoother player gestures on iPhone",
     "intent": "Scrubbing the seek bar to the right no longer throws you out of the video, and dragging on any slider or the player never counts as a swipe back. In fullscreen and the expanded audio view the page behind no longer scrolls under your finger, a quick double-tap to skip no longer lands on the fullscreen button by accident, and the 15-second skip buttons are gone (double-tap to skip still works). Critters never get in the way of a button or link any more: tap one sitting on a button and the button still works, while the critter still reacts."
+  },
+  {
+    "version": "1.311.3",
+    "date": "2026-09-23",
+    "title": "Rotating the phone no longer traps music or locks the page",
+    "intent": "Turning your phone sideways and back while music plays no longer locks scrolling or leaves you stuck on a full-screen up-next list with no controls, and a swipe from the edge works again as a way back out (it only holds off on sliders and the click wheel). A chaptered album now plays every chapter before moving on to something new instead of starting over from the second chapter, and tapping a chapter you just finished starts it from the top."
   }
 ]
