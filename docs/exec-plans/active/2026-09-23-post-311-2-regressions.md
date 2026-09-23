@@ -3,8 +3,8 @@ plan: post-311-2-regressions
 harness: v2 · filetube
 branch: fix/post-311-2-regressions
 anchor: outcome
-status: Building
-next: commit R3 + swipe-back scope, sandbox mutants, R4 end-to-end chaptered check, then dual-Node full suites and the FULL gate
+status: Gate:pending r1 @07e3572d
+next: FULL gate r1 (adversary + qa); R4 end-to-end result pending; R0/R2 await Dean's device answers
 gate: pending
 ---
 
@@ -87,3 +87,20 @@ play a video and do NOT enter fullscreen).
 
 - The wheel-calibration owner narrowed from `.whcal-overlay` to `.whcal-stage` (its
   spin area), per "scrubbers only". Its Step control is a range input (still covered).
+
+## Verification (builder, @07e3572d)
+
+- Full suite `npm test`: Node 22.23.1 8942/8942 pass, 0 fail, 0 skipped; Node 24.20.0
+  8942/8942 pass, 0 fail, 0 skipped (sequential).
+- Mutants (sandbox from `git archive 07e3572d`, run against skin-surface, swipe-back-owners,
+  body-scroll-lock, music-skin-integration): M1 no viewport listener · M2 covers never
+  checked · M3 covers always false · M4 ghost left in DOM · M5 mms-haptic kept · M6 helper
+  no dedup · M7 helper ignores signal · M8 music.js call dropped · M9 podcasts call dropped
+  · M10 `.mms-full` owner restored · M11 NET exemption removed · M12 player host owner
+  restored · M13 immersive stand-down restored · M14 lock stand-down restored · M15
+  `.whcal-stage` dropped · M16 Brick dropped: all 16 KILLED.
+- Not bound: `destroy()` removing the viewport listener. A stale listener is inert (with
+  no lock held, `onViewportChange` returns early), so that mutant is equivalent. The test
+  instead binds that a destroyed skin never releases another owner.
+- The rotate is modeled in jsdom by flipping a `.mms-full{position}` rule (jsdom never
+  matches media queries). The device confirmation is Dean's.
