@@ -1016,6 +1016,31 @@ html.reader-immersive .app-container { padding-top: 0; }
   box-shadow: none;
 }
 
+/* v1.316 (Dean, B2): the 32x32 glyph CHIP variant of `.btn` - the subscription
+   row's pin / push-bell / kebab (lib/ytdlp/client/subscriptions.js). They used
+   to carry their own hand-copied bevel (a `--bg-color` fill + a two-tone
+   border), which inherited each era's COLOUR tokens but never its control
+   TREATMENT: the 2009 gloss is a `background-image` declared on `.btn` only
+   (the two [data-theme="2009"] rules near the top of this file), and the 2005
+   flat bevel / 2014 flat / 2021 shadow all ride `.btn`'s `--btn-bg` +
+   `--shadow`. Making the chip a real `.btn` puts every era treatment on it for
+   free and keeps ONE rule family (the INERT-SIBLING lesson: a per-era override
+   for the chip would drift). This variant only squares the box, drops the text
+   padding and centres the glyph - it declares NO background, border, radius or
+   shadow of its own, so those can only come from `.btn` (locked by
+   test/unit/sub-row-chip-btn-family.test.js). The role classes below keep
+   only their STATE colours (hover red, active gold, the kebab's larger glyph). */
+.btn-chip {
+  flex-shrink: 0;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  padding: 0;
+  justify-content: center;
+  font-size: var(--fs-xl);
+  line-height: 1; /* token-exempt: glyph centering */
+  color: var(--text-secondary);
+}
+
 .btn-primary {
   background-color: var(--yt-red);
   color: var(--on-accent);
@@ -3950,26 +3975,11 @@ a.sub-row-channel-link:focus-visible {
 
 /* v1.21.0 FR-3: the single trailing kebab/gear (AC19) -- chunky,
    right-aligned, per the UI research's retro translation ("chunky
-   right-aligned button"). Square corners (era radius token, 0 on the 2005/
-   2009 eras), beveled border matching .sub-row-avatar. */
+   right-aligned button"). v1.316 (B2): its box, fill, border, radius and
+   shadow now come from `.btn` + `.btn-chip` (see `.btn-chip`'s comment near
+   `.btn`); only the kebab's larger glyph stays here. */
 .sub-row-kebab {
-  flex-shrink: 0;
-  width: var(--size-control-sm);
-  height: var(--size-control-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: var(--fs-2xl);
-  line-height: 1; /* token-exempt: glyph centering */
-  font-family: inherit;
-  color: var(--text-secondary);
-  background-color: var(--bg-color);
-  border-top: 1px solid var(--border-dark);
-  border-left: 1px solid var(--border-dark);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  cursor: pointer;
 }
 
 .sub-row-kebab:hover,
@@ -8342,7 +8352,8 @@ body.ft-audio-expanded {
      1. `.sub-row-pin` -- the star/pin toggle on a subscription row
         (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), sitting
         between `.sub-row-info` and `.sub-row-kebab`. Mirrors `.sub-row-kebab`'s
-        chunky/beveled 32x32 silhouette (line ~1901 above) for visual
+        chunky 32x32 silhouette (since v1.316 both are `.btn.btn-chip`, so
+        the box/bevel comes from `.btn-chip` near `.btn`, not from here) for visual
         consistency, but stays visually distinct via its glyph alone (a plain
         textContent star, not an icon-set mask) so pin (quick-access shortcut)
         reads as a clearly different action from the kebab (settings), per the
@@ -8358,27 +8369,10 @@ body.ft-audio-expanded {
         on each pinned entry so it reads as "pinned," matching the research's
         "left-nav Pinned list with a star icon" retro translation. */
 /* v1.314: the push bell shares the pin's chip treatment (one rule family, the
-   INERT-SIBLING lesson: a bell styled by its own hand-copy would drift). */
-.sub-row-pin,
-.sub-row-bell {
-  flex-shrink: 0;
-  width: var(--size-control-sm);
-  height: var(--size-control-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-xl);
-  line-height: 1; /* token-exempt: glyph centering */
-  font-family: inherit;
-  color: var(--text-secondary);
-  background-color: var(--bg-color);
-  border-top: 1px solid var(--border-dark);
-  border-left: 1px solid var(--border-dark);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
+   INERT-SIBLING lesson: a bell styled by its own hand-copy would drift).
+   v1.316 (B2): that family is now `.btn` + `.btn-chip` (box, fill, border,
+   radius, shadow, the 2009 gloss - see `.btn-chip`'s comment near `.btn`);
+   the pin/bell role classes keep only their STATE colours below. */
 
 .sub-row-pin:hover,
 .sub-row-pin:focus-visible,
@@ -8602,7 +8596,8 @@ body.ft-audio-expanded {
    (while staying AFTER it in DOM/source order, so the summary button is
    still first in tab order) -- "dock as a slim bottom strip that expands
    upward" per docs/references/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
-   bevels (mirrors `.sub-row-pin`'s beveled treatment above), a
+   bevels (the two-tone hand bevel `.sub-row-pin` carried before v1.316 moved
+   the chips into `.btn.btn-chip`; this chip keeps its own copy), a
    repeating-gradient segmented/striped progress fill (never a plain smooth
    `background-color` bar), era tokens only -- no hardcoded surface colors,
    so every era/light-dark combination stays themed. */
@@ -14143,6 +14138,13 @@ a.queue-upnext-next:hover {
 @media (max-width: 768px) {
   /* buttons (incl. the resume / start-over overlay CTAs): the 44px touch floor */
   .btn { min-height: var(--size-touch); }
+  /* v1.316 (B2): the subscription-row chips became real `.btn`s for the era
+     treatment; without this line the floor above would stretch each 32x32
+     chip to 32x44 (MEASURED: scripts/sub-row-chip-probe.js at 390px). The
+     chip keeps the square 32px box it has always had on phones (it was never
+     a `.btn`, so v1.95's floor never applied to it) - this block's own rule
+     is "bigger hit areas, NOT bigger visuals", and a chip's box IS its visual. */
+  .btn-chip { min-height: var(--size-control-sm); }
 
   /* notification dismiss x: 36px -> a centered 44px box, same glyph */
   .notif-row-dismiss { min-width: var(--size-touch); min-height: var(--size-touch); }
