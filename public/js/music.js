@@ -1058,6 +1058,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // repaint killed the live drag - and paint() now DEFERS during a spin, which
       // fixes that at the seam for every trigger, not just this one. The structural fix
       // subsumes the point fix, so the point fix is a behaviour change with no benefit.
+      // v1.311.3 (Dean: "a chaptered album should play ALL its chapters before radio" - found
+      // end to end): at the whole-file end the player's ended cascade rewinds the element to 0
+      // (runEndedCompletionCascade), and that rewind's timeupdate read as a cross back INTO
+      // chapter 1 - registerTrackNav(0) replaced the last chapter's radio-armed onNext with
+      // playAt(1), and the ended advance (async, after /api/queue) then replayed the album from
+      // chapter 2, forever. The rewind is not a playthrough: hold the last chapter (and its armed
+      // nav) until the element plays again - a loop replay or a user play re-reflects normally.
+      if (endedRewindHold) return;
       var id = currentChapterId();
       if (!id || id === chapterViewId) return;
       chapterViewId = id;
@@ -1206,6 +1214,7 @@ if (typeof module !== 'undefined' && module.exports) {
       playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
     }
     var chapterReflectBound = false;
+    var endedRewindHold = false; // v1.311.3: set at 'ended', cleared at the next play/loadstart (see reflectChapter)
     function ensureChapterReflect() {
       if (chapterReflectBound) return;
       var mp = hostCtl('media-player'); if (!mp) return;
@@ -1219,6 +1228,9 @@ if (typeof module !== 'undefined' && module.exports) {
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', enforceChapterExit, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
+      mp.addEventListener('ended', function () { endedRewindHold = true; }, { signal: signal });
+      mp.addEventListener('play', function () { endedRewindHold = false; }, { signal: signal });
+      mp.addEventListener('loadstart', function () { endedRewindHold = false; }, { signal: signal });
     }
     // v1.278 (Dean): the "Watch" way back, hoisted from the sticker config so the desktop
     // actions menu reuses it (one truth). visible = the playing item is a listen track;
