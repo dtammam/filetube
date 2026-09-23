@@ -377,8 +377,23 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.match(ENGINE_SRC, /c\.putImageData\(id, 0, 0\)[\s\S]*canvas\.toDataURL\('image\/png'\)/, 'written back, then encoded as a PNG');
   assert.match(ENGINE_SRC, /url\.indexOf\('data:image\/png'\) === 0/, 'anything but a PNG data URL is a failed sample (never a canvas/element() paint reference)');
   assert.match(ENGINE_SRC, /back\.style\.setProperty\('background-image', 'url\("' \+ dataUrl \+ '"\)'\)/, 'the back layer paints the bitmap as a plain background-image');
-  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint)\(/, 'no paint reference to a live canvas/element/paint worklet in any STRING the ambient JS writes');
-  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /(?:^|[^a-z]|webkit|moz|ms)(?:filter|transform|backdrop|will-?change|scale|translate|rotate|offset-?path|animation)\b/i, 'no filter/transform/scale/translate/rotate/animation from JS either, in any spelling incl. the vendor camelCase (gate r1 adversary F3: style.webkitFilter / style.scale slipped a case-sensitive two-word lock)');
+  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint|gradient)\(/, 'no paint reference to a live canvas/element/paint worklet/gradient in any STRING the ambient JS writes (#232: gradient( joined the list - the v1.313 glow is a bitmap, never a gradient)');
+  // Tracker #232 (v1.313 gate r2 note): the lock is SCOPED to style writes, so an
+  // unrelated `arr.filter(...)`, a `transform` in a variable name or a trailing
+  // `// no transform` comment can never false-trip it, while `style.webkitFilter`,
+  // `style.WebkitTransform`, `style.scale` and `setProperty('-webkit-mask', ...)`
+  // (gate r1 adversary F3: the vendor camelCase slipped a case-sensitive lock) still
+  // do. Trailing `//` comments are stripped first (the standing comment-porosity
+  // lesson: stripComments drops only full-line comments).
+  const jsSrc = (ENGINE_SRC + '\n' + WIRING_SRC).replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const styleWrites = [
+    ...[...jsSrc.matchAll(/\.style\.([A-Za-z][\w-]*)\s*=[^=]/g)].map((m) => m[1]),
+    ...[...jsSrc.matchAll(/\.style\.setProperty\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]),
+  ];
+  assert.deepStrictEqual(styleWrites, ['background-image'], 'the ONLY style write in the ambient JS is the back layer\'s background-image');
+  const FORBIDDEN_JS_STYLE = /^-?(?:webkit|moz|ms)?-?(?:filter|transform|backdrop|will-?change|scale|translate|rotate|offset|animation|mask|mix-?blend)/i;
+  for (const p of styleWrites) assert.doesNotMatch(p, FORBIDDEN_JS_STYLE, 'style write "' + p + '": no filter/transform/scale/translate/rotate/animation/mask/mix-blend-mode from JS, in any spelling incl. the vendor camelCase');
+  assert.doesNotMatch(jsSrc, /\.style\.cssText|\.style\s*\[|setAttribute\(\s*['"]style['"]|insertRule\(|\.cssText\s*=|\.animate\(/, 'no UNSCOPED style write (cssText / computed key / style attribute / insertRule / Element.animate) that the per-property lock could not see');
   assert.doesNotMatch(WIRING_SRC, /drawImage|getContext|captureStream|requestVideoFrameCallback/, 'the wiring never touches a canvas or the video\'s frames');
   assert.doesNotMatch(ENGINE_SRC, /video\.(videoWidth|videoHeight|captureStream|requestVideoFrameCallback)/, 'the engine reads the video for currentTime only');
   assert.match(ENGINE_SRC, /Number\(video\.currentTime\)/, 'currentTime is the ONLY thing read off the video');
@@ -438,13 +453,25 @@ test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a f
   // -webkit-mask-image are aliases, -webkit-backdrop-filter is its OWN property, -webkit-mask
   // is a shorthand over mask-image; scale / translate / rotate are real properties; a
   // transform can also arrive through @keyframes + animation). One sweep, every spelling.
+  // Tracker #232: WHY `contain` / `isolation` / `perspective` are on the list although
+  // they are not paint effects - each one (like filter / transform / will-change)
+  // turns the element into the CONTAINING BLOCK for position:fixed descendants
+  // (`contain: paint|layout|strict|content`, `isolation: isolate` also a stacking
+  // context, `perspective`). The faux-fullscreen overlay (#player-wrapper.css-fullscreen,
+  // position:fixed) lives INSIDE .watch-player-stage; trapped in the stage's box it
+  // can never cover the viewport - the v1.166 "isolation traps in-view fixed overlays"
+  // class that broke rotate-to-fullscreen. `url(` is forbidden on these rules because
+  // the SHEET must never paint an external resource or a canvas reference here: the
+  // only image is the engine's inline PNG data URL (v1.313), set from JS.
   const FORBIDDEN_PROP = /(^|[\s;{])(?:-webkit-|-moz-|-ms-)?(?:filter|backdrop-filter|transform(?:-[a-z-]+)?|mask(?:-[a-z-]+)?|will-change|mix-blend-mode|scale|translate|rotate|offset(?:-[a-z-]+)?|animation(?:-[a-z-]+)?|perspective|contain|isolation)\s*:/i;
   const FORBIDDEN_PAINT = /-webkit-canvas\(|-moz-element\(|(?:^|[^a-z-])element\(|gradient\(|image-set\(|cross-fade\(|paint\(|url\(/i;
   for (const r of rules) {
     assert.doesNotMatch(r.body, FORBIDDEN_PROP, r.selector + ' must not declare a filter / transform / mask / will-change / animation in ANY spelling: ' + (FORBIDDEN_PROP.exec(r.body) || [''])[0]);
     assert.doesNotMatch(r.body, FORBIDDEN_PAINT, r.selector + ' must not paint from a canvas / element / gradient / url in the SHEET (the image is the engine\'s inline PNG data URL only): ' + (FORBIDDEN_PAINT.exec(r.body) || [''])[0]);
   }
-  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /@keyframes[^{]*\{[^}]*(?:ambient|stage)/i, 'no keyframes named for the glow/stage');
+  // Tracker #232: bind the keyframes NAME (the old span `[^{]*\{[^}]*` matched a
+  // step BODY mentioning "stage", never the name itself).
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /@keyframes\s+[^\s{]*(?:ambient|stage)/i, 'no keyframes named for the glow/stage');
   assert.doesNotMatch(WATCH_HTML, /<canvas id="ambient-glow"/, 'the canvas is gone from the view');
   assert.match(WATCH_HTML, /<div id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden>\s*<div class="ambient-glow-layer"><\/div>\s*<div class="ambient-glow-layer"><\/div>\s*<\/div>/, 'a div pair: the glow with exactly two layers, born hidden');
 });
