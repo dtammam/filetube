@@ -298,3 +298,133 @@ census locks format only; completed/2026-09-23-sub-bell-polish.md:8 names
 `active/2026-09-23-music-channel-chapters-wave.md`, which is in neither main nor this branch.
 
 Gate: CHANGES r1 @645d132c — adversary (see findings)
+
+## Gate r2 - security-brief (@172350dc)
+
+Delta re-confirmation of my r1 APPROVED @645d132c. Same tool gap: no Bash, no `git diff`;
+scripts/plan-complete.js and test/unit/exec-plans-census.test.js were re-read in full at this
+sha, plus a repo-wide grep of test/ for the nine comment-only path edits.
+
+Re-verified (traced in the fix commit):
+- git is still invoked only through `execFileSync('git', argv[])` (line 58; stderr now piped,
+  not inherited). No shell, no string command, no `eval` anywhere in the file.
+- Source confinement unchanged: the new directory-argument branch (line 149) only rewrites `abs`
+  to `<dir>/plan.md` when `dirname(abs) === <repo>/docs/exec-plans/active`, then the same strict
+  `isDirPlan`/`isFlat` equality checks apply (lines 155-157). Destination is still
+  `path.join(<repo>/docs/exec-plans/completed, <stem>)` (line 183); existing-target refusal
+  (line 185) and no-delete posture unchanged. The new `ls-files --error-unmatch` precheck (line
+  220) runs only under `--apply`, is read-only, and narrows the symlink note (r1 INFO-1) further:
+  an untracked link is now refused with exit 2 before anything moves.
+- `git grep -nF -e <stem> -- . :(exclude)<new>` (line 238): the stem is consumed as the argument
+  of `-e`, so a `-`-leading stem is a pattern, never an option; `--` still terminates options
+  before the pathspecs. Every other git call passes the operator path after `--` (`log`,
+  `ls-files`) or as a `docs/...`-prefixed relative path (`mv`), so no argv can start with `-`.
+- Normalisation cannot write a newline: `STATUS_OK` is tested on the RAW string first (line
+  138), it is `^...$`-anchored with no `m` flag, `Shipped` must be followed by one literal space,
+  and `.` in `Abandoned\(.+\)` excludes `\n`/`\r`. The replace (line 139) can therefore only
+  touch the single space and optional `v` that `STATUS_OK` already admitted; the v1 banner path
+  (line 203) strips `Shipped ` from the same normalised value.
+- The census test still reads only `__dirname/../../docs/exec-plans/{active,completed}`, no
+  child_process, no writes; the empty allowlist and `/i` banner regex are read-side only.
+- Every `exec-plans/(active|completed)/` mention in test/ at this sha is a `//` comment line
+  (the docs-link-census hit is a trailing comment on a pre-existing `continue`).
+- package.json dependencies/devDependencies unchanged; no auth, secret, cookie or network code
+  in the delta.
+
+Nothing new introduced by the fix. r1 INFO-1 (symlink following) and INFO-2 (unescaped
+`Abandoned(<why>)` in YAML, no consumer) stand as advisory; neither blocks.
+
+No exploitable weakness found.
+
+Gate: APPROVED r2 @172350dc — security-brief
+
+## Gate r2 - qa (@172350dc)
+
+Delta reviewed: `git diff 645d132c..172350dc` (16 files). Instruments (verbatim, Node v22.23.1):
+- `node --test test/unit/exec-plans-census.test.js test/unit/docs-status-census.test.js test/unit/docs-link-census.test.js test/unit/tech-debt-census.test.js`: `# tests 7 / # pass 7 / # fail 0`.
+- The nine edited test files (`node --test test/integration/{backup-restore,scan-push-bridge,ytdlp-patch-pause}.test.js test/unit/{ambient-glow-engine,push-delivery,sub-bell-in-place,sub-row-chip-btn-family,ytdlp-store,ytdlp-subscriptions-client}.test.js`): `# tests 691 / # pass 691 / # fail 0 / # skipped 0`.
+- `npm run lint`: `7 problems (0 errors, 7 warnings)` (the pre-existing common.js set).
+- `bash .harness/lib/check-markers.sh`: 3 issues, all on this plan doc's own markers (`stale approval @3d719e77` once, `stale approval @645d132c` twice - the design approval and the r1 verdict lines, whose reviewed code moved with the fix commit), exit 1: the expected pre-r2 shape, nothing else flagged.
+- `node scripts/plan-complete.js docs/exec-plans/active/2026-09-03-wheel-haptics.md "Shipped v1.256.0"`: same DRY-RUN plan as r1, exit 0, `git status --short` afterwards shows only this plan doc (the security-brief seat's r2 section, appended concurrently; 39 insertions, zero deletions).
+
+My r1 findings against the fix:
+- #1 (pre-push claim) fixed as prescribed: docs/RELEASING.md:74-79 and the census header :20-23 now say session start (`.claude/hooks/session-start.sh`, non-blocking) + by hand before merge/release, deliberately not pre-push; the rationale (a building plan's bound design approval goes stale) matches check-markers item 3, and "as above" points at the `bash .harness/lib/check-markers.sh` line in the step 1 block.
+- #2 fixed as prescribed: the nine test comments now name `completed/` paths that exist; Outcome 3 narrowed to what the sweep covers and names the nine.
+- #3 fixed: 74 measured on the tree (`ls active completed | grep '^20..-..-..-' | grep -c 'v[0-9]\+\.[0-9]'` = 74), 62 on main, the twelve are v1.96/97/98/99/101/103/104/105/112/158/159/160 (twelve, checked against the rename list).
+- #4 fixed: :6196/:9371, :3591, five plans, 7 of 8 - all match my r1 measurements; Outcome 2's five in-plan link edits match the paired diff (audio-routing x2, listen-mode, podcasts-on-skin, ambient-glow-rebuild).
+- #5 fixed as prescribed (scan by index to the closing `---`); #6 (`-e`) verified: the `-e.md` sandbox case now prints its references block; #7 verified: untracked `--apply` refuses with exit 2, nothing moved (it prints the would-be plan first, then refuses - cosmetic); exit codes 0/1/2 in the header; #8 verified: `Shipped 1.2.3` writes `status: Shipped v1.2.3` and banner `shipped in v1.2.3`; #9 fixed.
+- Adversary items I could measure: podcasts-on-skin banner (ROADMAP:2644 "mega-wave's last piece (F2)" under v1.247.0) and music-redesign banner (ROADMAP:3655-3656, the v1.213 pivot) are true; declared date wins only when earlier and real (sandbox: later -> ignored with a note, `captured 2026-08-30` -> wins, `2026-02-30` -> ignored); upper-case dated stem is lower-cased, not double-dated; `active/<slug>` accepted; README in a bucket now red; `>  completed:` lower-case buried banner now red. No em dash in any added line of the delta outside the verdict lines.
+
+Finding introduced by the fix:
+
+1. WARNING - scripts/plan-complete.js:101-113 gitAddDate (the "no-follow first" change) dates a plan that was itself renamed earlier by the RENAME commit, not the commit that first added it, and the header (:19-21) + the function comment (:101-103) describe a fallback that cannot run. Mechanism: without `--follow`, a path-limited `git log` sees a `git mv` as an Add at the new path, so the plain call always returns a date and the `--follow` branch is unreachable. Evidence: sandbox repo, plan committed 2026-09-05 as `active/old-name.md`, `git mv`'d 2026-09-10 to `active/new-name.md`, closed out -> `date 2026-09-10 from git (the commit that first added the file)`. On this tree: `docs/exec-plans/completed/2026-09-03-listen-mode.md` plain = 2026-09-23, `--follow` = 2026-09-03; watch-habits plain = 2026-09-23, `--follow` = 2026-09-06. Scenario: a plan made in October under one slug, renamed once before it ships (a normal event), closed by the script -> the wrong date in the name, and Outcome 1 ("the git commit that first added the file") is violated by the tool that exists to enforce it. Today's blast radius is latent (every plan on the tree is already date-led, so deriveDate only runs for a future undated stem), but the r1 order was right for this case and the comment now states a mechanism that does not happen. Fix: `--follow` first with rename-only detection pinned (`git -c diff.renames=true log --follow --diff-filter=A ...`, so a user `diff.renames=copies` cannot make it inherit a copied file's date, which was the Adversary's concern), plain `git log` only as the fallback when `--follow` returns nothing; reword the header and the function comment to match. The Adversary prescribed the current order, so the two seats should reconcile on this one.
+
+Nothing else new: the `stdio` change, the directory-argument branch, the `ls-files --error-unmatch` guard and the normalisation are as described; no security surface change (git still via `execFileSync` argv, source still confined to active/).
+
+Gate: CHANGES r2 @172350dc — qa (see findings)
+
+## Gate r2 - adversary (@172350dc)
+
+Delta re-review of 645d132c..172350dc (16 files; 1a585fcf only committed the r1 sections).
+Instruments at 172350dc, verbatim: exec-plans-census 3/3, docs-link-census 2/2, docs-status-census
+1/1; the nine comment-edited tests 691/691 pass, 0 fail; eslint on the script + two tests exit 0;
+`bash .harness/lib/check-markers.sh` -> exit 1 with 3 stale-approval lines on THIS plan
+(`design: Approved @3d719e77` line 8, security-brief's `Gate: APPROVED r1 @645d132c` line 159 and
+its r2 prose "r1 APPROVED @645d132c" line 304): code changed since both shas (13 files), which is
+the checker's rule for an active plan; they clear when the plan moves to completed/ (frozen plans
+are not staleness-checked). Expected, disclosed by the builder, not a finding.
+
+r1 findings against the fix:
+- F1 fixed as prescribed: the nine test comments now say completed/; `grep -rn 'exec-plans/active/'
+  lib public test` leaves only skin-surface.js:1097 (wheel-haptics, correctly in active/) and the
+  docs-link-census template placeholder; the whole-worktree path-shaped sweep leaves only the
+  disclosed frozen mentions (ROADMAP:6196/:9371, the five completed shimmer plans) plus quotes of
+  the old path inside the seats' r1 findings text in this doc (frozen quotes).
+- F2 fixed as prescribed: podcasts-on-skin.md:1 credits v1.246.0 (F1/F3/F5) and v1.247.0 (F2);
+  music-redesign.md:1 names the v1.213 pivot. Both still open with the banner (census 3/3).
+- F3 fixed, each sub-item re-driven in a fresh throwaway repo against 172350dc's script:
+  (a) a body `date: 2026-01-01 ...` line no longer leaks (git 05-17 used); (b) "Prepared 2026-12-31"
+  later than the 05-09 commit -> ignored with a printed note, "Prepared 2026-02-30" and frontmatter
+  `date: 2026-13-45` -> "not a calendar date - ignored", an earlier real date still wins;
+  (c) "captured 2026-09-05" -> 2026-09-05 (the watch-habits shape now reproduces); (d) a
+  three-line plan similar to an existing one derives its OWN add date (05-20, was another file's);
+  (e) `2026-07-31-Upper.md` -> "kept (lower-cased)", not double-dated; `active/dirplan` (the
+  directory) accepted, dry and apply (research.md moves with it); an untracked plan -> one line,
+  exit 2, nothing touched; `Shipped 1.2.3` -> `Shipped v1.2.3` in both the v1 banner and the v2
+  frontmatter; a `-dash.md` stem lists references without git reading it as an option. The exit-1
+  verify is still real (write mutant -> "VERIFY FAILED", exit 1, rename staged, content unchanged);
+  a flat collision is still refused (exit 2, existing content intact).
+- F4 fixed: README allowlist gone (sandbox: README.md in either bucket -> red, "not date-led");
+  banner lock `/i` + `\s*` (a buried `> completed:` and `>  Completed:` -> red). Full mutant set
+  re-run on a `git archive 172350dc` sandbox: 23 mutants, 0 survivors, each red on exactly one
+  assertion, greens unchanged.
+- F5 fixed: Outcome 2/3 and the build record now match the tree; counts measured: 74 `vX.Y`
+  slugs on HEAD vs 62 on main (ls + regex), 7 stale ACTIVE lines under a banner, 5 frozen
+  fouc-shimmer refs in completed/, ROADMAP :6196/:9371, subscriptions.js:3591.
+- QA's pre-push item: `.claude/hooks/session-start.sh:30-31` does run check-markers (non-blocking,
+  `|| true`); no pre-push hook references it (`core.hooksPath` = hooks/, no check-markers there).
+  RELEASING.md:74-79 and the census header now describe that mechanism - present-tense claims
+  verified against the tree.
+
+New in the fix - one item, my own r1 prescription refuted by measurement:
+1. SUGGESTION - scripts/plan-complete.js:103-114 gitAddDate: "no-follow first, --follow as the
+   fallback for a path that was itself moved before" is not what git does. A path that was
+   renamed shows its rename commit as `A` under a pathspec-limited `git log --diff-filter=A`, so
+   no-follow is NEVER empty for a moved path and the --follow fallback is unreachable (measured:
+   no-follow empty for 0 of 177 tracked plans; all 72 renamed paths return 2026-09-23 no-follow).
+   Repro (throwaway): `orig-name.md` added 05-10, `git mv` to `renamed-in-active.md` 05-25, undated
+   -> the script derives 2026-05-25 ("the commit that first added the file"); r1's --follow gave
+   05-10. So r1 (d) traded a theoretical wrong date (copy detection, >50% similarity) for a real
+   one (an undated plan renamed within active/ before closing). No name on the tree is affected:
+   every active plan is already date-led and the script keeps a dated name, so deriveDate only
+   runs for a hand-made undated plan - hence SUGGESTION, safe to ship. The exact fix, measured:
+   `git log --follow --name-status --diff-filter=ACR --format=%ad --date=short -- <path>` walks
+   newest->oldest and copy detection shows up as `C` rows (`C076 v1-flat.md -> tiny2.md`) while a
+   true move is an `R` row; take the date of the first `C` row (the file's own add) or, absent one,
+   the terminal `A`. Fix the header comment either way (it currently promises a fallback that never
+   fires).
+
+Tree after this review: `git status` shows only this plan doc modified (the seats' r2 sections);
+no untracked files; sandboxes under the session scratchpad removed.
+
+Gate: APPROVED r2 @172350dc — adversary
