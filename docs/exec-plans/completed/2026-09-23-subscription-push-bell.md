@@ -3,8 +3,8 @@ plan: subscription-push-bell
 harness: v2 · lean
 branch: feat/subscription-push-bell
 anchor: spec
-status: Gate:APPROVED r2 @d7342962
-next: dual-Node full suites on the tip, then release v1.314.0 per docs/RELEASING.md (npm version, ROADMAP Shipped entry, releases.json ledger, plan to completed/, merge --no-ff, tag, one push, branch delete)
+status: Shipped v1.314.0
+next: tracker #233 (the in-flight bell tap race + two test nits, one slim commit) in a later wave; Dean's device check: Notify beside Pin on a subscribed video, the bell on /subscriptions rows, a bell-on channel pushes, a bell-off one only lands in the in-app feed
 design: Approved 2026-09-23 @360f8e7f (Dean: "Please go")
 gate: APPROVED r2 @d7342962 — adversary, qa, security-brief
 ---
@@ -378,3 +378,5 @@ its 3-line fix (capture button + subId at click, bail after the await when eithe
 plus adversary S1 (the S1 test's echoing fake route makes "label follows the response" a
 lookalike - return a differing value) and S2 (the alias ban false-trips a bare
 `if (el.style)` truthiness read). Adversary S3 / qa S6 stand as disclosed.
+
+Dual-Node full suites at 72f1eab7 (the gate-closed tip): Node 22.23.1 8992/8992 exit 0; Node 24.20.0 (recorded in the release commit message).
