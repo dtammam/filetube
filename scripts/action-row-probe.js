@@ -111,9 +111,11 @@ async function main() {
   const filePath = path.join(lib, 'talk.mp4');
   fs.writeFileSync(filePath, 'x');
   fs.writeFileSync(path.join(lib, 'talk.en.vtt'), SEED_VTT);
+  // v1.311.2: `metadata` is the ONLY top-level key the SQLite adapter still takes
+  // (schema v33 moved every other namespace into its own store and the save-lock
+  // refuses the dead keys), so the seed carries just the media index - the old
+  // folders/folderSettings/progress/settings keys threw and the probe measured nothing.
   saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
-    settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     metadata: {
       vid1: {
         id: 'vid1', title: 'The Tim Dylan Show - Summer Edition', type: 'video', ext: '.mp4', filePath,
@@ -131,7 +133,11 @@ async function main() {
 
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-row-probe-chrome-'));
   const chrome = spawn(chromeBin, [
-    '--headless=new', `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`, '--no-sandbox',
+    // --disable-dev-shm-usage (v1.311.2, MEASURED): this box's container mounts a
+    // 64M /dev/shm, and the renderer died mid-load of the watch page on EVERY run
+    // (CDP Inspector.targetCrashed -> "CDP timeout: Runtime.evaluate") - shared
+    // memory goes to /tmp instead with the flag, and every width completes.
+    '--headless=new', `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`, '--no-sandbox', '--disable-dev-shm-usage',
     '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars', 'about:blank',
   ], { stdio: 'ignore' });
   const cleanup = () => { try { chrome.kill('SIGKILL'); } catch (_) { /* already gone */ } server.close(); };

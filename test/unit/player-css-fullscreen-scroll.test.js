@@ -129,9 +129,23 @@ test('setCssFullscreen wiring: exact statements, in the load-bearing order (each
 
   // M1 killer: the exact restore statement consumes restoreTo, guarded on
   // restoreTo !== null (0 is a real position).
-  const restoreIdx = body.indexOf('if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);');
+  // v1.311.2: the restore routes through the SHARED body lock's scrollTo (deferred
+  // while another owner - a full-screen skin - still pins the body).
+  const restoreIdx = body.indexOf('if (plan.restoreTo !== null) {\n      if (BL) BL.scrollTo(document, window, plan.restoreTo);\n      else window.scrollTo(0, plan.restoreTo);');
   assert.ok(restoreIdx !== -1, 'exact restore statement');
   assert.ok(persistIdx < restoreIdx, 'persist precedes restore (unconditional persist cannot hide inside the restore branch)');
+
+  // v1.311.2 (the real iOS lock): the plan must capture the entry scroll BEFORE the
+  // lock pins the body (a pinned body reads 0), and the lock must be released -
+  // WITHOUT its own restore (the keeper owns restore) - BEFORE the keeper's restore
+  // (a restore into a still-pinned body would be deferred to nowhere).
+  const planIdx = body.indexOf('var plan = resolveCssFsScrollPlan(');
+  const lockIdx = body.indexOf("if (on) BL.lock(document, window, 'faux-fullscreen');");
+  const releaseIdx = body.indexOf("else BL.release(document, window, 'faux-fullscreen', { restore: false });");
+  assert.ok(lockIdx !== -1 && releaseIdx !== -1, 'exact lock + no-restore release statements');
+  assert.ok(planIdx < lockIdx, 'the plan captures before the lock pins');
+  assert.ok(releaseIdx < restoreIdx, 'the lock is released before the keeper restores');
+  assert.ok(body.includes('var currentY = BL ? BL.scrollYOf(document, window)'), 'the entry capture reads the REAL scroll through the lock');
 });
 
 test('call sites: ONLY explicit USER-EXIT paths opt into restore; teardown and the state off-guard stay clear-only (gate C1)', () => {

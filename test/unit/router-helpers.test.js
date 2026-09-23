@@ -449,7 +449,7 @@ test('SOURCE-LOCK (T2): recordScrollForCurrentState PRESERVES depth when it rewr
   // scrolled-then-returned-to entry lose its pop level). v1.217: the 5th arg
   // must likewise be the entry's own viewState (a scroll-rewrite on a drill /
   // now-playing sub-state entry must not wipe the payload its onPopState needs).
-  assert.match(fnBody, /buildHistoryState\(\s*window\.history\.state\.view,\s*window\.history\.state\.url,\s*window\.scrollY,\s*window\.history\.state\.depth,\s*window\.history\.state\.viewState\)/,
+  assert.match(fnBody, /buildHistoryState\(\s*window\.history\.state\.view,\s*window\.history\.state\.url,\s*pageScrollY\(\),\s*window\.history\.state\.depth,\s*window\.history\.state\.viewState\)/,
     'scroll-record carries depth AND viewState through');
 });
 
@@ -563,8 +563,10 @@ test('swipeBackShouldClaim: true once a rightward horizontal drag commits past t
 
 test('v1.160.3: the claim listener is non-passive + preventDefaults, LAZILY attached (never taxes scroll), scoped, and the root kills horizontal overscroll', () => {
   const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  const fn = src.slice(src.indexOf('function wireSwipeBack('));
-  const body = fn.slice(0, fn.indexOf('\n  }\n'));
+  // v1.311.2: the wiring moved to the top-level wireSwipeBackGesture (the router's
+  // wireSwipeBack now only hands it document/window/swipeBackIfPossible).
+  const fn = src.slice(src.indexOf('function wireSwipeBackGesture('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
   // the claimed move preventDefaults, but RE-EVALUATES direction first (gate
   // WARNING 1): it must call swipeBackShouldClaim on the live delta before
   // preventDefault, so a gesture that curves vertical stops being prevented (no
@@ -581,7 +583,23 @@ test('v1.160.3: the claim listener is non-passive + preventDefaults, LAZILY atta
   assert.match(body, /removeEventListener\(\s*'touchmove',\s*onClaimedMove\)/, 'the non-passive touchmove is removed when the gesture ends');
   // v1.160.3: a drag starting inside a horizontal scroller is excluded so the two
   // don't fight - the guard must cause an early return in touchstart.
-  assert.match(body, /startsInHorizontalScroller\(e\.target\)\)\s*return;/, 'a drag beginning in a horizontal scroller bails (lets the box scroll)');
+  // v1.311.2: folded into swipeBackStandDownReason's one ancestor walk.
+  assert.match(body, /swipeBackStandDownReason\(e\.target, doc, win\)\)\s*return;/, 'a drag beginning on a gesture owner / horizontal scroller bails (lets the box have it)');
   const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/css/style.css'), 'utf8');
   assert.match(css, /html\s*\{[^}]*overscroll-behavior-x:\s*none/, 'the root kills horizontal rubber-band (belt-and-suspenders vs the shake)');
+});
+
+// v1.311.2: the router's scroll seams route through the SHARED body lock
+// (body-scroll-lock.js) - a pinned body reads scrollY 0 and clamps scrollTo, so a
+// page left or placed under an overlay would lose its place. Behavior of the lock
+// itself: body-scroll-lock.test.js; these bind that the ROUTER uses it.
+test('v1.311.2: the router records scroll via pageScrollY and places it via placePageScroll (never a bare window scroll)', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const fnOf = (name) => { const i = src.indexOf('function ' + name + '('); return src.slice(i, src.indexOf('\n  }\n', i)); };
+  assert.match(fnOf('pageScrollY'), /const BL = window\.FileTubeBodyLock;\s*return BL \? BL\.scrollYOf\(document, window\) : window\.scrollY;/);
+  assert.match(fnOf('placePageScroll'), /if \(BL\) BL\.scrollTo\(document, window, y\);\s*else window\.scrollTo\(0, y\);/);
+  assert.match(fnOf('replaceViewState'), /: pageScrollY\(\);/, 'a view-state replace records the real scroll');
+  assert.match(src, /homeViewCache = \{ url: currentViewUrl, node: oldRoot, title: document\.title, scrollY: pageScrollY\(\) \};/, 'the home cache records the real scroll');
+  assert.match(src, /updateActiveNavHighlight\(\);\n\s*placePageScroll\(typeof scrollY === 'number' \? scrollY : 0\);/, 'the swap places scroll through the lock');
+  assert.match(src, /placePageScroll\(typeof scrollY === 'number' \? scrollY : cached\.scrollY\);/, 'the home-cache restore places scroll through the lock');
 });

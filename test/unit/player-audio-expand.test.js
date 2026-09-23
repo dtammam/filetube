@@ -148,7 +148,7 @@ test('setAudioExpanded: toggles the class, reflects aria-pressed (a11y), and fre
   assert.match(body, /fsBtn\.setAttribute\('aria-pressed', on \? 'true' : 'false'\)/, "reflects the state on #fs-btn's aria-pressed");
   assert.match(body, /document\.body\.classList\.toggle\('ft-audio-expanded', !!on\)/, 'toggles the body freeze/black belt');
   // Drives the SAME auto-hide cycle as video faux fullscreen.
-  assert.match(body, /if \(on\) revealControlsAndReArm\(\);\s*\n\s*else \{ clearControlsAutoHide\(\); showControlsBar\(\); \}/, 'drives the control-bar auto-hide cycle');
+  assert.match(body, /if \(on\) revealControlsAndReArm\(\);\s*\n\s*else \{ clearControlsAutoHide\(\); clearRevealGrace\(\); showControlsBar\(\); \}/, 'drives the control-bar auto-hide cycle (v1.311.2: and clears a live tap-reveal grace)');
 });
 
 test('exitAudioExpand: unconditionally collapses via setAudioExpanded(false) (no state guard -- safe from any lifecycle exit)', () => {

@@ -116,8 +116,8 @@ test('a committed scrub re-arms the fade (bar stays through a long drag, fades a
 test('setCssFullscreen drives the auto-hide cycle (reveal+arm on enter, cancel+show on exit)', () => {
   const m = /function setCssFullscreen\(on, opts\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
   assert.ok(m, 'setCssFullscreen body');
-  assert.match(m[1], /if \(on\) revealControlsAndReArm\(\);\s*\n\s*else \{ clearControlsAutoHide\(\); showControlsBar\(\); \}/,
-    'enter reveals+arms; exit cancels the timer and restores a visible bar');
+  assert.match(m[1], /if \(on\) revealControlsAndReArm\(\);\s*\n\s*else \{ clearControlsAutoHide\(\); clearRevealGrace\(\); showControlsBar\(\); \}/,
+    'enter reveals+arms; exit cancels the timer, clears a live tap-reveal grace (v1.311.2) and restores a visible bar');
 });
 
 test('playback events drive the auto-hide: play arms, pause/ended reveal+hold', () => {
@@ -136,7 +136,9 @@ test('a tap on the video or the bar reveals + re-arms (additive/passive; skip-ge
   // reveal is still there, still immersive-gated, still passive - now on the
   // standalone videoDownEvt registration; the stamp mechanics are bound in
   // player-video-tap-pause.test.js.
-  assert.match(SRC, /mediaPlayer\.addEventListener\(videoDownEvt, function \(\) \{\n[\s\S]{0,500}?revealControlsAndReArm\(\);\n\s*\}, \{ passive: true \}\);/, 'video reveal (single-event registration)');
+  // v1.311.2: the listener takes the event (pointerType gates the tap-reveal grace)
+  // and arms the grace AFTER the reveal - still one passive registration.
+  assert.match(SRC, /mediaPlayer\.addEventListener\(videoDownEvt, function \(e\) \{\n[\s\S]{0,500}?revealControlsAndReArm\(\);\n(?:(?!\n {4}\}, \{ passive: true \}\);)[\s\S]){0,700}?armRevealGrace\(\);\n\s*\}, \{ passive: true \}\);/, 'video reveal (single-event registration) + the grace arm');
   assert.match(loop[1], /playerControls\.addEventListener\(evt, function \(\) \{ if \(inImmersiveMode\(\)\) revealControlsAndReArm\(\); \}, \{ passive: true \}\);/, 'bar reveal');
   // v1.120 gate fix: the audio cover art is NOT in this blind-reveal loop -- its
   // own click handler reveals-without-toggling (a blind reveal here would also

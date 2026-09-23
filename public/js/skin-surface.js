@@ -471,6 +471,15 @@
     return { open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy };
   }
 
+  // v1.311.2: the shared iOS body lock. Always the MAIN window's module - a
+  // Document-PiP pop-out is a scriptless window, so it passes its own doc/win to
+  // the main window's lock (which is keyed per document).
+  var skinLockSeq = 0;
+  function sharedBodyLock() {
+    if (typeof window !== 'undefined' && window.FileTubeBodyLock) return window.FileTubeBodyLock;
+    try { return (typeof module !== 'undefined' && module.require) ? module.require('./body-scroll-lock.js') : null; } catch (_) { return null; }
+  }
+
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     if (!SKINS || !config || !config.panel) return null;
@@ -1060,7 +1069,12 @@
       return { engine: WC.effectiveEngine(c), detentDeg: c.detent, dither: c.dither, capture: c.capture, buzz: c.buzz };
     }
     var wheelGhost = null;
-    var bodyScrollLock = null; // {y} while the haptic skin owns the body
+    // v1.311.2: the body lock is the SHARED owner-keyed one (body-scroll-lock.js) -
+    // this surface is one owner among the player's immersive views, so a skin
+    // inside the expanded audio view never clobbers its saved scroll. Truthy while
+    // this surface holds it.
+    var bodyScrollLock = null;
+    var bodyLockOwner = 'skin-ghost:' + (++skinLockSeq);
     var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
     function hapticCapable() {
       try {
@@ -1098,21 +1112,13 @@
     }
     function lockBodyScroll() {
       if (bodyScrollLock) return;
-      try {
-        bodyScrollLock = { y: win.scrollY || 0 };
-        doc.body.style.position = 'fixed';
-        doc.body.style.top = (-bodyScrollLock.y) + 'px';
-        doc.body.style.left = '0'; doc.body.style.right = '0';
-      } catch (_) { bodyScrollLock = null; }
+      var BL = sharedBodyLock();
+      if (BL && BL.lock(doc, win, bodyLockOwner)) bodyScrollLock = BL;
     }
     function unlockBodyScroll() {
       if (!bodyScrollLock) return;
-      var y = bodyScrollLock.y; bodyScrollLock = null;
-      try {
-        doc.body.style.position = ''; doc.body.style.top = '';
-        doc.body.style.left = ''; doc.body.style.right = '';
-        win.scrollTo(0, y);
-      } catch (_) { /* best-effort restore */ }
+      var BL = bodyScrollLock; bodyScrollLock = null;
+      BL.release(doc, win, bodyLockOwner);
     }
     function mountWheelGhost() {
       wheelGhost = null;

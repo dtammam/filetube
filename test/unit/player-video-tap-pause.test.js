@@ -67,7 +67,7 @@ test('gate C1: the VIDEO down listener registers on exactly ONE event (the point
   // One physical touch fires BOTH events; two invocations were not
   // idempotent (the first's reveal removed the class the second read).
   assert.match(PLAYER_JS, /var videoDownEvt = \(typeof window !== 'undefined' && window\.PointerEvent\) \? 'pointerdown' : 'touchstart';/);
-  assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\(videoDownEvt, function \(\) \{/);
+  assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\(videoDownEvt, function \(e\) \{/); // v1.311.2: takes the event (grace pointerType)
   // The two-event loop must contain ONLY the bar's stamp-less blind reveal -
   // re-adding mediaPlayer there resurrects the double-fire.
   const loop = /\['touchstart', 'pointerdown'\]\.forEach\(function \(evt\) \{([\s\S]*?)\n {4}\}\);/.exec(PLAYER_JS);

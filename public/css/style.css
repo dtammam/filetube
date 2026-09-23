@@ -2318,7 +2318,7 @@ img.art-shimmer {
   cursor: pointer;
 }
 
-/* The +-15s skip overlay and 2x speed badge are FULL-player affordances --
+/* The double-tap seek ripples and 2x speed badge are FULL-player affordances --
    impractical to tap accurately at mini-player size, so they're hidden
    purely via CSS while docked. The underlying skip()/hold-to-2x logic is
    untouched and works again immediately once the host expands back into
@@ -2648,12 +2648,12 @@ img.art-shimmer {
   border-top-color: var(--yt-red);
 }
 
-/* YouTube-style ±15s skip controls */
+/* Double-tap seek feedback layer (the ±15s buttons it held were removed in v1.311.2) */
 .skip-controls {
   position: absolute;
   inset: 0;
   z-index: 6; /* token-exempt: local stacking */
-  pointer-events: none; /* lets taps/clicks pass through to whichever interaction surface is active underneath -- #media-player (video) or #audio-bg-art (audio), per the v1.21 FR-2 pointer-events swap above; buttons re-enable below. (Stale pre-FR-2 wording fixed, v1.21 FIX 1: this no longer refers to the native <video controls> bar -- that attribute is removed app-wide, see the FR-2 control bar section.) */
+  pointer-events: none; /* lets taps/clicks pass through to whichever interaction surface is active underneath -- #media-player (video) or #audio-bg-art (audio), per the v1.21 FR-2 pointer-events swap above. v1.311.2: only the double-tap ripples live here now - the ±15s buttons were removed. (Stale pre-FR-2 wording fixed, v1.21 FIX 1: this no longer refers to the native <video controls> bar -- that attribute is removed app-wide, see the FR-2 control bar section.) */
 }
 
 /* Press-and-hold-to-2x badge (mobile inline) */
@@ -2697,40 +2697,6 @@ img.art-shimmer {
    this does. */
 .embedded-tag { margin: var(--space-1) 0; overflow-wrap: anywhere; }
 .embedded-tag-key { color: var(--text-secondary); font-weight: var(--fw-semibold); }
-
-.skip-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%) scale(0.94);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  height: 54px;
-  padding: 0 var(--space-8);
-  border: none;
-  border-radius: 27px; /* token-exempt: era skin art */
-  background: var(--scrim);
-  color: var(--on-overlay);
-  font-weight: var(--fw-semibold);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui);
-  pointer-events: none; /* invisible buttons must not catch clicks */
-  -webkit-tap-highlight-color: transparent;
-}
-
-.skip-back { left: 12%; }
-.skip-forward { right: 12%; }
-.skip-arrow { font-size: var(--fs-4xl); line-height: 1; } /* token-exempt: glyph centering */
-.skip-num { font-size: var(--fs-base); }
-
-/* Shown only while active (JS adds .skip-visible on pointer move / tap), then fade out */
-.skip-controls.skip-visible .skip-btn {
-  opacity: 1;
-  pointer-events: auto;
-}
-.skip-btn:hover { background: var(--scrim-heavy); transform: translateY(-50%) scale(1); }
-.skip-btn:active { transform: translateY(-50%) scale(0.9); }
 
 /* Double-tap ripple feedback */
 .skip-ripple {
@@ -5629,11 +5595,6 @@ a.sub-row-channel-link:focus-visible {
     color: var(--text-secondary);
     cursor: pointer;
   }
-  /* iOS's native player already offers 10s skip; hide the custom ±15s buttons on
-     mobile (double-tap-to-seek still works). */
-  .skip-btn {
-    display: none;
-  }
   .watch-action-bar {
     flex-direction: column;
     align-items: flex-start;
@@ -6316,7 +6277,7 @@ a.sub-row-channel-link:focus-visible {
 
 /* Fullscreen glyph is a plain static dingbat character (⛶) in the markup --
    same "text glyph, not an icon-font asset" idiom the existing dock close
-   button (`×`) and skip buttons (`«`/`»`) already use in this codebase. */
+   button (`×`) and the double-tap ripples (`«`/`»`) already use in this codebase. */
 .fs-btn {
   font-size: var(--fs-md);
 }
@@ -6937,6 +6898,16 @@ a.sub-row-channel-link:focus-visible {
   opacity: 0;
   pointer-events: none; /* taps pass through to the video/art, which reveals the bar */
 }
+/* v1.311.2 (Dean): the tap-reveal GRACE. A touch that wakes the hidden bar sets
+   .controls-reveal-grace for one double-tap window (player.js armRevealGrace), so
+   the SECOND tap of a sideways double-tap seek passes through to the video
+   instead of landing on the bar it just revealed (#fs-btn exited fullscreen).
+   Descendants included: a control with its own pointer-events would otherwise
+   still catch the tap. !important: beats any id-scoped bar rule. */
+#player-wrapper.controls-reveal-grace .player-controls,
+#player-wrapper.controls-reveal-grace .player-controls * {
+  pointer-events: none !important;
+}
 @media (prefers-reduced-motion: reduce) {
   #player-wrapper.css-fullscreen .player-controls,
   .player-container:fullscreen .player-controls,
@@ -6960,7 +6931,10 @@ a.sub-row-channel-link:focus-visible {
 /* The app chrome is fully covered by the overlay, but hide it explicitly
    too (belt), freeze page scroll, and paint the body black so nothing can peek
    out under the overlay in landscape (the "gap under displaying webpage"
-   symptom -- v1.119 belt for the iOS-landscape safe-area strip). */
+   symptom -- v1.119 belt for the iOS-landscape safe-area strip).
+   v1.311.2: overflow:hidden is only the DESKTOP freeze - iOS ignores it for
+   touch. The real lock is the shared body-scroll-lock.js (position:fixed), taken
+   by player.js setCssFullscreen / setAudioExpanded. */
 body.ft-css-fullscreen {
   overflow: hidden;
   background: #000; /* token-exempt: fullscreen letterbox black belt */
