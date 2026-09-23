@@ -7071,25 +7071,11 @@ body.ft-audio-expanded {
 #settings-menu .settings-menu-toggle .watch-autoplay-text {
   font-weight: normal;
 }
-/* Ambient rows hide in a light theme (watch.js sets [hidden]; belt via the mode
-   attribute so a mid-session light switch also hides them even before JS runs). */
-:root:not([data-mode="dark"]) #ambient-toggle-row,
-:root:not([data-mode="dark"]) #ambient-level-row { display: none; }
-#ambient-toggle-row[hidden],
-#ambient-level-row[hidden] { display: none !important; }
-
-/* v1.187: the ambient-amount picker in the cog menu - a compact select matching
-   the menu rows' type, era tokens only. */
-#settings-menu .settings-menu-select {
-  background: var(--btn-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  font-family: var(--font-family);
-  font-size: var(--fs-sm);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
+/* The Ambient row hides in a light theme (watch.js sets [hidden]; belt via the mode
+   attribute so a mid-session light switch also hides it even before JS runs).
+   v1.312: the v1.187 amount row is gone (one YouTube-matched look, Dean). */
+:root:not([data-mode="dark"]) #ambient-toggle-row { display: none; }
+#ambient-toggle-row[hidden] { display: none !important; }
 
 /* the cog glyph -- an inline <svg> sized like the nav chrome icons (relative to
    the button font-size, fill via currentColor). */
@@ -9080,6 +9066,7 @@ body.ft-audio-expanded {
   --ambient-band-x: 9.677%;
   --ambient-band-y: 15.278%;
   --ambient-fade: 1.2s;
+  --ambient-opacity: 0.3; /* MEASURED (Step 4): 0.55 peaked ~3x YouTube's edge; 0.3 lands on its ~+25/255 */
   position: absolute;
   top: calc(-1 * var(--ambient-reach-y)); /* token-exempt: glow reach (geometry), not a spacing token */
   right: calc(-1 * var(--ambient-reach-x)); /* token-exempt: glow reach (geometry), not a spacing token */
@@ -9090,7 +9077,7 @@ body.ft-audio-expanded {
   opacity: 0;
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
-.ambient-glow.is-on { opacity: var(--ambient-opacity, 0.55); }
+.ambient-glow.is-on { opacity: var(--ambient-opacity); }
 /* One layer = one painted source. watch.js writes the eight --ag-* colours on the
    BACK layer, then swaps `is-front`, so a tile change is a cross-fade, never a pop
    (YouTube cross-fades two canvases continuously; a 1.2s fade on a 2-10s tile
@@ -9112,15 +9099,8 @@ body.ft-audio-expanded {
     radial-gradient(farthest-side at top left, var(--ag-br, transparent), transparent) bottom right / var(--ambient-band-x) var(--ambient-band-y) no-repeat;
 }
 .ambient-glow-layer.is-front { opacity: 1; }
-/* v1.187 the INTENSITY ladder (Dean: v1.186's look was "almost too intense").
-   `data-ambient` is set by watch.js; CSS owns the numbers so the token census
-   stays clean and the level can swap live without re-sampling. v1.312: a rung is
-   an OPACITY (the measured YouTube glow is `normal`'s ceiling); only `extreme`
-   also widens the reach (its band pair re-derived: 18/136, 30/160). */
-.ambient-glow[data-ambient="subtle"] { --ambient-opacity: 0.35; }
-.ambient-glow[data-ambient="normal"] { --ambient-opacity: 0.55; }
-.ambient-glow[data-ambient="intense"] { --ambient-opacity: 0.75; }
-.ambient-glow[data-ambient="extreme"] { --ambient-opacity: 1; --ambient-reach-x: 18%; --ambient-reach-y: 30%; --ambient-band-x: 13.235%; --ambient-band-y: 18.75%; }
+/* v1.312 (Dean): ONE look. The v1.187 subtle/normal/intense/extreme ladder and
+   its picker are gone - the glow matches YouTube's measured reach and peak. */
 /* Belt for a dark->light flip: the JS themeObs stops the engine, but this closes
    the sub-frame gap before it fires by forcing the glow invisible in light. */
 :root:not([data-mode="dark"]) .ambient-glow {

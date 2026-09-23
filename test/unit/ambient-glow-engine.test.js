@@ -284,8 +284,11 @@ test('v1.312 WIRING LOCK: setupAmbientMode builds the engine from the view (lazy
   assert.match(WIRING_SRC, /signal\.addEventListener\('abort', \(\) => \{ stop\(\); if \(themeObs\)[\s\S]*disconnect\(\)/, 'teardown stops the engine + disconnects the observer');
   assert.match(WIRING_SRC, /im\.src = url;/, 'images load through a plain Image');
   assert.match(WIRING_SRC, /localStorage\.setItem\('ft-ambient', ambientStorageValue\(prefOn\)\)/, 'the pref key is unchanged');
-  assert.match(WIRING_SRC, /localStorage\.setItem\('ft-ambient-intensity', level\)/, 'the intensity key is unchanged');
-  assert.match(WIRING_SRC, /if \(levelRow\) levelRow\.hidden = !dark \|\| !prefOn;/, 'the amount row still needs dark AND on (gate S5)');
+  // v1.312 (Dean): the v1.187 amount ladder is GONE - one look, no picker, no key.
+  assert.doesNotMatch(WIRING_SRC, /ft-ambient-intensity|ambient-level|data-ambient'|resolveAmbientLevel/, 'no ladder in the wiring');
+  assert.doesNotMatch(STRIPPED_JS, /AMBIENT_LEVELS|resolveAmbientLevel|watch-ambient-level|ambient-level-row|Ambient amount/, 'no ladder anywhere in watch.js (the cog row, the helpers, the exports)');
+  for (const f of ['public/js/prefs-sync.js', 'lib/prefs-allowlist.js']) assert.ok(!fs.readFileSync(path.join(REPO, f), 'utf8').includes('ft-ambient-intensity'), f + ': the dead key left the sync allowlist (a key nothing writes can never sync)');
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /ambient-level-row|settings-menu-select|data-ambient="/, 'no ladder CSS (rows, picker, rungs)');
 });
 
 // Every rule whose selector mentions .ambient-glow, comment-stripped, as {selector, body}.
@@ -296,7 +299,7 @@ function glowRules() {
 
 test('v1.312 CSS LOCK: NO .ambient-glow rule carries a filter / transform / mask / backdrop-filter / will-change (the second iOS suspect)', () => {
   const rules = glowRules();
-  assert.ok(rules.length >= 8, 'the glow rules exist (' + rules.length + ')');
+  assert.ok(rules.length >= 6, 'the glow rules exist (' + rules.length + ')'); // base, is-on, layer, is-front, the light belt, reduced-motion
   for (const r of rules) {
     for (const prop of ['filter', 'transform', 'mask-image', '-webkit-mask-image', 'mask', 'backdrop-filter', 'will-change', 'mix-blend-mode']) {
       assert.doesNotMatch(r.body, new RegExp('(^|[\\s;])' + prop.replace(/[-]/g, '\\-') + '\\s*:'), r.selector + ' must not declare ' + prop);
@@ -306,7 +309,7 @@ test('v1.312 CSS LOCK: NO .ambient-glow rule carries a filter / transform / mask
   assert.match(WATCH_HTML, /<div id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden>\s*<div class="ambient-glow-layer"><\/div>\s*<div class="ambient-glow-layer"><\/div>\s*<\/div>/, 'a div pair: the glow with exactly two layers, born hidden');
 });
 
-test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the reach re-expressed in ELEMENT terms; the ladder is opacity-only except extreme', () => {
+test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the reach re-expressed in ELEMENT terms; ONE YouTube-matched opacity, no ladder', () => {
   const base = glowRules().find((r) => r.selector === '.ambient-glow');
   assert.ok(base, 'the base rule');
   const num = (body, name) => { const m = new RegExp('--ambient-' + name + ':\\s*([0-9.]+)%').exec(body); assert.ok(m, name + ' declared'); return Number(m[1]); };
@@ -324,16 +327,12 @@ test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the
   assert.match(base.body, /z-index:\s*-1/, 'behind #player-slot');
   assert.match(base.body, /pointer-events:\s*none/);
   const on = glowRules().find((r) => r.selector === '.ambient-glow.is-on');
-  assert.match(on.body, /opacity:\s*var\(--ambient-opacity, 0\.55\)/, 'the on-state opacity is the rung var, normal-defaulted');
-  const rung = (n) => glowRules().find((r) => r.selector === '.ambient-glow[data-ambient="' + n + '"]');
-  const op = (n) => Number(/--ambient-opacity:\s*([0-9.]+)/.exec(rung(n).body)[1]);
-  assert.ok(op('subtle') < op('normal') && op('normal') < op('intense') && op('intense') < op('extreme'), 'strictly increasing ladder');
-  assert.ok(op('extreme') <= 1, 'extreme caps at fully opaque gradients');
-  for (const n of ['subtle', 'normal', 'intense']) assert.doesNotMatch(rung(n).body, /--ambient-reach/, n + ' changes brightness only');
-  const ex = check(rung('extreme').body, 'extreme');
-  assert.ok(ex.rx > b.rx && ex.ry > b.ry, 'extreme widens the reach');
-  // the level rides the data attribute (CSS owns the numbers), set by the wiring
-  assert.match(WIRING_SRC, /glow\.setAttribute\('data-ambient', level\)/);
+  assert.match(on.body, /opacity:\s*var\(--ambient-opacity\)/, 'the on-state opacity is the ONE tuning var');
+  const op = Number(/--ambient-opacity:\s*([0-9.]+)/.exec(base.body)[1]);
+  // MEASURED (plan Step 4): 0.55 peaked ~+92/255 at the edge, ~3x YouTube's ~+25;
+  // 0.3 lands on YouTube. Dean, 2026-09-23: "YouTube style", no ladder.
+  assert.ok(op >= 0.25 && op <= 0.35, 'the single opacity sits at YouTube\'s measured peak (0.3), not the old 0.55: ' + op);
+  assert.strictEqual(glowRules().filter((r) => /data-ambient=/.test(r.selector)).length, 0, 'no rung rules remain');
 });
 
 test('v1.312 CSS PAINT: the layer stacks eight gradients (four edge bands + four corner ellipses), every colour var falls back to transparent, and the layers cross-fade on opacity', () => {

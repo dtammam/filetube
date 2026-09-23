@@ -15,13 +15,13 @@ that make his phone and desktop strangers about theme, era, skins, critters,
 autoplay, sorts. This wave gives every SYNCED pref a per-user server home with
 localStorage remaining the read path and offline cache.
 
-## The synced allowlist (MACHINE-DERIVED; 21 keys after the QA round - 'theme'
+## The synced allowlist (MACHINE-DERIVED; 20 keys since v1.312, 21 after the QA round - 'theme'
 REMOVED: it is a writer-less legacy read-fallback, and a key nothing writes can
 never sync; per-key reader-file counts from `grep -rl` over public/js)
 
 ft-era(3) · ft-mode(1) · ft-modern-mode(1) · ft-icons(2) ·
 filetube_sort(3) · filetube_modern_sort(1) · filetube_modern_chip(1) ·
-ft-star-ratings(2) · ft-ambient(1) · ft-ambient-intensity(1) ·
+ft-star-ratings(2) · ft-ambient(1) · (ft-ambient-intensity REMOVED v1.312 with the ambient amount ladder) ·
 ft-critters:on/density/size/kiss/randomsound(2 each) ·
 ft-music-skin(1) · ft-music-autoplay(1) ·
 ft-home-feed(1) · ft-home-continue-listening(2) · ft-home-continue-podcasts(1) ·

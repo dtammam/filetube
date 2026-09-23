@@ -23,7 +23,7 @@
   var SYNCED = [
     'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
     'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
-    'ft-star-ratings', 'ft-ambient', 'ft-ambient-intensity',
+    'ft-star-ratings', 'ft-ambient',
     'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
     'ft-music-skin', 'ft-music-autoplay',
     'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',

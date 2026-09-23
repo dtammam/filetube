@@ -167,26 +167,8 @@ test('v1.186.1 theatre toggle re-scatters critters for the new layout (exposed h
     'the theatre toggle re-scatters critters after flipping the layout class');
 });
 
-// ---- v1.187 (Dean): ambient INTENSITY ladder + organic light falloff --------
-
-test('v1.187 resolveAmbientLevel: the four rungs; unset/garbage -> normal (a step DOWN from v1.186)', () => {
-  const { resolveAmbientLevel, AMBIENT_LEVELS } = require('../../public/js/watch.js');
-  assert.deepStrictEqual(AMBIENT_LEVELS, ['subtle', 'normal', 'intense', 'extreme'], 'Dean\'s four rungs, in order');
-  for (const lvl of AMBIENT_LEVELS) assert.strictEqual(resolveAmbientLevel(lvl), lvl, `${lvl} round-trips`);
-  assert.strictEqual(resolveAmbientLevel(null), 'normal', 'unset -> normal (the new default)');
-  assert.strictEqual(resolveAmbientLevel('blinding'), 'normal', 'garbage -> normal (fail-safe)');
-  assert.strictEqual(resolveAmbientLevel(''), 'normal');
-});
-
-test('v1.187 the ambient intensity select is INJECTED into the cog (the parity-locked host stays untouched)', () => {
-  assert.doesNotMatch(WATCH_HTML, /id="watch-ambient-level"/, 'not baked into the shared markup (nine-shell parity)');
-  const fn = WATCH_JS.slice(WATCH_JS.indexOf('function ensureCogControlsInjected'), WATCH_JS.indexOf('\n    // FR-9 (v1.21.0) / v1.186'));
-  assert.match(fn, /id="watch-ambient-level"/, 'injected with the other cog controls');
-  assert.match(fn, /id="ambient-level-row"/, 'its row is addressable for the dark-only gate');
-  for (const opt of ['subtle', 'normal', 'intense', 'extreme']) {
-    assert.match(fn, new RegExp('value="' + opt + '"'), `the ${opt} option is offered`);
-  }
-});
+// ---- v1.187 ambient INTENSITY ladder: RETIRED in v1.312 (Dean: one YouTube-matched
+// look, no picker). The ladder's absence is bound in ambient-glow-engine.test.js.
 
 test('v1.188 ambient bleeds over the LEFT BAR: root data-ambient-on toggled at the start/stop funnel drops the sidebar bg + border', () => {
   // Dean: "the ambience hard-stops against the left bar - let it go over the bar

@@ -146,7 +146,7 @@ disclosure, which attributes the black video to v1.311.2.
 | D2 | Render shape | A plain `div` (or two, for a cross-fade) inside `.watch-player-stage`, painted with `radial-gradient`/`linear-gradient` from 4-6 sampled edge colours set as CSS custom properties; NO `filter`, NO `transform: scale`, NO `mask-image`; softness comes from gradient stops; the element is larger than the player via negative insets, not a scale | Removes the second suspect (the blurred composited layer) and reads as "light bleeding from the edges" rather than a blurred copy (Dean's ask) |
 | D3 | Sampling | Off-DOM canvas (`document.createElement('canvas')`, never attached) draws the sprite tile / thumbnail once per tile change, reads a handful of edge regions with `getImageData`, averages; recomputed only when the sprite frame index changes (every `interval` seconds, 2-10s) or on the fallback image load - no 500ms loop | Cheaper than today (the v1.187.2 battery floor stays), and a tile change is the natural cadence of the source |
 | D4 | Transition | Colours change through a CSS `transition` on opacity of two alternating layers (cross-fade over ~1s), so a tile change never pops | Custom-property gradients do not animate; two layers is the smallest thing that does |
-| D5 | Intensity ladder | Keep `subtle/normal/intense/extreme` and the `ft-ambient-intensity` key; the rungs now map to opacity + reach (gradient extent), documented in CSS | The setting, the sync key and the cog row keep working unchanged |
+| D5 | Intensity ladder | ~~Keep the ladder~~ **SUPERSEDED by Dean 2026-09-23 after the Step 4 measurement: NO ladder - one YouTube-matched look (opacity 0.3). The `Ambient amount` cog row, `resolveAmbientLevel`/`AMBIENT_LEVELS`, the CSS rungs and the `ft-ambient-intensity` sync key (client + server allowlists, the sync plan) are removed.** | Dean: "No need for ladder really. We can just do YouTube style" |
 | D6 | Fallback with no image | Audio with no cover, tv with no served thumbnail, a sprite that 404s: the glow stays off (no default hue) | A wrong colour reads as a bug; the effect is decorative |
 
 ## Acceptance (measurable)
@@ -162,10 +162,11 @@ disclosure, which attributes the black video to v1.311.2.
    `currentTime` across a tile boundary and asserts the sampled tile index advances
    (`storyboardFrameForTime` binding) and the CSS custom properties change; with no
    `mediaData.storyboard` the thumbnail path runs; with neither, nothing paints.
-4. `ft-ambient` / `ft-ambient-intensity` keep their storage values and their
-   prefs-sync membership (existing tests stay green, unchanged); the toggle row stays
-   dark-only, the amount row stays gated on "on"; `ambientShouldRun` gating (paused /
-   hidden / light / off tears the glow down) is bound as today.
+4. `ft-ambient` keeps its storage value and prefs-sync membership; `ft-ambient-intensity`
+   is REMOVED from all three allowlists (the triple-lock test re-pinned at 20 keys) and
+   the amount row is gone (Dean, 2026-09-23); the toggle row stays dark-only;
+   `ambientShouldRun` gating (paused / hidden / light / off tears the glow down) is
+   bound as today.
 5. Desktop still works: a headless Chromium run (dark, ambient on, a real mp4) shows
    the glow element painted with non-transparent gradient colours outside the player
    box, and the sidebar bleed (`data-ambient-on`) is set while running.
@@ -193,8 +194,8 @@ profile: peak ~+25/255 at the edge, gone within ~11% of the width / ~20% of the 
 - R4 The v1.187.2 gating floor is unchanged: `ambientShouldRun` (pref + dark + playing
   + visible) starts/stops it; teardown on the view signal; `data-ambient-on` on the
   root while running (the sidebar bleed).
-- R5 The `ft-ambient` / `ft-ambient-intensity` keys, the cog rows and their visibility
-  rules are unchanged; prefs-sync membership unchanged.
+- R5 The `ft-ambient` key, its cog row and visibility rule are unchanged. (Superseded
+  D5: the intensity ladder + `ft-ambient-intensity` are removed - see D5.)
 - R6 Cost floor: one 16x9 off-DOM sample per tile change (2-10s) or per poster load;
   a 1s `setTimeout` clock (not rAF) only while running; no per-frame work.
 
@@ -310,3 +311,65 @@ None persisted. The only stored state is the two existing localStorage keys.
   ambient OFF (Dean, 2026-09-23) - it shares the ambient cause and is re-checked on
   device with the new glow; if it persists with ambient ON, measure
   `document.body.style.position` in faux fullscreen.
+
+## Build record
+
+- **Commit fc254315** (Steps 1-3): `watch.js` gains the pure helpers (`ambientSourceFor`,
+  `ambientEdgeColors`, `ambientLift`, `ambientGlowVars`) + `createAmbientEngine` at module
+  level (exported, fake-driven) and `setupAmbientMode` becomes the wiring; `watch.html`
+  swaps the canvas for the div pair; `style.css` replaces the blur/mask/scale block with the
+  gradient geometry + an opacity ladder. New `test/unit/ambient-glow-engine.test.js` (16);
+  six canvas-era locks retired from `watch-chrome-ambient.test.js`. Unit suite 6913/6913
+  (Node 22); `lint:css` 0; overlay lint 0.
+- **Mutation round @fc254315** (git-archive sandbox, the two ambient files, baseline 30/0):
+  16 mutants, **15 killed** - same-tile repaints, sprite failure never falls, the VIDEO as
+  the draw source, front never swaps, wiring never starts the engine, eager mediaData,
+  audio on the sprite rung, artUrl ignored, CSS blur / transform / mask returning, band-x
+  drifting from reach, a corner gradient dropped, a non-increasing ladder, the canvas
+  markup returning. **1 survived - EQUIVALENT:** dropping `hardFailed ||` from `start()`'s
+  first guard changes nothing observable because `start()` re-checks `hardFailed` right
+  after `check()` (the S1 guard). Not a test gap; recorded honestly.
+- **Step 4 desktop end-to-end @fc254315** (headless Chromium 1600x1000, the in-process
+  server, a 30s VP9 `testsrc2` clip with a drifting hue + a sprite built with
+  `lib/storyboard`'s own ffmpeg args; script `ambient-desktop-probe.js` + JSON + PNG in the
+  session scratchpad; the Playwright Chromium has no H.264 and its ffmpeg is a minimal
+  build, so a static ffmpeg 7.0.2 was pulled into the scratchpad):
+  - dark, `ft-ambient=1`, playing: `#ambient-glow` `hidden:false`, `is-on`, root
+    `data-ambient-on` set; computed `filter: none`, `transform: none`, `mask: none`,
+    `will-change: auto`; the glow box is 1138x802 around a 918x557 player = **12% / 22%
+    reach exactly**; the front layer carries eight `rgb()` vars (green left edge, pink
+    right edge - the tile's colours); zero page errors.
+  - ~10s later the front layer had swapped (index 1 -> 0) with a different `--ag-t`:
+    the tile-change cross-fade works against the real sprite route.
+  - toggling the cog switch off: `hidden`, no `is-on`, root attribute cleared,
+    `ft-ambient` stored `0`.
+  - pixel profile at `normal` (RGB over the page's [18,18,18]), right of the player at mid
+    height: 5px [110,65,78] · 25px [89,54,65] · 50px [67,43,51] · 75px [46,33,38] ·
+    100px [27,22,24] · 130px [18,18,18]. Below: 5px [61,60,65] · 50px [48,48,49] · 100px
+    [28,28,28] · 200px [18,18,18]. Falls off smoothly to the page within the reach, no
+    hard edge.
+  - **Finding (brightness):** the edge PEAK at `normal` is ~+92/+47/+60 - about 3x
+    YouTube's measured ~+16/+25/+13. The reach matches YouTube; the intensity does not.
+    The ladder numbers Dean approved (0.35/0.55/0.75/1.0) were set before this
+    measurement, so this returns to Dean: keep them (a stronger glow than YouTube) or
+    rescale to YouTube's peak (~0.18/0.30/0.50/0.80). Awaiting the call.
+  - Honest note on the synthetic clip: its hue drifts 36 deg/s, so a tile sampled up to
+    2.7s from the live frame shows a visibly different hue than the picture; real footage
+    changes far slower and the sprite tile tracks it.
+- **Dean's call on brightness (2026-09-23): "1. Yes, 2. No need for ladder really. We can
+  just do YouTube style."** -> one opacity, no picker. Second commit: `--ambient-opacity:
+  0.3` on the base rule, `is-on` reads it; the four rungs, the `Ambient amount` cog row,
+  `resolveAmbientLevel`/`AMBIENT_LEVELS` (+ exports), the `#ambient-level-row` CSS, the dead
+  `.settings-menu-select` rule and the `ft-ambient-intensity` key (client list, server
+  `lib/prefs-allowlist.js`, the test authority, the sync plan; `lib/user/routes.js`
+  comments 21 -> 20) are removed. Tests: the two v1.187 ladder tests retired; the engine
+  file now binds the ladder's ABSENCE (wiring, watch.js, both allowlists, CSS) and the
+  single opacity in [0.25, 0.35].
+- **Step 4 rerun at 0.3** (same clip, same script): `is-on`, computed opacity 0.3,
+  `filter/transform/mask: none`, front swapped by ~13s, off tears down, zero errors.
+  Profile right of the player: 5px [68,44,51] · 25px [57,38,44] · 50px [45,32,36] · 75px
+  [34,26,29] · 100px [23,20,21] · 130px [18,18,18] (page). Below: 5px [42,42,44] · 50px
+  [34,34,35] · 100px [23,24,24] · 200px page. Peak ~+50 on the dominant channel vs
+  YouTube's ~+25: halved from the first cut; the remaining gap is mostly the synthetic
+  clip's saturated primaries (YouTube was measured on a meadow). The screenshot reads
+  as a faint halo. Dean's phone judges; the one knob is `--ambient-opacity`.
