@@ -3,8 +3,8 @@ plan: post-311-2-regressions
 harness: v2 · filetube
 branch: fix/post-311-2-regressions
 anchor: outcome
-status: Gate:pending r1 @07e3572d
-next: FULL gate r1 (adversary + qa); R4 end-to-end result pending; R0/R2 await Dean's device answers
+status: Gate:pending r1 @54cc993b
+next: dual-Node full suites @54cc993b, then FULL gate r1 (adversary + qa); R0/R2 await Dean's device answers
 gate: pending
 ---
 
@@ -72,7 +72,34 @@ play a video and do NOT enter fullscreen).
   native fullscreen, and a held body lock no longer stand the back down. Bound in
   `swipe-back-owners.test.js` against real shell and real skin markup.
 - **A4** chaptered album verified end to end (Play, and a row tap), reported plainly.
+  **Result: Dean's oddity was REAL** (see R4 below), so A5/A6 were added.
+- **A5 the album END stations on.** At the whole-file `ended`, the cascade's rewind to 0
+  never re-registers nav: `reflectChapter` holds from `ended` until the next
+  `play`/`loadstart`. The ended advance plays the radio-armed track, never chapter 2. A
+  play after the end (a loop replay, or the user) re-reflects chapter 1. Bound in
+  `music-chapter-reflect.test.js` in the real order (arm, `ended`, the rewind tick, the advance).
+- **A6 (Dean's ruling, 2026-09-23) a chapter tap near its end starts it over.** A saved
+  place in a chapter's last 5s (`CHAPTER_RESUME_TAIL_SEC`), or past its end, loads at the
+  chapter head. An earlier saved place still resumes (v1.222). `chapterResumeSecFor` is the
+  one producer of `chapterResumeSec`. Bound by a real row-click test and boundary checks.
 - **R0 / R2:** no code until a device observation names the cause.
+
+## R4 end-to-end findings (headless Chromium, a real 4-chapter mp3 + 3 other tracks)
+
+Run by a delegated agent in a `git archive` sandbox (own port, throwaway DATA_DIR,
+static ffmpeg 7.0.2; logs in the session scratchpad `r4/`, `r5/`).
+- @07e3572d, **album Play: FAILED** at 1280 and 390. Every file end reloaded the
+  album at Chap Two (`ended t=0` -> `NAV at registerTrackNav < reflectChapter` ->
+  `playAt(1)`). A second end stopped playback dead on "Chap Two". Cause, confirmed in
+  source: `player.js` `runEndedCompletionCascade` sets `el.currentTime = 0`; the tick
+  from that re-registered chapter 1's nav over the radio arm. A v1.311.0 bug: its test
+  fired `onNext` right after arming and never drove `ended`.
+- Row tap: passes. Re-tapping a chapter just heard to its end resumed at 15.74 of
+  [8,16) and exited after ~0.35s (this led to A6).
+- @b1ad075f re-run: album Play 1280 natural (One->Four, then Other Song 2, the file
+  never reloaded), 390 skin, and the row tap: PASS. Loop ON: "Loop chapter" repeats the
+  last chapter (`ended` never fires naturally); a forced end replays from 0 and shows
+  Chap One.
 
 ## Build notes
 
@@ -104,3 +131,9 @@ play a video and do NOT enter fullscreen).
   instead binds that a destroyed skin never releases another owner.
 - The rotate is modeled in jsdom by flipping a `.mms-full{position}` rule (jsdom never
   matches media queries). The device confirmation is Dean's.
+
+## Verification addendum (@54cc993b)
+
+- Album-end mutants (sandbox): H1 hold check removed · H2 hold never set · H3 play never
+  clears: all KILLED. Tail-rule mutants: T1 rule removed · T2 builder bypasses the helper
+  · T3 `>` for `>=` · T4 tail 10s: all KILLED.
