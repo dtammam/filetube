@@ -107,6 +107,19 @@ var AMBIENT_REACH_X = 0.12; // the glow reaches 12% of the player's WIDTH each s
 var AMBIENT_REACH_Y = 0.22; // ...and 22% of its HEIGHT above/below (--ambient-reach-y) - YouTube's measured extent
 var AMBIENT_VIGNETTE_GAMMA = 1.5; // alpha = (1 - f)^gamma across the reach: YouTube's measured falloff (~half at 37%, ~15% at 73%)
 var AMBIENT_CLOCK_MS = 1000; // the tile-change clock; NOT a paint rate (a paint happens only on a source change)
+// v1.314 PACE (Dean, iPhone: "ambient changes too much and is slow"). A storyboard
+// tile lands every 2-36s (lib/storyboard: d/40 clamped to [2,10]s, then the 100-frame
+// cap stretches long clips), and each tile was a WHOLE new picture cross-faded in
+// over 1.2s - six visible morphs a minute on a typical clip. Now the glow is a
+// running field SMOOTHED IN MEDIA TIME: a new tile that lands dt seconds after the
+// last one is blended in with weight 1 - exp(-dt / tau), so a 2s cadence moves
+// ~12% per tile and a 10s cadence ~49% - the same drift per second either way, and
+// a seek far away (dt large) still snaps. A step whose mean change is under
+// AMBIENT_MIN_DELTA is absorbed into the field without a repaint (a static scene
+// never churns), and a layer is never repainted before its fade has ended.
+var AMBIENT_FADE_MS = 2400;    // the layer cross-fade (style.css --ambient-fade, test-bound) AND the minimum gap between paints
+var AMBIENT_SMOOTH_TAU_S = 15; // media-time constant of the smoothing (the pace knob: larger = lazier)
+var AMBIENT_MIN_DELTA = 4;     // mean |change| per channel (0-255, pre-lift) below which a step is absorbed, not painted
 
 // What to sample for this item at time t: the sprite tile (video with a
 // storyboard geometry), else the poster image, else nothing. `storyboard` is the
@@ -172,6 +185,36 @@ function ambientVignette(data, w, h, reach) {
   return data;
 }
 
+// THE PACE (v1.314, pure). The weight of a new tile that arrived `dt` media
+// seconds after the last integrated one: 1 - exp(-dt / tau). No history (dt not
+// a finite number) -> 1 (a snap: the first paint, a rung change).
+function ambientSmoothing(dt, tau) {
+  var t = tau > 0 ? tau : AMBIENT_SMOOTH_TAU_S;
+  if (typeof dt !== 'number' || !Number.isFinite(dt)) return 1;
+  return 1 - Math.exp(-Math.abs(dt) / t);
+}
+// Blend the RGB of a freshly drawn RGBA `data` buffer into the running field
+// `acc` (Float32Array, 3 per pixel; null = no field yet -> a copy) with weight k.
+function ambientBlend(acc, data, k, n) {
+  var out = acc && acc.length === n * 3 ? acc : null;
+  var w = out ? Math.min(1, Math.max(0, k)) : 1;
+  if (!out) out = new Float32Array(n * 3);
+  for (var p = 0; p < n; p++) {
+    var i = p * 4, j = p * 3;
+    out[j] += (data[i] - out[j]) * w;
+    out[j + 1] += (data[i + 1] - out[j + 1]) * w;
+    out[j + 2] += (data[i + 2] - out[j + 2]) * w;
+  }
+  return out;
+}
+// Mean |a - b| per channel over two RGB fields (0-255). No `b` -> Infinity (paint).
+function ambientMeanDelta(a, b) {
+  if (!a || !b || a.length !== b.length || !a.length) return Infinity;
+  var sum = 0;
+  for (var i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+}
+
 // A mild lift so the glow reads as tinted LIGHT: saturation x1.15 (capped),
 // lightness clamped to [0.12, 0.62] - a black scene glows only faintly (v1.313:
 // the old 0.30 floor turned every dark scene into the same grey slab), a white
@@ -209,10 +252,13 @@ function ambientLift(rgb) {
 //   video       the media element (read for currentTime ONLY - never drawn)
 //   getMediaData() -> the view's descriptor (read lazily: the v1.197.1 TDZ lesson)
 //   mediaId, storyboard, loadImage(url) -> Promise<img|null>, makeCanvas() -> canvas,
-//   setTimeout/clearTimeout, clockMs, onHardFail()
+//   setTimeout/clearTimeout, clockMs, now() (wall ms), fadeMs, smoothTauS, minDelta, onHardFail()
 // Contract: start() paints the first source immediately, then re-checks the
-// source on the clock and paints ONLY when the tile index / url changes; stop()
-// cancels the clock. A throw in sampling hard-fails this engine (never re-armed)
+// source on the clock and samples ONLY when the tile index / url changes; a new
+// tile is blended into the running field (v1.314, media-time smoothing), painted
+// only when the field moved by at least minDelta, and never while the previous
+// cross-fade (fadeMs) is still running - a deferred tile is re-checked on the
+// next clock; stop() cancels the clock. A throw in sampling hard-fails this engine (never re-armed)
 // AND reports it through onHardFail - the sample runs after an ASYNC image load,
 // so the caller's DOM state (is-on, the sidebar bleed) would otherwise stay lit
 // with nothing painting (gate r1, adversary F2 / QA W1).
@@ -228,14 +274,22 @@ function createAmbientEngine(opts) {
   var setT = opts.setTimeout || setTimeout;
   var clearT = opts.clearTimeout || clearTimeout;
   var clockMs = opts.clockMs || AMBIENT_CLOCK_MS;
+  var now = typeof opts.now === 'function' ? opts.now : function () { return Date.now(); };
+  var fadeMs = opts.fadeMs >= 0 ? opts.fadeMs : AMBIENT_FADE_MS;
+  var smoothTauS = opts.smoothTauS > 0 ? opts.smoothTauS : AMBIENT_SMOOTH_TAU_S;
+  var minDelta = opts.minDelta >= 0 ? opts.minDelta : AMBIENT_MIN_DELTA;
 
   var timerId = null;
   var hardFailed = false;
   var spriteFailed = false; // a 404'd/undecodable sprite drops to the poster rung for this view
-  var painted = null;       // { kind, url, index } of the last painted source
+  var painted = null;       // { kind, url, index } of the last INTEGRATED source (painted or absorbed)
   var images = {};          // url -> img | 'loading' | 'failed'
   var front = 1;            // index of the layer currently shown (the other is painted next)
   var canvas = null, ctx = null;
+  var acc = null;           // the running RGB field (pre-lift), smoothed in media time
+  var shown = null;         // the RGB field of the last PAINTED bitmap (the threshold's baseline)
+  var lastT = null;         // media time of the last integrated sample (dt for the smoothing)
+  var lastPaintAt = -Infinity; // wall time of the last paint (the fade gap)
 
   function layers() {
     var ls = glow && glow.querySelectorAll ? glow.querySelectorAll('.ambient-glow-layer') : [];
@@ -264,9 +318,13 @@ function createAmbientEngine(opts) {
     return ctx;
   }
   // Draw the tile (or the whole poster) STRETCHED over the tiny bitmap that
-  // stands for the glow box, vignette it in place, and hand back the PNG data
-  // URL the layer paints (v1.313). Same-origin images only, so toDataURL never
-  // throws for taint; a throw here still hard-fails the engine (the caller's try).
+  // stands for the glow box, blend it into the running field (v1.314: weight
+  // from the media time since the last tile; a rung change snaps), and if the
+  // field moved enough, vignette it in place and hand back the PNG data URL the
+  // layer paints (v1.313). Returns { url } to paint, { skip: true } when the
+  // step was absorbed, null for a failed source. Same-origin images only, so
+  // toDataURL never throws for taint; a throw here still hard-fails the engine
+  // (the caller's try).
   function sample(img, src) {
     var c = ensureCanvas();
     var iw = img.naturalWidth || img.width || 0, ih = img.naturalHeight || img.height || 0;
@@ -278,10 +336,24 @@ function createAmbientEngine(opts) {
     }
     c.drawImage(img, sx, sy, sw, sh, 0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
     var id = c.getImageData(0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
+    var n = AMBIENT_SAMPLE_W * AMBIENT_SAMPLE_H;
+    var t = currentTime();
+    var sameRung = !!(painted && painted.kind === src.kind && painted.url === src.url);
+    var k = sameRung && lastT !== null ? ambientSmoothing(t - lastT, smoothTauS) : 1;
+    acc = ambientBlend(sameRung ? acc : null, id.data, k, n);
+    lastT = t;
+    if (ambientMeanDelta(acc, shown) < minDelta) return { skip: true };
+    for (var p = 0; p < n; p++) {
+      id.data[p * 4] = Math.round(acc[p * 3]);
+      id.data[p * 4 + 1] = Math.round(acc[p * 3 + 1]);
+      id.data[p * 4 + 2] = Math.round(acc[p * 3 + 2]);
+    }
     ambientVignette(id.data, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H, null);
     c.putImageData(id, 0, 0);
     var url = canvas.toDataURL('image/png');
-    return (typeof url === 'string' && url.indexOf('data:image/png') === 0) ? url : null;
+    if (!(typeof url === 'string' && url.indexOf('data:image/png') === 0)) return null;
+    shown = new Float32Array(acc);
+    return { url: url };
   }
   function paint(dataUrl, src) {
     var ls = layers();
@@ -291,6 +363,7 @@ function createAmbientEngine(opts) {
     back.classList.add('is-front');
     ls[front].classList.remove('is-front');
     front = front === 0 ? 1 : 0;
+    lastPaintAt = now();
     painted = { kind: src.kind, url: src.url, index: src.index };
   }
   function fail() {
@@ -318,10 +391,16 @@ function createAmbientEngine(opts) {
       return;
     }
     if (img === 'loading') return;
+    // Never repaint a layer mid-fade (the back layer is the one still fading
+    // out): a tile that lands inside the fade waits for the next clock.
+    var n = now();
+    if (lastPaintAt > n) lastPaintAt = n; // gate r1 qa S1: Date.now is not monotonic (an NTP step backwards must not defer every paint)
+    if (n - lastPaintAt < fadeMs) return;
     var bitmap;
     try { bitmap = sample(img, src); } catch (_) { fail(); return; }
     if (!bitmap) { images[src.url] = 'failed'; return; }
-    paint(bitmap, src);
+    if (bitmap.skip) { painted = { kind: src.kind, url: src.url, index: src.index }; return; } // absorbed: no swap, no re-sample of this tile
+    paint(bitmap.url, src);
   }
   function tick() {
     timerId = null;
@@ -907,6 +986,9 @@ if (typeof module !== 'undefined' && module.exports) {
     ambientSourceFor,
     ambientVignette,
     ambientLift,
+    ambientSmoothing,
+    ambientBlend,
+    ambientMeanDelta,
     createAmbientEngine,
     AMBIENT_SAMPLE_W,
     AMBIENT_SAMPLE_H,
@@ -914,6 +996,9 @@ if (typeof module !== 'undefined' && module.exports) {
     AMBIENT_REACH_Y,
     AMBIENT_VIGNETTE_GAMMA,
     AMBIENT_CLOCK_MS,
+    AMBIENT_FADE_MS,
+    AMBIENT_SMOOTH_TAU_S,
+    AMBIENT_MIN_DELTA,
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
     resolveWatchEntryReparentAction,

@@ -86,6 +86,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.315.0 - Ambient glow spreads to the phone's edges and drifts instead of morphing (2026-09-23)
+
+Dean's iPhone check of v1.313.0 (picture stays, R0 closed) came with two complaints: "look at
+left and right of ambient on mobile, make it spread" and "ambient changes too much and is slow".
+Measured in headless Chromium at 390x844: (1) the v1.194.3 mobile stage `overflow-x: clip` (the
+sideways-scroll fix) clipped the glow's horizontal reach to ZERO at the player's own box, and
+removing the clip re-created the sideways scroll (scrollWidth 390 -> 417); the fix moves the
+stage's clip edge to the VIEWPORT edge (a negative horizontal margin + matching padding of
+`--ambient-gutter` = the main content's mobile gutter token) with a mobile `.ambient-glow` inset
+override placed AFTER the base rule (a first cut placed before it was inert at equal specificity,
+the probe caught it, the test binds cascade order) - the gutter is now lit to the screen edge,
+scrollWidth stays 390, the faux-fullscreen overlay still escapes. (2) Real storyboards change
+tiles every 1.9s-36s and each change was a whole-picture morph on a 1.2s fade; the engine now
+blends a running RGB field in MEDIA time (`AMBIENT_SMOOTH_TAU_S` 15s, 1-exp(-dt/tau)), absorbs
+steps under `AMBIENT_MIN_DELTA` 4/255, never paints inside the fade gap, fades over 2.4s
+(`AMBIENT_FADE_MS` and the CSS `--ambient-fade` are test-bound as one number), clamps a
+backward wall-clock step, and snaps on a far seek or a rung change. Max per-step change 13 -> 2.
+Every v1.312 constraint lock kept (never read the video; no filter/transform/mask on the glow or
+stage rules; PNG data-URL background only). Gate: adversary + qa (48 mutants, headless probe
+re-run by the adversary); r1 qa CHANGES (a v1.312 poster assertion silently unbound by the fade
+deferral, fixed) -> r2 APPROVED @383f24ce by both. Disclosed: tracker #234 (phone LANDSCAPE
+is above the 768px breakpoint and still scrolls sideways with ambient on - pre-existing, identical
+at the base sha; Dean's call on widening the breakpoint). Plan:
+`docs/exec-plans/completed/2026-09-23-ambient-mobile-spread-and-pace.md`.
+
 ### v1.314.0 - Push notifications are now opt-in per channel: the bell (2026-09-23)
 
 Dean: "iOS/browser notifications fully work, it's great, I just don't want to be hit by

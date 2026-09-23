@@ -3136,5 +3136,11 @@
     "date": "2026-09-23",
     "title": "Choose which channels send you push notifications",
     "intent": "Push notifications used to arrive for every new download from every channel. Now each subscription has its own bell, off to start with, so only the channels you switch on will ping your phone or browser; everything else still shows up in the in-app notifications list as before. Turn a channel's bell on from the Subscriptions page or from the Notify button next to Pin on any of its videos."
+  },
+  {
+    "version": "1.315.0",
+    "date": "2026-09-23",
+    "title": "Ambient glow now reaches the edges of your phone and moves gently",
+    "intent": "On a phone the Ambient glow only showed above and below the video; now it also fills the strip left and right of the player out to the screen edge, without the page ever scrolling sideways. The glow also stopped jumping between colours every time the preview frame changed: it now drifts slowly toward the new colours over a longer, softer fade, so it feels like light from the picture instead of a slideshow behind it."
   }
 ]
