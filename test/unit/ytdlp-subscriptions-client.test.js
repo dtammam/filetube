@@ -902,8 +902,8 @@ test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted
   const row = createSubscriptionRow(sub, fakeDoc, {});
 
   assert.strictEqual(row.className, 'sub-row');
-  // AC19: exactly avatar + info + kebab as direct children.
-  assert.deepStrictEqual(row.children.map((el) => el.className), ['sub-row-avatar', 'sub-row-info', 'sub-row-kebab']);
+  // AC19: exactly avatar + info + (v1.314) the push bell + kebab as direct children.
+  assert.deepStrictEqual(row.children.map((el) => el.className), ['sub-row-avatar', 'sub-row-info', 'sub-row-bell', 'sub-row-kebab']);
 
   const avatar = row.children[0];
   // C5 (v1.30.0, T12): the row's avatar letter routes through the shared
@@ -915,15 +915,68 @@ test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted
   assert.ok(texts.includes('My Channel'));
   assert.ok(texts.some((t) => t.includes('Video')), 'the meta line must include the formatSubMeta fragment');
 
-  const kebab = row.children[2];
+  const kebab = row.children[3];
   assert.strictEqual(kebab.tagName, 'BUTTON');
   assert.strictEqual(kebab.className, 'sub-row-kebab');
 
   // The old inline Pause/Edit/Re-pull/Delete cluster and edit panel are
-  // entirely gone -- there is exactly ONE button in the whole row (the
-  // kebab), not six.
+  // entirely gone -- the only buttons in the whole row are the v1.314 push
+  // bell and the trailing kebab, not six.
   const buttons = [...row.walk()].filter((el) => el.tagName === 'BUTTON');
-  assert.strictEqual(buttons.length, 1, 'expected only the single trailing kebab button');
+  assert.deepStrictEqual(buttons.map((b) => b.className), ['sub-row-bell', 'sub-row-kebab'], 'the bell + the single trailing kebab');
+});
+
+// ---- v1.314: the per-channel push bell on the row ---------------------------
+// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC9).
+
+test('v1.314 createSubscriptionRow: the bell renders OFF (muted glyph, no -active) for a record without the flag, ON (bell glyph, -active, aria-pressed) when pushBell is true; before the kebab, after the pin', () => {
+  const off = createSubscriptionRow({ id: 'bell1', name: 'Off', channelUrl: 'https://www.youtube.com/@off', channelDir: '/data/off' }, fakeDoc, {}, undefined, false);
+  const offBtn = off.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0);
+  assert.ok(offBtn, 'a bell exists for a subscribed row');
+  assert.strictEqual(offBtn.tagName, 'BUTTON');
+  assert.strictEqual(offBtn.className, 'sub-row-bell', 'off carries no -active modifier');
+  assert.strictEqual(offBtn.textContent, '🔕');
+  assert.strictEqual(offBtn.attributes['aria-pressed'], 'false');
+  const pinIdx = off.children.findIndex((el) => el.className === 'sub-row-pin');
+  const bellIdx = off.children.indexOf(offBtn);
+  const kebabIdx = off.children.findIndex((el) => el.className === 'sub-row-kebab');
+  assert.ok(pinIdx >= 0 && pinIdx < bellIdx && bellIdx < kebabIdx, 'order: pin, bell, kebab');
+  const on = createSubscriptionRow({ id: 'bell2', name: 'On', channelUrl: 'https://www.youtube.com/@on', pushBell: true }, fakeDoc, {});
+  const onBtn = on.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0);
+  assert.strictEqual(onBtn.className, 'sub-row-bell sub-row-bell-active');
+  assert.strictEqual(onBtn.textContent, '🔔');
+  assert.strictEqual(onBtn.attributes['aria-pressed'], 'true');
+  // A non-boolean value (a hostile/corrupt row) reads OFF, never ON.
+  const junk = createSubscriptionRow({ id: 'bell3', name: 'Junk', channelUrl: 'https://www.youtube.com/@junk', pushBell: 'true' }, fakeDoc, {});
+  assert.strictEqual(junk.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0).textContent, '🔕');
+  // No id -> no bell (nothing to PATCH).
+  const noId = createSubscriptionRow({ name: 'NoId', channelUrl: 'https://www.youtube.com/@noid' }, fakeDoc, {});
+  assert.strictEqual(noId.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0), undefined);
+});
+
+test('v1.314 createSubscriptionRow: clicking the bell calls onToggleBell(sub) and never also opens the settings panel', () => {
+  const sub = { id: 'bell4', name: 'Tap', channelUrl: 'https://www.youtube.com/@tapbell', pushBell: false };
+  const openCalls = [];
+  const bellCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, {
+    onOpenSettings: (s) => openCalls.push(s),
+    onToggleBell: (s) => bellCalls.push(s),
+  });
+  const bellBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0);
+  bellBtn.click({ stopPropagation: () => {} });
+  assert.deepStrictEqual(bellCalls, [sub]);
+  row.click({ target: bellBtn });
+  assert.deepStrictEqual(openCalls, [], 'a row click on the bell never opens settings');
+});
+
+test('v1.314 LOCK: the page wires onToggleBell to toggleBell, which PATCHes { pushBell: !current } and RE-FETCHES the list (never an optimistic flip); a non-2xx is surfaced', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'client', 'subscriptions.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(src, /onToggleBell: toggleBell,/, 'the list handlers carry the bell (an unbound handler = an inert bell)');
+  const fn = src.slice(src.indexOf('  function toggleBell(sub) {'), src.indexOf('\n  }', src.indexOf('  function toggleBell(sub) {')));
+  assert.match(fn, /method: 'PATCH'/);
+  assert.match(fn, /JSON\.stringify\(\{ pushBell: !\(sub\.pushBell === true\) \}\)/, 'flips from the record\'s boolean truth');
+  assert.match(fn, /if \(!res\.ok\)/, 'a 403/400 is checked, not swallowed');
+  assert.match(fn, /\.then\(\(\) => loadSubscriptions\(\)\)/, 're-fetches the list');
 });
 
 test('createSubscriptionRow: avatar falls back to "?" for a missing/blank channel name', () => {

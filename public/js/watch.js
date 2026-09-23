@@ -2521,6 +2521,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // every media load like every other closure in this init().
     let pinBtn = null;
     let currentPinState = { channelDir: null, label: '', pinned: false, pinId: null };
+    // v1.314 (Dean's opt-in bell): the per-subscription WEB PUSH toggle, rendered
+    // beside Pin ONLY while this channel is subscribed (the flag lives on the
+    // subscription record). Same one-applier / write-through posture as Pin.
+    let bellBtn = null;
+    let currentBellState = { subId: null, on: false };
 
     function applySubscribeButtonLabel(subscribed) {
       if (!subscribeBtn) return;
@@ -2633,6 +2638,47 @@ if (typeof module !== 'undefined' && module.exports) {
       pinBtn.classList.toggle('btn-primary', !pinned);
     }
 
+    // v1.314: the bell's label is the ONLY thing `on` affects here; the
+    // persisted truth is the subscription record (PATCH /api/subscriptions/:id).
+    function applyBellButtonLabel(on) {
+      if (!bellBtn) return;
+      bellBtn.textContent = on ? '🔔 Notifying' : '🔕 Notify';
+      bellBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      bellBtn.setAttribute('aria-label', on ? 'Push notifications for this channel are on' : 'Push notifications for this channel are off');
+      bellBtn.classList.toggle('btn-primary', false);
+    }
+
+    function handleToggleBell() {
+      if (!currentBellState.subId || !bellBtn) return;
+      const next = !currentBellState.on;
+      bellBtn.disabled = true;
+      fetch('/api/subscriptions/' + encodeURIComponent(currentBellState.subId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pushBell: next }),
+      })
+        .then(async (res) => {
+          if (!res || !res.ok) {
+            const data = res && typeof res.json === 'function' ? await res.json().catch(() => ({})) : {};
+            console.error('Notification bell toggle failed:', (data && data.error) || (res && res.status));
+            return; // the label re-applies from the UNCHANGED state below (a 403 for a non-manager reverts visibly)
+          }
+          const data = await res.json().catch(() => ({}));
+          currentBellState = { ...currentBellState, on: data && data.pushBell === true };
+          // Write-through: the cached subs entry must carry the new flag or the
+          // next frame-one render (from the cache) shows the OLD bell.
+          const capAfterBell = readCapabilityCache();
+          if (capAfterBell && Array.isArray(capAfterBell.subs)) {
+            writeCapabilityCache({ subs: capAfterBell.subs.map((sub) => (sub && sub.id === currentBellState.subId ? { ...sub, pushBell: currentBellState.on } : sub)) });
+          }
+        })
+        .catch((err) => console.error('Notification bell toggle failed (network error):', err))
+        .finally(() => {
+          bellBtn.disabled = false;
+          applyBellButtonLabel(currentBellState.on);
+        });
+    }
+
     // Re-fetches the pin list and re-renders the shared sidebar shortcut via
     // common.js's EXISTING renderPinnedSidebar -- the SAME function/DOM
     // section the /subscriptions page's own pin toggle refreshes -- so
@@ -2734,9 +2780,11 @@ if (typeof module !== 'undefined' && module.exports) {
         if (confirmed) {
           subscribeBtn.remove();
           if (pinBtn) { pinBtn.remove(); pinBtn = null; }
+          if (bellBtn) { bellBtn.remove(); bellBtn = null; }
         } else {
           subscribeBtn.hidden = true;
           if (pinBtn) pinBtn.hidden = true;
+          if (bellBtn) bellBtn.hidden = true;
         }
         return;
       }
@@ -2749,6 +2797,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       subscribeBtn.hidden = false;
       if (pinBtn) pinBtn.hidden = false;
+      if (bellBtn) bellBtn.hidden = false;
       applySubscribeButtonLabel(currentSubState.subscribed);
       if (!subscribeClickWired) {
         subscribeClickWired = true;
@@ -2763,6 +2812,26 @@ if (typeof module !== 'undefined' && module.exports) {
       const matchedSub = currentSubState.subscribed && Array.isArray(subs)
         ? subs.find((sub) => sub && sub.id === currentSubState.subId)
         : null;
+      // v1.314: the bell exists only while SUBSCRIBED (it is a property of the
+      // subscription record) - created/removed here, from the same answer set,
+      // before the Pin block's own channelDir gate (Pin needs a resolved
+      // directory; the bell needs only the record).
+      if (matchedSub) {
+        currentBellState = { subId: matchedSub.id, on: matchedSub.pushBell === true };
+        if (!bellBtn) {
+          bellBtn = document.createElement('button');
+          bellBtn.type = 'button';
+          bellBtn.id = 'notify-channel-btn';
+          bellBtn.className = 'btn';
+          bellBtn.style.marginLeft = 'var(--space-4)';
+          subscribeBtnContainer.appendChild(bellBtn);
+          bellBtn.addEventListener('click', handleToggleBell, { signal });
+        }
+        applyBellButtonLabel(currentBellState.on);
+      } else if (bellBtn) {
+        bellBtn.remove(); bellBtn = null;
+        currentBellState = { subId: null, on: false };
+      }
       const channelDir = (matchedSub && typeof matchedSub.channelDir === 'string' && matchedSub.channelDir !== '')
         ? matchedSub.channelDir
         : resolveChannelDirFromFilePath(item.filePath);

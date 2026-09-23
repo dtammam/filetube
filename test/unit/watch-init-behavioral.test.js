@@ -171,6 +171,33 @@ test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscri
   const pin = btn.parentNode.children.find((c) => c.id === 'pin-channel-btn');
   assert.ok(pin, 'Pin button created in the SAME frame-one apply, not a later round trip');
   assert.equal(pin.textContent, 'Pin channel');
+  // v1.314: the push bell renders in the same frame-one apply, OFF for a cached
+  // record without the flag (the opt-in default).
+  const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
+  assert.ok(bell, 'Notify bell created in the SAME frame-one apply');
+  assert.equal(bell.textContent, '🔕 Notify');
+  // (the shim's setAttribute is a no-op, so aria-pressed is bound in ytdlp-subscriptions-client / by the label here)
+});
+
+test('v1.314 frame-one bell: a cached subscription with pushBell:true renders the bell ON; an UNSUBSCRIBED page renders no bell at all', () => {
+  const on = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ ...WARM_SUBSCRIBED_CACHE.subs[0], pushBell: true }] } });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  on.els.set('#subscribe-btn-mock', btn);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!on.els.has(sel)) on.els.set(sel, makeEl('div')); return on.els.get(sel); };
+  on.init(root);
+  const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
+  assert.ok(bell, 'bell present');
+  assert.equal(bell.textContent, '🔔 Notifying', 'the cached ON flag renders ON in frame one (scrubSubsForCache must carry it)');
+
+  const off = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ id: 's9', channelUrl: 'https://www.youtube.com/@someoneelse', name: 'Else' }] } });
+  const btn2 = Object.assign(makeEl('button'), { hidden: true });
+  off.els.set('#subscribe-btn-mock', btn2);
+  const root2 = makeEl('div');
+  root2.querySelector = (sel) => { if (!off.els.has(sel)) off.els.set(sel, makeEl('div')); return off.els.get(sel); };
+  off.init(root2);
+  assert.equal(btn2.textContent, 'Subscribe', 'precondition: not subscribed to this channel');
+  assert.equal(btn2.parentNode.children.find((c) => c.id === 'notify-channel-btn'), undefined, 'no bell without a subscription record to hang it on');
 });
 
 test('cached moduleEnabled:false HIDES but never removes (the confirmed answer must still be able to show)', () => {
