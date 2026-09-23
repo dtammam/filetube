@@ -3,10 +3,10 @@ plan: ambient-mobile-spread-and-pace
 harness: v2 · lean
 branch: fix/ambient-mobile-spread-and-pace
 anchor: spec
-status: Building
-next: gate r2 delta re-review (qa CHANGES r1 -> fixed; adversary APPROVED r1 re-confirm), then merge main (v1.314.0) into the branch, dual-Node, release v1.315.0
+status: Gate:APPROVED r2 @383f24ce
+next: dual-Node full suites on the tip, then release v1.315.0 per docs/RELEASING.md
 design: Approved 2026-09-23 @92d48874 (the Architect brief carrying Dean's ask, against the v1.313.0 base; both diagnoses measured before any edit)
-gate: pending
+gate: APPROVED r2 @383f24ce — adversary, qa
 ---
 
 # Ambient glow on mobile - spread to the screen edge, drift instead of churn
@@ -241,3 +241,187 @@ sections (`## Gate r1 - qa @5589ffbe`, `Gate: CHANGES r1 @5589ffbe — qa`; `## 
 verbatim through the seats' hand-backs (the fix record above is built from them); at r2 each seat
 re-appends its own r1 section from its own context, then its r2 verdict. Lesson: never revert
 the tree while a seat's verdict is uncommitted - commit the verdicts FIRST.
+
+## Gate r1 - adversary @5589ffbe
+
+Measured (Node 22.23.1 and 24.20.0, the two ambient files: 38 tests, 38 pass, 0 fail on both; `lint:css` TOTAL 0; `lint:overlay` 0 violations; 43 mutants in a `git archive 5589ffbe` sandbox: 42 killed, 1 equivalent; the phone probe re-run at 390x844 reproduces every builder number - stage x0/w390, computed `overflow-x: clip` / `overflow-y: visible`, glow rect x -26.95 w 443.9 unchanged, gutter lit both sides to 14px, scrollWidth 390, fixed overlay escapes; a UNIFORM clip gives 1 swap and total variation 0; the REAL 3600s `planStoryboard` geometry (36s tiles) paints on every tile, a far seek snaps, a pause never samples, a 300s hidden-tab catch-up snaps, a restart at 0 paints after the fade gap, two changes inside one fade paint the tile of NOW, a 3/255-per-tile drift paints at t=180 and t=324; blend+meanDelta cost 37 us per sample).
+
+- **WARNING (pre-existing, safe to ship DISCLOSED):** phone LANDSCAPE still scrolls sideways. Probe at 844x390 (`mobile: true`, ambient ON, playing): `scrollWidth 888 > innerWidth 844`, stage `overflow-x: visible` - the clip lives at `max-width: 768px` and an iPhone landscape viewport is 844px. Identical on the BASE sha 92d48874 (888/844), so this diff neither causes nor fixes it; but Acceptance 5 promises "portrait and landscape ... the page does not scroll sideways", which the tree does not deliver at either sha. Disclose (tracker) or extend the breakpoint; Dean's call since the wide layout's bleed is the intended v1.188 shape.
+- **SUGGESTION:** the JS source lock `doesNotMatch(/new Date|performance\.now/)` does not match `Date.now(`, so a direct `Date.now()` in `check()` passes the SOURCE lock (mutants E5/E5b were killed only by the behavioural tests). Tighten to "exactly one `Date.now()` and it sits in the `now` default".
+- **SUGGESTION:** the `<` vs `<=` boundaries on the threshold and the fade gap (E12/E13) are held only by the source-lock regexes, not by a behavioural assertion. Acceptable (measure-zero on floats); noted.
+- **Suspicion, not a finding:** `check()` also runs from the image-load promise (off the 1s clock), so a paint can land at `fadeMs + epsilon` while the back layer's CSS transition has up to one frame's residual opacity (<= ~0.7% of 0.3). Only on a rung change to a freshly loaded URL; no visible pop constructed.
+
+Gate: APPROVED r1 @5589ffbe — adversary
+
+## Gate r1 - qa @5589ffbe
+
+(Re-appended verbatim at r2 from the seat's own context after the Architect's `git checkout -- .` discarded the uncommitted original; see the disclosure above.)
+
+Instruments (Node 22.23.1, run in the worktree; full `npm test` NOT run per the brief -
+the adversary shares the worktree; Node 24 not run):
+- `npm run lint:css`: `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`.
+- `npm run lint:overlay`: `overlay-containment: clean (0 violations)`.
+- `npx eslint public/js/watch.js test/unit/ambient-glow-engine.test.js`: exit 0, no output.
+- `node --test test/unit/ambient-glow-engine.test.js test/unit/watch-chrome-ambient.test.js`:
+  `# tests 38 / # pass 38 / # fail 0 / # skipped 0` (the v1.194.3 lock and the new
+  `v1.314 CSS MOBILE SPREAD` both listed as subtests).
+- 12 sibling census/lock files that read the stage/glow/tokens (era-typography,
+  home-mobile-scale, ipad-header-safe-area, oneoff-modal-mobile-polish,
+  overlay-containment, player-audio-expand, player-chapters-parity,
+  player-responsive-controls, settings-mobile-polish, sticky-filter-bar,
+  watch-action-bar-nowrap, watch-instant-paint) + token-scale-lock:
+  `# tests 196 / # pass 196 / # fail 0`.
+- `bash .harness/lib/check-markers.sh`: `1 issue(s) found` - the known `stale approval
+  @92d48874` flag on this doc's `design:` line, as the build record discloses.
+- Em dashes on added diff lines: `git diff 92d48874..5589ffbe | grep "^+" | grep -c "—"` = 0.
+- Sandbox (a `git archive HEAD` copy under the session scratchpad, deleted after; the
+  worktree was never mutated): mutant `if (sameSource(src, painted) && src.kind !==
+  'image') return;` (the poster re-samples every clock) -> engine file `26 tests, 25
+  pass, 1 fail`: only `gate F4 (M14)` reds; test 13 `a sprite that fails to load FALLS
+  to the poster ... a static poster is never re-sampled` stays GREEN. See W1.
+
+Verified by reading (re-derived, not from the prose):
+- Focus 2, teardown: the fade deferral adds NO timer - it is one number
+  (`lastPaintAt`) re-checked by the existing 1s clock; `stop()`/`fail()` clear the only
+  timer as before; `evaluate()` -> `stop()` on visibilitychange/pause with a deferred tile
+  just drops it and `start()`'s own `check()` paints it (or defers to the next clock)
+  on resume. No leak on abort. First paint: `lastPaintAt = -Infinity` never defers.
+- Focus 2, the rewritten tile-change test: every v1.312 assertion survives (same tile ->
+  no sample, new index -> one sample, row/col draw args, layer alternation, different
+  bitmap, `is-front` handoff, painted index); the numbers re-derive: k(27s) 0.8347,
+  acc1 68.17, step at tile 11 2.73/channel < 4 (absorbed), tile 12 7.6 >= 4 (painted).
+  The harness advances the wall BEFORE running the tick, as setTimeout does.
+- Focus 4, CSS: the mobile `.ambient-glow` override is inside its own `@media (max-width:
+  768px)` at specificity 0-1-0, source-AFTER the base rule (style.css ~9113 vs 9091);
+  the test binds ORDER via the `{` character index (`glowM.index > glowBase.index`), not
+  presence. `.main-content { padding: var(--space-8) }` sits inside the 768px block that
+  opens at 5207 and closes at 6028 (brace-balanced) - the same token the stage's
+  `--ambient-gutter` consumes; no era/skin rule overrides `.main-content` padding
+  (grep empty), `#view-root` and `.watch-main` carry no padding, and
+  `.watch-player-stage` exists only in watch.html (tv/podcasts route through it), so the
+  negative margin lands exactly on the 16px gutter for every skin. The fullscreen rule
+  (`z-index: auto`) is untouched.
+- Focus 5: the memory claim holds against `.harness/scrutiny.toml` - the four paths match
+  only `docs-and-content` (`**/*.md`, slim); nothing matches `*token*`/`*secret*`/
+  `*credential*`/`auth/`/`.env*`/`package*.json`/`*fetch*`/`*client*`, so no
+  security-brief seat is forced; qa is Dean's escalation, which the table permits.
+  Build-record numbers (38/38, lint 0/0, the check-markers flag) match what I measured.
+- Comment references: "one swap every ~3.5s" is the rebuild plan's measurement (line
+  136); v1.194.3 is the real sideways-scroll release (releases.json:2235); the
+  "~12% / ~49%" weights are exact (1-exp(-2/15), 1-exp(-10/15)); 43px = 0.12 x 358.
+
+Security surface: NONE new - no network, no storage, no server route, no user input; the
+engine still reads only same-origin images into an off-DOM canvas and writes a base64
+PNG into a quoted `url()`. Wall time enters through `Date.now()` only. No shell surface.
+
+Findings:
+- **W1 (WARNING, test binding loosened)** `test/unit/ambient-glow-engine.test.js:~397`
+  (test `a sprite that fails to load FALLS to the poster ...`): `h.video.currentTime =
+  50; h.tick()` now runs at wall 1000ms with `lastPaintAt = 0`, so `check()` returns at
+  the fade gap BEFORE `sameSource`; the assertion `a static poster is never re-sampled`
+  is satisfied by the deferral, not by the poster's fixed index. At the base sha this
+  test killed the mutant above; on the branch it passes it (sandbox, verbatim above).
+  M14 still catches it, so the suite's net holds, but the assertion's message now
+  lies about what it proves. Fix: `await pastFade(h);` before `h.video.currentTime =
+  50;` (the same edit the branch made to M13 and THE CONSTRAINT). One line; blocks
+  because it is a v1.312 assertion silently unbound, which focus 2 asked for explicitly.
+- **S1 (SUGGESTION, suspicion)** `public/js/watch.js:277` default `now = Date.now`: not
+  monotonic. A backward wall-clock step (iOS NTP correction) of N seconds makes
+  `now() - lastPaintAt` negative and defers every paint for N seconds. `performance.now`
+  is barred by the source lock; a clamp (`if (lastPaintAt > n) lastPaintAt = n`) in
+  `check()` would close it. No scenario I can drive here, so a suspicion.
+- **S2 (SUGGESTION, comment mechanism)** `style.css:9057` (line touched by this diff:
+  the `*/` moved): "`clip` (not hidden) creates no containing block" - neither
+  `overflow: hidden` nor `clip` establishes a containing block for a `position: fixed`
+  descendant; the real reason `clip` is required is that `overflow-x: hidden` forces
+  `overflow-y` to `auto`, which would clip the vertical bloom. Legacy v1.194.3 prose;
+  worth correcting while the block is open.
+- **S3 (SUGGESTION, honest device list)** Acceptance 5 says "portrait and landscape":
+  an iPhone in landscape (844px) is ABOVE the 768px breakpoint, so none of this diff's
+  mobile rules apply there - the landscape look and any sideways scroll are the desktop
+  path, unchanged from v1.313. Say so in the device list so a landscape observation is
+  not read as a regression of this change.
+
+Tree proof: `git status --short` = `?? node_modules` (the shared symlink the coordinator
+removes) plus this doc; `git diff` = this section only. Scratch sandbox deleted.
+
+Gate: CHANGES r1 @5589ffbe — qa
+
+## Gate r2 - qa @383f24ce (delta re-confirmation)
+
+Scope: 64c80679 (merge of main v1.314.0, the bell wave - not re-reviewed here beyond
+running the instruments over the merged tree) + 383f24ce (the fix commit: 5 files,
++52/-9; its own code delta is 3 CSS comment lines, 3 engine lines, 10 test lines).
+
+Instruments at 383f24ce (Node 22.23.1; full `npm test` and Node 24 still not run here):
+- `npm run lint:css`: `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`.
+- `npm run lint:overlay`: `overlay-containment: clean (0 violations)`.
+- `npm run ledger:check`: `ledger-check: CLEAN - every linter site has exactly one current ledger row`.
+- `npx eslint public/js/watch.js test/unit/ambient-glow-engine.test.js`: exit 0.
+- ambient-glow-engine + watch-chrome-ambient: `# tests 38 / # pass 38 / # fail 0 / # skipped 0`.
+- the 12 sibling census files + token-scale-lock: `# tests 196 / # pass 196 / # fail 0`.
+- ledger-check + release-ledger + release-date + player-lifecycle-release:
+  `# tests 73 / # pass 73 / # fail 0`.
+- `bash .harness/lib/check-markers.sh`: `2 issue(s) found` - the known `@92d48874`
+  design flag plus a new `stale approval @5589ffbe` raised by the r1 markers this doc
+  now carries by design (line 223's "r1 @5589ffbe: adversary APPROVED" and the
+  re-appended r1 Gate lines). Same shape the completed polish plan carried between its
+  r1 and r2 lines; it is the history, not a live approval.
+- Em dashes on lines added by 383f24ce: 2, both inside the Architect's disclosure
+  quoting the two r1 `Gate:` lines in the harness's own verdict format. Not a finding.
+- Sandbox (`git archive 383f24ce`, deleted after): mutant A (the r1 W1 mutant, poster
+  re-samples every clock) -> `26 tests, 24 pass, 2 fail`: `not ok 13 - a sprite that
+  fails to load FALLS to the poster ...` AND `not ok 17 - M14`. Test 13 now reds on
+  its own, as prescribed. Mutant B (the S1 clamp line removed) -> `25 pass, 1 fail`:
+  only `not ok 21 - SOURCE LOCK`.
+
+Finding-by-finding:
+- W1: fixed-as-prescribed (`await pastFade(h)` at test line 408, with a comment naming
+  the mutant). Verified red under mutant A.
+- S1: fixed-as-prescribed (`var n = now(); if (lastPaintAt > n) lastPaintAt = n;` at
+  watch.js:396-398, the gate compares against the clamped `n`); the existing source lock
+  moved to `n - lastPaintAt`, a regex binds the clamp line, and adversary S2's "exactly
+  one `Date.now(`, in the `now` default" lock is present. The clamp is bound by
+  SPELLING only (mutant B is caught by the source lock alone, no behavioural test drives
+  a backward wall step); acceptable for a suggestion-grade fix, noted below as residual.
+- S2: fixed-as-prescribed. The new prose (style.css:9064-9068) states the real
+  mechanism: `overflow-x: hidden` would compute the other axis to `auto` (CSS Overflow 3)
+  and clip the vertical bloom; neither `hidden` nor `clip` creates a containing block
+  for the fixed overlay. Accurate.
+- S3: fixed-as-prescribed. Acceptance 5 now separates portrait (<= 768px, this diff) from
+  landscape (844px, the desktop path, sideways scroll measured IDENTICAL at the base
+  sha); tracker #234 exists (tech-debt-tracker.md:366) with the measurement (scrollWidth
+  888 > 844) and two fix shapes for Dean's call.
+- New in the fix commit: nothing else. The engine delta is the two clamp lines; the
+  test delta is the pastFade line + four lock assertions; no CSS declaration changed.
+
+Residual (non-blocking):
+- **S4 (SUGGESTION)** S1 is a presence lock, not a binding: a one-arm behavioural test
+  (paint at wall 60000, step the injected `now` back to 1000, advance one tick, assert
+  the next tile still paints on the following clock) would bind the clamp's semantics
+  rather than its spelling. Safe to ship as is; the clamp is three tokens and the regex
+  pins them.
+
+Security surface: unchanged from r1 - none new in 383f24ce (comment, a wall-clock clamp,
+tests). The merged main wave (the bell: PATCH /api/subscriptions/:id, a new fetch in
+watch.js) carried its own full gate with a security-brief seat at d7342962 and is out of
+this delta's scope.
+
+Tree proof: `git status --short` = ` M docs/exec-plans/active/...spread-and-pace.md` and
+`?? node_modules` (the shared symlink, left per the coordinator); `git diff` = this doc
+only. Sandbox `scratchpad/qa-ambient/sb-r2` deleted.
+
+Gate: APPROVED r2 @383f24ce — qa
+
+## Gate r2 - adversary @383f24ce
+
+Delta re-review of 64c80679 (merge of main v1.314.0) + 383f24ce (the r1 fixes). Measured: the two ambient files **38 tests, 38 pass, 0 fail** on Node 22.23.1 AND 24.20.0; `lint:css` TOTAL 0; `lint:overlay` 0 violations. Brace-balanced slice of `createAmbientEngine` at 5589ffbe vs 383f24ce differs ONLY by the clamp (three lines replacing the one gap line); `setupAmbientMode` byte-identical; every `.ambient-glow*` / `.watch-player-stage` / `.main-content` rule (comment-stripped) byte-identical - the merge of main touched watch.js and style.css only outside the ambient bodies, and its only change to the ambient test file is the #232 style-write lock refinement (green here).
+
+- **My S2 - fixed as prescribed.** 48 mutants re-run in a `git archive 383f24ce` sandbox: 47 killed, 1 equivalent (E15, unchanged). E5 (`var n = Date.now()`) and E5b (every `now()` -> `Date.now()`) now go red on the SOURCE lock as well as the behavioural tests; a second `Date.now()` anywhere in the engine (K4) reds the "exactly ONE" count.
+- **qa S1 clamp - verified behaviourally, not just by regex.** Real engine + real `planStoryboard(3600)` geometry: paint at wall 11000, then a 20s backward wall step (`wall = -10000`) with a new tile -> WITH the clamp the next paint lands after **4** clock ticks (clamp anchors on the first check, then the 2.4s gap); with the clamp line removed (sandbox) it lands after **24** ticks. Injected-clock interaction in the suite: `lastPaintAt = -Infinity` and `wall` starts at 0, so `-Infinity > 0` is never true and the harness paths are untouched (38 green). Mutants: K1 (drop the clamp) and K2 (invert it, 14 red) killed; K3 (`>=`) is equivalent and dies only on the regex.
+- **qa W1 (`await pastFade(h)` before the poster re-sample assertion) - verified:** mutant Q1 "re-sample the poster every clock" now reds the fall-to-poster test and the zero-size-image test (it survived that assertion at 5589ffbe per QA).
+- **My W1 - disclosed as prescribed:** Acceptance 5 / device list reworded to "landscape is the desktop path (> 768px)", tracker #234 present. Not re-measured (the CSS rules are byte-identical to the sha where I measured 888/844 on both tip and base).
+- **SUGGESTION (new, carries over the r1 shape):** the clamp is held only by the source regex (`K1` reds only the SOURCE LOCK). A one-line behavioural binding - after a paint, step the injected wall backwards and assert the next tile paints within `fadeMs` of the NEW wall, not the old - would make the regex redundant. Not blocking.
+- Nothing new introduced by the fix commit was found.
+
+Gate: APPROVED r2 @383f24ce — adversary
