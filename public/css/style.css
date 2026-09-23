@@ -8357,7 +8357,10 @@ body.ft-audio-expanded {
         plus `.icon-star` (the existing fixed-glyph star, line ~2276 above)
         on each pinned entry so it reads as "pinned," matching the research's
         "left-nav Pinned list with a star icon" retro translation. */
-.sub-row-pin {
+/* v1.314: the push bell shares the pin's chip treatment (one rule family, the
+   INERT-SIBLING lesson: a bell styled by its own hand-copy would drift). */
+.sub-row-pin,
+.sub-row-bell {
   flex-shrink: 0;
   width: var(--size-control-sm);
   height: var(--size-control-sm);
@@ -8378,19 +8381,24 @@ body.ft-audio-expanded {
 }
 
 .sub-row-pin:hover,
-.sub-row-pin:focus-visible {
+.sub-row-pin:focus-visible,
+.sub-row-bell:hover,
+.sub-row-bell:focus-visible {
   color: var(--yt-red);
 }
 
 /* Pinned (filled star) state: a warm gold accent regardless of era/mode, so
    "this is pinned" reads at a glance without depending on the outline-vs-
    filled glyph difference alone. */
-.sub-row-pin-active {
-  color: #e0a800; /* token-exempt: the gold pin accent - single-consumer semantic; name it if ever reused (F.5 ruling 5) */
+.sub-row-pin-active,
+.sub-row-bell-active {
+  color: #e0a800; /* token-exempt: the gold pin/bell accent - the same "this is on" semantic; name it if ever reused (F.5 ruling 5) */
 }
 
 .sub-row-pin-active:hover,
-.sub-row-pin-active:focus-visible {
+.sub-row-pin-active:focus-visible,
+.sub-row-bell-active:hover,
+.sub-row-bell-active:focus-visible {
   color: var(--yt-red);
 }
 

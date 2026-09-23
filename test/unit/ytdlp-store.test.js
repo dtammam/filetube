@@ -2373,3 +2373,53 @@ test('v1.41.13 bridge: consumeUniversalDownloadMeta ignores a YouTube (non-unive
   // that a matched consume would do -- here nothing matched.
   assert.ok(db.ytdlp.downloadMeta['dQw4w9WgXcQ'], 'YouTube entry intact');
 });
+
+// ---- v1.314: the per-subscription WEB PUSH opt-in bell (pushBell) ----------
+// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (D1, AC7, AC8).
+
+test('v1.314 pushBell: ensureYtdlp backfills a pre-bell record to FALSE (opt-in, existing subs included) and leaves an explicit true alone', () => {
+  const db = { ytdlp: { subscriptions: [
+    { id: 'old', channelUrl: 'https://www.youtube.com/@old' },
+    { id: 'junk', channelUrl: 'https://www.youtube.com/@junk', pushBell: 'yes' },
+    { id: 'on', channelUrl: 'https://www.youtube.com/@on', pushBell: true },
+  ] } };
+  const ns = store.ensureYtdlp(db);
+  assert.strictEqual(ns.subscriptions[0].pushBell, false, 'absent -> false');
+  assert.strictEqual(ns.subscriptions[1].pushBell, false, 'a non-boolean (corrupt row) -> false, never trusted');
+  assert.strictEqual(ns.subscriptions[2].pushBell, true, 'an explicit true survives');
+});
+
+test('v1.314 pushBell: validatePushBell / validateSubscriptionPatch accept only a boolean, absent = unchanged', () => {
+  assert.deepEqual(store.validatePushBell(undefined), { ok: true, value: undefined });
+  assert.deepEqual(store.validatePushBell(true), { ok: true, value: true });
+  assert.deepEqual(store.validatePushBell(false), { ok: true, value: false });
+  for (const bad of ['yes', 1, 0, null, {}, [], 'true']) {
+    const r = store.validatePushBell(bad);
+    assert.equal(r.ok, false, JSON.stringify(bad) + ' rejected');
+    assert.equal(r.error, 'pushBell must be a boolean');
+  }
+  assert.equal(store.validateSubscriptionPatch({ pushBell: 'yes' }).ok, false, 'the PATCH validator rejects a string');
+  assert.equal(store.validateSubscriptionPatch({ pushBell: 'yes' }).error, 'pushBell must be a boolean');
+  assert.deepEqual(store.validateSubscriptionPatch({ pushBell: true }).value, { pushBell: true }, 'its own subset key');
+  assert.deepEqual(store.validateSubscriptionPatch({ paused: true }).value, { paused: true }, 'absent from a patch = absent from the value (unchanged)');
+});
+
+test('v1.314 pushBell: addSubscription writes FALSE (the add body never sets it), updateSubscription APPLIES a validated patch and re-validates at mutate', async () => {
+  const deps = makeFakeDeps();
+  const rec = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@bell', format: 'video', pushBell: true });
+  assert.strictEqual(rec.pushBell, false, 'a pushBell in the ADD body is ignored (D9): off by default');
+  const on = await store.updateSubscription(deps, rec.id, { pushBell: true });
+  assert.strictEqual(on.pushBell, true, 'the returned record carries the flip');
+  assert.strictEqual(deps.loadDatabase().ytdlp.subscriptions[0].pushBell, true, 'PERSISTED (the "validates but never applies" lesson: this assertion is the one that goes red when the apply line is missing)');
+  const off = await store.updateSubscription(deps, rec.id, { pushBell: false });
+  assert.strictEqual(off.pushBell, false);
+  assert.strictEqual(deps.loadDatabase().ytdlp.subscriptions[0].pushBell, false, 'and back off');
+  // Defense in depth: a junk value reaching updateSubscription directly (bypassing the route's validator) is NOT applied.
+  await store.updateSubscription(deps, rec.id, { pushBell: 'yes' });
+  assert.strictEqual(deps.loadDatabase().ytdlp.subscriptions[0].pushBell, false, 'a non-boolean at mutate time leaves the stored value alone');
+  // Every other field survives the patch (AC21 posture).
+  const after = deps.loadDatabase().ytdlp.subscriptions[0];
+  assert.equal(after.channelUrl, 'https://www.youtube.com/@bell');
+  assert.equal(after.format, 'video');
+  assert.strictEqual(after.paused, false);
+});

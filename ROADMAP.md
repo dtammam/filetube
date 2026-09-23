@@ -86,6 +86,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.314.0 - Push notifications are now opt-in per channel: the bell (2026-09-23)
+
+Dean: "iOS/browser notifications fully work, it's great, I just don't want to be hit by
+notifications for all channels - I'd rather opt in" and "that bell should denote which channels
+will notify on downloads". Every yt-dlp subscription now carries a `pushBell` flag, OFF by
+default including every subscription that already existed. A download from a channel whose
+bell is off still lands in the in-app notifications feed, but no web push goes out; bell on
+pushes as before. One-off downloads from channels you are not subscribed to, non-YouTube items
+and podcasts keep pushing (the bell is a per-channel opt-in, not a global mute). The flag is a
+field on the subscription record (no schema change, backup round-trips it), toggled through the
+existing PATCH route under the manage-subscriptions permission, and shown in two places: a
+Notify button beside Pin on the watch page (only while subscribed) and a bell beside the star
+on every /subscriptions row. Under the hood the gate runs at push-delivery time per feed row:
+muted rows pass the cursor silently, the "N new videos" collapse counts only rows that will be
+sent, and the delivery loop's re-run keys on cursor progress so a full read of muted rows neither
+strands nor spins. Gate: adversary + qa + security-brief; r1 CHANGES (the watch bell did not
+follow an in-page subscribe/unsubscribe; a non-integer id counted as progress; the #232 lock
+was weaker than v1.313's) -> r2 APPROVED @d7342962 by all three. Disclosed: tracker #233 (a
+bell tap still in flight across an unsubscribe/re-subscribe). Also in this release: tracker
+#232 closed (the ambient constraint locks strengthened). Plan:
+`docs/exec-plans/completed/2026-09-23-subscription-push-bell.md`.
+
 ### v1.313.0 - Ambient glow polished: one soft halo, no band ends, no corner notches (2026-09-23)
 
 Dean's verdict on v1.312.0 (iPhone + desktop): the picture stays, but the glow "looks worse

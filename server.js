@@ -360,7 +360,27 @@ function resolvePushMeta(db, row) {
   // download's notification into the music skin (pushMusicUrl -> /music?play=), a video into
   // the watch page - the server mirror of musicHrefForItem's client routing.
   const chaptered = (Array.isArray(item.chapters) && item.chapters.length >= 2) || (Number(item.chapterCount) >= 2);
-  return { title: item.title || item.name, channel: item.folderName, kind: 'media', type: item.type, chaptered };
+  return { title: item.title || item.name, channel: item.folderName, kind: 'media', type: item.type, chaptered, pushMuted: pushMutedForItem(item) };
+}
+
+// v1.314 (Dean's opt-in bell): is this item's WEB PUSH muted? True only when the
+// item carries a YouTube channel identity AND that identity maps to a subscription
+// (the same join the scan's channel-dir resolver uses) whose `pushBell` is not
+// true. Everything else pushes as before (D4): a one-off download from an
+// unsubscribed channel, a non-YouTube item (channelName only, no URL), a podcast
+// (its own arm above never reaches here). Fails OPEN: a throwing finder or a
+// missing store can only over-notify, never silently mute.
+function pushMutedForItem(item) {
+  const hasIdentity = (typeof item.channelUrl === 'string' && item.channelUrl !== '')
+    || (typeof item.channelId === 'string' && item.channelId !== '');
+  if (!hasIdentity) return false;
+  try {
+    const sub = ytdlp.findSubscriptionForChannel(ytdlpDb.holder(['subscriptions']), item);
+    return !!sub && sub.pushBell !== true;
+  } catch (err) {
+    console.error('[push] bell lookup failed (row pushes):', err && err.message);
+    return false;
+  }
 }
 
 const pushDelivery = pushDeliverLib.createPushDelivery({

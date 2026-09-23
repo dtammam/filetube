@@ -53,6 +53,14 @@ test('scrubSubsForCache: keeps exactly the decision fields, drops everything els
   ]);
   assert.equal(scrubbed.length, 1);
   assert.deepEqual(Object.keys(scrubbed[0]).sort(), ['channelDir', 'channelId', 'channelUrl', 'id', 'name']);
+  // v1.314: the push bell is a decision field too (the watch page's frame-one
+  // bell renders from this cache) - carried when boolean, dropped otherwise.
+  const withBell = scrubSubsForCache([
+    { id: 's3', channelUrl: 'https://www.youtube.com/@b', pushBell: true },
+    { id: 's4', channelUrl: 'https://www.youtube.com/@c', pushBell: 'yes' },
+  ]);
+  assert.strictEqual(withBell[0].pushBell, true, 'a boolean bell rides the cache');
+  assert.ok(!('pushBell' in withBell[1]), 'a non-boolean bell is dropped, never cached as truthy');
 });
 
 test('LOCK (wiring): the probes WRITE the cache and the render sites READ it optimistically', () => {

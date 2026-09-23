@@ -378,3 +378,45 @@ test('a general re-pull-all (POST /api/subscriptions/repull) still skips a pause
     await close();
   }
 });
+
+// ---- v1.314: PATCH round-trips pushBell (the per-channel web push opt-in) ----
+// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC8).
+
+test('v1.314 PATCH /api/subscriptions/:id round-trips pushBell: off by default, set true -> read back true (PATCH body AND GET list), set false -> false', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@bell', format: 'video' });
+  assert.equal(created.pushBell, false, 'default is OFF (opt-in)');
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const onRes = await patchJson(base, `/api/subscriptions/${created.id}`, { pushBell: true });
+    assert.equal(onRes.status, 200);
+    assert.equal((await onRes.json()).pushBell, true);
+    assert.equal((await (await fetch(`${base}/api/subscriptions`)).json())[0].pushBell, true, 'the GET list exposes the flag (the renderers read this)');
+    const offRes = await patchJson(base, `/api/subscriptions/${created.id}`, { pushBell: false });
+    assert.equal(offRes.status, 200);
+    assert.equal((await offRes.json()).pushBell, false);
+    assert.equal((await (await fetch(`${base}/api/subscriptions`)).json())[0].pushBell, false);
+    // A bell patch leaves every sibling field alone (AC21 posture).
+    const [listed] = await (await fetch(`${base}/api/subscriptions`)).json();
+    assert.equal(listed.paused, false); assert.equal(listed.skipShorts, false); assert.equal(listed.format, 'video');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.314 PATCH /api/subscriptions/:id with a non-boolean pushBell responds 400 with the field named, and leaves the record unchanged', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@bellbad', format: 'video' });
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    for (const bad of ['yes', 1, null, 'true']) {
+      const res = await patchJson(base, `/api/subscriptions/${created.id}`, { pushBell: bad });
+      assert.equal(res.status, 400, JSON.stringify(bad));
+      assert.equal((await res.json()).error, 'pushBell must be a boolean');
+    }
+    const [listed] = await (await fetch(`${base}/api/subscriptions`)).json();
+    assert.equal(listed.pushBell, false, 'nothing written');
+  } finally {
+    await close();
+  }
+});

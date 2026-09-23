@@ -44,7 +44,9 @@ function makeEl(tag) {
     isConnected: true, value: '',
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
-    addEventListener() {}, removeEventListener() {},
+    // v1.314 gate r1: listeners are RECORDED (last per type) so a test can drive a
+    // click; every earlier test ignores them.
+    addEventListener(t, fn) { (el._l = el._l || {})[t] = fn; }, removeEventListener() {},
     // v1.197: the tv path now runs the cog-injection + ambient setup, which use
     // insertAdjacentHTML (and, v1.312, an OFF-DOM sample canvas the engine creates
     // only on its first sample) - permissive stubs (the ambient engine never
@@ -77,7 +79,7 @@ const FULL_SEED_ITEM = {
 
 // Builds a fresh sandbox, evaluates the REAL watch.js in it, and returns
 // {init, els} -- els is the shared selector->element map, pre-seedable.
-function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl } = {}) {
+function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides } = {}) {
   storage.clear();
   if (cacheEntry) storage.set('ft-cap-cache-v1', JSON.stringify(cacheEntry));
 
@@ -139,6 +141,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl } = {}) {
     screen: { width: 1200, height: 800 },
   };
   for (const [k, v] of Object.entries(common)) sandbox[k] = v;
+  for (const [k, v] of Object.entries(overrides || {})) sandbox[k] = v; // v1.314: e.g. a capturing buildSubscribeModal
   // Non-exported browser globals common.js defines page-side; not under test.
   sandbox.primePinnedSidebarFromCache = () => {};
   sandbox.fetchAllPins = () => Promise.resolve([]);
@@ -171,6 +174,33 @@ test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscri
   const pin = btn.parentNode.children.find((c) => c.id === 'pin-channel-btn');
   assert.ok(pin, 'Pin button created in the SAME frame-one apply, not a later round trip');
   assert.equal(pin.textContent, 'Pin channel');
+  // v1.314: the push bell renders in the same frame-one apply, OFF for a cached
+  // record without the flag (the opt-in default).
+  const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
+  assert.ok(bell, 'Notify bell created in the SAME frame-one apply');
+  assert.equal(bell.textContent, '🔕 Notify');
+  // (the shim's setAttribute is a no-op, so aria-pressed is bound in ytdlp-subscriptions-client / by the label here)
+});
+
+test('v1.314 frame-one bell: a cached subscription with pushBell:true renders the bell ON; an UNSUBSCRIBED page renders no bell at all', () => {
+  const on = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ ...WARM_SUBSCRIBED_CACHE.subs[0], pushBell: true }] } });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  on.els.set('#subscribe-btn-mock', btn);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!on.els.has(sel)) on.els.set(sel, makeEl('div')); return on.els.get(sel); };
+  on.init(root);
+  const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
+  assert.ok(bell, 'bell present');
+  assert.equal(bell.textContent, '🔔 Notifying', 'the cached ON flag renders ON in frame one (scrubSubsForCache must carry it)');
+
+  const off = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ id: 's9', channelUrl: 'https://www.youtube.com/@someoneelse', name: 'Else' }] } });
+  const btn2 = Object.assign(makeEl('button'), { hidden: true });
+  off.els.set('#subscribe-btn-mock', btn2);
+  const root2 = makeEl('div');
+  root2.querySelector = (sel) => { if (!off.els.has(sel)) off.els.set(sel, makeEl('div')); return off.els.get(sel); };
+  off.init(root2);
+  assert.equal(btn2.textContent, 'Subscribe', 'precondition: not subscribed to this channel');
+  assert.equal(btn2.parentNode.children.find((c) => c.id === 'notify-channel-btn'), undefined, 'no bell without a subscription record to hang it on');
 });
 
 test('cached moduleEnabled:false HIDES but never removes (the confirmed answer must still be able to show)', () => {
@@ -436,4 +466,89 @@ test('v1.197.1 TDZ: mediaData is declared BEFORE the ?tv= early return, and init
   const tvStart = watchSrc.indexOf('async function initTvWatch(');
   const tvBody = watchSrc.slice(tvStart, watchSrc.indexOf('\n    }', tvStart));
   assert.match(tvBody, /mediaData = descriptor;/, 'the tv path assigns its descriptor - isAudioItem (the SOLE tv-reachable mediaData reader today) reads real truth');
+});
+
+// ---- v1.314 gate r1 (adversary W1 + qa W1): the bell follows the RECORD through the
+// in-page subscribe/unsubscribe arms, not only the reload applier ----------------
+const settle = () => new Promise((r) => setTimeout(r, 0));
+const jsonRes = (status, body) => ({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+function mountSubscribed(cacheEntry, extra) {
+  const calls = [];
+  const realm = buildWatchRealm({
+    cacheEntry,
+    fetchImpl: (url, opts) => {
+      const method = (opts && opts.method) || 'GET';
+      calls.push({ url: String(url), method, body: opts && opts.body ? JSON.parse(opts.body) : null });
+      const r = extra && extra.route ? extra.route(method, String(url), calls[calls.length - 1].body) : null;
+      return r ? Promise.resolve(r) : new Promise(() => {}); // unrouted (hydration) hangs: frame-one only
+    },
+    overrides: extra && extra.overrides,
+  });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  realm.els.set('#subscribe-btn-mock', btn);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  realm.init(root);
+  const bell = () => btn.parentNode.children.find((c) => c.id === 'notify-channel-btn' && c.isConnected);
+  return { realm, btn, calls, bell };
+}
+
+test('v1.314 gate W1: an in-page UNSUBSCRIBE (DELETE 200) removes the bell - it can never PATCH a deleted subscription', async () => {
+  const { btn, calls, bell } = mountSubscribed(WARM_SUBSCRIBED_CACHE, {
+    route: (m, url) => (m === 'DELETE' && url === '/api/subscriptions/s1') ? jsonRes(200, {}) : null,
+  });
+  assert.equal(btn.textContent, 'Subscribed');
+  assert.ok(bell(), 'precondition: bell present while subscribed');
+  btn._l.click();
+  await settle(); await settle();
+  assert.equal(btn.textContent, 'Subscribe', 'the DELETE resolved');
+  assert.equal(bell(), undefined, 'the bell is GONE with the record (W1 scenario A)');
+  assert.ok(calls.some((c) => c.method === 'DELETE'), 'the unsubscribe fetch fired');
+});
+
+test('v1.314 gate W1: an in-page SUBSCRIBE (modal confirm, POST 201) creates the bell OFF from the POST response, and the cache carries it', async () => {
+  let handlers = null;
+  const { btn, bell, realm } = mountSubscribed({ ...WARM_SUBSCRIBED_CACHE, subs: [] }, {
+    route: (m, url) => (m === 'POST' && url === '/api/subscriptions') ? jsonRes(201, { id: 'new1', channelUrl: 'https://www.youtube.com/@chan', pushBell: false }) : null,
+    overrides: { buildSubscribeModal: (doc, opts, h) => { handlers = h; return { setError() {}, backdrop: makeEl('div'), modal: makeEl('div') }; } },
+  });
+  assert.equal(btn.textContent, 'Subscribe', 'precondition: not subscribed');
+  assert.equal(bell(), undefined, 'precondition: no bell');
+  btn._l.click(); // opens the (captured) modal
+  assert.ok(handlers && typeof handlers.onConfirm === 'function', 'the modal handlers were captured');
+  handlers.onConfirm({ channelUrl: 'https://www.youtube.com/@chan', format: 'video' });
+  await settle(); await settle();
+  assert.equal(btn.textContent, 'Subscribed');
+  const b = bell();
+  assert.ok(b, 'the bell appears WITHOUT a reload (W1 scenario B / D9 "one tap after adding")');
+  assert.equal(b.textContent, '🔕 Notify', 'off by default');
+  const cached = JSON.parse(global.sessionStorage.getItem('ft-cap-cache-v1'));
+  const rec = cached.subs.find((x) => x.id === 'new1');
+  assert.strictEqual(rec.pushBell, false, 'the cached record carries its bell (write-through)');
+  void realm;
+});
+
+test('v1.314 gate S1: tapping the bell PATCHes { pushBell: true }, the label follows the RESPONSE, the cache is written through; a 403 leaves the label unchanged', async () => {
+  let deny = false;
+  const { calls, bell } = mountSubscribed(WARM_SUBSCRIBED_CACHE, {
+    route: (m, url, body) => (m === 'PATCH' && url === '/api/subscriptions/s1')
+      ? (deny ? jsonRes(403, { error: 'You do not have permission to manage subscriptions.' }) : jsonRes(200, { id: 's1', pushBell: body.pushBell }))
+      : null,
+  });
+  const b = bell();
+  assert.equal(b.textContent, '🔕 Notify');
+  b._l.click();
+  await settle(); await settle(); await settle();
+  const patch = calls.find((c) => c.method === 'PATCH');
+  assert.deepEqual(patch.body, { pushBell: true }, 'the PATCH body flips the flag');
+  assert.equal(b.textContent, '🔔 Notifying', 'the label follows the server response');
+  assert.equal(b.disabled, false, 're-enabled');
+  const cached = JSON.parse(global.sessionStorage.getItem('ft-cap-cache-v1'));
+  assert.strictEqual(cached.subs.find((x) => x.id === 's1').pushBell, true, 'write-through to the cache');
+  deny = true;
+  b._l.click();
+  await settle(); await settle(); await settle();
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 2, 'a second PATCH was attempted');
+  assert.equal(b.textContent, '🔔 Notifying', 'a 403 leaves the label at the unchanged state (D8)');
+  assert.equal(b.disabled, false);
 });

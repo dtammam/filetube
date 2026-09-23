@@ -317,7 +317,7 @@ test('v1.73 gate (adversarial W1/S4): resolvePushMeta arms bound - podcast/media
   // Media arm + the legacy bare-id call shape. v1.246: carries type + chaptered so an audio
   // download's push deep-links the music skin (pushMusicUrl) while a video keeps /watch.
   assert.deepEqual(resolvePushMeta(db, { mediaId: 'mediä-1', kind: 'media' }),
-    { title: 'Clïp One', channel: 'Söme Channel', kind: 'media', type: 'video', chaptered: false });
+    { title: 'Clïp One', channel: 'Söme Channel', kind: 'media', type: 'video', chaptered: false, pushMuted: false });
   assert.equal(resolvePushMeta(db, { mediaId: 'mediä-2', kind: 'media' }).type, 'audio',
     'v1.246: an audio download carries type:audio so payloadForRow routes its notification to the music skin');
   assert.equal(resolvePushMeta(db, 'mediä-1').kind, 'media', 'bare-id legacy shape tolerated');
@@ -331,6 +331,40 @@ test('v1.73 gate (adversarial W1/S4): resolvePushMeta arms bound - podcast/media
   // Phantom -> null.
   assert.equal(resolvePushMeta(loadDatabase(), { mediaId: 'no-such-ep', kind: 'podcast' }), null);
   assert.ok(subId, 'fixture sanity');
+});
+
+// v1.314 (the opt-in bell, plan D2/D4/AC10): the media arm resolves the item's
+// channel to its subscription and mutes the WEB PUSH when the bell is off.
+test('v1.314 resolvePushMeta: pushMuted is TRUE only for an item whose channel maps to a subscription with the bell OFF; on, unsubscribed, identity-less and podcast rows are never muted', async () => {
+  const { resolvePushMeta, loadDatabase } = require('../../server');
+  await armFeature();
+  const { epId } = await seedPodcastEpisodeV173('g-bell');
+  const CH = 'https://www.youtube.com/channel/UCbellbellbellbellbellbe';
+  await updateDatabase((db) => {
+    db.metadata['bell-off'] = { id: 'bell-off', name: 'Off.mp4', title: 'Off', type: 'video', ext: '.mp4', filePath: '/lib/Off.mp4', size: 1, addedAt: ITEM_ADDED_AT, folderName: 'Bell', channelName: 'Bell', channelUrl: CH, channelId: 'UCbellbellbellbellbellbe' };
+    db.metadata['bell-idonly'] = { id: 'bell-idonly', name: 'IdOnly.mp4', title: 'IdOnly', type: 'audio', ext: '.m4a', filePath: '/lib/IdOnly.m4a', size: 1, addedAt: ITEM_ADDED_AT, folderName: 'Bell', channelId: 'UCbellbellbellbellbellbe' };
+    db.metadata['bell-other'] = { id: 'bell-other', name: 'Other.mp4', title: 'Other', type: 'video', ext: '.mp4', filePath: '/lib/Other.mp4', size: 1, addedAt: ITEM_ADDED_AT, folderName: 'Other', channelName: 'Other', channelUrl: 'https://www.youtube.com/channel/UCotherotherotherotherot', channelId: 'UCotherotherotherotherot' };
+    db.metadata['bell-noid'] = { id: 'bell-noid', name: 'Vimeo.mp4', title: 'Vimeo', type: 'video', ext: '.mp4', filePath: '/lib/Vimeo.mp4', size: 1, addedAt: ITEM_ADDED_AT, folderName: 'Universal', channelName: 'Some Vimeo User' };
+  });
+  await updateDatabase(() => ytdlpDb.mutate((ydb) => {
+    const ns = store.ensureYtdlp(ydb);
+    ns.subscriptions.push({ id: 'bell-sub', channelUrl: CH, name: 'Bell', paused: false }); // pre-bell record: no pushBell field at all
+    return true;
+  }));
+  const muted = (id) => resolvePushMeta(loadDatabase(), { mediaId: id, kind: 'media' }).pushMuted;
+  assert.strictEqual(muted('bell-off'), true, 'subscribed, field absent -> backfilled OFF -> muted (existing subscriptions are opt-in too)');
+  assert.strictEqual(muted('bell-idonly'), true, 'an item with channelId only still joins the subscription (audio download, same channel)');
+  assert.strictEqual(muted('bell-other'), false, 'a YouTube channel with NO subscription (a one-off download) pushes');
+  assert.strictEqual(muted('bell-noid'), false, 'a non-YouTube item (channelName only) pushes');
+  assert.strictEqual(muted('mediä-1'), false, 'the fixture item without channel identity pushes');
+  assert.ok(!('pushMuted' in resolvePushMeta(loadDatabase(), { mediaId: epId, kind: 'podcast' })), 'the podcast arm never consults the bell (D5)');
+  // Flip the bell ON through the store's real apply path, not by poking the record.
+  const deps = { ytdlpDb, updateDatabase, loadDatabase };
+  await store.updateSubscription(deps, 'bell-sub', { pushBell: true });
+  assert.strictEqual(muted('bell-off'), false, 'bell ON -> not muted');
+  assert.strictEqual(muted('bell-idonly'), false);
+  await store.updateSubscription(deps, 'bell-sub', { pushBell: false });
+  assert.strictEqual(muted('bell-off'), true, 'and OFF mutes again');
 });
 
 test('v1.73 gate (QA W4b): the phantom prune + episode purge actually DELETE feed rows - store-level absence, kind-scoped', async () => {
