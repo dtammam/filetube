@@ -3,10 +3,10 @@ plan: ambient-glow-polish
 harness: v2 · lean
 branch: fix/ambient-glow-polish
 anchor: spec
-status: Gate:CHANGES r1 @9ff7e151
-next: gate r2 (re-engage the same adversary + qa instances at the fix sha), then dual-Node suites at that sha, then Dean's iPhone, then release
+status: Gate:APPROVED r2 @cfa22480
+next: Dean's call - (a) ship at cfa22480 with the four r2 lock-quality suggestions DISCLOSED (tech-debt tracker) or a round 3; (b) iPhone check before the tag or release straight; then release per docs/RELEASING.md
 design: Approved 2026-09-23 @cf3e65d3 (Dean: "go" on the plan as presented)
-gate: CHANGES r1 @9ff7e151 — adversary, qa (fix committed c5e5ff03 + 11b1644e; r2 pending)
+gate: APPROVED r2 @cfa22480 — adversary, qa
 ---
 
 # Ambient glow visual polish - vignetted bitmap instead of eight gradients
@@ -360,3 +360,122 @@ Gate: CHANGES r1 @9ff7e151 — adversary
 - Round totals across r1 + the fix: 18 (builder) + 33 (adversary) + 18 (fix re-runs)
   mutants; every non-equivalent mutant killed at 11b1644e. Ambient files 34/34 on Node
   22.23.1. lint:css 0.
+
+### QA r2 @cfa22480 (delta)
+
+Verified: ambient-glow-engine + watch-chrome-ambient = 34/34 pass, 0 fail on Node 22.23.1
+AND 24.20.0; lint:css TOTAL 0; overlay-containment 0 violations; no em dash in the delta.
+QA-1: FIXED as prescribed (watch.js:2368-2370 now reads as the code is). QA-2: FIXED as
+prescribed and REACHED - in a git-archive sandbox, `return url;` in place of the PNG guard
+reds `gate QA-2` (behavioural) AND the SOURCE LOCK, 20/22. Adversary F2 (plateau edge on
+both axes) re-derived: px=56 / py=29 for 64x36 at 0.12/0.22, strictly inside the ring, both
+axes asserted 255 at the edge and <255 one out. F1/F3 locks read over comment-stripped
+sources (stripComments / glowRules), so prose cannot false-trip them.
+
+1. WARNING (safe to ship disclosed) - test binding - ambient-glow-engine.test.js:446: the
+   new `@keyframes[^{]*\{[^}]*(?:ambient|stage)` assertion does NOT bind a keyframes NAME
+   (measured: `@keyframes ambient-pulse { from {opacity:0} }` passes it; `@keyframes foo {
+   from { color: stage } }` fails it) - its message "no keyframes named for the glow/stage"
+   overstates it. The real guard is FORBIDDEN_PROP's `animation*` on the named rule bodies
+   (mutant C16 was killed by that, not by this line). Prescription:
+   `/@keyframes\s+[\w-]*(?:ambient|stage)/i`, or drop the line.
+2. SUGGESTION - test brittleness - ambient-glow-engine.test.js:381: the JS lock's bare
+   `webkit|moz|ms` alternative is unanchored, so an ordinary identifier ending in "ms"
+   (`itemsFilter`, `roomsScale`) would falsely fail the lock later. Measured alternative
+   `(?:^|[^a-z])(?:webkit|moz|ms)?(?:filter|...)\b/i` still catches `style.webkitFilter`,
+   `s.WebkitTransform`, `style.scale` and clears `itemsFilter` / `attributeFilter`.
+3. SUGGESTION - comment accuracy - ambient-glow-engine.test.js:436-441: FORBIDDEN_PROP
+   also forbids `contain` / `isolation` / `perspective` on the stage/glow rules (a good
+   lock: both create a containing block that would re-trap the faux-fullscreen overlay,
+   the v1.166 class) but the comment above it and the assertion message name only
+   filter/transform/mask/will-change/animation - write the reason down.
+
+Gate: APPROVED r2 @cfa22480 — qa
+
+### Adversary r2 @cfa22480 (delta)
+
+Instruments (run by the seat, fresh git-archive sandbox of cfa22480): the two ambient
+files 34 pass / 0 fail on Node 22.23.1 AND 34 / 0 on Node 24.20.0. Every mutant below
+`diff`ed non-empty before crediting; the working tree was never edited.
+
+**r1 findings against the fix (my own mutants re-run, counts verbatim):**
+- F1 (CSS constraint lock) - FIXED as prescribed and wider. C1 -webkit-filter, C2 scale,
+  C3 FILTER:, C4 -webkit-backdrop-filter, C5 -webkit-canvas(), C6 sibling gradient, C7
+  -webkit-mask, C8 translate, C13 mask-border, C15 -moz-element(), C16 @keyframes +
+  animation: **11/11 killed** (each 33 pass / 1 fail, the CSS LOCK test).
+- F2 (vertical plateau) - FIXED as prescribed. J1 `uy = 1/(1+3ry)`, J2 `uy = 1/(1+ry)`,
+  J3 `ux = 1/(1+3rx)`: **3/3 killed** (the ambientVignette test). The derived edges
+  (x 56 / y 29) match the plateau I measured exhaustively in r1.
+- F3 (JS lock) - FIXED differently (word-start-or-vendor guard, string-scoped paint
+  lock); evaluated below. J8 `style.webkitFilter`, J8b `style.WebkitTransform`, J10
+  `style.scale`: **3/3 killed** (the SOURCE LOCK test).
+- F4 - unchanged, inherent, accepted.
+- QA-2 driven non-PNG test: the driver reaches the state (my own r1 driver (e) produced
+  the same trace - sprite then poster, 2 draws, nothing painted, no hard-fail); the
+  `draws.length === 2` assertion is what kills the r1 J11 loop mutant. Nothing new
+  introduced by QA-1/QA-2.
+
+**New slips against the widened locks (12 tried): 5 killed** - N7 `animation-name` +
+`animation-duration` longhands with an unnamed keyframes, N8 `background: url()` back on
+the layer, N11 `-webkit-mask-image: var(--glowmask)`, N12 `-webkit-transform` inside an
+`@media` block, V1 `@keyframes ambient-glow-spin { to { transform } }` alone. **7
+survived**, none a production defect at cfa22480:
+
+**R2-1 SUGGESTION - the JS lock omits `mask` and `mix-blend-mode`, which the CSS lock
+carries** (test :381). N1 `back.style.webkitMaskImage = 'linear-gradient(black,
+transparent)'`, N3 `back.style.setProperty('-webkit-mask-image', 'radial-gradient(...)')`
+and N2 `back.style.mixBlendMode = 'screen'` in `paint()` are 34/34 green. Mask is one of
+the three named iOS suspects. Prescription: add `mask|mix-?blend` to the JS keyword
+alternation (and `gradient\(` to the string-scoped paint regex).
+
+**R2-2 SUGGESTION - the JS lock has FALSE POSITIVES that will misfire on legitimate
+code** (test :381; also refutes my own r1 prescription, which shared the first flaw):
+FP1 `var _fp = [1, 2].filter(Boolean);` in the wiring and FP1b in the engine - an
+`Array.prototype.filter` call - both 33/1 RED; FP8 a trailing inline comment `var timerId
+= null; // no transform here` - RED, because `stripComments` strips only whole-line `//`
+comments. Prescription: scope the keyword lock to style writes (`style\.`,
+`setProperty\(`, `cssText`, `animate\(`) rather than the whole source, and strip trailing
+`//` comments outside string literals before locking. Verified NO false positive on
+`-webkit-overflow-scrolling: touch` (FP3), `transition: opacity 1s` /
+`transition-property` (FP4), `text-transform` (FP7); a no-space first declaration
+`.ambient-glow{filter:blur(2px)}` is correctly caught (FP2).
+
+**R2-3 SUGGESTION - the `@keyframes` assertion (test :446) does not bind what its message
+says.** `/@keyframes[^{]*\{[^}]*(?:ambient|stage)/i` consumes the NAME with `[^{]*`
+before `\{`, so it inspects the first keyframe step's body, not the name: FP6
+`@keyframes stage-pulse { to { opacity: 1; } }` is 34/34 green, while V2 `@keyframes
+unrelated { from { color: var(--stage-x); } }` is blocked. V1 (a glow-named keyframes)
+died only because the rule sweep happens to capture the `@keyframes ambient-glow-spin`
+header as a "selector". Redundant with the `animation*` ban on every glow/stage rule
+anyway. Prescription: `/@keyframes\s+[^\s{]*(?:ambient|stage)/i`, or drop it.
+
+**R2-4 SUGGESTION (scope, disclosed) - the widened CSS lock now exceeds the stated
+constraint:** `contain`, `isolation`, `perspective` and any `gradient(` / `url(` are
+forbidden on the STAGE too (FP5 `.watch-player-stage { contain: layout; }` is RED). Not a
+defect - a future legitimate stage backdrop or containment hint will have to be argued
+past this lock; the reason is now written in the test comment as QA asked.
+
+Inherent (F4 class, not chased): N4 `[id^="ambient"] { filter }`, N5 `.ambient-glow {
+fil\ter: blur(20px); }` (a CSS ident escape). Outside the stated constraint (suspicion
+only, no primary source that it breaks iOS video): N6 `clip-path` on the glow, N10
+`style.clipPath`. Legitimate by the constraint: N9 `back.animate([{ opacity }])`.
+
+All four r2 items are lock-quality suggestions with no runtime effect at cfa22480; none
+blocks. If the builder takes any of them, the tree moves and this approval is void -
+re-engage for r3 (gate pacing: at round 3, ask Dean).
+
+Tree: the only write is this section; `git status --short` shows only this file.
+
+Gate: APPROVED r2 @cfa22480 — adversary
+
+Gate r2 close: both seats APPROVED @cfa22480. Dual-Node full suites at that sha: Node
+22.23.1 **8968 tests, 8968 pass, 0 fail (exit 0)**; Node 24.20.0 **8968 / 8968 / 0 (exit
+0)**. Sequential, after the seats finished. DISCLOSED r2 suggestions (lock quality, no
+runtime effect at cfa22480; taking any voids the bound approval -> round 3, and the
+pacing norm says ask Dean at round 3): the `@keyframes` assertion binds a step body, not
+the name (redundant with the `animation*` ban that really guards); the JS lock's bare
+`ms` prefix and unscoped keyword can false-trip a future `Array.prototype.filter` call
+or a trailing `// no transform` comment in the ambient code; the JS lock omits
+`mask`/`mix-blend-mode` that the CSS lock carries; `contain`/`isolation`/
+`perspective`/`url(` are forbidden on the STAGE rules too (a good containing-block
+guard, but undocumented in the test's comment).
