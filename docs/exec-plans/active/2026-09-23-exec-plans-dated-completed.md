@@ -29,10 +29,14 @@ pointed at moved plan paths.
 2. Every plan that shipped or was abandoned lives in `completed/`; a v2 (frontmatter) plan
    carries a terminal `status:`, a legacy v1 plan carries one prepended line
    `> Completed: shipped in vX.Y.Z (moved 2026-09-23; see ROADMAP.md).` Every other byte of
-   each plan is unchanged. Plans that are genuinely open stay in `active/` (renamed).
-3. No reference anywhere in the repo points at an old path (ROADMAP, lib/, public/js, tests,
-   inside the plans themselves), except frozen-history mentions the docs-link census excludes by
-   design (listed in the build record).
+   each plan is unchanged EXCEPT the five in-plan link edits (a moved plan pointing at another
+   moved plan: audio-routing x2, listen-mode, podcasts-on-skin, ambient-glow-rebuild). Plans
+   that are genuinely open stay in `active/` (renamed).
+3. No living reference in docs/ or in the references the sweep touched (ROADMAP, lib/, public/js,
+   the plans themselves) points at a path this branch moved; the nine living TEST comments that
+   pointed at three plans already moved by earlier waves (subscription-push-bell, sub-bell-polish,
+   ambient-glow-polish) were fixed in gate r1. Frozen-history mentions the docs-link census
+   excludes by design stay (listed in the build record).
 4. The flow enforces it: `test/unit/exec-plans-census.test.js` fails on an undated plan, a bad
    calendar date, a non-terminal v2 plan under completed/, a terminal one under active/, or a
    v1 banner not on line 1; `scripts/plan-complete.js <plan> "<Shipped vX.Y.Z | Abandoned(why)>"
@@ -45,21 +49,39 @@ pointed at moved plan paths.
 - 72 renames via `git mv`, 8 plans moved active -> completed with evidence per plan:
   audio-routing-and-desktop-podcasts (v1.251.0), cross-device-sync (v1.265.0), listen-mode
   (v1.252.0), media-nav-back-stack (v1.217.0, deferred slices in the tracker), music-redesign
-  (v1.212.0 Slice 1; arc through v1.244.0), podcasts-on-skin (v1.246.0; F2 deferred), tray-player
+  (v1.212.0 Slice 1; slices 2-4 superseded by the v1.213 pivot, arc through v1.244.0),
+  podcasts-on-skin (v1.246.0 F1/F3/F5 + v1.247.0 F2 - the r1 banner wrongly said "F2 deferred";
+  the tracker has no F2 row and ROADMAP v1.247.0 "completes the podcast mega-wave's last piece
+  (F2)"), tray-player
   (v1.257.0), universal-audio (v1.242.0). Kept in active/: watch-habits-recommendations-and-purge
   (PARKED) and wheel-haptics (its current chapter is the live v1.274 tuning handoff - Dean's call;
   one script command flips it).
 - 54 completed/ flat files dated from their first-add commit; `completed/wave7b-briefs/` ->
   `2026-09-14-wave7b-briefs/`; the one already-dated upper-case slug `...-stopB.md` -> `...-stopb.md`
   (its ROADMAP reference updated). `docs/exec-plans/archive/` untouched (out of scope).
-- References updated: ROADMAP.md (5), lib/user/routes.js:24, lib/ytdlp/client/subscriptions.js:3542,
-  lib/music/libraryAudio.js:10 (a pre-existing stale path), public/js/skin-surface.js (2),
-  public/js/prefs-sync.js:11, public/js/common.js (2, one pre-existing stale), two tests, five
-  in-plan links. Left as frozen history: ROADMAP.md:6169 and :9344 + four completed plans pointing
-  at `active/critter-mode-skeleton.md` / `active/fouc-shimmer-audit.md` (the latter lives in archive/).
+- References updated: ROADMAP.md (5), lib/user/routes.js:24, lib/ytdlp/client/subscriptions.js:3591
+  (post-merge line), lib/music/libraryAudio.js:10 (a pre-existing stale path), public/js/skin-surface.js
+  (2), public/js/prefs-sync.js:11, public/js/common.js (2, one pre-existing stale), two tests, five
+  in-plan links; in r1, nine more living test comments (test/unit/{ytdlp-subscriptions-client,
+  ytdlp-store, push-delivery, sub-row-chip-btn-family, sub-bell-in-place, ambient-glow-engine} +
+  test/integration/{ytdlp-patch-pause, scan-push-bridge, backup-restore}) that pointed at
+  `active/` paths of three plans earlier waves had already moved. Left as frozen history:
+  ROADMAP.md:6196 and :9371 (post-merge lines) + five completed plans (tranche-4-shimmer:6,
+  v1.98:4, v1.99:4, v1.101:4, wave-c-docs-truth:20 line-wrapped) pointing at
+  `active/critter-mode-skeleton.md` / `active/fouc-shimmer-audit.md` (the latter lives in archive/).
 - `test/unit/docs-status-census.test.js` learned the `> Completed:` banner spelling and
-  `abandoned` as a terminal word (the 8 moved v1 plans keep their stale "Status: ACTIVE" prose
-  line below the banner).
+  `abandoned` as a terminal word (7 of the 8 moved v1 plans keep a stale "Status: ACTIVE" prose
+  line below the banner; audio-routing already read "Status: SHIPPED as v1.251.0").
+- Dots in slugs: 74 already-dated plans on the tree carry a `vX.Y` token (62 on main before this
+  branch dated the twelve v1.96-v1.160 files), so the census slug charset keeps `.`.
+- Gate r1 fixes (one commit): the nine test comments; the podcasts-on-skin and music-redesign
+  banners; "pre-push" prose corrected in RELEASING.md + the census header (the checker runs at
+  session start and by hand, never on pre-push); plan-complete.js deriveDate (frontmatter scan
+  bounded by index, only an EARLIER real-calendar in-doc date beats git, `captured` recognised,
+  no-follow git date first, upper-case dated stem lower-cased not double-dated, directory path
+  accepted, untracked plan refused with exit 2, `git grep -e`, `Shipped 1.2.3` normalised, exit
+  codes in the header); census banner lock `/i` and the dead README allowlist dropped;
+  docs-status-census header lists ABANDONED.
 - `.claude/commands/release.md` / `.harness/flow.md` still say "flat `<slug>.md`" without the
   date - harness-owned, not edited, disclosed.
 - Verbatim (subagent, before the main merge): check-markers clean before and after; census test

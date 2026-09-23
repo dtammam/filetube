@@ -881,7 +881,7 @@ test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRES
 });
 
 // ---- v1.314: the per-subscription push bell rides the bundle -----------------
-// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC7).
+// Plan: docs/exec-plans/completed/2026-09-23-subscription-push-bell.md (AC7).
 test('v1.314 pushBell: a restore of a PRE-BELL bundle (field absent) reads the bell OFF; a bundle with the bell ON restores ON', async () => {
   const state = seedFullState({
     ytdlp: {

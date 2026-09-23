@@ -17,7 +17,10 @@
 //      (`Shipped ...` / `Abandoned(...)`) may not sit under active/, and a
 //      non-terminal one may not sit under completed/. This mirrors
 //      .harness/lib/check-markers.sh items 1 + 5 in the unit suite, so the
-//      pre-commit hook catches it before the pre-push checker does.
+//      pre-commit hook catches it (the checker itself runs at session start
+//      via .claude/hooks/session-start.sh and by hand before a merge/release;
+//      it is NOT on pre-push - a building plan's bound design approval
+//      legitimately goes stale and must not block main's push).
 //   3. NO ROT. A completed v1 plan (no frontmatter) states WHY it lives in
 //      completed/ - it opens with the `> Completed: ...` banner or a terminal
 //      Status line (test/unit/docs-status-census.test.js owns the terminal
@@ -25,8 +28,9 @@
 //      FIRST line so a reader sees it before the stale prose status).
 //
 // Slug charset: lower-case letters, digits, `-` and `.` - the dot is there
-// because 34 already-dated plans carry a `vX.Y` token (`2026-07-06-v1.13-
-// polish.md`); renaming frozen history to purge a dot is churn, not truth.
+// because 74 already-dated plans carry a `vX.Y` token (`2026-07-06-v1.13-
+// polish.md`; 62 on main before this branch dated the v1.96-v1.160 twelve);
+// renaming frozen history to purge a dot is churn, not truth.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -36,11 +40,10 @@ const path = require('node:path');
 const PLANS = path.join(__dirname, '..', '..', 'docs', 'exec-plans');
 const BUCKETS = ['active', 'completed'];
 
-// The ONLY non-plan names allowed beside the plans. `tech-debt-tracker.md`
-// lives one level up (docs/exec-plans/) and is out of this census's scope;
-// nothing else is exempt. A README explaining the convention would be the
-// one legitimate undated file in a bucket, so it is pre-allowed.
-const ALLOWLIST = new Set(['README.md']);
+// No allowlist: nothing but plans lives in a bucket. `tech-debt-tracker.md`
+// sits one level up (docs/exec-plans/) and is out of this census's scope; a
+// README dropped into a bucket would also read as a status-less spine to
+// docs-status-census and check-markers, so it is not pre-allowed here.
 
 const DATED_FILE = /^(\d{4})-(\d{2})-(\d{2})-[a-z0-9][a-z0-9.-]*\.md$/;
 const DATED_DIR = /^(\d{4})-(\d{2})-(\d{2})-[a-z0-9][a-z0-9.-]*$/;
@@ -75,7 +78,7 @@ function entries(bucket) {
 function spines(bucket) {
   const out = [];
   for (const e of entries(bucket)) {
-    if (!e.isDir && e.name.endsWith('.md') && !ALLOWLIST.has(e.name)) out.push({ ...e, rel: `${bucket}/${e.name}` });
+    if (!e.isDir && e.name.endsWith('.md')) out.push({ ...e, rel: `${bucket}/${e.name}` });
     if (e.isDir && fs.existsSync(path.join(e.full, 'plan.md'))) {
       out.push({ ...e, full: path.join(e.full, 'plan.md'), rel: `${bucket}/${e.name}/plan.md` });
     }
@@ -88,7 +91,6 @@ test('every plan under active/ and completed/ is date-led: YYYY-MM-DD-<slug>.md 
   let seen = 0;
   for (const bucket of BUCKETS) {
     for (const e of entries(bucket)) {
-      if (!e.isDir && ALLOWLIST.has(e.name)) continue;
       seen++;
       const m = e.name.match(e.isDir ? DATED_DIR : DATED_FILE);
       if (!m) { bad.push(`${bucket}/${e.name}  (not date-led)`); continue; }
@@ -130,7 +132,7 @@ test('a completed v1 plan that carries the Completed banner carries it on line 1
   for (const s of spines('completed')) {
     if (frontmatterStatus(s.full) !== null) continue;
     const lines = fs.readFileSync(s.full, 'utf8').split('\n');
-    const at = lines.findIndex((l) => /^> Completed:/.test(l));
+    const at = lines.findIndex((l) => /^>\s*Completed:/i.test(l)); // /i: the same spelling docs-status-census accepts
     if (at > 0) buried.push(`${s.rel}:${at + 1}`);
   }
   assert.deepStrictEqual(buried, [],

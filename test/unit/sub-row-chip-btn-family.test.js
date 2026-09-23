@@ -12,7 +12,7 @@
 //          `.btn-chip` declares none either; the 2009 gloss still targets `.btn`.
 //   AC3  - ONE writer of the bell's rendered state (the glyph literals appear
 //          exactly once, inside applyBellState; the builder calls it).
-// Plan: docs/exec-plans/active/2026-09-23-sub-bell-polish.md.
+// Plan: docs/exec-plans/completed/2026-09-23-sub-bell-polish.md.
 
 const { test } = require('node:test');
 const assert = require('node:assert');

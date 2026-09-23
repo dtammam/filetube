@@ -71,8 +71,12 @@ app's account-menu version row links straight to them.
    Update any path-shaped reference the script lists (`git grep -nF <slug>`).
    `test/unit/exec-plans-census.test.js` (pre-commit) fails on an undated
    plan, a terminal status still under `active/`, or a non-terminal one
-   under `completed/`; `.harness/lib/check-markers.sh` (pre-push) flags the
-   same placement errors.
+   under `completed/`. `.harness/lib/check-markers.sh` flags the same
+   placement errors plus stale/sha-less approval markers, but it is NOT a
+   git hook: it runs at session start (`.claude/hooks/session-start.sh`,
+   non-blocking) and you run it BY HAND before merging or releasing, as
+   above (it stays off pre-push on purpose - a building plan's bound
+   design approval legitimately goes stale and must not block a push).
 2. Make sure `main` is green (CI passes) and you're on it:
    ```bash
    git checkout main && git pull

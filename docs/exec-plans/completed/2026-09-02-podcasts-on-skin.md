@@ -1,4 +1,4 @@
-> Completed: shipped in v1.246.0 (F1/F3/F5; F2 deferred to tech-debt-tracker.md. Moved 2026-09-23; see ROADMAP.md).
+> Completed: shipped in v1.246.0 (F1/F3/F5) and v1.247.0 (F2). Moved 2026-09-23; see ROADMAP.md.
 # Podcasts on the skin + MENU-returns-to-origin + notification deep-link
 
 Status: ACTIVE. Split out of `2026-09-01-universal-audio.md` SEAM 3 (#3), now its own wave with

@@ -211,7 +211,7 @@ test('a 410 from the real chain prunes the subscription; the next scan pushes to
 });
 
 // ---- v1.314: the per-subscription push BELL through the REAL chain ----------
-// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC1-AC3).
+// Plan: docs/exec-plans/completed/2026-09-23-subscription-push-bell.md (AC1-AC3).
 // A real scan consumes a planted download (its channel identity rides in through
 // downloadMeta exactly as a yt-dlp download's does), the feed row is written, the
 // detached round runs - and the bell decides whether the WEB PUSH goes out. The

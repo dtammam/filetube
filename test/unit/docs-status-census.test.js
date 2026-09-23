@@ -14,7 +14,7 @@
 //
 // Terminal = the plan's first status line starts (after markup) with one of:
 // SHIPPED / CLOSED / SUPERSEDED / ARCHIVED / MERGED / DONE / COMPLETE(D) /
-// RETIRED. Case-insensitive. Anything else (APPROVED, IN PROGRESS, PLANNED,
+// RETIRED / ABANDONED. Case-insensitive. Anything else (APPROVED, IN PROGRESS, PLANNED,
 // DRAFT, ...) is a violation listed by file with its offending line.
 
 const { test } = require('node:test');

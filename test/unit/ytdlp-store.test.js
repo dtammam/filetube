@@ -2375,7 +2375,7 @@ test('v1.41.13 bridge: consumeUniversalDownloadMeta ignores a YouTube (non-unive
 });
 
 // ---- v1.314: the per-subscription WEB PUSH opt-in bell (pushBell) ----------
-// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (D1, AC7, AC8).
+// Plan: docs/exec-plans/completed/2026-09-23-subscription-push-bell.md (D1, AC7, AC8).
 
 test('v1.314 pushBell: ensureYtdlp backfills a pre-bell record to FALSE (opt-in, existing subs included) and leaves an explicit true alone', () => {
   const db = { ytdlp: { subscriptions: [
