@@ -393,7 +393,9 @@ function createAmbientEngine(opts) {
     if (img === 'loading') return;
     // Never repaint a layer mid-fade (the back layer is the one still fading
     // out): a tile that lands inside the fade waits for the next clock.
-    if (now() - lastPaintAt < fadeMs) return;
+    var n = now();
+    if (lastPaintAt > n) lastPaintAt = n; // gate r1 qa S1: Date.now is not monotonic (an NTP step backwards must not defer every paint)
+    if (n - lastPaintAt < fadeMs) return;
     var bitmap;
     try { bitmap = sample(img, src); } catch (_) { fail(); return; }
     if (!bitmap) { images[src.url] = 'failed'; return; }

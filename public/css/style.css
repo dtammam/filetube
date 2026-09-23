@@ -9061,8 +9061,11 @@ body.ft-audio-expanded {
    is honoured WEAKLY by iOS for an overflowing descendant, so the page scrolls
    sideways while ambient runs. Clip X at the stage on mobile ONLY: overflow-y stays
    visible so the vertical glow above/below the player is preserved, desktop keeps
-   the intended v1.188 sidebar bleed, and `clip` (not hidden) creates no containing
-   block, so the fixed .css-fullscreen overlay still escapes.
+   the intended v1.188 sidebar bleed, and `clip` (not hidden) is REQUIRED because
+   `overflow-x: hidden` would force overflow-y to auto and clip the vertical bloom
+   (CSS Overflow 3: visible/clip only stay when the other axis is visible or clip);
+   neither value creates a containing block, so the fixed .css-fullscreen overlay
+   still escapes (gate r1 qa S2 corrected the old prose here).
    v1.314 (Dean, iPhone: "look at left and right of ambient on mobile, make it
    spread"): MEASURED at 390px (plan: ambient-mobile-spread-and-pace) the stage
    box WAS the player box (x 16, w 358), so the clip edge sat ON the player's edge

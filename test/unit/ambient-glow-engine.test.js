@@ -401,6 +401,10 @@ test('v1.312 engine: a sprite that fails to load FALLS to the poster for the res
   assert.ok(h.front(), 'the poster painted');
   assert.strictEqual(h.engine.painted().kind, 'image');
   assert.deepStrictEqual(h.draws[0].slice(1), [0, 0, 640, 360, 0, 0, 64, 36], 'the WHOLE poster is sampled');
+  // Gate r1 (qa W1): past the fade gap FIRST, or the deferral - not the poster's
+  // fixed index - is what keeps the sample count at 1 (a v1.312 assertion silently
+  // unbound; the sandbox mutant "re-sample the poster every clock" stayed green).
+  await pastFade(h);
   h.video.currentTime = 50; h.tick(); await h.settle();
   assert.strictEqual(h.loads.length, 2, 'later tile changes never retry the sprite');
   assert.strictEqual(h.draws.length, 1, 'and a static poster is never re-sampled');
@@ -531,9 +535,13 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.match(ENGINE_SRC, /acc = ambientBlend\(sameRung \? acc : null, id\.data, k, n\)/, 'every sample is blended into the running field; a rung change starts a fresh one');
   assert.match(ENGINE_SRC, /var k = sameRung && lastT !== null \? ambientSmoothing\(t - lastT, smoothTauS\) : 1/, 'the weight comes from the MEDIA time since the last integrated sample');
   assert.match(ENGINE_SRC, /if \(ambientMeanDelta\(acc, shown\) < minDelta\) return \{ skip: true \}/, 'a step under the threshold is absorbed before any vignette/encode');
-  assert.match(ENGINE_SRC, /if \(now\(\) - lastPaintAt < fadeMs\) return;/, 'no paint inside the previous fade');
+  assert.match(ENGINE_SRC, /if \(n - lastPaintAt < fadeMs\) return;/, 'no paint inside the previous fade (n = the clamped now(), qa S1)');
   assert.match(ENGINE_SRC, /if \(bitmap\.skip\) \{ painted = \{ kind: src\.kind, url: src\.url, index: src\.index \}; return; \}/, 'an absorbed tile is marked, never swapped');
   assert.doesNotMatch(ENGINE_SRC, /new Date|performance\.now/, 'wall time comes only through the injected now()');
+  // Gate r1 (adversary S2): a direct Date.now() in check() passed the old lock.
+  assert.strictEqual((ENGINE_SRC.match(/Date\.now\(/g) || []).length, 1, 'exactly ONE Date.now() in the engine');
+  assert.match(ENGINE_SRC, /var now = typeof opts\.now === 'function' \? opts\.now : function \(\) \{ return Date\.now\(\); \};/, '...and it is the now() default, so every wall read goes through the injectable clock');
+  assert.match(ENGINE_SRC, /var n = now\(\);\s*if \(lastPaintAt > n\) lastPaintAt = n;/, 'qa S1: a backward wall-clock step (non-monotonic Date.now) clamps the fade anchor instead of deferring every paint for the step');
 });
 
 test('v1.312 WIRING LOCK: setupAmbientMode builds the engine from the view (lazy mediaData, the player\'s storyboard geometry, an OFF-DOM canvas) and funnels start/stop', () => {

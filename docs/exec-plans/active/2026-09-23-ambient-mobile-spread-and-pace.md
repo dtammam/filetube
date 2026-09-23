@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: fix/ambient-mobile-spread-and-pace
 anchor: spec
 status: Building
-next: gate r1 (adversary + qa per Dean's standing full-gate rule), then Dean's iPhone check (the only proof for the look)
+next: gate r2 delta re-review (qa CHANGES r1 -> fixed; adversary APPROVED r1 re-confirm), then merge main (v1.314.0) into the branch, dual-Node, release v1.315.0
 design: Approved 2026-09-23 @92d48874 (the Architect brief carrying Dean's ask, against the v1.313.0 base; both diagnoses measured before any edit)
 gate: pending
 ---
@@ -113,10 +113,15 @@ one of these is a lock in `test/unit/ambient-glow-engine.test.js`; none was weak
 4. `npm run lint:css` at ZERO, `npm run lint:overlay` at zero; full `npm test` on Node
    22.23.1 green (critter-mode "gate W closure" is a known CPU-load flake - re-run alone
    if it is the only red).
-5. **Dean's iPhone (the only proof for the look):** the gutter left and right of the
-   player is lit to the screen edge with ambient ON, portrait and landscape; the page
-   does not scroll sideways; rotate-to-fullscreen still covers the chrome; the glow
-   drifts instead of morphing; the picture stays.
+5. **Dean's iPhone (the only proof for the look):** in PORTRAIT (<= 768px wide) the
+   gutter left and right of the player is lit to the screen edge with ambient ON and the
+   page does not scroll sideways; rotate-to-fullscreen still covers the chrome; the glow
+   drifts instead of morphing; the picture stays. LANDSCAPE on an iPhone (844px) is ABOVE
+   the 768px breakpoint: none of this diff's mobile rules apply there, it is the desktop
+   path unchanged from v1.313, and it still scrolls sideways with ambient ON - measured
+   IDENTICAL at the base sha (gate r1 adversary W1, qa S3), so a landscape observation is
+   not a regression of this change. Disclosed: tracker #234 (Dean's call: widen the
+   breakpoint for the phone-landscape case, or keep the v1.188 wide bleed).
 
 ## Design
 
@@ -212,3 +217,27 @@ rule is no longer the first `.ambient-glow` match).
     5-15 min clips swap every 7-10s with ~40-49% steps under D4 - Dean's phone is the
     judge of the pace knobs (D7). The front layer's computed opacity in the state read
     is mid-fade (0.19-0.20), as expected with a 2.4s fade.
+
+## Gate r1 -> r2 fix record (2026-09-23)
+
+r1 @5589ffbe: adversary APPROVED (43 mutants, headless probe re-run, one PRE-EXISTING landscape
+warning disclosed); qa CHANGES (W1 + S1-S3). One fix commit (the r2 sha in the Gate lines below):
+- qa W1: `await pastFade(h)` before the poster re-sample assertion, so the v1.312 "a static poster
+  is never re-sampled" claim is bound by the poster's fixed index again, not by the fade deferral.
+- qa S1: `check()` clamps `lastPaintAt` to `now()` (a backward wall step no longer defers paints
+  for the step's length); locked by a source assertion.
+- adversary S2: the source lock now requires exactly ONE `Date.now()`, sitting in the `now` default.
+- qa S2: the v1.194.3 CSS comment states the real reason `clip` is required (overflow-x: hidden
+  would force overflow-y to auto), not a containing-block claim.
+- qa S3 + adversary W1: acceptance 5 and the device list now say landscape is the desktop path
+  (> 768px), unchanged and still scrolling sideways at both shas -> tracker #234.
+- Not taken: adversary S3 (float boundaries, measure-zero), adversary suspicion (image-load
+  paint at fadeMs + epsilon, no visible pop constructed).
+
+**Architect's disclosure (2026-09-23):** while applying the r2 fixes I ran `git checkout -- .` in
+this worktree to re-run an edit script and it discarded the two seats' UNCOMMITTED r1 verdict
+sections (`## Gate r1 - qa @5589ffbe`, `Gate: CHANGES r1 @5589ffbe — qa`; `## Gate r1 - adversary
+@5589ffbe`, `Gate: APPROVED r1 @5589ffbe — adversary`) from this doc. Both reports reached me
+verbatim through the seats' hand-backs (the fix record above is built from them); at r2 each seat
+re-appends its own r1 section from its own context, then its r2 verdict. Lesson: never revert
+the tree while a seat's verdict is uncommitted - commit the verdicts FIRST.
