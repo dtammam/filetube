@@ -459,3 +459,187 @@ survive a no-op mutant at 329/329; the shipped code is correct, the fixes are te
 one drive). Re-engage this seat for r2 with the fix sha.
 
 Gate: CHANGES r1 @e52a9325 — adversary (see findings)
+
+## Gate r2 - security-brief (@c395e462)
+
+Delta re-confirmation of my r1 APPROVED @e52a9325. **Tooling gap, stated first:** this seat has no
+Bash, so `git diff e52a9325..c395e462` was NOT run; the changed-file list is the coordinator's. I
+re-read every code surface my r1 approval rested on, at its current on-disk state.
+
+Re-verified, byte-for-byte against what I reviewed at r1:
+
+1. `toggleBell` (lib/ytdlp/client/subscriptions.js:4270-4295): the function body is unchanged -
+   same click-time `subId`, same `inFlightBtn.disabled = true` before the fetch and `= false` in
+   `.finally`, same `on = !!(data && data.pushBell === true)`, same log-only non-2xx arm. Only the
+   comment above it (:4264-4269) grew, and the new text is accurate (it now discloses the
+   mid-flight-rebuild second flight I flagged as INFO at r1, rather than claiming a full guard).
+2. `applyBellState` / `findBellButton` / `applyBellUpdateInPlace` (:3134-3170): unchanged; still
+   fixed literals only, no server/user string reaches the DOM.
+3. scripts/sub-row-chip-probe.js: `serve()` (:101-119) and the Chromium argv (:166-167) are
+   unchanged; the loopback bind, WHATWG-normalised pathname prefix check and `path.join(ROOT,
+   'public', ...)` bound all hold. The header edit is the `bottom-3` -> `bottom-4` comment word.
+4. public/css/style.css: both `.btn-chip` rule bodies (:1033-1042, :14147) unchanged.
+5. test/unit/sub-bell-in-place.test.js: the added `bell.disabled === true` assert (:124) and the
+   new AC7 drive (:204-244) use the same jsdom mount and the same in-process `fetch` spy; the only
+   new mechanism is a deferred promise around the fake PATCH. No new DOM writer, no real network,
+   no credential or environment access. test/unit/sub-row-chip-btn-family.test.js: regex widening
+   and an ancestor-selector sweep over the CSS text - read-only string analysis.
+
+No new security-relevant code, no new network surface, no dependency change, the in-flight disabled
+handling unchanged. No CRITICAL/HIGH/MEDIUM/LOW findings; my r1 INFO notes stand as written.
+
+Gate: APPROVED r2 @c395e462 — security-brief
+
+## Gate r2 - adversary (@c395e462)
+
+Delta re-review of `git diff e52a9325..c395e462` (be9de1be in between is the three r1 sections only).
+HEAD = c395e462 on fix/sub-bell-polish. Every number below is this seat's own measurement in a fresh
+`git archive c395e462` sandbox; each mutant `diff -q`'d against the sha before crediting and restored
+after (FINAL baseline re-run = 330/330, sandbox byte-identical to the sha).
+
+### Instruments (verbatim)
+
+- Node 22.23.1, the three binding files: `# pass 330 / # fail 0` (329 -> 330: AC7 added).
+- Node 24.20.0, `--test-reporter=tap` (the default reporter prints `ℹ`, an empty grep is not green):
+  `# tests 330 / # pass 330 / # fail 0`.
+- `test/unit/sub-bell-in-place.test.js` x12 consecutive on Node 22: `12 x (# pass 5 # fail 0)` - AC7's
+  drive is deterministic under repetition (deferred promise + settle polling, no fixed tick counts).
+- Probe header vs code: `:21 bottom-4` == `:216 rect.h - 4`. Probe not re-run (comment-only delta).
+
+### r1 findings against the fix
+
+1. W1 (in-flight disable unbound) - FIXED AS PRESCRIBED. AC1 asserts `bell.disabled === true`
+   synchronously after the click, before the settle. ME (drop the disable): 329/1 red, AC1. ME2 (drop
+   the disable AND the `.finally` re-enable): 329/1 red, AC1. Both r1 survivors now die.
+2. W2 (`currentSubs` patch unbound) - FIXED AS PRESCRIBED. AC7 is the Pause-mid-flight drive. MB (drop
+   the `currentSubs.forEach` line): 329/1 red, AC7 only - the drive binds exactly that line. New mutant
+   MO (the response lands on the CLICK-TIME bell via `applyBellState(inFlightBtn, on)` instead of the
+   map lookup): 328/2 red, AC7 + LOCK - AC7 also binds "response-time row lookup", which no r1 test did.
+3. #3 (census gaps) - FIXED, wider than asked. MI2 (`opacity; margin` on a role rule), MI3
+   (`.sub-row > button { background; border }`), MJ2 (`.btn-chip { min-width: 44px }`): each 329/1
+   red, AC4. New probes of the widened net: MI3b (`.sub-row > button { background }` INSIDE the 768px
+   `@media` block) red; MI3c (`.sub-list .btn { -o-transform: scale(2) }`) red; MI3d
+   (`.sub-section button.x { MAX-HEIGHT: 20px }`, upper-case) red. False-positive check: a role rule
+   gaining `color: var(--yt-red); text-shadow: none; cursor: pointer` stays 330/0 green - the widened
+   regex does not catch a legitimate state declaration. Observation, not a finding: `flex-shrink: 0`
+   on a ROLE rule now trips BOX_PROP (`flex(?:-[a-z]+)?`) - defensible (a flex constraint IS a box
+   constraint in the row) and `.btn-chip`'s own rule, which legitimately carries it, is checked by the
+   narrower per-rule regex, so nothing in the tree trips today.
+4. #4 (timing-vacuous skeleton assert) - FIXED, removed; the identity asserts still bind: MH (rebuild
+   instead of in-place) 327/3 red (AC1 + AC7 + LOCK).
+5. #5 (mid-flight rebuild race) - DISCLOSED, code unchanged as agreed; the toggleBell comment
+   (:4264-4269) and the Design line now state the converging second flight (#233 class). Accurate to
+   what I measured in r1.
+
+r1 kills re-verified on the fix sha: MA no-op applier 327/3 (now also AC7), MC follow-request 328/2,
+MJ phone exemption dropped 329/1. Nothing the fix touched un-bound an earlier kill.
+
+### Anything new the fix introduced
+
+- AC7 relies on the sheet's Pause button being found by `textContent === 'Pause'` and on togglePause
+  answering with an immediate 200: a renamed button fails LOUDLY (`assert.ok(pauseBtn)`), not
+  vacuously; the bell PATCH is distinguished by `hasOwnProperty('pushBell')`, so the pause PATCH can
+  never be mistaken for the held one. Its settles wait on observable state (list fetch count + a NEW
+  row identity, then the new bell's glyph), never on tick counts. No flake in 12 runs.
+- `rulesReachingChipsByAncestor` skips selector text containing `@media|@supports|@container`; rules
+  nested INSIDE a media block are still seen (MI3b red), because the flat regex re-anchors after the
+  block's opening brace. It cannot see `[class~="btn-chip"]`-style attribute selectors - none exist,
+  diminishing returns, not a finding.
+- The two legacy CSS comment edits and the probe header are prose-only and now match the tree.
+- No code path changed in subscriptions.js except the comment; `git diff` of the JS is 8 lines, all
+  inside a `//` block.
+
+No CRITICAL, no WARNING, no new SUGGESTION.
+
+Tree proof: `git status --porcelain` before this append = ` M docs/exec-plans/active/2026-09-23-sub-bell-polish.md`
+only (the security-brief r2 section); all mutants ran in the session-scratchpad sandbox, each restored
+and diffed against c395e462; no other file touched; no pre-existing untracked files.
+
+Gate: APPROVED r2 @c395e462 — adversary
+
+## Gate r2 - qa (@c395e462)
+
+Delta re-confirmation of `git diff e52a9325..c395e462` (be9de1be = the r1 verdict sections only; c395e462 =
+the fix: subscriptions.js +8/-4 comment-only, style.css +6/-4 comment-only, the probe header, both test
+files, this doc). HEAD = c395e462 on fix/sub-bell-polish; tree clean at start except this doc (the
+security-brief r2 section). Not re-litigated: the r1 review of the unchanged code stands.
+
+### Instruments (verbatim, Node 22.23.1)
+
+- `node --test --test-reporter=tap test/unit/sub-bell-in-place.test.js`: `# tests 5 / # pass 5 / # fail 0` (was 4: AC7 added).
+- `node --test --test-reporter=tap test/unit/sub-row-chip-btn-family.test.js`: `# tests 5 / # pass 5 / # fail 0`.
+- `node --test --test-reporter=tap test/unit/ytdlp-subscriptions-client.test.js`: `# tests 320 / # pass 320 / # fail 0`.
+- `node --test --test-reporter=tap test/unit/subscriptions-panels-behavior.test.js`: `# tests 3 / # pass 3 / # fail 0`.
+- `npm run lint`: `✖ 7 problems (0 errors, 7 warnings)` (the same 7 pre-existing common.js `no-unused-vars`).
+- `npm run lint:css`: `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`.
+- `npm run lint:overlay`: `overlay-containment: clean (0 violations)`.
+- `bash .harness/lib/check-markers.sh` (exit 1): `✗ ... stale approval @8536f399 — reviewed code changed
+  since; re-gate` plus three `✗ ... stale approval @e52a9325 — reviewed code changed since; re-gate` /
+  `check-markers: 4 issue(s) found`. That is the expected mid-r2 shape: the design approval is bound to the
+  base sha, and the three r1 seat lines (:234 security-brief, :341 qa, :461 adversary) are bound to the
+  pre-fix sha; the r2 lines @c395e462 are the live ones and are not flagged.
+- Em dashes in ADDED lines of the FIX commit (`git diff be9de1be..c395e462 | grep "^+" | grep -c "—"`): 0.
+  (The wider `e52a9325..c395e462` range shows 2, both inside my own r1 section quoting check-markers'
+  output verbatim, as the brief requires.)
+
+### My r1 findings against the fix
+
+- #1 (probe header `bottom-3`): fixed as prescribed - scripts/sub-row-chip-probe.js:21 now reads `bottom-4`,
+  matching `rect.y + rect.h - 4` at :216 and the Measurements section.
+- #2 (two stale legacy CSS comments): fixed as prescribed. style.css:8355-8356 now says the pin's box/bevel
+  comes from `.btn-chip` near `.btn` (the border itself rides `.btn`, `.btn-chip` only squares the box -
+  the pointer lands on the `.btn-chip` comment that says exactly that, so it reads correctly).
+  style.css:8599-8600 says `#dl-status-chip` "keeps its own copy" of the two-tone bevel `.sub-row-pin`
+  carried before v1.316 - verified: `.dl-status-chip-summary` (:8623-8630) declares the same
+  `border-top/left: --border-dark` + `border-bottom/right: --border-color` pair the deleted chip rule had.
+- #3 (in-flight disable vs a mid-flight rebuild): fixed differently, as disclosure - code unchanged, the
+  toggleBell comment (:4264-4269) and the Design line now state the race plainly ("Pause / Retry / a search
+  keystroke" - all three are real rebuild arms: togglePause -> loadSubscriptions, row Retry -> repullOne ->
+  scheduleRepullRefresh -> loadSubscriptions, search -> renderSubscriptions; "converges on server truth"
+  is what AC7 now proves). I accept the deviation: the plan's Out-of-scope line already carried the #233
+  class, and the end state is consistent.
+- #4 (census gaps): fixed as prescribed and beyond - `BOX_PROP` (test:52) now covers min/max box, margin,
+  inset, aspect-ratio, flex-*, box-sizing, opacity, transform/scale/translate/filter/mask/clip-path and
+  `-o-`; `rulesReachingChipsByAncestor` (:56-66) sweeps ancestor-typed selectors; the `.btn-chip` base
+  rule check (:109) forbids a second box constraint. Executed against the tree: the ancestor sweep
+  matches 0 rules today; the role census sees `.sub-row-kebab { font-size }` and the three
+  `color:`-only hover rules, none flagged; `flex-shrink: 0` IS flagged by the widened `BOX_PROP`, but the
+  base `.btn-chip` rule (the only place it legitimately lives) is checked by the separate :109 regex,
+  which has no `flex` arm - no false positive, verified by the 5/5 run.
+
+### The adversary's fixes, checked for anything new
+
+- AC1 `bell.disabled === true` right after `click()`: binds - the click dispatch is synchronous and
+  `inFlightBtn.disabled = true` (:4274) runs before `fetch`. The comment's claim that jsdom delivers
+  synthetic clicks to disabled buttons is TRUE (verified: `dispatchEvent(new Event('click'))` on a
+  `<button disabled>` reached the listener 1x; `.click()` 0x), so the seat was right not to bind by
+  double-dispatch.
+- AC7 drive faithfulness: it opens the REAL settings sheet through the real kebab click, finds the real
+  `Pause` button by text, and the pause PATCH + the second `GET /api/subscriptions` flow through the same
+  routed spy; the list is rebuilt from FRESH copies (`SUBS.map(s => ({...s}))`), so the new row's record
+  starts `pushBell:false` and only the `currentSubs.forEach` by-id patch can make the next tap send
+  `false`. Deleting that line would fail `bellPatches[1].body`; the test binds the record patch, not just
+  the glyph. The held-promise release is deterministic (no fixed-count settle), and every `settle` still
+  `assert.fail`s on timeout.
+- The removed "no skeleton rows" assert: correctly judged timing-vacuous; the row/bell identity asserts
+  bind no-rebuild.
+
+### Findings
+
+1. SUGGESTION - test/unit/sub-row-chip-btn-family.test.js:33 (`ROLES`) + :36-45 (`rulesTargeting`). The
+   role census's `(?![\w-])` lookahead rejects the `-active` MODIFIER classes, so
+   `rulesTargeting(CSS, 'sub-row-pin')` returns exactly 1 rule (the hover rule) and the
+   `.sub-row-pin-active, .sub-row-bell-active { color: #e0a800 }` block and its hover twin are invisible
+   to AC4 (executed: 2 rules each for the `-active` names, 0 of them in the census). Scenario: a later
+   `.sub-row-bell-active { background: gold }` paints over the era gloss on every ON bell with AC4
+   green. Same class as my r1 #4 and the r2 widening did not reach it. Not blocking: no such rule exists,
+   and the probe fixture builds the ON bell (`pushBell: true`) and the pinned pin, so all 16 measured
+   combos already covered the `-active` chips with zero style diffs. Fix: add `'sub-row-pin-active'` and
+   `'sub-row-bell-active'` to `ROLES` (the `rules.length > 0` floor holds at 2 each).
+
+No CRITICAL, no WARNING. The one suggestion is safe to ship disclosed.
+
+Tree proof: `git status --porcelain` before this append showed only this plan doc (the security-brief r2
+section); nothing else touched by this seat; `git diff --stat` = this file only.
+
+Gate: APPROVED r2 @c395e462 — qa
