@@ -113,10 +113,16 @@ test('v1.313 ambientVignette: opaque under the player, ZERO on the outermost rin
   assert.deepStrictEqual([W.AMBIENT_REACH_X, W.AMBIENT_REACH_Y], [0.12, 0.22], 'YouTube\'s measured reach (~11% / ~20%)');
   const data = W.ambientVignette(paintedBuffer(w, h, () => [120, 60, 200]), w, h, null);
   const cx = w / 2, cy = h / 2;
-  // the inner rectangle = the player: 1/(1+2*reach) of each half-axis
-  const ix = Math.floor((w / 2) / (1 + 2 * W.AMBIENT_REACH_X)), iy = Math.floor((h / 2) / (1 + 2 * W.AMBIENT_REACH_Y));
+  // the inner rectangle = the player: 1/(1+2*reach) of each half-axis, on pixel CENTRES
+  // normalised to the outermost pixel (gate r1 adversary F2: derive the plateau EDGE from
+  // the constants and bind it on BOTH axes - 255 at the last inside pixel, <255 one out).
+  const plateauEdge = (n, reach) => { const half = n / 2, u = 1 / (1 + 2 * reach); let last = Math.floor(half); for (let i = Math.floor(half); i < n; i++) { if (Math.abs(i + 0.5 - half) / (half - 0.5) <= u) last = i; else break; } return last; };
+  const px = plateauEdge(w, W.AMBIENT_REACH_X), py = plateauEdge(h, W.AMBIENT_REACH_Y);
+  const ix = px - cx + 1, iy = py - cy + 1; // plateau half-extents in pixels
+  assert.ok(px > cx && px < w - 2 && py > cy && py < h - 2, 'the plateau edge lies strictly between the centre and the ring: ' + px + ',' + py);
   assert.strictEqual(alphaAt(data, w, cx, cy), 255, 'the centre is opaque');
-  assert.strictEqual(alphaAt(data, w, cx - ix + 1, cy - iy + 1), 255, 'just inside the player\'s corner is opaque (the rounded-corner gap shows the frame, not a notch)');
+  for (const [x, y, label] of [[px, cy, 'right plateau edge'], [w - 1 - px, cy, 'left plateau edge'], [cx, py, 'bottom plateau edge'], [cx, h - 1 - py, 'top plateau edge'], [px, py, 'the player\'s bottom-right corner'], [w - 1 - px, h - 1 - py, 'the player\'s top-left corner']]) assert.strictEqual(alphaAt(data, w, x, y), 255, label + ' (' + x + ',' + y + ') is opaque: the whole player rectangle, incl. its rounded-corner gaps, shows the frame');
+  for (const [x, y, label] of [[px + 1, cy, 'one right of the plateau'], [w - 2 - px, cy, 'one left of the plateau'], [cx, py + 1, 'one below the plateau'], [cx, h - 2 - py, 'one above the plateau']]) assert.ok(alphaAt(data, w, x, y) < 255, label + ' (' + x + ',' + y + ') already falls: ' + alphaAt(data, w, x, y));
   for (let x = 0; x < w; x++) { assert.strictEqual(alphaAt(data, w, x, 0), 0, 'top ring x=' + x); assert.strictEqual(alphaAt(data, w, x, h - 1), 0, 'bottom ring x=' + x); }
   for (let y = 0; y < h; y++) { assert.strictEqual(alphaAt(data, w, 0, y), 0, 'left ring y=' + y); assert.strictEqual(alphaAt(data, w, w - 1, y), 0, 'right ring y=' + y); }
   // monotonic non-increasing outward along the mid row and the mid column
@@ -170,7 +176,7 @@ function harness(opts) {
   // A content-addressed fake PNG: the same bitmap -> the same URL, a different tile -> a different URL.
   const canvas = {
     getContext: () => (opts && opts.throwOnRead ? { drawImage() {}, getImageData() { throw new Error('tainted'); } } : ctx),
-    toDataURL: (type) => { const last = puts[puts.length - 1]; let hsh = 0; for (let i = 0; i < last.length; i++) hsh = (hsh * 31 + last[i]) >>> 0; return 'data:' + type + ';base64,' + hsh.toString(36); },
+    toDataURL: (type) => { if (opts && opts.nonPng) return 'data:,'; const last = puts[puts.length - 1]; let hsh = 0; for (let i = 0; i < last.length; i++) hsh = (hsh * 31 + last[i]) >>> 0; return 'data:' + type + ';base64,' + hsh.toString(36); },
   };
   const loads = [];
   const pendingLoads = []; // when opts.slowLoads: resolvers, released by h.release()
@@ -337,6 +343,20 @@ test('v1.312 gate F4 (M16): a SLOW sprite is requested ONCE across many clocks, 
   assert.strictEqual(h.loads.length, 1);
 });
 
+test('v1.313 gate QA-2: a toDataURL that yields no PNG (WebKit\'s "data:," on an unencodable canvas) is a FAILED source - falls sprite -> poster, then paints NOTHING, never hard-fails or loops', async () => {
+  const h = harness({ nonPng: true, images: { '/storyboard/vid1': { naturalWidth: 3200, naturalHeight: 720 }, '/thumbnail/vid1': { naturalWidth: 640, naturalHeight: 360 } } });
+  h.engine.start(); await h.settle(); await h.settle();
+  for (let i = 0; i < 5; i++) { h.tick(); await h.settle(); }
+  assert.deepStrictEqual(h.loads, ['/storyboard/vid1', '/thumbnail/vid1'], 'the sprite was tried, then the poster');
+  assert.strictEqual(h.front(), null, 'nothing was ever painted (no url("data:,") reaches the layer)');
+  assert.strictEqual(h.engine.painted(), null);
+  assert.strictEqual(h.draws.length, 2, 'each rung sampled ONCE, then left failed - no re-sample loop');
+  assert.strictEqual(h.engine.hardFailed(), false, 'a non-PNG is a failed rung, not a hard failure');
+  assert.strictEqual(h.hardFails(), 0);
+  assert.strictEqual(h.engine.running(), true, 'the clock stays armed (a later source change may still paint)');
+  for (const l of h.layers) assert.strictEqual(l.vars['background-image'], undefined);
+});
+
 test('v1.312 THE CONSTRAINT: the engine never hands the VIDEO element to drawImage - only the loaded image', async () => {
   const h = harness();
   h.engine.start(); await h.settle();
@@ -357,7 +377,8 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.match(ENGINE_SRC, /c\.putImageData\(id, 0, 0\)[\s\S]*canvas\.toDataURL\('image\/png'\)/, 'written back, then encoded as a PNG');
   assert.match(ENGINE_SRC, /url\.indexOf\('data:image\/png'\) === 0/, 'anything but a PNG data URL is a failed sample (never a canvas/element() paint reference)');
   assert.match(ENGINE_SRC, /back\.style\.setProperty\('background-image', 'url\("' \+ dataUrl \+ '"\)'\)/, 'the back layer paints the bitmap as a plain background-image');
-  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|element\(|filter|transform/, 'no paint reference to a live canvas/element and no filter/transform from JS either');
+  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint)\(/, 'no paint reference to a live canvas/element/paint worklet in any STRING the ambient JS writes');
+  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /(?:^|[^a-z])(?:filter|transform|backdrop|will-?change|scale|translate|rotate|offset-?path|animation)\b/i, 'no filter/transform/scale/translate/rotate/animation from JS either, in any spelling (gate r1 adversary F3: style.webkitFilter / style.scale slipped a case-sensitive two-word lock)');
   assert.doesNotMatch(WIRING_SRC, /drawImage|getContext|captureStream|requestVideoFrameCallback/, 'the wiring never touches a canvas or the video\'s frames');
   assert.doesNotMatch(ENGINE_SRC, /video\.(videoWidth|videoHeight|captureStream|requestVideoFrameCallback)/, 'the engine reads the video for currentTime only');
   assert.match(ENGINE_SRC, /Number\(video\.currentTime\)/, 'currentTime is the ONLY thing read off the video');
@@ -412,11 +433,18 @@ test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a f
   const rules = stageAndGlowRules();
   assert.ok(rules.length >= 9, 'the glow + stage rules exist (' + rules.length + ')'); // glow: base, is-on, layer, is-front, light belt, reduced-motion; stage: base, mobile clip, the fullscreen z-index drop
   assert.ok(rules.some((r) => /^\.watch-player-stage$/.test(r.selector)), 'the stage base rule is in the sweep');
+  // Gate r1 adversary F1: property names are case-insensitive and Safari honours its own
+  // prefixed spellings (WebKit CSSProperties.json: -webkit-filter / -webkit-transform /
+  // -webkit-mask-image are aliases, -webkit-backdrop-filter is its OWN property, -webkit-mask
+  // is a shorthand over mask-image; scale / translate / rotate are real properties; a
+  // transform can also arrive through @keyframes + animation). One sweep, every spelling.
+  const FORBIDDEN_PROP = /(^|[\s;{])(?:-webkit-|-moz-|-ms-)?(?:filter|backdrop-filter|transform(?:-[a-z-]+)?|mask(?:-[a-z-]+)?|will-change|mix-blend-mode|scale|translate|rotate|offset(?:-[a-z-]+)?|animation(?:-[a-z-]+)?|perspective|contain|isolation)\s*:/i;
+  const FORBIDDEN_PAINT = /-webkit-canvas\(|-moz-element\(|(?:^|[^a-z-])element\(|gradient\(|image-set\(|cross-fade\(|paint\(|url\(/i;
   for (const r of rules) {
-    for (const prop of ['filter', 'transform', 'mask-image', '-webkit-mask-image', 'mask', 'backdrop-filter', 'will-change', 'mix-blend-mode']) {
-      assert.doesNotMatch(r.body, new RegExp('(^|[\\s;])' + prop.replace(/[-]/g, '\\-') + '\\s*:'), r.selector + ' must not declare ' + prop);
-    }
+    assert.doesNotMatch(r.body, FORBIDDEN_PROP, r.selector + ' must not declare a filter / transform / mask / will-change / animation in ANY spelling: ' + (FORBIDDEN_PROP.exec(r.body) || [''])[0]);
+    assert.doesNotMatch(r.body, FORBIDDEN_PAINT, r.selector + ' must not paint from a canvas / element / gradient / url in the SHEET (the image is the engine\'s inline PNG data URL only): ' + (FORBIDDEN_PAINT.exec(r.body) || [''])[0]);
   }
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /@keyframes[^{]*\{[^}]*(?:ambient|stage)/i, 'no keyframes named for the glow/stage');
   assert.doesNotMatch(WATCH_HTML, /<canvas id="ambient-glow"/, 'the canvas is gone from the view');
   assert.match(WATCH_HTML, /<div id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden>\s*<div class="ambient-glow-layer"><\/div>\s*<div class="ambient-glow-layer"><\/div>\s*<\/div>/, 'a div pair: the glow with exactly two layers, born hidden');
 });

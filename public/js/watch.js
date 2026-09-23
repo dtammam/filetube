@@ -2365,9 +2365,9 @@ if (typeof module !== 'undefined' && module.exports) {
     //
     // v1.312 REBUILD (Dean, device: ambient ON blacked out every video on iOS):
     // this is now only the WIRING. The pipeline lives in createAmbientEngine
-    // (module level, unit-driven): colours come from the storyboard sprite tile
-    // at the current time (else the poster), sampled on an OFF-DOM canvas and
-    // painted as CSS gradients on two cross-fading divs. The <video> element is
+    // (module level, unit-driven): the storyboard sprite tile at the current
+    // time (else the poster) is drawn OFF-DOM onto a tiny bitmap, vignetted, and
+    // set as the layer's background-image (v1.313; two cross-fading divs). The <video> element is
     // read for currentTime/paused only - its pixels are NEVER drawn, and nothing
     // beside it carries a filter/transform/mask (the two iOS suspects).
     function setupAmbientMode() {
