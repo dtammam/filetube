@@ -1248,6 +1248,14 @@ if (typeof module !== 'undefined' && module.exports) {
       mp.addEventListener('ended', function () { endedRewindHold = true; }, { signal: signal });
       mp.addEventListener('play', function () { endedRewindHold = false; }, { signal: signal });
       mp.addEventListener('loadstart', function () { endedRewindHold = false; }, { signal: signal });
+      // gate r1 S4 (adversary, measured): a paused SEEK after the end (autoplay off, no advance)
+      // is the user moving, not the cascade's rewind (which lands at 0) - release the hold and
+      // re-reflect, so Next follows the chapter the user sought into.
+      mp.addEventListener('seeked', function () {
+        if (!endedRewindHold || !(mp.currentTime > 0.5)) return;
+        endedRewindHold = false;
+        reflectChapter();
+      }, { signal: signal });
     }
     // v1.278 (Dean): the "Watch" way back, hoisted from the sticker config so the desktop
     // actions menu reuses it (one truth). visible = the playing item is a listen track;
@@ -1517,6 +1525,9 @@ if (typeof module !== 'undefined' && module.exports) {
           });
         }
       }
+      // v1.311.3 (gate r1, QA S2): a rotate out of the skin lands here with the panel still
+      // wearing `mms mms-full mms-<skin>` - the desktop panel is never the skin.
+      nowPlayingPanel.className = 'music-nowplaying-panel';
       nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(nowPlaying, rows);
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);

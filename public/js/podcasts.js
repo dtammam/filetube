@@ -954,6 +954,7 @@
       // v1.311.3: the desktop panel never wears the skin's full-screen body class (music's
       // renderNowPlayingSkin parity) - a rotate out of the mobile skin lands here.
       try { document.body.classList.remove('mms-on'); } catch (_) { /* ignore */ }
+      nowPlayingPanel.className = 'music-nowplaying-panel'; // gate r1 QA S2: nor its skin classes
       var S = window.FileTubeSkinSurface;
       var subline = [nowPlaying.showName, formatEpisodeMeta(nowPlaying)].filter(function (x) { return typeof x === 'string' && x; }).join(' · ');
       nowPlayingPanel.innerHTML = (S && typeof S.buildPanelHtml === 'function')

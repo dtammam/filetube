@@ -448,3 +448,29 @@ test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open
     try { pipDom.window.close(); } catch (_) { /* already closed by the resize arm */ }
   }
 });
+
+// v1.311.3 gate r1 W2 (adversary: the wiring was source-locked only - a dead call survived).
+// Dean: "rotating the phone locks all scrolling". A crossing of the 768px gate must RE-RENDER
+// the panel through the view: narrow -> wide drops the skin (panel classes + body.mms-on, which
+// hides scrollbars at every width and stops critters), wide -> narrow paints it again.
+test('v1.311.3: a rotate across the 768px gate un-renders the podcast skin and a rotate back re-paints it', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  const mm = { narrow: true };
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    const body = dom.window.document.body;
+    await playEp(dom, 0);
+    assert.match(panel(dom).className, /\bmms-full\b/, 'precondition: narrow + podcast -> the full-screen skin');
+    assert.ok(body.classList.contains('mms-on'), 'precondition: mms-on is up');
+    mm.narrow = false;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle();
+    assert.doesNotMatch(panel(dom).className, /\bmms\b|\bmms-full\b/, 'wide: the panel is the desktop panel, no skin classes');
+    assert.ok(panel(dom).querySelector('.mnp-queue'), 'wide: the desktop episode queue rendered');
+    assert.ok(!body.classList.contains('mms-on'), 'wide: mms-on is gone');
+    mm.narrow = true;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle();
+    assert.match(panel(dom).className, /\bmms-full\b/, 'rotating back re-paints the skin');
+    assert.ok(body.classList.contains('mms-on'), 'and mms-on returns');
+  }, { meta, mm });
+});

@@ -1165,8 +1165,19 @@
       try { return win.getComputedStyle(panel).position === 'fixed'; } catch (_) { return true; }
     }
     function onViewportChange() {
-      healGhostLock();
-      if (!bodyScrollLock || panelCovers()) return;
+      if (panelCovers()) { healGhostLock(); return; }
+      // v1.311.3 gate r1 W1 (adversary, measured): a rotate DURING a wheel scrub left a
+      // deferred repaint queued (paint() defers while a spin can reach endWheel); the
+      // finger's pointerup flushed it, re-drew the full skin over the desktop panel and
+      // re-locked the body. Drop the deferred paint FIRST (endWheel flushes paintPending),
+      // then end the spin, then release. Before the ghost heal, not after: the view's
+      // re-render has usually detached the ghost already, and the heal would release and
+      // leave the deferred paint armed.
+      paintPending = false;
+      if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* the node is already gone */ } }
+      // A real resize runs a microtask checkpoint between listeners, so the ghost
+      // observer may already have released the lock after the view's re-render.
+      if (!bodyScrollLock) return;
       unlockBodyScroll();
       unwatchGhost();
       if (wheelGhost) { try { wheelGhost.remove(); } catch (_) { /* already gone */ } }
@@ -1300,7 +1311,14 @@
       // v1.271: FLUSH a repaint deferred during this gesture. Last, so wheelSpin is
       // already null (paint() would otherwise re-defer forever) and the haptic teardown
       // has settled before the panel is replaced.
-      if (paintPending) paint();
+      // v1.311.3 gate r1 W1: only into a panel that is still the SKIN. Every view
+      // un-render (a dock, a rotate to the desktop panel) resets the panel's classes; a
+      // flush after that re-drew the full skin over what the view put there (un-hiding a
+      // docked panel, re-locking the body in landscape).
+      if (paintPending) {
+        if (panel.classList.contains('mms-full')) paint();
+        else paintPending = false;
+      }
     }
     function onDown(e) {
       wheelSuppressClick = false;

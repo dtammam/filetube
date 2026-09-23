@@ -1903,3 +1903,29 @@ test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a C
     assert.ok(!/mms-zune-classic/.test(pipPanelOf(pip).className), 'the brown Zune body never leaks into the Nano tray');
   } });
 });
+
+// v1.311.3 gate r1 W2 (adversary: the music.js wiring was source-locked only - a dead call
+// survived). A crossing of the 768px gate re-runs updateNowPlayingPanel: narrow -> wide drops
+// the skin (and body.mms-on), wide -> narrow paints it again. Driven with the REAL window
+// resize and the REAL music-skins isMobileViewport (read live from matchMedia).
+test('v1.311.3: a rotate across the 768px gate un-renders the music skin and a rotate back re-paints it', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom) => {
+    const body = dom.window.document.body;
+    const el = panel(dom);
+    assert.match(el.className, /\bmms-full\b/, 'precondition: the full-screen skin');
+    let narrow = true;
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q) ? narrow : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    narrow = false;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle();
+    assert.doesNotMatch(el.className, /\bmms-full\b/, 'wide: no skin classes on the panel');
+    assert.strictEqual(el.querySelector('[data-skin-play]'), null, 'wide: the skin transport is gone');
+    assert.ok(!body.classList.contains('mms-on'), 'wide: mms-on is gone');
+    narrow = true;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle();
+    assert.match(el.className, /\bmms-full\b/, 'rotating back re-paints the skin');
+    assert.ok(el.querySelector('[data-skin-play]'), 'with its transport');
+    assert.ok(body.classList.contains('mms-on'), 'and mms-on');
+  } });
+});

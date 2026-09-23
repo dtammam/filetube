@@ -331,6 +331,30 @@ test('v1.311.3: after the end rewind, a PLAY (a loop replay / the user) re-refle
   });
 });
 
+test('v1.311.3 gate r1 S3/S4: the end hold clears on a new LOAD, and a paused SEEK after the end follows the user', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(250); await settle();
+    mp.dispatchEvent(new dom.window.Event('ended'));
+    set(0); await settle();
+    assert.strictEqual(playingId(dom), 'film::c2', 'held on the end rewind');
+    // S4: autoplay off, no advance - the user drags into chapter two while paused
+    set(150);
+    mp.dispatchEvent(new dom.window.Event('seeked'));
+    await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'a paused seek after the end re-reflects the chapter sought into');
+    ctx.getNav().onNext(); await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c2', 'and Next follows it (chapter three), not the stale radio arm');
+    // S3: a fresh end, then a new load (loadstart) - the hold must not survive it
+    mp.dispatchEvent(new dom.window.Event('ended'));
+    set(0); await settle();
+    mp.dispatchEvent(new dom.window.Event('loadstart'));
+    set(130); await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'after a loadstart the watcher reflects again');
+  });
+});
+
 // ---- v1.311 (Dean, first-class chapters): a SELECTED chapter exits after its own segment -------
 // Tapping ONE chapter row plays only that chapter's segment and then EXITS to the station (a related
 // new album), never bleeding into the rest of the shared file. The album's Play button still plays
