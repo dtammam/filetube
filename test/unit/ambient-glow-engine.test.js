@@ -456,7 +456,7 @@ test('v1.313 CSS PAINT: the layer is a plain background-image slot (100% 100%, n
   assert.match(layer.body, /background-size:\s*100% 100%/, 'the bitmap is stretched to the whole layer (its inner rectangle IS the player box)');
   assert.match(layer.body, /background-repeat:\s*no-repeat/);
   assert.doesNotMatch(layer.body, /gradient\(|--ag-|background-image:|background:/, 'no CSS-side paint: the image is set inline by the engine, one continuous bitmap (v1.313: the eight gradients had hard band ends + corner notches)');
-  assert.doesNotMatch(layer.body, /image-rendering/, 'the default bilinear upscale IS the softness');
+  for (const r of stageAndGlowRules()) assert.doesNotMatch(r.body, /image-rendering/, r.selector + ': the default bilinear upscale IS the softness (no pixelated/crisp-edges override anywhere near the glow)');
   assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /--ag-[a-z]+|--ambient-band-/, 'the swatch vars and band vars are gone from the sheet');
   assert.match(layer.body, /transition:\s*opacity var\(--ambient-fade\) linear/, 'the cross-fade');
   assert.match(layer.body, /opacity:\s*0/, 'a layer is invisible until it is the front');
