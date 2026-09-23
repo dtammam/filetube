@@ -578,8 +578,25 @@ function buildMusicSkeletonRows(n) {
   return '<div class="music-song-list">' + rows + '</div>';
 }
 
+// v1.311.3 (Dean's ruling): where a chapter TAP starts. A saved place inside the chapter
+// resumes there (v1.222), but one in the chapter's last CHAPTER_RESUME_TAIL_SEC - where a
+// chapter you just heard to its end leaves it, since the solo exit saves at the boundary -
+// starts the chapter over. Before this, re-tapping that chapter played ~0.3s of it and then
+// exited to radio. Returns the absolute file second to seek, or undefined for the chapter
+// head. `item` is a library-chapter track (chapterStartSec + durationSec = its own span).
+var CHAPTER_RESUME_TAIL_SEC = 5;
+function chapterResumeSecFor(item) {
+  var p = item && item.progress;
+  if (!p || typeof p.resumeSec !== 'number' || !isFinite(p.resumeSec)) return undefined;
+  var start = Number(item.chapterStartSec) || 0;
+  var span = Number(item.durationSec) || 0;
+  if (span > 0 && p.resumeSec >= start + span - CHAPTER_RESUME_TAIL_SEC) return undefined;
+  return p.resumeSec;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -2334,7 +2351,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // resume-tap seeks instead of the chapter head.
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
-        chapterResumeSec: (isChapter && item.progress && typeof item.progress.resumeSec === 'number') ? item.progress.resumeSec : undefined,
+        chapterResumeSec: isChapter ? chapterResumeSecFor(item) : undefined, // v1.311.3: near its end -> the chapter head
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
