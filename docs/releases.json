@@ -3118,5 +3118,11 @@
     "date": "2026-09-23",
     "title": "Rotating the phone no longer traps music or locks the page",
     "intent": "Turning your phone sideways and back while music plays no longer locks scrolling or leaves you stuck on a full-screen up-next list with no controls, and a swipe from the edge works again as a way back out (it only holds off on sliders and the click wheel). A chaptered album now plays every chapter before moving on to something new instead of starting over from the second chapter, and tapping a chapter you just finished starts it from the top."
+  },
+  {
+    "version": "1.312.0",
+    "date": "2026-09-23",
+    "title": "Ambient mode no longer blacks out video on your phone",
+    "intent": "If you had Ambient mode on, videos on iPhone were going black a second in while the sound kept playing - an earlier note blamed the previous update, but it turned out to be Ambient mode itself, on every version. The glow has been rebuilt from the ground up so it never touches the video: it now takes its colours from the video's own preview frames and spreads them as a soft light around the player, closer to how YouTube does it - gentler and reaching a little way past the edges rather than a blurred copy. The 'Ambient amount' picker is gone; there's one calibrated look now, and the Ambient switch in the player's gear menu works exactly as before."
   }
 ]

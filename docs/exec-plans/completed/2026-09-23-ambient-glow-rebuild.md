@@ -3,8 +3,8 @@ plan: ambient-glow-rebuild
 harness: v2 · lean
 branch: fix/ambient-glow-rebuild
 anchor: spec
-status: Gate:APPROVED r2 @33275a31
-next: Dean iPhone check (ambient ON, dark: the picture stays; faux-fullscreen drag) on an edge build, then release v1.312.0 per docs/RELEASING.md
+status: Shipped v1.312.0
+next: Dean's iPhone check on v1.312.0 (ambient ON, dark: the picture stays inline + fullscreen; the fullscreen-drag page move); if black persists, re-root-cause (never patch the theory)
 design: Approved 2026-09-23 @bd9c476f
 gate: APPROVED r2 @33275a31 — adversary, qa, security-brief
 ---
