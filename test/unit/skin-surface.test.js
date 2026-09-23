@@ -1604,3 +1604,26 @@ test('v1.271 slim round-2 S1: ending a STALE spin from paint() tears its fast-sc
     assert.strictEqual(ct, at, 'and currentTime stops advancing - no runaway scan behind a repainted panel');
   } finally { restore(); }
 });
+
+// v1.311.2: the haptic lock is ONE OWNER of the shared body-scroll-lock.js, keyed
+// per engine - it must never share a key with the player's immersive owners (or
+// another engine), or a skin teardown would release a lock faux fullscreen /
+// the expanded audio view still needs.
+test('v1.311.2: the skin releases ONLY its own hold - a player owner that also holds the body keeps it pinned', () => {
+  const b = bootHaptic({});
+  try {
+    const BL = require('../../public/js/body-scroll-lock.js');
+    const doc = b.dom.window.document;
+    BL.lock(doc, b.dom.window, 'faux-fullscreen');
+    BL.lock(doc, b.dom.window, 'audio-expanded');
+    b.engine.paint();
+    assert.strictEqual(doc.body.style.position, 'fixed', 'precondition: pinned');
+    b.engine.destroy();
+    assert.strictEqual(doc.body.style.position, 'fixed', 'the player owners still hold the body after the skin lets go');
+    assert.strictEqual(BL.holds(doc, 'faux-fullscreen'), true);
+    assert.strictEqual(BL.holds(doc, 'audio-expanded'), true);
+    BL.release(doc, b.dom.window, 'faux-fullscreen');
+    BL.release(doc, b.dom.window, 'audio-expanded');
+    assert.strictEqual(doc.body.style.position, '', 'the last player release unpins');
+  } finally { b.restore(); }
+});

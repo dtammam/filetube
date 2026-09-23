@@ -135,3 +135,18 @@ x/y/w/h, rows, column width, stars, title, description, docScrollWidth) is
 IDENTICAL at all six widths. One BEFORE run (375) failed to launch Chromium
 ("never exposed its debug endpoint") and was re-run alone - the documented
 multi-launch residual, not a measurement.
+
+## Mutation record (builder's own, @825947aa, /tmp sandbox from `git archive`)
+
+22 mutants over the new mechanisms, each run against the 9 targeted test files:
+M1 touchstart stand-down removed · M2 range selector dropped · M2b slider selector
+dropped · M3 release-time immersive check removed · M4 touch-action net off ·
+M4b `.mms-full` dropped · M5 last-owner rule removed · M5b join re-captures ·
+M6 faux lock removed · M7 faux release restores · M8 audio lock removed · M9 grace
+arm removed · M10 pointerType guard removed · M10b grace not cleared on exit ·
+M11 critter always swallows · M12 critter mousedown suppress on buttons · M13 router
+swap bypasses the lock · M14 router record bypasses the lock · M15 skin release
+dropped · M16 deferred Y ignored · M17 grace CSS dropped: all KILLED.
+M18 (the skin's owner key collides with `faux-fullscreen`) SURVIVED the first run.
+Bound by a new skin-surface test (a skin teardown leaves player owners pinned), and
+both collision variants (`faux-fullscreen`, `audio-expanded`) are now KILLED.
