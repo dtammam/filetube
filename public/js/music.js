@@ -578,8 +578,25 @@ function buildMusicSkeletonRows(n) {
   return '<div class="music-song-list">' + rows + '</div>';
 }
 
+// v1.311.3 (Dean's ruling): where a chapter TAP starts. A saved place inside the chapter
+// resumes there (v1.222), but one in the chapter's last CHAPTER_RESUME_TAIL_SEC - where a
+// chapter you just heard to its end leaves it, since the solo exit saves at the boundary -
+// starts the chapter over. Before this, re-tapping that chapter played ~0.3s of it and then
+// exited to radio. Returns the absolute file second to seek, or undefined for the chapter
+// head. `item` is a library-chapter track (chapterStartSec + durationSec = its own span).
+var CHAPTER_RESUME_TAIL_SEC = 5;
+function chapterResumeSecFor(item) {
+  var p = item && item.progress;
+  if (!p || typeof p.resumeSec !== 'number' || !isFinite(p.resumeSec)) return undefined;
+  var start = Number(item.chapterStartSec) || 0;
+  var span = Number(item.durationSec) || 0;
+  if (span > 0 && p.resumeSec >= start + span - CHAPTER_RESUME_TAIL_SEC) return undefined;
+  return p.resumeSec;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -1058,6 +1075,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // repaint killed the live drag - and paint() now DEFERS during a spin, which
       // fixes that at the seam for every trigger, not just this one. The structural fix
       // subsumes the point fix, so the point fix is a behaviour change with no benefit.
+      // v1.311.3 (Dean: "a chaptered album should play ALL its chapters before radio" - found
+      // end to end): at the whole-file end the player's ended cascade rewinds the element to 0
+      // (runEndedCompletionCascade), and that rewind's timeupdate read as a cross back INTO
+      // chapter 1 - registerTrackNav(0) replaced the last chapter's radio-armed onNext with
+      // playAt(1), and the ended advance (async, after /api/queue) then replayed the album from
+      // chapter 2, forever. The rewind is not a playthrough: hold the last chapter (and its armed
+      // nav) until the element plays again - a loop replay or a user play re-reflects normally.
+      if (endedRewindHold) return;
       var id = currentChapterId();
       if (!id || id === chapterViewId) return;
       chapterViewId = id;
@@ -1206,6 +1231,7 @@ if (typeof module !== 'undefined' && module.exports) {
       playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
     }
     var chapterReflectBound = false;
+    var endedRewindHold = false; // v1.311.3: set at 'ended', cleared at the next play/loadstart (see reflectChapter)
     function ensureChapterReflect() {
       if (chapterReflectBound) return;
       var mp = hostCtl('media-player'); if (!mp) return;
@@ -1219,6 +1245,17 @@ if (typeof module !== 'undefined' && module.exports) {
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', enforceChapterExit, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
+      mp.addEventListener('ended', function () { endedRewindHold = true; }, { signal: signal });
+      mp.addEventListener('play', function () { endedRewindHold = false; }, { signal: signal });
+      mp.addEventListener('loadstart', function () { endedRewindHold = false; }, { signal: signal });
+      // gate r1 S4 (adversary, measured): a paused SEEK after the end (autoplay off, no advance)
+      // is the user moving, not the cascade's rewind (which lands at 0) - release the hold and
+      // re-reflect, so Next follows the chapter the user sought into.
+      mp.addEventListener('seeked', function () {
+        if (!endedRewindHold || !(mp.currentTime > 0.5)) return;
+        endedRewindHold = false;
+        reflectChapter();
+      }, { signal: signal });
     }
     // v1.278 (Dean): the "Watch" way back, hoisted from the sticker config so the desktop
     // actions menu reuses it (one truth). visible = the playing item is a listen track;
@@ -1488,6 +1525,9 @@ if (typeof module !== 'undefined' && module.exports) {
           });
         }
       }
+      // v1.311.3 (gate r1, QA S2): a rotate out of the skin lands here with the panel still
+      // wearing `mms mms-full mms-<skin>` - the desktop panel is never the skin.
+      nowPlayingPanel.className = 'music-nowplaying-panel';
       nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(nowPlaying, rows);
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
@@ -1624,6 +1664,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
     activePopoutTeardown = teardownPopout; // destroy() closes the pop-out on a cross-view swap
+    // v1.311.3 (Dean: a rotate in music mode locked all scrolling): a crossing of the
+    // mobile skin gate re-runs the panel update, so the full-screen skin un-renders on a
+    // rotate to landscape (its body lock goes with its ghost) and paints again on the way
+    // back. The shared helper - podcasts.js routes through the same one.
+    if (SkinSurface && typeof SkinSurface.watchSkinViewport === 'function') {
+      SkinSurface.watchSkinViewport(window, function () { updateNowPlayingPanel(); }, signal);
+    }
 
     // Tapping the line drills into the playing track's album.
     if (nowPlayingEl) {
@@ -2315,7 +2362,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // resume-tap seeks instead of the chapter head.
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
-        chapterResumeSec: (isChapter && item.progress && typeof item.progress.resumeSec === 'number') ? item.progress.resumeSec : undefined,
+        chapterResumeSec: isChapter ? chapterResumeSecFor(item) : undefined, // v1.311.3: near its end -> the chapter head
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,

@@ -288,6 +288,74 @@ test('v1.311: a natural playthrough to the LAST chapter arms the radio (stations
   }, { radio: RADIO });
 });
 
+// v1.311.3 (Dean: "a chaptered album should play ALL its chapters before radio", reproduced END TO
+// END in headless Chromium): the test above fires onNext straight after the arm - it never drove the
+// whole-file END. At 'ended' the player's cascade rewinds the element to 0 (runEndedCompletionCascade)
+// BEFORE the async ended-advance resolves, and that rewind's timeupdate read as a cross back into
+// chapter one: registerTrackNav(0) replaced the armed onNext with playAt(1) and the album looped from
+// chapter two. Drive the REAL order: arm on the last chapter, 'ended', the rewind tick, THEN the advance.
+test('v1.311.3: the whole-file END rewind does not re-register nav - the ended advance stations on', async () => {
+  const RADIO = [{ id: 'next-album-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle();
+    set(250); await settle();  // the LAST chapter: the radio arms
+    await ctx.drain();
+    set(360); await settle();
+    mp.dispatchEvent(new dom.window.Event('ended'));
+    set(0); await settle();    // the cascade's el.currentTime = 0 -> its timeupdate
+    mp.dispatchEvent(new dom.window.Event('seeked')); await settle(); // ...and the rewind's own seeked (at 0)
+    await ctx.drain();
+    assert.strictEqual(playingId(dom), 'film::c2', 'the rewind is not a cross: the last chapter stays shown');
+    ctx.getNav().onNext();     // the ended advance (handleAutoplayNext -> fallbackToTrackNav)
+    await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'next-album-track', 'the album END stations on - never back into chapter two');
+  }, { radio: RADIO });
+});
+
+test('v1.311.3: after the end rewind, a PLAY (a loop replay / the user) re-reflects chapter one normally', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(250); await settle();
+    assert.strictEqual(playingId(dom), 'film::c2');
+    mp.dispatchEvent(new dom.window.Event('ended'));
+    set(0); await settle();
+    assert.strictEqual(playingId(dom), 'film::c2', 'held on the end rewind');
+    mp.dispatchEvent(new dom.window.Event('play'));
+    set(1); await settle();
+    assert.strictEqual(playingId(dom), 'film::c0', 'playing again from the top shows chapter one (the hold is not sticky)');
+    const nav = ctx.getNav();
+    nav.onNext(); await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'and Next is registered around chapter one again');
+  });
+});
+
+test('v1.311.3 gate r1 S3/S4: the end hold clears on a new LOAD, and a paused SEEK after the end follows the user', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { mp, set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(250); await settle();
+    mp.dispatchEvent(new dom.window.Event('ended'));
+    set(0); await settle();
+    assert.strictEqual(playingId(dom), 'film::c2', 'held on the end rewind');
+    // S4: autoplay off, no advance - the user drags into chapter two while paused
+    set(150);
+    mp.dispatchEvent(new dom.window.Event('seeked'));
+    await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'a paused seek after the end re-reflects the chapter sought into');
+    ctx.getNav().onNext(); await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c2', 'and Next follows it (chapter three), not the stale radio arm');
+    // S3: a fresh end, then a new load (loadstart) - the hold must not survive it
+    mp.dispatchEvent(new dom.window.Event('ended'));
+    set(0); await settle();
+    mp.dispatchEvent(new dom.window.Event('loadstart'));
+    set(130); await settle();
+    assert.strictEqual(playingId(dom), 'film::c1', 'after a loadstart the watcher reflects again');
+  });
+});
+
 // ---- v1.311 (Dean, first-class chapters): a SELECTED chapter exits after its own segment -------
 // Tapping ONE chapter row plays only that chapter's segment and then EXITS to the station (a related
 // new album), never bleeding into the rest of the shared file. The album's Play button still plays

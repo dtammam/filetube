@@ -9934,17 +9934,21 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
 }
 // v1.311.2 (Dean, device-CONFIRMED): a rightward SCRUB of the seek bar travelled
 // past the threshold and fired history.back() on release - leaving the player and
-// dropping fullscreen. A drag that begins on something that OWNS horizontal
-// gestures is that thing's, never a back. Enumerated owners (the player and every
-// scrubber the app draws - the pc-range seek/volume on every shell, the skin
-// surfaces' role=slider seeks + click wheel + Brick, any other range/slider):
+// dropping fullscreen. A drag that begins on a SCRUBBER is that scrubber's, never a
+// back. v1.311.3 (Dean's scope ruling, "scrubbers only"): v1.311.2 also stood the
+// back down on the WHOLE player, the WHOLE full-screen skin and any view holding the
+// body lock - which took away the one escape from a skin stuck behind a pinned body.
+// Now only the things you actually drag sideways own the gesture: the pc-range
+// seek/volume on every shell, the skin seeks, the click wheel (and the Zune pad,
+// also .ip-wheel), the Brick paddle, the wheel-calibration stage, any other
+// range/slider. Everywhere else - the video, a skin's art, faux fullscreen - a
+// clear rightward swipe goes back again.
 const SWIPE_BACK_OWNER_SELECTORS = [
-  '#player-wrapper', '.player-container', '#player-dock', '#fs-stage',
-  '.mms-full', '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
-  '.whcal-overlay', // the wheel-calibration tool (Settings > Experimental) - gate W2
+  '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
+  '.whcal-stage', // the wheel-calibration tool's spin area (Settings > Experimental) - v1.311.2 gate W2
   'input[type="range"]', '[role="slider"]',
 ];
-// ...plus the NET for owners nobody listed yet: an element that took the
+// ...plus the NET for scrubbers nobody listed yet: an element that took the
 // browser's horizontal panning away (`touch-action: none`, or `pan-y` without
 // `pan-x`) has declared its sideways drag is its own (drag handles, the avatar
 // crop stage, the pc-range seek). Pure over one computed touch-action value.
@@ -9954,33 +9958,23 @@ function touchActionOwnsHorizontal(touchAction) {
   if (/\bnone\b/.test(ta)) return true;
   return /\bpan-y\b/.test(ta) && !/\bpan-x\b/.test(ta);
 }
-// While an IMMERSIVE view is up (faux fullscreen, the expanded audio view, native
-// fullscreen) there is no page to go back FROM - every drag belongs to the overlay.
-// v1.311.2 gate W2 (adversary, measured): the NET for overlays nobody listed - any
-// surface holding the shared body lock (body-scroll-lock.js: a full-screen skin's
-// haptic wheel, the wheel-calibration tool, whatever pins the page next) is an
-// overlay over a page that cannot move, so it owns every drag too.
-function swipeBackImmersiveLive(doc) {
-  if (!doc) return false;
-  const body = doc.body;
-  if (body && body.classList && (body.classList.contains('ft-css-fullscreen') || body.classList.contains('ft-audio-expanded'))) return true;
-  const BL = doc.defaultView && doc.defaultView.FileTubeBodyLock;
-  if (BL && typeof BL.isLocked === 'function' && BL.isLocked(doc)) return true;
-  return !!(doc.fullscreenElement || doc.webkitFullscreenElement);
-}
-// Why a drag starting at `startEl` must NOT be a back ('immersive' | 'owner' |
-// 'touch-action' | 'scroller'), or null when it may be one. Walks startEl up to
-// <body> once, reading each box's computed style (the v1.160.3 scroller guard
-// folded into the same walk).
+// v1.311.3: inside the full-screen skin, touch-action is a PAGE LOCK, not a gesture
+// claim - `.mms-full` is touch-action:none so the page behind cannot scroll, and its
+// lists are pan-y so they scroll vertically. Read as the NET, it made the whole skin
+// an owner again. Every skin scrubber is enumerated above, so the NET stands aside there.
+const SWIPE_BACK_NET_EXEMPT_ROOT = '.mms-full';
+// Why a drag starting at `startEl` must NOT be a back ('owner' | 'touch-action' |
+// 'scroller'), or null when it may be one. Walks startEl up to <body> once, reading
+// each box's computed style (the v1.160.3 scroller guard folded into the same walk).
 function swipeBackStandDownReason(startEl, doc, win) {
-  if (swipeBackImmersiveLive(doc)) return 'immersive';
   const ownerSel = SWIPE_BACK_OWNER_SELECTORS.join(',');
   const gcs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle.bind(win) : null;
+  const netOff = !!(startEl && typeof startEl.closest === 'function' && startEl.closest(SWIPE_BACK_NET_EXEMPT_ROOT));
   for (let node = startEl; node && node.nodeType === 1 && node !== doc.body; node = node.parentElement) {
     if (typeof node.matches === 'function' && node.matches(ownerSel)) return 'owner';
     const cs = gcs ? gcs(node) : null;
     if (!cs) continue;
-    if (touchActionOwnsHorizontal(cs.touchAction)) return 'touch-action';
+    if (!netOff && touchActionOwnsHorizontal(cs.touchAction)) return 'touch-action';
     if (isHorizontalScrollerBox(cs.overflowX, node.scrollWidth, node.clientWidth)) return 'scroller';
   }
   return null;
@@ -10013,8 +10007,8 @@ function wireSwipeBackGesture(doc, win, onBack) {
   doc.addEventListener('touchstart', (e) => {
     stopTracking(); // drop any stale drag (missed end / second finger)
     if (!e.touches || e.touches.length !== 1) return;
-    // v1.311.2: a drag that starts on a gesture OWNER (the player, a scrubber, a
-    // skin, a horizontal scroller) or during an immersive view is never tracked.
+    // v1.311.2/.3: a drag that starts on a scrubber (or a horizontal scroller) is
+    // never tracked.
     if (e.target && swipeBackStandDownReason(e.target, doc, win)) return;
     const t = e.touches[0];
     track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, claimed: false };
@@ -10034,9 +10028,6 @@ function wireSwipeBackGesture(doc, win, onBack) {
     if (!track) return;
     const g = { deltaX: track.x - track.startX, deltaY: track.y - track.startY };
     stopTracking();
-    // An immersive view that came up MID-drag (a rotate into faux fullscreen)
-    // owns the release too.
-    if (swipeBackImmersiveLive(doc)) return;
     if (decideSwipeBack(g)) onBack();
   };
   doc.addEventListener('touchend', finish, { passive: true });
@@ -15812,7 +15803,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // instead of going back).
     isHorizontalScrollerBox,
     // v1.311.2: the gesture-owner stand-down + the lifted wiring (driven in tests).
-    SWIPE_BACK_OWNER_SELECTORS, touchActionOwnsHorizontal, swipeBackImmersiveLive,
+    SWIPE_BACK_OWNER_SELECTORS, touchActionOwnsHorizontal, SWIPE_BACK_NET_EXEMPT_ROOT,
     swipeBackStandDownReason, wireSwipeBackGesture,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,

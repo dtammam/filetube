@@ -222,3 +222,62 @@ test('v1.222 (slice 4 SOURCE-LOCK): saveProgressToServer records a chapter under
   assert.match(fn, /if \(isChapterSave && !\(currentData && currentData\.baseMediaId\)\) return;/,
     'a chapter with no baseMediaId skips (never 404s the synthetic id)');
 });
+
+// v1.311.3 (Dean's ruling, found end to end): a chapter heard to its END leaves the saved place
+// at its boundary (the solo exit saves there), so re-tapping it resumed ~0.3s before the end and
+// exited to radio at once. A saved place in the chapter's last 5s now starts the chapter over;
+// one earlier inside it still resumes (the v1.222 test above is that control).
+test('v1.311.3: a chapter tap whose saved place is in its last 5s starts at the chapter head (real row click)', async () => {
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  const loads = [];
+  // chapter c1 spans [300, 900); the saved place 897.5 is 2.5s before its end
+  const endTrack = Object.assign({}, CHAPTER_TRACK, { id: 'djmix1::c1', progress: { position: 597.5, duration: 600, updatedAt: 'x', resumeSec: 897.5 } });
+  global.fetch = (url, init) => {
+    const method = (init && init.method) || 'GET';
+    if (method === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (String(url).indexOf('/api/music/albums') === 0 || String(url).indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (String(url).indexOf('/api/music') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [endTrack] }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  let mod = null;
+  dom.window.FileTube = {
+    registerView: (name, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
+    player: { currentId: null, getState: () => 'docked', expand: () => {}, setTrackNav: () => {}, load: (id, data) => { loads.push({ id, data }); } },
+  };
+  try { dom.window.localStorage.setItem('filetube_music_tab', 'songs'); } catch (_) { /* ignore */ }
+  try {
+    delete require.cache[musicPath];
+    require(musicPath);
+    mod.init(dom.window.document.getElementById('view-root'));
+    for (let i = 0; i < 10; i++) await settle();
+    dom.window.document.querySelector('.music-song-row').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    const load = loads.find((l) => l.id === 'djmix1::c1');
+    assert.ok(load, 'the chapter played');
+    assert.strictEqual(load.data.chapterResumeSec, undefined, 'no resume seek - the player starts at the chapter head');
+    assert.strictEqual(load.data.chapterStartSec, 300, 'the head it starts at is the chapter\'s own start');
+  } finally {
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
+});
+
+test('v1.311.3 chapterResumeSecFor: the 5s tail boundary, and every missing-input shape', () => {
+  delete global.window; delete global.document;
+  delete require.cache[musicPath];
+  const { chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC } = require(musicPath);
+  const ch = (resumeSec) => ({ chapterStartSec: 8, durationSec: 8, progress: { resumeSec } }); // [8, 16)
+  assert.strictEqual(CHAPTER_RESUME_TAIL_SEC, 5);
+  assert.strictEqual(chapterResumeSecFor(ch(10.99)), 10.99, 'just before the tail: resume');
+  assert.strictEqual(chapterResumeSecFor(ch(11)), undefined, 'the tail starts exactly 5s before the end');
+  assert.strictEqual(chapterResumeSecFor(ch(15.742205)), undefined, 'the saved place the end-to-end run saw: the chapter head');
+  assert.strictEqual(chapterResumeSecFor(ch(16)), undefined, 'at or past the end: the chapter head');
+  assert.strictEqual(chapterResumeSecFor({ chapterStartSec: 8, durationSec: 0, progress: { resumeSec: 30 } }), 30, 'an unknown span keeps the v1.222 resume');
+  assert.strictEqual(chapterResumeSecFor({ chapterStartSec: 8, durationSec: 8 }), undefined, 'no progress');
+  assert.strictEqual(chapterResumeSecFor({ chapterStartSec: 8, durationSec: 8, progress: { resumeSec: NaN } }), undefined, 'a non-finite save');
+  assert.strictEqual(chapterResumeSecFor(null), undefined);
+  delete require.cache[musicPath];
+});

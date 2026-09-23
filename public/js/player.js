@@ -8460,9 +8460,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.311.2 gate W1 (adversary, measured): the video twin of the line above. A
     // close() from faux fullscreen (watch.js closes a carried-immersive preload
     // whose detail fetch failed) used to strand only the class; with the real
-    // body lock it would strand a PINNED body (no scroll, no header/nav, no
-    // swipe-back) until the next load. No restoreScroll: close is never the
-    // user's fullscreen exit.
+    // body lock it would strand a PINNED body (no scroll, no header/nav) until
+    // the next load. No restoreScroll: close is never the user's fullscreen exit.
     setCssFullscreen(false);
     // FIX D (player-hardening round, hygiene): clear the native-controls
     // marker + attribute here too, mirroring teardownMediaState()'s identical

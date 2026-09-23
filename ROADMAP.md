@@ -86,6 +86,40 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.311.3 - Rotating and album fixes after v1.311.2 (2026-09-23)
+
+Dean's device reports after v1.311.2, diagnosed before any edit. **A rotate no longer locks
+the page or strands a skin:** the full-screen music/podcast skin is `position:fixed` only
+below 768px, so turning the phone sideways un-covered it while its wheel-haptics ghost kept
+the body pinned (a v1.256 strand that v1.311.2 made inescapable). The skin engine now
+releases the lock when a viewport change leaves the panel no longer covering the page (also
+mid wheel scrub, where a deferred repaint used to re-lock on the finger lift), and music +
+podcasts re-render their panel on every crossing through one shared `watchSkinViewport`.
+**Dean's stuck "up next" screen (diagnosed from his screenshot):** a chaptered listen repaints
+the panel at each chapter boundary; while sideways that drew the DESKTOP panel but kept the
+skin's full-screen classes, so rotating back covered the phone with a control-less list. The
+desktop panel now drops the skin classes, and the rotate back re-paints the real skin.
+**Swipe-back: scrubbers only (Dean's ruling):** it stands down on seek/volume bars, skin
+seeks, the click wheel, the Brick paddle and the wheel-calibration stage (plus the
+touch-action NET outside the skin), no longer on the whole player, the whole skin or under
+a body lock - so it is an escape again. **A chaptered album plays every chapter, then radio
+(verified end to end in headless Chromium):** at the file end the player's rewind to 0 read
+as a cross back into chapter one and replaced the radio hand-off, so the album looped from
+chapter two forever (a v1.311.0 bug). The chapter watcher now holds from `ended` until the
+next play/load (a paused seek releases it). **Re-tapping a chapter heard to its end starts it
+over** (Dean's ruling: a saved place in the chapter's last 5s loads the chapter head).
+
+Gate: FULL (adversary + qa). r1: QA APPROVED, Adversary CHANGES (a rotate mid wheel scrub
+re-locked on the finger lift; the view wiring was bound only by a source lock). Both fixed
+with bindings; 16 + 3 + 4 + 12 builder mutants killed. **Not fixed, disclosed:** on Dean's
+iPhone every video plays audio over a BLACK picture, inline too (this falsified the body-lock
+theory); the server/image are ruled out (identical base/ffmpeg layers across 1.311.0-1.311.2),
+a source bisect v1.309..HEAD finds no change to the video's visibility, and Playwright WebKit
+(iPhone emulation) paints the picture on v1.311.1, v1.311.2 and this build. The page behind
+video faux fullscreen still moves after a drag on device (synthetic drags show no leak).
+Both need an on-device observation or a `:1.311.1` pin. #6 (bottom nav after rotate) still
+waits on a device check.
+
 ### v1.311.2 - Player gestures that behave on iPhone (2026-09-23)
 
 Dean's on-device reports with custom player controls ON, fixed in priority order.

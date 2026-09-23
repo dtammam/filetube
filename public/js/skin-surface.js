@@ -960,6 +960,10 @@
       if (bound) return; bound = true;
       panel.addEventListener('click', onClick);
       panel.addEventListener('pointerdown', onDown);
+      try {
+        win.addEventListener('resize', onViewportChange);
+        win.addEventListener('orientationchange', onViewportChange);
+      } catch (_) { /* a detached fixture window */ }
     }
     function onClick(e) {
       if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
@@ -1147,6 +1151,39 @@
         unwatchGhost();
       }
     }
+    // v1.311.3 (Dean: rotating in music mode locked ALL scrolling). The full-screen skin is
+    // `position:fixed` only inside the `max-width:768px` block, so a rotate to landscape
+    // (~844px) turns the cover back into an in-page panel WITHOUT removing the ghost - the
+    // observer above never fires, and the body stayed pinned under a page that could no
+    // longer be covered. A viewport change re-asks the real question: does the panel still
+    // cover the page? If not, the lock (and the ghost that needs it) go. The view's own
+    // watchSkinViewport hook then re-renders; a rotate back re-paints and re-locks.
+    // Viewport-only on purpose: nothing else un-fixes the panel while its ghost stays
+    // attached (every view reset clears innerHTML, which the observer catches), and a
+    // computed-style read per timeupdate would cost a style recalc 4x a second.
+    function panelCovers() {
+      try { return win.getComputedStyle(panel).position === 'fixed'; } catch (_) { return true; }
+    }
+    function onViewportChange() {
+      if (panelCovers()) { healGhostLock(); return; }
+      // v1.311.3 gate r1 W1 (adversary, measured): a rotate DURING a wheel scrub left a
+      // deferred repaint queued (paint() defers while a spin can reach endWheel); the
+      // finger's pointerup flushed it, re-drew the full skin over the desktop panel and
+      // re-locked the body. Drop the deferred paint FIRST (endWheel flushes paintPending),
+      // then end the spin, then release. Before the ghost heal, not after: the view's
+      // re-render has usually detached the ghost already, and the heal would release and
+      // leave the deferred paint armed.
+      paintPending = false;
+      if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* the node is already gone */ } }
+      // A real resize runs a microtask checkpoint between listeners, so the ghost
+      // observer may already have released the lock after the view's re-render.
+      if (!bodyScrollLock) return;
+      unlockBodyScroll();
+      unwatchGhost();
+      if (wheelGhost) { try { wheelGhost.remove(); } catch (_) { /* already gone */ } }
+      wheelGhost = null;
+      panel.classList.remove('mms-haptic');
+    }
     // QA gate CRITICAL (v1.256 round 1): a PAUSED dock strands the lock - the view's
     // updateNowPlayingPanel clears the panel synchronously without destroy(), and with
     // the media paused NO reflect/click/endWheel ever runs again: the browse view is
@@ -1274,7 +1311,14 @@
       // v1.271: FLUSH a repaint deferred during this gesture. Last, so wheelSpin is
       // already null (paint() would otherwise re-defer forever) and the haptic teardown
       // has settled before the panel is replaced.
-      if (paintPending) paint();
+      // v1.311.3 gate r1 W1: only into a panel that is still the SKIN. Every view
+      // un-render (a dock, a rotate to the desktop panel) resets the panel's classes; a
+      // flush after that re-drew the full skin over what the view put there (un-hiding a
+      // docked panel, re-locking the body in landscape).
+      if (paintPending) {
+        if (panel.classList.contains('mms-full')) paint();
+        else paintPending = false;
+      }
     }
     function onDown(e) {
       wheelSuppressClick = false;
@@ -1446,6 +1490,10 @@
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);
+        try {
+          win.removeEventListener('resize', onViewportChange);
+          win.removeEventListener('orientationchange', onViewportChange);
+        } catch (_) { /* a detached fixture window */ }
       }
       if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* ignore */ } }
       extrasMenu.destroy();   // stop the reheat poll + invalidate a late extras fetch (shared factory)
@@ -1665,7 +1713,33 @@
     };
   }
 
-  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu };
+  // v1.311.3 (Dean: a rotate in music mode locked all scrolling): call `onCross(narrow)`
+  // whenever the viewport crosses the mobile skin gate (music-skins.js isMobileViewport,
+  // max-width 768px), so the VIEW re-runs its panel update - the skin un-renders on a
+  // rotate to landscape and paints (and re-locks) again on the way back. Before this,
+  // nothing re-checked the gate after the first paint. ONE helper both views (music,
+  // podcasts) route through - never a hand copy. Listens to resize AND orientationchange
+  // (iOS can report the orientation before the new width), deduped by the tracked state.
+  function watchSkinViewport(win, onCross, signal) {
+    if (!win || typeof win.addEventListener !== 'function' || typeof onCross !== 'function') return false;
+    var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+    function narrowNow() {
+      try { return !!(SKINS && typeof SKINS.isMobileViewport === 'function' && SKINS.isMobileViewport()); } catch (_) { return false; }
+    }
+    var last = narrowNow();
+    function check() {
+      var now = narrowNow();
+      if (now === last) return;
+      last = now;
+      onCross(now);
+    }
+    var opts = signal ? { signal: signal } : undefined;
+    win.addEventListener('resize', check, opts);
+    win.addEventListener('orientationchange', check, opts);
+    return true;
+  }
+
+  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu, watchSkinViewport: watchSkinViewport };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

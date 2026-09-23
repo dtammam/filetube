@@ -1417,7 +1417,9 @@ test('v1.271: the deferred repaint cannot outlive the surface', () => {
     'paint() defers while a LIVE spin holds a connected wheel');
   assert.match(src, /wheelSpin\.wheel && wheelSpin\.wheel\.isConnected/,
     'and only then - a spin whose wheel the view tore out must NOT freeze every future repaint (slim CRITICAL-1)');
-  assert.match(src, /if \(paintPending\) paint\(\);/, 'endWheel flushes it - the one seam that owns endings');
+  // v1.311.3 gate r1 W1: the flush is now guarded (only into a panel that is still the skin);
+  // the behavioural W1 tests bind the guard, this still insists the flush exists.
+  assert.match(src, /if \(paintPending\) \{[\s\S]{0,120}?paint\(\);/, 'endWheel flushes it - the one seam that owns endings');
   // window sized to the comment that legitimately sits between them (#213: distance
   // locks break on valid insertions, so bind the PAIR loosely and let the behavioural
   // test above carry the real weight).
@@ -1625,5 +1627,188 @@ test('v1.311.2: the skin releases ONLY its own hold - a player owner that also h
     BL.release(doc, b.dom.window, 'faux-fullscreen');
     BL.release(doc, b.dom.window, 'audio-expanded');
     assert.strictEqual(doc.body.style.position, '', 'the last player release unpins');
+  } finally { b.restore(); }
+});
+
+// ---- v1.311.3 (Dean: "rotating the phone in music mode locks all scrolling") --------------
+// The full-screen skin is position:fixed only inside style.css's max-width:768px block, so a
+// rotate to landscape un-fixes the panel WITHOUT removing the ghost: the v1.256 observer never
+// fired and the body stayed pinned. jsdom never matches media queries, so the fixture models
+// the rotate with a <style> the test flips - the fixture must carry the REAL rule (fixed), or a
+// "still covers" assertion would be vacuous.
+function withCoverRule(b) {
+  const st = b.dom.window.document.createElement('style');
+  st.textContent = '.mms-full{position:fixed}';
+  b.dom.window.document.head.appendChild(st);
+  return {
+    rotateWide: () => { st.textContent = '.mms-full{position:static}'; },
+    rotateNarrow: () => { st.textContent = '.mms-full{position:fixed}'; },
+  };
+}
+const fire = (b, type) => b.dom.window.dispatchEvent(new b.dom.window.Event(type));
+
+test('v1.311.3 rotate: a viewport change that un-fixes the skin releases the ghost lock - paused, no reflect', () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const body = b.dom.window.document.body;
+    b.engine.paint();
+    assert.strictEqual(body.style.position, 'fixed', 'the haptic skin pinned the body (the precondition)');
+    fire(b, 'resize');
+    assert.strictEqual(body.style.position, 'fixed', 'CONTROL: a resize while the skin still covers keeps the lock');
+    assert.ok(ghostOf(b.dom), 'CONTROL: and keeps the ghost');
+    cover.rotateWide();
+    fire(b, 'resize'); // no reflect, no click - the paused-dock shape of the v1.256 QA CRITICAL
+    assert.strictEqual(body.style.position, '', 'the rotate unpinned the body');
+    assert.strictEqual(ghostOf(b.dom), null, 'the ghost that needs the lock is gone too');
+    assert.ok(!panel(b.dom).classList.contains('mms-haptic'), 'the touch-action carve-out is lifted');
+    cover.rotateNarrow();
+    b.engine.paint(); // the view's watchSkinViewport hook re-runs its panel update
+    assert.strictEqual(body.style.position, 'fixed', 'rotating back re-paints and re-locks');
+    assert.ok(ghostOf(b.dom), 'with a fresh ghost');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 rotate: orientationchange alone releases too, and a destroyed skin never releases another owner', () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const body = b.dom.window.document.body;
+    b.engine.paint();
+    cover.rotateWide();
+    fire(b, 'orientationchange');
+    assert.strictEqual(body.style.position, '', 'orientationchange un-pins as well (iOS may report it before resize)');
+    cover.rotateNarrow();
+    b.engine.paint();
+    b.engine.destroy();
+    assert.strictEqual(body.style.position, '', 'destroy released');
+    // a player owner pins the body AFTER the skin is gone: a stale skin listener must not touch it
+    const BL = require('../../public/js/body-scroll-lock.js');
+    BL.lock(b.dom.window.document, b.dom.window, 'audio-expanded');
+    cover.rotateWide();
+    fire(b, 'resize');
+    assert.strictEqual(BL.holds(b.dom.window.document, 'audio-expanded'), true, 'a destroyed skin never releases another owner');
+    BL.release(b.dom.window.document, b.dom.window, 'audio-expanded');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 watchSkinViewport: fires once per crossing of the 768px gate, never on a same-side resize, and dies with its signal', () => {
+  const b = bootEngine({});
+  try {
+    const w = b.dom.window;
+    let narrow = true;
+    w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? narrow : false });
+    const calls = [];
+    const ctl = new w.AbortController();
+    assert.strictEqual(w.FileTubeSkinSurface.watchSkinViewport(w, (n) => calls.push(n), ctl.signal), true);
+    fire(b, 'resize');
+    assert.deepStrictEqual(calls, [], 'a resize that stays narrow (the iOS URL bar) is not a crossing');
+    narrow = false; fire(b, 'orientationchange'); fire(b, 'resize');
+    assert.deepStrictEqual(calls, [false], 'narrow -> wide fires once, however many events report it');
+    narrow = true; fire(b, 'resize');
+    assert.deepStrictEqual(calls, [false, true], 'wide -> narrow fires again');
+    ctl.abort();
+    narrow = false; fire(b, 'resize');
+    assert.deepStrictEqual(calls, [false, true], 'a torn-down view hears nothing');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 both skin views route a viewport crossing to their panel update through the ONE shared helper', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+  for (const f of ['music.js', 'podcasts.js']) {
+    const src = strip(fs.readFileSync(path.join(__dirname, '../../public/js', f), 'utf8'));
+    assert.match(src, /watchSkinViewport\(window,\s*function \(\) \{ updateNowPlayingPanel\(\); \},\s*signal\)/,
+      `${f}: a crossing re-runs updateNowPlayingPanel, bound to the view's signal`);
+    assert.doesNotMatch(src, /matchMedia\(['"]\(max-width: 768px\)['"]\)\.addEventListener/, `${f}: no hand-copied gate listener`);
+  }
+});
+
+test('v1.311.3 gate r1 W1: a rotate DURING a wheel scrub does not re-lock when the finger lifts (the deferred paint is dropped)', async () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const w = b.dom.window;
+    const body = w.document.body;
+    b.engine.paint();
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 70, clientY: 70 }));
+    wheel.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 0, clientY: 100 }));
+    b.engine.paint(); // a repaint mid-spin (a chapter cross / an autoplay append) DEFERS
+    cover.rotateWide();
+    // the view re-renders on the crossing (its listener runs FIRST: it registered at init)
+    panel(b.dom).className = 'music-nowplaying-panel';
+    panel(b.dom).innerHTML = '<div class="mnp">desktop panel</div>';
+    await Promise.resolve(); await Promise.resolve(); // a real dispatch runs the ghost observer's microtask before the next listener
+    fire(b, 'resize');
+    assert.strictEqual(body.style.position, '', 'the rotate released the lock');
+    w.document.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true })); // the finger lifts
+    assert.strictEqual(body.style.position, '', 'still released - the deferred paint never re-drew the skin');
+    assert.strictEqual(ghostOf(b.dom), null, 'no ghost came back');
+    assert.ok(panel(b.dom).querySelector('.mnp'), 'the desktop panel survives the lift');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 gate r1 S1/S2: watchSkinViewport starts from the REAL side (a view opened wide) and hears orientationchange alone', () => {
+  const b = bootEngine({});
+  try {
+    const w = b.dom.window;
+    let narrow = false;
+    w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? narrow : false });
+    const calls = [];
+    w.FileTubeSkinSurface.watchSkinViewport(w, (n) => calls.push(n));
+    fire(b, 'resize');
+    assert.deepStrictEqual(calls, [], 'opened wide, still wide: no crossing');
+    narrow = true;
+    fire(b, 'orientationchange'); // iOS can report the orientation before any resize
+    assert.deepStrictEqual(calls, [true], 'wide -> narrow on orientationchange alone');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 gate r1 W1 (sibling): a spin that outlives a view-side DOCK never flushes the skin back into the docked panel', () => {
+  const b = bootEngine({});
+  try {
+    const w = b.dom.window;
+    b.engine.paint();
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 0, clientY: 100 }));
+    b.engine.paint(); // deferred
+    // the view docks: music.js / podcasts.js clear the panel without destroy()
+    panel(b.dom).hidden = true; panel(b.dom).innerHTML = ''; panel(b.dom).className = 'music-nowplaying-panel';
+    w.document.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(panel(b.dom).hidden, true, 'the docked panel stays hidden');
+    assert.strictEqual(panel(b.dom).innerHTML, '', 'and empty - no skin re-drawn');
+    b.engine.paint(); // the view's next real paint still works
+    assert.ok(panel(b.dom).querySelector('.ip-wheel'), 'a later paint renders normally (nothing frozen)');
+  } finally { b.restore(); }
+});
+
+test('v1.311.3 gate r1 W1 (no view re-render): the viewport release drops the deferred paint itself', () => {
+  const b = bootHaptic({});
+  try {
+    const cover = withCoverRule(b);
+    const w = b.dom.window;
+    const body = w.document.body;
+    const BL = require('../../public/js/body-scroll-lock.js');
+    let locks = 0;
+    w.FileTubeBodyLock = Object.assign({}, BL, { lock: (...a) => { locks += 1; return BL.lock(...a); } });
+    b.engine.paint();
+    assert.strictEqual(locks, 1, 'precondition: the skin took the lock once');
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 0, clientY: 100 }));
+    b.engine.paint(); // deferred
+    wheel.setAttribute('data-sentinel', '1'); // a repaint would replace the whole skin DOM
+    cover.rotateWide();
+    fire(b, 'resize'); // a host with no watchSkinViewport hook: the skin DOM (and mms-full) stays
+    assert.strictEqual(locks, 1, 'no second lock acquisition');
+    assert.ok(panel(b.dom).querySelector('.ip-wheel[data-sentinel]'), 'the release never flushed the deferred paint (no re-draw into a non-covering panel)');
+    assert.strictEqual(body.style.position, '', 'released');
+    w.document.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(body.style.position, '', 'the lift found no deferred paint to flush - no re-lock');
+    assert.strictEqual(ghostOf(b.dom), null, 'no ghost came back');
   } finally { b.restore(); }
 });
