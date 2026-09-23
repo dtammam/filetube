@@ -3,8 +3,8 @@ plan: subscription-push-bell
 harness: v2 · lean
 branch: feat/subscription-push-bell
 anchor: spec
-status: Approved @360f8e7f
-next: Step 1 - the store field (ensureYtdlp backfill, addSubscription literal, validateSubscriptionPatch + updateSubscription) with ytdlp-store tests
+status: Building
+next: gate r1 (adversary + qa + security-brief) on the tip; on APPROVED release per docs/RELEASING.md as v1.314.0
 design: Approved 2026-09-23 @360f8e7f (Dean: "Please go")
 gate: pending
 ---
@@ -182,3 +182,22 @@ as "not muted", so a bug there can only over-notify, never silently mute).
 Per-user bells (D3); a global "mute all" switch; podcasts (D5); the settings sheet
 toggle (D7); accepting `pushBell` on POST (D9); the `/c/`-URL matching blind spot
 (pre-existing, documented in `findSubscriptionForChannel`).
+
+## Build record (2026-09-23)
+
+| Step | Commit | What |
+|------|--------|------|
+| 1 | d6c7571a | store: `pushBell` validator, PATCH subset, `ensureYtdlp` backfill (absent/junk -> false), `addSubscription` literal false, `updateSubscription` apply; ytdlp-store tests (AC7 restart, AC8 validate/persist) |
+| 2a | 7a60be8c | deliver.js: rows classified once (`classifyRow`), collapse on the sendable subset, summary cursor = last row READ, the individual walk covers every row in order and stops at the first failure, `counters.advanced`, trigger re-run on `sent \|\| advanced`; push-delivery tests (AC4, AC5, AC6, AC10) |
+| 2b | 82ed4fa2 | server.js: `pushMutedForItem` (join via `findSubscriptionForChannel` over `ytdlpDb.holder(['subscriptions'])`, fails open), `resolvePushMeta` carries `pushMuted`; notifications-api test (subscribed+absent field -> muted, id-only item joins, one-off/non-YouTube/podcast never muted, flip through the store) |
+| 3 | a9b9481d | scan-push-bridge: real scan -> off is silent with the cursor advanced, on pushes once and off again mutes, an unsubscribed one-off pushes (AC1-3) |
+| 4 | 67918102 | routes + bundle: PATCH round-trip (body + GET) and 400 naming the field (ytdlp-patch-pause), plain member 403 (rbac-subscriptions-flag), backup restore of a pre-bell record reads OFF and an ON bell survives (backup-restore) |
+| 5 | 5dafcbea | watch.js `#notify-channel-btn` + `handleToggleBell` (write-through to the capability cache), common.js `scrubSubsForCache` carries `pushBell`, subscriptions.js `.sub-row-bell` + `toggleBell` wired via `onToggleBell`, style.css bell shares the pin rule family; tests: row anatomy/glyph/click/wiring lock, cache scrub, watch frame-one ON/OFF/unsubscribed (AC9) |
+
+Dual-Node full suites at 5dafcbea: Node 22.23.1 8988/8988 exit 0; Node 24.20.0 8988/8988 exit 0 (sequential, never alongside a reviewer). Instruments at 5dafcbea: `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean;
+`check-markers` clean. Disclosed while building: the watch-init shim's
+`setAttribute` is a no-op, so the watch page's `aria-pressed` is bound by the label
+there and by the row test on the /subscriptions side; the row anatomy lock
+(`ytdlp-subscriptions-client` "single trailing kebab") was updated to the new
+`[avatar, info, bell, kebab]` shape - the bell renders for every row with an id, the
+pin still only for a navigable row.
