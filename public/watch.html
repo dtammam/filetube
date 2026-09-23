@@ -143,14 +143,20 @@
                ever, and reparents it into THIS slot (FULL) or the fixed
                #player-dock (DOCKED) -- see watch.js's init(), which calls
                window.FileTube.player.load(id, data, { slot: this element }). -->
-          <!-- v1.186 (Dean): Ambient mode stage. The glow canvas sits BEHIND the
-               player and bleeds a soft, color-sampled bloom outward (YouTube-
-               style). It is a WATCH-VIEW node (never inside the persistent host),
-               so it is absent when docked/closed for free; it samples
-               #media-player / the audio cover by id. Dark-themes-only, opt-in
-               (watch.js drives it). aria-hidden + pointer-events:none. -->
+          <!-- v1.186 (Dean): Ambient mode stage. The glow sits BEHIND the player
+               and bleeds a soft colour glow outward (YouTube-style). It is a
+               WATCH-VIEW node (never inside the persistent host), so it is absent
+               when docked/closed for free. Dark-themes-only, opt-in (watch.js
+               drives it). aria-hidden + pointer-events:none.
+               v1.312 (Dean, device: ambient blacked out every video on iOS): a
+               DIV pair, not a canvas. The two layers carry CSS gradients painted
+               from colours sampled OFF-DOM (storyboard tile / poster - never the
+               video element) and cross-fade on a source change. -->
           <div class="watch-player-stage">
-            <canvas id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden></canvas>
+            <div id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden>
+              <div class="ambient-glow-layer"></div>
+              <div class="ambient-glow-layer"></div>
+            </div>
             <div id="player-slot"></div>
           </div>
 

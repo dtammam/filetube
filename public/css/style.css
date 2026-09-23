@@ -9025,12 +9025,23 @@ body.ft-audio-expanded {
 }
 #player-dock #theater-btn { display: none; }
 
-/* v1.186 (Dean): AMBIENT MODE glow. The canvas sits BEHIND #player-slot in a
-   relative stage and bleeds a soft, blurred, color-sampled bloom outward
-   (YouTube-style). It is decorative, non-interactive, and only paints when
-   watch.js's ambientShouldRun gate is true (dark theme + playing + visible +
-   opted-in) - the `.is-on` class + `hidden` attr gate visibility. The blur +
-   scale + low opacity turn the tiny 32x18 sample into soft color regions. */
+/* v1.186 (Dean): AMBIENT MODE glow. Sits BEHIND #player-slot in a relative stage
+   and bleeds a soft colour glow outward (YouTube-style). Decorative,
+   non-interactive, and only shown when watch.js's ambientShouldRun gate is true
+   (dark theme + playing + visible + opted-in) - the `.is-on` class + `hidden`
+   attr gate visibility.
+   v1.312 REBUILD (Dean, device: ambient ON blacked out EVERY video on his iPhone,
+   on every build; OFF = picture). The old glow was a canvas fed by
+   drawImage(video) under a blurred + masked + scaled composited layer - both
+   known iOS video/canvas/GPU-process breakage shapes. Now: NO filter, NO
+   transform, NO mask, NO will-change on anything here. The glow is a div pair
+   whose `background` stacks eight plain gradients (four edge bands + four
+   corner ellipses) from colours watch.js samples OFF-DOM from the storyboard
+   sprite tile / the poster and writes as the --ag-* custom properties; the two
+   layers cross-fade on opacity when the source changes. Numbers come from
+   YouTube's REAL glow measured side by side (plan: ambient-glow-rebuild): it
+   reaches ~11% of the player width sideways and ~20% of its height vertically,
+   peaking at only ~+25/255 at the edge. */
 /* v1.186.1 (Dean, device): the STAGE owns the ambient stacking context (z-index
    scopes the glow BEHIND #player-slot but above the page); #player-slot itself
    carries NO z-index, so it never becomes a stacking context that TRAPS the faux
@@ -9044,93 +9055,73 @@ body.ft-audio-expanded {
   position: relative;
   z-index: 0; /* token-exempt: local stacking context scoping the ambient glow (dropped in faux fullscreen) */
 }
-/* v1.194.3 (Dean, device): kill the mobile sideways-scroll. The .ambient-glow is
-   scale()'d 1.18-1.42x (v1.187), so its box overflows the viewport horizontally on a
-   phone; the root `html{overflow-x:clip}` is honoured WEAKLY by iOS for a scaled
-   descendant, so the page scrolls sideways while ambient runs. Clip X at the stage on
-   mobile ONLY: overflow-y stays visible so the vertical bloom above/below the player is
-   preserved, desktop keeps the intended v1.188 sidebar bleed, and `clip` (not hidden)
-   creates no containing block, so the fixed .css-fullscreen overlay still escapes. */
+/* v1.194.3 (Dean, device): kill the mobile sideways-scroll. The glow reaches past
+   the player's box (v1.312: by its negative insets; before, by a scale()), so its
+   box overflows the viewport horizontally on a phone; the root `html{overflow-x:clip}`
+   is honoured WEAKLY by iOS for an overflowing descendant, so the page scrolls
+   sideways while ambient runs. Clip X at the stage on mobile ONLY: overflow-y stays
+   visible so the vertical glow above/below the player is preserved, desktop keeps
+   the intended v1.188 sidebar bleed, and `clip` (not hidden) creates no containing
+   block, so the fixed .css-fullscreen overlay still escapes. */
 @media (max-width: 768px) {
   .watch-player-stage { overflow-x: clip; }
 }
+/* THE GEOMETRY. The glow element is the player's box grown by the REACH on each
+   side (negative insets: the stage is the containing block, so reach-y is a % of
+   the player's height and reach-x of its width). Inside it, each gradient band is
+   exactly the reach thick, expressed as a % of the ELEMENT (band = reach / (100 +
+   2 * reach)); the band pairs below are derived from the reach pairs and a test
+   binds the derivation. The inner rectangle is covered by #player-slot, so only
+   the bands ever show, and every band fades to transparent at the element's own
+   edge - no hard cut anywhere (Dean's v1.187 complaint). */
 .ambient-glow {
+  --ambient-reach-x: 12%;
+  --ambient-reach-y: 22%;
+  --ambient-band-x: 9.677%;
+  --ambient-band-y: 15.278%;
+  --ambient-fade: 1.2s;
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: calc(-1 * var(--ambient-reach-y)); /* token-exempt: glow reach (geometry), not a spacing token */
+  right: calc(-1 * var(--ambient-reach-x)); /* token-exempt: glow reach (geometry), not a spacing token */
+  bottom: calc(-1 * var(--ambient-reach-y)); /* token-exempt: glow reach (geometry), not a spacing token */
+  left: calc(-1 * var(--ambient-reach-x)); /* token-exempt: glow reach (geometry), not a spacing token */
   z-index: -1; /* token-exempt: behind the stage's in-flow content (#player-slot), above the stage backdrop */
   pointer-events: none;
   opacity: 0;
-  transform: scale(var(--ambient-scale, 1.25));
-  filter: blur(var(--ambient-blur, 30px)) saturate(1.4);
   transition: opacity var(--dur-slow) var(--ease-ui);
-  /* v1.187.2: no `will-change` - it pinned a permanent GPU surface for a
-     transition that only runs on show/hide, and the cost of this layer is what
-     is the DOMINANT cost of this effect (a large-radius blur on a full-width
-     composited layer outsets ~3x the radius on every side, times DPR^2), and that
-     cost is the leading suspect for iOS freezing the page - which pauses playback
-     and drops the now-playing artwork.
-     HONEST: this is a deliberate LOOK CHANGE, not a free substitution. The old
-     pipeline ALSO upscaled from the same 32x18 source and then blurred 72px, so
-     nothing new supplies softness - the halo is simply ~2.4x TIGHTER now, traded
-     for the GPU cost. `intense` therefore no longer matches v1.186's 72px blur.
-     If the halo wants retuning the levers are SRC_W/SRC_H or --ambient-scale,
-     NOT a per-width blur (the composited layer is LARGER on desktop, so keeping
-     the old radius there would preserve the heaviest version of the cost). */
-  /* v1.187 (Dean: "hard cuts where it just stops on lines - it should fade out
-     organically like normal light"): the glow was an unmasked rectangle, so its
-     blurred edge still terminated on a straight line, and the root's overflow-x
-     clip guillotined it at the viewport. A radial falloff makes it read as light.
-     THE REACH INVARIANT (v1.187.1, Dean: "I see the options but nothing renders"):
-     this canvas is exactly the player's box and paints BEHIND it, so ONLY the part
-     that spills outside the player is ever visible. Visible reach = the mask's
-     transparent stop x the scale. v1.187 shipped stop 76% x scale 1.18-1.30 =
-     0.90-0.99, so the whole glow sat INSIDE the player's footprint and was painted
-     over at three of the four rungs. Stop is now 100%, and the SCALE alone sets
-     the bleed: 18-42% beyond the player. Test-bound - stop x scale MUST exceed 1
-     for every rung, and stop must stay <= 1 (a stop past the edge would put the
-     border-box mask cut in mid-air at real alpha).
-     HONEST SCOPE (gate W2): alpha reaches zero at the element edge in the
-     element's OWN coordinates - but the page guillotine (the root's overflow-x
-     clip) cuts at the VIEWPORT, which on a mobile full-bleed player sits ~1.09
-     half-widths out, INSIDE the scaled glow. So 3-36% effective alpha still
-     terminates at the screen edge there (3.3 / 10.7 / 18.9 / 35.7 across the
-     ladder - re-derived after the core widened to 40%). That is unavoidable: reach > 1 (visible
-     at all) and zero-alpha-at-the-clip (1.09) cannot both hold unless every scale
-     sits in (1.00, 1.09], which would cap the halo at ~16px. The wave chooses
-     VISIBILITY; a run-off at the physical screen edge reads as light leaving the
-     frame, unlike v1.186's ~70% mid-air cut.
-     The 40% solid core is deliberate: the mask attenuates the escaping ring, so a
-     narrow core rendered the whole ladder far dimmer than its opacity numbers
-     imply. `intense` therefore matches v1.186's REACH (1.30), not its brightness
-     - the falloff necessarily dims the edge; that is the fix for the hard cut.
-     CLOSEST-SIDE stays load-bearing: farthest-corner sizes the ending shape to
-     sqrt(2) x the half-extent, so a 100% stop lands 41% OUTSIDE the box and ~49%
-     mask alpha survives to the border-box cut - a hard rectangle, exactly what
-     the mask exists to remove. BOTH mask spellings - one alone breaks Firefox or
-     iOS (the v1.77 lesson).
-     NB keep literal braces out of this comment - the suite extracts rule bodies
-     with a non-brace regex, so a closing brace here truncates the match. */
-  -webkit-mask-image: radial-gradient(ellipse closest-side at center, black 40%, transparent 100%); /* token-exempt: mask ALPHA ramp, not a theme colour (black/transparent are the mask's opacity stops) */
-  mask-image: radial-gradient(ellipse closest-side at center, black 40%, transparent 100%); /* token-exempt: mask ALPHA ramp, not a theme colour (the standard spelling of the line above) */
 }
+.ambient-glow.is-on { opacity: var(--ambient-opacity, 0.55); }
+/* One layer = one painted source. watch.js writes the eight --ag-* colours on the
+   BACK layer, then swaps `is-front`, so a tile change is a cross-fade, never a pop
+   (YouTube cross-fades two canvases continuously; a 1.2s fade on a 2-10s tile
+   cadence keeps the "gently shifting" feel without a permanent animation).
+   `transparent` fallbacks keep an unpainted layer invisible. */
+.ambient-glow-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--ambient-fade) linear; /* token-exempt: the cross-fade length is the glow's own tuning knob (--ambient-fade), not a UI motion token */
+  background:
+    linear-gradient(to top, var(--ag-t, transparent), transparent) top center / calc(100% - 2 * var(--ambient-band-x)) var(--ambient-band-y) no-repeat,
+    linear-gradient(to bottom, var(--ag-b, transparent), transparent) bottom center / calc(100% - 2 * var(--ambient-band-x)) var(--ambient-band-y) no-repeat,
+    linear-gradient(to left, var(--ag-l, transparent), transparent) left center / var(--ambient-band-x) calc(100% - 2 * var(--ambient-band-y)) no-repeat,
+    linear-gradient(to right, var(--ag-r, transparent), transparent) right center / var(--ambient-band-x) calc(100% - 2 * var(--ambient-band-y)) no-repeat,
+    radial-gradient(farthest-side at bottom right, var(--ag-tl, transparent), transparent) top left / var(--ambient-band-x) var(--ambient-band-y) no-repeat,
+    radial-gradient(farthest-side at bottom left, var(--ag-tr, transparent), transparent) top right / var(--ambient-band-x) var(--ambient-band-y) no-repeat,
+    radial-gradient(farthest-side at top right, var(--ag-bl, transparent), transparent) bottom left / var(--ambient-band-x) var(--ambient-band-y) no-repeat,
+    radial-gradient(farthest-side at top left, var(--ag-br, transparent), transparent) bottom right / var(--ambient-band-x) var(--ambient-band-y) no-repeat;
+}
+.ambient-glow-layer.is-front { opacity: 1; }
 /* v1.187 the INTENSITY ladder (Dean: v1.186's look was "almost too intense").
    `data-ambient` is set by watch.js; CSS owns the numbers so the token census
-   stays clean and the level can swap live without restarting the sample loop.
-   `intense` keeps v1.186's opacity+saturate+scale (its BLUR necessarily differs
-   since v1.187.2 - see the cost note above; gate W3 caught that
-   the first cut had quietly changed blur 72->64 and saturate 1.4->1.35, so
-   picking "Intense" would NOT have given Dean his old look back); the radial
-   falloff is new for every rung by design - it is the fix for the hard edges.
-   `normal` is the new DEFAULT: a deliberate step down, disclosed in the notes. */
-.ambient-glow.is-on { opacity: var(--ambient-opacity, 0.5); }
-.ambient-glow[data-ambient="subtle"] { --ambient-opacity: 0.26; --ambient-blur: 36px; --ambient-scale: 1.18; }
-.ambient-glow[data-ambient="normal"] { --ambient-opacity: 0.5; --ambient-blur: 30px; --ambient-scale: 1.25; }
-.ambient-glow[data-ambient="intense"] { --ambient-opacity: 0.7; --ambient-blur: 28px; --ambient-scale: 1.3; }
-.ambient-glow[data-ambient="extreme"] { --ambient-opacity: 0.92; --ambient-blur: 24px; --ambient-scale: 1.42; }
-/* Belt for a dark->light flip: the JS themeObs stops the loop, but this closes
+   stays clean and the level can swap live without re-sampling. v1.312: a rung is
+   an OPACITY (the measured YouTube glow is `normal`'s ceiling); only `extreme`
+   also widens the reach (its band pair re-derived: 18/136, 30/160). */
+.ambient-glow[data-ambient="subtle"] { --ambient-opacity: 0.35; }
+.ambient-glow[data-ambient="normal"] { --ambient-opacity: 0.55; }
+.ambient-glow[data-ambient="intense"] { --ambient-opacity: 0.75; }
+.ambient-glow[data-ambient="extreme"] { --ambient-opacity: 1; --ambient-reach-x: 18%; --ambient-reach-y: 30%; --ambient-band-x: 13.235%; --ambient-band-y: 18.75%; }
+/* Belt for a dark->light flip: the JS themeObs stops the engine, but this closes
    the sub-frame gap before it fires by forcing the glow invisible in light. */
 :root:not([data-mode="dark"]) .ambient-glow {
   opacity: 0 !important; /* token-exempt: theme-gate override, mirrors #ambient-toggle-row's light belt */
@@ -9153,7 +9144,8 @@ body.ft-audio-expanded .watch-player-stage {
   z-index: auto;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ambient-glow { transition: none; }
+  .ambient-glow,
+  .ambient-glow-layer { transition: none; }
 }
 
 /* === v1.22 FR-5: desktop-sidebar channel pins ===============================
