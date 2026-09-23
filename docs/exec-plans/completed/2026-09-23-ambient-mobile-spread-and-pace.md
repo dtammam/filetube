@@ -3,8 +3,8 @@ plan: ambient-mobile-spread-and-pace
 harness: v2 · lean
 branch: fix/ambient-mobile-spread-and-pace
 anchor: spec
-status: Gate:APPROVED r2 @383f24ce
-next: dual-Node full suites on the tip, then release v1.315.0 per docs/RELEASING.md
+status: Shipped v1.315.0
+next: Dean's iPhone check (portrait: side strips lit to the screen edge, no sideways scroll, rotate-to-fullscreen covers, the glow drifts not morphs, the picture stays); landscape = tracker #234, his call; tau/threshold/fade knobs if he wants it faster or lazier
 design: Approved 2026-09-23 @92d48874 (the Architect brief carrying Dean's ask, against the v1.313.0 base; both diagnoses measured before any edit)
 gate: APPROVED r2 @383f24ce — adversary, qa
 ---
@@ -425,3 +425,5 @@ Delta re-review of 64c80679 (merge of main v1.314.0) + 383f24ce (the r1 fixes). 
 - Nothing new introduced by the fix commit was found.
 
 Gate: APPROVED r2 @383f24ce — adversary
+
+Dual-Node full suites at 8d357fd6 (the gate-closed tip): Node 22.23.1 8996 tests, 8993 pass, 0 fail, 3 skipped, exit 0; Node 24.20.0 (recorded in the release commit message).
