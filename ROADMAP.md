@@ -86,6 +86,42 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.311.2 - Player gestures that behave on iPhone (2026-09-23)
+
+Dean's on-device reports with custom player controls ON, fixed in priority order.
+**Swipe-back no longer hijacks scrubs (device-confirmed repro):** the v1.160 document-wide
+swipe-back fired `history.back()` on a rightward seek-bar scrub. A drag now stands down
+when it starts on the player, any range/slider, a skin scrubber/wheel/Brick, the
+wheel-calibration tool, anything whose `touch-action` owns horizontal panning, or while
+an immersive view or any body-locked overlay is up. **A real iOS body lock, shared:** faux
+fullscreen and the expanded audio view only had `overflow:hidden`, which iOS ignores for
+touch. New `public/js/body-scroll-lock.js` (owner-keyed per document, `position:fixed;
+top:-Y`) is now the ONE lock for them plus the skin wheel ghost and the wheel-cal tool (a
+hand copy retired). The router records and places scroll through it, so a navigation made
+under a lock keeps its place. **Tap-reveal grace:** a touch that wakes the hidden bar (or
+continues a double-tap / skip chain) keeps the bar untappable for `DOUBLE_TAP_MS`, so the
+second tap never lands on `#fs-btn`. **The ±15s buttons are gone** from every shell and on
+desktop (Dean's ruling); double-tap seek and its ripple stay. **Critters never block a
+button:** over a link, button, ARIA control, `.btn` or anything styled `cursor:pointer`, the
+click goes through while the critter still reacts.
+
+Gate: FULL (adversary + qa), APPROVED r2 @bb9ac23c by both seats. r1 (both CHANGES): a
+`close()` from faux fullscreen stranded a pinned body, the wheel-cal wheel still fired a
+back, the grace missed skip-chain taps, a delegated-click song row was still swallowed,
+critter geometry read the pinned scroll, and the router's hand-off to the lifted gesture
+wiring was unbound (the mutant deleting it survived the whole suite). All fixed with
+bindings; 22 + 11 builder mutants killed. The `action-row-probe.js` instrument was repaired
+(stale schema-v33 seed keys; `--disable-dev-shm-usage` for this box's 64M `/dev/shm`); the
+action row measured IDENTICAL before/after at 390/375/1280/1366/1600/1920. Disclosed: the
+critter tap hit-test still reads raw scroll (unreachable today: every lock owner covers or
+excludes critters); the two tap-run tests are wall-clock timed; the rotation dead-zone snap
+reads 0 inside the expanded audio view. Not in this release: #6, the bottom nav unsticking
+after a rotate. It waits on the device check of the body lock. Device pass: scrub the seek
+bar right (stays put); swipe the page behind faux fullscreen and the expanded audio view (no
+scroll); double-tap sideways in landscape fullscreen, including a 3-tap chain (never exits);
+tap a critter on a button; rotate, then check the bottom nav; rotate in the expanded audio
+view then collapse (page lands sensibly).
+
 ### v1.311.1 - A way back from the performance tool, and an honest roadmap (2026-09-22)
 
 A small patch. **The /diag performance tool had no way out:** Settings opens it in a

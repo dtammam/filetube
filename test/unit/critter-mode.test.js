@@ -1084,8 +1084,9 @@ test('SOURCE: v1.188 the tap is SWALLOWED - capture phase + stopPropagation + pr
   // fire), exempting caret-bearing fields and the exclusions.
   const mousedownHandler = body.slice(body.indexOf("addEventListener('mousedown'"), body.indexOf("addEventListener('resize'"));
   assert.ok(mousedownHandler.length > 0, 'the mousedown selection-guard was located');
-  assert.match(mousedownHandler, /if \(!critterTapHit\(critterPlacements, e\.pageX, e\.pageY\)\) return;\n\s*if \(critterOccludedAt\(e\.target\)\) return;[^\n]*\n\s*e\.preventDefault\(\);/,
-    'it preventDefaults ONLY when the down is a real critter hit AND the critter is not occluded (never a blanket selection kill)');
+  // v1.311.2: plus the "never block a button" guard - a button/link keeps its own mousedown.
+  assert.match(mousedownHandler, /if \(!critterTapHit\(critterPlacements, e\.pageX, e\.pageY\)\) return;\n\s*if \(critterOccludedAt\(e\.target\)\) return;[^\n]*\n\s*if \(critterOverInteractive\(e\.target\)\) return;[^\n]*\n\s*e\.preventDefault\(\);/,
+    'it preventDefaults ONLY when the down is a real critter hit, not occluded, and not over a button/link (never a blanket selection kill)');
   assert.match(mousedownHandler, /closest\('input, textarea, select, \[contenteditable\]'\)\) return;/,
     'caret-bearing fields are exempt - never fight a text cursor');
   assert.match(mousedownHandler, /closest\(CRITTER_EXCLUSION_SELECTORS\.join\(','\)\)\) return;/,

@@ -3830,29 +3830,23 @@ function wheelCalHapticCapable() {
     return ('switch' in probe) && ('ontouchstart' in window);
   } catch (_) { return false; }
 }
-// Body scroll-lock (mirrors skin-surface.js lockBodyScroll) - the ONLY correct
-// way to suppress scroll under the wheel: `touch-action:none` anywhere on the
-// ancestor chain kills the native switch tracking (the tool's whole point).
+// Body scroll-lock - the ONLY correct way to suppress scroll under the wheel:
+// `touch-action:none` anywhere on the ancestor chain kills the native switch
+// tracking (the tool's whole point). v1.311.2: the SHARED owner-keyed lock
+// (body-scroll-lock.js), not a private copy - one lock per body, every owner.
+function wheelCalBodyLock() {
+  if (typeof window !== 'undefined' && window.FileTubeBodyLock) return window.FileTubeBodyLock;
+  try { return (typeof module !== 'undefined' && module.require) ? module.require('./body-scroll-lock.js') : null; } catch (_) { return null; }
+}
 function wheelCalLockBody() {
   if (wheelCalScrollLock) return;
-  try {
-    wheelCalScrollLock = { y: window.scrollY || 0 };
-    document.body.style.position = 'fixed';
-    document.body.style.top = (-wheelCalScrollLock.y) + 'px';
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-  } catch (_) { wheelCalScrollLock = null; }
+  const BL = wheelCalBodyLock();
+  if (BL && BL.lock(document, window, 'wheel-cal')) wheelCalScrollLock = BL;
 }
 function wheelCalUnlockBody() {
   if (!wheelCalScrollLock) return;
-  const y = wheelCalScrollLock.y; wheelCalScrollLock = null;
-  try {
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.left = '';
-    document.body.style.right = '';
-    window.scrollTo(0, y);
-  } catch (_) { /* best-effort restore */ }
+  const BL = wheelCalScrollLock; wheelCalScrollLock = null;
+  BL.release(document, window, 'wheel-cal');
 }
 function closeWheelCal() {
   if (wheelCalRaf) { try { cancelAnimationFrame(wheelCalRaf); } catch (_) { /* ignore */ } wheelCalRaf = 0; }

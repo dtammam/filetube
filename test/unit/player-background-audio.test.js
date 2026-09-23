@@ -836,8 +836,9 @@ test('scheduleAudioStatusRepoll() never throws/propagates on a failed fetch -- t
 // ---- F7 (two-reviewer NIT, v1.27.1 post-release): scheduleAudioStatusRepoll's
 // ---- own setTimeout handle is captured + cleared like the file's other timers
 
-test('F7 source-lock: audioStatusRepollTimer is declared alongside the file\'s other player-scoped timer handles (progressInterval, skipRevealTimer, transcodePollTimer)', () => {
-  const timerBlockMatch = /var progressInterval = null;\s*\n\s*var skipRevealTimer = null;\s*\n\s*var transcodePollTimer = null;([\s\S]*?)var audioStatusRepollTimer = null;/.exec(PLAYER_JS);
+test('F7 source-lock: audioStatusRepollTimer is declared alongside the file\'s other player-scoped timer handles (progressInterval, transcodePollTimer)', () => {
+  // v1.311.2: skipRevealTimer left the block with the removed ±15s buttons.
+  const timerBlockMatch = /var progressInterval = null;\s*\n\s*var transcodePollTimer = null;([\s\S]*?)var audioStatusRepollTimer = null;/.exec(PLAYER_JS);
   assert.ok(timerBlockMatch, 'expected audioStatusRepollTimer to be declared in the same block as the other player-scoped timers');
 });
 

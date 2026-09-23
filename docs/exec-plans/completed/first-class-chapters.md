@@ -1,6 +1,8 @@
 # First-class chapters: autoplay-loop fix + solo-chapter exit (v1.311 wave)
 
-Status: IN GATE. Dean intake (2026-09-22, /music): (1) playing a chaptered "album"
+status: Shipped v1.311.0 (closed out 2026-09-23 with v1.311.2; it was left in active/ at release)
+
+Dean intake (2026-09-22, /music): (1) playing a chaptered "album"
 (one file, `::c` chapter tracks) through to the end with "Loop chapter" OFF **looped
 back onto itself** instead of stationing on to a related album; manually clicking to
 the last chapter row DID populate the radio and advance - an asymmetry that pinpointed

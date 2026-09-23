@@ -420,14 +420,9 @@
       <!-- Shown while press-and-hold-to-2x is active (mobile inline) -->
       <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
 
-      <!-- YouTube-style ±15s skip controls (shown for video only, toggled via JS) -->
+      <!-- Double-tap seek feedback (shown for video only, toggled via JS). v1.311.2: the
+           tappable ±15s buttons were removed (Dean) - double-tap seek stays. -->
       <div id="skip-controls" class="skip-controls" style="display: none;">
-        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
-          <span class="skip-arrow">«</span><span class="skip-num">15</span>
-        </button>
-        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
-          <span class="skip-num">15</span><span class="skip-arrow">»</span>
-        </button>
         <!-- Double-tap ripple feedback -->
         <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
         <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
@@ -544,6 +539,7 @@
        core view scripts so any view is already registered when needed. -->
   <script src="/js/glyph-pool.js"></script>
   <script src="/js/wheel-config.js"></script>
+  <script src="/js/body-scroll-lock.js"></script>
   <script src="/js/music-skins.js"></script>
   <script src="/js/skin-surface.js"></script>
   <script src="/js/ipod-brick.js"></script>

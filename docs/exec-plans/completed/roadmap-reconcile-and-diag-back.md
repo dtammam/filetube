@@ -2,6 +2,8 @@
 
 Branch `docs/roadmap-reconcile`, base `eba2ce8f` (main, v1.311.0).
 
+status: Shipped v1.311.1 (closed out 2026-09-23 with v1.311.2; it was left in active/ at release)
+
 ## Intake (Dean, 2026-09-22)
 
 1. Walk ROADMAP.md's Planned list against git; close what is done, talk out the rest.

@@ -3106,5 +3106,11 @@
     "date": "2026-09-22",
     "title": "A way back from the performance tool",
     "intent": "The performance diagnostics page (Settings > Experimental) now has a Back to Settings link at the top, so you are never stuck on it in the installed app, and it shows the FileTube icon in its tab like every other page."
+  },
+  {
+    "version": "1.311.2",
+    "date": "2026-09-23",
+    "title": "Smoother player gestures on iPhone",
+    "intent": "Scrubbing the seek bar to the right no longer throws you out of the video, and dragging on any slider or the player never counts as a swipe back. In fullscreen and the expanded audio view the page behind no longer scrolls under your finger, a quick double-tap to skip no longer lands on the fullscreen button by accident, and the 15-second skip buttons are gone (double-tap to skip still works). Critters never get in the way of a button or link any more: tap one sitting on a button and the button still works, while the critter still reacts."
   }
 ]

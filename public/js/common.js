@@ -7916,6 +7916,29 @@ var CRITTER_EXCLUSION_SELECTORS = ['#player-wrapper', '.player-container', '#pla
 // headshake, tada, rubberband, backflip, doublehop, peek, float = 18. All
 // transform-only, all ride the pose's angle+flip, all die under
 // prefers-reduced-motion (see the CSS list). One is picked at random per tap.
+// v1.311.2 (Dean ruling 2026-09-22): "critters must never block button
+// functionality". A critter tap whose target sits inside one of these still
+// reacts, but never swallows the click. Covers native controls, ARIA widgets,
+// the app's .btn class and inline-onclick furniture.
+var CRITTER_INTERACTIVE_SELECTORS = ['a[href]', 'button', 'summary', 'label', 'select', 'input', 'textarea',
+  '[role="button"]', '[role="link"]', '[role="menuitem"]', '[role="tab"]', '[role="switch"]', '[role="checkbox"]',
+  '[role="option"]', '[onclick]', '.btn'];
+function critterOverInteractive(target) {
+  if (!target || typeof target.closest !== 'function') return false;
+  if (target.closest(CRITTER_INTERACTIVE_SELECTORS.join(','))) return true;
+  // v1.311.2 gate W4 (adversary, measured): the NET for clickable furniture that is
+  // not a button - a div row with a delegated click (the music song row) is styled
+  // `cursor: pointer`, the app's own "this is clickable" signal. Walked only after
+  // a geometric critter hit, so an ordinary click never pays for it.
+  const win = target.ownerDocument && target.ownerDocument.defaultView;
+  if (!win || typeof win.getComputedStyle !== 'function') return false;
+  const body = target.ownerDocument.body;
+  for (let node = target; node && node.nodeType === 1 && node !== body; node = node.parentElement) {
+    const cs = win.getComputedStyle(node);
+    if (cs && cs.cursor === 'pointer') return true;
+  }
+  return false;
+}
 var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish', 'critter-nod', 'critter-wobble', 'critter-boing', 'critter-swing', 'critter-pop', 'critter-headshake', 'critter-tada', 'critter-rubberband', 'critter-backflip', 'critter-doublehop', 'critter-peek', 'critter-float'];
 
 function resolveCritterConfig(read) {
@@ -8777,13 +8800,23 @@ function collectCritterRects(selectors, requireSize) {
     }
     // v1.176: the ELEMENT rides along so a settle correction can RE-GLUE a
     // placed critter to its own moved furniture instead of re-rolling.
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el, sel: sel });
+    rects.push({ x: r.left + window.scrollX, y: r.top + critterPageScrollY(), w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el, sel: sel });
   }
   return rects;
 }
 
 // v1.248 (Dean): true while the full-screen mobile skin player is mounted (music.js /
 // skin-surface.js add body.mms-on when the skin cover paints). Critters must not scatter over it.
+// v1.311.2 gate r1 (adversary S2): critters are placed in DOCUMENT coordinates
+// (rect top + page scroll). Under the shared body lock the body is pinned at
+// top:-Y and window.scrollY reads 0, so a re-scatter there (a rotate INTO faux
+// fullscreen is a width change) would land every critter Y too high after the
+// exit. The lock's saved Y is the page's real scroll: rect top (already shifted
+// by -Y) + Y = the document position. No lock / no module: plain window scroll.
+function critterPageScrollY() {
+  var BL = typeof window !== 'undefined' && window.FileTubeBodyLock;
+  return BL ? BL.scrollYOf(document, window) : window.scrollY;
+}
 function critterSuppressedByPlayer() {
   return typeof document !== 'undefined' && !!document.body && document.body.classList.contains('mms-on');
 }
@@ -8930,7 +8963,7 @@ function refindCritterAnchor(p, claimed) {
     var rh = r.height / p.anchor.h;
     if (rw < 0.5 || rw > 2 || rh < 0.5 || rh > 2) continue; // a different-sized cousin is not the twin
     var dx = (r.left + window.scrollX + r.width / 2) - cx;
-    var dy = (r.top + window.scrollY + r.height / 2) - cy;
+    var dy = (r.top + critterPageScrollY() + r.height / 2) - cy;
     var dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < bestDist) { bestDist = dist; best = el; }
   }
@@ -8967,7 +9000,7 @@ function reglueCritterPlacements() {
     }
     var r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue; // hidden now
-    var a2 = { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };
+    var a2 = { x: r.left + window.scrollX, y: r.top + critterPageScrollY(), w: r.width, h: r.height };
     p.x += Math.round(a2.x - p.anchor.x);
     p.y += Math.round(a2.y - p.anchor.y);
     p.anchor = a2;
@@ -9219,6 +9252,11 @@ function setCritterTimingForTest(quietMs, capMs) {
 function setCritterSoundPoolForTest(pool) {
   critterSoundPool = Array.isArray(pool) ? pool.slice() : [];
 }
+// v1.311.2 test seam: install placements directly so the REAL capture click
+// listener (wireCritterListeners) can be driven over a real button. Test-only.
+function setCritterPlacementsForTest(placements) {
+  critterPlacements = Array.isArray(placements) ? placements.slice() : [];
+}
 
 // The entry point - the ONLY way anything asks for a scatter (router hooks,
 // resize, the Settings apply path). Per navigation it RESETS + CANCELS every
@@ -9267,6 +9305,9 @@ function scheduleCritterScatter() {
 function wireCritterListeners() {
   if (critterWired || typeof document === 'undefined') return;
   critterWired = true;
+  // v1.311.2 (Dean ruling): a critter never blocks a link or button - over an
+  // interactive target (critterOverInteractive) the critter still reacts, but the
+  // click is NOT swallowed; the swallow described below applies everywhere else.
   // Tap: a tap on the VISIBLE part of the critter (its exposed peek, and any body
   // overhanging OTHER furniture) chirps AND is SWALLOWED so it never clicks
   // through to the thing it OBSCURES. But a tap over the critter's OWN anchor
@@ -9307,10 +9348,15 @@ function wireCritterListeners() {
     // the critter plane (a menu, the notification dropdown, a sheet). Cheap DOM
     // walk, run only AFTER the geometric hit so it never taxes an ordinary click.
     if (critterOccludedAt(e.target)) return;
-    // The critter owns this tap: stop it reaching the furniture behind it, and
-    // cancel any default (link navigation). Capture phase makes the stop total.
-    e.stopPropagation();
-    e.preventDefault();
+    // v1.311.2 (Dean ruling): a critter NEVER blocks a link or button. Over an
+    // interactive element the critter still plays its reaction + sound below, but
+    // the click goes through to the element untouched. Anywhere else the critter
+    // owns the tap: stop it reaching the furniture behind it, and cancel any
+    // default. Capture phase makes that stop total.
+    if (!critterOverInteractive(e.target)) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     // By INDEX, never a selector built from the id (gate W3: an id is a raw
     // FILENAME - "names never matter" - and a legal double-quote name made a
     // built selector THROW; render order == placement order, so index is exact
@@ -9361,6 +9407,7 @@ function wireCritterListeners() {
     if (e.target && e.target.closest && e.target.closest(CRITTER_EXCLUSION_SELECTORS.join(','))) return;
     if (!critterTapHit(critterPlacements, e.pageX, e.pageY)) return;
     if (critterOccludedAt(e.target)) return; // v1.189.1: not the top thing here - don't fight an overlay's mousedown
+    if (critterOverInteractive(e.target)) return; // v1.311.2: a button/link keeps its own mousedown (focus, press state)
     e.preventDefault(); // stop the text-selection gesture; the click is swallowed above
   });
   // Reflow moves the furniture; re-scatter (debounced) so critters follow -
@@ -9885,6 +9932,116 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
   const ox = String(overflowX || '');
   return (ox === 'auto' || ox === 'scroll') && Number(scrollWidth) > Number(clientWidth);
 }
+// v1.311.2 (Dean, device-CONFIRMED): a rightward SCRUB of the seek bar travelled
+// past the threshold and fired history.back() on release - leaving the player and
+// dropping fullscreen. A drag that begins on something that OWNS horizontal
+// gestures is that thing's, never a back. Enumerated owners (the player and every
+// scrubber the app draws - the pc-range seek/volume on every shell, the skin
+// surfaces' role=slider seeks + click wheel + Brick, any other range/slider):
+const SWIPE_BACK_OWNER_SELECTORS = [
+  '#player-wrapper', '.player-container', '#player-dock', '#fs-stage',
+  '.mms-full', '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
+  '.whcal-overlay', // the wheel-calibration tool (Settings > Experimental) - gate W2
+  'input[type="range"]', '[role="slider"]',
+];
+// ...plus the NET for owners nobody listed yet: an element that took the
+// browser's horizontal panning away (`touch-action: none`, or `pan-y` without
+// `pan-x`) has declared its sideways drag is its own (drag handles, the avatar
+// crop stage, the pc-range seek). Pure over one computed touch-action value.
+function touchActionOwnsHorizontal(touchAction) {
+  const ta = String(touchAction || '').trim().toLowerCase();
+  if (!ta || ta === 'auto') return false;
+  if (/\bnone\b/.test(ta)) return true;
+  return /\bpan-y\b/.test(ta) && !/\bpan-x\b/.test(ta);
+}
+// While an IMMERSIVE view is up (faux fullscreen, the expanded audio view, native
+// fullscreen) there is no page to go back FROM - every drag belongs to the overlay.
+// v1.311.2 gate W2 (adversary, measured): the NET for overlays nobody listed - any
+// surface holding the shared body lock (body-scroll-lock.js: a full-screen skin's
+// haptic wheel, the wheel-calibration tool, whatever pins the page next) is an
+// overlay over a page that cannot move, so it owns every drag too.
+function swipeBackImmersiveLive(doc) {
+  if (!doc) return false;
+  const body = doc.body;
+  if (body && body.classList && (body.classList.contains('ft-css-fullscreen') || body.classList.contains('ft-audio-expanded'))) return true;
+  const BL = doc.defaultView && doc.defaultView.FileTubeBodyLock;
+  if (BL && typeof BL.isLocked === 'function' && BL.isLocked(doc)) return true;
+  return !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+}
+// Why a drag starting at `startEl` must NOT be a back ('immersive' | 'owner' |
+// 'touch-action' | 'scroller'), or null when it may be one. Walks startEl up to
+// <body> once, reading each box's computed style (the v1.160.3 scroller guard
+// folded into the same walk).
+function swipeBackStandDownReason(startEl, doc, win) {
+  if (swipeBackImmersiveLive(doc)) return 'immersive';
+  const ownerSel = SWIPE_BACK_OWNER_SELECTORS.join(',');
+  const gcs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle.bind(win) : null;
+  for (let node = startEl; node && node.nodeType === 1 && node !== doc.body; node = node.parentElement) {
+    if (typeof node.matches === 'function' && node.matches(ownerSel)) return 'owner';
+    const cs = gcs ? gcs(node) : null;
+    if (!cs) continue;
+    if (touchActionOwnsHorizontal(cs.touchAction)) return 'touch-action';
+    if (isHorizontalScrollerBox(cs.overflowX, node.scrollWidth, node.clientWidth)) return 'scroller';
+  }
+  return null;
+}
+// v1.160/.3 swipe-back WIRING, lifted out of the router closure (v1.311.2) so the
+// real listeners can be driven in a test. `onBack` is the router's
+// swipeBackIfPossible (the depth>0 / homeBackPending guard stays there).
+function wireSwipeBackGesture(doc, win, onBack) {
+  let track = null; // { startX, startY, x, y, claimed } for a single-touch drag
+  // v1.160.1/.3: once a drag is CONFIRMED horizontal we preventDefault the rest
+  // of it, so the browser can't also pan/rubber-band the page ("the whole app
+  // shakes with it"). This non-passive listener is attached LAZILY - only after
+  // swipeBackShouldClaim fires (in the passive move below) - and removed when the
+  // gesture ends. A vertical scroll never claims, so it never attaches this and
+  // never leaves the compositor fast-path (the v1.160.1 gate lesson: an eager or
+  // global non-passive document touchmove taxes every scroll).
+  // v1.160.3 gate WARNING 1: RE-EVALUATE direction every move - do NOT latch.
+  // A gesture that claimed early (a slight rightward arc) but then curves
+  // vertical must STOP being prevented, or it eats an intended scroll and fires
+  // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
+  // restores the per-move semantics the v1.160.1 edge handler had.
+  function onClaimedMove(e) {
+    if (e.cancelable && track && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
+  }
+  function stopTracking() {
+    if (!track) return;
+    if (track.claimed) doc.removeEventListener('touchmove', onClaimedMove);
+    track = null;
+  }
+  doc.addEventListener('touchstart', (e) => {
+    stopTracking(); // drop any stale drag (missed end / second finger)
+    if (!e.touches || e.touches.length !== 1) return;
+    // v1.311.2: a drag that starts on a gesture OWNER (the player, a scrubber, a
+    // skin, a horizontal scroller) or during an immersive view is never tracked.
+    if (e.target && swipeBackStandDownReason(e.target, doc, win)) return;
+    const t = e.touches[0];
+    track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, claimed: false };
+  }, { passive: true });
+  doc.addEventListener('touchmove', (e) => {
+    if (!track || !e.touches || e.touches.length !== 1) return;
+    const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
+    // Confirmed horizontal + rightward: claim the REST of the drag (attach the
+    // non-passive preventDefault). Done once per drag; vertical scrolls never
+    // reach here so they stay passive/fast.
+    if (!track.claimed && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) {
+      track.claimed = true;
+      doc.addEventListener('touchmove', onClaimedMove, { passive: false });
+    }
+  }, { passive: true });
+  const finish = () => {
+    if (!track) return;
+    const g = { deltaX: track.x - track.startX, deltaY: track.y - track.startY };
+    stopTracking();
+    // An immersive view that came up MID-drag (a rotate into faux fullscreen)
+    // owns the release too.
+    if (swipeBackImmersiveLive(doc)) return;
+    if (decideSwipeBack(g)) onBack();
+  };
+  doc.addEventListener('touchend', finish, { passive: true });
+  doc.addEventListener('touchcancel', stopTracking, { passive: true });
+}
 
 function resolveHomeButtonAction(depth, currentPathAndSearch) {
   const d = (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0;
@@ -10199,6 +10356,22 @@ if (typeof window !== 'undefined') {
   // a later `popstate` back to this entry restores where the user actually
   // scrolled to -- not wherever they happened to be when the entry was first
   // pushed.
+  // v1.311.2: the router's scroll seams go through the shared body lock
+  // (body-scroll-lock.js). While an overlay pins the body (faux fullscreen, the
+  // expanded audio view, a full-screen skin), window.scrollY reads 0 and
+  // window.scrollTo is clamped - so a page left under a lock would record 0, and
+  // a page placed under one (an autoplay advance that carries fullscreen) would
+  // lose its place. pageScrollY reads the pinned Y; placePageScroll defers to the
+  // lock's release. No lock (or no module): plain window scroll, as before.
+  function pageScrollY() {
+    const BL = window.FileTubeBodyLock;
+    return BL ? BL.scrollYOf(document, window) : window.scrollY;
+  }
+  function placePageScroll(y) {
+    const BL = window.FileTubeBodyLock;
+    if (BL) BL.scrollTo(document, window, y);
+    else window.scrollTo(0, y);
+  }
   function recordScrollForCurrentState() {
     if (!window.history.state) return;
     // v1.45.0 (T2): preserve `depth` when rewriting this entry for scroll —
@@ -10207,7 +10380,7 @@ if (typeof window !== 'undefined') {
     // on a sub-state entry (a drill / now-playing level) must NOT wipe the
     // payload its onPopState hook will need.
     const updated = buildHistoryState(
-      window.history.state.view, window.history.state.url, window.scrollY, window.history.state.depth,
+      window.history.state.view, window.history.state.url, pageScrollY(), window.history.state.depth,
       window.history.state.viewState);
     window.history.replaceState(updated, '');
   }
@@ -10237,7 +10410,7 @@ if (typeof window !== 'undefined') {
     const s = window.history.state;
     const url = (s && s.url) || (window.location.pathname + window.location.search);
     const depth = nextHistoryDepth(s, true); // replace keeps the level
-    const scrollY = (s && typeof s.scrollY === 'number') ? s.scrollY : window.scrollY;
+    const scrollY = (s && typeof s.scrollY === 'number') ? s.scrollY : pageScrollY();
     window.history.replaceState(buildHistoryState(currentViewName, url, scrollY, depth, viewState), '');
   }
 
@@ -10380,7 +10553,7 @@ if (typeof window !== 'undefined') {
     // function with a cache to worry about, since homeViewCache resets on
     // every real page load.
     if (currentViewName === 'home' && view !== 'home' && oldRoot) {
-      homeViewCache = { url: currentViewUrl, node: oldRoot, title: document.title, scrollY: window.scrollY };
+      homeViewCache = { url: currentViewUrl, node: oldRoot, title: document.title, scrollY: pageScrollY() };
     } else {
       // A stale, never-reattached home-cache entry is about to be orphaned
       // by the fresh `home` init() a few lines down (this branch only runs
@@ -10416,7 +10589,7 @@ if (typeof window !== 'undefined') {
     currentViewName = view;
     currentViewUrl = typeof url === 'string' ? url : currentViewUrl;
     updateActiveNavHighlight();
-    window.scrollTo(0, typeof scrollY === 'number' ? scrollY : 0);
+    placePageScroll(typeof scrollY === 'number' ? scrollY : 0);
     const incoming = viewRegistry[view];
     if (incoming && typeof incoming.init === 'function') {
       try { incoming.init(root); } catch (err) { console.error('View init() failed for', view, err); }
@@ -10537,7 +10710,7 @@ if (typeof window !== 'undefined') {
     // image-height race to wait out (the race the design flags only arises
     // when a FRESH re-render's lazy images haven't resolved their intrinsic
     // size yet at the moment scroll is restored).
-    window.scrollTo(0, typeof scrollY === 'number' ? scrollY : cached.scrollY);
+    placePageScroll(typeof scrollY === 'number' ? scrollY : cached.scrollY);
     // Deliberately NOT calling viewRegistry.home.init(cached.node): its
     // listeners (bound once, in the ORIGINAL init() call that produced this
     // node) are still fully live and intact -- never torn down while cached
@@ -10734,64 +10907,7 @@ if (typeof window !== 'undefined') {
   function wireSwipeBack() {
     if (typeof document === 'undefined' || swipeBackWired) return;
     swipeBackWired = true;
-    let track = null; // { startX, startY, x, y, claimed } for a single-touch drag
-    // v1.160.1/.3: once a drag is CONFIRMED horizontal we preventDefault the rest
-    // of it, so the browser can't also pan/rubber-band the page ("the whole app
-    // shakes with it"). This non-passive listener is attached LAZILY - only after
-    // swipeBackShouldClaim fires (in the passive move below) - and removed when the
-    // gesture ends. A vertical scroll never claims, so it never attaches this and
-    // never leaves the compositor fast-path (the v1.160.1 gate lesson: an eager or
-    // global non-passive document touchmove taxes every scroll).
-    // v1.160.3 gate WARNING 1: RE-EVALUATE direction every move - do NOT latch.
-    // A gesture that claimed early (a slight rightward arc) but then curves
-    // vertical must STOP being prevented, or it eats an intended scroll and fires
-    // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
-    // restores the per-move semantics the v1.160.1 edge handler had.
-    function onClaimedMove(e) {
-      if (e.cancelable && track && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
-    }
-    function stopTracking() {
-      if (!track) return;
-      if (track.claimed) document.removeEventListener('touchmove', onClaimedMove);
-      track = null;
-    }
-    // A drag beginning inside a horizontal scroller belongs to THAT box, not to a
-    // back gesture - walk the ancestor chain and bail if any box scrolls sideways.
-    function startsInHorizontalScroller(startEl) {
-      if (typeof window.getComputedStyle !== 'function') return false;
-      for (let node = startEl; node && node.nodeType === 1 && node !== document.body;
-        node = node.parentElement) {
-        const cs = window.getComputedStyle(node);
-        if (cs && isHorizontalScrollerBox(cs.overflowX, node.scrollWidth, node.clientWidth)) return true;
-      }
-      return false;
-    }
-    document.addEventListener('touchstart', (e) => {
-      stopTracking(); // drop any stale drag (missed end / second finger)
-      if (!e.touches || e.touches.length !== 1) return;
-      if (e.target && startsInHorizontalScroller(e.target)) return; // let the scroller scroll
-      const t = e.touches[0];
-      track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, claimed: false };
-    }, { passive: true });
-    document.addEventListener('touchmove', (e) => {
-      if (!track || !e.touches || e.touches.length !== 1) return;
-      const t = e.touches[0]; track.x = t.clientX; track.y = t.clientY;
-      // Confirmed horizontal + rightward: claim the REST of the drag (attach the
-      // non-passive preventDefault). Done once per drag; vertical scrolls never
-      // reach here so they stay passive/fast.
-      if (!track.claimed && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) {
-        track.claimed = true;
-        document.addEventListener('touchmove', onClaimedMove, { passive: false });
-      }
-    }, { passive: true });
-    const finish = () => {
-      if (!track) return;
-      const g = { deltaX: track.x - track.startX, deltaY: track.y - track.startY };
-      stopTracking();
-      if (decideSwipeBack(g)) swipeBackIfPossible();
-    };
-    document.addEventListener('touchend', finish, { passive: true });
-    document.addEventListener('touchcancel', stopTracking, { passive: true });
+    wireSwipeBackGesture(document, window, swipeBackIfPossible);
   }
 
   // v1.45.2 (#1a): the header LOGO is the "escape hatch" straight to the top of
@@ -15660,6 +15776,8 @@ if (typeof module !== 'undefined' && module.exports) {
     setCritterTimingForTest,
     // v1.184/v1.185 sound pool + the random-each-tap pick.
     buildCritterSoundPool, pickCritterRandomSound, playCritterSound, setCritterSoundPoolForTest,
+    // v1.311.2: drive the real tap listener over a real button.
+    wireCritterListeners, setCritterPlacementsForTest,
     CRITTER_STORAGE_RANDOMSOUND,
     // v1.187: critter size choice + the pure rect-overlap helper (so the
     // invariant tests can assert exclusion clearance directly).
@@ -15668,6 +15786,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CRITTER_STORAGE_KISS, CRITTER_KISS_FRACTION, critterOverlapExceeds,
     buildCritterShaveMask,
     probeCritterVoices,
+    // v1.311.2: the "never block a button" predicate (critter taps over these pass through).
+    critterOverInteractive, CRITTER_INTERACTIVE_SELECTORS, critterPageScrollY,
     getCritterLastChirpReason,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
@@ -15691,6 +15811,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // the ancestor chain with it so a drag inside a wide table/pill strip scrolls
     // instead of going back).
     isHorizontalScrollerBox,
+    // v1.311.2: the gesture-owner stand-down + the lifted wiring (driven in tests).
+    SWIPE_BACK_OWNER_SELECTORS, touchActionOwnsHorizontal, swipeBackImmersiveLive,
+    swipeBackStandDownReason, wireSwipeBackGesture,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,

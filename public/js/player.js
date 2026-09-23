@@ -1503,9 +1503,12 @@ function resolveChaptersMenuMaxHeight(geom) {
 //   - OFF -> ON  captures the current scroll (the pre-entry position).
 //   - ON  -> OFF restores the capture - but ONLY while the player is still
 //     FULL. The dock/close off-path (`applyControlsMode`'s
-//     `state !== STATE_FULL` guard) fires AFTER a navigation's own scroll
-//     restore, and restoring the watch page's offset onto the DESTINATION
-//     view would clobber it. The capture is ALWAYS cleared on exit.
+//     `state !== STATE_FULL` guard) runs around a navigation, and restoring
+//     the watch page's offset onto the DESTINATION view would clobber it.
+//     (v1.311.2 correction, QA r1: the router's dock runs BEFORE its scroll
+//     placement - swapToView -> applyPlayerTransition -> dock(), then
+//     placePageScroll; the watch->watch TEARDOWN below runs AFTER it.)
+//     The capture is ALWAYS cleared on exit.
 //   - No-transition calls (the off-path re-asserts constantly; a second
 //     `on` from the webkitbeginfullscreen intercept) are inert - an
 //     already-on re-capture would save a DRIFTED position and defeat the
@@ -1725,7 +1728,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var host = null;
   var mediaPlayer = null;
   var audioBgArt, audioVisualizer, audioVisualTitle, audioVisualFolder;
-  var skipControls, skipBackBtn, skipFwdBtn, skipRippleLeft, skipRippleRight, speedBadge;
+  var skipControls, skipRippleLeft, skipRippleRight, speedBadge;
   var transcodeOverlay, transcodeSpinner, transcodeTitle, transcodeMessage;
   var resumeOverlay, resumeTimeStr, resumeYesBtn, resumeNoBtn;
 
@@ -1948,11 +1951,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // Player-scoped timers (raw handles, not covered by any AbortSignal) --
   // cleared on close() and whenever a genuinely NEW media is loaded.
   var progressInterval = null;
-  var skipRevealTimer = null;
   var transcodePollTimer = null;
   // F7 (two-reviewer NIT, v1.27.1 post-release): scheduleAudioStatusRepoll's
   // own setTimeout handle -- captured here for the same reason as the other
-  // three timers above (structural consistency), even though its callback is
+  // timers above (structural consistency), even though its callback is
   // already generation-guarded (see scheduleAudioStatusRepoll's own comment)
   // and therefore safe to let fire as a no-op. Cleared alongside the others
   // in teardownMediaState/close so a still-pending repoll is cancelled
@@ -2187,12 +2189,36 @@ if (typeof module !== 'undefined' && module.exports) {
     // leaving it cancels the timer and always restores a visible bar (inline,
     // docked and native-controls never auto-hide).
     if (on) revealControlsAndReArm();
-    else { clearControlsAutoHide(); showControlsBar(); }
-    var currentY = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
+    else { clearControlsAutoHide(); clearRevealGrace(); showControlsBar(); }
+    // v1.311.2: the page's REAL scroll - another overlay (a full-screen skin) may
+    // already hold the body lock, and a pinned body reads scrollY 0.
+    var BL = playerBodyLock();
+    var currentY = BL ? BL.scrollYOf(document, window)
+      : (typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY);
     var restoreEligible = !!(opts && opts.restoreScroll) && state === STATE_FULL;
     var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);
     cssFsSavedScrollY = plan.savedY;
-    if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
+    // v1.311.2 (Dean): `body.ft-css-fullscreen { overflow:hidden }` never held on
+    // iOS - a swipe on the overlay scrolled the page behind it. The shared body lock
+    // pins it for real. Taken AFTER the plan captured the entry scroll; released
+    // WITHOUT its own restore, because the keeper above owns restore (only the exit
+    // button restores). A router dock releases BEFORE the router places scroll, so
+    // the navigation then scrolls directly; a watch->watch teardown releases AFTER
+    // it, and the lock (which deferred that placement) lands the page there.
+    if (BL) {
+      if (on) BL.lock(document, window, 'faux-fullscreen');
+      else BL.release(document, window, 'faux-fullscreen', { restore: false });
+    }
+    if (plan.restoreTo !== null) {
+      if (BL) BL.scrollTo(document, window, plan.restoreTo);
+      else window.scrollTo(0, plan.restoreTo);
+    }
+  }
+  // v1.311.2: the ONE shared iOS body lock (body-scroll-lock.js, loaded before this
+  // file on every shell that loads it; require()d under node tests).
+  function playerBodyLock() {
+    if (typeof window !== 'undefined' && window.FileTubeBodyLock) return window.FileTubeBodyLock;
+    try { return (typeof module !== 'undefined' && module.require) ? module.require('./body-scroll-lock.js') : null; } catch (_) { return null; }
   }
 
   // ---- v1.119 control-bar auto-hide (v1.120: also the audio expanded view) ---
@@ -2261,6 +2287,24 @@ if (typeof module !== 'undefined' && module.exports) {
         if (host) host.classList.add('controls-autohidden');
       }
     }, 3000);
+  }
+  // v1.311.2 (Dean): the tap-reveal GRACE. A touch that wakes the HIDDEN bar in an
+  // immersive view keeps it pointer-events:none (.controls-reveal-grace, style.css)
+  // for DOUBLE_TAP_MS, so the second half of a double-tap seek passes through to
+  // the video instead of hitting a control under the finger (#fs-btn exited).
+  var revealGraceTimer = null;
+  function clearRevealGrace() {
+    if (revealGraceTimer) { clearTimeout(revealGraceTimer); revealGraceTimer = null; }
+    if (host) host.classList.remove('controls-reveal-grace');
+  }
+  function armRevealGrace() {
+    if (!host) return;
+    if (revealGraceTimer) clearTimeout(revealGraceTimer);
+    host.classList.add('controls-reveal-grace');
+    revealGraceTimer = setTimeout(function () {
+      revealGraceTimer = null;
+      if (host) host.classList.remove('controls-reveal-grace');
+    }, DOUBLE_TAP_MS);
   }
   // Any interaction (or a play) reveals the bar and restarts the fade countdown.
   function revealControlsAndReArm() {
@@ -2450,8 +2494,6 @@ if (typeof module !== 'undefined' && module.exports) {
     audioVisualTitle = host.querySelector('#audio-visual-title');
     audioVisualFolder = host.querySelector('#audio-visual-folder');
     skipControls = host.querySelector('#skip-controls');
-    skipBackBtn = host.querySelector('#skip-back-btn');
-    skipFwdBtn = host.querySelector('#skip-fwd-btn');
     skipRippleLeft = host.querySelector('#skip-ripple-left');
     skipRippleRight = host.querySelector('#skip-ripple-right');
     speedBadge = host.querySelector('#speed-badge');
@@ -4015,7 +4057,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // in the ripple markup, which was always true while every skip was
     // SKIP_SECONDS -- the keyboard shortcuts now skip 5s (arrows) and 10s
     // (J/L), so the label is derived from the ACTUAL delta on every flash
-    // (the on-bar buttons/double-tap still legitimately show 15).
+    // (double-tap still legitimately shows 15; the on-bar buttons were removed in
+    // v1.311.2).
     var ripple = delta < 0 ? skipRippleLeft : skipRippleRight;
     if (ripple) {
       ripple.textContent = delta < 0
@@ -4050,19 +4093,6 @@ if (typeof module !== 'undefined' && module.exports) {
     el.classList.remove('active');
     void el.offsetWidth; // force reflow so rapid repeats re-trigger the animation
     el.classList.add('active');
-  }
-
-  function revealSkipButtons() {
-    if (!skipControls) return;
-    skipControls.classList.add('skip-visible');
-    if (skipRevealTimer) clearTimeout(skipRevealTimer);
-    skipRevealTimer = setTimeout(function () { skipControls.classList.remove('skip-visible'); }, 2500);
-  }
-
-  function hideSkipButtons() {
-    if (!skipControls) return;
-    if (skipRevealTimer) { clearTimeout(skipRevealTimer); skipRevealTimer = null; }
-    skipControls.classList.remove('skip-visible');
   }
 
   // Mutable hold-to-2x state, module-scope so dock()/close() can force-release
@@ -4129,7 +4159,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function resetTransientPlaybackUi() {
     clearTimeout(holdTimer);
     releaseHold();
-    hideSkipButtons();
+    clearRevealGrace(); // v1.311.2: a tap-reveal grace never outlives the surface
     // v1.140 gate W2: the skip chain dies with the gesture surface it
     // belonged to - without this, a chain hot at teardown/dock/close leaked
     // onto the NEXT item (first tap skipped instead of paused) and, docked,
@@ -4174,8 +4204,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // style.css, so the cover-art layer is what actually receives taps there).
   // Root cause this fixes: before this factor-out, these gestures were
   // wired ONLY on `#media-player`, so once FR-2 shipped they went dead for
-  // every audio item (AC12 requires ±15s skip -- buttons/double-tap/
-  // hold-2x/keyboard -- for BOTH audio and video).
+  // every audio item (AC12 requires ±15s skip -- double-tap/hold-2x/keyboard
+  // (the on-bar buttons until v1.311.2) -- for BOTH audio and video).
   //
   // `onSingleTap`, when provided, is invoked once a touchend has been
   // classified as a (so far) lone tap AND `DOUBLE_TAP_MS` has since elapsed
@@ -4273,7 +4303,6 @@ if (typeof module !== 'undefined' && module.exports) {
       } else {
         lastTapTime = now;
         lastTapLeft = onLeft;
-        revealSkipButtons();
         if (shouldArtSingleTapAct(state, onSingleTap) && !tapGestureMoved) {
           // Suppress the synthetic 'click' the browser would otherwise
           // dispatch after this touchend -- the tap is handled entirely by
@@ -5861,9 +5890,17 @@ if (typeof module !== 'undefined' && module.exports) {
     if (fsBtn) fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-audio-expanded', !!on);
+      // v1.311.2 (Dean): the real iOS lock, like faux fullscreen - overflow:hidden
+      // alone let a swipe scroll the page behind the expanded view. Collapsing
+      // restores the entry scroll (or where a navigation placed the page).
+      var BL = playerBodyLock();
+      if (BL) {
+        if (on) BL.lock(document, window, 'audio-expanded');
+        else BL.release(document, window, 'audio-expanded');
+      }
     }
     if (on) revealControlsAndReArm();
-    else { clearControlsAutoHide(); showControlsBar(); }
+    else { clearControlsAutoHide(); clearRevealGrace(); showControlsBar(); }
   }
 
   function toggleAudioExpand() {
@@ -6116,12 +6153,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // idempotence belt - a fresh same-gesture stamp survives a visible-bar
     // read even if a second invocation ever returns).
     var videoDownEvt = (typeof window !== 'undefined' && window.PointerEvent) ? 'pointerdown' : 'touchstart';
-    mediaPlayer.addEventListener(videoDownEvt, function () {
+    mediaPlayer.addEventListener(videoDownEvt, function (e) {
       if (!inImmersiveMode()) { videoTapConsumedByRevealAt = 0; return; } // inline gestures also rewrite the stamp - no cross-mode staleness
+      var wasHidden = !!(host && host.classList.contains('controls-autohidden'));
       videoTapConsumedByRevealAt = nextVideoTapStamp(
-        !!(host && host.classList.contains('controls-autohidden')),
-        videoTapConsumedByRevealAt, Date.now(), VIDEO_TAP_SAME_GESTURE_MS);
+        wasHidden, videoTapConsumedByRevealAt, Date.now(), VIDEO_TAP_SAME_GESTURE_MS);
       revealControlsAndReArm();
+      // v1.311.2 (Dean): this reveal is INSTANT (touch-down), so the second tap of
+      // a sideways double-tap seek could land on the bar it just woke - #fs-btn
+      // sits bottom-right and exited fullscreen. A bar woken from HIDDEN stays
+      // untappable for one double-tap window.
+      // Touch only: a mouse click (desktop native fullscreen) never double-taps.
+      // v1.311.2 gate W3 (adversary, measured): a tap that CONTINUES a tap run - a
+      // hot skip chain (tap 3+ of a chain lands with the bar already up), or the
+      // second half of a double-tap whose first touch was held past the window
+      // (double-taps pair touchEND to touchEND) - re-arms the grace too.
+      var now = Date.now();
+      var inTapRun = now < skipChainUntil || (lastTapTime > 0 && now - lastTapTime < DOUBLE_TAP_MS);
+      if ((wasHidden || inTapRun) && !(e && e.pointerType && e.pointerType !== 'touch')) armRevealGrace();
     }, { passive: true });
     // The BAR keeps the both-event blind reveal - it never stamps, so the
     // double-fire is harmless there (revealControlsAndReArm is idempotent).
@@ -6166,10 +6215,8 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
-    if (skipBackBtn) skipBackBtn.addEventListener('click', function () { skip(-SKIP_SECONDS); revealSkipButtons(); });
-    if (skipFwdBtn) skipFwdBtn.addEventListener('click', function () { skip(SKIP_SECONDS); revealSkipButtons(); });
-    host.addEventListener('mousemove', revealSkipButtons);
-    host.addEventListener('mouseleave', hideSkipButtons);
+    // v1.311.2 (Dean): the tappable ±15s buttons are gone on every surface (their
+    // hover/tap reveal went with them); double-tap seek + its ripple remain.
     // v1.124 F2: desktop mouse-move reveals the auto-hidden control bar and
     // restarts the fade countdown (the YouTube/desktop convention - touch devices
     // use the touchstart/pointerdown reveal above). No-op outside an immersive
@@ -7458,8 +7505,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (awaitingTranscode) return;
       // v1.41.11 (Dean): the switch below mirrors YouTube's core shortcut
       // set. Arrow seeks moved from SKIP_SECONDS (15s) to YouTube's 5s --
-      // J/L take over the "big" step at 10s; the on-bar skip buttons keep
-      // SKIP_SECONDS untouched. Digits jump to N*10%. Shift+N/Shift+P drive
+      // J/L take over the "big" step at 10s; double-tap seek and the lock-screen
+      // skip keep SKIP_SECONDS (the on-bar ±15s buttons were removed in v1.311.2). Digits jump to N*10%. Shift+N/Shift+P drive
       // the SAME registered trackNav handlers the hardware media keys and
       // lock screen use (watch.js registers its context-aware prev/next
       // there; read.js its chapters). C routes through #cc-btn's click so
@@ -8410,6 +8457,13 @@ if (typeof module !== 'undefined' && module.exports) {
     if (resumeOverlay) resumeOverlay.style.display = 'none';
     cancelResumeCountdown(); // v1.132: a closed player must never auto-click a vanished prompt
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
+    // v1.311.2 gate W1 (adversary, measured): the video twin of the line above. A
+    // close() from faux fullscreen (watch.js closes a carried-immersive preload
+    // whose detail fetch failed) used to strand only the class; with the real
+    // body lock it would strand a PINNED body (no scroll, no header/nav, no
+    // swipe-back) until the next load. No restoreScroll: close is never the
+    // user's fullscreen exit.
+    setCssFullscreen(false);
     // FIX D (player-hardening round, hygiene): clear the native-controls
     // marker + attribute here too, mirroring teardownMediaState()'s identical
     // clear above -- benign today (the next load()'s teardownMediaState()
