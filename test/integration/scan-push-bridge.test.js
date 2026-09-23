@@ -209,3 +209,82 @@ test('a 410 from the real chain prunes the subscription; the next scan pushes to
   await new Promise((r) => setTimeout(r, 150));
   assert.equal(sends.length, 0, 'no subscriptions, no POSTs - and the scan itself stayed green');
 });
+
+// ---- v1.314: the per-subscription push BELL through the REAL chain ----------
+// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC1-AC3).
+// A real scan consumes a planted download (its channel identity rides in through
+// downloadMeta exactly as a yt-dlp download's does), the feed row is written, the
+// detached round runs - and the bell decides whether the WEB PUSH goes out. The
+// in-app feed row is written either way.
+const BELL_CHANNEL_URL = 'https://www.youtube.com/channel/UCbellbellbellbellbellbe';
+const ONEOFF_CHANNEL_URL = 'https://www.youtube.com/channel/UConeoffoneoffoneoffone';
+const { loadDatabase } = require('../../server');
+const bellDeps = () => ({ ytdlpDb, updateDatabase, loadDatabase });
+
+async function plantBellDownload(name, youtubeId, channelUrl, channelName) {
+  const filePath = plantDownload(name, youtubeId);
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.downloadMeta[youtubeId] = { channelUrl, channelName, capturedAt: CAPTURED_AT };
+  }));
+  return filePath;
+}
+function feedRowFor(filePath) {
+  const id = getMediaId(filePath);
+  return userStore.listNotifications(admin.id).items.find((i) => i.mediaId === id) || null;
+}
+
+test('v1.314 bell AC1: a download from a subscribed channel whose bell is OFF (a pre-bell record, field absent) writes the feed row, pushes NOTHING, and the cursor still advances past it', async () => {
+  transportImpl = async () => ({ statusCode: 201, headers: {} });
+  sends.length = 0;
+  // A fresh device (the previous test's 410 pruned the old one), cursor at the feed head.
+  userStore.upsertPushSubscription(admin.id, { endpoint: ENDPOINT, p256dh: UA_P256DH, auth: UA_AUTH }, 0, Date.now());
+  userStore.advancePushCursor(ENDPOINT, userStore.getMaxNotificationId());
+  await updateDatabase(() => ytdlpDb.mutate((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.subscriptions.push({ id: 'bell-sub', channelUrl: BELL_CHANNEL_URL, name: 'Bell Channel', paused: false }); // no pushBell field: predates the bell
+  }));
+  const filePath = await plantBellDownload('Bell Off Video', 'bbbbbbbbbb1', BELL_CHANNEL_URL, 'Bell Channel');
+  await scanDirectories();
+  const row = feedRowFor(filePath);
+  assert.ok(row, 'the in-app feed row is written regardless of the bell');
+  const item = loadDatabase().metadata[getMediaId(filePath)];
+  assert.equal(item.channelUrl, BELL_CHANNEL_URL, 'precondition: the scanned item carries the channel identity the join needs');
+  await waitFor(() => userStore.getPushSubscription(ENDPOINT).lastPushedId >= row.id, 'the silent cursor advance');
+  assert.equal(userStore.getPushSubscription(ENDPOINT).lastPushedId, row.id, 'cursor = the muted row (never re-read, never stranded)');
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal(sends.length, 0, 'ZERO pushes: the bell is off');
+});
+
+test('v1.314 bell AC2: flip the bell ON through the store and the next download from that channel pushes exactly once', async () => {
+  sends.length = 0;
+  await store.updateSubscription(bellDeps(), 'bell-sub', { pushBell: true });
+  const filePath = await plantBellDownload('Bell On Video', 'bbbbbbbbbb2', BELL_CHANNEL_URL, 'Bell Channel');
+  await scanDirectories();
+  await waitFor(() => sends.length >= 1, 'the push');
+  assert.equal(sends.length, 1, 'ONE push');
+  assert.equal(sends[0].url, ENDPOINT);
+  const row = feedRowFor(filePath);
+  await waitFor(() => userStore.getPushSubscription(ENDPOINT).lastPushedId >= row.id, 'cursor advance');
+  assert.equal(userStore.getPushSubscription(ENDPOINT).lastPushedId, row.id);
+  // ...and OFF again mutes the channel again (both directions through the same path).
+  sends.length = 0;
+  await store.updateSubscription(bellDeps(), 'bell-sub', { pushBell: false });
+  const filePath2 = await plantBellDownload('Bell Off Again Video', 'bbbbbbbbbb3', BELL_CHANNEL_URL, 'Bell Channel');
+  await scanDirectories();
+  const row2 = feedRowFor(filePath2);
+  await waitFor(() => userStore.getPushSubscription(ENDPOINT).lastPushedId >= row2.id, 'silent advance');
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal(sends.length, 0, 'off again: silent');
+});
+
+test('v1.314 bell AC3: a one-off download from a channel with NO subscription still pushes (the bell is per-channel opt-in, not a global mute)', async () => {
+  sends.length = 0;
+  await store.updateSubscription(bellDeps(), 'bell-sub', { pushBell: false }); // the subscribed channel stays muted meanwhile
+  const filePath = await plantBellDownload('One Off Video', 'ooooooooo01', ONEOFF_CHANNEL_URL, 'One Off Channel');
+  await scanDirectories();
+  await waitFor(() => sends.length >= 1, 'the one-off push');
+  assert.equal(sends.length, 1, 'the unsubscribed channel pushed');
+  const row = feedRowFor(filePath);
+  await waitFor(() => userStore.getPushSubscription(ENDPOINT).lastPushedId >= row.id, 'cursor advance');
+});
