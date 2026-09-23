@@ -15,7 +15,7 @@ Branch `fix/post-311-2-regressions`, base `9f440d47` (main, v1.311.2).
 ## Intake (Dean, 2026-09-23, iPhone, after v1.311.2)
 
 0. CRITICAL: on mobile, video plays audio over a BLACK picture.
-1. A music skin ("Pocket Classic", probably Click / `ipod`) got stuck with no way out.
+1. A music skin got stuck with no way out (diagnosed from Dean's screenshot: see R1 below; it was Cider, not a wheel skin).
 2. Video faux fullscreen still scrolls up and down.
 3. Rotating the phone in music mode locks all scrolling.
 4. A chaptered album should play all its chapters before radio. Verify only.
@@ -87,6 +87,22 @@ play a video and do NOT enter fullscreen).
   chapter head. An earlier saved place still resumes (v1.222). `chapterResumeSecFor` is the
   one producer of `chapterResumeSec`. Bound by a real row-click test and boundary checks.
 - **R0 / R2:** no code until a device observation names the cause.
+
+## R1 diagnosed from Dean's screenshot (2026-09-23)
+
+Dean: "I was watching a video and I picked listen mode, then I turned sideways. Then when I
+turned back, that's where I saw that weird up next." The screenshot is the DESKTOP
+now-playing panel (`buildPanelHtml`: `.mnp-title` "23. Duel Zone", the `.mnp-sub` "artist ·
+album" subline, the whole queue with played rows greyed) filling the phone on the Cider
+skin's grey background, with no grab handle and no transport. So the panel wore `mms
+mms-full mms-apple` (position:fixed; inset:0) around desktop content. Path: a CHAPTERED
+listen (reflectChapter repaints the panel at every chapter boundary); while wide, that
+repaint took the desktop branch, which on v1.311.2 kept the skin classes; rotating back
+re-applied the cover and nothing re-painted the skin; swipe-back stood down on `.mms-full`.
+Closed on this branch by the desktop className reset (gate r1 QA S2), `watchSkinViewport`
+(the rotate back re-paints) and the scrubbers-only swipe-back. Bound by the
+music-skin-integration "Dean's stuck panel" test (the className-reset mutant is KILLED).
+Device confirmation is Dean's.
 
 ## R0 / R2 device evidence (Dean, 2026-09-23) and the WebKit bisect
 

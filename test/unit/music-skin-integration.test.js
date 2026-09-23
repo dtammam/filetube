@@ -1929,3 +1929,31 @@ test('v1.311.3: a rotate across the 768px gate un-renders the music skin and a r
     assert.ok(body.classList.contains('mms-on'), 'and mms-on');
   } });
 });
+
+// v1.311.3 (Dean's device screenshot, "stuck skin"): a listen of a CHAPTERED album, rotate
+// sideways, rotate back -> the DESKTOP now-playing panel (title, subline, whole queue) filled
+// the phone on the skin's background, with no transport and no way out. Cause: while wide, a
+// re-render that is NOT a rotate (reflectChapter repaints the panel at every chapter boundary)
+// took the desktop branch, which kept the panel's `mms mms-full mms-<skin>` classes; rotating
+// back re-applied `.mms-full` (position:fixed; inset:0) around desktop content. The theatre
+// toggle stands in for the chapter boundary here (both call updateNowPlayingPanel).
+test('v1.311.3 Dean\'s stuck panel: a wide re-render outside a rotate never leaves the desktop panel wearing the skin cover', async () => {
+  await boot({ mobile: true, isMusic: true, run: async (dom) => {
+    const el = panel(dom);
+    assert.match(el.className, /\bmms-full\b/, 'precondition: the full-screen skin');
+    let narrow = true;
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q) ? narrow : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    narrow = false; // turned sideways
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle();
+    dom.window.document.getElementById('music-theater-btn').click(); // a chapter boundary re-renders while wide
+    await settle();
+    assert.ok(el.querySelector('.mnp-title'), 'the wide re-render drew the desktop panel');
+    assert.doesNotMatch(el.className, /\bmms-full\b/, 'and it does NOT wear the full-screen skin cover (the stuck state needs both)');
+    narrow = true; // turned back
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await settle();
+    assert.match(el.className, /\bmms-full\b/, 'back in portrait: the real skin paints again');
+    assert.ok(el.querySelector('[data-skin-play]'), 'with its transport - a way out');
+  } });
+});
