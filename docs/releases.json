@@ -3142,5 +3142,11 @@
     "date": "2026-09-23",
     "title": "Ambient glow now reaches the edges of your phone and moves gently",
     "intent": "On a phone the Ambient glow only showed above and below the video; now it also fills the strip left and right of the player out to the screen edge, without the page ever scrolling sideways. The glow also stopped jumping between colours every time the preview frame changed: it now drifts slowly toward the new colours over a longer, softer fade, so it feels like light from the picture instead of a slideshow behind it."
+  },
+  {
+    "version": "1.316.0",
+    "date": "2026-09-23",
+    "title": "The channel bell flips in place and matches your theme",
+    "intent": "On the Subscriptions page, turning a channel's notification bell on or off used to reload the whole list, so the page blinked and jumped on every tap. Now only that bell changes, right where you tapped it. The bell, the pin star and the settings button on each row also now look like the other buttons in whichever era you use: glossy in 2009, flat in 2005 and 2014, softly shadowed in 2021, in light and dark mode alike."
   }
 ]

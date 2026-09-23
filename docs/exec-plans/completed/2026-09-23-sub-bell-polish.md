@@ -3,10 +3,10 @@ plan: sub-bell-polish
 harness: v2 · lean
 branch: fix/sub-bell-polish
 anchor: spec
-status: Building
-next: build B1 (in-place row bell) + B2 (the chip joins the .btn family) with their tests; measure per theme x mode with scripts/sub-row-chip-probe.js and the action-row probe; dual-Node suites; gate (adversary + qa + security-brief, forced by the lib/ytdlp/client glob); release v1.316.0 per docs/RELEASING.md
+status: Shipped v1.316.0
+next: Dean's device check (/subscriptions: tap a row bell - no blink, no jump, only that bell flips; the bell / pin / kebab chips look like the era's buttons in each theme x mode); QA r2 suggestion for the next branch - add the `-active` modifier tokens to ROLES in test/unit/sub-row-chip-btn-family.test.js so a future `.sub-row-bell-active { background }` cannot slip the census; the mid-flight-rebuild second flight stays disclosed under #233
 design: Approved 2026-09-23 @8536f399 (Dean: "GO." on the wave register D1-D4, recorded on feat/music-channel-chapters at 10c3be1e; this branch is the first slice of docs/exec-plans/active/2026-09-23-music-channel-chapters-wave.md)
-gate: pending
+gate: APPROVED r2 @c395e462 — adversary, qa, security-brief
 ---
 
 # Subscription bell polish: no page refresh on toggle, the chip styled per era
