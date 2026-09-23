@@ -1,3 +1,4 @@
+> Completed: shipped in v1.242.0 (moved 2026-09-23; see ROADMAP.md).
 # Exec plan: universal audio - one player for all non-video sound (v1.242)
 
 Status: ACTIVE (targeting v1.242.0)

@@ -31,12 +31,18 @@ const COMPLETED_DIR = path.join(__dirname, '..', '..', 'docs', 'exec-plans', 'co
 // The regex: optional list marker, optional bold markers, the word status
 // (any case), optional closing bold, a colon (inside or outside the bold),
 // then the value.
-const STATUS_LINE = /^\s*(?:[-*]\s+)?(?:\*\*)?status(?::\*\*|\*\*:|:)\s*(.+)$/i;
+//   `> Completed: X` (2026-09-23) - the close-out BANNER scripts/plan-complete.js
+//   prepends to a v1 plan when it moves to completed/ (the plan's own prose
+//   status below it stays byte-unchanged, so the banner is the first and
+//   authoritative status line; test/unit/exec-plans-census.test.js holds it
+//   to line 1).
+const STATUS_LINE = /^\s*(?:(?:[-*]\s+)?(?:\*\*)?status(?::\*\*|\*\*:|:)|>\s*Completed:)\s*(.+)$/i;
 
 // An optional leading version token is allowed ("Status: **v1.42.0 SHIPPED
 // ...**" - a real spelling this checker itself surfaced on its first run;
-// terminal in substance, version-first in shape).
-const TERMINAL = /^(?:\*\*)?\s*(?:v?\d+[\w.]*\s+)?(shipped|closed|superseded|archived|merged|done|completed?|retired)\b/i;
+// terminal in substance, version-first in shape). `abandoned` is terminal
+// too (the harness vocabulary's second terminal state, .harness/lib/harness-markers.md).
+const TERMINAL = /^(?:\*\*)?\s*(?:v?\d+[\w.]*\s+)?(shipped|closed|superseded|archived|merged|done|completed?|retired|abandoned)\b/i;
 
 function firstStatus(file) {
   const lines = fs.readFileSync(file, 'utf8').split('\n');

@@ -1,3 +1,4 @@
+> Completed: shipped in v1.265.0 (moved 2026-09-23; see ROADMAP.md).
 # Cross-device preference sync (v1.265)
 
 Status: ACTIVE. Dean 2026-09-04: "pivot to the cross device sync." Intake settled

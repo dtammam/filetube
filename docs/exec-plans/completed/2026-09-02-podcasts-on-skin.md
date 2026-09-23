@@ -1,6 +1,7 @@
+> Completed: shipped in v1.246.0 (F1/F3/F5; F2 deferred to tech-debt-tracker.md. Moved 2026-09-23; see ROADMAP.md).
 # Podcasts on the skin + MENU-returns-to-origin + notification deep-link
 
-Status: ACTIVE. Split out of `universal-audio.md` SEAM 3 (#3), now its own wave with
+Status: ACTIVE. Split out of `2026-09-01-universal-audio.md` SEAM 3 (#3), now its own wave with
 Dean's two nav asks folded in. Intake LOCKED (2026-09-02). player.js is BYTE-UNCHANGED
 across the whole wave (machine-derived prediction: `git diff main -- public/js/player.js`
 = 0 lines, re-verified at every commit).

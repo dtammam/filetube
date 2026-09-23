@@ -1039,7 +1039,7 @@
     // crossing = one tick. HARD RULES (each broke a probe iteration): no touch-action
     // anywhere on the ghost's ancestor chain (the mms-haptic carve-out + a body scroll
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
-    // NEVER write .checked from JS (kills tracking). Exec plan: wheel-haptics.md.
+    // NEVER write .checked from JS (kills tracking). Exec plan: 2026-09-03-wheel-haptics.md.
     var WHEEL_CFG = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null; // v1.303: the wheel's source of truth (the Click wheel test writes it; read fresh per gesture below)
     var HAPTIC_STEP_DEG = (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
     // v1.271 (Dean: "I want there to be more haptic feedback than not... it really
@@ -1094,7 +1094,7 @@
     // by 7.5 is 240px tall, but the iPod wheel is ~273px on a 390px phone - so a
     // ~16px strip along the TOP and BOTTOM of the wheel never armed the haptics.
     // The v1.256 adversarial seat RECORDED this exact residual (see
-    // docs/exec-plans/active/wheel-haptics.md) and left it for Dean; he
+    // docs/exec-plans/active/2026-09-03-wheel-haptics.md) and left it for Dean; he
     // arbitrated it: "it's when it's near the top edge it feels bad."
     // Scaling to h/32 makes the cover exactly the wheel's height, so the WHOLE
     // wheel arms and the cover cannot extend above it into the LCD - which is the

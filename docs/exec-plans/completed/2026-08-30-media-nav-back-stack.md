@@ -1,3 +1,4 @@
+> Completed: shipped in v1.217.0 (moved 2026-09-23; see ROADMAP.md; the deferred slices live in tech-debt-tracker.md).
 # Exec plan: in-view back-stack (shared primitive, Music first)
 
 Status: ACTIVE. Owner: main session. Gate: FULL (router contract + player

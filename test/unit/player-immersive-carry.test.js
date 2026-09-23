@@ -8,7 +8,7 @@
 // v1.34.2 "never leak the fixed overlay across loads" drop dumping him onto
 // the raw landscape page. Keyed on the immersive STATE at advance time, never
 // orientation (ruling 3); cross-kind advances land on the NEW item's own
-// surface (ruling 2). Spec: docs/exec-plans/active/immersive-carry-on-advance.md.
+// surface (ruling 2). Spec: docs/exec-plans/completed/2026-08-15-immersive-carry-on-advance.md.
 //
 // Testing posture mirrors test/unit/player-audio-expand.test.js: the two PURE
 // decision helpers are exercised directly; the impure wiring (arm sites, the

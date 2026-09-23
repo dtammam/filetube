@@ -47,14 +47,37 @@ app's account-menu version row links straight to them.
 > **Scope note:** the steps below are the minimal manual/Docker-tag
 > mechanics. The full release ceremony actually used for this repo
 > (release branch → gate → no-ff merge → tag → push) lives in
-> `CLAUDE.md`; this doc is authoritative only for how tags map to
-> published images.
+> `AGENTS.md` (Project context); this doc is authoritative only for how
+> tags map to published images, plus the plan close-out in step 1.
 
-1. Make sure `main` is green (CI passes) and you're on it:
+1. Close the exec plan out (on the feature branch, its own bookkeeping
+   commit, BEFORE the merge). A plan lives in `docs/exec-plans/active/`
+   while it is open and moves to `docs/exec-plans/completed/` when it
+   ships, and every plan file is DATE-LED: `YYYY-MM-DD-<slug>.md` (or
+   `YYYY-MM-DD-<slug>/plan.md` for a directory plan), where the date is
+   the day the plan was MADE (the commit that first added it), not the
+   day it shipped. The script does all of it - `git mv` to the dated name
+   under `completed/`, the `status: Shipped vX.Y.Z` rewrite (v2
+   frontmatter) or the `> Completed: shipped in vX.Y.Z ...` banner on
+   line 1 (a legacy v1 plan), then a re-read at the new path so a
+   renames-only no-op cannot slip through:
+   ```bash
+   node scripts/plan-complete.js docs/exec-plans/active/<date>-<slug>.md "Shipped v1.4.0"          # dry-run
+   node scripts/plan-complete.js docs/exec-plans/active/<date>-<slug>.md "Shipped v1.4.0" --apply
+   git add docs/exec-plans/completed/<date>-<slug>.md   # the rename is staged by git mv; the edit is not
+   bash .harness/lib/check-markers.sh
+   ```
+   A plan that will never ship closes the same way with `"Abandoned(<why>)"`.
+   Update any path-shaped reference the script lists (`git grep -nF <slug>`).
+   `test/unit/exec-plans-census.test.js` (pre-commit) fails on an undated
+   plan, a terminal status still under `active/`, or a non-terminal one
+   under `completed/`; `.harness/lib/check-markers.sh` (pre-push) flags the
+   same placement errors.
+2. Make sure `main` is green (CI passes) and you're on it:
    ```bash
    git checkout main && git pull
    ```
-2. Bump the version in `package.json` to match the release, commit it
+3. Bump the version in `package.json` to match the release, commit it
    (stage EXPLICIT paths - never `-a`/`-A`; blind staging once swept scratch
    files into a release commit. A Claude Code PreToolUse hook blocks it in
    agent sessions; on a plain shell NOTHING blocks it - the discipline is
@@ -65,14 +88,14 @@ app's account-menu version row links straight to them.
    git commit -m "Release v1.4.0"
    git push
    ```
-3. Tag and push the tag (this triggers the versioned image build):
+4. Tag and push the tag (this triggers the versioned image build):
    ```bash
    git tag v1.4.0
    git push origin v1.4.0
    ```
    — or, equivalently, **draft a GitHub Release** in the UI with tag `v1.4.0`
    (publishing it creates and pushes the tag, which triggers the same build).
-4. Watch the **Publish Docker Image** workflow. When it's green,
+5. Watch the **Publish Docker Image** workflow. When it's green,
    `deantammam/filetube:1.4.0` and `:latest` are live.
 
    > **Rapid tag chains:** publishes are serialized per concurrency group and
@@ -289,5 +312,5 @@ Reverting the auto-merge: delete `.github/workflows/dependabot-auto-merge.yml`
 ## Notes
 
 - The version tag drives the image version; `package.json` is kept in sync by
-  step 2 for humans and tooling (it isn't read by the build).
+  step 3 for humans and tooling (it isn't read by the build).
 - Only tags matching `v*.*.*` trigger a release build.

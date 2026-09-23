@@ -5204,7 +5204,7 @@ function setButtonBusy(btn, busy) {
 
 // ===========================================================================
 // v1.152: master-detail menu (iOS-Settings feel) for the management pages.
-// Design + rationale: docs/exec-plans/active/menus-master-detail-and-stats-route.md
+// Design + rationale: docs/exec-plans/completed/2026-08-19-menus-master-detail-and-stats-route.md
 //
 // Progressive enhancement over the SAME `<details data-collapse-key>` sections
 // wireCollapsibleSections used to persist: a `.md-root[data-md-page]` wrapper
@@ -7801,7 +7801,7 @@ function playDdrNote(freq) {
 // A completely optional fun mode: little critters PEEK OUT FROM BEHIND page
 // furniture (cards, boxes, menus) at jaunty angles - never over the playback
 // surfaces. The whole subsystem is inert until the per-device setting is on.
-// Architecture (exec plan: docs/exec-plans/active/critter-mode-skeleton.md):
+// Architecture (exec plan: docs/exec-plans/completed/2026-08-22-critter-mode-skeleton.md):
 //   - `#critter-layer` sits at z-index 2 (above z-auto furniture, below every
 //     --z-* ladder rung); the "hidden behind the anchor" half is CLIPPED away
 //     per-critter (buildCritterClip, the v1.168 sandwich) rather than hidden by
