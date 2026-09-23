@@ -209,3 +209,8 @@ watch call dead · F5 podcasts `mms-on` removal dropped · F6/F7 className reset
 F8 watcher starts narrow · F9 no orientationchange · F10 `loadstart` clear dropped · F11
 seek release dropped · F12 seek release at 0: all 12 KILLED (F2 and F12 survived the
 first run and were bound before this record).
+
+## Verification (@470504a4, builder, before gate r2)
+
+- `npm test` Node 22.23.1: 8954/8954 pass, 0 fail, 0 skipped. Node 24.20.0: 8954/8954 pass,
+  0 fail, 0 skipped (sequential).
