@@ -86,6 +86,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.316.0 - The channel bell flips in place and wears the era's button treatment (2026-09-23)
+
+Dean, from v1.314.0: "make sure the notification bell we picked not only doesn't refresh the
+subscription page on toggle but is styled appropriately with the design language per theme."
+Two defects, one slim branch. (1) The /subscriptions row bell's `toggleBell` did PATCH then
+`loadSubscriptions()`, which cleared the list, painted skeleton rows, re-fetched and rebuilt every
+row - that was the refresh. Now the clicked row is updated IN PLACE from the PATCH response (the
+~2.5s poll's `applyStatusUpdatesInPlace` posture, keyed by `data-sub-id`) through ONE writer of
+the bell's state (`applyBellState`, shared by the row builder and the post-PATCH applier), the
+record is patched for the next tap, the tapped bell is disabled for its own flight, and a non-2xx
+leaves the row and logs. (2) The row's pin / bell / kebab chips carried a hand-copied bevel that
+inherited each era's colour tokens but never its control treatment (the 2009 gloss is a
+`background-image` on `.btn` only). They are now real `.btn.btn-chip` controls, so the gloss, the
+2005/2014 flat look and the 2021 shadow reach them through the one `.btn` rule family; a
+phone-block exemption keeps the chip a 32px square under the v1.95 44px `.btn` touch floor
+(measured: without it the chip stretched to 32x44). Proof per the match-reference norm: the new
+`scripts/sub-row-chip-probe.js` renders the tree's REAL row builder beside a `.btn` on one page per
+theme x mode x width and compares computed styles + pixel bands - BEFORE every one of 16 combos
+differed, AFTER none (2009 chips glossy within 1/255 of the button); the action-row probe shows the
+watch `.btn` geometry byte-identical. Its first two cuts were vacuous (common.js re-applied the
+saved theme; no viewport meta) - a theme read-back guard now aborts on either. Gate r1: adversary
+CHANGES (the in-flight disable and the `currentSubs` patch were correct but unbound - both now
+bound, incl. a Pause-mid-flight reload drive), qa + security-brief APPROVED; r2 APPROVED by all
+three @c395e462. Disclosed: a list rebuild mid-flight builds a fresh enabled bell (a second flight
+converges on server truth, the #233 class); the census does not yet see the `-active` modifier
+rules (next branch). Plan: `docs/exec-plans/completed/2026-09-23-sub-bell-polish.md`.
+
 ### v1.315.0 - Ambient glow spreads to the phone's edges and drifts instead of morphing (2026-09-23)
 
 Dean's iPhone check of v1.313.0 (picture stays, R0 closed) came with two complaints: "look at
