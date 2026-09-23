@@ -252,6 +252,12 @@ const fakeDoc = {
   createElement: (tag) => new FakeElement(tag),
 };
 
+// v1.316 (B2): every row chip is a real `.btn` (`btn btn-chip <role>`), so a
+// chip is found by its ROLE class token, never by a className prefix/equality.
+function hasChipRole(el, role) {
+  return !!(el && typeof el.className === 'string' && el.className.split(/\s+/).indexOf(role) !== -1);
+}
+
 // ---- Pure formatting helpers ------------------------------------------------
 
 test('formatSubMeta: defaults to Video / best, omits the cutoff-date segment when cutoffDate is absent', () => {
@@ -903,7 +909,7 @@ test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted
 
   assert.strictEqual(row.className, 'sub-row');
   // AC19: exactly avatar + info + (v1.314) the push bell + kebab as direct children.
-  assert.deepStrictEqual(row.children.map((el) => el.className), ['sub-row-avatar', 'sub-row-info', 'sub-row-bell', 'sub-row-kebab']);
+  assert.deepStrictEqual(row.children.map((el) => el.className), ['sub-row-avatar', 'sub-row-info', 'btn btn-chip sub-row-bell', 'btn btn-chip sub-row-kebab']);
 
   const avatar = row.children[0];
   // C5 (v1.30.0, T12): the row's avatar letter routes through the shared
@@ -917,13 +923,13 @@ test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted
 
   const kebab = row.children[3];
   assert.strictEqual(kebab.tagName, 'BUTTON');
-  assert.strictEqual(kebab.className, 'sub-row-kebab');
+  assert.strictEqual(kebab.className, 'btn btn-chip sub-row-kebab');
 
   // The old inline Pause/Edit/Re-pull/Delete cluster and edit panel are
   // entirely gone -- the only buttons in the whole row are the v1.314 push
   // bell and the trailing kebab, not six.
   const buttons = [...row.walk()].filter((el) => el.tagName === 'BUTTON');
-  assert.deepStrictEqual(buttons.map((b) => b.className), ['sub-row-bell', 'sub-row-kebab'], 'the bell + the single trailing kebab');
+  assert.deepStrictEqual(buttons.map((b) => b.className), ['btn btn-chip sub-row-bell', 'btn btn-chip sub-row-kebab'], 'the bell + the single trailing kebab');
 });
 
 // ---- v1.314: the per-channel push bell on the row ---------------------------
@@ -931,27 +937,27 @@ test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted
 
 test('v1.314 createSubscriptionRow: the bell renders OFF (muted glyph, no -active) for a record without the flag, ON (bell glyph, -active, aria-pressed) when pushBell is true; before the kebab, after the pin', () => {
   const off = createSubscriptionRow({ id: 'bell1', name: 'Off', channelUrl: 'https://www.youtube.com/@off', channelDir: '/data/off' }, fakeDoc, {}, undefined, false);
-  const offBtn = off.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0);
+  const offBtn = off.children.find((el) => hasChipRole(el, 'sub-row-bell'));
   assert.ok(offBtn, 'a bell exists for a subscribed row');
   assert.strictEqual(offBtn.tagName, 'BUTTON');
-  assert.strictEqual(offBtn.className, 'sub-row-bell', 'off carries no -active modifier');
+  assert.strictEqual(offBtn.className, 'btn btn-chip sub-row-bell', 'off carries no -active modifier');
   assert.strictEqual(offBtn.textContent, '🔕');
   assert.strictEqual(offBtn.attributes['aria-pressed'], 'false');
-  const pinIdx = off.children.findIndex((el) => el.className === 'sub-row-pin');
+  const pinIdx = off.children.findIndex((el) => hasChipRole(el, 'sub-row-pin'));
   const bellIdx = off.children.indexOf(offBtn);
-  const kebabIdx = off.children.findIndex((el) => el.className === 'sub-row-kebab');
+  const kebabIdx = off.children.findIndex((el) => hasChipRole(el, 'sub-row-kebab'));
   assert.ok(pinIdx >= 0 && pinIdx < bellIdx && bellIdx < kebabIdx, 'order: pin, bell, kebab');
   const on = createSubscriptionRow({ id: 'bell2', name: 'On', channelUrl: 'https://www.youtube.com/@on', pushBell: true }, fakeDoc, {});
-  const onBtn = on.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0);
-  assert.strictEqual(onBtn.className, 'sub-row-bell sub-row-bell-active');
+  const onBtn = on.children.find((el) => hasChipRole(el, 'sub-row-bell'));
+  assert.strictEqual(onBtn.className, 'btn btn-chip sub-row-bell sub-row-bell-active');
   assert.strictEqual(onBtn.textContent, '🔔');
   assert.strictEqual(onBtn.attributes['aria-pressed'], 'true');
   // A non-boolean value (a hostile/corrupt row) reads OFF, never ON.
   const junk = createSubscriptionRow({ id: 'bell3', name: 'Junk', channelUrl: 'https://www.youtube.com/@junk', pushBell: 'true' }, fakeDoc, {});
-  assert.strictEqual(junk.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0).textContent, '🔕');
+  assert.strictEqual(junk.children.find((el) => hasChipRole(el, 'sub-row-bell')).textContent, '🔕');
   // No id -> no bell (nothing to PATCH).
   const noId = createSubscriptionRow({ name: 'NoId', channelUrl: 'https://www.youtube.com/@noid' }, fakeDoc, {});
-  assert.strictEqual(noId.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0), undefined);
+  assert.strictEqual(noId.children.find((el) => hasChipRole(el, 'sub-row-bell')), undefined);
 });
 
 test('v1.314 createSubscriptionRow: clicking the bell calls onToggleBell(sub) and never also opens the settings panel', () => {
@@ -962,21 +968,28 @@ test('v1.314 createSubscriptionRow: clicking the bell calls onToggleBell(sub) an
     onOpenSettings: (s) => openCalls.push(s),
     onToggleBell: (s) => bellCalls.push(s),
   });
-  const bellBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-bell') === 0);
+  const bellBtn = row.children.find((el) => hasChipRole(el, 'sub-row-bell'));
   bellBtn.click({ stopPropagation: () => {} });
   assert.deepStrictEqual(bellCalls, [sub]);
   row.click({ target: bellBtn });
   assert.deepStrictEqual(openCalls, [], 'a row click on the bell never opens settings');
 });
 
-test('v1.314 LOCK: the page wires onToggleBell to toggleBell, which PATCHes { pushBell: !current } and RE-FETCHES the list (never an optimistic flip); a non-2xx is surfaced', () => {
+test('v1.314/v1.316 LOCK: the page wires onToggleBell to toggleBell, which PATCHes { pushBell: !current } and updates the row IN PLACE from the RESPONSE (never a list re-fetch, never an optimistic flip); a non-2xx is surfaced', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'client', 'subscriptions.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   assert.match(src, /onToggleBell: toggleBell,/, 'the list handlers carry the bell (an unbound handler = an inert bell)');
-  const fn = src.slice(src.indexOf('  function toggleBell(sub) {'), src.indexOf('\n  }', src.indexOf('  function toggleBell(sub) {')));
+  const start = src.indexOf('  function toggleBell(sub) {');
+  assert.ok(start !== -1, 'toggleBell exists');
+  const fn = src.slice(start, src.indexOf('\n  }', start));
   assert.match(fn, /method: 'PATCH'/);
   assert.match(fn, /JSON\.stringify\(\{ pushBell: !\(sub\.pushBell === true\) \}\)/, 'flips from the record\'s boolean truth');
   assert.match(fn, /if \(!res\.ok\)/, 'a 403/400 is checked, not swallowed');
-  assert.match(fn, /\.then\(\(\) => loadSubscriptions\(\)\)/, 're-fetches the list');
+  // v1.316 (B1): the refresh Dean saw WAS the list re-fetch - it must be gone.
+  assert.doesNotMatch(fn, /loadSubscriptions\(/, 'B1: no list re-fetch after the PATCH (that was the page refresh)');
+  assert.doesNotMatch(fn, /renderSubscriptions\(/, 'B1: no full re-render after the PATCH');
+  assert.match(fn, /data\.pushBell === true/, 'the new state is read from the RESPONSE body, not the request');
+  assert.match(fn, /applyBellUpdateInPlace\(rowElementsById, subId, on\)/, 'the clicked row is updated in place through the shared applier');
+  assert.match(fn, /sub\.pushBell = on;/, 'the record the next tap reads is patched');
 });
 
 test('createSubscriptionRow: avatar falls back to "?" for a missing/blank channel name', () => {
@@ -1251,7 +1264,7 @@ test('createSubscriptionRow: the kebab button opens the settings sheet via onOpe
   // pin-toggle star BEFORE the kebab -- look the kebab up by className
   // rather than a fixed index so this test stays correct regardless of
   // sibling ordering.
-  const kebab = row.children.find((el) => el.className === 'sub-row-kebab');
+  const kebab = row.children.find((el) => hasChipRole(el, 'sub-row-kebab'));
   assert.ok(kebab, 'expected a .sub-row-kebab child to exist');
   kebab.click({ stopPropagation: () => {} });
   assert.deepStrictEqual(openCalls, [sub], 'the kebab opens the settings panel');
@@ -1303,13 +1316,13 @@ test('createSubscriptionRow: a channelDir containing characters requiring escapi
 test('createSubscriptionRow: renders an OUTLINE star (unpinned) by default when channelDir is present, before the kebab', () => {
   const sub = { id: 'pin1', name: 'Pinnable', channelUrl: 'https://www.youtube.com/@pinnable', channelDir: '/data/x' };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  const pinBtn = row.children.find((el) => hasChipRole(el, 'sub-row-pin'));
   assert.ok(pinBtn, 'expected a .sub-row-pin child to exist for a navigable row');
-  assert.strictEqual(pinBtn.className, 'sub-row-pin', 'unpinned must not carry the -active modifier class');
+  assert.strictEqual(pinBtn.className, 'btn btn-chip sub-row-pin', 'unpinned must not carry the -active modifier class');
   assert.strictEqual(pinBtn.textContent, '☆');
   assert.strictEqual(pinBtn.attributes['aria-pressed'], 'false');
   // Ordering: pin toggle comes before the kebab, both after avatar+info.
-  const kebabIndex = row.children.findIndex((el) => el.className === 'sub-row-kebab');
+  const kebabIndex = row.children.findIndex((el) => hasChipRole(el, 'sub-row-kebab'));
   const pinIndex = row.children.indexOf(pinBtn);
   assert.ok(pinIndex >= 0 && kebabIndex > pinIndex, 'the pin toggle must render before the kebab');
 });
@@ -1317,8 +1330,8 @@ test('createSubscriptionRow: renders an OUTLINE star (unpinned) by default when 
 test('createSubscriptionRow: renders a FILLED star (pinned) with the -active modifier when pinned=true', () => {
   const sub = { id: 'pin2', name: 'Pinned', channelUrl: 'https://www.youtube.com/@pinned', channelDir: '/data/y' };
   const row = createSubscriptionRow(sub, fakeDoc, {}, undefined, true);
-  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
-  assert.strictEqual(pinBtn.className, 'sub-row-pin sub-row-pin-active');
+  const pinBtn = row.children.find((el) => hasChipRole(el, 'sub-row-pin'));
+  assert.strictEqual(pinBtn.className, 'btn btn-chip sub-row-pin sub-row-pin-active');
   assert.strictEqual(pinBtn.textContent, '★');
   assert.strictEqual(pinBtn.attributes['aria-pressed'], 'true');
 });
@@ -1326,7 +1339,7 @@ test('createSubscriptionRow: renders a FILLED star (pinned) with the -active mod
 test('createSubscriptionRow: omits the pin toggle entirely when channelDir is absent (fail-safe, mirrors the playlist link)', () => {
   const sub = { id: 'pin3', name: 'NoDir', channelUrl: 'https://www.youtube.com/@nodir' };
   const row = createSubscriptionRow(sub, fakeDoc, {}, undefined, true);
-  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  const pinBtn = row.children.find((el) => hasChipRole(el, 'sub-row-pin'));
   assert.strictEqual(pinBtn, undefined, 'no pin toggle can exist without a resolved channelDir to pin');
 });
 
@@ -1338,7 +1351,7 @@ test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinn
     onOpenSettings: (s) => openCalls.push(s),
     onTogglePin: (s, p) => pinCalls.push([s, p]),
   }, undefined, false);
-  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  const pinBtn = row.children.find((el) => hasChipRole(el, 'sub-row-pin'));
   pinBtn.click({ stopPropagation: () => {} });
   assert.deepStrictEqual(pinCalls, [[sub, false]]);
   // v1.155: a row-level click landing on the pin <button> is guarded.
@@ -1384,10 +1397,10 @@ test('createSubscriptionsListElement: derives each row\'s pinned flag from the p
   };
   const rowA = rows.find((r) => nameOf(r) === 'A');
   const rowB = rows.find((r) => nameOf(r) === 'B');
-  const pinA = rowA.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
-  const pinB = rowB.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
-  assert.strictEqual(pinA.className, 'sub-row-pin', 'row A\'s channelDir is not in the pinned set');
-  assert.strictEqual(pinB.className, 'sub-row-pin sub-row-pin-active', 'row B\'s channelDir IS in the pinned set');
+  const pinA = rowA.children.find((el) => hasChipRole(el, 'sub-row-pin'));
+  const pinB = rowB.children.find((el) => hasChipRole(el, 'sub-row-pin'));
+  assert.strictEqual(pinA.className, 'btn btn-chip sub-row-pin', 'row A\'s channelDir is not in the pinned set');
+  assert.strictEqual(pinB.className, 'btn btn-chip sub-row-pin sub-row-pin-active', 'row B\'s channelDir IS in the pinned set');
 });
 
 test('createSubscriptionsListElement: an omitted pinnedChannelDirs defaults every row to unpinned (never throws)', () => {
@@ -1395,8 +1408,8 @@ test('createSubscriptionsListElement: an omitted pinnedChannelDirs defaults ever
   assert.doesNotThrow(() => createSubscriptionsListElement(subs, fakeDoc, {}));
   const container = createSubscriptionsListElement(subs, fakeDoc, {});
   const row = [...container.walk()].find((el) => el.className === 'sub-row');
-  const pin = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
-  assert.strictEqual(pin.className, 'sub-row-pin');
+  const pin = row.children.find((el) => hasChipRole(el, 'sub-row-pin'));
+  assert.strictEqual(pin.className, 'btn btn-chip sub-row-pin');
 });
 
 // ---- SECURITY (mandatory regression test): a hostile subscription name -----
