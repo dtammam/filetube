@@ -16,11 +16,12 @@ const { routeSurfaceSource } = require('../helpers/route-surface');
 
 const AGENT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
 
-// The plan's 21 keys - the AUTHORITY all three lists are locked against.
+// The plan's 20 keys - the AUTHORITY all three lists are locked against
+// (v1.312: ft-ambient-intensity left with the ambient amount ladder).
 const PLAN_KEYS = [
   'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
   'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
-  'ft-star-ratings', 'ft-ambient', 'ft-ambient-intensity',
+  'ft-star-ratings', 'ft-ambient',
   'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
   'ft-music-skin', 'ft-music-autoplay',
   'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
@@ -143,7 +144,7 @@ test('the visibility leg: becoming visible refreshes', async () => {
   assert.ok(!b.calls[b.calls.length - 1].opts || !b.calls[b.calls.length - 1].opts.method, 'a GET, not a POST');
 });
 
-test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 21 keys (QA W1: the writer-less legacy theme key removed - a key nothing writes can never sync)', () => {
+test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 20 keys (QA W1 removed the writer-less legacy theme key; v1.312 removed ft-ambient-intensity with the ambient amount ladder - a key nothing writes can never sync)', () => {
   const clientSrc = AGENT_SRC;
   const b = boot();
   assert.deepEqual([...b.api.SYNCED].sort(), [...PLAN_KEYS].sort(), 'client === plan');

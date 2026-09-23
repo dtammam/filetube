@@ -46,8 +46,9 @@ function makeEl(tag) {
     setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
     addEventListener() {}, removeEventListener() {},
     // v1.197: the tv path now runs the cog-injection + ambient setup, which use
-    // insertAdjacentHTML and a canvas 2d context - permissive stubs (the ambient
-    // paint loop never starts in the harness; ambientShouldRun gates it off).
+    // insertAdjacentHTML (and, v1.312, an OFF-DOM sample canvas the engine creates
+    // only on its first sample) - permissive stubs (the ambient engine never
+    // starts in the harness; ambientShouldRun gates it off).
     insertAdjacentHTML() {},
     getContext() { return { drawImage() {}, getImageData() { return { data: [] }; }, clearRect() {}, fillRect() {} }; },
     appendChild(c) { if (c) { try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ } el.children.push(c); } return c; },

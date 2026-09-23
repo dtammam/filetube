@@ -86,6 +86,43 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.312.0 - Ambient mode rebuilt: the glow no longer blacks out video on iPhone (2026-09-23)
+
+Dean's device: with Ambient mode ON, EVERY video on his iPhone showed its picture for ~1s
+and then went black while the audio and the glow's colours carried on - the video still
+decoded, only its on-screen layer dropped. Held constant across every build back to
+1.311.1 (the earlier "1.311.1 is fine" bisect had run WITHOUT the trigger: the toggle only
+shows in Dark mode and `ft-ambient` is a synced pref), so NOT something v1.311.2 broke.
+Dean's ruling: rebuild, no interim iOS guard. **The rebuilt glow never touches the video.**
+The old effect copied the live `<video>` into a canvas every 500ms and composited a
+blurred + masked + scaled layer beside it - both known iOS video/canvas/GPU-process
+breakage shapes (WebKit 237424; Apple forums 708348, 698169). Now the colours come from
+the storyboard sprite tile at the current time (else the item's poster), sampled on an
+off-DOM 16x9 canvas, and paint as plain CSS gradients on two cross-fading divs: no
+`filter`, `transform`, `mask` or `will-change` anywhere near the player (source-locked,
+the sweep covering the player stage too). **YouTube's real glow was measured side by
+side** (headless Chromium, `#cinematics` isolated): two 110x75 canvases under
+`scale(1.5, 2)`, no CSS filter, a peak of only ~+25/255 at the player's edge, gone within
+~11% of the width / ~20% of the height, a continuous ~3.5s cross-fade. The rebuild matches
+that reach (12% / 22%) and, after a measured desktop run showed the first cut ~3x too
+bright, Dean chose one YouTube-level look: opacity 0.3, **the v1.187 "Ambient amount"
+ladder is gone** (its `ft-ambient-intensity` synced key left all three allowlists; the
+triple lock re-pinned at 20 keys; old rows stay inert in the DB). The Ambient toggle, its
+dark-only rule, the paused/hidden/light teardown and the sidebar bleed are unchanged.
+Also traced to ambient: the page behind video faux fullscreen staying moved after a drag
+(Dean: does not happen with ambient off). Gate: FULL (adversary + qa + security-brief),
+r1 CHANGES -> r2 APPROVED @33275a31. The adversary's CRITICAL was the builder's own
+goal: the `?tv=` path has no media id, so an id-gated colour source left TV episodes
+with NO glow - the poster rung now rides the episode's own art, driven by the REAL tv
+shape in tests. An async sample failure now tears the DOM down too (the r1 wiring left
+the sidebar bleed lit). Desktop verified end to end in headless Chromium (a real sprite,
+the front layer swaps on a tile change, off tears down); 16 + 6 + 12 builder mutants
+and the seats' 27 + 15, all but one equivalent mutant killed; 8967/8967 on Node 22 + 24.
+**Shipped on Dean's call before the device check ("2.") - his iPhone confirms the
+picture stays; if it still goes black the diagnosis was wrong and it is re-rooted, not
+patched.** Follow-ups: the skin "resides oddly for a second" after a rotate (v1.311.3
+device check); #6 bottom nav after a rotate.
+
 ### v1.311.3 - Rotating and album fixes after v1.311.2 (2026-09-23)
 
 Dean's device reports after v1.311.2, diagnosed before any edit. **A rotate no longer locks
@@ -118,7 +155,10 @@ a source bisect v1.309..HEAD finds no change to the video's visibility, and Play
 (iPhone emulation) paints the picture on v1.311.1, v1.311.2 and this build. The page behind
 video faux fullscreen still moves after a drag on device (synthetic drags show no leak).
 Both need an on-device observation or a `:1.311.1` pin. #6 (bottom nav after rotate) still
-waits on a device check.
+waits on a device check. **Corrected 2026-09-23 (v1.312.0): the black video was AMBIENT MODE
+on iOS - present on every build with the toggle on, so not something v1.311.2 broke; the
+earlier "1.311.1 is fine" run had ambient off. Fixed by the v1.312.0 rebuild. The
+faux-fullscreen page move also goes away with ambient off.**
 
 ### v1.311.2 - Player gestures that behave on iPhone (2026-09-23)
 

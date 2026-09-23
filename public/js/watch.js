@@ -59,15 +59,6 @@ function isAmbientEnabled(rawValue) {
   return rawValue === '1';
 }
 
-// v1.187 (Dean: "ambient is almost too intense"): the intensity ladder. The name
-// rides a `data-ambient` attribute on the canvas and CSS owns the actual
-// opacity/blur/scale per level (no inline style -> the token census stays clean).
-// DEFAULT is 'normal' - deliberately a step DOWN from v1.186's shipped look,
-// which is now the 'intense' rung.
-var AMBIENT_LEVELS = ['subtle', 'normal', 'intense', 'extreme'];
-function resolveAmbientLevel(rawValue) {
-  return AMBIENT_LEVELS.indexOf(rawValue) !== -1 ? rawValue : 'normal';
-}
 function ambientStorageValue(on) {
   return on ? '1' : '0';
 }
@@ -82,6 +73,265 @@ function ambientShouldRun(s) {
 function isDarkMode(doc) {
   try { return (doc || document).documentElement.getAttribute('data-mode') === 'dark'; }
   catch (_) { return false; }
+}
+
+// v1.312 (Dean, device: ambient ON blacked out EVERY video on his iPhone - the
+// picture for ~1s, then black, audio + glow colours continuing; on every build
+// back to 1.311.1; OFF = picture). The old effect copied the live <video> into a
+// canvas every 500ms and composited a blurred + masked + scaled layer beside the
+// video - both known iOS video/canvas/GPU-process breakage shapes. Dean's ruling:
+// REBUILD as YouTube's subtle edge glow, and NEVER read the video element.
+//
+// The rebuilt pipeline is COLOUR-ONLY: sample a same-origin IMAGE (the storyboard
+// sprite tile at the current time, else the item's poster) on an OFF-DOM 16x9
+// canvas, average its edges + corners, and paint those as CSS gradients on two
+// plain divs that cross-fade. No drawImage from a media element, no filter /
+// transform / mask on anything beside the video. Everything below is pure or
+// injected so the unit suite drives the real pipeline with fakes.
+var AMBIENT_SAMPLE_W = 16;
+var AMBIENT_SAMPLE_H = 9;
+var AMBIENT_CLOCK_MS = 1000; // the tile-change clock; NOT a paint rate (a paint happens only on a source change)
+
+// What to sample for this item at time t: the sprite tile (video with a
+// storyboard geometry), else the poster image, else nothing. `storyboard` is the
+// player's pure geometry pair ({ frameForTime, tile } on window.FileTube.storyboard);
+// absent -> the image rung. The poster follows player.js's own poster rule:
+// an explicit artUrl (tv episodes, books) wins over /thumbnail/<id>.
+// Gate r1 (adversary F1, CRITICAL): the `?tv=` watch path has NO mediaId
+// (resolveWatchMediaId reads only ?v=/?id=), so an id-gated ladder left tv
+// episodes INERT - the DOM lit up with nothing painted. A tv descriptor always
+// carries `artUrl`, so the poster rung needs the ART, not an id; only the
+// sprite/thumbnail rungs need the id.
+function ambientSourceFor(mediaData, mediaId, t, storyboard) {
+  var art = (mediaData && typeof mediaData.artUrl === 'string' && mediaData.artUrl) ? mediaData.artUrl : '';
+  if (!mediaId && !art) return null;
+  var geom = (mediaId && mediaData && mediaData.type === 'video') ? mediaData.storyboard : null;
+  if (geom && geom.count > 0 && storyboard && typeof storyboard.frameForTime === 'function' && typeof storyboard.tile === 'function') {
+    var index = storyboard.frameForTime(t, geom, mediaData.duration);
+    var tile = storyboard.tile(index, geom);
+    return {
+      kind: 'sprite',
+      url: '/storyboard/' + encodeURIComponent(mediaId),
+      index: tile.index,
+      col: tile.col,
+      row: tile.row,
+      cols: Math.max(1, geom.cols | 0),
+      rows: Math.max(1, geom.rows | 0),
+    };
+  }
+  return { kind: 'image', url: art || ('/thumbnail/' + encodeURIComponent(mediaId)), index: 0 };
+}
+
+// Average RGB of a run of pixels in a flat RGBA buffer (the getImageData shape).
+function ambientAvg(data, w, x0, y0, x1, y1) {
+  var r = 0, g = 0, b = 0, n = 0;
+  for (var y = y0; y < y1; y++) {
+    for (var x = x0; x < x1; x++) {
+      var i = (y * w + x) * 4;
+      r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+    }
+  }
+  if (!n) return [0, 0, 0];
+  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+}
+
+// The eight swatches the glow is painted from: the four edge bands (top/bottom
+// rows, left/right columns) and the four corner cells of the WxH sample.
+function ambientEdgeColors(data, w, h) {
+  var cw = Math.max(1, Math.floor(w / 4)); // corner cell width
+  var ch = Math.max(1, Math.floor(h / 3)); // corner cell height
+  return {
+    t: ambientAvg(data, w, cw, 0, w - cw, ch),
+    b: ambientAvg(data, w, cw, h - ch, w - cw, h),
+    l: ambientAvg(data, w, 0, ch, cw, h - ch),
+    r: ambientAvg(data, w, w - cw, ch, w, h - ch),
+    tl: ambientAvg(data, w, 0, 0, cw, ch),
+    tr: ambientAvg(data, w, w - cw, 0, w, ch),
+    bl: ambientAvg(data, w, 0, h - ch, cw, h),
+    br: ambientAvg(data, w, w - cw, h - ch, w, h),
+  };
+}
+
+// A mild lift so the glow reads as tinted LIGHT at every scene: saturation
+// x1.15 (capped), lightness clamped to [0.30, 0.62] - a black scene still tints
+// faintly, a white scene does not wash the page out. The glow's single opacity
+// (`--ambient-opacity` in style.css) does the rest, tuned so the edge peak lands
+// near YouTube's measured ~+25/255.
+function ambientLift(rgb) {
+  var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b);
+  var l = (max + min) / 2, h = 0, s = 0;
+  if (max !== min) {
+    var d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  s = Math.min(1, s * 1.15);
+  l = Math.min(0.62, Math.max(0.30, l));
+  function hue(p, q, tt) {
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  }
+  var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  var p = 2 * l - q;
+  return [Math.round(hue(p, q, h + 1 / 3) * 255), Math.round(hue(p, q, h) * 255), Math.round(hue(p, q, h - 1 / 3) * 255)];
+}
+
+// Swatches -> the custom properties the CSS gradients read (one per band/corner).
+function ambientGlowVars(colors) {
+  var out = {};
+  var keys = ['t', 'b', 'l', 'r', 'tl', 'tr', 'bl', 'br'];
+  for (var i = 0; i < keys.length; i++) {
+    var c = ambientLift(colors[keys[i]] || [0, 0, 0]);
+    out['--ag-' + keys[i]] = 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
+  }
+  return out;
+}
+
+// The engine. Injected collaborators (all overridable for the unit suite):
+//   glow        the #ambient-glow div holding two .ambient-glow-layer children
+//   video       the media element (read for currentTime ONLY - never drawn)
+//   getMediaData() -> the view's descriptor (read lazily: the v1.197.1 TDZ lesson)
+//   mediaId, storyboard, loadImage(url) -> Promise<img|null>, makeCanvas() -> canvas,
+//   setTimeout/clearTimeout, clockMs, onHardFail()
+// Contract: start() paints the first source immediately, then re-checks the
+// source on the clock and paints ONLY when the tile index / url changes; stop()
+// cancels the clock. A throw in sampling hard-fails this engine (never re-armed)
+// AND reports it through onHardFail - the sample runs after an ASYNC image load,
+// so the caller's DOM state (is-on, the sidebar bleed) would otherwise stay lit
+// with nothing painting (gate r1, adversary F2 / QA W1).
+function createAmbientEngine(opts) {
+  var onHardFail = typeof opts.onHardFail === 'function' ? opts.onHardFail : null;
+  var glow = opts.glow;
+  var video = opts.video;
+  var getMediaData = opts.getMediaData || function () { return null; };
+  var mediaId = opts.mediaId;
+  var storyboard = opts.storyboard || null;
+  var loadImage = opts.loadImage;
+  var makeCanvas = opts.makeCanvas;
+  var setT = opts.setTimeout || setTimeout;
+  var clearT = opts.clearTimeout || clearTimeout;
+  var clockMs = opts.clockMs || AMBIENT_CLOCK_MS;
+
+  var timerId = null;
+  var hardFailed = false;
+  var spriteFailed = false; // a 404'd/undecodable sprite drops to the poster rung for this view
+  var painted = null;       // { kind, url, index } of the last painted source
+  var images = {};          // url -> img | 'loading' | 'failed'
+  var front = 1;            // index of the layer currently shown (the other is painted next)
+  var canvas = null, ctx = null;
+
+  function layers() {
+    var ls = glow && glow.querySelectorAll ? glow.querySelectorAll('.ambient-glow-layer') : [];
+    return ls.length >= 2 ? [ls[0], ls[1]] : null;
+  }
+  function currentTime() {
+    var t = video ? Number(video.currentTime) : 0;
+    return Number.isFinite(t) ? t : 0;
+  }
+  function source() {
+    var src = ambientSourceFor(getMediaData(), mediaId, currentTime(), storyboard);
+    if (src && src.kind === 'sprite' && spriteFailed) {
+      src = ambientSourceFor(getMediaData(), mediaId, currentTime(), null); // the image rung
+    }
+    return src;
+  }
+  function sameSource(a, b) {
+    return !!(a && b && a.kind === b.kind && a.url === b.url && a.index === b.index);
+  }
+  function ensureCanvas() {
+    if (ctx) return ctx;
+    canvas = makeCanvas();
+    canvas.width = AMBIENT_SAMPLE_W;
+    canvas.height = AMBIENT_SAMPLE_H;
+    ctx = canvas.getContext('2d');
+    return ctx;
+  }
+  // Draw the tile (or the whole poster) into the 16x9 sample and read it back.
+  function sample(img, src) {
+    var c = ensureCanvas();
+    var iw = img.naturalWidth || img.width || 0, ih = img.naturalHeight || img.height || 0;
+    if (!(iw > 0 && ih > 0)) return null;
+    var sx = 0, sy = 0, sw = iw, sh = ih;
+    if (src.kind === 'sprite') {
+      sw = iw / src.cols; sh = ih / src.rows;
+      sx = src.col * sw; sy = src.row * sh;
+    }
+    c.drawImage(img, sx, sy, sw, sh, 0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
+    var data = c.getImageData(0, 0, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H).data;
+    return ambientEdgeColors(data, AMBIENT_SAMPLE_W, AMBIENT_SAMPLE_H);
+  }
+  function paint(colors, src) {
+    var ls = layers();
+    if (!ls) return;
+    var vars = ambientGlowVars(colors);
+    var back = ls[front === 0 ? 1 : 0];
+    for (var k in vars) if (Object.prototype.hasOwnProperty.call(vars, k)) back.style.setProperty(k, vars[k]);
+    back.classList.add('is-front');
+    ls[front].classList.remove('is-front');
+    front = front === 0 ? 1 : 0;
+    painted = { kind: src.kind, url: src.url, index: src.index };
+  }
+  function fail() {
+    hardFailed = true;
+    stop();
+    if (onHardFail) { try { onHardFail(); } catch (_) { /* the caller's teardown must not re-throw into the sampler */ } }
+  }
+  // One evaluation: paint iff the source changed and its image is ready.
+  function check() {
+    if (hardFailed) return;
+    var src = source();
+    if (!src) return;
+    if (sameSource(src, painted)) return;
+    var img = images[src.url];
+    if (img === 'failed') {
+      if (src.kind === 'sprite' && !spriteFailed) { spriteFailed = true; check(); } // fall to the poster
+      return;
+    }
+    if (!img) {
+      images[src.url] = 'loading';
+      loadImage(src.url).then(function (loaded) {
+        images[src.url] = loaded || 'failed';
+        if (timerId != null) check(); // only while still running (a stopped engine paints nothing)
+      }, function () { images[src.url] = 'failed'; if (timerId != null) check(); });
+      return;
+    }
+    if (img === 'loading') return;
+    var colors;
+    try { colors = sample(img, src); } catch (_) { fail(); return; }
+    if (!colors) { images[src.url] = 'failed'; return; }
+    paint(colors, src);
+  }
+  function tick() {
+    timerId = null;
+    check();
+    if (!hardFailed) timerId = setT(tick, clockMs);
+  }
+  function start() {
+    if (hardFailed || timerId != null) return false;
+    check();
+    if (hardFailed) return false;
+    timerId = setT(tick, clockMs);
+    return true;
+  }
+  function stop() {
+    if (timerId != null) clearT(timerId);
+    timerId = null;
+  }
+  return {
+    start: start,
+    stop: stop,
+    running: function () { return timerId != null; },
+    hardFailed: function () { return hardFailed; },
+    painted: function () { return painted; },
+    front: function () { return front; },
+  };
 }
 
 // resolveUploaderLinkHref (v1.22.0 FR-3, updated v1.23.x per Dean): the
@@ -639,8 +889,14 @@ if (typeof module !== 'undefined' && module.exports) {
     ambientStorageValue,
     ambientShouldRun,
     isDarkMode,
-    AMBIENT_LEVELS,
-    resolveAmbientLevel,
+    ambientSourceFor,
+    ambientEdgeColors,
+    ambientGlowVars,
+    ambientLift,
+    createAmbientEngine,
+    AMBIENT_SAMPLE_W,
+    AMBIENT_SAMPLE_H,
+    AMBIENT_CLOCK_MS,
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
     resolveWatchEntryReparentAction,
@@ -2028,17 +2284,9 @@ if (typeof module !== 'undefined' && module.exports) {
           + '<label class="watch-autoplay-label settings-menu-toggle" id="ambient-toggle-row" for="watch-ambient-check">'
           + '<span class="watch-autoplay-text">Ambient mode</span>'
           + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-ambient-check" aria-label="Ambient mode" />'
-          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
-          // v1.187 (Dean): the intensity ladder, right under the toggle so it can
-          // be tuned live while watching. Hidden with the toggle row in a light theme.
-          + '<label class="watch-autoplay-label settings-menu-toggle" id="ambient-level-row" for="watch-ambient-level">'
-          + '<span class="watch-autoplay-text">Ambient amount</span>'
-          + '<select id="watch-ambient-level" class="settings-menu-select" aria-label="Ambient amount">'
-          + '<option value="subtle">Subtle</option>'
-          + '<option value="normal">Normal</option>'
-          + '<option value="intense">Intense</option>'
-          + '<option value="extreme">Extreme</option>'
-          + '</select></label>');
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>');
+        // v1.312 (Dean): the v1.187 "Ambient amount" ladder is GONE - one YouTube-
+        // matched look, no picker (its ft-ambient-intensity key left the sync list).
       }
     }
 
@@ -2091,14 +2339,20 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
-    // v1.186 (Dean): AMBIENT MODE. Casts a soft, color-sampled bloom behind the
-    // player (YouTube-style), from the live video frames or - for audio - the
-    // cover art. DARK THEMES ONLY (light hides the toggle row AND forces it off);
-    // default OFF, opt-in, persisted in localStorage['ft-ambient']. Desktop +
-    // mobile, but HARD-throttled and torn down whenever ambientShouldRun() is
-    // false (paused, tab hidden, off, or light) - no idle battery cost (v1.160).
-    // The canvas #ambient-glow is a WATCH-VIEW node (never the persistent host),
-    // so it is absent when docked/closed for free.
+    // v1.186 (Dean): AMBIENT MODE. Casts a soft colour glow behind the player
+    // (YouTube-style). DARK THEMES ONLY (light hides the toggle row AND forces it
+    // off); default OFF, opt-in, persisted in localStorage['ft-ambient'].
+    // Torn down whenever ambientShouldRun() is false (paused, tab hidden, off, or
+    // light) - no idle battery cost (v1.160). #ambient-glow is a WATCH-VIEW node
+    // (never the persistent host), so it is absent when docked/closed for free.
+    //
+    // v1.312 REBUILD (Dean, device: ambient ON blacked out every video on iOS):
+    // this is now only the WIRING. The pipeline lives in createAmbientEngine
+    // (module level, unit-driven): colours come from the storyboard sprite tile
+    // at the current time (else the poster), sampled on an OFF-DOM canvas and
+    // painted as CSS gradients on two cross-fading divs. The <video> element is
+    // read for currentTime/paused only - its pixels are NEVER drawn, and nothing
+    // beside it carries a filter/transform/mask (the two iOS suspects).
     function setupAmbientMode() {
       const check = root.querySelector('#watch-ambient-check');
       const row = root.querySelector('#ambient-toggle-row');
@@ -2106,36 +2360,11 @@ if (typeof module !== 'undefined' && module.exports) {
       const video = document.getElementById('media-player');
       if (!check || !glow) return;
 
-      // v1.187 (Dean): the intensity ladder. The level rides a `data-ambient`
-      // attribute; CSS owns the per-level opacity/blur/scale. Persisted in
-      // localStorage['ft-ambient-intensity'], default 'normal' (a step DOWN from
-      // v1.186's shipped look, which is now the 'intense' rung).
-      const levelSel = root.querySelector('#watch-ambient-level');
-      const levelRow = root.querySelector('#ambient-level-row');
-      let level = 'normal';
-      try { level = resolveAmbientLevel(localStorage.getItem('ft-ambient-intensity')); } catch (_) { level = 'normal'; }
-      function applyLevel() {
-        glow.setAttribute('data-ambient', level);
-        if (levelSel) levelSel.value = level;
-      }
-      applyLevel();
-      if (levelSel) {
-        levelSel.addEventListener('change', () => {
-          level = resolveAmbientLevel(levelSel.value);
-          try { localStorage.setItem('ft-ambient-intensity', level); } catch (_) { /* not persisted */ }
-          applyLevel(); // pure CSS swap - the running loop keeps painting, no restart
-        }, { signal });
-      }
-
       // Dark-only: reveal the toggle row only in a dark theme; a light theme
       // hides the control and guarantees the effect is off.
       function syncRowVisibility() {
         const dark = isDarkMode(document);
         if (row) row.hidden = !dark;
-        // v1.187 gate (S5): the intensity row needs BOTH - a dark theme AND the
-        // effect actually on. Shown while Ambient is off it is a control with no
-        // observable result, which reads as broken.
-        if (levelRow) levelRow.hidden = !dark || !prefOn;
         return dark;
       }
 
@@ -2144,63 +2373,6 @@ if (typeof module !== 'undefined' && module.exports) {
       check.checked = prefOn;
       syncRowVisibility();
 
-      // v1.187.2 (Dean, device): playback paused itself ~2-3s in and the Dynamic
-      // Island lost its artwork, on audio AND video, with Ambient ON only.
-      // ATTRIBUTION IS UNCONFIRMED (gate W5). Both symptoms match
-      // releaseAudioSession() (pause + `mediaSession.metadata = null`), but that
-      // is only reachable from a `pagehide` with `persisted === false` - a page
-      // actually UNLOADING, which Dean did not report. The equally consistent
-      // explanation is iOS killing the renderer / interrupting the audio session,
-      // which runs NO app code at all and would leave that function innocent.
-      // The decisive probe is the app's own lifecycle log (`?debugLifecycle=1`):
-      // a `pagehide persisted:false` entry at the pause confirms the function;
-      // no entry at all means the pause came from outside the app. That probe
-      // should have preceded this edit.
-      // What IS certain: Ambient ON reproduces it, OFF does not. So the effect's
-      // COST is reduced to a floor under either mechanism:
-      //  - the backing store stays 32x18 and CSS stretches it. It used to be
-      //    resized to the player's CSS-pixel box and painted through an
-      //    intermediate buffer: ~0.09 MP (~350 KB) per paint on Dean's phone -
-      //    real, but the SMALLEST of the three savings (the earlier "~1.4 MP"
-      //    figure was a desktop-theatre box, ~16x off for the affected device).
-      //  - the loop left the frame loop: rAF woke the main thread ~60x/s to
-      //    early-return for a 2fps sampler. Cheap in CPU, but it is main-thread
-      //    churn a slow sampler has no business creating.
-      //  - the DOMINANT saving is in style.css: a 64-88px blur on a full-width
-      //    composited layer (outset ~3x the radius on every side, times DPR^2)
-      //    plus `will-change` pinning that surface permanently.
-      const SRC_W = 32;
-      const SRC_H = 18;
-      const gctx = glow.getContext('2d');
-      glow.width = SRC_W;   // backing store, NOT the display size (CSS owns that)
-      glow.height = SRC_H;
-
-      // Hard throttle. v1.187.2: a plain timer, NOT rAF - rAF woke this up 60x a
-      // second to early-return on all but ~3 of them, keeping the compositor hot
-      // for a 2.5fps effect. A slow sampler has no business in the frame loop.
-      const isMobile = (typeof window.matchMedia === 'function') && window.matchMedia('(max-width: 768px)').matches;
-      const MIN_INTERVAL = isMobile ? 500 : 200; // 2fps mobile / 5fps desktop
-      let timerId = null;
-      let coverImg = null; // lazily-loaded audio cover art (same-origin thumbnail)
-      let hardFailed = false; // a drawImage throw permanently disables the loop for this view (never re-arm)
-
-      // v1.187.2 gate W4: the sampler used `video.videoWidth > 0` to decide "is
-      // this video?" - a WEBKIT-reported property. An audio file carrying embedded
-      // cover art can expose a video track and report a non-zero videoWidth, so
-      // the audio path could draw the video element after all, and the claim that
-      // it never does was an assumption about Dean's files, not a property of the
-      // code. Gate on THIS VIEW'S OWN media type instead.
-      // Delta note (gate WARNING B): the first cut read player.js's `.audio-mode`
-      // class, which is NOT "is this audio" - it is added only when the item also
-      // has extractable embedded art (artUrl -> hasThumbnail -> ffmpeg copied a
-      // picture stream). An audio file whose art extraction failed would have
-      // fallen through to videoWidth again: exactly the risk set W4 exists to
-      // close. `mediaData.type` is authoritative, needs no cross-module
-      // coincidence, and is read LAZILY here so load order cannot matter.
-      function isAudioItem() {
-        return !!(mediaData && mediaData.type === 'audio');
-      }
-
       function currentlyPlaying() {
         return !!(video && !video.paused && !video.ended && video.readyState >= 2);
       }
@@ -2208,66 +2380,49 @@ if (typeof module !== 'undefined' && module.exports) {
         return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(document), playing: currentlyPlaying(), docVisible: !document.hidden });
       }
 
-      function paintFrom(srcEl) {
-        try {
-          // ONE downscale straight into the 32x18 backing store. CSS stretches it
-          // over the box, so there is no megapixel surface to allocate or upload.
-          gctx.drawImage(srcEl, 0, 0, SRC_W, SRC_H);
-        } catch (_) {
-          // A tainted/again-not-ready source must never break playback: stop
-          // PERMANENTLY for this view (hardFailed skips the reschedule below, so
-          // the loop cannot spin throw/catch/reschedule; a fresh view resets it).
-          hardFailed = true;
-          stop();
-        }
+      // Same-origin images only (the sprite / thumbnail / tv poster routes), so
+      // the off-DOM sample canvas is never tainted. A failed load resolves null
+      // and the engine falls to its next rung.
+      function loadImage(url) {
+        return new Promise((resolve) => {
+          if (typeof Image === 'undefined') { resolve(null); return; }
+          const im = new Image();
+          im.decoding = 'async';
+          im.onload = function () { resolve(im); };
+          im.onerror = function () { resolve(null); };
+          im.src = url;
+        });
       }
+      const engine = createAmbientEngine({
+        glow: glow,
+        video: video,
+        getMediaData: function () { return mediaData; }, // lazy: the v1.197.1 TDZ lesson
+        mediaId: mediaId,
+        storyboard: (window.FileTube && window.FileTube.storyboard) || null,
+        loadImage: loadImage,
+        makeCanvas: function () { return document.createElement('canvas'); },
+        onHardFail: function () { stop(); }, // an async sample failure tears the DOM down too (gate r1 F2/W1)
+      });
 
-      function ensureCover() {
-        if (coverImg || !mediaId) return;
-        const im = new Image();
-        im.decoding = 'async';
-        im.onload = function () { coverImg = im; };
-        im.onerror = function () { coverImg = null; };
-        im.src = '/thumbnail/' + encodeURIComponent(mediaId); // same-origin -> no canvas taint
-      }
-
-      function tick() {
-        timerId = null;
-        if (!shouldRun()) { stop(); return; }
-        if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video);
-        else { ensureCover(); if (coverImg) paintFrom(coverImg); }
-        if (hardFailed) return; // paintFrom hit an unrecoverable error -> do NOT re-arm (the WARNING fix)
-        schedule();
-      }
-      function schedule() {
-        timerId = setTimeout(tick, MIN_INTERVAL);
-      }
       function start() {
-        if (hardFailed) return; // an unrecoverable paint error disabled ambient for this view
-        if (timerId != null) return; // already running
+        if (engine.hardFailed()) return;
+        if (engine.running()) return;
         glow.hidden = false;
         glow.classList.add('is-on');
         // v1.188 (Dean: "let the ambience go over the left bar"): a ROOT-level
         // signal so the persistent sidebar (a shell element far from this
         // watch-view node) can drop its opaque background + border while ambient
-        // runs, letting the glow bleed across it instead of hard-stopping at the
-        // bar's edge. Set/cleared at the SAME funnel as `is-on` (start/stop), so
-        // it tracks ambient exactly and clears on teardown (stop() on abort) and
-        // on a theme flip to light (evaluate -> stop). JS gate guarantees it is
-        // only ever present in dark mode.
+        // runs. Set/cleared at the SAME funnel as `is-on` (start/stop), so it
+        // tracks ambient exactly and clears on teardown (stop() on abort) and on
+        // a theme flip to light. JS gate guarantees it is only present in dark.
         document.documentElement.setAttribute('data-ambient-on', '');
-        if (!isAudioItem() && video && video.videoWidth > 0) paintFrom(video); // first frame immediately, then on the interval
-        else { ensureCover(); if (coverImg) paintFrom(coverImg); }
-        if (hardFailed) return; // S1: a throw in that first paint must NOT arm a timer
-        schedule();
+        engine.start();
       }
       function stop() {
-        if (timerId != null) clearTimeout(timerId);
-        timerId = null;
+        engine.stop();
         glow.classList.remove('is-on');
         glow.hidden = true;
         document.documentElement.removeAttribute('data-ambient-on'); // v1.188: restore the sidebar's opaque bar
-        try { gctx.clearRect(0, 0, SRC_W, SRC_H); } catch (_) { /* nothing painted yet */ }
       }
       // The one gate everything funnels through: run iff eligible, else tear down.
       function evaluate() {
@@ -2289,7 +2444,7 @@ if (typeof module !== 'undefined' && module.exports) {
         video.addEventListener('playing', evaluate, { signal });
         video.addEventListener('pause', evaluate, { signal });
         video.addEventListener('ended', evaluate, { signal });
-        video.addEventListener('emptied', () => { coverImg = null; evaluate(); }, { signal });
+        video.addEventListener('emptied', evaluate, { signal });
       }
       // A theme flip (era/mode toggle) mutates data-mode on <html>; watch it so
       // ambient turns off entering light and can resume entering dark.
@@ -2298,13 +2453,12 @@ if (typeof module !== 'undefined' && module.exports) {
         themeObs = new MutationObserver(evaluate);
         try { themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode', 'data-theme'] }); } catch (_) { themeObs = null; }
       }
-      // Teardown: the view's signal aborts on destroy() -> stop the loop AND
+      // Teardown: the view's signal aborts on destroy() -> stop the engine AND
       // disconnect the observer (the observer is not signal-bound).
       if (signal) signal.addEventListener('abort', () => { stop(); if (themeObs) { try { themeObs.disconnect(); } catch (_) { /* dead */ } } }, { once: true });
 
       evaluate();
     }
-
     // v1.22.0 FR-7 (TF): the "Loop" toggle -- mirrors setupAutoplayToggle()'s
     // shape (read on load, write on change) but is a watch-page-LOCAL
     // preference persisted in `localStorage['ft-loop']` (coordinator
