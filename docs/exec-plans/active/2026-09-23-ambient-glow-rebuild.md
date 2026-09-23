@@ -3,8 +3,8 @@ plan: ambient-glow-rebuild
 harness: v2 · lean
 branch: fix/ambient-glow-rebuild
 anchor: spec
-status: Building
-next: Step 1 - pure helpers + unit tests
+status: Gate:pending r1 @d2ac8876
+next: gate r1 (adversary + qa + security-brief) against HEAD, then Dean iPhone check, then release
 design: Approved 2026-09-23 @bd9c476f
 gate: pending
 ---
@@ -373,3 +373,16 @@ None persisted. The only stored state is the two existing localStorage keys.
   YouTube's ~+25: halved from the first cut; the remaining gap is mostly the synthetic
   clip's saturated primaries (YouTube was measured on a meadow). The screenshot reads
   as a faint halo. Dean's phone judges; the one knob is `--ambient-opacity`.
+- **Mutation round 2 @d2ac8876** (sandbox, the three ambient/prefs files, baseline 45/0):
+  6 mutants, **6 killed** - opacity back to 0.55, a `data-ambient` rung rule returning, the
+  dead key re-added to the CLIENT list (triple lock + engine lock), re-added to the SERVER
+  list, the wiring writing the dead key, the cog amount row returning.
+- **Dual-Node full suites @d2ac8876:** `npm test` on Node **22.23.1: 8962 tests, 8962 pass,
+  0 fail (exit 0)**; Node **24.20.0: 8962 / 8962 / 0 (exit 0)**. Sequential, idle box.
+
+## Gate
+
+Seats per `.harness/scrutiny.toml` against `git diff --name-only bd9c476f`: `lib/**`
+(prefs-allowlist, user/routes) -> core-logic FULL (adversary + qa); the forced
+`**/*client*` row matches `test/unit/prefs-sync-client.test.js` -> security-brief unions
+in. Three seats, r1.
