@@ -108,6 +108,17 @@ unsubscribe on the WATCH page (this branch only disables the ROW bell for its ow
   saved theme over the query's, then the phone emulation laid out at 980px without a viewport
   meta - both caught by adding the read-back guard, both fixed in the instrument.
 
+### Mutation check (committed tree 26cd0906, `git archive` sandbox, the three binding files)
+
+Baseline green. 13/13 mutants killed: M1 re-fetch the list after the PATCH (AC1 x2 + the lock);
+M2 glyph follows the REQUEST (anti-echo + lock); M3 record not patched (AC1 + lock); M4 row
+rebuilt instead of updated (AC1 + lock); M5 a non-2xx flips the row (AC2); M6 the builder writes
+the bell class itself / drops btn-chip (AC1, AC4, AC3 + 2 more); M7 the kebab leaves the .btn
+family (AC4 + the anatomy test); M8 applyBellState forgets aria-pressed (5 tests); M9 a chip role
+rule paints `-WEBKIT-BACKGROUND-IMAGE` (AC4 vendor+case); M10 `.btn-chip` declares `Border:`
+(AC4); M11 the 2009 gloss moves onto a per-chip copy (AC4 x2); M12 the phone floor exemption
+dropped (AC4); M13 `.btn-chip` moved before `.btn` (AC4 source order).
+
 ## Measurements (D4 / AC5)
 
 `scripts/sub-row-chip-probe.js`, BEFORE = `git archive main` (8536f399), AFTER = this branch.
