@@ -603,3 +603,16 @@ test('v1.311.2: the router records scroll via pageScrollY and places it via plac
   assert.match(src, /updateActiveNavHighlight\(\);\n\s*placePageScroll\(typeof scrollY === 'number' \? scrollY : 0\);/, 'the swap places scroll through the lock');
   assert.match(src, /placePageScroll\(typeof scrollY === 'number' \? scrollY : cached\.scrollY\);/, 'the home-cache restore places scroll through the lock');
 });
+
+// v1.311.2 gate W1 (QA, measured - the mutant that deleted this call survived the
+// whole suite): the router must actually HAND the gesture its wiring. The tests in
+// swipe-back-owners.test.js drive wireSwipeBackGesture directly; this binds that
+// production ever calls it, with the depth-guarded swipeBackIfPossible.
+test('v1.311.2: bootRouter\'s wireSwipeBack hands document/window/swipeBackIfPossible to wireSwipeBackGesture', () => {
+  const src = COMMON_JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const i = src.indexOf('function wireSwipeBack() {');
+  assert.ok(i !== -1, 'wireSwipeBack exists');
+  const body = src.slice(i, src.indexOf('\n  }\n', i));
+  assert.match(body, /swipeBackWired = true;\s*wireSwipeBackGesture\(document, window, swipeBackIfPossible\);/,
+    'the router wires the real gesture with the in-app-history guard');
+});

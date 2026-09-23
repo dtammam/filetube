@@ -1503,9 +1503,12 @@ function resolveChaptersMenuMaxHeight(geom) {
 //   - OFF -> ON  captures the current scroll (the pre-entry position).
 //   - ON  -> OFF restores the capture - but ONLY while the player is still
 //     FULL. The dock/close off-path (`applyControlsMode`'s
-//     `state !== STATE_FULL` guard) fires AFTER a navigation's own scroll
-//     restore, and restoring the watch page's offset onto the DESTINATION
-//     view would clobber it. The capture is ALWAYS cleared on exit.
+//     `state !== STATE_FULL` guard) runs around a navigation, and restoring
+//     the watch page's offset onto the DESTINATION view would clobber it.
+//     (v1.311.2 correction, QA r1: the router's dock runs BEFORE its scroll
+//     placement - swapToView -> applyPlayerTransition -> dock(), then
+//     placePageScroll; the watch->watch TEARDOWN below runs AFTER it.)
+//     The capture is ALWAYS cleared on exit.
 //   - No-transition calls (the off-path re-asserts constantly; a second
 //     `on` from the webkitbeginfullscreen intercept) are inert - an
 //     already-on re-capture would save a DRIFTED position and defeat the
@@ -2199,8 +2202,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // iOS - a swipe on the overlay scrolled the page behind it. The shared body lock
     // pins it for real. Taken AFTER the plan captured the entry scroll; released
     // WITHOUT its own restore, because the keeper above owns restore (only the exit
-    // button restores - the teardown/dock exits land wherever the navigation put
-    // the page, which the lock defers to on release).
+    // button restores). A router dock releases BEFORE the router places scroll, so
+    // the navigation then scrolls directly; a watch->watch teardown releases AFTER
+    // it, and the lock (which deferred that placement) lands the page there.
     if (BL) {
       if (on) BL.lock(document, window, 'faux-fullscreen');
       else BL.release(document, window, 'faux-fullscreen', { restore: false });
@@ -4053,7 +4057,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // in the ripple markup, which was always true while every skip was
     // SKIP_SECONDS -- the keyboard shortcuts now skip 5s (arrows) and 10s
     // (J/L), so the label is derived from the ACTUAL delta on every flash
-    // (the on-bar buttons/double-tap still legitimately show 15).
+    // (double-tap still legitimately shows 15; the on-bar buttons were removed in
+    // v1.311.2).
     var ripple = delta < 0 ? skipRippleLeft : skipRippleRight;
     if (ripple) {
       ripple.textContent = delta < 0
@@ -4199,8 +4204,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // style.css, so the cover-art layer is what actually receives taps there).
   // Root cause this fixes: before this factor-out, these gestures were
   // wired ONLY on `#media-player`, so once FR-2 shipped they went dead for
-  // every audio item (AC12 requires ±15s skip -- buttons/double-tap/
-  // hold-2x/keyboard -- for BOTH audio and video).
+  // every audio item (AC12 requires ±15s skip -- double-tap/hold-2x/keyboard
+  // (the on-bar buttons until v1.311.2) -- for BOTH audio and video).
   //
   // `onSingleTap`, when provided, is invoked once a touchend has been
   // classified as a (so far) lone tap AND `DOUBLE_TAP_MS` has since elapsed
@@ -6159,7 +6164,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // sits bottom-right and exited fullscreen. A bar woken from HIDDEN stays
       // untappable for one double-tap window.
       // Touch only: a mouse click (desktop native fullscreen) never double-taps.
-      if (wasHidden && !(e && e.pointerType && e.pointerType !== 'touch')) armRevealGrace();
+      // v1.311.2 gate W3 (adversary, measured): a tap that CONTINUES a tap run - a
+      // hot skip chain (tap 3+ of a chain lands with the bar already up), or the
+      // second half of a double-tap whose first touch was held past the window
+      // (double-taps pair touchEND to touchEND) - re-arms the grace too.
+      var now = Date.now();
+      var inTapRun = now < skipChainUntil || (lastTapTime > 0 && now - lastTapTime < DOUBLE_TAP_MS);
+      if ((wasHidden || inTapRun) && !(e && e.pointerType && e.pointerType !== 'touch')) armRevealGrace();
     }, { passive: true });
     // The BAR keeps the both-event blind reveal - it never stamps, so the
     // double-fire is harmless there (revealControlsAndReArm is idempotent).
@@ -8446,6 +8457,13 @@ if (typeof module !== 'undefined' && module.exports) {
     if (resumeOverlay) resumeOverlay.style.display = 'none';
     cancelResumeCountdown(); // v1.132: a closed player must never auto-click a vanished prompt
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
+    // v1.311.2 gate W1 (adversary, measured): the video twin of the line above. A
+    // close() from faux fullscreen (watch.js closes a carried-immersive preload
+    // whose detail fetch failed) used to strand only the class; with the real
+    // body lock it would strand a PINNED body (no scroll, no header/nav, no
+    // swipe-back) until the next load. No restoreScroll: close is never the
+    // user's fullscreen exit.
+    setCssFullscreen(false);
     // FIX D (player-hardening round, hygiene): clear the native-controls
     // marker + attribute here too, mirroring teardownMediaState()'s identical
     // clear above -- benign today (the next load()'s teardownMediaState()

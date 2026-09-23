@@ -39,8 +39,11 @@ async function bootPlayer(item, y) {
   w.HTMLMediaElement.prototype.load = function () {};
   let sy = y;
   const scrolls = [];
-  Object.defineProperty(w, 'pageYOffset', { get: () => sy, configurable: true });
-  Object.defineProperty(w, 'scrollY', { get: () => sy, configurable: true });
+  // Like iOS: a PINNED body (position:fixed) reads scroll 0 - so any code that reads
+  // raw window scroll under the lock is exposed here (QA r1 S5).
+  const readY = () => (w.document.body && w.document.body.style.position === 'fixed' ? 0 : sy);
+  Object.defineProperty(w, 'pageYOffset', { get: readY, configurable: true });
+  Object.defineProperty(w, 'scrollY', { get: readY, configurable: true });
   w.scrollTo = (_x, ny) => { scrolls.push(ny); sy = ny; };
   // common.js's art resolver (a global in the browser; common.js itself is not booted here).
   w.eval(COMMON_SRC.slice(COMMON_SRC.indexOf('function resolveAudioArtUrl('), COMMON_SRC.indexOf('\n}\n', COMMON_SRC.indexOf('function resolveAudioArtUrl(')) + 3));
@@ -136,8 +139,8 @@ test('#3 a touch that wakes the HIDDEN bar keeps it untappable for DOUBLE_TAP_MS
   assert.ok(host.classList.contains('controls-reveal-grace'), 'but it cannot be hit yet - the second tap of a double-tap passes through');
   await wait(200);
   assert.ok(host.classList.contains('controls-reveal-grace'), 'still inside the 350ms double-tap window');
-  await wait(250);
-  assert.ok(!host.classList.contains('controls-reveal-grace'), 'the bar is tappable once the window closes');
+  await wait(180); // 380ms: past DOUBLE_TAP_MS (350), so the window is pinned, not just "some time"
+  assert.ok(!host.classList.contains('controls-reveal-grace'), 'the bar is tappable once the 350ms window closes');
 });
 
 test('#3 no grace when the bar was already visible (a deliberate bar tap is never delayed)', async () => {
@@ -217,4 +220,61 @@ test('#4 double-tap on the right half still seeks +15s and flashes the ripple', 
   touch('touchstart', 350); touch('touchend', 350);
   assert.strictEqual(t, 115, 'a right-side double-tap skips forward 15s');
   assert.ok(doc.getElementById('skip-ripple-right').classList.contains('active'), 'and the ripple shows');
+});
+
+// ---- r1 gate fixes -----------------------------------------------------------
+
+test('gate W1 (adversary): close() from faux fullscreen releases the body - no pinned page, class gone', async () => {
+  const { doc, p, fsBtn, host, BL } = await bootPlayer(VIDEO, 420);
+  fsBtn.click();
+  assert.strictEqual(doc.body.style.position, 'fixed', 'precondition: locked');
+  p.close();
+  assert.strictEqual(doc.body.style.position, '', 'a closed player never leaves the page pinned');
+  assert.ok(!doc.body.classList.contains('ft-css-fullscreen'), 'the body class is gone (header/nav back, swipe-back live)');
+  assert.ok(!host.classList.contains('css-fullscreen'));
+  assert.strictEqual(BL.isLocked(doc), false);
+});
+
+function tapVideo(w, v, x) {
+  touchDown(w, v); // the pointerdown the reveal/grace listens to
+  const mk = (type) => {
+    const e = new w.Event(type, { bubbles: true, cancelable: true });
+    const list = [{ clientX: x, clientY: 100 }];
+    Object.defineProperty(e, 'touches', { value: type === 'touchend' ? [] : list });
+    Object.defineProperty(e, 'changedTouches', { value: list });
+    return e;
+  };
+  return { start: () => v.dispatchEvent(mk('touchstart')), end: () => v.dispatchEvent(mk('touchend')) };
+}
+
+test('gate W3 (adversary): a skip-CHAIN tap re-arms the grace (tap 3+ lands with the bar already up)', async () => {
+  const { w, doc, host, fsBtn } = await bootPlayer(VIDEO, 0);
+  fsBtn.click();
+  const v = playing(w);
+  Object.defineProperty(v, 'duration', { value: 600, configurable: true });
+  v.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 225, right: 400, bottom: 225 });
+  host.classList.add('controls-autohidden');
+  let t1 = tapVideo(w, v, 350); t1.start(); t1.end();
+  await wait(40);
+  const t2 = tapVideo(w, v, 350); t2.start(); t2.end(); // the double-tap: a skip, the chain is now hot
+  await wait(400); // tap 2's grace has expired; the chain (800ms) is still hot
+  assert.ok(!host.classList.contains('controls-reveal-grace'), 'precondition: no grace left from the pair');
+  assert.ok(!host.classList.contains('controls-autohidden'), 'precondition: the bar is UP (not hidden) for the chain tap');
+  t1 = tapVideo(w, v, 350);
+  assert.ok(host.classList.contains('controls-reveal-grace'), 'the chain tap re-armed the grace - it cannot hit #fs-btn');
+  assert.ok(doc.getElementById('fs-btn'));
+});
+
+test('gate W3 (adversary): a double-tap whose FIRST touch was held keeps the grace for the second tap', async () => {
+  const { w, host, fsBtn } = await bootPlayer(VIDEO, 0);
+  fsBtn.click();
+  const v = playing(w);
+  v.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 225, right: 400, bottom: 225 });
+  host.classList.add('controls-autohidden');
+  const t1 = tapVideo(w, v, 350); t1.start();
+  await wait(300); t1.end(); // held: touch-down at 0, touch-end at ~300
+  await wait(150); // second touch-down at ~450: past the first grace (350) but inside DOUBLE_TAP_MS of the first touch-END
+  assert.ok(!host.classList.contains('controls-reveal-grace'), 'precondition: the first grace expired');
+  tapVideo(w, v, 350);
+  assert.ok(host.classList.contains('controls-reveal-grace'), 'the second half of the double-tap is still shielded');
 });

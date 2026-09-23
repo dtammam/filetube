@@ -7925,7 +7925,19 @@ var CRITTER_INTERACTIVE_SELECTORS = ['a[href]', 'button', 'summary', 'label', 's
   '[role="option"]', '[onclick]', '.btn'];
 function critterOverInteractive(target) {
   if (!target || typeof target.closest !== 'function') return false;
-  return !!target.closest(CRITTER_INTERACTIVE_SELECTORS.join(','));
+  if (target.closest(CRITTER_INTERACTIVE_SELECTORS.join(','))) return true;
+  // v1.311.2 gate W4 (adversary, measured): the NET for clickable furniture that is
+  // not a button - a div row with a delegated click (the music song row) is styled
+  // `cursor: pointer`, the app's own "this is clickable" signal. Walked only after
+  // a geometric critter hit, so an ordinary click never pays for it.
+  const win = target.ownerDocument && target.ownerDocument.defaultView;
+  if (!win || typeof win.getComputedStyle !== 'function') return false;
+  const body = target.ownerDocument.body;
+  for (let node = target; node && node.nodeType === 1 && node !== body; node = node.parentElement) {
+    const cs = win.getComputedStyle(node);
+    if (cs && cs.cursor === 'pointer') return true;
+  }
+  return false;
 }
 var CRITTER_REACTIONS = ['critter-wiggle', 'critter-shiver', 'critter-hop', 'critter-twirl', 'critter-duck', 'critter-squish', 'critter-nod', 'critter-wobble', 'critter-boing', 'critter-swing', 'critter-pop', 'critter-headshake', 'critter-tada', 'critter-rubberband', 'critter-backflip', 'critter-doublehop', 'critter-peek', 'critter-float'];
 
@@ -8788,13 +8800,23 @@ function collectCritterRects(selectors, requireSize) {
     }
     // v1.176: the ELEMENT rides along so a settle correction can RE-GLUE a
     // placed critter to its own moved furniture instead of re-rolling.
-    rects.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el, sel: sel });
+    rects.push({ x: r.left + window.scrollX, y: r.top + critterPageScrollY(), w: r.width, h: r.height, weight: weight, round: round, radii: radii, el: el, sel: sel });
   }
   return rects;
 }
 
 // v1.248 (Dean): true while the full-screen mobile skin player is mounted (music.js /
 // skin-surface.js add body.mms-on when the skin cover paints). Critters must not scatter over it.
+// v1.311.2 gate r1 (adversary S2): critters are placed in DOCUMENT coordinates
+// (rect top + page scroll). Under the shared body lock the body is pinned at
+// top:-Y and window.scrollY reads 0, so a re-scatter there (a rotate INTO faux
+// fullscreen is a width change) would land every critter Y too high after the
+// exit. The lock's saved Y is the page's real scroll: rect top (already shifted
+// by -Y) + Y = the document position. No lock / no module: plain window scroll.
+function critterPageScrollY() {
+  var BL = typeof window !== 'undefined' && window.FileTubeBodyLock;
+  return BL ? BL.scrollYOf(document, window) : window.scrollY;
+}
 function critterSuppressedByPlayer() {
   return typeof document !== 'undefined' && !!document.body && document.body.classList.contains('mms-on');
 }
@@ -8941,7 +8963,7 @@ function refindCritterAnchor(p, claimed) {
     var rh = r.height / p.anchor.h;
     if (rw < 0.5 || rw > 2 || rh < 0.5 || rh > 2) continue; // a different-sized cousin is not the twin
     var dx = (r.left + window.scrollX + r.width / 2) - cx;
-    var dy = (r.top + window.scrollY + r.height / 2) - cy;
+    var dy = (r.top + critterPageScrollY() + r.height / 2) - cy;
     var dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < bestDist) { bestDist = dist; best = el; }
   }
@@ -8978,7 +9000,7 @@ function reglueCritterPlacements() {
     }
     var r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue; // hidden now
-    var a2 = { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };
+    var a2 = { x: r.left + window.scrollX, y: r.top + critterPageScrollY(), w: r.width, h: r.height };
     p.x += Math.round(a2.x - p.anchor.x);
     p.y += Math.round(a2.y - p.anchor.y);
     p.anchor = a2;
@@ -9919,6 +9941,7 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
 const SWIPE_BACK_OWNER_SELECTORS = [
   '#player-wrapper', '.player-container', '#player-dock', '#fs-stage',
   '.mms-full', '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
+  '.whcal-overlay', // the wheel-calibration tool (Settings > Experimental) - gate W2
   'input[type="range"]', '[role="slider"]',
 ];
 // ...plus the NET for owners nobody listed yet: an element that took the
@@ -9933,10 +9956,16 @@ function touchActionOwnsHorizontal(touchAction) {
 }
 // While an IMMERSIVE view is up (faux fullscreen, the expanded audio view, native
 // fullscreen) there is no page to go back FROM - every drag belongs to the overlay.
+// v1.311.2 gate W2 (adversary, measured): the NET for overlays nobody listed - any
+// surface holding the shared body lock (body-scroll-lock.js: a full-screen skin's
+// haptic wheel, the wheel-calibration tool, whatever pins the page next) is an
+// overlay over a page that cannot move, so it owns every drag too.
 function swipeBackImmersiveLive(doc) {
   if (!doc) return false;
   const body = doc.body;
   if (body && body.classList && (body.classList.contains('ft-css-fullscreen') || body.classList.contains('ft-audio-expanded'))) return true;
+  const BL = doc.defaultView && doc.defaultView.FileTubeBodyLock;
+  if (BL && typeof BL.isLocked === 'function' && BL.isLocked(doc)) return true;
   return !!(doc.fullscreenElement || doc.webkitFullscreenElement);
 }
 // Why a drag starting at `startEl` must NOT be a back ('immersive' | 'owner' |
@@ -15758,7 +15787,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCritterShaveMask,
     probeCritterVoices,
     // v1.311.2: the "never block a button" predicate (critter taps over these pass through).
-    critterOverInteractive, CRITTER_INTERACTIVE_SELECTORS,
+    critterOverInteractive, CRITTER_INTERACTIVE_SELECTORS, critterPageScrollY,
     getCritterLastChirpReason,
     // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
     DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,

@@ -31,7 +31,7 @@ let dom = null;
 afterEach(() => { if (dom) { dom.window.close(); dom = null; } });
 
 function shellBody(file) {
-  const html = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
+  const html = fs.readFileSync(path.isAbsolute(file) ? file : path.join(PUBLIC, file), 'utf8');
   return html.slice(html.indexOf('<body'), html.lastIndexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
 }
 
@@ -84,10 +84,14 @@ test('Dean\'s repro: a rightward scrub of the watch page #seek-bar never goes ba
 });
 
 test('every shell: every range/slider stands down, and so does the whole player host', () => {
-  const shells = fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html'));
+  // QA r1 S7: the yt-dlp module's subscriptions shell is a real player shell too.
+  const SUBS = path.join(__dirname, '../../lib/ytdlp/views');
+  const shells = fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html')).map((f) => path.join(PUBLIC, f))
+    .concat(fs.existsSync(SUBS) ? fs.readdirSync(SUBS).filter((f) => f.endsWith('.html')).map((f) => path.join(SUBS, f)) : []);
   let ranges = 0;
-  for (const file of shells) {
-    const { doc, win } = boot(shellBody(file));
+  for (const full of shells) {
+    const file = path.basename(full);
+    const { doc, win } = boot(shellBody(full));
     doc.querySelectorAll('input[type="range"], [role="slider"]').forEach((el) => {
       ranges += 1;
       assert.ok(swipeBackStandDownReason(el, doc, win), `${file}: #${el.id || el.className} must stand the swipe-back down`);
@@ -124,6 +128,22 @@ test('a range/slider OUTSIDE any player (the wheel-calibration slider, a setting
   dragRight(win, doc.getElementById('r'));
   dragRight(win, doc.getElementById('s'));
   assert.strictEqual(backs.n, 0, 'dragging a bare slider right is a slide, never a back');
+});
+
+test('gate W2 (adversary): the wheel-calibration tool, and ANY overlay holding the shared body lock, owns every drag', () => {
+  const BL = require('../../public/js/body-scroll-lock.js');
+  const { doc, win, backs } = boot('<body><p id="p">x</p><div class="whcal-overlay"><div class="whcal-wheel" id="wh"></div></div></body>');
+  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('wh'), doc, win), 'owner', 'the wheel-cal overlay is named');
+  win.FileTubeBodyLock = BL; // as the shells load it
+  dragRight(win, doc.getElementById('p'));
+  assert.strictEqual(backs.n, 1, 'control: no lock held -> plain content still goes back');
+  BL.lock(doc, win, 'wheel-cal');
+  dragRight(win, doc.getElementById('p'));
+  assert.strictEqual(backs.n, 1, 'a held body lock (an overlay over a pinned page) stands the back down everywhere');
+  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('p'), doc, win), 'immersive');
+  BL.release(doc, win, 'wheel-cal');
+  dragRight(win, doc.getElementById('p'));
+  assert.strictEqual(backs.n, 2, 'released -> back works again (never sticky)');
 });
 
 test('the full-screen skin panel and the Brick are owners', () => {

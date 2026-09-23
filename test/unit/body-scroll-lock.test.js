@@ -21,7 +21,8 @@ function page(y) {
   const win = dom.window;
   const scrolls = [];
   let sy = y;
-  Object.defineProperty(win, 'pageYOffset', { get: () => sy, configurable: true });
+  // Like iOS: a pinned body reads scroll 0 (QA r1 S5).
+  Object.defineProperty(win, 'pageYOffset', { get: () => (win.document.body.style.position === 'fixed' ? 0 : sy), configurable: true });
   win.scrollTo = (_x, ny) => { scrolls.push(ny); sy = ny; };
   return { doc: win.document, win, scrolls, setY: (n) => { sy = n; } };
 }
@@ -31,10 +32,15 @@ test('lock pins the body at -Y (the iOS lock that holds); the last release unpin
   assert.strictEqual(BL.lock(doc, win, 'a'), true);
   assert.strictEqual(doc.body.style.position, 'fixed');
   assert.strictEqual(doc.body.style.top, '-420px');
+  // gate r1 N24 (adversary): without left/right a fixed body shrinks to its content on iOS.
+  assert.strictEqual(doc.body.style.left, '0px');
+  assert.strictEqual(doc.body.style.right, '0px');
   assert.strictEqual(BL.isLocked(doc), true);
   assert.strictEqual(BL.release(doc, win, 'a'), true);
   assert.strictEqual(doc.body.style.position, '');
   assert.strictEqual(doc.body.style.top, '');
+  assert.strictEqual(doc.body.style.left, '');
+  assert.strictEqual(doc.body.style.right, '');
   assert.deepStrictEqual(scrolls, [420], 'restored exactly once, to the entry scroll');
   assert.strictEqual(BL.isLocked(doc), false);
 });
@@ -128,6 +134,6 @@ test('every shell that loads player.js or skin-surface.js loads body-scroll-lock
 test('no private body lock survives: only body-scroll-lock.js pins the body', () => {
   const dir = path.join(REPO, 'public', 'js');
   const offenders = fs.readdirSync(dir).filter((f) => f.endsWith('.js') && f !== 'body-scroll-lock.js')
-    .filter((f) => /body\.style\.position\s*=\s*'fixed'/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+    .filter((f) => /body\.style\.position\s*=\s*['"`]fixed['"`]|body\.style\.setProperty\(\s*['"`]position['"`]/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
   assert.deepStrictEqual(offenders, [], 'a hand-copied lock clobbers the shared one - route it through FileTubeBodyLock');
 });

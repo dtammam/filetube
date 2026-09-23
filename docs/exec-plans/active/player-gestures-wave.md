@@ -3,7 +3,7 @@
 Branch `fix/player-gestures`, base `22a313dc` (main, v1.311.1).
 
 status: Approved 2026-09-22 (Dean: "This all makes tons of sense. Please go.") · anchor: outcome · gate: FULL (adversary + qa)
-next: commit, mutation-check the new bindings, dual-Node suites, then the gate.
+next: gate r1 fix round (both seats CHANGES) -> delta re-review r2 by the same seats.
 
 ## Intake (Dean, 2026-09-22, iPhone PWA, custom player controls ON)
 
@@ -150,3 +150,37 @@ dropped · M16 deferred Y ignored · M17 grace CSS dropped: all KILLED.
 M18 (the skin's owner key collides with `faux-fullscreen`) SURVIVED the first run.
 Bound by a new skin-surface test (a skin teardown leaves player owners pinned), and
 both collision variants (`faux-fullscreen`, `audio-expanded`) are now KILLED.
+
+Gate: CHANGES r1 @671fd425 — adversary
+Gate: CHANGES r1 @671fd425 — qa
+
+## Gate r1 fix round (both seats CHANGES @671fd425)
+
+| Finding | Fix | Binding |
+|---|---|---|
+| ADV W1 `close()` from faux fullscreen stranded a PINNED body | `close()` calls `setCssFullscreen(false)` (no restore) | player harness: faux -> `close()` -> unpinned, class gone, lock free |
+| ADV W2 wheel-cal wheel fired a back | `.whcal-overlay` owner + NET: `swipeBackImmersiveLive` stands down while ANY owner holds the shared body lock | swipe-back test: lock held -> no back; released -> back again |
+| ADV W3 grace missed skip-chain taps and held first taps | re-arm when `now < skipChainUntil` or within `DOUBLE_TAP_MS` of the last touch-END | two player-harness tests (chain tap; held first tap) |
+| ADV W4 critter swallowed a delegated-click song row | NET: an ancestor with computed `cursor:pointer` counts as interactive | critter test on the real delegated-row shape |
+| ADV S2 critter placement read raw `scrollY` under the lock | `critterPageScrollY()` (the lock's `scrollYOf`) at all three geometry reads | unit test + a census that no raw read remains |
+| QA W1 router -> `wireSwipeBackGesture` hand-off unbound | source lock on `wireSwipeBack`'s body | re-run of QA's delete-the-call mutant (below) |
+| ADV S1 N11 / N14 / N24 survivors | grace pinned at 380ms > 350; `.btn` in the interactive test; lock `left`/`right` asserted | - |
+| ADV S4 census regex single-quote only | any quote + `setProperty('position'` | - |
+| QA S1-S4 stale comments + plan marker | corrected (skip() / AC12 notes, docked-ripple CSS note, the dock-vs-teardown ORDER in both player.js comments) | - |
+| QA S5 fixtures never clamp scroll | both fixtures now read 0 while the body is pinned (like iOS) | whole harness re-run green |
+| QA S7 shell census skipped subscriptions.html | census now walks `lib/ytdlp/views` too | - |
+
+Not changed, disclosed:
+- ADV N13 (`clearRevealGrace` in `resetTransientPlaybackUi`) survives because every
+  exit path also clears the grace in `setCssFullscreen(false)` / `setAudioExpanded(false)`,
+  which is now true of `close()` as well. It stays as a belt.
+- ADV N8 (two skin engines sharing a constant owner key): only one skin engine
+  renders into a document at a time today; the per-instance key stays.
+- QA S6: the rotation dead-zone snap reads 0 under the expanded-audio lock. A rotate
+  inside the expanded audio view then collapse may land in the v1.68.2 dead zone.
+  The v1.256 skin lock had the same exposure already. Added to Dean's device check.
+- ADV S3 (scope): swipe-back now stands down on the WHOLE inline player and the whole
+  full-screen skin, as the approved A1 specifies. It is wider than the scrub repro,
+  so it is flagged for Dean.
+- ADV S5: the action-row probe cannot see the player overlay. Button absence there is
+  bound by the census test, not by the probe.

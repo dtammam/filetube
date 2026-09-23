@@ -26,6 +26,8 @@ function boot() {
     '<a id="lnk" href="/watch.html?v=1">watch</a>' +
     '<div role="button" id="rb">menu</div>' +
     '<p id="txt">just words</p>' +
+    '<div class="btn" id="btnclass">Save</div>' +
+    '<div id="rows"><div class="music-song-row" id="row" style="cursor:pointer"><span id="row-title">Song</span></div></div>' +
     '</body>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
@@ -98,9 +100,41 @@ test('mousedown: a button keeps its own press (no selection-suppress), plain tex
 
 test('critterOverInteractive: the enumerated interactive kinds, and not plain content', () => {
   const { doc, common } = boot();
-  for (const id of ['btn', 'btn-label', 'lnk', 'rb']) assert.strictEqual(common.critterOverInteractive(doc.getElementById(id)), true, id);
+  for (const id of ['btn', 'btn-label', 'lnk', 'rb', 'btnclass', 'row', 'row-title']) assert.strictEqual(common.critterOverInteractive(doc.getElementById(id)), true, id);
   assert.strictEqual(common.critterOverInteractive(doc.getElementById('txt')), false);
   assert.strictEqual(common.critterOverInteractive(null), false);
   const bare = doc.createElement('a'); doc.body.appendChild(bare); // an <a> with no href is not a link
   assert.strictEqual(common.critterOverInteractive(bare), false);
+});
+
+test('gate W4 (adversary): a clickable ROW that is not a button (delegated click, cursor:pointer) gets its click', () => {
+  const { doc, win, played } = boot();
+  let plays = 0;
+  // the real music list shape: ONE delegated listener on the list, rows are divs
+  doc.getElementById('rows').addEventListener('click', (ev) => { if (ev.target.closest('.music-song-row')) plays += 1; });
+  const e = tap(win, doc.getElementById('row-title'));
+  assert.strictEqual(plays, 1, 'the song row played - the critter did not swallow it');
+  assert.strictEqual(e.defaultPrevented, false);
+  assert.ok(reacted(doc), 'the critter still reacts');
+  assert.strictEqual(played.length, 1);
+});
+
+// v1.311.2 gate r1 (adversary S2): critter geometry reads the page's REAL scroll
+// through the shared body lock - under a pinned body window.scrollY is 0.
+test('critterPageScrollY: the lock\'s saved Y while pinned, plain window scroll otherwise; every geometry read uses it', () => {
+  const { win, common } = boot();
+  const BL = require('../../public/js/body-scroll-lock.js');
+  let sy = 640;
+  Object.defineProperty(win, 'pageYOffset', { get: () => (win.document.body.style.position === 'fixed' ? 0 : sy), configurable: true });
+  Object.defineProperty(win, 'scrollY', { get: () => (win.document.body.style.position === 'fixed' ? 0 : sy), configurable: true });
+  win.scrollTo = (_x, y) => { sy = y; };
+  win.FileTubeBodyLock = BL;
+  assert.strictEqual(common.critterPageScrollY(), 640, 'unlocked: the window scroll');
+  BL.lock(win.document, win, 'faux-fullscreen');
+  assert.strictEqual(win.scrollY, 0, 'precondition: a pinned body reads 0');
+  assert.strictEqual(common.critterPageScrollY(), 640, 'locked: the real page scroll, not the pinned 0');
+  BL.release(win.document, win, 'faux-fullscreen');
+  const src = require('node:fs').readFileSync(COMMON, 'utf8');
+  assert.strictEqual((src.match(/r\.top \+ window\.scrollY/g) || []).length, 0, 'no critter geometry reads raw window.scrollY');
+  assert.strictEqual((src.match(/r\.top \+ critterPageScrollY\(\)/g) || []).length, 3, 'all three geometry reads route through the lock');
 });
