@@ -326,3 +326,200 @@ Plus, in words: how long the gap FELT on each block, and whether any lock gave N
 
 - **#251** Lock-to-audio phase 1 timing log is measurement scaffolding, and #196 gates phase 2's
   "switch into Listen" option (see the tracker row).
+
+## Gate r1 - qa (@8fd3b99a)
+
+Reviewed `git diff ecb61e1d..8fd3b99a` (9 files, +1535/-4), every changed file. Instruments, run by
+this seat at 8fd3b99a (Node v22.23.1), verbatim:
+- `node --test` player-bg-timing-log + player-lifecycle-release + player-background-audio: `# tests 183 # pass 183 # fail 0`.
+- `node --test` setup-*.test.js + css-token-lint + overlay-containment + comment-debt / tech-debt / exec-plans / docs-status census: `# tests 114 # pass 114 # fail 0`.
+- `npm run test:unit`: `# tests 7126 # pass 7126 # fail 0 # skipped 0` (exit 0).
+- `npm run lint:css`: `TOTAL 0`; `node scripts/css-token-lint.js --enforce`: `TOTAL 0`; `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`; eslint on the 5 changed js files: no output, exit 0.
+- Layout re-measured (the builder's CDP probe, pointed at a `git archive 8fd3b99a` sandbox): 390 wide doc scrollWidth 390, scroller 324/324; 375 wide 375, 309/309. Matches the Measurements table.
+- Mutant M3 (unconditional reopen play) re-run in the sandbox: 179/4, the same four red tests the table names. Verified.
+- Probes (sandbox copies of the real jsdom harness, never the tree) back W1, W3 and S3 below.
+
+Verified correct: the handoff with the log OFF makes only the new null checks plus one toggle read (the
+AC4 identical-media-call test binds it); the reopen rule matches L5 (audio playing / play() in flight ->
+video at the audio position, playing; audio paused / finished -> at the audio position, paused; the
+finished case now matches the foreground end, which also rests at 0:00 paused); every localStorage
+access in player.js and setup.js is inside a try; the readout builds DOM with textContent only.
+**Security surface: none of note.** No network call is added: the record lives only in this device's
+localStorage and leaves only through a user's Copy tap to the clipboard. It holds a media id, positions,
+timings, the iOS version and PWA-or-tab, and lifecycle detail strings; no titles, paths or credentials.
+No markup is injected, no shell, no server route.
+
+1. **WARNING - a storage write CAN land before the sidecar play(), and two comments say it cannot**
+   (player.js:4066 in `bgTimingOnHidden`; the claims at player.js:3749 "reads only" and :3987 "No storage
+   WRITE ever happens before the sidecar's play() call"; plan AC5 wording). Scenario, VERIFIED by probe:
+   lock and hand off, come back (the record goes to `ret.mode 'resume'` and waits up to 5s for the video
+   to move), the video is still rebuffering at the audio's new position, and the user locks again before
+   it moves. `bgTimingOnHidden` finalizes the old record SYNCHRONOUSLY: the trace is
+   `setItem(filetube_bg_timing_log)`, then `seek`, then `play(bg-audio-sidecar)`. A full-ring
+   JSON.stringify + setItem sits on the exact path the tool measures, and the old record is closed as
+   "did not move" when it was only cut short. Fix: in the finalize-on-new-hide arm, defer the write to a
+   microtask. Do NOT reuse `bgTimingPersistSoon` as it stands: its one global `bgTimingWriteQueued`
+   flag would then swallow the NEW record's first queued write in the same tick. Use a per-record flag
+   or a dedicated microtask. Bind it with a re-lock-inside-the-settle-window test on the write/play order.
+2. **WARNING - the fallback text box defeats the iOS focus-zoom floor** (style.css:3555,
+   `.bg-timing-log-text { font-size: var(--fs-2xs) }`). The v1.26.2 systemic rule (style.css ~5315,
+   mobile `textarea { font-size: var(--fs-input-min) }`) loses to this class selector on specificity,
+   which is the exact case that rule's own comment warns about. VERIFIED in headless Chromium at 390:
+   the timing textarea computes **10px**, a plain textarea in the same panel computes **16px**. Scenario:
+   on an iPhone where the clipboard write is unavailable or rejected, Copy reveals the box and calls
+   `select()`, and focusing it (or tapping to select) makes iOS Safari zoom the Setup page in. Fix: drop
+   the font-size, or add `.bg-timing-log-text` to the mobile floor list beside `.comment-input-box,
+   .folder-name-input`. Then extend `mobile-input-zoom-fontsize.test.js`: it did not catch this.
+3. **WARNING - a retried handoff in the same cycle produces a self-contradictory record**
+   (player.js:4136-4150 `bgTimingBeforeHandoff`, :436 outcome precedence). Scenario, VERIFIED by probe:
+   the first handoff's play() rejects NotAllowedError. The user presses lock-screen Play (the video
+   resumes, still hidden) and iOS system-pauses it again. The 'pause-hidden' trigger then hands off
+   successfully INSIDE THE SAME record. That is the documented recovery path in the F1 comment. The
+   stored record reads `decision.trigger 'pause-hidden'`, `err 'NotAllowedError'`, `playing` and
+   `advance` present, `m.outcome 'failed:NotAllowedError'`. So the readout reports a FAILURE while audio
+   played, and "Hide to audio" spans the user's own reaction time from the first hide. This tool's whole
+   output is these numbers. Fix: a second eligible handoff in an open record either finalizes it and
+   opens a fresh one, or resets the per-attempt marks (`err`, `playRejected`, `playResolved`, `playing`,
+   `startPos`, `advance`, `pauseCall`) and counts `attempts`. Bind it with this sequence.
+4. **SUGGESTION - the 'no-swap' note can be false** (setup.js:1092 "back: no swap (video was left
+   paused)"). Scenario, reasoned (should-happen, not driven): a native-fullscreen or PiP video is
+   playing at lock. The record opens, the skip is 'native-presentation', and the video KEEPS playing
+   through the lock (the v1.25.2 path). On return the note says the video "was left paused". The same
+   holds after a failed handoff plus a lock-screen Play. Record `ret.videoPaused` in `bgTimingOnVisible`
+   and word the note from it.
+5. **SUGGESTION - the plan's cost claim is narrower than the code** (plan Disclosed gap 6: "each video
+   pause while a mobile video is loaded"). `bgTimingOnVideoPause` has no form-factor check, and
+   `bgTimingOnHidden` reads the toggle BEFORE `isMobileFormFactor()`. A probe with a Win32 navigator
+   counted 1 toggle read per pause and 1 per hide. The cost is negligible; the prose is wrong. Say "any
+   loaded video", or move the mobile check first.
+6. **SUGGESTION - a stale test title** (player-background-audio.test.js:346, "runs the
+   video.currentTime = audio.currentTime; video.play() sequence"). The body now pins a CONDITIONAL
+   play. Retitle it.
+7. **SUGGESTION - `.bg-timing-log-row` has no CSS rule** (setup.js:1164). CONTRIBUTING's "a className
+   with no CSS rule binding it is a DEFECT - flag it". It is not a bare element (its cells are styled by
+   `.bg-timing-log-table td`), so it is a test hook. Add it to the td/th selector group or note it as a
+   hook.
+8. **SUGGESTION - Copy throws on an invalid `t`** (setup.js:1120 `new Date(r.t || 0).toISOString()`).
+   A record whose `t` is a non-numeric string (a hand-edited or foreign value under the key) throws
+   RangeError out of the click handler: nothing is copied and the fallback does not run. The table path
+   already guards with `bgTimingClockLabel`. Reuse that guard. Suspicion-grade (player.js always writes
+   a number).
+9. **SUGGESTION (note, not blocking) - the new form-group copies the section's inline
+   `style="...gap:8px...margin-top:4px..."`** (setup.html, the 23rd copy of that label style). The
+   linter does not scope HTML style attributes and this matches the siblings verbatim, so it is
+   pre-existing debt, not introduced by this change. Also, suspicion only: `clip.writeText` runs inside
+   `Promise.resolve().then(...)` (setup.js:1230) rather than synchronously in the tap. If WebKit does not
+   carry user activation into that microtask, iOS rejects and always falls back (see W2). A synchronous
+   call inside a try would avoid the question.
+
+Mutant table: agreed with the M18 survival reasoning. M3 re-verified. The tree was left clean apart
+from this section (checked with `git status`).
+
+Gate: CHANGES r1 @8fd3b99a — qa
+
+## Gate r1 - adversary (@8fd3b99a)
+
+Reviewed `git diff ecb61e1d..8fd3b99a`, HEAD = 8fd3b99a876f6a6c2b1912a6b6a8fc789bf4912d. Every
+measurement below was taken in a /tmp sandbox built from `git archive 8fd3b99a` (Node v22.23.1),
+never in the worktree. Instruments, verbatim:
+- `node --test` player-bg-timing-log + player-background-audio + player-lifecycle-release: `# tests 183 # pass 183 # fail 0`.
+- `node --test test/unit/player-*.test.js test/unit/setup-*.test.js`: `# tests 835 # pass 835 # fail 0`.
+- The ten census files: in the sandbox, `# tests 92 # pass 90 # fail 2`. Both failures are
+  comment-debt-census TIER 1/2 with `EISDIR: illegal operation on a directory` from MY sandbox's
+  symlinked node_modules (an instrument artifact). Re-run in the worktree (read-only):
+  `comment-debt-census.test.js # tests 5 # pass 5 # fail 0`.
+- `npm run lint:css -- --enforce`: `TOTAL 0`. `node scripts/overlay-containment-lint.js --enforce`:
+  `overlay-containment: clean (0 violations)`. eslint on player.js, setup.js and the new test: exit 0,
+  no output. Em dashes in the diff's added lines: 0.
+- The builder's CDP layout probe, re-run against the sandbox: 390 doc scrollWidth 390, scroller 324/324;
+  375: 375, 309/309; 1280: 1268, 924/924. Screenshot at 390 read: legible, nothing clipped. Matches
+  the Measurements table.
+- The full `npm test` was NOT run (brief: targeted only).
+
+Verified correct (ran it): the reopen rule on every arm I could drive. Audio playing, and play() in flight
+(HANDING_OFF): the video lands at the audio position and plays. Audio paused (toggle on and off) and
+finished in the background: at the audio position, paused. The `audioWasPlaying` read is synchronous
+with the seek (no await, so no TOCTOU); moving it after the release reds 4 tests, making HANDING_OFF read
+as not-playing reds 2, and a `resume`-only return classification reds 1. Reasoned (should-work, not
+driven): a chapter-loop or whole-item loop end in the background re-plays the sidecar, so the video
+resumes. A bfcache restore finds the sidecar paused, so the video stays paused. A failed or skipped
+handoff never reaches the swap-back. The real browser event order ('playing' fires BEFORE the play()
+promise resolves; the harness does the reverse) still yields `ok` (probe ADV-5). Key parity: the
+setup.js and player.js keys are bound equal by the keys test. Storage disabled (getItem throws
+SecurityError) and storage full (setItem throws QuotaExceededError on the re-lock write) both leave the
+handoff intact at 8fd3b99a (probes ADV-2 and ADV-3 pass). Builder mutants re-run: M3 179/4 and M2 182/1
+KILLED as tabled; M18 SURVIVED, 183/0, as tabled.
+
+1. **WARNING - a SYNC storage write lands before the sidecar play() on a re-lock inside the return
+   settle window** (player.js `bgTimingOnHidden`, first line: `bgTimingFinalize(rec)` then
+   `bgTimingPersist`). This violates Design "No write before the sidecar's play()", AC5 and brief
+   surface 1. I found it independently; it is the same defect as qa W1. Repro (probe ADV-1, the real
+   harness): lock and hand off, then the sidecar starts. Return with the audio playing (`ret.mode
+   'resume'`, which waits up to 5s for the video to move). Hide again before the video's first advance.
+   The trace is `[setItem filetube_bg_timing_log, seek bg-audio-sidecar 250, play bg-audio-sidecar,
+   pause media-player]`: write@0, play@2. Two of my mutants survive because this whole arm is unbound:
+   dropping `rec.ret` from the finalize condition (183/0; the re-lock then appends its events to the OLD
+   record and no new cycle is recorded) and deleting the 5s settle timer (183/0). The same sync
+   finalize also runs when `rec.media !== currentId` (for example a close() while hidden). Prescription:
+   finalize-and-open without writing in that arm, and queue the old record's write as a microtask. Use a
+   per-record queue: the shared `bgTimingWriteQueued` flag would DROP the new record's first write
+   queued in the same tick. Bind it with the re-lock test above, asserting write order and that a NEW
+   record opens.
+2. **WARNING - our OWN release relabels a still-pending handoff as `failed:AbortError`** (player.js
+   `attemptBackgroundAudioHandoff` reject arm: the `timing.err` mark runs BEFORE the
+   `currentId !== handoffId || bgAudioState !== HANDING_OFF` supersede check). Disclosed gap 3 promises
+   that a page iOS suspends before the sidecar starts "keeps a 'pending' record ... That IS a result".
+   It does not survive the return. Repro (probe ADV-4): the sidecar play() stays pending, and pause()
+   rejects pending play promises with AbortError, per the HTML spec's internal pause steps. The record
+   reads `pending` before the return. After `visibilitychange` visible it reads `ret.mode resume,
+   err AbortError, playing undefined, m.outcome failed:AbortError`. Dean would read that as a sidecar
+   error when the truth is "the audio never started before you came back", the exact
+   stuck-HANDING_OFF shape phase 2 has to size. Prescription: take the timing marks in both promise arms
+   only for a non-superseded attempt (after the supersede check), or record a superseded rejection
+   separately (for example `ret.pendingAtReturn`). qa W3 (a retried handoff inside one record keeps the
+   first attempt's `err`) shares this seam. I RE-DROVE it (probe ADV-6): one record, `trigger
+   pause-hidden`, `err NotAllowedError`, `playing` 30.2, `advance` 30.4, `outcome
+   failed:NotAllowedError`. Confirmed. Fix both together: reset the per-attempt marks in
+   `bgTimingBeforeHandoff` and guard the promise-arm marks on the attempt being current.
+3. **WARNING - the storage-failure guards on the handoff path are present but UNBOUND** (brief surface
+   1 names storage disabled / quota / private mode). Mutant Ma drops the try in `isBgTimingEnabled`:
+   183/0 SURVIVED. Mutant Mb drops the catch in `bgTimingPersist`: 183/0 SURVIVED. The destruction is
+   real. With both mutants applied, probe ADV-2 (toggle OFF, getItem throws SecurityError at a lock)
+   records ZERO media calls: no sidecar play, no video pause, no save. The throw at the top of
+   `handleBackgroundLifecycle` kills the handoff for EVERY user whose storage is blocked, toggle off
+   included. Probe ADV-3 (the W1 re-lock write throws QuotaExceededError) likewise kills the second
+   handoff. The shipped code is correct: both probes pass at 8fd3b99a. No test holds it there.
+   Prescription: add ADV-2 and ADV-3 as tests (assert the IDENTICAL media calls to a clean run).
+4. **SUGGESTION - the relaxed recordLifecycleEvent locks admit arbitrary code on the tap line**
+   (player-lifecycle-release.test.js, both locks: `bgTimingTap\(type, extraCtx\);[^\n]*\n`). Mutant Mc
+   appends `try { localStorage.setItem('ft-adv', String(Date.now())); } catch (_) {}` to that line: a
+   sync write on EVERY lifecycle event, ahead of the debug bail. 183/0 SURVIVED. Both locks and the
+   AC4 OFF test (it filters non-log setItem calls out of the trace) stay green. Tighten `[^\n]*` to
+   `[ \t]*(?:\/\/[^\n]*)?`.
+5. **SUGGESTION - the desktop scope claim is unbound** (Disclosed gap 7: "desktop ... produce[s] no
+   record"). Mutant Md drops `!isMobileFormFactor()` from the open gate: 183/0 SURVIVED. Every test
+   boots an iPhone. Add one desktop-navigator boot asserting no record. qa S5 separately notes that the
+   OFF-cost prose ("while a mobile video is loaded") is wrong for the same reason. I concur by reading:
+   the toggle read comes before the mobile check, and `bgTimingOnVideoPause` has no form-factor check.
+6. **SUGGESTION - Copy's rejection arm and Clear's 4s disarm are unbound.** Mutant Mh swallows a
+   `writeText` rejection (`, () => {}` for `, fallback`): 183/0 SURVIVED. The test drives only the
+   no-clipboard arm, yet the rejection arm is the one iOS reaches if user activation is lost across the
+   `Promise.resolve().then(...)` deferral. That deferral is a suspicion, not driven; qa raised it too.
+   The repo's own "iOS clipboard rule" comment (common.js ~12189) says every pick must be ready inside
+   the tap. Mutant Mn deletes the disarm timer, so an armed Clear stays armed forever and a tap minutes
+   later clears with ONE tap: 183/0 SURVIVED. Bind both (a rejecting `writeText` shows the text box; an
+   armed Clear resets after the timeout).
+7. **SUGGESTION (concur, no action needed) - M18 and a sibling dead belt.** M18 re-run: 183/0, as the
+   table says. I tried to reach the guard's false arm. The only open-record sidecar event I could build
+   in INLINE_VIDEO state is the release's `removeAttribute('src')` + `load()` timeupdate. It rewinds to
+   0, so `now <= base` rejects it anyway. The guard is unobservable, and I accept it as disclosed. The
+   same holds for `!rec.ret` in the tap's skip-decision arm (mutant Mm 183/0): a skip only comes from a
+   hide, and a hide finalizes a `ret` record first.
+
+Summary: 3 WARNINGs (W1 shared with qa W1; W2 new, absorbing qa W3 which I re-drove), 4 SUGGESTIONs.
+The reopen behavior change is sound and well bound. The collector's measurement truth and its
+no-write/no-throw contract are not yet. Adversary mutants: 14 of mine (4 KILLED, 10 SURVIVED) plus
+2 builder spot-checks (M2, M3: both KILLED). Every survivor is itemised above. Scratch probes and sandboxes lived only under
+the session scratchpad. The worktree is untouched apart from this section.
+
+Gate: CHANGES r1 @8fd3b99a — adversary
