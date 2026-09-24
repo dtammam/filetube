@@ -730,3 +730,8 @@ common.js / style.css were byte-identical to the archive afterwards. Logs:
 - **The shift steps refuse exactly the gap while the other edits allow it** (the spec's wording
   for the steps, the nudge clamp's for the rest): a 1 ms difference at the boundary.
 - **The shift row is scrolled away when the editor opens on a chapter** (qa S5, unchanged).
+
+**CSS mutants re-run @e036d390** (after the census hardening, a sandbox from `git archive
+e036d390`, log `snap-offset-status-bar-mutants-r1c.out`): B1-B10, B7b, C1-C4, C6-C17 and S28 -
+**28 of 28 RED**. C1, C6, C10, C11 and C12 (a later rule repeating `.mms-ipod .ip-status`) now
+red in the census as well as in the base-rule test.
