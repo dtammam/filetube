@@ -808,3 +808,92 @@ test('E CSS lock: the drift\'s rules animate ONLY transform + opacity - no filte
   assert.ok(!/\.style\b|setProperty|cssText/.test(code), 'the drift code writes no inline style - classes only');
   assert.ok(!/['"][^'"\n]*\b(filter|backdrop-filter|mask|blur)\b|webkitFilter|backdropFilter|\.mask\b/i.test(code), 'and names no filter / blur / mask / backdrop anywhere');
 });
+
+// ---------------------------------------------------------------- mutant-pass bindings (after the first commit)
+test('the sweep letter tick leaves the switch well OFF its midline even when letter mode carries into a NEW gesture (the sweep phase restarts at 0)', async () => {
+  const b = bootEngine({ load: songsLoad(LIB), haptic: { engine: 'sweep', detent: 3.75, dither: 18, capture: '8px', buzz: true } });
+  try {
+    await openSongs(b);
+    fastSpin(b, 3); // letter mode on, the finger lifts (the hold keeps it for 1 s)
+    assert.ok(b.engine.menuState().letterMode, 'precondition: letter mode survives the lift');
+    const g = P(b).querySelector('.mms-haptic-ghost');
+    const wheel = P(b).querySelector('.ip-wheel');
+    const at = (deg) => { const r = deg * Math.PI / 180; return { clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) }; };
+    let q = at(0);
+    const off = () => Number(/translate\((-?[\d.e-]+)px/.exec(g.style.transform)[1]) - q.clientX;
+    const realNow = performance.now; let t = realNow.call(performance);
+    Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: () => t });
+    try {
+      wheel.dispatchEvent(new b.win.MouseEvent('pointerdown', { bubbles: true, clientX: q.clientX, clientY: q.clientY }));
+      let deg = 0;
+      const mv = (step, ms) => { t += ms; deg += step; q = at(deg); wheel.dispatchEvent(new b.win.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); return off(); };
+      mv(11.5, 8);
+      const before = b.engine.menuState().letter;
+      const o = mv(11.5, 8); // this move crosses a letter: the first tick of the new gesture
+      assert.notStrictEqual(b.engine.menuState().letter, before, 'precondition: a letter was crossed');
+      assert.ok(Math.abs(o) >= 9, 'the switch sits at least half its 18 px dither off the midline after the tick (was ' + o + ')');
+      wheel.dispatchEvent(new b.win.MouseEvent('pointerup', { bubbles: true }));
+    } finally { Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: realNow }); }
+  } finally { b.restore(); }
+});
+
+test('a library change under the menus (dataVersion) ends letter mode with the stale rows it pointed into', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    fastSpin(b, 3);
+    assert.ok(b.engine.menuState().letterMode, 'precondition');
+    b.state.ver += 1;           // the view: the library changed
+    slowSpin(b, 1);             // the next wheel step sees it and re-loads the level
+    assert.strictEqual(b.engine.menuState().letterMode, false, 'letter mode ended with the stale level');
+    await flush();
+    assert.ok(!overlay(b).classList.contains('is-on'), 'the reloaded list shows no stale letter');
+  } finally { b.restore(); }
+});
+
+test('E: moving between menu levels (Main -> Music -> Settings) keeps the SAME cover layer mid-pan (the Click screen is patched in place, not re-created)', async () => {
+  const b = bootEngine({ coverPool: () => Promise.resolve(POOL.slice()) });
+  try {
+    const first = await driftUp(b);
+    pressSelect(b); // Music
+    assert.strictEqual(b.engine.menuState().title, 'Music');
+    pressMenu(b); tapLabel(b, 'Settings');
+    assert.strictEqual(b.engine.menuState().title, 'Settings');
+    assert.ok(first.isConnected && first.classList.contains('is-on') && first.classList.contains('is-drift'), 'the drifting layer survived both level changes (not restarted)');
+    assert.strictEqual(slides(b)[0], first);
+    // (a paint() - a track change - rebuilds the whole panel, so the drift restarts there: disclosed G4)
+  } finally { b.restore(); }
+});
+
+test('a drill-in from letter mode (Select on a genre) starts the NEW level out of letter mode - it never carries into a list you did not flick', async () => {
+  const genres = Array.from({ length: 30 }, (_, i) => ({ label: String.fromCharCode(65 + (i % 26)) + ' genre ' + i, node: { type: 'genre', key: 'g' + i, label: 'G' + i } }))
+    .sort((x, y) => cmpStr(x.label, y.label));
+  const b = bootEngine({ load: (n) => Promise.resolve(n.type === 'genres' ? { items: genres, letters: true }
+    : n.type === 'genre' ? { items: skins.menuSongItems(LIB.slice(0, 200), artFor), tracks: LIB.slice(0, 200), play: { ctx: { sort: 'title-asc' } }, letters: true } : { items: [] }) });
+  try {
+    b.engine.paint(); pressMenu(b); pressSelect(b);
+    tapLabel(b, 'Genres'); await flush();
+    fastSpin(b, 4);
+    assert.ok(b.engine.menuState().letterMode, 'precondition: letter mode on Genres');
+    pressSelect(b); await flush(); // drill into the landed genre (itself a long alphabetical list)
+    assert.strictEqual(b.engine.menuState().node.type, 'genre');
+    assert.strictEqual(b.engine.menuState().letterMode, false, 'the new level is not in letter mode');
+    assert.ok(!overlay(b).classList.contains('is-on'), 'no overlay on the new level');
+    slowSpin(b, 1);
+    assert.strictEqual(b.engine.menuState().cursor, 1, 'a slow turn there moves one row');
+  } finally { b.restore(); }
+});
+
+test('E: a repaint while the document is HIDDEN (a background track change) never restarts the drift', async () => {
+  const b = bootEngine({ coverPool: () => Promise.resolve(POOL.slice()) });
+  try {
+    await driftUp(b);
+    Object.defineProperty(b.sdom.window.document, 'hidden', { configurable: true, get: () => true });
+    b.sdom.window.document.dispatchEvent(new b.win.Event('visibilitychange'));
+    assert.strictEqual(b.engine.menuState().slides, false, 'precondition: stopped');
+    b.state.current = 'next'; b.engine.paint(); await flush();
+    assert.strictEqual(b.engine.menuState().slides, false, 'the repaint did not restart it while hidden');
+    assert.strictEqual(slides(b).length, 0);
+    assert.strictEqual(b.engine.menuState().slideTimers, 0);
+  } finally { b.restore(); }
+});

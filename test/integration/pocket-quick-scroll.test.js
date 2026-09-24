@@ -202,3 +202,18 @@ test('C Extras > Games > Brick in the REAL music view: the view\'s own Brick hoo
   } });
   delete require.cache[BRICK];
 });
+
+test('E in the REAL view: the Click Main Menu drifts through covers from the real library (the view\'s pool: art-bearing, same-origin, one per album)', async () => {
+  const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
+  const pool = skins.menuCoverPool(songs, (id, explicit) => explicit || ('/albumart/' + encodeURIComponent(id)));
+  assert.ok(pool.length > 1, 'precondition: the real library has covers');
+  await H.boot({ skin: 'ipod', play: 'q00', setup: (dom) => {
+    // jsdom reports a hidden document unless told otherwise (the drift runs only while visible)
+    Object.defineProperty(dom.window.document, 'hidden', { configurable: true, get: () => false });
+  }, run: async (h) => {
+    menu(h); await settleNet();
+    const sl = h.panel.querySelector('.ip-menuview .ipm-art .ipm-slide');
+    assert.ok(sl, 'a cover layer is in the Main Menu pane');
+    assert.ok(pool.includes(sl.getAttribute('src')), 'from the real pool: ' + sl.getAttribute('src'));
+  } });
+});
