@@ -533,7 +533,12 @@ const DEFAULT_SETTINGS = {
   // probes (they answer 404) and stops the perf-collector riding the shells,
   // so a normal install carries zero diagnostic script/timing cost until an
   // admin opts in. FT_DIAG=1 force-enables headlessly. See isDiagEnabled().
-  perfDiagnosticsEnabled: false
+  perfDiagnosticsEnabled: false,
+  // Chapter Snap (2026-09-24) (Dean 2026-09-24): the LEAD-IN, in seconds - how far
+  // before the first sound after a silence a snapped chapter starts. One
+  // server-wide value (Setup > Scan > Chapter snap), 0-2 s, clamped again at
+  // read time (lib/media/chapterSnap.js clampLeadIn).
+  chapterSnapLeadInSec: 0.25
 };
 
 // Wave 4 of the relational-migration arc: the app settings live in
@@ -2369,6 +2374,45 @@ function parseChapterLines(text) {
   return finalizeChapters(out);
 }
 
+// Chapter Snap (2026-09-24) (gate r1, adversary W1): the MANUAL editor's grammar - the
+// line grammar above plus an optional millisecond fraction on the timestamp
+// ("1:01.75 Title", `(?!\d)` so "3:00.1999 remix" keeps its old reading), so a
+// snapped start round-trips through the text box without flooring. Descriptions
+// keep the whole-second grammar (parseChapterLines, unchanged). And a typed list
+// that would put two chapters on ONE start is REFUSED with a message rather than
+// deduplicated: a silent dedup drops a chapter and re-points every later
+// `<id>::c<n>` like. Returns { chapters, error }.
+const CHAPTER_LINE_FRACTION = /^\s*[([]?\s*((?:\d{1,3}:)?\d{1,2}:\d{2}(?:\.\d{1,3}(?!\d))?)\s*[)\]]?\s*[-–—:.]?\s*(.*)$/;
+function formatChapterStampServer(secs) {
+  const whole = Math.floor(secs);
+  const ms = Math.round((secs - whole) * 1000);
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const s = whole % 60;
+  const base = (h > 0 ? `${h}:${String(m).padStart(2, '0')}` : String(m)) + ':' + String(s).padStart(2, '0');
+  return ms ? `${base}.${String(ms).padStart(3, '0').replace(/0+$/, '')}` : base;
+}
+function parseManualChapterText(text) {
+  if (typeof text !== 'string' || text === '') return { chapters: [], error: null };
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = CHAPTER_LINE_FRACTION.exec(line);
+    if (!m) continue;
+    const secs = chapterTimestampToSeconds(m[1]);
+    if (!Number.isFinite(secs)) continue;
+    const ch = normalizeChapter(Math.round(secs * 1000) / 1000, m[2]);
+    if (ch) out.push(ch);
+  }
+  const sorted = out.slice().sort((a, b) => a.startTime - b.startTime);
+  for (let i = 1; i < sorted.length; i += 1) {
+    if (sorted[i].startTime === sorted[i - 1].startTime) {
+      return { chapters: [], error: `Two chapters start at ${formatChapterStampServer(sorted[i].startTime)} ("${sorted[i - 1].title}" and "${sorted[i].title}"). Give each chapter its own start time.` };
+    }
+  }
+  if (sorted.length > MAX_CHAPTERS) return { chapters: [], error: `Too many chapters (${sorted.length}; the most is ${MAX_CHAPTERS}).` };
+  return { chapters: sorted, error: null };
+}
+
 // The DESCRIPTION acceptance gate: a description only counts as carrying a
 // chapter list when it parses to at least TWO chapters and the first starts
 // at 0:00 -- YouTube's own convention, and the difference between "a chapter
@@ -4097,6 +4141,8 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
     // v1.221: the seek offset for a virtual chapter-track (the client seeks the
     // one file here on play; absent on a plain track).
     ...(isChapter ? { chapterStartSec: track.chapterStartSec } : {}),
+    // Chapter Snap (2026-09-24): the file's chapter times were corrected (the drill's "Edited" badge).
+    ...(isChapter && track.chaptersEdited === true ? { chaptersEdited: true } : {}),
   };
 }
 
@@ -4112,8 +4158,16 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
 // /api/liked/:id) and the Liked page's chapter arm (GET /api/liked) all read the
 // SAME expansion, so "likeable" == "appears in Music" by construction (the
 // two-reader-seam class). A non-chaptered item yields its single base track.
+// Chapter Snap (2026-09-24): a chaptered file whose times were corrected in the snap
+// editor marks every chapter track `chaptersEdited` (the Music album drill's
+// "Edited" badge reads it off its rows - no extra request).
+const chapterSnap = require('./lib/media/chapterSnap');
 function itemChapterTracks(item) {
-  return libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
+  const tracks = libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
+  if (tracks.length > 1 && chapterSnap.isSnapEdited(item)) {
+    for (const t of tracks) if (t.source === 'library-chapter') t.chaptersEdited = true;
+  }
+  return tracks;
 }
 // Tracker #235 (music follow-ups, 2026-09-24): the ONE answer to "does this `<id>::c<n>` like
 // still name a chapter of this item" - the chapter track from the item's REAL expansion (audio
@@ -4803,6 +4857,7 @@ configRoutes.registerSettingsRoutes(app, {
   TRASH_RETENTION_DAYS_VALID_VALUES,
   VALID_DEFAULT_SORTS,
   armScanTimer, // re-arms the periodic scan when the interval changes
+  chapterSnap, // chapter snap (2026-09-24): the chapter-snap lead-in validator + read clamp
   effectiveCacheCap, // settingsResponse's read-only effectiveCacheMaxBytes
   inSaveTransaction,
   requireAdmin,
@@ -4905,6 +4960,8 @@ mediaRoutes.registerBrowseRoutes(app, {
   bookVisibleTo,
   booksDb,
   buildWatchUrl, // lib/ytdlp/url - the search results' canonical watch links
+  chaptersSnapEdited: chapterSnap.isSnapEdited, // Chapter Snap (2026-09-24): the GET /api/videos/:id "Edited" flag
+  chaptersVersionOf: (item) => chapterSnap.chaptersVersion(item, resolveItemChapters), // chapter snap (2026-09-24) gate r1: the text editor's version token
   effectiveProgress, // the stored position with any un-flushed ping overlaid
   folderDisplayNameStore,
   folderSettingsStore,
@@ -6208,7 +6265,8 @@ mediaRoutes.registerLibraryRoutes(app, {
   mediaVisibleTo,
   moveItemToFolder, // lib/media/move.js's collision-safe file mover (slice S5)
   musicDb,
-  parseChapterLines,
+  chapterSnap, // chapter snap (2026-09-24): the text editor's version token + snap provenance carry
+  parseManualChapterText, // chapter snap (2026-09-24) gate r1: the editor grammar (fraction, no silent dedup)
   path,
   progressStore,
   refuseIfReadOnlyMedia,
@@ -6234,6 +6292,25 @@ mediaRoutes.registerLibraryRoutes(app, {
   withEffectiveViewCounts, // overlays the per-user view-count store onto db.metadata
   ytdlp,
   ytdlpDb,
+});
+
+// Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor's routes
+// (seed, silence scan, save, revert), registered beside the text chapter
+// editor above and behind the SAME gates. The silence scan's cache is a
+// feature-owned store under DATA_DIR/.chapter-silence (lib/media/chapterSilence.js).
+const chapterSilence = require('./lib/media/chapterSilence');
+const chapterSnapRoutes = require('./lib/media/chapterSnapRoutes');
+const chapterSilenceService = chapterSilence.createSilenceService({ dir: path.join(DATA_DIR, '.chapter-silence') });
+chapterSnapRoutes.registerChapterSnapRoutes(app, {
+  requireModifyLibrary,
+  restrictedVideoMutation,
+  mediaVisibleTo,
+  getCachedDatabase,
+  updateDatabase,
+  resolveItemChapters,
+  settingsStore,
+  silenceService: chapterSilenceService,
+  maxChapters: MAX_CHAPTERS,
 });
 
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
@@ -7017,6 +7094,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
+  chapterSilenceService, // Chapter Snap (2026-09-24): tests await a scan (whenIdle) and read its cache
   needsTranscode,
   transcodedPath,
   // v1.317 M4: the music list serializer, so a client unit test drives the REAL row
@@ -7285,6 +7363,7 @@ module.exports = {
   // v1.34 T3 (chapters): the pure parsers/resolver, re-exported under the
   // same testing contract.
   parseFfprobeChapters,
+  parseManualChapterText, // chapter snap (2026-09-24) gate r1: the text editor's grammar (tests)
   parseChapterLines,
   deriveDescriptionChapters,
   resolveItemChapters,

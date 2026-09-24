@@ -3178,5 +3178,11 @@
     "date": "2026-09-24",
     "title": "Theatre mode on a computer keeps the title and buttons in view",
     "intent": "Theatre mode on a computer now sizes the video like YouTube does, so the title and the Like, Share and other buttons stay on the first screen instead of being pushed below it. The side menu tucks away while theatre is on and comes back when you turn it off or leave, and wide films fill the width of the screen."
+  },
+  {
+    "version": "1.322.0",
+    "date": "2026-09-24",
+    "title": "Fix where album chapters start",
+    "intent": "When a chapter of an album starts in silence or in the tail of the previous song, open Fix times from the album, the player or the watch page: FileTube finds the quiet gaps and suggests a better start for each chapter, and you can nudge each one, listen from that spot, snap them all at once, and save. Your liked chapters stay put, a saved fix survives rescans, and Revert puts the original times back."
   }
 ]

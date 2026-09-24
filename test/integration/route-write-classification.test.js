@@ -105,6 +105,11 @@ const CLASSIFICATION = {
   'DELETE /api/videos/:id': 'library-write',
   'POST /api/videos/:id/move': 'library-write',
   'POST /api/videos/:id/chapters': 'library-write',
+  // Chapter Snap (2026-09-24): the time editor's writes (the silence scan spends server CPU on a
+  // file; save/revert write chaptersManual) - the text chapter editor's exact gate.
+  'POST /api/videos/:id/chapter-snap/scan': 'library-write',
+  'POST /api/videos/:id/chapter-snap': 'library-write',
+  'POST /api/videos/:id/chapter-snap/revert': 'library-write',
   'POST /api/videos/:id/attribute-channel': 'library-write',
   'POST /api/videos/attribute-channel-bulk': 'library-write',
   'POST /api/videos/attribute-channel-bulk/cancel': 'library-write',
@@ -255,6 +260,9 @@ const VISIBILITY = {
   'DELETE /api/videos/:id': 'enforced',
   'POST /api/videos/:id/move': 'enforced',
   'POST /api/videos/:id/chapters': 'enforced',
+  'POST /api/videos/:id/chapter-snap/scan': 'enforced', // chapter snap (2026-09-24): restrictedVideoMutation + an in-tick mediaVisibleTo re-check (chapter-snap.test.js RBAC)
+  'POST /api/videos/:id/chapter-snap': 'enforced',
+  'POST /api/videos/:id/chapter-snap/revert': 'enforced',
   'POST /api/videos/:id/attribute-channel': 'enforced',
   'POST /api/trash/:id/restore': 'enforced',
   'DELETE /api/trash/:id': 'enforced',

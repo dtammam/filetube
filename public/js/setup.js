@@ -697,6 +697,17 @@ function setFieldError(el, message) {
   }
 }
 
+// Chapter Snap (2026-09-24): the server-wide lead-in select (seconds, 0-2). Its own
+// function (exported) so the change -> POST wiring is jsdom-bound (gate r1 qa S8).
+function wireChapterSnapLeadIn(signal) {
+  const leadInSelect = document.getElementById('chapter-snap-leadin-select');
+  if (!leadInSelect) return;
+  leadInSelect.addEventListener('change', (e) => {
+    saveAutomationSetting('chapterSnapLeadInSec', Number(e.target.value),
+      document.getElementById('chapter-snap-leadin-error'));
+  }, signal ? { signal } : undefined);
+}
+
 // POSTs a single changed key to /api/settings. Returns the parsed response
 // body on success (200), or null on failure (400 validation error or a
 // network/fetch failure) — either way surfaces the message via errorEl
@@ -1866,6 +1877,18 @@ async function loadAutomationSettings() {
     // v1.65: trash retention (same select pattern).
     const trashRetentionSelect = document.getElementById('trash-retention-select');
     if (trashRetentionSelect) trashRetentionSelect.value = String(s.trashRetentionDays);
+    // Chapter Snap (2026-09-24): the lead-in (a stored value not on the list keeps its own option).
+    const leadInSelect = document.getElementById('chapter-snap-leadin-select');
+    if (leadInSelect && typeof s.chapterSnapLeadInSec === 'number') {
+      const v = String(s.chapterSnapLeadInSec);
+      if (!Array.prototype.some.call(leadInSelect.options, (o) => o.value === v)) {
+        const extra = document.createElement('option');
+        extra.value = v;
+        extra.textContent = v + ' seconds';
+        leadInSelect.appendChild(extra);
+      }
+      leadInSelect.value = v;
+    }
     const capInput = document.getElementById('cache-cap-input');
     if (capInput) {
       capInput.value = s.cacheMaxBytes != null ? bytesToGb(s.cacheMaxBytes) : '';
@@ -2637,6 +2660,8 @@ function wireStaticControls(signal) {
         document.getElementById('cache-age-error'));
     }, { signal });
   }
+
+  wireChapterSnapLeadIn(signal); // Chapter Snap (2026-09-24): the server-wide lead-in
 
   // v1.65: trash retention -- save, then re-render the list (the days-left
   // labels depend on it).
@@ -4570,6 +4595,8 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // Chapter Snap (2026-09-24) (gate r1 qa S8): the lead-in select's wiring (jsdom-bound).
+    wireChapterSnapLeadIn,
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
     // shell is device-validated).
