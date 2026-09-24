@@ -3,8 +3,8 @@ plan: pocket-gyro-lighting
 harness: v2 · lean
 branch: feat/pocket-gyro-lighting
 anchor: spec
-status: Built, pre-gate
-next: mutants in a sandbox, then ONE gate (adversary + qa, max 2 rounds), release v1.327.0
+status: In gate
+next: ONE gate (adversary + qa, max 2 rounds) at the sha below, then release v1.327.0
 design: this document (Dean's intake G1-G8 is in 2026-09-24-pwa-chrome-and-gyro-sheen.md, Item 2)
 gate: pending
 ---
@@ -212,6 +212,27 @@ in tokens).
   lock's own pattern - and a unit test drives the parked dock.
 - Parking rule refined: in tilt mode the loop parks only once the neutral pose has drifted onto a
   held tilt (else it froze the light off-centre); pointer mode parks at the goal.
+
+## Mutants (sandbox from `git archive 31670637`, never the live tree; each guard DELETED, its test red)
+
+  - M1 paint() never calls lighting.sync() -> # pass 8 # fail 6
+  - M2 destroy() never calls lighting.destroy() -> # pass 12 # fail 2
+  - M3 no MutationObserver (the parked dock) -> # pass 13 # fail 1
+  - M4 a finger moves the light (mouse filter gone) -> # pass 13 # fail 1
+  - M5 every skin is lit (isPocket ignored) -> # pass 13 # fail 1
+  - M6 reduced motion ignored -> # pass 13 # fail 1
+  - M7 the tray is lit -> # pass 13 # fail 1
+  - M8 stop() keeps --lx/--ly and the class -> # pass 12 # fail 2
+  - M9 TILT_SIGN flipped (the light follows the tilt) -> # pass 7 # fail 7
+  - M10 requestPermission never called -> # pass 13 # fail 1
+  - M11 a deny drops the note -> # pass 13 # fail 1
+  - M12 the Click wheel keeps a literal sheen position (CSS lock) -> # pass 13 # fail 1
+  - M13 a blur() sneaks into the band -> # pass 13 # fail 1
+  - M14 one shell drops pocket-lighting.js -> # pass 13 # fail 1
+  - M15 Settings shows Lighting even with no driver -> # pass 12 # fail 2
+  - M16 the Lighting row tap does nothing (choose never called) -> # pass 11 # fail 3
+  - M17 the dome shadow token stays static (lit shadows never directional) -> # pass 13 # fail 1
+  - M18 Seattle gets lit (the CSS lock's Seattle axis) -> # pass 13 # fail 1
 
 ## Disclosed up front
 
