@@ -3,9 +3,9 @@ plan: chapter-snap-persist
 harness: v2 · lean
 branch: fix/chapter-snap-persist
 anchor: spec
-status: Built @4ceb1945 (diagnosis + fix; scope widened to #268 and #269 by Dean); awaiting the full gate
-next: gate (FULL - data class: adversary + qa + security-brief)
-design: Approved 2026-09-24 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
+status: Gate r1 fixed @c49a3d73 (P1-P4 + W4 + suggestions; main merged at v1.325.0); awaiting gate r2
+next: gate r2 (FULL - data class: adversary + qa + security-brief)
+design: Approved 2026-09-24 @7482e432 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
 
@@ -188,10 +188,14 @@ through the real editor, then B was activated again (`visible`). At 67a31ca3: B 
   reads 0 mid-load). ("#268: a CLOSED player ...")
 - AC11 (#269) The re-check targets the PLAYING chapter's file even when the list on screen mixes
   files (no single chapter album). ("#269: the re-check follows the PLAYING chapter's file ...")
-- AC12 The shared adopt path is untouched: `git diff 7482e432 4ceb1945 -- public/js/player.js
-  server.js lib` is empty (0 lines), so the watch<->music same-id hand-offs, dock-return and
-  `?play=` adopt arms run the same player code; their existing suites stay green (the hook runs
-  every unit test: 7259/7259 at 4ceb1945).
+- AC12 (CORRECTED at gate r1 - the original claim was FALSE, adversary 1 = qa 1) player.js is
+  untouched (`git diff 7482e432..HEAD -- public/js/player.js server.js lib` is empty), but that did
+  NOT keep every adopt arm's behavior: at 4ceb1945 music's own post-adopt seek also ran on the
+  `?play=` continue arm (history BACK re-mounting `/music?play=<loaded chapter>`), rewinding
+  playback and overwriting the stored resume position. Since the r1 fix the seek runs ONLY for an
+  explicit pick/nav (`opts.pick`: a row tap, the up-next row, the skin's select, a pocket-menu
+  pick, Prev/Next); a continue / re-mount / Listen / dock-return load never passes it, so those
+  adopt arms keep their pre-branch behavior. (AC13 below binds it.)
 
 ## Build record
 
@@ -221,10 +225,10 @@ Round 2 (the widened scope, Dean):
     computes `adoptingChapter` (a chapter row whose id is the player's loaded id and the player is
     not closed - player.js `isAdoptLoad`'s own predicate) BEFORE `pl.load`, and after the load
     calls `seekAdoptedChapter(item)`: sets the element's `currentTime`, resets the two exit step
-    trackers (`lastExitTime`, `lastFlatTime`), `reflectChapter()`, `play()`. player.js is
-    byte-unchanged, so every existing adopt arm (watch<->music same-id hand-offs, dock-return,
-    `?play=`) keeps its behavior; the new seek runs only for a MUSIC chapter row and only when the
-    playhead is outside that row's bounds.
+    trackers (`lastExitTime`, `lastFlatTime`), `reflectChapter()`, `play()`. (CORRECTED at gate r1:
+    this record used to say every existing adopt arm keeps its behavior because player.js is
+    byte-unchanged. That was FALSE - the seek also ran on the `?play=` continue arm; see AC12 and
+    the Gate r1 fix section. The resets and `reflectChapter()` were dead and are gone.)
   - #269: pure `queuedChaptersDiffer(rows, baseId, chapters)` (exported); in the view,
     `chapterRecheckBaseId()`, `recheckChaptersOnReturn()` (one in flight at a time, drops its
     answer when `chapterApplyGen` moved - `applySnappedChapterTimes` bumps it - or the view was
@@ -325,12 +329,156 @@ t 493.5 on chapter 2, AFTER t 500.3 on chapter 3), through the drill's real rows
 - #269 CLOSED here for the MUSIC view (the queue, the drill, the pocket menus via
   `invalidateMenuData`, the resume guard's spans). Residuals: (a) the WATCH page's chapters menu
   and seek notches on a page left open elsewhere are not re-checked on return (player.js has no
-  such listener; outside the Music scope Dean reported); (b) the re-check covers ONE file per
-  return (the playing chapter's, else the album on screen) - other chaptered files merely sitting
-  in the queue are refreshed when they are played or re-listed; (c) a page that stays visible the
-  whole time (two desktop windows side by side) is not re-checked until it is hidden and shown
-  again - no polling, by the brief.
+  such listener; outside the Music scope Dean reported); (b) CORRECTED at gate r1 (qa W3): this
+  used to say other queued chaptered files "are refreshed when they are played". They were NOT -
+  `loadTrack` read the queued row, so the first pick of another file played its OLD start. Since the
+  r1 fix every other chaptered file queued at a return is UNVERIFIED and its first pick asks the
+  server once, applies a change, then plays the corrected start (AC16); (c) a page that stays
+  visible the whole time (two desktop windows side by side) is not re-checked until it is hidden
+  and shown again - no polling, by the brief. (a), (c) and the r1 residuals are OPEN as #270.
 - Not measured on a real iPhone PWA (headless Chromium only).
+
+## Gate r1 fix (Dean's decision relayed by the Architect: fix P1-P4 as new commits)
+
+Commits: 12e16523 (the r1 verdicts, committed as the seats wrote them), 58753b65 (merge main
+ec606e2f = v1.324.0; tracker conflict resolved keeping every row), aba8633e (P1-P4 + tests),
+ade79b21 (merge main 2be1ebb2 = v1.325.0, forced by the release-ledger hook; no conflicts),
+7fe73cdf (the mutant-survivor bindings), c49a3d73 (a partial drill repaints its rows), and this
+docs commit. Every code commit went through the pre-commit hook (`tests 7354 pass 7354 fail 0` at
+c49a3d73).
+
+- **P1 (CRITICAL, adversary 1 = qa 1) FIXED.** `loadTrack` re-seeks an adopted chapter only for
+  `opts.pick`, passed by the pick/nav callers: the in-album row tap and `playRowAt` ->
+  `playTrackInAlbum` (threaded as `pick`), the now-playing up-next row, the skin's `onSelectIndex`,
+  `playFromMenu` (every pocket-menu pick) and Prev/Next (`registerTrackNav`). Never passed by
+  `playTrackFromContinue` (`?play=` incl. history BACK, "Jump back in", a Home Continue card),
+  `playListenItem`, the dock-return rebuild, the album/drill Play and Shuffle buttons, the station
+  continuations or the flat segment-end advance. The adopt test is player.js's own `isAdoptLoad`
+  page global (qa S5; an inline fallback only where player.js is absent, i.e. a unit harness).
+  The dead `reflectChapter()` / step-tracker resets in `seekAdoptedChapter` are removed (adv S5).
+- **P2 (W, adversary 2 = qa 2) FIXED.** `applySnappedChapterTimes` judges a count change ONLY on
+  the album drill of the file (`ownsDrill` - the one queue holding the file's COMPLETE list): there
+  a server count unlike the queued count re-lists (a new chapter needs its row). Every other queue
+  (flat pocket-menu lists, Up next, a mixed or partial drill, a search) is patched in place and
+  loses only rows whose chapter no longer exists (`droppedAny`). A flat list is redrawn from ITSELF
+  (`renderSongListProgressive`, or the drill view for an artist's All Songs), never re-listed; a
+  mixed/partial drill repaints its patched rows. The toast concern: `render()` catches a failed
+  list fetch and never rejects, so the "Chapters saved, but the list could not be refreshed" toast
+  is not reached by a failed re-list at all (measured on the passive path: no toast); no guard was
+  added for an unreachable arm. What a failed re-list DOES do (it empties the drill) is filed in
+  #270 (d).
+- **P3 (qa W3, the Architect's ruling) FIXED.** `recheckChaptersOnReturn` marks every OTHER
+  chaptered file in the queue unverified (`markOtherChapterFilesUnverified`); `playAt` hands a pick
+  of an unverified file to `verifyChapterFileThenPlay`: one GET /api/videos/:id, a change applied
+  through `applySnappedChapterTimes`, then `playAt` of the SAME row object (patched in place). A
+  newer pick while it is in flight wins (`playGen`); a failed verify plays the row as queued and
+  keeps the file unverified; a failed RETURN re-check leaves the checked file unverified too.
+  Verified files never ask again until the next return.
+- **P4 (adversary 3) BOUND:** the on-screen album fallback, the failure path's in-flight reset
+  (offline return, then an online return asks again and applies), and the post-await liveness
+  check (park the answer, destroy, release: no nav re-registered).
+- **W4 (qa)** the design line carries `@7482e432`.
+- **S4** a +0.5 s shift on a subset `[c1]` and on the last row is detected (pure test). **S5** done
+  (P1). **S6** recorded below. **S7** filed as #270 (OPEN). **S8** the probe flags are recorded
+  with every measurement below.
+
+S6 (qa) - a diagnosis candidate the first pass did not list: **two media items with independent
+chapter lists.** The probe's fixture shows it: the audio item's save left the VIDEO item
+`source=embedded` untouched, and the watch-page save left the audio item alone. A Listen of a
+video and the audio album look alike in the pocket skin, so "edited in one, checked the other"
+would also read as "never stuck". Recorded as a plausible reading of Dean's first desktop
+sighting, NOT tested on his data. Should a snap on one copy reach the other? Not built: the two
+items can legitimately differ (a video's chapters include intro/outro the audio rip lacks), and
+chapter likes/progress are keyed per item. A "same release" link between items does not exist
+today; noted for Dean.
+
+New acceptance criteria (each names its binding test in chapter-snap-resume.test.js unless noted):
+- AC13 (P1) A re-mount of `/music?play=<the loaded chapter>` with the file rolled on keeps the
+  playhead (130 stays 130), no seek, no play ("r1 P1: a re-mount ..."); Prev and Next onto the
+  loaded chapter, a pocket-menu pick and a Songs-row album select ARE picks ("r1 P1: Prev/Next",
+  "r1 P1: Next onto", "r1 P1: a pocket-menu pick", "r1 P1: a Songs-list row tap"); the adopt test is
+  the player's global when present ("r1 P1 (qa S5)"); the two select callsites carry `pick: true`
+  (music-chapter-reflect.test.js classification lock, extended).
+- AC14 (P2) A flat list `[f1::c1, g9::c0]` after a remote move: no `/api/music` re-list, the same
+  rows, its crumb, the new span in place, Next = the list's next row; a dropped chapter leaves only
+  its row; a partial album drill with a moved chapter AND a remote add repaints and does not
+  re-list; the complete drill still re-lists on a count change and shows no "saved" toast when that
+  re-list fails. Integration (REAL server + REAL engine, the adversary's repro):
+  test/integration/chapter-snap-return-flat.test.js - Liked Songs holding one chapter, Autoplay
+  off, a later chapter moved OR the liked chapter itself moved: no Songs re-list, and the flat
+  segment end still pauses at the new boundary.
+- AC15 (P4) the fallback, the failure-then-success return, the post-await liveness check.
+- AC16 (P3) After a return, the first pick of ANOTHER queued file's moved chapter asks once and
+  plays the NEW start; the second pick does not ask; without a return nothing asks; a newer pick
+  during the verification wins; a failed return re-check makes the playing file's next pick ask.
+
+Red at the pre-fix head: the unit file run against `git archive 12e16523` gave `# pass 18 # fail 5`
+(the P1 re-mount, the S5 global, both P2 flat cases and the P3 case red; the P4 arms and S4 bind
+code that was already right, so they pass there by design); the integration file at 12e16523:
+`# pass 0 # fail 2`. At the head: unit 29/29, integration 2/2.
+
+### Mutants (gate r1 fix)
+
+Runners (session scratchpad `chapter-snap-persist/`): `mutants3.sh` (the new code),
+`mutants2.sh` (round 2 re-run on the moved code, re-anchored), `mutants4.sh` (the round-2 mutants
+whose anchors moved). Binding set: chapter-snap-resume, music-chapter-playback, chapter-snap-client,
+music-chapter-reflect (unit) + chapter-snap-return-flat (integration). Sandbox per mutant from
+`git archive c49a3d73`, exact-occurrence anchors, sha1 before -> after printed. CONTROL: `# fail 0`.
+The first run (@aba8633e) left R3, R5, R6, R10, R16, R17 and R18 green: R3/R5/R6/R16/R17 got binding
+tests (7fe73cdf); R10 survived again because the partial-drill test moved nothing the queued rows
+showed - made non-vacuous, which exposed that a mixed/partial drill never repainted its patched
+rows (fixed, c49a3d73); R18 (the verify path's apply-generation check) was unreachable (no save of
+a file can land while its pre-play verification runs - it is not playing yet) and was removed.
+
+| # | Mutant @c49a3d73 | Result | Binding test(s) |
+|---|---|---|---|
+| R1 | the pick flag ignored | RED (1) | r1 P1 re-mount |
+| R2 | Prev without pick | RED (1) | r1 P1 Prev |
+| R3 | Next without pick | RED (1) | r1 P1 Next onto |
+| R4 | in-album row tap without pick | RED (3) | #268 re-tap, #268 playthrough, r1 S5 |
+| R5 | playTrackInAlbum does not thread pick | RED (1) | r1 P1 Songs-list row |
+| R6 | pocket-menu pick without pick | RED (1) | r1 P1 pocket-menu pick |
+| R7 / R8 | skin select / up-next row without pick | RED (1) each | the v1.311 classification lock |
+| R9 | the player's isAdoptLoad global ignored | RED (1) | r1 S5 |
+| N6b | the inline fallback counts a CLOSED player as an adopt | RED (1) | #268 CLOSED player |
+| R10 | count judged by the highest queued index | RED (1) | r1 P2 partial drill |
+| R11 | a dropped chapter never counts | RED (1) | chapter-snap-client Listen-mode count change |
+| R12 | no flat redraw | RED (2) | both r1 P2 flat cases |
+| R19 | only the complete drill repaints | RED (1) | r1 P2 partial drill |
+| R13 | other files never marked unverified | RED (2) | r1 P3 first pick, r1 P3 newer pick |
+| R14 | no verify gate in playAt | RED (3) | r1 P3 x3 |
+| R15 | verified file never cleared | RED (the file does not complete: verify -> playAt -> verify loops) | chapter-snap-resume.test.js |
+| R16 | verify ignores a newer pick | RED (1) | r1 P3 newer pick |
+| R17 | a failed return re-check does not re-mark | RED (1) | r1 P3 failed re-check |
+| N20 | the verify never applies | RED (2) | r1 P3 first pick, r1 P3 failed re-check |
+| N18a | the return re-check drops `chaptersEdited` | RED (1) | #269 back to visible |
+
+Round 2 re-run @c49a3d73 (the code moved): N2 RED (2), N3 RED (1), N4 RED (6), N5 RED (1), N7
+RED (1), N8 RED (1), N9 (re-anchored to the new in-flight guard) RED (1), N10 RED (1), N11 RED (1),
+N12 RED (1), N13 RED (1), N14 RED (1), N15 RED (3, now incl. the integration file), N16 RED (1),
+N17 RED (5), N19 RED (1). (N1 / N6 hit code the r1 fix replaced - R1 and N6b above.) Round 1 (M1-M4,
+`chapterResumeSecFor`) touched code is unchanged since 57fe4fe4.
+
+### Measurements (gate r1 fix; real Chromium chromium-1234, 390x844 mobile, REAL mode)
+
+Probe `chapter-snap-persist/probe.js` (flags per run, qa S8), the adversary's probe copied as
+`chapter-snap-persist/adv-probe.js` (MODE=268), runner `drives.sh`. BEFORE = a sandbox of 12e16523
+(= the r1-reviewed code + the merge), AFTER = this tree at c49a3d73.
+
+| Drive (flags) | BEFORE 12e16523 | AFTER c49a3d73 |
+|---|---|---|
+| adv MODE=268: `?play=<id>::c0` -> seek 500 -> Home -> history.back(): playhead after BACK (+3.5 s) | t 3.4, row `c0` | t 507.9, row `c2` |
+| the same: stored GET /api/progress 6 s later | 9.38 | 513.94 |
+| PROBE_REAL=1 PROBE_FLAT=1: Liked Songs `[c1]`, Autoplay off, another client moves chapter 3 478 -> 498, the page returns: requests | `/api/videos/<id>`, `/api/music?sort=newest&limit=1000` | `/api/videos/<id>` |
+| the same: the list after the return | crumb "", rows c0..c7 (the whole library) | crumb "Liked Songs", rows `[c1]` |
+| the same: 2 s before the new segment end 498, 4.5 s later | t 500.4, playing on into chapter 3 | t 497.8, paused (K4) |
+| PROBE_REAL=1 PROBE_STALE=1 PROBE_RELIST=1 (H3): tap chapter 3 after 478 -> 498 | (67a31ca3: t 493.5 on `c1`) | t 500.4 on `c2` |
+| PROBE_REAL=1 PROBE_268=1: re-tap the loaded chapter 3 after the move (row tap = pick) | (67a31ca3: t 495.9 on `c1`) | t 500.5, playing, `c2` |
+| PROBE_REAL=1 PROBE_269=1: B's requests on return / B taps chapter 3 | (67a31ca3: 0 / t 480.4 on the old 478) | 1 / t 500.4 on the new 498 |
+
+(qa S8: the earlier "498 -> 518" #269 row came from a COMBINED run, `PROBE_REAL=1 PROBE_268=1
+PROBE_269=1`, where the #268 section had already moved chapter 3 to 498; `PROBE_269=1` alone gives
+478 -> 498, as above.)
 
 ## Gate verdicts
 
