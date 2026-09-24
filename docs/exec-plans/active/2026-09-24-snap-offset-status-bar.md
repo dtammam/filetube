@@ -3,10 +3,10 @@ plan: snap-offset-status-bar
 harness: v2 · lean
 branch: fix/snap-offset-and-status-bar
 anchor: spec
-status: Gate closed pending adversary re-confirm
+status: Gate closed
 next: release
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
-gate: APPROVED r3 @0cc5d68f — qa, security-brief; adversary: r3 WARNING disclosed by Architect ruling, re-confirm pending
+gate: APPROVED r3 @0cc5d68f — qa, security-brief; APPROVED r4 @ac07adc3 — adversary (code identical to 0cc5d68f)
 ---
 
 # Chapter Snap "Shift all" + the pocket skins' one-line status bar
@@ -1367,3 +1367,25 @@ Verdict: APPROVED. My r1 and r2 findings are all resolved, the new rule is sound
 tool-only, and I would ship them disclosed via the tracker.
 
 Gate: APPROVED r3 @0cc5d68f — qa
+
+## Gate r4 - adversary (@ac07adc3)
+
+A docs-only re-confirmation.
+- `git diff --stat 0cc5d68f ac07adc3` touches two files: this plan and
+  `docs/exec-plans/tech-debt-tracker.md`. `git diff --quiet 0cc5d68f ac07adc3 -- .
+  ':(exclude)docs/exec-plans'` exits 0, so the code is byte-identical to what I reviewed at r3.
+  My r3 section is committed unaltered (spot-checked).
+- The "Gate r3 disclosures" block is accurate against my r3 measurements:
+  - the four fail-open spellings and their three causes;
+  - the shipped CSS is correct, headless-measured;
+  - M15 / M16 unbound, with M8b / M9b argued equivalent;
+  - the squeeze wording, now corrected: the pair case SAVES `[.., 60, 60.1, 60.15, ..]`, and the
+    three-start case lands PAST its neighbour and the server refuses it.
+- qa's S1 is accurate: the three stale comments are at common.js 13270, 13284 and 13327-13329,
+  as cited. qa's S2 is accurate: the probe's SUMMARY does not use `reached` (line 161).
+- Tracker #272 carries (a)-(e), each with a fix shape and a revisit trigger.
+
+I accept the r3 WARNING as disclosed, per my r3 exit. It is test-of-test only, and the data path
+was clean at r3.
+
+Gate: APPROVED r4 @ac07adc3 — adversary
