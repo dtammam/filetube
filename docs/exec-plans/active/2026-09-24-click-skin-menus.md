@@ -192,3 +192,104 @@ Survivors: M9 and M10 only (equivalent, reasoned above). 31 RED.
 ## Gate verdicts
 
 (r1 pending)
+
+## Gate r1 - qa (@25929acd)
+
+Instruments (run by this seat, output verbatim):
+- New + touched tests (music-pocket-menus unit + integration, menu-returns-to-origin, music-skins, music-skin-integration, swipe-back-owners): `# tests 205 # pass 205 # fail 0`.
+- Census set (css-token-lint, overlay-containment, comment-debt-census, comment-count, exec-plans-census, tech-debt-census, skin-surface, era-player-skins, setup-music-skin-picker, skin-scrollbar-hidden, token-scale-lock, type-scale-tokens, touch-eating-overlay-audit, docs-status-census, docs-link-census): `# tests 155 # pass 155 # fail 0`. Shell parity (shell-script-global-collisions, shell-singleton-invariant): `# tests 48 # pass 48 # fail 0`.
+- `npm run test:unit`: `# tests 7121 # pass 7121 # fail 0 # skipped 0`.
+- `npm run lint:css`: `TOTAL 0`. `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`. eslint on the 10 changed JS/test files: `0 errors, 7 warnings`, all 7 in common.js (lines 204/413/690/4292/12240/12776/13168: setTheme, homeFeedEnabled, ...), the same functions on the same lines at ecb61e1d - pre-existing, none on the diff's one added line.
+- Probe: a `git archive 25929acd` sandbox, the builder's probe plus QA additions, 390x844, ipod + zune-classic, POPOUT=0. Every level `ok:true`, every state `errs:[]`. Click: rows 34 px / 14 px / 700, list 173x227, art pane 173, docW 390. Seattle: root 60 px / 44 px, lists 48 px / 22 px, list 316x555. Songs spin: cursor 0 -> 180. A REAL CDP touch swipe (Input.dispatchTouchEvent) across Seattle's pivot list moved `Artists -> Albums` with the url still `/music`, and a touch tap on a row right after it drilled in (the swallow flag did not eat it). The legacy v1.231 queue row measured 34 px on both skins.
+
+Findings:
+
+1. **WARNING - a chapters-editor save leaves the pocket menus stale, and a stale chapter id then plays.** public/js/music.js:2565 (the `showChaptersEditor` onSaved callback: `loadSongs` + `renderDrillView` + `reflectEngines`, no `invalidateMenuData`) against music.js:3099-3106, whose comment claims "ONE invalidation for every seam that changes the library under the menus". Verified by a driven run: a sandbox integration test on this suite's own harness (the real music.js + engine + server) with the admin `.music-drill-chapters` button and a stubbed editor that saves the file down to two chapters, then calls the view's real onSaved. Printed: `server now returns: ["djmix1::c0","djmix1::c1"]`; `browse drill rows behind: ["djmix1::c0","djmix1::c1"]`; `album level after edit: Full Album Mix ["Intro","Track A","Track B"]`; `Songs after edit has Track B: true`; `played after edit: djmix1::c2 server has it: false`. Scenario: desktop pop-out on Click. The user opens Songs in the pop-out, then edits the album's chapters in the main window and drops the last chapter. The pop-out still lists "Track B" at the album level and in the cached Songs. Picking it queues and loads `djmix1::c2`, an id the server no longer returns, which breaks AC4 and writes progress under a dead chapter id (the #235 stranding class). The same thing happens on mobile after a collapse-handle dock within /music (the engine and its stack survive). Second part: `dataVersion` is read only in `afterPaint`. A seam that does not repaint (this save only calls `reflect()`; the Scan button in the main window while the pop-out is open) leaves the OPEN levels stale until the next track change, even once the caches are dropped. Prescription: (a) call `invalidateMenuData()` in the chapters onSaved callback; (b) check `cfg.dataVersion()` in the controller's `render()` (before `ensureLoaded`), not only in `afterPaint`, so a MENU climb re-loads a stale level with no repaint; (c) bind both with a test that drives the real `.music-drill-chapters` click (the shape above) and then climbs back into the open album level WITHOUT a paint.
+
+2. **WARNING - a pick from a big menu list blocks the main thread for over a second (AC5 measured only open and spin, not the pick).** music.js `playFromMenu` runs `renderSongList()` over the WHOLE list, synchronously inside the row tap, before `showNowPlaying`. Measured on the 3,006-song fixture (headless, this box, 390x844): pick from Songs `syncMs 1304`, a `1393 ms` long task, `innerHTML` alone `394 ms`, `3008` rows behind. Pick from a 2-track album: `syncMs 21`. For comparison, the pre-existing browse Songs tab (limit 1000): `innerHTML 89 ms`, long tasks `158 / 85`. Shuffle Songs: `1923 ms` from tap to the new currentId (including the fetch), again `3008` rows. This is new with the diff: the browse caps its lists at 1000, while the menus queue and render up to 10000. Scenario: on a phone with a 3k library, the user taps a song in Songs (or a big genre, or Shuffle Songs). The screen freezes for more than a second (a phone CPU is slower than this box) before Now Playing shows and the audio starts. Prescription: keep the queue whole but do not build 3,000+ browse rows inside the tap. For example, clear `#music-content` synchronously (so no stale row can index the new queue) and render the rows in a follow-up task guarded by a generation counter, or window the browse song list. Re-measure the pick's long task.
+
+3. **WARNING - Seattle lists visually attach each artist/sub line to the NEXT row (legibility at 390x844, AC6).** public/css/style.css:11684-11686 (`.mms-zune-classic .ipm-row` grid, `align-content:center` in 48 px, 22 px label + `--fs-sm` sub). Measured ink bands in CSS px on the albums pivot PNG: label 107-123, its own sub 137-148, the next label 155-171. That is a 14 px gap to its own title and 7 px to the next one. Scenario: on every Seattle Albums and Songs level, "blues pixel 104" reads as the artist of the album BELOW it. Only the lit cursor row is unambiguous. Prescription: tighten the label's line box (e.g. `line-height:var(--mms-lh-ttl)` on `.ipm-lbl`) and/or `align-content:start` with the leftover space placed BELOW the sub, so the gap inside a row is smaller than the gap between rows. Re-measure with the same ink-band scan.
+
+4. SUGGESTION - Seattle pad HOLD on a pivot level fast-scans the track. skin-surface.js `onDown` arms `fastScan` from the pressed `data-skin-prev/next` zone whatever the screen is, while a TAP there moves the pivot. Holding right for 400 ms scrubs the playing song, and the pivot does not move. Reasoned, not driven. Consider skipping the scan arm when `pocket.isMenuMode()` and the level has pivots.
+
+5. SUGGESTION - skin-surface.js:512 (the createPocketMenu cfg contract comment) lists load/onPlay/onShuffleAll/hasCurrent/currentId but not `dataVersion()`, which `afterPaint` reads. The contract comment is incomplete.
+
+6. SUGGESTION - in the tray, `render()` writes the menu title into `.ip-np` while `body.mms-tray ... .mms-menumode .ip-npview{display:flex}` shows Now Playing. A pop-out shrunk to the tray mid-menu shows e.g. "Songs" over the Now Playing view. Reasoned, not driven.
+
+7. SUGGESTION - widen #255. The Songs level (limit 10000) and the Liked / Recently Played playlists have the same list-context gap as genre. `rebuildPlayingQueue` (music.js:2959) reloads with `loadSongs` (limit 1000) and does not pass `ctx.filter`. So after a dock-return re-init on a grid tab, a pick past Songs row 1000 gets `ci -1` and its nav is cleared. Reasoned, not driven.
+
+8. SUGGESTION - a like/unlike through the sticker does not bump `dataVersion`, so a Liked Songs level already on the stack keeps the old row until it is re-entered. Cosmetic.
+
+Not findings (stated so the surface is covered):
+- **Click row tap targets (34 px):** the same pitch as this skin's own v1.231 queue rows (measured 34 px on both skins) and the device's density. Rows are 173 px wide, and the wheel is the primary input. No minimum is codified in CONTRIBUTING/AGENTS. Not a finding. Dean's device pass owns the feel.
+- **Security:** no server or route change. Every library string rendered into the menus goes through `esc()`: label, sub, pivot labels, title, the listbox `aria-label`, emptyText and the art `src`. Attributes are double-quoted and indices are numeric (M18 binds the escaping). Fetch params use `encodeURIComponent`, and the crumb is set via `textContent`. The data comes from the same `trackVisibleTo`-gated `/api/music*` routes the browse reads, and genre is derived client-side from rows the user can already see. Nothing new is logged or exposed.
+- **CSS:** tokens only (lint 0), raw px annotated `token-exempt`, and no radius on the scroller (the overlay split holds). No `position:sticky` and no `[hidden]` use were added. The tray override restores the SAME display (`flex`) as `.mms-ipod .ip-npview` (no gap-dropping `block`).
+- **AC7:** podcasts pass no `menu` (grep: `menu:` appears only in music.js), and on Cider/Nordic every hook declines (style '').
+- **Registry:** `menus` sits on the entries, and the census binds it.
+- **Tracker:** #255-#258 are unique across the local branches (main 251-254, chapter-snap 239-241, desktop-theatre 247, music-followups 243).
+- **Hygiene:** no em dashes and no TODO/FIXME in the added lines.
+- **Visual:** Click is the 6G split screen (blue bar, white text, chevrons, the speaker on the playing row, art on the right). Seattle has lowercase pivots trailing off the edge and big light type.
+- **Plan claims vs the tree:** they hold except the "every seam" invalidation claim (finding 1) and AC5 as it applies to the pick path (finding 2). The mutant table arithmetic checks out: 33 rows, 31 RED, M9/M10 survived as equivalents.
+- **Merge note:** main has moved past ecb61e1d (style.css +45, tracker +4), so re-run lint:css, overlay and the tracker census after the merge.
+
+Tree: this seat wrote only this section. `git status` was clean before it; the QA probe and the driven chapter test ran in a scratchpad `git archive` sandbox, never in this worktree.
+
+Gate: CHANGES r1 @25929acd — qa
+
+## Gate r1 - adversary (@25929acd)
+
+Instruments (this seat, verbatim; every mutation and probe ran in `/tmp/adv-csm` from `git archive 25929acd` / `ecb61e1d`, never in this worktree):
+- The six new/touched test files: `# tests 205 # pass 205 # fail 0`. `npx eslint .` (my scratch probes excluded): head `0 errors, 7 warnings`, base `0 errors, 7 warnings`. `lint:css` `TOTAL 0`; overlay `clean (0 violations)`.
+- 24 mutants of my own (runner `/tmp/adv-csm/mutants.js`, each anchor asserted unique, each diff non-empty, the same six files): **5 RED, 19 SURVIVED** - listed under finding 5.
+- Headless Chromium (`/tmp/adv-csm/probe/adv-probe.js`, the builder's 3,006-song fixture, 390x844 mobile, CDP touch): pick timing at CPU x1 and x4, a real touch swipe and a diagonal scroll on Seattle's pivots.
+- jsdom: listener balance over 20 create/paint(4 skins)/menu/swipe/spin/destroy cycles: panel `0`, document `0` net listeners after; window `9`, which are jsdom's own one-per-type capture listeners, the same 9 on base. Base-vs-head parity of the engine (paint + next/prev/play/select x3/menu x3, DOM snapshot after every press + the host-control log) for podcasts-shaped Click and Seattle (no `menu` cfg), music Cider/Nordic and podcasts Cider/Nordic: **IDENTICAL** on all six.
+
+Findings:
+
+1. **WARNING - the playing list's cursor is yanked while you browse it; Select then plays the wrong song.** skin-surface.js `followCurrent` moves `p.cursor` of every `playing` pane at every advance, including the pane on screen. Verified (sandbox integration test on this suite's harness): Songs, pick row 0 (Cartridge Blues), MENU back to Songs, four detents down to `Overpass`, then the queue advances (`nav.onNext`). Printed: `after advance: cursor on Intro`, then `Select played djmix1::c0 (user wanted Overpass)`. Scenario: a phone user returns to the list they are playing from, spins to a song and reaches for the center just as the current track ends. The highlight jumps to the now-playing row and the press replays that instead (the v1.104 wrong-track class, timed by track length). The real device never moves a highlight you are looking at. The builder's unit test `a song pick hands the view ... MENU returns to it` asserts this yank (`b.state.current = 'a'; b.engine.paint()` with the menu visible, expect cursor 0), so the behaviour is designed in, not accidental. Prescription: follow only a pane that is NOT visible; for the visible pane move only the `is-current` speaker mark, and keep a pending follow that applies at the next MENU-from-Now-Playing. Verified partly: guarding with `if (!p.playing || isVisible(p)) return;` kept the cursor on Overpass (`Select played nd2`) and reddened exactly that one unit assertion (`pass 186 fail 1`), which must be rewritten to the new rule. The pending-follow part is untested.
+
+2. **WARNING - the chapter-editor save is a library seam the ONE invalidation missed (the INERT SIBLING class).** This is QA's finding 1, reproduced independently with a different mutation: I re-timed the chapters instead of dropping one. The editor saved `Renamed A @600, Track B @1200, Track C @1500` and the browse drill behind showed all four chapters. The open album level still read `["Intro","Track A","Track B"]`, and so did the cached Songs level. Picking the stale row printed `loaded djmix1::c1 title Track A chapterStartSec 300`, so the WRONG segment plays, from the old offset. The solo exit also bounds on the stale queue. `playFromMenu` then re-draws the fresh browse drill FROM the stale queue, so the fix the editor just painted is overwritten. QA's prescription (a)+(b)+(c) covers it. Add the re-time case to the binding test (the offset, not only the id).
+
+3. **WARNING - a pick from a big list freezes the page.** This is QA's finding 2, reproduced independently at phone-class CPU. Pick from the middle of Songs (row 1506 of 3,008): CPU x1 `syncMs 1491`, long task `1753`. CPU x4 `syncMs 5590`, long task `6339`. `3008` rows and `3008` imgs were built behind the skin. The same seam from a 3-song album: `syncMs 99` / `36`. Shuffle Songs at x1: long task `1043`. Prescription as QA's. Re-measure the pick at CPU x4, not only x1.
+
+4. **WARNING (disclosed D5, measured wider than stated) - a chapter picked from an interleaved list.** Base never reaches this in normal use: a browse Songs-tab tap drills into the album first (`playRowAt` -> `playTrackInAlbum`). The menus make an interleaved chapter pick the default for Songs, Genres, Liked, Recently Added and Recently Played. Measured (fixture Songs order `Cartridge Blues | Intro | Loose Single | Neon Arrival | Overpass | Pixel Rain | Tail Lights | Track A | Track B`), picking `Intro`:
+   - At the segment end nothing exits. `fetchAutoplayPicks` excludes every queued id and the queue is the whole library, so `soloExitPicks` is null and the solo exit degrades to a straight-through listen. The whole mix plays.
+   - After the roll to `Track B`, Next loaded nothing: playback ends and the 5 songs in between never play.
+   - In the general case (a last sibling mid-list) the exit lands after the last same-base chapter, as disclosed. In a 3k title-ordered library that can skip thousands of songs.
+   Safe to ship only on Dean's explicit ruling. Otherwise: for a menu list with no `drill` (not album/artist-scoped), exit a picked chapter to list index `i + 1`, the #231 fix scoped to menu picks.
+
+5. **WARNING - guards the plan names are present but unbound (presence-not-binding); each mutant below leaves all 205 tests green.**
+   - **A20:** drop `esc()` on Seattle's drilled-level `.ipm-title`, the artist/album/genre name. My runtime probe (a crafted `<img onerror>` in title, artist, album and genre, visiting every level on both skins) then counted 1 injected element at `pivot0>1` and `pivot1>1`, yet the suite stayed green. Unmutated, the same probe counts 0 injected elements at every level. QA's "M18 binds the escaping" holds for the row labels only.
+   - **A22:** drop `esc()` on Seattle's `.ipm-sub` (the artist).
+   - **A9:** drop the Shuffle Songs post-await `gen !== playSelectGen` check. With a delayed shuffle fetch and a menu pick meanwhile: unmutated `after late shuffle lands: rm2`; mutated `nd1`, so the late shuffle plays over the pick. That is the TOCTOU class, and no committed test drives it.
+   - **A15:** drop the artist-cache reset in `invalidateMenuData`, so a deleted track lingers under Artists > X.
+   - **A14:** drop the load success-path token check, so a pre-invalidation payload can land after the re-load.
+   - **A5:** leave the swipe's pointerup bound at `destroy()`. My balance probe shows it is removed today; nothing binds it.
+   - **A4:** make the swipe's pointercancel arm a no-op ("both end arms clear it").
+   - **A6:** drop the axis guard, so a vertical mouse drag of 40 px or more on the pop-out flips the pivot.
+   - **A3:** drop the pointerId match.
+   - **A10:** drop the `playSelectGen` bump in `playFromMenu`.
+   - **A23:** point Recently Played at `sort=newest`. No test opens Recently Played or Recently Added, so AC4 is unbound for 2 of the 3 playlists.
+   - **A24:** return the whole library for the untagged-artist bucket. The fixture has no untagged artist, so the case the code comment names is never driven.
+   - **A1:** a follow never re-centers the list. No layout exists in jsdom, so the list can land with the highlight off-screen.
+   - Equivalent or near-equivalent (reasoned): A2 (drop the `lastCurrent` reset), A7 (the swipe zone exists only in menu mode), A8, A11, A12, A13, A21 (the pivot labels are static strings).
+   Prescription: bind A20/A22 (a crafted name through `renderMenuView('seattle', {title, items:[{sub}]})` plus the aria-label), A9 (the delayed-shuffle shape above), A15/A14 (delete or invalidate while a level loads), A5/A4 (a listener-balance test, my `zz-adv-leak` shape) and A23/A24 (real data). Re-run these mutants.
+
+6. SUGGESTION - skin-surface.js, the comment above the MENU handler still says "menu-returns-to-origin.test.js matches data-skin-menu -> onDock within 220 chars". This diff re-anchored that lock on the handler's block, so the comment is now false. The v1.270 window was already 480.
+
+7. SUGGESTION (suspicion, reasoned, not driven) - a browse DRILL render already in flight when a Songs-type menu pick lands: `render()` entered its `if (drill)` arm before the await. After `loadSongs` returns early (the `loadSongsGen` bump), it still runs `renderDrillView()` with `drill` now null. The result is a generic "Artist" drill header over the menu's Songs rows. The rows stay index-true (built from `queue`), so it is cosmetic. It is D6's sibling, but on the drill arm, which D6 does not name.
+
+Verified clean (the named surfaces):
+- Stale level TOCTOU and destroy mid-load: the builder's tests pass.
+- The ended rewind to 0 after the last chapter leaves the menu on `Track B` (driven: cursor and speaker mark both `Track B`).
+- A real CDP touch swipe moves `Artists -> Albums` with `pointercancel 0`. A diagonal-vertical touch scroll (dx -48, dy -160) fires `pointercancel 1`, leaves the pivot unchanged and scrolls the list (`scrollTop 146`).
+- The wheel routes only through the existing `onMove` cursor branch. A sweep of the added lines finds no copy of `WHEEL_STEP_DEG`, `sweepOffset`, `detentDeg` or `atan2`, and no new touch listener (only pointer listeners and one capture scroll listener, so no passive-ness question).
+- No `public/*.html` change, so shell parity is untouched.
+- Podcasts pass no `menu`. The three re-anchored locks still bind: builder M2/M27 plus my read of the block regex, and an `else if (!pocket) { onDock(); }` mutant cannot match `else \{ onDock`.
+- Data exposure: the same `trackVisibleTo`-gated routes the browse view reads.
+
+Verdict: the three blocking WARNINGs are 1, 2 and 3. Finding 5 blocks as a bundle: the escape and TOCTOU guards must be bound before approval. Finding 4 needs Dean's ruling or the scoped fix.
+
+Tree: this seat wrote only this section. Before it, `git status` showed only QA's uncommitted section in this file. No pre-existing untracked files.
+
+Gate: CHANGES r1 @25929acd — adversary
