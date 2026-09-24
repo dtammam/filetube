@@ -53,6 +53,108 @@ function theaterModeStorageValue(isActive) {
   return isActive ? '1' : '0';
 }
 
+// v1.319 (Dean: "YouTube's theatre view sizes the video so the title + channel +
+// action row still show at the bottom of the first screen"). theatreReservePx: the
+// room the desktop theatre player must leave BELOW itself for the info block's
+// CONTROLS row, in px = that row's bottom edge minus the player stage's bottom edge.
+// MEASURED, not a fixed budget: FileTube's action bar wraps with the column width
+// (one line in the sidebar-collapsed desktop theatre column, three at 1280 with the
+// sidebar hand-reopened - plan 2026-09-24-desktop-theatre), a title can take two
+// lines, and a TV episode's row is a different element (theatreReserveTargetRect).
+// The distance does NOT depend on the player's own height (everything below follows
+// the stage, and its size follows the column, never the player), so writing it back
+// into the player's width cap cannot loop. Returns null (keep the previous value /
+// the CSS fallback) when a rect is missing, the stage is empty (the player is not
+// mounted in it: the wrapper's bottom margin that sits between the two is then
+// absent too, so the reading would be short), or the reading is not a finite
+// non-negative number (NaN, +/-Infinity, a row above the stage).
+function theatreReservePx(stageRect, rowRect) {
+  if (!stageRect || !rowRect) return null;
+  if (!(Number(stageRect.height) > 0)) return null;
+  const px = Math.ceil(Number(rowRect.bottom) - Number(stageRect.bottom));
+  return Number.isFinite(px) && px >= 0 ? px : null;
+}
+// v1.319 gate r1 (qa W1 = adversary W1): WHICH row the reserve keeps on screen - the
+// lowest RENDERED controls row. A video: the action bar (Architect ruling D5: the
+// channel panel below it is NOT reserved). A TV episode: hideTvVideoChrome sets the
+// action bar `display: none` (its rect is all zeros), and the episode's controls are
+// the SHOW row (the uploader panel, repainted as the show: poster, name, link) - so
+// the bar when it has a box, else the show row, else the title. A zero-height rect
+// is "not rendered" (display:none reads 0x0 at 0,0).
+function theatreReserveTargetRect(barRect, rowRect, titleRect) {
+  for (const r of [barRect, rowRect, titleRect]) {
+    if (r && Number(r.height) > 0) return r;
+  }
+  return null;
+}
+// v1.319 gate r1 (adversary W3): the WIDTH aspect of the desktop theatre stage. The
+// stage is sized as (budget height) x aspect; a 16:9 box shrank a WIDER item (21:9 at
+// 1280x720: 846x357 instead of the base 1000x422), where YouTube's full-width band
+// keeps its width. So the stage takes the item's real aspect when it is wider than
+// 16:9 (player.js writes `--media-aspect` "w / h" on the host), and 16:9 otherwise:
+// a 4:3 item stays pillarboxed inside the 16:9 box (the picture cap), a portrait item
+// is pinned to 16:9 already (v1.34). Returns a number >= 16/9; unparseable -> 16/9.
+const THEATRE_BASE_ASPECT = 16 / 9;
+function theatreWidthAspect(rawMediaAspect) {
+  const m = /^\s*([0-9]*\.?[0-9]+)\s*\/\s*([0-9]*\.?[0-9]+)\s*$/.exec(String(rawMediaAspect == null ? '' : rawMediaAspect));
+  if (!m) return THEATRE_BASE_ASPECT;
+  const r = Number(m[1]) / Number(m[2]);
+  return Number.isFinite(r) && r > THEATRE_BASE_ASPECT ? r : THEATRE_BASE_ASPECT;
+}
+
+// v1.319 (Architect ruling D2 on Dean's "match YouTube's theatre geometry"): YouTube
+// hides its guide in theatre, so on desktop the left sidebar collapses while theatre is
+// ON and comes back when theatre goes OFF or the watch view is left. It reuses the ONE
+// existing mechanism, the header #menu-toggle's class trio (common.js: `.sidebar.hidden`
+// + `.sidebar.mobile-open` + `.main-content.expanded` flip together), so a hand toggle
+// in theatre simply works (reopening PUSHES the content back, the collapsed-state
+// behaviour; it never overlays). The sidebar state has NO persisted preference (no
+// storage key anywhere), and theatre never writes one: the only theatre state is the
+// body attribute below, which records "theatre collapsed it" plus the owning watch view,
+// so a restore only undoes a collapse theatre itself made:
+// - collapse: the sidebar is open -> collapse it and own it; it is already ours (a
+//   watch -> watch hop) -> re-claim it for the new view; the USER had collapsed it ->
+//   leave it alone and own nothing (theatre off must not open what the user closed);
+// - restore: only while theatre still owns it (a hand toggle releases ownership, so
+//   theatre off leaves whatever the user chose), and only for the owning view (a newer
+//   watch view that re-claimed it keeps it). The body lives outside #view-root and
+//   survives an SPA swap, hence the owner.
+const THEATRE_GUIDE_ATTR = 'data-theatre-guide';
+function theatreGuideEls(doc) {
+  const e = { body: doc && doc.body, sidebar: doc && doc.getElementById('sidebar'), main: doc && doc.getElementById('main-content') };
+  return e.body && e.sidebar && e.main ? e : null;
+}
+function setGuideCollapsed(e, collapsed) {
+  e.sidebar.classList.toggle('hidden', collapsed);
+  e.sidebar.classList.toggle('mobile-open', collapsed);
+  e.main.classList.toggle('expanded', collapsed);
+}
+function theatreGuideCollapse(doc, owner) {
+  const e = theatreGuideEls(doc);
+  if (!e) return false;
+  if (e.body.hasAttribute(THEATRE_GUIDE_ATTR)) {
+    e.body.setAttribute(THEATRE_GUIDE_ATTR, String(owner));
+    return true;
+  }
+  if (e.sidebar.classList.contains('hidden')) return false;
+  setGuideCollapsed(e, true);
+  e.body.setAttribute(THEATRE_GUIDE_ATTR, String(owner));
+  return true;
+}
+function theatreGuideRestore(doc, owner) {
+  const e = theatreGuideEls(doc);
+  if (!e || !e.body.hasAttribute(THEATRE_GUIDE_ATTR)) return false;
+  if (e.body.getAttribute(THEATRE_GUIDE_ATTR) !== String(owner)) return false;
+  e.body.removeAttribute(THEATRE_GUIDE_ATTR);
+  if (e.sidebar.classList.contains('hidden')) setGuideCollapsed(e, false);
+  return true;
+}
+function theatreGuideRelease(doc) {
+  const e = theatreGuideEls(doc);
+  if (e) e.body.removeAttribute(THEATRE_GUIDE_ATTR);
+}
+let theatreGuideSeq = 0;
+
 // v1.317 M4: the ambient helpers + engine (v1.186-v1.314) MOVED VERBATIM to
 // public/js/ambient.js (loaded on every shell before this file) so the music view
 // drives the SAME engine through the SAME host wiring (createAmbientHost). This view
@@ -611,6 +713,13 @@ if (typeof module !== 'undefined' && module.exports) {
     nextTheaterState,
     isTheaterModeActive,
     theaterModeStorageValue,
+    theatreReservePx,
+    theatreReserveTargetRect,
+    theatreWidthAspect,
+    theatreGuideCollapse,
+    theatreGuideRestore,
+    theatreGuideRelease,
+    THEATRE_GUIDE_ATTR,
     // v1.317 M4: the ambient helpers + engine moved VERBATIM to ambient.js; re-exported
     // here so every existing import of them through watch.js keeps one path.
     ...ambientExports,
@@ -861,6 +970,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const tb = document.getElementById('theater-btn');
       if (tb) tb.setAttribute('aria-pressed', theatreOn ? 'true' : 'false');
     } catch (_) { /* storage disabled - default off */ }
+    wireTheatreGuide();
 
     // #sidebar-folders-list lives in the PERSISTENT shell (outside
     // #view-root) -- wiring it through this view's own AbortController is
@@ -2012,6 +2122,97 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // v1.319 D2: the theatre-owned sidebar collapse (module helpers theatreGuide*).
+    // Called synchronously from init() right after the persisted theatre class is
+    // applied (no open-then-slide flash on a cold theatre load), and re-synced by the
+    // theatre click. Desktop only (1025px+, where the theatre button exists): a
+    // crossing of that width re-syncs both ways. A hand toggle of #menu-toggle
+    // releases theatre's ownership (common.js's own listener, registered at boot, has
+    // already flipped the classes when this one runs). On the view's abort the
+    // restore is deferred one microtask: the router runs destroy() -> swap -> the next
+    // init() in ONE synchronous pass, so a watch -> watch hop re-claims the collapse
+    // before the check runs (no open/close churn), while any other route restores it.
+    // The owner id lives ON the container (no new init()-scope binding: the v1.54 TDZ
+    // class), the sync reads the LIVE class, so every writer of `.theater-mode` agrees.
+    function syncTheatreGuide() {
+      const wc = root.querySelector('.watch-container');
+      if (!wc || !wc.__ftGuideOwner) return;
+      const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1025px)') : null;
+      if (wc.classList.contains('theater-mode') && mq && mq.matches) theatreGuideCollapse(document, wc.__ftGuideOwner);
+      else theatreGuideRestore(document, wc.__ftGuideOwner);
+    }
+    function wireTheatreGuide() {
+      const wc = root.querySelector('.watch-container');
+      if (!wc || wc.__ftGuideOwner) return;
+      const owner = 'w' + (++theatreGuideSeq);
+      wc.__ftGuideOwner = owner;
+      syncTheatreGuide();
+      const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1025px)') : null;
+      if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', syncTheatreGuide, { signal });
+      const menuToggle = document.getElementById('menu-toggle');
+      if (menuToggle) menuToggle.addEventListener('click', () => theatreGuideRelease(document), { signal });
+      signal.addEventListener('abort', () => {
+        Promise.resolve().then(() => theatreGuideRestore(document, owner));
+      }, { once: true });
+    }
+
+    // v1.319 (Dean: keep the title + action row on the first screen in theatre, like
+    // YouTube): keep `--watch-theatre-reserve` on `.watch-container` equal to the
+    // room below the player down to the controls row (the pure theatreReservePx over
+    // theatreReserveTargetRect: the action bar on a video, the SHOW row on a TV episode
+    // whose bar is hidden - gate r1 W1). style.css's desktop theatre rule subtracts it,
+    // plus YouTube's measured 23px fold margin, from the height the player may use.
+    // The same measure keeps `--watch-theatre-aspect` = the item's width aspect when it
+    // is WIDER than 16:9 (theatreWidthAspect, gate r1 W3), else unset (16:9). Re-
+    // measured whenever the stage (the player mounting, the picture's aspect), the
+    // title, the bar, the show row or the whole column changes size - a theatre toggle
+    // and a window resize both change the column, hence the bar; the column catches a
+    // block inserted above the row (the tv back link, the queue box). The write is deferred to the next frame so the stage resize it
+    // causes is a fresh observation, never a same-frame ResizeObserver loop; the
+    // value it re-reads is the same (the reserve does not follow the player), so it
+    // settles in one extra frame. Written whatever the theatre state (the var is only
+    // read by the theatre rule). Torn down with the view's signal; no-op without
+    // ResizeObserver (the CSS fallback budget applies). Bound once per container:
+    // the synchronous measure is stored ON the element (the theatre click calls it),
+    // so there is no new init()-scope binding whose declaration order could matter
+    // (the v1.54 TDZ class).
+    function setupTheatreReserve(watchContainer) {
+      if (typeof watchContainer.__ftTheatreReserve === 'function' || typeof ResizeObserver !== 'function') return;
+      const stage = root.querySelector('.watch-player-stage');
+      const bar = root.querySelector('.watch-action-bar');
+      const title = root.querySelector('.watch-title');
+      const showRow = root.querySelector('.uploader-info-panel');
+      const column = root.querySelector('.watch-main');
+      if (!stage || !bar) return;
+      const rectOf = (el) => (el ? el.getBoundingClientRect() : null);
+      function measure() {
+        if (signal && signal.aborted) return; // a frame queued before the view died
+        const host = typeof stage.querySelector === 'function' ? stage.querySelector('#player-wrapper') : null;
+        if (host && host.style && typeof host.style.getPropertyValue === 'function') {
+          const aspect = theatreWidthAspect(host.style.getPropertyValue('--media-aspect'));
+          if (aspect > THEATRE_BASE_ASPECT) watchContainer.style.setProperty('--watch-theatre-aspect', String(Math.round(aspect * 10000) / 10000));
+          else if (typeof watchContainer.style.removeProperty === 'function') watchContainer.style.removeProperty('--watch-theatre-aspect');
+        }
+        const row = theatreReserveTargetRect(rectOf(bar), rectOf(showRow), rectOf(title));
+        const px = theatreReservePx(rectOf(stage), row);
+        if (px === null) return;
+        watchContainer.style.setProperty('--watch-theatre-reserve', px + 'px');
+      }
+      watchContainer.__ftTheatreReserve = measure;
+      let queued = false;
+      const theatreReserveObs = new ResizeObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; measure(); });
+      });
+      theatreReserveObs.observe(stage);
+      theatreReserveObs.observe(bar);
+      if (title) theatreReserveObs.observe(title);
+      if (showRow) theatreReserveObs.observe(showRow);
+      if (column) theatreReserveObs.observe(column);
+      if (signal) signal.addEventListener('abort', () => theatreReserveObs.disconnect(), { once: true });
+    }
+
     // FR-9 (v1.21.0) / v1.186: the Theatre toggle. Widens the player by stacking
     // `.watch-sidebar` below `.watch-main` at desktop widths (the
     // ".watch-container.theater-mode" rules in style.css). v1.186 RELOCATED the
@@ -2028,6 +2229,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // applied synchronously in init() to avoid a widen-flash.
       const watchContainer = root.querySelector('.watch-container');
       const theaterBtn = root.querySelector('#theater-btn');
+      if (watchContainer) setupTheatreReserve(watchContainer);
       if (!watchContainer || !theaterBtn) return;
 
       let isActive = false;
@@ -2041,11 +2243,17 @@ if (typeof module !== 'undefined' && module.exports) {
       function applyTheatreState(active) {
         watchContainer.classList.toggle('theater-mode', active);
         theaterBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        syncTheatreGuide(); // v1.319 D2: collapse / restore the sidebar with theatre
       }
 
       theaterBtn.addEventListener('click', () => {
         isActive = nextTheaterState(isActive);
         applyTheatreState(isActive);
+        // v1.319: re-measure the theatre reserve NOW, against the layout the class
+        // flip just produced, so the first painted theatre frame already leaves the
+        // title + action row on screen (the observer's deferred write would paint
+        // one frame at the old column's reserve first).
+        if (typeof watchContainer.__ftTheatreReserve === 'function') watchContainer.__ftTheatreReserve();
         try {
           localStorage.setItem('ft-theater', theaterModeStorageValue(isActive));
         } catch (_) {

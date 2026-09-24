@@ -104,3 +104,194 @@ test('the desktop player cap is shell-agnostic (all views) but EXCLUDES the read
   assert.match(body, /- 40px - 2px\)\) \* 16 \/ 9/, 'the fallback budget subtracts the bar+border reserve');
   assert.match(body, /margin-inline:\s*auto/, 'centred when height-bound');
 });
+
+// ---- v1.319 (Dean: "YouTube's theatre view sizes the video so the title + channel +
+// action row still show at the bottom of the first screen"). Plan
+// 2026-09-24-desktop-theatre carries the side-by-side measurements; these bind the
+// mechanism: the pure reserve, and the desktop stage rule that spends it. -----------
+
+const { theatreReservePx, theatreReserveTargetRect, theatreWidthAspect } = require('../../public/js/watch.js');
+
+test('v1.319 theatreReservePx: the room below the stage = the action bar bottom minus the stage bottom, rounded UP', () => {
+  // the measured 1280x720 theatre shape: stage 80..564, three-line bar ending at 736.4
+  assert.strictEqual(theatreReservePx({ bottom: 564, height: 484 }, { bottom: 736.4 }), 173);
+  assert.strictEqual(theatreReservePx({ bottom: 959, height: 879 }, { bottom: 1057 }), 98);
+  assert.strictEqual(theatreReservePx({ bottom: 100, height: 20 }, { bottom: 100 }), 0, 'zero room is a real reading');
+});
+
+test('v1.319 theatreReservePx: no reading (null) for a missing rect, an EMPTY stage, a non-finite edge or a bar above the stage', () => {
+  assert.strictEqual(theatreReservePx(null, { bottom: 700 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, null), null);
+  // the player not mounted in the stage (docked / not yet loaded): the wrapper's own
+  // bottom margin is missing too, so the reading would be short - keep the last value
+  assert.strictEqual(theatreReservePx({ bottom: 80, height: 0 }, { bottom: 200 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: NaN, height: 400 }, { bottom: 700 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, { bottom: Infinity }), null);
+  // gate r1 adversary S5: the ONE finiteness guard also refuses a non-finite STAGE edge
+  assert.strictEqual(theatreReservePx({ bottom: -Infinity, height: 400 }, { bottom: 700 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, { bottom: 'x' }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, { bottom: 480 }), null, 'a bar above the stage is not a layout this rule knows');
+});
+
+// ---- v1.319 D2 (Architect ruling on "match YouTube's theatre geometry": YouTube hides
+// its guide in theatre). The pure collapse / restore / release over a REAL DOM (jsdom),
+// populated both ways: the sidebar open (theatre collapses and owns it) and the sidebar
+// already collapsed by the user (theatre owns nothing and restores nothing). ----------
+const { theatreGuideCollapse, theatreGuideRestore, theatreGuideRelease, THEATRE_GUIDE_ATTR } = require('../../public/js/watch.js');
+function shellDoc({ collapsed = false } = {}) {
+  const { JSDOM } = require('jsdom');
+  const d = new JSDOM('<body><aside class="sidebar" id="sidebar"></aside><main class="main-content" id="main-content"></main></body>').window.document;
+  if (collapsed) { // exactly what common.js's #menu-toggle click does
+    d.getElementById('sidebar').classList.toggle('hidden');
+    d.getElementById('sidebar').classList.toggle('mobile-open');
+    d.getElementById('main-content').classList.toggle('expanded');
+  }
+  const state = () => ({
+    hidden: d.getElementById('sidebar').classList.contains('hidden'),
+    mobileOpen: d.getElementById('sidebar').classList.contains('mobile-open'),
+    expanded: d.getElementById('main-content').classList.contains('expanded'),
+    owner: d.body.getAttribute(THEATRE_GUIDE_ATTR),
+  });
+  return { d, state };
+}
+const OPEN = { hidden: false, mobileOpen: false, expanded: false, owner: null };
+
+test('v1.319 D2 theatreGuide: an OPEN sidebar collapses through the menu toggle\'s own class trio and theatre owns it; the owner\'s restore brings it back', () => {
+  const { d, state } = shellDoc();
+  assert.deepStrictEqual(state(), OPEN, 'precondition: populated, open');
+  assert.strictEqual(theatreGuideCollapse(d, 'w1'), true);
+  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: true, expanded: true, owner: 'w1' });
+  assert.strictEqual(theatreGuideRestore(d, 'w2'), false, 'a view that does not own it restores nothing');
+  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: true, expanded: true, owner: 'w1' });
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), true);
+  assert.deepStrictEqual(state(), OPEN, 'the owner\'s restore reopens it and drops the marker');
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), false, 'idempotent');
+});
+
+test('v1.319 D2 theatreGuide: a sidebar the USER collapsed is left alone - no ownership, so theatre off never opens it', () => {
+  const { d, state } = shellDoc({ collapsed: true });
+  const before = state();
+  assert.strictEqual(theatreGuideCollapse(d, 'w1'), false);
+  assert.deepStrictEqual(state(), before, 'untouched, no marker');
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), false);
+  assert.deepStrictEqual(state(), before, 'still collapsed');
+});
+
+test('v1.319 D2 theatreGuide: a second watch view RE-CLAIMS an owned collapse (a watch -> watch hop), and a hand toggle RELEASES it', () => {
+  const { d, state } = shellDoc();
+  theatreGuideCollapse(d, 'w1');
+  assert.strictEqual(theatreGuideCollapse(d, 'w2'), true);
+  assert.strictEqual(state().owner, 'w2', 're-claimed');
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), false, 'the old view\'s deferred restore is a no-op');
+  assert.strictEqual(state().hidden, true);
+  // the user reopens by hand (the toggle flips the trio), then closes it again by hand
+  for (const el of [['sidebar', 'hidden'], ['sidebar', 'mobile-open'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
+  theatreGuideRelease(d);
+  assert.deepStrictEqual(state(), OPEN, 'open by hand, released');
+  for (const el of [['sidebar', 'hidden'], ['sidebar', 'mobile-open'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
+  assert.strictEqual(theatreGuideRestore(d, 'w2'), false, 'released: theatre off leaves the user\'s choice');
+  assert.strictEqual(state().hidden, true, 'the hand-closed bar stays closed');
+});
+
+// ---- v1.319 gate r1 (qa W1 = adversary W1): WHICH row is kept on screen. A TV episode's
+// action bar is display:none (hideTvVideoChrome) - its rect reads all zeros - and its
+// controls are the SHOW row; the REAL hidden shape is driven here. ---------------------
+test('v1.319 r1 theatreReserveTargetRect: the bar when it has a box, else the show row, else the title; a display:none rect (0x0 at 0,0) is not rendered', () => {
+  const bar = { top: 617, bottom: 736, height: 119 };
+  const row = { top: 752, bottom: 826, height: 74 };
+  const title = { top: 580, bottom: 605, height: 25 };
+  const HIDDEN = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+  assert.strictEqual(theatreReserveTargetRect(bar, row, title), bar, 'a video: the action bar (ruling D5: never the channel row below it)');
+  assert.strictEqual(theatreReserveTargetRect(HIDDEN, row, title), row, 'a TV episode: the show row');
+  assert.strictEqual(theatreReserveTargetRect(HIDDEN, HIDDEN, title), title, 'nothing else rendered: the title');
+  assert.strictEqual(theatreReserveTargetRect(null, null, HIDDEN), null);
+  // end to end over the pure pair: the hidden bar never yields a reserve by itself
+  assert.strictEqual(theatreReservePx({ bottom: 564, height: 484 }, HIDDEN), null, 'the r0 shape: a hidden bar reads as "no reading"');
+  assert.strictEqual(theatreReservePx({ bottom: 564, height: 484 }, theatreReserveTargetRect(HIDDEN, row, title)), 262);
+});
+
+// ---- v1.319 gate r1 (adversary W3): a WIDER-than-16:9 item keeps its width. ------------
+test('v1.319 r1 theatreWidthAspect: the item\'s own aspect when wider than 16:9, else 16:9 (4:3, portrait, square, missing, garbage)', () => {
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, a + ' ~ ' + b);
+  near(theatreWidthAspect('2560 / 1080'), 2560 / 1080);
+  near(theatreWidthAspect('1920 / 800'), 2.4);
+  near(theatreWidthAspect('1920 / 1080'), 16 / 9);
+  near(theatreWidthAspect('640 / 480'), 16 / 9);
+  near(theatreWidthAspect('1080 / 1920'), 16 / 9);
+  near(theatreWidthAspect('500 / 500'), 16 / 9);
+  for (const bad of ['', null, undefined, 'auto', '0 / 0', '1920 / 0', '16/9 junk', 'Infinity / 1']) near(theatreWidthAspect(bad), 16 / 9);
+  near(theatreWidthAspect(' 2.39 / 1 '), 2.39);
+});
+
+// Comment-stripped once (comment-porous locks are a repo scar), then every
+// `@media (min-width: 1025px)` block, brace-balanced.
+const CSS_NC = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+function desktopBlocks() {
+  const out = [];
+  const re = /@media \(min-width:\s*1025px\)\s*\{/g;
+  let m;
+  while ((m = re.exec(CSS_NC))) {
+    let depth = 1; let i = m.index + m[0].length;
+    for (; i < CSS_NC.length && depth > 0; i++) { if (CSS_NC[i] === '{') depth++; else if (CSS_NC[i] === '}') depth--; }
+    out.push(CSS_NC.slice(m.index + m[0].length, i - 1));
+  }
+  return out;
+}
+const STAGE_SEL = '.watch-container.theater-mode .watch-player-stage';
+const WRAP_SEL = '.watch-container.theater-mode #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen)';
+function ruleBodies(css, selector) {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...css.matchAll(new RegExp('(?:^|[}\\s])' + esc + '\\s*\\{([^}]*)\\}', 'g'))].map((m) => m[1]);
+}
+
+test('v1.319 desktop theatre: the STAGE carries the YouTube-matched width (vh AND dvh), centred, and ONLY inside the 1025px+ block', () => {
+  const blocks = desktopBlocks().filter((b) => ruleBodies(b, STAGE_SEL).length);
+  assert.strictEqual(blocks.length, 1, 'exactly one desktop block carries the theatre stage rule');
+  const bodies = ruleBodies(blocks[0], STAGE_SEL);
+  assert.strictEqual(bodies.length, 1, 'one stage rule in it');
+  const body = bodies[0];
+  // Mobile / tablet untouched: the rule exists NOWHERE outside a 1025px+ block.
+  let outside = CSS_NC;
+  for (const b of desktopBlocks()) outside = outside.split(b).join('');
+  assert.strictEqual(ruleBodies(outside, STAGE_SEL).length, 0, 'no theatre stage rule outside the desktop block (phones/tablets keep the old rule)');
+  // One declaration per viewport unit, each carrying EVERY term of the budget, PER LINE
+  // (a whole-body match survives a one-line mutant - the vh/dvh divergent-twin class).
+  const decls = body.split(';').map((d) => d.trim()).filter((d) => /^width\s*:/i.test(d));
+  assert.strictEqual(decls.length, 2, 'two width declarations (vh fallback, then dvh): ' + JSON.stringify(decls));
+  // gate r1 W3: the budget height times the WIDTH aspect (16:9, or a wider item's own)
+  const TERM = (unit) => new RegExp('^width:\\s*min\\(100%,\\s*max\\(480px,\\s*calc\\(\\(100' + unit + ' - var\\(--header-h\\) - var\\(--space-12\\) - 40px - 2px - var\\(--watch-theatre-reserve,\\s*98px\\) - 23px\\) \\* var\\(--watch-theatre-aspect,\\s*16 \\/ 9\\) \\+ 2px\\)\\)\\)$');
+  assert.match(decls[0], TERM('vh'), 'vh: 16:9 of (viewport - header - top padding - bar/border - measured reserve - 23px fold margin), + the 2px border');
+  assert.match(decls[1], TERM('dvh'), 'dvh twin, LAST (the effective declaration on a modern desktop)');
+  assert.match(body, /margin-inline:\s*auto/, 'centred in the column');
+});
+
+test('v1.319 desktop theatre: the wrapper FILLS the stage there (so the stage box IS the player box the glow is sized from), fullscreen/audio-expanded excluded', () => {
+  const blocks = desktopBlocks().filter((b) => ruleBodies(b, STAGE_SEL).length);
+  const wrap = ruleBodies(blocks[0], WRAP_SEL);
+  assert.strictEqual(wrap.length, 1, 'the wrapper rule sits in the SAME desktop block, keeping the fullscreen + audio-expanded exclusions');
+  assert.match(wrap[0], /^\s*width:\s*100%;\s*$/, 'width 100% and nothing else');
+  // Cascade: equal specificity with the v1.190 rule, so the desktop override must come AFTER it.
+  const old = CSS_NC.indexOf(WRAP_SEL + ' {');
+  const blockAt = CSS_NC.indexOf(blocks[0]);
+  assert.ok(old !== -1 && blockAt > old, 'the desktop block follows the v1.190 rule (source order decides between them)');
+});
+
+test('v1.319 desktop theatre: the PICTURE is capped at the SAME budgeted height (a 4:3 item letterboxes instead of pushing the row under the fold)', () => {
+  const blocks = desktopBlocks().filter((b) => ruleBodies(b, STAGE_SEL).length);
+  const media = ruleBodies(blocks[0], WRAP_SEL + ' #media-player');
+  assert.strictEqual(media.length, 1, 'the picture cap sits in the same desktop block, with the fullscreen + audio-expanded exclusions');
+  const caps = media[0].split(';').map((d) => d.trim()).filter((d) => /^max-height\s*:/i.test(d));
+  assert.strictEqual(caps.length, 2, 'vh then dvh: ' + JSON.stringify(caps));
+  assert.match(caps[0], /^max-height:\s*max\(270px,\s*calc\(100vh - /, 'vh cap, floored at the 480px floor\'s 16:9 height');
+  assert.match(caps[1], /^max-height:\s*max\(270px,\s*calc\(100dvh - /, 'dvh cap LAST');
+  // ONE budget: the height the stage's width is derived from and the picture's cap are the
+  // same expression, term for term, per unit (a hand-copy that drifts re-opens the fold).
+  const stageDecls = ruleBodies(blocks[0], STAGE_SEL)[0].split(';').map((d) => d.trim()).filter((d) => /^width\s*:/i.test(d));
+  const budgetOf = (decl, unit) => { const m = new RegExp('calc\\(\\(?(100' + unit + ' - [^()]*\\([^)]*\\)[^()]*\\([^)]*\\)[^()]*\\([^)]*\\)[^()]*)').exec(decl); return m && m[1].replace(/\)\s*$/, '').trim(); };
+  for (const [i, unit] of [[0, 'vh'], [1, 'dvh']]) {
+    const w = budgetOf(stageDecls[i], unit);
+    const h = budgetOf(caps[i], unit);
+    assert.ok(w && h, unit + ': both budgets parsed (' + w + ' | ' + h + ')');
+    assert.strictEqual(h, w, unit + ': the picture cap spends exactly the budget the width is derived from');
+  }
+});
