@@ -64,6 +64,11 @@ before(async () => {
       // crafted markup in EVERY string a menu level renders (title, artist, album, genre)
       xss1: audioItem('xss1', 'evil', XSS, { title: XSS + ' song', album: '<b class=pwn>alb</b>', genre: '<i class=pwn>g</i>' }),
     };
+    // thirty fillers (title-sorted LAST) so the Songs list is longer than one browse chunk (K3)
+    for (let f = 1; f <= 30; f++) {
+      const id = 'fil' + f;
+      db.metadata[id] = audioItem(id, 'fillers', 'Filler Band', { title: 'Zz Filler ' + String(f).padStart(2, '0'), album: 'Fillers', track: String(f), genre: 'Filler' });
+    }
     musicDb.mutate((h) => {
       const ns = musicStore.ensureMusic(h);
       ns.folders = [ROOT];
@@ -290,7 +295,8 @@ test('K6 A23: Recently Added and Recently Played are the real smart lists', asyn
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h); tapRow(h, 'Playlists');
     tapRow(h, 'Recently Added'); await settleNet();
-    assert.deepStrictEqual(labels(h), added, 'newest first, the /api/music?sort=newest list');
+    assert.ok(labels(h).length >= 20, 'rows rendered');
+    assert.deepStrictEqual(labels(h), added.slice(0, labels(h).length), 'newest first, the /api/music?sort=newest list (the rendered window of it)');
     menu(h); tapRow(h, 'Recently Played'); await settleNet();
     assert.ok(labels(h).includes('Overpass'), 'a song with a saved position is Recently Played: ' + labels(h).join('|'));
     assert.ok(!labels(h).includes('Tail Lights'), '...and only those');
@@ -334,4 +340,44 @@ test('K6 A20/A22: crafted markup in a title, artist, album or genre never become
       assert.ok(seen.length >= 6);
     } });
   }
+});
+
+// ---------------------------------------------------------------- K3
+test('K3 (qa W2 + adversary W3): a pick from a long flat list clears the browse view at once and re-builds it in chunks AFTER the tap - index-true, and a newer pick abandons the older build', async () => {
+  const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
+  assert.ok(songs.length > 40, 'precondition: longer than two chunks (' + songs.length + ')');
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    await openSongs(h);
+    tapRow(h, 'Cartridge Blues');
+    const rowsNow = h.D.querySelectorAll('#music-content .music-song-row').length;
+    assert.strictEqual(rowsNow, 0, 'the tap built NO browse rows (was: every row, synchronously)');
+    assert.strictEqual(h.player.currentId, 'rm1', 'the song started in the tap');
+    // a NEWER flat pick before the first build finishes: its chunks must not interleave
+    menu(h); menu(h); tapRow(h, 'Playlists'); tapRow(h, 'Recently Added'); await settleNet();
+    const added = (await realApi('/api/music?sort=newest&limit=100')).items;
+    tapRow(h, labels(h)[0]);
+    await settleNet(120);
+    const behind = [...h.D.querySelectorAll('#music-content .music-song-row')];
+    assert.deepStrictEqual(behind.map((r) => r.getAttribute('data-id')), added.map((t) => t.id), 'only the NEWER list, whole and in order');
+    assert.ok(behind.every((r, i) => r.getAttribute('data-index') === String(i)), 'every row indexes the queue');
+    const late = behind[behind.length - 3];
+    click(h.dom, late.querySelector('.music-song-main'));
+    await settleNet();
+    assert.strictEqual(h.player.currentId, late.getAttribute('data-id'), 'a late-built row plays its own track');
+  } });
+});
+
+test('adversary S7 (closes D6): a browse drill render still in flight when a flat menu pick lands never paints its drill header over the pick\'s list', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    await openSongs(h); // the Songs level is loaded and on screen
+    click(h.dom, h.D.querySelector('.music-tab[data-tab="albums"]')); await settleNet();
+    const card = h.D.querySelector('#music-content .music-album-card[data-album-key]');
+    assert.ok(card, 'the browse Albums grid');
+    click(h.dom, card); // openDrill -> render(): the drill arm awaits its load...
+    tapRow(h, 'Loose Single'); // ...and a flat pick lands first
+    await settleNet(80);
+    assert.strictEqual(h.D.querySelector('#music-content .music-drill'), null, 'no stale drill header');
+    assert.strictEqual(h.D.getElementById('music-crumb').textContent, 'Songs');
+    assert.strictEqual(h.player.currentId, 'za1');
+  } });
 });
