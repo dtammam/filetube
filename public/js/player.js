@@ -4176,6 +4176,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // W2): our own return / teardown releasing a still-pending sidecar rejects its
   // play() with AbortError - that is "the audio never started before you came
   // back", kept as `superseded` so the outcome stays 'pending', never a failure.
+  // The attempt-number check is defense in depth (r1 mutant R7 survives by
+  // design): a second attempt needs INLINE_VIDEO, which the first reaches only
+  // by settling, by a return (which ends attempts in this record), or by a
+  // teardown whose pause rejects the first before a later hide can start another.
   function bgTimingOnPlaySettled(rec, attempt, err, live) {
     if (!rec || rec.done || rec.attempts !== attempt) return;
     if (!live) {

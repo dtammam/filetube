@@ -576,7 +576,21 @@ test('a return where no handoff happened (setting off) closes the record as no-s
   await tick(0);
   const [r] = h.log();
   assert.strictEqual(r.ret.mode, 'no-swap');
+  assert.strictEqual(r.ret.videoPaused, true, 'the plain pause left the video paused');
   assert.strictEqual(r.done, true);
+});
+
+test('a no-swap return records a video that KEPT playing (native fullscreen sustains its own background audio: qa S4)', async () => {
+  const h = await boot();
+  h.video.webkitDisplayingFullscreen = true; // the iOS native presentation: never paused, never handed off
+  await lockWhilePlaying(h);
+  assert.strictEqual(h.v.paused, false, 'precondition: the video kept playing through the hide');
+  h.setVis('visible');
+  await tick(0);
+  const [r] = h.log();
+  assert.strictEqual(r.m.outcome, 'skipped:native-presentation');
+  assert.strictEqual(r.ret.mode, 'no-swap');
+  assert.strictEqual(r.ret.videoPaused, false);
 });
 
 // ---- the Setup readout, fed by records the REAL player wrote --------------------
