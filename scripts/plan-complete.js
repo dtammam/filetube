@@ -16,10 +16,12 @@
  * What it does (the convention test/unit/exec-plans-census.test.js enforces):
  *   1. NAME.  A plan is `YYYY-MM-DD-<slug>.md` (or `YYYY-MM-DD-<slug>/plan.md`
  *      for a directory plan - the date goes on the directory). The date is the
- *      day the plan was MADE: the commit that first added the file (`git log
- *      --diff-filter=A`, without --follow first so copy detection can never
- *      inherit another file's date; --follow only as the fallback for a path
- *      that was itself moved before). A date the document declares itself
+ *      day the plan was MADE: the commit that first added the file, found by
+ *      `git -c diff.renames=true log --follow --name-status --diff-filter=ACR`
+ *      walked newest to oldest - the first `C` row (the file began as a copy
+ *      of another file: that IS its own add point) or, absent one, the
+ *      terminal `A` row past every `R` rename (a plan renamed within active/
+ *      before closing keeps its original date). A date the document declares itself
  *      (frontmatter `date:`/`prepared:`/`created:`, or "Prepared <date>" /
  *      "captured <date>" in its opening lines) wins ONLY when it is a real
  *      calendar date EARLIER than the commit date (a plan is never made after
@@ -97,19 +99,36 @@ function declaredDate(lines) {
   return null;
 }
 
-// The commit that first added the file: plain first, --follow as the fallback
-// for a path that was itself renamed earlier (copy detection under --follow
-// can otherwise inherit a similar file's date).
+// The commit that first added the file. A pathspec-limited `git log` without
+// --follow reports a `git mv` as an Add at the NEW path, so it cannot see past
+// a rename; `--follow` can, and its `--name-status` rows say what each hop
+// was: `R` = the file moved (keep walking back), `C` = the file was created
+// as a copy of another file (its own add point - stop there, or the walk
+// continues into the SOURCE file's history and inherits its date), `A` = the
+// original add. Walked newest to oldest: the first `C` row wins, else the
+// terminal `A`. `-c diff.renames=true` pins rename-only detection, so a user's
+// `diff.renames=copies` cannot turn an ordinary add into a copy of some
+// similar file. A plain (no-follow) log is the last resort for a path git
+// cannot follow at all.
 function gitAddDate(repo, planRel) {
-  for (const extra of [[], ['--follow']]) {
-    let out = '';
-    try {
-      out = git(repo, ['log', '--diff-filter=A', ...extra, '--format=%ad', '--date=short', '--', planRel]);
-    } catch {}
-    const first = out.split('\n').filter(Boolean).pop();
-    if (first) return first;
+  let out = '';
+  try {
+    out = git(repo, ['-c', 'diff.renames=true', 'log', '--follow', '--name-status', '--diff-filter=ACR',
+      '--format=%ad', '--date=short', '--', planRel]);
+  } catch {}
+  let date = '';
+  let lastAdd = '';
+  for (const line of out.split('\n')) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(line)) { date = line; continue; }
+    const kind = line.charAt(0);
+    if (kind === 'C' && date) return date;
+    if (kind === 'A' && date) lastAdd = date;
   }
-  return '';
+  if (lastAdd) return lastAdd;
+  try {
+    out = git(repo, ['log', '--diff-filter=A', '--format=%ad', '--date=short', '--', planRel]);
+  } catch {}
+  return out.split('\n').filter(Boolean).pop() || '';
 }
 
 // The date the plan was MADE (see the header). Returns { date, source }.
