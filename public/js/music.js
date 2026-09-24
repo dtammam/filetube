@@ -169,6 +169,11 @@ function rowGlyphMarkup(name) {
 function buildSongRowHtml(item, index) {
   var dur = formatTrackDuration(item.durationSec);
   var liked = !!item.liked;
+  // M3 chapter likes (v1.317): a PROJECTED row (a yt-dlp audio file, or one `::c`
+  // chapter of it - source 'library'/'library-chapter') is liked in the MEDIA store
+  // (POST/DELETE /api/liked/:id, its own id); a native music-library row in the
+  // music store. The heart carries the store so toggleLike never guesses.
+  var likeStore = (item.source === 'library' || item.source === 'library-chapter') ? ' data-like-store="media"' : '';
   return '' +
     '<div class="music-song-row" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
     '<span class="music-song-thumb-wrap">' +
@@ -194,7 +199,7 @@ function buildSongRowHtml(item, index) {
     '<a class="music-like-btn music-download-btn" href="/track/' + encodeURIComponent(item.id) + '?download=1" download title="Save to device" aria-label="Save to device">' +
     rowGlyphMarkup('download') +
     '</a>' +
-    '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
+    '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '"' + likeStore + ' title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
     rowGlyphMarkup('heart') +
     '</button>' +
     '</div>';
@@ -956,6 +961,9 @@ if (typeof module !== 'undefined' && module.exports) {
             isEligible: extrasEligibleView,
             onMutated: afterExtrasMutation,
             signal: signal,
+            // M3 chapter likes: the Like row targets the playing CHAPTER (see the helpers).
+            fetchItem: extrasFetchItem,
+            likeRequest: extrasLikeRequest,
           },
           // v1.254 (ENDLESS AUTOPLAY): the page-1 toggle. Lives HERE (not the Extras
           // page) deliberately: Extras exists only for library-backed items, and the
@@ -1294,6 +1302,10 @@ if (typeof module !== 'undefined' && module.exports) {
       desktopExtras = SkinSurface.createExtrasMenu({
         getMenuEl: function () { return actionsMenu; },
         getBaseId: extrasBaseId,
+        // M3 chapter likes: the SAME chapter-aware hooks the sticker cfg passes (two
+        // writers of the Extras cfg - both must carry them or one surface likes the file).
+        fetchItem: extrasFetchItem,
+        likeRequest: extrasLikeRequest,
         getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
         getSignal: function () { return signal; },
         close: hideActionsMenu,
@@ -1359,6 +1371,49 @@ if (typeof module !== 'undefined' && module.exports) {
       // A `::c<idx>` chapter track acts on its WHOLE backing file (the library item).
       var id = effectiveCurrentId();
       return id ? String(id).replace(/::c\d+$/, '') : null;
+    }
+    // M3 chapter likes (v1.317, D11): the Extras "Like" row likes the playing CHAPTER
+    // as a song (Dean), while Share/Download/Move/Delete/Watched keep acting on the
+    // whole file through getBaseId above. The two hooks ride BOTH Extras writers
+    // (the sticker cfg and the desktop actions menu):
+    //  - fetchItem: the /api/videos/:baseId payload the page renders, with `liked`
+    //    OVERLAID from the chapter's own music row (GET /api/music/<chapterId> -
+    //    a projected row's `liked` reads the MEDIA store under the chapter id) and
+    //    `likeTargetId` stamped = the chapter id captured at OPEN time, so a chapter
+    //    roll while the menu stays open cannot retarget a later tap to a chapter
+    //    whose state the row never showed. Audio chapters only: a listen-mode chapter
+    //    of a VIDEO keeps today's behaviour (the file's like) - the server accepts
+    //    chapter likes for audio items only (a video chapter has no playable Liked card).
+    //  - likeRequest: POST/DELETE /api/liked/<likeTargetId || item.id>.
+    function extrasChapterIdFor(item) {
+      var cur = effectiveCurrentId();
+      if (!cur || !/::c\d+$/.test(String(cur))) return null;
+      if (!item || item.type !== 'audio') return null;
+      return String(cur).replace(/::c\d+$/, '') === String(item.id) ? String(cur) : null;
+    }
+    function extrasFetchItem(id) {
+      return fetch('/api/videos/' + encodeURIComponent(id))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (item) {
+          if (!item) return null;
+          var chapterId = extrasChapterIdFor(item);
+          if (!chapterId) return item;
+          return fetch('/api/music/' + encodeURIComponent(chapterId))
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; })
+            .then(function (track) {
+              // A failed overlay reads as "not liked": the tap is then an idempotent
+              // ADD the server answers with liked:true, never a silent unlike.
+              item.liked = !!(track && track.liked === true);
+              item.likeTargetId = chapterId;
+              return item;
+            });
+        })
+        .catch(function () { return null; });
+    }
+    function extrasLikeRequest(item, nextOn) {
+      var target = (item && typeof item.likeTargetId === 'string' && item.likeTargetId) || (item && item.id);
+      return fetch('/api/liked/' + encodeURIComponent(target), { method: nextOn ? 'POST' : 'DELETE' });
     }
     function extrasEligibleView() {
       // LIBRARY-BACKED tracks only (the Wave G projection shares the db.metadata id). A
@@ -2304,10 +2359,20 @@ if (typeof module !== 'undefined' && module.exports) {
     function toggleLike(btn) {
       var id = btn.getAttribute('data-like-id');
       var liked = btn.classList.contains('liked');
-      var req = liked
-        ? fetch('/api/music/liked/' + encodeURIComponent(id), { method: 'DELETE' })
-        : fetch('/api/music/liked/' + encodeURIComponent(id), { method: 'POST' });
-      req.then(function () {
+      // M3 chapter likes (v1.317): a projected library/chapter row (data-like-store
+      // "media", set by buildSongRowHtml) likes in the MEDIA store under its own id
+      // (a `::c` chapter id likes THAT chapter, not the file); a native row keeps
+      // the music-native lane. Before this every projected row hit the ownTrack-
+      // gated music POST, 404'd, and the heart flipped anyway (the silent lie).
+      var lane = btn.getAttribute('data-like-store') === 'media' ? '/api/liked/' : '/api/music/liked/';
+      var req = fetch(lane + encodeURIComponent(id), { method: liked ? 'DELETE' : 'POST' });
+      function failed() {
+        if (typeof window.showToast === 'function') window.showToast('Could not update Like.');
+      }
+      req.then(function (r) {
+        // The heart flips ONLY on a 2xx - the server is the truth; a 404/500
+        // leaves the shown state alone and says so (the Extras row's contract).
+        if (!r || !r.ok) { failed(); return; }
         // v1.75: the heart is the WRITE surface and stays; with the Liked tab
         // retired there is no local list an unlike can fall out of, so the row
         // just flips state in place. The central Liked (/?liked=1) is the read
@@ -2318,7 +2383,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // and only the title was being flipped - a screen reader kept reading
         // "Like" on a liked row. (Pre-existing; podcasts.js already did this.)
         btn.setAttribute('aria-label', !liked ? 'Unlike' : 'Like');
-      }).catch(function () {});
+        // The count-gated Liked sidebar entry caches its total per session -
+        // re-prime it so home reflects this like without a reload.
+        if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
+      }).catch(failed);
     }
 
     var statusEl = root.querySelector('#music-status');

@@ -262,3 +262,34 @@ test('v1.223: a freshly-downloaded (numeric addedAt) projected album sorts to th
   assert.strictEqual(albums[0].album, 'Fresh Mix', 'the fresh download is newest-first (was buried at the bottom with addedAt "")');
   assert.ok(albums[0].addedAt, 'the album carries a real addedAt (not the empty string the string-only guard produced)');
 });
+
+// ---- M3 chapter likes (v1.317): the `::c<n>` decoder ---------------------------
+// parseChapterTrackId is the INVERSE of chapterTrackId and the ONE decoder the like
+// routes/carriers use. It answers shape only; the caller proves the base exists
+// and that the id is in the item's REAL expansion.
+test('v1.317: parseChapterTrackId inverts chapterTrackId and rejects every malformed shape', () => {
+  const { parseChapterTrackId, chapterLikeBaseId } = require('../../lib/music/libraryAudio');
+  assert.deepStrictEqual(parseChapterTrackId(chapterTrackId('djmix1', 2)), { baseId: 'djmix1', index: 2 });
+  assert.deepStrictEqual(parseChapterTrackId('a_b-C::c12'), { baseId: 'a_b-C', index: 12 }, 'multi-digit index, yt-dlp id characters');
+  assert.deepStrictEqual(parseChapterTrackId('x::c0::c1'), { baseId: 'x::c0', index: 1 }, 'a double suffix decodes to a base nobody stores (the existence check rejects it)');
+  for (const bad of ['djmix1', 'djmix1::c', 'djmix1::cx', 'djmix1::c-1', 'djmix1::c1.5', '::c1', 'djmix1::C1', 'djmix1:c1', 'djmix1::c1 ', '', null, undefined, 3, { id: 'x::c1' }]) {
+    assert.strictEqual(parseChapterTrackId(bad), null, `rejects ${JSON.stringify(bad)}`);
+  }
+  assert.strictEqual(chapterLikeBaseId('djmix1::c4'), 'djmix1', 'a chapter like belongs to its base item');
+  assert.strictEqual(chapterLikeBaseId('djmix1'), 'djmix1', 'a plain id is its own base');
+  assert.strictEqual(chapterLikeBaseId('djmix1::c'), 'djmix1::c', 'a malformed suffix is left alone (it is a plain, unknown id)');
+});
+
+test('v1.317: the decoder round-trips EVERY id the real expansion mints, including a skipped index gap', () => {
+  const gappy = () => [{ startTime: 0, title: 'a' }, { startTime: 'x', title: 'skipped' }, { startTime: 50, title: 'c' }];
+  const tracks = expandAudioToTracks(DJ_MIX, gappy);
+  assert.deepStrictEqual(tracks.map((t) => t.id), ['djmix1::c0', 'djmix1::c2'], 'the survivors keep their ORIGINAL indexes (1 is skipped)');
+  for (const t of tracks) {
+    const p = require('../../lib/music/libraryAudio').parseChapterTrackId(t.id);
+    assert.strictEqual(p.baseId, DJ_MIX.id);
+    assert.strictEqual(chapterTrackId(p.baseId, p.index), t.id, 'decode -> encode is the identity on real ids');
+  }
+  // The like routes' validity rule is membership in this expansion: index 1 exists in
+  // the chapter LIST but not in the expansion, so `djmix1::c1` must not be likeable.
+  assert.ok(!tracks.some((t) => t.id === 'djmix1::c1'), 'index 1 is absent from the expansion');
+});

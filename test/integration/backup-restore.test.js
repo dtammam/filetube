@@ -449,6 +449,9 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   const extra = __mintTestSession({ username: 'roundtripper', role: 'member' });
   userStore.setProgress(extra.user.id, 'vid1', { timestamp: 33, duration: 100, updatedAt: '2026-07-17T00:00:00.000Z' });
   userStore.addLiked(extra.user.id, 'vid1', '2026-07-17T00:00:00.000Z');
+  // M3 chapter likes (v1.317): a `<id>::c<n>` chapter like is a longer user_liked
+  // key; the bundle must carry it verbatim (the id-keyed-carrier law).
+  userStore.addLiked(extra.user.id, 'vid1::c1', '2026-07-17T00:00:01.000Z');
   userStore.setBookProgress(extra.user.id, 'bk1', { locator: { kind: 'epub', cfi: 'y' }, percent: 60, updatedAt: '2026-07-17T00:00:00.000Z' });
   userStore.setChannelPin(extra.user.id, { id: 'cp1', channelDir: '/d/chan', label: 'Chan', pinnedAt: 't', order: 0 });
   // v1.72 books first-class (the TWELFTH-strike carrier rides the bundle).
@@ -474,7 +477,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   const bundledExtra = bundle.users.find((u) => u.username === 'roundtripper');
   assert.ok(bundledExtra, 'the second account rides the bundle');
   assert.equal(bundledExtra.progress.vid1.timestamp, 33);
-  assert.deepEqual(bundledExtra.liked.map((l) => l.mediaId), ['vid1']);
+  assert.deepEqual(bundledExtra.liked.map((l) => l.mediaId), ['vid1', 'vid1::c1'], 'the chapter like rides the bundle beside the file like');
 
   // Wipe EVERYTHING (docs + users) to prove the restore rebuilds both.
   await __resetDatabaseForTests();
@@ -497,7 +500,7 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   const restored = userStore.getByUsername('roundtripper');
   assert.ok(restored, 'the second account came back');
   assert.equal(userStore.getOneProgress(restored.id, 'vid1').timestamp, 33, 'their watch position came back');
-  assert.deepEqual(userStore.getLiked(restored.id), ['vid1'], 'their like came back');
+  assert.deepEqual(userStore.getLiked(restored.id).slice().sort(), ['vid1', 'vid1::c1'], 'their file like AND chapter like came back');
   assert.equal(userStore.getOneBookProgress(restored.id, 'bk1').percent, 60, 'their reading position came back');
   // v1.72: their book like + finished latch came back too.
   assert.deepEqual(userStore.getBookLiked(restored.id).map((l) => l.bookId), ['bk1'], 'their book like came back');

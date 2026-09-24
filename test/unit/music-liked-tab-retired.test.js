@@ -58,8 +58,12 @@ test('v1.75 REMOVAL: the Liked tab is gone from the strip and from every render/
 test('v1.75 REMOVAL OVERREACH GUARD: the song-row heart still writes both directions', () => {
   // Ruling R1: the tab was the READ surface, the heart is the WRITE surface.
   const src = fs.readFileSync(musicPath, 'utf8');
-  assert.ok(src.includes("fetch('/api/music/liked/' + encodeURIComponent(id), { method: 'DELETE' })"), 'unlike still calls the endpoint');
-  assert.ok(src.includes("fetch('/api/music/liked/' + encodeURIComponent(id), { method: 'POST' })"), 'like still calls the endpoint');
+  // M3 chapter likes (v1.317): ONE fetch whose lane is the row's like store (native
+  // music lane or the media lane for a projected/chapter row) and whose method is
+  // the direction; both directions still write (the behavioural binding lives in
+  // test/unit/music-chapter-likes-client.test.js, which drives the real click).
+  assert.ok(src.includes("btn.getAttribute('data-like-store') === 'media' ? '/api/liked/' : '/api/music/liked/'"), 'the heart picks the native or media lane by the row store');
+  assert.ok(src.includes("fetch(lane + encodeURIComponent(id), { method: liked ? 'DELETE' : 'POST' })"), 'like AND unlike still call the endpoint');
   assert.ok(src.includes("btn.classList.toggle('liked', !liked)"), 'and the row still reflects the new state');
 });
 
