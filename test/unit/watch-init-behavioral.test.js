@@ -186,6 +186,10 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   sandbox.renderPinnedSidebar = () => {};
   sandbox.FileTube = windowShim.FileTube;
   vm.createContext(sandbox);
+  // v1.317 M4: every shell loads ambient.js BEFORE watch.js (the census in
+  // shell-script-global-collisions.test.js); load it here too, so the watch path's
+  // setupAmbientMode runs the REAL shared host instead of returning at its guard.
+  vm.runInContext(fs.readFileSync(path.join(REPO, 'public/js/ambient.js'), 'utf8'), sandbox, { filename: 'ambient.js' });
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');

@@ -150,3 +150,35 @@ for (const shell of SHELLS) {
       'the wheel would read an undefined config at gesture start');
   });
 }
+
+// v1.317 M4 (desktop music ambient): the ambient engine + its shared host live in
+// public/js/ambient.js, read through window.FileTubeAmbient by watch.js (the watch view)
+// AND music.js (the music view, lazy-loaded into WHATEVER shell was cold-loaded). So EVERY
+// app shell - any shell that loads the SPA (main.js) or a consumer (watch.js / player.js /
+// music.js) - must load ambient.js, EARLIER than the first consumer. Dynamic over the
+// enumerated SHELLS (the v1.250 SHELL-PARITY class: a hand-kept list rots; a NEW shell is
+// caught automatically). Missing it would not throw: the views guard the global and simply
+// never light the glow - a silent, per-shell INERT FEATURE, which is why this is a census.
+const AMBIENT_CONSUMERS = ['/watch.js', '/player.js', '/music.js'];
+const ambientShells = SHELLS.filter((shell) => {
+  const srcs = scriptSrcsInOrder(fs.readFileSync(path.join(ROOT, shell), 'utf8'));
+  return srcs.some((s) => s.endsWith('/main.js') || AMBIENT_CONSUMERS.some((c) => s.endsWith(c)));
+});
+test('ambient.js census is not vacuous: every app shell is enumerated (>= 11)', () => {
+  assert.ok(ambientShells.length >= 11, `expected >= 11 app shells, derived ${ambientShells.length}: ${ambientShells.join(', ')}`);
+  assert.ok(ambientShells.includes('public/music.html') && ambientShells.includes('public/watch.html') && ambientShells.includes('lib/ytdlp/views/subscriptions.html'),
+    'the two hosting views\' shells and the out-of-public shell are in the roster');
+});
+for (const shell of ambientShells) {
+  test(`ambient.js loads before every ambient consumer: ${shell}`, () => {
+    const srcs = scriptSrcsInOrder(fs.readFileSync(path.join(ROOT, shell), 'utf8'));
+    const ambientIdx = srcs.findIndex((s) => s.endsWith('/ambient.js'));
+    assert.ok(ambientIdx >= 0, `${shell} is an app shell but does not load ambient.js - the watch and music views would never light the glow there`);
+    assert.strictEqual(srcs.filter((s) => s.endsWith('/ambient.js')).length, 1, `${shell} loads ambient.js exactly once`);
+    for (const c of AMBIENT_CONSUMERS) {
+      const idx = srcs.findIndex((s) => s.endsWith(c));
+      if (idx < 0) continue;
+      assert.ok(ambientIdx < idx, `${shell} loads ambient.js (idx ${ambientIdx}) AFTER ${c} (idx ${idx})`);
+    }
+  });
+}

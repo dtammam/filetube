@@ -19,7 +19,7 @@ const path = require('node:path');
 
 const {
   isAmbientEnabled, ambientStorageValue, ambientShouldRun, isDarkMode,
-} = require('../../public/js/watch.js');
+} = require('../../public/js/watch.js'); // v1.317 M4: re-exported from ambient.js (moved verbatim)
 
 const WATCH_HTML = fs.readFileSync(path.join(__dirname, '../../public/watch.html'), 'utf8');
 const WATCH_JS = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
@@ -102,8 +102,18 @@ test('v1.186 ensureCogControlsInjected injects the theater icon + 3 toggle rows,
   assert.match(writer, /cog\.insertAdjacentHTML\('beforebegin'/, 'theater icon goes just before the cog');
   assert.match(writer, /fill-rule="evenodd"/, 'the popcorn tub uses evenodd (the cut-out stripes)');
   assert.match(writer, /<g transform="matrix\(1\.2 0 0 1\.2 -98 54\)">/, 'scaled + re-centred to match the settings-cog footprint');
-  assert.match(fn, /!document\.getElementById\('watch-ambient-check'\)/, 'toggle rows injection is id-guarded');
-  assert.match(fn, /id="watch-autoplay-check"[\s\S]*id="watch-loop-check"[\s\S]*id="watch-ambient-check"/, 'all three rows injected into the menu');
+  // v1.317 M4: the Ambient row has ONE writer - ambient.js ensureAmbientToggleRow - because
+  // the music view injects the same row when it mounts first. Autoplay + Loop keep their own
+  // id guard and land BEFORE an Ambient row that is already there (menu order preserved);
+  // the order is bound by execution in music-ambient.test.js.
+  assert.match(fn, /!document\.getElementById\('watch-autoplay-check'\)/, 'the Autoplay + Loop injection is id-guarded on its OWN id');
+  assert.match(fn, /id="watch-autoplay-check"[\s\S]*id="watch-loop-check"/, 'Autoplay + Loop injected into the menu');
+  assert.doesNotMatch(fn, /id="watch-ambient-check"/, 'no second copy of the Ambient row markup in watch.js');
+  assert.match(fn, /window\.FileTubeAmbient\.ensureAmbientToggleRow\(document\)/, 'the Ambient row through the shared writer');
+  const AMBIENT_JS = fs.readFileSync(path.join(__dirname, '../../public/js/ambient.js'), 'utf8');
+  const rowWriter = AMBIENT_JS.slice(AMBIENT_JS.indexOf('var AMBIENT_ROW_HTML'), AMBIENT_JS.indexOf('\n// v1.317 M4: THE HOST'));
+  assert.match(rowWriter, /id="ambient-toggle-row" for="watch-ambient-check"[\s\S]*id="watch-ambient-check"/, 'the writer carries the v1.186 ids the CSS belts key off');
+  assert.match(rowWriter, /var check = d\.getElementById\('watch-ambient-check'\);\s*if \(!check\) \{/, 'the writer is id-guarded');
   // it runs post-mount, before the setup wiring
   assert.match(WATCH_JS, /ensureCogControlsInjected\(\);\n\s*setupAutoplayToggle\(\);/, 'injected before the wiring, post-mount');
 });
@@ -147,6 +157,10 @@ test('v1.186.1 the ambient stacking context lives on the STAGE, never on #player
   assert.match(dropBlock, /body\.ft-audio-expanded \.watch-player-stage/,
     'AUDIO expand drops the stage context too - deleting this selector re-traps audio rotate-fullscreen behind the chrome (the v1.186.1 bug)');
   assert.match(dropBlock, /z-index:\s*auto;/, 'both selectors drop to z-index:auto');
+  // v1.317 M4: the music view's player stage owns a context too - the SAME drop covers it
+  // for both body classes (a music expanded-audio overlay must escape exactly like watch's).
+  assert.match(dropBlock, /body\.ft-css-fullscreen \.music-player-stage/, 'VIDEO faux fullscreen drops the MUSIC stage context');
+  assert.match(dropBlock, /body\.ft-audio-expanded \.music-player-stage/, 'AUDIO expand drops the MUSIC stage context');
 });
 
 test('v1.194.3: the ambient stage clips X on MOBILE (kills the scaled-glow sideways-scroll)', () => {
@@ -180,15 +194,19 @@ test('v1.188 ambient bleeds over the LEFT BAR: root data-ambient-on toggled at t
   // Dean: "the ambience hard-stops against the left bar - let it go over the bar
   // like it does with Related files." The opaque .sidebar (z-index 99) painted
   // over the glow's left bleed and its border-right drew the hard line.
-  const fn = WATCH_JS.slice(WATCH_JS.indexOf('function setupAmbientMode'), WATCH_JS.indexOf('\n    // v1.22.0 FR-7 (TF): the "Loop"'));
+  // v1.317 M4: the start/stop funnel is the SHARED host's now (ambient.js createAmbientHost),
+  // which the watch view and the music view both run through.
+  const AMBIENT_JS = fs.readFileSync(path.join(__dirname, '../../public/js/ambient.js'), 'utf8');
+  const fn = AMBIENT_JS.slice(AMBIENT_JS.indexOf('function createAmbientHost'), AMBIENT_JS.indexOf('\nvar FileTubeAmbientApi'));
   // Set in start() and cleared in stop() - the SAME funnel as the glow's is-on,
   // so the root signal tracks ambient exactly (and clears on teardown/light).
   const startFn = fn.slice(fn.indexOf('function start()'), fn.indexOf('function stop()'));
-  const stopFn = fn.slice(fn.indexOf('function stop()'), fn.indexOf('function evaluate()'));
+  const stopFn = fn.slice(fn.indexOf('function stop()'), fn.indexOf('var boundMedia'));
+  assert.ok(startFn.length > 0 && stopFn.length > 0, 'start/stop found in the host');
   assert.match(startFn, /glow\.classList\.add\('is-on'\)/, 'start still arms the glow');
-  assert.match(startFn, /document\.documentElement\.setAttribute\('data-ambient-on', ''\)/, 'start sets the root signal');
+  assert.match(startFn, /doc\.documentElement\.setAttribute\('data-ambient-on', ''\)/, 'start sets the root signal');
   assert.match(stopFn, /glow\.classList\.remove\('is-on'\)/, 'stop still disarms the glow');
-  assert.match(stopFn, /document\.documentElement\.removeAttribute\('data-ambient-on'\)/, 'stop clears the root signal (restores the bar; also fires on teardown + light)');
+  assert.match(stopFn, /doc\.documentElement\.removeAttribute\('data-ambient-on'\)/, 'stop clears the root signal (restores the bar; also fires on teardown + light)');
   // The CSS half: while the signal is present the sidebar goes see-through so the
   // bloom flows across; `transparent` (a keyword) keeps it census-clean.
   const rule = /:root\[data-ambient-on\] \.sidebar \{([^}]*)\}/.exec(STYLE_CSS);
