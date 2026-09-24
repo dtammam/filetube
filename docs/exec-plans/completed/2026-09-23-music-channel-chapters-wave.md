@@ -3,7 +3,7 @@ plan: music-channel-chapters-wave
 harness: v2 · lean
 branch: feat/music-channel-chapters
 anchor: spec
-status: Building
+status: Shipped v1.318.0
 next: M1+M2 gate CLOSED r3 @8aa22622 (adversary + qa; round 3 by Dean's call, with his two rulings: pop-out listen artist line is plain text, Nordic rows blank for an unknown length). Merge to main; this umbrella closes at the wave release v1.317.0 (M4 has its own plan). Owed (r3 qa SUGGESTIONs): record that the chapter-aware watchBackVisible also changes dockToOrigin after a chapter cross + Songs browse (docks in place per the v1.283 listen rule instead of bouncing to the source video; correct, unbound) and the desktop menu Watch entry likewise; the sameMusicItem comment should name buildSkinCtx as a second caller. Device check owed (adversary S5): the marquee on a button in Firefox/iOS
 design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on the whole register D1-D15 as recommended, D15 as adjusted by the intake finding below)
 gate: APPROVED r3 @8aa22622 — adversary, qa (M1+M2)

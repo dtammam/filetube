@@ -3154,5 +3154,11 @@
     "date": "2026-09-24",
     "title": "Music: jump to a song's channel, like a single chapter, and see chapter lengths",
     "intent": "In Music, tap a song's artist line or pick Go to channel from the menu to jump to that channel's videos, and the list beside the player now shows how long each chapter is. You can like one chapter of a long video as its own song and find it in your Liked list. The theatre button now sits in the player's own controls and works every time on desktop."
+  },
+  {
+    "version": "1.318.0",
+    "date": "2026-09-24",
+    "title": "Ambient mode now works in the music player on desktop",
+    "intent": "With Ambient mode on in dark mode, the music player on a computer now glows softly with the colors of the album art, just like videos do. The glow stays on as one song moves into the next, and turns off when you pause, switch to light mode, or turn Ambient off."
   }
 ]

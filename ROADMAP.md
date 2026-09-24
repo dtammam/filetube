@@ -86,9 +86,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.318.0 - The music player glows with its album art on desktop (2026-09-24)
+
+- **M4 - desktop music ambient** (Dean: "Ambient mode in the music player in desktop"; "I have
+  ambient mode selected in this player but I don't see any ambience for the music"). Root cause: the
+  Ambient row lives in the PERSISTENT player's cog menu, written and wired by watch.js only, so after
+  a watch visit it rode into Music checked but dead. Now public/js/ambient.js (loaded before watch.js
+  on all 11 shells, dynamic parity census) holds the engine moved verbatim from watch.js plus one
+  shared host (`createAmbientHost`) and one row writer; watch's `setupAmbientMode` is a thin call into
+  it (behaviour unchanged, measured on both trees); music drives it from `updateNowPlayingPanel` with
+  its own gate (desktop width, a current music track, the player expanded in this page's slot,
+  same-origin art from the BASE media id). Track changes hold the glow: an opt-in load-gap hold (8 s)
+  across the player's teardown, and an end hold (1.5 s) across a natural-end queue advance; a real
+  pause, light mode, turning Ambient off, a failed load or navigating away still clear at once.
+  Measured in headless Chromium: 0 dark samples across a row tap and a natural-end advance, a
+  finished queue clears at ~1.5 s. The v1.312 filter/transform/mask locks now scan every ambient
+  writer. Gate r3 @61904f6c (adversary + qa; round 3 by Dean's ruling to fix the natural-end blink
+  first); plan docs/exec-plans/completed/2026-09-24-music-desktop-ambient.md. Closes the music wave
+  umbrella (docs/exec-plans/completed/2026-09-23-music-channel-chapters-wave.md).
+  Disclosed: a queue advance slower than 1.5 s can still dip; the desktop pop-out has no glow; the
+  Autoplay and Loop cog rows are visible but inert in Music after a watch visit (next wave's
+  follow-ups branch).
+
+Device check owed (Dean): desktop /music in dark mode with Ambient on - the glow paints from the
+album art, stays through a song change and a natural end, clears on off / light / pause / leaving.
+
 ### v1.317.0 - Music: go to a song's channel, chapter lengths, like a chapter, one theatre button (2026-09-24)
 
-The music wave (umbrella docs/exec-plans/active/2026-09-23-music-channel-chapters-wave.md, Dean's
+The music wave (umbrella docs/exec-plans/completed/2026-09-23-music-channel-chapters-wave.md, Dean's
 "GO." on D1-D15), built as parallel branches, each through its own gate. M4 (desktop music ambient)
 is still in its gate and ships next as v1.318.0; the umbrella stays open until then.
 

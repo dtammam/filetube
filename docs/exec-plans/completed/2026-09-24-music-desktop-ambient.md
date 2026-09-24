@@ -3,7 +3,7 @@ plan: music-desktop-ambient
 harness: v2 · lean
 branch: feat/music-desktop-ambient
 anchor: spec
-status: Building
+status: Shipped v1.318.0
 next: gate CLOSED r3 @61904f6c (adversary + qa; round 3 by Dean's ruling to fix the natural-end blink before release). Release as v1.318.0 (Dean: tag without waiting for his device check). Owed: Dean's device check (desktop /music, dark, ambient on: the glow paints from the album art, holds across a track change and a natural end, clears on off / light / pause / nav away); the adversary's side observation that the music queue still advanced with the music autoplay pref at 0 (unverified, outside M4); X2 / X8 / E11 / N8b are text-lock-only or judged equivalent
 design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on D13/D14 in the wave umbrella)
 gate: APPROVED r3 @61904f6c — adversary, qa
