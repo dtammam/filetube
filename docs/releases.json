@@ -3184,5 +3184,11 @@
     "date": "2026-09-24",
     "title": "Fix where album chapters start",
     "intent": "When a chapter of an album starts in silence or in the tail of the previous song, open Fix times from the album, the player or the watch page: FileTube finds the quiet gaps and suggests a better start for each chapter, and you can nudge each one, listen from that spot, snap them all at once, and save. Your liked chapters stay put, a saved fix survives rescans, and Revert puts the original times back."
+  },
+  {
+    "version": "1.323.0",
+    "date": "2026-09-24",
+    "title": "The Click and Seattle music skins get their full menus",
+    "intent": "The Click and Seattle music skins now work like the real players: a Main Menu with Music, Shuffle Songs and Now Playing, and menus for your playlists, artists, albums, songs and genres that you move through with the wheel or by tapping. Click shows the album art beside the list, Seattle uses big swipeable headers, and a song you pick plays on through the list you picked it from."
   }
 ]
