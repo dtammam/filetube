@@ -11559,6 +11559,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ipm-art-img.is-in{ opacity:1; transform:scale(1); }
   /* the tray (the pop-out's Nano strip) has no wheel to reach a menu with - Now Playing only */
   body.mms-tray .ip-menuview{ display:none; }
+  body.mms-tray .music-nowplaying-panel.mms-menumode .ip-npview{ display:flex; }
   /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
   .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
   /* v1.239 (Dean): sized proportional to the REAL iPod Classic wheel (~70% of the body

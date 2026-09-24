@@ -86,11 +86,11 @@ Choices recorded where Dean left one open:
 
 Files:
 - `public/js/music-skins.js` - `menus: 'click' | 'seattle'` ON the four registry entries (the one list; no second id list); the pure half: `menuStyle`, `menuPivots`, `menuTitle`, `menuStaticItems`, the payload builders (`menuArtistItems`, `menuAlbumItems`, `menuSongItems`, `menuArtistAlbumItems`, `menuGenreItems`, `tracksOfGenre`, `tracksOfAlbum` - each takes the VIEW's art rule, so no copy of `musicArtUrl`), `menuWindow` (the list window), `renderMenuList` / `renderMenuView` (Click split screen, Seattle pivots/title/root).
-- `public/js/skin-surface.js` - `createPocketMenu` (module scope): the stack of levels (a pivot level = several panes), per-pane load with a skeleton seed, a post-await token + `destroyed` guard, empty/error states (Select retries), the cursor (`moveCursor`, reached from the engine's EXISTING cursor branch in `onMove`), the per-advance follow (`followCurrent`, keyed on the id), the list window re-render on scroll, the split screen's art (debounced 140 ms, eased in on decode, dropped on error), MENU/Select/left-right hooks. Wired into `create()`: built only when the view passes `config.menu`; `paint()` calls `afterPaint(ctx)`; MENU -> `onMenu()` before the dock arm; Select -> `onSelect()` before the queue-list arm; `onDown` mode = `(listMode || menuMode) ? 'cursor' : 'scrub'`; row/pivot taps and Seattle's pad left/right in `onClick`; the pivot swipe on the panel's own pointer stream (bound once in `bind()`, both end arms, removed in `destroy()`); `menuState()` on the api.
-- `public/js/music.js` - the `menu:` config block; `menuLoad` (every level from the same routes the browse view reads, song lists in the browse view's own drill sorts), `playFromMenu` (the list becomes the queue; bumps `playSelectGen` + `loadSongsGen` so an in-flight select/load cannot land over it; re-draws the browse view FROM the queue - `renderDrillView` for album/artist, `renderSongList` + the crumb otherwise; `playAt(i, {soloChapter: true})`), `shuffleAllFromMenu` (whole library, `sort=random`, play-through, post-await gen check); cache invalidation on delete/move and rescan.
+- `public/js/skin-surface.js` - `createPocketMenu` (module scope): the stack of levels (a pivot level = several panes), per-pane load with a skeleton seed, a post-await token + `destroyed` guard, empty/error states (Select retries), the cursor (`moveCursor`, reached from the engine's EXISTING cursor branch in `onMove`), the per-advance follow (`followCurrent`, keyed on the id), the list window re-render on scroll, the `dataVersion` re-load of open levels, the split screen's art (debounced 140 ms, eased in on decode, dropped on error), MENU/Select/left-right hooks. Wired into `create()`: built only when the view passes `config.menu`; `paint()` calls `afterPaint(ctx)`; MENU -> `onMenu()` before the dock arm; Select -> `onSelect()` before the queue-list arm; `onDown` mode = `(listMode || menuMode) ? 'cursor' : 'scrub'`; row/pivot taps and Seattle's pad left/right in `onClick`; the pivot swipe on the panel's own pointer stream (bound once in `bind()`, both end arms, removed in `destroy()`); `menuState()` on the api.
+- `public/js/music.js` - the `menu:` config block; `menuLoad` (every level from the same routes the browse view reads, song lists in the browse view's own drill sorts), `playFromMenu` (the list becomes the queue; bumps `playSelectGen` + `loadSongsGen` so an in-flight select/load cannot land over it; re-draws the browse view FROM the queue - `renderDrillView` for album/artist, `renderSongList` + the crumb otherwise; `playAt(i, {soloChapter: true})`), `shuffleAllFromMenu` (whole library, `sort=random`, play-through, post-await gen check); ONE `invalidateMenuData()` for a delete/move (afterExtrasMutation) and a rescan, which drops the caches and bumps `dataVersion` so the engine re-loads every library level already on its stack at the next paint (a MENU climb back never shows a removed track).
 - `public/css/style.css` - the menu view inside the existing `max-width:768px` skin block: Click split screen from the skin's own tokens (the v1.233 cursor gradient, the screen white, the status greys, `--mms-ipod-groove` / `--mms-ipod-art-shadow` on the art pane), Seattle Metro type from its own tokens (`--fs-5xl`/`--fs-6xl`, `--fw-light`, `--mms-zn-dim`, `--mms-zn-pink`); the tray hides the menu view; reduced motion drops the art ease.
 - `public/js/common.js` - `[data-skin-swipe]` joins `SWIPE_BACK_OWNER_SELECTORS` (the pivot list is a sideways-drag control, Dean's "scrubbers only" rule's own category).
-- Tests: `test/unit/music-pocket-menus.test.js` (18, new), `test/integration/music-pocket-menus.test.js` (11, new, real server + real music.js); `swipe-back-owners.test.js` (+1); updated locks: `menu-returns-to-origin.test.js` (the MENU lock re-anchored on the handler's own block instead of a 480-char window - the "widening is the trap" class), `music-skins.test.js` (the two-arm mode line now reads `(listMode || menuMode)`), `music-skin-integration.test.js` (the v1.231 MENU walk now passes through the Main Menu - the intended behaviour change).
+- Tests: `test/unit/music-pocket-menus.test.js` (19, new), `test/integration/music-pocket-menus.test.js` (12, new, real server + real music.js); `swipe-back-owners.test.js` (+1); updated locks: `menu-returns-to-origin.test.js` (the MENU lock re-anchored on the handler's own block instead of a 480-char window - the "widening is the trap" class), `music-skins.test.js` (the two-arm mode line now reads `(listMode || menuMode)`), `music-skin-integration.test.js` (the v1.231 MENU walk now passes through the Main Menu - the intended behaviour change).
 - `docs/exec-plans/tech-debt-tracker.md` - #255-#258 (see Disclosed gaps).
 
 Reference used (match-reference norm): the iPod classic 6th/7th-gen menu screen - a 320x240
@@ -109,7 +109,29 @@ DATA_DIR seeded with 3,006 projected songs (150 artists x 4 albums x 5 + a 3-cha
 real albums), real WAV audio for the played items and PNG art, drives headless Chromium over
 CDP. Every row below is what the probe PRINTED.
 
-(filled in below by the final probe run)
+Run: all four skins at 390x844 (mobile emulation, DPR 2) and 380x700 (the pop-out's window
+size), then the REAL desktop pop-out (1280x800 page, a CDP mouse click on `#music-popout-btn` =
+a user gesture; Document PiP hidden so the plain-window fallback opens - headless cannot grant
+PiP). Log: `click-skin-menus-probe.log`; 132 PNGs in `click-skin-menus-shots/` (session
+scratchpad): per skin and size `-00-now-playing` ... `-14-back-to-list`, plus
+`{ipod,zune-classic}-popout-00..04`. Every level reported `ok:true` (0 `ok:false`); every page
+state line carried `errs:[]` (110 of 110 state lines).
+
+| What | Printed |
+|---|---|
+| Click legibility, 390x844 | row 34 px, 14 px bold; list pane 173 px wide x 227 px tall (6.7 rows); art pane 173 px; `docW` 390 (no sideways overflow) |
+| Click, 380x700 | row 34 px, 14 px bold; list 168 x 220; `docW` 380 |
+| Seattle, 390x844 | Main Menu rows 60 px / 44 px light; lists 48 px / 22 px light; list 316 x 555 (pivot level); `docW` 390 |
+| Seattle, 380x700 | lists 48 px / 22 px; list 306 x 411; `docW` 380 |
+| Real pop-out window (plain fallback) | Click: menu 34 px rows, list 168 wide, `docW` 380; Seattle: 48 px rows, 306 wide. Headless reports `innerHeight` 509 for the 700-high window (window chrome), so the wheel is cut at the bottom of those PNGs - the pop-out's pre-existing geometry, not this change |
+| Big list (3,006 songs), Click 390x844 | Songs level open (fetch + JSON + build + first paint, incl. the probe's 450 ms art settle) 1,224 ms; DOM rows 15 on open, 23 after a spin; scroll height 102,272 px = 3,008 x 34 |
+| Wheel spin, 40 detents (200 pointermoves) | handler time 154 / 51 / 43 ms (Click / Black / Matte, 390x844), 136 ms Seattle; cursor 0 -> 180 (the shared speed multiplier) |
+| Touch-scroll to the middle | the window followed within two frames: first rendered row 1,496, 23 rows in the DOM (scrollTop 51,136) |
+| Other levels (Click 390x844) | Artists 552 ms (150 artists, scroll height 5,168), Albums 729 ms (600, 20,502), Genres 499 ms (8), chaptered album 3 rows (`Intro / Track A / Track B`) |
+| Play a chapter from its album | `currentId` = `djmix1::c1`; Now Playing shown; MENU -> "Full Album Mix" with the cursor on Track A (index 1), on all 8 skin x size runs |
+
+Headless timings run on software GL (swiftshader) and include network to a local server; they
+are upper bounds, not device numbers.
 
 ## Mutant table
 

@@ -1129,6 +1129,7 @@ if (typeof module !== 'undefined' && module.exports) {
           onShuffleAll: shuffleAllFromMenu,
           hasCurrent: hasCurrentMusicTrack,
           currentId: effectiveCurrentId,
+          dataVersion: function () { return menuDataGen; },
         },
         fastScan: true,
         sticker: {
@@ -1699,8 +1700,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // closed the player and re-primed the liked cache; the VIEW clears its playing state,
     // lets the panel teardown run (drops the full-screen skin), and re-renders the lists.
     function afterExtrasMutation() {
-      menuSongsPromise = null; // pocket menus: a deleted/moved track must leave the pocket menus too
-      menuArtistCache = Object.create(null);
+      invalidateMenuData(); // pocket menus: a deleted/moved track must leave the pocket menus too
       playingId = null;
       nowPlaying = null;
       chapterViewId = null;
@@ -2148,8 +2148,7 @@ if (typeof module !== 'undefined' && module.exports) {
       scanBtn.addEventListener('click', function () {
         scanBtn.disabled = true;
         fetch('/api/music/scan', { method: 'POST' }).catch(function () {}).finally(function () {
-          menuSongsPromise = null; // pocket menus: a rescan refreshes the pocket menus' library too
-          menuArtistCache = Object.create(null);
+          invalidateMenuData(); // pocket menus: a rescan refreshes the pocket menus' library too
           setTimeout(function () { scanBtn.disabled = false; render().catch(function () {}); }, 1500);
         });
       }, { signal });
@@ -3097,6 +3096,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // musicArtUrl - the one art rule - so a menu thumbnail is the art the rest of Music shows.
     var menuSongsPromise = null; // the whole library (title order), fetched once per view instance
     var menuArtistCache = Object.create(null); // artist name -> Promise<tracks>
+    var menuDataGen = 0; // bumped when the library changed under the menus (the engine re-loads its open levels)
+    // ONE invalidation for every seam that changes the library under the menus (a delete/move
+    // through Extras, a rescan): drop the caches AND tell the engine (dataVersion) so the levels
+    // already on its stack re-load - a MENU climb back into an open list never shows a removed track.
+    function invalidateMenuData() {
+      menuSongsPromise = null;
+      menuArtistCache = Object.create(null);
+      menuDataGen += 1;
+    }
     function menuAllSongs() {
       if (!menuSongsPromise) {
         var pr = fetchJson('/api/music?sort=title-asc&limit=10000')

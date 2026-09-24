@@ -141,7 +141,7 @@ const HTML = `<body>
   <div id="panel" class="music-nowplaying-panel" hidden></div>
 </body>`;
 
-function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId } = {}) {
+function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/music' });
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
@@ -158,7 +158,9 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId } = {}) {
     onShuffleAll: () => { spy.shuffles += 1; },
     hasCurrent: () => hasCurrent,
     currentId: () => state.current,
+    dataVersion: dataVersion ? () => state.ver : undefined,
   };
+  state.ver = 0;
   dom.window.document.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
   const engine = dom.window.FileTubeSkinSurface.create(Object.assign({
     panel: dom.window.document.getElementById('panel'),
@@ -378,5 +380,31 @@ test('Seattle: pad left/right move the pivots only on a pivot level (elsewhere t
     b.state.skin = 'ipod'; b.engine.paint();
     assert.strictEqual(b.engine.menuState().depth, 1, 'the stack restarted at the Click Main Menu');
     assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Click');
+  } finally { b.restore(); }
+});
+
+test('a library change under the menus (the view bumps dataVersion) re-loads every open library level at the next paint, cursor kept', async () => {
+  let n = 0;
+  const b = bootEngine({ dataVersion: true, load: () => { n += 1; return Promise.resolve({ items: [{ label: 'v' + n + '-a' }, { label: 'v' + n + '-b' }, { label: 'v' + n + '-c' }] }); } });
+  try {
+    b.engine.paint();
+    pressMenu(b); pressSelect(b);
+    tap(b, P(b).querySelector('[data-skin-mi="2"]')); await tick(); // Albums (load #1)
+    assert.deepStrictEqual(lbls(b), ['v1-a', 'v1-b', 'v1-c']);
+    const wheel = P(b).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    [8, 16, 24].forEach((d) => wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 100 * Math.cos(d * Math.PI / 180), clientY: 100 * Math.sin(d * Math.PI / 180) })));
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
+    const moved = b.engine.menuState().cursor;
+    assert.ok(moved > 0, 'the wheel moved the cursor off the first row');
+    b.engine.paint(); await tick();
+    assert.strictEqual(n, 1, 'a plain repaint does NOT re-load (no flash-backward)');
+    b.state.ver = 1; // a delete / rescan in the view
+    b.engine.paint();
+    assert.ok(P(b).querySelector('.ipm-skel'), 'the genuinely stale level re-seeds its skeleton');
+    await tick();
+    assert.strictEqual(n, 2, 're-loaded once');
+    assert.deepStrictEqual(lbls(b), ['v2-a', 'v2-b', 'v2-c'], 'the fresh rows');
+    assert.strictEqual(b.engine.menuState().cursor, moved, 'the cursor kept its place');
   } finally { b.restore(); }
 });

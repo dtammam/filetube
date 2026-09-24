@@ -528,6 +528,7 @@
     var rowH = 0;              // the measured row height (0 until layout exists)
     var viewH = 0;             // the measured list viewport height
     var listRaf = null;
+    var dataVer = null;        // the view's library version the loaded levels reflect (cfg.dataVersion)
 
     function style() { try { return (SK && typeof SK.menuStyle === 'function' && SK.menuStyle(getSkinId())) || ''; } catch (_) { return ''; } }
     function hasCurrent() { try { return !!(typeof cfg.hasCurrent === 'function' && cfg.hasCurrent()); } catch (_) { return false; } }
@@ -780,6 +781,19 @@
       // after every paint(): rebuild on a style change, follow the advance, re-draw.
       afterPaint: function (ctx) {
         if (style() !== builtFor) resetStack();
+        // the library changed under the menus (a delete, a rescan): every library-backed level on
+        // the stack re-loads when next shown (cursor kept, clamped) - a stale row never lingers.
+        var ver = null;
+        try { ver = (typeof cfg.dataVersion === 'function') ? cfg.dataVersion() : null; } catch (_) { ver = null; }
+        if (dataVer !== null && ver !== dataVer) {
+          stack.forEach(function (l) {
+            l.panes.forEach(function (p) {
+              if (p.node.type === 'main' || SK.menuStaticItems(p.node, {})) return;
+              p.state = 'idle'; p.token += 1; p.items = []; p.tracks = null;
+            });
+          });
+        }
+        dataVer = ver;
         npArt = (ctx && ctx.track && ctx.track.artUrl) || '';
         followCurrent();
         render();

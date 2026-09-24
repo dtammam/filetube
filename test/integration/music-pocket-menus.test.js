@@ -96,7 +96,7 @@ async function settleNet(n) { for (let i = 0; i < (n || 40); i++) { await settle
 // Boot the REAL music view (mobile, the chosen skin) with `?play=<id>` so a track is loaded and
 // the skin is up. The player stub mirrors the real player's contract the view reads: load() makes
 // the id current + the item's meta live + the player expanded; setTrackNav records the nav.
-async function boot({ skin, play, failOnce, run }) {
+async function boot({ skin, play, failOnce, intercept, setup, run }) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' + (play ? '?play=' + encodeURIComponent(play) : '') });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, requestAnimationFrame: global.requestAnimationFrame, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document;
@@ -111,6 +111,8 @@ async function boot({ skin, play, failOnce, run }) {
     const u = String(url);
     log.push(u);
     if (failOnce && failOnce.test(u) && !failed.has(u)) { failed.add(u); return Promise.resolve({ ok: false, status: 500, json: async () => ({}) }); }
+    const faked = intercept ? intercept(u, opts || {}) : null;
+    if (faked) return Promise.resolve(faked);
     return authedFetch(u.startsWith('http') ? u : base + u, opts);
   };
   const spy = { loads: [], next: 0, prev: 0, dock: 0, nav: null };
@@ -128,6 +130,7 @@ async function boot({ skin, play, failOnce, run }) {
       spy.loads.push({ id, data });
     },
     setTrackNav(h) { spy.nav = h || null; },
+    close() { player.currentId = null; pstate.meta = null; },
   };
   let mod = null;
   dom.window.FileTube = {
@@ -136,6 +139,7 @@ async function boot({ skin, play, failOnce, run }) {
     player,
   };
   if (skin) dom.window.localStorage.setItem('ft-music-skin', skin);
+  if (setup) setup(dom);
   const D = dom.window.document;
   D.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
   D.getElementById('track-prev-btn').addEventListener('click', () => { spy.prev += 1; });
@@ -431,7 +435,7 @@ test('Seattle: the Zune main menu, the Music PIVOTS moved by the pad and by a sw
     const list = h.panel.querySelector('[data-skin-swipe]');
     list.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 100 }));
     list.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 150, clientY: 110 }));
-    list.dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true })); // a mouse's lift-off click lands on the list: swallowed, it selects nothing
+    list.querySelector('.ipm-row').dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true })); // a mouse's lift-off click lands on the row under it: swallowed, it selects nothing
     await settleNet();
     assert.strictEqual(pivots()[0], 'Songs', 'a left swipe moved to the next pivot');
     assert.strictEqual(h.panel.querySelector('.ipm-title'), null, 'the swipe\'s click did not drill into a row');
@@ -472,4 +476,60 @@ test('Click: in a menu the |<< >>| zones still skip tracks (the device\'s own); 
     await settleNet();
     assert.strictEqual(h.player.currentId, 'rm1', 'Prev walks the PICKED album - the stale load did not replace the queue');
   } });
+});
+
+const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+test('the menus drop their library cache on a rescan AND after a delete/move (a removed track never lingers in a menu)', async () => {
+  // (1) the Scan button: the next Songs open re-fetches the library
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    menu(h); select(h);
+    tapRow(h, 'Songs'); await settleNet();
+    assert.strictEqual(h.log.filter(songsUrl).length, 1);
+    menu(h);
+    tapRow(h, 'Songs'); await settleNet();
+    assert.strictEqual(h.log.filter(songsUrl).length, 1, 'cached within the session (one fetch for two opens)');
+    click(h.dom, h.D.getElementById('music-scan-btn'));
+    await settleNet();
+    menu(h);
+    tapRow(h, 'Songs'); await settleNet();
+    assert.strictEqual(h.log.filter(songsUrl).length, 2, 'the rescan invalidated the cached library');
+  } });
+  // (2) a delete through the skin's own Extras (the real flow; the DELETE itself is faked -
+  // there is no file on disk in this fixture - and answers success, so afterExtrasMutation runs)
+  let deletes = 0;
+  await boot({
+    skin: 'ipod', play: 'nd1',
+    intercept: (u, o) => (o.method === 'DELETE' && /^\/api\/videos\//.test(u)) ? (deletes += 1, { ok: true, status: 200, json: async () => ({ success: true }) }) : null,
+    setup: (dom) => {
+      dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } });
+      dom.window.isYtdlpManagedItem = () => false;
+      dom.window.showHardDeleteModal = (item, doDelete) => doDelete();
+      dom.window.showToast = () => {};
+    },
+    run: async (h) => {
+      menu(h); select(h);
+      tapRow(h, 'Songs'); await settleNet();
+      tapRow(h, 'Neon Arrival'); await settleNet(); // Now Playing on nd1, played FROM the menu
+      assert.strictEqual(h.log.filter(songsUrl).length, 1);
+      click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
+      click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+      await settleNet();
+      const del = h.panel.querySelector('[data-skin-x="delete"]');
+      assert.ok(del, 'the Extras page offers Delete (admin)');
+      click(h.dom, del);
+      await settleNet();
+      assert.strictEqual(deletes, 1, 'the delete ran');
+      // play again from the browse list behind (the menu queue's Songs list), bringing the skin back
+      const row = h.D.querySelector('#music-content .music-song-row[data-id="nd2"] .music-song-main');
+      assert.ok(row, 'the browse list is there to play from');
+      click(h.dom, row);
+      await settleNet();
+      assert.strictEqual(h.player.currentId, 'nd2');
+      menu(h); // Now Playing -> the Songs level ALREADY on the stack (opened before the delete)
+      assert.strictEqual(title(h), 'Songs');
+      await settleNet();
+      assert.strictEqual(h.log.filter(songsUrl).length, 2, 'the delete invalidated the cache AND the open level re-loaded');
+      assert.ok(labels(h).length > 0 && !h.panel.querySelector('.ipm-skel'), 'the re-loaded level revealed');
+    },
+  });
 });
