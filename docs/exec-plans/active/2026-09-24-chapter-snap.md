@@ -3,10 +3,10 @@ plan: chapter-snap
 harness: v2 · lean
 branch: feat/chapter-snap
 anchor: spec
-status: Building
-next: pre-r3 merge of main v1.321.0 @00faee52 (no conflicts), head re-verified (2065/2065, 18/18 targeted mutants RED, theatre on/off probe); ready for gate r3 (adversary + qa + security-brief S-5 re-engage; data class)
+status: Gate closed
+next: release
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
-gate: pending
+gate: APPROVED r3 @34a7fe27 — adversary, qa, security-brief
 ---
 
 # Chapter Snap: fix when chapters start
@@ -352,6 +352,25 @@ reaches the suggestions; a parser that cannot read it reds.
   7.0.2 via FILETUBE_TEST_FFMPEG.
 - "Chapter 1 always stays at 0:00" is enforced as "chapter 1 keeps its stored start" (a source
   whose first chapter starts later is left alone, never moved to 0).
+
+- **Gate r3 rulings and suggestions** (Architect, at gate close, 2026-09-24):
+  - **Security R3-1 / qa S1, ACCEPTED IN WRITING (LOW, not exploitable today).** Two WRITE
+    paths still resolve the id with a plain `db.metadata[id]`: POST /api/videos/:id/move
+    (lib/media/move.js:221, :451-489) and the relocate route (lib/ytdlp/relocation.js:337).
+    Today they are guarded only by `computeMoveTarget`'s and relocation's filePath checks, which
+    refuse a non-string filePath before any write. So the `ownMediaItem` comment, the header of
+    media-write-proto-ids.test.js, and #242's old "all READ-only" wording overclaimed "every
+    write route". This is tracked in **#242** (widened): the fix is move.js:221 via
+    `hasOwnProperty.call`, plus `/move` in the proto-ids test, and the wording is corrected with it.
+  - **r3 suggestions** (tracker **#250**):
+    - adv S1: a revert keeps any stored title it cannot tell apart from an older source title
+      after a reheat re-titled the source. The fix is to record the source title per chapter at
+      snap time.
+    - adv S2: a Music-side snap does not refresh the watch player's version token. It fails safe
+      with a 409.
+    - qa S2: five labels read "(2026-09-24) (Dean 2026-09-24)".
+    - adv note: POST /api/music/progress answers 200 for a `__proto__` id. It writes a SQLite
+      row; nothing is polluted.
 
 ## Gate verdicts
 
@@ -1244,3 +1263,281 @@ Screenshots: `.../scratchpad/chapter-snap-shots-r2/`.
   - After Save, the notches are `[12.1125,24.1125,36.1125]` against stored
     `[12.113,24.113,36.113]`, so they follow the new boundary with theatre on and off.
   - Screenshots: `.../scratchpad/chapter-snap-shots-r3pre/` (`chapter-snap-watch-1440x900[-theatre][-snapped].png`).
+
+## Gate r3 - security-brief (@34a7fe27)
+
+**Gaps, stated first:** still no Bash. I could NOT run `git diff 330aaa8b..34a7fe27`, any test
+(including the new `media-write-proto-ids.test.js`), the mutant runner or ffmpeg. The sha is
+verified only from the ref file (`.git/refs/heads/feat/chapter-snap` = 34a7fe273c26...). I could
+not check for uncommitted changes. I did not review the v1.320.0 / v1.321.0 merge content beyond
+the routes below. The test and mutant results (R1a-R1f RED, 84/84) are the builder's records.
+
+### S-5 against 34a7fe27
+
+- **The helper is correct (verified).** `ownMediaItem` (lib/media/routes.js:152-154) is
+  `typeof id === 'string' && Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id]
+  : null`. That is the `hasOwnProperty.call` form, not `in` and not a method on the object, so
+  `__proto__`, `constructor`, `toString`, `hasOwnProperty` and `valueOf` all resolve to null.
+  `getAll` (lib/media/items.js:70-76) builds the map with `defineProperty`, so a real item's key is
+  always an own property.
+- **The five named routes (verified): all fixed.**
+  - DELETE `/api/videos/:id` (:916).
+  - POST `/dimensions`, the in-tick lookup (:1835).
+  - POST `/chapters`, the in-tick lookup (:1908).
+  - POST `/attribute-channel`: the tick (:2108), plus the post-write re-read (:2120).
+  - POST `/prepare-audio` (:2448).
+
+  POST `/view` already used an own lookup (:1769), and the snap routes use their own `ownItem`. The
+  new test drives five hostile ids through all five routes and asserts that nothing lands on
+  `Object.prototype`, `Object` or `toString`, with a real-item control (read; not run).
+- **The text-route additions (verified).** A missing `version` on a stored snap edit returns 409
+  inside the tick, after the own lookup. A wrong-type version is still 400 before the tick. The
+  RBAC order is unchanged: `requireModifyLibrary`, then `restrictedVideoMutation`.
+- **The line-break refusal (verified).** `runSilenceDetect` refuses `/[\r\n]/` in the path before
+  `spawn` (chapterSilence.js:131). The parser splits only on `\r?\n|\r`, so no other character can
+  open a line for the anchored pattern. This closes my r2 residual suspicion.
+
+### Sweep for write paths the helper does not cover
+
+I read every `metadata[` occurrence under lib/ and server.js and traced the ones whose id can come
+from a request.
+- **Ids from the store itself are not reachable:** the scan/orchestrator, trash internals, the
+  bulk-attribution loop, podcasts, stats, the push rows and `recordRepulledItemMeta` all get their
+  ids from `Object.keys` of the store or an enumerated target.
+- **Ids from a request that are already own-guarded:** lib/user, lib/media/user-routes,
+  lib/queue, lib/notifications, the music track route (:511), the per-video reheat, and the
+  relocate visibility check.
+- **Missed by the "every write route" claim:** see R3-1.
+
+### Finding
+
+- **R3-1 LOW (fix or accept with rationale): POST `/api/videos/:id/move` is a WRITE route in this
+  module that does not go through `ownMediaItem`, so the helper's comment ("Every WRITE route in
+  this module resolves the request id through this OWN-property lookup") is not accurate.**
+  `registerMoveRoute` (lib/media/routes.js:1321-1328) checks only `restrictedVideoMutation`, which
+  is an own lookup that answers "not restricted" for `__proto__`. It then hands `req.params.id` to
+  `moveItemToFolder`, which looks it up plainly (lib/media/move.js:221, and again at :451).
+
+  If that path ever reached its re-key tick with `__proto__`, it would write `filePath`, `id`,
+  `name`, `folderName` and `rootFolder` onto `Object.prototype` (:456-486). It would then
+  `delete freshDb.metadata['__proto__']` and assign `freshDb.metadata[newId] = Object.prototype`
+  (:488-489).
+
+  **Not exploitable today (verified):** `computeMoveTarget` returns "invalid source file path" for a
+  non-string `filePath` (move.js:138) before any fs or db write, and no built-in carries a string
+  `filePath`. The relocate confirm route (lib/ytdlp/index.js:6680 -> relocation.js:337) is the same
+  shape, and the same guard stops it at relocation.js:338. Both become pollution sinks only if some
+  other primitive first plants `Object.prototype.filePath`. The S-5 chapters route was that kind of
+  primitive, and it is now closed.
+
+  **Prescription:** in the move route, resolve the id with `ownMediaItem` and return 404 before
+  calling `moveItemToFolder`. Better still, make `move.js:221` itself use `hasOwnProperty.call`,
+  which also covers the relocate caller. Add `/move` to `media-write-proto-ids.test.js`. If this is
+  accepted instead, list the move and relocate paths in #242 and correct the helper's comment to
+  say which routes it covers.
+
+### #242 read paths (verified by reading, not run)
+
+- **`/video/:id`, `/audio/:id`, `/thumbnail`, `/storyboard`, `/preview`, `/api/subtitles/:id`,
+  `/api/transcript/:id` and GET `/api/videos/:id`** resolve a hostile id to `Object.prototype` or a
+  built-in function. None of those carries library data, so nothing leaks. The spread `...item`
+  copies no own enumerable keys. `filePath` is undefined, so the byte routes 404 at
+  `fs.existsSync`, and the thumbnail route falls back to the generic "Media" placeholder.
+- **Two read paths do call a writer, and both are no-ops:**
+  - `/audio/:id` can call `queueAudioExtract(undefined, undefined)`. That is deduped, the queue
+    drops it at `existsSync(undefined)`, and `setAudioStatus(undefined)` misses the store.
+  - `/video/:id` enters the transcode branch only if `needsTranscode` is truthy, which no built-in
+    sets.
+- **Not traced:** whether the subtitle and transcript sidecar lookups or the detail route's helpers
+  (`storyboardDescriptor`, `resolveItemChannelAvatarUrl`) throw on an undefined path. At worst that
+  is a 500, not a leak.
+- The plan's "read-only, no pollution possible" holds for the #242 list, but only as long as no
+  write primitive remains. R3-1 is the reason to close the move path as well.
+
+No CRITICAL or HIGH. S-1 through S-5 are closed. R3-1 is LOW (fix or accept in writing).
+
+Gate: APPROVED r3 @34a7fe27 — security-brief
+
+## Gate r3 - qa (@34a7fe27)
+
+Delta reviewed: a5eeb850 (r2 verdicts), a86c94b1 (merge of main v1.320.0), d24eb564 (fixes R1-R5,
+qa S2-S4), 45e97624 (binding), 21ffe9a1 (plan record), 00faee52 (merge of main 580e5f7f =
+v1.321.0), 34a7fe27 (probe `--theatre`). Instruments, run by this seat (Node 22.23.1,
+`FILETUBE_TEST_FFMPEG` = the scratchpad static ffmpeg 7.0.2):
+- every test file the branch changed vs main 580e5f7f (14) plus chapter-parse:
+  `tests 193 pass 193 fail 0 cancelled 0 skipped 0` (the real-ffmpeg tests ran:
+  `ok 23 - REACHABILITY ...`, `ok 34 - C6 ... finds NO gap`).
+- censuses (rbac-census, route-read/write-classification, comment-debt, css-token-lint, exec-plans,
+  overlay-containment, tech-debt): `tests 52 pass 52 fail 0`.
+- `npm run test:unit`: `tests 7218 pass 7218 fail 0 cancelled 0 skipped 0` (= the plan's hook).
+- `npm run lint:css`: `TOTAL 0`; `overlay-containment-lint --enforce`: `clean (0 violations)`;
+  eslint on the changed .js: `6 problems (0 errors, 6 warnings)`, all pre-existing no-unused-vars
+  in common.js.
+- `check-markers`: `3 issue(s)`: `stale approval @ecb61e1d` (the design line), `@7aa10540` and
+  `@330aaa8b` (the security-brief's r1/r2 lines; it has re-signed r3 @34a7fe27 above). Expected
+  while the gate runs.
+- probe, `git archive 34a7fe27` sandbox in /tmp, a real 2000 s mp3:
+  - without `--theatre`: 390x844 sheet 390x844, 47 buttons, min 88x44, 0 below 44, 0 past
+    viewport; 844x390 sheet 844x390, min 201x44, 0 below 44, 0 past viewport; 1440x900 760x868,
+    52x36 (desktop, by design), 0 past viewport. After Save at all three: notches
+    `[12.1125,24.1125,36.1125]` vs stored `[12.113,24.113,36.113]`. Audition playing at 243.9 s
+    for the 241.5 s boundary at all three. Drill buttons unchanged from r2.
+  - with `--theatre`: 390x844 and 844x390 `"theatre":"no-button","theatreOn":false` (the theatre
+    control is desktop-only; the phone numbers are identical to the run without it); 1440x900
+    `"theatre":"click","theatreOn":true`, editor 340,16 760x868, 0 past viewport, notches after
+    Save `[12.1125,24.1125,36.1125]` = stored. Screenshot checked: the editor sits over the theatre
+    stage, nothing clipped.
+
+### My r2 findings at 34a7fe27
+- **W1 (persistence-contract comment + plan): fixed.** lib/media/chapterSnap.js:21-28 now states the
+  shipped rule (a title-only text save within 0.5 ms keeps the provenance; any time or count change
+  is a plain typed list; revert keeps stored titles while the count is unchanged). The plan's
+  Disclosed gaps line is corrected and says so. Both match `carrySnapProvenance` and the new
+  `planRevert` branch (I read both).
+- **S2 (setup.js doc comment): fixed.** The "POSTs a single changed key..." comment sits directly on
+  `saveAutomationSetting` again (setup.js:711-715), and `wireChapterSnapLeadIn` has its own.
+- **S3 ("v1.319" labels): fixed.** `git diff 580e5f7f HEAD` (this branch vs main) adds ZERO lines
+  containing `v1.319` outside docs. The 43 left in `git diff ecb61e1d HEAD` all come from main's
+  theatre work (merged), not this branch.
+- **S4 (line-break path): fixed, VERIFIED.** My r2 file (a name carrying `<LF>[silencedetect @ 0x1]
+  silence_start: 1...`) through the r3 `runSilenceDetect` with real ffmpeg: rejected with "This file
+  name contains a line break..." and `spawned 0`; a normal file still reads `[{"start":5,"end":7}]`.
+  The message carries no path. Bound in chapter-snap-core.test.js:135-137 (LF and CR).
+- **S5 (Listen stash): fixed.** `applySnappedChapterTimes` filters `activeListenChapters` with the
+  same predicate (or re-points it when it aliased the queue), then `renavPlaying()`. Bound by
+  chapter-snap-client.test.js:407 ("does NOT come back after a dock-return").
+
+### Merge and tracker
+- tech-debt-tracker.md at HEAD: every row id from both parents (21ffe9a1 and main 580e5f7f) is
+  present (the set difference is empty), no duplicate ids, and the only rows added vs main are
+  #239-#242. The tech-debt census is green.
+- #242 (read-only unguarded lookups): I checked the listed READ routes against the tree
+  (lib/media/routes.js :735 / :2326 / :2382, lib/music/routes.js :545, lib/media/streams.js :133
+  / :191 / :217 / :234) - present and plain as described. Its completeness claim is slightly off;
+  see finding 1.
+
+### Findings (SUGGESTIONs only)
+
+1. SUGGESTION - one WRITE route is still resolved with a plain lookup, and two comments say none
+   is. `ownMediaItem`'s comment (lib/media/routes.js ~146-151: "Every WRITE route in this module
+   resolves the request id through this OWN-property lookup"), the header of
+   media-write-proto-ids.test.js and #242 ("Still plain, all READ-only") all miss POST
+   /api/videos/:id/move. It is registered in this module (:1321) but resolves the id in
+   lib/media/move.js:221 `db.metadata[id]`. MEASURED harmless today: in the sandbox I POSTed every
+   non-GET `:id` route with `__proto__`, and `/move` with `__proto__`, `constructor`, `toString`,
+   `valueOf` and `hasOwnProperty` (absolute and relative targets). Every one returned 400 `invalid
+   source file path` or 404, and nothing landed on Object.prototype. The inherited value has no
+   `filePath`, so the move stops before any write. Fix: route move.js through an own-property
+   lookup (it would also make the answer 404, not a confusing 400), or name it in #242 and scope
+   both comments to "every write route that looks the id up in this module".
+
+2. SUGGESTION - the S3 relabel doubled the date in five labels: `Chapter Snap (2026-09-24) (Dean
+   2026-09-24)` at public/css/style.css:7314, public/js/common.js:12905, server.js:537 and :6297,
+   and test/integration/chapter-snap.test.js:3. Cosmetic.
+
+Security standing section: no new exposure. R1 closes the prototype-pollution write through
+POST /chapters, /dimensions, /attribute-channel, /prepare-audio and DELETE, and my sweep of every
+non-GET `:id` route with `__proto__` found no pollution. The remaining plain lookups are reads
+(#242) plus the move route (finding 1, which stops before any write). The line-break path refusal
+runs before `spawn`. R5 (a text save of a snap edit requires the version) fails closed: an old tab
+gets 409 with a reload message, and nothing is overwritten. The revert confirm text and the 409
+body name the title behavior; all are rendered with textContent. The RBAC gates are unchanged.
+
+Plan vs tree: the r2 fix record's hook count (7218), the probe numbers (both with and without
+theatre) and the finding-to-fix mapping hold where I re-ran them.
+
+Tree: nothing written but this section (the security-brief r3 section above was already in the
+working tree). Scratch: /tmp/qa-chapter-snap-34a7fe27 (the archive sandbox; the two scratch tests
+I added there were deleted after running) and the session scratchpad.
+
+Gate: APPROVED r3 @34a7fe27 — qa
+
+## Gate r3 - adversary (@34a7fe27)
+
+Instruments, verbatim (Node 22.23.1, FILETUBE_TEST_FFMPEG = the static ffmpeg 7.0.2):
+- The chapter-snap files plus media-write-proto-ids at 34a7fe27: `# tests 83 # pass 83 # fail 0
+  # cancelled 0 # skipped 0`.
+- The sandbox came from `git archive 34a7fe27` and was diff-clean against the commit before and
+  after every mutant batch.
+
+The r2 findings, re-measured:
+1. **W1 (revert erased typed titles): FIXED per the Architect's ruling.**
+   - Snap, then rename "Second Song" -> "Heartbeats" and "Fourth Song" -> "Crosses" in the text
+     editor, then Revert. Stored after the revert: `[0,"Opening"] [60,"Heartbeats"]
+     [120,"Third Song"] [180,"Crosses"] [240,"Closer"]`. These are the source times with the
+     typed titles, a plain list (`edited:false`). The like on `::c3` reads "Crosses" at 180 (the
+     same song, renamed).
+   - A count-changing revert first gets 409 "... takes the source's titles too ...". After the
+     yes it gets 200: the manual list is dropped and the titles are the source's.
+   - The unchanged-count confirm now says "Your chapter titles are kept."
+2. **W2 (nav not re-registered): FIXED.** I drove the REAL music.js harness through the Extras
+   entry and a count-changing onSaved, with the server re-listing:
+   - In order, 3->2 while playing `f1::c1`: registrations 1 -> 3. The final one has no stale
+     Next and Prev -> `f1::c0`. The artist/random station fetches fire, so the radio arms on the
+     new last chapter.
+   - Shuffled, a dropped row BEFORE the playing one: Prev/Next follow the re-listed order (Next
+     -> `f1::c0`).
+   - The PLAYING chapter itself dropped (`f1::c2` at 130 s): it re-derives to `f1::c1`,
+     re-registers (1 -> 4), Prev -> `f1::c0`, and the radio arms.
+   - The listen stash is bound by the builder's "Listen mode" test; my T7 mutant turns it red.
+3. **S3 (version optional): FIXED.** On a snap edit:
+   - A no-version text save gets 409, and so does a no-version CLEAR.
+   - A numeric version gets 400.
+   - A stale version gets 409, and a typed duplicate gets 400.
+
+   The stored list is byte-identical after all five. A plain typed list still saves without a
+   version (200, 200).
+
+The new code, attacked:
+- **R1 `ownMediaItem`: no pollution reachable.**
+  - A dynamic sweep of **all 211 registered routes** (83 with URL params; the app has no nested
+    routers) sent 5 hostile ids each (`__proto__`, `constructor`, `toString`, `valueOf`,
+    `hasOwnProperty`). The ids went in the URL params AND in the body fields `id`, `ids`,
+    `mediaId`, `mediaIds`, `itemId`, `items`, `videoId`, `trackId`, `episodeId` and `bookId`:
+    **630 requests, 0 new own properties** on Object.prototype, Object, Function.prototype,
+    Array.prototype, String.prototype, or the toString/hasOwnProperty/valueOf functions.
+  - A scan afterwards left the one real item with only its normal own keys.
+  - For a real id the helper is `hasOwnProperty` + the same read (`req.params.id` is always a
+    string), and the builder's discrimination test saves a real item: behavior is unchanged.
+  - Per-route mutants turning red: the helper made a plain lookup (6 fail), /dimensions alone
+    (5 fail), /prepare-audio alone (5 fail). DELETE alone makes the proto test file CANCEL (it
+    hangs, `# cancelled 1`), which is killed, not green.
+  - Out of scope, pre-existing: `POST /api/music/progress` accepts a `__proto__` id with 200
+    (a SQLite row, no pollution).
+- **R2 "titles match -> drop the manual list": correct as built.**
+  - Measured: a plain snap then revert drops the list and the times go back to
+    `[0,60,120,180,240]`. On a description base the list is dropped and the source reads
+    `description`.
+  - The branch drops the snapped TIMES, which is the purpose of a revert. It cannot drop a
+    TYPED time: a text save that changes a time already loses the provenance (carry rule), so
+    that item has no Revert.
+- **Spot check of 84/84:** 11 of my own mutants, all RED (T9 by cancellation). They cover:
+  - the titlesMatch branch forced to always drop, to always keep, and to take the source titles;
+  - the S3 guard removed;
+  - both renavPlaying calls removed;
+  - the listen stash left unpatched;
+  - the helper and three per-route lookups.
+- **Merges, interplay only:** v1.320 added `navIndex` (set by `registerTrackNav`) and an
+  autoplay-off queue prune. `renavPlaying` goes through `registerTrackNav`, so `navIndex` follows
+  the seam. The v1.321 theatre merge touches no chapter-snap code path.
+
+Findings:
+1. SUGGESTION (measured): keep-titles cannot tell a TYPED rename from an old SOURCE title.
+   - Snap, then a reheat re-titles the source ("... (Remastered)", times +0.5 s), then Revert.
+     Stored: `[0,"Opening"] [60.5,"Second Song"] ...`. That is the new times with the OLD source
+     titles, as a plain manual list: no Edited, no Revert, and it shadows the source until the
+     text editor clears it.
+   - Nothing is destroyed (`item.chapters` holds the new titles).
+   - A later fix could record the snap-time source title per element and keep only titles that
+     differ from it.
+2. SUGGESTION (carried from r2, safe direction): a snap made from Music now-playing does not
+   refresh the watch player's `currentData.chaptersVersion`. A text save there on the same
+   loaded item now gets 409 "Reload the page". I did not drive this.
+
+No CRITICAL, no WARNING open.
+
+Tree: my sandbox and temp dirs are removed. Apart from this appended section (and the other seats'
+sections), `git status` is clean. The pre-existing untracked `node_modules` symlink was left
+untouched.
+
+Gate: APPROVED r3 @34a7fe27 — adversary
