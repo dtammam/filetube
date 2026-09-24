@@ -91,17 +91,29 @@ async function boot(run, opts) {
   Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
   mp.play = () => { media.plays += 1; return Promise.resolve(); };
   mp.pause = () => {};
+  const fetchLog = [];
+  const toasts = [];
+  const navs = [];
   global.fetch = (url, init) => {
     const u = String(url);
     const method = (init && init.method) || 'GET';
+    fetchLog.push(method + ' ' + u);
     if (method !== 'GET') return Promise.resolve({ ok: true, json: async () => ({}) });
     if (u === '/api/videos/f1') {
       videoGets.push(u);
+      if (server.fail) return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
       const body = { id: 'f1', type: 'audio', title: 'The Mix', chapters: server.chapters.map((c) => ({ ...c })), chaptersSource: server.chaptersEdited ? 'manual' : 'embedded', chaptersEdited: server.chaptersEdited, duration: 180 };
       const res = { ok: true, json: async () => body };
       if (server.hold) return new Promise((resolve) => parked.push(() => resolve(res)));
       return Promise.resolve(res);
     }
+    const other = u.match(/^\/api\/videos\/([^/?]+)$/);
+    if (other && server.files && server.files[other[1]]) {
+      videoGets.push(u);
+      const f = server.files[other[1]];
+      return Promise.resolve({ ok: true, json: async () => ({ id: other[1], type: 'audio', chapters: f.chapters.map((c) => ({ ...c })), chaptersSource: 'manual', chaptersEdited: !!f.chaptersEdited, duration: f.duration || 90 }) });
+    }
+    if (server.listFail && /^\/api\/music\?/.test(u)) return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
     if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
     const idm = u.match(/^\/api\/music\/([^?]+)$/);
     if (idm) {
@@ -129,25 +141,30 @@ async function boot(run, opts) {
         Promise.resolve().then(() => { media.t = target; });
         return true;
       },
-      setTrackNav: () => {}, isLoopEnabled: () => false, setLoop: () => {}, close: () => {},
+      setTrackNav: (nav) => { navs.push(nav || {}); }, isLoopEnabled: () => false, setLoop: () => {}, close: () => {},
     },
   };
   dom.window.fetchCurrentUser = () => Promise.resolve({ user: { role: 'admin' } });
   dom.window.fetchLikedTotal = () => Promise.resolve(0);
-  dom.window.showToast = () => {};
+  dom.window.showToast = (m) => { toasts.push(m); };
   dom.window.addToQueue = () => {};
   dom.window.showChapterSnapEditor = (id, o) => { editor.push({ id, opts: o }); return { close() {} }; };
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
   require('../../public/js/music-skins.js');
   delete require.cache[require.resolve('../../public/js/skin-surface.js')];
   require('../../public/js/skin-surface.js');
+  // The skin engine config (the pocket menus' onPlay = music.js playFromMenu), captured the way
+  // the r1 qa seat did: through the pop-out shell factory music.js hands it to.
+  let engineCfgFactory = null;
+  { const SS = dom.window.FileTubeSkinSurface || global.FileTubeSkinSurface; const orig = SS.createPopoutShell; SS.createPopoutShell = (c) => { engineCfgFactory = c; return orig(c); }; }
   try {
     delete require.cache[musicPath];
     require(musicPath);
     registered.init(dom.window.document.getElementById('view-root'));
     await settleN(12);
     await run(dom, {
-      editor, loads, media, videoGets, server, registered, returnListeners,
+      editor, loads, media, videoGets, server, registered, returnListeners, fetchLog, toasts, navs,
+      engineCfg: () => engineCfgFactory && engineCfgFactory.engineConfigFor(dom.window.document.getElementById('music-nowplaying-panel'), dom.window),
       setVisibility: (v) => { visibility = v; },
       setPlayerState: (v) => { playerState = v; },
       release: () => { while (parked.length) parked.shift()(); },
@@ -384,4 +401,207 @@ test('#268: a CLOSED player with the same id is a genuine load, never an adopt -
     assert.strictEqual(ctx.media.seeks.length, seeksBefore, 'no music-side seek on a genuine load (the element read 0 mid-load)');
     assert.strictEqual(ctx.media.t, 70, 'the player\'s own resume stands');
   });
+});
+
+// ---- Gate r1 fixes -------------------------------------------------------------------------------
+
+// P1 (gate r1 CRITICAL, adversary 1 = qa 1): the continue / re-mount arms never seek.
+test('r1 P1: a re-mount of /music?play=<the LOADED chapter> (history BACK) with the file rolled on keeps playing where it is - no seek, no forced play', async () => {
+  await boot(async (dom, ctx) => {
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'precondition: the ?play= chapter is loaded');
+    ctx.media.t = 130; // the playthrough rolled on into chapter 3 while f1::c0 stayed the loaded id
+    const seeks = ctx.media.seeks.length;
+    const plays = ctx.media.plays;
+    ctx.registered.destroy();
+    ctx.registered.init(dom.window.document.getElementById('view-root'));
+    await settleN(20);
+    assert.ok(ctx.loads.filter((l) => l.id === 'f1::c0').length >= 2, 'the re-mount reached loadTrack again (an adopt - non-vacuous)');
+    assert.strictEqual(ctx.media.t, 130, 'the playhead stays where the file played to');
+    assert.deepStrictEqual(ctx.media.seeks.slice(seeks), [], 'no seek');
+    assert.strictEqual(ctx.media.plays, plays, 'no forced play');
+  });
+});
+
+test('r1 P1: Prev/Next is a pick - Prev onto the LOADED chapter after the file rolled past it goes back to that chapter', async () => {
+  await boot(async (dom, ctx) => {
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c1');
+    // the file rolls on into chapter 3: the chapter watcher re-registers nav around chapter 3
+    ctx.media.t = 130;
+    dom.window.document.getElementById('media-player').dispatchEvent(new dom.window.Event('timeupdate'));
+    await settleN(4);
+    const nav = ctx.navs[ctx.navs.length - 1];
+    assert.ok(nav && typeof nav.onPrev === 'function', 'a Prev is armed around chapter 3');
+    nav.onPrev();
+    await settleN(6);
+    assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c1').data.chapterStartSec, 60, 'Prev picked chapter 2 (the loaded id: an adopt)');
+    assert.strictEqual(ctx.media.t, 70, 'and moved the playhead back into it (its saved place)');
+  });
+});
+
+test('r1 P1 (qa S5): the adopt test is player.js\'s own isAdoptLoad when it is on the page', async () => {
+  await boot(async (dom, ctx) => {
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    await snapSave(dom, ctx, MOVED);
+    const calls = [];
+    dom.window.isAdoptLoad = (cur, id, state) => { calls.push([cur, id, state]); return false; }; // the player says: NOT an adopt
+    const seeks = ctx.media.seeks.length;
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.deepStrictEqual(calls[0], ['f1::c1', 'f1::c1', 'docked'], 'asked the player\'s predicate with (currentId, id, state)');
+    assert.deepStrictEqual(ctx.media.seeks.slice(seeks), [], 'its "no adopt" answer wins - music does not seek');
+  });
+});
+
+// P2 (gate r1 W, adversary 2 = qa 2): a partial queue is patched in place, never re-listed.
+const RECENT = { label: 'Recently Played', ctx: { src: 'music', filter: 'recent-listening' } };
+const G9_ROW = { id: 'g9::c0', title: 'Elsewhere', artist: 'X', album: 'Y', albumKey: 'X␟Y', durationSec: 30, chapterStartSec: 0, source: 'library-chapter', streamSrc: '/video/g9', artUrl: '/thumbnail/g9', progressEndpoint: '/api/progress', liked: false };
+const g9row = () => ({ ...G9_ROW });
+
+test('r1 P2: a return after a remote edit patches a FLAT pocket-menu list [f1::c1, g9::c0] IN PLACE - no library re-list, the list and its Next stay', async () => {
+  await boot(async (dom, ctx) => {
+    const ec = ctx.engineCfg();
+    assert.ok(ec && ec.menu && typeof ec.menu.onPlay === 'function', 'the pocket-menu engine config');
+    const G9 = g9row();
+    ec.menu.onPlay({ tracks: [tracksFixture()[1], G9], index: 0, play: RECENT });
+    await settleN(30);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c1');
+    const crumb = dom.window.document.getElementById('music-crumb');
+    assert.strictEqual(crumb.textContent, 'Recently Played');
+    const ids = () => Array.prototype.map.call(dom.window.document.querySelectorAll('.music-song-row'), (r) => r.getAttribute('data-id'));
+    assert.deepStrictEqual(ids(), ['f1::c1', 'g9::c0']);
+    ctx.server.chapters = MOVED; ctx.server.chaptersEdited = true; // same count, chapter 2 now 75 s
+    const logFrom = ctx.fetchLog.length;
+    fire(dom, 'visibilitychange'); await settleN(30);
+    const after = ctx.fetchLog.slice(logFrom);
+    assert.deepStrictEqual(after.filter((u) => /\/api\/music\?/.test(u)), [], 'no /api/music re-list');
+    assert.ok(after.indexOf('GET /api/videos/f1') >= 0, 'the playing file was re-checked');
+    assert.deepStrictEqual(ids(), ['f1::c1', 'g9::c0'], 'the flat list is still the picked list');
+    assert.ok(!crumb.hidden && crumb.textContent === 'Recently Played', 'its crumb stays');
+    assert.match(row(dom, 'f1::c1').textContent, /0:45/, 'the queued chapter took its new span in place');
+    const nav = ctx.navs[ctx.navs.length - 1];
+    const before = ctx.loads.length;
+    nav.onNext(); await settleN(10);
+    assert.deepStrictEqual(ctx.loads.slice(before).map((l) => l.id), ['g9::c0'], 'Next is still the list\'s next row');
+  }, { extraRows: [g9row()] });
+});
+
+test('r1 P2: a flat list whose chapter was DROPPED by a remote edit loses only that row (redrawn from the list, not re-listed)', async () => {
+  await boot(async (dom, ctx) => {
+    const ec = ctx.engineCfg();
+    const rows = tracksFixture();
+    ec.menu.onPlay({ tracks: [rows[0], rows[2], g9row()], index: 0, play: RECENT });
+    await settleN(30);
+    ctx.server.chapters = FILE_CHAPTERS.slice(0, 2); // chapter 3 no longer exists
+    const logFrom = ctx.fetchLog.length;
+    fire(dom, 'visibilitychange'); await settleN(30);
+    assert.deepStrictEqual(ctx.fetchLog.slice(logFrom).filter((u) => /\/api\/music\?/.test(u)), [], 'no library re-list');
+    const ids = Array.prototype.map.call(dom.window.document.querySelectorAll('.music-song-row'), (r) => r.getAttribute('data-id'));
+    assert.deepStrictEqual(ids, ['f1::c0', 'g9::c0'], 'only the dropped chapter left the list');
+    assert.strictEqual(dom.window.document.getElementById('music-crumb').textContent, 'Recently Played');
+  }, { extraRows: [g9row()] });
+});
+
+test('r1 P2: the album drill (the file\'s COMPLETE list) still re-lists on a count change; a failed passive re-list shows no "saved" toast', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.chapters = FILE_CHAPTERS.concat([{ startTime: 150, title: 'Bonus' }]); // 3 -> 4 chapters elsewhere
+    ctx.server.listFail = true;
+    const logFrom = ctx.fetchLog.length;
+    fire(dom, 'visibilitychange'); await settleN(30);
+    assert.ok(ctx.fetchLog.slice(logFrom).some((u) => /\/api\/music\?/.test(u)), 'the drill re-lists (a new chapter needs its own row)');
+    // render() CATCHES a failed list fetch (it never rejects), so the "Chapters saved, but the list
+    // could not be refreshed" toast in applySnappedChapterTimes is not reached by a failed re-list at
+    // all - measured here on the passive path (qa W2's toast concern, by reading, does not occur).
+    assert.deepStrictEqual(ctx.toasts, [], 'no "Chapters saved" toast on a device that saved nothing');
+  });
+});
+
+// P3 (gate r1 qa W3, the Architect's ruling): other queued chaptered files are verified on their first pick.
+const G2_ROWS = [
+  { id: 'g9::c0', title: 'G One', artist: 'X', album: 'Y', albumKey: 'X␟Y', durationSec: 40, chapterStartSec: 0, source: 'library-chapter', streamSrc: '/video/g9', artUrl: '/thumbnail/g9', progressEndpoint: '/api/progress', liked: false },
+  { id: 'g9::c1', title: 'G Two', artist: 'X', album: 'Y', albumKey: 'X␟Y', durationSec: 50, chapterStartSec: 40, source: 'library-chapter', streamSrc: '/video/g9', artUrl: '/thumbnail/g9', progressEndpoint: '/api/progress', liked: false },
+];
+const g2 = () => G2_ROWS.map((r) => ({ ...r })); // fresh copies: a save patches rows IN PLACE
+const G9_MOVED = [{ startTime: 0, title: 'G One' }, { startTime: 48, title: 'G Two' }];
+
+test('r1 P3: after a return, the first pick of ANOTHER queued file\'s moved chapter asks the server once and lands on its NEW start; a second pick does not ask again', async () => {
+  await boot(async (dom, ctx) => {
+    const ec = ctx.engineCfg();
+    const rows = tracksFixture();
+    const G2 = g2();
+    ec.menu.onPlay({ tracks: [rows[0], G2[0], G2[1]], index: 0, play: RECENT });
+    await settleN(30);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'file f1 plays');
+    ctx.server.files = { g9: { chapters: G9_MOVED, chaptersEdited: true, duration: 90 } }; // another device moved g9's chapter 2 40 -> 48
+    fire(dom, 'visibilitychange'); await settleN(20);
+    assert.deepStrictEqual(ctx.videoGets, ['/api/videos/f1'], 'the return re-checked only the playing file');
+    click(dom, row(dom, 'g9::c1')); await settleN(20);
+    assert.deepStrictEqual(ctx.videoGets, ['/api/videos/f1', '/api/videos/g9'], 'the first pick of g9 asked the server');
+    const load = lastLoadOf(ctx.loads, 'g9::c1');
+    assert.ok(load, 'and then played it');
+    assert.strictEqual(load.data.chapterStartSec, 48, 'at the NEW start');
+    click(dom, row(dom, 'g9::c0')); await settleN(20);
+    assert.strictEqual(ctx.videoGets.length, 2, 'g9 is verified: no second request until the next return');
+  }, { extraRows: g2() });
+});
+
+test('r1 P3: without a return, a pick of another file never asks (the control axis)', async () => {
+  await boot(async (dom, ctx) => {
+    const ec = ctx.engineCfg();
+    const G2 = g2();
+    ec.menu.onPlay({ tracks: [tracksFixture()[0], G2[0], G2[1]], index: 0, play: RECENT });
+    await settleN(30);
+    ctx.server.files = { g9: { chapters: G9_MOVED } };
+    click(dom, row(dom, 'g9::c1')); await settleN(20);
+    assert.deepStrictEqual(ctx.videoGets, [], 'no request');
+    assert.strictEqual(lastLoadOf(ctx.loads, 'g9::c1').data.chapterStartSec, 40, 'the queued row plays as listed');
+  }, { extraRows: g2() });
+});
+
+// P4 (gate r1 adversary 3): the three unbound #269 arms.
+test('r1 P4: nothing of the file playing - the re-check falls back to the chapter album on screen', async () => {
+  await boot(async (dom, ctx) => {
+    dom.window.FileTube.player.currentId = null; // the player was closed; the album drill stays on screen
+    ctx.server.chapters = MOVED;
+    fire(dom, 'visibilitychange'); await settleN(10);
+    assert.deepStrictEqual(ctx.videoGets, ['/api/videos/f1'], 'asked for the album on screen');
+    assert.match(row(dom, 'f1::c0').textContent, /1:15/, 'and applied its change');
+  });
+});
+
+test('r1 P4: a FAILED re-check (offline) clears the in-flight flag - the next return asks again and applies', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.fail = true;
+    fire(dom, 'visibilitychange'); await settleN(10);
+    assert.strictEqual(ctx.videoGets.length, 1, 'the offline return tried once');
+    ctx.server.fail = false; ctx.server.chapters = MOVED;
+    fire(dom, 'visibilitychange'); await settleN(10);
+    assert.strictEqual(ctx.videoGets.length, 2, 'the next return asked again');
+    assert.match(row(dom, 'f1::c0').textContent, /1:15/, 'and applied the change');
+  });
+});
+
+test('r1 P4: an answer that lands after the view was torn down applies nothing (the post-await liveness check)', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.hold = true; ctx.server.chapters = MOVED;
+    fire(dom, 'visibilitychange'); await settleN(4);
+    assert.strictEqual(ctx.videoGets.length, 1, 'in flight');
+    ctx.registered.destroy();
+    const navCalls = ctx.navs.length;
+    ctx.release(); await settleN(10);
+    assert.strictEqual(ctx.navs.length, navCalls, 'no nav re-registered from a dead view (applySnappedChapterTimes never ran)');
+  });
+});
+
+test('r1 S4: queuedChaptersDiffer sees a +0.5 s shift of one queued chapter (the start precision)', () => {
+  delete global.window; delete global.document;
+  delete require.cache[musicPath];
+  const { queuedChaptersDiffer } = require(musicPath);
+  const rows = tracksFixture();
+  const shifted = FILE_CHAPTERS.map((c, i) => (i === 0 ? c : { startTime: c.startTime + 0.5, title: c.title }));
+  assert.strictEqual(queuedChaptersDiffer([rows[1]], 'f1', shifted), true, 'a subset queue [c1]: the shift is seen on its start');
+  assert.strictEqual(queuedChaptersDiffer([rows[2]], 'f1', shifted), true, 'the last row: the shift is seen on its start');
+  delete require.cache[musicPath];
 });

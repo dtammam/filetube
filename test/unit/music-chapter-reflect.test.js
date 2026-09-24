@@ -457,8 +457,9 @@ test('v1.311 (gate r2 F3): a chapter tapped from the SONGS list exits after its 
 test('v1.311 (gate r2 F3): the skin-select and up-next callsites pass soloChapter (classification lock)', () => {
   const raw = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   const js = raw.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, ''); // strip line + block comments
-  assert.match(js, /onSelectIndex:\s*function\s*\(i\)\s*\{\s*playAt\(i,\s*\{\s*soloChapter:\s*true\s*\}\)/, 'the skin track-select callsite passes soloChapter:true');
-  assert.match(js, /if\s*\(!isNaN\(idx\)\)\s*playAt\(idx,\s*\{\s*soloChapter:\s*true\s*\}\)/, 'the now-playing up-next row-tap callsite passes soloChapter:true');
+  // Chapter Snap persist (#268 gate r1): both are user PICKS too (pick:true arms the adopt re-seek).
+  assert.match(js, /onSelectIndex:\s*function\s*\(i\)\s*\{\s*playAt\(i,\s*\{\s*soloChapter:\s*true,\s*pick:\s*true\s*\}\)/, 'the skin track-select callsite passes soloChapter:true (and pick:true)');
+  assert.match(js, /if\s*\(!isNaN\(idx\)\)\s*playAt\(idx,\s*\{\s*soloChapter:\s*true,\s*pick:\s*true\s*\}\)/, 'the now-playing up-next row-tap callsite passes soloChapter:true (and pick:true)');
 });
 
 test('v1.311 (gate r2 F1): solo-selecting the LAST chapter does NOT arm a solo-exit (no double-prime / duplicate append)', async () => {
