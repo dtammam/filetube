@@ -1242,3 +1242,267 @@ as briefed. Scratch is in `/tmp/claude-1000/.../scratchpad/qa-csp/`: `probe-r2.o
 `sbr2/test/unit/qa-r2-scratch.test.js` with QA-A to QA-F.
 
 Gate: CHANGES r2 @20f94dea — qa
+
+## Gate r3 - security-brief (@bdb5ad05)
+
+**Could NOT complete (no Bash):** I ran no `git diff`, no test and no status check. I confirmed the
+branch ref = `bdb5ad056582...` (the ref file) and read public/js/music.js as it is at the head. I
+did not check that the branch's own commits leave server.js / lib / player.js untouched; the
+Architect reports he verified it. I did NOT trace `playFromMenu` (:3697) past its first lines. That
+the cached pocket-menu picks reach the verify only through `playAt` (:3488) is what the brief and
+the code comment say, not a path I traced.
+
+Re-verified at bdb5ad05 (I traced each path in the code):
+- **No new request target.** The new code (:1886-1965) calls only
+  `fetchJson('/api/videos/' + encodeURIComponent(baseId))`, the same authenticated route I
+  checked in r1/r2 (404 for missing or `!mediaVisibleTo`). `verifiedEpoch` and `verifyWaiters`
+  are `Object.create(null)` maps, so keys taken from queue ids reach no prototype. They live in
+  memory and are never written to storage or sent anywhere. The new code adds no write.
+- **No automatic request storm.**
+  - A visibility return only bumps `returnEpoch` and sends at most ONE re-check GET
+    (`chapterRecheckInFlight`). A flap sends nothing else.
+  - The lazy verify runs only from `playAt`, i.e. a user pick or a playback advance. It adds no
+    timer or listener.
+  - Only one check per file is ever in flight: a second `playAt` for that file while one is in
+    flight only replaces `verifyWaiters[baseId]` and returns (:1938-1940). So the flat
+    segment-end band's `playAt` on every tick costs no new request.
+  - Once an answer lands, `verifiedEpoch` holds the file until the next return; a successful apply
+    also marks it verified (:1769). So without a new return, a working server gets at most one
+    GET per file per return.
+  - One bounded exception (INFO-5): a return that lands while a verify is in flight leaves
+    `verifiedEpoch[file]` one epoch behind, so the nested `playAt` asks once more. That is one
+    extra GET per such overlapping return. The user's own visibility changes drive it; it is not
+    self-sustaining.
+- **404 applies nothing and plays.** `fetchJson` throws on `!res.ok`. The catch arm (:1954-1963)
+  applies nothing. For the current waiter with its row still queued, it marks the file verified
+  just for the nested `playAt` (so that call plays and does not recurse) and then restores the
+  prior value. So the row plays as queued, the "held" advance resumes through `loadTrack`, and the
+  next pick asks again.
+- **The listeners and liveness are unchanged since r2.** `{ signal }` is on both listeners, and
+  `signal.aborted` is checked after each await.
+- **Strings are still escaped.** No new sink: the answer reaches the screen only through
+  `applySnappedChapterTimes` and the escaped row, header and panel builders I traced in r1/r2.
+
+Findings:
+- **INFO-4 (from r2; its effect is wider now; not a security issue).** A verify GET that never
+  settles (no `fetch` timeout) now marks the whole FILE as waiting in `verifyWaiters`, not just
+  one pick. Every later `playAt` of that file's chapters only replaces the waiter and returns
+  true. If the waiting pick was an advance, the element also stays paused (:1934-1936). It clears
+  when the request settles, when the view is torn down, or when a return re-check targets that
+  file (it marks the file verified, so `playAt` skips the verify). This is the user's own
+  availability under a stalled network; no attacker can reach it. A timeout on the verify's fetch
+  (e.g. `AbortSignal.timeout`, then the existing catch arm plays the row) would bound it. I leave
+  that call to the QA/adversary seats as a reliability question.
+- **INFO-6 (suspicion, not traced): a deleted file in a repeating queue.** When the file behind a
+  verify is deleted, the 404 arm plays the row. The player's own `/track` request then fails. If
+  the player auto-advances on a media error, AND a loop/repeat mode wraps the queue, each step
+  would add one verify GET per row on top of the `/track` requests that chain already makes. I did
+  not trace whether the player advances on an error or whether the queue wraps. The chain itself
+  would be pre-existing; this branch would only add one same-route GET per step.
+- **Older INFO notes:** INFO-1 to INFO-3 from r1 still stand; INFO-5 is described above.
+
+No CRITICAL / HIGH / MEDIUM / LOW.
+
+Gate: APPROVED r3 @bdb5ad05 — security-brief
+
+## Gate r3 - qa (@bdb5ad05)
+
+Delta re-confirmation of my r2 findings against 1a0b1a10, 02e57ddb and 020e313b. Node 22.23.1,
+FILETUBE_TEST_FFMPEG set. `git diff 20f94dea bdb5ad05 -- public/js/player.js server.js lib`: 0
+lines. The only code change since r2 is music.js (+97 / -44 in the diff stat), plus tests, the
+plan and the tracker.
+
+Instruments:
+- `node --test test/unit/chapter-snap-resume.test.js`: `# tests 42 # pass 42 # fail 0`.
+- `test/unit/chapter-snap*.test.js music*.test.js *pocket*.test.js player-adopt*.test.js
+  *census*.test.js test/integration/chapter-snap*.test.js *pocket*.test.js`: `# tests 875 # pass
+  875 # fail 0 # skipped 0`.
+- `npm run test:unit`: `# tests 7367 # pass 7367 # fail 0`.
+- `lint:css`: `TOTAL 0`. `lint:overlay`: `clean (0 violations)`. `eslint .`: `6 problems (0 errors,
+  6 warnings)`, the same six in common.js. eslint on music.js and the test file: exit 0.
+- `check-markers.sh`: exit 1, 3 findings, all `stale approval`: @7482e432 (the design line),
+  @5d1e9ada and @20f94dea (the earlier seats' approvals). This is the same active-plan staleness I
+  measured at r2, which clears when the plan moves to completed/. Not a finding.
+- Real Chromium (`git archive bdb5ad05` sandbox; the builder's probe and the adversary's probe,
+  byte-identical copies):
+
+  | Drive | AFTER bdb5ad05 |
+  |---|---|
+  | `PROBE_REAL=1 PROBE_STALE=1 PROBE_RELIST=1` (390x844): moved chapter tap / after reload | t 500.4 `::c2` / t 502.6 `::c2` |
+  | `PROBE_REAL=1 PROBE_268=1`: re-tap of the loaded chapter | t 500.5, playing, `::c2` |
+  | `PROBE_REAL=1 PROBE_269=1`: B on return | 1 request, new spans, tap t 500.3 `::c2` |
+  | `PROBE_REAL=1 PROBE_FLAT=1`: Liked Songs `[c1]`, remote move | requests `["/api/videos/<id>"]` only; crumb and rows kept; paused at the new end t 497.8 |
+  | adversary `MODE=268`: `?play=` history BACK | t 508, row `c2`; stored progress 514.03 |
+
+My repros, re-run in the builder's harness on the bdb5ad05 sandbox (`sbr3/test/unit/qa-r3-scratch.test.js`):
+- **QA-A (r1 CRITICAL re-init):** `t=130 newSeeks=[] newPlays=0`. Held.
+- **QA-B:** the "Jump back in" tile and the drill Play button keep t 130 with no seek. The control
+  row tap (a pick) still seeks, `[0]`.
+- **QA-C (r1 W2, flat Recently Played return):** `fetches=["GET /api/videos/f1"]`, the same rows,
+  the crumb "Recently Played", `toasts=[]`, and `onNext` loads `g9::c0`. Held.
+- **QA-D (r1 W3):** tapping another queued file's moved chapter makes 1 GET and loads start 40. The
+  second pick makes 0 requests. Held.
+- **QA-F (r2 N1, the cached pocket Songs pick of a file not queued at the return):**
+  `gets=["/api/videos/g9"]`, `load start=40`. At r2 it was `gets=[]`, start 30. **N1 FIXED as
+  prescribed (option a).**
+- **QA-E (r2 N2, the flat segment end into an unverified file with its GET held across 59.5 ->
+  61.4):** `g9 GETs=1`, `loads=[]`, `pauses=1`, then after the release exactly one load, `g9::c1`.
+  At r2 it was 5 GETs, no hold, and bleed. **N2 FIXED.**
+- **QA-J (cold load):** picks of two files with no return make `videoGets=[]`. The builder's tests
+  bind "not asked twice after verification" and "the next return asks again". I read their
+  assertions, and E2/E3/E4 are RED in the plan's table.
+- **QA-G (hold, then the answer lands with g9::c2 moved to 65):** 1 GET, held, then one load
+  `g9::c2@65`.
+- **QA-H (hold, then the check FAILS):** 1 GET, held, then one load of the queued row `g9::c2@60`.
+  No stuck pause. In production a genuine load plays through the player's own
+  `handleResumePlayback`, so the harness's load stub standing in for "resumes" is reasoned, not
+  measured. The probe shows the load path playing.
+
+r2 docs findings:
+- **N3: FIXED.** #268's CLOSED text now names the pick-only rule and the BACK re-mount.
+- **N4: FIXED.** The P2 comment says a searched single-file drill is still treated as complete, and
+  the mixed-drill test's name says what it drives.
+- #269's CLOSED text states the epoch rule. #270 (c) states the wait and the hold. #267 is
+  unchanged and still OPEN.
+
+Code read of the epoch rule:
+- `chapterFileNeedsVerify` is false at epoch 0.
+- A return bumps the epoch, then verifies the file it asks about. A failed ask re-opens it (epoch -
+  1), but only if nothing verified the file meanwhile.
+- An apply marks its file verified. A verify's answer records the epoch it started under, so a
+  return during the ask leaves the file unverified for the new epoch, which is correct.
+- The failure arm verifies the file just long enough to play the queued row, then restores the old
+  value, so the next pick asks again and the check cannot loop.
+- The latest waiter wins, and `playGen` stands down a superseded pick.
+
+Every touched comment matches the code.
+
+New finding:
+
+1. **WARNING (safe to ship, disclosed below) - a held advance has no exit when the waited row is
+   gone, or when the GET never settles.** `verifyChapterFileThenPlay` pauses the element for an
+   advance (`keepPosition`) and resumes only through `playAt` of the waiting row. If the answer
+   DROPS that row, `queue.indexOf(w.item)` is -1, so nothing plays and the element stays paused.
+   The list also does not move on to the row after it.
+   - **QA-I:** flat `[f1::c0, g9::c2, g9::c0]`, then a return, then another device reduces g9 to 2
+     chapters. At f1::c0's end: 1 GET, held; after the answer, `loads=[]`, `paused=true`, and the
+     rows become `["f1::c0","g9::c0"]`.
+   - **QA-I2:** pressing Play recovers. The next in-band tick loads `g9::c0` (measured).
+   - The same no-exit shape applies to a GET that hangs, because fetch has no timeout. That is
+     reasoned, not measured, and it is the security-brief's INFO-2 in a new form: before r2 fix it
+     bled, now it holds.
+
+   Why I judge it safe to ship: it needs a flat pocket list holding chapters of two files, a
+   return, and a remote REMOVAL of exactly the next queued chapter. That is rare. It costs one Play
+   press, with no wrong audio and no data effect, and every other hold outcome (answer, change,
+   failure) resumes correctly (QA-E, QA-G, QA-H).
+
+   Disclosure asked for: a #270 (e) line at close-out ("an advance held for a check stays paused
+   if the answer drops the waited row or the GET never settles; Play recovers"). The tracker lives
+   in docs/exec-plans, which check-markers excludes, so adding it does not stale this approval.
+   Fix shape, if it returns: on `idx < 0` after a hold, advance to the row that now follows (or
+   resume the element), and put a timeout on the check.
+
+2. **SUGGESTION (reasoned; for Dean's device pass) - the hold is a deliberate pause at a boundary
+   inside a backgrounded PWA.** An advance after a return pauses the element for one round trip
+   before loading. On iOS a backgrounded page's ability to restart audio after a pause is the
+   fragile part (the bg-play thread). The existing genuine load and ended-advance paths already pass
+   through a teardown and an async gap, so this may be no worse, but it has not been measured on a
+   phone. Worth one lock-screen listen through a flat list after an app switch.
+
+Security (standing section): no change in kind. The same RBAC-gated same-origin GET now also runs
+for a first pick from a cached menu row. baseId comes from a server-minted id through a regex and
+is `encodeURIComponent`'d. There is no new write, route, storage or logging. A cold load makes no
+request.
+
+Tree state: only this section was appended, after security-brief's r3 section. HEAD is bdb5ad05.
+Scratch is in `/tmp/claude-1000/.../scratchpad/qa-csp/`: `probe-r3.out`, and
+`sbr3/test/unit/qa-r3-scratch.test.js` with QA-A to QA-J and QA-I2.
+
+Gate: APPROVED r3 @bdb5ad05 — qa
+
+## Gate r3 - adversary (@bdb5ad05)
+
+Delta review of 1a0b1a10, 02e57ddb and 020e313b, in /tmp sandboxes from `git archive bdb5ad05`
+(Node 22.23.1).
+
+Instruments:
+- Tests: the binding set (chapter-snap-resume, music-chapter-playback, chapter-snap-client,
+  music-chapter-reflect, integration chapter-snap-return-flat) gave `pass 110 fail 0` (the
+  mutant runner's CONTROL). `test/unit/music*.test.js chapter* skin* listen* pocket*` gave `#
+  tests 848 # pass 848 # fail 0`. `test/integration/music-pocket-menus*.test.js
+  chapter-snap*.test.js` gave `# tests 94 # pass 94 # fail 0`.
+- eslint on music.js and chapter-snap-resume.test.js: exit 0.
+- No change to player.js, server.js or lib from the branch's own commits: each r3 commit touches
+  only music.js, the tests and docs.
+
+r2 findings, re-measured:
+- **WARNING 6: FIXED.** The four tests are present (`r2 B3`, `r2 B5`, `r2 B6`, `r2 B8`). Each goes
+  RED on its mutant, re-anchored on the new code: B3 -> c57f55edfeb3, B5 -> 68b5ca3d6769, B6 ->
+  73aee4dd858e, B8 -> de7378b824f7, 1 failure each. B1 (the continue arm passing `pick`) is RED
+  too.
+- **The CRITICAL stays closed** (real Chromium, 2000 s mp3):
+  - BACK to `?play=<id>::c0` after rolling on to 500: t 508.0, row `c2`, stored resume 513.96.
+  - The continue arm now runs through the check: a failed return re-check leaves f1 unverified,
+    then a Jump back in tile for the loaded chapter (playhead 130). Result: 1 GET, playhead 130, 0
+    seeks, 0 plays (S5, through real music.js). The check never adds a seek.
+- **Cold load (real Chromium):** 4 drill row taps plus Next made 0 `/api/videos/:id` requests.
+- **GET volume:** 10 visibility flips made 10 GETs of the playing file, one per return, as
+  designed. 4 quick picks (3 of g9, 1 of f1) made 1 GET (g9; f1 was verified by the return). No
+  storm.
+- **"A local save counts as a check"** marks the right file: every `applySnappedChapterTimes`
+  caller passes its own file (snap editor `snapBaseId`, Extras `item.id`, the text editor's
+  `baseId`, the two GET answers). The marking is bound: C6 is RED (2).
+- **My mutants on the epoch mechanism:** C1, C3, C4 (9 failures), C6, C7, C9, C10 and C11 are RED.
+  C5 (a cold load verifies) and C8 (the answer never marks the file) HANG the suite in an
+  endless verify -> playAt -> verify loop, so they are caught, but only by a hang. C2 (hold on
+  every pick, not only on an advance) survives, and it is benign.
+
+New finding:
+
+1. **WARNING - a held advance only resumes when the check answers, and it can wedge Play.** The
+   hold (`opts.keepPosition` -> `pause()`) has one release, the check's answer. Measured through
+   real music.js in the builder's harness. The flat list is `[f1::c0, g9::c1]`; there is one return
+   before the segment end, and the g9 check is parked (never answered):
+   - **S1, a hung check:** at f1::c0's end the element is held (pauses 1). The user presses Play;
+     the next in-band tick re-pauses it (pauses 2), because `enforceFlatSegmentEnd` re-calls
+     `playAt` and the in-flight check re-holds. While the check hangs, Play cannot escape the band.
+     When the check finally settles (my run: at t 70, f1's next chapter), g9::c1 loads with no
+     warning. `fetch` has no timeout, and the moment right after a return (an iOS app switch or
+     unlock, when stale sockets are common) is exactly when this path runs. qa's r3 finding 1
+     says "Play recovers". That holds for the dropped-row case it measured, but NOT for a hung
+     check (S1).
+   - **S3, teardown during the wait** (nav away, or the skin's dock -> origin): the answer arrives
+     after `destroy()`, and the `signal.aborted` guard correctly plays nothing. But nobody releases
+     the hold: the element stays paused on f1 and the advance is lost (loads +0, `paused=true`).
+   - **S6, the screen locked after an earlier return:** the hold fires while
+     `visibilityState === 'hidden'` (paused while hidden, 1 GET, 0 loads). The advance now needs a
+     GET to finish in the background with the audio paused. On iOS a paused, backgrounded PWA can
+     be suspended. That consequence is a SUSPICION (not measurable here; qa's r3 suggestion 2 is
+     the same concern), but the pause-while-hidden itself is measured.
+
+   Prescription (small, one seam):
+   - bound the check (`AbortSignal.timeout(~4000)`, so the existing catch arm plays the row as
+     queued);
+   - never hold while `document.visibilityState === 'hidden'` (play the queued row; the next return
+     re-checks);
+   - release on teardown (or skip the hold when the view is gone).
+
+   The fixes would be bound by S1 (Play must not be re-paused after the timeout), S3 and S6. The
+   scratch tests are at /tmp/adv-csp/zz-adv-r3.test.js, in the builder's harness. They log rather
+   than assert, so turn each log into an assertion.
+
+   Why I do not rule it safe to ship: two of the three shapes are measured, and together they turn
+   the "brief pause" that #270 (c) discloses into a Play button that does nothing, or a stop that
+   never resumes, on the phone path this branch exists for. This is round 3. Under the pacing
+   norm the Architect should ask Dean. If Dean rules to ship disclosed, #270 needs a line that
+   names the hung-check and teardown shapes, and must not say "Play recovers".
+
+SUGGESTION: C5 and C8 are caught only by a hang, because the verify path re-enters `playAt`,
+which re-enters the verify. A one-shot guard (the verify's own `playAt` sets a flag that skips the
+check for that call) would turn a future regression into a clean RED instead of a stuck suite.
+
+Tree state: only this section was appended (after qa's r3 section). Scratch is in /tmp/adv-csp
+(r3, sb3, mut3.js + m6.js, probe3.js, zz-adv-r3.test.js, watch.sh).
+
+Gate: CHANGES r3 @bdb5ad05 — adversary
