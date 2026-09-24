@@ -3,10 +3,10 @@ plan: exec-plans-dated-completed
 harness: v2 · lean
 branch: chore/exec-plans-dated-completed
 anchor: outcome
-status: Building
-next: gate (adversary + qa + security-brief; a lib/ytdlp/client comment path forces the full table), then merge into main (no release: docs + a test + a script; the next release's ROADMAP entry mentions it)
+status: Shipped v1.317.0
+next: merged into main ahead of the wave release v1.317.0 (its ROADMAP entry mentions this chore); owed on the next touch of scripts/plan-complete.js: reword the -c diff.renames=true comment (QA r3: the C-row stop is the real copy guard, the pin is harmless); wheel-haptics stays in active/ until Dean calls it shipped (one script command)
 design: Approved 2026-09-23 @3d719e77 (Dean's ask, verbatim below; a chore, outcome anchor - the outcome IS the design; bound to the branch tip after the main v1.316.0 merge)
-gate: pending
+gate: APPROVED r3 @34e83736 — adversary, qa, security-brief
 ---
 
 # Exec plans: date-led names, the done ones in completed/, and a flow that keeps it so
