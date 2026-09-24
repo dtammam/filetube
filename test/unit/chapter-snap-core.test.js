@@ -212,6 +212,19 @@ test('the service: a cached record is READY only while the file keeps its size a
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('a record written by the UNANCHORED v1 parser is never reused (gate r1: the format bumped to v2 - a v1 record may hold a forged gap)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chapter-silence-v1-'));
+  const media = path.join(dir, 'album.mp3');
+  fs.writeFileSync(media, 'x'.repeat(10));
+  const st = fs.statSync(media);
+  const svc = silence.createSilenceService({ dir: path.join(dir, 'cache'), run: async () => [] });
+  svc.cache.write('album', { params: 'n-45d0.5v1', size: st.size, mtimeMs: st.mtimeMs, silences: [{ start: 1, end: 2 }] });
+  assert.strictEqual(svc.stateFor({ id: 'album', filePath: media }).state, 'stale', 'the v1 record is stale, its gaps never served');
+  svc.cache.write('album', { params: silence.SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: [{ start: 1, end: 2 }] });
+  assert.strictEqual(svc.stateFor({ id: 'album', filePath: media }).state, 'ready', 'discrimination: the current format reads ready');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('the service: a cache WRITE failure reports a fixed sentence (the fs message, with its DATA_DIR path, goes to the log only)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chapter-silence-wfail-'));
   const media = path.join(dir, 'album.mp3');

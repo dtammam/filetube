@@ -109,3 +109,15 @@ test('a save for an item the player has LEFT is ignored (the post-await guard)',
   P.seen.snap[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'One' }, { startTime: 5, title: 'Two' }, { startTime: 40, title: 'Three' }], chaptersEdited: true });
   assert.deepStrictEqual(P.notches(), [50], 'the late save did not paint v1\'s chapters over v2');
 });
+
+test('the LATE-DETAIL path (watch.js seeded pre-load -> applyLateDetail) carries the Edited flag and the version into the loaded item', async () => {
+  const seedItem = ITEM();
+  delete seedItem.chaptersEdited; delete seedItem.chaptersVersion; delete seedItem.chapters; // the list-data seed
+  const P = await boot(seedItem, 22);
+  P.w.FileTube.player.applyLateDetail('v1', { id: 'v1', chapters: ITEM().chapters, chaptersEdited: true, chaptersVersion: 'ver-late' });
+  assert.deepStrictEqual(P.notches(), [33.33, 66.67], 'precondition: the late chapters applied');
+  P.openMenu();
+  assert.ok(P.doc.querySelector('.chapters-menu-edited'), 'the Edited badge reads the late flag');
+  P.doc.querySelector('.chapters-menu-edit:not(.chapters-menu-snap)').click();
+  assert.strictEqual(P.seen.text[0].opts.version, 'ver-late', 'the text editor carries the late version');
+});

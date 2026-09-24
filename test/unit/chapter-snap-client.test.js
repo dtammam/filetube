@@ -298,6 +298,11 @@ test('a count change from NOW PLAYING re-lists from the server: no ghost chapter
     const b = { artist: 'NESTALGIA', album: 'The Mix', albumKey: AK, progressEndpoint: '/api/progress', source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', liked: false };
     server.drill = [{ ...b, id: 'f1::c0', title: 'Opening', durationSec: 90, chapterStartSec: 0 }, { ...b, id: 'f1::c1', title: 'Finale', durationSec: 90, chapterStartSec: 90 }];
     ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 90, title: 'Finale' }], chaptersSource: 'embedded', chaptersEdited: false });
+    // SYNCHRONOUSLY - before the re-list lands - the queue itself is already consistent
+    // (the ghost dropped, ::c1 re-titled): nothing can play or like a stale row meanwhile.
+    const sync = doc(dom).getElementById('music-nowplaying-panel').textContent;
+    assert.doesNotMatch(sync, /Closer/, 'the ghost left the queue at once');
+    assert.match(sync, /Finale/, '::c1 re-titled at once');
     await settleN(12);
     const after = doc(dom).getElementById('music-nowplaying-panel').textContent;
     assert.doesNotMatch(after, /Closer/, 'the ghost third chapter left the queue');
