@@ -428,3 +428,92 @@ Tree after this review: `git status` shows only this plan doc modified (the seat
 no untracked files; sandboxes under the session scratchpad removed.
 
 Gate: APPROVED r2 @172350dc — adversary
+
+## Gate r3 - security-brief (@34e83736)
+
+Delta re-confirmation of my r2 APPROVED @172350dc. Same tool gap: no Bash, no `git diff`;
+scripts/plan-complete.js re-read in full at this sha and compared against my r2 read.
+
+Re-verified (traced in the fix commit):
+- The only change is the header paragraph (lines 19-29) and `gitAddDate` (lines 102-132);
+  `git()`, `realDate`, `declaredDate`, `deriveDate` and the whole of `main()` are unchanged from
+  r2 (source confinement, completed/ destination, collision refusal, `ls-files` precheck,
+  `-e` grep, status normalisation all as approved).
+- git is still invoked only through `execFileSync('git', argv[])` (line 60). The new call
+  (lines 116-117) is `['-c', 'diff.renames=true', 'log', '--follow', '--name-status',
+  '--diff-filter=ACR', '--format=%ad', '--date=short', '--', planRel]`: the `-c` key/value is a
+  fixed literal (not operator input), precedes the `log` subcommand as a git global option, and
+  `diff.renames` is a pure rename-detection knob with no exec/pager/external-command semantics.
+  The operator path still follows `--`. The fallback call (line 129) is the r2 plain log,
+  also `--`-terminated.
+- Parsed row text is never executed or written: each output line is either exact-matched
+  against `^\d{4}-\d{2}-\d{2}$` (and only then kept as the date) or inspected by `charAt(0)`
+  for `C`/`A`; the path portions of `--name-status` rows are discarded. The one value that
+  leaves the function is a strictly date-shaped string, which `main()` uses as the leading
+  token of the new stem, so it cannot carry `/`, `..` or a newline into the completed/ path.
+- Both git calls are read-only and run in dry-run and apply alike, as before.
+- No auth, secret, cookie, network or dependency change (package.json untouched in this delta;
+  nothing outside scripts/plan-complete.js changed).
+
+Nothing new introduced. r1 INFO-1 / INFO-2 remain advisory only.
+
+No exploitable weakness found.
+
+Gate: APPROVED r3 @34e83736 — security-brief
+
+## Gate r3 - adversary (@34e83736)
+
+Delta re-confirmation of 172350dc..34e83736: scripts/plan-complete.js only (+34/-15; 3b63048f
+committed the r2 sections; `git diff --stat` outside the script and the plans dir is empty).
+Instruments at 34e83736, verbatim: exec-plans-census 3/3, docs-link-census 2/2, docs-status-census
+1/1, eslint on the script exit 0; `check-markers` exit 1 with 8 stale-approval lines, all on THIS
+plan's own bound shas (@3d719e77, @645d132c, @172350dc) quoted in the seats' r1/r2/r3 sections -
+the active-plan staleness rule, clears on the move to completed/, disclosed, not a finding.
+
+My r2 suggestion, verified against the committed walk (a fresh throwaway repo with
+`diff.renames=copies` configured on purpose, drives against 34e83736's script):
+- rename within active/ TWICE (added 05-10, mv 05-25, mv 05-26) -> 2026-05-10 (r2 gave 05-25);
+  applied, lands as `completed/2026-05-10-renamed-twice.md`.
+- revived from archive/ (added 04-01, mv into active/ 05-30) -> 2026-04-01.
+- three-line plan >50% similar to an existing file, copies detection ON in config -> its OWN add
+  date (05-20; raw walk shows `C080` as the first row, the `-c diff.renames=true` pin holds).
+- a copy whose SOURCE was itself renamed (walk: `C076 ... 2026-05-28`, then the source's `C076`)
+  -> 2026-05-28, the first C row, never the source's date.
+- the r2 F3 set unchanged: body `date:` line ignored; later / non-calendar "Prepared" and
+  frontmatter dates ignored with a note; earlier real date wins; `captured 2026-09-05` -> 09-05;
+  UPPER dated stem "kept (lower-cased)"; the directory path accepted (dry + apply); untracked ->
+  one line, exit 2, nothing touched; `Shipped 1.2.3` normalised in banner and frontmatter;
+  `-dash.md` refs listing intact; dry-run leaves `git status` unchanged (0 -> 0 lines).
+- exit-1 verify still real: the write mutant -> "VERIFY FAILED", exit 1, rename staged, content
+  unchanged. Collision still refused: exit 2, existing target content intact.
+- Real tree, read-only: the committed walk (first `C` else terminal `A`) re-applied to all 72
+  renamed paths matches every name; the one divergence is the disclosed watch-habits (walk
+  2026-09-06, name from the in-doc "captured 2026-09-05", which the script now derives itself).
+  0 of 177 tracked plans have a `C` row, so copy detection never touches the real tree today.
+
+Findings: none. Verified, not reasoned: every drive above was run, not read.
+
+Gate: APPROVED r3 @34e83736 — adversary
+
+## Gate r3 - qa (@34e83736)
+
+Delta reviewed: `git diff 172350dc..34e83736` (scripts/plan-complete.js gitAddDate + its header and comment; the plan doc's r2 sections). Instruments (verbatim, Node v22.23.1):
+- Four censuses: `# tests 7 / # pass 7 / # fail 0`.
+- `npm run lint`: `7 problems (0 errors, 7 warnings)` (pre-existing); `npx eslint scripts/plan-complete.js`: exit 0.
+- `bash .harness/lib/check-markers.sh`: 8 issues, every one a stale-approval line on this plan doc (`@3d719e77`, `@645d132c`, `@172350dc` - the design approval and the earlier rounds' verdict/quoted lines, whose reviewed code moved with the r3 commit), exit 1: the expected pre-r3 shape; nothing else flagged.
+- `node scripts/plan-complete.js docs/exec-plans/active/2026-09-03-wheel-haptics.md "Shipped v1.256.0"`: same DRY-RUN plan (banner now reads `moved 2026-09-24`, today), exit 0; `git status --short` afterwards shows only this plan doc (the security-brief seat's r3 section, 32 insertions, 0 deletions).
+- No em dash in any added line of the delta.
+
+My r2 finding re-derived against the new walk (`git -c diff.renames=true log --follow --name-status --diff-filter=ACR --format=%ad --date=short`, newest to oldest, first `C` wins else the terminal `A`):
+- The r2 sandbox repro, extended to two renames (added 09-05 as old-name, `git mv` 09-08, `git mv` 09-10): `date 2026-09-05 from git` (r2 gave 09-10). `--apply` on it moves to `completed/2026-09-05-new-name.md`, verified, `RM`.
+- The Adversary's copy concern: a file added 09-12 as a 92%-similar copy of new-name (source still present) -> `date 2026-09-12`; the raw walk shows `C092 new-name.md -> copycat.md` first, so the walk stops at the file's own add and never reaches old-name's 09-05. Same result with `diff.renames=copies` set in the sandbox's repo config. An ordinary never-renamed add -> its own commit date.
+- Real history (a clone of this worktree, listen-mode and watch-habits `git mv`'d back to undated names and committed): listen-mode -> `2026-09-03 from git` (walk: R 09-24, R 09-23, A 09-03); watch-habits -> `2026-09-05 from the document ("captured <date>")` with git's terminal A at 09-06, i.e. the declared-earlier rule, not the walk, supplies the 05.
+- Header :19-24 and the function comment :102-112 now describe the mechanism the code runs, and every branch they name is reachable (the `C` stop, the terminal `A`, the plain last resort when the walk yields neither). Fixed as prescribed in substance (follow-first), better than my prescription in form (the `C`-row stop is the right copy guard; my `--diff-filter=A` + oldest-line version would have walked into a copy source).
+
+One nit, not blocking:
+
+1. SUGGESTION - scripts/plan-complete.js:108-110: "`-c diff.renames=true` pins rename-only detection, so a user's `diff.renames=copies` cannot turn an ordinary add into a copy of some similar file". Measured: the `--follow` rows are byte-identical with and without the `-c` pin, under both default config and `diff.renames=copies` (the `C092` row appears in all four runs), because `--follow`'s own single-path matching detects copies regardless of `diff.renames`. The pin is harmless, but the protection the sentence credits it with is actually delivered by the `C`-row stop the comment describes two sentences earlier. Reword to "harmless belt-and-braces; the `C` stop is what keeps a copy from inheriting its source's date", or drop the pin.
+
+Nothing else new in the delta; no security surface change (same `execFileSync` argv shape, one extra read-only `git log`).
+
+Gate: APPROVED r3 @34e83736 — qa
