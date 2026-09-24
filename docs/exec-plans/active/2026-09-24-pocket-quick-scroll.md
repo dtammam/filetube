@@ -128,10 +128,10 @@ Files:
   overlay / badge / picker / About rules for Click and Seattle (inside the `max-width:768px` skin block); the drift
   layers (`.ipm-slide`, `.is-on`, `.is-drift`: transform + opacity only) and their reduced-motion arm.
 - `docs/exec-plans/tech-debt-tracker.md`: #258 CLOSED; #263-#266 filed (Disclosed gaps).
-- Tests: NEW `test/unit/pocket-quick-scroll.test.js` (28: the pure half, the controller through the REAL engine on
+- Tests: NEW `test/unit/pocket-quick-scroll.test.js` (33 - 28 at 13026e47, +5 at 9b78af13 for the mutant survivors: the pure half, the controller through the REAL engine on
   a fake surface clock, haptics ghost + sweep, listener balance, 3,008 songs, Brick through the real
   `ipod-brick.js` wiring, About, the drift incl. a comment-stripped CSS lock); NEW
-  `test/integration/pocket-quick-scroll.test.js` (5: real server + real music.js - Recent Artists from real
+  `test/integration/pocket-quick-scroll.test.js` (6 - +1 at 9b78af13, the drift's real pool in the real view: real server + real music.js - Recent Artists from real
   progress saves, a restricted member, letter mode on the real Songs level, About with the real totals and the
   server-stamped version, Brick in the real view). Updated for the intended menu change:
   `music-pocket-menus.test.js` (row taps by LABEL, not index - a row added above never shifts a label),
@@ -163,7 +163,61 @@ CDP (mobile emulation, DPR 2). Log `pocket-quick-scroll-probe.log`, 98 PNGs in `
 
 ## Mutant table
 
-(filled below)
+Runner: `pocket-quick-scroll-mutants.js` (session scratchpad). Each mutant runs in a sandbox extracted from
+`git archive <sha>` (never the live tree; `node_modules` symlinked), its anchor is asserted to occur EXACTLY once,
+the file is compared before/after (every row: a non-empty diff), the named test files run, the file is restored.
+Pass 1 at **13026e47** (Q1-Q42, log `pocket-quick-scroll-mutants.log`): 36 RED, 6 SURVIVED. Each survivor got a
+test that drives the case its guard exists for (9b78af13); pass 2 at **9b78af13** (the six + three re-runs of the
+pocket menus' own guards through the changed seams, log `pocket-quick-scroll-mutants-r2.log`): 9 of 9 RED.
+**Final: 45 of 45 RED.** Fails = failing tests across the named files.
+
+| # | Mutant | Result |
+|---|---|---|
+| Q1 | letter mode never engages | RED (8) |
+| Q2 | one fast detent engages it | RED (2) |
+| Q3 | any speed counts as fast (a slow turn engages) | RED (2) |
+| Q4 | the fast band raised to x3 (the flick never engages) | RED (8) |
+| Q5 | letter steps ignore direction | RED (1) |
+| Q6 | a letter step moves one ROW (not the next letter) | RED (5) |
+| Q7 | the 1 s hold never ends letter mode | RED (1) |
+| Q8 | MENU keeps letter mode | RED (1) |
+| Q9 | a drill-in (activate) keeps letter mode | survived at 13026e47; **RED (1) at 9b78af13** against its new test |
+| Q10 | the letter flag ignored (any long list) | RED (2) |
+| Q11 | no length floor | RED (2) |
+| Q12 | the badge shows on the controller's own scroll | RED (1) |
+| Q13 | the badge never fades | RED (1) |
+| Q14 | MENU with the picker open climbs (both guards dropped) | RED (2) |
+| Q15 | an outside tap never closes the picker | RED (1) |
+| Q16 | a picked letter never moves the highlight | RED (2) |
+| Q17 | letter mode keeps the per-3.75-degree ticks | RED (2) |
+| Q18 | no tick per letter | RED (2) |
+| Q19 | the sweep letter tick is a plain +detent (no half-period snap) | survived at 13026e47; **RED (1) at 9b78af13** against its new test |
+| Q20 | the Brick row ignores the main-document gate | RED (1) |
+| Q21 | the Brick row ignores Brick's own visible() | RED (1) |
+| Q22 | Brick is never launched | RED (3) |
+| Q23 | About rows render as tappable options | RED (3) |
+| Q24 | About heading = the product name | RED (2) |
+| Q25 | About never gets the version | RED (1) |
+| Q26 | Recent Artists keeps duplicates | RED (2) |
+| Q27 | Recent Artists reads Recently Added | RED (1) |
+| Q28 | Recent Artists keys on the track artist | RED (1) |
+| Q29 | Recent Artists uncapped | RED (1) |
+| Q30 | the drift runs on item levels too | RED (2) |
+| Q31 | the drift swaps before the next cover loaded | RED (1) |
+| Q32 | visibilitychange never bound | RED (2) |
+| Q33 | visibilitychange never unbound | RED (1) |
+| Q34 | a hidden document keeps drifting | survived at 13026e47; **RED (1) at 9b78af13** against its new test |
+| Q35 | reduced motion still drifts | RED (1) |
+| Q36 | stopSlides leaves its timers | RED (3) |
+| Q37 | the pool is not origin-filtered | RED (1) |
+| Q38 | a repaint drops the letter overlay | RED (3) |
+| Q39 | a pending art timer survives the menu leaving the screen | RED (1) |
+| Q40 | the Click screen is re-created on every render (no in-place patch) | survived at 13026e47; **RED (1) at 9b78af13** against its new test |
+| Q41 | the pool fetch is never made | survived at 13026e47; **RED (1) at 9b78af13** against its new test |
+| Q42 | a stale reload keeps letter mode | survived at 13026e47; **RED (1) at 9b78af13** against its new test |
+| Q43 | re-run of the menus' M3: the cursor branch never reaches the menu | RED (18) |
+| Q44 | re-run of the menus' N1: the K1 yank restored | RED (3) |
+| Q45 | the v1.233 accel ladder bypassed in the cursor branch (x1 always) | RED (12) |
 
 ## Disclosed gaps
 
@@ -179,8 +233,24 @@ CDP (mobile emulation, DPR 2). Log `pocket-quick-scroll-probe.log`, 98 PNGs in `
   after it was stopped (no mid-pan resume).
 - **G5** - letter mode stays in letter mode for 1 s after the wheel stops even if the user then turns slowly (the
   literal ask; decision A2). A "slow detent exits" rule is a one-line change if Dean's device pass wants it.
+- **G7** - a `paint()` (a track change, a chapter roll, an autoplay append) rebuilds the whole panel, so the cover
+  drift restarts with a fresh cover there; between paints, moving across the menu levels keeps the same drifting
+  layer (the Click screen is patched in place - Q40 binds it).
 - **G6** - the A-Z picker's "outside tap" is any tap on the skin panel outside the picker (the panel is the whole
   full-screen skin; no document listener was added - listener balance bound).
+
+## Instruments at the hand-off (builder, verbatim counts)
+
+- The hook's full unit suite: 7276 / 7276 at 13026e47, 7281 / 7281 at 9b78af13 (`ℹ fail 0`).
+- Targeted: the two new files + music-pocket-menus unit/integration/-r1 + music-skins + skin-surface + ipod-brick +
+  music-skin-integration + type-scale-tokens + tech-debt/exec-plans census: `# pass 248 # fail 0` before the
+  bindings; the two new files after them: `# pass 39 # fail 0`.
+- Census: `npm run lint:css` TOTAL 0; `overlay-containment-lint --enforce` clean (0); eslint 0 errors (the 6
+  pre-existing common.js warnings); the census set (comment-count, comment-debt, css-token-lint, docs-link,
+  docs-status, era-player-skins, exec-plans, mobile-input-zoom x2, overlay-containment, setup-music-skin-picker,
+  shell-script-global-collisions, shell-singleton, skin-scrollbar-hidden, tech-debt, token-scale-lock,
+  touch-eating-overlay-audit, type-scale-tokens) `# pass 146 # fail 0` after the two `--fs-jump*` tokens;
+  `.harness/lib/check-markers.sh` clean. No `public/*.html` change (no shell-parity change).
 
 ## Gate verdicts
 
