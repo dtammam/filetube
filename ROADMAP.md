@@ -4,6 +4,15 @@
 
 _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
+- [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
+  a PWA or a web app to query the device for battery and show that battery instead of just an
+  arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
+  Shape: where `navigator.getBattery()` exists (Chromium: desktop Chrome / Edge, Android) the
+  Click / Seattle / tray / pop-out battery shows the real level and a charging mark, live on
+  levelchange / chargingchange, one shared reader, listeners removed on every teardown; everywhere
+  else the static battery stays exactly as today. Limit: iPhone (every iOS browser is WebKit) and
+  Firefox do not implement the Battery Status API, so Dean's iPhone would keep the static look.
+
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.
@@ -85,6 +94,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.324.0 - The pocket skins: letter quick-scroll, Recent Artists, Brick in Extras, About, and drifting covers (2026-09-24)
+
+- **Pocket quick-scroll and extras** (Dean, after v1.323.0: "there's a lot of scrolling ... I don't
+  want to go crazy. I like the feel" - he chose both options; then "an about or a settings ... also
+  an option for the brick game"; then "the art gently moves ... in the main views"). In the Click and
+  Seattle menus: (A) **letter quick-scroll** like the iPod Classic 5G: a genuinely fast spin (three
+  fast moves in one gesture, timed from the events' own timestamps, so a medium turn under CPU load
+  never triggers it) shows the iPod's dark letter square / the Zune's big lowercase letter, and each
+  click jumps to the next letter present (letters follow the server's own sort, NFKD-folded); a
+  finger scroll shows a letter badge that opens an A-Z picker (every cell >= 44px, reachable on short
+  landscape phones); (B) **Recent Artists** (the first Music row on Click, a "recent" pivot on
+  Seattle) from what you actually listened to, INCLUDING songs played to the end (an opt-in on the
+  existing recently-played route; every other caller unchanged; your own rows only, behind the same
+  visibility gate) - the pocket Recently Played playlist now includes finished songs too; (C)
+  **Extras > Games > Brick** on the Click Main Menu, launching the existing game (main tab only, as
+  before); (D) **Settings > About**: your Songs / Albums / Artists counts and the version; (E) on
+  the Click Main Menu and other menu levels the right pane **slowly pans and crossfades through
+  random covers** from your library (transform + opacity only, paused when hidden, docked, under
+  Brick, or with reduced motion). Lists keep their highlight by song/artist identity when they
+  reload. Gate r3 @cb25fa06 (adversary + qa + security-brief); plan
+  docs/exec-plans/completed/2026-09-24-pocket-quick-scroll.md.
+  Disclosed: Seattle's "games" entry is built but hidden (Brick runs on the Click wheel skins only,
+  #265 - Dean's call); the letter threshold and tick feel need Dean's device pass (#263); non-Latin
+  titles gather under '#' (#264); #266, #271.
+
+Device check owed (Dean): on your phone, spin fast through Songs/Artists (letter square, one click
+per letter) and a medium turn (should stay row by row); the A-Z picker; Recent Artists after
+finishing a song; Extras > Games > Brick; Settings > About; the drifting covers on the Main Menu.
 
 ### v1.323.0 - The Click and Seattle skins get the full iPod and Zune menus (2026-09-24)
 

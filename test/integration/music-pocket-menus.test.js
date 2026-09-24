@@ -78,15 +78,15 @@ test('Click: MENU climbs Now Playing -> Main Menu, every Music level renders the
     menu(h);
     assert.ok(inMenu(h), 'MENU from Now Playing climbs into the menu');
     assert.strictEqual(title(h), 'Click', 'status bar = the Main Menu name');
-    assert.deepStrictEqual(labels(h), ['Music', 'Shuffle Songs', 'Now Playing']);
+    assert.deepStrictEqual(labels(h), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the device order (no Extras: this harness has no Brick hook)');
     assert.strictEqual(cursorLabel(h), 'Music', 'the blue bar starts on the first row');
     select(h); // center = drill in
     assert.strictEqual(title(h), 'Music');
-    assert.deepStrictEqual(labels(h), ['Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
+    assert.deepStrictEqual(labels(h), ['Recent Artists', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
     assert.ok(rows(h).every((r) => r.querySelector('.ipm-chev')), 'drill-in rows carry the chevron');
-    // the wheel: two detents down -> Albums, then the center drills in
-    await stepDown(h); await stepDown(h);
-    assert.strictEqual(cursorLabel(h), 'Albums', 'rotation moved the highlight two rows (the shared cursor engine)');
+    // the wheel: three detents down -> Albums, then the center drills in
+    await stepDown(h); await stepDown(h); await stepDown(h);
+    assert.strictEqual(cursorLabel(h), 'Albums', 'rotation moved the highlight three rows (the shared cursor engine)');
     select(h);
     assert.strictEqual(title(h), 'Albums');
     await settleNet();
@@ -292,10 +292,10 @@ test('Seattle: the Zune main menu, the Music PIVOTS moved by the pad and by a sw
     assert.strictEqual(h.spy.next, 1, 'on Now Playing the pad right still skips a track');
     menu(h);
     assert.ok(h.panel.querySelector('.ipm-seattle.ipm-root'), 'the Zune main menu (big type, no header)');
-    assert.deepStrictEqual(labels(h), ['Music', 'Shuffle Songs', 'Now Playing']);
+    assert.deepStrictEqual(labels(h), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
     select(h);
     const pivots = () => [...h.panel.querySelectorAll('.ipm-pv')].map((b) => b.textContent);
-    assert.deepStrictEqual(pivots(), ['Artists', 'Albums', 'Songs', 'Playlists', 'Genres'], 'the pivot strip leads with the active pivot');
+    assert.deepStrictEqual(pivots(), ['Artists', 'Albums', 'Songs', 'Playlists', 'Genres', 'Recent'], 'the pivot strip leads with the active pivot');
     await settleNet();
     assert.deepStrictEqual(labels(h), artists.map((a) => a.artist), 'the artists pivot lists the real artists');
     click(h.dom, h.panel.querySelector('[data-skin-next]'));

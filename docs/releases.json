@@ -3190,5 +3190,11 @@
     "date": "2026-09-24",
     "title": "The Click and Seattle music skins get their full menus",
     "intent": "The Click and Seattle music skins now work like the real players: a Main Menu with Music, Shuffle Songs and Now Playing, and menus for your playlists, artists, albums, songs and genres that you move through with the wheel or by tapping. Click shows the album art beside the list, Seattle uses big swipeable headers, and a song you pick plays on through the list you picked it from."
+  },
+  {
+    "version": "1.324.0",
+    "date": "2026-09-24",
+    "title": "Faster browsing in the iPod and Zune skins, plus Brick and About",
+    "intent": "In the Click and Seattle music skins, spin the wheel fast to jump through long lists a letter at a time, or tap the letter badge to pick one. Music now starts with Recent Artists, the Main Menu has Extras with the Brick game and Settings with an About screen, and the Click menus show your album covers slowly drifting beside the list."
   }
 ]
