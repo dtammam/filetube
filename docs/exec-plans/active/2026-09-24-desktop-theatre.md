@@ -453,3 +453,183 @@ Probe mutants (behavioural evidence for the glow claim; session scratchpad
   persisted (a reload restores it).
 - Not device-checked: headless Chromium only. Dean's desktop check owed (theatre at his monitor
   size, light and dark, ambient on, a 4:3 TV episode).
+
+## Gate r1 - qa (@13f331d2)
+
+Instruments (run by this seat at 13f331d2, Node 22.23.1):
+
+- Targeted: theatre-mode, watch-init-behavioral, ambient-glow-engine, ambient-host, music-ambient,
+  watch-chrome-ambient, css-token-lint, overlay-containment, comment-debt-census, exec-plans-census,
+  tech-debt-census: tests 168, pass 168, fail 0.
+- `npm run test:unit`: tests 7117, pass 7117, fail 0, skipped 0.
+- `npm run lint:css`: TOTAL 0. `node scripts/overlay-containment-lint.js --enforce`: clean (0
+  violations), exit 0. eslint on watch.js, the probe and both test files: exit 0. `npm run lint`:
+  0 errors, 7 warnings, all in common.js and identical at ecb61e1d (none new).
+- Probe on a `git archive 13f331d2` sandbox (session scratchpad, not /tmp): `1280x720 --theatre`
+  (via click): player = stage 216,80 848x518, picture 846x476, reserve 99px, sidebar hidden, guide
+  "w1", title y 614, buttons y 651, fold gap 37, bar bottom to fold 24, 10 buttons, 1 row.
+  `1920x1080 --theatre`: 216,80 1488x878, picture 1486x836, 99px, title 974, buttons 1011, gap 37,
+  bar 24, 10 buttons, 1 row. Both match the D2 table exactly. Bare `1280` (no flag): tag `1280`, vh
+  900, file `action-bar-1280.png`, theatre false, sidebar open - the old flag/height/name contract
+  holds. Tracker #247 re-measured at 2560x1080 default: wrapper 341 w 1703, stage 254 w 1878 -
+  confirmed.
+- Reviewed and refuted: the cascade (the desktop wrapper rule (2,5,0) beats the all-views cap
+  (2,4,0) and follows the equal-specificity v1.190 rule; the picture cap (3,5,0) never reaches
+  staged fullscreen because the host is reparented into `#fs-stage`, outside `#player-slot`); the
+  budget arithmetic (bar bottom = 100vh - 23px, the probe's 24 is the ceil); the vh-then-dvh order;
+  the router's destroy -> swap -> init being one synchronous pass (common.js swapToView :10536),
+  so the microtask restore is sound; `#menu-toggle` being the only sidebar-class writer.
+- Security: no security surface. No server, route, auth, storage or network change; the body
+  attribute value is a generated `w<n>`; no innerHTML; the probe's new env inputs
+  (`PROBE_MEDIA_WH`, `PROBE_SETTLE_MS`) are regex-/Number-parsed dev-tooling knobs.
+
+Findings:
+
+1. **WARNING - the ?tv= reserve is inert in production, and its test binds a shape the tv path
+   never produces** (public/js/watch.js:4011-4013 + :2147-2151; test/unit/watch-init-behavioral.test.js
+   "v1.319 theatre reserve (?tv=)"). initTvWatch calls `hideTvVideoChrome()` FIRST, which sets
+   `.watch-action-bar` `style.display = 'none'`, so every later `bar.getBoundingClientRect()` is all
+   zeros, `theatreReservePx` gets `bb - sb < 0` and returns null, and nothing is ever written: a tv
+   episode in theatre always runs on the CSS 98px fallback. Verified in real Chromium (sandbox copy
+   of the probe, 1280x720 theatre, bar hidden the tv way): bar rect [0, 0], the real synchronous
+   measure wrote nothing (`--watch-theatre-reserve` stayed unset); the title bottom sat 41px under
+   the stage on this video fixture, so the fallback over-reserves by up to ~57px there, less the tv back link (a smaller tv picture than the design
+   intends, the show row peeking). The test's fake `getBoundingClientRect` ignores the inline
+   `display: none` and asserts a 173px write, so it passes on an unreachable shape - the v1.312
+   named-blind-spot scar (its own name says "driven, not assumed"). AC3's "on BOTH ?v= and ?tv="
+   is therefore not true. Fix: measure to the lowest RENDERED element of the pair (the title when
+   the bar has no box), and make the tv test's bar rect honour the inline display (zeros when
+   hidden), asserting the title-based write; or descope ?tv= from AC3 and disclose it.
+2. **WARNING - Dean's "channel" is below the fold, and the plan narrows the ask without saying so**
+   (plan "The ask" vs AC1 / Design / Disclosed gaps). The ask quotes "title + channel + action row";
+   the reserve stops at the action bar's bottom, and FileTube's channel row is a separate
+   `.uploader-info-panel` AFTER the bar. Measured on the 13f331d2 sandbox, theatre on: 1280x720
+   panel y 712 h 74, avatar y 725-773 (fold 720); 1920x1080 panel y 1072, avatar y 1085-1133 (fold
+   1080) - the channel is entirely off the first screen at both sizes. AC1 silently says "the title
+   and every action button" and no disclosed gap names it. Safe to ship DISCLOSED (a docs-only
+   edit: a D5 decision for Dean with the cost - reserving the panel shrinks the 1280x720 picture by
+   ~90px), or extend the reserve to the panel's bottom.
+3. **SUGGESTION - stale geometry prose** (public/js/watch.js:61, public/css/style.css:8998): "one
+   line at 1920, three at 1280". Since D2 the 1280 theatre bar is ONE line (measured 99px); three
+   lines only with the sidebar hand-reopened. Say so, or drop the per-width numbers.
+4. **SUGGESTION - probe residue** (scripts/action-row-probe.js:52, :291, the header): the usage
+   error still reads `[width ...]` (the header documents `WxH`, `--menu-toggle`,
+   `--viewport-shot`); `--menu-toggle` is silently a no-op without `--theatre` (it lives inside
+   `if (THEATRE)`), undocumented; the screenshot-failure line logs `${w}` where every other line
+   now logs the `WxH` tag.
+5. **SUGGESTION - stale plan anchors** (this plan, survey row 1 and "Sidebar collapsed"): "now
+   :2084" / "now :878" are pre-D2 (setupTheatreToggle is :2176, the persisted-class apply :931-944
+   at 13f331d2), and the r0 table names the `--sidebar-collapsed` flag the probe no longer has.
+6. **SUGGESTION - disclose the hop re-collapse**: a sidebar the user hand-reopened in theatre is
+   collapsed again by the next watch view (watch -> watch hop, autoplay-next): released ownership
+   plus an open bar reads as "collapse". Arguably YouTube-like, but AC8's "a hand toggle is the
+   user's" reads as if it persists; one line in Disclosed gaps.
+
+Warnings 1 and 2 block this round (2 clears with the disclosure alone).
+
+Gate: CHANGES r1 @13f331d2 — qa
+
+## Gate r1 - adversary (@13f331d2)
+
+Instruments: `git archive 13f331d2` and `git archive ecb61e1d` sandboxes in /tmp (node_modules
+symlinked from main, same lockfile), Node 22.23.1, headless Chromium 1234 over raw CDP (own
+harness: a real playing VP9 webm, a seeded TV show, `FileTube.navigate` / history for SPA hops,
+a counting ResizeObserver shim, `DOMDebugger.getEventListeners`). Targeted units at 13f331d2:
+36 files, tests 495, pass 495, fail 0. `lint:css` TOTAL 0; eslint on the 4 touched js files
+exit 0; overlay-containment clean. Mutants: one fresh sandbox copy per mutant, credited only
+with a non-empty diff.
+
+Verified (ran it, saw it):
+- Geometry at 1280x720 / 1366x768 / 1440x900 / 1920x1080 / 1920x1200: my numbers equal the
+  plan's D2 table (e.g. 1280x720 player 215.9,80 848.2x518, video 846.2x476, bar bottom 23.8
+  above the fold, centre x 640). Odd sizes: 1025x768 (3-line bar, reserve 173, bar 23.4 above
+  the fold, centred), 1280x585, 1536x864, 2560x1080, 3440x1440 (all 23.8), 1280x500 (480 floor,
+  10.9), 1280x400 (row below the fold, the disclosed D4). 125% zoom emulated (1536x864 @1.25):
+  23.6. 4:3 and portrait items: 846.2x476 picture, 23.8.
+- YouTube re-measured independently (my probe, a different 4:3 video, dark, `wide=1`): band
+  `100vh - 169` at 1280x720 (551) and 1440x900 (731), title y 619 / 799, owner + actions y 655 /
+  835 h 42 (23px above the fold). The builder's reference numbers hold.
+- Reserve follows every change I drove with no ResizeObserver-loop error: resize 1920 -> 1280
+  -> 1025 -> 1440, title 1 -> 4 lines (99 -> 149 -> 99), a wrapped views line (178), theatre
+  off/on. Native fullscreen from theatre: `#fs-stage` fullscreen, picture 1278x718 (max-height
+  none), geometry identical after exit.
+- Glow at 1366x768 dark, playing: player = stage 933.5x566, glow .12/.22/1.24/1.44, every
+  sample equal to the plan's row; toggle OFF 684x425.6 / glow 848.2, ON again identical.
+- Sidebar ownership, real Chromium, every arm: cold theatre load collapses; hand reopen
+  releases; theatre off keeps the user's choice; user-closed never reopened; nav to / music
+  podcasts tv books history stats setup restores (margin-left 230px, marker gone); watch ->
+  watch hop: ZERO class mutations on #sidebar (MutationObserver), owner re-claimed; back /
+  forward both ways; resize 1280 -> 1000 -> 1025 -> 1024 -> 700 -> 1280 restores / collapses at
+  each crossing (700: drawer closed). After 12 watch hops + 6 home<->watch: #menu-toggle click
+  listeners 2 (common.js + the live view), live ResizeObservers 2 on watch / 1 elsewhere,
+  0 page errors. No storage key added by any D2 step (localStorage key list diffed per step).
+- Unchanged surfaces, base vs head, every box identical (stage, player, video, glow, title,
+  bar, buttons, column, sidebar classes, scrollWidth): theatre OFF at 1024x768, 900x700,
+  800x1000, 1280x720, 1920x1080, 2560x1080; theatre ON (persisted) at 390x844, 768x1024,
+  800x1000, 900x700, 1024x768. Music: no rule or markup reaches it (music.html names the stage
+  only in a comment).
+- Builder mutants re-run by me: J5, G9, G13, J10 all killed. Mine killed: re-claim keeps the old
+  owner, null reading written, drop isFinite(bar), restore via setTimeout (not a microtask),
+  collapse ignores the user-collapsed check, restore drops the marker only, observe the stage
+  only, measure the title not the bar, click skips syncTheatreGuide, release bound on document,
+  a doubled abort restore, wireTheatreGuide skipped, the stage rule unscoped from theater-mode,
+  `-WEBKIT-BACKDROP-FILTER` on the stage, the breakpoint 1025 -> 1024.
+
+Findings:
+
+1. WARNING - the ?tv= reserve is INERT and its test is a divergent fixture (AC3 "on BOTH ?v=
+   and ?tv=" is false). initTvWatch runs `hideTvVideoChrome()` first, which sets
+   `.watch-action-bar` to `display:none`, so its rect is 0x0 and `theatreReservePx` returns null
+   on every measure: `--watch-theatre-reserve` is never written on an episode. Real Chromium,
+   `/watch.html?tv=ep1`, theatre persisted: 1280x720 reserve unset (CSS fallback 98px), bar
+   display none rect 0,0,0,0, the show row (the episode's channel) at 676.4-750.4 with the show
+   link at 708.3-726.3 (cut by the 720 fold); 1920x1080 show row 1036.4-1110.4, link
+   1068.3-1086.3 (cut). The ?tv= test passes only because it hand-types a bar rect (bottom
+   736.4) the real path can never produce: feeding it the real shape (`{top:0,bottom:0,height:0}`)
+   turns it red (1 fail: expected the 173px write, got none). The test's own comment promises
+   "driven with the REAL path, never a hand-typed shape". Fix: on tv measure to the last visible
+   block under the stage (title or the show row), and drive the tv test with the hidden bar.
+
+2. WARNING - surviving mutant on a claimed binding (G9 "desktop gate"): the QUERY that decides
+   the collapse is unbound. The test's matchMedia fake returns one shared object whatever the
+   query, and `mq.query` records only the LAST call (wireTheatreGuide's). Mutant in
+   syncTheatreGuide `'(min-width: 1025px)'` -> `'(max-width: 1024px)'`: 3 target files 74/74
+   green. In real Chromium (that mutant, theatre persisted): 700x900 gets `sidebar hidden
+   mobile-open` (the mobile drawer opens over the watch page on every visit), 1280x720 never
+   collapses. Fix: make the fake evaluate min-/max-width against a simulated width, or assert
+   the query of every matchMedia call.
+
+3. WARNING - wider-than-16:9 items REGRESS (the aspect enumeration handled only the taller
+   side). The stage width is always the budget height x 16/9, so a 21:9 item (seeded 2560x1080,
+   player.js sets the real `--media-aspect`) shrinks. 1280x720: BASE picture 1000x421.9 with the
+   buttons already 16.5px above the fold; HEAD 846.2x357 with 155.8px of empty room below.
+   1920x1080: BASE 1640x691.9, HEAD 1486.2x627. Should-work reasoning, not measured with a 21:9
+   video: YouTube's fixed 1280x551 band would letterbox it at about 1280x549. Fix: width from
+   the budget height x max(16/9, the item's aspect), still capped at the column.
+
+4. WARNING - the plan narrowed Dean's ask. His words: "title + channel + action row"; AC1 keeps
+   only the title and the action bar. FileTube's channel row (`.uploader-info-panel`: avatar,
+   channel name, Subscribe) is below the fold at every size: 1280x720 panel 712.2-786.2 (name
+   744.1), 1920x1080 1072.2-1146.2. YouTube's channel IS its action row (#owner y 655 h 42 at
+   1280x720, re-measured). Either extend the reserve through the channel row or put the trade
+   to Dean as a named decision (D5) - it is not in D1-D4.
+
+5. SUGGESTION - dead guard: `!Number.isFinite(sb)` in theatreReservePx. NaN is already
+   rejected by `px >= 0`; only a +/-Infinity stage edge reaches the guard, and no test drives
+   one. Mutant (guard dropped): 74/74 green. Drop it or add the case.
+
+6. SUGGESTION (pre-existing, not introduced here; AC5 leans on it) - the v1.312 CSS lock's
+   FORBIDDEN_PROP misses `content-visibility`. `content-visibility: auto` added to the new stage
+   rule: 74/74 green, and in Chromium it makes the element a containing block for fixed
+   descendants (a fixed inset:0 child measured 100,100,200,100 instead of 0,0,1280,720), the
+   v1.166 trap the lock exists for. `container-type` measured harmless (0,0,1280,720).
+
+7. SUGGESTION (disclosure) - browser zoom 125% on a 1280-wide window is a 1024px CSS viewport,
+   where none of this applies (the v1.190 rule; bar 209px below the fold at 1024x576). Out of
+   scope by construction; worth one line in Disclosed gaps.
+
+Findings 1-4 block this round. 5-7 do not.
+
+Tree: only this section appended (qa's r1 section above is theirs); every mutation ran in /tmp.
+
+Gate: CHANGES r1 @13f331d2 — adversary
