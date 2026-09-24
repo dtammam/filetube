@@ -3,10 +3,10 @@ plan: lock-audio-measure
 harness: v2 · lean
 branch: feat/lock-audio-measure
 anchor: spec
-status: r1 fixes built (d802d7f7, a2c53340) - awaiting gate r2
-next: gate r2 (the same adversary + qa instances, delta from 8fd3b99a). Then Dean's on-device run (the test plan below) decides phase 2.
+status: Gate closed
+next: release
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
-gate: pending
+gate: APPROVED r2 @3e3b898e — adversary, qa
 ---
 
 # Lock-to-audio handoff, phase 1: measure
@@ -341,6 +341,19 @@ Plus, in words: how long the gap FELT on each block, and whether any lock gave N
    comment in the code; see the mutant tables. The tap's `!rec.ret` (adversary Mm) likewise.
 10. **Tracker #252** (r1): the zoom census found the pre-existing Music / Books sort
    `<select class="btn btn-sm">` at 12px on mobile; allowlisted by name, not fixed here.
+11. **Surviving by design, accepted at gate r2:** R7 (the settle's attempt-number check), M18 (the
+   sidecar-active guard) and Mm (the tap's `!rec.ret`) are unreachable belts. Both r2 seats tried
+   to reach R7; the only route (a terminal-pagehide release with attempt 1 pending) cannot start a
+   second attempt before the rejection lands. Each carries a defense-in-depth comment.
+12. **An attempt-2 record keeps the FIRST anchors** (accepted at gate r2): after a failed first
+   handoff and a retry in the same hide cycle, the spans still run from the first hide and the
+   first iOS pause, so they include the user's own reaction time (e.g. pressing lock-screen Play).
+   The readout prints "attempt N, first failed: X" beside them so such a record is never read as
+   a plain gap.
+13. **r2 suggestions filed, not fixed** (Dean's overnight gate rule): tracker #253 (the collector /
+   readout / test residue: a stale "reads only" comment, a cut-short return reading "video did not
+   move", a 5.2 s real-time test, the untested synchronous `writeText` throw, and `wq` able to reach
+   storage) and #254 (the zoom census allowlist keyed by class, not file + id).
 
 ## Tech debt filed
 
@@ -348,6 +361,9 @@ Plus, in words: how long the gap FELT on each block, and whether any lock gave N
   "switch into Listen" option (see the tracker row).
 - **#252** (r1) The Music / Books sort select.btn computes 12px on mobile (pre-existing; found by
   the new zoom census).
+- **#253** (r2) Timing-log residue: qa S-a, S-b, S-d; adversary 2 (Mh2, N7).
+- **#254** (r2) The zoom census allowlist exempts the class `btn` everywhere: qa S-c = adversary 1
+  (N17).
 
 ## Gate r1 - qa (@8fd3b99a)
 
@@ -584,3 +600,152 @@ Instruments at a2c53340: eslint on the changed js files clean; `npm run lint:css
 TOTAL 0; overlay-containment clean; `node --test` player-* + setup-* + mobile-input-zoom-fontsize
 + tech-debt / css-token-lint / comment-debt census 879/879 (before the Mv tests); the
 pre-commit unit suite 7137 / 0. Full `npm test` was not run by the builder.
+
+## Gate r2 - qa (@3e3b898e)
+
+Delta reviewed: `git diff 8fd3b99a..3e3b898e` (d802d7f7 fixes, a2c53340 Mv binding, 3e3b898e fix
+record), every changed file. Instruments at 3e3b898e (Node v22.23.1), verbatim:
+- `node --test` player-bg-timing-log + player-lifecycle-release + player-background-audio +
+  mobile-input-zoom-fontsize + v1262-mobile-input-zoom: `# tests 206 # pass 206 # fail 0 # skipped 0`.
+- setup-*.test.js + css-token-lint + overlay-containment + comment-debt / tech-debt / exec-plans /
+  docs-status census: `# tests 114 # pass 114 # fail 0`.
+- `npm run test:unit`: `# tests 7137 # pass 7137 # fail 0 # skipped 0` (exit 0).
+- `npm run lint:css` TOTAL 0; `css-token-lint.js --enforce` TOTAL 0; overlay-containment
+  `clean (0 violations)`; eslint on the 6 changed js files: no output, exit 0.
+- Probes re-run in a `git archive 3e3b898e` sandbox (deleted after).
+
+My r1 findings, one by one:
+1. **W1 (write before play()) - fixed as prescribed.** It uses a per-record `wq` flag, not the shared
+   one. Re-ran the trace probe: the calls INSIDE the re-lock hide handler are `seek, play(sidecar),
+   pause(video)` with no setItem. Both writes (the old record's close, then the new record's first
+   write) land after play(). Both records are on disk: the old one `ok/resume, done`, the new one
+   `pending`, so the new first write was not swallowed. `wq` never reaches storage: the JSON replacer drops
+   it, and the probe found no `wq` key on either stored record.
+   The new block-header comment is accurate. One residue, S-a below.
+2. **W2 (textarea under the zoom floor) - fixed differently, correctly.** The class got its own rule
+   in the mobile block rather than joining the pinned `.comment-input-box` list (which
+   `v1262-mobile-input-zoom` locks). Re-measured in headless Chromium: the timing textarea computes
+   **16px** at 390 and 375 wide (a plain textarea 16px), and 10px at 1280 wide (desktop, as intended).
+   Layout unchanged: 390 wide gives doc 390 and scroller 324/324, 375 wide gives 375 and 309/309.
+   The new census binds it: dropping the floor rule reds it with
+   `.bg-timing-log-text (textarea in setup.html) computes 10px on mobile`, and emptying
+   `ZOOM_CENSUS_KNOWN` reds it with `.btn (select in books.html) computes 12px on mobile`.
+   Tracker #252 checks out: `#music-sort-select` measures 12px at 390 in Chromium.
+3. **W3 (retry misreported) - fixed differently, acceptably.** Attempts are counted and the per-attempt
+   marks reset. Re-ran the retry probe: `attempts 2, firstErr NotAllowedError, err absent, outcome ok`,
+   and the note reads `ok via pause-hidden (attempt 2, first failed: NotAllowedError)`. The spans
+   still run from the first hide, but the readout now states the attempt count beside them, and the
+   block comment says so. That is a fair disclosure, not a contradiction. `bgTimingOnPlaySettled`'s
+   live check also closes the adversary's AbortError-after-return case.
+4. **S4 (no-swap note) - fixed.** Probe: a setting-off skip followed by a Play while hidden stores
+   `ret.videoPaused false`, and the note reads `back: no swap (video kept playing)`.
+5. **S5 (cost prose) - fixed.** The mobile check now runs before the toggle read in both hooks, and
+   Disclosed gap 6 is corrected. Both are bound by the new desktop-scope test.
+6. **S6 (stale title) - fixed.**
+7. **S7 (row class) - fixed.** `.bg-timing-log-row td { white-space: nowrap }`, layout re-measured as
+   above.
+8. **S8 (Copy on a bad `t`) - fixed.** `bgTimingIsoLabel`, bound by the Setup note test.
+9. **S9 note - writeText is now synchronous in the tap (in a try), rejection shows the box; bound.**
+   The inline-style convention was left as is, as I allowed.
+
+New items (none blocking):
+- **S-a, SUGGESTION - one comment the fix record says was corrected was not** (player.js:3746, the
+  `handleBackgroundLifecycle` hook still ends "reads only"). The fix record's W1 row says the hook's
+  "reads only" now says what the code does. The code is now write-free on the synchronous path, but
+  the hook also mutates the in-memory record and queues a microtask write. Suggested wording: "no
+  synchronous storage write". Harmless either way; the adjacent block header is precise.
+- **S-b, SUGGESTION - a cut-short return reads "did not move".** A re-lock inside the settle window
+  closes the old record, which the W1 test calls "cut short". The readout note still says `back:
+  video did not move`, because the record carries no marker for the cut-short case. A `ret.cut` flag
+  set in the re-hide close would let the note say "cut short by a re-lock".
+- **S-c, SUGGESTION - `ZOOM_CENSUS_KNOWN` allowlists the CLASS `btn` everywhere.** Today that is only
+  the two #252 selects. But any future `<select class="btn ...">` on any page would pass silently.
+  Key the allowlist on file + id (`music.html#music-sort-select`, `books.html#books-sort-select`) so
+  #252 cannot absorb a new offender.
+- **S-d, SUGGESTION - the settle test waits 5.2 s of real time** ("W1: a return whose video never
+  moves"). The ordering is deterministic (the settle timer is armed first), so it is not a flake, only
+  suite time. The Clear test already uses mock timers, and this one could too.
+
+No regressions found in the delta. No new security surface: the delta adds no network call and no
+markup injection, and storage stays device-local.
+
+Gate: APPROVED r2 @3e3b898e — qa
+
+## Gate r2 - adversary (@3e3b898e)
+
+Delta reviewed: `git diff 8fd3b99a..3e3b898e` (fixes d802d7f7 + a2c53340; HEAD =
+3e3b898e4681ee668c99cf521af995ac7c1cf83f). Everything was measured in a /tmp sandbox built from
+`git archive 3e3b898e` (Node v22.23.1). Instruments, verbatim:
+- The five targeted files (player-bg-timing-log, player-background-audio, player-lifecycle-release,
+  mobile-input-zoom-fontsize, v1262-mobile-input-zoom): `# tests 206 # pass 206 # fail 0`.
+- `player-*` + `setup-*` + the two zoom files: `# tests 858 # pass 858 # fail 0 # skipped 0`.
+- The ten census files, run read-only in the worktree: `# tests 92 # pass 92 # fail 0`.
+- `npm run lint:css -- --enforce`: `TOTAL 0`. overlay-containment: `clean (0 violations)`. eslint on
+  the changed js files: exit 0.
+- Layout probe re-run at 3e3b898e, with the new `nowrap` cells: 390 doc 390, scroller 324/324; 375: 375,
+  309/309. Unchanged.
+- The full `npm test` was not run.
+
+My r1 repros, re-driven on the r2 harness (not taken from the builder's tests):
+- ADV-1: the re-lock trace INSIDE the hide handler is `[seek, play bg-audio-sidecar, pause
+  media-player]`, with no setItem. The two writes (the old record's close, then the new record's first)
+  land after it. 2 records.
+- ADV-4: the pending handoff stays `pending` after the return and the 5 s settle, with `superseded
+  {by: AbortError}` and no `err`.
+- ADV-6 (qa W3): `attempts 2, firstErr NotAllowedError, outcome ok, trigger pause-hidden`.
+
+Findings against r1:
+- **W1 (sync write before play on a re-lock): FIXED as prescribed.** It uses a per-record queue
+  (`rec.wq`), as I asked. My r1 survivors on this arm are now red at 205/1 each: Mg (a re-hide that
+  keeps the returned record) and Mk (no 5 s settle timer). New mutants: N1 (sync close) 205/1 and
+  N2 (one shared flag again) 205/1. I swept for other synchronous writes inside the hide task. The
+  tap's skip, the decision and the finalize-on-re-hide all queue a microtask. The remaining
+  synchronous `bgTimingPersist` calls (the sidecar's first advance, the video's return advance, the
+  settle timer, the finalize on visible) run in their own events or timers, never in the hide task.
+- **W2 (our own release relabels a pending handoff; qa W3 retry): FIXED, differently from my
+  prescription, and I accept the deviation.** `bgTimingOnPlaySettled` computes `live` at settle
+  time, the correct moment. The per-attempt reset keeps `firstErr`. Kills: N3 (always live) 205/1,
+  N4 (no reset) 205/1, N10 (superseded not recorded) 205/1, N11 (superseded recorded as err) 205/1,
+  N12 (no firstErr) 205/1, N13 (no "had not started" wording) 205/1. R7 (no attempt-number check)
+  survives, 206/0. I tried to reach it. The only way into INLINE_VIDEO with attempt 1 still pending
+  and no return is a terminal-pagehide `releaseAudioSession`. There the following `freeze` cannot
+  consume a candidate (only visibilitychangeHidden may), and our own pause is suppressed, so no
+  second attempt starts before the rejection task lands. It is unreachable, and I accept it as
+  disclosed. Residual, disclosed by the builder: an attempt-2 record keeps the FIRST iOS pause and the
+  first hide as its anchors, so its spans include the user's reaction time. The readout says "attempt
+  2" beside them. Acceptable for a measurement log.
+- **W3 (storage guards unbound): FIXED.** Ma 205/1 and Mb 205/1 are red on the new W3 test (blocked
+  and full storage, log on and off, identical media calls, no page error).
+- **S4 (lock hole): FIXED.** Mc (a setItem on the tap line) 203/3. Mc2 (a harmless `void 0;` on the
+  tap line) 204/2, so the lock now rejects ANY extra code.
+- **S5 (desktop scope): FIXED.** Md (hide gate without the mobile check) 205/1, and Md3 (pause stamp
+  without the mobile check) 205/1. Moving the mobile check ahead of the toggle read adds one
+  `isMobileFormFactor()` (three matchMedia reads) per video pause on every form factor. It was
+  already called on every hide. Negligible.
+- **S6 (Copy rejection / Clear disarm / microtask writeText): FIXED.** Mh (rejection swallowed)
+  205/1, N8 (writeText back behind a microtask) 205/1, Mn (no disarm) 205/1.
+- **S7 (dead belts): as disclosed.** M18 206/0 and Mm 206/0 still survive, as argued in r1, and are
+  now commented as defense in depth.
+
+New in the fix (suggestions only; I found no CRITICAL or WARNING):
+1. **SUGGESTION - the #252 allowlist is keyed by CLASS, so it exempts any future `btn`-classed text
+   control.** Mutant N17 adds `<input type="text" class="btn" id="adv-x">` to setup.html. It computes
+   12px on mobile (`.btn` = `--fs-sm` = 12px), a zoom-on-focus control, and the census stays green
+   (206/0, SURVIVED). Key `ZOOM_CENSUS_KNOWN` by file + id (`music.html#music-sort-select`,
+   `books.html#books-sort-select`) so it exempts exactly the two known offenders. For the record, the
+   census does bind its own case: N6 (drop the floor) 205/1, N16 (floor at 15px) 205/1, and N15 (empty
+   allowlist) 205/1 surfaces the #252 selects, which confirms that tracker row.
+2. **SUGGESTION - two small arms are unbound.** Mh2: a SYNCHRONOUS `writeText` throw that skips the
+   fallback survives 206/0; only the rejection arm is tested. N7: dropping `wq` from the JSON replacer
+   survives 206/0, so a stored record can carry `wq: true` (when a direct advance write lands while a
+   queued write is pending), against the comment "never stored". It is cosmetic. Add `!('wq' in r)`
+   beside the existing `p0` assert.
+
+Tally: 30 adversary mutants at 3e3b898e, 24 KILLED, 6 SURVIVED. The survivors are M18, Mm and R7
+(dead belts, accepted) and N17, Mh2 and N7 (the suggestions above, for the tracker per Dean's
+overnight rule). I spot-checked the builder's kill claims for Ma, Mb, Mc, Md, Mg, Mh, Mk, Mn, R1
+(=N1), R2 (=N2), R5 (=N4), R6 (=N3), R8 (=N12), Mz (=N6), Mt (=N14), Mv (=N9) and Ms (=N8). All
+reproduce red. R7 and M18 survive as tabled. The worktree is untouched apart from this section. The
+qa r2 section above it was already in the file, uncommitted, when I appended.
+
+Gate: APPROVED r2 @3e3b898e — adversary
