@@ -25,7 +25,7 @@ const savedDoc = global.document; const savedWin = global.window;
 delete global.document; delete global.window;
 const COMMON = require.resolve('../../public/js/common.js');
 delete require.cache[COMMON];
-const { notifyLibraryChanged, LIBRARY_CHANGED_EVENT } = require(COMMON);
+const { notifyLibraryChanged, LIBRARY_CHANGED_EVENT, showChapterSnapEditor } = require(COMMON);
 if (savedDoc) global.document = savedDoc;
 if (savedWin) global.window = savedWin;
 
@@ -544,5 +544,73 @@ test('r2 S4b (adversary): a superseded Songs render whose fetch FAILS after a fl
     assert.strictEqual(h.player.currentId, 'za1');
     assert.ok(h.D.querySelectorAll('#music-content .music-song-row').length > 0, 'the pick\'s list survived the failed render');
     assert.strictEqual(h.D.getElementById('music-empty').hidden, true, 'no empty note over it');
+  } });
+});
+
+// ---------------------------------------------------------------- Chapter Snap (v1.322) wiring
+async function waitFor(pred, label) {
+  for (let i = 0; i < 300; i++) { if (pred()) return; await new Promise((r) => setTimeout(r, 10)); }
+  assert.fail('timed out waiting for: ' + label);
+}
+test('Chapter Snap: a SAVE and a REVERT through the REAL snap editor each re-load the open pocket-menu level - a pick then plays the server\'s new start', async () => {
+  try {
+    await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => { dom.window.showToast = () => {}; }, run: async (h) => {
+      const fetchImpl = (url, init) => authedFetch(base + url, init);
+      const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+      await openSongs(h);
+      assert.strictEqual(h.log.filter(songsUrl).length, 1);
+      const events = [];
+      h.D.addEventListener(LIBRARY_CHANGED_EVENT, (e) => events.push(e.detail));
+      // (1) SAVE: nudge Track A (chapter 2) one second later, Save
+      const ed1 = showChapterSnapEditor('djmix1', { fetchImpl, pollMs: 60000, doc: h.D });
+      await ed1.ready;
+      click(h.dom, ed1.list.querySelectorAll('.chapter-snap-row')[1].querySelector('[data-act="nudge"][data-delta="1"]'));
+      click(h.dom, ed1.saveBtn);
+      await waitFor(() => ed1.isClosed(), 'the snap editor closes after its save');
+      assert.deepStrictEqual(events, [{ kind: 'chapters', mediaId: 'djmix1' }], 'the save raised the ONE library-changed event');
+      await stepDown(h); await settleNet(); // the next action on the open Songs level
+      assert.strictEqual(h.log.filter(songsUrl).length, 2, 'the open level re-loaded after the snap save');
+      tapRow(h, 'Track A'); await settleNet();
+      let last = h.spy.loads[h.spy.loads.length - 1];
+      assert.strictEqual(last.id, 'djmix1::c1');
+      assert.strictEqual(last.data.chapterStartSec, 301, 'the snapped start plays (the server\'s truth, not the cached 300)');
+      menu(h); // back on the Songs level
+      // (2) REVERT: through the in-page confirm
+      const ed2 = showChapterSnapEditor('djmix1', { fetchImpl, pollMs: 60000, doc: h.D });
+      await ed2.ready;
+      assert.strictEqual(ed2.revertBtn.hidden, false, 'Revert is offered for the snap edit');
+      click(h.dom, ed2.revertBtn);
+      click(h.dom, ed2.confirmBox.querySelector('.chapter-snap-confirm-yes'));
+      await waitFor(() => ed2.isClosed(), 'the snap editor closes after the revert');
+      assert.strictEqual(events.length, 2, 'the revert raised the event too');
+      await stepDown(h); await settleNet();
+      assert.strictEqual(h.log.filter(songsUrl).length, 3, 'the open level re-loaded after the revert');
+      tapRow(h, 'Track A'); await settleNet();
+      last = h.spy.loads[h.spy.loads.length - 1];
+      assert.strictEqual(last.data.chapterStartSec, 300, 'the reverted start plays');
+    } });
+  } finally { await setMixChapters(MIX_TEXT); }
+});
+
+test('Chapter Snap: the Music-side seam (applySnappedChapterTimes, the snap editor\'s onSaved in Music) invalidates the menus on its own', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => { dom.window.showToast = () => {}; dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } }); }, run: async (h) => {
+    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+    await openSongs(h);
+    menu(h); tapRow(h, 'Albums'); await settleNet();
+    tapRow(h, 'Full Album Mix'); await settleNet();
+    tapRow(h, 'Intro'); await settleNet(); // the album drill is the browse view behind
+    // a snap editor that SAVES through Music's own onSaved WITHOUT raising the document event
+    // (the event path is bound above; this isolates the Music seam)
+    let opened = null;
+    h.dom.window.showChapterSnapEditor = (id, opts) => { opened = { id, opts }; };
+    const btn = h.D.querySelector('#music-content .music-drill-snap');
+    assert.ok(btn, 'the album drill behind the skin offers Fix times (admin)');
+    click(h.dom, btn);
+    await settleNet();
+    assert.ok(opened && opened.id === 'djmix1', 'Music opened its snap editor on the mix');
+    opened.opts.onSaved({ chapters: MIX_CHAPTERS.map((c) => ({ startTime: c.startTime, title: c.title })), chaptersEdited: false });
+    menu(h); menu(h); menu(h); // np -> album -> Albums -> Music
+    tapRow(h, 'Songs'); await settleNet();
+    assert.strictEqual(h.log.filter(songsUrl).length, 2, 'the Music seam dropped the cached library');
   } });
 });

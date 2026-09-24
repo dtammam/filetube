@@ -13465,6 +13465,7 @@ function showChapterSnapEditor(mediaId, opts) {
         if (closed) return;
         setBusy(false);
         if (res.ok) {
+          notifyLibraryChanged({ kind: 'chapters', mediaId: mediaId }, d); // pocket menus: the ONE library-changed seam
           if (typeof o.onSaved === 'function') { try { o.onSaved(res.body); } catch (_) { /* the caller's refresh */ } }
           if (typeof showToast === 'function') showToast('Back to the source chapters.');
           teardown();
@@ -13514,6 +13515,7 @@ function showChapterSnapEditor(mediaId, opts) {
         if (closed) return;
         setBusy(false);
         if (res.ok) {
+          notifyLibraryChanged({ kind: 'chapters', mediaId: mediaId }, d); // pocket menus: the ONE library-changed seam
           if (typeof o.onSaved === 'function') { try { o.onSaved(res.body); } catch (_) { /* the caller's refresh */ } }
           if (typeof showToast === 'function') showToast('Chapter times saved. A reheat keeps them.');
           teardown();

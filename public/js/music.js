@@ -1713,6 +1713,11 @@ if (typeof module !== 'undefined' && module.exports) {
     function applySnappedChapterTimes(baseId, body, opts) {
       var chapters = body && Array.isArray(body.chapters) ? body.chapters : null;
       if (!chapters) return;
+      // pocket menus (2026-09-24, with Chapter Snap v1.322): every Music-side chapter write lands
+      // here (the snap editor's save and revert, the text editor's result) - the pocket menus'
+      // cached lists and open levels hold the OLD times/titles/count, so re-load them. (The
+      // editors also raise notifyLibraryChanged; this keeps the Music seam self-sufficient.)
+      invalidateMenuData();
       var edited = !!(body && body.chaptersEdited);
       var ownsDrill = !!(drill && chapterAlbumBaseId(queue) === String(baseId));
       var fileDur = 0;
@@ -1746,7 +1751,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (edited) t.chaptersEdited = true; else delete t.chaptersEdited;
         return true;
       }
+      var wasFlat = (flatQueue === queue); // pocket menus K4: a patched flat list stays flat
       queue = queue.filter(keepPatched);
+      if (wasFlat) flatQueue = queue;
       if (activeListenChapters) activeListenChapters = listenAliased ? queue : activeListenChapters.filter(keepPatched);
       reflectChapter();
       // chapter snap gate r2 (adversary W2): a dropped row SHIFTS queue indices, but
