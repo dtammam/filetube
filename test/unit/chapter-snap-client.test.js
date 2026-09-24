@@ -276,4 +276,7 @@ test('watch (3): the menu entry sits inside the write-RBAC arm and opens the ONE
   assert.match(open, /chapterLoop = null;/, 'an armed loop is dropped (its window moved)');
   assert.match(open, /buildChaptersMenu\(\);/, 'the menu re-derives from the new list');
   assert.match(bodyOf('appendChaptersEditedBadge'), /currentData\.chaptersEdited === true/, 'the badge reads the server flag');
+  // The text editor's callback is the time editor's too (its "Fix times..." hands the result
+  // through it): it must carry the flag both ways (a typed save clears it, a snap sets it).
+  assert.match(bodyOf('openChaptersEditorFromMenu'), /currentData\.chaptersEdited = !!\(resolved && resolved\.chaptersEdited\);/, 'the text editor path refreshes the badge flag');
 });

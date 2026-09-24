@@ -59,6 +59,14 @@ test('parser edges: a negative pre-roll start clamps to 0, an unterminated trail
   ].join('\r\n');
   assert.deepStrictEqual(silence.parseSilenceDetectOutput(text, 9), [{ start: 0, end: 1.5 }, { start: 7.25, end: 9 }]);
   assert.deepStrictEqual(silence.parseSilenceDetectOutput(text, null), [{ start: 0, end: 1.5 }], 'no duration: the open gap is dropped, never invented');
+  // A NON-detector line mid-stream (a decoder warning quoting the words) after the last
+  // real gap closed must not open a phantom gap to the end of the file.
+  const midStream = [
+    '[silencedetect @ 0x1] silence_start: 2',
+    '[silencedetect @ 0x1] silence_end: 3 | silence_duration: 1',
+    '[mp3float @ 0x9] Header missing near silence_start: 5',
+  ].join('\n');
+  assert.deepStrictEqual(silence.parseSilenceDetectOutput(midStream, 9), [{ start: 2, end: 3 }], 'only [silencedetect] lines count');
   assert.deepStrictEqual(silence.parseSilenceLine('[silencedetect @ 0x2] silence_start: 1e+01'), { kind: 'start', t: 10 });
 });
 
@@ -160,11 +168,26 @@ test('the service: a cached record is READY only while the file keeps its size a
   // The file changes (size) -> the record is stale and not served.
   fs.appendFileSync(media, 'more');
   assert.strictEqual(svc.stateFor(item).state, 'stale');
-  // Same size, new mtime -> stale too.
-  fs.writeFileSync(media, 'y'.repeat(104));
-  const t = new Date(Date.now() + 5000);
-  fs.utimesSync(media, t, t);
-  assert.strictEqual(svc.stateFor(item).state, 'stale');
+  // Each axis ALONE (the other held equal to the record) must read stale:
+  const rec = svc.cache.read('album');
+  // (a) the SAME size as the record, a different mtime;
+  fs.writeFileSync(media, 'y'.repeat(rec.size));
+  const later = new Date(rec.mtimeMs + 5000);
+  fs.utimesSync(media, later, later);
+  assert.strictEqual(fs.statSync(media).size, rec.size, 'precondition: size equal to the record');
+  assert.strictEqual(svc.stateFor(item).state, 'stale', 'an mtime change alone is stale');
+  // (b) the SAME mtime as the record, a different size (a whole-second mtime so utimes
+  // can restore it exactly; the record is re-written through the real cache API).
+  const T = new Date(Math.floor(Date.now() / 1000) * 1000 - 60000);
+  fs.writeFileSync(media, 'q'.repeat(50));
+  fs.utimesSync(media, T, T);
+  const st2 = fs.statSync(media);
+  svc.cache.write('album', { params: silence.SILENCE_PARAMS_KEY, size: st2.size, mtimeMs: st2.mtimeMs, silences: [{ start: 3, end: 5 }] });
+  assert.strictEqual(svc.stateFor(item).state, 'ready', 'precondition: the re-written record matches');
+  fs.writeFileSync(media, 'q'.repeat(57));
+  fs.utimesSync(media, T, T);
+  assert.strictEqual(fs.statSync(media).mtimeMs, st2.mtimeMs, 'precondition: mtime equal to the record');
+  assert.strictEqual(svc.stateFor(item).state, 'stale', 'a size change alone is stale');
   assert.strictEqual(svc.stateFor({ id: 'gone', filePath: path.join(dir, 'nope.mp3') }).state, 'unavailable');
   assert.strictEqual(svc.start({ id: 'x\u0000y', filePath: media }), 'unavailable', 'a NUL id never starts a run');
   fs.rmSync(dir, { recursive: true, force: true });
