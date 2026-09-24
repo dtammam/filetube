@@ -3,7 +3,7 @@ plan: chapter-likes
 harness: v2 · lean
 branch: feat/chapter-likes
 anchor: spec
-status: Building
+status: Shipped v1.317.0
 next: gate CLOSED r2 @63497136 (all three seats). Merge to main, then close out at the wave release v1.317.0. Owed SUGGESTIONs (non-blocking, r2): the S4 overlayFail fixture should answer liked:true for the base file; unref the bootLikedGrid 5s fallback timer in card-like.test.js; tracker #235 collides with fix/music-theatre-button (renumber whichever merges second)
 design: Approved 2026-09-23 @6ea45237 (Dean's GO on D9-D12, recorded on feat/music-channel-chapters at 10c3be1e)
 gate: APPROVED r2 @63497136 — adversary, qa, security-brief

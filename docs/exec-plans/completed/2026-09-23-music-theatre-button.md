@@ -3,7 +3,7 @@ plan: music-theatre-button
 harness: v2 · lean
 branch: fix/music-theatre-button
 anchor: spec
-status: Building
+status: Shipped v1.317.0
 next: gate CLOSED r3 @c8767eb6 (adversary + qa; Dean approved round 3). Merge to main, close out at the wave release v1.317.0. Then Dean's device check (desktop /music: play a track, the popcorn button in the control bar flips the album beside the player; resize below 1024px and it is gone; /watch theatre unchanged; a watch -> music -> watch trip toggles the right layout on each page). Owed SUGGESTION (r3 adversary): the harness's fake element keeps only the LAST listener per event type - record every registration if a second handler is ever added to the shared button
 design: Approved 2026-09-23 @6ea45237 (Dean's GO on D15, recorded on feat/music-channel-chapters at 10c3be1e)
 gate: APPROVED r3 @c8767eb6 — adversary, qa

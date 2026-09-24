@@ -86,6 +86,53 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.317.0 - Music: go to a song's channel, chapter lengths, like a chapter, one theatre button (2026-09-24)
+
+The music wave (umbrella docs/exec-plans/active/2026-09-23-music-channel-chapters-wave.md, Dean's
+"GO." on D1-D15), built as parallel branches, each through its own gate. M4 (desktop music ambient)
+is still in its gate and ships next as v1.318.0; the umbrella stays open until then.
+
+- **T1 - one theatre button** (Dean: "the player has a built-in theatre mode button but it doesn't
+  work ... it doesn't always show"). The in-player popcorn button was a watch.js injection into the
+  PERSISTENT player host, bound on the watch view's abort signal: dead after a soft-nav into Music,
+  absent on a cold-load of /music. Now one shared writer injects it on both views, music binds it to
+  its own `.is-theater` layout on its own signal, the header duplicate is gone, below 1024px it is
+  hidden rather than inert, and watch re-stamps its aria from `ft-theater` at init. Gate r3 @c8767eb6
+  (adversary + qa); plan docs/exec-plans/completed/2026-09-23-music-theatre-button.md.
+- **M1 - go to the channel** (Dean: "go to an 'artist' from the music view for YouTube/chaptered
+  content"). The now-playing artist line is a control on every renderer (skins, pop-out, desktop
+  panel) opening the in-Music artist drill; a listen video with a channel folder taps to its channel
+  grid (`/?folder=<folderName>`); "Go to channel" sits in both menus. The four hand-copied now-playing
+  records collapsed into one writer (`nowPlayingFrom`), the player's same-id ADOPT now refreshes the
+  channel folder, the podcast show line is no longer an inert button, and in the desktop pop-out a
+  listen track's artist line is plain text (Dean's ruling: the pop-out never navigates the window
+  behind it). Gate r3 @8aa22622 (adversary + qa).
+- **M2 - chapter lengths** (Dean: "the length of a given section in the right-hand view"). The
+  desktop panel rows and the Nordic skin rows carry each chapter's own length; an unknown length
+  shows nothing, never `0:00` (Dean's ruling, podcasts included); the podcast desktop panel is
+  byte-identical. Same branch and gate as M1.
+- **M3 - like a chapter as a song** (Dean: "the ability to Like a given chapter as a 'song'").
+  Chapter likes live in the media like store keyed `<mediaId>::c<n>`, accepted only for a real
+  chapter of a visible item; GET /api/liked expands them to track-shaped entries behind the same
+  visibility gate; file delete / move / rekey clean up and carry them (prefix-aware, no LIKE); the
+  backup bundle round-trips them; the row heart and Extras check the response instead of flipping
+  blind. Full gate (data-loss class) r2 @63497136 (adversary + qa + security-brief); plan
+  docs/exec-plans/completed/2026-09-23-chapter-likes.md. Disclosed: a re-chapter can strand a like
+  by index (tracker #235).
+- **Exec plans dated and closed by script** - every plan is `YYYY-MM-DD-<slug>.md`, shipped ones move
+  to completed/ via scripts/plan-complete.js, a census enforces it
+  (docs/exec-plans/completed/2026-09-23-exec-plans-dated-completed.md).
+- **Pre-commit docs-only fast path** (Dean: "make this more efficient ... knock this out faster").
+  A commit whose every staged path is Markdown under docs/ runs only the unit tests that read docs/
+  (selected by grep each run), not the whole suite; everything else, and pre-push, is unchanged.
+  Disclosed build incident: the first cut of its test inherited the hook's GIT_* env and corrupted
+  the repo config (core.bare); repaired, and the test now scrubs GIT_* from its own process. Gate r3
+  @b82ac126 (adversary); plan docs/exec-plans/completed/2026-09-24-precommit-docs-fast-path.md.
+
+Device checks owed (Dean): desktop /music popcorn button toggles the album beside the player and is
+gone below 1024px, /watch theatre unchanged; tap a song's artist line and "Go to channel"; like a
+chapter and find it in Liked; the chapter lengths in the right-hand panel.
+
 ### v1.316.0 - The channel bell flips in place and wears the era's button treatment (2026-09-23)
 
 Dean, from v1.314.0: "make sure the notification bell we picked not only doesn't refresh the
