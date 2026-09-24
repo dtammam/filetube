@@ -3172,5 +3172,11 @@
     "date": "2026-09-24",
     "title": "Autoplay off in Music stops at the end of your queue",
     "intent": "Turning Autoplay off in Music now stops playback when your album or list ends, instead of carrying on into suggested songs, and turning it back on picks the suggestions up again. Songs you like from a long video count and list the same way everywhere, and switching a song between Music and the watch page keeps its proper title, artist and art."
+  },
+  {
+    "version": "1.321.0",
+    "date": "2026-09-24",
+    "title": "Theatre mode on a computer keeps the title and buttons in view",
+    "intent": "Theatre mode on a computer now sizes the video like YouTube does, so the title and the Like, Share and other buttons stay on the first screen instead of being pushed below it. The side menu tucks away while theatre is on and comes back when you turn it off or leave, and wide films fill the width of the screen."
   }
 ]
