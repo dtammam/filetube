@@ -9949,6 +9949,7 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
 const SWIPE_BACK_OWNER_SELECTORS = [
   '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
   '.whcal-stage', // the wheel-calibration tool's spin area (Settings > Experimental) - v1.311.2 gate W2
+  '[data-skin-swipe]', // pocket menus: Seattle's pivot list - a sideways swipe there moves across the pivots
   'input[type="range"]', '[role="slider"]',
 ];
 // ...plus the NET for scrubbers nobody listed yet: an element that took the

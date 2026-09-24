@@ -11525,6 +11525,40 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .mms-row.is-current .mms-rn{ color:var(--mms-ipod-blue1); }
   .mms-ipod .mms-row.is-cursor{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); border-bottom-color:transparent; }
   .mms-ipod .mms-row.is-cursor .mms-rn, .mms-ipod .mms-row.is-cursor .mms-rd, .mms-ipod .mms-row.is-cursor .mms-chev-r{ color:var(--mms-white); }
+  /* POCKET MENUS (Dean 2026-09-24: "truly emulate. Show artists, albums, songs, etc. fully
+     interactive"). The menu screen is the LCD's third view beside Now Playing and the
+     queue list; the controller (skin-surface.js) toggles .mms-menumode. The Click look is
+     the 6th/7th-gen SPLIT SCREEN: the list on the left half, the highlighted item's art
+     easing in on the right. Every color is the Classic palette this skin already carries
+     (the blue selection bar, the status-bar greys, the screen white) - nothing guessed. */
+  .mms-ipod .ip-menuview{ display:none; flex:1; min-height:0; }
+  .mms-ipod.mms-menumode .ip-npview, .mms-ipod.mms-menumode .ip-listview{ display:none; }
+  .mms-ipod.mms-menumode .ip-menuview{ display:flex; flex-direction:column; }
+  /* the scroller: no radius on it (the LCD clips - the overlay-containment split) */
+  .mms-ipod .ipm-list{ flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
+  .mms-ipod .ipm-split{ flex:1; min-height:0; display:flex; }
+  .mms-ipod .ipm-click .ipm-list{ flex:0 0 50%; max-width:50%; }
+  .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:34px; /* token-exempt: the menu row pitch (6-7 rows on a phone LCD, the device's density) */
+    box-sizing:border-box; padding:0 var(--space-4); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer;
+    font-family:inherit; font-size:var(--fs-md); font-weight:var(--fw-bold); }
+  .mms-ipod .ipm-lbl{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-ipod .ipm-chev{ flex:none; font-size:var(--fs-xl); color:var(--mms-ipod-scr-sub); }
+  .mms-ipod .ipm-now{ flex:none; display:grid; place-items:center; }
+  .mms-ipod .ipm-now svg{ width:14px; height:14px; /* token-exempt: speaker glyph box */ fill:var(--mms-ipod-blue1); display:block; }
+  /* the selection BAR: the v1.233 list cursor's own gradient + white text */
+  .mms-ipod .ipm-row.is-cursor{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); }
+  .mms-ipod .ipm-row.is-cursor .ipm-chev{ color:var(--mms-white); }
+  .mms-ipod .ipm-row.is-cursor .ipm-now svg{ fill:var(--mms-white); }
+  .mms-ipod .ipm-skel{ cursor:default; }
+  .mms-ipod .ipm-skel-bar{ display:block; width:70%; height:10px; /* token-exempt: skeleton text bar */ border-radius:var(--radius-full); }
+  .mms-ipod .ipm-note{ padding:var(--space-6); font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); }
+  /* the right half: the art pane, a soft inner edge where it meets the list (the 6G seam) */
+  .mms-ipod .ipm-art{ position:relative; flex:1; min-width:0; overflow:hidden; background:var(--mms-ipod-groove); box-shadow:var(--mms-ipod-art-shadow); }
+  .mms-ipod .ipm-art-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0; transform:scale(1.08);
+    transition:opacity var(--dur-slow) var(--ease-ui), transform 1.6s var(--ease-ui); /* token-exempt: the slow Ken Burns settle */ }
+  .mms-ipod .ipm-art-img.is-in{ opacity:1; transform:scale(1); }
+  /* the tray (the pop-out's Nano strip) has no wheel to reach a menu with - Now Playing only */
+  body.mms-tray .ip-menuview{ display:none; }
   /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
   .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
   /* v1.239 (Dean): sized proportional to the REAL iPod Classic wheel (~70% of the body
@@ -11636,6 +11670,29 @@ html[data-modern="on"] .video-uploader {
      is-current so coincide keeps the v1.233 cursor-wins invariant at equal specificity. */
   .mms-zune-classic .mms-row.is-cursor{ background:var(--mms-zn-pink); color:var(--mms-black); border-bottom-color:transparent; }
   .mms-zune-classic .mms-row.is-cursor .mms-rt, .mms-zune-classic .mms-row.is-cursor .mms-rn, .mms-zune-classic .mms-row.is-cursor .mms-rd, .mms-zune-classic .mms-row.is-cursor .mms-chev-r{ color:var(--mms-black); }
+  /* POCKET MENUS on Seattle: ZUNE style - big lowercase hairline type on the black
+     Metro screen, the Music level a PIVOT strip (the active pivot leads, the rest trail off
+     the edge; pad left/right or a swipe moves across), the selected row lit white while the
+     rest sit dim (the Zune marks selection by light, not a bar). Palette = the Seattle
+     tokens this skin already carries. */
+  .mms-zune-classic .ip-menuview{ background:var(--mms-black); color:var(--mms-white); padding:var(--space-2) var(--space-6) 0; }
+  .mms-zune-classic .ipm-pivots{ display:flex; gap:var(--space-8); flex:none; overflow:hidden; white-space:nowrap; padding:var(--space-2) 0 var(--space-4); }
+  .mms-zune-classic .ipm-pv{ flex:none; border:0; padding:0; background:transparent; cursor:pointer; font-family:inherit; font-size:var(--fs-5xl); font-weight:var(--fw-light); line-height:var(--mms-lh-ttl); text-transform:lowercase; color:var(--mms-zn-dim); }
+  .mms-zune-classic .ipm-pv.is-on{ color:var(--mms-white); }
+  .mms-zune-classic .ipm-title{ flex:none; padding:var(--space-2) 0 var(--space-4); font-size:var(--fs-5xl); font-weight:var(--fw-light); line-height:var(--mms-lh-ttl); text-transform:lowercase; color:var(--mms-zn-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-zune-classic .ipm-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-content:center; height:48px; /* token-exempt: the Zune list pitch (big type) */
+    padding:0; background:transparent; color:var(--mms-zn-dim); font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
+  .mms-zune-classic .ipm-lbl{ grid-column:1; }
+  .mms-zune-classic .ipm-sub{ grid-column:1; font-size:var(--fs-sm); color:var(--mms-zn-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-zune-classic .ipm-now{ grid-column:2; grid-row:1 / span 2; padding-left:var(--space-4); }
+  .mms-zune-classic .ipm-now svg{ fill:var(--mms-zn-pink); }
+  .mms-zune-classic .ipm-row.is-current{ color:var(--mms-zn-pink); }
+  /* listed AFTER is-current: the lit cursor wins when they coincide (the v1.233 invariant) */
+  .mms-zune-classic .ipm-row.is-cursor{ background:transparent; color:var(--mms-white); }
+  .mms-zune-classic .ipm-row.is-cursor .ipm-sub{ color:var(--mms-white); }
+  .mms-zune-classic .ipm-row.is-cursor .ipm-now svg{ fill:var(--mms-zn-pink); }
+  .mms-zune-classic .ipm-root .ipm-row{ height:60px; /* token-exempt: the Zune main-menu pitch */ font-size:var(--fs-6xl); }
+  .mms-zune-classic .ipm-note{ color:var(--mms-zn-dim); padding:var(--space-6) 0; }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
@@ -11647,7 +11704,7 @@ html[data-modern="on"] .video-uploader {
 }
 /* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
-@media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } }
+@media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; } }
 
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }

@@ -1120,6 +1120,16 @@ if (typeof module !== 'undefined' && module.exports) {
         onDock: dockToOrigin,
         onShuffle: function () { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); },
         onArtist: function () { artistTap(undefined, popout); }, // v1.317 (M1): the skin's artist line -> the artist drill, or (in-tab only) the channel grid for a listen video
+        // Pocket menus (Dean 2026-09-24): the POCKET MENUS on the Click / Seattle skins - the whole library as
+        // the device's menu tree. The engine owns the navigation; the view owns the data (the
+        // same /api/music routes the browse view reads) and the play seam (playFromMenu).
+        menu: {
+          load: menuLoad,
+          onPlay: function (req) { playFromMenu(req); },
+          onShuffleAll: shuffleAllFromMenu,
+          hasCurrent: hasCurrentMusicTrack,
+          currentId: effectiveCurrentId,
+        },
         fastScan: true,
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
@@ -1689,6 +1699,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // closed the player and re-primed the liked cache; the VIEW clears its playing state,
     // lets the panel teardown run (drops the full-screen skin), and re-renders the lists.
     function afterExtrasMutation() {
+      menuSongsPromise = null; // pocket menus: a deleted/moved track must leave the pocket menus too
+      menuArtistCache = Object.create(null);
       playingId = null;
       nowPlaying = null;
       chapterViewId = null;
@@ -2136,6 +2148,8 @@ if (typeof module !== 'undefined' && module.exports) {
       scanBtn.addEventListener('click', function () {
         scanBtn.disabled = true;
         fetch('/api/music/scan', { method: 'POST' }).catch(function () {}).finally(function () {
+          menuSongsPromise = null; // pocket menus: a rescan refreshes the pocket menus' library too
+          menuArtistCache = Object.create(null);
           setTimeout(function () { scanBtn.disabled = false; render().catch(function () {}); }, 1500);
         });
       }, { signal });
@@ -3074,6 +3088,135 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
       playAt(i, { soloChapter: true }); // v1.311: an in-album chapter re-tap = exit after that segment
+    }
+
+    // ---- POCKET MENUS (2026-09-24): the view's half (data + play) --------------------------------
+    // Every level reads the SAME routes the browse view reads, and the song lists come back
+    // in the browse view's own drill sorts (sortForTab), so a song chosen from a menu plays in
+    // exactly the order the album/artist drill behind the skin then shows. The builders take
+    // musicArtUrl - the one art rule - so a menu thumbnail is the art the rest of Music shows.
+    var menuSongsPromise = null; // the whole library (title order), fetched once per view instance
+    var menuArtistCache = Object.create(null); // artist name -> Promise<tracks>
+    function menuAllSongs() {
+      if (!menuSongsPromise) {
+        var pr = fetchJson('/api/music?sort=title-asc&limit=10000')
+          .then(function (d) { return Array.isArray(d && d.items) ? d.items : []; });
+        menuSongsPromise = pr;
+        pr.catch(function () { if (menuSongsPromise === pr) menuSongsPromise = null; }); // a failure retries on the next open
+      }
+      return menuSongsPromise;
+    }
+    function menuArtistTracks(name) {
+      var key = typeof name === 'string' ? name : '';
+      // '' is the untagged bucket: the route ignores an empty artist (it would return the whole
+      // library), so gather the bucket from the library by the group rule (albumArtist || artist).
+      if (!key) {
+        return menuAllSongs().then(function (t) { return t.filter(function (x) { return !((x && (x.albumArtist || x.artist)) || ''); }); });
+      }
+      if (!menuArtistCache[key]) {
+        var pr = fetchJson('/api/music?artist=' + encodeURIComponent(key) + '&sort=' + encodeURIComponent(sortForTab('drill-artist')) + '&limit=10000')
+          .then(function (d) { return Array.isArray(d && d.items) ? d.items : []; });
+        menuArtistCache[key] = pr;
+        pr.catch(function () { if (menuArtistCache[key] === pr) delete menuArtistCache[key]; });
+      }
+      return menuArtistCache[key];
+    }
+    function menuSongLevel(tracks, play) {
+      return { items: SKINS.menuSongItems(tracks, musicArtUrl), tracks: tracks, play: play };
+    }
+    function menuItemsOf(d) { return Array.isArray(d && d.items) ? d.items : []; }
+    function menuLoad(node) {
+      var n = node || {};
+      if (!SKINS) return Promise.resolve({ items: [] });
+      if (n.type === 'artists') {
+        return fetchJson('/api/music/artists?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl) }; });
+      }
+      if (n.type === 'albums') {
+        return fetchJson('/api/music/albums?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl) }; });
+      }
+      if (n.type === 'songs') {
+        return menuAllSongs().then(function (t) { return menuSongLevel(t, { ctx: { src: 'music', sort: 'title-asc' }, label: 'Songs' }); });
+      }
+      if (n.type === 'genres') {
+        return menuAllSongs().then(function (t) { return { items: SKINS.menuGenreItems(t) }; });
+      }
+      if (n.type === 'genre') {
+        // Genre has no list-context key: the queue rides a plain title-order ctx (disclosed).
+        return menuAllSongs().then(function (t) { return menuSongLevel(SKINS.tracksOfGenre(t, n.key), { ctx: { src: 'music', sort: 'title-asc' }, label: n.label || 'Genre' }); });
+      }
+      if (n.type === 'artist') {
+        return menuArtistTracks(n.key).then(function (t) { return { items: SKINS.menuArtistAlbumItems(t, n, musicArtUrl) }; });
+      }
+      if (n.type === 'artistAll') {
+        return menuArtistTracks(n.artist).then(function (t) {
+          return menuSongLevel(t, { ctx: { src: 'music', artist: n.artist, sort: sortForTab('drill-artist') }, drill: { type: 'artist', key: n.artist, label: n.label || n.artist }, label: n.label });
+        });
+      }
+      if (n.type === 'artistAlbum') {
+        return menuArtistTracks(n.artist).then(function (t) {
+          return menuSongLevel(SKINS.tracksOfAlbum(t, n.key), { ctx: { src: 'music', album: n.key, sort: sortForTab('drill-artist') }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
+        });
+      }
+      if (n.type === 'album') {
+        var asort = sortForTab('drill-album');
+        return fetchJson('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(asort) + '&limit=10000').then(function (d) {
+          return menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: asort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
+        });
+      }
+      if (n.type === 'playlist') {
+        var pl = n.key === 'liked'
+          ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' } }
+          : n.key === 'recent-played'
+            ? { url: '/api/music?filter=recent-listening&limit=200', ctx: { src: 'music', filter: 'recent-listening' } }
+            : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' } };
+        return fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
+      }
+      return Promise.resolve({ items: [] });
+    }
+    // Play the song at `index` of a menu list, IN that list (Dean: "in the context of the list it
+    // came from"). The list BECOMES the queue, and the browse view behind the skin is re-drawn
+    // FROM that queue - an album/artist drill (renderDrillView, no refetch) or the song list with
+    // the level's name in the crumb - because its rows' data-index point INTO `queue`: a stale
+    // list behind a replaced queue plays the wrong track on the next row tap (the v1.104/v1.207
+    // wrong-track class). A menu pick is a SELECT (v1.311: one chapter exits after its segment);
+    // Shuffle Songs plays through (opts.playThrough).
+    function playFromMenu(req, opts) {
+      var tracks = (req && Array.isArray(req.tracks)) ? req.tracks : [];
+      var i = Number(req && req.index);
+      if (!tracks.length || !(i >= 0 && i < tracks.length) || !content) return;
+      var play = (req && req.play) || {};
+      playSelectGen += 1; // an in-flight album select (playTrackInAlbum) must not play over this pick
+      loadSongsGen += 1;  // ...nor an in-flight list load land over this queue
+      search = '';
+      queue = tracks.slice();
+      queueCtx = play.ctx || { src: 'music' };
+      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
+      disconnectStickyObserver();
+      if (play.drill) {
+        drill = { type: play.drill.type, key: play.drill.key, label: play.drill.label || '' };
+        if (crumb) { crumb.hidden = true; crumb.innerHTML = ''; }
+        setActiveTab(); rebuildSortMenu(); syncViewToggle();
+        renderDrillView();
+      } else {
+        drill = null;
+        tab = 'songs';
+        setActiveTab(); rebuildSortMenu(); syncViewToggle();
+        if (crumb) { crumb.hidden = false; crumb.textContent = play.label || 'Songs'; }
+        renderSongList();
+      }
+      playAt(i, { soloChapter: !(opts && opts.playThrough) });
+    }
+    // Shuffle Songs: the WHOLE library, freshly shuffled, played through from the top.
+    function shuffleAllFromMenu() {
+      var seed = String(Math.floor(Math.random() * 1e9));
+      var gen = playSelectGen;
+      fetchJson('/api/music?sort=random&seed=' + seed + '&limit=10000').then(function (d) {
+        // post-await: the view is alive and no newer pick claimed the player meanwhile.
+        if (signal.aborted || gen !== playSelectGen) return;
+        playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } }, { playThrough: true });
+      }).catch(function () {
+        if (typeof window.showToast === 'function') window.showToast('Could not shuffle your songs.');
+      });
     }
 
     // v1.252 (Dean, LISTEN-MODE): play a VIDEO as audio in the full music presentation.

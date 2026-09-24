@@ -151,7 +151,7 @@ test('v1.230: the music view HONORS the skin persisted by the Settings picker (f
   } });
 });
 
-test('v1.231 iPod: Select toggles the song list; MENU steps back (list->now-playing->dock)', async () => {
+test('v1.231 iPod: Select toggles the song list; MENU steps back (list->now-playing->Main Menu->dock, pocket menus)', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod', run: async (dom, spy) => {
     const p = panel(dom);
     const click = (sel) => p.querySelector(sel).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -162,8 +162,14 @@ test('v1.231 iPod: Select toggles the song list; MENU steps back (list->now-play
     click('[data-skin-menu]');
     assert.ok(!p.classList.contains('mms-listmode'), 'MENU from the list returns to Now Playing');
     assert.strictEqual(spy.dock, 0, 'MENU on the list did NOT exit the player');
+    // Pocket menus (Dean 2026-09-24): MENU from Now Playing climbs to the menu you came from -
+    // here nothing was chosen from a menu, so the Main Menu - and MENU there is the way out.
     click('[data-skin-menu]');
-    assert.strictEqual(spy.dock, 1, 'MENU from Now Playing docks/exits the player (the way out)');
+    assert.ok(p.classList.contains('mms-menumode'), 'MENU from Now Playing climbs to the Main Menu');
+    assert.strictEqual(p.querySelector('.ip-np').textContent, 'Click', 'the status bar names the Main Menu');
+    assert.strictEqual(spy.dock, 0, 'climbing into the menu did NOT exit the player');
+    click('[data-skin-menu]');
+    assert.strictEqual(spy.dock, 1, 'MENU on the Main Menu docks/exits the player (the way out)');
   } });
 });
 

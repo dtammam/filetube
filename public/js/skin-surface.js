@@ -497,6 +497,333 @@
     try { return (typeof module !== 'undefined' && module.require) ? module.require('./body-scroll-lock.js') : null; } catch (_) { return null; }
   }
 
+  // ==== POCKET MENUS: the controller (Dean 2026-09-24) =======================================
+  // The Click family and Seattle drive a real menu tree with the wheel/pad: rotation moves the
+  // highlight (the SAME onMove cursor branch and haptic path the song list uses - no second
+  // rotary engine), the center selects/drills in, MENU/Back climbs one level, and a row TAP
+  // selects too (phone users). The tree + rows + screens are music-skins.js's pure half; the
+  // data (cfg.load) and the play seam (cfg.onPlay / cfg.onShuffleAll) are the VIEW's.
+  //
+  // State lives HERE, not in the DOM: paint() rebuilds the panel on every track change, chapter
+  // roll and autoplay append, so afterPaint() re-draws the menu from this state each time -
+  // a repaint never throws you out of a list. The screen is 'np' (Now Playing) or 'menu' (the
+  // top of the stack); the v1.231 queue list (Select from Now Playing) stays the engine's own.
+  //
+  // cfg (music.js): load(node) -> Promise<{items, tracks?, play?}>; onPlay({tracks, index, play});
+  // onShuffleAll(); hasCurrent(); currentId(). Everything is inert on a skin with no `menus`.
+  function createPocketMenu(o) {
+    var cfg = o.cfg;
+    var panel = o.panel;
+    var doc = o.doc;
+    var win = o.win;
+    var SK = o.SKINS;
+    var getSkinId = o.getSkinId;
+    var destroyed = false;
+    var stack = [];
+    var builtFor = null;       // the menu style the stack was built for (a skin pick can change it)
+    var lastCurrent = null;    // the current id the last paint saw (the per-advance follow seam)
+    var npArt = '';            // the playing track's art (the split screen's fallback image)
+    var artTimer = null;
+    var artShown = '';         // the image the split screen currently shows (no re-fade on a repaint)
+    var rowH = 0;              // the measured row height (0 until layout exists)
+    var viewH = 0;             // the measured list viewport height
+    var listRaf = null;
+
+    function style() { try { return (SK && typeof SK.menuStyle === 'function' && SK.menuStyle(getSkinId())) || ''; } catch (_) { return ''; } }
+    function hasCurrent() { try { return !!(typeof cfg.hasCurrent === 'function' && cfg.hasCurrent()); } catch (_) { return false; } }
+    function currentId() { try { return (typeof cfg.currentId === 'function' && cfg.currentId()) || null; } catch (_) { return null; } }
+    // Opens on Now Playing when something is loaded; nothing loaded opens on the Main Menu.
+    var screen = hasCurrent() ? 'np' : 'menu';
+
+    function makePane(node) {
+      return { node: node, title: SK.menuTitle(node, style()), state: 'idle', items: [], tracks: null, play: null,
+        cursor: 0, scrollTop: 0, token: 0, playing: false, center: false };
+    }
+    function makeLevel(node) {
+      var pv = (node && node.type === 'music') ? SK.menuPivots(style()) : [];
+      if (pv.length) {
+        return { node: node, pivots: pv.map(function (p) { return p.label; }), pane: 0,
+          panes: pv.map(function (p) { return makePane({ type: p.type }); }) };
+      }
+      return { node: node, pivots: null, pane: 0, panes: [makePane(node)] };
+    }
+    function resetStack() { builtFor = style(); stack = [makeLevel({ type: 'main' })]; }
+    resetStack();
+    function top() { return stack[stack.length - 1]; }
+    function curPane() { var l = top(); return l ? l.panes[l.pane] : null; }
+    function isVisible(p) { return screen === 'menu' && curPane() === p; }
+    function lcd() { return panel.querySelector('.ip-lcd-in'); }
+    function menuEl() { return panel.querySelector('.ip-menuview'); }
+    function listEl() { return panel.querySelector('.ip-menuview .ipm-list'); }
+
+    function ensureLoaded(pane) {
+      // The Main Menu re-derives every draw: its Now Playing row exists only while a track does.
+      if (pane.node.type === 'main') {
+        pane.items = SK.menuStaticItems(pane.node, { hasCurrent: hasCurrent() }) || [];
+        pane.state = 'ready';
+        pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
+        return;
+      }
+      if (pane.state !== 'idle') return;
+      var st = SK.menuStaticItems(pane.node, {});
+      if (st) { pane.items = st; pane.state = 'ready'; return; }
+      pane.state = 'loading';
+      var tok = ++pane.token;
+      var p;
+      try { p = Promise.resolve(cfg.load(pane.node)); } catch (e) { p = Promise.reject(e); }
+      p.then(function (res) {
+        // post-await: this controller is alive and this is still the pane's newest load.
+        if (destroyed || tok !== pane.token) return;
+        pane.items = (res && Array.isArray(res.items)) ? res.items : [];
+        pane.tracks = (res && Array.isArray(res.tracks)) ? res.tracks : null;
+        pane.play = (res && res.play) || null;
+        pane.state = pane.items.length ? 'ready' : 'empty';
+        pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
+        if (isVisible(pane)) render();
+      }, function () {
+        if (destroyed || tok !== pane.token) return;
+        pane.state = 'error';
+        if (isVisible(pane)) render();
+      });
+    }
+    function emptyTextFor(node) {
+      var t = node && node.type;
+      if (t === 'artists') return 'No artists yet.';
+      if (t === 'albums') return 'No albums yet.';
+      if (t === 'genres') return 'No genres yet.';
+      if (node && node.key === 'liked') return 'Songs you like show up here.';
+      return 'No songs yet.';
+    }
+    function listModel(pane, list) {
+      var st = style();
+      var sTop = list ? list.scrollTop : pane.scrollTop;
+      var w = SK.menuWindow(pane.items.length, pane.cursor, rowH, sTop, viewH);
+      return { style: st, items: pane.items, cursor: pane.cursor, currentId: currentId(), start: w.start, end: w.end,
+        rowH: rowH, state: pane.state, emptyText: emptyTextFor(pane.node) };
+    }
+    // Re-draw ONLY the rows (a scroll or a cursor step), keeping the list's own scroll offset.
+    function renderList() {
+      var pane = curPane();
+      var list = listEl();
+      if (!pane || !list) return;
+      list.innerHTML = SK.renderMenuList(listModel(pane, list));
+    }
+    function measure() {
+      var list = listEl();
+      if (!list) return;
+      var r = list.querySelector('.ipm-row:not(.ipm-skel)');
+      var h = r ? r.offsetHeight : 0;
+      var vh = list.clientHeight;
+      var changed = (h > 0 && h !== rowH) || (vh > 0 && vh !== viewH);
+      if (h > 0) rowH = h;
+      if (vh > 0) viewH = vh;
+      return changed;
+    }
+    function scrollCursorIntoView(pane, center) {
+      var list = listEl();
+      if (!list || !(rowH > 0) || !(viewH > 0)) return;
+      var t = pane.cursor * rowH;
+      if (center) list.scrollTop = Math.max(0, t - (viewH / 2) + (rowH / 2));
+      else if (t < list.scrollTop) list.scrollTop = t;
+      else if (t + rowH > list.scrollTop + viewH) list.scrollTop = t + rowH - viewH;
+      pane.scrollTop = list.scrollTop;
+    }
+    function render() {
+      if (destroyed) return;
+      var host = lcd();
+      var st = style();
+      var old = menuEl();
+      var np = panel.querySelector('.ip-np');
+      if (!st || !host || screen !== 'menu') {
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+        panel.classList.remove('mms-menumode');
+        if (np && !panel.classList.contains('mms-listmode')) np.textContent = 'Now Playing';
+        return;
+      }
+      var lvl = top();
+      var pane = curPane();
+      ensureLoaded(pane);
+      var art = st === 'click' ? artFor(pane) : '';
+      var v = Object.assign(listModel(pane, null), {
+        title: pane.title, root: stack.length === 1, pivots: lvl.pivots, pivotIdx: lvl.pane,
+        art: art && art === artShown ? art : '', artIn: !!art && art === artShown,
+      });
+      var wrap = doc.createElement('div');
+      wrap.innerHTML = SK.renderMenuView(st, v);
+      var el = wrap.firstChild;
+      if (old && old.parentNode) old.parentNode.replaceChild(el, old);
+      else host.appendChild(el);
+      panel.classList.add('mms-menumode');
+      if (np) np.textContent = lvl.pivots ? SK.menuTitle(lvl.node, st) : pane.title;
+      var list = listEl();
+      if (list) list.scrollTop = pane.scrollTop;
+      // The first frame knows no geometry: measure, then re-window against the real rows.
+      if (measure() || pane.center) {
+        scrollCursorIntoView(pane, pane.center);
+        pane.center = false;
+        renderList();
+      }
+      scheduleArt(0);
+    }
+
+    // ---- the split screen's art (Click): the highlighted item's own image, eased in ----
+    function artFor(pane) {
+      var it = pane && pane.items[pane.cursor];
+      return (it && it.art) || npArt || '';
+    }
+    function scheduleArt(delay) {
+      if (artTimer) { try { win.clearTimeout(artTimer); } catch (_) { /* ignore */ } artTimer = null; }
+      if (style() !== 'click' || screen !== 'menu') return;
+      // a spin moves the cursor several rows a second - only the row it SETTLES on loads art.
+      artTimer = win.setTimeout(function () { artTimer = null; applyArt(); }, delay == null ? 140 : delay);
+    }
+    function applyArt() {
+      if (destroyed) return;
+      var box = panel.querySelector('.ip-menuview .ipm-art');
+      if (!box) return;
+      var u = artFor(curPane());
+      if (u === artShown && box.querySelector('.ipm-art-img')) return;
+      artShown = u;
+      if (!u) { box.innerHTML = ''; return; }
+      var img = doc.createElement('img');
+      img.className = 'ipm-art-img';
+      img.alt = '';
+      // reveal-once, both axes: a decoded image eases in; a failed one is dropped (the pane's
+      // own backdrop shows) - never a broken-image glyph, never a stuck invisible frame.
+      img.addEventListener('load', function () { img.classList.add('is-in'); }, { once: true });
+      img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); if (artShown === u) artShown = ''; }, { once: true });
+      img.src = u;
+      box.innerHTML = '';
+      box.appendChild(img);
+    }
+
+    // ---- navigation ----
+    function setCursor(i) {
+      var pane = curPane();
+      if (!pane || !pane.items.length) return;
+      pane.cursor = Math.max(0, Math.min(pane.items.length - 1, i));
+      scrollCursorIntoView(pane, false);
+      renderList();
+      scheduleArt();
+    }
+    function showNowPlaying() {
+      screen = 'np';
+      render();
+      // the Now Playing lines were display:none while the menu was up, so the marquee measured
+      // nothing at the last paint - let the engine re-measure them now that they show.
+      if (typeof o.onShowNowPlaying === 'function') { try { o.onShowNowPlaying(); } catch (_) { /* best-effort */ } }
+    }
+    function activate(i) {
+      var lvl = top();
+      var pane = curPane();
+      if (!lvl || !pane) return;
+      if (pane.state === 'error') { pane.state = 'idle'; render(); return; } // the center retries a failed load
+      var it = pane.items[i];
+      if (!it) return;
+      pane.cursor = i;
+      if (it.node) { stack.push(makeLevel(it.node)); render(); return; }
+      if (it.action === 'nowplaying') { showNowPlaying(); return; }
+      if (it.action === 'shuffle') {
+        try { if (typeof cfg.onShuffleAll === 'function') cfg.onShuffleAll(); } catch (_) { /* view best-effort */ }
+        showNowPlaying();
+        return;
+      }
+      if (it.song) {
+        // the pane a song was chosen from is the PLAYING context: its cursor follows the queue
+        // as it advances (afterPaint), so MENU from Now Playing lands on the song that plays.
+        stack.forEach(function (l) { l.panes.forEach(function (p) { p.playing = false; }); });
+        pane.playing = true;
+        lastCurrent = null;
+        try { if (typeof cfg.onPlay === 'function') cfg.onPlay({ tracks: pane.tracks || [], index: it.trackIndex, play: pane.play }); } catch (_) { /* view best-effort */ }
+        showNowPlaying();
+      }
+    }
+    function switchPivot(k) {
+      var lvl = top();
+      if (!lvl || !lvl.pivots) return;
+      var n = lvl.panes.length;
+      lvl.pane = ((k % n) + n) % n;
+      render();
+    }
+    // The v1.311 "re-register at EVERY advance" rule for a display that advances without a
+    // reload: a chaptered album rolls its chapter (and a queue advances its track) through
+    // paint(), so this runs at each advance and moves the playing list's cursor onto what now
+    // plays. Keyed on the id, never a position (a later append or a sort never fools it).
+    function followCurrent() {
+      var cur = currentId();
+      if (cur === lastCurrent) return;
+      lastCurrent = cur;
+      if (!cur) return;
+      stack.forEach(function (l) {
+        l.panes.forEach(function (p) {
+          if (!p.playing) return;
+          for (var i = 0; i < p.items.length; i++) {
+            if (p.items[i] && p.items[i].id === cur) { p.cursor = i; p.center = true; break; }
+          }
+        });
+      });
+    }
+    function onScroll(e) {
+      var list = listEl();
+      if (!list || e.target !== list) return;
+      var pane = curPane();
+      if (pane) pane.scrollTop = list.scrollTop;
+      if (listRaf != null) return;
+      var raf = (win && win.requestAnimationFrame) ? win.requestAnimationFrame.bind(win) : function (cb) { return win.setTimeout(cb, 16); };
+      listRaf = raf(function () { listRaf = null; if (!destroyed) { measure(); renderList(); } });
+    }
+
+    return {
+      // the style the CURRENT skin carries ('' = no menus: every hook below declines)
+      active: function () { return !!style(); },
+      isMenuMode: function () { return !!style() && screen === 'menu'; },
+      // after every paint(): rebuild on a style change, follow the advance, re-draw.
+      afterPaint: function (ctx) {
+        if (style() !== builtFor) resetStack();
+        npArt = (ctx && ctx.track && ctx.track.artUrl) || '';
+        followCurrent();
+        render();
+      },
+      // MENU: Now Playing climbs to the menu you came from; a list climbs one level; the Main
+      // Menu declines (false) so the engine docks - the way out.
+      onMenu: function () {
+        if (!style()) return false;
+        if (screen !== 'menu') { screen = 'menu'; render(); return true; }
+        if (stack.length > 1) { stack.pop(); render(); return true; }
+        return false;
+      },
+      onSelect: function () {
+        if (!style() || screen !== 'menu') return false;
+        var p = curPane();
+        activate(p ? p.cursor : 0);
+        return true;
+      },
+      // Seattle's pad left/right moves across the pivots (a Click's |<< >>| still skip tracks).
+      onLeftRight: function (dir) {
+        if (!style() || screen !== 'menu') return false;
+        var lvl = top();
+        if (!lvl || !lvl.pivots) return false;
+        switchPivot(lvl.pane + dir);
+        return true;
+      },
+      moveCursor: function (delta) { var p = curPane(); if (p) setCursor(p.cursor + delta); },
+      onItemTap: function (i) { if (screen === 'menu') activate(i); },
+      onPivotTap: function (k) { if (screen === 'menu') switchPivot(k); },
+      onScroll: onScroll,
+      // test/diagnostic seam: the live state, read-only copies.
+      state: function () {
+        var p = curPane();
+        return { screen: screen, depth: stack.length, title: p ? p.title : '', node: p ? p.node : null,
+          cursor: p ? p.cursor : -1, count: p ? p.items.length : 0, loadState: p ? p.state : '', pane: top() ? top().pane : 0 };
+      },
+      destroy: function () {
+        destroyed = true;
+        if (artTimer) { try { win.clearTimeout(artTimer); } catch (_) { /* ignore */ } artTimer = null; }
+        if (listRaf != null) { try { (win.cancelAnimationFrame || win.clearTimeout).call(win, listRaf); } catch (_) { /* ignore */ } listRaf = null; }
+      },
+    };
+  }
+
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     if (!SKINS || !config || !config.panel) return null;
@@ -514,6 +841,13 @@
     var marqueeOn = config.marquee !== false; // default ON (CSS-driven; inert without overflow)
     var stickerCfg = config.sticker || null;
     var extrasCfg = (stickerCfg && stickerCfg.extras) || null;
+    // The pocket menus (2026-09-24) - only where the VIEW supplies a menu data source (music does;
+    // podcasts pass none, so their Click/Seattle screens keep today's behaviour byte-for-byte),
+    // and even then only on a skin whose registry entry carries `menus`.
+    var pocket = (config.menu && typeof config.menu.load === 'function')
+      ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId,
+        onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
+      : null;
     // Extras only on a MAIN-document surface: the shared modals/toasts render in the main
     // window, so a pop-out offering Extras would open UI behind itself (v1.249 scope rule).
     // Dean wants pop-out Extras (2026-09-02) - that lifts WITH doc-aware shared dialogs, a
@@ -985,6 +1319,7 @@
       if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(panel);
       if (stickerCfg) injectSticker(); // v1.238: the quick-menu sticker on every skin paint
       mountWheelGhost(); // v1.256: the haptic ghost (capable devices + a wheel skin only)
+      if (pocket) pocket.afterPaint(ctx); // pocket menus: re-draw the menu level this repaint just replaced
       if (marqueeOn) {
         // measure + start the marquee AFTER layout (rAF), so scrollWidth is real (music parity).
         var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
@@ -998,11 +1333,41 @@
       if (bound) return; bound = true;
       panel.addEventListener('click', onClick);
       panel.addEventListener('pointerdown', onDown);
+      if (pocket) {
+        // pocket menus: the menu list's scroll re-windows its rows (scroll does not bubble - capture),
+        // and Seattle's pivot swipe rides the panel's own pointer stream (bound once, here).
+        panel.addEventListener('scroll', onMenuScroll, true);
+        panel.addEventListener('pointerdown', onSwipeDown);
+        panel.addEventListener('pointerup', onSwipeUp);
+        panel.addEventListener('pointercancel', onSwipeCancel);
+      }
       try {
         win.addEventListener('resize', onViewportChange);
         win.addEventListener('orientationchange', onViewportChange);
       } catch (_) { /* a detached fixture window */ }
     }
+    // pocket menus: Seattle's pivots move with a horizontal SWIPE across the list too (the Zune's own
+    // gesture). One swipe at a time; both end arms clear it; a swipe swallows its lift-off click
+    // (the wheel's suppress flag - onDown resets it on the next press).
+    var menuSwipe = null;
+    var MENU_SWIPE_PX = 40;
+    function onMenuScroll(e) { if (pocket) pocket.onScroll(e); }
+    function onSwipeDown(e) {
+      menuSwipe = null;
+      var zone = e.target && e.target.closest ? e.target.closest('[data-skin-swipe]') : null;
+      if (!zone || !pocket || !pocket.isMenuMode()) return;
+      menuSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    }
+    function onSwipeUp(e) {
+      var s = menuSwipe;
+      menuSwipe = null;
+      if (!s || !pocket || (e.pointerId !== undefined && e.pointerId !== s.id)) return;
+      var dx = (Number(e.clientX) || 0) - s.x;
+      var dy = (Number(e.clientY) || 0) - s.y;
+      if (Math.abs(dx) < MENU_SWIPE_PX || Math.abs(dx) <= Math.abs(dy) * 1.5) return;
+      if (pocket.onLeftRight(dx < 0 ? 1 : -1)) wheelSuppressClick = true;
+    }
+    function onSwipeCancel() { menuSwipe = null; }
     function onClick(e) {
       if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
       healGhostLock(); // v1.256: any tap self-heals a lock whose ghost the view tore down
@@ -1017,6 +1382,17 @@
         return;
       }
       if (handleStickerClick(e)) return; // sticker/extras taps never fall through to transport
+      if (pocket && !wheelTakeover) {
+        // pocket menus: a menu ROW tap selects it (phone users), a pivot tap moves to it; on
+        // Seattle's pivot levels the pad's left/right move across the pivots instead of
+        // skipping a track (the Click's |<< >>| keep skipping, as the device's did).
+        var mi = e.target.closest('[data-skin-mi]');
+        if (mi) { pocket.onItemTap(parseInt(mi.getAttribute('data-skin-mi'), 10)); return; }
+        var pvt = e.target.closest('[data-skin-pivot]');
+        if (pvt) { pocket.onPivotTap(parseInt(pvt.getAttribute('data-skin-pivot'), 10)); return; }
+        var lr = e.target.closest('[data-skin-prev], [data-skin-next]');
+        if (lr && pocket.onLeftRight(lr.hasAttribute('data-skin-next') ? 1 : -1)) return;
+      }
       if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
       if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
       if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
@@ -1039,6 +1415,7 @@
         // a dead wheel). One owner for one invariant.
         if (wheelTakeover) { releaseWheelTakeover(); return; }
         if (panel.classList.contains('mms-listmode')) { setListMode(false); }
+        else if (pocket && pocket.onMenu()) { /* pocket menus: climbed one menu level */ }
         else { onDock(); }
         return;
       }
@@ -1052,7 +1429,8 @@
           var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
           setListMode(false);
           if (cur && !isNaN(cgi)) onSelectIndex(cgi);
-        } else { setListMode(true); }
+        } else if (pocket && pocket.onSelect()) { /* pocket menus: the menu selected / drilled in */ }
+        else { setListMode(true); }
         return;
       }
       var seek = e.target.closest('[data-skin-seek]');
@@ -1369,6 +1747,7 @@
       if (wheelGhost && e.target === wheelGhost) ghostDownPoint = { x: e.clientX, y: e.clientY };
       if (wheelSpin) return; // one gesture at a time
       var listMode = panel.classList.contains('mms-listmode');
+      var menuMode = !!(pocket && pocket.isMenuMode()); // pocket menus: a menu level is a cursor list too
       var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
       var r = wheel.getBoundingClientRect();
       var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -1378,7 +1757,7 @@
         wheel: wheel, id: e.pointerId, captured: false, moved: false,
         // Now Playing is never idle: the wheel SCRUBS the timeline on EVERY surface
         // (Dean 2026-09-02 - the pop-out's old wheel-volume gave way to a consistent scrub).
-        mode: listMode ? 'cursor' : 'scrub', scrubRatio: null,
+        mode: (listMode || menuMode) ? 'cursor' : 'scrub', scrubRatio: null, menu: menuMode,
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
         lastT: nowMs(), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
         win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
@@ -1471,7 +1850,8 @@
         while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
           var sign = st.accum > 0 ? 1 : -1;
           st.moved = true;
-          setWheelCursor(wheelCursorRow + sign * mult, false);
+          if (st.menu && pocket) pocket.moveCursor(sign * mult); // pocket menus: the SAME rotary step, onto the menu
+          else setWheelCursor(wheelCursorRow + sign * mult, false);
           st.accum -= sign * WHEEL_STEP_DEG;
         }
       };
@@ -1531,6 +1911,12 @@
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);
+        if (pocket) {
+          panel.removeEventListener('scroll', onMenuScroll, true);
+          panel.removeEventListener('pointerdown', onSwipeDown);
+          panel.removeEventListener('pointerup', onSwipeUp);
+          panel.removeEventListener('pointercancel', onSwipeCancel);
+        }
         try {
           win.removeEventListener('resize', onViewportChange);
           win.removeEventListener('orientationchange', onViewportChange);
@@ -1538,6 +1924,8 @@
       }
       if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* ignore */ } }
       extrasMenu.destroy();   // stop the reheat poll + invalidate a late extras fetch (shared factory)
+      if (pocket) pocket.destroy(); // pocket menus: drop the art timer + invalidate a late menu load
+      menuSwipe = null;
       unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
       unwatchGhost();
       wheelGhost = null;
@@ -1550,6 +1938,8 @@
     return {
       paint: paint, reflect: reflect, setListMode: setListMode, destroy: destroy,
       isListMode: function () { return panel.classList.contains('mms-listmode'); },
+      // pocket menus: the pocket menu's live state (null when the view supplies no menus).
+      menuState: function () { return pocket ? pocket.state() : null; },
       // v1.270: set (or clear, with null) the single wheel takeover -
       // {onRotate, onSelect, onExit}, all optional. Generic on purpose: the engine
       // never learns what is listening. The caller owns its own teardown.
