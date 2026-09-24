@@ -14,12 +14,15 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
+// v1.317 (T1): the theatre control is the player's own #theater-btn, injected through
+// player.js's one writer; the default player stub exposes it like the real api does.
+const { ensureTheaterButton } = require('../../public/js/player.js');
 
 // The music view + a player host carrying the hidden controls the skin proxies to.
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div class="music-toolbar"><div class="music-toolbar-actions">
     <select id="music-sort-select"></select><button id="music-view-toggle" hidden></button>
-    <button id="music-theater-btn" hidden></button><button id="music-popout-btn" hidden></button><button id="music-shuffle-btn"></button><button id="music-scan-btn"></button>
+    <button id="music-popout-btn" hidden></button><button id="music-shuffle-btn"></button><button id="music-scan-btn"></button>
   </div></div>
   <div id="music-stage">
     <div id="player-slot">
@@ -27,6 +30,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
       <div id="player-controls">
         <button id="pp-btn"></button><button id="track-prev-btn"></button><button id="track-next-btn"></button>
         <input id="seek-bar" type="range" />
+        <button id="settings-btn"></button>
       </div></div>
     </div>
     <div id="music-nowplaying-panel" class="music-nowplaying-panel" hidden></div>
@@ -74,7 +78,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   let mod = null;
   dom.window.FileTube = {
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
-    player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; } },
+    player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; }, ensureTheaterButton: () => ensureTheaterButton(dom.window.document) },
   };
   // load the skins module into this window (sets window.FileTubeMusicSkins)
   delete require.cache[skinsPath]; global.module = undefined;
@@ -1946,7 +1950,7 @@ test('v1.311.3 Dean\'s stuck panel: a wide re-render outside a rotate never leav
     narrow = false; // turned sideways
     dom.window.dispatchEvent(new dom.window.Event('resize'));
     await settle();
-    dom.window.document.getElementById('music-theater-btn').click(); // a chapter boundary re-renders while wide
+    dom.window.document.getElementById('theater-btn').click(); // a chapter boundary re-renders while wide (v1.317: the in-player theatre button)
     await settle();
     assert.ok(el.querySelector('.mnp-title'), 'the wide re-render drew the desktop panel');
     assert.doesNotMatch(el.className, /\bmms-full\b/, 'and it does NOT wear the full-screen skin cover (the stuck state needs both)');
