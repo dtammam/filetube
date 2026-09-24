@@ -756,7 +756,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var nowPlayingEl = root.querySelector('#music-nowplaying');
     var nowPlayingPanel = root.querySelector('#music-nowplaying-panel');
     var musicStage = root.querySelector('#music-stage');
-    var theaterBtn = root.querySelector('#music-theater-btn');
+    var theaterBtn = null; // v1.317: the in-player #theater-btn, bound by bindTheaterControl once the host exists
     var popoutBtn = root.querySelector('#music-popout-btn');
     var actionsBtn = root.querySelector('#music-actions-btn'); // v1.278: desktop actions menu trigger
     var actionsMenu = root.querySelector('#music-actions-menu');
@@ -767,18 +767,42 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // v1.222 (Dean): desktop THEATRE toggle - lay the album / up-next panel BESIDE
     // the expanded player (the watch page's Related-files space) instead of below.
-    // Persisted (ft-music-theater); the button is desktop-only (CSS) and shows
-    // only while a track is expanded (toggled in updateNowPlayingPanel). The class
-    // rides #music-stage; a wide-viewport media query does the actual two-column
-    // layout, so on mobile the class is inert (panel stays below).
+    // Persisted (ft-music-theater). The class rides #music-stage; a wide-viewport
+    // media query does the actual two-column layout, so on mobile the class is
+    // inert (panel stays below).
+    // v1.317 (Dean, T1): the control is the player's own era-style `#theater-btn`
+    // (the popcorn `.pc-btn` before the cog - the same button the watch page
+    // uses), not a second button in the toolbar. Dean: "the player has a built-in
+    // theatre mode button but it doesn't work. There's one higher. Idk why we are
+    // not using the standard one. It doesn't always show." It did not work here
+    // because watch.js injected it into the PERSISTENT player host and bound its
+    // click on the watch view's abort signal - so after a watch visit + a soft-nav
+    // into Music the button was present but dead, and on a cold-load of /music it
+    // did not exist at all. Now: player.js's ensureTheaterButton is the ONE writer
+    // of the markup (id-guarded, so whichever view injects first wins); this view
+    // injects through it and binds its OWN click on its OWN signal, re-stamping
+    // aria-pressed from ITS persisted key (the watch page keeps ft-theater and
+    // re-stamps on its own mount). The host is cloned lazily on the first load(),
+    // so the bind runs at BOTH seams: init (a host already exists - docked from
+    // another view, or a re-init) and updateNowPlayingPanel (the first load in
+    // this init). Idempotent per init. Visibility is CSS: hidden below the desktop
+    // breakpoint, in the dock, and on every view that does not wire it - never a
+    // visible-but-inert control. `hidden` is never touched here: the button is
+    // shared with the watch view, which never clears it.
     var THEATER_KEY = 'ft-music-theater';
     function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
     function applyTheater(on) {
       if (musicStage) musicStage.classList.toggle('is-theater', !!on);
       if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
-    applyTheater(theaterOn());
-    if (theaterBtn) {
+    applyTheater(theaterOn()); // the stage class synchronously, before any host exists (no widen-flash)
+    function bindTheaterControl() {
+      if (theaterBtn) return; // bound for this init already
+      var pl = window.FileTube && window.FileTube.player;
+      var btn = (pl && typeof pl.ensureTheaterButton === 'function') ? pl.ensureTheaterButton() : null;
+      if (!btn) return; // no host in the document yet - the mount seam calls again
+      theaterBtn = btn;
+      applyTheater(theaterOn()); // aria-pressed reflects MUSIC's state on every music mount
       theaterBtn.addEventListener('click', function () {
         var next = !theaterOn();
         try { localStorage.setItem(THEATER_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
@@ -786,6 +810,7 @@ if (typeof module !== 'undefined' && module.exports) {
         updateNowPlayingPanel(); // v1.226: recompute (or clear) the theatre panel height cap
       }, { signal });
     }
+    bindTheaterControl();
 
     // v1.284 (Dean): the desktop Loop / Autoplay toggles. The mobile skin (and the pop-out)
     // already own these via the sticker menu; the inline desktop player had neither, so a loop
@@ -1494,7 +1519,7 @@ if (typeof module !== 'undefined' && module.exports) {
         nowPlayingPanel.innerHTML = '';
         nowPlayingPanel.className = 'music-nowplaying-panel'; // drop any skin classes
         document.body.classList.remove('mms-on'); // restore the default host chrome
-        if (theaterBtn) theaterBtn.hidden = true; // no expanded track -> no theatre toggle
+        // v1.317: the theatre button is the player's own; the dock/breakpoint CSS hides it here.
         // v1.248 (Dean): when the full-screen skin DOCKS/closes, the browse view is revealed - the
         // critter scatter was skipped/cleared while mms-on was up, so re-scatter now (only on the
         // actual transition out of the skin, not on every teardown call).
@@ -1506,8 +1531,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.227 mobile skins: on mobile + music, the panel becomes the chosen
       // full-screen skin (which owns its own transport, art + up-next). Takes over
       // completely; the desktop theatre toggle + default panel are skipped.
-      if (renderNowPlayingSkin()) { if (theaterBtn) theaterBtn.hidden = true; return; }
-      if (theaterBtn) theaterBtn.hidden = false; // a track is expanded -> the toggle is available (desktop-gated by CSS)
+      // v1.317 (T1): a track is expanded, so the player host is mounted - inject/bind the
+      // in-player theatre button once per init (a cold-load's first play lands here; the
+      // skin branch below is mobile-only, where the CSS hides the button anyway).
+      bindTheaterControl();
+      if (renderNowPlayingSkin()) return;
       // v1.223 (Dean): the panel lists the WHOLE queue - played tracks (before the
       // current) greyed but clickable, the current one marked, the rest up next -
       // so the list never shrinks. The 200-row cap is a WINDOW anchored near the

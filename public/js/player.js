@@ -1594,8 +1594,49 @@ function shouldCapPlayerHeight(o) {
     && !o.audioExpanded && !o.cssFullscreen;
 }
 
+// v1.317 (Dean, T1): the ONE writer of the era-style Theatre button in the
+// player control bar (`#theater-btn`, a `.pc-btn` just before the settings cog).
+// The control bar lives in the shared player host, which is parity-locked
+// byte-identical across every shell, so the button cannot be baked into the
+// markup; it is injected at runtime by whichever VIEW wires it (watch.js's
+// ensureCogControlsInjected, music.js's bindTheaterControl). Before this, the
+// markup lived only in watch.js: the button existed after a watch visit (and
+// rode into the persistent host on a soft-nav into Music, dead - its click
+// listener died with the watch view's abort signal) and did not exist at all
+// on a cold-load of /music. One writer here; each view binds its OWN click on
+// its OWN signal and re-stamps aria-pressed from its own persisted state.
+// Id-guarded: returns the existing button when present (so whichever view
+// injects first wins and the other reuses), null when the host is not in the
+// document yet (the template is cloned lazily on the first load()).
+//
+// The glyph (v1.188/v1.191, Dean): a popcorn bucket - an evenodd tub with
+// cut-out stripes plus a rim lip with puffs, all currentColor so it inherits
+// the era tokens exactly like the gear; the `<g>` scales it 1.2x and re-centres
+// it so its footprint matches the neighbouring cog ("same size as the cog").
+// Decorative only; aria-label carries the meaning.
+var THEATER_BTN_HTML = ''
+  + '<button type="button" id="theater-btn" class="pc-btn theater-btn" aria-label="Toggle theatre mode" aria-pressed="false">'
+  + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true">'
+  + '<g transform="matrix(1.2 0 0 1.2 -98 54)">'
+  + '<path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/>'
+  + '<path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/>'
+  + '</g></svg>'
+  + '</button>';
+function ensureTheaterButton(doc) {
+  var d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d) return null;
+  var existing = d.getElementById('theater-btn');
+  if (existing) return existing;
+  var controls = d.getElementById('player-controls');
+  var cog = d.getElementById('settings-btn');
+  if (!controls || !cog) return null;
+  cog.insertAdjacentHTML('beforebegin', THEATER_BTN_HTML);
+  return d.getElementById('theater-btn');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    ensureTheaterButton, // v1.317 (T1): the one writer of #theater-btn (watch + music inject through it)
     resolveCssFsScrollPlan,
     // v1.68.2: the rotation dead-zone snap decision (see its header).
     resolveRotationTopSnap,
@@ -8698,6 +8739,10 @@ if (typeof module !== 'undefined' && module.exports) {
     enumerable: true,
     get: function () { return currentId; },
   });
+  // v1.317 (Dean, T1): the views reach the one Theatre-button writer through
+  // the player api (player.js ships on every shell that carries the control
+  // bar, so a soft-nav'd view never depends on a script its shell lacks).
+  api.ensureTheaterButton = function () { return ensureTheaterButton(document); };
 
   window.FileTube = window.FileTube || {};
   window.FileTube.player = api;

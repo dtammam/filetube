@@ -9013,6 +9013,14 @@ body.ft-audio-expanded {
   #theater-btn { display: none; }
 }
 #player-dock #theater-btn { display: none; }
+/* v1.317 (Dean, T1): the button is injected into the PERSISTENT player host and
+   rides along on every SPA swap, but only the watch view (`.theater-mode`) and
+   the music view (`#music-stage.is-theater`) wire a click to it. On any other
+   view that mounts the player inline (podcasts, shows, the reader) it would be a
+   visible-but-inert control, so it is scoped to the views that own it. The
+   router stamps `data-view` on <body> on every swap, cold load included
+   (applyZoomPolicy). */
+body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: none; }
 
 /* v1.186 (Dean): AMBIENT MODE glow. Sits BEHIND #player-slot in a relative stage
    and bleeds a soft colour glow outward (YouTube-style). Decorative,

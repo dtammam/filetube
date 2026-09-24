@@ -30,7 +30,9 @@ const common = require('../../public/js/common.js');
 global.resolveAvatarSource = common.resolveAvatarSource;
 global.deriveAvatar = common.deriveAvatar;
 
-const ROLES = ['sub-row-pin', 'sub-row-bell', 'sub-row-kebab'];
+// v1.317 (QA r2 suggestion on v1.316.0): the `-active` modifier tokens join the census so a
+// future `.sub-row-bell-active { background }` cannot slip past the box-property lock.
+const ROLES = ['sub-row-pin', 'sub-row-bell', 'sub-row-kebab', 'sub-row-pin-active', 'sub-row-bell-active'];
 
 // Every rule block whose selector list mentions `sel` (as a class token).
 function rulesTargeting(css, sel) {

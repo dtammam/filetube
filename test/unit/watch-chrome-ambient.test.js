@@ -89,13 +89,19 @@ test('v1.186 the watch-only cog controls are NOT baked into watch.html (they are
 test('v1.186 ensureCogControlsInjected injects the theater icon + 3 toggle rows, id-guarded (no double-inject)', () => {
   const fn = WATCH_JS.slice(WATCH_JS.indexOf('function ensureCogControlsInjected'), WATCH_JS.indexOf('\n    // FR-9 (v1.21.0) / v1.186'));
   assert.ok(fn.length > 0, 'ensureCogControlsInjected exists');
-  assert.match(fn, /!document\.getElementById\('theater-btn'\)/, 'theater-btn injection is id-guarded');
-  assert.match(fn, /cog\.insertAdjacentHTML\('beforebegin'/, 'theater icon goes just before the cog');
-  // v1.191 (Dean): the popcorn glyph - two paths (evenodd striped tub + puffs),
-  // scaled to match the cog's footprint. The transform is what makes it "the same
-  // size as the cog"; bind it so a future edit can't silently shrink the glyph.
-  assert.match(fn, /fill-rule="evenodd"/, 'the popcorn tub uses evenodd (the cut-out stripes)');
-  assert.match(fn, /<g transform="matrix\(1\.2 0 0 1\.2 -98 54\)">/, 'scaled + re-centred to match the settings-cog footprint');
+  // v1.317 (Dean, T1): the theatre button's markup has ONE writer - player.js's
+  // ensureTheaterButton (id-guarded there; the music view injects the same button
+  // through it). watch.js CALLS it and carries no copy of the glyph. The writer's
+  // own shape (before the cog, evenodd tub, the 1.2x cog-matching transform) is
+  // bound in music-theater-toggle.test.js by executing it.
+  assert.match(fn, /window\.FileTube\.player\.ensureTheaterButton\(\)/, 'theater-btn is injected through the shared writer');
+  assert.doesNotMatch(fn, /id="theater-btn"|fill-rule="evenodd"/, 'no second copy of the button markup in watch.js');
+  const PLAYER_JS = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const writer = PLAYER_JS.slice(PLAYER_JS.indexOf('var THEATER_BTN_HTML'), PLAYER_JS.indexOf('\nif (typeof module'));
+  assert.match(writer, /d\.getElementById\('theater-btn'\)/, 'the writer is id-guarded');
+  assert.match(writer, /cog\.insertAdjacentHTML\('beforebegin'/, 'theater icon goes just before the cog');
+  assert.match(writer, /fill-rule="evenodd"/, 'the popcorn tub uses evenodd (the cut-out stripes)');
+  assert.match(writer, /<g transform="matrix\(1\.2 0 0 1\.2 -98 54\)">/, 'scaled + re-centred to match the settings-cog footprint');
   assert.match(fn, /!document\.getElementById\('watch-ambient-check'\)/, 'toggle rows injection is id-guarded');
   assert.match(fn, /id="watch-autoplay-check"[\s\S]*id="watch-loop-check"[\s\S]*id="watch-ambient-check"/, 'all three rows injected into the menu');
   // it runs post-mount, before the setup wiring

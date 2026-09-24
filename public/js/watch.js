@@ -2348,29 +2348,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // so they never accumulate). Mirrors how the old Theatre button was built in
     // JS, extended to the four controls.
     function ensureCogControlsInjected() {
-      const controls = document.getElementById('player-controls');
-      const cog = document.getElementById('settings-btn');
       const menu = document.getElementById('settings-menu');
-      // Theatre icon, just before the cog (era-style inline SVG like the gear).
-      // v1.188 (Dean): a popcorn bucket instead of the generic box - the glyph
-      // now says WHAT theatre mode is. A cluster of popcorn puffs above a
-      // striped bucket, all one currentColor fill so it inherits the era tokens
-      // exactly like the gear. Decorative only; aria-label carries the meaning.
-      if (controls && cog && !document.getElementById('theater-btn')) {
-        cog.insertAdjacentHTML('beforebegin',
-          '<button type="button" id="theater-btn" class="pc-btn theater-btn" aria-label="Toggle theatre mode" aria-pressed="false">'
-          + '<svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true">'
-          // v1.191 (Dean): clearer, taller popcorn. Two paths - an evenodd tub
-          // with cut-out stripes (the classic striped box) + a rim lip with puffs
-          // overflowing the top/sides - both currentColor like the gear. The `<g>`
-          // scales it 1.2x and re-centres on the viewBox so its footprint matches
-          // the neighbouring settings-cog gear (Dean: "same size as the cog");
-          // uniform scale, so the approved shape is unchanged, just larger.
-          + '<g transform="matrix(1.2 0 0 1.2 -98 54)">'
-          + '<path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/>'
-          + '<path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/>'
-          + '</g></svg>'
-          + '</button>');
+      // Theatre icon, just before the cog (the era-style popcorn SVG, v1.188/
+      // v1.191). v1.317 (Dean, T1): the markup has ONE writer now - player.js's
+      // ensureTheaterButton (id-guarded: reuses the button when a view already
+      // injected it). The music view injects the SAME button through the same
+      // writer and binds its own toggle on its own signal; the two views never
+      // carry two copies of the glyph. The click is wired in setupTheatreToggle.
+      if (window.FileTube && window.FileTube.player && typeof window.FileTube.player.ensureTheaterButton === 'function') {
+        window.FileTube.player.ensureTheaterButton();
       }
       // Autoplay + Loop + Ambient toggle rows, appended to the cog menu.
       if (menu && !document.getElementById('watch-ambient-check')) {
