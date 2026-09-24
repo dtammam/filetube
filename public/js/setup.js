@@ -1070,6 +1070,18 @@ function bgTimingClockLabel(t) {
   const p = (n) => String(n).padStart(2, '0');
   return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
+function bgTimingIsoLabel(t) {
+  // gate r1 qa S8: a non-numeric `t` (a hand-edited or foreign value) must not
+  // throw out of the Copy tap.
+  return (typeof t === 'number' && Number.isFinite(t)) ? new Date(t).toISOString() : '?';
+}
+// The outcome, plus what a retried or cut-short cycle needs said beside it.
+function bgTimingOutcomeLabel(r, m) {
+  let label = (m.outcome || 'no-handoff') + (r.decision && r.decision.trigger ? ' via ' + r.decision.trigger : '');
+  if (typeof r.attempts === 'number' && r.attempts > 1) label += ' (attempt ' + r.attempts + (r.firstErr ? ', first failed: ' + r.firstErr : '') + ')';
+  if (m.outcome === 'pending' && r.ret) label += ' (the audio had not started when you came back)';
+  return label;
+}
 function bgTimingDriftLabel(v) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '-';
   return (v > 0 ? '+' : '') + v.toFixed(2) + 's';
@@ -1083,13 +1095,12 @@ function bgTimingRowView(rec) {
   const sidecar = r.sidecar || {};
   const settings = r.settings || {};
   const ret = r.ret || null;
-  const trigger = r.decision && r.decision.trigger ? ' via ' + r.decision.trigger : '';
-  const parts = [(m.outcome || 'no-handoff') + trigger];
+  const parts = [bgTimingOutcomeLabel(r, m)];
   if (typeof m.silenceMs === 'number') parts.push('silence ' + m.silenceMs + ' ms');
   if (ret) {
     if (ret.mode === 'resume') parts.push('back: video ' + (typeof m.backMs === 'number' ? 'moving after ' + m.backMs + ' ms' : 'did not move') + (ret.err ? ' (' + ret.err + ')' : ''));
     else if (ret.mode === 'stay-paused') parts.push('back: audio was paused, video stays paused');
-    else parts.push('back: no swap (video was left paused)');
+    else parts.push('back: no swap (video ' + (ret.videoPaused === false ? 'kept playing' : 'was paused') + ')');
   }
   parts.push(r.display === 'pwa' ? 'PWA' : 'browser tab');
   return {
@@ -1117,8 +1128,8 @@ function formatBgTimingCopyText(records) {
     const s = r.sidecar || {};
     const st = r.settings || {};
     const ret = r.ret || {};
-    lines.push((i + 1) + '. ' + new Date(r.t || 0).toISOString() + ' ' + (r.display || '?') + ' ' + (r.os || '?')
-      + ' | ' + (m.outcome || 'no-handoff') + (r.decision && r.decision.trigger ? ' via ' + r.decision.trigger : '')
+    lines.push((i + 1) + '. ' + bgTimingIsoLabel(r.t) + ' ' + (r.display || '?') + ' ' + (r.os || '?')
+      + ' | ' + bgTimingOutcomeLabel(r, m)
       + ' | hide->audio ' + bgTimingCell(m.hideToAudioMs)
       + ' | hide->playing ' + bgTimingCell(m.hideToPlayingMs)
       + ' | pause->playing ' + bgTimingCell(m.pauseToPlayingMs)
@@ -1227,7 +1238,12 @@ function wireBgTimingLog(signal) {
       };
       const clip = typeof navigator !== 'undefined' && navigator.clipboard;
       if (!clip || typeof clip.writeText !== 'function') { fallback(); return; }
-      Promise.resolve().then(() => clip.writeText(text)).then(() => {
+      // Called SYNCHRONOUSLY inside the tap (gate r1 S6): iOS grants the
+      // clipboard only with the tap's user activation still live (the repo's
+      // iOS clipboard rule, common.js) - never behind a microtask.
+      let pending;
+      try { pending = clip.writeText(text); } catch (_) { fallback(); return; }
+      Promise.resolve(pending).then(() => {
         if (textArea) textArea.hidden = true;
         say('Copied.');
       }, fallback);

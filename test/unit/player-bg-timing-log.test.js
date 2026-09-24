@@ -18,7 +18,7 @@ const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 const PUB = path.join(__dirname, '..', '..', 'public');
 const LOCK_SRC = fs.readFileSync(path.join(PUB, 'js', 'body-scroll-lock.js'), 'utf8');
@@ -36,7 +36,11 @@ const LOG_KEY = 'filetube_bg_timing_log';
 const VIDEO = { id: 'v1', title: 'T', type: 'video', ext: '.mp4' };
 
 let dom = null;
-afterEach(() => { if (dom) { dom.window.close(); dom = null; } });
+let onRejection = null;
+afterEach(() => {
+  if (dom) { dom.window.close(); dom = null; }
+  if (onRejection) { process.removeListener('unhandledRejection', onRejection); onRejection = null; }
+});
 const tick = (ms) => new Promise((r) => setTimeout(r, ms || 0));
 
 // A media element whose playback state the test owns. play()/pause() behave
@@ -61,13 +65,21 @@ function fakeMedia(w, el, calls, init) {
   return st;
 }
 
-async function boot({ timing = true, settings = {}, standalone = false, item = VIDEO } = {}) {
-  dom = new JSDOM(WATCH, { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true });
+async function boot({ timing = true, settings = {}, standalone = false, item = VIDEO, desktop = false } = {}) {
+  // Every exception that escapes a listener (jsdom reports it) or a promise
+  // chain (an unhandled rejection) lands in `errors`: the collector must never
+  // throw into the page, storage blocked or full included (gate r1 W3).
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => { if (!/Not implemented/.test(String(e && e.message))) errors.push(e); });
+  onRejection = (e) => errors.push(e);
+  process.on('unhandledRejection', onRejection);
+  dom = new JSDOM(WATCH, { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
   const w = dom.window;
   const doc = w.document;
-  Object.defineProperty(w.navigator, 'platform', { value: 'iPhone' });
-  Object.defineProperty(w.navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6 like Mac OS X) AppleWebKit/605.1.15' });
-  w.matchMedia = (q) => ({ matches: /coarse|hover: none|max-width/.test(q) || (standalone && /standalone/.test(q)), addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+  Object.defineProperty(w.navigator, 'platform', { value: desktop ? 'MacIntel' : 'iPhone' });
+  Object.defineProperty(w.navigator, 'userAgent', { value: desktop ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15' : 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6 like Mac OS X) AppleWebKit/605.1.15' });
+  w.matchMedia = (q) => ({ matches: desktop ? /any-pointer: fine/.test(q) : (/coarse|hover: none|max-width/.test(q) || (standalone && /standalone/.test(q))), addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
   const fetches = [];
   const SETTINGS = Object.assign({ backgroundAudioForVideo: true, bgAudioSyncPosition: true, preExtractAudio: false }, settings);
   w.fetch = async (url, opts) => {
@@ -83,8 +95,19 @@ async function boot({ timing = true, settings = {}, standalone = false, item = V
   Object.defineProperty(doc, 'hidden', { get: () => vis === 'hidden', configurable: true });
   if (timing) w.localStorage.setItem(ON_KEY, '1');
   const calls = [];
+  const reads = [];
   const realSet = w.Storage.prototype.setItem;
+  const realGet = w.Storage.prototype.getItem;
   w.Storage.prototype.setItem = function (k, v) { calls.push(['setItem', k]); return realSet.call(this, k, v); };
+  w.Storage.prototype.getItem = function (k) { reads.push(k); return realGet.call(this, k); };
+  // Storage failure modes (gate r1 W3): 'blocked' = private mode / disabled
+  // (every access throws SecurityError), 'full' = every write throws
+  // QuotaExceededError. Switched on AFTER boot so the load itself is ordinary.
+  const breakStorage = (mode) => {
+    const fail = (name) => { const e = new w.Error(name); e.name = name; throw e; };
+    w.Storage.prototype.setItem = function (k) { calls.push(['setItem', k]); fail(mode === 'blocked' ? 'SecurityError' : 'QuotaExceededError'); };
+    if (mode === 'blocked') w.Storage.prototype.getItem = function () { fail('SecurityError'); };
+  };
   w.eval(COMMON_SRC.slice(COMMON_SRC.indexOf('function resolveAudioArtUrl('), COMMON_SRC.indexOf('\n}\n', COMMON_SRC.indexOf('function resolveAudioArtUrl(')) + 3));
   w.eval(LOCK_SRC);
   w.eval(PLAYER_SRC);
@@ -100,8 +123,8 @@ async function boot({ timing = true, settings = {}, standalone = false, item = V
   calls.length = 0; // the trace starts at the lock
   const setVis = (next) => { vis = next; doc.dispatchEvent(new w.Event('visibilitychange')); };
   const fire = (el, type) => el.dispatchEvent(new w.Event(type));
-  const log = () => JSON.parse(w.localStorage.getItem(LOG_KEY) || '[]');
-  return { w, doc, p, video, sidecar, v, a, calls, fetches, setVis, fire, log };
+  const log = () => { const g = w.Storage.prototype.getItem; w.Storage.prototype.getItem = realGet; try { return JSON.parse(w.localStorage.getItem(LOG_KEY) || '[]'); } finally { w.Storage.prototype.getItem = g; } };
+  return { w, doc, p, video, sidecar, v, a, calls, reads, errors, fetches, setVis, fire, log, breakStorage };
 }
 
 // iOS ordering A (the original trigger): the page hides while the video still
@@ -335,6 +358,144 @@ test('nothing to measure: a PAUSED video (no recent pause) and an AUDIO item nev
   assert.strictEqual(a.w.localStorage.getItem(LOG_KEY), null, 'an audio item is out of scope');
 });
 
+// ---- gate r1 fixes ------------------------------------------------------------
+
+// Lock, audio starts, come back with the audio playing (the record waits for
+// the video to move), then lock AGAIN before the video has moved.
+async function relockInsideSettleWindow(h) {
+  await lockWhilePlaying(h);
+  await sidecarStarts(h, 120);
+  h.a.currentTime = 250;
+  h.setVis('visible');
+  await tick(0);
+  const pre = h.log()[0];
+  assert.ok(!pre || pre.ret === undefined, 'precondition: the return is still being timed (not yet written)');
+  h.calls.length = 0;
+  h.setVis('hidden'); // synchronous: the whole hide handler, the new handoff included
+  return h.calls.slice(); // what happened INSIDE the hide handler, before any microtask
+}
+
+test('W1: a re-lock inside the return settle window writes NOTHING before the new sidecar play(); the old record closes and a NEW one opens', async () => {
+  const h = await boot();
+  const inHandler = await relockInsideSettleWindow(h);
+  const playAt = h.calls.findIndex((c) => c[0] === 'play' && c[1] === 'bg-audio-sidecar');
+  assert.ok(playAt >= 0, 'precondition: the re-lock handed off again');
+  assert.deepStrictEqual(inHandler.filter((c) => c[0] === 'setItem'), [], 'no storage write inside the hide handler: ' + JSON.stringify(inHandler));
+  await tick(0);
+  const firstWrite = h.calls.findIndex((c) => c[0] === 'setItem' && c[1] === LOG_KEY);
+  assert.ok(firstWrite > playAt, 'the writes came after play(): write@' + firstWrite + ' play@' + playAt);
+  const recs = h.log();
+  assert.strictEqual(recs.length, 2, 'the old record closed AND a new cycle opened');
+  assert.strictEqual(recs[0].done, true);
+  assert.strictEqual(recs[0].ret.mode, 'resume');
+  assert.ok(!('videoAdvance' in recs[0].ret), 'closed as cut short: the video never moved before the re-lock');
+  assert.strictEqual(recs[1].first, 'visibilitychangeHidden');
+  assert.strictEqual(recs[1].decision.trigger, 'visibility');
+  assert.strictEqual(recs[1].m.outcome, 'pending', "the new record's first write was NOT swallowed by the old record's queued close");
+});
+
+test('W1: a return whose video never moves closes after the 5 s settle', async () => {
+  const h = await boot();
+  await lockWhilePlaying(h);
+  await sidecarStarts(h, 120);
+  h.setVis('visible');
+  await tick(0);
+  assert.strictEqual(h.log()[0].ret, undefined, 'precondition: still waiting for the video');
+  await tick(5200);
+  const [r] = h.log();
+  assert.strictEqual(r.done, true, 'closed by the settle timer');
+  assert.strictEqual(r.ret.mode, 'resume');
+  assert.strictEqual(r.m.backMs, null, 'the video never moved');
+});
+
+test('W2: a retry inside one record (NotAllowedError, then the pause-hidden recovery) reports the FINAL attempt', async () => {
+  const h = await boot();
+  const err = new h.w.Error('blocked'); err.name = 'NotAllowedError';
+  h.a.playResult = err;
+  await lockWhilePlaying(h);
+  await tick(0);
+  assert.strictEqual(h.log()[0].m.outcome, 'failed:NotAllowedError', 'precondition: attempt 1 failed');
+  h.a.playResult = null;
+  h.video.play(); // the lock-screen Play resumes the video, still hidden
+  await tick(0);
+  h.video.pause(); // iOS system-pauses it again: the 'pause-hidden' trigger
+  await tick(5);
+  assert.strictEqual(h.calls.filter((c) => c[0] === 'play' && c[1] === 'bg-audio-sidecar').length, 2, 'precondition: a second real handoff');
+  await sidecarStarts(h, 120);
+  const recs = h.log();
+  assert.strictEqual(recs.length, 1, 'one hide cycle, one record');
+  const r = recs[0];
+  assert.strictEqual(r.attempts, 2);
+  assert.strictEqual(r.firstErr, 'NotAllowedError', 'the first attempt stays visible');
+  assert.ok(!('err' in r) && !('playRejected' in r), 'the failed attempt does not stamp the successful one');
+  assert.strictEqual(r.decision.trigger, 'pause-hidden');
+  assert.strictEqual(r.m.outcome, 'ok');
+});
+
+test('W2: a handoff still PENDING when you come back stays pending - our own release (AbortError) is not a failure', async () => {
+  const h = await boot();
+  let rejectPlay = null;
+  h.sidecar.play = () => { h.calls.push(['play', 'bg-audio-sidecar']); h.a.paused = false; return new h.w.Promise((_, rej) => { rejectPlay = rej; }); };
+  const pause = h.sidecar.pause;
+  h.sidecar.pause = () => {
+    pause();
+    if (rejectPlay) { const e = new h.w.Error('aborted'); e.name = 'AbortError'; rejectPlay(e); rejectPlay = null; } // the HTML pause steps
+  };
+  await lockWhilePlaying(h);
+  assert.strictEqual(h.log()[0].m.outcome, 'pending', 'precondition: play() never settled while hidden');
+  h.setVis('visible');
+  await tick(0);
+  h.fire(h.video, 'playing');
+  h.v.currentTime = 120.4;
+  h.fire(h.video, 'timeupdate');
+  const [r] = h.log();
+  assert.strictEqual(r.done, true);
+  assert.ok(!('err' in r), 'no error stamped by our own release');
+  assert.strictEqual(r.m.outcome, 'pending');
+  assert.strictEqual(r.superseded && r.superseded.by, 'AbortError', 'the late settle is kept, labelled');
+});
+
+// The media calls of the richest scenario (lock, audio, return, re-lock, audio).
+async function fullCycleTrace(opts, storage) {
+  const h = await boot(opts);
+  if (storage) h.breakStorage(storage);
+  await relockInsideSettleWindow(h);
+  await tick(0);
+  await sidecarStarts(h, 250);
+  h.setVis('visible');
+  await tick(0);
+  const trace = h.calls.filter((c) => c[0] !== 'setItem');
+  const errors = h.errors.slice();
+  dom.window.close(); dom = null;
+  return { trace, errors };
+}
+
+test('W3: blocked storage (SecurityError on every access) and full storage (QuotaExceededError) leave the handoff intact, log on AND off', async () => {
+  const clean = await fullCycleTrace({ timing: false });
+  assert.ok(clean.trace.some((c) => c[0] === 'play' && c[1] === 'bg-audio-sidecar'), 'precondition: the baseline hands off');
+  assert.deepStrictEqual(clean.errors, []);
+  for (const timing of [true, false]) {
+    for (const storage of ['blocked', 'full']) {
+      const run = await fullCycleTrace({ timing }, storage);
+      assert.deepStrictEqual(run.trace, clean.trace, 'identical media calls: log ' + (timing ? 'on' : 'off') + ', storage ' + storage);
+      assert.deepStrictEqual(run.errors.map(String), [], 'nothing thrown into the page: log ' + (timing ? 'on' : 'off') + ', storage ' + storage);
+    }
+  }
+});
+
+test('scope: desktop never records, and never even reads the toggle at a hide or a pause', async () => {
+  const h = await boot({ desktop: true });
+  h.reads.length = 0;
+  h.video.pause();
+  await tick(5);
+  h.v.paused = false;
+  await lockWhilePlaying(h);
+  h.setVis('visible');
+  await tick(0);
+  assert.strictEqual(h.log().length, 0, 'no record on desktop');
+  assert.ok(!h.reads.includes(ON_KEY), 'the toggle is not read on desktop: ' + JSON.stringify(h.reads));
+});
+
 // ---- the return path (Dean's reopen rule) ---------------------------------------
 
 test('reopen, audio PLAYING: back to the video at the audio position, playing; the record times the return', async () => {
@@ -536,6 +697,54 @@ test('Setup: Clear takes two taps - one tap never clears a populated log; the se
   assert.strictEqual(s.doc.querySelectorAll('.bg-timing-log-row').length, 0);
   assert.match(s.doc.getElementById('bg-timing-log-table').textContent, /No handoffs recorded yet/);
   assert.strictEqual(btn.textContent, 'Clear');
+});
+
+test('Setup: Copy calls writeText SYNCHRONOUSLY inside the tap (iOS user activation); a REJECTED write shows the text box', async (t) => {
+  const raw = await realRecords();
+  const s = setupDom({ [ON_KEY]: '1', [LOG_KEY]: raw });
+  t.after(s.restore);
+  let calledSync = false;
+  Object.defineProperty(s.sdom.window.navigator, 'clipboard', {
+    value: { writeText: () => { calledSync = true; const e = new Error('denied'); e.name = 'NotAllowedError'; return Promise.reject(e); } },
+    configurable: true,
+  });
+  const { wireBgTimingLog } = require('../../public/js/setup.js');
+  wireBgTimingLog(new s.sdom.window.AbortController().signal);
+  s.doc.getElementById('bg-timing-log-copy').click();
+  assert.strictEqual(calledSync, true, 'writeText ran inside the click, not behind a microtask');
+  await tick(0); await tick(0);
+  const ta = s.doc.getElementById('bg-timing-log-text');
+  assert.strictEqual(ta.hidden, false, 'a rejected clipboard write falls back to the text box');
+  assert.match(ta.value, /hide->audio/);
+  assert.match(s.doc.getElementById('bg-timing-log-status').textContent, /select the text below/);
+});
+
+test('Setup: an armed Clear disarms after 4 s - a later single tap never clears', async (t) => {
+  const raw = await realRecords();
+  const s = setupDom({ [ON_KEY]: '1', [LOG_KEY]: raw });
+  t.after(s.restore);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { wireBgTimingLog } = require('../../public/js/setup.js');
+  wireBgTimingLog(new s.sdom.window.AbortController().signal);
+  const btn = s.doc.getElementById('bg-timing-log-clear');
+  btn.click();
+  assert.strictEqual(btn.textContent, 'Tap again to clear');
+  t.mock.timers.tick(4000);
+  assert.strictEqual(btn.textContent, 'Clear', 'disarmed');
+  btn.click();
+  assert.ok(s.sdom.window.localStorage.getItem(LOG_KEY), 'one tap after the disarm only re-arms');
+});
+
+test('Setup: the note words a no-swap return by what the video did; a pending return and a retried cycle say so; a bad t never throws Copy', () => {
+  const { bgTimingRowView, formatBgTimingCopyText } = require('../../public/js/setup.js');
+  const base = { t: 1, m: { outcome: 'skipped:native-presentation' }, decision: { eligible: false } };
+  assert.match(bgTimingRowView({ ...base, ret: { mode: 'no-swap', videoPaused: false } }).note, /back: no swap \(video kept playing\)/);
+  assert.match(bgTimingRowView({ ...base, ret: { mode: 'no-swap', videoPaused: true } }).note, /back: no swap \(video was paused\)/);
+  assert.match(bgTimingRowView({ t: 1, m: { outcome: 'pending' }, ret: { mode: 'resume' } }).note, /^pending \(the audio had not started when you came back\)/);
+  assert.match(bgTimingRowView({ t: 1, attempts: 2, firstErr: 'NotAllowedError', decision: { trigger: 'pause-hidden' }, m: { outcome: 'ok' } }).note,
+    /^ok via pause-hidden \(attempt 2, first failed: NotAllowedError\)/);
+  const text = formatBgTimingCopyText([{ t: 'not-a-time', m: { outcome: 'ok' } }, { m: {} }]);
+  assert.match(text, /1\. \? \? \? \| ok/);
 });
 
 test('Setup: the init path wires the readout (not just a callable function)', () => {

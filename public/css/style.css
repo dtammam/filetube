@@ -3538,6 +3538,7 @@ select {
   vertical-align: bottom;
 }
 .bg-timing-log-table th { font-weight: var(--fw-normal); color: var(--text-secondary); }
+.bg-timing-log-row td { white-space: nowrap; } /* a number or a drift never breaks mid-value */
 .bg-timing-log-table th:first-child,
 .bg-timing-log-table td:first-child { text-align: left; }
 .bg-timing-log-note td {
@@ -3552,7 +3553,7 @@ select {
   width: 100%;
   min-height: 120px;
   margin-top: var(--space-2);
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-2xs); /* desktop only: the mobile block lifts it to the iOS no-zoom floor (v1.26.2 list) */
 }
 .bg-timing-log-text[hidden] { display: none; }
 /* The management-box footer row: status line left, an .action-bar cluster
@@ -5327,6 +5328,12 @@ a.sub-row-channel-link:focus-visible {
      here restore the 16px no-zoom floor for them specifically. */
   .comment-input-box,
   .folder-name-input {
+    font-size: var(--fs-input-min);
+  }
+  /* Lock-to-audio phase 1 (gate r1 qa W2): the timing log's fallback text box
+     is the same case - a class rule sizes it for desktop, so it needs its own
+     mobile floor (mobile-input-zoom-fontsize.test.js's census binds it). */
+  .bg-timing-log-text {
     font-size: var(--fs-input-min);
   }
 

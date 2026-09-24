@@ -3457,8 +3457,9 @@ if (typeof module !== 'undefined' && module.exports) {
     pauseSuppressingHandoff(mediaPlayer);
     saveProgressToServer(resumeTime, { keepalive: true });
     if (timing) bgTimingPersistSoon(timing); // the FIRST timing write: a microtask, strictly after play() above
+    var timingAttempt = timing ? timing.attempts : 0;
     Promise.resolve(playAttempt).then(function () {
-      if (timing && !timing.done) timing.playResolved = bgTimingRel(timing);
+      if (timing) bgTimingOnPlaySettled(timing, timingAttempt, null, currentId === handoffId && bgAudioState === BG_AUDIO_STATES.HANDING_OFF);
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return; // superseded by a newer load/foreground/teardown
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_SUCCEEDED', {});
       recordLifecycleEvent('bgAudio:ok', { detail: 't=' + (bgAudioEl.currentTime || 0).toFixed(1) + 's' });
@@ -3468,11 +3469,7 @@ if (typeof module !== 'undefined' && module.exports) {
       startBgKeepAlive(); // v1.161.3 (opt-in): keep the process awake THROUGH a background pause
 
     }, function (err) {
-      if (timing && !timing.done) {
-        timing.playRejected = bgTimingRel(timing);
-        timing.err = (err && err.name) || 'Error';
-        bgTimingPersistSoon(timing);
-      }
+      if (timing) bgTimingOnPlaySettled(timing, timingAttempt, err || new Error('play() rejected'), currentId === handoffId && bgAudioState === BG_AUDIO_STATES.HANDING_OFF);
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_FAILED', {});
       // Video is already paused+saved above -- today's degrade-gracefully
@@ -3982,15 +3979,18 @@ if (typeof module !== 'undefined' && module.exports) {
   // pure half, bgTimingMetrics, for the record's meaning). Every hook only READS
   // element state into the in-memory open record (bgTimingCur) - none touches
   // playback, none awaits - and each is a single null check while no record is
-  // open. Opening one costs one localStorage READ (the toggle) at a hide event
-  // or a video pause, the same read recordLifecycleEvent already pays there. No
-  // storage WRITE ever happens before the sidecar's play() call: the handoff
-  // queues its first write as a microtask AFTER play() (bgTimingPersistSoon) and
-  // the rest land in later events (play() settling, the first advance, the
-  // return), so an app iOS kills in the background keeps what was last written.
+  // open. Opening one costs, on a MOBILE form factor only, one localStorage READ
+  // (the toggle) at a hide event or a video pause of a loaded video, the same
+  // kind of read recordLifecycleEvent already pays there. Nothing on the
+  // handoff's own synchronous path WRITES storage (gate r1 W1): the hide hook,
+  // the decision hook and the tap only queue a per-record microtask
+  // (bgTimingPersistSoon) - including the close of a previous record on a
+  // re-hide - and a microtask runs only after the whole hide handler, so after
+  // the sidecar's play(). Later writes land in later events (play() settling,
+  // the first advance, the return), so an app iOS kills in the background keeps
+  // what was last written.
   var bgTimingCur = null;          // the open record, or null
   var bgTimingLastPause = null;    // the latest video pause while no record was open
-  var bgTimingWriteQueued = false;
   var bgTimingReturnTimer = null;
   var BG_TIMING_PAUSE_LOOKBACK_MS = 3000; // a video pause this recent belongs to the hide that follows (iOS pauses FIRST)
   var BG_TIMING_RETURN_SETTLE_MS = 5000;  // stop waiting for the video to move after a return
@@ -4032,7 +4032,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return false;
     } catch (_) { return null; }
   }
-  function bgTimingJson(key, value) { return key === 'p0' ? undefined : value; }
+  function bgTimingJson(key, value) { return (key === 'p0' || key === 'wq') ? undefined : value; } // runtime-only fields never reach storage
 
   function bgTimingPersist(rec) {
     if (!isBgTimingEnabled()) return; // switched off mid-cycle: collection stops with it
@@ -4044,17 +4044,22 @@ if (typeof module !== 'undefined' && module.exports) {
       localStorage.setItem(BG_TIMING_LOG_STORAGE_KEY, JSON.stringify(appendBgTimingRecord(log, rec, BG_TIMING_LOG_CAP), bgTimingJson));
     } catch (_) { /* storage full/disabled - measurement is best-effort */ }
   }
+  // One queued write PER RECORD (the `wq` flag lives on the record, never in
+  // storage): a re-hide queues the OLD record's close and the NEW record's first
+  // write in the same tick, and a shared flag would drop the second (gate r1 W1).
   function bgTimingPersistSoon(rec) {
-    if (bgTimingWriteQueued) return;
-    bgTimingWriteQueued = true;
-    Promise.resolve().then(function () { bgTimingWriteQueued = false; bgTimingPersist(rec); });
+    if (rec.wq) return;
+    rec.wq = true;
+    Promise.resolve().then(function () { rec.wq = false; bgTimingPersist(rec); });
   }
-  function bgTimingFinalize(rec) {
+  // `soon`: on the handoff's own path (a re-hide) the close is a microtask, never
+  // a synchronous write ahead of the sidecar's play().
+  function bgTimingFinalize(rec, soon) {
     if (!rec || rec.done) return;
     rec.done = true;
     if (bgTimingReturnTimer) { clearTimeout(bgTimingReturnTimer); bgTimingReturnTimer = null; }
     if (bgTimingCur === rec) bgTimingCur = null;
-    bgTimingPersist(rec);
+    if (soon) bgTimingPersistSoon(rec); else bgTimingPersist(rec);
   }
 
   // A hide event arrived (called first thing in handleBackgroundLifecycle).
@@ -4063,10 +4068,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // visibilitychange) is only noted.
   function bgTimingOnHidden(eventType) {
     var rec = bgTimingCur;
-    if (rec && (rec.ret || rec.media !== currentId)) { bgTimingFinalize(rec); rec = null; }
+    // A returned (or other-media) record closes here, its write QUEUED: this
+    // runs ahead of the handoff below, which must reach play() write-free.
+    if (rec && (rec.ret || rec.media !== currentId)) { bgTimingFinalize(rec, true); rec = null; }
     if (rec) { bgTimingEvent(rec, eventType); return; }
     if (!mediaPlayer || !currentData || currentData.type === 'audio') return;
-    if (!isBgTimingEnabled() || !isMobileFormFactor()) return;
+    if (!isMobileFormFactor() || !isBgTimingEnabled()) return; // mobile first: desktop never even reads the toggle
     var now = bgTimingClock();
     var lastPause = bgTimingLastPause;
     bgTimingLastPause = null;
@@ -4110,7 +4117,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
     if (!mediaPlayer || !currentData || currentData.type === 'audio') return;
-    if (!isBgTimingEnabled()) return;
+    if (!isMobileFormFactor() || !isBgTimingEnabled()) return;
     bgTimingLastPause = { at: bgTimingClock(), pos: bgTimingPos(mediaPlayer), media: currentId };
   }
 
@@ -4124,6 +4131,8 @@ if (typeof module !== 'undefined' && module.exports) {
     if (type.indexOf('bgAudio:') !== 0 && type.indexOf('msAction:') !== 0) return;
     var detail = (extraCtx && typeof extraCtx.detail === 'string') ? extraCtx.detail : '';
     bgTimingEvent(rec, detail ? type + ' ' + detail.slice(0, 60) : type);
+    // `!rec.ret` is defense in depth (gate r1 S7): a skip only comes from a hide,
+    // and a hide closes a returned record first.
     if (type === 'bgAudio:skip' && !rec.decision && !rec.ret) {
       rec.decision = { eligible: false, reason: detail || 'unknown', at: bgTimingRel(rec) };
       bgTimingPersistSoon(rec);
@@ -4137,6 +4146,17 @@ if (typeof module !== 'undefined' && module.exports) {
     var rec = bgTimingCur;
     if (!rec || rec.ret || rec.done || rec.media !== currentId || !bgAudioEl) return null;
     var src = bgAudioEl.getAttribute('src') || '';
+    // Per-ATTEMPT marks (gate r1 W2 / qa W3): a second handoff inside one record
+    // (the 'pause-hidden' recovery after a NotAllowedError, say) starts its marks
+    // afresh, so the outcome and the spans describe the attempt that decided the
+    // cycle; `attempts` and `firstErr` keep the history visible. The spans still
+    // run from the first hide - the readout shows the attempt count beside them.
+    rec.attempts = (rec.attempts || 0) + 1;
+    if (rec.attempts > 1) {
+      if (rec.err && !rec.firstErr) rec.firstErr = rec.err;
+      ['err', 'playRejected', 'playResolved', 'playing', 'startPos', 'advance', 'advancePos', 'pauseCall', 'playCall', 'superseded']
+        .forEach(function (k) { delete rec[k]; });
+    }
     rec.decision = { eligible: true, trigger: trigger || 'visibility', at: bgTimingRel(rec) };
     rec.resumeTime = bgTimingNum(resumeTime) !== null ? Math.round(resumeTime * 100) / 100 : null;
     rec.sidecar = {
@@ -4151,6 +4171,28 @@ if (typeof module !== 'undefined' && module.exports) {
     return rec;
   }
 
+  // The handoff's play() settled. Marks only for the CURRENT attempt of a still
+  // open record, and only while that attempt is still the live handoff (gate r1
+  // W2): our own return / teardown releasing a still-pending sidecar rejects its
+  // play() with AbortError - that is "the audio never started before you came
+  // back", kept as `superseded` so the outcome stays 'pending', never a failure.
+  function bgTimingOnPlaySettled(rec, attempt, err, live) {
+    if (!rec || rec.done || rec.attempts !== attempt) return;
+    if (!live) {
+      rec.superseded = { at: bgTimingRel(rec), by: err ? ((err && err.name) || 'Error') : 'resolved' };
+      return;
+    }
+    if (err) {
+      rec.playRejected = bgTimingRel(rec);
+      rec.err = (err && err.name) || 'Error';
+      bgTimingPersistSoon(rec);
+      return;
+    }
+    rec.playResolved = bgTimingRel(rec);
+  }
+  // `activeMediaElement() === bgAudioEl` below is defense in depth (mutant M18
+  // survives by design): playCall exists only once a handoff ran, and a return
+  // sets `ret` before the state leaves HANDING_OFF / BACKGROUND_AUDIO.
   function bgTimingSidecarRec() {
     var rec = bgTimingCur;
     return (rec && !rec.ret && !rec.done && rec.playCall != null && rec.media === currentId && activeMediaElement() === bgAudioEl) ? rec : null;
@@ -4185,6 +4227,7 @@ if (typeof module !== 'undefined' && module.exports) {
     rec.ret = {
       visible: bgTimingRel(rec),
       state: bgAudioState,
+      videoPaused: mediaPlayer ? !!mediaPlayer.paused : null, // no-swap: was the video left paused, or did it keep playing (native fullscreen / PiP)?
       audioPos: swapping ? bgTimingPos(bgAudioEl) : null,
       audioPaused: audioPaused,
       mode: !swapping ? 'no-swap' : (audioPaused ? 'stay-paused' : 'resume'),

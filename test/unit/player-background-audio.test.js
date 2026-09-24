@@ -343,7 +343,7 @@ test('updatePositionState() reads activeMediaElement(), not a hardcoded mediaPla
 
 // ---- Source-lock: SWAP_BACK wiring at the visibilitychange re-assert -----
 
-test('handleForegroundSwapBack() runs the video.currentTime = audio.currentTime; video.play() sequence, then releases the audio element', () => {
+test('handleForegroundSwapBack() seeks the video to the audio position, plays it ONLY if the audio was playing, then releases the audio element', () => {
   const match = /function handleForegroundSwapBack\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find handleForegroundSwapBack()\'s source body');
   const body = match[1];
