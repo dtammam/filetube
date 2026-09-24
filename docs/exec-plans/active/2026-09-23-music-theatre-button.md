@@ -185,3 +185,160 @@ signal; the id-guard means whichever view injects first wins and the other reuse
   | M14 | music.html stops loading player.js | SHELL PARITY |
   | M15 | stats.html's template loses `#settings-btn` | SHELL PARITY |
   | M16 | `.sub-row-bell-active { background: red }` | sub-row-chip-btn-family AC4 (the owed census add) |
+
+## Gate r1 - qa (@7c31035f)
+
+Reviewed `git diff main...HEAD` (10 files) at 7c31035f (code bc488b95 + docs) from the worktree.
+Every root-cause file:line claim was re-read at 6ea45237 (watch.js :2350/:2359-2373/:2405/
+:2426-2440, music.html :119/:285/:316/:353, player.js :2483 ensureHost, style.css :10900,
+music.js :759/:774-787/:1497/:1509/:1510, podcasts.html :120, podcasts.js :131) - all match.
+Comments verified against code: ensureHost clones ONCE (`if (host) return host;`); watch.js
+never touches `.hidden` on the button; `applyZoomPolicy` stamps `data-view` at boot
+(common.js:15472) and on every swap (:10470) with `deriveRouteView` returning exactly
+`watch`/`music` for those routes; the mobile skin gates at `(max-width: 768px)` so the
+"mobile-only, CSS hides it anyway" comment holds (button hides at 1024px); the pop-out
+(skin-surface createPopoutShell) never moves the host; the podcasts view is byte-unchanged and
+keeps `#podcast-theater-btn` + `.music-theater-btn` CSS. The 1024px seam disclosure is exact
+(`max-width: 1024px` hide vs `min-width: 1024px` stage). "No track expanded" moment: the host is
+in `#player-dock` (hidden) or still in the template (absent), so no visible-but-inert state.
+watch.js's new dependence on `window.FileTube.player` at init is safe: player.js assigns the api
+at IIFE top level during parse, bootRouter runs at DOMContentLoaded.
+
+Instruments (verbatim, Node v22.23.1):
+- `node --test` music-theater-toggle, music-skin-integration, watch-chrome-ambient,
+  watch-init-behavioral, theatre-mode, sub-row-chip-btn-family, music-nowplaying-view,
+  podcast-nowplaying-view, critter-mode: `# tests 285 / # pass 285 / # fail 0`.
+- Four touched test files alone: `# pass 116 / # fail 0` (matches the build record).
+- `npm run lint`: `7 problems (0 errors, 7 warnings)` - all pre-existing in common.js.
+- `npm run lint:css`: `TOTAL 0`. `overlay-containment: clean (0 violations)`.
+- `bash .harness/lib/check-markers.sh`: `✗ docs/exec-plans/active/2026-09-23-music-theatre-button.md:
+  stale approval @6ea45237 — reviewed code changed since; re-gate` / `check-markers: 1 issue(s)
+  found` (exit 1) - the tolerated Building shape (design bound to the base sha), see W1.
+- Mutants re-run in `/tmp/qa-t1-bJgA` (`git archive HEAD`, node_modules symlinked from the main
+  checkout; baseline 9/9): M3 (`bindTheaterControl();` at music.js:1537 deleted) -> `pass 6 /
+  fail 3` (cold-load, persisted, music -> watch); M6 (`if (theaterBtn) return;` :800 deleted) ->
+  `pass 7 / fail 2` (cold-load, watch -> music); M14 (music.html:363 player.js tag deleted) ->
+  `pass 8 / fail 1` (SHELL PARITY). All three die exactly as the table names.
+- Em-dash scan of every added diff line: none. Test file carries the `[UNIT]` header, node:test.
+- SHELL PARITY roster is dynamic: 14 shells found (floor 12), 11 consumers (floor 11), 10 hosts
+  (floor 10); the listener census asserts `strictEqual(musicRegs.length, 1)` so it cannot pass
+  vacuously; the writer/reachability/cold-load tests boot the real player.js / music.js in jsdom.
+
+Findings:
+
+1. WARNING (plan doc, Build record bullet 2): the sentence "`check-markers.sh` clean." is false
+   at the reviewed sha - the checker reports 1 issue (verbatim above), and the very next bullet
+   records that same non-clean output as the expected mid-build shape. Scenario: a reader trusts
+   bullet 2, skips the checker, and misses a genuinely stale `Gate:` marker later. Safe to ship
+   disclosed: the true output sits in the adjacent bullet and here. Prescription: drop or reword
+   that clause in the docs commit that records the gate.
+2. WARNING (plan doc, AC7): "executed in `watch-init-behavioral.test.js`" overstates. That
+   harness's player is a Proxy returning `() => undefined` for `ensureTheaterButton` and its
+   document shim carries no `#theater-btn`, so `setupTheatreToggle` exits at
+   `if (!watchContainer || !theaterBtn) return;` - the watch re-query + `{ signal }` binding is
+   source-locked (watch-chrome-ambient) but never executed against a button anywhere in the
+   suite (theatre-mode.test.js's own header says the DOM half is uncovered). Scenario: a future
+   edit runs setupTheatreToggle before ensureCogControlsInjected; the watch page never binds;
+   watch-init-behavioral stays green. Not a regression of this diff (the watch change is a call
+   replacement whose reachability is proven by the reachability + writer tests). Safe to ship
+   disclosed; reword "executed" to "run through (the button is absent in that harness)".
+3. SUGGESTION (test/unit/music-theater-toggle.test.js SHELL PARITY): `html.indexOf('</template>')`
+   takes the FIRST closing tag in the file; a shell that gains a `<template>` before the player
+   host would slice to '' and go red spuriously (loud, not vacuous). Anchor the end on the first
+   `</template>` after the start index.
+4. SUGGESTION (DoD "lint passes with zero warnings"): 7 pre-existing common.js warnings, none in
+   the changed files; disclosed in the build record, unchanged by this diff.
+
+Security-brief (standing): no security surface. The only DOM write is `insertAdjacentHTML` of a
+compile-time string constant with no interpolation; the api wrapper hardcodes `document` (the
+`doc` parameter is reachable only from tests); no new network call, no new storage key, no
+untrusted input reaches a command or the DOM; the diff removes markup rather than adding
+data-driven markup.
+
+Tree: `git status --short` empty and `git diff --stat` empty before this section; the worktree
+is byte-identical except this appended section.
+
+Gate: APPROVED r1 @7c31035f — qa
+
+## Gate r1 - adversary (@7c31035f)
+
+Reviewed HEAD 7c31035f (code bc488b95 + the build-record commit) against main 6ea45237 from the
+worktree. Nothing below restates a builder number: every count was produced here.
+
+Instruments (Node 22.23.1, targeted): the four touched files = 116 pass / 0 fail; theatre-mode +
+watch-init-behavioral + critter-mode = 131 pass / 0 fail; eslint over the 7 changed js files exit
+0; `scripts/css-token-lint.js` TOTAL 0; `check-markers.sh` = the disclosed 1 issue (stale design
+approval @6ea45237, the Building shape). Mutation round in a `git archive HEAD` sandbox
+(/tmp/adv-t1-JCRB, baseline 116/0): the 16 claimed mutants all died as tabled (M1 2 fails, M2 1,
+M3 3, M4 1, M5 1, M6 2, M7 2, M8 2, M9 2, M10 2, M11 1, M12 1, M13 1, M14 1, M15 1, M16 1 - the
+`.sub-row-bell-active { background: gold }` arm of surface 9 is red on AC4). 12 unclaimed mutants:
+11 died (aria write dropped; theaterBtn never captured -> 72 fails; writer injects after the cog;
+writer anchors on #player-controls only; click always persists ON; view-scope rule widened to hide
+on watch; tv.html template loses #player-controls; the 1024px hide dropped; `.theater-btn` class
+dropped; no-op click body; subscriptions.html template loses #settings-btn) and ONE SURVIVED
+(finding 1).
+
+Real-shape drive (the INERT FEATURE lesson): ONE jsdom, the REAL player.js IIFE + the REAL watch.js
+init + the REAL music.js init, the router's swap simulated (dock on leaving watch/music via
+common.js's own `shouldDockOnTransition`, destroy, #view-root replaced from the real shells,
+`data-view` stamped, init), a click-registration census on the node. Measured:
+- (a) cold /music: no button at init; a real row play mounts the host into #player-slot, ONE
+  button before the cog, click flips `.is-theater` + aria + `ft-music-theater`; a second play
+  leaves regs=1; one click = one flip.
+- (b) watch -> music: watch's button REUSED (count 1, same node identity across all 6 swaps), music
+  registered exactly ONE listener on a live signal, the watch registration is aborted, aria
+  re-stamped from the music key, click toggles the MUSIC stage only.
+- (c) music -> watch: same node, in the slot before the cog, `hidden` never set, watch's own click
+  toggles `.theater-mode` + `ft-theater`; the cog rows (#watch-autoplay-check / -loop- / -ambient-)
+  stay at exactly 1 each through every swap.
+- (d) watch -> music -> watch -> music (three round trips): registrations 1,2,3,4,5,6 with live
+  listeners = 1 at every step; one click = one flip on each page.
+- dock return (/music?nowplaying=1 re-init after leaving for home): bound at the init seam, aria
+  re-stamped, one flip per click.
+- Every host-mount path enumerated: `load({slot})` (the row play, mount seam), `load({dock:true})`
+  (nav-keepPosition while docked -> the next re-init binds), `expand(npSlot)` at init's tail (host
+  already in the document -> the init seam; the 3033 `updateNowPlayingPanel` re-runs the mount
+  seam), `seedNowPlayingFromPlayer` (no mount; a non-music meta leaves nowPlaying null but every
+  non-music arrival is DOCKED by the router, so no expanded-inert window exists), listen mode
+  (playAt -> the same load), the pop-out (a separate window; no #player-controls in music-skins /
+  skin-surface). `body[data-view]` is stamped at cold boot (common.js:15472) and every swap
+  (:10470); all 11 shell views enumerated - only watch/music show the button; `/watch.html` is the
+  only watch pathname the app emits, and deriveRouteView maps it.
+
+### Findings
+
+1. WARNING (test binding; public/js/watch.js:2358 + test/unit/watch-chrome-ambient.test.js:97,
+   test/unit/watch-init-behavioral.test.js): the WATCH side of "each view calls the ONE writer" is
+   locked by a source regex on the call string only - nothing executes watch.js's
+   `ensureCogControlsInjected` against a writer. Surviving mutant (the repro): change the guard
+   to `typeof window.FileTube.player.ensureTheatreButton === 'function'` (one letter) - the guard
+   is always false, the writer is never called, the theatre button VANISHES from every watch page,
+   and all 116 tests stay green (the regex still matches the untouched call line). M10 died only
+   on the same regexes. AC7's "executed in watch-init-behavioral.test.js" is not true as written:
+   that harness's Proxy player answers every unknown property with `() => undefined`, so the
+   writer is neither present nor asserted there. Prescription: in watch-init-behavioral, give the
+   Proxy player an `ensureTheaterButton` spy and, with a resolving `fetchImpl`, assert it is called
+   exactly once by initWatch (and once by the `?tv=` episode path); re-run the guard-typo mutant
+   and M10 and record both as killed by that test. Reword AC7.
+2. SUGGESTION (public/js/watch.js:1239 vs :2391): the one-RTT aria seam on watch. Measured
+   (transient2 drive): music theatre ON, then a soft-nav to /watch.html?v=<the docked video> - the
+   early adopt (:1505) mounts the host into the slot synchronously, `.theater-mode` is applied
+   from `ft-theater` (OFF), but the button still wears music's `aria-pressed="true"` (the red
+   pressed look) with NO live listener until step 9 re-stamps it after the config/media fetches
+   settle. Before this diff the aria was whatever the last watch visit set, so it agreed with the
+   class. Self-correcting, cosmetic; if wanted, re-stamp `#theater-btn` aria beside the :1239
+   synchronous class apply. Safe to ship disclosed.
+3. SUGGESTION (disclosed seam, confirmed): style.css:9012 `@media (max-width: 1024px)` hides the
+   button while :10909 `@media (min-width: 1024px)` lays out `.music-stage.is-theater` - both true
+   at exactly 1024px, so a persisted ON has no toggle there. Reachable only by resizing from
+   >=1025 with ON persisted (the key is not in the synced-prefs set; the skin takes over only
+   <=768). Disclosure, not a finding.
+4. NOTE (pre-existing, out of scope): public/books.html carries neither `#player-host-template`
+   nor `#player-dock` (identical on main), so the writer returns null there and the SHELL PARITY
+   test's consumer arm passes it. Suspicion, not driven: a soft-nav /books -> watch would hit
+   `ensureHost()` null -> `showFatalViewError`. Not this diff's.
+
+Tree: `git status --porcelain` shows only this plan doc (the qa section above and this one, both
+uncommitted); no untracked files; the sandbox lives in /tmp/adv-t1-JCRB, outside the tree.
+
+Gate: CHANGES r1 @7c31035f — adversary (see findings)
