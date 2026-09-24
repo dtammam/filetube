@@ -866,3 +866,21 @@ test('item 0: switched OFF while a station pick is PLAYING, that pick keeps play
     assert.strictEqual(ctx.playerState.currentId, 'film::c2', 'Prev lands on the album\'s last chapter (the playing pick kept its place)');
   }, { radio: STATION() });
 });
+
+test('item 0: a station the solo-chapter exit appended is a station too - switched OFF while its first track plays, the rest retract', async () => {
+  const RADIO = [1, 2].map((n) => ({ id: 'sx' + n, title: 'SX' + n, artist: 'A', album: 'O', albumKey: 'X', durationSec: 200, source: 'library' }));
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
+    await ctx.drain(); // the exit station is primed
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle();
+    set(240); await settle(); // the segment end: the exit appends the primed station and plays its first track
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'sx1', 'precondition: exited onto the appended station');
+    assert.strictEqual(typeof ctx.getNav().onNext, 'function', 'precondition: the second station track follows');
+    autoplayBtn(dom).click();
+    assert.strictEqual(ctx.getNav().onNext, undefined, 'the rest of the exit station is retracted');
+    assert.strictEqual(ctx.playerState.currentId, 'sx1', 'the playing track is untouched');
+  }, { radio: RADIO });
+});
