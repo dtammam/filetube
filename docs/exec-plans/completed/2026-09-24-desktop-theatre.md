@@ -3,7 +3,7 @@ plan: desktop-theatre
 harness: v2 · lean
 branch: feat/desktop-theatre
 anchor: spec
-status: Gate closed
+status: Shipped v1.321.0
 next: release (gate CLOSED r3 @303b3ca3 after the merge of main v1.320.0; delta confirm adversary + qa)
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: APPROVED r3 @303b3ca3 — adversary, qa
