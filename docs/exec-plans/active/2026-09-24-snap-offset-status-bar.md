@@ -3,10 +3,10 @@ plan: snap-offset-status-bar
 harness: v2 · lean
 branch: fix/snap-offset-and-status-bar
 anchor: spec
-status: Built - r2 fixes in, awaiting gate r3
-next: gate r3 (adversary + qa delta re-confirmation on the r2 fixes and the v1.324.0 merge; security-brief approved r2). Owed after merge: Dean's device pass (Shift all on a real offset download; a long album name in Click and Seattle on the phone).
+status: Gate closed pending adversary re-confirm
+next: release
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
-gate: pending
+gate: APPROVED r3 @0cc5d68f — qa, security-brief; adversary: r3 WARNING disclosed by Architect ruling, re-confirm pending
 ---
 
 # Chapter Snap "Shift all" + the pocket skins' one-line status bar
@@ -362,6 +362,45 @@ returns on a disabled button), so removing either alone cannot change behavior.
   "This chapter starts wrong"), the list scrolls to that chapter and the row is above it.
 - **No new server surface.** The shift is client-side editing of the start times; the save, the
   version token, the validation and Revert are the existing routes, unchanged.
+
+**Gate r3 disclosures (Architect ruling, Dean's gate-pacing norm: no fourth round over tests of
+tests; all tracked as #272, the code is byte-identical to 0cc5d68f):**
+- **The status-bar census still fails OPEN on four spellings** (adversary r3 W1). Each one, appended
+  to style.css, brings back Dean's exact bug in the headless probe (85.8 px, battery at y 54.9)
+  while the census stays green:
+  - `.mms-ipod .ip-np:not(#zz)` (the usual specificity-bump idiom);
+  - `.mms-ipod :is(#zz, .ip-np)`;
+  - `.mms-ipod :is(.x, .ip-np:not(.y))`;
+  - `.mms-ipod .ip\-np` (an escaped class).
+
+  The three causes: a `#` ANYWHERE in the final compound (even inside `:not()` / `:is()`) rules
+  the rule out; `:is()` arguments are cut at the first `)`, so nested parentheses are misread; and
+  CSS escapes are not read. **The shipped CSS itself is correct**, measured headless on every
+  surface (Click, Black, Matte, Seattle, the pop-out and the tray; qa's r3 probe also covered the
+  new v1.324.0 levels). The gap is only in the regression net.
+- **Two semantics of the saved-list rule are unbound** (adversary r3 S2). M15 (the suggestion's
+  clamp called without the saved list) and M16 (`savedTimes()` returning the SOURCE starts instead
+  of the saved ones) survive, because every fixture is a fresh item where saved equals source.
+  M8b and M9b (the per-row Snap and Snap all without `stored`) are argued equivalent by
+  reachability: a server `suggest` lies strictly between the stored neighbours and at least 0.1 s
+  from its own stored start, so a snap can never narrow a pair back down to its stored width.
+- **The nudge-clamp squeeze, corrected wording** (adversary r3 S3; pre-existing `clampSnapNudge`,
+  unchanged from the base). With a close PAIR of source starts (`[.., 60, 60.03, 60.15, ..]`), a
+  +0.1 s nudge of the middle one lands on prev + gap and SAVES `[.., 60, 60.1, 60.15, ..]`, a
+  50 ms pair narrower than both the gap and the source. With THREE source starts within 0.1 s
+  (`[0, 60, 60.03, 60.06, 120]`), the same nudge puts the chapter PAST its next neighbour
+  (1:00.0 / 1:00.1 / 1:00.1): the server refuses the save ("Chapter 4 must start after chapter 3.")
+  and nothing is written. The r2 record's wording ("can leave it within the gap of the next one")
+  understated the second case.
+- **Three comments still describe the stricter r1/r2 gap rule** (qa r3 S1): public/js/common.js
+  ~13270 (snapAllPlan's header, "each snapped time must stay at least the minimum gap inside the
+  CURRENT neighbours"), ~13284 ("At least the server's minimum gap from the CURRENT neighbours")
+  and ~13327-13329 (shiftResetProblem, "refused when a row it moves would land ... closer than the
+  server's minimum gap"). The code and `snapGapBreak`'s own comment are right: an edit is refused
+  only when it narrows a pair into the gap below its saved width.
+- **The status-bar probe's SUMMARY ignores `reached`** (qa r3 S2): a level that silently fails to
+  open would keep the last title and still read `equal: true`. `reached` was true on every row in
+  every round (checked by hand and by qa).
 
 ## Gate verdicts
 
@@ -1061,4 +1100,270 @@ each run. Logs: `snap-offset-status-bar-mutants-r2.out` and `-r2b.out`.
 - **The nudge clamp's squeeze** (pre-existing, `clampSnapNudge`): with less than two gaps of room
   between its neighbours, a nudge lands the row at prev + gap, which can leave it within the gap
   of the next one. It is the only reachable way an edit can leave a pair narrower than both the
-  gap and the saved list, and the r2 tests use it to bind the callers' `before`.
+  gap and the saved list, and the r2 tests use it to bind the callers' `before`. (Corrected at
+  gate r3, adversary S3: with three source starts within 0.1 s the nudge lands PAST the next
+  neighbour, and the server refuses that save; see "Gate r3 disclosures" under Disclosed gaps.)
+
+## Gate r3 - security-brief (@0cc5d68f)
+
+**What I could not do (first):** still no Bash, so no `git diff 4b46555d 0cc5d68f` and no
+`git diff 119b4e39 8e4f81d2`. The merge also ends the mtime method: 119b4e39 rewrote the files
+main changed (`package.json`, `package-lock.json`, `lib/music/routes.js`, `style.css` and others
+now sort after the checkout-time files). So I cannot use mtimes to split this branch's changes
+from the merge's. I used a different check, described below. It is evidence, not a byte diff.
+
+- **Reflog.** `.git/worktrees/agent-a4ecaf0edc36aa1e3/logs/HEAD` runs 4b46555d -> b6a4c4de
+  (r2 verdicts) -> 119b4e39 (merge of main) -> 8e4f81d2 (fix) -> 0cc5d68f = HEAD.
+- **Server-side files match main.** The main checkout is now at `ec606e2f`, which contains
+  v1.324.0 (main's reflog: release/v1.324.0 merged at 57ed7393, then a fast-forward). It does NOT
+  contain this branch: its common.js has no `snapGapBreak` or `snapShiftBlock`. Per-file line
+  counts are identical between the worktree and main for all 113 `lib/**/*.js` files (56,500
+  lines each, file by file, e.g. `lib/music/routes.js` 595 / 595, `chapterSnap.js` 309,
+  `chapterSnapRoutes.js` 186), for `server.js` (7,450 / 7,450) and for `package.json` (34 / 34).
+  Any change this branch made to a server file would show up against a main that lacks the
+  branch, unless it kept the line count exactly. So I find no server, lib or package change from
+  this branch's own commits (line-count evidence, not bytes).
+- **The Architect should confirm** with
+  `git diff --stat 119b4e39 0cc5d68f -- lib server.js package.json package-lock.json` (the fix
+  and docs commits only).
+
+Verified (traced in the code at HEAD):
+- **Nothing new is sent to the server.** The editor still makes exactly four requests: GET state
+  (common.js:13520), POST `/scan` with `'{}'` (:13556), POST `/revert`
+  `{version, allowCountChange}` (:13751), and POST save `{ version: state.version, starts: times() }`
+  (:13801). There is no `innerHTML` in the editor range (13005-13880).
+- **`snapGapBreak(next, before, stored, duration, minGap)`** (:13068) and
+  **`snapShiftBlock(..., stored)`** (:13039) are still pure integer-ms comparisons with no I/O.
+  The new `stored` argument comes from `savedTimes()` (:13321), which is `r.savedStart`, the
+  server-seeded starts; `before` is the current on-screen times. Both only decide whether the
+  client REFUSES an edit.
+- **The r2 fix loosens the client check, and the server still covers it.** A pair (or the end)
+  that the saved list already has inside the gap is now allowed back. If a source list ever held
+  an EQUAL or out-of-order pair, the client would now let an edit keep it. That is not a bypass:
+  `validateSnapStarts` (lib/media/chapterSnap.js:190, unchanged) re-checks count, chapter 1,
+  strict order after round3 and the last start before the duration, inside the version-checked,
+  visibility-re-gated write tick. Such a save fails with a 400; nothing is written. INFO for the
+  QA/Adversary seats' correctness lens only, no security impact.
+- **Every new or changed string is set as text.** The reworded Reset reasons (:13333, :13334) go
+  to `shiftWhy.textContent` (via `reasons`) and to `setStatus` (textContent). The per-row Snap
+  refusals (:13690-13692) go to `setStatus`. All are built from numbers, `gapText()` (formatted
+  from `state.minGapSec`) and fixed text. No chapter title, suggestion text or file text reaches
+  them.
+- **The status-bar census test** is a file-reading parser. From the fix record and r2's read of
+  its imports: fs/path reads and regexes only, now also reading music.html / podcasts.html /
+  music.js / podcasts.js / ipod-brick.js to check that an exception's class is absent. I did not
+  re-read every line of the rewritten parser; it is test code with no network, process or write
+  surface.
+- **Main's v1.324.0 code that came in with the merge** (pocket menus, the recent-listening
+  opt-in) is out of scope per the brief and not re-reviewed here.
+
+Findings: none (one INFO above, no security impact). My r1 INFO-1 and INFO-2 still stand, as
+declined. No CRITICAL, HIGH, MEDIUM or LOW findings.
+
+Gate: APPROVED r3 @0cc5d68f — security-brief
+
+## Gate r3 - adversary (@0cc5d68f)
+
+A check of the fixes since r2 (`git diff 119b4e39..0cc5d68f`; the v1.324.0 merge was not
+re-reviewed beyond the suites below). Mutants ran only in `git archive 0cc5d68f` sandboxes in the
+session scratchpad. After every mutant the files were byte-compared with their pristine copies
+(`restore-check identical`).
+
+Instruments:
+- Targeted set on the sandbox with ffmpeg (unit chapter*, music*, skin*, pocket*, css*, token*,
+  exec-plans*, tech-debt*, release-ledger*, player-chapters*, docs*; integration chapter-snap*,
+  chapters-editor): `tests 953 pass 953 fail 0 cancelled 0 skipped 0`.
+- eslint on the four touched js files: `6 problems (0 errors, 6 warnings)`. `lint:css` `TOTAL 0`.
+  `lint:overlay` clean.
+- `check-markers`: 2 issues, the stale security-brief approvals @c05c6906 and @4b46555d. That is
+  expected in a delta round.
+- One instrument note: my own scratch drive file printed both of its `ok` lines, then did not exit
+  (an open handle in my harness) and was killed by `timeout` (exit 143). The results below come
+  from its printed lines.
+
+### My r2 findings
+- **Finding 2 (Reset false refusal): fixed.** All three sources now return, verified in jsdom:
+  - `[0, 60, 60.05, 120]`, +1 s, then a nudge: Reset gives "No shift", and so does the −1 s step.
+  - `[0, 0.05, 60]`, +1 s: Reset works. The −1 s step is now enabled and goes back to 0:00.1
+    with Save off.
+  - `[0, 60, 299.95]` (duration 300), −1 s: Reset works, and the +1 s step also brings it back
+    to 5:00.0.
+- **Finding 1 (census holes): fixed for every breaker I named.** N1-N5 are all RED against the
+  target-based census.
+- **Finding 3 (end only when the last row moved): bound.** The end-arm mutants M5, M6 and M7 are
+  RED.
+
+### New findings
+
+1. **WARNING - the census still fails OPEN on an id inside a functional pseudo, on nested
+   parentheses in `:is()`, and on an escaped class.** Three causes:
+   - `compoundMatches` returns false as soon as the compound contains `#` anywhere, including
+     inside `:not()` / `:is()`.
+   - The `:is()` alternatives are cut at the first `)`.
+   - `\.[\w-]+` does not read CSS escapes.
+
+   Each rule below was appended inside `@media (max-width:768px)`. Each keeps the skin set GREEN
+   (`skin-status-bar` + `music-skins` + `skin-surface` + `skin-scrollbar-hidden`:
+   `pass 122 fail 0`). `scripts/skin-status-bar-probe.js` (Click, 390x844; control 31.2 x4,
+   battery 338,27.6) then measures every one of them at **85.8 px with the battery at y 54.9**,
+   which is Dean's exact bug:
+   - H19 `.mms-ipod .ip-np:not(#zz){white-space:normal}` (the ordinary specificity-bump idiom).
+   - H19b `.mms-ipod :is(#zz, .ip-np){white-space:normal}`.
+   - H10 `.mms-ipod :is(.x, .ip-np:not(.y)){white-space:normal}`.
+   - H12 `.mms-ipod .ip\-np{white-space:normal}` (an escaped class, contrived).
+
+   Caught (RED): `:not()` child, `:has()` parent, the `+` sibling onto the cluster, `[class^=]`,
+   `@scope`, and `direction` on body.
+
+   Prescription (fail closed, as the file's own header says):
+   - Only a `#` OUTSIDE parentheses rules a compound out.
+   - Read `:is` / `:where` / `:not` / `:matches` arguments with the paren-aware `splitTop` and
+     recurse. A `:not()` never excludes.
+   - A compound with a backslash counts as reaching.
+   - Add H10, H12, H19 and H19b to the parser self-test, then all four must go RED.
+
+   **This is safe to ship if disclosed:** the shipped CSS is correct as measured on every
+   surface, and the gap is only in the regression net. So an acceptable exit is a docs-only
+   disclosure in this plan plus a tracker row. Either exit, I re-check it as a delta.
+
+2. **SUGGESTION - two semantics of the new rule are unbound.**
+   - M15 (the suggestion's clamp called without the saved list) survives, `pass 82 fail 0`.
+     Under M15, a suggestion that would return chapter 2 to a SOURCE-close position is shown
+     disabled.
+   - M16 (`savedTimes()` returns the SOURCE starts instead of the saved ones) survives,
+     `pass 82 fail 0`. Every fixture is a fresh item where saved == source, so "closer than the
+     SAVED list" is never told apart from "closer than the source".
+
+   Bind one re-edit case (an item saved once, where saved != source) and one clamped-suggestion
+   case on a source-close first pair.
+
+   M8b and M9b (the per-row Snap and Snap all called without `stored`) also survive. I argue them
+   equivalent by reachability: a server `suggest` lies strictly between the STORED neighbours
+   and at least 0.1 s from its own stored start. So a snap can only move a row away from a
+   stored-close neighbour, and it can never narrow a pair back down to its stored width.
+
+3. **SUGGESTION - the disclosed "nudge-clamp squeeze" understates.** With three SOURCE starts
+   within 0.1 s, the squeeze puts a chapter PAST its neighbour, not just inside the gap.
+   - Verified: source `[0, 60, 60.03, 60.06, 120]`, nudge chapter 3 by +0.1: the list reads
+     1:00.0 / 1:00.1 / 1:00.1, and Save is refused by the server ("Chapter 4 must start after
+     chapter 3."), with nothing written.
+   - With a close PAIR (`[.., 60, 60.03, 60.15, ..]`), the same nudge SAVES `[.., 60, 60.1,
+     60.15, ..]`, a 50 ms pair narrower than both the gap and the source. That is the case the
+     plan discloses.
+   - `clampSnapNudge` is unchanged from the base (pre-existing). Correct the disclosure wording.
+
+### Destroy-the-data checks (verified holding)
+- **Widening into an illegal state:** refused whenever the result narrows. A pair can end up
+  below both the gap and the saved gap only when it started there, and the only edit that puts
+  it there is the pre-existing nudge squeeze (finding 3). Order violations are always narrowing,
+  so they are refused (M3 RED). The server's strict-order and end rules are unchanged and backstop
+  the squeeze.
+- **Ratchet:**
+  - Source `[0, 60, 60.3, 120]`: 5 x (chapter 3 −0.1, chapter 2 +0.1), +1 s, chapter 3 −1 s,
+    5 x −0.1, then Reset. The pair never went below the 0.1 s gap (0:59.9/1:00.2 → 1:00.1/1:00.2).
+    Saved `[0, 60.1, 60.2, 120]`.
+  - Each step needs `g < before`, and the refusal floor is min(gap, saved), so a step-by-step
+    walk below both is impossible.
+- **The callers pass the right `before` / `stored`:** M8, M8c, M9, M9c, M10, M10b and M10c are
+  RED (the wrong list, or none). M1-M4 (the rule's three conditions and `<=` on stored) are RED.
+  M11, M11b, M12, M13 and M14 (`snapShiftBlock`'s saved list, both ends, the steps and apply)
+  are RED.
+- **My r1/r2 kills, re-run:** A3 and D1 are RED.
+
+Blocking: finding 1 only (fix it, or disclose it plus a tracker row). The data path is clean at
+this sha.
+
+Gate: CHANGES r3 @0cc5d68f — adversary
+
+## Gate r3 - qa (@0cc5d68f)
+
+A check of the changes since r2 (`git diff 4b46555d 0cc5d68f`: common.js, the three test files, the plan; plus the
+merge 119b4e39). Instruments (Node 22.23.1, run by this seat):
+- The three touched test files with `FILETUBE_TEST_FFMPEG` set: `tests 40 pass 40 fail 0 skipped 0`,
+  `real scan: Suggested: shift all by +1.75 s (4 of 4 agree) (applied 1750 ms)`.
+- Chapter-snap unit + integration, chapters-editor, chapter-likes, every census, the token /
+  overlay locks, music-skin*, music-pocket-menus, pocket-quick-scroll: `tests 434 pass 434 fail 0
+  cancelled 0 skipped 0`.
+- `npm run test:unit`: `tests 7325 pass 7325 fail 0 cancelled 0 skipped 0`.
+- `lint:css` `TOTAL 0`; `lint:overlay` `clean (0 violations)`; eslint on the six JS files `6
+  problems (0 errors, 6 warnings)` (the pre-existing six); `check-markers`: 2 issues, the stale
+  security-brief approvals @c05c6906 and @4b46555d (expected until the r3 markers bind).
+- Probes on a `git archive 0cc5d68f` sandbox (the merged tree, v1.324.0 pocket menus in):
+  skin-status-bar-probe - every SUMMARY `equal/battStill/playStill/longTruncated/noSpill` true,
+  Click trio 31.2 x4, Seattle 30.2 x4 at 390x844 and 380x700, pop-out 31.2 / 30.2 at every level,
+  tray 31.2, all 72 on-page rows `reached`, no page errors, `docScrollWidth == vw`.
+  chapter-snap-probe - identical to r1/r2 (88x44 / 201x44 / 177x36, suggestion 356x44 / 810x44 /
+  285x36, 0 under 44 px on both phone viewports, notches 12.1125 vs 12.113).
+- **The new v1.324.0 levels** (the committed probe does not visit them): a scratch copy of the
+  probe in my sandbox (not in the tree) drove the real menus at 390x844. Click, Click Black and
+  Click Matte: Settings, About, Extras, Games and Recent Artists all 31.2 px, battery 338,27.6,22,11
+  and play mark still. Seattle: Settings, About and the Recent pivot (screenshot checked:
+  "recent artists albums", header "music") all 30.2 px. Seattle shows no Games entry, which is
+  tracker #265 and expected. Every SUMMARY `equal/battStill/playStill/noSpill` true.
+
+My r2 finding:
+- **W1 (Reset refused, with a false reason, on a pair or end that came from the source): fixed,
+  in a different way from my prescription, and the change is sound.** The rule is now: refuse only an edit that
+  NARROWS a pair into the gap AND below the saved gap. That covers my prescription (never worse
+  than stored) and adds "the edit must narrow it", so an untouched pair is never the edit's
+  business. My jsdom cases on the r3 sandbox:
+  - `[0, 60, 60.05, 120]`, +1 s: Reset is enabled, no reason is shown, and it goes back to
+    `0:00.0 1:00.0 1:00.1 2:00.0` with Save off and "No shift".
+  - `[0, 60, 299.95]`/300, -1 s: both +1 s and Reset are enabled, and Reset returns to the saved list.
+  - `[0, 0.05, 60]`: -0.1 s is refused at the source; after +1 s, -1 s goes back.
+  - A snap that narrows the source 50 ms pair to 20 ms is still refused, and a snap that widens
+    it (still inside the gap) is allowed and posts `[0, 59.99, 60.05, 120]`.
+  - My r1 cases still hold: the partial note, "(the others carry no shift)", and the r1 S3 Reset
+    over a snapped row stays refused.
+
+  Every edit's result still passes the server's rule. Each allowed pair is at least the smallest
+  of (the gap, its saved gap, its gap before the edit), and each of those is positive. The end
+  works the same way.
+- **The reason text is corrected** and true: "... or within 0.1 s of it and closer than your saved
+  chapters have them". The false "a chapter was moved after the shift" is gone.
+- **The target-based census and its two exceptions.** The census now asks only whether a rule's
+  final selector part can match the element, so no ancestor excuses a rule. Nesting is flattened,
+  vendor spellings are normalised, and an unreadable block fails the test. I read both exceptions:
+  - `.theme-swatch span { flex: 1 }` (Setup's swatch) and
+    `.section-actions.search-scoped-toolbar > * { flex: 0 0 auto; order: 0 }` (the Home toolbar)
+    can only reach a span or child INSIDE those containers.
+  - No builder of the panel (music.js, skin-surface.js, music-skins.js, ...) uses those classes,
+    and the test binds that. The panel is never inside a swatch or a search toolbar, so both
+    exceptions are sound.
+  - One imprecision: the test's prose says the ancestor class "never appears where the panel
+    lives". The real invariant is "never CONTAINS the panel". In the SPA the music view can load
+    into the setup.html shell, but the swatch is still never its ancestor. This does not change
+    the result.
+- **The merge (119b4e39)** changes nothing on main's side except this branch's own nine files. The
+  tracker at HEAD is main's 241 rows plus #259 (242 rows, none missing, none duplicated). #258 is
+  main's edited text, and #263-#266 and #271 are kept.
+
+Findings:
+
+1. **SUGGESTION - three comments still state the r1/r2 gap rule, which r3 relaxed.**
+   - common.js:13270 (snapAllPlan's header: "each snapped time must stay at least the minimum gap
+     inside the CURRENT neighbours").
+   - :13284 (the inline "At least the server's minimum gap from the CURRENT neighbours").
+   - :13327-13329 (shiftResetProblem: "refused when a row it moves would land ... closer than the
+     server's minimum gap").
+
+   None mentions the new saved-list and narrowing conditions. Verified: a snap from 60 to 59.99
+   beside a source chapter at 60.05 is allowed and saved 60 ms apart. The code is right, and
+   `snapGapBreak`'s own comment states the rule correctly; these three lines describe a stricter
+   invariant than the code keeps. A maintainer who trusts them would "fix" the code back to the
+   r2 behavior. Fix: reword each as "never narrows a pair into the gap below its saved width (see
+   snapGapBreak)". Comment-only; goes to the tracker with the other r3 suggestions.
+2. **SUGGESTION - the status-bar probe's SUMMARY does not fold in `reached`**
+   (scripts/skin-status-bar-probe.js: `measure` returns the state without `reached`, and SUMMARY
+   never checks it). A level that silently fails to open (a renamed row) would keep the last
+   title and still read `equal: true`. I checked `reached` on every row by hand this round (all
+   true). Fix: return the merged object and add `reachedAll` to SUMMARY.
+
+No CRITICAL or WARNING. Security: unchanged from r1/r2. The new strings are fixed text plus
+`gapText()` (a number), all set by `textContent`, and nothing new is sent to the server.
+
+Verdict: APPROVED. My r1 and r2 findings are all resolved, the new rule is sound and bound
+(58 of 58 mutants RED per the record, and my own cases agree). Both suggestions are comment- or
+tool-only, and I would ship them disclosed via the tracker.
+
+Gate: APPROVED r3 @0cc5d68f — qa
