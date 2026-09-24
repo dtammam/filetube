@@ -137,6 +137,23 @@ function isAdoptLoad(currentId, requestedId, state) {
 // row and the listen artist line died on the next re-init. Music always
 // declares it (a string, '' = no channel); watch.js never does, so a Listen
 // -> Watch adopt keeps it (harmless: resumeMode null ends isMusic).
+// Tracker #237 (music follow-ups, 2026-09-24): the contract now covers the FULL surface-flavor
+// set, enumerated from what the loaders pass (music.js loadTrack, podcasts.js, watch.js
+// initWatch) - every field that says how the item is PRESENTED or how it ENDS, never a field
+// that drives the loaded media (type/duration/streamSrc/progressEndpoint/chapter offsets: the
+// adopt keeps the media untouched, which is why adopt exists):
+//   - presentation strings: title, channelName, folderName, album, albumKey, channelFolder,
+//     artUrl, subId (getCurrentMeta, the music/podcasts re-init seeds, the lock screen);
+//   - autoAdvanceViaTrackNav (the 'ended' cascade's queue branch vs the video autoplay path).
+// MEASURED in headless Chromium before this: an audio item opened on the watch page, then
+// /music?play=<id>, ADOPTED with the watch load's title / channel (the re-init read "file-a1
+// Uploader"), album '' / albumKey '' (no album to rebuild) and no autoAdvanceViaTrackNav (the
+// natural end took the VIDEO path and the album never advanced). Gate r1 (qa W2 = adversary W3):
+// the reverse, Listen -> Watch, kept music's `autoAdvanceViaTrackNav: true`, so a watch-page end
+// advanced through the watch context's track nav even with Autoplay OFF (the v1.253 ledger's
+// known quirk, measured a2 -> a1, a3 -> a2); watch.js now DECLARES it false beside its
+// readerHref/resumeMode null stamps, so that adopt clears it.
+var ADOPT_FLAVOR_STRING_FIELDS = ['title', 'channelName', 'folderName', 'album', 'albumKey', 'channelFolder', 'artUrl', 'subId'];
 function applyAdoptFlavor(currentData, data) {
   if (!currentData || !data) return currentData;
   if (Object.prototype.hasOwnProperty.call(data, 'readerHref')) {
@@ -145,8 +162,14 @@ function applyAdoptFlavor(currentData, data) {
   if (Object.prototype.hasOwnProperty.call(data, 'resumeMode')) {
     currentData.resumeMode = (typeof data.resumeMode === 'string' && data.resumeMode) ? data.resumeMode : undefined;
   }
-  if (Object.prototype.hasOwnProperty.call(data, 'channelFolder')) {
-    currentData.channelFolder = (typeof data.channelFolder === 'string') ? data.channelFolder : undefined;
+  for (var f = 0; f < ADOPT_FLAVOR_STRING_FIELDS.length; f++) {
+    var key = ADOPT_FLAVOR_STRING_FIELDS[f];
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      currentData[key] = (typeof data[key] === 'string') ? data[key] : undefined;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'autoAdvanceViaTrackNav')) {
+    currentData.autoAdvanceViaTrackNav = data.autoAdvanceViaTrackNav === true;
   }
   return currentData;
 }
@@ -9059,6 +9082,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // mini-bar's return target stayed with the PREVIOUS surface across a
       // same-id Listen<->Watch switch.
       applyAdoptFlavor(currentData, data);
+      // Gate r1 (adversary W4): the lock screen reads the adopted presentation too (its
+      // foreground re-assert reuses the artist this call records).
+      if (currentData) setupMediaSession(currentId, currentData.channelName, currentData.title);
       // Gate S2 (v1.130 fix round): an adopt returns before the capture below,
       // so an armed immersive carry would otherwise survive it and wrongly
       // apply to a LATER unrelated load. Consume it here too - an adopt never
