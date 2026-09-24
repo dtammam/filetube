@@ -83,12 +83,15 @@ test('the MUSIC skin docks to the origin on BOTH the collapse handle and the iPo
   assert.match(src, /onDock: dockToOrigin/, 'music supplies dockToOrigin as the engine onDock hook');
   const engine = readSrc('public/js/skin-surface.js');
   assert.match(engine, /data-skin-collapse[\s\S]{0,80}onDock\(\); return;/, 'the engine routes the grab-handle to onDock');
-  // v1.270: window widened 220 -> 480. The GUARD's meaning is unchanged - MENU from
-  // Now Playing still routes to onDock - but a legitimate branch now sits between
-  // them (the wheel takeover's exit, so MENU backs out of Brick before it docks).
-  // The distance was always incidental to the intent; the sibling assertion above
-  // already uses 420. Verified still binding: deleting `else { onDock(); }` reds.
-  assert.match(engine, /data-skin-menu[\s\S]{0,480}else \{ onDock\(\); \}/, 'the engine routes MENU (from Now Playing, not list mode) to onDock');
+  // Pocket menus (2026-09-24): anchored on the SEMANTIC unit - the MENU handler's own block - instead of a
+  // character window (v1.270 had widened it 220 -> 480; the pocket menus' climb branch
+  // would have needed a wider one again, the "widening is the trap" class). The block's
+  // LAST arm must still be the dock: MENU that nothing else claims (not a takeover, not the
+  // queue list, not a pocket-menu climb) exits the player. Behaviourally bound too, by
+  // music-pocket-menus.test.js (the Main Menu's MENU docks; a skin with no menus docks).
+  const menuBlock = /if \(e\.target\.closest\('\[data-skin-menu\]'\)\) \{([\s\S]*?)\n {6}\}/.exec(engine);
+  assert.ok(menuBlock, 'the engine has a [data-skin-menu] handler block');
+  assert.match(menuBlock[1], /else \{ onDock\(\); \}\s*return;\s*$/, 'the engine routes an unclaimed MENU (from Now Playing, not list mode) to onDock - its final arm');
 });
 
 test('the PODCAST skin docks to the origin on its onDock hook', () => {

@@ -9949,6 +9949,7 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
 const SWIPE_BACK_OWNER_SELECTORS = [
   '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
   '.whcal-stage', // the wheel-calibration tool's spin area (Settings > Experimental) - v1.311.2 gate W2
+  '[data-skin-swipe]', // pocket menus: Seattle's pivot list - a sideways swipe there moves across the pivots
   'input[type="range"]', '[role="slider"]',
 ];
 // ...plus the NET for scrubbers nobody listed yet: an element that took the
@@ -12761,6 +12762,24 @@ function showMoveModal(item, folders, onMove, doc) {
   return { backdrop, modal, title, body, label, select, statusEl, cancelBtn, moveBtn, teardown };
 }
 
+// Pocket menus gate r1 K2 (qa W1 + adversary W2): the ONE "the library changed under you" seam.
+// A writer that changes what the music library lists (a chapter save - the editor below on every
+// surface, and any future chapter writer such as a snap-to-silence save) raises this document
+// event; a live view holding cached library lists (the music view's pocket menus) listens and
+// re-loads, so a menu never shows or plays a dropped / re-timed chapter. `doc` injectable.
+const LIBRARY_CHANGED_EVENT = 'filetube:library-changed';
+function notifyLibraryChanged(detail, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || typeof d.dispatchEvent !== 'function') return false;
+  try {
+    const W = d.defaultView;
+    const Ev = (W && W.CustomEvent) || (typeof CustomEvent !== 'undefined' ? CustomEvent : null);
+    if (!Ev) return false;
+    d.dispatchEvent(new Ev(LIBRARY_CHANGED_EVENT, { detail: detail || {} }));
+    return true;
+  } catch (_) { return false; }
+}
+
 /**
  * v1.34 T3 (Dean): the per-video CHAPTERS EDITOR modal -- a textarea, one
  * "0:00 Title" line per chapter (the SAME grammar the server's
@@ -12871,6 +12890,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
           statusEl.textContent = (bodyJson && bodyJson.error) || 'Could not save chapters.';
           return;
         }
+        notifyLibraryChanged({ kind: 'chapters', mediaId: mediaId }, d); // the chapter list changed under any live library view
         if (typeof onSaved === 'function') onSaved(bodyJson);
         teardown();
       })
@@ -13445,6 +13465,7 @@ function showChapterSnapEditor(mediaId, opts) {
         if (closed) return;
         setBusy(false);
         if (res.ok) {
+          notifyLibraryChanged({ kind: 'chapters', mediaId: mediaId }, d); // pocket menus: the ONE library-changed seam
           if (typeof o.onSaved === 'function') { try { o.onSaved(res.body); } catch (_) { /* the caller's refresh */ } }
           if (typeof showToast === 'function') showToast('Back to the source chapters.');
           teardown();
@@ -13494,6 +13515,7 @@ function showChapterSnapEditor(mediaId, opts) {
         if (closed) return;
         setBusy(false);
         if (res.ok) {
+          notifyLibraryChanged({ kind: 'chapters', mediaId: mediaId }, d); // pocket menus: the ONE library-changed seam
           if (typeof o.onSaved === 'function') { try { o.onSaved(res.body); } catch (_) { /* the caller's refresh */ } }
           if (typeof showToast === 'function') showToast('Chapter times saved. A reheat keeps them.');
           teardown();
@@ -16486,6 +16508,8 @@ if (typeof module !== 'undefined' && module.exports) {
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
     // v1.24.0 (T9): C1 move-files client picker.
     showMoveModal, requestMoveItem,
+    // pocket menus gate r1 K2: the library-changed seam + the chapters editor that raises it.
+    LIBRARY_CHANGED_EVENT, notifyLibraryChanged, // showChaptersEditor is exported with the Chapter Snap group above
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     ACTIVITY_CHIP_LABELS, formatActivityStatusText,

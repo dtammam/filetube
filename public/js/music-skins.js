@@ -231,22 +231,27 @@
   // Cider (Apple Music - apple->cider), Nordic (Spotify - its Swedish roots),
   // Click (iPod - the click wheel; Black + Matte are the body colorways) and Seattle
   // (the Zune's home). The ids stay literal for CSS/storage.
+  // Pocket menus (2026-09-24): `menus` names the POCKET MENU style a skin carries ('click' =
+  // the 6G split screen, 'seattle' = the Zune pivots). It lives ON the registry entry - the
+  // one list a new skin is added to - so a new Click colorway that copies an entry carries its
+  // menus with it (never a second hand-kept id list; the INERT SIBLING class). Absent = no
+  // menus (Cider, Nordic): those skins have no LCD to draw a menu on.
   var SKINS = [
     { id: 'apple', label: 'Cider', renderFull: renderApple },
     { id: 'spotify', label: 'Nordic', renderFull: renderSpotify },
-    { id: 'ipod', label: 'Click', renderFull: renderIpod },
+    { id: 'ipod', label: 'Click', menus: 'click', renderFull: renderIpod },
     // v1.232 (Dean): the black iPod - identical structure (renderIpod), a `base` so the
     // panel also carries `.mms-ipod` (all the shared iPod CSS) while `.mms-ipod-black`
     // overrides only the body/wheel palette. One render, two looks.
-    { id: 'ipod-black', label: 'Click (Black)', base: 'ipod', renderFull: renderIpod },
+    { id: 'ipod-black', label: 'Click (Black)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     // the matte graphite variant, sampled from Dean's reference photo - the ipod-black
     // pattern exactly: one render (renderIpod), a `base` for the shared .mms-ipod CSS,
     // and the .mms-ipod-matte palette-only override.
-    { id: 'ipod-matte', label: 'Click (Matte)', base: 'ipod', renderFull: renderIpod },
+    { id: 'ipod-matte', label: 'Click (Matte)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     // v1.260 (Dean: "the original zune with the circle wheel"): the brown Zune 30 -
     // the ipod-black pattern exactly: one render (the wheel engine, haptics and all),
     // a base for the shared .mms-ipod CSS, and a palette-only override block.
-    { id: 'zune-classic', label: 'Seattle', base: 'ipod', renderFull: renderZuneClassic },
+    { id: 'zune-classic', label: 'Seattle', base: 'ipod', menus: 'seattle', renderFull: renderZuneClassic },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
 
@@ -277,12 +282,220 @@
     return !!(meta && (meta.isMusic || meta.resumeMode === 'podcast')) && isMobileViewport(mql);
   }
 
+  // ==== POCKET MENUS (Dean 2026-09-24: "I'd love classic pocket skin to truly emulate.
+  // Show artists, albums, songs, etc. fully interactive") ======================================
+  // The Click family and Seattle carry the device's real menu tree over the WHOLE music library.
+  // This module owns the PURE half: the static levels, the builders that turn the Music view's
+  // own API payloads into menu rows, the list window math and the two screen renderers (Click's
+  // 6G split screen, Seattle's Zune pivots). The controller (stack, cursor, MENU/Select, loads)
+  // lives in skin-surface.js; the data fetches + the play seam live in music.js.
+  //
+  // A menu ROW (every builder returns these):
+  //   { label, sub?, art?, node?: {type, key?, label?, artist?} (drills in, shows a chevron),
+  //     action?: 'shuffle' | 'nowplaying', song?: true, id?, trackIndex? (into the level's tracks) }
+  function menuStyle(id) { var s = BY_ID[normalizeSkinId(id)]; return (s && s.menus) || ''; }
+  // Click's Music menu (the iPod order, Dean's tree) and Seattle's pivots (the Zune's own
+  // lead-with-artists order). One list per style; the controller reads them, never a copy.
+  var MUSIC_MENU = [
+    { type: 'playlists', label: 'Playlists' }, { type: 'artists', label: 'Artists' },
+    { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' }, { type: 'genres', label: 'Genres' },
+  ];
+  var SEATTLE_PIVOTS = [
+    { type: 'artists', label: 'Artists' }, { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' },
+    { type: 'playlists', label: 'Playlists' }, { type: 'genres', label: 'Genres' },
+  ];
+  // Playlists = Liked (the one real playlist, Dean: "including Liked") + the device's smart
+  // playlists this library can honestly fill (no play counts exist, so no "Top 25").
+  var PLAYLISTS = [
+    { key: 'liked', label: 'Liked Songs' },
+    { key: 'recent-added', label: 'Recently Added' },
+    { key: 'recent-played', label: 'Recently Played' },
+  ];
+  function menuPivots(style) { return style === 'seattle' ? SEATTLE_PIVOTS.slice() : []; }
+  var ROOT_TITLE = { click: 'Click', seattle: 'Seattle' }; // the cheeky name, never the product's (Dean)
+  var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres' };
+  function menuTitle(node, style) {
+    var n = node || {};
+    if (n.type === 'main') return ROOT_TITLE[style] || 'Menu';
+    if (TYPE_TITLE[n.type]) return TYPE_TITLE[n.type];
+    return (typeof n.label === 'string' && n.label) ? n.label : 'Songs';
+  }
+  // The STATIC levels (null for a level whose rows come from the library).
+  function menuStaticItems(node, opts) {
+    var t = node && node.type;
+    if (t === 'main') {
+      var rows = [{ label: 'Music', node: { type: 'music' } }, { label: 'Shuffle Songs', action: 'shuffle' }];
+      if (opts && opts.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
+      return rows;
+    }
+    if (t === 'music') return MUSIC_MENU.map(function (m) { return { label: m.label, node: { type: m.type } }; });
+    if (t === 'playlists') return PLAYLISTS.map(function (p) { return { label: p.label, node: { type: 'playlist', key: p.key, label: p.label } }; });
+    return null;
+  }
+  // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
+  // musicArtUrl) so the menus can never drift from the art the rest of Music shows.
+  function artVia(artFor, id, explicit) {
+    try { return (typeof artFor === 'function' && id) ? (artFor(id, explicit) || '') : ''; } catch (_) { return ''; }
+  }
+  function menuArtistItems(artists, artFor) {
+    return (Array.isArray(artists) ? artists : []).map(function (a) {
+      var name = (a && typeof a.artist === 'string') ? a.artist : '';
+      var ids = (a && Array.isArray(a.artIds)) ? a.artIds : [];
+      return {
+        label: name || 'Unknown Artist',
+        node: { type: 'artist', key: name, label: name || 'Unknown Artist' },
+        art: (a && typeof a.avatarUrl === 'string' && a.avatarUrl) ? a.avatarUrl : artVia(artFor, ids[0]),
+      };
+    });
+  }
+  function menuAlbumItems(albums, artFor) {
+    return (Array.isArray(albums) ? albums : []).map(function (a) {
+      var name = (a && typeof a.album === 'string' && a.album) ? a.album : 'Unknown Album';
+      return {
+        label: name, sub: (a && typeof a.artist === 'string') ? a.artist : '',
+        node: { type: 'album', key: (a && a.albumKey) || '', label: name },
+        art: artVia(artFor, a && a.artId),
+      };
+    });
+  }
+  function menuSongItems(tracks, artFor) {
+    return (Array.isArray(tracks) ? tracks : []).map(function (t, i) {
+      return {
+        label: (t && t.title) || 'Unknown Song', sub: (t && t.artist) || '',
+        id: t && t.id, song: true, trackIndex: i, art: artVia(artFor, t && t.id, t && t.artUrl),
+      };
+    });
+  }
+  // An artist's level: their albums (first-seen order of the album-ordered track list), led by
+  // "All Songs" when there is more than one album (the device's own row).
+  function menuArtistAlbumItems(tracks, artistNode, artFor) {
+    var node = artistNode || {};
+    var seen = Object.create(null);
+    var albums = [];
+    (Array.isArray(tracks) ? tracks : []).forEach(function (t) {
+      if (!t) return;
+      var k = t.albumKey || '';
+      if (seen[k]) return;
+      seen[k] = true;
+      var name = (typeof t.album === 'string' && t.album) ? t.album : 'Unknown Album';
+      albums.push({ label: name, node: { type: 'artistAlbum', key: k, artist: node.key || '', label: name }, art: artVia(artFor, t.id, t.artUrl) });
+    });
+    if (albums.length > 1) albums.unshift({ label: 'All Songs', node: { type: 'artistAll', artist: node.key || '', label: node.label || 'All Songs' }, art: albums[0].art });
+    return albums;
+  }
+  // Genres: every distinct (trimmed) genre tag, name order, with the untagged tracks gathered
+  // under "Unknown Genre" last. Genre > Songs (Dean: "or Genre > Songs if the data is thin") -
+  // the projected library's genre is the uploader's category, one or two values for most shelves.
+  function genreOf(t) { return (t && typeof t.genre === 'string') ? t.genre.trim() : ''; }
+  function menuGenreItems(tracks) {
+    var names = Object.create(null);
+    var unknown = false;
+    (Array.isArray(tracks) ? tracks : []).forEach(function (t) {
+      var g = genreOf(t);
+      if (g) names[g] = true; else unknown = true;
+    });
+    var rows = Object.keys(names).sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); })
+      .map(function (g) { return { label: g, node: { type: 'genre', key: g, label: g } }; });
+    if (unknown) rows.push({ label: 'Unknown Genre', node: { type: 'genre', key: '', label: 'Unknown Genre' } });
+    return rows;
+  }
+  function tracksOfGenre(tracks, key) {
+    var k = typeof key === 'string' ? key : '';
+    return (Array.isArray(tracks) ? tracks : []).filter(function (t) { return genreOf(t) === k; });
+  }
+  function tracksOfAlbum(tracks, key) {
+    return (Array.isArray(tracks) ? tracks : []).filter(function (t) { return t && (t.albumKey || '') === key; });
+  }
+  // The rendered WINDOW of a long list: only the rows near the viewport exist in the DOM (a
+  // library can have thousands of songs). With no layout yet (rowH/viewH unknown - the first
+  // frame, or jsdom) it falls back to a fixed span around the cursor, so the cursor row is
+  // always addressable.
+  var MENU_SPAN = 40;
+  function menuWindow(total, cursor, rowH, scrollTop, viewH, overscan) {
+    var n = Math.max(0, Math.floor(Number(total) || 0));
+    var ov = Math.max(0, Math.floor(Number(overscan) || 8));
+    if (!(rowH > 0) || !(viewH > 0)) {
+      var c = Math.max(0, Math.min(n - 1, Math.floor(Number(cursor) || 0)));
+      var s0 = Math.max(0, Math.min(Math.max(0, n - MENU_SPAN), c - MENU_SPAN / 2));
+      return { start: s0, end: Math.min(n, s0 + MENU_SPAN) };
+    }
+    var st = Math.max(0, Number(scrollTop) || 0);
+    var s = Math.max(0, Math.floor(st / rowH) - ov);
+    var e = Math.min(n, Math.ceil((st + viewH) / rowH) + ov);
+    return { start: Math.min(s, e), end: e };
+  }
+  var MENU_SKELETON_ROWS = 6;
+  // The list body: two spacer pads + the windowed rows (each carrying its absolute index).
+  // v = { style, items, cursor, currentId, start, end, rowH, state, emptyText }
+  function renderMenuList(v) {
+    var items = v.items || [];
+    if (v.state === 'loading') {
+      var sk = '';
+      for (var k = 0; k < MENU_SKELETON_ROWS; k++) sk += '<div class="ipm-row ipm-skel" aria-hidden="true"><span class="ipm-skel-bar skeleton-shimmer"></span></div>';
+      return sk;
+    }
+    if (v.state === 'error') return '<div class="ipm-note" role="status">Couldn’t load this list. Press the center to try again.</div>';
+    if (!items.length) return '<div class="ipm-note" role="status">' + esc(v.emptyText || 'Nothing here yet.') + '</div>';
+    var rowH = Number(v.rowH) || 0;
+    var html = '<div class="ipm-pad" style="height:' + (v.start * rowH) + 'px"></div>';
+    for (var i = v.start; i < v.end; i++) {
+      var it = items[i];
+      var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
+        (v.currentId && it.id === v.currentId ? ' is-current' : '');
+      html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
+        '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
+        (v.style === 'seattle' && it.sub ? '<span class="ipm-sub">' + esc(it.sub) + '</span>' : '') +
+        (v.currentId && it.id === v.currentId ? '<span class="ipm-now" aria-label="Now playing">' + ipVolGlyph() + '</span>' : '') +
+        (it.node && v.style !== 'seattle' ? '<span class="ipm-chev" aria-hidden="true">›</span>' : '') +
+        '</button>';
+    }
+    html += '<div class="ipm-pad" style="height:' + (Math.max(0, items.length - v.end) * rowH) + 'px"></div>';
+    return html;
+  }
+  // The whole menu screen for the LCD. Click: the 6th/7th-gen SPLIT SCREEN - the list on the
+  // left half, the highlighted item's art easing in on the right (`art`, applied by the
+  // controller so a fast wheel does not thrash the image). Seattle: big lowercase type, a
+  // pivot strip on the Music level (the active pivot leads, the rest trail off - the Zune
+  // wraps), a dim title over a drilled list, and nothing at all over the Main Menu.
+  // v = renderMenuList's v + { title, root, pivots?: [labels], pivotIdx, art, artIn }
+  function renderMenuView(style, v) {
+    // gate r1 K5: a Seattle list whose rows carry a sub-line (albums, songs) is a TWO-LINE list -
+    // taller rows with title + sub packed at the top, so each sub-line reads with ITS title.
+    var twoLine = style === 'seattle' && (v.items || []).some(function (it) { return it && it.sub; });
+    var list = '<div class="ipm-list' + (twoLine ? ' ipm-2l' : '') + '" data-skin-menulist role="listbox" aria-label="' + esc(v.title || 'Menu') + '"' +
+      (style === 'seattle' && v.pivots ? ' data-skin-swipe' : '') + '>' + renderMenuList(Object.assign({}, v, { style: style })) + '</div>';
+    if (style === 'seattle') {
+      var head = '';
+      if (v.pivots && v.pivots.length) {
+        var n = v.pivots.length;
+        var strip = '';
+        for (var j = 0; j < n; j++) {
+          var k = (v.pivotIdx + j) % n;
+          strip += '<button type="button" class="ipm-pv' + (j === 0 ? ' is-on' : '') + '" data-skin-pivot="' + k + '"' + (j === 0 ? ' aria-current="true"' : '') + '>' + esc(v.pivots[k]) + '</button>';
+        }
+        head = '<div class="ipm-pivots">' + strip + '</div>';
+      } else if (!v.root) {
+        head = '<div class="ipm-title">' + esc(v.title || '') + '</div>';
+      }
+      return '<div class="ip-menuview ipm-seattle' + (v.root ? ' ipm-root' : '') + '">' + head + list + '</div>';
+    }
+    var art = v.art ? '<img class="ipm-art-img' + (v.artIn ? ' is-in' : '') + '" src="' + esc(v.art) + '" alt="" />' : '';
+    return '<div class="ip-menuview ipm-click"><div class="ipm-split">' + list +
+      '<div class="ipm-art" aria-hidden="true">' + art + '</div></div></div>';
+  }
+
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
+    // the pocket menus (the pure half - see the block above).
+    menuStyle: menuStyle, menuPivots: menuPivots, menuTitle: menuTitle, menuStaticItems: menuStaticItems,
+    menuArtistItems: menuArtistItems, menuAlbumItems: menuAlbumItems, menuSongItems: menuSongItems,
+    menuArtistAlbumItems: menuArtistAlbumItems, menuGenreItems: menuGenreItems,
+    tracksOfGenre: tracksOfGenre, tracksOfAlbum: tracksOfAlbum,
+    menuWindow: menuWindow, renderMenuList: renderMenuList, renderMenuView: renderMenuView,
     _esc: esc, _pct: pct,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -372,9 +372,10 @@ test('v1.233: a fast flick ACCELERATES (songs-per-step scales with angular speed
 test('v1.250 (Dean): ONE Now-Playing wheel behavior - SCRUB - on every surface; dead-center Select still passes through', () => {
   // Dean 2026-09-02 retired v1.235's pop-out wheel-volume ("make the classic wheel scrub
   // like it does on mobile - consistent UI and useful"): the mode line has exactly two
-  // arms, cursor (list) and scrub (Now Playing) - no volume, nowhere.
+  // arms, cursor (list) and scrub (Now Playing) - no volume, nowhere. Pocket menus (2026-09-24): a pocket-menu
+  // level is a cursor list too (the SAME cursor arm), so the line reads (list || menu).
   const { body } = wheelHandlerSrc();
-  assert.match(body, /mode: listMode \? 'cursor' : 'scrub'/, 'list -> cursor, Now Playing -> scrub; no third mode');
+  assert.match(body, /mode: \(listMode \|\| menuMode\) \? 'cursor' : 'scrub'/, 'list/menu -> cursor, Now Playing -> scrub; no third mode');
   assert.match(body, /r\.width \* DEAD_FRAC[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through (DEAD_FRAC sourced from the shared module, v1.303)');
 });
 
