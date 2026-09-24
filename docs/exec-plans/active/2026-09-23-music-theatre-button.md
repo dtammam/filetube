@@ -364,13 +364,14 @@ Gate: CHANGES r1 @7c31035f — adversary (see findings)
 
 ## r1 fix record
 
-One fix commit on top of ea98921e (code + tests + this doc + the tracker row), then a docs
-commit recording the mutant results below; the mutants ran in a `git archive` sandbox of the
-fix commit's sha, never on the live tree.
+Fix commit 09340f30 on top of ea98921e (code + tests + this doc + the tracker row); a second
+fix commit (the harness Proxy, below) after the first mutant run showed the guard-typo mutant
+STILL SURVIVED the spy; then a docs commit recording the mutant results. Every mutant ran in a
+`git archive` sandbox of a committed sha, never on the live tree.
 
 | Finding | What changed | Binding test / evidence |
 |---------|--------------|-------------------------|
-| adversary W1 (the guard-typo survivor; M10 killed only by regexes) | `test/unit/watch-init-behavioral.test.js`: the harness's Proxy player gains an `ensureTheaterButton` SPY (`theaterCalls`), so the property is present and counted instead of falling through to the Proxy's `() => undefined`. Two tests drive the REAL watch.js with resolving fetches: the hydrated video path (config + `/api/videos/vid1` + settings resolve; step 4 load, step 9 cog injection) asserts 0 calls synchronously in init() and exactly 1 after hydration (with 2 `load` calls as the reachability precondition); the `?tv=` episode path asserts exactly 1 (with 1 `load`). The DOM shim gained permissive no-ops the hydrated path reaches. | "v1.317 gate W1" x2. Guard-typo mutant and M10: see Mutant results. |
+| adversary W1 (the guard-typo survivor; M10 killed only by regexes) | `test/unit/watch-init-behavioral.test.js`: the harness's Proxy player gains an `ensureTheaterButton` SPY (`theaterCalls`), so the property is present and counted instead of falling through to the Proxy's `() => undefined`. Two tests drive the REAL watch.js with resolving fetches: the hydrated video path (config + `/api/videos/vid1` + settings resolve; step 4 load, step 9 cog injection) asserts 0 calls synchronously in init() and exactly 1 after hydration (with 2 `load` calls as the reachability precondition); the `?tv=` episode path asserts exactly 1 (with 1 `load`). The DOM shim gained permissive no-ops the hydrated path reaches. SECOND fix (the spy alone let the guard typo survive, measured at 09340f30: 48 pass / 0 fail): the Proxy's fallback answered EVERY unknown property with `() => undefined`, so `typeof player.ensureTheatreButton === 'function'` was TRUE in the harness while it is false in production, and the untouched call line still hit the spy. The fallback now answers a no-op only for names on the REAL player api (`REAL_PLAYER_API`, read from player.js's `var api = {...}` literal + `api.X =` + `defineProperty(api, ...)`), and `undefined` for anything else, as the browser does; a harness test binds the extracted set as non-vacuous and without the misspelling. | "v1.317 gate W1" x2 + "harness: REAL_PLAYER_API". Guard-typo mutant and M10: see Mutant results. |
 | qa W2 + adversary W1 (AC7 "executed" overstated) | AC7 reworded: the CALL is bound by execution (the spy); the post-mount re-query and `{ signal }` click binding in `setupTheatreToggle` stay SOURCE-locked in `test/unit/watch-chrome-ambient.test.js` (that harness has no button to click). | Doc only. |
 | qa W1 (false "check-markers clean") | Build record bullet 2 reworded to the true 1-issue output (the tolerated Building shape). | Doc only. |
 | adversary S2 (one-RTT aria seam on watch) | `public/js/watch.js` init(): `#theater-btn` `aria-pressed` is re-stamped from `ft-theater` in the same synchronous try block as the `.theater-mode` class apply (a no-op when no button exists yet). New AC12. | "v1.317 gate S2" (stored `1` / `0` / absent -> exactly one synchronous write of `true` / `false` / `false`). Mutant S2-drop below. |
@@ -379,8 +380,8 @@ fix commit's sha, never on the live tree.
 | adversary S3 / qa (1024px seam) | Known seams bullet now records both seats' confirmation; behaviour unchanged by intent (watch rule byte-identical). | Disclosure. |
 | qa S4 (7 lint warnings) | None: pre-existing in common.js, none in the changed files. | Disclosure. |
 
-Targeted runs (Node 22.23.1, before the fix commit): `node --test
-test/unit/watch-init-behavioral.test.js` = 18 pass / 0 fail; `node --test
+Targeted runs (Node 22.23.1, before the first fix commit): `node --test
+test/unit/watch-init-behavioral.test.js` = 18 pass / 0 fail (19 / 0 after the Proxy fix); `node --test
 test/unit/music-theater-toggle.test.js` = 9 pass / 0 fail; every unit file that reads watch.js
 plus the two touched files (44 files) = 517 pass / 0 fail.
 

@@ -75,6 +75,28 @@ function makeEl(tag) {
   return el;
 }
 
+// v1.317 gate r1 fix: the REAL player api's property names, read from player.js's
+// `var api = { ... }` literal plus its `api.X = ` / defineProperty(api, 'X') additions,
+// so the harness Proxy answers exactly what production answers (see its get trap).
+const REAL_PLAYER_API = (() => {
+  const src = fs.readFileSync(path.join(REPO, 'public/js/player.js'), 'utf8');
+  const start = src.indexOf('\n  var api = {\n');
+  assert.ok(start !== -1, 'player.js: the `var api = {` literal moved - update REAL_PLAYER_API');
+  const end = src.indexOf('\n  };\n', start);
+  const names = new Set();
+  for (const m of src.slice(start, end).matchAll(/^ {4}([A-Za-z_$][\w$]*)\s*[:(]/gm)) names.add(m[1]);
+  for (const m of src.matchAll(/\bapi\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) names.add(m[1]);
+  for (const m of src.matchAll(/defineProperty\(api,\s*'([^']+)'/g)) names.add(m[1]);
+  return names;
+})();
+
+test('harness: REAL_PLAYER_API is read from player.js (non-vacuous; a misspelling is NOT on it)', () => {
+  for (const n of ['load', 'expand', 'dock', 'close', 'setTrackNav', 'getState', 'isLoopEnabled', 'currentId', 'ensureTheaterButton']) {
+    assert.ok(REAL_PLAYER_API.has(n), `REAL_PLAYER_API carries ${n} (got ${[...REAL_PLAYER_API].join(', ')})`);
+  }
+  assert.ok(!REAL_PLAYER_API.has('ensureTheatreButton'), 'the misspelled writer is not on the real api');
+});
+
 const FULL_SEED_ITEM = {
   id: 'vid1', title: 'T', filePath: '/downloads/Chan/vid.mp4', type: 'video',
   size: 123, addedAt: Date.now() - 1000, duration: 60,
@@ -124,7 +146,12 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
         isLoopEnabled: () => false,
         ensureTheaterButton: () => { theaterCalls.push(1); return getEl('#theater-btn'); },
       }, {
-        get(t, p) { if (p in t) return t[p]; return () => undefined; },
+        // v1.317 gate r1 fix (the guard-typo mutant SURVIVED the first spy): the old
+        // fallback answered EVERY unknown name with a function, so a misspelled
+        // `typeof player.ensureTheatreButton === 'function'` guard was true here while
+        // it is false in production. Unlisted names now answer a no-op only when the
+        // REAL player api carries them; anything else is undefined, as in the browser.
+        get(t, p) { if (p in t) return t[p]; return REAL_PLAYER_API.has(p) ? () => undefined : undefined; },
       }),
       consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
       registerView: (name, handlers) => { if (name === 'watch') capturedInit = handlers.init; },
