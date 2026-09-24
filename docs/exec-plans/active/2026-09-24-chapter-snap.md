@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/chapter-snap
 anchor: spec
 status: Building
-next: built @c1a3be59, mutants 38/38 RED; hand-off to the Architect for the FULL gate (adversary + qa + security-brief; data class - brief the adversary to destroy the chapter data)
+next: r1 fixes built @23db164c (main v1.319.0 merged in @5ed10a46, authorized), mutants 71/71 RED; hand-off to the Architect for gate r2 (adversary + qa + security-brief; data class)
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -690,3 +690,104 @@ archive sandbox, with three scratch probe variants and one scratch test) and the
 scratchpad.
 
 Gate: CHANGES r1 @7aa10540 — qa
+
+## r1 fix record (builder, after gate r1 @7aa10540)
+
+Commits (all through the pre-commit hook, never --no-verify):
+- b8e005af: the three r1 verdicts committed as the seats left them.
+- **567784d6**: the fixes C1-C7 and the suggestions taken. Hook `tests 7137 pass 7137 fail 0`.
+- **5ed10a46**: merge of main 598f25f7 (v1.319.0) into this branch, **authorized by the Architect**.
+  v1.319.0 was tagged after this branch was cut, so `release-ledger.test.js` ("tags with no ledger
+  entry: 1.319.0") refused every commit here. One conflict:
+  `docs/exec-plans/tech-debt-tracker.md`. Resolved by keeping every row, in id order: main's #238
+  and #251-#254, and this branch's #239-#241. My three rows dropped their "(v1.319)" label: this
+  feature now ships after v1.319.0. ROADMAP.md, docs/releases.json and package.json were taken
+  exactly as main has them, with no conflict. player.js, style.css, setup.js and setup.html merged
+  automatically. Hook `tests 7173 pass 7173 fail 0`.
+- **23db164c**: three bindings the fix round added and its first tests did not isolate (N12, N21,
+  and the synchronous queue patch). Hook `tests 7175 pass 7175 fail 0`.
+
+### Finding -> fix -> test -> mutant
+
+| Finding | Fix (commit 567784d6 unless noted) | Binding test | Mutant (RED) |
+|---|---|---|---|
+| **C1** adv W1: the text editor floored snapped starts. A title-only save rewrote every snapped time, and starts 0.7 s apart merged into ONE chapter, re-pointing the like on `::c3`. | Both seeds are now lossless: `common.js formatChapterStamp` and `music.js chapterStamp` write `1:01.75`, and a test checks they match. The editor route reads an optional `.mmm` via `server.js parseManualChapterText`; descriptions keep the whole-second grammar, and `3:00.1999 remix` reads as before. Two chapters on one start are **refused with a message**, never deduplicated. **The rule:** a text save that keeps the count and every start (to within 0.5 ms) keeps `snapFrom`/`snapBase` (`chapterSnap.carrySnapProvenance`), so "Edited" and Revert survive a rename. Any change of time or count turns it into a plain typed list. | chapter-snap.test.js "A1" and "A1b" (real routes and the real seed; the like on ::c3 still names "Fourth Song"; a typed duplicate gets 400 and nothing is stored); "the TWO text-editor seed stamps agree"; chapter-snap-watch.test.js (the watch seed is `0:25.75 Two`); chapter-snap-client.test.js "entry 4 from the drill" (`1:00.5`) | N1, N1b, N1c, N2, N3, N4 |
+| adv S8: the text save had no version | GET /api/videos/:id now returns `chaptersVersion`. Both text-editor callers send it (`showChaptersEditor(..., opts.version)`). A mismatch is refused (409 `stale`) inside the write tick. A non-string version gets 400. A save with no version still takes the legacy path (disclosed). | chapter-snap.test.js "S8"; the watch test (the version from the last save rides the text editor) | N5 |
+| **C2** adv W2: the revert consent was not bound to its target | `chaptersVersion(item, resolveItemChapters)` now also hashes the **revert target** (`planRevert` chapters and source) for a snap edit. A reheat after the confirm therefore changes the token and gets a 409. The editor then **re-plans**: it reloads from storage, says nothing was reverted, and the next confirm names the new count. The routes comment now describes what the token covers. | chapter-snap.test.js "A2" (5 -> 6 -> 2 songs: the old version gets 409 even with `allowCountChange`; the like still names its song; the re-planned revert lands); chapter-snap-core.test.js (the target is part of the token, and absent without a snap edit); chapter-snap-editor-ui.test.js "Revert RE-PLANS" | N6, N7 |
+| **C3** adv W3: the count guard was only bound one way | (test only) | chapter-snap.test.js "C3": the source grows 5 -> 6, and the answer is 409 `countChange {from:5,to:6}` | M11b (= adv MA `!==` -> `<`) |
+| **C4** adv W4 = qa W2: a watch-page save left the notches and the label stale | Every save on the watch page goes through `applySavedChapters` -> `applyChaptersForMedia`: the time editor's save and revert, and the text editor. That path re-segments the seek bar, resets and re-derives the current chapter (also while PAUSED), rebuilds the menu and drops the loop. The late-detail path now carries `chaptersEdited` and `chaptersVersion` into the loaded item. The false comment is gone. | NEW chapter-snap-watch.test.js: the REAL player.js in jsdom, with **behavioral** asserts (notch `left` % 33.33 -> 42.92, label `Two` -> `One` while paused, the badge revealed and then cleared, a late save for a left item ignored, the late-detail companions carried). The probe in real Chromium: the notch after Save equals the stored boundary at all three viewports. | N8, M38, N21, M25 |
+| **C5** adv W5 (+ qa S10): a count-changing revert in Music left ghost and mis-titled rows | `applySnappedChapterTimes` patches the start, span AND title of every queued `<id>::c<n>`, and **drops** rows past the new count synchronously. On a count change it re-lists from the server (`render()`), for a drill or the Songs list. The drill's text-editor path runs the same seam first, then re-derives the playing chapter after its reload. | chapter-snap-client.test.js: "a COUNT-changing save ... RE-FETCHES the rows" (no ghost `::c2`; the `::c1` row reads "Closer"; its heart POSTs `f1::c1`); "a count change from NOW PLAYING" (synchronous ghost drop and re-title, then the re-list); "entry 4 from the drill" (the playing row re-derives while paused); "the seam touches ONLY the saved file" | N9, N9b, N10, N10b, MB |
+| **C6** sec S-1 = adv W6 = qa W3: uploader metadata could forge silences | The parser is anchored: `^\[silencedetect @ [^\]]*\] silence_(start|end):`, and the comment is corrected. The cache format was bumped to **v2**, so no v1 record (possibly poisoned) is reused. | chapter-snap-core.test.js (the metadata-dump shapes: title, comment, and a continuation line); chapter-snap.test.js "C6": REAL ffmpeg 7.0.2 over a continuous tone tagged with forged lines returns `[]`; REACHABILITY re-run and passing with the anchor; the core test "a record written by the UNANCHORED v1 parser is never reused" (23db164c) | N11, N11r (real ffmpeg), N12 |
+| sec S-2: an fs error could reach the client with the DATA_DIR path | The runner's safe message is kept. A cache-write failure is logged on the server, and the client gets the fixed sentence "The silence was found but could not be saved on the server." | core "a cache WRITE failure reports a fixed sentence" | N13 |
+| sec S-3: cache reads had no size cap or shape check | Reads are capped at 1 MB, at most `MAX_SILENCES` entries, and every element must be `{start,end}` with finite numbers, `0 <= start < end`. Anything else reads as no record. | core "the cache" (5 bad shapes plus an over-size record) | N14 |
+| **C7** qa W1: Snap all overwrote the user's nudges | `snapAllPlan()` is one plan: it covers only rows that have a `suggest` and are still at their saved time, and each snapped start is checked in order against the CURRENT neighbours. The button count and the status text count that same plan. | editor-ui "Snap all touches ONLY untouched rows": chapter 3 nudged to 2:01.0 and chapter 2 tuned to 1:00.1 both survive, `Snap all (1)`, "Snapped 1 start", stored `[0, 60.1, 121, 184.75, 240]` | N15 |
+| qa S4: a landscape phone got desktop sizing | `@media (max-width: 600px), (max-height: 500px)` gives the touch sheet. In landscape the WHOLE sheet scrolls and Save/Cancel are pinned at the bottom (sticky, z-index 1, its own inset). | the probe at 844x390 (below) | - |
+| qa S5: a lost scan left "Finding..." showing forever | A poll that reads `none`/`stale` becomes `failed: The scan stopped before it finished.` and **Try again** is shown. | editor-ui "a poll that finds the scan GONE" | N18 |
+| qa S6: Stop before the metadata arrived still started playback | `seekAndPlay` returns when the editor is closed or the audition was cancelled. | editor-ui "Stop before the audio metadata arrives" (a real jsdom `<audio>`, readyState 0) | N19 |
+| qa S7: shared numbers were hand-copied | The nudge gap comes from the server state (`minGapSec` = `MIN_CHAPTER_GAP_SEC`). The save's chapter cap is server.js `MAX_CHAPTERS` via deps (`MAX_SNAP_CHAPTERS` removed). | - | *equivalent*: the client fallback 0.1 equals the server value, so a mutant that drops `state.minGapSec` cannot change behavior |
+| qa S8: the Setup lead-in select was unbound | The change wiring is extracted to `wireChapterSnapLeadIn` (exported). | NEW setup-chapter-snap-leadin.test.js: it loads (and shows an off-list value) and a change POSTs the number | N20, N20b |
+| qa S9: only the nearest silence was tried | `suggestSnaps` tries the in-window silences nearest-first and takes the first one that stays between the neighbours. | core "when the NEAREST silence would cross a neighbour" | N16 |
+| adv S7: 6 mutants survived | MB, MC, MD, ME and MG are now bound (above; MC by "MC", MD by the one-week-ceiling asserts, ME by "the nudge clamps at the NEXT chapter and at the end of the file", MG by "the poll refuses a STALE seed"). **MH** (the Extras item-id guard in `extrasChapterSnapIndexFor`) is argued *equivalent*: `createExtrasMenu.open()` already refuses any fetched item whose `id !== baseId` ("Extras aren't available for this track"), and checks the base id again after the await. So a mismatched item never reaches `buildExtrasHtml`, and the guard is defense in depth. | - | MB, MC, MD, ME, MG RED |
+| qa AC15 lock was porous (regex over unstripped source) | The watch source lock strips comments once at read, and its EFFECT is now bound behaviorally (chapter-snap-watch.test.js). Two v1.109/v1.112 distance locks in player-chapters-parity.test.js that the applier outgrew are now bounded by the semantic unit (to the `resetChaptersUi` assignment), not a character window. | player-chapters-parity.test.js 40/40 | - |
+
+### Mutant round @23db164c: 71 of 71 RED
+
+The sandbox was archived from 23db164c. The runner matched each anchor exactly once and confirmed
+the bytes changed before crediting a mutant (the full listing is in the session scratchpad,
+`chapter-snap-mutants-r1fix.out`). Results:
+- All 38 round-1 mutants are still RED, with their anchors re-verified at the new sha.
+- 33 new mutants are RED: M11b, M38 on its new seam, N1-N21, and MB/MC/MD/ME/MG.
+- N11r ran against the REAL ffmpeg.
+
+Survivors: none. Equivalent (not run, argued above): MH, and the `minGapSec` fallback.
+
+### Instruments at 23db164c (Node 22.23.1, verbatim)
+- `npm run lint`: `✖ 6 problems (0 errors, 6 warnings)`. All are pre-existing no-unused-vars in
+  common.js.
+- `npm run lint:css`: `TOTAL 0`.
+- `overlay-containment-lint --enforce`: `clean (0 violations)`.
+- Targeted set with `FILETUBE_TEST_FFMPEG=<static ffmpeg 7.0.2>`: `tests 204 pass 204 fail 0
+  skipped 0`. It covers the chapter-snap unit files (core, client, routes, watch), the Setup
+  lead-in, chapter-snap and editor-ui integration, chapters-editor, chapter-likes, rbac-census,
+  route read/write classification, settings-cache-api, database, player-chapters-parity,
+  music-chapter-rename, and the tech-debt, exec-plans and release-ledger censuses.
+- Broad unit batch at 567784d6 (music, skin, player, modal, setup, chapter, listen, card-like,
+  overlay, css, route, common, database, the censuses, shell, parity): `tests 1753 pass 1753 fail
+  0`.
+- Related integration batch at 567784d6 (chapter, rbac, route, settings, backup, music, liked,
+  api, watch), with ffmpeg: `tests 336 pass 336 fail 0 skipped 0`.
+
+### Probe @23db164c (`FT_PROBE_AUDIO=<a real 2000 s mp3>`, viewports 390x844, 844x390, 1440x900)
+
+The probe was changed for this round:
+- Every viewport is re-seeded, so each one starts from the source chapters.
+- Measurement waits for the open scale-in to FINISH (a readiness condition, not a sleep).
+- The watch pass now SAVES and reads the seek-bar notches back.
+
+| Viewport | editor (watch / music) | buttons | min button | < 44 px | past viewport | doc scrollWidth | notch after Save vs stored boundary | audition at 241.5 s |
+|---|---|---|---|---|---|---|---|---|
+| 390x844 | 0,0 390x844 sheet | 47 | 88x44 | 0 | 0 | 390 | 12.1125% vs 12.113% (source 12.075%) | playing, 243.8 s |
+| **844x390** (landscape) | 0,0 844x390 sheet, whole sheet scrolls, Save/Cancel pinned | 47 | 201x44 | **0** (qa measured 47 at 36 px before) | 0 | 844 | 12.1125% vs 12.113% | playing, 243.9 s |
+| 1440x900 | 340,16 760x868 | 47 | 52x36 (desktop, by design) | 47 | 0 | 1440 | 12.1125% vs 12.113% | playing, 243.9 s |
+
+- The editor was reached through the real UI at every viewport: watch `{"entry":"reached"}`, and
+  the drill's `.music-drill-snap` was present.
+- Drill buttons are byte-identical to the round-1 table at 390 and 1440. At 844x390 the new button
+  wraps to its own row (450,404) and the existing buttons keep their size.
+- Screenshots: `.../scratchpad/chapter-snap-shots-r1/`
+  (`chapter-snap-watch-{390x844,844x390,1440x900}[-snapped].png`, `chapter-snap-drill-*.png`,
+  `chapter-snap-music-*.png`).
+
+### Disclosed (r1 round)
+- **The text save's version token is OPTIONAL.** A POST without `version` still saves, which is the
+  pre-existing contract for any other caller. Both of the app's text-editor callers send it.
+- **A re-planned revert reloads the editor from storage,** so unsaved local nudges are dropped. A
+  revert discards corrections anyway, and the status line says what happened.
+- **A count change on the Home or Albums tab** patches the queue in place (ghost dropped,
+  survivors re-titled) without a re-list, because no rows on screen index that queue. A NEW
+  chapter from a count increase appears after the next list load.
+- **The editor grammar now reads `1:05.5 Title` as 65.5 s "Title".** It used to read it as 65 s
+  "5 Title". This applies to the manual editor only; description parsing is unchanged.
+- **Comments in the new code still say "v1.319".** v1.319.0 is now the lock-audio release, so this
+  feature will ship under a later version number. The comments are labels only; the release sets
+  the number.
