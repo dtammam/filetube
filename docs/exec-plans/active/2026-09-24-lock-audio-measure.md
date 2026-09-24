@@ -3,8 +3,8 @@ plan: lock-audio-measure
 harness: v2 · lean
 branch: feat/lock-audio-measure
 anchor: spec
-status: Built - awaiting gate
-next: gate r1 (adversary + qa). Then Dean's on-device run (the test plan below) decides phase 2.
+status: r1 fixes built (d802d7f7, a2c53340) - awaiting gate r2
+next: gate r2 (the same adversary + qa instances, delta from 8fd3b99a). Then Dean's on-device run (the test plan below) decides phase 2.
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -76,6 +76,9 @@ Out of scope: any change to WHEN or HOW the handoff happens (phase 2).
     `primed`), plus `resumeTime` (the video position handed over).
   - `playCall`, `playResolved` / `playRejected` + `err`, the sidecar's `playing` (+ `startPos`)
     and its first real advance (`advance`, `advancePos`; the handoff's own seek never counts).
+    These are PER ATTEMPT (gate r1 W2): a retry inside one record resets them and counts
+    `attempts` (keeping `firstErr`); a play() our own return/teardown supersedes is kept as
+    `superseded` and never stamps `err`, so a stuck handoff stays 'pending'.
   - the return: `ret.visible`, the state, the audio position and paused-ness, the mode
     (`resume` / `stay-paused` / `no-swap`), `videoPlayCall`, `videoPlayResolved` /
     `videoPlayRejected`, `videoPlaying`, `videoAdvance` (the settle timer gives up after 5s).
@@ -83,9 +86,10 @@ Out of scope: any change to WHEN or HOW the handoff happens (phase 2).
     browser, the iOS version, `type` + `resumeMode` (so a #196 Watch -> Listen adopt is
     identifiable).
 - **Writes.** A ring of the last 20 records in `filetube_bg_timing_log`. No write before the
-  sidecar's play(): the handoff queues its first write as a MICROTASK after play()
-  (`bgTimingPersistSoon`); later writes land in later events (play settling, the first
-  advance, the return). A record is replaced in place as it gains marks, so an app iOS kills in
+  sidecar's play(): nothing on the hide handler's synchronous path writes. The handoff queues
+  its first write as a MICROTASK after play() (`bgTimingPersistSoon`, one queue PER RECORD), and
+  a re-hide that closes a returned record queues that close the same way (gate r1 W1); later
+  writes land in later events (play settling, the first advance, the return). A record is replaced in place as it gains marks, so an app iOS kills in
   the background keeps its last write. Each write re-reads the toggle: switching off stops
   collection mid-cycle.
 - **Derived numbers** (`bgTimingMetrics`, pure, stored as `m` at every write): hide -> audio
@@ -161,7 +165,18 @@ dispatch the real events.
   make IDENTICAL media calls to the ON run. A cycle that opened OFF is never recorded even if
   switched on before the audio starts; switching OFF mid-cycle stops further writes.
 - **AC5 No write before play():** the first timing write lands after the sidecar play() and
-  after the handoff's video pause.
+  after the handoff's video pause; on a re-lock inside the return settle window, the hide
+  handler writes NOTHING (the old record's close is queued) and a new record opens (r1 W1).
+- **AC13 (r1) Per-attempt truth:** a retry inside one record reports the final attempt
+  (`attempts` 2, `firstErr`, outcome ok); a handoff still pending at the return stays
+  'pending' (`superseded.by` AbortError), never `failed`.
+- **AC14 (r1) Storage failure:** blocked (SecurityError) and full (QuotaExceededError)
+  storage leave the handoff's media calls identical to a clean run, with nothing thrown into
+  the page, log on and off.
+- **AC15 (r1) Scope + readout:** desktop never records nor reads the toggle; a no-swap return
+  records whether the video kept playing; Copy calls writeText inside the tap and a rejected
+  write shows the text box; an armed Clear disarms after 4s; the text box computes 16px on
+  mobile (census in mobile-input-zoom-fontsize.test.js).
 - **AC6 Ring:** 20 newest survive across a real handoff; pure `appendBgTimingRecord` replaces in
   place, appends, caps, drops garbage.
 - **AC7 Metrics:** `bgTimingMetrics` anchors and outcome precedence (pure).
@@ -310,22 +325,29 @@ Plus, in words: how long the gap FELT on each block, and whether any lock gave N
 5. **Two source locks were relaxed**, not removed: `recordLifecycleEvent`'s "first statement is
    the debug-flag bail" now admits exactly the timing tap line (an in-memory mark gated on an
    open timing record, i.e. on its own opt-in toggle) ahead of the bail.
-6. **Cost with the toggle OFF:** one localStorage READ at each hide event and each video pause
-   while a mobile video is loaded (the same kind of read `recordLifecycleEvent` already does on
-   those events), plus a null check in the new listeners and in the tap. No writes, no awaits;
-   the handoff's media calls are bound identical (AC4).
+6. **Cost with the toggle OFF** (corrected at r1, qa S5 / adversary S5): on a MOBILE form
+   factor, one localStorage READ of the toggle at each hide event and each video pause while a
+   video is loaded (the same kind of read `recordLifecycleEvent` already does on those events);
+   on desktop, the form-factor check (matchMedia) and no storage read at all (bound). Plus a
+   null check in the new listeners and in the tap. No writes, no awaits; the handoff's media
+   calls are bound identical (AC4, AC14).
 7. **Scope holes by design:** desktop (no handoff exists there), audio items (never handed off),
    and a Listen -> Watch adopted video (#196: still typed 'audio', never handed off) produce no
    record.
 8. The readout is device-local and read when Setup opens; it does not live-refresh while the
    page is open (re-open Setup to see new records).
-9. **Mutant M18 survives** (the sidecar-active guard in `bgTimingSidecarRec`): judged defense in
-   depth; see the mutant table.
+9. **Mutants M18 and R7 survive** (the sidecar-active guard in `bgTimingSidecarRec`; the
+   attempt-number check in `bgTimingOnPlaySettled`): both judged defense in depth, each with a
+   comment in the code; see the mutant tables. The tap's `!rec.ret` (adversary Mm) likewise.
+10. **Tracker #252** (r1): the zoom census found the pre-existing Music / Books sort
+   `<select class="btn btn-sm">` at 12px on mobile; allowlisted by name, not fixed here.
 
 ## Tech debt filed
 
 - **#251** Lock-to-audio phase 1 timing log is measurement scaffolding, and #196 gates phase 2's
   "switch into Listen" option (see the tracker row).
+- **#252** (r1) The Music / Books sort select.btn computes 12px on mobile (pre-existing; found by
+  the new zoom census).
 
 ## Gate r1 - qa (@8fd3b99a)
 
@@ -523,3 +545,42 @@ no-write/no-throw contract are not yet. Adversary mutants: 14 of mine (4 KILLED,
 the session scratchpad. The worktree is untouched apart from this section.
 
 Gate: CHANGES r1 @8fd3b99a — adversary
+
+## r1 fix record
+
+Verdicts committed as-is at bab2107c. Fixes as NEW commits (nothing amended):
+**d802d7f7** (the fixes; pre-commit unit suite 7136 pass / 0 fail) and **a2c53340** (the Mv
+binding + the R7 comment; 7137 pass / 0 fail). A first attempt at d802d7f7 was refused by the
+hook: `v1262-mobile-input-zoom.test.js` pins the exact `.comment-input-box, .folder-name-input`
+floor rule, and adding the text box to that selector list broke it. The text box now has its
+OWN rule in the same mobile block; that lock is untouched.
+
+| Finding | Fix | Binding test (player-bg-timing-log.test.js unless named) | Mutants (red / survives) |
+|---|---|---|---|
+| W1 = adv W1 = qa W1: a sync write ahead of play() on a re-lock inside the return settle window | `bgTimingOnHidden` closes a returned (or other-media) record with `bgTimingFinalize(rec, true)`: the write is QUEUED; `bgTimingPersistSoon` keeps ONE queue PER RECORD (`rec.wq`, never stored). The collector comments (the block header, the `handleBackgroundLifecycle` hook's "reads only") now say what the code does. | "W1: a re-lock inside the return settle window writes NOTHING before the new sidecar play()..." (the trace INSIDE the hide handler has no setItem; the writes land after play(); the old record closes as cut short; a NEW record opens with its first write intact). "W1: a return whose video never moves closes after the 5 s settle". | R1 sync close: red. R2 one shared flag: red. R3 re-hide without closing the returned record (adv survivor): red. R4 no 5 s settle timer (adv survivor): red. |
+| W2 = adv W2 + qa W3: our own release relabelled a pending handoff `failed:AbortError`; a retry kept the first attempt's `err` | `bgTimingBeforeHandoff` counts `attempts` and, from the second, resets the per-attempt marks (keeping `firstErr`). Both promise arms go through `bgTimingOnPlaySettled(rec, attempt, err, live)`: marks only for the current attempt of an open record while it is still the live handoff; otherwise `superseded: {at, by}` and the outcome stays 'pending'. The readout says "attempt 2, first failed: X" and "the audio had not started when you came back". | "W2: a retry inside one record (NotAllowedError, then the pause-hidden recovery) reports the FINAL attempt". "W2: a handoff still PENDING when you come back stays pending...". Setup note test. | R5 no reset: red. R6 no live check: red. R8 no firstErr: red. **R7 no attempt-number check: SURVIVES**. Unreachable behind the live check: a second attempt needs INLINE_VIDEO, which the first reaches only by settling, by a return (no further attempts in that record), or by a teardown whose pause rejects it first. Kept with a comment saying so. |
+| W3 = adv W3: the storage-failure guards were unbound | No code change (the code was correct). | "W3: blocked storage (SecurityError on every access) and full storage (QuotaExceededError) leave the handoff intact, log on AND off": the richest cycle (lock, audio, return, re-lock, audio, return) makes IDENTICAL media calls to a clean run, with nothing thrown into the page. The harness now collects jsdom-reported listener errors and unhandled rejections. | Ma (no try in `isBgTimingEnabled`): red. Mb (no catch in `bgTimingPersist`): red. |
+| qa W2: the fallback text box computed 10px on mobile (iOS zooms on focus) | Its own `font-size: var(--fs-input-min)` rule in the v1.26.2 mobile block (desktop keeps 10px). Why the zoom test missed it: it is a hand-picked list of surfaces, so a new class never enters it. New census in `mobile-input-zoom-fontsize.test.js`: every classed input / select / textarea in public/*.html that an unconditional class rule sizes under 16px must be lifted to >=16px inside the max-width: 768px block. | The census. Measured at 390 / 375: the text box computes 16px (a plain textarea also 16px); 1280: 10px. The layout is unchanged (390: doc 390, scroller 324/324). | Mz (drop the floor): red (census). The census found the pre-existing Music / Books sort `<select class="btn btn-sm">` at 12px: allowlisted by name, **tracker #252**. |
+| adv S4: the relaxed locks admitted arbitrary code on the tap line | Both locks now allow only `[ \t]*(?:\/\/[^\n]*)?` after the tap statement. | player-lifecycle-release.test.js (both locks). | Mc (a setItem appended to the tap line): red (both locks + W1). |
+| adv S5 + qa S5: desktop scope unbound; the cost prose was wrong | The mobile check now runs BEFORE the toggle read in both hooks (desktop never reads storage). Disclosed gap 6 corrected. | "scope: desktop never records, and never even reads the toggle at a hide or a pause". | Md (no mobile check): red. Md2 (toggle read first): red. |
+| adv S6: Copy's rejection arm and Clear's disarm unbound; writeText behind a microtask | `writeText` is called SYNCHRONOUSLY in the tap (in a try); a rejection shows the text box. | "Setup: Copy calls writeText SYNCHRONOUSLY inside the tap...; a REJECTED write shows the text box". "Setup: an armed Clear disarms after 4 s..." (mock timers). | Mh (rejection swallowed): red. Ms (writeText in a microtask): red. Mn (no disarm): red. |
+| qa S4: the no-swap note could be false | `bgTimingOnVisible` records `ret.videoPaused`; the note reads "video kept playing" / "video was paused". | The setting-off no-swap test asserts `videoPaused` true; new "a no-swap return records a video that KEPT playing (native fullscreen...)" asserts false; Setup note test. | Mv: survived at d802d7f7, **red at a2c53340** (2 tests). |
+| qa S6: stale test title | Retitled (player-background-audio.test.js). | n/a | n/a |
+| qa S7: `.bg-timing-log-row` had no CSS rule | `.bg-timing-log-row td { white-space: nowrap; }` (a value never breaks mid-number; 390 re-measured, no overflow). | n/a (layout measured) | n/a |
+| qa S8: Copy threw on a non-numeric `t` | `bgTimingIsoLabel` guards it ('?'). | Setup note test (`t: 'not-a-time'`). | Mt: red. |
+| adv S7 / M18: dead belts | Kept, each with a defense-in-depth comment (`bgTimingSidecarRec`'s active-element check, the tap's `!rec.ret`). | n/a | M18: survives (as tabled). |
+| qa S9 (note) | Pre-existing inline label style, left as the section's convention. | n/a | n/a |
+
+**r1 mutant table** (runner: scratchpad `lock-audio-measure-mutants-r1.py`; one /tmp sandbox per
+mutant from `git archive d802d7f7`, the mutated file confirmed by `diff -r -q`; 205 tests across
+player-bg-timing-log, player-background-audio, player-lifecycle-release,
+mobile-input-zoom-fontsize, v1262-mobile-input-zoom). **42 mutants: 39 killed, 3 survived
+(M18, R7, Mv).** Mv was then bound, and re-run at a2c53340 (206 tests): **Mv red (204/2)**;
+M18 206/0 and R7 206/0 survive as disclosed defense in depth. Every r0 mutant (M1-M19) was
+re-run on the new code and every one except M18 is still red (M2 now also reds the W1 test;
+M4 now reds 8). Full per-mutant output: scratchpad `lock-audio-measure-mutants-r1.out`.
+
+Instruments at a2c53340: eslint on the changed js files clean; `npm run lint:css -- --enforce`
+TOTAL 0; overlay-containment clean; `node --test` player-* + setup-* + mobile-input-zoom-fontsize
++ tech-debt / css-token-lint / comment-debt census 879/879 (before the Mv tests); the
+pre-commit unit suite 7137 / 0. Full `npm test` was not run by the builder.
