@@ -170,7 +170,20 @@
              space) - instead of the panel stacked below. Mobile ignores the class
              (the panel stays below). -->
         <div id="music-stage" class="music-stage">
-        <div id="player-slot"></div>
+        <!-- v1.317 M4 (Dean: "Ambient mode in the music player in desktop"): the
+             PLAYER stage - the watch page's .watch-player-stage shape around
+             #player-slot, so the same ambient glow (a DIV pair painted from the
+             album art sampled OFF-DOM, never the media element) sits behind the
+             expanded player. Desktop only: below the mobile breakpoint the stage is
+             a plain block (no stacking context over the full-screen skin) and the
+             glow never lights. aria-hidden + pointer-events:none. -->
+        <div id="music-player-stage" class="music-player-stage">
+          <div id="music-ambient-glow" class="ambient-glow" aria-hidden="true" hidden>
+            <div class="ambient-glow-layer"></div>
+            <div class="ambient-glow-layer"></div>
+          </div>
+          <div id="player-slot"></div>
+        </div>
         <!-- v1.104: the expanded now-playing panel - track metadata + "Up next"
              queue, shown ONLY while the player is expanded (state 'full') with a
              music track playing. The shared player host shows only big art in iOS
@@ -358,6 +371,7 @@
   <script src="/js/prefs-sync.js"></script>
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>
+  <script src="/js/ambient.js"></script>
   <script src="/js/watch.js"></script>
   <script src="/js/setup.js"></script>
   <script src="/js/player.js"></script>

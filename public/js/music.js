@@ -262,6 +262,21 @@ function musicArtUrl(id, explicitArtUrl) {
   return '/albumart/' + encodeURIComponent(id);
 }
 
+// v1.317 M4: the image the desktop AMBIENT glow samples for the playing music track -
+// the SAME art rule the covers use (musicArtUrl), keyed on the BASE media id: a `::c<n>`
+// chapter track is one chapter of ONE file, so every chapter shares the file's art
+// (and a chapter advance never re-samples the same picture). The explicit art wins
+// (a projected / listen track's `/thumbnail/<base>`); a listen track the rebuilt queue
+// lost (the v1.253 W1 seam) keeps its thumbnail route through the listen marker; the
+// rest take `/albumart/<base>`. '' when nothing is playing.
+function musicAmbientArtUrl(id, entryArtUrl, listenId) {
+  if (!id) return '';
+  var base = String(id).replace(/::c\d+$/, '');
+  var art = (typeof entryArtUrl === 'string' && entryArtUrl) ? entryArtUrl
+    : ((listenId && String(listenId).replace(/::c\d+$/, '') === base) ? ('/thumbnail/' + encodeURIComponent(base)) : '');
+  return musicArtUrl(base, art);
+}
+
 function buildNowPlayingPanelHtml(np, upNext) {
   // v1.251 (R2): the v1.223 whole-queue panel moved VERBATIM into the shared engine
   // (skin-surface.js buildPanelHtml) so podcasts' desktop panel is the SAME treatment.
@@ -659,7 +674,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
-    buildNowPlayingPanelHtml,
+    buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks, channelFolderOf, nowPlayingFrom,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -872,6 +887,76 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
     bindTheaterControl();
+
+    // v1.317 M4 (Dean): desktop music AMBIENT. "Ambient mode in the music player in
+    // desktop" / "I have ambient mode selected in this player but I don't see any
+    // ambience for the music". The cog's Ambient row rode along from a watch visit
+    // (it lives in the PERSISTENT player host) while nothing on this side read it.
+    // Now this view drives the SAME engine through the SAME host as the watch page
+    // (ambient.js createAmbientHost): the same row (one writer, id-guarded), the same
+    // pref key (ft-ambient), the same dark + playing + visible gate, and the same
+    // v1.312 pipeline - here with the playing track's ALBUM ART as the image (never the
+    // media element; same-origin only, so the sample canvas is never tainted). This
+    // view adds one gate of its own, re-read live on every evaluate: DESKTOP (the
+    // mobile skin owns the phone - mobile music ambient is out of scope), the player
+    // EXPANDED in THIS view's slot (docked / closed = nothing to glow around), and a
+    // current MUSIC track (the panel's own guard) with same-origin art.
+    // The host is created once per init at the first seam where the player host (and
+    // so its cog menu) exists - init for a host already mounted, else the
+    // updateNowPlayingPanel mount seam - and every later seam re-evaluates it: that is
+    // the per-advance seam (a track change, a chapter roll, an expand, a skin-viewport
+    // crossing all land there). The engine re-reads the art on its own clock, so an
+    // advance while it runs repaints to the new cover by itself.
+    var ambientGlow = root.querySelector('#music-ambient-glow');
+    var ambientSlot = root.querySelector('#player-slot');
+    var ambientHost = null;
+    function ambientCurrentArt() {
+      var A = window.FileTubeAmbient;
+      var id = effectiveCurrentId();
+      if (!A || !id) return '';
+      var entry = null;
+      var q = Array.isArray(queue) ? queue : []; // init's `var queue` may not be assigned yet at the first seam
+      for (var k = 0; k < q.length; k++) { if (q[k] && q[k].id === id) { entry = q[k]; break; } }
+      return A.ambientSameOriginUrl(musicAmbientArtUrl(id, entry && entry.artUrl, activeListenId));
+    }
+    function ambientEligible() {
+      if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; // desktop only
+      var curId = effectiveCurrentId();
+      if (!nowPlaying || !curId || nowPlaying.id !== curId) return false; // a MUSIC track is current
+      var media = document.getElementById('media-player');
+      if (!ambientSlot || !media || !ambientSlot.contains(media)) return false; // mounted HERE, not docked
+      return !!ambientCurrentArt();
+    }
+    function syncAmbient() {
+      // gate r1 (qa S3): a late seam of a DEAD view (a slow ?play= fetch after the soft-nav)
+      // must not even write the cog row into the persistent host - the host would refuse to
+      // build, but ensureAmbientToggleRow runs first.
+      if (signal.aborted) return;
+      var A = window.FileTubeAmbient;
+      if (!A || !ambientGlow) return;
+      if (ambientHost) { ambientHost.evaluate(); return; }
+      var ctl = A.ensureAmbientToggleRow(document);
+      if (!ctl) return; // no player host (so no cog menu) yet - the mount seam calls again
+      ambientHost = A.createAmbientHost({
+        glow: ambientGlow,
+        check: ctl.check,
+        row: ctl.row,
+        getMedia: function () { return document.getElementById('media-player'); },
+        getMediaData: function () { var art = ambientCurrentArt(); return art ? { type: 'audio', artUrl: art } : null; },
+        mediaId: null, // art-only: the id reaches the engine through the art URL (base id), re-read per clock
+        canRun: ambientEligible,
+        observe: ambientSlot, // expand / dock / close move the player host in or out of this slot
+        // gate r1 (qa W1 / adversary W3): every track change reloads the SAME media element
+        // (pause + emptied at readyState 0, then the new src plays) - hold the lit glow and
+        // the root sidebar signal across that gap instead of blinking them off per track.
+        loadHoldMs: A.AMBIENT_LOAD_HOLD_MS,
+        // gate r2 (Dean: fix the natural-end blink): a natural END waits for the queue
+        // advance (the /api/queue fetch, then the load) - hold through it too, bounded, so a
+        // finished queue still clears
+        endHoldMs: A.AMBIENT_END_HOLD_MS,
+        signal: signal,
+      });
+    }
 
     // v1.284 (Dean): the desktop Loop / Autoplay toggles. The mobile skin (and the pop-out)
     // already own these via the sticker menu; the inline desktop player had neither, so a loop
@@ -1692,6 +1777,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // Re-derived on every call (track change, expand, close) - the reveal-once
     // both-axes contract: reveal when expanded+playing, CLEAR otherwise.
     function updateNowPlayingPanel() {
+      // v1.317 M4: FIRST, before any early return - every arm below (expanded or not,
+      // skin or desktop panel, the straight-to-player hold) is a state the ambient gate
+      // must re-read. The gate itself reads live state, so its position here is only
+      // about reaching it on every call.
+      syncAmbient();
       if (!nowPlayingPanel) return;
       // v1.234: keep the desktop pop-out in step with the track/skin (this is the seam every
       // track change routes through, via playAt) and refresh the pop-out button's visibility.

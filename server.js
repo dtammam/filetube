@@ -7005,6 +7005,9 @@ module.exports = {
   app,
   needsTranscode,
   transcodedPath,
+  // v1.317 M4: the music list serializer, so a client unit test drives the REAL row
+  // shape the server emits (music-ambient.test.js) instead of a hand-typed copy.
+  publicTrackListItem,
   // v1.166: the pure critter-folder -> manifest mapping (Sneaky critter mode).
   buildCritterListing,
   buildCritterVoicePool,

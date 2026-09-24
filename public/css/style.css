@@ -1113,7 +1113,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    never clips, so the scaled canvas overflows past its left edge), but the
    opaque `.sidebar` (z-index 99) painted over it and its `border-right` drew the
    hard vertical line Dean sees. While ambient runs (root `data-ambient-on`, set
-   by watch.js at the same start/stop funnel as the glow's `is-on`, JS-guaranteed
+   by ambient.js (v1.317; watch.js before) at the same start/stop funnel as the glow's `is-on`, JS-guaranteed
    dark-only), drop both so the bloom flows ACROSS the bar. The nav items paint
    inside the sidebar's own stacking context, above the glow behind it, so
    Home/Settings/etc. stay fully readable. `transparent` is a keyword (census-
@@ -7081,7 +7081,7 @@ body.ft-audio-expanded {
 #settings-menu .settings-menu-toggle .watch-autoplay-text {
   font-weight: normal;
 }
-/* The Ambient row hides in a light theme (watch.js sets [hidden]; belt via the mode
+/* The Ambient row hides in a light theme (ambient.js sets [hidden]; belt via the mode
    attribute so a mid-session light switch also hides it even before JS runs).
    v1.312: the v1.187 amount row is gone (one YouTube-matched look, Dean). */
 :root:not([data-mode="dark"]) #ambient-toggle-row { display: none; }
@@ -9024,7 +9024,7 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
 
 /* v1.186 (Dean): AMBIENT MODE glow. Sits BEHIND #player-slot in a relative stage
    and bleeds a soft colour glow outward (YouTube-style). Decorative,
-   non-interactive, and only shown when watch.js's ambientShouldRun gate is true
+   non-interactive, and only shown when ambient.js's ambientShouldRun gate is true
    (dark theme + playing + visible + opted-in) - the `.is-on` class + `hidden`
    attr gate visibility.
    v1.312 REBUILD (Dean, device: ambient ON blacked out EVERY video on his iPhone,
@@ -9032,7 +9032,7 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
    drawImage(video) under a blurred + masked + scaled composited layer - both
    known iOS video/canvas/GPU-process breakage shapes. Now: NO filter, NO
    transform, NO mask, NO will-change on anything here. The glow is a div pair;
-   watch.js draws the storyboard sprite tile / the poster OFF-DOM onto a tiny
+   ambient.js draws the storyboard sprite tile / the poster OFF-DOM onto a tiny
    bitmap standing for this whole box, vignettes its alpha (opaque at the
    player's edge, transparent at this box's edge, rounded at the corners) and
    sets the PNG data URL as the layer's background-image at 100% 100% - the
@@ -9096,7 +9096,7 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
 /* THE GEOMETRY. The glow element is the player's box grown by the REACH on each
    side (negative insets: the stage is the containing block, so reach-y is a % of
    the player's height and reach-x of its width). The reach pair MUST equal
-   watch.js's AMBIENT_REACH_X / AMBIENT_REACH_Y (a test binds them): the bitmap's
+   ambient.js's AMBIENT_REACH_X / AMBIENT_REACH_Y (a test binds them): the bitmap's
    vignette puts its opaque inner rectangle exactly where the player sits, so a
    drift here would land the glow's peak off the player's edge. The inner
    rectangle is covered by #player-slot (its rounded corners show the bitmap's
@@ -9105,7 +9105,7 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
 .ambient-glow {
   --ambient-reach-x: 12%;
   --ambient-reach-y: 22%;
-  --ambient-fade: 2.4s; /* = watch.js AMBIENT_FADE_MS (test-bound): the engine never repaints a layer mid-fade */
+  --ambient-fade: 2.4s; /* = ambient.js AMBIENT_FADE_MS (test-bound): the engine never repaints a layer mid-fade */
   --ambient-opacity: 0.3; /* MEASURED (Step 4): 0.55 peaked ~3x YouTube's edge; 0.3 lands on its ~+25/255 */
   position: absolute;
   top: calc(-1 * var(--ambient-reach-y)); /* token-exempt: glow reach (geometry), not a spacing token */
@@ -9124,11 +9124,11 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
    viewport (x -46.8) instead of -12% of the player (x -27.0). Test-bound. */
 @media (max-width: 768px) {
   .ambient-glow {
-    left: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = watch.js AMBIENT_REACH_X (test-bound) */
-    right: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = watch.js AMBIENT_REACH_X (test-bound) */
+    left: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
+    right: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
   }
 }
-/* One layer = one painted source. watch.js sets the vignetted PNG data URL as
+/* One layer = one painted source. ambient.js sets the vignetted PNG data URL as
    the BACK layer's background-image, then swaps `is-front`, so a tile change is
    a cross-fade, never a pop (YouTube cross-fades two canvases continuously, one
    swap per ~3.5s). v1.314 (Dean: "ambient changes too much and is slow"): the
@@ -9167,11 +9167,46 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
    setAudioExpanded via body.ft-audio-expanded) stayed TRAPPED at the stage's
    root z-index and painted BEHIND the header/dock/bottom-nav - audio never
    fullscreened on rotate while video did. Symmetric fix; no JS change (the body
-   class is already toggled). Only .watch-player-stage exists (watch.html), so
-   music/podcasts shells are unaffected. */
+   class is already toggled).
+   v1.317 M4: the music view has a player stage too (.music-player-stage, below),
+   so the SAME drop covers it - an expanded audio overlay or a faux-fullscreen
+   player must escape the music stage's context exactly as it escapes watch's. */
 body.ft-css-fullscreen .watch-player-stage,
-body.ft-audio-expanded .watch-player-stage {
+body.ft-audio-expanded .watch-player-stage,
+body.ft-css-fullscreen .music-player-stage,
+body.ft-audio-expanded .music-player-stage {
   z-index: auto;
+}
+/* v1.317 M4 (Dean: "Ambient mode in the music player in desktop"): the music view's
+   PLAYER stage - the .watch-player-stage shape around #player-slot, so the same
+   .ambient-glow sits behind the expanded player and reaches the same YouTube-matched
+   distance (its negative insets are a % of THIS box = the player). DESKTOP ONLY: the
+   stage takes position + its stacking context only above the mobile breakpoint. On a
+   phone the full-screen skin renders position:fixed covers inside this subtree, and a
+   z-indexed ancestor would TRAP them below the app chrome (the v1.166 "isolation traps
+   in-view fixed overlays" class) - so below 769px the stage is a plain block and the
+   glow is display:none as a belt (music.js never lights it there either). Same
+   constraint as watch: NO filter / transform / mask / will-change / contain /
+   isolation here (test-bound in ambient-glow-engine.test.js). */
+@media (min-width: 769px) {
+  .music-player-stage {
+    position: relative;
+    z-index: 0; /* token-exempt: local stacking context scoping the ambient glow (dropped in faux fullscreen / audio expand) */
+  }
+}
+@media (max-width: 768px) {
+  .music-player-stage .ambient-glow { display: none; }
+}
+/* The cog's Ambient row is written into the PERSISTENT player host (ambient.js
+   ensureAmbientToggleRow) and rides along on every SPA swap, but only the watch view
+   and the desktop music view wire it (the T1 #theater-btn rule, same reason): on any
+   other view that mounts the player inline, and in the phone music view, it would be
+   a visible-but-inert control - which is exactly how Dean met it in music before
+   v1.317 ("I have ambient mode selected in this player but I don't see any
+   ambience"). */
+body:not([data-view="watch"]):not([data-view="music"]) #ambient-toggle-row { display: none; }
+@media (max-width: 768px) {
+  body[data-view="music"] #ambient-toggle-row { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ambient-glow,
@@ -10909,6 +10944,16 @@ html[data-modern="on"] .video-uploader {
 @media (min-width: 1024px) {
   .music-stage.is-theater { display: flex; align-items: flex-start; gap: var(--space-8); }
   .music-stage.is-theater #player-slot { flex: 2 1 0; min-width: 0; }
+  /* v1.317 M4: in the music view #player-slot sits inside .music-player-stage (the
+     ambient stage), so the STAGE is the flex item; podcasts keep the bare slot above.
+     MEASURED (headless Chromium, 1600px, theatre): a flex item contains its children's
+     margins, so the player's own `.player-container` margin-bottom (--space-8) made the
+     stage 16px TALLER than the player (546.6 vs 530.6) - and the glow's box is the
+     stage, so its vignette's inner rectangle sat 16px below the player's edge. The
+     margin moves OUT to the stage (a flex item's margin is outside its box): the stage is
+     the player's box exactly, and the row below keeps the same 16px of air. */
+  .music-stage.is-theater > .music-player-stage { flex: 2 1 0; min-width: 0; margin-bottom: var(--space-8); }
+  .music-stage.is-theater > .music-player-stage #player-wrapper { margin-bottom: 0; }
   /* v1.226 (Dean device): the up-next sits BESIDE the player in theatre; if it
      grows taller than the player when the queue fills, the whole stage grows and
      shoves "Jump back in" (and the tabs/content) down - the return-from-miniplayer

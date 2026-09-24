@@ -25,12 +25,19 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const W = require('../../public/js/watch.js');
+// v1.317 M4: the helpers + engine MOVED VERBATIM from watch.js to ambient.js (the music
+// view drives the same engine), and the watch WIRING became createAmbientHost there. The
+// locks below read ambient.js; the watch.js re-export and its thin setupAmbientMode are
+// bound at the end of this file (no hand-copy may survive in watch.js).
+const W = require('../../public/js/ambient.js');
 const { storyboardFrameForTime, storyboardTile } = require('../../public/js/player.js');
 const STORYBOARD = { frameForTime: storyboardFrameForTime, tile: storyboardTile };
 
 const REPO = path.join(__dirname, '..', '..');
+const AMBIENT_JS = fs.readFileSync(path.join(REPO, 'public/js/ambient.js'), 'utf8');
 const WATCH_JS = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
+const MUSIC_HTML = fs.readFileSync(path.join(REPO, 'public/music.html'), 'utf8');
+const MUSIC_JS = fs.readFileSync(path.join(REPO, 'public/js/music.js'), 'utf8');
 const WATCH_HTML = fs.readFileSync(path.join(REPO, 'public/watch.html'), 'utf8');
 const STYLE_CSS = fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8');
 
@@ -45,9 +52,28 @@ function fnBody(src, header, indent) {
   assert.ok(end > start, header + ' closes');
   return src.slice(start, end);
 }
-const STRIPPED_JS = stripComments(WATCH_JS);
+const STRIPPED_JS = stripComments(AMBIENT_JS);
+const STRIPPED_WATCH_JS = stripComments(WATCH_JS);
 const ENGINE_SRC = fnBody(STRIPPED_JS, 'function createAmbientEngine(opts) {', '');
-const WIRING_SRC = fnBody(STRIPPED_JS, 'function setupAmbientMode() {', '    ');
+// The WIRING is the shared host now (v1.317 M4): watch and music both run through it.
+const WIRING_SRC = fnBody(STRIPPED_JS, 'function createAmbientHost(opts) {', '');
+// Gate r1 (adversary W2): EVERY ambient writer, not just the engine + host - the whole of
+// ambient.js (the row writer, the same-origin guard, anything added later), the watch view's
+// setupAmbientMode, and the music view's ambient block (the pure art helper, then from the
+// glow lookup through the end of syncAmbient). Each slice is anchored on a token that must
+// exist (a missing anchor fails loudly instead of scanning nothing).
+const STRIPPED_MUSIC_JS = stripComments(MUSIC_JS);
+const WATCH_AMBIENT_SRC = fnBody(STRIPPED_WATCH_JS, 'function setupAmbientMode() {', '    ');
+const MUSIC_AMBIENT_SRC = (() => {
+  const start = STRIPPED_MUSIC_JS.indexOf('    var ambientGlow = root.querySelector(');
+  assert.ok(start > 0, 'music.js: the ambient block starts at the glow lookup');
+  const sync = STRIPPED_MUSIC_JS.indexOf('    function syncAmbient() {', start);
+  assert.ok(sync > start, 'music.js: syncAmbient follows it');
+  const end = STRIPPED_MUSIC_JS.indexOf('\n    }', sync);
+  assert.ok(end > sync, 'music.js: syncAmbient closes');
+  return fnBody(STRIPPED_MUSIC_JS, 'function musicAmbientArtUrl(', '') + '\n' + STRIPPED_MUSIC_JS.slice(start, end);
+})();
+const ALL_AMBIENT_JS = [STRIPPED_JS, WATCH_AMBIENT_SRC, MUSIC_AMBIENT_SRC].join('\n');
 
 // A 40-frame, 10x4 storyboard for a 100s video: frame i at i*2.5s.
 const GEOM = { v: 1, interval: 2.5, count: 40, cols: 10, rows: 4, tileW: 320, tileH: 180 };
@@ -376,6 +402,37 @@ test('v1.314 engine: the fade gap is bound to the CSS cross-fade, and a paint de
   assert.strictEqual(z.draws.length, 2, 'fadeMs 0 -> no deferral');
 });
 
+// v1.317 M4: the music view's source is the CURRENT track's art, so a long session walks
+// a new URL per track; the engine keeps only the current source's decoded image (a kept
+// map would grow with the queue). Bound by the reload of a URL that came back.
+test('v1.317 engine: only the CURRENT source\'s image is kept - a URL that comes back is re-loaded, a failed one is remembered', async () => {
+  const o = {
+    mediaId: null, mediaData: { type: 'audio', artUrl: '/albumart/a' },
+    images: { '/albumart/a': { naturalWidth: 300, naturalHeight: 300 }, '/albumart/b': { naturalWidth: 300, naturalHeight: 300 } },
+  };
+  const h = harness(o);
+  h.engine.start(); await h.settle();
+  assert.strictEqual(h.engine.painted().url, '/albumart/a');
+  o.mediaData.artUrl = '/albumart/b';
+  await pastFade(h);
+  assert.strictEqual(h.engine.painted().url, '/albumart/b', 'the next track\'s art is integrated');
+  o.mediaData.artUrl = '/albumart/a';
+  await pastFade(h);
+  assert.strictEqual(h.engine.painted().url, '/albumart/a');
+  assert.deepStrictEqual(h.loads, ['/albumart/a', '/albumart/b', '/albumart/a'], 'track A\'s image was dropped when B became current, so coming back re-loads it');
+  // a FAILED url stays remembered (tiny, and never re-requested) - even across a NEW source
+  // becoming current in between (the drop runs when the next image is ready; /albumart/b
+  // is a different source from the still-painted /albumart/a, so it really re-integrates)
+  o.mediaData.artUrl = '/albumart/missing';
+  await pastFade(h);
+  o.mediaData.artUrl = '/albumart/b';
+  await pastFade(h);
+  assert.strictEqual(h.engine.painted().url, '/albumart/b', 'precondition: a new source integrated after the failure');
+  o.mediaData.artUrl = '/albumart/missing';
+  await pastFade(h);
+  assert.strictEqual(h.loads.filter((u) => u === '/albumart/missing').length, 1, 'the failed URL was requested once');
+});
+
 test('v1.312 engine: stop() cancels the clock; start() again re-arms; a stopped engine ignores a late image', async () => {
   const h = harness();
   h.engine.start();
@@ -504,7 +561,7 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.match(ENGINE_SRC, /c\.putImageData\(id, 0, 0\)[\s\S]*canvas\.toDataURL\('image\/png'\)/, 'written back, then encoded as a PNG');
   assert.match(ENGINE_SRC, /url\.indexOf\('data:image\/png'\) === 0/, 'anything but a PNG data URL is a failed sample (never a canvas/element() paint reference)');
   assert.match(ENGINE_SRC, /back\.style\.setProperty\('background-image', 'url\("' \+ dataUrl \+ '"\)'\)/, 'the back layer paints the bitmap as a plain background-image');
-  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint|gradient)\(/, 'no paint reference to a live canvas/element/paint worklet/gradient in any STRING the ambient JS writes (#232: gradient( joined the list - the v1.313 glow is a bitmap, never a gradient)');
+  assert.doesNotMatch(ALL_AMBIENT_JS, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint|gradient)\(/, 'no paint reference to a live canvas/element/paint worklet/gradient in any STRING the ambient JS writes (#232: gradient( joined the list - the v1.313 glow is a bitmap, never a gradient)');
   // Tracker #232 (v1.313 gate r2 note): the lock is SCOPED to style writes, so an
   // unrelated `arr.filter(...)`, a `transform` in a variable name or a trailing
   // `// no transform` comment can never false-trip it, while `style.webkitFilter`,
@@ -512,7 +569,13 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   // (gate r1 adversary F3: the vendor camelCase slipped a case-sensitive lock) still
   // do. Trailing `//` comments are stripped first (the standing comment-porosity
   // lesson: stripComments drops only full-line comments).
-  const jsSrc = (ENGINE_SRC + '\n' + WIRING_SRC).replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  // Gate r1 (adversary W2): the scan covers EVERY ambient writer (ALL_AMBIENT_JS above), so a
+  // style write in the row writer, the watch view's setupAmbientMode or music's syncAmbient
+  // block trips it too.
+  assert.match(ALL_AMBIENT_JS, /function ensureAmbientToggleRow\(doc\)/, 'the scan includes the row writer');
+  assert.match(WATCH_AMBIENT_SRC, /ambient\.createAmbientHost\(\{/, 'the scan includes the watch view\'s host call');
+  assert.match(MUSIC_AMBIENT_SRC, /function syncAmbient\(\) \{[\s\S]*A\.createAmbientHost\(\{[\s\S]*signal: signal,/, 'the scan includes the music view\'s whole syncAmbient');
+  const jsSrc = ALL_AMBIENT_JS.replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
   // Gate r1 (adversary W3 / qa W2): compound assignment (+=, ||=, ??=) is a write
   // too, and a style write can hide behind an alias, Object.assign, or a
   // non-literal setProperty name - those forms are banned outright below.
@@ -544,32 +607,94 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.match(ENGINE_SRC, /var n = now\(\);\s*if \(lastPaintAt > n\) lastPaintAt = n;/, 'qa S1: a backward wall-clock step (non-monotonic Date.now) clamps the fade anchor instead of deferring every paint for the step');
 });
 
-test('v1.312 WIRING LOCK: setupAmbientMode builds the engine from the view (lazy mediaData, the player\'s storyboard geometry, an OFF-DOM canvas) and funnels start/stop', () => {
-  assert.match(WIRING_SRC, /const engine = createAmbientEngine\(\{/, 'the engine is created in the wiring');
-  assert.match(WIRING_SRC, /getMediaData: function \(\) \{ return mediaData; \}/, 'mediaData is read LAZILY (the v1.197.1 TDZ lesson)');
-  assert.match(WIRING_SRC, /storyboard: \(window\.FileTube && window\.FileTube\.storyboard\) \|\| null/, 'the sprite geometry comes from the player module, guarded');
-  assert.match(WIRING_SRC, /makeCanvas: function \(\) \{ return document\.createElement\('canvas'\); \}/, 'the sample canvas is created OFF-DOM (never appended)');
-  assert.match(WIRING_SRC, /mediaId: mediaId,/, 'the view id reaches the engine (the sprite/thumbnail rungs need it; tv has none and rides artUrl)');
-  assert.match(WIRING_SRC, /onHardFail: function \(\) \{ stop\(\); \}/, 'gate r1 F2/W1: an async hard failure tears the DOM down through the wiring\'s own stop()');
-  assert.match(fnBody(WIRING_SRC, 'function start() {', '      '), /if \(engine\.hardFailed\(\)\) return;/, 'a hard-failed engine is never re-lit (M17)');
-  assert.doesNotMatch(WIRING_SRC, /appendChild\(|insertBefore\(|insertAdjacentElement\(/, 'nothing is ever inserted into the document by ambient');
-  const startFn = fnBody(WIRING_SRC, 'function start() {', '      ');
-  const stopFn = fnBody(WIRING_SRC, 'function stop() {', '      ');
-  assert.match(startFn, /glow\.hidden = false;[\s\S]*glow\.classList\.add\('is-on'\)[\s\S]*setAttribute\('data-ambient-on', ''\)[\s\S]*engine\.start\(\)/, 'start: reveal, is-on, the sidebar signal, then the engine');
-  assert.match(stopFn, /engine\.stop\(\)[\s\S]*classList\.remove\('is-on'\)[\s\S]*glow\.hidden = true;[\s\S]*removeAttribute\('data-ambient-on'\)/, 'stop: the engine, is-on, hide, the sidebar signal');
-  assert.match(WIRING_SRC, /if \(shouldRun\(\)\) start\(\); else stop\(\);/, 'the one gate');
-  assert.match(WIRING_SRC, /ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(document\), playing: currentlyPlaying\(\), docVisible: !document\.hidden \}\)/, 'the pure predicate, all four axes');
-  for (const ev of ['play', 'playing', 'pause', 'ended', 'emptied']) assert.match(WIRING_SRC, new RegExp("video\\.addEventListener\\('" + ev + "', evaluate, \\{ signal \\}\\)"), ev + ' re-evaluates');
-  assert.match(WIRING_SRC, /document\.addEventListener\('visibilitychange', evaluate, \{ signal \}\)/, 'tab hide/show re-evaluates');
+test('v1.312 WIRING LOCK (v1.317: the shared host): createAmbientHost builds the engine from the view (lazy descriptor, an OFF-DOM canvas, the media for time only) and funnels start/stop', () => {
+  assert.match(WIRING_SRC, /var engine = createAmbientEngine\(\{/, 'the engine is created in the host');
+  assert.match(WIRING_SRC, /getMediaData: typeof opts\.getMediaData === 'function' \? opts\.getMediaData : function \(\) \{ return null; \}/, 'the view\'s descriptor getter reaches the engine UNCALLED (read lazily on every source check)');
+  assert.match(WIRING_SRC, /storyboard: opts\.storyboard \|\| null/, 'the sprite geometry is the view\'s, guarded');
+  assert.match(WIRING_SRC, /makeCanvas: typeof opts\.makeCanvas === 'function' \? opts\.makeCanvas : function \(\) \{ return doc\.createElement\('canvas'\); \}/, 'the sample canvas is created OFF-DOM (never appended)');
+  assert.match(WIRING_SRC, /mediaId: opts\.mediaId,/, 'the view id reaches the engine (the sprite/thumbnail rungs need it; tv and music have none and ride artUrl)');
+  assert.match(WIRING_SRC, /video: mediaClock,/, 'the engine gets a currentTime VIEW of the media, never the element');
+  assert.match(WIRING_SRC, /Object\.defineProperty\(mediaClock, 'currentTime', \{\s*get: function \(\) \{ var media = getMedia\(\); return media \? media\.currentTime : 0; \},\s*\}\)/, '...whose only member reads the live media element\'s currentTime');
+  assert.match(WIRING_SRC, /onHardFail: function \(\) \{ stop\(\); \}/, 'gate r1 F2/W1: an async hard failure tears the DOM down through the host\'s own stop()');
+  assert.match(fnBody(WIRING_SRC, 'function start() {', '  '), /if \(engine\.hardFailed\(\)\) return;/, 'a hard-failed engine is never re-lit (M17)');
+  assert.doesNotMatch(WIRING_SRC, /appendChild\(|insertBefore\(|insertAdjacentElement\(|insertAdjacentHTML\(/, 'nothing is ever inserted into the document by the host');
+  const startFn = fnBody(WIRING_SRC, 'function start() {', '  ');
+  const stopFn = fnBody(WIRING_SRC, 'function stop() {', '  ');
+  assert.match(startFn, /glow\.hidden = false;[\s\S]*glow\.classList\.add\('is-on'\)[\s\S]*doc\.documentElement\.setAttribute\('data-ambient-on', ''\)[\s\S]*engine\.start\(\)/, 'start: reveal, is-on, the sidebar signal, then the engine');
+  assert.match(stopFn, /engine\.stop\(\)[\s\S]*classList\.remove\('is-on'\)[\s\S]*glow\.hidden = true;[\s\S]*doc\.documentElement\.removeAttribute\('data-ambient-on'\)/, 'stop: the engine, is-on, hide, the sidebar signal');
+  const evaluateFn = fnBody(WIRING_SRC, 'function evaluate() {', '  ');
+  assert.match(evaluateFn, /if \(shouldRun\(\)\) start\(\);\s*else if \(inEndHold\(\)\) hold\('end', endHoldMs\);\s*else if \(inLoadGap\(\)\) hold\('load', loadHoldMs\);\s*else stop\(\);/, 'the one gate: run, else HOLD a lit glow after a natural end (asked first: the ended rewind sits at readyState 1) or across the player\'s own load gap (each bounded), else tear down');
+  // gate r1 (qa W1 / adversary W3): the load hold is opt-in, needs a LIT glow, a real load
+  // gap (readyState below 2, no media error - gate r2) and every OTHER axis still true;
+  // start/stop end it. Gate r2 (Dean): the END hold is opt-in the same way, needs a lit
+  // glow, an element that ENDED (or an end hold already latched: the player rewinds to 0
+  // right after 'ended') and still holding its media (readyState 1+), and every other axis.
+  const gapFn = fnBody(WIRING_SRC, 'function inLoadGap() {', '  ');
+  assert.match(gapFn, /if \(!loadHoldMs \|\| !glow\.classList\.contains\('is-on'\)\) return false;/, 'no hold unless the view opted in AND the glow is lit');
+  assert.match(gapFn, /if \(!media \|\| !\(media\.readyState < 2\) \|\| media\.error\) return false;/, 'a real pause or a natural end (both at readyState 2+) is never a load gap; neither is a FAILED load');
+  assert.match(gapFn, /return holdAxes\(\);/, 'every other axis must still hold');
+  const endFn = fnBody(WIRING_SRC, 'function inEndHold() {', '  ');
+  assert.match(endFn, /if \(!endHoldMs \|\| !glow\.classList\.contains\('is-on'\)\) return false;/, 'no END hold unless the view opted in AND the glow is lit');
+  assert.match(endFn, /if \(!media \|\| !\(media\.readyState >= 1\)\) return false;/, 'only while the element still has its media: readyState 0 is the next load, the load hold\'s');
+  assert.match(endFn, /if \(!media\.ended && holdKind !== 'end'\) return false;/, 'a real user pause never ENDED: never an end hold');
+  assert.match(endFn, /return holdAxes\(\);/, 'every other axis must still hold');
+  assert.match(fnBody(WIRING_SRC, 'function holdAxes() {', '  '), /return ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: true, docVisible: !doc\.hidden \}\) && !!canRun\(\);/, 'the hold axes: pref, dark, visible and the view gate');
+  assert.match(WIRING_SRC, /var loadHoldMs = opts\.loadHoldMs > 0 \? opts\.loadHoldMs : 0;/, 'opt-in: the watch view passes none (its v1.312 behavior)');
+  assert.match(WIRING_SRC, /var endHoldMs = opts\.endHoldMs > 0 \? opts\.endHoldMs : 0;/, 'opt-in: the watch view passes none');
+  assert.match(fnBody(WIRING_SRC, 'function hold(kind, ms) {', '  '), /if \(holdKind === kind\) return;\s*clearHold\(\);\s*holdKind = kind;\s*holdTimer = setHoldT\(holdExpired, ms\);/, 'one timer per hold kind, never extended by a second event of the same hold');
+  assert.match(fnBody(WIRING_SRC, 'function holdExpired() {', '  '), /holdTimer = null;\s*holdKind = null;\s*if \(shouldRun\(\)\) start\(\); else stop\(\);/, 'the bound re-decides');
+  assert.match(fnBody(WIRING_SRC, 'function start() {', '  '), /^function start\(\) \{\s*clearHold\(\);/, 'start ends a hold');
+  assert.match(fnBody(WIRING_SRC, 'function stop() {', '  '), /^function stop\(\) \{\s*clearHold\(\);/, 'stop (so teardown, light, a hard fail) ends a hold');
+  assert.match(WIRING_SRC, /ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: currentlyPlaying\(\), docVisible: !doc\.hidden \}\) && !!canRun\(\)/, 'the pure predicate, all four axes, AND the view\'s own gate');
+  assert.match(WIRING_SRC, /var canRun = typeof opts\.canRun === 'function' \? opts\.canRun : function \(\) \{ return true; \};/, 'a view without its own gate (watch) runs on the four axes alone - exactly as before v1.317');
+  for (const ev of ['play', 'playing', 'pause', 'ended', 'emptied']) assert.match(WIRING_SRC, new RegExp("media\\.addEventListener\\('" + ev + "', evaluate, \\{ signal: mediaSignal \\}\\)"), ev + ' re-evaluates');
+  assert.match(WIRING_SRC, /if \(loadHoldMs\) media\.addEventListener\('loadeddata', evaluate, \{ signal: mediaSignal \}\);/, 'a holding view also re-decides when the new src\'s data lands');
+  assert.match(WIRING_SRC, /if \(loadHoldMs \|\| endHoldMs\) media\.addEventListener\('error', evaluate, \{ signal: mediaSignal \}\);/, 'gate r2: a holding view re-decides at a load error');
+  assert.match(WIRING_SRC, /doc\.addEventListener\('visibilitychange', evaluate, \{ signal: signal \}\)/, 'tab hide/show re-evaluates');
   assert.match(WIRING_SRC, /attributeFilter: \['data-mode', 'data-theme'\]/, 'a theme flip re-evaluates');
-  assert.match(WIRING_SRC, /signal\.addEventListener\('abort', \(\) => \{ stop\(\); if \(themeObs\)[\s\S]*disconnect\(\)/, 'teardown stops the engine + disconnects the observer');
+  assert.match(WIRING_SRC, /signal\.addEventListener\('abort', teardown, \{ once: true \}\)/, 'the view abort runs the teardown');
+  const teardownFn = fnBody(WIRING_SRC, 'function teardown() {', '  ');
+  assert.match(teardownFn, /stop\(\);[\s\S]*mediaCtl\.abort\(\)[\s\S]*themeObs\.disconnect\(\)[\s\S]*slotObs\.disconnect\(\)/, 'teardown stops the engine, drops the media binding, disconnects both observers');
   assert.match(WIRING_SRC, /im\.src = url;/, 'images load through a plain Image');
   assert.match(WIRING_SRC, /localStorage\.setItem\('ft-ambient', ambientStorageValue\(prefOn\)\)/, 'the pref key is unchanged');
+  assert.match(WIRING_SRC, /isAmbientEnabled\(localStorage\.getItem\('ft-ambient'\)\)/, '...and read back from the same key');
   // v1.312 (Dean): the v1.187 amount ladder is GONE - one look, no picker, no key.
   assert.doesNotMatch(WIRING_SRC, /ft-ambient-intensity|ambient-level|data-ambient'|resolveAmbientLevel/, 'no ladder in the wiring');
-  assert.doesNotMatch(STRIPPED_JS, /AMBIENT_LEVELS|resolveAmbientLevel|watch-ambient-level|ambient-level-row|Ambient amount/, 'no ladder anywhere in watch.js (the cog row, the helpers, the exports)');
+  for (const [name, src] of [['ambient.js', STRIPPED_JS], ['watch.js', STRIPPED_WATCH_JS]]) {
+    assert.doesNotMatch(src, /AMBIENT_LEVELS|resolveAmbientLevel|watch-ambient-level|ambient-level-row|Ambient amount/, 'no ladder anywhere in ' + name + ' (the cog row, the helpers, the exports)');
+  }
   for (const f of ['public/js/prefs-sync.js', 'lib/prefs-allowlist.js']) assert.ok(!fs.readFileSync(path.join(REPO, f), 'utf8').includes('ft-ambient-intensity'), f + ': the dead key left the sync allowlist (a key nothing writes can never sync)');
   assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /ambient-level-row|settings-menu-select|data-ambient="/, 'no ladder CSS (rows, picker, rungs)');
+});
+
+// v1.317 M4: the watch view hands the SAME collaborators it always used to the shared
+// host, and watch.js carries NO second copy of the engine or its helpers (a hand-copy
+// is the INERT SIBLING class: the two would drift and one view would paint differently).
+test('v1.317 M4: watch.js keeps no hand-copy - setupAmbientMode is a thin call into the shared host with the view\'s own collaborators', () => {
+  for (const fn of ['createAmbientEngine', 'ambientSourceFor', 'ambientVignette', 'ambientLift', 'ambientSmoothing', 'ambientBlend', 'ambientMeanDelta', 'isAmbientEnabled', 'ambientStorageValue', 'ambientShouldRun', 'isDarkMode', 'createAmbientHost']) {
+    assert.doesNotMatch(STRIPPED_WATCH_JS, new RegExp('function ' + fn + '\\('), 'watch.js must not declare ' + fn + ' (it lives in ambient.js only)');
+    assert.match(STRIPPED_JS, new RegExp('\\nfunction ' + fn + '\\('), 'ambient.js declares ' + fn);
+  }
+  assert.doesNotMatch(STRIPPED_WATCH_JS, /var AMBIENT_[A-Z_]+ =/, 'no ambient constant is re-declared in watch.js');
+  const wiring = fnBody(STRIPPED_WATCH_JS, 'function setupAmbientMode() {', '    ');
+  assert.match(wiring, /const ambient = window\.FileTubeAmbient;/, 'the host is read off the explicit global');
+  assert.match(wiring, /ambient\.createAmbientHost\(\{/);
+  assert.match(wiring, /glow: root\.querySelector\('#ambient-glow'\),/, 'the watch view\'s own glow');
+  assert.match(wiring, /check: root\.querySelector\('#watch-ambient-check'\),/, 'the cog row\'s checkbox');
+  assert.match(wiring, /row: root\.querySelector\('#ambient-toggle-row'\),/);
+  assert.match(wiring, /getMedia: function \(\) \{ return document\.getElementById\('media-player'\); \},/, 'the shared media element');
+  assert.match(wiring, /getMediaData: function \(\) \{ return mediaData; \},/, 'mediaData is read LAZILY (the v1.197.1 TDZ lesson)');
+  assert.match(wiring, /mediaId: mediaId,/, 'the view id reaches the engine');
+  assert.match(wiring, /storyboard: \(window\.FileTube && window\.FileTube\.storyboard\) \|\| null,/, 'the sprite geometry comes from the player module, guarded');
+  assert.match(wiring, /signal: signal,/, 'the view\'s own abort signal');
+  assert.doesNotMatch(wiring, /canRun|observe:/, 'watch adds no gate of its own: its behavior is the v1.312 one');
+  // gate r2 (adversary N4): a new item is a new watch view, so watch holds nothing across a
+  // load gap or after an end (its v1.312 behavior); the holds are music's opt-in
+  assert.doesNotMatch(wiring, /loadHoldMs|endHoldMs|HOLD_MS/, 'watch passes no hold');
+  // the Node export path still answers the engine through watch.js (one import path for the suite)
+  const WATCH = require('../../public/js/watch.js');
+  assert.strictEqual(WATCH.createAmbientEngine, W.createAmbientEngine, 'watch.js re-exports the ONE engine');
+  assert.strictEqual(WATCH.AMBIENT_REACH_X, W.AMBIENT_REACH_X);
 });
 
 // The comment-stripped sheet and the character ranges of every `@media (max-width: 768px)`
@@ -596,14 +721,23 @@ function glowRules() {
 // or the video's ancestor stage - by id, by class, by child/attribute selectors, or
 // via the stage itself (`#ambient-glow {…}`, `.watch-player-stage > div:first-child`,
 // a `transform` on `.watch-player-stage` all shipped gate-green under the class-only sweep).
+// v1.317 M4: the music view's player stage (`.music-player-stage`, by class or id) and its
+// ancestor stage (`.music-stage` / `#music-stage`, shared with podcasts) are in the SAME
+// sweep - the fixed fullscreen / expanded-audio overlay lives inside both.
 function stageAndGlowRules() {
-  return [...CSS_STRIPPED.matchAll(/([^{}]*(?:ambient-glow|watch-player-stage)[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2], mobile: inMobile(m.index + m[0].indexOf('{')) }));
+  return [...CSS_STRIPPED.matchAll(/([^{}]*(?:ambient-glow|watch-player-stage|music-player-stage|music-stage)[^{}]*)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2], mobile: inMobile(m.index + m[0].indexOf('{')) }));
 }
 
 test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a filter / transform / mask / backdrop-filter / will-change (the second iOS suspect)', () => {
   const rules = stageAndGlowRules();
   assert.ok(rules.length >= 9, 'the glow + stage rules exist (' + rules.length + ')'); // glow: base, is-on, layer, is-front, light belt, reduced-motion; stage: base, mobile clip, the fullscreen z-index drop
   assert.ok(rules.some((r) => /^\.watch-player-stage$/.test(r.selector)), 'the stage base rule is in the sweep');
+  // v1.317 M4: the music stage base rule (desktop only) + its mobile glow belt are in it too.
+  const musicStage = rules.filter((r) => /^\.music-player-stage$/.test(r.selector));
+  assert.strictEqual(musicStage.length, 1, 'exactly one .music-player-stage base rule is in the sweep');
+  assert.match(musicStage[0].body, /position:\s*relative;[\s\S]*z-index:\s*0;/, 'the music stage owns the glow\'s stacking context (desktop)');
+  assert.strictEqual(musicStage[0].mobile, false, 'the music stage context is NOT a mobile rule');
+  assert.ok(rules.some((r) => /^\.music-player-stage \.ambient-glow$/.test(r.selector) && r.mobile && /display:\s*none/.test(r.body)), 'the phone belt: the music glow is display:none below the breakpoint');
   // Gate r1 adversary F1: property names are case-insensitive and Safari honours its own
   // prefixed spellings (WebKit CSSProperties.json: -webkit-filter / -webkit-transform /
   // -webkit-mask-image are aliases, -webkit-backdrop-filter is its OWN property, -webkit-mask
@@ -630,6 +764,10 @@ test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a f
   assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /@keyframes\s+[^\s{]*(?:ambient|stage)/i, 'no keyframes named for the glow/stage');
   assert.doesNotMatch(WATCH_HTML, /<canvas id="ambient-glow"/, 'the canvas is gone from the view');
   assert.match(WATCH_HTML, /<div id="ambient-glow" class="ambient-glow" aria-hidden="true" hidden>\s*<div class="ambient-glow-layer"><\/div>\s*<div class="ambient-glow-layer"><\/div>\s*<\/div>/, 'a div pair: the glow with exactly two layers, born hidden');
+  // v1.317 M4: the music view's glow is the SAME div pair, inside the player stage that
+  // wraps #player-slot (the watch shape), and there is no canvas.
+  assert.doesNotMatch(MUSIC_HTML, /<canvas[^>]*ambient/, 'no canvas in the music view');
+  assert.match(MUSIC_HTML, /<div id="music-player-stage" class="music-player-stage">\s*<div id="music-ambient-glow" class="ambient-glow" aria-hidden="true" hidden>\s*<div class="ambient-glow-layer"><\/div>\s*<div class="ambient-glow-layer"><\/div>\s*<\/div>\s*<div id="player-slot"><\/div>\s*<\/div>/, 'music: the stage wraps the glow pair (born hidden) and #player-slot');
 });
 
 test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the reach re-expressed in ELEMENT terms; ONE YouTube-matched opacity, no ladder', () => {
@@ -640,8 +778,8 @@ test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the
     const rx = num(body, 'reach-x'), ry = num(body, 'reach-y');
     // v1.313: the CSS reach and the JS vignette's inner rectangle are ONE number (a
     // hand-copy that drifts lands the glow's peak off the player's edge).
-    assert.strictEqual(rx, W.AMBIENT_REACH_X * 100, label + ': --ambient-reach-x equals watch.js AMBIENT_REACH_X');
-    assert.strictEqual(ry, W.AMBIENT_REACH_Y * 100, label + ': --ambient-reach-y equals watch.js AMBIENT_REACH_Y');
+    assert.strictEqual(rx, W.AMBIENT_REACH_X * 100, label + ': --ambient-reach-x equals ambient.js AMBIENT_REACH_X');
+    assert.strictEqual(ry, W.AMBIENT_REACH_Y * 100, label + ': --ambient-reach-y equals ambient.js AMBIENT_REACH_Y');
     assert.doesNotMatch(body, /--ambient-band-/, label + ': no band vars remain (nothing reads them)');
     assert.ok(rx > 0 && ry > 0, label + ': reach > 0 on both axes (the v1.187.1 reach invariant, now by construction)');
     return { rx, ry };
@@ -697,7 +835,7 @@ test('v1.314 CSS MOBILE SPREAD: the stage clip edge is the VIEWPORT edge (grown 
     assert.ok(m, side + ' is re-anchored: gutter minus the reach as a fraction of the PLAYER width (100% minus two gutters)');
     fracs.push(Number(m[1]));
   }
-  for (const f of fracs) assert.strictEqual(f, W.AMBIENT_REACH_X, 'the mobile x reach fraction equals watch.js AMBIENT_REACH_X (the vignette\'s inner rectangle)');
+  for (const f of fracs) assert.strictEqual(f, W.AMBIENT_REACH_X, 'the mobile x reach fraction equals ambient.js AMBIENT_REACH_X (the vignette\'s inner rectangle)');
   assert.doesNotMatch(glowM.body, /top:|bottom:|--ambient-reach|--ambient-opacity|--ambient-fade|overflow/, 'only the x insets change on mobile (the padding is horizontal, so the y reach is still a % of the player height)');
   // The numbers: at a 390px viewport with a 16px gutter the mobile formula puts the glow's edge
   // exactly where the base formula puts it for the 358px player - the glow is byte-identical
