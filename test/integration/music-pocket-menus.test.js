@@ -431,21 +431,34 @@ test('Seattle: the Zune main menu, the Music PIVOTS moved by the pad and by a sw
     await settleNet();
     assert.strictEqual(h.spy.next, 1, 'on a pivot level the pad right moved the pivot - it did NOT skip a track');
     assert.strictEqual(pivots()[0], 'Albums');
-    // swipe left across the list -> the next pivot; the lift-off click is swallowed
-    const list = h.panel.querySelector('[data-skin-swipe]');
-    const loadsBeforeSwipe = h.spy.loads.length;
-    list.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 100 }));
-    list.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 150, clientY: 110 }));
-    list.querySelector('.ipm-row').dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true })); // a mouse's lift-off click lands on the row under it: swallowed, it selects nothing
+    // visit Songs once (it loads), then back to Albums with the pad - the pad left moves back
+    click(h.dom, h.panel.querySelector('[data-skin-next]'));
     await settleNet();
-    assert.strictEqual(pivots()[0], 'Songs', 'a left swipe moved to the next pivot');
-    assert.strictEqual(h.panel.querySelector('.ipm-title'), null, 'the swipe\'s click did not drill into a row');
-    assert.strictEqual(h.spy.loads.length, loadsBeforeSwipe, '...nor play the row under it');
-    assert.ok(inMenu(h), '...the menu stayed up');
+    assert.strictEqual(pivots()[0], 'Songs');
     click(h.dom, h.panel.querySelector('[data-skin-prev]'));
     await settleNet();
     assert.strictEqual(pivots()[0], 'Albums', 'pad left moves back');
     assert.strictEqual(h.spy.prev, 0, '...without skipping back a track');
+    // swipe left across the list -> the next pivot (Songs, already loaded: it renders at once)
+    const loadsBeforeSwipe = h.spy.loads.length;
+    const list = h.panel.querySelector('[data-skin-swipe]');
+    list.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 100 }));
+    list.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 150, clientY: 110 }));
+    assert.strictEqual(pivots()[0], 'Songs', 'a left swipe moved to the next pivot');
+    // a mouse's lift-off click lands on the (new) song row under the pointer: swallowed
+    const under = h.panel.querySelector('[data-skin-swipe] .ipm-row[data-skin-mi]');
+    assert.ok(under, 'precondition: a real song row sits under the pointer');
+    under.dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true }));
+    await settleNet();
+    assert.strictEqual(h.spy.loads.length, loadsBeforeSwipe, 'the swipe\'s click did not play the row under it');
+    assert.ok(inMenu(h), '...the menu stayed up');
+    assert.strictEqual(pivots()[0], 'Songs');
+    // a swipe RIGHT goes back a pivot
+    const list2 = h.panel.querySelector('[data-skin-swipe]');
+    list2.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }));
+    list2.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 260, clientY: 95 }));
+    await settleNet();
+    assert.strictEqual(pivots()[0], 'Albums', 'a right swipe moved back');
     tapRow(h, 'Night Drive'); await settleNet();
     assert.ok(h.panel.querySelector('.ipm-title'), 'a drilled level carries the big dim title');
     tapRow(h, 'Tail Lights'); await settleNet();
