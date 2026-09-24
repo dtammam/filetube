@@ -614,3 +614,35 @@ test('Chapter Snap: the Music-side seam (applySnappedChapterTimes, the snap edit
     assert.strictEqual(h.log.filter(songsUrl).length, 2, 'the Music seam dropped the cached library');
   } });
 });
+
+test('Chapter Snap x K4: a snap save through Music\'s "This chapter starts wrong" while a FLAT list plays keeps the queue flat - the segment end still hands on to the list\'s next row', async () => {
+  const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
+  const nextOfIntro = songs[songs.findIndex((t) => t.title === 'Intro') + 1];
+  let opened = null;
+  await boot({
+    skin: 'ipod', play: 'nd1',
+    setup: (dom) => {
+      dom.window.showToast = () => {};
+      dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } });
+      dom.window.showChapterSnapEditor = (id, opts) => { opened = { id, opts }; };
+    },
+    run: async (h) => {
+      await openSongs(h);
+      tapRow(h, 'Intro'); await settleNet(); // a FLAT pick (the Songs list)
+      assert.strictEqual(h.player.currentId, 'djmix1::c0');
+      click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
+      click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+      await settleNet();
+      const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
+      assert.ok(act, 'Extras offers "This chapter starts wrong" on the playing chapter');
+      click(h.dom, act); await settleNet();
+      assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');
+      // the editor saved (the same starts): Music's seam patches the queue (a NEW array)
+      opened.opts.onSaved({ chapters: MIX_CHAPTERS.map((c) => ({ startTime: c.startTime, title: c.title })), chaptersEdited: false });
+      await settleNet();
+      const t = { v: 0 }; const el = mp(h, t, 1800);
+      await tick(h, el, t, 150); await tick(h, el, t, 299.2); await tick(h, el, t, 299.9);
+      assert.strictEqual(h.player.currentId, nextOfIntro.id, 'still flat: Intro handed on to the list\'s next row (' + nextOfIntro.title + ')');
+    },
+  });
+});

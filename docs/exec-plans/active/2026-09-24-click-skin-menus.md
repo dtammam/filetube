@@ -3,8 +3,8 @@ plan: click-skin-menus
 harness: v2 · lean
 branch: feat/click-skin-menus
 anchor: spec
-status: Gate r2 fixed - awaiting gate r3
-next: gate r3 (adversary delta on the r2 fix record below; qa APPROVED r2). Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on), his rulings on D1 and on K4 (the Architect ruled for him overnight), and the Chapter Snap branch raising notifyLibraryChanged() on its save.
+status: Gate r2 fixed + v1.322.0 merged and wired - awaiting gate r3
+next: gate r3 (one round: the r2 fixes, the v1.322.0 merge and the Chapter Snap wiring - the records below). Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on), his rulings on D1 and on K4 (the Architect ruled for him overnight), and the Chapter Snap branch raising notifyLibraryChanged() on its save.
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -507,4 +507,46 @@ Disclosed (r2):
   chunk (layout), for about 10 s behind Now Playing; the tap itself is small (68-178 ms at x4) and
   nothing freezes. Fix shape, if a device shows jank: window the browse song list instead of
   building every row.
+
+## v1.322.0 merge + Chapter Snap wiring (builder, before gate r3)
+
+Commits: 98b11da3 (merge main 4bd04bb1 = v1.322.0) -> b0fbab33 (the wiring + its tests) -> this
+commit (the flat-queue-through-a-snap binding + this record).
+
+**Conflicts in the merge:** one - `public/js/music.js`, the drill's `showChaptersEditor` save
+callback: kept BOTH sides (the pocket menus' `invalidateMenuData()` and Chapter Snap's
+`function (body)` + `applySnappedChapterTimes(baseId, body, { skipDrillRefresh: true })` + the
+version seed). `common.js`, `skin-surface.js`, `style.css` and the tracker auto-merged (the tracker
+keeps #239-#242 / #250 and #255-#258). One post-merge fix inside the merge commit: both branches
+exported `showChaptersEditor` from common.js, so eslint `no-dupe-keys` refused the merge; the
+pocket menus' copy of the key was dropped (Chapter Snap's export group keeps it).
+
+**Wiring (b0fbab33):**
+- `common.js showChapterSnapEditor`: the SAVE and the REVERT success arms call
+  `notifyLibraryChanged({kind:'chapters', mediaId}, d)` before `onSaved` (the text editor's "Fix
+  times..." opens this same editor, so it is covered too). `showChaptersEditor` keeps its call in
+  its success arm (qa r2 S5's merge note).
+- `music.js applySnappedChapterTimes` (every Music-side chapter write: the snap editor's onSaved
+  from Extras and from the drill's Fix times, and the text editor's result) calls
+  `invalidateMenuData()` itself; its queue patch (a new array) keeps a flat queue flat.
+
+| Guard | Test (binding) | Mutant -> result (sandbox from b0fbab33; W5 re-run with this commit's test) |
+|---|---|---|
+| the snap editor SAVE arm notifies | r1 "Chapter Snap: a SAVE and a REVERT through the REAL snap editor" (nudge Track A +1 s, Save: the event fires, the open Songs level re-loads on the next step, a pick plays `chapterStartSec 301`) | W1 RED 1 |
+| the snap editor REVERT arm notifies | the same test (Revert through the in-page confirm: the event fires again, the level re-loads, a pick plays 300) | W2 RED 1 |
+| the text editor keeps its call after the merge | unit "the chapters editor raises the ONE event" | W3 RED 1 |
+| Music's seam invalidates on its own | r1 "the Music-side seam ... invalidates the menus on its own" (the drill's Fix times opens Music's snap editor; its onSaved - no document event - drops the cached library) | W4 RED 1 |
+| a patched flat queue stays flat | r1 "Chapter Snap x K4" (a flat Songs pick of Intro, then "This chapter starts wrong" from Extras saves; at the segment end the list still hands on to its next row) | W5 survived at b0fbab33 (no test drove it), RED 1 against this commit's test |
+
+**The targeted re-run** on the merged tree (same sandbox): N2, N5, N3, F1, N13, R12, S4a, S4b,
+N1, N8, N10, N14, N19, N20, M5, M22 - all RED. Total **21 of 21 RED** (log
+`click-skin-menus-mutants-r3.log`, runner `click-skin-menus-mutants-r3.js`, session scratchpad;
+`FILETUBE_TEST_FFMPEG` set, so the chapter-snap real-ffmpeg tests ran).
+
+Instruments on the merged + wired tree: the pocket-menu suites + the chapter-snap suites
+(`chapter-snap-editor-ui`, `chapter-snap`, `chapter-snap-client`, `chapter-snap-watch`) +
+music-skin-integration, with `FILETUBE_TEST_FFMPEG`: `pass 237 fail 0 skipped 0`; the hook's full
+unit suite at b0fbab33: 7248 / 7248; lint:css TOTAL 0; overlay-containment clean (0); eslint 0
+errors (6 pre-existing common.js warnings); check-markers - see the commit (only the expected
+stale-approval notice, the re-gate being pending).
 
