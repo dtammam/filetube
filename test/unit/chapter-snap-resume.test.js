@@ -1057,3 +1057,15 @@ test('r3 (adversary S5): a continue arm (the "Jump back in" tile of the loaded c
     assert.deepStrictEqual(ctx.media.seeks.slice(s0), [], 'no seek');
   });
 });
+
+test('r3 (E10 binding): an UNCHANGED answer still verifies the file - the next pick of it asks nothing', async () => {
+  await boot(async (dom, ctx) => {
+    await flatIntoG9(dom, ctx, [g3()[1], g3()[2]]); // g9 unchanged on the server (G3_CH)
+    const g0 = ctx.videoGets.length;
+    click(dom, row(dom, 'g9::c1')); await settleN(20);
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'the first pick checks g9 (non-vacuous)');
+    assert.strictEqual(lastLoadOf(ctx.loads, 'g9::c1').data.chapterStartSec, 30, 'nothing changed: the listed start');
+    click(dom, row(dom, 'g9::c2')); await settleN(20);
+    assert.strictEqual(ctx.videoGets.length - g0, 1, 'verified by the unchanged answer: no second GET');
+  }, { extraRows: g3() });
+});
