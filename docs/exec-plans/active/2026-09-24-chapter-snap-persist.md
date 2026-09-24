@@ -3,10 +3,10 @@ plan: chapter-snap-persist
 harness: v2 · lean
 branch: fix/chapter-snap-persist
 anchor: spec
-status: Gate r3 fixed @d93cec27 (Dean's pivot: an advance never waits or pauses; a pick waits, bounded); awaiting gate r4
-next: gate r4 (FULL - data class: adversary + qa + security-brief)
+status: Gate closed
+next: release
 design: Approved 2026-09-24 @7482e432 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
-gate: pending
+gate: APPROVED r4 @7516fb0a — adversary, qa, security-brief
 ---
 
 # Chapter Snap: "doesn't survive a page refresh" (diagnosis) and the chapter tap that plays the previous song (fix)
@@ -1569,3 +1569,132 @@ Tree state: only this section was appended (after qa's r3 section). Scratch is i
 (r3, sb3, mut3.js + m6.js, probe3.js, zz-adv-r3.test.js, watch.sh).
 
 Gate: CHANGES r3 @bdb5ad05 — adversary
+
+## Gate r4 - security-brief (@7516fb0a)
+
+**Could NOT complete (no Bash):** I ran no git or test commands. I confirmed the branch ref =
+`7516fb0a9053...` (the ref file) and read public/js/music.js at the head. I did not check that
+server.js / lib / player.js are untouched; that rests on the Architect's check. Not traced:
+whether any caller calls `playAt` over and over for an advance that has already started playing.
+
+Re-verified (I traced each path in the code):
+- **Same authenticated route; no new target.** The new `fetchJsonWithin` (:870-886) calls
+  same-origin `fetch(url, { signal })` (session cookie included) and throws on `!res.ok`, exactly
+  as `fetchJson` does. Its only caller is `startChapterCheck` (:1978), with the same
+  `'/api/videos/' + encodeURIComponent(baseId)`. The timer is cleared when the request settles,
+  and the `done` flag stops a double settle.
+- **Requests are bounded; the skip cannot loop.**
+  - `checksInFlight[baseId]` (:1968) allows ONE check per file at a time, for advances and picks
+    alike. An advance (`keepPosition`) starts a check only when `chapterFileNeedsVerify` is true,
+    then plays at once (:1962).
+  - `playWaiter` calls `playAt` with `skipVerify: true`, and `playAt` then skips the verify
+    entirely (:3515). So the verify's own play cannot re-enter it.
+  - After a success the file is verified until the next return. After a failure or timeout it
+    stays unverified, and the next pick or advance of that file sends one more GET; nothing
+    retries on its own.
+- **404 / timeout: nothing applied, nothing stranded.** Both reach the catch arm (:1987). It
+  applies nothing, and `playWaiter` plays the row as listed. At most `CHAPTER_VERIFY.timeoutMs`
+  (4000) passes before that, and the request is aborted. Advances never wait. With the hold
+  removed, nothing pauses the element anymore.
+- **No writes; strings as text.** The storage and write calls (`setItem`, `method:`) are the same
+  existing set as in r1 to r3. The answer still reaches the screen only through
+  `applySnappedChapterTimes` and the escaped builders.
+
+INFO-4 is CLOSED: the pick waits 4000 ms at most. INFO-1, INFO-2, INFO-3, INFO-5 and INFO-6 stand
+as written. No CRITICAL / HIGH / MEDIUM / LOW.
+
+Gate: APPROVED r4 @7516fb0a — security-brief
+
+## Gate r4 - qa (@7516fb0a)
+
+A tight delta on Dean's pivot (d93cec27). The only code change is music.js: the hold is gone, an
+advance plays at once, and a pick waits at most 4000 ms. Node 22.23.1. I skipped `npm run
+test:unit` as briefed; the Architect runs the full suites.
+
+- `node --test test/unit/chapter-snap-resume.test.js`: `# tests 47 # pass 47 # fail 0`.
+- `test/unit/chapter-snap*.test.js music*.test.js *pocket*.test.js test/integration/chapter-snap*.test.js
+  *pocket*.test.js`: `# tests 845 # pass 845 # fail 0 # skipped 0`.
+- `npx eslint public/js/music.js test/unit/chapter-snap-resume.test.js`: exit 0.
+
+My repros, re-run in the builder's harness on a `git archive 7516fb0a` sandbox
+(`sbr4/test/unit/qa-r4-scratch.test.js`):
+- **QA-F (cached Songs pick after a return):** `gets=["/api/videos/g9"]`, `load start=40`.
+- **QA-E (the flat segment end into an unverified file, with its GET held):** `g9 GETs=1`,
+  `loads=["g9::c1"]` on the first in-band tick, `pauses=0`. Releasing the answer adds no second
+  load.
+- **QA-J (cold load):** `videoGets=[]`.
+- **QA-G, QA-H and QA-I** (an advance whose check answers moved / fails / drops the row):
+  - every case: 1 GET, `pauses=0`, `paused=false`, and exactly one immediate load of the LISTED
+    row, `g9::c2@60`;
+  - QA-G: the moved start (65) is applied to the rows afterwards;
+  - QA-I: the dropped row leaves the list afterwards.
+
+  So my r3 WARNING (a held advance stranded by a dropped row or a hung GET) is **moot**: there is
+  no hold left to strand. The cost is the disclosed one. After a remote edit an advance can start
+  once at a stale boundary, or, in the QA-I shape, once at a chapter id that no longer exists. It is
+  audible, never silent.
+- **QA-K (a pick with a HUNG check, deadline shortened to 80 ms through the exported
+  `CHAPTER_VERIFY`):** during the wait there are 0 loads and 0 pauses. After the deadline there is
+  one load of the listed row, `g9::c1@30`. The builder's "pivot: the view is torn down while a
+  pick waits" test binds the teardown arm. I read it, and the plan's mutant table shows P5 and P5b
+  red.
+- The r1 CRITICAL (QA-A: `t=130 newSeeks=[] newPlays=0`) and the flat Recently Played return (QA-C:
+  1 GET, the rows and crumb kept, `toasts=[]`, Next `g9::c0`) both still hold.
+
+Docs:
+- The plan's "Gate r3 fix (Dean's PIVOT)" section matches the code (`verifyChapterFileThenPlay`,
+  `startChapterCheck`, `fetchJsonWithin`, `skipVerify`, `checksInFlight`).
+- #270 (c) is accurate: a pick waits at most 4 s with nothing paused; an advance never waits or
+  pauses and may start at a stale boundary once. The QA-I case (a dropped chapter id played once)
+  fits inside "a stale boundary ONCE", read broadly.
+- The new comments are accurate.
+
+Security: unchanged in kind. The same GET, now with an AbortController deadline. No new surface.
+
+Tree: only this section was appended. HEAD is 7516fb0a.
+
+Gate: APPROVED r4 @7516fb0a — qa
+
+## Gate r4 - adversary (@7516fb0a)
+
+Tight delta on d93cec27 (Dean's pivot), in /tmp sandboxes from `git archive 7516fb0a`. The
+binding set (chapter-snap-resume, music-chapter-playback, chapter-snap-client,
+music-chapter-reflect, integration chapter-snap-return-flat) gave `# tests 115 # pass 115 # fail
+0`; eslint on music.js and the test file: exit 0. `git diff bdb5ad05 7516fb0a --
+public/js/player.js server.js lib` is empty.
+
+1. **My r3 WARNING is resolved (by removal).** Measured through real music.js in the builder's
+   harness, with the g9 check parked (hung):
+   - **S1:** a flat segment end into an unverified file makes 0 pauses, loads `["g9::c1"]` at
+     once, and sends 1 GET.
+   - **S6:** the same end with the page hidden: 0 pauses, 1 load.
+   - **A user pick on a hung check** (deadline shortened to 150 ms through `CHAPTER_VERIFY`): 0
+     loads before the deadline, 1 after (`g9::c1`), 0 pauses. The late answer loads nothing more.
+   - **S3:** teardown while a pick waits: 0 loads after the deadline and the answer, 0 pauses.
+     Nothing is left armed.
+2. **The CRITICAL holds.**
+   - Real Chromium, BACK to `?play=<id>::c0` after rolling on to 500: t 508.0, row `c2`, stored
+     513.97.
+   - The continue path through the check (a failed return re-check, then a Jump back in tile,
+     playhead 130): 1 GET, playhead 130, 0 seeks.
+   - A cold load (4 row taps plus Next) made 0 `/api/videos/:id` requests.
+3. **No storm, no loop.** 3 quick picks of one hung file made 1 GET, and the latest pick played
+   after the deadline. Spot mutants against chapter-snap-resume plus my scratch file (CONTROL
+   `pass 53 fail 0`):
+   - D1 (an advance waits): RED (3).
+   - D2 (no deadline): RED (3).
+   - D4 (one check per file dropped): RED (2).
+   - D5 (the catch ignores teardown): RED (2).
+   - D6 (the waiter ignores `playGen`): RED (2).
+   - D3 (the skip-once dropped) still shows only as a HANG: a failing server loops verify ->
+     playAt -> verify. SUGGESTION, unchanged from r3: have the verify's own `playAt` path fail
+     cleanly in a test, rather than rely on a stuck suite.
+
+Residual, by design and disclosed in #270: an advance may start at a stale boundary once after a
+remote edit; the background answer corrects the listed rows for the next pick. There is no wrong
+file and no data effect.
+
+Tree state: only this section was appended. Scratch is in /tmp/adv-csp (r4, sb4 restored to hash
+710efaa1d2cf, r4/test/unit/zz-adv-r4.test.js, m7.js/m7.out).
+
+Gate: APPROVED r4 @7516fb0a — adversary
