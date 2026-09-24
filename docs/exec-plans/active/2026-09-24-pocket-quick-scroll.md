@@ -3,8 +3,8 @@ plan: pocket-quick-scroll
 harness: v2 · lean
 branch: feat/pocket-quick-scroll
 anchor: spec
-status: Gate r1 fixes built - awaiting gate r2
-next: gate r2 (adversary + qa + security-brief: the recent-listening opt-in is a server change) on the head sha named in the hand-off; then Dean's device pass (#263)
+status: Gate r2 fixes built - awaiting gate r3
+next: gate r3 (adversary + qa; security-brief for the route line if wanted) on the head sha named in the hand-off; then Dean's device pass (#263)
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -576,3 +576,33 @@ Suggestions:
 Verdict: CHANGES - one WARNING, a regression from the fix round. Every r1 finding is fixed and measured.
 
 Gate: CHANGES r2 @dfd0165e — adversary
+
+## Gate r2 fix record (builder, after @dfd0165e)
+
+Commits: 3b1f1587 (the three r2 sections, as-is) -> **6d48181f** (the fixes and their tests) -> **9c9fe5ad** (two
+more bindings the r2 mutant pass asked for) -> this commit (this record). No merge of main (no hook forced one).
+
+| Finding | Fix | Test (binding) | Mutant -> result |
+|---|---|---|---|
+| **qa NEW-1 = adversary W (repro 1)** - playing from Recently Played, an advance, MENU: the highlight on neither the playing nor the picked song | the recency mark never re-loads the list being PLAYED FROM (`!p.playing`: it mirrors the queue, and the K1 follow moves its highlight); and any re-loaded list that IS the playing context puts its highlight on what plays (6d48181f) | unit r2 repro 1 (Playlists > Recently Played, play T-d, advance to T-e, MENU: highlight on T-e, the list loaded ONCE) - **fails on the dfd0165e source** (sandbox run, `pqs-oldsha.sh`); unit r2 "when the list played from DOES re-load (a library change while Now Playing is up, then an advance): on the song that plays" (9c9fe5ad) | T1 (the exclusion dropped) and T4 (restore to the anchor instead of what plays) masked EACH OTHER at 6d48181f (each survived alone); with 9c9fe5ad's tests **T1 RED, T4 RED** |
+| **adversary W repro 2 = qa NEW-3** - Recent Artists > A2 > play, MENU x2: the highlight on another artist | a re-loaded level restores its highlight by IDENTITY (`identityOf`: a track id, a drill node's type + key + artist), recorded when the level is marked stale (6d48181f) | unit r2 repro 2 (the list re-orders to A2, A0, A1, A3; the highlight lands on A2) - **fails on the dfd0165e source** | T2 (index restore) RED, T3 (no anchor) RED |
+| security-brief INFO 1 = adversary S-a | a cover path must also RESOLVE on the origin it is resolved against (`new URL(u, base).origin === base`, a fixed placeholder origin so the rule is the same in every window) on top of the prefix rule; the comment corrected | unit: `'/\t/evil.example/a.jpg'`, `'/\n/...'`, `'/\r\\...'`, `'/\\...'`, `'//...'`, `'/'` all rejected; an encoded slash stays a path | T5 RED |
+| adversary S-d (N2) | (the rule stands) | unit: events stamped 8 ms apart, handlers 60 ms apart -> no letter mode, one row per detent | T6 (event gap only) RED |
+| adversary S-d (N15) | the route's dead `updatedAt` check dropped (both progress writers stamp one); the comment says so | (the default / opt-in pair below) | T7 RED, T8 RED |
+| security-brief INFO 2 | (test) | integration: a member plays a track to its end; the member's own `include=finished` read has it, the admin's does not | T8 RED (2), T9 (the pending overlay reads every user) RED (2) |
+| qa NEW-2, adversary S-c | the three stale comments (skin-surface.js `moveCursor` / the cursor branch; the test's "two fast detents") | - | - |
+| adversary S-b, S-a residue | filed in ONE row: my id range (#263-#266) was used up, so it is **#266 (d)**: a chaptered file ended shows chapter 1; a scrub to 0 on an unplayed track counts as recent | - | - |
+
+Also in 6d48181f: **two wall-clock assertions of my own removed** from the unit file (the picker jump `< 50 ms` and
+the A->M->Z `< 50 ms`). The hook's full-suite run measured a 118 ms first jump under load once - the load-flake
+class (critter-mode). The task-length measure stays the headless Chromium probe's (long tasks `[]`); the unit tests
+keep the landing / windowing assertions and print the timing as a diagnostic.
+
+**Mutant table** (runner `pocket-quick-scroll-mutants.js`, sandbox from `git archive 6d48181f` then `9c9fe5ad`,
+anchors unique, diffs non-empty; logs `pocket-quick-scroll-mutants-r2fix.log`, `-r2b.log`): **9 of 9 RED** (T1/T4
+after 9c9fe5ad).
+
+Instruments: the hook's full unit suite 7303 / 7303 at 6d48181f, 7304 / 7304 at 9c9fe5ad. The touched suites
+(the pocket-quick-scroll pair, music-pocket-menus unit / integration / -r1, music-skins, skin-surface,
+music-library-projection, continue-watching): `pass 217 fail 0`, the unit file `pass 56 fail 0`. eslint on the
+changed files: clean. No CSS change this round.
