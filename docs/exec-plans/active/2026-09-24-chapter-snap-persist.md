@@ -3,7 +3,7 @@ plan: chapter-snap-persist
 harness: v2 · lean
 branch: fix/chapter-snap-persist
 anchor: spec
-status: Built (diagnosis + fix; scope widened to #268 and #269 by Dean); awaiting the full gate
+status: Built @4ceb1945 (diagnosis + fix; scope widened to #268 and #269 by Dean); awaiting the full gate
 next: gate (FULL - data class: adversary + qa + security-brief)
 design: Approved 2026-09-24 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
 gate: pending
@@ -176,11 +176,22 @@ through the real editor, then B was activated again (`visible`). At 67a31ca3: B 
   (chapter-snap-resume.test.js "#269: back to visible ...")
 - AC7 (#269) A local save that lands while the return re-check is in flight wins (the older
   answer is dropped); one re-check at a time. ("#269: a local save that lands ...")
-- AC8 (#269) The listeners ride the view signal: after `destroy()` neither event asks anything.
-  ("#269: the return listeners go with the view")
+- AC8 (#269) The listeners ride the view signal: every visibilitychange/pageshow registration
+  carries a live signal, `destroy()` aborts each one (REMOVED, not merely inert behind the
+  re-check's own aborted test), and after it neither event asks anything. ("#269: the return
+  listeners go with the view")
 - AC9 (#269) The change test: a moved start, a title, a span to the next chapter (a chapter added
   after the last row), a dropped chapter; not a subset of rows, not another file, not
   sub-millisecond noise. ("#269 queuedChaptersDiffer")
+- AC10 (#268) A CLOSED player whose `currentId` still names the tapped chapter is a genuine load
+  (player.js `isAdoptLoad`), and music never seeks over the player's own resume there (the element
+  reads 0 mid-load). ("#268: a CLOSED player ...")
+- AC11 (#269) The re-check targets the PLAYING chapter's file even when the list on screen mixes
+  files (no single chapter album). ("#269: the re-check follows the PLAYING chapter's file ...")
+- AC12 The shared adopt path is untouched: `git diff 7482e432 4ceb1945 -- public/js/player.js
+  server.js lib` is empty (0 lines), so the watch<->music same-id hand-offs, dock-return and
+  `?play=` adopt arms run the same player code; their existing suites stay green (the hook runs
+  every unit test: 7259/7259 at 4ceb1945).
 
 ## Build record
 
@@ -228,7 +239,8 @@ Round 2 (the widened scope, Dean):
 Instrument outputs (Node 22.23.1):
 - Round 1: `node --test test/unit/chapter-snap-resume.test.js test/unit/music-chapter-playback.test.js
   test/unit/chapter-snap-client.test.js`: `# tests 26 # pass 26 # fail 0`.
-- Round 2: `node --test test/unit/chapter-snap-resume.test.js`: `# tests 9 # pass 9 # fail 0`;
+- Round 2: `node --test test/unit/chapter-snap-resume.test.js`: `# tests 9 # pass 9 # fail 0`
+  (11/11 after the mutant-round test additions at b3640e11 and 4ceb1945);
   `node --test test/unit/music*.test.js test/unit/chapter*.test.js test/unit/skin*.test.js
   test/unit/listen*.test.js test/unit/pocket*.test.js`: `# tests 738 # pass 738 # fail 0`.
 - `npx eslint public/js/music.js test/unit/chapter-snap-resume.test.js`: no output (clean).
@@ -239,7 +251,8 @@ See the Diagnosis tables. Probe runs: seeded mode 1440x900; REAL mode 1440x900 (
 3) and 390x844 mobile (the H3 table), each against a `git archive 7482e432` sandbox (BEFORE) and
 this tree (AFTER).
 
-Round 2, real Chromium (REAL mode, 390x844 mobile), BEFORE = a sandbox of 67a31ca3:
+Round 2, real Chromium (REAL mode, 390x844 mobile), BEFORE = a sandbox of 67a31ca3, AFTER = the
+working tree of 90b494fb (music.js is byte-identical at the head 4ceb1945; only tests changed since):
 
 | Measurement | BEFORE (67a31ca3) | AFTER (this branch) |
 |---|---|---|
@@ -265,6 +278,38 @@ test/unit/music-chapter-playback.test.js`. Commit 57fe4fe4 went through the pre-
 | M2 | the lower bound made inclusive (`<=`) | 3e8f46b40ee3 -> ab28bb5a036f | RED, `# fail 1` | "chapterResumeSecFor: ... AT the start it is" |
 | M3 | `loadTrack` passes the raw `progress.resumeSec` (the helper bypassed) | 3e8f46b40ee3 -> 55749c9ad9b9 | RED, `# fail 2` | "Dean's shape", v1.311.3 row-click tail test |
 | M4 | the bound compared to 0, not the chapter start | 3e8f46b40ee3 -> d7a23efeace4 | RED, `# fail 2` | "Dean's shape", "chapterResumeSecFor: ... the lower bound" |
+
+**Round 2 @4ceb1945** (the widened scope; runner `chapter-snap-persist/mutants2.sh`, the same
+rules, anchors counted by exact occurrence; binding tests chapter-snap-resume, music-chapter-playback,
+chapter-snap-client). The first run @90b494fb had two SURVIVORS, both closed by test commits
+(b3640e11, 4ceb1945) before this table: N6 (a closed player read as an adopt - the harness never
+modelled `closed` nor a genuine load's mid-load 0) and N12 (the pageshow listener registered
+without the signal - inert only because the re-check also tests `signal.aborted`; the harness now
+records every registration and binds that destroy aborts its signal). Commits b3640e11 and
+4ceb1945 went through the hook: `tests 7258 / 7259 pass, fail 0`.
+
+| # | Mutant (music.js) | bytes | Result | Binding test(s) that red |
+|---|---|---|---|---|
+| CONTROL | a guard replaced by itself | 83e9fabb6133 -> 83e9fabb6133 | `# fail 0` | - |
+| N1 | the adopt never detected | -> 333c33d67873 | RED (2) | #268 re-tap, #268 playthrough |
+| N2 | seek even inside the bounds | -> 5aaf909ec38d | RED (2) | #268 re-tap (control axis), chapterAdoptSeekFor |
+| N3 | no play() after the seek | -> 0b803712b004 | RED (1) | #268 re-tap "and it plays" |
+| N4 | the adopt seek ignores the in-bounds saved place | -> 34ad6e784c12 | RED (2) | #268 playthrough, chapterAdoptSeekFor |
+| N5 | the 0.25 s tolerance removed | -> e27271b126ba | RED (1) | chapterAdoptSeekFor |
+| N6 | a closed player counts as an adopt | -> 777691dcbb89 | RED (1) | #268 CLOSED player |
+| N7 | the in-flight answer's generation check removed | -> 3ee55bb979f9 | RED (1) | #269 local save wins |
+| N8 | applySnappedChapterTimes does not bump the generation | -> 538f85bba937 | RED (1) | #269 local save wins |
+| N9 | the one-in-flight guard removed | -> 7643e9ce1bb4 | RED (1) | #269 local save wins ("one re-check at a time") |
+| N10 | visibilitychange fires the re-check while hidden | -> 47f0f6bfde3f | RED (1) | #269 back to visible |
+| N11 | any pageshow (not only bfcache) re-checks | -> adad937cc96e | RED (1) | #269 back to visible |
+| N12 | the pageshow listener without the view signal | -> 176bd9c91ae9 | RED (1) | #269 listeners go with the view |
+| N13 | the visibilitychange listener without the view signal | -> 16b2fa106da5 | RED (1) | #269 listeners go with the view |
+| N14 | apply without the change test | -> 8f75539bdd5e | RED (1) | #269 back to visible ("not re-rendered") |
+| N15 | the change test ignores the span to the next chapter | -> ccc45a84248d | RED (1) | queuedChaptersDiffer |
+| N16 | the change test ignores the title | -> 8d2d914067b6 | RED (1) | queuedChaptersDiffer |
+| N17 | no playing-file arm (album on screen only) | -> f0975d3df22c | RED (1) | #269 playing file on a mixed list |
+| N18 | the re-check drops `chaptersEdited` | -> ab0b06fddeb8 | RED (1) | #269 back to visible (the badge) |
+| N19 | the in-flight flag never cleared on success | -> 5044ce3e10d2 | RED (1) | #269 back to visible (the second return) |
 
 Reachability: the real-Chromium H3 table above is the end-to-end run of the same guard (BEFORE
 t 493.5 on chapter 2, AFTER t 500.3 on chapter 3), through the drill's real rows, the real
