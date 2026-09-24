@@ -178,7 +178,7 @@ test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queu
     const el = panel(dom);
     assert.equal(el.hidden, false, 'panel visible when expanded + playing');
     assert.match(el.innerHTML, /class="mnp-title"[^>]*>Alpha</, 'shows the playing track title');
-    assert.match(el.innerHTML, /class="mnp-sub">Boards · One</, 'artist · album');
+    assert.match(el.innerHTML, /<button type="button" class="mnp-sub" data-artist="Boards"[^>]*>Boards · One</, 'artist · album (the artist-drill button, v1.317)');
     // v1.223: the panel lists the WHOLE queue. Playing t1 (first): t1 is the current
     // row (marked), t2 (index 1) + t3 (index 2) are up next (plain rows).
     assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="0"[\s\S]*>Alpha</, 'the current track is in the list, marked');
@@ -329,4 +329,75 @@ test('v1.226: the theatre now-playing panel is capped to the MEASURED player hei
   assert.match(src, /root\.querySelector\('#player-slot'\)[\s\S]{0,120}?getBoundingClientRect\(\)\.height/, 'it MEASURES the player-slot height (measure the container)');
   assert.match(src, /nowPlayingPanel\.style\.maxHeight = ph > 120 \? \(ph \+ 'px'\) : ''/, 'caps the panel to the player height in theatre');
   assert.match(src, /else \{\s*nowPlayingPanel\.style\.maxHeight = '';/, 'clears the cap off-theatre so the panel flows normally');
+});
+
+// ---- v1.317 (M1+M2): the panel's artist line drills; each row shows its own length ---------
+
+test('v1.317 (M2): the panel rows show each track\'s OWN length (formatTrackDuration of durationSec), in queue order', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
+    await clickRow(dom, 0);
+    const durs = [...panel(dom).querySelectorAll('.mnp-queue-row')].map((r) => { const d = r.querySelector('.mnp-queue-dur'); return d ? d.textContent : null; });
+    assert.deepEqual(durs, ['1:40', '1:50', '2:00'], 'SONGS carry 100/110/120s');
+  });
+});
+
+test('v1.317 (M2, Dean: "the length of a given section in the right-hand view"): a CHAPTERED album\'s rows show each chapter\'s own span; a 0-span chapter shows none', async () => {
+  const CHAPTERS = [
+    { id: 'f::c0', title: 'Intro', artist: 'Boards', album: 'Mix', albumKey: 'f', durationSec: 120, source: 'library-chapter', streamSrc: '/video/f', artUrl: '/thumbnail/f', progressEndpoint: '/api/progress', chapterStartSec: 0 },
+    { id: 'f::c1', title: 'Middle', artist: 'Boards', album: 'Mix', albumKey: 'f', durationSec: 3725, source: 'library-chapter', streamSrc: '/video/f', artUrl: '/thumbnail/f', progressEndpoint: '/api/progress', chapterStartSec: 120 },
+    { id: 'f::c2', title: 'End', artist: 'Boards', album: 'Mix', albumKey: 'f', durationSec: 0, source: 'library-chapter', streamSrc: '/video/f', artUrl: '/thumbnail/f', progressEndpoint: '/api/progress', chapterStartSec: 3845 },
+  ];
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
+    await clickRow(dom, 0);
+    const durs = [...panel(dom).querySelectorAll('.mnp-queue-row')].map((r) => { const d = r.querySelector('.mnp-queue-dur'); return d ? d.textContent : null; });
+    assert.deepEqual(durs, ['2:00', '1:02:05', null], 'per-chapter spans (the last, unknown-end chapter renders no length)');
+  }, { songs: CHAPTERS });
+});
+
+test('v1.317 (M1): tapping the panel\'s artist · album line opens the ARTIST drill (the artist-scope fetch + the drill header); it plays nothing', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0);
+    const loads = mock.s.loadCalls.length;
+    const sub = panel(dom).querySelector('.mnp-sub[data-artist]');
+    assert.ok(sub, 'the artist line is the data-artist control');
+    mock.fetches.length = 0;
+    sub.click();
+    await settle(); await settle(); await settle();
+    assert.ok(mock.fetches.some((u) => /\/api\/music\?/.test(u) && /[?&]artist=Boards(&|$)/.test(u)), 'the artist scope loaded: ' + mock.fetches.join(' | '));
+    const head = dom.window.document.querySelector('.music-drill-header .music-drill-title');
+    assert.ok(head && head.textContent === 'Boards', 'the artist drill header is up');
+    assert.strictEqual(dom.window.document.querySelector('.music-drill-artist'), null, 'an artist drill has no artist sub-line');
+    assert.strictEqual(mock.s.loadCalls.length, loads, 'the tap moved the VIEW - it loaded/played nothing');
+  });
+});
+
+test('v1.317 (M1): tapping the artist NAME inside a song row opens the ARTIST drill and does NOT play the row', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    const btn = dom.window.document.querySelector('.music-song-row[data-index="1"] .music-song-artist[data-artist="Boards"]');
+    assert.ok(btn, 'the row artist is the data-artist control');
+    mock.fetches.length = 0;
+    btn.click();
+    await settle(); await settle(); await settle();
+    assert.strictEqual(mock.s.loadCalls.length, 0, 'the row did NOT play (the artist dispatch runs before the row-play fall-through)');
+    assert.ok(mock.fetches.some((u) => /\/api\/music\?/.test(u) && /[?&]artist=Boards(&|$)/.test(u)), 'the artist scope loaded: ' + mock.fetches.join(' | '));
+    const head = dom.window.document.querySelector('.music-drill-header .music-drill-title');
+    assert.ok(head && head.textContent === 'Boards', 'the artist drill header is up');
+  });
+});
+
+test('v1.317 (M1): inside an album drill, the header\'s artist line opens the ARTIST drill one level over', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom, mock) => {
+    await clickRow(dom, 0); // v1.207: a fresh select drills into the album
+    const line = dom.window.document.querySelector('.music-drill-header .music-drill-artist[data-artist="Boards"]');
+    assert.ok(line, 'in the album drill the artist line is the data-artist control');
+    mock.fetches.length = 0;
+    const loads = mock.s.loadCalls.length;
+    line.click();
+    await settle(); await settle(); await settle();
+    assert.ok(mock.fetches.some((u) => /\/api\/music\?/.test(u) && /[?&]artist=Boards(&|$)/.test(u)), 'the artist scope loaded: ' + mock.fetches.join(' | '));
+    const head = dom.window.document.querySelector('.music-drill-header .music-drill-title');
+    assert.ok(head && head.textContent === 'Boards', 'the artist drill replaced the album drill header');
+    assert.strictEqual(dom.window.document.querySelector('.music-drill-artist'), null, 'an artist drill has no artist sub-line');
+    assert.strictEqual(mock.s.loadCalls.length, loads, 'nothing (re)loaded');
+  });
 });

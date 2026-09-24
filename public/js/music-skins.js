@@ -12,7 +12,9 @@
 // ctx shape (built by the view from its live queue + the player element):
 //   { track: {title, artist, album, artUrl},
 //     upNext: [{index, title, artist, durLabel, state:'played'|'current'|'next'}],
-//     playing: bool, posSec: number, durSec: number, posLabel, remLabel }
+//     playing: bool, posSec: number, durSec: number, posLabel, remLabel,
+//     artistTap: bool (set by the ENGINE from its onArtist hook; the artist line is a control only when true),
+//     artistTitle: string (optional; the control's tooltip, default "Go to artist") }
 //
 // Action hooks (one delegated handler in music.js proxies each to a host control):
 //   data-skin-play      -> click #pp-btn (gesture-safe; primes bg-audio)
@@ -20,6 +22,8 @@
 //   data-skin-seek      -> a bar; click maps x -> #seek-bar value (existing seek)
 //   data-skin-go="<i>"  -> jump to queue index i (the view's playAt)
 //   data-skin-collapse  -> dock the player (browse-away; the mini returns you)
+//   data-skin-artist    -> the artist line (v1.317): the view's onArtist (music: the in-Music artist
+//                          drill, or the channel grid for a listen video in the tab)
 // Skin PICKING is NOT an in-player hook: it lives on the Settings page (v1.230,
 // setup.js renderMusicSkinPicker), which calls setActiveSkin(). The music view
 // re-reads activeSkinId() on its next render, so the choice applies when you return.
@@ -69,6 +73,29 @@
   function prevBtn() { return '<button type="button" class="mms-skip mms-prev" data-skin-prev aria-label="Previous">' + prevGlyph() + '</button>'; }
   function nextBtn() { return '<button type="button" class="mms-skip mms-next" data-skin-next aria-label="Next">' + nextGlyph() + '</button>'; }
   function collapseBtn() { return '<button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>'; }
+  // v1.317 (M1, Dean: "no easy way to get to a channel's stuff in the music player"): the
+  // now-playing ARTIST LINE is a real control on EVERY skin - a `data-skin-artist` button the
+  // engine's delegated click proxies to the view's onArtist hook (the in-Music artist drill,
+  // the "Playing from <Album>" line's model; for a listen video, the channel grid). ONE writer for all skins (Apple/Spotify .mms-sub,
+  // the iPod/Zune LCD .ip-artist) so a skin can never ship the line inert (the INERT SIBLING
+  // class). An EMPTY artist keeps the plain line - no focusable nothing. Gate r1 W1 (both
+  // seats): the control exists ONLY where a handler does - `on` is ctx.artistTap, which the
+  // ENGINE sets from the presence of its onArtist hook (podcasts pass none: their show line
+  // stays the plain div, never an inert "Go to artist" button) and the view may veto per
+  // track (music: a listen video with no channel, or one in the pop-out). No hook = no control.
+  // Gate r2 S4: `title` (ctx.artistTitle) names the target - "Go to channel" for a listen video.
+  function artistLine(cls, artist, on, title) {
+    var a = (typeof artist === 'string') ? artist : '';
+    if (!a || !on) return '<div class="' + cls + '">' + esc(a) + '</div>';
+    return '<button type="button" class="' + cls + '" data-skin-artist title="' + esc((typeof title === 'string' && title) ? title : 'Go to artist') + '">' + esc(a) + '</button>';
+  }
+  // Gate r2 (qa W3, Dean's ruling): a 0/unknown length is BLANK on the Nordic thumb rows - no
+  // `0:00` - M2's desktop rule. Both producers format 0 s as a zero clock (podcasts skinDur,
+  // music mmssMusic), so an all-zero label IS the unknown marker; '' = no span.
+  function knownDurLabel(label) {
+    var s = (typeof label === 'string') ? label.trim() : '';
+    return /^[0:]*$/.test(s) ? '' : s;
+  }
   // NOTE (v1.230): skin PICKING lives on the Settings page now (setup.js
   // renderMusicSkinPicker), not an in-player switcher (the in-player chips were
   // unreliable on-device, and a v1.229 account-menu picker often never appeared
@@ -84,7 +111,10 @@
         return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
           '<span class="mms-th">' + (u ? '<img class="art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : '') + '</span>' +
           '<span class="mms-rtext"><span class="mms-rt">' + esc(it.title || 'Track') + '</span>' +
-          '<span class="mms-ra">' + esc(it.artist || '') + '</span></span></button>';
+          '<span class="mms-ra">' + esc(it.artist || '') + '</span></span>' +
+          // v1.317 (M2): the thumb variant shows each row's own length too (a chaptered
+          // album's row = that chapter's span); a 0/unknown length renders NO span.
+          (knownDurLabel(it.durLabel) ? '<span class="mms-rd">' + esc(knownDurLabel(it.durLabel)) + '</span>' : '') + '</button>';
       }
       return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
         '<span class="mms-rn">' + (it.state === 'current' ? '▶' : (it.index + 1)) + '</span>' +
@@ -108,7 +138,7 @@
       '<div class="mms-z">' +
       '<div class="mms-top"><button type="button" class="mms-grab" data-skin-collapse aria-label="Close player"></button></div>' +
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
-      '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
+      '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
       '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
       '</div>';
@@ -119,7 +149,7 @@
     var a = ctx.track || {};
     return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-top-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
-      '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div><div class="mms-sub">' + esc(a.artist || '') + '</div></div>' +
+      '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
       '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<span class="mms-tr-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
@@ -149,7 +179,7 @@
       (u ? '<img class="art-shimmer" src="' + esc(u) + '" alt="" loading="lazy" />' : '') + '</div>' +
       '<div class="ip-meta">' +
       '<div class="ip-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
-      '<div class="ip-artist">' + esc(a.artist || '') + '</div>' +
+      artistLine('ip-artist', a.artist, ctx.artistTap, ctx.artistTitle) +
       '<div class="ip-album">' + esc(a.album || '') + '</div>' +
       '<div class="ip-stars" aria-hidden="true">★★★★★</div>' +
       '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +

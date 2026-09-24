@@ -322,3 +322,9 @@ music*, player-*parity*, shell-*, sidebar-nav-parity, docs-*, exec-plans*, tech-
 podcast-nowplaying*, theatre*, prefs-sync*, comment-debt*): tests 839, pass 839, fail 0,
 cancelled 0, skipped 0. The full unit suite runs in the pre-commit hook; its result is in the
 commit record (the hook refuses red).
+
+On the real main: build commit 45815d94 (hook: 7021 tests, 7021 pass, 0 fail); main with T1
+merged at 63b22a5f (targeted 841/841; hook 7023/7023); main with M1+M2 (b71fcd32) merged in
+the next commit - the same 13 globs plus skin-surface* on the merged tree: tests 967, pass 967,
+fail 0; `lint:css` TOTAL 0; overlay-containment clean; eslint 0 on ambient.js / watch.js /
+music.js; `syncAmbient()` is still the first statement of `updateNowPlayingPanel`.

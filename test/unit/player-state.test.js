@@ -184,6 +184,22 @@ test('applyAdoptFlavor: null/absent currentData or data is a safe no-op (adopt o
   assert.strictEqual(cur.readerHref, '/podcasts?nowplaying=1');
 });
 
+test('applyAdoptFlavor (v1.317 gate r2, adversary W1): a declared channelFolder REPLACES the watch load\'s absent one (watch -> Listen adopt keeps "Go to channel" across a re-init)', () => {
+  // the watch page's load data (watch.js initWatch) never declares channelFolder
+  const cur = { title: 'A Long Video', channelName: 'The Channel', folderName: 'The Channel', browseCtx: '', readerHref: undefined, resumeMode: undefined };
+  // music's loadTrack always declares it (channelFolderOf: a string, '' = no channel)
+  applyAdoptFlavor(cur, { channelFolder: 'The Channel', readerHref: '/music?nowplaying=1', resumeMode: 'music', browseCtx: '' });
+  assert.strictEqual(cur.channelFolder, 'The Channel', 'the music load\'s folder is adopted');
+  assert.strictEqual(cur.resumeMode, 'music');
+  applyAdoptFlavor(cur, { channelFolder: '', readerHref: '/music?nowplaying=1', resumeMode: 'music' });
+  assert.strictEqual(cur.channelFolder, '', 'a declared \'\' (no channel) clears a stale folder - never a leftover target');
+  cur.channelFolder = 'Kept';
+  applyAdoptFlavor(cur, { browseCtx: '', readerHref: null, resumeMode: null });
+  assert.strictEqual(cur.channelFolder, 'Kept', 'watch.js (which never declares it) leaves it: the resumeMode null already ends isMusic');
+  applyAdoptFlavor(cur, { channelFolder: null });
+  assert.strictEqual(cur.channelFolder, undefined, 'a declared non-string clears it');
+});
+
 test('applyAdoptFlavor bindings: the adopt branch APPLIES it, and watch.js\'s two adopt-capable load calls stamp the null flavor claim (source lock; comments stripped)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
