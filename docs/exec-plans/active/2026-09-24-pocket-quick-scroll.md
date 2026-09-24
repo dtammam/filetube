@@ -431,3 +431,148 @@ Disclosed (r1):
 - **G10** - the new wheel clock rule changes the v1.233 row acceleration only where the handler ran late (the
   longer gap wins): at CPU x1 the trusted-input traces read the same band.
 
+## Gate r2 - security-brief (@dfd0165e)
+
+**Checks not completed (read first):** this seat has no Bash. I ran no `git diff`, no tests, no probes and no
+mutants. I compared the worktree files with the main checkout (a3e5426c) by reading them. I confirmed the branch
+ref `refs/heads/feat/pocket-quick-scroll` = `dfd0165e7a1e...` from `.git` directly. I could NOT confirm that the
+working tree has no uncommitted changes, and I could not list the full set of changed files. To find server-side
+changes I searched `lib/` and `server.js` for this wave's markers. The only server change found is
+`lib/music/routes.js:216-231` (Chapter Snap is already on main).
+
+Scope: (1) the `include=finished` opt-in; (2) the new client rendering sinks and the cover URL filter; (3) where
+About's counts come from.
+
+**(1) `GET /api/music?filter=recent-listening&include=finished`. VERIFIED by tracing the code:**
+- *Gate runs first, same KIND:* the opt-in filters the same `list` as the default. That list was already built by
+  `trackVisibleTo` (native, routes.js:199) plus `projectedLibraryTracks`, which applies `mediaVisibleTo` per item
+  (server.js:4200). No second list and no second gate, so the gate KIND is identical by construction. (The
+  integration test's `{kind:'folder'}` member check at pocket-quick-scroll.test.js:292-297 is a presence check. It
+  cannot tell kinds apart. It doesn't need to, because the code path has only one list.)
+- *No cross-user rows:* `progressMap` = `musicListProgressMap(req.user.id, list)` (server.js:4227). It reads
+  `getMusicProgress(userId)` / `getProgress(userId)`, and the pending overlays are filtered on
+  `e.userId === userId`. It is a null-proto map keyed by server-side track ids. A position-0 row is the caller's
+  own write on an item the caller can see.
+- *No extra titles or counts:* `total` and `items` are the caller's own visible tracks that carry the caller's own
+  progress row, projected by the unchanged `publicTrackListItem`. No new field.
+- *Parameter parsing:* strict `req.query.include === 'finished'`. A repeated key, `include[]=`, or an object or
+  prototype-key form (`include[__proto__]=...`) is never `===` that string, so it falls back to the default.
+  `typeof p.updatedAt === 'string' && !== ''` guards the extra arm.
+- *Default output unchanged:* old `progressMap[id] && Number(position) > 0` vs new `!p -> false; >0 -> true;
+  else withFinished && ...`. With `withFinished` false, the two are the same predicate. Sort, slice and projection
+  are untouched.
+
+**(2) Client sinks. VERIFIED (read):** Recent Artists labels go through `renderMenuList` `esc(it.label)`
+(music-skins.js:616). About labels and values go through `esc` (:610). The About heading goes through `esc(v.aboutName)`
+(:669/:673), and its value is `SK.menuTitle(...)`, a fixed skin name. The letter overlay and badge go through `esc`
+at creation (:638) and then `textContent` (skin-surface.js:697). Letters come only from the fixed `MENU_LETTERS` /
+fold set. The picker uses `esc(t.letter)` and `data-skin-letter="Number(index)"` (:644). Cover URLs go through
+`img.src` (skin-surface.js:990), never HTML. The version is `appVersionString()` from the server-stamped meta
+tag, and it is escaped. `esc` does not escape `'`, but every attribute here uses double quotes.
+
+*Cover filter* `sameOriginPath` (music-skins.js:482): the first character must be `/`, so it rejects
+`data:` / `javascript:` / `https:`. It also rejects `//host` and `/\host`. Percent-encoded forms (`/%2F%2Fhost`,
+`/%5Chost`) stay same-origin paths, because the URL parser does not decode `%2F` / `%5C`. That last point is
+reasoned from the WHATWG URL spec, not executed.
+
+**(3) About counts. VERIFIED (read):** the counts are the `total` of `/api/music?limit=1`,
+`/api/music/albums?limit=1` and `/api/music/artists?limit=1` (music.js:3405-3409). All three compute `total`
+after `trackVisibleTo` + the `mediaVisibleTo` projection (routes.js:197-278). No new route, and no count the
+caller cannot already see.
+
+Findings:
+
+1. **INFO - the cover filter's comment overstates it: ASCII tab / LF / CR get past it** (music-skins.js:482,
+   comment :478-480 "'//host' and '/\host' both resolve off-site"). The WHATWG URL parser strips tab and newline
+   characters anywhere in the input. So `'/\t/evil.example/a.jpg'` (and the same with `\n` or `\r`) passes the
+   check (character 1 is a tab) and then resolves to `//evil.example/a.jpg`, which is off-origin. **Suspicion, not
+   a finding:** I cannot build a path an attacker could use. Every pool URL is server-built with a fixed second
+   character: `'/thumbnail/' + item.id` (lib/music/libraryAudio.js:163) or `'/albumart/' + encodeURIComponent(id)`
+   (music.js:262). Even a smuggled hostile id sits after `/t` or `/a`. Worst case if it were reachable: an
+   off-origin image GET, which leaks the client IP and Referer; no script runs. Optional hardening: compare
+   `new URL(u, location.origin).origin === location.origin`, or also reject `[\t\n\r]`. Either way, make the
+   comment accurate.
+2. **INFO - nothing tests the "another user's row" axis:** the integration test only checks a restricted member
+   against its OWN write. Per-user isolation holds by the code read above (the userId-keyed stores and the userId
+   filter on the pending overlays). A test where user B's position-0 row stays absent from user A's opt-in read
+   would bind it. This is advisory, because the behavior predates this change and the opt-in adds no new read of
+   the progress stores.
+3. **INFO - Recent Artists can show a remote channel `avatarUrl`** (music-skins.js:450). This is the same rule
+   the Artists level already uses (:372), so it is not a new exposure. It is named here only because the cover
+   pool deliberately excludes such URLs and this level does not.
+
+No CRITICAL / HIGH / MEDIUM / LOW. The one server change is a strict opt-in narrowing on an already-gated,
+per-user list. The default path is provably unchanged.
+
+Gate: APPROVED r2 @dfd0165e — security-brief
+
+
+## Gate r2 - qa (@dfd0165e)
+
+Delta review of c4eeb34e..dfd0165e (merge 8ee1405a = ROADMAP only; fixes bc236430 + 881bd16d; record dfd0165e).
+
+Instruments (qa, `git archive dfd0165e` sandbox, node 22.23.1, verbatim):
+- `npm run test:unit`: `# tests 7299 # pass 7291 # fail 8` - the same 8 sandbox artifacts as r1 (6 x `git ls-files ... not a git repository`, 2 x comment-debt EISDIR on the node_modules symlink); the 7 owning files in the git-backed worktree: `# tests 69 # pass 69 # fail 0`. Net 7299 / 7299 (the builder's 7298 at 881bd16d + the R11 test).
+- Touched suites (both pocket-quick-scroll files, music-pocket-menus unit/integration/-r1, music-skins, skin-surface, ipod-brick, music-skin-integration, music-library-projection, rbac-music-enforcement, menu-returns-to-origin): `# tests 418 # pass 418 # fail 0`. Every integration file that reads recent-listening / Continue listening (rbac-podcast-enforcement, pocket-quick-scroll, continue-watching, podcasts-api, music-library-projection): `# tests 63 # pass 63 # fail 0`. Census + skin set (18 files): `# tests 155 # pass 155 # fail 0`.
+- `lint:css` `TOTAL 0`; overlay-containment `clean (0 violations)`; eslint on the 7 changed js files exit 0 (no output); check-markers `clean`.
+
+r1 findings:
+1. **W1 (one move arms letter mode) - FIXED as prescribed.** Verified on the real engine (qa scratch, 3,008 rows): one 50-deg / 16 ms move `letterMode:false`, cursor 8; one 90-deg move `false`, cursor 16 (= 7402621c's row behaviour); two 90-deg moves `false`; three `true` and ONE letter (cursor 121, A), not two. Chromium, trusted timing of a real paced flick: the overlay turns on 26-52 ms into the flick on both skins at 390x844 and 667x375. The accel ladder itself is untouched; the new time base (the longer of handler gap / event timeStamp gap) changes v1.233's row speed-up only for a late handler (disclosed G10) - the `evTime` comment is accurate (jsdom's `timeStamp = Date.now()`, confirmed in its Event-impl).
+2. **W2 (finished plays missing) - FIXED differently (a server opt-in), evaluated: sound.** Real server: a track saved at 190 s then 0 - default route `[s400,s6,s29,s5]` (unchanged, no s800); `include=finished` `[s800,s400,s6,s29,s5]`; `include=FINISHED&include=finished` (an array) is ignored. In the view: Recent Artists leads `Pixel Midnight 40`, Recently Played leads `Ion Arrival 800`. The default predicate is byte-equivalent to the old one, and the only caller of the opt-in is `MENU_RECENT_URL` (grep: Continue listening in music.js / main.js and the playTrackFromContinue load all send nothing). The route comment is accurate (the ended arm's 0 lands with a fresh updatedAt; clearing history DELETEs rows, so a cleared play is not resurrected). No new wrong-track path: the Recently Played ctx still says `filter: recent-listening`, but no rebuild honours ctx.filter (#255b) and rebuildPlayingQueue re-finds the id.
+3. **W3 (no fade) - FIXED as prescribed.** Chromium, 25-40 ms sampling: overlay fade-in `0.11 0.58 0.85 0.97 1` and fade-out `0.95 0.70 0.55 0.32 0.23 0.12 0.08 0.02 0` (9-11 intermediate samples, both skins, 4 sizes); badge 7-8 intermediates.
+4. **W4 (picker loses top rows) - FIXED as prescribed.** Seattle 667x375: grid 617x137, first row at 0 (was -100), every cell reachable by scroll; 640x360 the same (was -107). Click 667x375 / 640x360 89 / 85 x 44, fits. `safe` on an engine without it drops the declaration to `normal` = rows packed at the top, still reachable.
+5. S5 - fixed: Click 320x568 is 6 columns, 46x44, all cells reachable (the grid now scrolls there: 220 content in 174).
+6. S6 - fixed (pool versioned, the drift keeps its pool until the re-fetch lands); bound by R22. Not re-driven by qa.
+7. S7 - fixed (test/integration/music-pocket-menus.test.js:89 "three rows").
+8. S8 - fixed as I prescribed, and **my prescription was incomplete** - see NEW-1.
+
+New in the fix round:
+
+NEW-1. **WARNING - the S8 stale-marking breaks "MENU from Now Playing lands on the song that plays" when the playing context IS Recently Played** (public/js/skin-surface.js:1126). A new current track marks the off-screen Recently Played pane stale, which empties its items BEFORE the follow loop below it (:1128-1135) can move the playing context's cursor; the reload then clamps the OLD index into the NEW recency order. Driven on the real engine (qa scratch, same scenario at both shas): play row 3 (`T-d`) from Playlists > Recently Played, Now Playing up, the queue advances to `T-e`, MENU -> at bd90e80e the highlight is `T-e` (cursor 4, the playing song); at dfd0165e the list reloads as `[T-e, T-d, T-a, T-b, ...]` and the highlight is `T-b` (cursor 3), a song that is neither playing nor the one picked. Fix: exclude the playing-context pane (`p.playing`) from the recent stale-marking (it mirrors the queue, like any other list played from), or re-follow `currentId` after a stale playing pane reloads; bind with this exact scenario.
+
+NEW-2. **SUGGESTION - two comments still describe the r1 mechanism the fix removed**: skin-surface.js:1188-1189 ("`fast` = the engine's own speed band said this detent was fast", now sitting above `onGestureStart`; `moveCursor` has no `fast` any more), and :2351-2352 ("with the step's speed band, which arms the quick-scroll letter mode" - the band now goes to `noteMove`, once per move). Both describe the per-detent arming that r1 W1 was about.
+
+NEW-3. **SUGGESTION - backing out onto a re-loaded Recent Artists lands by INDEX, not on the artist you came from.** Recent Artists > X (row 2) > a song plays > MENU back: the list re-loads with X first and the cursor stays on row 2 (another artist). Reasoned from the same :1126 + ensureLoaded clamp, not driven. Restore the cursor by the node key the level above was opened from.
+
+Plan and tracker: G8-G10 are honest and match the code (G9's chapter-1 mapping is the chapter projection's `abs >= start` rule; G10 matches the `max(...)` dt); A1/AC6 amended accurately; #263 updated to "three fast pointermoves" and `LETTER_ENGAGE_MOVES`; the ROADMAP addition is Dean's deferred battery item (from main). The security-brief seat's r2 section sits above this one, untouched.
+
+Security (standing section): the one server change is a string-equality opt-in (`req.query.include === 'finished'`; an array never matches) filtering the already-gated list; no new route, write or field. The new client sinks: the persistent layers set `textContent`, the grid still goes through the escaped renderer; the cover filter now also rejects `/\host`.
+
+Verdict: CHANGES - one WARNING (NEW-1, a regression my S8 prescription invited); the fix is small. NEW-2 belongs in the same commit.
+
+Gate: CHANGES r2 @dfd0165e — qa
+
+## Gate r2 - adversary (@dfd0165e)
+
+Delta review of 8ee1405a..dfd0165e (the merge 8ee1405a is ROADMAP.md only, 9 lines: no interplay). Instruments (adversary, `git archive dfd0165e` sandbox in /tmp, node 22.23.1, verbatim):
+- Targeted (both pocket-quick-scroll files, music-pocket-menus unit + integration + -r1, music-skins, skin-surface, ipod-brick): `# tests 267 # pass 267 # fail 0`. Neighbours (40 files incl. every podcasts file, era-player-skins, menu-returns-to-origin, music-skin-integration, music-sticker-*, wheel-config, continue-watching): `# tests 509 # pass 509 # fail 0`. Every file that reads `recent-listening` (14): `# tests 385 # pass 385 # fail 0`.
+- `lint:css` TOTAL 0; `lint:overlay` clean (0); `eslint .` 0 errors, 6 warnings (the pre-existing six).
+
+My r1 findings, re-measured at dfd0165e:
+1. W1 (jitter) - FIXED differently (the LONGER of the handler gap and the event gap, plus 3 fast MOVES per gesture). Trusted CDP input, Songs 3,008 rows: CPU x4 at 0.6 deg/ms **0 of 10** engaged (r1: 6 of 10); CPU x1 0 of 10; flicks at 1.0 / 1.2 / 1.5 deg/ms, incl. 150 ms flicks: **8 of 8** engaged at x4 and 8 of 8 at x1, landing on first rows (1133, 1633, 2008, 1008). Can the max rule suppress a real flick? Only when a handler runs late against an event whose delta covers only the shorter event gap. That means un-coalesced events that stay queued, and those would run back-to-back rather than late every time. In jsdom a sustained "handler 50 ms / event 16 ms" 24-degree flick does not engage (should-work reasoning says browsers coalesce pointermove, so this shape is not steady-state; the real-input runs above are the measurement). The 60 s origin gate is sound for Chrome / Safari 11.1+ / Firefox (high-res `timeStamp` on the time origin). A pop-out opened more than 60 s after the main page reads its events on another origin, so it falls back to handler time (the r1 behaviour, desktop mouse). Reasoned, not driven.
+2. W2 (cross-gesture latch) - FIXED as prescribed: one fast detent, lift, 60 s, one fast detent -> no letter mode. Two fast moves + lift + two fast moves -> no. Fast, fast, slow, fast, fast in one gesture -> no. Three fast moves in one gesture -> yes.
+3. W3 (drift behind Brick) - FIXED: jsdom `slides:false`, 0 timers, 0 layers for 20 s of game; it resumes after the view's own stop and after MENU (lands on Games, `slides:true`). Chromium: no slide layer and 0 cover requests in 20 s under the game.
+4. W4 (first-cover snap) - FIXED as prescribed: **13 of 13** fresh opens fade in and drift (r1: 3 of 12 snapped).
+5. W5 (unbound list) - BOUND: X1, X5, X6, X7, X8, X27, X36 (0.5 and 1.2) all RED at dfd0165e.
+- S1 letters: re-sweep of the r1 ranges against the real `cmpStr`: 261 -> **1** mismatch (U+00AD soft hyphen, collation-ignorable - negligible). Outside the claim: 76 in Enclosed Alphanumeric Supplement (e.g. 🅰), plus IPA / Latin Ext-D letters nobody titles with. S2 picker swallow: Play / Next taps with the picker open now only close it (pp 0, nx 0). S4 all-dead pool: today's pane (`/albumart/now`). S5 pool: 60 distinct, spread across the whole list. S3: see S-a below.
+- New mutants on the fix code (32 in total with the W5 re-runs; one anchor each, diff non-empty, restored; 643 tests): **28 RED**. SURVIVED: N2 (event gap only - the max's handler term is unbound), N15 (the `updatedAt` guard in the route - every stored row has one: dead), N19 (the overlay's first-on style flush - jsdom cannot see it; qa measured the fade in Chromium), N20 (text swapped mid-fade - cosmetic).
+- Persistent layers: 25 cycles of letter mode + picker + repaint + level change leave exactly `1/1/0` (overlay / badge / grid) nodes, and the overlay text always equals the cursor row's letter.
+- Q6 `include=finished`: the default predicate is byte-equivalent (the 14 recent-listening files are green, and N14 - finished rows in the default route - is RED). The filter runs on the already-gated list. A position-0 row that was not a real play: the player writes 0 only on `ended`, on "start over" (then plays), and on a seek or a skip to 0. The pause and the interval saves are guarded by `> 0`. So the residue is a scrub to 0 on a loaded, unplayed track, which counts it as recent. Suspicion only, not driven.
+
+New in the fix round:
+
+1. **WARNING - the "recent" stale-marking (skin-surface.js:1126, qa S8's fix) reloads a list the user is still standing in, and restores the cursor by INDEX. The highlight lands on the wrong song or artist.** This confirms qa NEW-1 by my own measurement and upgrades qa NEW-3, which is the same mechanism.
+   - Repro 1 (real engine, jsdom, the same script at both SHAs): Playlists > Recently Played, play row 3 (`T-d`), the queue advances to `T-e` (the recency order is now e, d, a, b, ...), then MENU from Now Playing. At dfd0165e the highlight is `T-b` (cursor 3), neither playing nor picked. At bd90e80e it is `T-e`, the playing song (K1 held).
+   - Repro 2: Recent Artists > `A2` > play a song (the order becomes A2, A0, A1, ...), then MENU, MENU. At dfd0165e the highlight is `A1`, an artist you never opened. At bd90e80e it is `A2`.
+   - Both break the r1 "MENU lands on the song that plays / the level you came from" contract.
+   - Fix: do not stale-mark a pane that is on the live stack path or is the playing context. Or re-seat the cursor by identity (track id / node key) after the reload. Bind both repros.
+
+Suggestions:
+- S-a the cover filter is still bypassable: `'/\t/evil.example/a'`, `'/\n/evil.example/a'` and `'/\r\evil.example/a'` pass `sameOriginPath` and resolve to `https://evil.example/a` (the URL parser strips tab / CR / LF). Unreachable today (art URLs are `/thumbnail/<md5>` or `/albumart/<encoded>`). Compare `new URL(u, location.origin).origin` as prescribed at r1.
+- S-b a chaptered file played to its end saves position 0 to the base id, so `include=finished` surfaces its CHAPTER 1 in Recently Played, not the chapter heard last (the projection's `abs >= start` rule; qa's G9 note). Reasoned from server.js:4238-4252, not driven. The artist in Recent Artists is right.
+- S-c stale comments: qa NEW-2's two, plus test/unit/pocket-quick-scroll.test.js:408 "engage (two fast detents)" (it is now three fast moves).
+- S-d the four surviving mutants above: bind or delete N2 / N15.
+
+Verdict: CHANGES - one WARNING, a regression from the fix round. Every r1 finding is fixed and measured.
+
+Gate: CHANGES r2 @dfd0165e — adversary
