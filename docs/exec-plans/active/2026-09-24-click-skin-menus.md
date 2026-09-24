@@ -3,8 +3,8 @@ plan: click-skin-menus
 harness: v2 · lean
 branch: feat/click-skin-menus
 anchor: spec
-status: Built - awaiting the gate
-next: gate r1 (adversary + qa). Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe), and his rulings on the disclosed gaps D1-D4.
+status: Gate r1 fixed - awaiting gate r2
+next: gate r2 (adversary + qa) on the r1 fix record below. Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on), his rulings on D1 and on K4 (the Architect ruled for him overnight), and the Chapter Snap branch raising notifyLibraryChanged() on its save.
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -183,10 +183,10 @@ Survivors: M9 and M10 only (equivalent, reasoned above). 31 RED.
 
 - **D1 (#257, needs Dean)** - "nothing playing opens on the Main Menu" has no production entry: the skin only mounts over a loaded track. The engine arm is built and unit-bound through the real create()/paint(); a user path to an empty pocket player is a new entry point (Dean's call).
 - **D2 (#256)** - the menu position does not survive a dock + return (the view re-inits the engine). Docking through MENU happens AT the Main Menu, so the common path loses nothing.
-- **D3 (#255)** - a genre queue has no list-context key (resume / grid-tab rebuild would see the whole library in title order).
+- **D3 (#255, widened at r1 per qa S7)** - a menu queue's list context is not fully reproducible: a genre queue has no list-context key, and the Songs level (10000) / the Liked and Recently Played filters are not honoured by the grid-tab rebuild (`rebuildPlayingQueue`: limit 1000, no `filter`).
 - **D4 (#258)** - a thousands-long list is slow to cross by wheel alone (the shared cursor step is reused unchanged by design); touch-scroll is the fast path; no letter-jump overlay.
-- **D5 (pre-existing #231)** - a chapter picked from an INTERLEAVED list (Songs, Genres, Liked - chapters of one file scattered by title) takes the v1.311 solo exit, which #231 documents as landing after the last same-base chapter. Album / artist lists keep chapters contiguous and are unaffected.
-- **D6** - a grid-tab browse render already in flight when a menu pick lands can still paint its grid over the view behind the skin (its rows do not index the queue, so no wrong-track risk; the queue-indexed Songs/drill loads are guarded by the `loadSongsGen` bump, test-bound).
+- ~~**D5**~~ **CLOSED at r1 (K4, the Architect's ruling)** - a chapter picked from a FLAT list (Songs, Genres, the playlists, an artist's All Songs) now plays its own segment and the LIST moves on; album / artist-album picks keep the v1.311 rule. Residual (reasoned, not driven): a deliberate SEEK into a chapter that is NOT in the flat list (a Liked list holding only one of a file's chapters) is displayed as the nearest listed chapter until the next load - the #231 (b) "bounds from the file's full chapter list" shape.
+- ~~**D6**~~ **CLOSED at r1 (adversary S7)** - a browse render (any arm) superseded by a menu pick no longer paints (`menuPickGen`), test-bound for the drill arm.
 - **D7** - the headless run is the evidence for layout and speed; the wheel FEEL on a phone (the haptic ticks in menu mode, the 22-degree step on long lists) is Dean's device pass.
 
 ## Gate verdicts
@@ -293,3 +293,69 @@ Verdict: the three blocking WARNINGs are 1, 2 and 3. Finding 5 blocks as a bundl
 Tree: this seat wrote only this section. Before it, `git status` showed only QA's uncommitted section in this file. No pre-existing untracked files.
 
 Gate: CHANGES r1 @25929acd — adversary
+
+## Gate r1 fix record (builder, after @25929acd)
+
+Commits: 894ba505 (both r1 sections, as-is) -> b7309935 (merge main v1.319.0 - done BEFORE the
+fix commit, not after: the hook's release-ledger test fails on any branch that lacks the new
+tag's ledger entry, so no fix could commit until main was in; the fixes sat in a uniquely-tagged
+stash across the merge, applied by SHA, dropped by tag) -> 2bcfe9d5 (K1-K6 + the suggestions) ->
+cbe5ce7b (K3 + adversary S7 bindings) -> 96087c1b (merge main v1.320.0, one conflict: the
+autoplay append - main's markAutoplayPicks kept beside the flat carry) -> 8bab3d9a (two holes the
+builder's r1 mutant pass found, + v1.320 interplay) -> 994d28d7 (merge main v1.321.0, clean) ->
+this commit (N20 binding + this record).
+The integration harness moved to `test/helpers/pocket-menu-harness.js`; the r1 bindings live in
+`test/integration/music-pocket-menus-r1.test.js` (its own server + fixture: a native untagged
+track, crafted-markup names, thirty fillers).
+
+| Finding | Fix | Test (binding) | Mutant -> result |
+|---|---|---|---|
+| **K1** adversary W1 (the yank) | `followCurrent` skips the list ON SCREEN (its speaker mark still moves - render reads currentId); an off-screen list follows and is re-centred. A pending-follow was prototyped and REMOVED: the playing list is a leaf level, so it is off screen only while Now Playing is up - a pending follow is unreachable (an inert branch) | unit "gate r1 K1" (the old jump-assertion rewritten to the rule: park, advance, the highlight stays, the mark moves, Select plays the parked row, then an off-screen advance follows); r1 integration K1 = the adversary's repro on the real view | N1 (yank back in) RED 2; M4 (off-screen never follows) RED 3 |
+| A1 | (the follow's `center` flag, unchanged) | unit "A1" with a jsdom layout (rows 34 px, list 102 px): cursor 40 -> scrollTop 1326, the row rendered | M4 RED (incl. this test) |
+| **K2** qa W1 = adversary W2 (chapter save) | ONE seam: common.js `notifyLibraryChanged()` / the `filetube:library-changed` document event, raised by `showChaptersEditor` on every successful save (any surface); the music view listens (and its drill onSaved invalidates directly); the engine reads `dataVersion` in EVERY `render()` and before every user action (`checkData`), so an open level re-loads with no skin repaint - the pop-out included | r1 "K2 ... RE-TIMES and DROPS" (the real drill button; re-time: the open level shows `Renamed A` and plays `chapterStartSec 600`; drop: the Songs level equals the server's list); r1 "the ONE seam" (the real common.js function re-loads an open level on the next wheel step); unit "the chapters editor raises the ONE event (not on a failed save)" | N2 RED 1, N3 RED 7, N4 RED 1, N5 RED 1, N6 RED 1 |
+| qa S8 (liked) | `likedVersion` bumped by the browse heart and the Extras like; only an open Liked Songs level re-loads | r1 "an unlike re-loads an OPEN Liked level"; unit "likedVersion ... ONLY" | N7 RED 1, N7b RED 2 |
+| **K3** qa W2 = adversary W3 (freeze) | a flat pick clears the browse list and re-builds it in 20-row chunks, ONE PER FRAME, each its own `.music-song-chunk` block (`content-visibility:auto`) - the list is a flex column, and rows appended straight into it re-laid out every row each frame (profiled: native rendering, not JS); the build stops only when superseded | r1 "K3 ... clears at once, chunks after, index-true, a newer pick abandons the older build"; r1 "an autoplay append mid-build never strands the list" | N8 RED 1; N9 (the old `list !== queue` stop) RED 1 - it stranded a half-built list when an autoplay append re-assigned `queue` mid-build, found by this pass |
+| **K4** adversary W4 (the Architect's ruling) | `flatQueue`: a pick from a FLAT list (no drill, or `play.flat` - an artist's All Songs) plays its own segment (start + its span), then `playAt(i + 1)`; a next row that IS the file's next segment rolls on untouched (no reload); the file's last chapter leaves it to the ended advance; the loop outranks it; a scrub is ignored; drill picks keep v1.311 (solo exit); the flat mode rides an autoplay append and a v1.320 retract; the seam asks v1.320's `autoplayHoldsAt` (Autoplay off ends the list at the segment) | r1 "K4 ... FLAT list" (the real interleaved Songs: Intro hands on to the list's next row; Track A rolls on into Track B with no reload); r1 "artist's All Songs"; r1 "a flat list's LAST row ... station appended"; r1 "Autoplay OFF after the station" (hold) and "through the real toggle RETRACTS" | N10 RED 3, N11 RED 2, N12 RED 1, N14 RED 3, N19 RED 1, N20 RED 1 (after its test); N13 (the last-chapter guard) SURVIVED - reasoned equivalent: without it the band fires `playAt(next)` a quarter-second before the ended advance does the same |
+| **K5** qa W3 (Seattle rows) | a Seattle list with sub-lines is a TWO-LINE list (`.ipm-2l`: 60 px pitch - uniform, the window math needs one - title + sub packed at the top) | unit "A20/A22 + K5" (the class, and none on a one-line list); probe bands below | N15 RED 1 |
+| **K6** adversary W5 bindings | (tests only, plus the fixes above) | A3/A4/A6 unit (one pointer, pointercancel, the axis - with a clean-swipe control); A5 unit (panel listener balance net 0 after destroy + a dead swipe); A14 unit (a pre-invalidation load lands last and stands down); A9/A10/A15/A23/A24 r1 integration; A20/A22 unit + a runtime probe across every level of both skins with crafted markup in a title, artist, album and genre | A3, A4, A5, A6, A9, A10, A14, A15, A20, A22, A23, A24 all RED |
+| qa S4 | no hold-to-scan on a pivot level (the pad moves the pivot) | unit "qa S4" (+ the Now Playing control scans) | N16 RED 1 |
+| qa S5 | the contract comment names `dataVersion` / `likedVersion` | - | - |
+| qa S6 | no menu (nor its title) in the Nano tray | unit "qa S6" | N17 RED 1 |
+| adversary 6 | the stale "within 220 chars" comment rewritten | - | - |
+| adversary 7 (and D6) | a browse render superseded by a menu pick does not paint (`menuPickGen`, every arm) | r1 "a drill render in flight ... never paints its header" | N18 RED 1 |
+
+**Mutant table at 8bab3d9a** (runner `click-skin-menus-mutants-r1.js` in the session scratchpad,
+sandbox extracted from 8bab3d9a, each anchor asserted unique, each diff non-empty; log
+`click-skin-menus-mutants-r1b.log`): **57 of 59 RED**; N20 survived there and is RED against the
+test added in this commit; **N13 survives (reasoned equivalent)**. The re-run r0 mutants (M1-M31)
+are all RED on the new tree (M9/M10 stay equivalent as recorded above).
+
+**Measurements (final tree, headless Chromium, 3,008-song fixture, 390x844):**
+
+| | before (@25929acd) | after |
+|---|---|---|
+| pick Songs row 1506, CPU x1 | tap 1,408 ms; long tasks [1801, 206, 120] | tap 14 ms; long tasks none |
+| pick Songs row 1506, CPU x4 | tap 5,686 ms; long tasks [288, 6466, 493] | tap 68 ms; long tasks [78] |
+| Shuffle Songs, CPU x1 | long tasks [966, 146, 118] | none |
+| pick from a 3-song album, x1 / x4 | 108 / 43 ms | 30 / 32 ms |
+
+(The intermediate runs are in the log trail: a first chunked build with timer-paced chunks still
+showed a 1,471 ms layout task at x1, which the CPU profile traced to native rendering of a flex
+column re-laid out per append - hence the per-frame, per-block chunks. The adversary's probe's
+x4 Shuffle step does not start a second shuffle - it reports the x1 one - so only x1 Shuffle is
+measured. Timings are headless swiftshader upper bounds.) The browse list still fills in the
+background (about 20 rows per frame).
+
+K5 bands (Range boxes of the text lines, albums pivot, 390x844): before - 2 px to its own title,
+2 px to the next (qa's pixel ink scan: 14 vs 7); after - 60 px rows, 5 px to its own title,
+11 px to the next, on every row measured.
+
+Re-probe 390x844 (all four skins, POPOUT=0, `click-skin-menus-probe-r1.log`, 61 PNGs in
+`click-skin-menus-shots-r1/`): 46 level lines `ok:true`, 0 `ok:false`, 55 of 55 state lines
+`errs:[]`; the Songs spin still 0 -> 180, the mid-list scroll re-windows (first row 1,496, 23 in
+the DOM); a chapter played from its album and MENU returns on Track A on all four skins.
+
+Censuses after both merges: `npm run lint:css` TOTAL 0; overlay-containment clean (0); eslint 0
+errors (the pre-existing common.js warnings: 6); tech-debt census, exec-plans census and
+check-markers clean; the hook's full unit suite 7187 / 7187 at 8bab3d9a and 7206 / 7206 at the
+v1.321.0 merge (994d28d7), where lint:css (0) and overlay (0) were re-run too.

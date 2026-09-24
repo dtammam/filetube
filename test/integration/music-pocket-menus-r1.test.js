@@ -437,3 +437,32 @@ test('K4 x v1.320: with Autoplay switched OFF after the station was appended, a 
     } });
   } finally { await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'DELETE' }); }
 });
+
+test('K4 x v1.320: switching Autoplay OFF through the real toggle RETRACTS the station, and the flat list still ends at the chapter\'s own segment (the retract keeps the queue flat)', async () => {
+  const r = await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'POST' });
+  assert.ok(r.ok);
+  const station = (await realApi('/api/music?sort=title-asc&limit=10000')).items.filter((t) => t.id === 'za1' || t.id === 'nd2');
+  try {
+    await boot({
+      skin: 'ipod', play: 'nd1',
+      intercept: (u) => (/sort=random/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null),
+      setup: (dom) => { // the toolbar's Autoplay button (the ONE toggle seam's host)
+        const b = dom.window.document.createElement('button'); b.id = 'music-autoplay-btn';
+        dom.window.document.querySelector('.music-toolbar-actions').appendChild(b);
+      },
+      run: async (h) => {
+        menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
+        tapRow(h, 'Track A'); await settleNet(60);
+        assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: the station was appended');
+        h.D.getElementById('music-autoplay-btn').click(); await settleNet(); // Autoplay OFF: the station is retracted
+        assert.strictEqual(h.dom.window.localStorage.getItem(AUTOPLAY_KEY), '0');
+        const loads = h.spy.loads.length;
+        const t = { v: 300 }; const el = mp(h, t, 1800);
+        let paused = 0; el.pause = () => { paused += 1; };
+        await tick(h, el, t, 600); await tick(h, el, t, 899.9);
+        assert.strictEqual(h.spy.loads.length, loads, 'nothing follows the list');
+        assert.strictEqual(paused, 1, 'the (still flat) list ended at the chapter\'s own segment - not on through the file');
+      },
+    });
+  } finally { await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'DELETE' }); }
+});
