@@ -3160,5 +3160,11 @@
     "date": "2026-09-24",
     "title": "Ambient mode now works in the music player on desktop",
     "intent": "With Ambient mode on in dark mode, the music player on a computer now glows softly with the colors of the album art, just like videos do. The glow stays on as one song moves into the next, and turns off when you pause, switch to light mode, or turn Ambient off."
+  },
+  {
+    "version": "1.319.0",
+    "date": "2026-09-24",
+    "title": "A timing log for background audio, and coming back resumes the way you left it",
+    "intent": "Settings has a new experimental timing log that records how long the audio goes quiet when you lock your phone during a video, so the gap can be measured and made shorter. When you come back to the app, the video now picks up where the audio got to, and only keeps playing if the audio was playing."
   }
 ]

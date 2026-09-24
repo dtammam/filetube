@@ -86,6 +86,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.319.0 - A timing log for the audio gap at lock, and the return plays only if the audio was (2026-09-24)
+
+- **Lock-to-audio, phase 1: measure** (Dean, intake 2026-09-24: with "Background audio for video"
+  on, what still fails is "the audio gap at lock"; iOS pauses the video before page code runs, so a
+  switch can shrink the gap but never remove it, and Dean chose to measure first). A device-local,
+  off-by-default Setup > Experimental "Background audio timing log" records every hide cycle of a
+  playing mobile video (hide events, the video's pause, the handoff decision, whether the sidecar
+  was pre-armed and buffered, play() called/settled, the sidecar's 'playing' and first real
+  advance, drift, the settings, PWA vs tab, the return) in a ring of 20, with a phone-readable
+  table, Copy and a two-tap Clear. Nothing waits on the log inside the handoff (no storage write
+  before the sidecar's play(), per-record write queue, blocked/full storage leaves the handoff
+  identical, log on or off). **Behaviour change (Dean's reopen rule):** coming back to the app
+  resumes the video at the audio's position and plays it only if the audio was playing (before, a
+  lock-screen / AirPods pause came back playing, and a video that ended in the background came back
+  at 0:00 playing). A new census binds the iOS 16px zoom-on-focus floor for every classed form
+  control (it found #252). Gate r2 @3e3b898e (adversary + qa); plan
+  docs/exec-plans/completed/2026-09-24-lock-audio-measure.md. Phase 2 (tune the sidecar, or switch
+  into Listen) is decided from Dean's iPhone numbers (#251; #196 gates the Listen option).
+  Disclosed: the marks start when page code runs, not at the OS lock; first-advance is a
+  timeupdate-granular upper bound; an attempt-2 record's spans include the user's reaction time;
+  tracker #252-#254.
+- Tracker #238 filed: the progress-coalescer AC4.1 test flakes under CPU contention (seen twice on
+  the v1.318.0 release commit with two full suites running at once; 5/5 alone, 9167/9167 idle).
+
+Device check owed (Dean): the test plan in the plan doc (PWA and a Safari tab, Instant handoff on
+and off, lock and app switch, the reopen rule both ways), then paste the log's Copy text.
+
 ### v1.318.0 - The music player glows with its album art on desktop (2026-09-24)
 
 - **M4 - desktop music ambient** (Dean: "Ambient mode in the music player in desktop"; "I have
