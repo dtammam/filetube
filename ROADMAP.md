@@ -86,6 +86,40 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.322.0 - Chapter Snap: fix where chapters start (2026-09-24)
+
+- **Chapter Snap** (Dean, 2026-09-23: "chapter albums starting in a lot of blank space or starting
+  at the end of a previous song"; intake 2026-09-24). One editor, opened from four places (the Music
+  album drill "Fix times", now playing "This chapter starts wrong", the watch page's chapters menu
+  "Fix chapter times", and the text chapter editor), for anyone who can modify the library
+  (requireModifyLibrary + restrictedVideoMutation on every route). One ffmpeg silencedetect pass per
+  file finds the gaps (argument list, no shell, bounded, one scan at a time server-wide; cached per
+  item in DATA_DIR/.chapter-silence, dropped when the file's size or mtime changes; only real
+  `[silencedetect @ ...]` lines are read, so file tags cannot forge a gap). Each boundary gets a
+  suggested start (the end of the silence minus the lead-in, a server-wide Setup setting, default
+  0.25 s), nudges of -1 / -0.1 / +0.1 / +1 s, Play from here, and Snap all (which leaves rows you
+  nudged alone); "no gap found" for gapless albums. TIMES ONLY: the count and order never change,
+  chapter 1 keeps its start, so `<id>::c<n>` likes and progress stay put (a server-side refusal
+  and a version check that answers 409 if the chapters changed since the editor opened). Saves go
+  to `chaptersManual` (wins over embedded / description chapters, survives every scan and reheat),
+  marked "Edited"; "Revert to source chapters" (in-page confirm) restores the source times from
+  STORAGE and keeps your typed titles while the count is unchanged. The text chapter editor now
+  keeps fractions of a second, refuses two chapters on the same start instead of merging them, and
+  must carry the version when saving over a snap edit. Phone-first: a full-height sheet at
+  390x844 and in landscape, every control at least 44px, no sideways scroll. Also fixed while in
+  the route: a crafted `__proto__` media id on the media write routes could write onto the shared
+  object prototype (and a later scan could save chapters onto every item); every media write
+  route now looks ids up as own properties (a 630-request sweep over all 211 routes found nothing).
+  Full gate (data-loss class) r3 @34a7fe27 (adversary + qa + security-brief); plan
+  docs/exec-plans/completed/2026-09-24-chapter-snap.md.
+  Disclosed: the waveform overview from the mockup is not built (#240); the silence cache is not
+  pruned (#239); the Edited badge is not in the music skins' lists (#241); the move and relocate
+  routes still use a plain lookup, guarded today by their file-path checks (#242); #250.
+
+Device check owed (Dean): on your phone, open "Fix times" on a chaptered album: Snap all, nudge a
+boundary, Play from here, Save (the chapter now starts on the sound), then Revert; the lead-in
+setting in Setup.
+
 ### v1.321.0 - Desktop theatre sized like YouTube: the title and buttons stay on the first screen (2026-09-24)
 
 - **Desktop theatre like YouTube** (Dean, 2026-09-23: YouTube's theatre keeps the title, channel and
