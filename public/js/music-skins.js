@@ -441,7 +441,8 @@
     for (var i = v.start; i < v.end; i++) {
       var it = items[i];
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
-        (v.currentId && it.id === v.currentId ? ' is-current' : '');
+        (v.currentId && it.id === v.currentId ? ' is-current' : '') +
+        (v.style === 'seattle' && it.sub ? ' has-sub' : ''); // gate r1 K5: a two-line Zune row packs its sub-line UNDER its own title
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
         '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
         (v.style === 'seattle' && it.sub ? '<span class="ipm-sub">' + esc(it.sub) + '</span>' : '') +
@@ -459,7 +460,10 @@
   // wraps), a dim title over a drilled list, and nothing at all over the Main Menu.
   // v = renderMenuList's v + { title, root, pivots?: [labels], pivotIdx, art, artIn }
   function renderMenuView(style, v) {
-    var list = '<div class="ipm-list" data-skin-menulist role="listbox" aria-label="' + esc(v.title || 'Menu') + '"' +
+    // gate r1 K5: a Seattle list whose rows carry a sub-line (albums, songs) is a TWO-LINE list -
+    // taller rows with title + sub packed at the top, so each sub-line reads with ITS title.
+    var twoLine = style === 'seattle' && (v.items || []).some(function (it) { return it && it.sub; });
+    var list = '<div class="ipm-list' + (twoLine ? ' ipm-2l' : '') + '" data-skin-menulist role="listbox" aria-label="' + esc(v.title || 'Menu') + '"' +
       (style === 'seattle' && v.pivots ? ' data-skin-swipe' : '') + '>' + renderMenuList(Object.assign({}, v, { style: style })) + '</div>';
     if (style === 'seattle') {
       var head = '';

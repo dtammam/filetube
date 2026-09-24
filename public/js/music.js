@@ -1130,6 +1130,7 @@ if (typeof module !== 'undefined' && module.exports) {
           hasCurrent: hasCurrentMusicTrack,
           currentId: effectiveCurrentId,
           dataVersion: function () { return menuDataGen; },
+          likedVersion: function () { return menuLikedGen; },
         },
         fastScan: true,
         sticker: {
@@ -1383,6 +1384,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     var EXIT_MAX_STEP = 4; // a normal playback step; a seek/scrub jumps far more (mirrors LOOP_MAX_STEP)
     function enforceChapterExit() {
+      if (enforceFlatSegmentEnd()) return; // gate r1 K4: a flat menu list's queue owns its boundaries
       if (!soloChapterExitId) return;
       // mid-scrub: freeze lastExitTime (return before updating it) so the post-release far-delta tick
       // is rejected below - mirror enforceChapterLoop's live-scrub skip.
@@ -1679,7 +1681,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function extrasLikeRequest(item, nextOn) {
       var target = (item && typeof item.likeTargetId === 'string' && item.likeTargetId) || (item && item.id);
-      return fetch('/api/liked/' + encodeURIComponent(target), { method: nextOn ? 'POST' : 'DELETE' });
+      return fetch('/api/liked/' + encodeURIComponent(target), { method: nextOn ? 'POST' : 'DELETE' })
+        .then(function (r) { if (r && r.ok) noteLikedChanged(); return r; }); // gate r1 (qa S8): an open Liked Songs level re-loads
     }
     function extrasEligibleView() {
       // LIBRARY-BACKED tracks only (the Wave G projection shares the db.metadata id). A
@@ -2408,6 +2411,11 @@ if (typeof module !== 'undefined' && module.exports) {
               ? buildMusicArtistSkeletonCards(12)
               : buildMusicSkeletonCards(8);
       }
+      // Gate r1 (adversary S7, closes D6): a pocket-menu pick that lands while this render is in
+      // flight owns the browse view (it re-draws it FROM its queue); a render superseded by one
+      // must not paint over it - the wrong header over the pick's rows, or a whole stale list.
+      var menuPickAtStart = menuPickGen;
+      var stillMine = function () { return menuPickAtStart === menuPickGen; };
       try {
         if (drill) {
           // v1.273 (adversarial W1): mark the window in which `drill` is already the
@@ -2417,12 +2425,12 @@ if (typeof module !== 'undefined' && module.exports) {
           // rows - and the Edit chapters button on that header writes album A's FILE.
           drillLoadInFlight += 1;
           try { await loadSongs({}); } finally { drillLoadInFlight -= 1; }
-          renderDrillView();
+          if (stillMine()) renderDrillView();
         } else if (tab === 'home') {
           await renderHome();
         } else if (tab === 'songs') {
           await loadSongs({});
-          renderSongList();
+          if (stillMine()) renderSongList();
         } else if (tab === 'albums') {
           // limit=10000 (MAX_LIMIT): the endpoints paginate with a DEFAULT of
           // 60, so without an explicit high limit only ~60 albums/artists
@@ -2430,16 +2438,20 @@ if (typeof module !== 'undefined' && module.exports) {
           // infinite-scroll is tech-debt; for now request the full set.
           var a = await fetchJson('/api/music/albums?limit=10000&sort=' + encodeURIComponent(sortForTab('albums')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var albums = Array.isArray(a.items) ? a.items : [];
-          content.innerHTML = '<div class="music-card-grid">' + albums.map(buildAlbumCardHtml).join('') + '</div>';
-          if (emptyNote) emptyNote.hidden = albums.length > 0;
+          if (stillMine()) {
+            content.innerHTML = '<div class="music-card-grid">' + albums.map(buildAlbumCardHtml).join('') + '</div>';
+            if (emptyNote) emptyNote.hidden = albums.length > 0;
+          }
         } else if (tab === 'artists') {
           var ar = await fetchJson('/api/music/artists?limit=10000&sort=' + encodeURIComponent(sortForTab('artists')) + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
           // Friction pass: circles (browse) OR a compact list (find fast).
-          content.innerHTML = getArtistView() === 'list'
-            ? '<div class="music-artist-list">' + artists.map(buildArtistListRowHtml).join('') + '</div>'
-            : '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
-          if (emptyNote) emptyNote.hidden = artists.length > 0;
+          if (stillMine()) {
+            content.innerHTML = getArtistView() === 'list'
+              ? '<div class="music-artist-list">' + artists.map(buildArtistListRowHtml).join('') + '</div>'
+              : '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
+            if (emptyNote) emptyNote.hidden = artists.length > 0;
+          }
         }
       } catch (err) {
         console.error('Music: failed to load', err);
@@ -2563,6 +2575,10 @@ if (typeof module !== 'undefined' && module.exports) {
             return chapterStamp(Number(ch.startTime) || 0) + ' ' + (ch.title || '');
           }).join('\n');
           window.showChaptersEditor(baseId, lines, function () {
+            // Gate r1 K2 (qa W1 + adversary W2): a chapter save changes the library under the
+            // pocket menus (a chapter dropped, added or re-timed): drop their caches and re-load
+            // every open level, or a menu pick plays a dead `::c` id or the old segment offset.
+            invalidateMenuData();
             // A save can ADD or REMOVE chapters, not just rename, so the track list
             // changes shape - re-fetch rather than patching rows. Guarded: the user may
             // have left the drill (or the view) while the modal was open, and painting a
@@ -2673,6 +2689,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // and only the title was being flipped - a screen reader kept reading
         // "Like" on a liked row. (Pre-existing; podcasts.js already did this.)
         btn.setAttribute('aria-label', !liked ? 'Unlike' : 'Like');
+        noteLikedChanged(); // gate r1 (qa S8): an open pocket-menu Liked Songs level re-loads
         // The count-gated Liked sidebar entry caches its total per session -
         // re-prime it so home reflects this like without a reload.
         if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
@@ -2910,7 +2927,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (queue[queue.length - 1] !== cur) return;
         if (playingId !== cur.id) return;
         if (picks.length === 0) return;
+        var wasFlat = (flatQueue === queue);
         queue = queue.concat(picks);
+        if (wasFlat) flatQueue = queue; // gate r1 K4: the appended station rides the flat list on
         // Adversarial S3: recompute the re-arm index from the LIVE queue instead of
         // trusting the pre-await `i` - the one path that threads every guard (a
         // same-OBJECT requeue, e.g. playTrackInAlbum's miss arm `queue = [item]`)
@@ -3097,14 +3116,21 @@ if (typeof module !== 'undefined' && module.exports) {
     var menuSongsPromise = null; // the whole library (title order), fetched once per view instance
     var menuArtistCache = Object.create(null); // artist name -> Promise<tracks>
     var menuDataGen = 0; // bumped when the library changed under the menus (the engine re-loads its open levels)
+    var menuLikedGen = 0; // bumped by a like/unlike (the engine re-loads an open Liked Songs level)
+    var menuPickGen = 0; // bumped by every menu pick (an in-flight browse render then stands down)
     // ONE invalidation for every seam that changes the library under the menus (a delete/move
-    // through Extras, a rescan): drop the caches AND tell the engine (dataVersion) so the levels
-    // already on its stack re-load - a MENU climb back into an open list never shows a removed track.
+    // through Extras, a rescan, a chapter save - this view's own editor directly, and ANY other
+    // writer through the document-level `filetube:library-changed` event common.js's
+    // notifyLibraryChanged() raises, which the chapters editor fires on every save and a future
+    // chapter writer must fire too): drop the caches AND tell the engine (dataVersion) so the
+    // levels already on its stack re-load - a menu never shows or plays a removed/re-timed track.
     function invalidateMenuData() {
       menuSongsPromise = null;
       menuArtistCache = Object.create(null);
       menuDataGen += 1;
     }
+    function noteLikedChanged() { menuLikedGen += 1; }
+    try { document.addEventListener('filetube:library-changed', function () { invalidateMenuData(); }, { signal: signal }); } catch (_) { /* no document */ }
     function menuAllSongs() {
       if (!menuSongsPromise) {
         var pr = fetchJson('/api/music?sort=title-asc&limit=10000')
@@ -3157,7 +3183,9 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'artistAll') {
         return menuArtistTracks(n.artist).then(function (t) {
-          return menuSongLevel(t, { ctx: { src: 'music', artist: n.artist, sort: sortForTab('drill-artist') }, drill: { type: 'artist', key: n.artist, label: n.label || n.artist }, label: n.label });
+          // flat: the Architect's ruling puts an artist's All Songs with Songs/Genres/the playlists
+          // (a chapter plays its own segment, then the list moves on); the drill is only the browse view.
+          return menuSongLevel(t, { ctx: { src: 'music', artist: n.artist, sort: sortForTab('drill-artist') }, drill: { type: 'artist', key: n.artist, label: n.label || n.artist }, flat: true, label: n.label });
         });
       }
       if (n.type === 'artistAlbum') {
@@ -3186,8 +3214,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // FROM that queue - an album/artist drill (renderDrillView, no refetch) or the song list with
     // the level's name in the crumb - because its rows' data-index point INTO `queue`: a stale
     // list behind a replaced queue plays the wrong track on the next row tap (the v1.104/v1.207
-    // wrong-track class). A menu pick is a SELECT (v1.311: one chapter exits after its segment);
-    // Shuffle Songs plays through (opts.playThrough).
+    // wrong-track class).
+    // Two contexts (gate r1 K4, the Architect's ruling for Dean, device-true):
+    //  - a DRILL list (an album, an artist's album): the v1.311 rule - a picked chapter is a SELECT
+    //    that exits after its own segment (the solo exit); Shuffle Songs plays through.
+    //  - a FLAT list (Songs, Genres, the playlists - no drill - and an artist's All Songs, play.flat): the list
+    //    plays through like the device - a chapter plays only ITS OWN segment and the list moves on
+    //    to the next row (flatQueue / enforceFlatSegmentEnd), never on through the rest of the file
+    //    and never off to a station mid-list.
     function playFromMenu(req, opts) {
       var tracks = (req && Array.isArray(req.tracks)) ? req.tracks : [];
       var i = Number(req && req.index);
@@ -3195,8 +3229,12 @@ if (typeof module !== 'undefined' && module.exports) {
       var play = (req && req.play) || {};
       playSelectGen += 1; // an in-flight album select (playTrackInAlbum) must not play over this pick
       loadSongsGen += 1;  // ...nor an in-flight list load land over this queue
+      menuPickGen += 1;   // ...nor an in-flight browse render paint over the view drawn below
       search = '';
       queue = tracks.slice();
+      var flat = !play.drill || play.flat === true;
+      flatQueue = flat ? queue : null;
+      lastFlatTime = -1;
       queueCtx = play.ctx || { src: 'music' };
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
       disconnectStickyObserver();
@@ -3210,9 +3248,97 @@ if (typeof module !== 'undefined' && module.exports) {
         tab = 'songs';
         setActiveTab(); rebuildSortMenu(); syncViewToggle();
         if (crumb) { crumb.hidden = false; crumb.textContent = play.label || 'Songs'; }
-        renderSongList();
+        renderSongListProgressive();
       }
-      playAt(i, { soloChapter: !(opts && opts.playThrough) });
+      playAt(i, { soloChapter: !flat && !(opts && opts.playThrough) });
+    }
+    // Gate r1 K3 (qa W2 + adversary W3, measured: a pick from a 3,008-song list blocked the main
+    // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows
+    // behind the skin are built in SMALL CHUNKS after the tap: the list is cleared synchronously
+    // (so no row of the old queue can be tapped against the new one), the first chunk waits for
+    // the next task, and every chunk re-checks it still belongs to the live queue (a newer pick or
+    // browse load abandons it). A short list (up to one chunk) renders at once, as before.
+    var SONG_ROWS_PER_CHUNK = 20;
+    var songChunkGen = 0;
+    function renderSongListProgressive() {
+      var list = queue;
+      if (list.length <= SONG_ROWS_PER_CHUNK) { songChunkGen += 1; renderSongList(); return; }
+      var gen = ++songChunkGen;
+      content.innerHTML = '<div class="music-song-list"></div>';
+      if (emptyNote) emptyNote.hidden = true;
+      var host = content.querySelector('.music-song-list');
+      var next = 0;
+      var shimmer = (window.FileTube && typeof window.FileTube.shimmerArt === 'function') ? window.FileTube.shimmerArt : null;
+      function chunk() {
+        if (gen !== songChunkGen || list !== queue || signal.aborted || !host.isConnected) return;
+        var end = Math.min(list.length, next + SONG_ROWS_PER_CHUNK);
+        // each chunk is its own block (.music-song-chunk): the list is a flex column, and appending
+        // rows straight into it re-lays out EVERY row each frame (measured: the rendering cost grew
+        // with the list); a finished chunk is laid out once, and one off screen skips rendering.
+        var box = document.createElement('div');
+        box.className = 'music-song-chunk';
+        var html = '';
+        for (var k = next; k < end; k++) html += buildSongRowHtml(list[k], k);
+        box.innerHTML = html;
+        var rowsIn = box.querySelectorAll('.music-song-row');
+        for (var r = 0; r < rowsIn.length; r++) {
+          if (playingId && rowsIn[r].getAttribute('data-id') === playingId) rowsIn[r].classList.add('playing');
+        }
+        host.appendChild(box);
+        if (shimmer) shimmer(box);
+        next = end;
+        if (next < list.length) later(chunk);
+      }
+      // one chunk per FRAME: the browser lays out ~20 new rows at a time instead of piling many
+      // chunks into one rendering update (measured: back-to-back timer chunks still produced a
+      // 1.5 s layout task at CPU x1).
+      function later(fn) {
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(function () { setTimeout(fn, 0); });
+        else setTimeout(fn, 16);
+      }
+      later(chunk);
+    }
+    // Gate r1 K4: the FLAT list's segment end. The queue a flat menu pick built plays through that
+    // list: when a chapter reaches the end of ITS segment (its start + its own span - the file's
+    // next chapter start, not the next chapter in the list) by normal playback, move on to the
+    // list's next row. Bound FIRST in enforceChapterExit (before the v1.311 solo exit, which a flat
+    // pick never arms) and after the chapter loop (Loop chapter outranks it). The file's LAST
+    // chapter ends with the file, where the ended advance (nav.onNext = the next row) already moves
+    // on. A deliberate seek past the boundary is rejected by the same band + step test as the
+    // loop and the solo exit.
+    var flatQueue = null;   // the queue array a flat menu pick built; flat while `queue` is still it
+    var lastFlatTime = -1;
+    function enforceFlatSegmentEnd() {
+      if (!flatQueue || flatQueue !== queue || !chapterViewId) return false;
+      if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return true;
+      var pl = window.FileTube && window.FileTube.player;
+      try { if (pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()) return true; } catch (_) { return true; }
+      var ci = -1;
+      for (var k = 0; k < queue.length; k++) { if (queue[k] && queue[k].id === chapterViewId) { ci = k; break; } }
+      if (ci < 0 || queue[ci].source !== 'library-chapter') return true;
+      var item = queue[ci];
+      var start = Number(item.chapterStartSec) || 0;
+      var span = Number(item.durationSec) || 0;
+      var mp = hostCtl('media-player');
+      if (!mp || !(span > 0)) return true;
+      var end = start + span;
+      var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
+      if (dur > 0 && end >= dur - 0.5) return true; // the file's last chapter: the ended advance moves on
+      var t = Number(mp.currentTime) || 0;
+      var last = lastFlatTime;
+      lastFlatTime = t;
+      var inBand = (t >= end - 0.25 && t < end + 1 && t > start);
+      var crossed = (last >= start && last < end && t >= end && (t - last) > 0 && (t - last) <= EXIT_MAX_STEP);
+      if (!(inBand || crossed)) return true;
+      lastFlatTime = -1;
+      var nx = queue[ci + 1];
+      // the next row IS this file's next segment (an artist's All Songs lists a mix's chapters in
+      // order): let the file roll on untouched - reflectChapter advances the display, no reload gap.
+      if (nx && nx.source === 'library-chapter' && String(nx.id).replace(/::c\d+$/, '') === String(item.id).replace(/::c\d+$/, '') &&
+        Math.abs((Number(nx.chapterStartSec) || 0) - end) < 0.5) return true;
+      if (ci + 1 < queue.length) { playAt(ci + 1, { keepPosition: true }); return true; }
+      try { mp.pause(); } catch (_) { /* the list is done - nothing follows (autoplay off / nothing appended) */ }
+      return true;
     }
     // Shuffle Songs: the WHOLE library, freshly shuffled, played through from the top.
     function shuffleAllFromMenu() {

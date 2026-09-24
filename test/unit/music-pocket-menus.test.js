@@ -141,7 +141,7 @@ const HTML = `<body>
   <div id="panel" class="music-nowplaying-panel" hidden></div>
 </body>`;
 
-function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion } = {}) {
+function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion, likedVersion, fastScan, trackListeners, beforeCreate } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/music' });
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
@@ -159,8 +159,18 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
     hasCurrent: () => hasCurrent,
     currentId: () => state.current,
     dataVersion: dataVersion ? () => state.ver : undefined,
+    likedVersion: likedVersion ? () => state.liked : undefined,
   };
-  state.ver = 0;
+  state.ver = 0; state.liked = 0;
+  // listener balance (gate r1 A5): count the panel's own adds/removes from before create()
+  const bal = { add: 0, remove: 0 };
+  if (trackListeners) {
+    const pnl = dom.window.document.getElementById('panel');
+    const a0 = pnl.addEventListener.bind(pnl); const r0 = pnl.removeEventListener.bind(pnl);
+    pnl.addEventListener = function (t, f, o) { bal.add += 1; return a0(t, f, o); };
+    pnl.removeEventListener = function (t, f, o) { bal.remove += 1; return r0(t, f, o); };
+  }
+  if (beforeCreate) beforeCreate(dom);
   dom.window.document.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
   const engine = dom.window.FileTubeSkinSurface.create(Object.assign({
     panel: dom.window.document.getElementById('panel'),
@@ -170,8 +180,9 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
     onSelectIndex: () => {},
     onDock: () => { spy.dock += 1; },
     win: dom.window,
+    fastScan: !!fastScan,
   }, noMenu ? {} : { menu: menuCfg }));
-  return { dom, engine, spy, state, restore: () => Object.assign(global, saved) };
+  return { dom, engine, spy, state, bal, restore: () => Object.assign(global, saved) };
 }
 const P = (b) => b.dom.window.document.getElementById('panel');
 const tap = (b, el) => {
@@ -291,9 +302,41 @@ test('a song pick hands the view the level\'s TRACKS + the index + the play cont
     pressMenu(b);
     assert.strictEqual(b.engine.menuState().title, 'Alb');
     assert.strictEqual(b.engine.menuState().cursor, 2);
-    // an advance (a new current id at the next paint) moves the playing list's cursor
+  } finally { b.restore(); }
+});
+
+test('gate r1 K1: an advance NEVER moves the highlight of the list on screen (only its speaker mark); a list off screen follows and re-centres', async () => {
+  const tracks = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const play = { ctx: { src: 'music', album: 'K' }, drill: { type: 'album', key: 'K', label: 'Alb' } };
+  const b = bootEngine({ load: (n) => Promise.resolve(n.type === 'albums'
+    ? { items: [{ label: 'Alb', node: { type: 'album', key: 'K', label: 'Alb' } }] }
+    : { items: skins.menuSongItems(tracks, artFor).map((r, i) => Object.assign(r, { label: 'S' + i })), tracks, play }) });
+  try {
+    b.engine.paint();
+    pressMenu(b); pressSelect(b);
+    tap(b, P(b).querySelector('[data-skin-mi="2"]')); await tick(); // Albums
+    tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick(); // Alb
+    tap(b, P(b).querySelector('[data-skin-mi="0"]'));               // play 'a'
     b.state.current = 'a'; b.engine.paint();
-    assert.strictEqual(b.engine.menuState().cursor, 0, 'the per-advance follow is keyed on the id');
+    pressMenu(b); // back on the list, on 'a'
+    // the user parks on row 2 ('c')...
+    const wheel = P(b).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    [8, 16, 24, 32, 40, 48, 56].forEach((d) => wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 100 * Math.cos(d * Math.PI / 180), clientY: 100 * Math.sin(d * Math.PI / 180) })));
+    wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
+    assert.strictEqual(b.engine.menuState().cursor, 2, 'parked on the last row');
+    // ...and the track ends: the queue advances to 'b' with the list ON SCREEN
+    b.state.current = 'b'; b.engine.paint();
+    assert.strictEqual(b.engine.menuState().cursor, 2, 'the highlight you parked on stays put');
+    const cur = P(b).querySelector('.ipm-row.is-current');
+    assert.ok(cur && cur.getAttribute('data-skin-mi') === '1' && cur.querySelector('.ipm-now'), 'only the speaker mark moved to the playing row');
+    pressSelect(b);
+    assert.strictEqual(b.spy.plays[b.spy.plays.length - 1].index, 2, 'Select plays the row you parked on - never the one the advance reached');
+    // now Now Playing is up (the list is OFF screen): an advance moves its cursor + re-centres it
+    b.state.current = 'c'; b.engine.paint();
+    b.state.current = 'a'; b.engine.paint();
+    pressMenu(b);
+    assert.strictEqual(b.engine.menuState().cursor, 0, 'the off-screen list followed the advance (keyed on the id)');
   } finally { b.restore(); }
 });
 
@@ -407,4 +450,181 @@ test('a library change under the menus (the view bumps dataVersion) re-loads eve
     assert.deepStrictEqual(lbls(b), ['v2-a', 'v2-b', 'v2-c'], 'the fresh rows');
     assert.strictEqual(b.engine.menuState().cursor, moved, 'the cursor kept its place');
   } finally { b.restore(); }
+});
+
+// ---------------------------------------------------------------- gate r1 bindings (K5 / K6 / qa S4, S6)
+const pe = (b, type, el, x, y, id) => el.dispatchEvent(new b.dom.window.PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: id == null ? 1 : id }));
+async function seattlePivots(b) {
+  b.engine.paint();
+  pressMenu(b); pressSelect(b); await tick();
+  return () => b.engine.menuState().pane;
+}
+const pivotLoad = (n) => Promise.resolve({ items: [{ label: n.type + '-row', sub: 'by ' + n.type, id: n.type, song: true, trackIndex: 0 }], tracks: [{ id: n.type }], play: {} });
+
+test('gate r1 A3/A4/A6: a pivot swipe needs ONE pointer (id match), a horizontal axis, and is dropped by pointercancel', async () => {
+  const b = bootEngine({ skin: 'zune-classic', load: pivotLoad });
+  try {
+    const pane = await seattlePivots(b);
+    const list = () => P(b).querySelector('[data-skin-swipe]');
+    // A3: the lift of a DIFFERENT pointer never completes the swipe
+    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointerup', list(), 150, 100, 2);
+    assert.strictEqual(pane(), 0, 'another pointer\'s lift is not a swipe');
+    // A6: a mostly-vertical drag (dx 45, dy 120) is a scroll, never a pivot move
+    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointerup', list(), 255, 220, 1);
+    assert.strictEqual(pane(), 0, 'a vertical drag is not a swipe');
+    // A4: a pointercancel (the browser took the gesture) drops the swipe; a later lift does nothing
+    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointercancel', list(), 300, 100, 1); pe(b, 'pointerup', list(), 150, 100, 1);
+    assert.strictEqual(pane(), 0, 'a cancelled swipe never completes');
+    // the control: a clean horizontal swipe moves the pivot (so the three asserts above are not vacuous)
+    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointerup', list(), 150, 105, 1);
+    assert.strictEqual(pane(), 1, 'a clean left swipe moves to the next pivot');
+  } finally { b.restore(); }
+});
+
+test('gate r1 A5: destroy() unbinds every panel listener the engine added (the swipe arms included); a swipe after destroy does nothing', async () => {
+  const b = bootEngine({ skin: 'zune-classic', load: pivotLoad, trackListeners: true });
+  try {
+    const pane = await seattlePivots(b);
+    const list = P(b).querySelector('[data-skin-swipe]');
+    b.engine.destroy();
+    assert.strictEqual(b.bal.add - b.bal.remove, 0, 'every add was removed (net ' + (b.bal.add - b.bal.remove) + ')');
+    pe(b, 'pointerdown', list, 300, 100, 1); pe(b, 'pointerup', list, 150, 105, 1);
+    assert.strictEqual(pane(), 0, 'a swipe on a destroyed surface moves nothing');
+  } finally { b.restore(); }
+});
+
+test('gate r1 A14: a level load that lands AFTER a newer re-load (the library changed mid-load) never overwrites it', async () => {
+  let n = 0; let releaseFirst;
+  const first = new Promise((r) => { releaseFirst = r; });
+  const b = bootEngine({ dataVersion: true, load: () => { n += 1; const k = n; return k === 1 ? first.then(() => ({ items: [{ label: 'OLD' }] })) : Promise.resolve({ items: [{ label: 'NEW' }] }); } });
+  try {
+    b.engine.paint();
+    pressMenu(b); pressSelect(b);
+    tap(b, P(b).querySelector('[data-skin-mi="2"]')); // Albums: load #1 in flight
+    b.state.ver = 1; b.engine.paint(); await tick(); // the library changed: load #2 lands first
+    assert.deepStrictEqual(lbls(b), ['NEW']);
+    releaseFirst(); await tick(); await tick();
+    assert.deepStrictEqual(lbls(b), ['NEW'], 'the pre-invalidation payload stood down');
+  } finally { b.restore(); }
+});
+
+test('gate r1 qa S8: a like/unlike (likedVersion) re-loads an open Liked Songs level ONLY', async () => {
+  let n = 0;
+  const b = bootEngine({ likedVersion: true, load: (node) => { n += 1; return Promise.resolve({ items: [{ label: node.type + (node.key || '') + '-' + n }] }); } });
+  try {
+    b.engine.paint();
+    pressMenu(b); pressSelect(b);
+    tap(b, P(b).querySelector('[data-skin-mi="0"]')); // Playlists (static)
+    tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick(); // Liked Songs (load 1)
+    assert.deepStrictEqual(lbls(b), ['playlistliked-1']);
+    b.state.liked = 1; b.engine.paint(); await tick();
+    assert.deepStrictEqual(lbls(b), ['playlistliked-2'], 'the open Liked level re-loaded');
+    pressMenu(b); tap(b, P(b).querySelector('[data-skin-mi="1"]')); await tick(); // Recently Added (load 3)
+    b.state.liked = 2; b.engine.paint(); await tick();
+    assert.deepStrictEqual(lbls(b), ['playlistrecent-added-3'], 'a like does not re-load other levels');
+  } finally { b.restore(); }
+});
+
+test('gate r1 A1: a list the queue advanced off screen comes back RE-CENTRED on the playing row', async () => {
+  const tracks = Array.from({ length: 60 }, (_, i) => ({ id: 't' + i }));
+  const b = bootEngine({
+    load: () => Promise.resolve({ items: skins.menuSongItems(tracks, artFor).map((r, i) => Object.assign(r, { label: 'S' + i })), tracks, play: {} }),
+    beforeCreate: (dom) => {
+      // give jsdom a layout: rows 34 px, the list viewport 102 px (three rows)
+      Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return this.classList && this.classList.contains('ipm-row') ? 34 : 0; } });
+      Object.defineProperty(dom.window.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.classList && this.classList.contains('ipm-list') ? 102 : 0; } });
+    },
+  });
+  try {
+    b.engine.paint();
+    pressMenu(b); pressSelect(b);
+    tap(b, P(b).querySelector('[data-skin-mi="3"]')); await tick(); // Songs
+    tap(b, P(b).querySelector('[data-skin-mi="0"]')); // play t0: Now Playing
+    b.state.current = 't40'; b.engine.paint(); // the queue advanced 40 rows while the list is off screen
+    pressMenu(b);
+    const list = P(b).querySelector('.ipm-list');
+    assert.strictEqual(b.engine.menuState().cursor, 40);
+    assert.strictEqual(list.scrollTop, 40 * 34 - 51 + 17, 'the playing row sits in the middle of the list');
+    assert.ok(P(b).querySelector('.ipm-row[data-skin-mi="40"].is-cursor'), 'and it is rendered');
+  } finally { b.restore(); }
+});
+
+test('gate r1 qa S4: on Seattle\'s pivot level a HOLD on the pad\'s left/right never fast-scans the playing song', async () => {
+  const b = bootEngine({ skin: 'zune-classic', load: pivotLoad, fastScan: true });
+  try {
+    await seattlePivots(b);
+    const mpEl = b.dom.window.document.getElementById('media-player');
+    let ct = 100;
+    Object.defineProperty(mpEl, 'duration', { configurable: true, get: () => 300 });
+    Object.defineProperty(mpEl, 'currentTime', { configurable: true, get: () => ct, set: (v) => { ct = Number(v); } });
+    const hold = async () => {
+      const z = P(b).querySelector('.ip-z-right');
+      z.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 0 }));
+      await new Promise((r) => setTimeout(r, 700));
+      z.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 90, clientY: 0 }));
+    };
+    await hold();
+    assert.strictEqual(ct, 100, 'the hold did not scan the song');
+    // the control: on Now Playing the same hold scans, as it always did
+    tap(b, P(b).querySelector('[data-skin-mi="0"]')); // plays -> Now Playing
+    await hold();
+    assert.ok(ct > 100, 'on Now Playing the hold fast-scans (the control)');
+  } finally { b.restore(); }
+});
+
+test('gate r1 qa S6: inside the pop-out\'s Nano tray the menu is never drawn (nor its title), whatever the screen', () => {
+  const b = bootEngine({ hasCurrent: false });
+  try {
+    b.dom.window.document.body.classList.add('mms-tray');
+    b.engine.paint();
+    assert.strictEqual(b.engine.menuState().screen, 'menu', 'precondition: the controller holds the menu screen');
+    assert.ok(!P(b).querySelector('.ip-menuview') && !P(b).classList.contains('mms-menumode'), 'no menu in the tray');
+    assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Now Playing');
+  } finally { b.restore(); }
+});
+
+test('gate r1 A20/A22 + K5: Seattle escapes its drilled title, sub-line, pivots and list label; a two-line row carries has-sub', () => {
+  const X = '<img src=x onerror=alert(1)>';
+  const html = skins.renderMenuView('seattle', { title: X, root: false, pivots: null, items: [{ label: 'L', sub: X, song: true, id: 'a' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
+  const d = new JSDOM('<div id="h">' + html + '</div>').window.document;
+  assert.strictEqual(d.querySelectorAll('img').length, 0, 'no injected element');
+  assert.strictEqual(d.querySelector('.ipm-title').textContent, X, 'the title shows as text');
+  assert.strictEqual(d.querySelector('.ipm-sub').textContent, X, 'the sub-line shows as text');
+  assert.strictEqual(d.querySelector('.ipm-list').getAttribute('aria-label'), X, 'the listbox label is an attribute value, not markup');
+  assert.ok(d.querySelector('.ipm-row.has-sub'), 'K5: the two-line row packs its sub under its own title');
+  assert.ok(d.querySelector('.ipm-list.ipm-2l'), 'K5: a list with sub-lines is a two-line list (one taller pitch)');
+  const one = skins.renderMenuView('seattle', { title: 'T', items: [{ label: 'no sub' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
+  assert.ok(!/ipm-2l/.test(one), 'a list with no sub-lines keeps the one-line pitch');
+  const piv = skins.renderMenuView('seattle', { title: 'Music', pivots: [X, 'b'], pivotIdx: 0, items: [{ label: 'x' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
+  assert.strictEqual(new JSDOM(piv).window.document.querySelectorAll('img').length, 0, 'pivot labels are escaped');
+  const click = skins.renderMenuView('click', { title: X, items: [{ label: 'L', sub: X }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
+  assert.ok(!/has-sub/.test(click), 'Click rows are one line (no has-sub)');
+});
+
+test('gate r1 K2: the chapters editor raises the ONE library-changed event on a successful save (and not on a failed one)', async () => {
+  const COMMON = require.resolve('../../public/js/common.js');
+  const saved = { window: global.window, document: global.document, fetch: global.fetch };
+  delete global.document; delete global.window;
+  delete require.cache[COMMON];
+  const common = require(COMMON);
+  const dom = new JSDOM('<body></body>', { url: 'http://localhost/music' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const events = [];
+    dom.window.document.addEventListener(common.LIBRARY_CHANGED_EVENT, (e) => events.push(e.detail));
+    let ok = true;
+    global.fetch = () => Promise.resolve({ ok, json: async () => (ok ? { chapters: [] } : { error: 'nope' }) });
+    const saves = [];
+    const flush = () => new Promise((r) => setTimeout(r, 5));
+    common.showChaptersEditor('vid9', '0:00 A', () => saves.push(1), dom.window.document);
+    let btn = [...dom.window.document.querySelectorAll('button')].find((x) => x.textContent === 'Save');
+    btn.click(); await flush(); await flush();
+    assert.deepStrictEqual(events, [{ kind: 'chapters', mediaId: 'vid9' }], 'a saved chapter list announced itself');
+    assert.strictEqual(saves.length, 1, 'onSaved ran too');
+    ok = false;
+    common.showChaptersEditor('vid9', '0:00 A', () => saves.push(2), dom.window.document);
+    btn = [...dom.window.document.querySelectorAll('button')].filter((x) => x.textContent === 'Save').pop();
+    btn.click(); await flush(); await flush();
+    assert.strictEqual(events.length, 1, 'a FAILED save announces nothing');
+  } finally { delete require.cache[COMMON]; Object.assign(global, saved); }
 });

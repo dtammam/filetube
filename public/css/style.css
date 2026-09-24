@@ -10860,6 +10860,10 @@ html[data-modern="on"] .video-uploader {
 .tv-player-video { width: 100%; max-height: 70vh; display: block; background: var(--thumbnail-bg); }
 
 .music-song-list { display: flex; flex-direction: column; }
+/* pocket menus gate r1 K3: a long list played from a pocket menu is built behind the skin in
+   chunks - each its own block, so a new chunk never re-lays out the rows before it, and a chunk
+   off screen skips layout and paint entirely (its size is remembered once it has rendered). */
+.music-song-chunk { display: flex; flex-direction: column; content-visibility: auto; contain-intrinsic-size: auto 1200px; }
 .music-song-row {
   display: flex;
   align-items: center;
@@ -11730,6 +11734,13 @@ html[data-modern="on"] .video-uploader {
     padding:0; background:transparent; color:var(--mms-zn-dim); font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
   .mms-zune-classic .ipm-lbl{ grid-column:1; }
   .mms-zune-classic .ipm-sub{ grid-column:1; font-size:var(--fs-sm); color:var(--mms-zn-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* gate r1 K5 (qa W3, measured): a centred two-line row left its sub-line nearer the NEXT title
+     than its own (14 px vs 7 px). A list with sub-lines (.ipm-2l) is a two-line list: taller
+     rows (uniform - the window math needs one pitch) with title + sub packed at the TOP in tight
+     line boxes, so the space left over sits BELOW the pair - between rows, never inside one. */
+  .mms-zune-classic .ipm-list.ipm-2l .ipm-row{ height:60px; /* token-exempt: the Zune two-line pitch */ align-content:start; padding-top:var(--space-3); }
+  .mms-zune-classic .ipm-list.ipm-2l .ipm-lbl{ line-height:var(--mms-lh-ttl); }
+  .mms-zune-classic .ipm-list.ipm-2l .ipm-sub{ line-height:var(--mms-lh-ttl); padding-top:var(--space-1); }
   .mms-zune-classic .ipm-now{ grid-column:2; grid-row:1 / span 2; padding-left:var(--space-4); }
   .mms-zune-classic .ipm-now svg{ fill:var(--mms-zn-pink); }
   .mms-zune-classic .ipm-row.is-current{ color:var(--mms-zn-pink); }

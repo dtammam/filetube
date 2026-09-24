@@ -510,7 +510,9 @@
   // top of the stack); the v1.231 queue list (Select from Now Playing) stays the engine's own.
   //
   // cfg (music.js): load(node) -> Promise<{items, tracks?, play?}>; onPlay({tracks, index, play});
-  // onShuffleAll(); hasCurrent(); currentId(). Everything is inert on a skin with no `menus`.
+  // onShuffleAll(); hasCurrent(); currentId(); dataVersion() (bumped when the library changed under
+  // the menus - every library level re-loads) and likedVersion() (bumped by a like/unlike - only an
+  // open Liked Songs level re-loads). Everything is inert on a skin with no `menus`.
   function createPocketMenu(o) {
     var cfg = o.cfg;
     var panel = o.panel;
@@ -529,6 +531,7 @@
     var viewH = 0;             // the measured list viewport height
     var listRaf = null;
     var dataVer = null;        // the view's library version the loaded levels reflect (cfg.dataVersion)
+    var likedVer = null;       // ...and its liked-set version (cfg.likedVersion)
 
     function style() { try { return (SK && typeof SK.menuStyle === 'function' && SK.menuStyle(getSkinId())) || ''; } catch (_) { return ''; } }
     function hasCurrent() { try { return !!(typeof cfg.hasCurrent === 'function' && cfg.hasCurrent()); } catch (_) { return false; } }
@@ -557,6 +560,33 @@
     function menuEl() { return panel.querySelector('.ip-menuview'); }
     function listEl() { return panel.querySelector('.ip-menuview .ipm-list'); }
 
+    // Gate r1 K2 (qa W1 + adversary W2): the library changed under the menus (a delete/move, a
+    // rescan, a chapter edit) - every library-backed level on the stack re-loads when next shown
+    // (cursor kept, clamped), and a like/unlike re-loads an open Liked Songs level. Read at EVERY
+    // render and before every user action, not only at a skin repaint: a chapter save repaints
+    // nothing, and the desktop pop-out's menu can sit open while the main window edits. Returns
+    // true when the level ON SCREEN just went stale (the caller re-draws instead of acting on it).
+    function readVer(fn) { try { return (typeof fn === 'function') ? fn() : null; } catch (_) { return null; } }
+    function markStale(pred) {
+      stack.forEach(function (l) {
+        l.panes.forEach(function (p) {
+          if (p.node.type === 'main' || SK.menuStaticItems(p.node, {})) return;
+          if (!pred(p)) return;
+          p.state = 'idle'; p.token += 1; p.items = []; p.tracks = null;
+        });
+      });
+    }
+    function checkData() {
+      var ver = readVer(cfg.dataVersion);
+      var lver = readVer(cfg.likedVersion);
+      var shown = curPane();
+      var before = shown ? shown.state : null;
+      if (dataVer !== null && ver !== dataVer) markStale(function () { return true; });
+      else if (likedVer !== null && lver !== likedVer) markStale(function (p) { return p.node.type === 'playlist' && p.node.key === 'liked'; });
+      dataVer = ver;
+      likedVer = lver;
+      return !!(shown && screen === 'menu' && before !== 'idle' && shown.state === 'idle');
+    }
     function ensureLoaded(pane) {
       // The Main Menu re-derives every draw: its Now Playing row exists only while a track does.
       if (pane.node.type === 'main') {
@@ -631,11 +661,15 @@
     }
     function render() {
       if (destroyed) return;
+      checkData();
       var host = lcd();
       var st = style();
       var old = menuEl();
       var np = panel.querySelector('.ip-np');
-      if (!st || !host || screen !== 'menu') {
+      // gate r1 (qa S6): the pop-out's Nano tray has no wheel and shows Now Playing only - never
+      // draw a menu (or its title) there, whatever screen the controller holds.
+      var tray = !!(doc.body && doc.body.classList && doc.body.classList.contains('mms-tray'));
+      if (!st || !host || screen !== 'menu' || tray) {
         if (old && old.parentNode) old.parentNode.removeChild(old);
         panel.classList.remove('mms-menumode');
         if (np && !panel.classList.contains('mms-listmode')) np.textContent = 'Now Playing';
@@ -750,6 +784,12 @@
     // reload: a chaptered album rolls its chapter (and a queue advances its track) through
     // paint(), so this runs at each advance and moves the playing list's cursor onto what now
     // plays. Keyed on the id, never a position (a later append or a sort never fools it).
+    // Gate r1 K1 (adversary W1): never move the highlight of the list ON SCREEN - the device never
+    // does, and a highlight that jumps as the track ends turns the next center press into a replay
+    // of the wrong song (the v1.104 wrong-track class, timed by track length). The visible list
+    // moves only its speaker mark (render reads currentId) and keeps the row you parked on. A list
+    // off screen - the playing list is a leaf level, so off screen means Now Playing is up - follows
+    // at once and is re-centred on the playing row when MENU brings it back.
     function followCurrent() {
       var cur = currentId();
       if (cur === lastCurrent) return;
@@ -757,7 +797,7 @@
       if (!cur) return;
       stack.forEach(function (l) {
         l.panes.forEach(function (p) {
-          if (!p.playing) return;
+          if (!p.playing || isVisible(p)) return;
           for (var i = 0; i < p.items.length; i++) {
             if (p.items[i] && p.items[i].id === cur) { p.cursor = i; p.center = true; break; }
           }
@@ -781,19 +821,6 @@
       // after every paint(): rebuild on a style change, follow the advance, re-draw.
       afterPaint: function (ctx) {
         if (style() !== builtFor) resetStack();
-        // the library changed under the menus (a delete, a rescan): every library-backed level on
-        // the stack re-loads when next shown (cursor kept, clamped) - a stale row never lingers.
-        var ver = null;
-        try { ver = (typeof cfg.dataVersion === 'function') ? cfg.dataVersion() : null; } catch (_) { ver = null; }
-        if (dataVer !== null && ver !== dataVer) {
-          stack.forEach(function (l) {
-            l.panes.forEach(function (p) {
-              if (p.node.type === 'main' || SK.menuStaticItems(p.node, {})) return;
-              p.state = 'idle'; p.token += 1; p.items = []; p.tracks = null;
-            });
-          });
-        }
-        dataVer = ver;
         npArt = (ctx && ctx.track && ctx.track.artUrl) || '';
         followCurrent();
         render();
@@ -808,6 +835,7 @@
       },
       onSelect: function () {
         if (!style() || screen !== 'menu') return false;
+        if (checkData()) { render(); return true; } // a stale level re-loads; never act on its old rows
         var p = curPane();
         activate(p ? p.cursor : 0);
         return true;
@@ -820,8 +848,10 @@
         switchPivot(lvl.pane + dir);
         return true;
       },
-      moveCursor: function (delta) { var p = curPane(); if (p) setCursor(p.cursor + delta); },
-      onItemTap: function (i) { if (screen === 'menu') activate(i); },
+      moveCursor: function (delta) { if (checkData()) { render(); return; } var p = curPane(); if (p) setCursor(p.cursor + delta); },
+      onItemTap: function (i) { if (screen !== 'menu') return; if (checkData()) { render(); return; } activate(i); },
+      // gate r1 (qa S4): is the menu showing a PIVOT level? (the engine skips the pad's hold-to-scan there)
+      isPivotLevel: function () { var l = top(); return !!(style() && screen === 'menu' && l && l.pivots); },
       onPivotTap: function (k) { if (screen === 'menu') switchPivot(k); },
       onScroll: onScroll,
       // test/diagnostic seam: the live state, read-only copies.
@@ -1419,9 +1449,9 @@
       // that MENU always backs out of wherever you are) and Select is its action
       // button. Both are folded INSIDE the existing single handler for their control
       // rather than added as earlier branches - a second handler silently stole the
-      // v1.233 lock's first-occurrence anchor. And this explanation lives OUT here
-      // because menu-returns-to-origin.test.js matches data-skin-menu -> onDock
-      // within 220 chars; a comment inside the body blows that window.
+      // v1.233 lock's first-occurrence anchor. (menu-returns-to-origin.test.js used to
+      // match data-skin-menu -> onDock inside a character window; since the pocket
+      // menus it reads this handler's own block and requires its LAST arm to dock.)
       if (e.target.closest('[data-skin-menu]')) {
         // Through the SAME release as paint()/destroy(), so the pointer is nulled by
         // the engine rather than depending on the view remembering to clear it (the
@@ -1796,6 +1826,9 @@
         // v1.256: the scaled ghost covers the zones - route the press to the REAL control.
         var downTgt = realTargetUnder(e);
         st.scanDir = (downTgt.closest && downTgt.closest('[data-skin-next]')) ? 1 : ((downTgt.closest && downTgt.closest('[data-skin-prev]')) ? -1 : 0);
+        // gate r1 (qa S4): on Seattle's pivot level the pad's left/right MOVE the pivot - a hold
+        // there must not fast-scan the playing song.
+        if (st.scanDir && pocket && pocket.isPivotLevel()) st.scanDir = 0;
         var startScan = function () {
           var mp0 = hostCtl('media-player');
           var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
