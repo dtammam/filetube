@@ -791,3 +791,344 @@ The probe was changed for this round:
 - **Comments in the new code still say "v1.319".** v1.319.0 is now the lock-audio release, so this
   feature will ship under a later version number. The comments are labels only; the release sets
   the number.
+
+## Gate r2 - security-brief (@330aaa8b)
+
+**Gaps, stated first:** still no Bash. I could NOT run `git diff 7aa10540..330aaa8b`, any test,
+the mutant runner or ffmpeg. The sha is verified only from the ref file
+(`.git/refs/heads/feat/chapter-snap` = 330aaa8b9eb1...). I could not check for uncommitted
+changes. The builder's "REACHABILITY re-run and passing with the anchor" and "C6 forged tags ->
+`[]`" (real ffmpeg 7.0.2) are the builder's records; I did not reproduce them. I did not review
+the v1.319.0 merge content beyond the files below.
+
+### My r1 findings against 330aaa8b
+
+- **S-1: fixed as prescribed (verified by reading).** `LINE_RE` in
+  `lib/media/chapterSilence.js` is now `^\[silencedetect @ [^\]]*\] silence_(start|end):\s*NUM`,
+  anchored at the start of the line. ffmpeg indents every echoed metadata line, continuation lines
+  included, so an uploader's title, description or chapter title can no longer open a line with the
+  detector prefix. The comment is corrected. `SILENCE_PARAMS_KEY` is bumped to `...v2`, and
+  `recordMatches` requires an exact params match, so every v1 record, possibly poisoned, reads
+  stale and is rescanned. One residual, a **suspicion, not a finding**: ffmpeg prints the input
+  PATH raw on the `Input #0 ... from '<path>'` line, so a filename containing a newline followed by
+  the prefix could still open a line. I did not check whether yt-dlp's `--windows-filenames`
+  sanitizing removes newlines. A local file's name is the owner's choice, and the impact is
+  suggestions only, so INFO.
+- **S-2: fixed (verified).** A runner failure keeps the runner's own path-free messages. The
+  ENOENT and exit messages are fixed text, and NUL and relative paths are refused before `spawn`,
+  so its argument-validation throw cannot echo the path. The re-stat and `cache.write` now sit in a
+  separate try. On any fs error, the detail goes to the server log and the client gets the fixed
+  sentence "The silence was found but could not be saved on the server."
+- **S-3: fixed (verified).** A read is refused above 1 MiB (checked by stat before the read). It
+  holds at most `MAX_SILENCES` entries, and every element must be an object with finite
+  `0 <= start < end`. Anything else reads as no record, and all of it sits inside the try, so the
+  GET cannot throw on a hand-edited file. The stat-then-read gap only matters to someone who
+  already owns DATA_DIR.
+- S-4 (INFO, scan cost): unchanged, no action asked.
+
+### New surface
+
+- **The `chaptersVersion` token on GET /api/videos/:id (verified).** It is computed only after
+  that route's `mediaVisibleTo` 404 gate. It is 16 hex characters of a sha256 over the stored
+  manual list, the resolved list and source, and (for a snap edit) the revert target. The revert
+  target comes from `item.chapters` or `item.tags.description`, and the same response already
+  spreads `...item` (so `chaptersManual`, `chapters` and `tags` are already sent). The token is a
+  deterministic digest of data the viewer already receives, with no key and no secret, so it leaks
+  nothing new. On the snap routes it is computed only behind `gate()`.
+- **The text route POST /api/videos/:id/chapters, RBAC order (verified): unchanged.**
+  `requireModifyLibrary`, then `restrictedVideoMutation`, then body checks, then the write tick.
+  I compared this with the main checkout's copy of the route. The version check is added inside
+  the tick, and a non-string `version` gets 400 before the tick. There is still no in-tick
+  `mediaVisibleTo` re-check. That gap predates this branch; the snap routes have the re-check.
+- **The typed-start grammar (verified).** `CHAPTER_LINE_FRACTION` accepts at most 3 + 2 + 2
+  integer digits and a fraction of 1-3 digits followed by a non-digit. It has no minus sign, no
+  exponent and no `Infinity`, so NaN, negative and huge values are impossible by construction (the
+  ceiling is 999:99:99.999). `chapterTimestampToSeconds` and `normalizeChapter` re-check that the
+  value is finite and >= 0, and the result is rounded to the millisecond. Duplicate starts are
+  refused (400) instead of deduped, and more than `MAX_CHAPTERS` is refused. The duplicate error
+  quotes the user's own normalized titles (control characters stripped, 200-character cap), and the
+  client writes errors with `textContent`, so there is no injection even of your own text. The text
+  stays capped at 20000 characters before parsing. `carrySnapProvenance` copies only stored
+  `startTime`/`snapFrom`/`snapBase` plus the parsed title, and only when the count matches and
+  every start is within 0.5 ms. Body keys are read by name and never merged, so `__proto__` in
+  the BODY is inert.
+
+### Finding
+
+- **S-5 MEDIUM, a pre-existing bug on the route this branch rewrote: a `__proto__` MEDIA ID
+  pollutes `Object.prototype`, and the next scan can PERSIST it onto every item.** In
+  `lib/media/routes.js:1886` the write tick looks up `db.metadata[req.params.id]` with no
+  own-property check (it was the same at base: the main checkout's copy of the route has the
+  identical line). `db.metadata` is a plain `{}` (`lib/media/items.js getAll`, and the
+  `loadDatabase` backfill).
+
+  Traced path, not run:
+  1. A user with canModifyLibrary sends `POST /api/videos/__proto__/chapters` with
+     `{"text":"0:00 A\n1:00 B"}`.
+  2. `restrictedVideoMutation` does an own-property lookup, finds nothing, and lets the request
+     through.
+  3. In the tick, `item` is `Object.prototype`, which is truthy. With `version` omitted,
+     `item.chaptersManual = carrySnapProvenance(Object.prototype, parsed)` sets an ENUMERABLE
+     `chaptersManual` on `Object.prototype` for the whole process. The save's `Object.keys` diff
+     skips it, and the route answers 200.
+  4. Every item now inherits the attacker's list. `resolveItemChapters` serves it for every item
+     without its own manual list.
+  5. The scan's Phase-2 merge (`lib/scan/orchestrator.js:1432`,
+     `Array.isArray(freshItem.chaptersManual)`) then copies the inherited value onto items as an
+     OWN property, which the diff-save persists. The change survives a restart and re-points
+     `::c<n>` likes library-wide.
+
+  Why MEDIUM, not a blocker: only a user who can already delete and move media can do it, it
+  cannot happen by accident, the pre-merge state can be recovered (embedded `chapters` and the
+  descriptions are untouched), and this branch did not introduce it.
+
+  Prescription: in this route's tick, use the same own-property lookup the snap routes use
+  (`Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : null`). Bind it with
+  a test that `POST /api/videos/__proto__/chapters` returns 404 and leaves
+  `({}).chaptersManual === undefined`, and delete the guard to watch it go red. The same unguarded
+  lookup appears in other routes (routes.js:1813, 2078/2090, 725/906/2296/2352/2418,
+  lib/music/routes.js:545, lib/media/streams.js). I did not trace which of those write. File that
+  class as a tech-debt row, not work for this branch.
+  If this is fixed, re-engage this seat at the new sha. If it is accepted instead, write the
+  rationale here.
+
+No CRITICAL or HIGH. S-1, S-2 and S-3 are closed. S-5 is MEDIUM (fix or accept in writing).
+
+Gate: APPROVED r2 @330aaa8b — security-brief
+
+## Gate r2 - qa (@330aaa8b)
+
+Delta reviewed: 567784d6 (the fixes), 5ed10a46 (the merge of main 598f25f7 = v1.319.0), 23db164c
+(bindings) and 330aaa8b (plan record), against my r1 findings. Instruments, run by this seat (Node
+22.23.1, `FILETUBE_TEST_FFMPEG` = the scratchpad static ffmpeg 7.0.2):
+- every test file touched by the branch since ecb61e1d (17) plus chapter-parse:
+  `tests 381 pass 381 fail 0 cancelled 0 skipped 0` (REACHABILITY and the C6 forged-tag test both
+  ran against real ffmpeg: `ok 23 - REACHABILITY ...`, `ok 31 - C6 ... finds NO gap`).
+- censuses (rbac-census, route-read/write-classification, comment-debt, css-token-lint, exec-plans,
+  overlay-containment, tech-debt): `tests 52 pass 52 fail 0`.
+- `npm run test:unit`: `tests 7175 pass 7175 fail 0 cancelled 0 skipped 0` (= the builder's hook).
+- `npm run lint:css`: `TOTAL 0`; `overlay-containment-lint --enforce`: `clean (0 violations)`;
+  eslint on the changed .js: `6 problems (0 errors, 6 warnings)`, all pre-existing no-unused-vars
+  in common.js.
+- `check-markers`: `2 issue(s)`: `stale approval @ecb61e1d` (the design line, expected) and
+  `stale approval @7aa10540` (security-brief r1; it has since re-signed r2 @330aaa8b below).
+- probe, `git archive 330aaa8b` sandbox in /tmp, a real 2000 s mp3, `390x844 844x390 1440x900`:
+  the builder's table REPRODUCES. 390x844: 47 buttons, min 88x44, 0 below 44, 0 past viewport.
+  844x390: 0,0 844x390 sheet, 47 buttons, min 201x44, **0 below 44**, 0 past viewport, Save/Cancel
+  pinned (screenshot checked). 1440x900: 52x36 (desktop, by design). After Save at every viewport:
+  notches `[12.1125,24.1125,36.1125]` vs stored `[12.113,24.113,36.113]`. Audition playing at
+  243.9 s for the 241.5 s boundary.
+
+### My r1 findings at 330aaa8b
+- **W1 (Snap all vs nudges): fixed as prescribed, VERIFIED.** My r1 jsdom drive re-run against the
+  real server in the r2 sandbox: nudge chapter 3 (no gap) +1 s -> the button stays `Snap all (2)`;
+  Snap to chapter 2, then -0.1 -> `Snap all (1)`; Snap all -> `0:00.0 1:01.7 2:01.0 3:04.8 4:00.0`,
+  status `Snapped 1 start`; stored `[0,61.65,121,184.75,240]` - both hand edits survive.
+- **W2 (watch notches/label after a save, incl. the text editor): fixed, VERIFIED in Chromium.**
+  My r1 drive (paused at 241.8 s, Snap all -> Save): notch `80.5%` -> `80.75%` (= 242.25/300), label
+  and menu `Sodium Lamps...` -> `Night Transit`. Then the TEXT editor from the same page: seeded
+  losslessly (`4:02.25 Sodium Lamps...`), renamed chapter 1 only -> saved (the version refreshed by
+  the snap save was ACCEPTED, no 409), label `Night Transit (renamed)`, notch still `80.75%`,
+  Edited badge still shown, stored starts unchanged. The comment-porous lock now strips comments
+  (chapter-snap-client.test.js:347-350) and the effect is bound behaviorally (chapter-snap-watch).
+- **W3 (unanchored parser): fixed as prescribed, VERIFIED.** My r1 forged-tag file through the r2
+  `runSilenceDetect` + real ffmpeg -> `[{"start":5,"end":7}]` (the forged `{1,3.5}` is gone); a
+  leading-space line reads `null`; the cache key is `n-45d0.5v2`, so no v1 record is reused.
+- S4 landscape: fixed (numbers above). S5 lost scan: fixed (a `none`/`stale` poll becomes `failed`
+  + Try again). S6 Stop before metadata: fixed (`if (closed || auditionIndex !== i) return;`).
+  S7: fixed (`minGapSec` from the state, `maxChapters` from deps, `MAX_SNAP_CHAPTERS` removed; the
+  `MIN_CHAPTER_GAP_SEC` comment is now true). S8: fixed (setup-chapter-snap-leadin.test.js). S9:
+  fixed (nearest-first candidates). S10: fixed (the drill's text path runs the queue seam, then
+  `reflectChapter()`).
+
+### Merge, disclosures, comments
+- Tracker (docs/exec-plans/tech-debt-tracker.md): every row id from BOTH parents is present (the
+  set difference is empty), no duplicate ids, only #239-#241 added vs main, in id order between
+  #238 and #251; the tech-debt census is green. Well-formed.
+- Disclosed, judged acceptable: the optional text-save `version` (both app callers send it); a
+  re-planned revert drops unsaved nudges; Home/Albums count change patches without a re-list;
+  `1:05.5 Title` -> 65.5 s "Title" (measured: `3:00.1999 remix` still reads 180 s "1999 remix",
+  `1:05. 5 Songs` reads 65 s "5 Songs"; a typed duplicate start is refused with a message).
+- The "v1.319" labels: see finding 3.
+
+### New findings
+
+1. **WARNING - the module's persistence-contract comment now states the opposite of the code
+   beside it, and the plan repeats it.** lib/media/chapterSnap.js:21-23 says "the text editor's
+   save (a full manual replace) drops it [the provenance], which is correct: a typed list is plain
+   manual chapters again". Since 567784d6 the SAME file's `carrySnapProvenance` (:97) KEEPS the
+   provenance for a title-only text save (VERIFIED above: rename -> still Edited). The plan's
+   "Disclosed gaps" (lines 341-342: "A text-editor save of a snapped item replaces the manual
+   list and drops the provenance (the badge and Revert go away) - by design") contradicts the r1
+   fix record's rule. Scenario: a maintainer reads the contract header of this data-class module,
+   takes "a text save always clears Edited" as the invariant, and removes the carry or builds on
+   the wrong rule. Fix: restate both as the shipped rule (same count and every start within 0.5 ms
+   keeps the provenance; any time or count change is a plain typed list).
+
+2. SUGGESTION - `saveAutomationSetting`'s doc comment is now attached to the wrong function.
+   public/js/setup.js:699-706: `wireChapterSnapLeadIn` was inserted between the "POSTs a single
+   changed key to /api/settings. Returns the parsed response body..." comment and
+   `saveAutomationSetting`, so that doc now reads as the lead-in wiring's. Move the function
+   above the comment.
+
+3. SUGGESTION - the "v1.319" labels. 76 added lines outside docs say `v1.319` (lib 15, server.js
+   12, public 30, tests/scripts the rest); `v1.319.0` is the lock-audio tag, and main carries no
+   `v1.319` code labels of its own, so every hit names a release this feature is not in. Labels
+   only (no behavior), disclosed, and the number is not known until release (the wave merges in
+   readiness order), so safe to ship ONLY if the release relabels them: one `sed` over this
+   branch's added lines to the real version at release, added to the release checklist for this
+   branch. Otherwise `git grep v1.319` (the first move when bisecting a v1.319 regression) returns
+   76 unrelated Chapter Snap hits.
+
+4. SUGGESTION - a FILENAME can still forge a gap (the security-brief's suspicion, now measured).
+   ffmpeg echoes the input path raw on `Input #0, ... from '<path>':`. VERIFIED: a copy of my test
+   mp3 named `nl<LF>[silencedetect @ 0x1] silence_start: 1<LF>[silencedetect @ 0x1] silence_end:
+   3.5<LF>.mp3` -> r2 `runSilenceDetect` resolves `[{"start":1,"end":3.5},{"start":5,"end":7}]`.
+   The owner chooses local names and yt-dlp's filename sanitizing very likely removes newlines, and
+   the effect is a reviewed suggestion, so low. Cheap closure: refuse to scan a path containing
+   `\r`/`\n` (the runner already refuses NUL), or count events only after ffmpeg's `Output #0`
+   line.
+
+5. SUGGESTION - a count change leaves a ghost in the listen-mode stash. music.js
+   `applySnappedChapterTimes` now REASSIGNS `queue = queue.filter(...)`; for a chaptered LISTEN
+   video `queue` was the same array as `activeListenChapters` (music.js:3222/3257), which keeps the
+   dropped `::cN` object. Scenario: listen to a chaptered video, "This chapter starts wrong" ->
+   Revert onto a source with fewer chapters (consented) -> dock, then return: `restoreListenChapterQueue`
+   sets `queue = activeListenChapters` and the ghost row is back. Filter the stash too (or
+   re-assign it when it aliased the queue). A time-only save is unaffected (objects patched in place).
+
+Note, not a finding: at 844x390 the Music drill's action row (pre-existing siblings, 28 px tall at
+widths over 600) carries "Fix times" at 80x28; the button matches its siblings, and the editor
+itself is 44 px there.
+
+Security standing section: no new exposure. The anchored parser holds against metadata (verified);
+finding 4 is the residual filename path (low). The text route's duplicate-start error echoes two
+user-typed titles back to the same modify-rights user, rendered with textContent. The new
+`CHAPTER_LINE_FRACTION` has the same quadratic backtracking as the pre-existing `CHAPTER_LINE`
+(measured on a 20,000-character line of spaces: 478 ms vs 586 ms for the old grammar; the route
+caps text at 20,000 characters and requires modify), so no new ReDoS surface. The GET
+/api/videos/:id `chaptersVersion` is a 16-hex hash of chapter data the viewer already receives.
+The routes' 403/404/in-tick re-check are unchanged; `maxChapters` now comes from server.js.
+
+Plan vs tree: the r1 fix record's counts (7175), probe table and finding->fix mapping hold where I
+re-ran them; the "Disclosed gaps" line on text saves is stale (finding 1).
+
+Tree: nothing written but this section (the security-brief r2 section above was already in the
+working tree). Scratch: /tmp/qa-chapter-snap-330aaa8b (the archive sandbox, with one scratch test
+and one scratch probe variant) and the session scratchpad.
+
+Gate: CHANGES r2 @330aaa8b — qa
+
+## Gate r2 - adversary (@330aaa8b)
+
+Instruments, verbatim (Node 22.23.1, FILETUBE_TEST_FFMPEG = the static ffmpeg 7.0.2):
+- The 7 chapter-snap files at 330aaa8b: `# tests 70 # pass 70 # fail 0 # cancelled 0 # skipped 0`.
+- All mutants ran in a /tmp sandbox built from `git archive 330aaa8b`. Its tracked content was
+  diff-clean against the commit before each batch.
+
+The r1 findings, re-measured at 330aaa8b:
+1. **W1 (text editor rounding / dedup): FIXED as prescribed.**
+   - A title-only rename with the real seed keeps the stored list at `[61.75, "Second Song", 60,
+     "embedded"] ... [240, "The Closer", ...]`, with the times, the provenance and Edited intact.
+   - With starts 0.7 s apart, an unchanged text save keeps the count at 5 and the like on `::c3`
+     still reads "Fourth Song".
+   - A typed duplicate gets 400: "Two chapters start at 2:00 ...".
+   - Real Chromium: renaming through the watch text editor stores `[25, "B", snapFrom 20]`.
+2. **W2 (revert consent): FIXED as prescribed.** In the 5 -> 6 -> 2 run the version changes
+   (`true`). The old-version revert with `allowCountChange` gets 409 `stale`, and all 5 manual
+   chapters are kept.
+3. **W3 (count guard, one axis): FIXED.** Behavior: 4 chapters gives `409 {"from":5,"to":4}`
+   and 6 gives `409 {"from":5,"to":6}`. Both mutants go RED: `<` reds the new C3 test and `>`
+   reds the reheat test.
+4. **W4 (watch notches): FIXED.** Real Chromium, chapter 2 moved 20 -> 25 s: the notches go from
+   `["33.3333%","66.6667%"]` to `["41.6667%","66.6667%"]`, and a later text save keeps them.
+5. **W5 (Music ghost rows): FIXED** for rows and titles, bound by the builder's tests. Its NEW
+   drop path has a nav gap: see finding 2 below.
+6. **W6 (forged silences): FIXED.** Real `runSilenceDetect` over the same forged continuous tone
+   returns `[]`. A real 2 s gap in a file whose title carries a forged line returns exactly
+   `[{"start":4,"end":6}]`.
+7. **My r1 survivors:**
+   - MB, MC, MD, ME and MG are all RED, each on the test the fix record names.
+   - MH still SURVIVES (70/70). I accept the equivalence argument: skin-surface.js:242 refuses
+     any fetched item whose `id !== baseId` before the menu renders. I verified that by reading
+     the code; I did not run it.
+8. **Spot check of the 71-mutant claim:** 9 of 9 of my own mutants went RED. They cover:
+   - the carry turned off, and the carry ignoring times (A1 plus the core carry test);
+   - the text-save version ignored (S8);
+   - the revert target dropped from the token (A2, the re-plan UI test, the core token test);
+   - duplicate starts allowed (A1b);
+   - the silence regex un-anchored (C6 real ffmpeg, plus parser edges);
+   - the seam dropping no rows (the NOW PLAYING count change);
+   - no re-plan after a stale revert (the re-plan UI test);
+   - the fraction grammar removed (A1, A1b, seed parity).
+
+Findings (what the fix introduced):
+
+1. **WARNING (NEW, introduced by the carry rule): a title rename made in the text editor now
+   survives as a snap edit, and a later Revert silently ERASES the typed titles.** Measured
+   through the real routes:
+   1. Snap save.
+   2. A text rename of "Second Song" -> "Heartbeats (José González)" and "Fourth Song" ->
+      "Crosses". The response is 200, `edited:true`, `revert {"source":"embedded","count":5}`,
+      and the titles are the renamed ones.
+   3. Revert returns 200. The titles are back to `["Opening","Second Song","Third Song","Fourth
+      Song","Closer"]`.
+
+   The confirm says only "Go back to the chapter times from the file? Your corrected times are
+   removed." Before this fix, a rename dropped the provenance, so the typed titles could not be
+   lost this way. Chapter Snap is TIMES ONLY (S3), so its revert should revert times.
+   Prescription: on an embedded/description base, when the stored titles differ from the
+   target's titles (same count), write the source TIMES with the stored TITLES as a plain manual
+   list. Drop the manual list only when the titles already match. Alternatively, at minimum, the
+   confirm must name the title loss. Bind it with this repro.
+2. **WARNING (NEW, introduced by the count-change drop): the seam changes queue indices but
+   re-registers nav only when the playing chapter's ID changes.** Measured through the REAL
+   music.js harness:
+   - Setup: an in-order album c0/c1/c2 playing `f1::c1` at 62 s. A consented revert changes 3 to
+     2 chapters (the server re-lists 2 rows).
+   - `setTrackNav` registrations stay at **1** (before and after). The last registration still
+     has `onNext`, which is the stale `playAt(2)`. Calling it leaves the player on `f1::c1` (a
+     no-op, because the queue now has length 2).
+   - The only fetch is the album re-list; there is no autoplay fetch, so the radio never arms on
+     what is now the last chapter.
+   - `reflectChapter()` returns early because `currentChapterId()` is still `f1::c1`, and
+     `render()`'s follow-up reflects the same way. When a dropped row comes BEFORE the playing
+     one (a shuffled drill, or the Songs tab sorted by title), onPrev/onNext point one slot off.
+
+   Verified: nav is not re-registered and onNext is a no-op. Reasoned, not driven: at the
+   whole-file end the ended-advance falls back to that onNext, so playback stops instead of
+   stationing on. This is the v1.311 class. Prescription: after the filter (and again after the
+   re-list), look up the playing id's index in the NEW queue and call `registerTrackNav(ti)`
+   unconditionally. Bind it by asserting a fresh registration with no `onNext` (or radio armed)
+   when the playing chapter becomes the last.
+3. **SUGGESTION: the text-save `version` is optional, and a client that omits it still silently
+   replaces a snap edit.**
+   - Measured: seed, snap save to [0, 61.75, 120, 184.75, 240], then a POST /chapters with NO
+     version returns **200**. The store holds `[0,60,120,180,240]` and `edited:false`. The same
+     text WITH the stale version gets 409.
+   - Every v1.319 caller sends the version (both `showChaptersEditor` callers pass it; I grepped
+     every `/chapters'` POST in public/js). So only a tab or PWA still running pre-upgrade JS
+     reaches the legacy path. The builder disclosed it.
+   - Cheap hardening: when the STORED list `isSnapEdited`, require the version (409 "reload"),
+     which protects exactly the sub-second data.
+4. **SUGGESTION: the grammar change is stable for stored data, and changes the meaning of only a
+   few NEWLY typed forms.**
+   - Measured old -> new readings: `3:00.199 remix` 180 "199 remix" -> 180.199 "remix";
+     `2:30.5` 150 "5" -> 150.5 ""; `[1:05.25] Bracketed` 65 "25] Bracketed" -> 65.25
+     "Bracketed". Unchanged: `1:05. 99 Luftballons`, `3:00.1999 remix`, `4:00 - .5 Nights`.
+     Descriptions keep the old parser.
+   - A stored list always round-trips, because the seed emits a space after the stamp. The one
+     exception is pre-existing: a stored title beginning `.5` becomes `5` on any save; with the
+     carry, that now happens without dropping Edited.
+5. **Suspicion, not a finding:** a snap made from Music now-playing does not refresh the watch
+   player's `currentData.chaptersVersion`. A text editor opened later on the same loaded item
+   would get 409 and need a reload. The failure is in the safe direction; I did not drive it.
+
+The v2 cache bump: a v1 record reads `stale` and the editor re-scans (the builder binds this in
+the core test). I found no hole.
+
+Tree: the sandbox, the probe temp dirs and Chromium are gone. Apart from this appended section
+(and the other seats' sections), `git status` is clean. The pre-existing untracked
+`node_modules` symlink was left untouched.
+
+Gate: CHANGES r2 @330aaa8b — adversary
