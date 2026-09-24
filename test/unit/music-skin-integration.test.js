@@ -1439,6 +1439,38 @@ test('v1.254 autoplay: the LAST track VISIBLY extends the queue (same-artist fir
   });
 });
 
+// Music follow-ups item 0: the SKIN's sticker Autoplay row goes through the same toggle seam as
+// the desktop toolbar button - switched OFF after the early append, the station is retracted.
+test('item 0: the sticker Autoplay row switched OFF after the early append retracts the station (no Next for the ended-advance); the row reads Off', async () => {
+  const calls = { loads: [], navs: [] };
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const picks = [1, 2, 3].map((n) => ({ id: 'p' + n, title: 'Pick ' + n, artist: 'Band', durationSec: 80 + n }));
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t9] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => t9 });
+    if (url.indexOf('/api/music?artist=') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: picks }) });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=t9',
+    fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(typeof calls.navs[calls.navs.length - 1].onNext, 'function', 'precondition: the early append armed a Next');
+      const menu = openSticker(dom);
+      const row = menu.querySelector('[data-skin-autoplay]');
+      assert.ok(row, 'the sticker renders the Autoplay row');
+      assert.strictEqual(row.getAttribute('aria-checked'), 'true', 'precondition: on');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.strictEqual(dom.window.localStorage.getItem('ft-music-autoplay'), '0');
+      assert.strictEqual(calls.navs[calls.navs.length - 1].onNext, undefined, 'the picks were retracted: the single song is the end of the queue again');
+      assert.strictEqual(calls.loads.length, 1, 'playback untouched');
+    },
+  });
+});
+
 test('v1.254 autoplay: a LISTEN track never autoplays into random songs (the locked-intake exclusion)', async () => {
   const calls = { loads: [], navs: [] };
   const log = [];
@@ -2563,6 +2595,46 @@ test('v1.317 gate r2 qa W2: in the desktop POP-OUT a LISTEN video\'s artist line
       assert.ok(!pip.closed, 'the pop-out stays open');
       assert.ok(!log.some((c) => /[?&]artist=/.test(c.url)), 'and no artist drill either');
       assert.strictEqual(calls.loads.length, 1, 'playback untouched');
+    },
+  });
+});
+
+// ---- Music follow-ups item 4f (the M1+M2 r3 qa suggestion): the chapter-aware watchBackVisible
+// also decides dockToOrigin. After a chaptered listen video rolled into chapter two and a Songs
+// browse replaced the queue, the skin's collapse must DOCK IN PLACE on /music (the v1.283 listen
+// rule: clear the launch origin, never bounce to the source video's resume prompt); before the
+// v1.317 widening it bounced (qa measured returnToPlayerOrigin 1 / clearPlayerLaunchOrigin 0). The
+// other axis: a normal music track's collapse still returns to its origin.
+test('item 4f: after a chapter cross + Songs browse, a chaptered LISTEN video\'s collapse docks in place (the launch origin cleared, no bounce to the video); a normal track\'s collapse still returns to its origin', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, CHAPTERED_LISTEN), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      await crossIntoChapterTwoThenBrowse(dom, calls, log);
+      const origin = { ret: 0, clr: 0 };
+      dom.window.FileTube.returnToPlayerOrigin = () => { origin.ret += 1; };
+      dom.window.FileTube.clearPlayerLaunchOrigin = () => { origin.clr += 1; };
+      const collapse = panel(dom).querySelector('[data-skin-collapse]');
+      assert.ok(collapse, 'the skin renders its collapse control');
+      collapse.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.strictEqual(calls.docks, 1, 'the collapse docked the player');
+      assert.deepStrictEqual(origin, { ret: 0, clr: 1 }, 'docked IN PLACE: the launch origin cleared, no bounce to the source video');
+    },
+  });
+  const calls2 = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=c1',
+    fetchImpl: continueFetch(CH_TRACK), playerOverride: channelPlayer(calls2),
+    run: async (dom) => {
+      assert.strictEqual(calls2.loads[0] && calls2.loads[0].id, 'c1', 'precondition: the normal music track loaded');
+      const origin = { ret: 0, clr: 0 };
+      dom.window.FileTube.returnToPlayerOrigin = () => { origin.ret += 1; };
+      dom.window.FileTube.clearPlayerLaunchOrigin = () => { origin.clr += 1; };
+      panel(dom).querySelector('[data-skin-collapse]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.strictEqual(calls2.docks, 1);
+      assert.deepStrictEqual(origin, { ret: 1, clr: 0 }, 'a normal track returns to where it was launched');
     },
   });
 });

@@ -9208,6 +9208,15 @@ body:not([data-view="watch"]):not([data-view="music"]) #ambient-toggle-row { dis
 @media (max-width: 768px) {
   body[data-view="music"] #ambient-toggle-row { display: none; }
 }
+/* Music follow-ups item 1 (2026-09-24): the cog's Autoplay + Loop rows (watch.js
+   ensureCogControlsInjected) ride the same persistent host and are bound on the WATCH
+   view's signal only, so on any other view they were checked but dead (measured in Music
+   after a watch visit). The watch view is the only one that wires them: Music has its own
+   Autoplay (a different setting - the endless station, not "autoplay next video") and its
+   own Loop (the same ft-loop, with a "Loop chapter" label) in its toolbar and sticker menu,
+   so it hides these rather than carrying a second copy. */
+body:not([data-view="watch"]) #watch-autoplay-row,
+body:not([data-view="watch"]) #watch-loop-row { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .ambient-glow,
   .ambient-glow-layer { transition: none; }

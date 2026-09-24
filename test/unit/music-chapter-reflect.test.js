@@ -28,6 +28,7 @@ const RECENT = [CHAPTERS[0]];
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <select id="music-sort-select"></select>
   <button id="music-view-toggle" hidden><i></i></button>
+  <button id="music-autoplay-btn" type="button" aria-pressed="false">Autoplay</button>
   <div id="player-slot"></div>
   <video id="media-player"></video>
   <div id="music-nowplaying-panel" class="music-nowplaying-panel"></div>
@@ -751,4 +752,97 @@ test('v1.237 (W2 residual): the SAME file played as a raw (non-::c) video HIDES 
     const panel = dom.window.document.getElementById('music-nowplaying-panel');
     assert.strictEqual(panel.hidden, true, 'panel HIDES stale music while the raw (non-::c) video of the same file plays (::c-on-live gate)');
   });
+});
+
+// ---- Music follow-ups item 0 (2026-09-24): what "Autoplay off" means --------------------------
+// Autoplay is the STATION (the tracks lined up when YOUR queue runs out). MEASURED in headless
+// Chromium before this: the station is appended EARLY (when the last track starts), so turning
+// Autoplay off during that last track left the picks in the queue and the natural end played on
+// into them (the M4 adversary's side observation). Bound here on both axes, through the REAL
+// toolbar button and through a pref that arrives in storage with no toggle (prefs-sync).
+const STATION = () => { const r = []; for (let n = 1; n <= 5; n++) r.push({ id: 'st' + n, title: 'S' + n, artist: 'A', album: 'O', albumKey: 'X', durationSec: 200, source: 'library' }); return r; };
+const autoplayBtn = (dom) => dom.window.document.getElementById('music-autoplay-btn');
+
+test('item 0: Autoplay turned OFF (the REAL toolbar button) on the last chapter RETRACTS the unplayed station - the end stops where the album ends; ON again lines it up now', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(250); await settle(); // play through to the LAST chapter: the station is appended early
+    await ctx.drain();
+    assert.ok(ctx.getNav() && typeof ctx.getNav().onNext === 'function', 'precondition: the station is up (a Next exists past the album)');
+    assert.strictEqual(autoplayBtn(dom).getAttribute('aria-pressed'), 'true', 'precondition: Autoplay is on (the default)');
+    autoplayBtn(dom).click();
+    assert.strictEqual(dom.window.localStorage.getItem('ft-music-autoplay'), '0', 'the toggle wrote the shared pref');
+    assert.strictEqual(autoplayBtn(dom).getAttribute('aria-pressed'), 'false');
+    assert.strictEqual(ctx.getNav().onNext, undefined, 'the station is retracted: the last chapter is the end of the queue again (no Next for the ended-advance)');
+    assert.strictEqual(ctx.playerState.currentId, 'film::c0', 'the playing file is untouched');
+    // the ON axis: switching it back on while on the last chapter lines the station up NOW
+    autoplayBtn(dom).click();
+    await ctx.drain();
+    const nav = ctx.getNav();
+    assert.ok(nav && typeof nav.onNext === 'function', 'ON on the last track re-armed the station without waiting for a load');
+    nav.onNext();
+    await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'st1', 'and the end stations on');
+  }, { radio: STATION() });
+});
+
+test('item 0: a pref that reaches storage with NO toggle (another device, prefs-sync) - the advance refuses the station pick and retracts it; YOUR queue still plays through', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    // your queue first: with Autoplay OFF the album's own next chapter is NOT a station pick
+    dom.window.localStorage.setItem('ft-music-autoplay', '0');
+    const first = ctx.getNav();
+    assert.ok(first && typeof first.onNext === 'function', 'precondition: chapter one has a Next (chapter two)');
+    first.onNext();
+    await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'Autoplay off never stops YOUR queue (the album plays through)');
+    // now on: the last chapter appends the station; then the pref flips in storage only
+    dom.window.localStorage.setItem('ft-music-autoplay', '1');
+    set(250); await settle();
+    await ctx.drain();
+    const armed = ctx.getNav();
+    assert.ok(armed && typeof armed.onNext === 'function', 'precondition: the station is up');
+    dom.window.localStorage.setItem('ft-music-autoplay', '0'); // no toggle in this view
+    armed.onNext(); // the natural-end advance (the player's ended cascade calls exactly this)
+    await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'the advance did NOT enter the station pick');
+    assert.strictEqual(ctx.getNav().onNext, undefined, 'the picks were retracted and the nav re-armed with no Next');
+  }, { radio: STATION() });
+});
+
+test('item 0: the solo-chapter exit re-checks Autoplay at the hand-off - a station primed while on is never appended once it is off (storage-only flip)', async () => {
+  const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
+    await ctx.drain(); // the station is primed and ready (the v1.311 test above exits onto it)
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'precondition: the tapped chapter is loaded');
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    dom.window.localStorage.setItem('ft-music-autoplay', '0'); // flipped with no toggle
+    set(130); await settle();
+    set(240); await settle(); // the segment end: the hand-off point
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'no station was appended or loaded: a straight-through listen');
+  }, { radio: RADIO });
+});
+
+test('item 0: the solo-chapter exit onto an EXISTING station row (gate r3 F1b) is refused once Autoplay is off (storage-only flip) - the row is retracted, nothing loads', async () => {
+  const RADIO = [];
+  for (let n = 1; n <= 7; n++) RADIO.push({ id: 'st' + n, title: 'S' + n, artist: 'A', album: 'O', albumKey: 'X', durationSec: 200, source: 'library' });
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(250); await settle();
+    await ctx.drain(); // the play-all extend appended st1..st5 (visible up-next)
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'precondition: the middle chapter is loaded');
+    dom.window.localStorage.setItem('ft-music-autoplay', '0');
+    set(130); await settle();
+    set(240); await settle(); // its end boundary: the F1b branch would land on st1
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'did NOT land on the existing station row');
+  }, { radio: RADIO });
 });

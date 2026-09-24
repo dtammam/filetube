@@ -46,10 +46,19 @@ function makeEl(tag) {
     isConnected: true, value: '',
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
-    // v1.314 gate r1: listeners are RECORDED (last per type) so a test can drive a
-    // click; every earlier test ignores them. v1.317 gate r2: the OPTIONS too (_lo),
-    // so a test can bind a listener's `{ signal }` by execution.
-    addEventListener(t, fn, opts) { (el._l = el._l || {})[t] = fn; (el._lo = el._lo || {})[t] = opts; }, removeEventListener() {},
+    // v1.314 gate r1: listeners are RECORDED so a test can drive a click; every earlier
+    // test ignores them. v1.317 gate r2: the OPTIONS too (_lo), so a test can bind a
+    // listener's `{ signal }` by execution. Music follow-ups item 4d: EVERY listener is
+    // kept (the first cut kept only the LAST per type, so a second click listener
+    // silently replaced the first): `_l[type]()` fires them all in registration order,
+    // `_lo[type]` lists every registration's options, `_ls` is the raw record.
+    addEventListener(t, fn, opts) {
+      (el._ls = el._ls || []).push({ type: t, fn, opts });
+      const ofType = () => el._ls.filter((x) => x.type === t);
+      (el._l = el._l || {})[t] = function () { const a = arguments; ofType().forEach((x) => x.fn.apply(el, a)); };
+      (el._lo = el._lo || {})[t] = ofType().map((x) => x.opts);
+    },
+    removeEventListener() {},
     // v1.197: the tv path now runs the cog-injection + ambient setup, which use
     // insertAdjacentHTML (and, v1.312, an OFF-DOM sample canvas the engine creates
     // only on its first sample) - permissive stubs (the ambient engine never
@@ -92,6 +101,20 @@ const REAL_PLAYER_API = (() => {
   for (const m of src.matchAll(/defineProperty\(api,\s*'([^']+)'/g)) names.add(m[1]);
   return names;
 })();
+
+test('harness (music follow-ups item 4d): the element shim keeps EVERY listener - a second registration of a type never replaces the first', () => {
+  const el = makeEl('button');
+  const ran = [];
+  const ac = new AbortController();
+  el.addEventListener('click', () => ran.push('first'), { signal: ac.signal });
+  el.addEventListener('click', () => ran.push('second'));
+  el.addEventListener('keydown', () => ran.push('key'));
+  el._l.click();
+  assert.deepEqual(ran, ['first', 'second'], 'both click listeners fire, in registration order; the keydown one does not');
+  assert.equal(el._lo.click.length, 2, 'both registrations\' options are recorded');
+  assert.strictEqual(el._lo.click[0].signal, ac.signal);
+  assert.equal(el._lo.click[1], undefined);
+});
 
 test('harness: REAL_PLAYER_API is read from player.js (non-vacuous; a misspelling is NOT on it)', () => {
   for (const n of ['load', 'expand', 'dock', 'close', 'setTrackNav', 'getState', 'isLoopEnabled', 'currentId', 'ensureTheaterButton']) {
@@ -666,12 +689,16 @@ test('v1.317 gate r2 W1: setupTheatreToggle binds the #theater-btn click on init
   const tb = realm.els.get('#theater-btn');
   assert.ok(tb && tb._l && typeof tb._l.click === 'function', 'precondition: setupTheatreToggle ran and bound a click on #theater-btn');
   assert.ok(realm.initController, 'precondition: init() created its view controller');
-  const opts = tb._lo.click;
-  assert.ok(opts && opts.signal, 'the theatre click is registered WITH a signal (got ' + JSON.stringify(opts) + ')');
-  assert.strictEqual(opts.signal, realm.initController.signal, 'it is init()\'s own view signal');
-  assert.equal(opts.signal.aborted, false, 'live while the view is up');
+  // item 4d: every click registration is recorded now - EACH must ride the view signal
+  const regs = tb._lo.click;
+  assert.ok(Array.isArray(regs) && regs.length >= 1, 'at least one click registration recorded');
+  for (const opts of regs) {
+    assert.ok(opts && opts.signal, 'the theatre click is registered WITH a signal (got ' + JSON.stringify(opts) + ')');
+    assert.strictEqual(opts.signal, realm.initController.signal, 'it is init()\'s own view signal');
+    assert.equal(opts.signal.aborted, false, 'live while the view is up');
+  }
   realm.destroy();
-  assert.equal(opts.signal.aborted, true, 'destroy() aborts it, so the listener dies with the view');
+  for (const opts of regs) assert.equal(opts.signal.aborted, true, 'destroy() aborts it, so the listener dies with the view');
 });
 
 test('v1.317 gate W1: the ?tv= episode path CALLS the one theatre-button writer exactly once (initTvWatch runs the same cog sequence)', async () => {

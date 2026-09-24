@@ -1988,11 +1988,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // its OWN id, and Autoplay + Loop land BEFORE an Ambient row that is already
       // there - the menu order is Autoplay, Loop, Ambient whichever view came first.
       if (menu && !document.getElementById('watch-autoplay-check')) {
-        const watchRows = '<label class="watch-autoplay-label settings-menu-toggle" for="watch-autoplay-check">'
+        // Music follow-ups item 1: each row carries an id so the CSS can scope it to the view
+        // that WIRES it (the M4 Ambient-row rule): these two are bound on THIS view's signal only.
+        const watchRows = '<label class="watch-autoplay-label settings-menu-toggle" id="watch-autoplay-row" for="watch-autoplay-check">'
           + '<span class="watch-autoplay-text">Autoplay</span>'
           + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-autoplay-check" aria-label="Autoplay next video" />'
           + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
-          + '<label class="watch-autoplay-label settings-menu-toggle" for="watch-loop-check">'
+          + '<label class="watch-autoplay-label settings-menu-toggle" id="watch-loop-row" for="watch-loop-check">'
           + '<span class="watch-autoplay-text">Loop</span>'
           + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-loop-check" aria-label="Loop current video" />'
           + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>';

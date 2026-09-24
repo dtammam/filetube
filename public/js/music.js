@@ -999,8 +999,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (autoplayBtn) {
       autoplayBtn.addEventListener('click', function () {
-        setAutoplayEnabled(!autoplayEnabled());
-        reflectPlaybackModes();
+        applyAutoplayToggle(!autoplayEnabled()); // the ONE toggle seam (it reflects the modes too)
       }, { signal });
     }
     // The initial paint is the unconditional updateNowPlayingPanel() at the end of init(): it
@@ -1149,7 +1148,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // (localStorage), default ON, music view only (podcasts omit the hook).
           autoplay: {
             enabled: autoplayEnabled,
-            onToggle: function () { setAutoplayEnabled(!autoplayEnabled()); },
+            onToggle: function () { applyAutoplayToggle(!autoplayEnabled()); }, // the ONE toggle seam (music follow-ups item 0)
           },
           // v1.270 BRICK (Dean: "almost a little easter egg"). The VIEW owns the
           // question the engine must not: which skins have a wheel to play it with.
@@ -1408,11 +1407,14 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       var afterIdx = lastChapIdx + 1;
       if (lastChapIdx >= 0 && afterIdx < queue.length) {
+        if (autoplayHoldsAt(afterIdx)) return; // Autoplay went off: that row was the station - listen straight through
         playAt(afterIdx, { keepPosition: true }); // land on the first EXISTING up-next row past the album
         return;
       }
       if (!picks || !picks.length) return; // no existing station AND nothing pre-fetched -> degrade to a straight-through listen
+      if (!autoplayEnabled()) return; // re-checked at the hand-off (primed while on, switched off since): no station
       var startIdx = queue.length;
+      markAutoplayPicks(picks);
       queue = queue.concat(picks); // the album is the tail: append the station (existing rows' data-index unchanged)
       playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
     }
@@ -1489,7 +1491,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // Two ids name the same listen/music FILE: equal, or two `::c` CHAPTER ids of one base (a
     // chaptered file rolls through its chapters without a reload). A raw id never matches a
-    // `::c` id (effectiveCurrentId's adversarial W2 posture). Caller: watchBackVisible.
+    // `::c` id (effectiveCurrentId's adversarial W2 posture). Callers: watchBackVisible (the listen
+    // test: the Watch row, the artist line, dockToOrigin) and buildSkinCtx (the listen-art fallback).
     function sameMusicItem(a, b) {
       a = String(a); b = String(b);
       if (a === b) return true;
@@ -2787,11 +2790,17 @@ if (typeof module !== 'undefined' && module.exports) {
     // around the recovered playing index, not just a fresh loadTrack.
     function registerTrackNav(i) {
       if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
+      navIndex = i; // the queue index the nav is armed around (retractAutoplayPicks keeps it and everything before)
       // i<0 (no known index) registers NO neighbors - clears any stale closures
       // rather than binding onNext to playAt(0) off a negative index.
       window.FileTube.player.setTrackNav({
         onPrev: i > 0 ? function () { playAt(i - 1, { keepPosition: true }); } : undefined,
-        onNext: (i >= 0 && i < queue.length - 1) ? function () { playAt(i + 1, { keepPosition: true }); } : undefined,
+        // Music follow-ups item 0: Next (the natural-end advance AND a manual Next) never steps
+        // INTO a station pick while Autoplay is off - it retracts them instead (see below).
+        onNext: (i >= 0 && i < queue.length - 1) ? function () {
+          if (autoplayHoldsAt(i + 1)) return;
+          playAt(i + 1, { keepPosition: true });
+        } : undefined,
       });
       // v1.254 (Dean, ENDLESS AUTOPLAY): the last-track register is THE exhaustion
       // seam - every path that arms nav (fresh load, dock-return reseed, continue
@@ -2813,6 +2822,60 @@ if (typeof module !== 'undefined' && module.exports) {
     var AUTOPLAY_APPEND_COUNT = 5;   // tracks appended per exhaustion
     var AUTOPLAY_ARTIST_MAX = 3;     // cap on the ARTIST-ARM picks (the library fill may add more same-artist)
     var autoplayFetchInFlight = false;
+    // ---- Music follow-ups item 0 (2026-09-24): what "Autoplay off" means ---------------------
+    // Autoplay is the STATION: the tracks FileTube lines up when YOUR queue runs out (the v1.254
+    // contract, in its ledger's words). Your own queue - an album, a Songs / Recently played list,
+    // a listen video's chapters - always plays through, as it did before this switch existed (the
+    // v1.63 "the queue owns up-next" rule; player.js: music advances through its queue by
+    // default). So OFF must stop playback where your queue ends and never enter a station pick.
+    // MEASURED in headless Chromium before this: the picks are appended EARLY (when the last
+    // track starts), so turning Autoplay off during that last track - the toolbar button, the
+    // sticker row, or the synced pref - left them in the queue, and the natural end played on
+    // into them (the M4 adversary's "aud4 to aud1::c1" was one of them). Now every appended pick
+    // is remembered here, the switch retracts the ones not yet reached, and the advance seams
+    // refuse to enter one while Autoplay is off (a pref that arrived from another device lands
+    // in storage with no toggle in this view).
+    var autoplayPicks = (typeof WeakSet === 'function') ? new WeakSet() : null;
+    var navIndex = -1; // set by registerTrackNav: the index the live nav is armed around
+    function isAutoplayPick(t) { return !!(t && autoplayPicks && autoplayPicks.has(t)); }
+    function markAutoplayPicks(picks) {
+      if (!autoplayPicks) return;
+      for (var k = 0; k < picks.length; k++) if (picks[k] && typeof picks[k] === 'object') autoplayPicks.add(picks[k]);
+    }
+    // Drop every station pick AFTER the track the nav is armed around (the playing one - a pick
+    // already playing keeps playing; the picks sit at the queue tail, so no earlier row's index
+    // moves), re-arm the nav so Next ends where your queue ends, and repaint the up-next.
+    // Returns whether anything was dropped.
+    function retractAutoplayPicks() {
+      soloExitPicks = null; // a primed solo-chapter station is a station too
+      var kept = [];
+      var dropped = 0;
+      for (var k = 0; k < queue.length; k++) {
+        if (k > navIndex && isAutoplayPick(queue[k])) { dropped += 1; continue; }
+        kept.push(queue[k]);
+      }
+      if (!dropped) return false;
+      queue = kept;
+      if (navIndex >= 0 && navIndex < queue.length) registerTrackNav(navIndex);
+      updateNowPlayingPanel();
+      return true;
+    }
+    // The advance seams ask this before stepping to queue index j: true = Autoplay is off and
+    // j is a station pick, so the picks were retracted and the caller must NOT advance.
+    function autoplayHoldsAt(j) {
+      if (autoplayEnabled() || !isAutoplayPick(queue[j])) return false;
+      retractAutoplayPicks();
+      return true;
+    }
+    // The ONE toggle seam (the toolbar button and the skin sticker row). OFF retracts the picks
+    // not yet reached; ON on the last track lines the station up now (registerTrackNav is the
+    // extension's arming seam) - otherwise it would only arm at the next load.
+    function applyAutoplayToggle(on) {
+      setAutoplayEnabled(on);
+      if (!on) retractAutoplayPicks();
+      else if (navIndex >= 0 && navIndex === queue.length - 1) registerTrackNav(navIndex);
+      reflectPlaybackModes();
+    }
     // v1.311: the picker's fetch+pick core, extracted so BOTH consumers - the end-of-queue
     // extension (maybeExtendQueueForAutoplay) AND the solo-chapter exit (primeSoloExitStation) -
     // route through ONE truth (the "hand-copied sibling drifts" bug class). Same-artist first,
@@ -2897,6 +2960,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (queue[queue.length - 1] !== cur) return;
         if (playingId !== cur.id) return;
         if (picks.length === 0) return;
+        markAutoplayPicks(picks); // remembered as the STATION, so Autoplay off can retract them
         queue = queue.concat(picks);
         // Adversarial S3: recompute the re-arm index from the LIVE queue instead of
         // trusting the pre-await `i` - the one path that threads every guard (a

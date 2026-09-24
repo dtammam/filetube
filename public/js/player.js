@@ -137,6 +137,15 @@ function isAdoptLoad(currentId, requestedId, state) {
 // row and the listen artist line died on the next re-init. Music always
 // declares it (a string, '' = no channel); watch.js never does, so a Listen
 // -> Watch adopt keeps it (harmless: resumeMode null ends isMusic).
+// Tracker #237 (music follow-ups, 2026-09-24): `album` + `albumKey` (the music re-init seed
+// reads both from getCurrentMeta for the now-playing album drill) and `autoAdvanceViaTrackNav`
+// (the 'ended' cascade's music/podcast branch) ride the same contract. MEASURED in headless
+// Chromium before this: an audio item opened on the watch page, then /music?play=<id>, ADOPTED
+// with album '' / albumKey '' (the dock-return re-init had no album to rebuild) AND without
+// autoAdvanceViaTrackNav, so the track's natural end took the VIDEO autoplay path and the
+// visible album queue never advanced. Music always declares all three; watch.js declares none,
+// so a Listen -> Watch adopt keeps them (measured: that end still stops - the music view's
+// track nav is gone with its view).
 function applyAdoptFlavor(currentData, data) {
   if (!currentData || !data) return currentData;
   if (Object.prototype.hasOwnProperty.call(data, 'readerHref')) {
@@ -147,6 +156,15 @@ function applyAdoptFlavor(currentData, data) {
   }
   if (Object.prototype.hasOwnProperty.call(data, 'channelFolder')) {
     currentData.channelFolder = (typeof data.channelFolder === 'string') ? data.channelFolder : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'album')) {
+    currentData.album = (typeof data.album === 'string') ? data.album : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'albumKey')) {
+    currentData.albumKey = (typeof data.albumKey === 'string') ? data.albumKey : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'autoAdvanceViaTrackNav')) {
+    currentData.autoAdvanceViaTrackNav = data.autoAdvanceViaTrackNav === true;
   }
   return currentData;
 }

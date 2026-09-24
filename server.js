@@ -4115,6 +4115,17 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
 function itemChapterTracks(item) {
   return libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
 }
+// Tracker #235 (music follow-ups, 2026-09-24): the ONE answer to "does this `<id>::c<n>` like
+// still name a chapter of this item" - the chapter track from the item's REAL expansion (audio
+// only, the POST gate's rule), or null. Every reader of chapter-like membership routes through
+// it: the like POST's existence check, the Liked listing's chapter arm (GET /api/liked) and the
+// member's Stats count (GET /api/stats). Before this the count read base visibility only, so a
+// re-chapter that dropped an index left the count at 1 while the listing said 0. A stranded
+// row is kept (never deleted on a chapter edit): an edit that restores the index revives it.
+function chapterLikeTrack(item, likeId) {
+  if (!item || item.type !== 'audio') return null;
+  return itemChapterTracks(item).find((t) => t.id === likeId) || null;
+}
 
 function projectedLibraryTracks(req, nativeTracks) {
   // v1.242 (Dean): audio-only items project into Music UNCONDITIONALLY - no per-user
@@ -5263,7 +5274,7 @@ mediaUserRoutes.registerLikedRoutes(app, {
   effectiveMusicProgress,
   effectiveProgress,
   getCachedDatabase,
-  itemChapterTracks, // M3 chapter likes: the ONE music expansion (existence check + the Liked chapter arm)
+  chapterLikeTrack, // #235: a `<id>::c<n>` like's chapter from the ONE expansion (existence check + the Liked chapter arm)
   mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
   musicDb,
   ownTrack, // the music store's own-track lookup (a track row by id)
@@ -6177,6 +6188,7 @@ mediaRoutes.registerLibraryRoutes(app, {
   booksDb,
   buildStoreZip,
   chapterLikeBaseId: libraryAudio.chapterLikeBaseId, // M3 chapter likes: a `<id>::c<n>` like counts by its BASE item's visibility
+  chapterLikeTrack, // #235: ...and only while the file still has that chapter (the Liked listing's own rule)
   configuredLibraryRoots, // the bulk selector's root confinement
   crittersDir, // resolves against server.js's __dirname, so it cannot move here
   express, // the critters upload's route-scoped express.raw parser
