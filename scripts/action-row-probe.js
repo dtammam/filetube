@@ -13,10 +13,18 @@
 // Diff the BEFORE and AFTER lines: a pre-existing button whose w/h changed
 // is a deformation; a y change is a wrap (intended or not).
 //
-//   node scripts/action-row-probe.js <out-dir> [width ...] [--theatre]
+//   node scripts/action-row-probe.js <out-dir> [width | WxH ...] [--theatre] [--menu-toggle] [--viewport-shot]
 //   FT_ROOT=/path/to/main-worktree node scripts/action-row-probe.js <out-dir-main>
 //
-// Defaults: widths 390 375 1280 1366 1600 1920.
+// Defaults: widths 390 375 1280 1366 1600 1920. A bare width runs at the
+// historical height (844 below 500px, else 900); `WxH` (e.g. 1280x720) sets
+// the viewport height too - theatre geometry is HEIGHT-driven, so the
+// desktop-theatre measurements (v1.319, plan 2026-09-24-desktop-theatre)
+// run at real monitor shapes. `--viewport-shot` also saves the whole
+// viewport (the first screen, what sits above the fold) as
+// `viewport-<W>x<H>[-theatre].png`. Every line carries the viewport height
+// (`vh`) and the player / stage / glow boxes, so "is the title and the
+// action row above the fold" is read straight off the numbers.
 //
 // Known instrument residual (MEASURED, v1.201): in a multi-width run the
 // THIRD-or-later Chromium launch sometimes stalls - the shell paints (auth
@@ -41,16 +49,30 @@ const { spawn } = require('node:child_process');
 
 const OUT = process.argv[2];
 if (!OUT) {
-  console.error('usage: node scripts/action-row-probe.js <out-dir> [width ...]');
+  console.error('usage: node scripts/action-row-probe.js <out-dir> [width | WxH ...] [--theatre] [--menu-toggle] [--viewport-shot]');
   process.exit(2);
 }
 const ARGS = process.argv.slice(3);
-// `--theatre`: add `.theater-mode` to `.watch-container` before measuring
-// (the desktop Theatre toggle's exact class flip) so both column widths at
-// one viewport are measured.
+// `--theatre`: turn theatre on before measuring (a click on the real
+// #theater-btn, else the toggle's exact class flip on `.watch-container`) so
+// both column widths at one viewport are measured.
 const THEATRE = ARGS.includes('--theatre');
-const WIDTHS = ARGS.filter((a) => a !== '--theatre').map(Number).filter((n) => Number.isFinite(n) && n > 0);
-if (WIDTHS.length === 0) WIDTHS.push(390, 375, 1280, 1366, 1600, 1920);
+const VIEWPORT_SHOT = ARGS.includes('--viewport-shot');
+// `--menu-toggle`: click the header's #menu-toggle (the left bar's real hand
+// toggle) AFTER theatre is on. Since v1.319 theatre collapses the bar on desktop,
+// so this REOPENS it by hand (the column narrows with no theatre click - the
+// theatre reserve must follow through its ResizeObserver alone).
+const MENU_TOGGLE = ARGS.includes('--menu-toggle');
+// It acts inside the theatre step only; without --theatre it would be a silent no-op.
+if (MENU_TOGGLE && !ARGS.includes('--theatre')) console.error('warning: --menu-toggle only acts with --theatre (ignored)');
+// Each viewport is [width, height]; a bare width keeps the historical height.
+const VIEWPORTS = ARGS.filter((a) => !a.startsWith('--')).map((a) => {
+  const m = /^(\d+)(?:x(\d+))?$/.exec(a);
+  if (!m) return null;
+  const w = Number(m[1]);
+  return [w, m[2] ? Number(m[2]) : (w < 500 ? 844 : 900)];
+}).filter((v) => v && v[0] > 0 && v[1] > 0);
+if (VIEWPORTS.length === 0) [390, 375, 1280, 1366, 1600, 1920].forEach((w) => VIEWPORTS.push([w, w < 500 ? 844 : 900]));
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
 
@@ -84,16 +106,21 @@ const GEOMETRY_JS = `(function () {
   out.column = col ? Math.round(col.getBoundingClientRect().width) : null;
   var wc = document.querySelector('.watch-container');
   out.theatre = !!(wc && wc.classList.contains('theater-mode'));
+  out.theatreReserve = wc ? (wc.style.getPropertyValue('--watch-theatre-reserve') || null) : null;
   var firstLabel = document.querySelector('.watch-action-btns .btn .btn-label');
   out.labelsShown = firstLabel ? getComputedStyle(firstLabel).display !== 'none' : null;
   out.docScrollWidth = document.documentElement.scrollWidth;
+  out.vh = window.innerHeight;
+  var sb = document.getElementById('sidebar');
+  out.sidebarHidden = sb ? sb.classList.contains('hidden') : null;
+  out.theatreGuide = document.body.getAttribute('data-theatre-guide');
   document.querySelectorAll('.watch-action-btns .btn').forEach(function (b) {
     var r = b.getBoundingClientRect();
     out.buttons[b.id || b.className] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
     if (r.width > 0) tops[Math.round(r.top)] = true; // a display:none button (0x0 at top 0) is not a row
   });
   out.rows = Object.keys(tops).length;
-  ['.star-rating', '.watch-title', '.description-container', '.watch-action-bar'].forEach(function (sel) {
+  ['.star-rating', '.watch-title', '.description-container', '.watch-action-bar', '#player-wrapper', '#media-player', '.watch-player-stage', '#ambient-glow', '.watch-sidebar', '.main-content', '#sidebar'].forEach(function (sel) {
     var el = document.querySelector(sel); if (!el) return;
     var r = el.getBoundingClientRect();
     out[sel] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
@@ -121,6 +148,9 @@ async function main() {
         id: 'vid1', title: 'The Tim Dylan Show - Summer Edition', type: 'video', ext: '.mp4', filePath,
         folderName: 'Tim Dylan', size: 1, addedAt: Date.now(), duration: 120,
         releaseDate: Date.UTC(2024, 0, 5), channelName: 'Tim Dylan', youtubeId: 'dQw4w9WgXcQ', hasSubtitles: true,
+        // PROBE_MEDIA_WH=640x480 (v1.319): server-known dimensions, so player.js sets
+        // the REAL --media-aspect (a 4:3 TV-shaped item) before the probe measures.
+        ...(/^\d+x\d+$/.test(process.env.PROBE_MEDIA_WH || '') ? { width: Number(process.env.PROBE_MEDIA_WH.split('x')[0]), height: Number(process.env.PROBE_MEDIA_WH.split('x')[1]) } : {}),
       },
     },
   });
@@ -171,8 +201,8 @@ async function main() {
       source: "window.__probeErrors = []; window.addEventListener('error', function (e) { window.__probeErrors.push(String(e.message)); }); window.addEventListener('unhandledrejection', function (e) { window.__probeErrors.push('rejection: ' + String(e.reason && (e.reason.stack || e.reason))); });",
     });
 
-    for (const w of WIDTHS) {
-      const h = w < 500 ? 844 : 900;
+    for (const [w, h] of VIEWPORTS) {
+      const tag = h === (w < 500 ? 844 : 900) ? `${w}` : `${w}x${h}`; // bare widths keep their historical tag
       // Geometry is DPR-independent. Phones render at DPR 2 for a crisp PNG;
       // desktop widths at DPR 1 - under software GL a 2560x1800 surface made
       // every CDP round-trip crawl and the readiness poll time out.
@@ -193,7 +223,7 @@ async function main() {
       const t0 = Date.now();
       for (let attempt = 0; attempt < 3 && !ready; attempt++) {
         if (attempt > 0) {
-          console.error(`${w}: row not mounted after ${Date.now() - t0}ms - reload ${attempt} of 2`);
+          console.error(`${tag}: row not mounted after ${Date.now() - t0}ms - reload ${attempt} of 2`);
           await send('Page.reload');
         }
         const deadline = Date.now() + ATTEMPT_MS;
@@ -204,34 +234,64 @@ async function main() {
         }
       }
       if (!ready) {
-        console.error(`${w}: WARNING - the action row never finished mounting; geometry below is of a partial row`);
+        console.error(`${tag}: WARNING - the action row never finished mounting; geometry below is of a partial row`);
         try {
           const diag = (await send('Runtime.evaluate', {
             expression: "JSON.stringify({ text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 160), errors: (window.__probeErrors || []).slice(0, 5) })",
             returnByValue: true,
           })).result.value;
-          console.error(`${w}: page state ${diag}`);
+          console.error(`${tag}: page state ${diag}`);
         } catch (_) { /* best effort */ }
       }
       if (THEATRE) {
-        await send('Runtime.evaluate', { expression: "(function(){var c=document.querySelector('.watch-container'); if (c) c.classList.add('theater-mode'); return !!c;})()", returnByValue: true });
+        // v1.319: drive the REAL toggle (a click on the player's #theater-btn, the
+        // path that persists ft-theater and re-measures the theatre reserve) when it
+        // is there; a later viewport in the same run then cold-loads theatre ON
+        // from the persisted pref (init()'s path). The bare class flip is the
+        // fallback for a tree without the button.
+        const via = (await send('Runtime.evaluate', { expression: "(function(){var c=document.querySelector('.watch-container'); if (!c) return 'none'; if (c.classList.contains('theater-mode')) return 'persisted'; var b=document.getElementById('theater-btn'); if (b && b.getBoundingClientRect().width > 0) { b.click(); return 'click'; } c.classList.add('theater-mode'); return 'class'; })()", returnByValue: true })).result.value;
+        console.error(`${tag}: theatre via ${via}`);
+        // Since v1.319 theatre also collapses the left bar: its slide and the
+        // content's margin-left run on --dur-fast (0.15s); let them finish first.
+        await new Promise((r) => setTimeout(r, 600));
+        // Steady state: the reserve watch.js wrote equals the room the title + bar
+        // really take below the stage (ResizeObserver -> next frame; software GL
+        // frames are slow, so poll up to 5s instead of trusting a fixed sleep).
+        if (MENU_TOGGLE) {
+          await send('Runtime.evaluate', { expression: "(function(){var t=document.getElementById('menu-toggle'); if (t) t.click(); return !!t;})()", returnByValue: true });
+          await new Promise((r) => setTimeout(r, 600)); // the margin-left transition (--dur-fast) runs first
+        }
+        // MEASURED: under software GL the bar's slide / the column's margin-left
+        // transition can start a second or more late, and the reserve is (correctly)
+        // consistent with the mid-transition layout meanwhile - so settled also
+        // means no transition still running on the sidebar or the content column.
+        const SETTLED_JS = "(function(){var c=document.querySelector('.watch-container'),s=document.querySelector('.watch-player-stage'),b=document.querySelector('.watch-action-bar'); if (document.getAnimations && document.getAnimations().some(function(a){var t=a.effect&&a.effect.target; return t && (t.id==='sidebar'||t.id==='main-content') && a.playState!=='finished';})) return false; if(!c||!s||!b) return true; var v=c.style.getPropertyValue('--watch-theatre-reserve'); if(!v) return true; return parseFloat(v) === Math.ceil(b.getBoundingClientRect().bottom - s.getBoundingClientRect().bottom); })()";
+        for (let i = 0; i < 25; i++) {
+          const res = await send('Runtime.evaluate', { expression: SETTLED_JS, returnByValue: true });
+          if (res && res.result && res.result.value === true) break;
+          await new Promise((r) => setTimeout(r, 200));
+        }
       }
-      await new Promise((r) => setTimeout(r, 300)); // let the last paint settle
+      await new Promise((r) => setTimeout(r, Number(process.env.PROBE_SETTLE_MS) || 300)); // let the last paint settle
       const geo = (await send('Runtime.evaluate', { expression: GEOMETRY_JS, returnByValue: true })).result.value;
       const clipJson = (await send('Runtime.evaluate', {
         expression: `(function(){var el=document.querySelector('.watch-action-bar');if(!el)return null;var r=el.getBoundingClientRect();return JSON.stringify({x:r.x-8,y:r.y-8,width:Math.max(r.width,el.scrollWidth)+16,height:r.height+16,scale:${dpr}})})()`,
         returnByValue: true,
       })).result.value;
-      console.error(`${w}: ready in ${Date.now() - t0}ms`);
-    console.log(`${w}: ${geo}`);
+      console.error(`${tag}: ready in ${Date.now() - t0}ms`);
+      console.log(`${tag}: ${geo}`);
       // The PNG is illustration; the JSON line above is the evidence. A
       // software-GL capture can fail transiently - log it, keep measuring.
       try {
         const shot = await send('Page.captureScreenshot', { format: 'png', ...(clipJson ? { clip: JSON.parse(clipJson) } : {}) });
-        fs.writeFileSync(path.join(OUT, `action-bar-${w}${THEATRE ? '-theatre' : ''}.png`), Buffer.from(shot.data, 'base64'));
+        fs.writeFileSync(path.join(OUT, `action-bar-${tag}${THEATRE ? '-theatre' : ''}${MENU_TOGGLE ? '-menutoggle' : ''}.png`), Buffer.from(shot.data, 'base64'));
+        if (VIEWPORT_SHOT) {
+          const full = await send('Page.captureScreenshot', { format: 'png' });
+          fs.writeFileSync(path.join(OUT, `viewport-${w}x${h}${THEATRE ? '-theatre' : ''}${MENU_TOGGLE ? '-menutoggle' : ''}.png`), Buffer.from(full.data, 'base64'));
+        }
       } catch (err) {
-        console.error(`${w}: screenshot skipped (${err.message})`);
-      if (process.env.PROBE_DEBUG) console.error(`${w}: clip was ${clipJson}`);
+        console.error(`${tag}: screenshot skipped (${err.message})`);
+        if (process.env.PROBE_DEBUG) console.error(`${tag}: clip was ${clipJson}`);
       }
     }
     ws.close();

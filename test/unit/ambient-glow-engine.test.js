@@ -753,7 +753,20 @@ test('v1.312 CSS LOCK: NO rule reaching the glow OR the player stage carries a f
   // class that broke rotate-to-fullscreen. `url(` is forbidden on these rules because
   // the SHEET must never paint an external resource or a canvas reference here: the
   // only image is the engine's inline PNG data URL (v1.313), set from JS.
-  const FORBIDDEN_PROP = /(^|[\s;{])(?:-webkit-|-moz-|-ms-)?(?:filter|backdrop-filter|transform(?:-[a-z-]+)?|mask(?:-[a-z-]+)?|will-change|mix-blend-mode|scale|translate|rotate|offset(?:-[a-z-]+)?|animation(?:-[a-z-]+)?|perspective|contain|isolation)\s*:/i;
+  // v1.319 gate r1 (adversary S6): `content-visibility` (auto / hidden) applies paint
+  // containment, which makes the element the containing block for its position:fixed
+  // descendants (MEASURED in Chromium: a fixed inset:0 child of a content-visibility:auto
+  // stage laid out at the stage's box, not the viewport) - the same v1.166 trap as
+  // `contain`. `container-type` was measured harmless (the fixed child kept the viewport).
+  const FORBIDDEN_PROP = /(^|[\s;{])(?:-webkit-|-moz-|-ms-)?(?:filter|backdrop-filter|transform(?:-[a-z-]+)?|mask(?:-[a-z-]+)?|will-change|mix-blend-mode|scale|translate|rotate|offset(?:-[a-z-]+)?|animation(?:-[a-z-]+)?|perspective|contain|content-visibility|isolation)\s*:/i;
+  // The lock's own reach, bound (a sweep that silently stops matching a spelling is the
+  // porous-lock class): every trap spelling is caught, the harmless neighbours are not.
+  for (const bad of ['content-visibility: auto', 'CONTENT-VISIBILITY:hidden', ';-webkit-content-visibility: auto', 'contain: paint', 'contain:layout', 'Contain: strict', 'contain: content', 'isolation: isolate', '-webkit-transform: none']) {
+    assert.match(' ' + bad, FORBIDDEN_PROP, 'the lock catches `' + bad + '`');
+  }
+  for (const ok of ['container-type: inline-size', 'contain-intrinsic-size: 10px', 'position: relative', 'z-index: 0']) {
+    assert.doesNotMatch(' ' + ok, FORBIDDEN_PROP, 'the lock leaves `' + ok + '` alone');
+  }
   const FORBIDDEN_PAINT = /-webkit-canvas\(|-moz-element\(|(?:^|[^a-z-])element\(|gradient\(|image-set\(|cross-fade\(|paint\(|url\(/i;
   for (const r of rules) {
     assert.doesNotMatch(r.body, FORBIDDEN_PROP, r.selector + ' must not declare a filter / transform / mask / will-change / animation in ANY spelling: ' + (FORBIDDEN_PROP.exec(r.body) || [''])[0]);

@@ -86,6 +86,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.321.0 - Desktop theatre sized like YouTube: the title and buttons stay on the first screen (2026-09-24)
+
+- **Desktop theatre like YouTube** (Dean, 2026-09-23: YouTube's theatre keeps the title, channel and
+  action row on the first screen; FileTube's filled the viewport height and pushed the title and
+  buttons below the fold). Measured side by side in headless Chromium against YouTube's real theatre
+  (logged out, 1280x720 / 1366x768 / 1440x900 / 1920x1080 / 1920x1200): YouTube's video is 16:9 at
+  100vh - 169px, centred, with its action row 23px above the fold. FileTube's theatre (desktop,
+  >= 1025px) now sizes the player from a height budget: the viewport minus the header, the control
+  bar and the MEASURED room the title and action row take (a ResizeObserver writes
+  `--watch-theatre-reserve`), so the action row sits 24px above the fold at every size (before:
+  124px BELOW at 1280x720). The left sidebar tucks away while theatre is on (YouTube hides its guide;
+  never written to any saved preference; it comes back on theatre off and when you leave the watch
+  page; opening it by hand is respected), and the player is centred on the viewport: the video is
+  86-93% of YouTube's width (846x476 at 1280x720 vs 980x551; FileTube keeps its own control bar and
+  title block). Films wider than 16:9 fill the width (a 21:9 at 1280x720: 1128x476, was 1000x422);
+  4:3 is pillarboxed; a TV episode reserves room for its show row. The ambient glow is sized from
+  the new player box (12% / 22% beyond it, measured at all five sizes). Action row: 0 buttons
+  deformed, one row. Gate r3 @303b3ca3 (adversary + qa; r3 = the merge of v1.320.0); plan
+  docs/exec-plans/completed/2026-09-24-desktop-theatre.md.
+  **Decision for Dean (D5):** the channel row (avatar, name, Subscribe) stays just below the fold
+  (66px at 1280x720); keeping it on the first screen too would shrink the video from 846x476 to
+  686x386 at 1280x720. Also disclosed: YouTube's black full-width band is not adopted (it would hide
+  the glow); the related list stays below; at 125% browser zoom a 1280-wide window is 1024 CSS px
+  (no desktop theatre); a hand-reopened sidebar re-collapses on the next watch-to-watch hop; tracker
+  #247 (the default view's glow at ultrawide), #249.
+
+Device check owed (Dean): theatre on your monitor, light and dark, Ambient on; a 4:3 TV episode and a
+wide film; the sidebar tucks away and comes back when you leave. Tell me your D5 call.
+
 ### v1.320.0 - Music follow-ups: Autoplay off stops where your queue ends, and the right song details after a switch (2026-09-24)
 
 - **Autoplay off in Music now really stops** (verified first, as the M4 adversary saw: the station
