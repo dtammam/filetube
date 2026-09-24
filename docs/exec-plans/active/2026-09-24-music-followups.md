@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: fix/music-followups
 anchor: spec
 status: Building
-next: gate r1 CHANGES @020bec0a fixed (see Gate r1 fix record); r2 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
+next: gate r1 CHANGES @020bec0a fixed at 612cadd5 (see Gate r1 fix record); r2 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -606,6 +606,39 @@ A test-fixture lesson found on the way: the player KEEPS the load-data object it
 (`currentData`) and the adopt mutates it, so the shared fixtures in player-adopt-flavor.test.js
 leaked the first test's adopt into the next (the control iteration read the video path). Every
 load there now gets a fresh copy.
+
+### Mutation results (r1 fix)
+
+Sandbox `git archive 612cadd5` in /tmp (node_modules symlinked), the same runner (exactly one
+match, non-empty diff, restore byte-compared). The r1 fix commit went through the pre-commit
+hook: tests 7121, pass 7121, fail 0.
+
+| # | Mutant | Result | First red |
+|---|---|---|---|
+| R1 | music: the retract nulls the primed solo exit station again (the r1 regression) | KILLED 1 fail | gate r1 F1: Autoplay OFF then ON during a solo chapter keeps its exit station |
+| R2 | music: the retract never repaints the up-next (adversary U2) | KILLED 2 fail | item 0: Autoplay turned OFF (the REAL toolbar button) (the rendered up-next) |
+| R3 | watch: the early adopt load drops `autoAdvanceViaTrackNav: false` | KILLED 1 fail | gate r1 F3: both watch player.load calls claim the plain-video end |
+| R4 | watch: the step-4 load drops it | KILLED 1 fail | gate r1 F3: both watch player.load calls ... |
+| R5 | player: the adopt set without `title` | KILLED 2 fail | #237: Watch -> Music on the SAME id ADOPTS (divergent fixture) |
+| R6 | ... without `channelName` | KILLED 2 fail | #237: Watch -> Music ... |
+| R7a | ... without `folderName` | KILLED 1 fail | applyAdoptFlavor: EVERY presentation field ... |
+| R7b | ... without `artUrl` | KILLED 1 fail | applyAdoptFlavor: EVERY presentation field ... |
+| R7c | ... without `subId` | KILLED 1 fail | applyAdoptFlavor: EVERY presentation field ... |
+| R7d | ... without `album` | KILLED 2 fail | #237: Watch -> Music ... |
+| R7e | ... without `albumKey` | KILLED 2 fail | #237: Watch -> Music ... |
+| R7f | ... without `channelFolder` | KILLED 4 fail | v1.317 gate r2 adversary W1: Watch -> Listen ADOPTS ... "Go to channel" |
+| R7g | player: the adopt no longer carries `autoAdvanceViaTrackNav` | KILLED 3 fail | gate r1 F3: Music -> Watch on the SAME id ... |
+| R8 | player: the adopt does not re-assert the lock screen | KILLED 1 fail | #237: Watch -> Music ... (the lock-screen metadata) |
+| R9 | music: the prewarm ready arm starts a pick regardless | KILLED 1 fail | gate r1 F5 |
+| R10 | music: the prewarm guard checks the row only (ignores the pref) | KILLED 1 fail | gate r1 F5 (the storage-only flip) |
+| R11 | music: the prewarm guard checks the pref only (ignores a retracted row) | KILLED 1 fail | gate r1 F5 (OFF then ON) |
+| R12 | test: the watch-init shim fires aborted listeners (qa S7) | KILLED 1 fail | harness (item 4d): the element shim keeps EVERY listener ... |
+
+Re-run at 612cadd5 (the item-0 set and 4f, over the touched code): M0a, M0b, M0c, M0d, M0e,
+M0f, M0g, M0h, M0i, M0j, M0k, M0l, M4f all KILLED. (M3a-M3c's anchors are gone - the
+per-field arms became the enumerated list - and are superseded by R5-R7g.)
+
+31 new-or-re-run mutants at 612cadd5, 31 killed.
 
 ### Measurements (r1)
 
