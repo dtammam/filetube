@@ -1844,7 +1844,9 @@ if (typeof module !== 'undefined' && module.exports) {
         });
         return;
       }
-      if (ownsDrill) renderDrillView();
+      // Any drill holding rows of this file repaints them (a mixed or partial album drill too - its
+      // rows are patched in place above; only the COMPLETE drill re-lists on a count change).
+      if (ownsDrill || (drill && queuedCount > 0)) renderDrillView();
     }
     // Re-register track nav around the index the PLAYING track has in the CURRENT queue
     // (chapter snap gate r2): after a chapter save drops or re-lists rows, the indices the

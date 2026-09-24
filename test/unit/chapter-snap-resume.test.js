@@ -658,11 +658,12 @@ test('r1 P2: an album drill holding only SOME of the file\'s chapters (a partial
   await boot(async (dom, ctx) => {
     assert.ok(dom.window.document.querySelector('.music-drill'), 'precondition: the album drill is on screen');
     assert.strictEqual(dom.window.document.querySelectorAll('.music-song-row').length, 3, 'with two chapters of f1 and one of g9');
-    ctx.server.chapters = FILE_CHAPTERS.concat([{ startTime: 150, title: 'Bonus' }]); // a chapter added elsewhere
+    ctx.server.chapters = MOVED.concat([{ startTime: 150, title: 'Bonus' }]); // chapter 2 moved AND a chapter added elsewhere
     const logFrom = ctx.fetchLog.length;
     fire(dom, 'visibilitychange'); await settleN(30);
     const after = ctx.fetchLog.slice(logFrom);
     assert.ok(after.indexOf('GET /api/videos/f1') >= 0, 'the playing file was re-checked');
+    assert.match(row(dom, 'f1::c0').textContent, /1:15/, 'the change was applied (non-vacuous: the queued rows moved)');
     assert.deepStrictEqual(after.filter((u) => /\/api\/music\?/.test(u)), [], 'no re-list: the queue never held the complete file');
   }, { listItems: [rows[0], rows[1], g9row()], extraRows: [g9row()] });
 });
