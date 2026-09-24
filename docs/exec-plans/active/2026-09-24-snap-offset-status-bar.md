@@ -350,3 +350,292 @@ returns on a disabled button), so removing either alone cannot change behavior.
 ## Gate verdicts
 
 (reserved for the Architect's gate rounds)
+
+## Gate r1 - security-brief (@c05c6906)
+
+**What I could not do (read this first):** this seat has no Bash, so I could NOT run
+`git diff 7402621c..c05c6906`. I established the changed-file set another way. The worktree
+reflog (`.git/worktrees/agent-a4ecaf0edc36aa1e3/logs/HEAD`) shows one checkout at 7402621c,
+then only the three branch commits, ending at c05c6906 = HEAD. So a file's mtime tells whether it
+was written after that checkout. Sorting by mtime, the files written after checkout are
+`public/css/style.css`, `public/js/common.js`, the two probes, the three new tests and this plan.
+Every `lib/**/*.js`, `server.js`, `package.json`, `package-lock.json`, `Dockerfile`,
+`docker-compose.yml`, every `public/*.html`, `public/filetube-worker.js` and every other
+`public/js/*.js` (including `music-skins.js` and `skin-surface.js`) sorts among the checkout-time
+files. That is strong evidence, but it is NOT a byte diff. The Architect should confirm it with
+`git diff --stat 7402621c c05c6906`.
+
+**Trigger surfaces:** none of the four (auth, secrets, network boundary, dependency) is
+touched. There is no server, route, auth or package change (as far as mtime shows, see above).
+No new outbound request or endpoint. Security sweep below.
+
+Verified (I traced the code):
+- **Save path unchanged.** The worktree's save handler (common.js:13738) posts
+  `{ version: state.version, starts: times() }` to the same `base`. That is the same line as
+  the main checkout's common.js:13512. Revert (13688) is also unchanged. The shift only changes
+  `rows[i].time` for i >= 1, in whole ms. It sends nothing new.
+- **The server would refuse anything bad the shift could produce.** `validateSnapStarts`
+  (lib/media/chapterSnap.js:190) checks, on its own: the count, finite non-negative numbers,
+  chapter 1 unchanged, strictly increasing after round3, and the last start before the duration
+  (or a week when the duration is unknown). `buildSnappedManual` takes titles from the server
+  record, never the client. The route's `freshForWrite` (chapterSnapRoutes.js:115) re-gates
+  `mediaVisibleTo` and checks the `version` token inside the write tick (409 when stale), and
+  requireModifyLibrary runs first (header comment :7). The client clamps (`snapShiftBlock`:
+  min gap at both ends) are stricter than the server rule. Tampering with a button's
+  `data-shift` in devtools can only produce a list the server validates the same way. The one
+  gap the server does not check is the min gap between chapters: it only checks strict
+  ordering. That is pre-existing and a data-quality issue, not a security one.
+- **Stale seed:** `renderShift` locks every shift control when `busy || staleSeed`, and
+  `applyShift` / `resetShift` return early on the same flags. The version token is never
+  refreshed by a poll (a changed version sets `staleSeed`).
+- **Every new string is set as text.** Both the new row and the helpers use only
+  `el()`/`btn()` (createElement + textContent) and `.textContent =`. The readout, reason, note
+  and suggestion text are built only from integers and fixed strings (`formatSnapShift`, n of
+  m counts). No chapter title or file text goes into the new row. The only attributes set are
+  static (`data-shift-act`, `aria-label`) or numeric (`data-shift` = `String(deltaMs)`). No
+  `innerHTML` in any new code. The status-bar title writers the CSS now truncates
+  (skin-surface.js:684/701/1294) use `textContent`. Those writers were not changed.
+- **The probes are dev tools only.** `server.js` serves only `public/` (`express.static`
+  :3487 plus fixed `sendFile`s of `public/*.html`), so `scripts/` is never reachable over HTTP.
+  Both probes set `DATA_DIR` to a fresh `mkdtemp` before requiring the server (so they never
+  touch the real DB) and bind the app to `127.0.0.1:0`. They use the existing test-only
+  `__mintTestSession` export against that scratch store, and launch Chromium with
+  `--remote-debugging-port` (Chromium binds this to loopback by default). Their inputs are
+  operator-supplied argv/env: skin names, `FT_ROOT`, `FT_PROBE_AUDIO`, `CHROME`.
+- **CSS:** layout properties only. No `url()` and no external resource.
+
+Findings:
+- **INFO-1 (suspicion, not a finding): probe CDP port on a shared host.** While a probe runs,
+  headless Chromium exposes an unauthenticated DevTools endpoint on a random loopback port
+  (9333-9732), using `--no-sandbox`. Any local user on the same host could drive that browser,
+  which holds a real session cookie for the scratch server, during the run. On this
+  single-user dev container no such user exists, so there is no attack path. The existing
+  `action-row-probe.js` uses the same pattern. No action needed.
+- **INFO-2: probe temp dirs are not removed.** The `mkdtemp` DATA_DIR, library and Chromium
+  profile dirs stay in `os.tmpdir()`. They hold only synthetic fixtures (or a copy of the
+  operator's own `FT_PROBE_AUDIO`) and a scratch-store session. This is hygiene, not exposure.
+
+No CRITICAL, HIGH, MEDIUM or LOW findings.
+
+Gate: APPROVED r1 @c05c6906 — security-brief
+
+## Gate r1 - qa (@c05c6906)
+
+Reviewed `git diff 7402621c..c05c6906` (9 files), the plan, AGENTS.md / CONTRIBUTING.md rules.
+Instruments (Node 22.23.1, run by this seat):
+- New files with `FILETUBE_TEST_FFMPEG` set (unit chapter-snap-shift, unit skin-status-bar,
+  integration chapter-snap-shift): `tests 22 pass 22 fail 0 skipped 0`; diagnostic
+  `real scan: Suggested: shift all by +1.75 s (4 of 4 agree) (applied 1750 ms)`.
+- Existing chapter-snap unit + integration suites, chapters-editor, chapter-likes, every
+  `*census*`, css-token-lint, overlay-containment, token-scale-lock, type-scale-tokens,
+  music-skin*: `tests 336 pass 336 fail 0 skipped 0`.
+- `npm run test:unit`: `tests 7261 pass 7261 fail 0 skipped 0` (matches the plan's hook count).
+- `npm run lint:css`: `TOTAL 0`. `lint:overlay`: `clean (0 violations)`. eslint on the six
+  touched JS files: `6 problems (0 errors, 6 warnings)` (the pre-existing no-unused-vars in
+  common.js). `check-markers: clean (docs/exec-plans)`.
+- Probes re-run on a `git archive c05c6906` sandbox. skin-status-bar-probe: every SUMMARY
+  `equal/battStill/playStill/longTruncated/noSpill` true; Click trio 31.2 x4 (battery 338,27.6
+  at 390, 328,27.6 at 380), Seattle 30.2 x4 (play mark 345 / 335), pop-out Click 31.2 and
+  Seattle 30.2 at every level, tray 31.2 (battery 250,33.6); all 72 on-page rows `reached`,
+  `docScrollWidth == vw`, no page errors - identical to the plan's table. PNGs checked: the
+  ellipsis renders, descenders intact. chapter-snap-probe (390x844, 844x390, 1440x900): shift
+  row 370x139 / 824x139 / 726x123, shift buttons 88x44 / 201x44 / 177x36, suggestion
+  356x44 / 810x44 / 285x36, `below44` 0 on both phone viewports, doc scrollWidth = viewport,
+  readouts and notes as the plan states; notches 12.1125 vs 12.113 unchanged. Matches.
+
+Verified correct: the step math (whole ms, chapter 1 fixed), Reset = time - own shift, the two
+clamps against the server's `minGapSec`/`duration` (at-or-before / at-or-past, both bound at
+the ms boundary), the median/60 %/+-0.3 s/2-boundary rule, `fine` counted, Snap all's
+hand-edit test allowing for the shift, snap clears / nudge keeps the row's shift, Undo clears,
+stale-seed lock, the save path unchanged. The status bar CSS is token-clean and the census
+lock covers the overrides. Tracker #259 is accurate and the census accepts it.
+
+Security: no new surface. Every new string is set by `textContent` (el()/btn()) and built
+from integers and fixed strings; `data-shift` is `String(number)` and read back through
+`Number()`; no `innerHTML`; the status-bar title writers (skin-surface.js:684/701/1294, user
+album names) use `textContent` and were not changed; the CSS adds no `url()`. The probes are
+dev tools outside `public/`. Agreed with the security-brief seat.
+
+Findings:
+
+1. **WARNING - the "aligned" note says the chapters line up when some of them do not**
+   (public/js/common.js:13076 + :13327). `snapShiftSuggestion` returns `aligned` whenever at
+   least 60 % agree and the median is under 50 ms, and the note then reads "The chapters line
+   up with the silence (n of m agree)." for n < m too. Verified in jsdom: 6 chapters, rows 2-3
+   `suggest` 2 s late, rows 4-6 `fine` -> the head status reads "2 starts look off. Snap them,
+   ..." and "Snap all (2)", while the Shift all note (the FIRST thing in the list) reads "The
+   chapters line up with the silence (3 of 5 agree)." That is Dean's second named case ("some
+   cases where the chapters are straight up misaligned") and the copy contradicts the head on
+   the same screen. The design note says this note is "what Dean sees right after applying
+   the suggestion" (the n = m case); it was not meant for the partial one. Prescription: keep
+   the `aligned` kind (nothing to shift is correct), but when `agree < of` say so, e.g. "No
+   whole-track offset: 3 of 5 chapters already line up. Fix the others one by one."; keep the
+   current line for `agree === of`. Bind both arms in the integration cached-silence test (a
+   fixture with two `suggest` and three `fine`, asserting the note text).
+
+2. **SUGGESTION - the mixed readout names the wrong cause** (common.js:13292). "(the others
+   were snapped since)" assumes the zero-shift rows were snapped. Verified: 5 chapters, +1 s,
+   snap chapter 2, -1 s -> chapters 3-5 are back on their saved times with no net shift and
+   were never snapped, chapter 2 (the snapped one) carries -1 s, and the readout says "Shifted
+   -1.0 s on 1 of 4 chapters (the others were snapped since)". Neutral copy fixes it: "(the
+   others carry no shift)".
+
+3. **SUGGESTION - Reset can put two chapters closer than the server's minimum gap**
+   (common.js:13278 `shiftResetProblem` checks strict order only). Verified: chapters
+   [0, 60, 61.5, 120], +1 s, nudge chapter 3 -1 s, snap chapter 2 to 60.45, Reset is enabled
+   and Save posts `[0, 60.45, 60.5, 120]` - a 50 ms chapter, both rows showing `1:00.5`. The
+   server accepts it (strict order) and the pre-existing single-row snap has the same
+   strict-only check, so this matches AC5 as written; but the steps and nudges honour
+   `minGapSec`, so Reset could use `t[i] - t[i-1] >= minGapSec` (and `dur - minGapSec` for
+   the last) for one consistent invariant.
+
+4. **SUGGESTION - the readout's `aria-live` is re-written on every render** (common.js:13179,
+   written in `renderShift` on every `renderHead`). Reasoned, not verified on a screen reader:
+   some readers re-announce a live region when its text node is replaced even with identical
+   text, so each nudge / audition / poll could announce "No shift" alongside the status line.
+   Write it only when the text changes.
+
+5. **SUGGESTION (disclosed gap, judged acceptable) - the Shift all row is scrolled away when
+   the editor opens on a chapter** (common.js:13542). From now playing's "This chapter starts
+   wrong" on chapter 5+, the row sits several phone screens above. Acceptable to ship: the
+   whole-track case is also fixed by Snap all in the fixed head (absolute, bound after a shift),
+   the Music drill's "Fix times" opens at the top, and the gap is disclosed. A cheap follow-up:
+   when the suggestion is of kind `suggest`, mention it in the status line ("Looks like a
+   whole-track offset: see Shift all at the top").
+
+Not findings: the plan's line references (common.js:13088 / :13230, skin-surface.js:684 /
+701 / 1294, style.css :12081) are accurate; the probe comment that the watch editor shows "No
+consistent offset" holds (its first, pre-Snap-all measurement reads exactly that); the pocket
+skins' left-aligned title predates this branch (the change only adds truncation).
+
+Verdict: CHANGES for finding 1 (a user-facing claim that is false in one of the two cases the
+feature exists for; a one-branch copy fix plus its binding). Findings 2-5 do not block.
+
+Gate: CHANGES r1 @c05c6906 — qa
+
+## Gate r1 - adversary (@c05c6906)
+
+Instruments (Node 22.23.1, static ffmpeg via FILETUBE_TEST_FFMPEG, Chromium 1234 headless). Mutants
+ran ONLY in a `git archive c05c6906` sandbox in the session scratchpad (pristine copies byte-compared
+after every mutant: `restore-check identical`).
+- The three new test files in this worktree: `tests 22 pass 22 fail 0 skipped 0` (the REAL-ffmpeg test ran).
+- Targeted set on the sandbox (unit chapter*, music*, skin*, css*, token*, exec-plans*, tech-debt*,
+  player-chapters*; integration chapter-snap*, chapters-editor): `tests 864 pass 864 fail 0 skipped 0`.
+- `npx eslint` on the 6 touched js files: `6 problems (0 errors, 6 warnings)`. `lint:css` `TOTAL 0`.
+  `lint:overlay` clean. `check-markers: clean`.
+- `git diff --stat 7402621c..c05c6906`: 9 files, none under `lib/`, no `server.js`, `package*.json`,
+  `music-skins.js` or `skin-surface.js` (confirms the security-brief's mtime inference with a byte diff).
+
+Findings:
+
+1. **WARNING - the status-bar CSS lock does not cover the parent, descendant selectors or vendor
+   spellings (the named crown-jewel class).** Each rule below was appended in a later
+   `@media (max-width: 768px)` block; `skin-status-bar` + `music-skins` + `skin-surface` +
+   `skin-scrollbar-hidden` stay GREEN (`pass 117 fail 0`) for all seven, and
+   `scripts/skin-status-bar-probe.js` (Click or Seattle, 390x844) shows each one breaking the bar
+   (control: 31.2 x4, battery 338,27.6):
+   - C1 `.mms-ipod .ip-status{display:block}`: bar 48 px at every level, play mark and battery drop
+     to line 2 (battery 56,45.1).
+   - C2 `.mms-ipod .ip-status > span{white-space:normal}`: long album **85.8 px, battery y 54.9** -
+     the original bug, fully back.
+   - C3 `.mms-ipod .ip-status *{white-space:normal}`: 85.8 px, same.
+   - C4 `.mms-zune-classic .ip-np{-webkit-flex-shrink:0}`: Seattle play mark pushed to **x 716.7** on
+     a 390 px screen.
+   - C6 `.mms-ipod .ip-status{flex-direction:column}`: 48 px everywhere.
+   - C11 `.mms-ipod .ip-status{-webkit-flex-wrap:wrap}` (the vendor spelling of B9): long rows 48 px,
+     battery to line 2. The unprefixed `flex-wrap` and `flex-flow` ARE caught (C10 RED).
+   - C12 `.mms-ipod .ip-status{display:grid}`: 48 px everywhere.
+   Caught correctly (RED): C7 same selector upper-case prop, C8 `.ip-status .ip-np`, C9
+   `-webkit-line-clamp` override, C10 `flex-flow:row wrap`, C13 `body.mms-tray .ip-np{white-space:pre-wrap}`,
+   C14 `TEXT-WRAP-MODE:wrap`.
+   Fix: strip `-webkit-`/`-moz-`/`-ms-` from property names before every check; lock the bar's own
+   `display:flex` and forbid any `.ip-status` rule redeclaring `display`, `flex-direction`,
+   `flex-wrap`, `flex-flow`; and census every rule whose selector names `.ip-status` in ANY compound
+   (`.ip-status > span`, `.ip-status *`) for `white-space`/`text-wrap*`/`display`/`flex*`. Re-run
+   C1-C12 red.
+
+2. **WARNING - the "suggestion the clamps refuse" arm is unbound.** It is reachable and correct at
+   HEAD (verified, fixture: chapters 0 / 1.0 / 60 / 120, silences 58.5-59.3 and 118.5-119.3,
+   duration 180): the button reads "Suggested: shift all by −0.95 s (2 of 2 agree)", is disabled,
+   the reason "Shifting earlier would put chapter 2 at or before chapter 1." shows, and a tap moves
+   nothing. But no test drives it. Survivors: A3 (`shiftApplyBtn.disabled = lock`), A4 (its reason
+   never pushed), A5 (applyShift's own re-check removed), A6 (its stale/busy lock dropped); and the
+   double mutant **D1 = A3 + A5 survives `pass 53 fail 0`** (unit shift + integration shift,
+   editor-ui, chapter-snap). Under D1 the same fixture taps through and **SAVES `[0, 0.05, 59.05,
+   119.05]`** - chapter 2 inside the minimum gap, accepted by the server. The plan's "equivalent
+   (argued, not run)" note leans on the disabled button, but S18 binds only the four STEP buttons,
+   not the suggestion button. Fix: an integration test on that fixture asserting the button is
+   shown AND disabled, the reason shown, a tap changes nothing; then A3 and D1 red.
+
+3. **WARNING - Reset's "past the end" refusal is unbound.** It is reachable and correct at HEAD
+   (verified: chapters 0 / 100 / 299.5, duration 300; −1 s, then nudge the last one +1 s and +0.1
+   s x6 to 4:59.9; Reset is disabled with "Resetting would put the last chapter past the end of the
+   file. Use Undo changes to start over."; Save writes `[0, 99, 299.9]`). Deleting that line (A1,
+   which also removes resetShift's own re-check because both call shiftResetProblem) survives
+   `pass 69 fail 0`. Under A1 Reset lands chapter 3 at **5:00.9 on a 300 s file**, Save is enabled,
+   and the server refuses it (`Chapter 3 must start before the end of the file.`, nothing written).
+   So the server backstops it, but the editor shows a list it cannot save, and the guard the plan
+   names has no binding. Also surviving: A2 (the disorder check `!(t[i] > t[i-1])` weakened to
+   `t[i] < t[i-1]`, so an EQUAL pair passes; also refused by the server). Fix: bind the fixture
+   above and add an equal-pair case.
+
+4. **SUGGESTION - Reset can save a start inside the minimum gap (verified at HEAD).** Chapters
+   0 / 0.35 / 100: +0.1 s, then nudge chapter 2 −0.1 x3, Reset: **stored `[0, 0.05, 100]`**.
+   Chapters 0 / 100 / 299.45 (duration 300): −0.1 s, then nudge the last +0.1 x5, Reset: **stored
+   `[0, 100, 299.95]`**. The server accepts both (its rule is only "strictly after"), and the
+   pre-existing per-row snap is gap-free too, so the gap is a step/nudge clamp, not an editor-wide
+   invariant. Either give shiftResetProblem the same `minGapSec` ends as snapShiftBlock, or disclose it.
+
+5. **SUGGESTION - the agreement rule is looser than "+-0.3 s" reads, and two of its edges are
+   unbound.** Even counts use the midpoint, so the spread that still counts as agreement is 0.6 s:
+   boundaries +1.0 / +1.6 give `suggest +1.3 s, 2 of 2` (each one then 0.3 s off its silence), and
+   −0.3 / −0.3 / +0.3 / +0.3 give `aligned, 4 of 4` ("The chapters line up with the silence") even
+   though every boundary is 0.3 s off. The 50 ms "aligned" edge is unbound (A8 `<` to `<=`
+   survives). The `agree < SNAP_SHIFT_MIN_BOUNDARIES` clause is dead (A9 survives, and it is
+   equivalent: with `of >= 2`, 60 % already forces `agree >= 2`). Nothing applies without a tap,
+   so this is a design note: tighten it or disclose it.
+
+6. **SUGGESTION - a stored start on an exact half-millisecond stays dirty after Shift + Reset.**
+   With 120.0005 in the list, +0.1 s then Reset gives "No shift", but Save and Undo stay ENABLED
+   (the row comes back as 120.001). The nudge rounding already does the same thing
+   (clampSnapNudge), and only nanosecond-timebase sources can store it. Non-blocking.
+
+7. **SUGGESTION - applyShift stopping the audition is unbound** (A15 survives): a shift during a
+   row's audition leaves the old time playing. It is UX only.
+
+Verified holding (the brief's destroy-the-data list):
+- **Count, order, chapter 1, past the duration:** the save posts `times()` through the unchanged
+  route, and `validateSnapStarts` (unchanged) refuses count, chapter-1, order and end violations.
+  I found no path at HEAD to a SERVER-ACCEPTED save that breaks those four. Only the client-side
+  minimum gap can be broken (finding 4 at HEAD; finding 2 under a mutant).
+- **Drift:** 2000 seeded-random ±0.1 s/±1 s steps (net −20.4 s) and one Reset put every
+  millisecond-grid row back on its stored time exactly (finding 6 is the only exception).
+  A13/A14 (unrounded arithmetic) survive, but they have no observable effect: the dirty and
+  Snap-all checks use a 0.5 ms tolerance and the server rounds to 3 places.
+- **Your kills, re-run:** S3 (a nudge clears the shift) RED 3 tests, S6 (Snap all counts a shifted
+  row as hand-edited) RED, S27 (suggestion from STORED starts) RED. My extras RED: A7 (Reset lock),
+  A10 (50 % share), A11 (lower-middle median), A12 (sign), A17 (gap-less later clamp), A18 (ASCII
+  minus).
+- **REAL ffmpeg, my own drive (a LATE offset, the other sign):** the same tone/silence album with
+  chapters at 0 / 9 / 17 / 25 / 33. The real scan offers "Suggested: shift all by −1.25 s (4 of 4
+  agree)" (`data-shift` −1250). After the tap the note says the chapters line up and Snap all has
+  nothing left to snap. Saved `[0, 7.75, 15.75, 23.75, 31.75]` with the titles unchanged,
+  `snapFrom` = 0 / 9 / 17 / 25 / 33 and `snapBase` "embedded". The like on `::c2` still names
+  "Three" (at 15.75). Revert clears `chaptersManual` and the like is still "Three" at 17. A
+  misaligned list (0 / 5.2 / 17.6 / 24.9 / 30.5) shows no button, and the note says "No consistent
+  offset: the chapters are off by different amounts."
+- **Phone:** `scripts/chapter-snap-probe.js` reproduces the plan's Shift-row table. At 390x844:
+  4 x 88x44 plus the suggestion 356x44, no button under 44 px, the row's scrollWidth equals its
+  clientWidth (370), and the document is 390 wide. At 844x390: 4 x 201x44, the suggestion 810x44,
+  and after the tap Reset 337x44.
+- **Status bar, base vs head:** a copy of the probe dumps EVERY element box in the panel. With a
+  short title, at every level (Click, Black, Matte at 390x844 and 380x700, Seattle, both pop-outs,
+  the tray), only the `.ip-np` WIDTH changes (it fills the bar, e.g. 78.6 to 282) plus the
+  playback clock. A second run confirmed that one art-image delta was transition noise. With a
+  long title the bar goes from 67.6 to 31.2 px and the battery y from 45.8 to 27.6, as the plan
+  says.
+
+Blocking: 1, 2, 3 (the fixes are a lock extension and two bindings; no production change is
+required for 2 or 3).
+
+Gate: CHANGES r1 @c05c6906 — adversary
