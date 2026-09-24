@@ -675,12 +675,19 @@ function buildMusicSkeletonRows(n) {
 // starts the chapter over. Before this, re-tapping that chapter played ~0.3s of it and then
 // exited to radio. Returns the absolute file second to seek, or undefined for the chapter
 // head. `item` is a library-chapter track (chapterStartSec + durationSec = its own span).
+// Chapter Snap persist follow-up (2026-09-24, Dean: "the relative offset underneath is off"):
+// the saved place must lie INSIDE the chapter's CURRENT bounds, checked here against the row
+// at tap time. The server attaches `progress` against the bounds of the moment the list was
+// fetched, and a snap save moves a row's start in place (applySnappedChapterTimes) without
+// re-homing it - so a start moved LATER past the saved place made the tap seek into the
+// PREVIOUS song under this chapter's name. A place before the start is the chapter head.
 var CHAPTER_RESUME_TAIL_SEC = 5;
 function chapterResumeSecFor(item) {
   var p = item && item.progress;
   if (!p || typeof p.resumeSec !== 'number' || !isFinite(p.resumeSec)) return undefined;
   var start = Number(item.chapterStartSec) || 0;
   var span = Number(item.durationSec) || 0;
+  if (p.resumeSec < start) return undefined;
   if (span > 0 && p.resumeSec >= start + span - CHAPTER_RESUME_TAIL_SEC) return undefined;
   return p.resumeSec;
 }
