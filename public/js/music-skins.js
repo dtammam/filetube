@@ -296,13 +296,18 @@
   function menuStyle(id) { var s = BY_ID[normalizeSkinId(id)]; return (s && s.menus) || ''; }
   // Click's Music menu (the iPod order, Dean's tree) and Seattle's pivots (the Zune's own
   // lead-with-artists order). One list per style; the controller reads them, never a copy.
+  // Quick scroll (Dean 2026-09-24): Recent Artists leads Click's Music menu; on Seattle it is its
+  // own pivot, placed LAST so the pivots still lead with artists and, as they wrap, "recent" sits
+  // one pad-press to the left of artists.
   var MUSIC_MENU = [
+    { type: 'recentArtists', label: 'Recent Artists' },
     { type: 'playlists', label: 'Playlists' }, { type: 'artists', label: 'Artists' },
     { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' }, { type: 'genres', label: 'Genres' },
   ];
   var SEATTLE_PIVOTS = [
     { type: 'artists', label: 'Artists' }, { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' },
     { type: 'playlists', label: 'Playlists' }, { type: 'genres', label: 'Genres' },
+    { type: 'recentArtists', label: 'Recent' },
   ];
   // Playlists = Liked (the one real playlist, Dean: "including Liked") + the device's smart
   // playlists this library can honestly fill (no play counts exist, so no "Top 25").
@@ -313,7 +318,8 @@
   ];
   function menuPivots(style) { return style === 'seattle' ? SEATTLE_PIVOTS.slice() : []; }
   var ROOT_TITLE = { click: 'Click', seattle: 'Seattle' }; // the cheeky name, never the product's (Dean)
-  var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres' };
+  var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
+    recentArtists: 'Recent Artists', extras: 'Extras', games: 'Games', settings: 'Settings', about: 'About' };
   function menuTitle(node, style) {
     var n = node || {};
     if (n.type === 'main') return ROOT_TITLE[style] || 'Menu';
@@ -321,17 +327,36 @@
     return (typeof n.label === 'string' && n.label) ? n.label : 'Songs';
   }
   // The STATIC levels (null for a level whose rows come from the library).
+  // The Main Menu is the device's own order (the iPod classic: Music, Extras, Settings, Shuffle
+  // Songs, Now Playing). Extras (Click) / Games (Seattle, the Zune's own word) exists only while the
+  // game can run here (opts.hasGames = the Brick hook's own availability rule, read by the
+  // controller) - never an entry that leads to nothing. Settings holds About only (Dean's scope:
+  // Shuffle / Repeat / Autoplay stay where they already live).
   function menuStaticItems(node, opts) {
     var t = node && node.type;
+    var o = opts || {};
     if (t === 'main') {
-      var rows = [{ label: 'Music', node: { type: 'music' } }, { label: 'Shuffle Songs', action: 'shuffle' }];
-      if (opts && opts.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
+      var rows = [{ label: 'Music', node: { type: 'music' } }];
+      if (o.hasGames) rows.push(o.style === 'seattle' ? { label: 'Games', node: { type: 'games' } } : { label: 'Extras', node: { type: 'extras' } });
+      rows.push({ label: 'Settings', node: { type: 'settings' } });
+      rows.push({ label: 'Shuffle Songs', action: 'shuffle' });
+      if (o.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
       return rows;
     }
     if (t === 'music') return MUSIC_MENU.map(function (m) { return { label: m.label, node: { type: m.type } }; });
     if (t === 'playlists') return PLAYLISTS.map(function (p) { return { label: p.label, node: { type: 'playlist', key: p.key, label: p.label } }; });
+    if (t === 'extras') return [{ label: 'Games', node: { type: 'games' } }];
+    if (t === 'games') return [{ label: 'Brick', action: 'brick' }];
+    if (t === 'settings') return [{ label: 'About', node: { type: 'about' } }];
     return null;
   }
+  // Addendum E (Dean: "the art gently moves from right to left ... in some of the views, like the
+  // main views that are not the album that you picked"): the levels whose rows are MENU entries,
+  // not library items. On Click their right pane plays the slow cover drift (the 6G/7G main-menu
+  // slideshow); every other level shows the highlighted item's own art. One list, read by the
+  // controller - never a second copy.
+  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about'];
+  function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows.
   function artVia(artFor, id, explicit) {
@@ -406,6 +431,126 @@
   function tracksOfAlbum(tracks, key) {
     return (Array.isArray(tracks) ? tracks : []).filter(function (t) { return t && (t.albumKey || '') === key; });
   }
+  // Recent Artists (Dean 2026-09-24): the artists of the Recently Played source (the view's own
+  // `filter=recent-listening` rows, most recent first, visibility-gated by the route), unique in
+  // recency order, at most 25. The artist key is the Artists level's own grouping rule
+  // (albumArtist || artist, server groupArtists), so a row drills in exactly like Artists > artist.
+  var RECENT_ARTISTS_MAX = 25;
+  function menuRecentArtistItems(tracks, artFor) {
+    var seen = Object.create(null);
+    var out = [];
+    (Array.isArray(tracks) ? tracks : []).some(function (t) {
+      if (!t) return false;
+      var name = (typeof t.albumArtist === 'string' && t.albumArtist) || (typeof t.artist === 'string' && t.artist) || '';
+      if (seen['k' + name]) return false;
+      seen['k' + name] = true;
+      out.push({
+        label: name || 'Unknown Artist',
+        node: { type: 'artist', key: name, label: name || 'Unknown Artist' },
+        art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.id, t.artUrl),
+      });
+      return out.length >= RECENT_ARTISTS_MAX;
+    });
+    return out;
+  }
+  // About (Dean: "an about ... info for FileTube in context"): read-only rows, the device's About
+  // screen. Counts are the library routes' own `total`s (visibility-gated per user); the version
+  // is the running build's (the account menu's source). The screen's heading - the skin's cheeky
+  // name - is drawn by the renderer from the style, never the product's name.
+  function groupDigits(n) {
+    var v = Math.max(0, Math.floor(Number(n) || 0));
+    return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function menuAboutItems(facts) {
+    var f = facts || {};
+    var rows = [
+      { label: 'Songs', value: groupDigits(f.songs), info: true },
+      { label: 'Albums', value: groupDigits(f.albums), info: true },
+      { label: 'Artists', value: groupDigits(f.artists), info: true },
+    ];
+    if (typeof f.version === 'string' && f.version) rows.push({ label: 'Version', value: f.version, info: true });
+    rows.push({ label: 'Software', value: 'FileTube', info: true });
+    return rows;
+  }
+  // Addendum E: the slideshow's covers - one per album, only tracks the server says HAVE art
+  // (`hasArt`: a native cover on disk, or a library item's thumbnail), through the view's one art
+  // rule, same-origin paths only (never a remote avatar). Empty = no art in the library.
+  var COVER_POOL_MAX = 60;
+  function menuCoverPool(tracks, artFor) {
+    var seen = Object.create(null);
+    var out = [];
+    (Array.isArray(tracks) ? tracks : []).some(function (t) {
+      if (!t || !t.hasArt) return false;
+      var k = 'k' + (t.albumKey || t.id);
+      if (seen[k]) return false;
+      var u = artVia(artFor, t.id, t.artUrl);
+      if (typeof u !== 'string' || u.charAt(0) !== '/' || u.charAt(1) === '/') return false;
+      seen[k] = true;
+      out.push(u);
+      return out.length >= COVER_POOL_MAX;
+    });
+    return out;
+  }
+
+  // ---- QUICK SCROLL (Dean 2026-09-24: "there's a lot of scrolling ... I don't want to go crazy")
+  // The iPod classic 5G+ and the Zune jumped a long list by LETTER. A row's letter comes from its
+  // label - the value the level is sorted by (the server's cmpStr: trimmed, localeCompare at base
+  // sensitivity; no "The " rule, so none here either). Digits and symbols are '#', which that sort
+  // places first; accents fold to their base letter (É under E) and the few Latin letters the
+  // collation files under a base letter without decomposing them (Æ, Ø, Ł, ß - measured against
+  // the server's own comparison in the unit test) fold with them. Anything else (Ω, あ) is '#'
+  // wherever the sort put it. The jump table is the list's own RUNS of one letter, in list order -
+  // so it follows the list's real order even where it is not A-Z (a trailing '#' run is a run).
+  var MENU_LETTERS = ['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+  var MENU_LETTER_MIN = 20; // a shorter list is crossed in a turn or two - no letter mode there
+  var LETTER_FOLD = { 'Æ': 'A', 'Ø': 'O', 'Ł': 'L', 'ß': 'S', 'Œ': 'O', 'Đ': 'D' };
+  function menuLetterOf(label) {
+    var s = String(label == null ? '' : label).trim();
+    if (!s) return '#';
+    var ch = String.fromCodePoint(s.codePointAt(0));
+    if (LETTER_FOLD[ch]) return LETTER_FOLD[ch];
+    var up = ch.toUpperCase();
+    if (LETTER_FOLD[up]) return LETTER_FOLD[up];
+    var base = (typeof up.normalize === 'function' ? up.normalize('NFD') : up).charAt(0);
+    return (base >= 'A' && base <= 'Z') ? base : '#';
+  }
+  function menuLetterRuns(items) {
+    var runs = [];
+    var prev = null;
+    (Array.isArray(items) ? items : []).forEach(function (it, i) {
+      var l = menuLetterOf(it && it.label);
+      if (l !== prev) { runs.push({ letter: l, index: i }); prev = l; }
+    });
+    return runs;
+  }
+  // the run holding row `i` (binary search over the run starts)
+  function runAt(runs, i) {
+    var lo = 0, hi = runs.length - 1, ans = 0;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (runs[mid].index <= i) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    return ans;
+  }
+  function menuLetterAt(runs, i) { return (runs && runs.length) ? runs[runAt(runs, i)].letter : ''; }
+  // One detent in letter mode: forward = the first row of the NEXT run; back = the first row of
+  // the run BEFORE the cursor's (the device's "previous letter"), or row 0 from the first run.
+  function menuLetterJump(runs, i, dir) {
+    if (!runs || !runs.length) return i;
+    var r = runAt(runs, i);
+    if (dir > 0) return r + 1 < runs.length ? runs[r + 1].index : i;
+    return r > 0 ? runs[r - 1].index : runs[0].index;
+  }
+  // The A-Z picker: every letter, each with the first row of its first run (-1 = absent).
+  function menuLetterTargets(runs) {
+    var first = Object.create(null);
+    (runs || []).forEach(function (r) { if (first[r.letter] === undefined) first[r.letter] = r.index; });
+    return MENU_LETTERS.map(function (l) { return { letter: l, index: first[l] === undefined ? -1 : first[l] }; });
+  }
+  // A level qualifies when the VIEW says its rows are in label order (`letters: true` on its
+  // payload - the view knows the sort it asked the server for) and it is long.
+  function menuLetterable(pane) {
+    return !!(pane && pane.letters && Array.isArray(pane.items) && pane.items.length >= MENU_LETTER_MIN);
+  }
+  function menuSortIsAlpha(sort) { return sort === 'title-asc' || sort === 'title-desc'; }
+
   // The rendered WINDOW of a long list: only the rows near the viewport exist in the DOM (a
   // library can have thousands of songs). With no layout yet (rowH/viewH unknown - the first
   // frame, or jsdom) it falls back to a fixed span around the cursor, so the cursor row is
@@ -440,6 +585,11 @@
     var html = '<div class="ipm-pad" style="height:' + (v.start * rowH) + 'px"></div>';
     for (var i = v.start; i < v.end; i++) {
       var it = items[i];
+      // an INFO row (About) is read-only: no selection bar, a value on the right, not an option.
+      if (it.info) {
+        html += '<div class="ipm-row ipm-info"><span class="ipm-lbl">' + esc(it.label) + '</span><span class="ipm-val">' + esc(it.value) + '</span></div>';
+        continue;
+      }
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
         (v.currentId && it.id === v.currentId ? ' is-current' : '');
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
@@ -457,7 +607,26 @@
   // controller so a fast wheel does not thrash the image). Seattle: big lowercase type, a
   // pivot strip on the Music level (the active pivot leads, the rest trail off - the Zune
   // wraps), a dim title over a drilled list, and nothing at all over the Main Menu.
-  // v = renderMenuList's v + { title, root, pivots?: [labels], pivotIdx, art, artIn }
+  // Quick scroll's three layers over the menu screen (all inside .ip-menuview, drawn from the
+  // controller's state so a repaint keeps them): the big LETTER overlay (the wheel's letter mode:
+  // Click = the iPod's translucent dark square, Seattle = a huge lowercase Zune letter), the small
+  // edge BADGE (a touch scroll's letter), and the A-Z PICKER (opened by tapping either). Both the
+  // overlay and the badge are 44 px+ buttons, faded by a class so a hidden one never takes a tap.
+  // jump = { letter, overlay, badge, grid: [{letter, index}] | null }
+  function renderJumpLayers(jump) {
+    if (!jump) return '';
+    var l = esc(jump.letter || '');
+    var html = '<button type="button" class="ipm-letter' + (jump.overlay ? ' is-on' : '') + '" data-skin-letters aria-label="Jump to a letter"' + (jump.overlay ? '' : ' tabindex="-1"') + '>' + l + '</button>' +
+      '<button type="button" class="ipm-badge' + (jump.badge ? ' is-on' : '') + '" data-skin-letters aria-label="Jump to a letter"' + (jump.badge ? '' : ' tabindex="-1"') + '>' + l + '</button>';
+    if (jump.grid) {
+      html += '<div class="ipm-grid" data-skin-lettergrid role="group" aria-label="Jump to a letter">' + jump.grid.map(function (t) {
+        var on = t.index >= 0;
+        return '<button type="button" class="ipm-gl' + (on ? '' : ' is-off') + '"' + (on ? ' data-skin-letter="' + Number(t.index) + '"' : ' disabled') + '>' + esc(t.letter) + '</button>';
+      }).join('') + '</div>';
+    }
+    return html;
+  }
+  // v = renderMenuList's v + { title, root, pivots?: [labels], pivotIdx, art, artIn, jump?, aboutName? }
   function renderMenuView(style, v) {
     // gate r1 K5: a Seattle list whose rows carry a sub-line (albums, songs) is a TWO-LINE list -
     // taller rows with title + sub packed at the top, so each sub-line reads with ITS title.
@@ -477,11 +646,13 @@
       } else if (!v.root) {
         head = '<div class="ipm-title">' + esc(v.title || '') + '</div>';
       }
-      return '<div class="ip-menuview ipm-seattle' + (v.root ? ' ipm-root' : '') + '">' + head + list + '</div>';
+      var about = v.aboutName ? '<div class="ipm-about-name">' + esc(v.aboutName) + '</div>' : '';
+      return '<div class="ip-menuview ipm-seattle' + (v.root ? ' ipm-root' : '') + '">' + head + about + list + renderJumpLayers(v.jump) + '</div>';
     }
     var art = v.art ? '<img class="ipm-art-img' + (v.artIn ? ' is-in' : '') + '" src="' + esc(v.art) + '" alt="" />' : '';
-    return '<div class="ip-menuview ipm-click"><div class="ipm-split">' + list +
-      '<div class="ipm-art" aria-hidden="true">' + art + '</div></div></div>';
+    var aboutC = v.aboutName ? '<div class="ipm-about-name">' + esc(v.aboutName) + '</div>' : '';
+    return '<div class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-lpane">' + aboutC + list + '</div>' +
+      '<div class="ipm-art" aria-hidden="true">' + art + '</div></div>' + renderJumpLayers(v.jump) + '</div>';
   }
 
   var api = {
@@ -496,6 +667,12 @@
     menuArtistAlbumItems: menuArtistAlbumItems, menuGenreItems: menuGenreItems,
     tracksOfGenre: tracksOfGenre, tracksOfAlbum: tracksOfAlbum,
     menuWindow: menuWindow, renderMenuList: renderMenuList, renderMenuView: renderMenuView,
+    // quick scroll + Recent Artists + Extras/Settings/About + the cover drift (2026-09-24)
+    menuRecentArtistItems: menuRecentArtistItems, menuAboutItems: menuAboutItems, menuCoverPool: menuCoverPool,
+    menuIsItemLevel: menuIsItemLevel, menuLetterOf: menuLetterOf, menuLetterRuns: menuLetterRuns,
+    menuLetterAt: menuLetterAt, menuLetterJump: menuLetterJump, menuLetterTargets: menuLetterTargets,
+    menuLetterable: menuLetterable, menuSortIsAlpha: menuSortIsAlpha, renderMenuJump: renderJumpLayers,
+    MENU_LETTERS: MENU_LETTERS, MENU_LETTER_MIN: MENU_LETTER_MIN, RECENT_ARTISTS_MAX: RECENT_ARTISTS_MAX,
     _esc: esc, _pct: pct,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
