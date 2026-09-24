@@ -30,12 +30,12 @@ test('registry census: a skin carries `menus` exactly when its screen is an LCD 
 // ---------------------------------------------------------------- static levels
 test('static levels: Main Menu (Now Playing only while a track exists), Music in the iPod order, Playlists with Liked', () => {
   const lbl = (rows) => rows.map((r) => r.label);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true })), ['Music', 'Shuffle Songs', 'Now Playing']);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false })), ['Music', 'Shuffle Songs'], 'nothing playing: no Now Playing row');
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'music' })), ['Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true })), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false })), ['Music', 'Settings', 'Shuffle Songs'], 'nothing playing: no Now Playing row');
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'music' })), ['Recent Artists', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'playlists' })), ['Liked Songs', 'Recently Added', 'Recently Played']);
   assert.strictEqual(skins.menuStaticItems({ type: 'artists' }), null, 'a library level is not static');
-  assert.deepStrictEqual(skins.menuPivots('seattle').map((p) => p.type), ['artists', 'albums', 'songs', 'playlists', 'genres']);
+  assert.deepStrictEqual(skins.menuPivots('seattle').map((p) => p.type), ['artists', 'albums', 'songs', 'playlists', 'genres', 'recentArtists']);
   assert.deepStrictEqual(skins.menuPivots('click'), [], 'Click has no pivots');
   assert.strictEqual(skins.menuTitle({ type: 'main' }, 'click'), 'Click');
   assert.strictEqual(skins.menuTitle({ type: 'main' }, 'seattle'), 'Seattle');
@@ -119,7 +119,7 @@ test('renderMenuList: escaped labels, chevrons on drill rows (Click only), the p
 test('renderMenuView: Click = the split screen (list + art pane); Seattle = pivots leading with the active one (wrapping), a big title when drilled, nothing on the root', () => {
   const base = { items: [{ label: 'A' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' };
   const click = skins.renderMenuView('click', Object.assign({ title: 'Music', art: '/albumart/x', artIn: true }, base));
-  assert.match(click, /class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-list"/);
+  assert.match(click, /class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-lpane"><div class="ipm-list"/);
   assert.match(click, /<div class="ipm-art" aria-hidden="true"><img class="ipm-art-img is-in" src="\/albumart\/x"/);
   const piv = skins.renderMenuView('seattle', Object.assign({ title: 'Music', pivots: ['artists', 'albums', 'songs'], pivotIdx: 2 }, base));
   const d = new JSDOM(piv).window.document;
@@ -193,6 +193,13 @@ const tap = (b, el) => {
 const pressMenu = (b) => tap(b, P(b).querySelector('[data-skin-menu]'));
 const pressSelect = (b) => tap(b, P(b).querySelector('[data-skin-select]'));
 const lbls = (b) => [...P(b).querySelectorAll('.ipm-row:not(.ipm-skel) .ipm-lbl')].map((x) => x.textContent);
+// tap a menu row by its LABEL (the Music level gained Recent Artists at the top in 2026-09-24's
+// quick-scroll branch - a label never shifts when a row is added above it)
+const tapLabel = (b, label) => {
+  const r = [...P(b).querySelectorAll('.ipm-row:not(.ipm-skel)')].find((x) => x.querySelector('.ipm-lbl').textContent === label);
+  if (!r) throw new Error('no row ' + label + ' in ' + lbls(b).join('|'));
+  tap(b, r);
+};
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 test('opens on Now Playing when something is loaded; with NOTHING loaded the first paint opens on the Main Menu (no Now Playing row)', () => {
@@ -206,7 +213,7 @@ test('opens on Now Playing when something is loaded; with NOTHING loaded the fir
   try {
     b.engine.paint();
     assert.ok(P(b).classList.contains('mms-menumode'), 'nothing playing: the Main Menu');
-    assert.deepStrictEqual(lbls(b), ['Music', 'Shuffle Songs']);
+    assert.deepStrictEqual(lbls(b), ['Music', 'Settings', 'Shuffle Songs']);
     assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Click');
   } finally { b.restore(); }
 });
@@ -217,7 +224,7 @@ test('MENU: Now Playing -> Main Menu -> (declines) dock; a drilled level pops on
     b.engine.paint();
     pressMenu(b); assert.ok(P(b).classList.contains('mms-menumode'));
     pressSelect(b); assert.strictEqual(b.engine.menuState().title, 'Music');
-    tap(b, P(b).querySelector('[data-skin-mi="0"]')); assert.strictEqual(b.engine.menuState().title, 'Playlists');
+    tapLabel(b, 'Playlists'); assert.strictEqual(b.engine.menuState().title, 'Playlists');
     assert.strictEqual(b.engine.menuState().depth, 3);
     pressMenu(b); assert.strictEqual(b.engine.menuState().title, 'Music');
     pressMenu(b); assert.strictEqual(b.engine.menuState().title, 'Click');
@@ -254,13 +261,13 @@ test('TOCTOU: a level\'s load that lands AFTER the user climbed out never draws 
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b); // Music
-    tap(b, P(b).querySelector('[data-skin-mi="1"]')); // Artists (pending)
+    tapLabel(b, 'Artists'); // Artists (pending)
     assert.ok(P(b).querySelector('.ipm-skel'), 'the skeleton is up while it loads');
     pressMenu(b); // back to Music before it lands
     release(); await tick(); await tick();
     assert.strictEqual(b.engine.menuState().title, 'Music');
-    assert.deepStrictEqual(lbls(b), ['Playlists', 'Artists', 'Albums', 'Songs', 'Genres'], 'the late payload did not paint over Music');
-    tap(b, P(b).querySelector('[data-skin-mi="1"]')); await tick();
+    assert.deepStrictEqual(lbls(b), ['Recent Artists', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres'], 'the late payload did not paint over Music');
+    tapLabel(b, 'Artists'); await tick();
     assert.strictEqual(b.spy.loads.filter((n) => n.type === 'artists').length, 2, 'a re-entered level loads afresh');
   } finally { b.restore(); }
 });
@@ -272,7 +279,7 @@ test('destroy() invalidates a late load (no write into a dead surface)', async (
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="2"]')); // Albums (pending)
+    tapLabel(b, 'Albums'); // Albums (pending)
     b.engine.destroy();
     const before = P(b).innerHTML;
     release(); await tick(); await tick();
@@ -289,7 +296,7 @@ test('a song pick hands the view the level\'s TRACKS + the index + the play cont
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="2"]')); await tick();
+    tapLabel(b, 'Albums'); await tick();
     tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick();
     tap(b, P(b).querySelector('[data-skin-mi="2"]'));
     assert.strictEqual(b.spy.plays.length, 1);
@@ -314,7 +321,7 @@ test('gate r1 K1: an advance NEVER moves the highlight of the list on screen (on
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="2"]')); await tick(); // Albums
+    tapLabel(b, 'Albums'); await tick(); // Albums
     tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick(); // Alb
     tap(b, P(b).querySelector('[data-skin-mi="0"]'));               // play 'a'
     b.state.current = 'a'; b.engine.paint();
@@ -346,7 +353,7 @@ test('a BIG list (5,000 songs) keeps the DOM small, and the wheel/cursor can rea
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="3"]')); await tick(); // Songs
+    tapLabel(b, 'Songs'); await tick(); // Songs
     assert.strictEqual(b.engine.menuState().count, 5000);
     assert.ok(P(b).querySelectorAll('.ipm-row').length <= 40, 'only a window of rows exists: ' + P(b).querySelectorAll('.ipm-row').length);
     // drive the controller's cursor through the SAME entry the wheel's onMove calls
@@ -377,7 +384,7 @@ test('the split screen\'s art eases in on the settled row (a decoded image turns
     img.dispatchEvent(new b.dom.window.Event('load'));
     assert.ok(img.classList.contains('is-in'), 'the decoded image eases in');
     pressSelect(b); // Music
-    tap(b, P(b).querySelector('[data-skin-mi="2"]')); await tick(); // Albums (the stub rows)
+    tapLabel(b, 'Albums'); await tick(); // Albums (the stub rows)
     await new Promise((r) => setTimeout(r, 20));
     img = P(b).querySelector('.ipm-art .ipm-art-img');
     assert.strictEqual(img.getAttribute('src'), '/albumart/x', 'the highlighted item\'s own art');
@@ -415,6 +422,8 @@ test('Seattle: pad left/right move the pivots only on a pivot level (elsewhere t
     tap(b, P(b).querySelector('[data-skin-pivot="4"]')); await tick();
     assert.deepStrictEqual(lbls(b), ['genres-row'], 'a pivot tap moves to it');
     tap(b, P(b).querySelector('[data-skin-next]')); await tick();
+    assert.deepStrictEqual(lbls(b), ['recentArtists-row'], 'Recent Artists is the last pivot (2026-09-24)');
+    tap(b, P(b).querySelector('[data-skin-next]')); await tick();
     assert.deepStrictEqual(lbls(b), ['artists-row'], 'the pivots wrap (the Zune\'s own)');
     tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick(); // drill in
     tap(b, P(b).querySelector('[data-skin-next]'));
@@ -432,7 +441,7 @@ test('a library change under the menus (the view bumps dataVersion) re-loads eve
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="2"]')); await tick(); // Albums (load #1)
+    tapLabel(b, 'Albums'); await tick(); // Albums (load #1)
     assert.deepStrictEqual(lbls(b), ['v1-a', 'v1-b', 'v1-c']);
     const wheel = P(b).querySelector('.ip-wheel');
     wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
@@ -500,7 +509,7 @@ test('gate r1 A14: a level load that lands AFTER a newer re-load (the library ch
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="2"]')); // Albums: load #1 in flight
+    tapLabel(b, 'Albums'); // Albums: load #1 in flight
     b.state.ver = 1; b.engine.paint(); await tick(); // the library changed: load #2 lands first
     assert.deepStrictEqual(lbls(b), ['NEW']);
     releaseFirst(); await tick(); await tick();
@@ -514,7 +523,7 @@ test('gate r1 qa S8: a like/unlike (likedVersion) re-loads an open Liked Songs l
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="0"]')); // Playlists (static)
+    tapLabel(b, 'Playlists'); // Playlists (static)
     tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick(); // Liked Songs (load 1)
     assert.deepStrictEqual(lbls(b), ['playlistliked-1']);
     b.state.liked = 1; b.engine.paint(); await tick();
@@ -538,7 +547,7 @@ test('gate r1 A1: a list the queue advanced off screen comes back RE-CENTRED on 
   try {
     b.engine.paint();
     pressMenu(b); pressSelect(b);
-    tap(b, P(b).querySelector('[data-skin-mi="3"]')); await tick(); // Songs
+    tapLabel(b, 'Songs'); await tick(); // Songs
     tap(b, P(b).querySelector('[data-skin-mi="0"]')); // play t0: Now Playing
     b.state.current = 't40'; b.engine.paint(); // the queue advanced 40 rows while the list is off screen
     pressMenu(b);

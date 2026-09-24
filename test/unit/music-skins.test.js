@@ -363,9 +363,12 @@ test('v1.233: direction is re-evaluated every move (accum + sign per move), neve
 });
 
 test('v1.233: a fast flick ACCELERATES (songs-per-step scales with angular speed)', () => {
-  const { body } = wheelHandlerSrc();
+  const { js, body } = wheelHandlerSrc();
   assert.match(body, /var speed = Math\.abs\(d\) \/ dt/, 'computes angular speed (deg/ms)');
-  assert.match(body, /var mult = speed > [\d.]+ \? \d/, 'a speed-scaled multiplier (fast flick jumps several songs)');
+  // 2026-09-24 (quick scroll): the ladder moved into ONE named function so the pocket menus'
+  // letter mode reads the same band (never a second velocity estimator) - bind both ends.
+  assert.match(body, /var mult = cursorStepMult\(speed\)/, 'the multiplier comes from the one speed ladder');
+  assert.match(js, /function cursorStepMult\(speed\) \{ return speed > [\d.]+ \? \d/, 'a speed-scaled multiplier (fast flick jumps several songs)');
   assert.match(body, /setWheelCursor\(wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
 });
 
