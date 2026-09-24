@@ -323,7 +323,8 @@ test('K6 A20/A22: crafted markup in a title, artist, album or genre never become
       menu(h); check('main');
       select(h); await settleNet(); check('music');
       if (skin === 'zune-classic') {
-        for (let k = 0; k < 5; k++) { await settleNet(); check('pivot ' + k); click(h.dom, h.panel.querySelector('[data-skin-next]')); }
+        // every pivot once round (six since Recent Artists joined, 2026-09-24), back on artists
+        for (let k = 0; k < 6; k++) { await settleNet(); check('pivot ' + k); click(h.dom, h.panel.querySelector('[data-skin-next]')); }
         tapRow(h, XSS); await settleNet(); check('artist');
         tapRow(h, '<b class=pwn>alb</b>'); await settleNet(); check('album');
         assert.ok(h.panel.querySelector('.ipm-title').textContent.indexOf('<b class=pwn>') >= 0, 'the drilled title shows the crafted text as TEXT');
