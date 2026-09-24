@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: (not started)
 anchor: spec
 status: Draft
-next: Dean's on-device answers to the three falsifying questions below, then design approval; build only after that
+next: NEXT SWING = item 2 (gyro lighting, intake answered G1-G8) as its own branch right after the current follow-ups ship; items 1 + 3 wait for Dean's F1-F3 device answers
 design: pending
 gate: pending
 ---
@@ -97,8 +97,20 @@ the safe-area insets, not our player. **Falsifying questions for Dean (answer be
 - Realism reference: sample a real iPod Classic / Zune under a moving light (match-reference norm):
   the highlight slides opposite the tilt, the wheel's rim catches light at the top edge.
 
-**Questions for Dean before design:** which surfaces get the sheen (the Click wheel, the bezel/body,
-the LCD glass, the Seattle pad); subtle or pronounced; and where the permission row lives.
+**Intake answered (Dean, 2026-09-24 - "once we're done, exclusively work on the PWA gyro feature"):**
+
+| ID | Decision |
+|----|----------|
+| G1 | **Surfaces: all four.** The Click wheel (gloss, rim, the center button's dome), the iPod body / front face (a moving reflection band; Matte gets a softer sheen), the screen glass (a faint streak, never hurting readability), and Seattle's chrome pad + its two flank buttons. |
+| G2 | **Strength: a setting** - Off / Subtle / Pronounced, chosen per device (device-local). |
+| G3 | **Light model: a fixed light in the room.** An imagined light stays above the viewer; tilting the phone slides the highlights across the surfaces the opposite way. |
+| G4 | **Turning it on: Settings > Lighting in the pocket menu** (beside About). Choosing a strength other than Off from a tap is what calls iOS's `DeviceOrientationEvent.requestPermission()`; Denied or unsupported = a clear note, the look stays as today. |
+| G5 | **Neutral pose: how you hold it when the skin opens**, and it slowly re-centers when you settle into a new pose (lying down, on a table), so the light never drifts off permanently. |
+| G6 | **Highlights AND shadows move:** the depth shadows shift with the light (the wheel in its recess, the center button's shadow, the Seattle pad's rim), not just the shine. |
+| G7 | **Desktop: follow the mouse.** With Lighting on and no gyroscope, the pointer over the player moves the imagined light (the desktop pop-out included); it eases back to neutral when the pointer leaves. |
+| G8 | **Scope: the pocket skins only** (Click, Black, Matte, Seattle). Not Cider / Nordic, not the 2009 theme's buttons. |
+
+Open for the design pass (Architect, not Dean): the filter constants (the smoothing time constant, the re-center rate), the tilt-to-offset mapping and clamps, how the Lighting row's strength choice reads in each skin (Click: a settings list with a checkmark; Seattle: Zune-style large type), the reference sampling of a real iPod Classic / Zune under a moving light (match-reference norm), and the battery/CPU measurement plan on Dean's iPhone. Landscape: map the axes by `screen.orientation.angle`.
 
 ## Branch plan (when approved)
 
