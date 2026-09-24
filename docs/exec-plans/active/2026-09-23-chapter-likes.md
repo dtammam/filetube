@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/chapter-likes
 anchor: spec
 status: Building
-next: gate r1 findings fixed (see the r1 fix record at the end; fixes at 92051516, every new binding mutation-proven); hand back to the SAME seats for the r2 delta (adversary + qa; security-brief APPROVED r1)
+next: gate CLOSED r2 @63497136 (all three seats). Merge to main, then close out at the wave release v1.317.0. Owed SUGGESTIONs (non-blocking, r2): the S4 overlayFail fixture should answer liked:true for the base file; unref the bootLikedGrid 5s fallback timer in card-like.test.js; tracker #235 collides with fix/music-theatre-button (renumber whichever merges second)
 design: Approved 2026-09-23 @6ea45237 (Dean's GO on D9-D12, recorded on feat/music-channel-chapters at 10c3be1e)
-gate: pending
+gate: APPROVED r2 @63497136 — adversary, qa, security-brief
 ---
 
 # M3: like a chapter as a song
@@ -633,6 +633,244 @@ after each run. Sandbox baseline FIRST: chapter-likes + card-like + music-chapte
 
 Targeted suites at 92051516 in the worktree (Node 22.23.1): chapter-likes `tests 8 pass 8 fail 0`;
 card-like + music-chapter-likes-client + chapter-like-carriers + auth-store + docs-link-census +
-docs-status-census + tech-debt-census + exec-plans-census `tests 48 pass 48 fail 0`; `npx eslint`
+docs-status-census + tech-debt-census `tests 48 pass 48 fail 0` (the exec-plans census named here at first does not exist on this branch; it runs on main after the merge); `npx eslint`
 over the four touched code/test files: no output. The commit's pre-commit hook ran the unit suite:
 `tests 6966 pass 6966 fail 0`.
+
+## Gate r2 - security-brief (@63497136)
+
+Tool gaps (verbatim, before anything else): this seat has no Bash, so `git diff 3f6ce330 63497136`
+was NOT run and the "comment-only / test-only" shape of the delta is NOT verified by diff. What
+stands in for it: I re-read every security-relevant region I traced in r1 at the review sha and
+found it at the SAME line numbers with the same code (POST lib/media/user-routes.js:187-206, the
+shaping gate :373, the filter arm :461-462, the stats filter lib/media/routes.js:1660); the only
+shift is lib/auth/store.js, where both statements moved by exactly the five added comment lines
+(r1 :80/:87 -> :85/:92). A package.json / lockfile delta was not diffed (none is named in the
+delta's file list; reasoned, not verified). No test was executed by this seat.
+
+Re-verification against the review sha:
+
+1. Like routes accept `<id>::c<n>` only through existence + expansion membership - VERIFIED
+   unchanged. RBAC runs on the BASE id first (`restrictedVideoMutation`, 404, no oracle), own-
+   property base lookup, audio-only, `itemChapterTracks(item).find(t => t.id === req.params.id)`,
+   and the stored key is `track.id` (constructed), never the request string. No free-text key.
+2. GET /api/liked chapter expansion RBAC - VERIFIED unchanged: the shaping arm gates
+   `mediaVisibleTo` on the base before any title/duration/art is read (:373), a stale index is
+   dropped at :375, and the filter arm re-gates by `o.mediaId` (:461-462). The new W1 test
+   (test/integration/chapter-likes.test.js:308-341) now BINDS the stranded-chapter arm: a
+   re-chapter that removes `::c4` yields 200, `[]`, total 0 - no title, no count, and no 500 (the
+   unbound guard was a latent per-user DoS of the Liked page; now held). The #235 stats/total
+   disagreement counts the user's OWN row by base visibility only: count-only, self-only, no
+   cross-user or cross-RBAC leak.
+3. Prefix-aware cleanup - VERIFIED: both statements (lib/auth/store.js:85, :92) are the
+   substr-based, numbered-parameter forms I approved in r1 (no LIKE, no `_`/`%` wildcard, no id
+   interpolated into SQL text, the `length > len+3` guard intact). The new comment (:72-84) is
+   ACCURATE against source: `getMediaId` is md5 hex (server.js:1469-1470) and trash ids are
+   md5(trashPath) (lib/media/trashRecords.js:6); it now states the `::c`-free-base-id assumption
+   and its failure mode, which closes my r1 I1.
+4. Backup bundle - unchanged by the delta; still `requireAdmin`-gated and carrying the key as an
+   opaque string (r1 item 2; r1 I2 stands as pre-existing, admin-trusted).
+5. New test code - no security surface: sessions come from the pre-existing `__mintTestSession`
+   test helper (no credential literal); temp dirs via `fs.mkdtempSync` under `os.tmpdir()`; the
+   card-like jsdom harness (test/unit/card-like.test.js:190-212) intercepts EVERY resource load
+   (disk file or a 404 Response) and stubs `window.fetch`, so no test reaches the network.
+
+Findings: none. r1 I1 closed by the comment; r1 I2 unchanged (INFO, pre-existing).
+
+My r1 approval holds on the new sha: the delta (as read, see the tool gap) adds comments, tests
+and docs only, and the one behavioural fact it adds - the W1 binding - strengthens the read-side
+RBAC/availability posture rather than changing it.
+
+Gate: APPROVED r2 @63497136 — security-brief
+
+## Gate r2 - qa (@63497136)
+
+Delta re-confirmation (fresh instance). `git rev-parse HEAD` = 63497136, branch feat/chapter-likes.
+Delta 3f6ce330..63497136: lib/auth/store.js (COMMENT-ONLY: every added/removed non-plan line in
+lib/, server.js, public/ is a `//` line; the two SQL statements are byte-identical), three test
+files, the tracker row, this plan. Node v22.23.1. Mutants ran in a `git archive 63497136` sandbox
+in the session scratchpad (node_modules symlinked from the main checkout), each diff shown
+non-empty, each file restored and `cmp`-proven; the sandbox is deleted.
+
+Instruments (verbatim):
+- Worktree, `node --test` chapter-likes + card-like + music-chapter-likes-client + auth-store +
+  docs-link-census + docs-status-census + tech-debt-census: `# tests 51 / # pass 51 / # fail 0`.
+  (There is NO exec-plans census on this branch - it landed on main at 14817be4, after the
+  6ea45237 base; see S2.) Run separately against main's tree with this plan dropped into
+  active/: exec-plans-census + docs-status-census + docs-link-census `# tests 6 / # pass 6 /
+  # fail 0`. `git merge-tree --write-tree main 63497136`: exit 0 (clean merge onto main).
+- `npx eslint` over all 15 files the branch touches: no output, exit 0.
+- `bash .harness/lib/check-markers.sh`: `✗ ... stale approval @6ea45237 — reviewed code changed
+  since; re-gate` / `✗ ... stale approval @3f6ce330 — reviewed code changed since; re-gate` /
+  `check-markers: 2 issue(s) found` (the `design:` line and the historical security-brief r1
+  line; every r2 APPROVED line binds 63497136, which has no code diff to HEAD).
+- Sandbox baseline: chapter-likes + card-like + music-chapter-likes-client `tests 26 pass 26
+  fail 0`. Grid + client files run 6x CONCURRENTLY (flake probe for the new jsdom drive):
+  `pass 18 fail 0` all six.
+
+My r1 findings at 63497136:
+1. W1 (M7b row) - FIXED as prescribed, and better (the row now names both mutant shapes).
+   Re-measured: filter-arm body -> `return true`: `tests 8 pass 8 fail 0` (GREEN, RBAC held by
+   the shaping gate); arm deleted: `tests 8 pass 2 fail 6`, the reds exactly AC2, AC5/AC12, AC6,
+   AC7, AC8, W1 as the row states.
+2. S2 (survey wording) - FIXED (line 68-70 reads "no client READS it" and names both writers).
+3. S3 (store.js comment) - FIXED. Verified against source: getMediaId is md5 hex
+   (server.js:1469-1470), trashId = md5(trashPath) (lib/media/trashRecords.js:6); the stated
+   failure mode (removeMediaState('x') sweeping item `x::c...`'s likes) is what the SQL does.
+4. S4 (/api/home) - FIXED as a follow-up note under the surface table.
+5. S5 (client readers) - FIXED; verified watch.js filters `kind === 'media'` on both arms
+   (~:2171/:2185; common.js :2209 only builds the URL watch.js consumes).
+
+The adversary's r1 findings, re-measured (theirs to verdict; recorded as evidence):
+- W1 guard: deleting the chapter arm's `if (!track) continue;` (user-routes.js:375) -> `tests 8
+  pass 7 fail 1`, W1 red `500 !== 200`; the read-that-SWEEPS mutant (`removeLiked` then
+  continue) -> `tests 8 pass 7 fail 1`, W1 red on "the row is NOT deleted from storage". BOTH
+  halves bound. The id comes from the real expansion and reachability (three rows) is asserted.
+- W2: arm commented out -> card-like `tests 8 pass 6 fail 2` (lock + drive; the drive shows
+  `DELETE /api/music/liked/f1::c2`); native arm rewritten to the media store -> `pass 6 fail 2`.
+- W3: disclosure + tracker row accurate against source (lib/media/routes.js:1660 counts by base
+  visibility; common.js:12992 returns 0 for total <= 0 and :13016 renders only on total > 0).
+- S4: C9 -> `tests 10 pass 8 fail 2` (both new tests red).
+
+Security surface (standing): unchanged by the delta (comment + tests + docs; no route, SQL, or
+client code moved). GET /api/liked for a restricted item re-verified: the shaping arm gates
+`mediaVisibleTo` on the base before any title/duration/art is read (:373) and the filter arm
+re-gates by `o.mediaId` (:461-462); `total` is computed after both. The two gates are each
+individually sufficient (M7b-a green, the adversary's S15 green) and only their joint removal is
+bound (M7 7/6/1) - defence in depth, disclosed, acceptable. The new tests add no surface
+(fetch stubbed, every jsdom resource intercepted to disk or 404).
+
+New findings:
+- **WARNING, safe to ship DISCLOSED** (docs/exec-plans/tech-debt-tracker.md, the new row 235):
+  tracker id 235 is ALSO claimed by the sibling wave branch fix/music-theatre-button (the
+  books.html shell row). `git merge-tree --write-tree fix/music-theatre-button 63497136` -> exit
+  1, `CONFLICT (content)` in the tracker. Scenario: the second branch to merge resolves the
+  conflict by keeping both rows -> two `| 235 |` rows (tech-debt-census does not check id
+  uniqueness, so it stays green), or renumbers its own row -> this plan's three "#235" cites
+  (the disclosed-limits entry, the r1 fix record, the security-brief r2 section) point at the
+  books.html row. Safe to ship because git forces the conflict (it cannot land silently) and the
+  right number depends on merge order, which this branch cannot know. Prescription for the
+  merge step: renumber whichever lands second to the next free id and update that plan's
+  citations in the same merge.
+- SUGGESTION S1 (test/unit/music-chapter-likes-client.test.js, the overlayFail tests): the
+  fixture's base item is always `liked: false`, so the mutant `item.liked = track ?
+  track.liked === true : item.liked` (a failed overlay falls back to the FILE's flag) SURVIVES
+  `tests 10 pass 10 fail 0`. Scenario: the file is liked AND the overlay fetch fails -> the row
+  reads "Liked" and the tap is `DELETE /api/liked/<chapterId>` - the exact "failed overlay reads
+  as liked" arm the comment at public/js/music.js:1405 rules out. HEAD is correct; stamp
+  `liked: true` on /api/videos/f1 in the overlayFail boot to bind it.
+- SUGGESTION S2 (this plan, the r1 fix record's last paragraph): the 48-test run names
+  "exec-plans-census", a file that does not exist on this branch - `node --test` silently skips
+  a missing path (reproduced: the same command line prints `tests 48 pass 48 fail 0` with no
+  error). The count is honest (7 real files sum to 48); the label claims a census that never
+  ran. Reword on the next doc touch.
+
+Tree proof: `git status --short` before this append showed only `M` on this plan (the
+security-brief r2 section); no untracked files; the scratchpad sandboxes are deleted.
+
+Gate: APPROVED r2 @63497136 — qa
+
+## Gate r2 - adversary (@63497136)
+
+Delta re-review, fresh instance. `git rev-parse HEAD` = 63497136 (feat/chapter-likes). All
+measurement ran in a `git archive 63497136` sandbox under /tmp (`node_modules` symlinked from the
+main checkout). Each mutant: replacement asserted to occur exactly once, its `diff` against
+`git show 63497136:<file>` printed non-empty BEFORE crediting, then the file restored and
+`cmp`-proven identical. Node 22.23.1. The worktree was never edited except for this append. The
+sandbox is deleted.
+
+### Instruments (verbatim)
+
+- Sandbox baseline: chapter-likes + card-like + music-chapter-likes-client + chapter-like-carriers
+  + music-library-audio `tests 52 pass 52 fail 0`.
+- Touched-surface census (14 integration files: liked, liked-mixed-kind, rbac-census,
+  rbac-video/music-enforcement, media-liked-carriers, backup-restore, music-api,
+  music-library-projection, move-files, watch-liked-sidebar, route-read/write-classification,
+  chapter-likes; 13 unit files: auth-store, music-sticker-extras, music-actions-desktop,
+  skin-surface, music-liked-tab-retired, listen-video-chapters, chapter-like-carriers,
+  music-chapter-likes-client, music-library-audio, card-like, docs-link-census,
+  docs-status-census, tech-debt-census): `tests 326 pass 326 fail 0 cancelled 0 skipped 0`.
+- `npx eslint` over lib/auth/store.js + the three touched test files: no output, exit 0.
+  `npm run lint`: `✖ 7 problems (0 errors, 7 warnings)` (the pre-existing common.js seven).
+- `bash .harness/lib/check-markers.sh`: `check-markers: 2 issue(s) found` - stale @6ea45237 (the
+  design line, the Building shape) and stale @3f6ce330 (security-brief's r1 APPROVED; the code
+  moved by the store.js comment). Both are re-bound by the r2 seats.
+- Code delta since r1 (`git diff 3f6ce330 63497136 -- lib public server.js`): ONE file,
+  lib/auth/store.js, and every added/removed line is a `//` comment - the two SQL statements are
+  byte-identical, so my r1 destruction drives (orphan on all four removeMediaState callers, the
+  folder+path KIND leak drive, the move collision, backup-before-purge) stand on unchanged code.
+  M4 re-run here anyway: `tests 13 pass 9 fail 4` KILLED.
+
+### r1 findings, each re-measured at 63497136
+
+- adversary W1 (read arm `if (!track) continue;` unbound): FIXED AS PRESCRIBED. Guard deleted:
+  `tests 8 pass 7 fail 1`, W1 red on `expected: 200 actual: 500`. Sweep-on-read mutant
+  (`userStore.removeLiked(...)` in the guard): `tests 8 pass 7 fail 1`, W1 red on the storage
+  assert. The test's own session: W1 run ALONE (`--test-name-pattern=W1`) `tests 1 pass 1`, so
+  it does not lean on AC8's user reset. Reachability is real: the guard-deletion 500 proves the
+  entry reaches the index lookup (not dropped earlier by the base/audio/visibility gate).
+- adversary W2 (comment-porous AC11 lock, no drive): FIXED AS PRESCRIBED. Arm `//`-commented,
+  `/* */`-commented, deleted: each `tests 8 pass 6 fail 2` (lock + drive). Native arm rewritten
+  to the media store: `tests 8 pass 6 fail 2`. REAL-SHAPE check of the jsdom drive (the fixture
+  uses hand-typed `f1::c2` entries): I dumped a REAL `GET /api/liked` chapter entry from the
+  running server (md5-hex id `3809e1b5...::c2`, `source`, `mediaId`, `hasArt`, `watchState`,
+  every field the shaping arm emits) and fed it through the same grid harness: GREEN
+  `tests 1 pass 1`, and with the chapter arm deleted RED `tests 8 pass 6 fail 2` - the drive
+  binds on the real shape, not only a lookalike. Flake probe: the grid test + both S4 tests run
+  16x concurrently on 6 cores: 16/16 `pass 3 fail 0`.
+- adversary W3 (stranding half-disclosed): FIXED AS PRESCRIBED. Disclosed-limits entry and
+  tracker row #235 carry the stats/total disagreement, the hidden sidebar entry, no-UI removal,
+  and the reorder re-point (the facts I measured in r1).
+- adversary S4 (overlay failure arm): FIXED AS PRESCRIBED. C9 `tests 10 pass 8 fail 2`. But see
+  finding 1 - my r1 prescription was incomplete.
+- adversary S5: closed in r1, no change asked.
+- qa W1 (M7b row): re-measured, the rewritten row is TRUE: filter arm body `return true` GREEN
+  `tests 8 pass 8 fail 0`; arm deleted RED `tests 8 pass 2 fail 6` (AC2, AC5/AC12, AC6, AC7,
+  AC8, W1).
+- qa S2, S4, S5 (doc): present. S5's claim verified at source: common.js:2209 is only the URL
+  builder `buildContextListUrl`; its two consumers filter to media (watch.js:2171/:2185
+  `it.kind === undefined || it.kind === 'media'`, player.js:4926 same).
+- qa S3 + security-brief I1 (store.js comment): comment-only (above); the md5 claims verified
+  (`getMediaId` server.js:1470 `createHash('md5')`, trash ids lib/media/trash.js:151/:462).
+
+### Findings (none blocking)
+
+1. **SUGGESTION** (divergent fixture; test/unit/music-chapter-likes-client.test.js, the two S4
+   tests). Mutant `if (track) item.liked = track.liked === true;` in `extrasFetchItem` (a failed
+   overlay INHERITS the base file's `liked` instead of reading false) SURVIVES
+   `tests 10 pass 10 fail 0`, because the fixture's `/api/videos/<id>` always answers
+   `liked: false`. Scenario: a user who liked the whole album on the watch page AND chapter c1;
+   `GET /api/music/<c1>` fails (network, or a re-chapter race 404) -> the row reads "Liked" ->
+   the tap sends `DELETE /api/liked/<c1>` and silently unlikes the chapter - exactly the class
+   the tests' titles claim to bind. HEAD's code is correct (`!!(track && ...)`). My r1
+   prescription omitted the divergent base; the fix is to answer `liked: true` from
+   `/api/videos/<base>` in the overlayFail boots.
+2. **SUGGESTION** (fix record accuracy). The record lists `exec-plans-census` among the
+   targeted suites; test/unit/exec-plans-census.test.js does NOT exist at 92051516/63497136 (it
+   landed on main at 14817be4 after this branch's base), and `node --test` silently ignores a
+   missing path (measured: card-like + the missing file = `tests 8 pass 8`). The recorded
+   `tests 48 pass 48` reproduces exactly WITHOUT it - that census never ran. Harmless for the
+   branch (the plan file is date-led and `status: Building` under active/), but run main's
+   census after the merge.
+3. **SUGGESTION** (merge coordination, stale-marker class). Tracker row **#235** is ALSO minted
+   by the sibling wave branch fix/music-theatre-button (2be106bc: "public/books.html ships
+   neither #player-host-template ..."), and that branch's plan doc cites "tech-debt #235" too.
+   tech-debt-census has no id-uniqueness check, so a merge that keeps both rows ships two #235s
+   and one plan's reference lies. Whichever branch merges second renumbers (to #236) and
+   updates its plan-doc references in the same commit.
+4. **SUGGESTION** (test cost). card-like.test.js wall time went from 259 ms (3f6ce330) to
+   6557 ms: `bootLikedGrid`'s `setTimeout(finish, 5000)` fallback is never cleared and holds the
+   file's process open; with `.unref()` it measured 2522 ms. Clear or unref the timer.
+
+Destroy attempts on the delta: none of the fix commits touch a data path (comment-only code
+delta); the W1 test binds that a read never deletes a stored like; nothing new to orphan,
+duplicate or leak.
+
+### Tree proof
+
+`git status --short --untracked-files=all` before this append: only
+`M docs/exec-plans/active/2026-09-23-chapter-likes.md` (the security-brief and qa r2 sections,
+appended concurrently by those seats); no untracked files; HEAD 63497136. This section is my
+only write; the /tmp sandbox and scratch files are deleted.
+
+Gate: APPROVED r2 @63497136 — adversary
