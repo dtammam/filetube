@@ -20,6 +20,7 @@ const { spawn } = require('node:child_process');
 const OUT = process.argv[2];
 if (!OUT) { console.error('usage: node scripts/pocket-lighting-probe.js <out-dir> [--frames N]'); process.exit(2); }
 const FRAMES = Number((process.argv.find((a) => a.startsWith('--frames=')) || '').split('=')[1]) || 240;
+const STRENGTH = (process.argv.find((a) => a.startsWith('--strength=')) || '').split('=')[1] || 'pronounced'; // the profile to screenshot
 const ROOT = path.join(__dirname, '..');
 const DEBUG_PORT = 9333;
 function findChrome() {
@@ -74,7 +75,7 @@ async function main() {
     '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
   const cleanup = () => { try { chrome.kill('SIGKILL'); } catch (_) { /* gone */ } server.close(); };
   process.on('exit', cleanup);
-  const report = { chrome: chromeBin, frames: FRAMES, skins: {}, cpu: {}, listeners: {}, errors: [] };
+  const report = { chrome: chromeBin, frames: FRAMES, strength: STRENGTH, skins: {}, cpu: {}, listeners: {}, errors: [] };
   try {
     let list = null;
     for (let i = 0; i < 40 && !list; i++) { await new Promise((r) => setTimeout(r, 250)); try { list = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json(); } catch (_) { /* not up */ } }
@@ -100,23 +101,24 @@ async function main() {
       return (l.listeners || []).filter((x) => x.type === 'deviceorientation').length;
     };
     // 1. per-skin screenshots at three light positions (a REAL deviceorientation event path)
-    const POS = { neutral: [40, 3], 'upper-left': [40 + 0.5 * 28, 3 + 0.8 * 28], 'lower-right': [40 - 0.5 * 28, 3 - 0.8 * 28] };
+    const R = 20; // TILT_RANGE_DEG (pocket-lighting.js)
+    const POS = { neutral: [0, 3], 'upper-left': [0 + 0.5 * R, 3 + 0.8 * R], 'lower-right': [0 - 0.5 * R, 3 - 0.8 * R] };
     for (const skin of ['ipod', 'ipod-black', 'ipod-matte']) {
-      const st = await evalJs(`window.__boot(${JSON.stringify(skin)}, 'pronounced')`);
+      const st = await evalJs(`window.__boot(${JSON.stringify(skin)}, ${JSON.stringify(STRENGTH)})`);
       await sleep(300);
-      await evalJs('window.__tilt(40, 3)'); await sleep(120); // the opening pose = neutral
+      await evalJs('window.__tilt(0, 3)'); await sleep(120); // the opening pose = neutral
       const shots = {};
       for (const [name, [beta, gamma]] of Object.entries(POS)) {
         await evalJs(`window.__tilt(${beta}, ${gamma})`); await sleep(700);
         const props = await evalJs('window.__props()');
         const shot = await send('Page.captureScreenshot', { format: 'png' });
-        const file = path.join(OUT, `${skin}-${name}.png`); fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
+        const file = path.join(OUT, `${skin}-${STRENGTH}-${name}.png`); fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
         shots[name] = { lx: props.lx, ly: props.ly, lit: props.lit, file };
       }
       report.skins[skin] = { booted: st, shots };
     }
     // 2. CPU: moving vs still, the same skin, the same frame count
-    await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(300); await evalJs('window.__tilt(40, 3)'); await sleep(100);
+    await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(300); await evalJs('window.__tilt(0, 3)'); await sleep(100);
     const metrics = async () => { const m = await send('Performance.getMetrics'); const o = {}; for (const x of m.metrics) o[x.name] = x.value; return o; };
     const run = async (amp) => {
       const w0 = (await evalJs('window.__props()')).state.writes;

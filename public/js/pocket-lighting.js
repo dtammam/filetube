@@ -23,8 +23,12 @@
 (function () {
   var KEY = 'ft-pocket-lighting';
   var STRENGTHS = ['off', 'subtle', 'pronounced'];
-  var GAIN = { off: 0, subtle: 0.5, pronounced: 1 };
-  var TILT_RANGE_DEG = 28;    // this much tilt from the neutral pose = the light at the edge (|l| = 1)
+  // Second swing (Dean on the device, v1.327.0: "a little subtle ... zhuzh it up ... subtle can stay near
+  // pronounced and pronounced will be the new one"): Subtle = v1.327's Pronounced travel (within 10%),
+  // Pronounced = the same travel plus the STRONG CSS profile (`.mms-lit-strong`: the specular hot spot,
+  // the rim arcs, the brighter band, the double glass streak); a wrist tilt of 20 deg reaches the edge.
+  var GAIN = { off: 0, subtle: 0.8, pronounced: 1 };
+  var TILT_RANGE_DEG = 20;    // this much tilt from the neutral pose = the light at the edge (|l| = 1)
   var TILT_SIGN = -1;         // G3: tilt right -> the highlights slide LEFT (the light is fixed in the room)
   var SMOOTH_TAU_MS = 90;     // the light's easing toward its goal (sensor noise never jitters a highlight)
   var LEAVE_TAU_MS = 360;     // G7: the mouse leaving the player eases the light back to neutral
@@ -154,7 +158,11 @@
     // lit-but-still band. A desktop or Android streams or has a mouse: lit at once.
     function litGated() { return permissionApi() && !finePointer(); }
     function applyLit() {
-      try { if (!litGated() || sessionSamples > 0) panel.classList.add('mms-lit'); else panel.classList.remove('mms-lit'); } catch (_) { /* detached */ }
+      var lit = !litGated() || sessionSamples > 0;
+      try {
+        panel.classList.toggle('mms-lit', lit);
+        panel.classList.toggle('mms-lit-strong', lit && strength() === 'pronounced'); // the realism profile
+      } catch (_) { /* detached */ }
     }
     function trayUp() { try { return !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; } }
     // The one question every arm asks: should the light be live on this surface right now?
@@ -167,11 +175,13 @@
     }
     function write() {
       st.wx = st.x; st.wy = st.y; writes += 1;
-      try { panel.style.setProperty('--lx', st.x.toFixed(3)); panel.style.setProperty('--ly', st.y.toFixed(3)); } catch (_) { /* detached */ }
+      // --lm = the light's distance from centre (0..1): the strong profile's hot spot dims as the
+      // light moves off-centre (the card-glare rule: brightest straight on)
+      try { panel.style.setProperty('--lx', st.x.toFixed(3)); panel.style.setProperty('--ly', st.y.toFixed(3)); panel.style.setProperty('--lm', Math.min(1, Math.hypot(st.x, st.y)).toFixed(3)); } catch (_) { /* detached */ }
     }
     function clearProps() {
-      try { panel.style.removeProperty('--lx'); panel.style.removeProperty('--ly'); } catch (_) { /* detached */ }
-      try { panel.classList.remove('mms-lit'); } catch (_) { /* detached */ }
+      try { panel.style.removeProperty('--lx'); panel.style.removeProperty('--ly'); panel.style.removeProperty('--lm'); } catch (_) { /* detached */ }
+      try { panel.classList.remove('mms-lit'); panel.classList.remove('mms-lit-strong'); } catch (_) { /* detached */ }
     }
     function arm() {
       if (!on || raf != null) return;
