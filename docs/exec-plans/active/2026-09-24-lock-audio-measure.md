@@ -205,7 +205,9 @@ Instruments at the build commit: `npm run lint:css -- --enforce` TOTAL 0;
 (the repo's 7 warnings are pre-existing, all in common.js); `node --test test/unit/player-*.test.js
 test/unit/setup-*.test.js` 831/831 before the four extra guard tests; census files (comment-debt,
 css-token-lint, shell-script-global-collisions, shell-singleton-invariant, test-isolation-parity,
-tech-debt, exec-plans, docs-status, token-scale-lock, type-scale-tokens) 92/92.
+tech-debt, exec-plans, docs-status, token-scale-lock, type-scale-tokens) 92/92. Build commit
+77a3f5bc: the pre-commit hook's unit suite 7126 pass / 0 fail (Node v22.23.1). The full
+`npm test` (integration included) was NOT run by the builder (the Architect runs it per release).
 
 ## Measurements
 
@@ -229,8 +231,35 @@ Those numbers are Dean's (test plan below).
 
 ## Mutant table
 
-(filled after the build commit; mutants run in a /tmp sandbox from `git archive` of the
-committed sha, never on the live tree)
+Run at the build commit 77a3f5bc: each mutant in its own /tmp sandbox built from `git archive
+77a3f5bc` (never the live tree), the diff confirmed non-empty (`diff -r -q` names the mutated
+file) before crediting, then `node --test` on player-bg-timing-log + player-background-audio +
+player-lifecycle-release (183 tests). Runner: scratchpad `lock-audio-measure-mutants.py`.
+**20 of 21 killed.**
+
+| # | Mutant | Result (pass/fail of 183) | Red tests |
+|---|---|---|---|
+| M1 | record unconditionally: drop BOTH toggle gates (the brief's named mutant) | KILLED 180/3 | toggle OFF (no record + identical media calls); cycle begun OFF; switched OFF mid-cycle |
+| M1a | drop only the open gate (`bgTimingOnHidden`) | KILLED 182/1 | a cycle begun OFF is never recorded |
+| M1b | drop only the write gate (`bgTimingPersist`) | KILLED 182/1 | switched OFF mid-cycle |
+| M2 | a sync storage write BEFORE the sidecar play() | KILLED 182/1 | no write before play() |
+| M3 | reopen: play the video unconditionally (the pre-fix code) | KILLED 179/4 | swap-back source lock; audio PAUSED (toggle on, off); finished in the background |
+| M4 | reopen: inverted `audioWasPlaying` | KILLED 177/6 | swap-back lock; audio PLAYING; audio PAUSED x2; and more |
+| M5 | drop the seek guard in the first-advance mark | KILLED 182/1 | the handoff's own seek is never the first advance |
+| M6 | pause lookback 3000 -> 0 | KILLED 179/4 | ordering B; the three Setup tests fed by ordering-B records |
+| M7 | drop the nothing-playing guard | KILLED 182/1 | a paused video / an audio item open no record |
+| M8 | drop the audio-item exclusion at open | KILLED 182/1 | same |
+| M9 | leak `p0` into storage | KILLED 182/1 | ordering A |
+| M10 | the tap never records a skip decision | KILLED 182/1 | skipped handoff recorded |
+| M11 | drop the sidecar 'playing' listener | KILLED 181/2 | ordering A; Setup table |
+| M12 | read the return state AFTER the swap-back | KILLED 180/3 | reopen PLAYING; reopen PAUSED; Setup table |
+| M13 | drop the post-play microtask write | KILLED 178/5 | ordering A (pending on disk); no write before play(); ring; switched OFF mid-cycle |
+| M14 | the tap moved after the debug-flag bail | KILLED 181/2 | ordering A (events); skipped handoff |
+| M15 | Setup: panel always shown | KILLED 181/2 | default OFF hides the panel; switching off hides it |
+| M16 | Setup: Clear on one tap | KILLED 182/1 | Clear takes two taps |
+| M17 | Setup: Copy drops the raw JSON | KILLED 182/1 | Copy |
+| M18 | drop the `activeMediaElement() === bgAudioEl` guard in `bgTimingSidecarRec` | **SURVIVED** 183/0 | none. Defense in depth: `playCall` is set only inside the handoff (state HANDING_OFF), and the return sets `ret` (excluded) before the state goes back to INLINE_VIDEO, so the only reach is a gesture-prime 'playing' on the sidecar after a FAILED handoff while still hidden (the prime needs an in-page gesture, so not while hidden). Kept as a cheap belt; disclosed. |
+| M19 | drop the video return-advance listener | KILLED 181/2 | reopen PLAYING (back ms); Setup table |
 
 ## Test plan for Dean (iPhone)
 
@@ -290,6 +319,8 @@ Plus, in words: how long the gap FELT on each block, and whether any lock gave N
    record.
 8. The readout is device-local and read when Setup opens; it does not live-refresh while the
    page is open (re-open Setup to see new records).
+9. **Mutant M18 survives** (the sidecar-active guard in `bgTimingSidecarRec`): judged defense in
+   depth; see the mutant table.
 
 ## Tech debt filed
 
