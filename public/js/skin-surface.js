@@ -1310,7 +1310,13 @@
     // (measured at CPU x4: 14.8 ms vs 22 ms, a 0.63 deg/ms turn read as 0.93). The engine takes
     // the LONGER of the two gaps: never faster than either clock says (a batch of coalesced events
     // shares one handler instant; an event clock can lag a handler that ran on time).
-    function evTime(ev) { var t = ev && Number(ev.timeStamp); return (isFinite(t) && t > 0) ? t : 0; }
+    // An event clock in ANOTHER time base (an old WebKit's epoch-ms timeStamp; jsdom's) is ignored -
+    // only a timeStamp on the performance.now() origin (within a minute of it) is a second clock.
+    function evTime(ev) {
+      var t = ev && Number(ev.timeStamp);
+      if (!(isFinite(t) && t > 0)) return 0;
+      return Math.abs(nowMs() - t) < 60000 ? t : 0;
+    }
     var wheelCursorRow = -1;           // current list position the cursor sits on (-1 = list closed)
     var wheelSuppressClick = false;    // swallow the synthetic click a spin-ending pointerup fires
     var wheelSpin = null;              // the live gesture handle (one at a time)

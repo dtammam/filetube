@@ -906,7 +906,7 @@ function spinT(b, { from = 0, moves, step, handlerMs, eventMs, lift = true, step
   const wheel = P(b).querySelector('.ip-wheel');
   const at = (deg) => { const r = deg * Math.PI / 180; return { clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) }; };
   const realNow = performance.now;
-  let t = realNow.call(performance); let te = 5000;
+  let t = realNow.call(performance); let te = t; // the event clock on the SAME origin as performance.now()
   const mk = (type, q) => { const ev = new b.win.MouseEvent(type, { bubbles: true, clientX: q.clientX, clientY: q.clientY }); Object.defineProperty(ev, 'timeStamp', { value: te }); return ev; };
   Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: () => t });
   try {
@@ -1151,4 +1151,13 @@ test('r1 (adversary S1): the letter of EVERY Latin, fullwidth, circled and Roman
   }
   assert.deepStrictEqual(bad, [], 'filed under a different letter than the server sorts them');
   assert.deepStrictEqual(['ＡＫＩＲＡ', 'ａｂｃ', 'Ⓐlpha', 'Ⅻ Suite', 'Ǽther', 'ǅivo', 'æther', 'ølstykke', 'łódź'].map(skins.menuLetterOf), ['A', 'A', 'A', 'X', 'A', 'D', 'A', 'O', 'L']);
+});
+
+test('r1 Q3 (qa W4 + S5) CSS lock: the A-Z picker centres SAFELY (a short LCD keeps its first rows reachable) and Click drops to six columns under 340 px', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const base = /\.mms-ipod \.ipm-grid\{([^}]*)\}/.exec(css);
+  assert.ok(base, 'the picker rule');
+  assert.match(base[1], /align-content:\s*safe center/i, 'safe centring (plain `center` puts overflowing first rows above the scroll origin)');
+  assert.ok(!/\.mms-zune-classic \.ipm-grid\{[^}]*align-content/i.test(css), 'Seattle inherits it (no plain-centre override)');
+  assert.match(css, /@media \(max-width: 340px\)\{ \.mms-ipod:not\(\.mms-zune-classic\) \.ipm-grid\{ grid-template-columns:repeat\(6, minmax\(0, 1fr\)\); \} \}/, 'six Click columns under 340 px');
 });
