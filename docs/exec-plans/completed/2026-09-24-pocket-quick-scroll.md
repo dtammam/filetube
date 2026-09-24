@@ -3,7 +3,7 @@ plan: pocket-quick-scroll
 harness: v2 · lean
 branch: feat/pocket-quick-scroll
 anchor: spec
-status: Gate closed
+status: Shipped v1.324.0
 next: release. Owed after the release: Dean's device pass (#263 the letter-mode threshold and tick) and his rulings - #265 (Brick on Seattle: the games entry is hidden today) and the recorded choices (Seattle's "recent" pivot placed last, MENU from Brick lands on Games, the About heading = the cheeky name, Settings = About only)
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: APPROVED r3 @cb25fa06 — adversary, qa, security-brief
