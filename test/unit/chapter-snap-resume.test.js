@@ -910,3 +910,16 @@ test('r2 N2 control: the same flat segment end with no return advances at once (
     assert.ok(ticks <= 2, 'within the band (59.8 is the first in-band tick)');
   }, { extraRows: g3() });
 });
+
+test('r2 N1: a LOCAL save verifies its file - after a failed return re-check, a save then a pick asks nothing', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.fail = true;
+    fire(dom, 'visibilitychange'); await settleN(10); // the re-check failed: f1 is not verified since this return
+    ctx.server.fail = false;
+    await snapSave(dom, ctx, MOVED); // this device saves f1: the saved list is the server's truth
+    const g0 = ctx.videoGets.length;
+    click(dom, row(dom, 'f1::c2')); await settleN(20);
+    assert.strictEqual(ctx.videoGets.length, g0, 'no GET: the save verified f1');
+    assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c2').data.chapterStartSec, 120);
+  });
+});
