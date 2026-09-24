@@ -3,10 +3,10 @@ plan: click-skin-menus
 harness: v2 · lean
 branch: feat/click-skin-menus
 anchor: spec
-status: Gate r2 fixed + v1.322.0 merged and wired - awaiting gate r3
-next: gate r3 (one round: the r2 fixes, the v1.322.0 merge and the Chapter Snap wiring - the records below). Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on), his rulings on D1 and on K4 (the Architect ruled for him overnight), and the Chapter Snap branch raising notifyLibraryChanged() on its save.
+status: Gate closed
+next: release. Owed after the release: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on) and his rulings on D1 and on K4 (the Architect ruled for him overnight) - see Disclosed gaps.
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
-gate: pending
+gate: APPROVED r3 @0489a1d9 — adversary, qa
 ---
 
 # Pocket menus: full iPod / Zune menus in the Click and Seattle skins
@@ -181,12 +181,14 @@ Survivors: M9 and M10 only (equivalent, reasoned above). 31 RED.
 
 ## Disclosed gaps
 
-- **D1 (#257, needs Dean)** - "nothing playing opens on the Main Menu" has no production entry: the skin only mounts over a loaded track. The engine arm is built and unit-bound through the real create()/paint(); a user path to an empty pocket player is a new entry point (Dean's call).
+- **D1 (#257, for Dean)** - "nothing playing opens on the Main Menu" has no user entry path today: the skin only mounts over a loaded track. The engine arm is built and unit-bound through the real create()/paint(); a user path to an empty pocket player is a new entry point (Dean's call).
 - **D2 (#256)** - the menu position does not survive a dock + return (the view re-inits the engine). Docking through MENU happens AT the Main Menu, so the common path loses nothing.
-- **D3 (#255, widened at r1 per qa S7)** - a menu queue's list context is not fully reproducible: a genre queue has no list-context key, and the Songs level (10000) / the Liked and Recently Played filters are not honoured by the grid-tab rebuild (`rebuildPlayingQueue`: limit 1000, no `filter`).
+- **D3 (#255, widened at r1 per qa S7 and at r3)** - a menu queue's list context is not fully reproducible: a genre queue has no list-context key, and the Songs level (10000) / the Liked and Recently Played filters are not honoured by the grid-tab rebuild (`rebuildPlayingQueue`: limit 1000, no `filter`). Gate r3 (qa S = adversary S, both APPROVED): a COUNT-changing chapter write (a consented revert onto a different-count source, a text-editor add/remove) during a flat menu play re-lists the browse Songs TAB (`applySnappedChapterTimes`' count-change arm runs `render()` because every flat pick sets `tab = 'songs'`) and ends the flat mode - the current song keeps playing and the rows stay index-true (no wrong track, no data loss); a same-count snap save keeps the queue flat (bound). Fix: when `flatQueue === queue`, redraw the rows from the filtered flat queue with `renderSongListProgressive` instead of `render()`.
 - **D4 (#258)** - a thousands-long list is slow to cross by wheel alone (the shared cursor step is reused unchanged by design); touch-scroll is the fast path; no letter-jump overlay.
-- ~~**D5**~~ **CLOSED at r1 (K4, the Architect's ruling)** - a chapter picked from a FLAT list (Songs, Genres, the playlists, an artist's All Songs) now plays its own segment and the LIST moves on; album / artist-album picks keep the v1.311 rule. Residual (reasoned, not driven): a deliberate SEEK into a chapter that is NOT in the flat list (a Liked list holding only one of a file's chapters) is displayed as the nearest listed chapter until the next load - the #231 (b) "bounds from the file's full chapter list" shape.
-- ~~**D6**~~ **CLOSED at r1 (adversary S7)** - a browse render (any arm) superseded by a menu pick no longer paints (`menuPickGen`), test-bound for the drill arm.
+- ~~**D5**~~ **CLOSED at r1 (K4, the Architect's overnight ruling - for Dean to confirm)** - a chapter picked from a FLAT list (Songs, Genres, the playlists, an artist's All Songs) now plays its own segment and the LIST moves on; album / artist-album picks keep the v1.311 rule. Residual (reasoned, not driven): a deliberate SEEK into a chapter that is NOT in the flat list (a Liked list holding only one of a file's chapters) is displayed as the nearest listed chapter until the next load - the #231 (b) "bounds from the file's full chapter list" shape.
+- ~~**D6**~~ **CLOSED at r1 (adversary S7) and r2 (Home + the catch arm, adversary S4)** - a browse render superseded by a menu pick no longer paints on any arm (`menuPickGen`), test-bound for the drill arm, Home and the failed-fetch arm.
+- **D8 (qa r2 S1)** - after a library change an OPEN level keeps showing a dropped chapter row until the next wheel step, tap or Select; it can no longer play it (every action re-loads first).
+- **D9 (qa r2 S2 residual)** - the background browse build after a big flat pick costs 50-184 ms per 20-row chunk at phone-class CPU (layout) for about 10 s behind Now Playing; the tap itself is small and nothing freezes.
 - **D7** - the headless run is the evidence for layout and speed; the wheel FEEL on a phone (the haptic ticks in menu mode, the 22-degree step on long lists) is Dean's device pass.
 
 ## Gate verdicts
@@ -550,3 +552,91 @@ unit suite at b0fbab33: 7248 / 7248; lint:css TOTAL 0; overlay-containment clean
 errors (6 pre-existing common.js warnings); check-markers - see the commit (only the expected
 stale-approval notice, the re-gate being pending).
 
+
+## Gate r3 - qa (@0489a1d9)
+
+Delta reviewed: a088cbb4 (the r2 fixes), 5987cfe4 (the record), 98b11da3 (merge of main 4bd04bb1 = v1.322.0 Chapter Snap), b0fbab33 (the wiring) and 0489a1d9 (the W5 test + record).
+
+Instruments (run by this seat, output verbatim; `FILETUBE_TEST_FFMPEG` set to the scratchpad ffmpeg):
+- Touched + chapter-snap suites, 23 files: the pocket-menus unit + both integration files, menu-returns, music-skins, music-skin-integration, swipe-back, ambient-glow-engine, music-chapter-reflect, chapter-likes, chapter-snap-editor-ui, chapter-snap (integration), chapter-snap-client/-core/-routes/-watch, setup-chapter-snap-leadin, player-chapters-parity, chapters-editor, media-write-proto-ids, rbac-census, route-read/-write-classification. Result: `# tests 459 # pass 459 # fail 0 # cancelled 0 # skipped 0`. Nothing skipped, so the real-ffmpeg tests ran.
+- Census set: `# tests 155 # pass 155 # fail 0`. Shell parity: `# tests 48 # pass 48 # fail 0`.
+- `npm run test:unit`: `# tests 7248 # pass 7248 # fail 0 # cancelled 0 # skipped 0`.
+- `lint:css`: `TOTAL 0`. Overlay lint: `clean (0 violations)`. eslint on the changed JS, tests and harness: `0 errors, 6 warnings` (pre-existing, common.js).
+- `check-markers.sh`, run before this section: `stale approval @e76bc766 - reviewed code changed since; re-gate`. That is my r2 line, correctly flagged. Re-run after this section, the script still flags ONLY that r2 line. It checks every historical approval verdict line against HEAD, so the r2 line stays flagged. The r3 line (@0489a1d9 = HEAD) is not flagged.
+- Probe: a scratchpad `git archive 0489a1d9` sandbox, 390x844, ipod + zune-classic.
+  - Walk: 22 levels `ok:true`, 0 `ok:false`, 32 of 32 state lines `errs:[]`.
+  - Songs spin 0 -> 180. The mid-list scroll re-windows (first row 1496, 23 rows).
+  - Back-to-list lands on Track A on both skins.
+  - A real touch swipe goes Artists -> Albums, and a tap after it drills in.
+  - A Songs pick taps in 12 / 51 ms. Shuffle starts in 285 / 196 ms.
+  - Seattle rows are still 60 px on the two-line lists.
+- **Chapter Snap from the MUSIC DRILL** (Albums -> Full Album Mix -> `.music-drill-snap`, ffmpeg on the server's PATH):
+  - The editor opened full-screen at 390x844 (`w 390 h 844`, `docW 390`, no sideways overflow), with 3 rows, 8 nudge buttons and the "Finding the silence..." state.
+  - I nudged Track B +1 s and pressed Save. The modal closed, the server now returns `djmix1::c2@41` (was 40), the `filetube:library-changed` event fired exactly `1` time, and `errs:[]`.
+
+My r2 suggestions:
+- **S1 (a stale row stays visible until the user acts):** disclosed in the r2 fix record. Accepted.
+- **S2 (the x4 record):** corrected in place, with my numbers. The reason the chunks are not time-budgeted (the browser does the layout after the script returns) is sound. The residual is disclosed. Accepted.
+- **S3 (`has-sub`):** removed. No `has-sub` remains in public/ or test/. The unit now asserts that Click lists carry no `ipm-2l`, and the Seattle `.ipm-2l` binding (N15) stands.
+- **S4 (comment):** music.js now says "the next animation frame (then a task)". Accurate.
+- **S5 (merge note):** kept. `notifyLibraryChanged` sits in `showChaptersEditor`'s success arm (common.js:12893) and in both `showChapterSnapEditor` success arms (Revert :13468, Save :13518), each before `onSaved`.
+
+Asked-for checks:
+- **common.js exports:** `showChaptersEditor` is exported exactly once (:16290, the Chapter Snap group). The pocket-menus copy of the key was dropped, and the comment at :16512 says so accurately. `LIBRARY_CHANGED_EVENT` and `notifyLibraryChanged` are still exported, and no other key was lost. Every caller uses the `window.` global: player.js:7309, music.js:2725, and the snap editor at player.js:7355 and music.js:1696 / :2682.
+- **Merge resolution (music.js drill save callback):** both sides are kept. `invalidateMenuData()` comes first, then Chapter Snap's `applySnappedChapterTimes(baseId, body, { skipDrillRefresh: true })`, then the drill re-fetch. Correct.
+- **The wiring comments are accurate:**
+  - `applySnappedChapterTimes` really is where every Music-side chapter write lands: Extras snap, the drill Fix times and the drill text editor.
+  - `invalidateMenuData` is a hoisted function declaration, so it is safe to call from line ~1717.
+  - `flatQueue` is a hoisted `var`.
+- **The r2 adversary-W1 one-shot:** `flatQueue = null` runs before the pause. The comment matches the code.
+- **Tracker:** every main row is kept (`comm` of main vs HEAD: nothing missing), and there are no duplicate ids. #239-#242 and #250 are present. The branch diff against main is exactly +255..258.
+
+New in the delta (one SUGGESTION, not blocking):
+1. **A COUNT-changing chapter save during a flat menu play drops the flat context.** music.js `applySnappedChapterTimes`: with `countChanged && (drill || tab === 'songs')` it calls `render()`. `playFromMenu` sets `tab = 'songs'` for every no-drill flat list, so `loadSongs({})` re-lists the Songs TAB (limit 1000, the user's Songs sort). The queue is no longer `flatQueue`, and the crumb ("Liked Songs" / a genre) is hidden.
+   - Scenario: a chapter is picked from Liked Songs. Then Extras "This chapter starts wrong" is used, and a Revert onto a source with a different chapter count is confirmed. The queue silently becomes the first 1000 library songs. If the playing chapter falls past row 1000, `renavPlaying` finds nothing and Prev/Next are cleared.
+   - Nothing plays the wrong track: the rows are re-drawn from the new queue. The record's "a patched flat queue stays flat" holds only for the same-count patch, which is the arm W5 binds.
+   - Reasoned from the code, not driven. The path is rare (a consented count-changing revert). Disclose it in #255, or re-draw from the patched flat queue instead of `render()` when `flatQueue === queue` before the patch.
+
+Tree: this section is my only write. Before it, `git status` was clean at 0489a1d9. The probes ran in the scratchpad sandbox.
+
+Gate: APPROVED r3 @0489a1d9 — qa
+
+## Gate r3 - adversary (@0489a1d9)
+
+Instruments (this seat, verbatim; all runs in `/tmp/adv-csm3` from `git archive 0489a1d9`, with `FILETUBE_TEST_FFMPEG` set to the chapter-snap-bin ffmpeg):
+- Every chapter / Chapter Snap suite (21 files) plus the seven pocket-menu files: `# tests 486 # pass 486 # fail 0 # skipped 0`.
+- eslint `0 errors, 6 warnings`. lint:css `TOTAL 0`. Overlay `clean (0 violations)`. tech-debt + exec-plans census `pass 4 fail 0`.
+- `showChaptersEditor,` is exported exactly once.
+- 9 mutants of my own (`/tmp/adv-csm3/mutants.py`, each anchor unique, each diff non-empty): **9 of 9 RED**.
+
+**r2 findings against the fix:**
+1. W1 (the re-pause): **fixed as prescribed.** My r2 repro (Autoplay OFF, Liked = `Track A` mid-file) prints `pauses 1` at the segment end and `1` after the resume ticks `900.1 ... 901.35`.
+   - The Autoplay ON arm with an EMPTY station (the station fetched, and returned `[]`) prints the same: `1` at the end, `1` after resume, no load.
+   - T1 (the one-shot dropped) goes RED on the builder's r2 F1 test.
+2. S2 (N13), S3 (R12), S4a (Home) and S4b (the failed render): **all bound.** T2, T3, T4 and T5 each go RED on their own new test.
+
+**The v1.322 merge and the wiring:**
+- **Snap editor save and revert: bound.** Mutant T8 (the revert's `notifyLibraryChanged` dropped) and T9 (the save's dropped) each go RED on the REAL snap-editor test. T6 (`applySnappedChapterTimes` no longer invalidates) and T7 (it drops the flat mode) each go RED.
+- **Seattle:** I re-drove the builder's real snap save + revert test on Seattle's Songs PIVOT: `ok`, with the pivot kept (`Songs`) and the new start (301, then 300) played.
+- **Pop-out: reasoned, not driven.** The pop-out engine reads the same view `dataVersion` closure. Extras, the only place the snap editor opens inside Music, is main-document-only, so the event always fires on the document Music listens on.
+- **The drill save callback conflict:** both invalidations run (the gen bumps twice, which reads as ONE stale transition). `skipDrillRefresh: true` leaves exactly one re-list (`loadSongs` + `renderDrillView`), so there is no double re-list.
+- **Chapter Snap's own behaviour:** its suites are green on the merged tree (above), including the nav re-register after a count change and the Listen stash.
+
+**New finding:**
+
+1. **SUGGESTION (argued safe to ship; suggest a tracker entry) - a COUNT-changing chapter write during a flat menu play re-lists the WRONG list.**
+   - `applySnappedChapterTimes`' count-change arm runs `render()` when `tab === 'songs'`, and every flat menu pick sets `tab = 'songs'`. So the filtered flat queue is replaced by the browse Songs TAB (whole library, the tab's `newest` sort, limit 1000), and the flat mode ends.
+   - Verified: Liked = `Loose Single | Track A | Track B`, pick `Track A` (playhead at 400 s), then a revert onto a source without Track B through the skin's Extras "This chapter starts wrong" (`onSaved` with 2 chapters). Before, the queue behind was `za1,djmix1::c1,djmix1::c2` with crumb `Liked Songs`. After, it was `40` rows (`nd3,nd2,nd1,rm1,...`) with the crumb hidden, and Next went to `za1`, the whole-library neighbour.
+   - To the coordinator's question: `flatQueue` does NOT keep the removed chapter. The filter drops it, and then the re-list abandons the flat queue altogether.
+   - Why a suggestion and not a WARNING:
+     - it needs a count-changing write (a revert onto a different-count source, or a text-editor add/remove) while a flat list holding the dropped chapter plays;
+     - the current song keeps playing and the rows stay index-true, so there is no wrong track and no data loss;
+     - main has the same re-list for `playTrackFromContinue`'s "Recently played" queue (also `tab = 'songs'`), so it is pre-existing Chapter Snap behaviour that the menus reach more often.
+   - Prescription for the follow-up: when `flatQueue === queue`, re-draw the rows from the filtered queue (`renderSongListProgressive`) instead of `render()`.
+   - A same-count snap save during a flat play keeps the queue flat (bound; T7 RED).
+
+**Carry-forward (closed):** Chapter Snap's save and revert now raise the seam, and both are bound.
+
+Tree: this section is my only write. Before it, `git status` showed only QA's uncommitted r3 section in this file. No untracked files.
+
+Gate: APPROVED r3 @0489a1d9 — adversary
