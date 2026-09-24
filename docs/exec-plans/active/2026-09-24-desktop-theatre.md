@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/desktop-theatre
 anchor: spec
 status: Building
-next: built @894b25bd (plan doc follows); Architect runs the gate (adversary + qa, attack surfaces: CSS / SPA client traps, the glow constraint, the reserve observer lifecycle); Dean decides D1-D4 (none blocks); device check owed
+next: D2 round built (sidebar collapses in desktop theatre, Architect ruling); Architect runs the gate (adversary + qa, attack surfaces: CSS / SPA client traps incl. the persistent-shell sidebar across routes, the glow constraint, the reserve + guide observer lifecycles); device check owed
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -158,7 +158,8 @@ stage wider than the capped player (dx .1837, w 1.3673).
   `ft-after2-theatre/viewport-<WxH>-theatre.png`; theatre off `ft-{before,after}-default/`.
 - Glow BEFORE | AFTER (dark): `sbs/desktop-theatre-glow-sbs-1280x720.png`, `-1920x1080.png`.
 - 4:3 BEFORE | AFTER: `sbs/desktop-theatre-4x3-sbs-1280x720.png`.
-- YouTube | FileTube with the sidebar collapsed: `sbs/desktop-theatre-nobar-sbs-1280x720.png`.
+- (The r0 AFTER shots above were taken with the sidebar shown; the D2 round below re-shot every
+  side by side with the D2 build: `ft-d2-theatre/` is the AFTER column now.)
 
 ## Design
 
@@ -189,20 +190,19 @@ never narrower than 480px.
 - **Below 1025px nothing changes**: the old v1.190 rule stays byte-identical for a phone or a
   tablet carrying the persisted class.
 
-### Decisions for Dean (measured; none blocks the build)
+### Decisions (Architect ruling 2026-09-24 on Dean's "match YouTube's theatre geometry"; Dean asleep)
 
-- **D1 - no black full-bleed band.** YouTube's theatre paints a black band edge to edge.
-  FileTube keeps the page colour beside a bordered player (the v1.190 choice): a band would hide
-  the ambient glow's sides and fight the era skins. Adoptable later as a paint-only change.
-- **D2 - the left sidebar stays in theatre.** YouTube's watch page has no guide. With FileTube's
-  sidebar collapsed the theatre player centres on the viewport and the bar fits one line, so the
-  video grows from 715x402 to 846x476 at 1280x720 (sidebar-collapsed table). Option: collapse
-  the sidebar automatically while theatre is on.
-- **D3 - the related list stays stacked BELOW** (YouTube puts it beside the title, below the
-  band). A structural change to `.watch-container`; not attempted.
-- **D4 - a 480px WIDTH floor, not YouTube's 480px HEIGHT floor.** YouTube's floor would put the
-  row back under the fold at 1280x720 and 1366x768 given FileTube's taller bar. The floor only
-  binds on very short windows (1280x400 measured: 480 wide, row below the fold there).
+- **D1 - NOT adopted: no black full-bleed band.** YouTube's theatre paints a black band edge to
+  edge. FileTube keeps the page colour beside a bordered player (the v1.190 choice): a band would
+  hide the ambient glow's sides and fight the era skins. Adoptable later as a paint-only change.
+- **D2 - ADOPTED: the left sidebar collapses while theatre is on (desktop).** YouTube's watch
+  page shows no guide in theatre. Built in the D2 round below.
+- **D3 - out of scope: the related list stays stacked BELOW** (YouTube puts it beside the title,
+  below the band). A structural change to `.watch-container`; not attempted.
+- **D4 - kept: a 480px WIDTH floor, not YouTube's 480px HEIGHT floor.** YouTube's floor would put
+  the row back under the fold at 1280x720 and 1366x768 once FileTube's taller bar wraps (the
+  sidebar reopened by hand: 3-line bar, 173px reserve); the width floor only binds on very
+  short windows (1280x400 measured: 480 wide, row below the fold there).
 
 ## Acceptance criteria
 
@@ -210,11 +210,12 @@ never narrower than 480px.
 |---|---|---|
 | AC1 | Desktop theatre at 1280x720 / 1366x768 / 1440x900 / 1920x1080 / 1920x1200: the title and every action button sit above the fold (bar bottom 24px above it where height-bound, YouTube 23) | probe (Measurements); theatre-mode.test.js "the STAGE carries the YouTube-matched width" |
 | AC2 | The player is 16:9 at the budget, centred in the column, column-bound when narrower, never under 480px; the stage IS the player box | probe; theatre-mode.test.js stage + wrapper tests |
-| AC3 | The reserve follows the column/title: observer + next-frame write, synchronous on the theatre click, torn down with the view, on BOTH ?v= and ?tv= | watch-init-behavioral.test.js three v1.319 tests; theatreReservePx units; probe `--sidebar-collapsed` (173 -> 99 with no click) |
+| AC3 | The reserve follows the column/title: observer + next-frame write, synchronous on the theatre click, torn down with the view, on BOTH ?v= and ?tv= | watch-init-behavioral.test.js three v1.319 reserve tests; theatreReservePx units; probe `--menu-toggle` (99 -> 173 with no theatre click) |
 | AC4 | A taller-than-16:9 landscape item is capped at the SAME budget | 4:3 probe table; theatre-mode.test.js "the PICTURE is capped at the SAME budgeted height" (term-for-term equality) |
 | AC5 | The ambient glow paints around the new box in dark mode, with no filter / transform / mask / will-change / contain / isolation on any stage rule | glow probe table; the existing ambient-glow-engine sweep (covers the new stage rule, every vendor spelling) |
 | AC6 | Unchanged: theatre off (5 viewports), phone 390x844 and tablet 1024x768 (theatre on and off), music theatre; no action button deforms or wraps | probe diff (Measurements); theatre-mode.test.js "ONLY inside the 1025px+ block" |
-| AC7 | The probe measures theatre at real monitor shapes: `WxH`, `--viewport-shot`, `--sidebar-collapsed`, `PROBE_MEDIA_WH`, the real `#theater-btn` click, the reserve and player/picture/stage/glow boxes, a settle poll | the Measurements above were taken with it |
+| AC7 | The probe measures theatre at real monitor shapes: `WxH`, `--viewport-shot`, `--menu-toggle`, `PROBE_MEDIA_WH`, the real `#theater-btn` click, the reserve, the sidebar state and player/picture/stage/glow boxes, a settle poll that waits out the sidebar slide | the Measurements were taken with it |
+| AC8 (D2) | Desktop theatre ON collapses an OPEN sidebar (init() itself on a cold theatre load, and the theatre click); theatre OFF, leaving the watch view, and narrowing below 1025px restore it; a watch -> watch hop keeps it; a hand toggle is the user's; a sidebar the user closed is never opened; no storage key is written | watch-init-behavioral.test.js five "v1.319 D2" tests (real init, live jsdom shell elements); theatre-mode.test.js three theatreGuide tests; probe D2 tables |
 
 ## Build record
 
@@ -228,12 +229,108 @@ never narrower than 480px.
   picture cap). `test/unit/watch-init-behavioral.test.js`: 3 new tests (executed init, ?v= and
   ?tv=).
 - `docs/exec-plans/tech-debt-tracker.md`: #247.
+- D2 round: watch.js `THEATRE_GUIDE_ATTR` + `theatreGuideCollapse` / `theatreGuideRestore` /
+  `theatreGuideRelease` (module scope, exported) and `wireTheatreGuide` / `syncTheatreGuide` in
+  init (called after the sync theatre-class apply and from `applyTheatreState`); the probe's
+  `--sidebar-collapsed` became `--menu-toggle` (theatre now collapses the bar, so the flag
+  reopens it by hand), plus `sidebarHidden` / `theatreGuide` / `#sidebar` in the JSON and the
+  animation-aware settle; tests: theatre-mode.test.js +3 (jsdom), watch-init-behavioral.test.js
+  +5 (the realm now also returns its `win` / `doc` shims).
 
 Findings on the way: the first cut measured only from the observer; under the probe's software
 GL the class flip painted at the non-theatre reserve (133px) for more than 300ms, which led to the
 synchronous re-measure in the click (and the probe now clicks the real button and polls for the
 settled reserve). A first scheduling shape (`raf = requestAnimationFrame(measure)` with measure
 resetting it) stuck under a synchronous rAF; replaced by a `queued` flag.
+
+## D2 round (Architect ruling: collapse the sidebar in desktop theatre)
+
+### Mechanism (re-verified before the edit)
+
+- The sidebar's ONLY writer is common.js's header `#menu-toggle` click (common.js:15385-15400):
+  it flips `.sidebar.hidden` + `.sidebar.mobile-open` + `.main-content.expanded` together. No
+  storage key holds the sidebar state anywhere (grep: no `localStorage` / `sessionStorage` use
+  for it; the only other `expanded` writer is the description box). The sidebar and
+  `#main-content` live in the persistent shell, outside `#view-root`.
+- **Existing mechanism picked: the menu toggle's class trio.** Collapsing flips the same three
+  classes; a hand toggle while in theatre therefore reopens the bar exactly as it always does:
+  it PUSHES the content (`.main-content` margin-left back to `--sidebar-w`), it never overlays.
+  The theatre stage then re-centres in the narrower column and the reserve re-measures (3-line
+  bar at 1280: 173px, the r0 geometry).
+- **Theatre-scoped state only:** `body[data-theatre-guide="<owner>"]` means "theatre collapsed
+  it, for this watch view". Module helpers `theatreGuideCollapse` / `theatreGuideRestore` /
+  `theatreGuideRelease` (watch.js, exported, pure over a document). Rules: an open bar collapses
+  and is owned; an already-owned bar is re-claimed (watch -> watch); a bar the USER had
+  collapsed is left alone and owned by nobody (theatre off never opens it); restore acts only
+  for the owner and only while owned; a hand `#menu-toggle` click releases ownership (the user's
+  choice stands at theatre off).
+- **Wiring (`wireTheatreGuide` / `syncTheatreGuide` in init):** synchronously right after init()
+  applies the persisted theatre class (a cold theatre load never shows the bar sliding in then
+  out), on every theatre click (`applyTheatreState`), and on a `(min-width: 1025px)` crossing
+  (both ways). The desktop gate is the theatre button's own breakpoint. On the view's abort the
+  restore is deferred one microtask: the router runs `destroy()` -> swap -> the next `init()` in
+  one synchronous pass (common.js swapToView), so a watch -> watch hop re-claims before the
+  check, and any other route restores. The menu-toggle and media-query listeners are bound on
+  the view signal.
+
+### Measurements (D2 build, live tree; `ft-d2-*`, `glow-d2`)
+
+Theatre on, sidebar collapsed by theatre (every run: `sidebarHidden` true, `data-theatre-guide`
+"w1"), same method as above:
+
+| Viewport | Player (x,y w x h) | Video | YouTube video | Video vs YouTube (w) | reserve | title y / buttons y / fold gap | bar bottom to fold (YouTube 23) |
+|---|---|---|---|---|---|---|---|
+| 1280x720 | 216,80 848x518 | 846x476 | 980x551 | 86% | 99px (1 line) | 614 / 651 / 37 | 24 |
+| 1366x768 | 216,80 934x566 | 932x524 | 1065x599 | 88% | 99px | 662 / 699 / 37 | 24 |
+| 1440x900 | 136,80 1168x698 | 1166x656 | 1300x731 | 90% | 99px | 794 / 831 / 37 | 24 |
+| 1920x1080 | 216,80 1488x878 | 1486x836 | 1620x911 | 92% | 99px | 974 / 1011 / 37 | 24 |
+| 1920x1200 | 109,80 1702x998 | 1700x956 | 1833x1031 | 93% | 99px | 1094 / 1131 / 37 | 24 |
+
+- Centring: player centre x = 640 / 683 / 720 / 960 / 960 = the viewport centre at every size
+  (YouTube's video is centred on the viewport too). r0 (sidebar shown) centred in the column,
+  115px right of the viewport centre.
+- The remaining gap to YouTube is FileTube's chrome: the 42px control strip under the picture
+  (YouTube overlays its controls), the 24px content padding and FileTube's taller bar (views line
+  + 32px buttons + divider: 99px vs YouTube's 90px incl. title).
+- 1920x1200 is now height-bound too (the column grew to 1872 > the budget width): fold gap 70 ->
+  37 like every other size.
+- Action row vs BEFORE: 10 buttons at each viewport, 0 deformed, 0 wraps, rows 1 -> 1.
+- Hand reopen in theatre (`--menu-toggle`): the bar pushes the content back (main x 230), the
+  reserve follows with no theatre click (99 -> 173 at 1280x720), player 717x444 / 1488x878 = the
+  r0 geometry exactly, fold gap 36 / 37, `data-theatre-guide` released (null), bar open.
+- 4:3 item (`PROBE_MEDIA_WH=640x480`): 1280x720 player 848x518, picture 846x476 (pillarboxed),
+  fold gap 37; 1920x1080 1488x878 / 1486x836, 37.
+- Unchanged vs BEFORE: theatre off at the five desktop viewports, 390x844 and 1024x768 with
+  theatre on (the persisted class, below the breakpoint: no collapse) and off - every player,
+  stage, title, bar and button box identical, 0 deformed, 0 wraps. (The only differing numbers
+  are the related rail's height, a fetch-timing difference below the fold.)
+- Instrument finding: under software GL the sidebar slide / margin-left transition sometimes
+  started a second late and the r0 settle poll (reserve consistent with the CURRENT layout)
+  exited mid-transition, reading a 3-line bar (1 run in 4, the 4:3 1280 case). Proven a timing
+  artefact (the same run read 99px / 45px bar after a 4s wait, 4 of 4); the probe's settle now
+  also waits for no running animation on `#sidebar` / `#main-content` (4 of 4 then read 99px).
+
+Ambient glow, dark, ambient on, real playing webm, theatre persisted (the cold-load collapse):
+
+| Viewport | lit / opacity / filter / transform | player = stage | glow vs player | 5 / 25 / 50 / 100 px LEFT | RIGHT | 5px above / below | errors |
+|---|---|---|---|---|---|---|---|
+| 1280x720 | yes / 0.3 / none / none | 848.2x518 yes | .12 .22 1.24 1.44 | [70,18,51] [53,18,41] [36,18,30] [18,18,18] | [18,64,69] [18,49,53] [18,34,36] [18,18,18] | [43,43,61] / [42,43,61] | 0 |
+| 1366x768 | same | 933.5x566 yes | .12 .22 1.24 1.44 | [70,18,51] [55,18,42] [39,18,31] [19,18,19] | [18,64,69] [18,51,54] [18,36,38] [18,19,19] | [43,43,62] / [42,43,61] | 0 |
+| 1440x900 | same | 1168.2x698 yes | .12 .22 1.24 1.44 | [71,18,52] [58,18,44] [45,18,35] [24,18,22] | [18,65,70] [18,54,58] [18,42,44] [18,23,24] | [44,43,62] / [43,43,61] | 0 |
+| 1920x1080 | same | 1488.2x878 yes | .12 .22 1.24 1.44 | [71,18,52] [62,18,46] [51,18,39] [32,18,27] | [18,66,70] [18,57,61] [18,47,50] [18,30,31] | [43,44,62] / [43,44,62] | 0 |
+| 1920x1200 | same | 1701.5x998 yes | .12 .22 1.24 1.44 | [71,18,52] [63,18,47] [53,18,40] [36,18,30] | [18,66,71] [18,58,62] [18,50,53] [18,34,36] | [44,43,62] / [44,43,62] | 0 |
+
+Left and right are symmetric at every size (the player is centred on the viewport now, and the
+sidebar that used to sit under the left bloom is gone). `scrollWidth` exceeds the viewport at
+1440 (1444) and 1920x1200 (2015) while the glow runs: the glow box overflowing past the viewport,
+clipped by the root `overflow-x: clip` (no horizontal scroll; the base had 1376 at 1280 and 2093
+at 1920x1080, the v1.318 plan measured scrollX 0 under a real wheel).
+
+Screenshots (session scratchpad `desktop-theatre/sbs/`): YouTube | BEFORE | AFTER (D2)
+`desktop-theatre-sbs-<WxH>.png` for all five; glow BEFORE | AFTER (D2)
+`desktop-theatre-glow-sbs-1280x720.png` / `-1920x1080.png`; 4:3 BEFORE | AFTER
+`desktop-theatre-4x3-sbs-1280x720.png`; theatre | theatre + hand reopen
+`desktop-theatre-menutoggle-sbs-1280x720.png`.
 
 ## Confirmation at the committed sha (894b25bd)
 

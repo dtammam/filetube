@@ -13,7 +13,7 @@
 // Diff the BEFORE and AFTER lines: a pre-existing button whose w/h changed
 // is a deformation; a y change is a wrap (intended or not).
 //
-//   node scripts/action-row-probe.js <out-dir> [width | WxH ...] [--theatre] [--sidebar-collapsed] [--viewport-shot]
+//   node scripts/action-row-probe.js <out-dir> [width | WxH ...] [--theatre] [--menu-toggle] [--viewport-shot]
 //   FT_ROOT=/path/to/main-worktree node scripts/action-row-probe.js <out-dir-main>
 //
 // Defaults: widths 390 375 1280 1366 1600 1920. A bare width runs at the
@@ -58,10 +58,11 @@ const ARGS = process.argv.slice(3);
 // both column widths at one viewport are measured.
 const THEATRE = ARGS.includes('--theatre');
 const VIEWPORT_SHOT = ARGS.includes('--viewport-shot');
-// `--sidebar-collapsed`: click the header's #menu-toggle (the left bar's real
-// collapse) AFTER theatre is on, so the column widens with no theatre click -
-// the theatre reserve must follow through its ResizeObserver alone (v1.319).
-const SIDEBAR_COLLAPSED = ARGS.includes('--sidebar-collapsed');
+// `--menu-toggle`: click the header's #menu-toggle (the left bar's real hand
+// toggle) AFTER theatre is on. Since v1.319 theatre collapses the bar on desktop,
+// so this REOPENS it by hand (the column narrows with no theatre click - the
+// theatre reserve must follow through its ResizeObserver alone).
+const MENU_TOGGLE = ARGS.includes('--menu-toggle');
 // Each viewport is [width, height]; a bare width keeps the historical height.
 const VIEWPORTS = ARGS.filter((a) => !a.startsWith('--')).map((a) => {
   const m = /^(\d+)(?:x(\d+))?$/.exec(a);
@@ -108,13 +109,16 @@ const GEOMETRY_JS = `(function () {
   out.labelsShown = firstLabel ? getComputedStyle(firstLabel).display !== 'none' : null;
   out.docScrollWidth = document.documentElement.scrollWidth;
   out.vh = window.innerHeight;
+  var sb = document.getElementById('sidebar');
+  out.sidebarHidden = sb ? sb.classList.contains('hidden') : null;
+  out.theatreGuide = document.body.getAttribute('data-theatre-guide');
   document.querySelectorAll('.watch-action-btns .btn').forEach(function (b) {
     var r = b.getBoundingClientRect();
     out.buttons[b.id || b.className] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
     if (r.width > 0) tops[Math.round(r.top)] = true; // a display:none button (0x0 at top 0) is not a row
   });
   out.rows = Object.keys(tops).length;
-  ['.star-rating', '.watch-title', '.description-container', '.watch-action-bar', '#player-wrapper', '#media-player', '.watch-player-stage', '#ambient-glow', '.watch-sidebar', '.main-content'].forEach(function (sel) {
+  ['.star-rating', '.watch-title', '.description-container', '.watch-action-bar', '#player-wrapper', '#media-player', '.watch-player-stage', '#ambient-glow', '.watch-sidebar', '.main-content', '#sidebar'].forEach(function (sel) {
     var el = document.querySelector(sel); if (!el) return;
     var r = el.getBoundingClientRect();
     out[sel] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
@@ -244,14 +248,21 @@ async function main() {
         // fallback for a tree without the button.
         const via = (await send('Runtime.evaluate', { expression: "(function(){var c=document.querySelector('.watch-container'); if (!c) return 'none'; if (c.classList.contains('theater-mode')) return 'persisted'; var b=document.getElementById('theater-btn'); if (b && b.getBoundingClientRect().width > 0) { b.click(); return 'click'; } c.classList.add('theater-mode'); return 'class'; })()", returnByValue: true })).result.value;
         console.error(`${w}: theatre via ${via}`);
+        // Since v1.319 theatre also collapses the left bar: its slide and the
+        // content's margin-left run on --dur-fast (0.15s); let them finish first.
+        await new Promise((r) => setTimeout(r, 600));
         // Steady state: the reserve watch.js wrote equals the room the title + bar
         // really take below the stage (ResizeObserver -> next frame; software GL
         // frames are slow, so poll up to 5s instead of trusting a fixed sleep).
-        if (SIDEBAR_COLLAPSED) {
+        if (MENU_TOGGLE) {
           await send('Runtime.evaluate', { expression: "(function(){var t=document.getElementById('menu-toggle'); if (t) t.click(); return !!t;})()", returnByValue: true });
           await new Promise((r) => setTimeout(r, 600)); // the margin-left transition (--dur-fast) runs first
         }
-        const SETTLED_JS = "(function(){var c=document.querySelector('.watch-container'),s=document.querySelector('.watch-player-stage'),b=document.querySelector('.watch-action-bar'); if(!c||!s||!b) return true; var v=c.style.getPropertyValue('--watch-theatre-reserve'); if(!v) return true; return parseFloat(v) === Math.ceil(b.getBoundingClientRect().bottom - s.getBoundingClientRect().bottom); })()";
+        // MEASURED: under software GL the bar's slide / the column's margin-left
+        // transition can start a second or more late, and the reserve is (correctly)
+        // consistent with the mid-transition layout meanwhile - so settled also
+        // means no transition still running on the sidebar or the content column.
+        const SETTLED_JS = "(function(){var c=document.querySelector('.watch-container'),s=document.querySelector('.watch-player-stage'),b=document.querySelector('.watch-action-bar'); if (document.getAnimations && document.getAnimations().some(function(a){var t=a.effect&&a.effect.target; return t && (t.id==='sidebar'||t.id==='main-content') && a.playState!=='finished';})) return false; if(!c||!s||!b) return true; var v=c.style.getPropertyValue('--watch-theatre-reserve'); if(!v) return true; return parseFloat(v) === Math.ceil(b.getBoundingClientRect().bottom - s.getBoundingClientRect().bottom); })()";
         for (let i = 0; i < 25; i++) {
           const res = await send('Runtime.evaluate', { expression: SETTLED_JS, returnByValue: true });
           if (res && res.result && res.result.value === true) break;
@@ -271,10 +282,10 @@ async function main() {
       // software-GL capture can fail transiently - log it, keep measuring.
       try {
         const shot = await send('Page.captureScreenshot', { format: 'png', ...(clipJson ? { clip: JSON.parse(clipJson) } : {}) });
-        fs.writeFileSync(path.join(OUT, `action-bar-${tag}${THEATRE ? '-theatre' : ''}${SIDEBAR_COLLAPSED ? '-nobar' : ''}.png`), Buffer.from(shot.data, 'base64'));
+        fs.writeFileSync(path.join(OUT, `action-bar-${tag}${THEATRE ? '-theatre' : ''}${MENU_TOGGLE ? '-menutoggle' : ''}.png`), Buffer.from(shot.data, 'base64'));
         if (VIEWPORT_SHOT) {
           const full = await send('Page.captureScreenshot', { format: 'png' });
-          fs.writeFileSync(path.join(OUT, `viewport-${w}x${h}${THEATRE ? '-theatre' : ''}${SIDEBAR_COLLAPSED ? '-nobar' : ''}.png`), Buffer.from(full.data, 'base64'));
+          fs.writeFileSync(path.join(OUT, `viewport-${w}x${h}${THEATRE ? '-theatre' : ''}${MENU_TOGGLE ? '-menutoggle' : ''}.png`), Buffer.from(full.data, 'base64'));
         }
       } catch (err) {
         console.error(`${w}: screenshot skipped (${err.message})`);

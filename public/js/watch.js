@@ -75,6 +75,59 @@ function theatreReservePx(stageRect, barRect) {
   return px >= 0 ? px : null;
 }
 
+// v1.319 (Architect ruling D2 on Dean's "match YouTube's theatre geometry"): YouTube
+// hides its guide in theatre, so on desktop the left sidebar collapses while theatre is
+// ON and comes back when theatre goes OFF or the watch view is left. It reuses the ONE
+// existing mechanism, the header #menu-toggle's class trio (common.js: `.sidebar.hidden`
+// + `.sidebar.mobile-open` + `.main-content.expanded` flip together), so a hand toggle
+// in theatre simply works (reopening PUSHES the content back, the collapsed-state
+// behaviour; it never overlays). The sidebar state has NO persisted preference (no
+// storage key anywhere), and theatre never writes one: the only theatre state is the
+// body attribute below, which records "theatre collapsed it" plus the owning watch view,
+// so a restore only undoes a collapse theatre itself made:
+// - collapse: the sidebar is open -> collapse it and own it; it is already ours (a
+//   watch -> watch hop) -> re-claim it for the new view; the USER had collapsed it ->
+//   leave it alone and own nothing (theatre off must not open what the user closed);
+// - restore: only while theatre still owns it (a hand toggle releases ownership, so
+//   theatre off leaves whatever the user chose), and only for the owning view (a newer
+//   watch view that re-claimed it keeps it). The body lives outside #view-root and
+//   survives an SPA swap, hence the owner.
+const THEATRE_GUIDE_ATTR = 'data-theatre-guide';
+function theatreGuideEls(doc) {
+  const e = { body: doc && doc.body, sidebar: doc && doc.getElementById('sidebar'), main: doc && doc.getElementById('main-content') };
+  return e.body && e.sidebar && e.main ? e : null;
+}
+function setGuideCollapsed(e, collapsed) {
+  e.sidebar.classList.toggle('hidden', collapsed);
+  e.sidebar.classList.toggle('mobile-open', collapsed);
+  e.main.classList.toggle('expanded', collapsed);
+}
+function theatreGuideCollapse(doc, owner) {
+  const e = theatreGuideEls(doc);
+  if (!e) return false;
+  if (e.body.hasAttribute(THEATRE_GUIDE_ATTR)) {
+    e.body.setAttribute(THEATRE_GUIDE_ATTR, String(owner));
+    return true;
+  }
+  if (e.sidebar.classList.contains('hidden')) return false;
+  setGuideCollapsed(e, true);
+  e.body.setAttribute(THEATRE_GUIDE_ATTR, String(owner));
+  return true;
+}
+function theatreGuideRestore(doc, owner) {
+  const e = theatreGuideEls(doc);
+  if (!e || !e.body.hasAttribute(THEATRE_GUIDE_ATTR)) return false;
+  if (e.body.getAttribute(THEATRE_GUIDE_ATTR) !== String(owner)) return false;
+  e.body.removeAttribute(THEATRE_GUIDE_ATTR);
+  if (e.sidebar.classList.contains('hidden')) setGuideCollapsed(e, false);
+  return true;
+}
+function theatreGuideRelease(doc) {
+  const e = theatreGuideEls(doc);
+  if (e) e.body.removeAttribute(THEATRE_GUIDE_ATTR);
+}
+let theatreGuideSeq = 0;
+
 // v1.317 M4: the ambient helpers + engine (v1.186-v1.314) MOVED VERBATIM to
 // public/js/ambient.js (loaded on every shell before this file) so the music view
 // drives the SAME engine through the SAME host wiring (createAmbientHost). This view
@@ -634,6 +687,10 @@ if (typeof module !== 'undefined' && module.exports) {
     isTheaterModeActive,
     theaterModeStorageValue,
     theatreReservePx,
+    theatreGuideCollapse,
+    theatreGuideRestore,
+    theatreGuideRelease,
+    THEATRE_GUIDE_ATTR,
     // v1.317 M4: the ambient helpers + engine moved VERBATIM to ambient.js; re-exported
     // here so every existing import of them through watch.js keeps one path.
     ...ambientExports,
@@ -884,6 +941,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const tb = document.getElementById('theater-btn');
       if (tb) tb.setAttribute('aria-pressed', theatreOn ? 'true' : 'false');
     } catch (_) { /* storage disabled - default off */ }
+    wireTheatreGuide();
 
     // #sidebar-folders-list lives in the PERSISTENT shell (outside
     // #view-root) -- wiring it through this view's own AbortController is
@@ -2030,6 +2088,40 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // v1.319 D2: the theatre-owned sidebar collapse (module helpers theatreGuide*).
+    // Called synchronously from init() right after the persisted theatre class is
+    // applied (no open-then-slide flash on a cold theatre load), and re-synced by the
+    // theatre click. Desktop only (1025px+, where the theatre button exists): a
+    // crossing of that width re-syncs both ways. A hand toggle of #menu-toggle
+    // releases theatre's ownership (common.js's own listener, registered at boot, has
+    // already flipped the classes when this one runs). On the view's abort the
+    // restore is deferred one microtask: the router runs destroy() -> swap -> the next
+    // init() in ONE synchronous pass, so a watch -> watch hop re-claims the collapse
+    // before the check runs (no open/close churn), while any other route restores it.
+    // The owner id lives ON the container (no new init()-scope binding: the v1.54 TDZ
+    // class), the sync reads the LIVE class, so every writer of `.theater-mode` agrees.
+    function syncTheatreGuide() {
+      const wc = root.querySelector('.watch-container');
+      if (!wc || !wc.__ftGuideOwner) return;
+      const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1025px)') : null;
+      if (wc.classList.contains('theater-mode') && mq && mq.matches) theatreGuideCollapse(document, wc.__ftGuideOwner);
+      else theatreGuideRestore(document, wc.__ftGuideOwner);
+    }
+    function wireTheatreGuide() {
+      const wc = root.querySelector('.watch-container');
+      if (!wc || wc.__ftGuideOwner) return;
+      const owner = 'w' + (++theatreGuideSeq);
+      wc.__ftGuideOwner = owner;
+      syncTheatreGuide();
+      const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1025px)') : null;
+      if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', syncTheatreGuide, { signal });
+      const menuToggle = document.getElementById('menu-toggle');
+      if (menuToggle) menuToggle.addEventListener('click', () => theatreGuideRelease(document), { signal });
+      signal.addEventListener('abort', () => {
+        Promise.resolve().then(() => theatreGuideRestore(document, owner));
+      }, { once: true });
+    }
+
     // v1.319 (Dean: keep the title + action row on the first screen in theatre, like
     // YouTube): keep `--watch-theatre-reserve` on `.watch-container` equal to the
     // room below the player that the title + the whole action bar take (the pure
@@ -2101,6 +2193,7 @@ if (typeof module !== 'undefined' && module.exports) {
       function applyTheatreState(active) {
         watchContainer.classList.toggle('theater-mode', active);
         theaterBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        syncTheatreGuide(); // v1.319 D2: collapse / restore the sidebar with theatre
       }
 
       theaterBtn.addEventListener('click', () => {

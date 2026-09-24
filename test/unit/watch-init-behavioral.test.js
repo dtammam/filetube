@@ -211,7 +211,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');
-  return { init: capturedInit, destroy: capturedDestroy, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls, theaterCalls, abortControllers };
+  return { init: capturedInit, destroy: capturedDestroy, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls, theaterCalls, abortControllers, win: windowShim, doc: documentShim }; // v1.319: win/doc for the theatre-guide tests
 }
 
 const WARM_SUBSCRIBED_CACHE = {
@@ -815,4 +815,144 @@ test('v1.319 theatre reserve (?tv=): the episode path wires the SAME reserve (th
   ro.cb([]); t.flush();
   assert.deepStrictEqual(t.writes.slice(n), [['--watch-theatre-reserve', '173px']]);
   t.realm.destroy();
+});
+
+// ---- v1.319 D2 (Architect ruling on "match YouTube's theatre geometry": YouTube hides its
+// guide in theatre). Driven through the REAL init() with LIVE shell elements (jsdom: the
+// sidebar, the content column, the body and the watch container carry real classList /
+// attributes), POPULATED both ways, every axis: collapse on theatre ON; restore on theatre
+// OFF, on nav-away (destroy) and on a desktop -> narrow crossing; a watch -> watch hop keeps
+// it; a hand toggle is the user's; a sidebar the user closed is never opened; and no
+// storage key is written by any of it (the sidebar has no persisted preference). ----------
+function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false } = {}) {
+  const { JSDOM } = require('jsdom');
+  const jd = new JSDOM('<body><aside class="sidebar" id="sidebar"></aside><main class="main-content" id="main-content"></main><div class="watch-container"></div><div class="watch-container" id="wc2"></div></body>').window.document;
+  const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} } });
+  const sidebar = jd.getElementById('sidebar');
+  const main = jd.getElementById('main-content');
+  realm.els.set('#sidebar', sidebar);
+  realm.els.set('#main-content', main);
+  realm.doc.body = jd.body;
+  const mq = { matches: desktop, addEventListener(t, fn, o) { mq.type = t; mq.fn = fn; mq.opts = o; } };
+  realm.win.matchMedia = (q) => { mq.query = q; return mq; };
+  const flipByHand = () => { sidebar.classList.toggle('hidden'); sidebar.classList.toggle('mobile-open'); main.classList.toggle('expanded'); }; // = common.js #menu-toggle
+  if (userCollapsed) flipByHand();
+  if (theatre) global.sessionStorage.setItem('ft-theater', '1');
+  const mkRoot = (wc) => {
+    const r = makeEl('div');
+    r.querySelector = (sel) => {
+      if (sel === '.watch-container') return wc;
+      if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div'));
+      return realm.els.get(sel);
+    };
+    return r;
+  };
+  const wc1 = jd.querySelector('.watch-container');
+  const wc2 = jd.getElementById('wc2');
+  const state = () => ({ hidden: sidebar.classList.contains('hidden'), mobileOpen: sidebar.classList.contains('mobile-open'), expanded: main.classList.contains('expanded'), owner: jd.body.getAttribute('data-theatre-guide') });
+  const storageSnapshot = () => JSON.stringify([...storage.entries()].filter(([k]) => k !== 'ft-theater').sort());
+  return { realm, mq, flipByHand, mkRoot, wc1, wc2, state, storageSnapshot, sidebar, main };
+}
+const GUIDE_OPEN = { hidden: false, mobileOpen: false, expanded: false, owner: null };
+const GUIDE_THEATRE = { hidden: true, mobileOpen: true, expanded: true, owner: 'OWNED' };
+const norm = (s) => Object.assign({}, s, { owner: s.owner ? 'OWNED' : null });
+async function hydrateTheatre(g) {
+  for (let i = 0; i < 40 && !(g.realm.els.get('#theater-btn') && g.realm.els.get('#theater-btn')._l && g.realm.els.get('#theater-btn')._l.click); i++) await settle();
+  const tb = g.realm.els.get('#theater-btn');
+  assert.ok(tb && tb._l && typeof tb._l.click === 'function', 'precondition: the theatre click is bound');
+  return tb;
+}
+
+test('v1.319 D2: theatre ON (persisted, desktop) collapses an OPEN sidebar in init() itself; theatre OFF restores it; ON again collapses; no storage write', async () => {
+  const g = makeGuideRealm();
+  const written = [];
+  const realSet = global.sessionStorage.setItem;
+  global.sessionStorage.setItem = (k, v) => { written.push(k); return realSet(k, v); }; // the sandbox's localStorage IS this shim
+  try {
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'precondition: populated, open');
+  g.realm.init(g.mkRoot(g.wc1));
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'collapsed synchronously in init() (no open-then-slide on a cold theatre load)');
+  assert.deepStrictEqual(written.filter((k) => !/^comments_/.test(k)), [], 'the init-time collapse wrote no storage key (init seeds the mock comments cache, nothing else)');
+  assert.strictEqual(g.mq.query, '(min-width: 1025px)', 'desktop-gated at the theatre button breakpoint');
+  const tb = await hydrateTheatre(g);
+  const store0 = g.storageSnapshot();
+  written.length = 0;
+  tb._l.click(); // theatre OFF
+  assert.strictEqual(g.wc1.classList.contains('theater-mode'), false, 'precondition: theatre is off');
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'theatre OFF restores the sidebar and drops the marker');
+  tb._l.click(); // theatre ON
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'theatre ON collapses it again');
+  assert.strictEqual(g.storageSnapshot(), store0, 'no storage key besides ft-theater was written');
+  assert.deepStrictEqual(written, ['ft-theater', 'ft-theater'], 'the two theatre clicks wrote only the theatre pref');
+  assert.strictEqual(global.sessionStorage.getItem('ft-theater'), '1');
+  g.realm.destroy();
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepStrictEqual(written, ['ft-theater', 'ft-theater'], 'the nav-away restore wrote nothing');
+  } finally { global.sessionStorage.setItem = realSet; }
+});
+
+test('v1.319 D2: leaving the watch view (destroy) restores the sidebar one microtask later; a watch -> watch hop in the same pass keeps it collapsed', async () => {
+  const g = makeGuideRealm();
+  g.realm.init(g.mkRoot(g.wc1));
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'precondition: collapsed by theatre');
+  const firstOwner = g.state().owner;
+  // the router's hop: destroy() -> swap -> the next init() in ONE synchronous pass
+  g.realm.destroy();
+  g.realm.init(g.mkRoot(g.wc2));
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'watch -> watch: still collapsed (no open/close churn)');
+  assert.notStrictEqual(g.state().owner, firstOwner, 're-claimed by the new view');
+  // nav-away: destroy() with no watch init after it
+  g.realm.destroy();
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'deferred: not restored inside destroy() itself');
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'nav-away restores the sidebar for the next page');
+});
+
+test('v1.319 D2: a sidebar the USER collapsed is never opened by theatre (not on theatre OFF, not on nav-away)', async () => {
+  const g = makeGuideRealm({ userCollapsed: true });
+  const before = g.state();
+  assert.strictEqual(before.hidden, true, 'precondition: populated, user-collapsed');
+  g.realm.init(g.mkRoot(g.wc1));
+  assert.deepStrictEqual(g.state(), before, 'no ownership taken');
+  const tb = await hydrateTheatre(g);
+  tb._l.click(); // theatre OFF
+  assert.deepStrictEqual(g.state(), before, 'theatre OFF leaves it collapsed');
+  g.realm.destroy();
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepStrictEqual(g.state(), before, 'nav-away leaves it collapsed');
+});
+
+test('v1.319 D2: a HAND toggle in theatre is the user\'s (it reopens and pushes; theatre OFF then leaves the user\'s choice), and the listener dies with the view', async () => {
+  const g = makeGuideRealm();
+  g.realm.init(g.mkRoot(g.wc1));
+  const mt = g.realm.els.get('#menu-toggle');
+  assert.ok(mt && mt._l && typeof mt._l.click === 'function', 'a click listener is bound on #menu-toggle');
+  assert.ok(mt._lo.click && mt._lo.click.signal && mt._lo.click.signal.aborted === false, 'bound on the live view signal');
+  g.flipByHand(); mt._l.click(); // common.js flips first (registered at boot), then ours
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'reopened by hand, ownership released');
+  g.flipByHand(); mt._l.click(); // closed again by hand
+  const tb = await hydrateTheatre(g);
+  tb._l.click(); // theatre OFF
+  assert.strictEqual(g.state().hidden, true, 'theatre OFF does not reopen what the user closed by hand');
+  g.realm.destroy();
+  assert.strictEqual(mt._lo.click.signal.aborted, true, 'destroy() aborts the #menu-toggle listener');
+});
+
+test('v1.319 D2: crossing the desktop breakpoint re-syncs both ways; theatre ON below it never collapses', async () => {
+  const g = makeGuideRealm();
+  g.realm.init(g.mkRoot(g.wc1));
+  assert.strictEqual(g.mq.type, 'change', 'a change listener on the breakpoint query');
+  assert.ok(g.mq.opts && g.mq.opts.signal, 'bound on the view signal');
+  g.mq.matches = false; g.mq.fn();
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'narrowed below 1025px: restored');
+  g.mq.matches = true; g.mq.fn();
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'back on desktop: collapsed');
+  g.realm.destroy();
+  await Promise.resolve(); await Promise.resolve();
+  const n = makeGuideRealm({ desktop: false });
+  n.realm.init(n.mkRoot(n.wc1));
+  assert.strictEqual(n.wc1.classList.contains('theater-mode'), true, 'precondition: the persisted class is applied at any width');
+  assert.deepStrictEqual(norm(n.state()), GUIDE_OPEN, 'no collapse below the desktop breakpoint');
+  n.realm.destroy();
 });

@@ -130,6 +130,66 @@ test('v1.319 theatreReservePx: no reading (null) for a missing rect, an EMPTY st
   assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, { bottom: 480 }), null, 'a bar above the stage is not a layout this rule knows');
 });
 
+// ---- v1.319 D2 (Architect ruling on "match YouTube's theatre geometry": YouTube hides
+// its guide in theatre). The pure collapse / restore / release over a REAL DOM (jsdom),
+// populated both ways: the sidebar open (theatre collapses and owns it) and the sidebar
+// already collapsed by the user (theatre owns nothing and restores nothing). ----------
+const { theatreGuideCollapse, theatreGuideRestore, theatreGuideRelease, THEATRE_GUIDE_ATTR } = require('../../public/js/watch.js');
+function shellDoc({ collapsed = false } = {}) {
+  const { JSDOM } = require('jsdom');
+  const d = new JSDOM('<body><aside class="sidebar" id="sidebar"></aside><main class="main-content" id="main-content"></main></body>').window.document;
+  if (collapsed) { // exactly what common.js's #menu-toggle click does
+    d.getElementById('sidebar').classList.toggle('hidden');
+    d.getElementById('sidebar').classList.toggle('mobile-open');
+    d.getElementById('main-content').classList.toggle('expanded');
+  }
+  const state = () => ({
+    hidden: d.getElementById('sidebar').classList.contains('hidden'),
+    mobileOpen: d.getElementById('sidebar').classList.contains('mobile-open'),
+    expanded: d.getElementById('main-content').classList.contains('expanded'),
+    owner: d.body.getAttribute(THEATRE_GUIDE_ATTR),
+  });
+  return { d, state };
+}
+const OPEN = { hidden: false, mobileOpen: false, expanded: false, owner: null };
+
+test('v1.319 D2 theatreGuide: an OPEN sidebar collapses through the menu toggle\'s own class trio and theatre owns it; the owner\'s restore brings it back', () => {
+  const { d, state } = shellDoc();
+  assert.deepStrictEqual(state(), OPEN, 'precondition: populated, open');
+  assert.strictEqual(theatreGuideCollapse(d, 'w1'), true);
+  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: true, expanded: true, owner: 'w1' });
+  assert.strictEqual(theatreGuideRestore(d, 'w2'), false, 'a view that does not own it restores nothing');
+  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: true, expanded: true, owner: 'w1' });
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), true);
+  assert.deepStrictEqual(state(), OPEN, 'the owner\'s restore reopens it and drops the marker');
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), false, 'idempotent');
+});
+
+test('v1.319 D2 theatreGuide: a sidebar the USER collapsed is left alone - no ownership, so theatre off never opens it', () => {
+  const { d, state } = shellDoc({ collapsed: true });
+  const before = state();
+  assert.strictEqual(theatreGuideCollapse(d, 'w1'), false);
+  assert.deepStrictEqual(state(), before, 'untouched, no marker');
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), false);
+  assert.deepStrictEqual(state(), before, 'still collapsed');
+});
+
+test('v1.319 D2 theatreGuide: a second watch view RE-CLAIMS an owned collapse (a watch -> watch hop), and a hand toggle RELEASES it', () => {
+  const { d, state } = shellDoc();
+  theatreGuideCollapse(d, 'w1');
+  assert.strictEqual(theatreGuideCollapse(d, 'w2'), true);
+  assert.strictEqual(state().owner, 'w2', 're-claimed');
+  assert.strictEqual(theatreGuideRestore(d, 'w1'), false, 'the old view\'s deferred restore is a no-op');
+  assert.strictEqual(state().hidden, true);
+  // the user reopens by hand (the toggle flips the trio), then closes it again by hand
+  for (const el of [['sidebar', 'hidden'], ['sidebar', 'mobile-open'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
+  theatreGuideRelease(d);
+  assert.deepStrictEqual(state(), OPEN, 'open by hand, released');
+  for (const el of [['sidebar', 'hidden'], ['sidebar', 'mobile-open'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
+  assert.strictEqual(theatreGuideRestore(d, 'w2'), false, 'released: theatre off leaves the user\'s choice');
+  assert.strictEqual(state().hidden, true, 'the hand-closed bar stays closed');
+});
+
 // Comment-stripped once (comment-porous locks are a repo scar), then every
 // `@media (min-width: 1025px)` block, brace-balanced.
 const CSS_NC = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
