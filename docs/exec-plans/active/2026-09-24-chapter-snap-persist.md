@@ -3,8 +3,8 @@ plan: chapter-snap-persist
 harness: v2 · lean
 branch: fix/chapter-snap-persist
 anchor: spec
-status: Gate r2 fixed @020e313b (N1 epoch rule, N2 one check + hold, N3/N4 docs, the adversary's r2 tests); awaiting gate r3
-next: gate r3 (FULL - data class: adversary + qa + security-brief)
+status: Gate r3 fixed @f9a81a08 (H1-H5 + the adversary's skip-once suggestion); awaiting gate r4
+next: gate r4 (FULL - data class: adversary + qa + security-brief)
 design: Approved 2026-09-24 @7482e432 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -597,6 +597,90 @@ real-Chromium drives were re-run on this tree (020e313b music.js) to show nothin
   BACK to the ?play= entry: {"url":"/music?play=<id>%3A%3Ac0","t":507.9,"paused":false,"currentId":"<id>::c0","state":"full","playingRow":"c2"}
   stored resume position (GET /api/progress) after the back: {"timestamp":513.944099,"duration":2000,"updatedAt":"2026-09-24T19:17:39.767Z"}
 ```
+
+## Gate r3 fix (round 4 - an open WARNING on Dean's primary flow: background listening in the PWA)
+
+Commits: 33516e4b (the r3 verdicts, committed as the seats wrote them), 8830ac4d (H1-H5 + tests +
+#270), f9a81a08 (the E10 binding - see the mutant table), and this docs commit. Hook: `tests 7374
+pass 7374 fail 0` at f9a81a08.
+`git diff 20f94dea HEAD -- server.js lib public/js/player.js`: empty.
+
+All in music.js `verifyChapterFileThenPlay` (and the new `fetchJsonWithin`):
+- **H1 - a deadline.** The check runs through `fetchJsonWithin(url, CHAPTER_VERIFY.timeoutMs)`
+  (4000 ms): an AbortController aborts the request where it exists, and a plain timer race rejects
+  either way (no reliance on `AbortSignal.timeout`). A hung GET takes the existing failure branch:
+  the row plays as listed and the file stays unverified. A hold can therefore never outlast 4 s.
+- **H2 - never hold in the background.** With `document.visibilityState === 'hidden'` the check is
+  skipped entirely: the listed row plays at once and the file stays unverified, so the next VISIBLE
+  pick or advance checks it. A backgrounded iOS PWA may not be allowed to start audio again after a
+  pause (qa r3 S2, adversary S6). The cost, recorded in #270 (c): a background advance can play an
+  old start until the next visible pick.
+- **H3 - one hold per check; a user Play wins.** The hold now happens only for the call that
+  STARTS the check; a later call while it is in flight only replaces the waiting pick. The flat
+  segment-end band re-calls playAt every tick, so before this a Play during the wait was paused
+  again (adversary S1: pauses 1 -> 2); now it stays 1.
+- **H4 - teardown, decided.** Both arms (answer and failure) stand down on the view signal:
+  nothing loads or plays from a dead view (bound for both arms). The element is left as the hold
+  left it - music never resumes audio after the user navigated away; the player's own teardown and
+  the docked mini-player govern it (and H1 bounds the hold to 4 s while the view lives).
+- **H5 - a dropped row never strands the list (qa r3 W).** When the answer removes the row an
+  ADVANCE was heading for, the advance moves on to the first row that followed it in the list it was
+  waiting on and still exists; if none follows, the list is done, exactly as an Autoplay-off end (the
+  segment-end path drops the flat mode itself on its next tick). A user PICK of a dropped row plays
+  nothing (the list is redrawn without it).
+- **Adversary suggestion - skip once.** The verify's own `playAt` passes `skipVerify`, so it never
+  re-enters the check: a future break of the verified bookkeeping plays the row instead of looping
+  (the E1/E10 mutants used to hang the suite).
+
+New acceptance criteria (chapter-snap-resume.test.js):
+- AC19 (H1 + H3) A HUNG check at a segment end: held once, one GET; a user Play during the wait is
+  never paused again; the deadline (shortened to 150 ms through `CHAPTER_VERIFY` in the harness; the
+  test asserts the production value 4000 first) plays the listed row.
+- AC20 (H2) Hidden: no hold, no GET, the next row plays at once; the next visible pick checks it.
+- AC21 (H4) Teardown during a hold, answer AND failure: no load, no play.
+- AC22 (H5) The answer drops the next row: the following row plays (`g9::c0@0`); the dropped row
+  leaves the list.
+- AC23 qa's QA-G / QA-H as asserting tests: a changed answer loads once at the moved start
+  (`g9::c2@65`); a failed check plays the listed row (`g9::c2@60`). Adversary S5 (a Jump back in
+  continue after a failed return re-check never seeks) as an asserting test.
+- AC24 An UNCHANGED check answer still verifies its file: the next pick of it asks nothing (E10).
+
+Red at the pre-fix head (33516e4b, the same test file): `# pass 45 # fail 3` (H1+H3, H2, H5; H4,
+QA-G/H and S5 bind behavior that was already right). Head (f9a81a08): 49/49; unit batch 846/846;
+integration 94/94.
+
+### Mutants (gate r3 fix) @8830ac4d
+
+Runner `chapter-snap-persist/mutants7.sh` (sandbox per mutant from `git archive 8830ac4d`, exact
+anchors, sha1 printed, a 240 s cap per run; binding set chapter-snap-resume, music-chapter-playback,
+chapter-snap-client, music-chapter-reflect + the chapter-snap-return-flat integration file). A run
+with no totals is the unit file failing to complete within the cap (a loop or a hang) - RED.
+
+| Mutant | Result (bytes / totals / red tests) |
+|---|---|
+| CONTROL | bytes 13b9bb4589a9 -> 13b9bb4589a9 / # tests 116 # fail 0 / |
+| H1-no-deadline | bytes 13b9bb4589a9 -> 45d150f72eb7 / # tests 116 # fail 1 / r3 H1 + H3: a HUNG check at a segment end - the user pr; |
+| H1b-deadline-never-rejects | bytes 13b9bb4589a9 -> 00ae075868f5 / # tests 116 # fail 1 / r3 H1 + H3: a HUNG check at a segment end - the user pr; |
+| H2-holds-while-hidden | bytes 13b9bb4589a9 -> 07d85780a7d2 / # tests 116 # fail 1 / r3 H2: with the screen locked (document hidden) a segme; |
+| H3-hold-on-every-call | bytes 13b9bb4589a9 -> f53e68471c5d / # tests 116 # fail 2 / r2 N2: a flat segment end into an unverified file makes;r3 H1 + H3: a HUNG check at a segment end - the user pr; |
+| H5-no-advance-past-a-dropped-row | bytes 13b9bb4589a9 -> 767280448cb7 / # tests 116 # fail 1 / r3 H5 (qa QA-I): the answer DROPS the row an advance wa; |
+| SKIP-verify-reenters | bytes 13b9bb4589a9 -> f652b2c5f701 / no totals: the unit file never completes within the 240 s cap (a failed verify -> playAt -> verify -> ... loop) - RED |
+| E6-no-inflight-dedupe | bytes 13b9bb4589a9 -> 21c1343d5e2f / # tests 116 # fail 2 / r2 N2: a flat segment end into an unverified file makes;r3 H1 + H3: a HUNG check at a segment end - the user pr; |
+| E7-no-hold | bytes 13b9bb4589a9 -> f2f5d6b7555d / # tests 116 # fail 4 / r2 N2: a flat segment end into an unverified file makes;r3 H1 + H3: a HUNG check at a segment end - the user pr;r3 H4: the view is torn down while an advance is held -;r3 H5 (qa QA-I): the answer DROPS the row an advance wa; |
+| E8-first-waiter-kept | bytes 13b9bb4589a9 -> d93a4ab92313 / # tests 116 # fail 4 / r2 N2: a flat segment end into an unverified file makes;r3 H1 + H3: a HUNG check at a segment end - the user pr;r3 H5 (qa QA-I): the answer DROPS the row an advance wa;r3 (qa QA-G / QA-H stay green): the held advance loads ; |
+| B6-failed-verify-swallows-pick | bytes 13b9bb4589a9 -> bbc77c1c10b7 / # tests 116 # fail 3 / r2 B6: a FAILED verify of a pick still plays the row as;r3 H1 + H3: a HUNG check at a segment end - the user pr;r3 (qa QA-G / QA-H stay green): the held advance loads ; |
+| B8-failed-verify-ignores-playGen | bytes 13b9bb4589a9 -> 35a12abd8d3d / # tests 116 # fail 1 / r2 B8: a FAILED verify of an OLDER pick does not play o; |
+| B5-verify-no-liveness-check | bytes 13b9bb4589a9 -> e59fe3aa83a2 / # tests 116 # fail 2 / r2 B5: a verify answer that lands after the view was to;r3 H4: the view is torn down while an advance is held -; |
+| H4b-failure-no-liveness-check | bytes 13b9bb4589a9 -> 0b17df966a27 / # tests 116 # fail 1 / r3 H4: the view is torn down while an advance is held -; |
+| E1-cold-load-verifies | bytes 13b9bb4589a9 -> 2deae7d72105 / # tests 116 # fail 21 / 3 -> 2 revert while PLAYING f1::c1 (in order): nav re-r;a dropped row BEFORE the playing one (a shuffled list) ;the RE-LIST re-registers nav too: when the server re-li;Dean's shape: a chapter whose start a snap save moved L;\#268: re-tapping the |
+| E2-never-needs-verify | bytes 13b9bb4589a9 -> 12d9fd005125 / # tests 116 # fail 14 / r1 P3: after a return, the first pick of ANOTHER queued;r1 P3: a newer pick made while a file is being verified;r1 P3: a FAILED return re-check leaves the playing file;r2 B6: a FAILED verify of a pick still plays the row as;r2 B8: a FAILED verify |
+| E3-return-does-not-bump | bytes 13b9bb4589a9 -> 83637b7906eb / # tests 116 # fail 14 / r1 P3: after a return, the first pick of ANOTHER queued;r1 P3: a newer pick made while a file is being verified;r1 P3: a FAILED return re-check leaves the playing file;r2 B6: a FAILED verify of a pick still plays the row as;r2 B8: a FAILED veri |
+| E4-return-does-not-verify-checked | bytes 13b9bb4589a9 -> b25eafaffb44 / # tests 116 # fail 2 / r2 B11: a return that re-checks a file clears its unver;r2 N1: a file verified since the last return is not ask; |
+| E5-apply-does-not-verify | bytes 13b9bb4589a9 -> 451a9f363285 / # tests 116 # fail 2 / \#269: a local save that lands while the return re-chec;r2 N1: a LOCAL save verifies its file - after a failed ; |
+| E9-failed-recheck-stays-verified | bytes 13b9bb4589a9 -> 4cb83b78d470 / # tests 116 # fail 1 / r1 P3: a FAILED return re-check leaves the playing file; |
+| E10-verify-answer-not-recorded | @8830ac4d SURVIVED (# fail 0 - the skip-once guard turned its old hang into a silent extra GET); bound at f9a81a08 by "r3 (E10 binding): an UNCHANGED answer still verifies the file" - @f9a81a08 bytes 13b9bb4589a9 -> 6f86d763b852, # tests 117 # fail 1 (CONTROL @f9a81a08 # tests 117 # fail 0) |
+| B3-listen-passes-pick | bytes 13b9bb4589a9 -> 984f264f196b / # tests 116 # fail 1 / r2 B3: a Listen re-mount (/music?play=f1&listen=1) of t; |
+| B12-flat-redraw-always-drill | bytes 13b9bb4589a9 -> a768cbaa7b76 / # tests 116 # fail 1 / r2 B12: a flat list redrawn after a remote edit draws n; |
 
 ## Gate verdicts
 
