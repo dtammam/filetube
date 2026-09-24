@@ -3,7 +3,7 @@ plan: pocket-lighting-realism
 harness: v2 · lean
 branch: feat/pocket-lighting-realism
 anchor: spec
-status: Gate closed
+status: Shipped v1.328.0
 next: release v1.328.0
 design: this document, on the v1.327.0 skeleton (docs/exec-plans/completed/2026-09-24-pocket-gyro-lighting.md)
 gate: APPROVED r1 @ffdc5df3 (adversary + qa); the warnings are test guards, filed as #275

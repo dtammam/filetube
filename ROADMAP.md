@@ -116,6 +116,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.328.0 - Pocket lighting, turned up: Pronounced is now the realistic one (2026-09-24)
+
+- **Pocket lighting, second swing** (Dean on the device, v1.327.0: "I like it a lot. I think it's a little
+  subtle. I think the skeleton is perfect ... let's really zhuzh it up ... more realistic and also more
+  pleasant, more joyful ... subtle can probably stay near pronounced and pronounced will be the new
+  one"). Same skeleton, two profiles: Subtle is now v1.327.0's Pronounced (the same travel, a wider
+  tilt range so a wrist tilt reaches the edge); Pronounced layers the realism on top: a specular hot
+  spot on the center dome that dims as the light moves off-centre plus a dark far side, a bright
+  crescent on the wheel's lit rim and a dark crescent opposite (the chrome rule from the Zune photo), a
+  brighter body band with a hot core and a broad room light (Black is the payoff; Matte stays softest),
+  a double streak on the screen glass, longer softer shadows. Researched against the CSS holographic-card
+  technique (a wide soft glare with a hot core that dims off-centre, a darkened far side); their blend
+  modes and filters stay out, as before: only gradient positions and translated gradient layers, no
+  filter / blur / mask / backdrop / blend mode (the whole-rule lock). Found on the way and fixed in both
+  profiles: v1.327.0 had the two inset shadow signs swapped (an inset shadow with a positive x offset
+  paints along the LEFT inner edge), so the rim highlight brightened the far side by 2px; invisible at
+  neutral. Off stays byte-identical. Measured (headless Chromium): 0.21 ms script + 1.20 ms style per
+  frame moving (was 1.02), one layout on first lit, 0 writes and 0 recalcs still; listeners unchanged.
+  Gate r1 @ffdc5df3 (adversary + qa) APPROVED, one round (the warnings are test guards: the dome's inset signs and the new blend-mode / trig bans are not yet locked, filed as #275); plan
+  docs/exec-plans/completed/2026-09-24-pocket-lighting-realism.md.
+  Disclosed: the feel is Dean's iPhone again (the strong profile's alphas are all tokens, the travel
+  constants unchanged from the plan); Seattle stays out (#273); the iPad-trackpad partial look (#274a)
+  is unchanged by this swing; the probe script's fixed debug port, its hard-coded CPU strength and a beta-40 moving leg, and three stale comments (#275).
+
 ### v1.327.0 - The Click skins catch the light: tilt the phone and the shine moves (2026-09-24)
 
 - **Pocket lighting** (Dean: "Does PWA have any access to gyroscopic info ... I'd like the color/shadow
