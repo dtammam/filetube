@@ -182,7 +182,23 @@ this tree (AFTER).
 
 ## Mutant table
 
-(filled after the commit - mutants run in a /tmp sandbox from `git archive` of the committed sha)
+Runner: session scratchpad `chapter-snap-persist/mutants.sh` - a fresh sandbox from `git archive
+57fe4fe4` per mutant (+ a node_modules symlink), ONE anchor that must match exactly once, the file's
+sha1 before -> after printed, then `node --test test/unit/chapter-snap-resume.test.js
+test/unit/music-chapter-playback.test.js`. Commit 57fe4fe4 went through the pre-commit hook:
+`tests 7250 pass 7250 fail 0`.
+
+| # | Mutant (music.js) | bytes | Result | Binding test(s) that red |
+|---|---|---|---|---|
+| CONTROL | the guard replaced by itself | 3e8f46b40ee3 -> 3e8f46b40ee3 | `# fail 0` | - |
+| M1 | the lower bound removed | 3e8f46b40ee3 -> 8fc6ca97c364 | RED, `# fail 2` | "Dean's shape", "chapterResumeSecFor: ... the lower bound" |
+| M2 | the lower bound made inclusive (`<=`) | 3e8f46b40ee3 -> ab28bb5a036f | RED, `# fail 1` | "chapterResumeSecFor: ... AT the start it is" |
+| M3 | `loadTrack` passes the raw `progress.resumeSec` (the helper bypassed) | 3e8f46b40ee3 -> 55749c9ad9b9 | RED, `# fail 2` | "Dean's shape", v1.311.3 row-click tail test |
+| M4 | the bound compared to 0, not the chapter start | 3e8f46b40ee3 -> d7a23efeace4 | RED, `# fail 2` | "Dean's shape", "chapterResumeSecFor: ... the lower bound" |
+
+Reachability: the real-Chromium H3 table above is the end-to-end run of the same guard (BEFORE
+t 493.5 on chapter 2, AFTER t 500.3 on chapter 3), through the drill's real rows, the real
+`/api/music` progress attach, the real snap save and the real player seek.
 
 ## Disclosed gaps
 
