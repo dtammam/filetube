@@ -1161,3 +1161,17 @@ test('r1 Q3 (qa W4 + S5) CSS lock: the A-Z picker centres SAFELY (a short LCD ke
   assert.ok(!/\.mms-zune-classic \.ipm-grid\{[^}]*align-content/i.test(css), 'Seattle inherits it (no plain-centre override)');
   assert.match(css, /@media \(max-width: 340px\)\{ \.mms-ipod:not\(\.mms-zune-classic\) \.ipm-grid\{ grid-template-columns:repeat\(6, minmax\(0, 1fr\)\); \} \}/, 'six Click columns under 340 px');
 });
+
+test('r1 Q4: the engine\'s own release resumes the drift - a GENERIC takeover whose onExit clears nothing (the engine never learns what it is talking to)', async () => {
+  const b = bootEngine({ coverPool: () => Promise.resolve(POOL.slice()) });
+  try {
+    await driftUp(b);
+    let exited = 0;
+    b.engine.setWheelTakeover({ onRotate() {}, onExit() { exited += 1; } });
+    assert.strictEqual(b.engine.menuState().slides, false, 'paused under the takeover');
+    pressMenu(b); await flush(); // MENU releases the takeover through the engine (onExit does NOT call setWheelTakeover(null))
+    assert.strictEqual(exited, 1);
+    assert.strictEqual(b.engine.menuState().slides, true, 'the release itself resumed the drift');
+    assert.strictEqual(b.engine.menuState().title, 'Click', 'and MENU only ended the takeover');
+  } finally { b.restore(); }
+});

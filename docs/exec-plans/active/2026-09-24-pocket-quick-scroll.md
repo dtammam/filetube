@@ -3,8 +3,8 @@ plan: pocket-quick-scroll
 harness: v2 · lean
 branch: feat/pocket-quick-scroll
 anchor: spec
-status: Built - awaiting gate r1
-next: gate r1 (adversary + qa) on the head sha named in the hand-off; then Dean's device pass (the letter-mode threshold and tick, #263)
+status: Gate r1 fixes built - awaiting gate r2
+next: gate r2 (adversary + qa + security-brief: the recent-listening opt-in is a server change) on the head sha named in the hand-off; then Dean's device pass (#263)
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -52,7 +52,7 @@ Architect's options (A and B). Two addenda arrived during the build (C+D togethe
 
 | # | Decision | Why |
 |---|---|---|
-| A1 | **"Fast" = the engine's own x2 speed band** (`cursorStepMult(speed) >= 2`, speed > 0.8 deg/ms, about 2.2 turns a second), and letter mode arms only after **two such detents in a row** (`LETTER_FAST_MULT = 2`, `LETTER_ENGAGE_STEPS = 2`). | The v1.233 ladder was extracted into ONE named function (`cursorStepMult`) that both the row accelerator and the letter mode read - no second velocity estimator. 0.8 deg/ms is the line where the wheel already stops moving one row per detent. Two detents because one pointermove's speed is noisy (dt is clamped to 1 ms). Device tuning owed: #263. |
+| A1 | **"Fast" = the engine's own x2 speed band** (`cursorStepMult(speed) >= 2`, speed > 0.8 deg/ms, about 2.2 turns a second), and letter mode arms only after **three such POINTERMOVES in a row inside one gesture** (`LETTER_FAST_MULT = 2`, `LETTER_ENGAGE_MOVES = 3`; the count resets at every pointerdown and on a slow move; at most one letter per move). The speed's time base is the LONGER of the handler gap and the events' own `timeStamp` gap (the event clock counted only on the performance.now origin). *(Amended at gate r1: the first build counted DETENTS - one big move armed it - and the count latched across gestures; a late handler made a medium turn read as a flick at CPU x4.)* | The v1.233 ladder was extracted into ONE named function (`cursorStepMult`) that both the row accelerator and the letter mode read - no second velocity estimator. 0.8 deg/ms is the line where the wheel already stops moving one row per detent. Device tuning owed: #263. |
 | A2 | In letter mode **every** detent jumps a letter until the wheel has been still for 1 s. | The literal ask ("ends ~1 s after the spin stops"). A "slow detent exits" rule was rejected: a flick's decelerating tail would add a row past the letter's first row. |
 | A3 | The letter is the row's **label** (= the value the level is sorted by), classified to follow the server's `cmpStr` (trimmed `localeCompare` at base sensitivity): digits/symbols '#', accents fold, the collation's non-decomposing Latin letters (Æ Ø Ł ß Œ Đ) fold to their base letter; **no "The " rule** (the server has none). The jump table is the list's own RUNS of one letter in list order. | "The same comparison the list already sorts by". Measured: the unit test sorts a crafted list with the real `cmpStr` and asserts the letters never step backwards. Non-Latin scripts sort after Z and show as a trailing '#' run (#264). |
 | A4 | A level qualifies when the VIEW marks it alphabetical (`letters: true` on its payload) and it has **20+ rows** (`MENU_LETTER_MIN`). Marked: Artists, Albums, Songs, Genres, Genre > songs, Liked Songs (all `title-asc`), an artist's All Songs / an artist's album only when the user's artist sort is Title A-Z or Z-A (`menuSortIsAlpha`). Never: Recently Added / Recently Played (recency order), an album (album order), the static levels, Now Playing. | The view knows the sort it asked the server for; the controller never guesses. An artist's All Songs is release-date order by default - a letter overlay there would jump "M" then "C". |
@@ -89,7 +89,7 @@ Architect's options (A and B). Two addenda arrived during the build (C+D togethe
 - **AC3 (A, clear axes)** Letter mode (on a populated overlay) clears 1 s after the wheel stops (the highlight stays), on MENU, Select, a level change; a queue advance in letter mode never moves the parked highlight (K1).
 - **AC4 (A, touch)** A finger scroll shows the edge badge (and it fades); a controller-written scroll does not; the badge or the overlay opens the A-Z picker; a letter jumps and closes it; MENU / Select / an outside tap / a wheel turn close it; every picker target >= 44 px at 390x844 and 380x700; no leaked listener over 20 cycles; no new global non-passive touch listener.
 - **AC5 (A, haptics)** Letter mode ticks once per letter crossed (ghost and sweep engines), never per 3.75 degrees.
-- **AC6 (B)** Recent Artists from real plays: recency order, duplicates collapsed, at most 25, drills identical to Artists > artist, restricted items never listed, empty = "No recent artists".
+- **AC6 (B)** Recent Artists from real plays (including songs played to their END - gate r1 Q6): recency order, duplicates collapsed, at most 25, drills identical to Artists > artist, restricted items never listed, empty = "No recent artists".
 - **AC7 (C)** Extras > Games > Brick launches the existing game through the view's hook; MENU lands on Games; every teardown arm (MENU, repaint, skin switch, dock + return, view destroy, engine destroy) ends it; hidden in the pop-out, without the hook, and where Brick's rule says no.
 - **AC8 (D)** About shows the cheeky name, the per-user totals, the running version, "FileTube"; read-only.
 - **AC9 (E)** The drift runs on non-item levels with a populated pane and never on item levels; preloads before its fade; at most two layers; stops on hidden / Now Playing / dock / item level / every teardown arm with zero timers left; reduced motion = still; the CSS animates only transform + opacity.
@@ -221,7 +221,7 @@ pocket menus' own guards through the changed seams, log `pocket-quick-scroll-mut
 
 ## Disclosed gaps
 
-- **G1 (#263, device)** - the letter-mode threshold (the x2 band, two detents) and the per-letter tick are measured
+- **G1 (#263, device)** - the letter-mode threshold (the x2 band, three fast moves) and the per-letter tick are measured
   headless; a real thumb flick is Dean's device pass. The tick is one per pointermove at most (WebKit reads one
   midline crossing per move).
 - **G2 (#264)** - titles in non-Latin scripts sort after Z and show as a trailing '#' run; the picker's '#' goes to
@@ -254,7 +254,7 @@ pocket menus' own guards through the changed seams, log `pocket-quick-scroll-mut
 
 ## Gate verdicts
 
-(r1 pending)
+(r1: CHANGES from both seats, below; the fix record follows them)
 
 ## Gate r1 - qa (@bd90e80e)
 
@@ -324,3 +324,110 @@ Suggestions (non-blocking):
 Verdict: CHANGES - five WARNINGs. 1 + 2 share one fix (event-time dt, a per-gesture reset, plus qa #1's per-move count); 3 and 4 are small; 5 is tests.
 
 Gate: CHANGES r1 @bd90e80e — adversary
+
+## Gate r1 fix record (builder, after @bd90e80e)
+
+Commits: c4eeb34e (both r1 sections, as-is) -> 8ee1405a (merge main 8be20941: ROADMAP only, clean) ->
+**bc236430** (the fixes and their tests) -> **881bd16d** (a builder-found flake in the new clock: the event
+clock now counts only on the performance.now origin; the picker CSS lock) -> this commit (the R11 binding + this
+record).
+
+**SERVER CHANGE (for the security-brief seat):** `GET /api/music?filter=recent-listening` takes an opt-in
+`include=finished` (lib/music/routes.js). Without it the output is byte-for-byte today's (bound: the default route
+still omits a finished song - R14 RED). With it, a progress row at position 0 with an `updatedAt` also stays. The
+filter runs on the list AFTER `trackVisibleTo` + the gated projection, unchanged (bound: a folder-restricted member
+never gets the finished song under the opt-in). No new route, no new write, no new field.
+
+| Finding | Fix (commit) | Test (binding) | Mutant -> result |
+|---|---|---|---|
+| **Q1** qa W1 + adversary W1 + W2 (one guard) | letter mode counts fast POINTERMOVES (`noteMove`, three in a row, reset at every pointerdown and on a slow move), one letter per move (`moveJumped`), speed from the longer of the handler / event-timestamp gaps (bc236430); the event clock only on the performance.now origin (881bd16d) | unit r1 Q1: one 50-deg / 16 ms move does not engage; one 90-deg move jumps one letter; a 0.6 deg/ms turn with halved handler gaps does not engage (control: the true 1.2 does); two fast moves / lift / 60 s / two more does not engage | R1, R2, R3, R4 RED |
+| **Q2** qa W3 + adversary W4 | the overlay and the badge are persistent nodes toggled in place (born OFF, style read once); `void incoming.offsetWidth` before a cover's classes turn on (bc236430) | unit r1 Q2 (node identity across letter steps and the hold's end, badge likewise); a source lock on the one swap | R8, R9 RED |
+| **Q3** qa W4 + S5 | `align-content: safe center` (Seattle inherits); six Click columns under 340 px (bc236430) | unit CSS lock (881bd16d) + the probe below | R16, R17 RED |
+| **Q4** adversary W3 | `slidesWanted()` is false while a wheel takeover is live; `setWheelTakeover` and the engine's release both re-sync the drift (bc236430) | unit r1 Q4 (Brick from Extras: 0 layers / 0 timers for 20 s, resumes after MENU); unit "a GENERIC takeover" (this commit) | R10, R12 RED; R11 see below |
+| **Q5** adversary W5 | (tests) | integration r1 Q5: Artists / Albums / Genres letter-jumpable on the REAL payloads (24 more fixture artists); the never rule on the REAL payloads (a 20-song album, Recently Added, 22-row Recently Played); unit X1 (slow move resets), X36 (0.65 deg/ms never engages, one row per detent), X27 (a Seattle pivot switch ends letter mode) | R5, R6, R7, R26, R27, R28, R29 RED |
+| **Q6** qa W2 (the Architect's ruling) | **Outcome: the signal EXISTS.** Every progress row keeps `{position, duration, updatedAt}`; the player's `ended` arm writes position 0 to that same row (player.js `saveProgressToServer(0)`, the C2 reset), so a finished play is a position-0 row with a fresh `updatedAt`. The existing route gains the opt-in `include=finished`; the pocket menus' ONE recent source (`MENU_RECENT_URL`) - Recent Artists AND the Recently Played playlist - uses it (bc236430). AC6 keeps its claim | integration r1 Q6 (the ended shape 60 -> 190 -> 0 on the real route: the default omits it, the opt-in leads with it, Recent Artists and Recently Played lead with it in the real view, the gate holds; the player's ended arm + writer body pinned by source) + the probe's REAL 3 s WAV played to its end in Chromium | R13, R14, R15 RED |
+| adversary S1 | NFKD first, then a fold table GENERATED by sweeping U+00A1-024F, U+1E00-1EFF, fullwidth, circled and Roman forms through `cmpStr` | unit: 0 mismatches over 803 code points (was 261 filed '#', plus 53 misfiled by my first fold) | R24, R25 RED |
+| adversary S2 | ANY tap while the picker is open only closes it | unit (Play / Next do nothing; control after) | R18 RED |
+| adversary S3 | a cover path = one '/' then neither '/' nor '\\' | unit | R19 RED |
+| adversary S4 | every cover failing -> today's pane | unit | R20 RED |
+| adversary S5 | the pool is a random sample (partial Fisher-Yates) across the whole album list | unit (a seeded draw reaches beyond the first 60) | R21 RED |
+| qa S6 | the pool carries the library version it was fetched for; a swap re-fetches a stale pool (the drift keeps going) - the freeze's cause (`slide.pool = null` under a running drift) removed | unit | R22 RED |
+| qa S7 | the stale "two rows" message | - | - |
+| qa S8 | a "recent" list OFF screen is marked stale at each new current track (re-loads when shown); the one on screen keeps its rows | unit (Seattle's recent pivot) | R23 RED |
+| adversary S6 (unbound or dead guards) | not all taken: X2 (the non-letter reset) is now the `noteMove` early reset, bound by R4/R5 indirectly; X25/X26/X10/X11/X12/X19/X31/X3/X4/X15/X22/X23/X34 unchanged - disclosed as unbound or dead below (G8) | - | - |
+
+**Mutant table at 881bd16d** (runner `pocket-quick-scroll-mutants.js`, sandbox from `git archive 881bd16d`,
+anchors unique, diffs non-empty; log `pocket-quick-scroll-mutants-r1fix.log`): the 29 r1 guards plus 8 first-pass
+guards re-run through the changed seams. **36 of 37 RED at 881bd16d; R11 RED against this commit's test.**
+
+| # | Mutant | Result |
+|---|---|---|
+| R1 | Q1: two letters in one move (the per-move cap dropped) | RED (1) |
+| R2 | Q1: the fast count latches across gestures (no reset at pointerdown) | RED (1) |
+| R3 | Q1: the event clock ignored (handler time only) | RED (1) |
+| R4 | Q1: one fast move engages | RED (5) |
+| R5 | Q5/X1: a slow move no longer resets the count | RED (1) |
+| R6 | Q5/X36: the fast band at 0.5 deg/ms | RED (2) |
+| R7 | Q5/X27: a pivot switch keeps letter mode | RED (1) |
+| R8 | Q2: the layers re-created on every change (no persistence) | RED (1) |
+| R9 | Q2: no style read before the first cover turns on | RED (1) |
+| R10 | Q4: the drift ignores a live takeover | RED (1) |
+| R11 | Q4: the release never resumes the drift | survived at 881bd16d (the MENU path also resumes through the Brick wiring's own `setWheelTakeover(null)`); **RED at the plan commit** against its new test (a GENERIC takeover) - see below |
+| R12 | Q4: setting a takeover never pauses the drift | RED (1) |
+| R13 | Q6: the server ignores include=finished | RED (1) |
+| R14 | Q6: the DEFAULT route returns finished plays too | RED (1) |
+| R15 | Q6: the menus read the plain route | RED (1) |
+| R16 | Q3: the picker centres unsafely | RED (1) |
+| R17 | Q3/S5: seven Click columns at 320 px | RED (1) |
+| R18 | S2: the closing tap also acts on Play/Next | RED (1) |
+| R19 | S3: a backslash path passes the cover filter | RED (1) |
+| R20 | S4: every cover failing leaves a blank pane | RED (1) |
+| R21 | S5: the pool = the first 60 (no shuffle) | RED (1) |
+| R22 | S6: a library change never re-fetches the covers | RED (1) |
+| R23 | S8: a recent list off screen never re-loads after a new listen | RED (1) |
+| R24 | S1: the cmpStr fold table dropped | RED (2) |
+| R25 | S1: no NFKD (compatibility forms) | RED (2) |
+| R26 | Q5/X5: Artists not marked alphabetical | RED (1) |
+| R27 | Q5/X6: Albums not marked alphabetical | RED (1) |
+| R28 | Q5/X7: Genres not marked alphabetical | RED (1) |
+| R29 | Q5/X8: every song level marked alphabetical (album order, Recently Added, Recently Played) | RED (1) |
+| Q1r | letter mode never engages | RED (17) |
+| Q3r | any speed counts as fast | RED (7) |
+| Q7r | the 1 s hold never ends letter mode | RED (2) |
+| Q13r | the badge never fades | RED (2) |
+| Q18r | no tick per letter | RED (3) |
+| Q31r | the drift swaps before the next cover loaded | RED (1) |
+| Q34r | a hidden document keeps drifting | RED (1) |
+| Q42r | a stale reload keeps letter mode | RED (1) |
+
+**Re-probe** (`pocket-quick-scroll-probe-r1.js`, logs `pocket-quick-scroll-probe-r1-first.log`,
+`pocket-quick-scroll-probe-r1.log`, `pocket-quick-scroll-probe-r1-medium.log`; PNGs `pocket-quick-scroll-shots-r1/`;
+TRUSTED CDP mouse input on the real wheel, the achieved rate measured from the page's own pointermove timeStamps):
+
+| What | Printed |
+|---|---|
+| Medium turn, CPU x1 | 0.58-0.60 deg/ms: engaged **0 of 5**, cursor 10 (one row per detent); 0.71-0.72: 0 of 5, cursor 13 |
+| Medium turn, CPU x4 | 0.60-0.65 deg/ms: engaged **0 of 5** (the adversary measured 6 of 10 at bd90e80e); 0.74-0.78: 0 of 5 |
+| Real flick | CPU x1 1.39-1.42 deg/ms: **3 of 3** (letters L / L / J); CPU x4 1.06-1.13: **3 of 3** (N / L / N) |
+| The overlay's fade (30 ms samples after the wheel stops) | Click: 8 intermediate opacities (was 0), Seattle: 7 |
+| The first cover, 6 fresh opens, two samples 600 ms apart | 6 of 6 moved (e.g. `translateX 6.92 -> 6.17`, opacity `0 -> 0.80`); none at the end state |
+| The drift under Brick | before 2 layers; during the game 0 (and 0 ten seconds in); after MENU 2 layers, title `Games` |
+| The picker | 390x844 Click 49x44 cells, Seattle 68x56; **667x375** Seattle grid 617x137, content 336, first row at the scroll origin (0), last reachable (was -100 px); **640x360** Seattle first row 0, last reachable; Click at both 85-89 x 44, fits; **320x568** Click 46x44 (6 columns, was 39 px), Seattle 54x56; `docW` = the viewport everywhere |
+| A REAL 3 s WAV played to its end (Click) | the route with `include=finished`: `Finisher:0`; the plain route: `[]`; Recent Artists `[Finisher]`; Recently Played `[Played To The End]` |
+
+Instruments: the hook's full unit suite at bc236430 **7297 / 7297** and at 881bd16d **7298 / 7298**; the touched
+suites (both new files, music-pocket-menus unit/integration/-r1, music-skins, skin-surface, ipod-brick,
+music-skin-integration, music-library-projection, rbac-music-enforcement, menu-returns-to-origin) `pass 298
+fail 0` before the last edits; lint:css TOTAL 0; overlay-containment clean; eslint 0 errors (6 pre-existing).
+
+Disclosed (r1):
+- **G8** - adversary S6's remaining unbound or dead guards (X25 skin-switch clearJump, X26 showNowPlaying clearJump,
+  X10, X11/X12 Brick re-check and info guard, X19 a no-move letter step still ticks, X31 picker re-centre, X3/X4/X15
+  badge details, X22/X23/X34 dock guards) are left as they are: each is either redundant with a bound arm or
+  cosmetic; not re-mutated this round.
+- **G9** - a finished CHAPTERED file (a chapter album played to its end) is listed by its FIRST chapter in the
+  Recently Played playlist (the position-0 row maps to the chapter containing 0); its artist in Recent Artists is
+  right.
+- **G10** - the new wheel clock rule changes the v1.233 row acceleration only where the handler ran late (the
+  longer gap wins): at CPU x1 the trusted-input traces read the same band.
+
