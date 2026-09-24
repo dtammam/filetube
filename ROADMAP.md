@@ -116,6 +116,42 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.327.0 - The Click skins catch the light: tilt the phone and the shine moves (2026-09-24)
+
+- **Pocket lighting** (Dean: "Does PWA have any access to gyroscopic info ... I'd like the color/shadow
+  on the theme to reflect. The sheen from the click wheel etc. I'd like that to be somewhat 'realistic'
+  based on gyro data"; then "focus exclusively on the Pocket Classics and skip for Seattle"). The
+  Click, Click Black and Click Matte skins now sit under a fixed light in the room: tilt the phone and
+  the click wheel's sheen, its rim and recess, the center dome's highlight and shadow, a reflection
+  band across the body (softer on Matte) and a faint streak on the screen glass all slide the opposite
+  way, highlights toward the light and shadows away from it. Turn it on from the pocket menu's
+  Settings > Lighting (Off / Subtle / Pronounced, remembered on this device); picking a strength is what
+  asks iOS for motion access, and a denied or missing sensor shows a note and keeps today's look. The
+  pose the skin opens in is neutral and slowly re-centres as you settle. On a desktop (the pop-out
+  included) the mouse over the player is the light and eases back when it leaves. Off is byte-identical
+  to today (the adversary seat proved it pixel-for-pixel). Only gradient positions and two thin gradient
+  layers move, on small elements; no filter, blur, mask or backdrop anywhere (the ambient-mode iPhone
+  lesson, locked by a test over whole rules). The frame loop runs only while a Click skin is painted,
+  visible and lit, writes only on movement, parks when settled, and every teardown arm (skin switch,
+  dock, hidden tab, tray, reduced motion, pop-out close) unbinds; a dock while parked releases through
+  a MutationObserver on the panel (the headless probe caught that gap before the gate). Measured in
+  headless Chromium: 0.17 ms script + 1.12 ms style per frame with the light moving, 0 layouts; 0 writes
+  and 0 style recalcs while still; deviceorientation listeners Off 0 / On 1 / docked 0 / destroyed 0 /
+  Seattle 0. Gate r1 CHANGES (both seats: the light stayed dead after an unlock, Seattle showed the
+  row, a deny left the panel lit) -> all fixed + the gravity-projected roll so an upright phone never
+  flips the light.
+  Round 2 (both seats again): a relaunch after a deny lit the panel with nothing to drive it, the
+  lying-down pose crossed the sensor's 180-degree wrap, and a rolled upright phone jumped at
+  vertical -> fixed (the lit class waits for the first sensor sample behind a permission gate; every
+  angle difference takes the short way round; the pitch is an atan2). Gate r3 APPROVED @e891c661
+  (adversary + qa); plan docs/exec-plans/completed/2026-09-24-pocket-gyro-lighting.md.
+  Disclosed: the FEEL (sign, amplitude, re-centre rate) is Dean's iPhone check, three constants are the
+  knobs (`TILT_RANGE_DEG`, `RECENTER_TAU_MS`, `GAIN.subtle`; `TILT_SIGN` if the light follows the
+  tilt); Seattle is untouched by Dean's ruling (#273); an iPad with a trackpad can shift the sheen from
+  the trackpad before the first sensor sample without the band, plus two untested mutant arms and a
+  comment nit (#274); the podcasts view's Click skins get the lighting too but carry no Settings menu
+  (set it from Music).
+
 ### v1.326.0 - Edited chapter times play from the right spot, on every device (2026-09-24)
 
 - **Chapter Snap persistence** (Dean: "it works on desktop and mobile but doesn't survive a page

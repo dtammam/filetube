@@ -319,7 +319,7 @@
   function menuPivots(style) { return style === 'seattle' ? SEATTLE_PIVOTS.slice() : []; }
   var ROOT_TITLE = { click: 'Click', seattle: 'Seattle' }; // the cheeky name, never the product's (Dean)
   var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
-    recentArtists: 'Recent Artists', extras: 'Extras', games: 'Games', settings: 'Settings', about: 'About' };
+    recentArtists: 'Recent Artists', extras: 'Extras', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
   function menuTitle(node, style) {
     var n = node || {};
     if (n.type === 'main') return ROOT_TITLE[style] || 'Menu';
@@ -347,15 +347,29 @@
     if (t === 'playlists') return PLAYLISTS.map(function (p) { return { label: p.label, node: { type: 'playlist', key: p.key, label: p.label } }; });
     if (t === 'extras') return [{ label: 'Games', node: { type: 'games' } }];
     if (t === 'games') return [{ label: 'Brick', action: 'brick' }];
-    if (t === 'settings') return [{ label: 'About', node: { type: 'about' } }];
+    // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the controller says the driver
+    // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded; the
+    // controller passes false on Seattle - gate r1 W2) - never a row that leads to nothing.
+    if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
     return null;
+  }
+  // Settings > Lighting: the three strengths with a check on the active one, plus a read-only
+  // note row (motion denied / no sensor / Reduce Motion) when the driver has one. Re-derived on
+  // every draw from the driver's state (like the Main Menu) - the check moves as you pick.
+  var LIGHTING_STRENGTHS = [{ value: 'off', label: 'Off' }, { value: 'subtle', label: 'Subtle' }, { value: 'pronounced', label: 'Pronounced' }];
+  function menuLightingItems(state) {
+    var s = state || {};
+    var cur = LIGHTING_STRENGTHS.some(function (r) { return r.value === s.strength; }) ? s.strength : 'off';
+    var rows = LIGHTING_STRENGTHS.map(function (r) { return { label: r.label, action: 'lighting', value: r.value, check: cur === r.value }; });
+    if (typeof s.note === 'string' && s.note) rows.push({ label: s.note, note: true, info: true });
+    return rows;
   }
   // Addendum E (Dean: "the art gently moves from right to left ... in some of the views, like the
   // main views that are not the album that you picked"): the levels whose rows are MENU entries,
   // not library items. On Click their right pane plays the slow cover drift (the 6G/7G main-menu
   // slideshow); every other level shows the highlighted item's own art. One list, read by the
   // controller - never a second copy.
-  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about'];
+  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about', 'lighting'];
   function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows.
@@ -614,13 +628,16 @@
       var it = items[i];
       // an INFO row (About) is read-only: no selection bar, a value on the right, not an option.
       if (it.info) {
+        // a NOTE row (Lighting's "motion denied" line) wraps; a value row (About) keeps one line.
+        if (it.note) { html += '<div class="ipm-row ipm-info ipm-noterow" role="status"><span class="ipm-lbl">' + esc(it.label) + '</span></div>'; continue; }
         html += '<div class="ipm-row ipm-info"><span class="ipm-lbl">' + esc(it.label) + '</span><span class="ipm-val">' + esc(it.value) + '</span></div>';
         continue;
       }
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
-        (v.currentId && it.id === v.currentId ? ' is-current' : '');
+        (v.currentId && it.id === v.currentId ? ' is-current' : '') + (it.check ? ' is-checked' : '');
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
         '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
+        (it.check ? '<span class="ipm-check" aria-label="Selected">✓</span>' : '') +
         (v.style === 'seattle' && it.sub ? '<span class="ipm-sub">' + esc(it.sub) + '</span>' : '') +
         (v.currentId && it.id === v.currentId ? '<span class="ipm-now" aria-label="Now playing">' + ipVolGlyph() + '</span>' : '') +
         (it.node && v.style !== 'seattle' ? '<span class="ipm-chev" aria-hidden="true">›</span>' : '') +
@@ -696,6 +713,7 @@
     menuWindow: menuWindow, renderMenuList: renderMenuList, renderMenuView: renderMenuView,
     // quick scroll + Recent Artists + Extras/Settings/About + the cover drift (2026-09-24)
     menuRecentArtistItems: menuRecentArtistItems, menuAboutItems: menuAboutItems, menuCoverPool: menuCoverPool,
+    menuLightingItems: menuLightingItems, LIGHTING_STRENGTHS: LIGHTING_STRENGTHS, // Settings > Lighting (2026-09-24)
     menuIsItemLevel: menuIsItemLevel, menuLetterOf: menuLetterOf, menuLetterRuns: menuLetterRuns,
     menuLetterAt: menuLetterAt, menuLetterJump: menuLetterJump, menuLetterTargets: menuLetterTargets,
     menuLetterable: menuLetterable, menuSortIsAlpha: menuSortIsAlpha, renderMenuJump: renderJumpLayers,

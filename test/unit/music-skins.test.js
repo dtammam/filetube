@@ -60,7 +60,7 @@ test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette
   assert.match(css, /\.mms-ipod-matte\{ background:[\s\S]*?var\(--mms-ipodm-chamfer\)[\s\S]*?var\(--mms-ipod-sheen-0\)[\s\S]*?var\(--mms-ipodm-t1\)[\s\S]*?var\(--mms-ipodm-t7\) 100%\);\s*box-shadow:inset 0 0 0 1px var\(--mms-ipodk-edge\); \}/, 'the matte body: photo ramp t1..t7 + the reused white-transparent chamfer stop + the ipodk 1px inset rim');
   assert.match(css, /\.mms-ipod-matte \.ip-wheel\{ background:[\s\S]*?var\(--mms-ipodm-wheel-sheen\)[\s\S]*?var\(--mms-ipodm-wheel1\), var\(--mms-ipodm-wheel2\) 100%\); \}/, 'the dark wheel with its top sheen');
   assert.match(css, /\.mms-ipod-matte \.ip-zone\{ color:var\(--mms-ipodm-wheel-lbl\); \}/, 'the wheel labels tint');
-  assert.match(css, /\.mms-ipod-matte \.ip-center\{ background:radial-gradient\(circle at 50% 38%, var\(--mms-ipodm-center1\), var\(--mms-ipodm-center2\)\); \}/, 'the center button');
+  assert.match(css, /\.mms-ipod-matte \.ip-center\{ background:radial-gradient\(circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\(38% \+ var\(--ly,0\) \* 16%\), var\(--mms-ipodm-center1\), var\(--mms-ipodm-center2\)\); \}/, 'the center button (its dome sits where the light is - pocket lighting 2026-09-24; unset = 50% 38%)');
   // the palette override must sit AFTER the shared .mms-ipod base (and beside its ipod-black
   // sibling) so it wins at equal specificity - reorder and the matte body silently vanishes.
   assert.ok(css.indexOf('.mms-ipod-matte{') > css.indexOf('.mms-ipod-black{'), 'the matte override follows the ipod-black block (both after the .mms-ipod base)');

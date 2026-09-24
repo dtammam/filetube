@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: (not started)
 anchor: spec
 status: Draft
-next: NEXT SWING = item 2 (gyro lighting, intake answered G1-G8) as its own branch right after the current follow-ups ship; items 1 + 3 wait for Dean's F1-F3 device answers
+next: item 2 (gyro lighting) SHIPPED v1.327.0 on the Click skins (plan 2026-09-24-pocket-gyro-lighting; Seattle deferred, tracker #273); items 1 + 3 wait for Dean's F1-F3 device answers
 design: pending
 gate: pending
 ---

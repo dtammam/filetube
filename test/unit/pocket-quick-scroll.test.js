@@ -74,9 +74,9 @@ test('Main Menu: the device order with Extras (Click) / Games (Seattle) ONLY whe
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'games' }), [{ label: 'Brick', action: 'brick' }]);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }), [{ label: 'About', node: { type: 'about' } }]);
   assert.strictEqual(skins.menuStaticItems({ type: 'about' }), null, 'About reads the library (the counts)');
-  assert.deepStrictEqual(['extras', 'games', 'settings', 'about', 'recentArtists'].map((t) => skins.menuTitle({ type: t }, 'click')), ['Extras', 'Games', 'Settings', 'About', 'Recent Artists']);
+  assert.deepStrictEqual(['extras', 'games', 'settings', 'about', 'recentArtists', 'lighting'].map((t) => skins.menuTitle({ type: t }, 'click')), ['Extras', 'Games', 'Settings', 'About', 'Recent Artists', 'Lighting']);
   // addendum E: the drift plays on the MENU levels, the item art on the item levels
-  assert.deepStrictEqual(['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about'].filter((t) => skins.menuIsItemLevel({ type: t })), []);
+  assert.deepStrictEqual(['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about', 'lighting'].filter((t) => skins.menuIsItemLevel({ type: t })), []);
   assert.deepStrictEqual(['artists', 'albums', 'songs', 'album', 'artist', 'artistAll', 'artistAlbum', 'genre', 'playlist', 'recentArtists'].filter((t) => !skins.menuIsItemLevel({ type: t })), []);
 });
 
