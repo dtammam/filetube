@@ -682,6 +682,9 @@ function buildMusicSkeletonRows(n) {
 // re-homing it - so a start moved LATER past the saved place made the tap seek into the
 // PREVIOUS song under this chapter's name. A place before the start is the chapter head.
 var CHAPTER_RESUME_TAIL_SEC = 5;
+// Chapter Snap persist (#269, gate r3 H1): how long a pick waits for its chapter check before it
+// plays the row as queued. An object so a harness can shorten it (module.exports.CHAPTER_VERIFY).
+var CHAPTER_VERIFY = { timeoutMs: 4000 };
 function chapterResumeSecFor(item) {
   var p = item && item.progress;
   if (!p || typeof p.resumeSec !== 'number' || !isFinite(p.resumeSec)) return undefined;
@@ -738,7 +741,7 @@ function queuedChaptersDiffer(rows, baseId, chapters) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, chapterAdoptSeekFor, queuedChaptersDiffer,
+    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -861,6 +864,25 @@ if (typeof module !== 'undefined' && module.exports) {
     var res = await fetch(url);
     if (!res.ok) throw new Error(url + ' -> ' + res.status);
     return res.json();
+  }
+  // fetchJson with a deadline (gate r3 H1): rejects after `ms` and aborts the request where
+  // AbortController exists (a plain timer race where it does not - never AbortSignal.timeout alone).
+  function fetchJsonWithin(url, ms) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var ctl = null;
+      try { ctl = typeof AbortController === 'function' ? new AbortController() : null; } catch (_) { ctl = null; }
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        try { if (ctl) ctl.abort(); } catch (_) { /* already settled */ }
+        reject(new Error(url + ' -> timeout'));
+      }, ms);
+      fetch(url, ctl ? { signal: ctl.signal } : undefined)
+        .then(function (res) { if (!res.ok) throw new Error(url + ' -> ' + res.status); return res.json(); })
+        .then(function (v) { if (done) return; done = true; clearTimeout(timer); resolve(v); },
+          function (err) { if (done) return; done = true; clearTimeout(timer); reject(err); });
+    });
   }
 
   function init(root) {
@@ -1927,20 +1949,51 @@ if (typeof module !== 'undefined' && module.exports) {
     // Autoplay-off end would, so the file never bleeds on into its own next chapter. When the answer
     // lands, the latest waiting pick plays (unless a newer pick superseded it - playGen); on a failure
     // it plays the row as queued and the file stays unverified for the next pick.
-    function verifyChapterFileThenPlay(item, opts) {
+    // Gate r3 (round 4 - Dean's primary flow is background listening in the installed PWA):
+    //  H1 the check has a TIMEOUT (CHAPTER_VERIFY.timeoutMs): a hung GET takes the failure branch
+    //     and the row plays as queued - a hold can never outlast it;
+    //  H2 never HOLD while the document is hidden: a backgrounded PWA may not be allowed to start
+    //     audio again after a pause (iOS), so in the background the queued row plays at once and the
+    //     file stays unverified - the next VISIBLE pick checks it;
+    //  H3 a hold happens ONCE per check: the segment-end band re-calls playAt every tick, and a user
+    //     who pressed Play during the wait must not be paused again;
+    //  H4 teardown: the then/catch arms stand down on the view signal - nothing loads or plays from a
+    //     dead view; the element is left as the hold left it (the player's own teardown and the
+    //     docked mini-player govern it; music never resumes audio after the user navigated away);
+    //  H5 an answer that DROPS the waited row (its chapter no longer exists): an advance moves on to
+    //     the row that now follows it, or ends the list the way an Autoplay-off end does - it never
+    //     stays held on nothing.
+    // The verify's own playAt passes `skipVerify`, so it never re-enters the check (a future break
+    // then plays the row instead of looping; adversary r3 suggestion).
+    function verifyChapterFileThenPlay(item, opts, i) {
       if (!item || item.source !== 'library-chapter') return false;
       var baseId = String(item.id).replace(/::c\d+$/, '');
       if (!chapterFileNeedsVerify(baseId)) return false;
-      if (opts && opts.keepPosition) {
+      if (document.visibilityState === 'hidden') return false; // H2: play now; the next visible pick checks
+      var advance = !!(opts && opts.keepPosition);
+      var inFlight = !!verifyWaiters[baseId];
+      verifyWaiters[baseId] = { item: item, opts: opts, gen: playGen, list: queue, at: i }; // playAt bumped playGen for THIS pick
+      if (inFlight) return true; // H3: one check, one hold - a later call only replaces the waiting pick
+      if (advance) {
         var hold = hostCtl('media-player');
         try { if (hold && !hold.paused) hold.pause(); } catch (_) { /* nothing to hold */ }
       }
-      var inFlight = !!verifyWaiters[baseId];
-      verifyWaiters[baseId] = { item: item, opts: opts, gen: playGen }; // playAt bumped playGen for THIS pick
-      if (inFlight) return true;
       var epoch = returnEpoch;
       function waiter() { var w = verifyWaiters[baseId]; delete verifyWaiters[baseId]; return w; }
-      fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (v) {
+      function playRow(w) {
+        var idx = queue.indexOf(w.item); // the SAME row object, patched in place (or dropped)
+        var o = Object.assign({}, w.opts, { skipVerify: true });
+        if (idx >= 0) { playAt(idx, o); return; }
+        if (!(w.opts && w.opts.keepPosition)) return; // a PICK of a row that no longer exists: nothing to play
+        // H5: the row the advance was heading for is gone - move on to the row that followed it
+        for (var k = (typeof w.at === 'number' ? w.at : -1) + 1; w.list && k < w.list.length; k++) {
+          var next = queue.indexOf(w.list[k]);
+          if (next >= 0) { playAt(next, Object.assign({}, w.opts)); return; }
+        }
+        // nothing follows: the list is done - it stays paused, exactly the Autoplay-off end (the
+        // segment-end path itself drops the flat mode on its next tick: no row follows there either)
+      }
+      fetchJsonWithin('/api/videos/' + encodeURIComponent(baseId), CHAPTER_VERIFY.timeoutMs).then(function (v) {
         if (signal.aborted) return;
         var w = waiter();
         if (verifiedEpoch[baseId] === undefined || verifiedEpoch[baseId] < epoch) verifiedEpoch[baseId] = epoch;
@@ -1949,17 +2002,11 @@ if (typeof module !== 'undefined' && module.exports) {
           applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
         }
         if (!w || w.gen !== playGen) return;
-        var idx = queue.indexOf(w.item); // the SAME row object, patched in place (or dropped)
-        if (idx >= 0) playAt(idx, w.opts);
+        playRow(w);
       }).catch(function () {
         var w = waiter();
         if (signal.aborted || !w || w.gen !== playGen) return;
-        var idx = queue.indexOf(w.item);
-        if (idx < 0) return;
-        var was = verifiedEpoch[baseId];
-        verifiedEpoch[baseId] = returnEpoch; // play the queued row now...
-        playAt(idx, w.opts);
-        if (was === undefined) delete verifiedEpoch[baseId]; else verifiedEpoch[baseId] = was; // ...and ask again on the next pick
+        playRow(w); // the row as queued; the file stays unverified, so the next pick asks again
       });
       return true;
     }
@@ -3485,7 +3532,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
       var item = queue[i];
       playGen += 1;
-      if (verifyChapterFileThenPlay(item, opts)) return; // #269 gate r1: a remote edit to a queued file
+      if (!(opts && opts.skipVerify) && verifyChapterFileThenPlay(item, opts, i)) return; // #269: a remote edit to a listed file
       if (item.needsTranscode) { prewarmThenLoad(item, i, playGen, opts); return; }
       setStatus('');
       loadTrack(item, i, opts);

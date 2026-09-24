@@ -923,3 +923,137 @@ test('r2 N1: a LOCAL save verifies its file - after a failed return re-check, a 
     assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c2').data.chapterStartSec, 120);
   });
 });
+
+// ---- Gate r3 fix (round 4: background listening in the PWA - the hold must never strand audio) ---
+
+const flip = async (dom, ctx) => { ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20); };
+const holdMp = (dom) => {
+  const mp = dom.window.document.getElementById('media-player');
+  const st = { pauses: 0, plays: 0, paused: false };
+  mp.pause = () => { st.pauses += 1; st.paused = true; };
+  mp.play = () => { st.plays += 1; st.paused = false; return Promise.resolve(); };
+  Object.defineProperty(mp, 'paused', { configurable: true, get: () => st.paused });
+  return { mp, st };
+};
+const tick = async (dom, ctx, mp, t) => { ctx.media.t = t; mp.dispatchEvent(new dom.window.Event('timeupdate')); await settleN(2); };
+const verifyTunable = () => require(musicPath).CHAPTER_VERIFY; // the booted view's module instance
+// a flat Liked list [f1::c0, <rows>], a return (g9 unverified), then f1::c0's segment end (60 s)
+async function flatIntoG9(dom, ctx, rows) {
+  ctx.server.files = ctx.server.files || { g9: { chapters: G3_CH } };
+  const ec = ctx.engineCfg();
+  ec.menu.onPlay({ tracks: [tracksFixture()[0]].concat(rows), index: 0, play: LIKED }); await settleN(30);
+  await flip(dom, ctx);
+}
+
+test('r3 H1 + H3: a HUNG check at a segment end - the user presses Play (never paused again), and the deadline plays the row as queued', async () => {
+  await boot(async (dom, ctx) => {
+    const T = verifyTunable(); // the instance THIS boot required (each boot re-requires music.js)
+    assert.strictEqual(T.timeoutMs, 4000, 'the production deadline');
+    T.timeoutMs = 150; // shortened for the harness
+    await flatIntoG9(dom, ctx, [g3()[1]]);
+    ctx.server.holdFiles = true; // the check never answers
+    const { mp, st } = holdMp(dom);
+    const l0 = ctx.loads.length; const g0 = ctx.videoGets.length;
+    for (const t of [59.5, 59.8, 60.05]) await tick(dom, ctx, mp, t);
+    assert.strictEqual(st.pauses, 1, 'held once at the segment end');
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'one check');
+    mp.play(); // the user presses Play during the wait
+    for (const t of [60.3, 60.6, 60.9]) await tick(dom, ctx, mp, t);
+    assert.strictEqual(st.pauses, 1, 'the user\'s Play wins: the band never pauses again (H3)');
+    assert.strictEqual(ctx.loads.length, l0, 'still waiting on the check');
+    await new Promise((r) => setTimeout(r, 250)); await settleN(10); // past the deadline, the GET still hung
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c1@30'], 'the deadline played the row as queued (H1)');
+  }, { extraRows: g3() });
+});
+
+test('r3 H2: with the screen locked (document hidden) a segment end into an unverified file NEVER holds - it plays the queued row at once; the next visible pick checks the file', async () => {
+  await boot(async (dom, ctx) => {
+    await flatIntoG9(dom, ctx, [g3()[1], g3()[2]]);
+    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); await settleN(5); // locked again; audio plays on
+    const { mp, st } = holdMp(dom);
+    const l0 = ctx.loads.length; const g0 = ctx.videoGets.length;
+    for (const t of [59.5, 59.8, 60.05]) await tick(dom, ctx, mp, t);
+    assert.strictEqual(st.pauses, 0, 'never paused in the background');
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), [], 'no check while hidden');
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id), ['g9::c1'], 'the next row played at once');
+    ctx.setVisibility('visible'); // the user looks again (no return event needed for a pick)
+    const g1 = ctx.videoGets.length;
+    click(dom, row(dom, 'g9::c2')); await settleN(20);
+    assert.deepStrictEqual(ctx.videoGets.slice(g1), ['/api/videos/g9'], 'g9 stayed unverified: the next visible pick checks it');
+  }, { extraRows: g3() });
+});
+
+test('r3 H4: the view is torn down while an advance is held - nothing loads or plays from the dead view (answer OR failure)', async () => {
+  for (const fail of [false, true]) {
+    await boot(async (dom, ctx) => {
+      await flatIntoG9(dom, ctx, [g3()[1]]);
+      ctx.server.holdFiles = true;
+      if (fail) ctx.server.failFiles = { g9: true };
+      const { mp, st } = holdMp(dom);
+      const l0 = ctx.loads.length;
+      for (const t of [59.5, 59.8, 60.05]) await tick(dom, ctx, mp, t);
+      assert.strictEqual(st.paused, true, 'held (populated)');
+      const plays = st.plays;
+      ctx.registered.destroy();
+      ctx.release(); await settleN(20);
+      assert.strictEqual(ctx.loads.length, l0, 'no load from a dead view (' + (fail ? 'failure' : 'answer') + ')');
+      assert.strictEqual(st.plays, plays, 'no play from a dead view: the element stays as the hold left it (the player governs it)');
+    }, { extraRows: g3() });
+  }
+});
+
+test('r3 H5 (qa QA-I): the answer DROPS the row an advance was heading for - it moves on to the row that followed', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.files = { g9: { chapters: G3_CH } };
+    await flatIntoG9(dom, ctx, [g3()[2], g3()[0]]); // Liked: [f1::c0, g9::c2, g9::c0]
+    ctx.server.files.g9.chapters = [{ startTime: 0, title: 'G one' }, { startTime: 30, title: 'G two' }]; // g9's chapter 3 removed elsewhere
+    ctx.server.holdFiles = true;
+    const { mp, st } = holdMp(dom);
+    const l0 = ctx.loads.length;
+    for (const t of [59.5, 59.8, 60.05, 60.3]) await tick(dom, ctx, mp, t);
+    assert.strictEqual(st.paused, true, 'held on the check');
+    ctx.release(); await settleN(30);
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c0@0'], 'the next row that still exists plays - never held on nothing');
+    assert.strictEqual(row(dom, 'g9::c2'), null, 'the dropped row left the list');
+  }, { extraRows: g3() });
+});
+
+test('r3 (qa QA-G / QA-H stay green): the held advance loads ONCE at the moved start when the answer changes it, and plays the queued row when the check fails', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.files = { g9: { chapters: G3_CH } };
+    await flatIntoG9(dom, ctx, [g3()[2], g3()[0]]);
+    ctx.server.files.g9.chapters = [{ startTime: 0, title: 'G one' }, { startTime: 30, title: 'G two' }, { startTime: 65, title: 'G three' }];
+    ctx.server.holdFiles = true;
+    const { mp } = holdMp(dom);
+    const l0 = ctx.loads.length;
+    for (const t of [59.5, 59.8, 60.05, 60.3]) await tick(dom, ctx, mp, t);
+    ctx.release(); await settleN(30);
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c2@65'], 'once, at the moved start');
+  }, { extraRows: g3() });
+  await boot(async (dom, ctx) => {
+    ctx.server.files = { g9: { chapters: G3_CH } };
+    await flatIntoG9(dom, ctx, [g3()[2], g3()[0]]);
+    ctx.server.failFiles = { g9: true }; ctx.server.holdFiles = true;
+    const { mp } = holdMp(dom);
+    const l0 = ctx.loads.length;
+    for (const t of [59.5, 59.8, 60.05, 60.3]) await tick(dom, ctx, mp, t);
+    ctx.release(); await settleN(30);
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c2@60'], 'the queued row, as listed');
+  }, { extraRows: g3() });
+});
+
+test('r3 (adversary S5): a continue arm (the "Jump back in" tile of the loaded chapter) after a FAILED return re-check never seeks', async () => {
+  await boot(async (dom, ctx) => {
+    await settleN(10);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0');
+    ctx.media.t = 130;
+    ctx.server.fail = true; await flip(dom, ctx); ctx.server.fail = false;
+    ctx.server.chapters = MOVED;
+    const tile = dom.window.document.querySelector('.music-jump-tile[data-id="f1::c0"]');
+    assert.ok(tile, 'the Jump back in strip names the loaded chapter (non-vacuous)');
+    const s0 = ctx.media.seeks.length;
+    click(dom, tile); await settleN(40);
+    assert.strictEqual(ctx.media.t, 130, 'a continue never seeks, even through the check');
+    assert.deepStrictEqual(ctx.media.seeks.slice(s0), [], 'no seek');
+  });
+});
