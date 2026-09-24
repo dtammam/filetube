@@ -3208,5 +3208,11 @@
     "date": "2026-09-24",
     "title": "Fixed chapter times now play from the right spot everywhere",
     "intent": "After you fix a chapter's start time, tapping that chapter now starts it at the new spot instead of in the tail of the song before it, including the chapter that is already playing. If the app was left open on another device, it picks up the new times when you come back to it."
+  },
+  {
+    "version": "1.327.0",
+    "date": "2026-09-24",
+    "title": "The Click skins catch the light when you tilt your phone",
+    "intent": "Open the Click, Click Black or Click Matte skin, go to Settings > Lighting in its menu and pick Subtle or Pronounced: the shine on the click wheel, the center button, the body and the screen glass now moves as you tilt the phone, like a real player under a lamp, with the shadows following. On a computer the mouse over the player moves the light instead. It stays off until you turn it on, and the phone asks once for motion access."
   }
 ]
