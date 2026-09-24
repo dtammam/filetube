@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/chapter-snap
 anchor: spec
 status: Building
-next: builder hand-off to the Architect for the FULL gate (adversary + qa + security-brief; data class - brief the adversary to destroy the chapter data)
+next: built @c1a3be59, mutants 38/38 RED; hand-off to the Architect for the FULL gate (adversary + qa + security-brief; data class - brief the adversary to destroy the chapter data)
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -204,7 +204,30 @@ Files:
   7600-character window the builder outgrew).
 - docs/exec-plans/tech-debt-tracker.md #239-#241.
 
-Instrument outputs and suites: see Measurements and the hand-off section (filled at commit).
+Commits: **4346aa13** (the build; pre-commit hook: `tests 7124 pass 7124 fail 0`), **8dadd459**
+(test/unit/chapter-snap-routes.test.js - the post-await re-checks with injected deps; hook `tests
+7126 pass 7126 fail 0`), **c1a3be59** (mutant round 1 fixes, below; hook `tests 7126 pass 7126 fail
+0`).
+
+Instrument outputs (verbatim, Node 22.23.1, at c1a3be59):
+- `npm run lint`: `✖ 6 problems (0 errors, 6 warnings)` - all pre-existing `no-unused-vars`
+  warnings in public/js/common.js (setTheme, homeFeedEnabled, setIconSet, addToQueue,
+  openTranscriptFor, shareExternalUrl), none in code this branch wrote.
+- `npm run lint:css`: `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`.
+- `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`.
+- `bash .harness/lib/check-markers.sh`: `✗ ...2026-09-24-chapter-snap.md: stale approval @ecb61e1d
+  - reviewed code changed since; re-gate` / `check-markers: 1 issue(s) found` - expected while
+  Building (the design line binds Dean's intake to the base sha; the gate re-binds at the reviewed
+  sha - the chapter-likes plan carried the same flag).
+- Targeted suites (never the full `npm test`, per the wave cadence):
+  - new files: chapter-snap-core 15/15, chapter-snap-client 8/8, chapter-snap-routes 2/2,
+    chapter-snap (integration) 12/12 WITH `FILETUBE_TEST_FFMPEG=<static ffmpeg 7.0.2>` and
+    `pass 11, skipped 1` without (the REAL-ffmpeg test skips by name), chapter-snap-editor-ui 6/6.
+  - the touched-surface unit batch (music*, skin*, player*, modal*, setup*, chapter*, listen*,
+    card-like, overlay*, css*, route*, common*, database, exec-plans-census, docs*,
+    tech-debt-census, comment-debt-census, shell*, *parity*): `tests 1740 pass 1740 fail 0`.
+  - the related integration batch (chapter*, rbac*, route*, settings*, backup*, music*, liked*,
+    api): `tests 262 pass 261 fail 0 skipped 1` (the skip = the REAL-ffmpeg test without ffmpeg).
 
 ## Measurements
 
@@ -242,7 +265,71 @@ times..."; music: album card -> drill "Fix times"). Verbatim numbers:
 
 ## Mutant table
 
-(filled after commit 1 - mutants run in a /tmp sandbox from `git archive <sha>`)
+Runner: a scratchpad script that edits ONE file in a sandbox built from an archive of the
+committed sha (+ a node_modules symlink), asserts the anchor matched exactly once and the bytes
+changed, runs the named binding tests, and restores. RED = a failing or cancelled test (`not ok`).
+
+**Round 1 @8dadd459** - 33 RED, 5 survivors, each closed at c1a3be59:
+- M8 / M8b (either pre-await visibility check removed) SURVIVED: the gate checked visibility twice
+  on the same cached record. Fixed by keeping ONE (the text editor's `restrictedVideoMutation`);
+  the in-tick re-check stays (M6).
+- M13 (cache ignores mtime) and M13b (ignores size) SURVIVED: every test changed both. The service
+  test now moves each axis ALONE with the other held equal to the record.
+- M17 (parser trusts any stderr line) SURVIVED: the trap line was overwritten by a later real
+  start. A mid-stream non-detector line after the last gap now binds it.
+- M38 (the text editor callback forgets `chaptersEdited`) SURVIVED: now asserted by the watch
+  source lock.
+- M18 (timeout never kills) was reported green by a runner miscount (the test is CANCELLED - its
+  promise never settles - not passed); the runner now counts any `not ok`.
+
+**Round 2 @c1a3be59 - 38 of 38 RED** (the runner's bytes before -> after proved each edit landed):
+
+| # | Mutant | File | Binding test that reds |
+|---|---|---|---|
+| M1 | count check removed | chapterSnap.js | chapter-snap.test.js refusals |
+| M2 | strictly increasing -> non-decreasing | chapterSnap.js | core validateSnapStarts |
+| M3 | chapter-1 check removed | chapterSnap.js | refusals |
+| M4 | end-of-file check removed | chapterSnap.js | refusals |
+| M5 | version compare removed | chapterSnapRoutes.js | refusals, stale seed, racing saves, routes TOCTOU (4 fail) |
+| M6 | in-tick visibility re-check removed | chapterSnapRoutes.js | routes "a restriction that lands between the gate and the write tick" |
+| M7 | requireModifyLibrary removed | chapterSnapRoutes.js | RBAC 403 |
+| M8 | restrictedVideoMutation removed | chapterSnapRoutes.js | RBAC 404 |
+| M9 | re-edit uses the current times as the base | chapterSnap.js | core buildSnappedManual |
+| M10 | typed-base revert drops the list | chapterSnapRoutes.js | "revert of a TYPED list" |
+| M11 | revert count-change guard removed | chapterSnapRoutes.js | "revert seeds from STORAGE after a REHEAT" |
+| M12 | no re-stat after the ffmpeg await | chapterSilence.js | core "changes WHILE ffmpeg reads it" |
+| M13 | cache ignores mtime | chapterSilence.js | core service (mtime alone) |
+| M13b | cache ignores size | chapterSilence.js | core service (size alone) |
+| M14 | no join of an in-flight run | chapterSilence.js | core service "ONE run" |
+| M15 | queue cap removed | chapterSilence.js | core service busy |
+| M16 | cache NUL refusal removed | chapterSilence.js | core cache |
+| M17 | parser trusts any line | chapterSilence.js | core parser edges |
+| M18 | timeout never kills | chapterSilence.js | core runSilenceDetect (cancelled) |
+| M19 | Extras row ignores canModify | skin-surface.js | client "hidden for a viewer who may not modify" (both writers) |
+| M20 | sticker forwarder drops the hook | skin-surface.js | client sticker "opens the ONE editor" |
+| M21 | desktop writer drops the hook | music.js | client desktop (2 fail) |
+| M22 | the seam skips reflectChapter | music.js | client RE-REGISTER |
+| M23 | the seam does not patch the queue | music.js | client RE-REGISTER |
+| M24 | drill Fix times ungated | music.js | client drill non-modifier |
+| M25 | watch entry outside the RBAC arm | player.js | client watch (3) |
+| M26 | revert skips the in-page confirm | common.js | editor-ui revert |
+| M27 | text-editor dirty guard removed | common.js | editor-ui entry point 4 |
+| M28 | stale seed keeps Save enabled | common.js | editor-ui STALE seed |
+| M29 | nudge lower clamp removed | common.js | editor-ui nudge |
+| M30 | dirty Cancel closes without asking | common.js | editor-ui dirty Cancel |
+| M31 | settings accepts any lead-in | lib/config/routes.js | "the scan route ... lead-in" |
+| M32 | GET detail never Edited | lib/media/routes.js | HEADLINE |
+| M33 | music rows never Edited | server.js | HEADLINE |
+| M34 | scan route runs for a one-chapter item | chapterSnapRoutes.js | "the scan route" |
+| M35 | snap-all ordering guard removed | chapterSnap.js | core snapAllStarts |
+| M36 | lead-in not subtracted | chapterSnap.js | core + integration (7 fail) |
+| M37 | save skips validation | chapterSnapRoutes.js | refusals |
+| M38 | text-editor callback forgets chaptersEdited | player.js | client watch (3) |
+
+Reachability mutant (REAL ffmpeg, run by hand in the c1a3be59 sandbox with
+`FILETUBE_TEST_FFMPEG`): the `silence_end:` regex broken -> `not ok 1 - REACHABILITY ...` (`pass 0
+fail 1`); the unmutated control `ok 1 - REACHABILITY` (`pass 1 fail 0`). The real detector output
+reaches the suggestions; a parser that cannot read it reds.
 
 ## Disclosed gaps
 
