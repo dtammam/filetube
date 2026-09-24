@@ -49,13 +49,13 @@ function channelFolderOf(track) {
 // three of them silently drops off the fourth); every seam (a load, a chapter cross, the
 // listen dock-return restore, the dock-return seed from the player's meta) builds through
 // here, so a carried field cannot vanish at one seam (a census test forbids a literal).
-// `id` overrides the source's id (a chapter cross names the chapter). The channel folder: a
-// queue entry DERIVES it (channelFolderOf, the library gate); a player META carries the one
-// loadTrack already derived as `channelFolder` (a string there wins, gated upstream).
-function nowPlayingFrom(t, id) {
+// The channel folder: a queue entry DERIVES it (channelFolderOf, the library gate); a player
+// META carries the one loadTrack already derived as `channelFolder` (a string there wins,
+// gated upstream). Gate r2 S3: no id override - every caller's source already carries the id.
+function nowPlayingFrom(t) {
   t = t || {};
   return {
-    id: id || t.id,
+    id: t.id,
     title: t.title || '',
     artist: t.artist || '',
     album: t.album || '',
@@ -277,7 +277,9 @@ function buildNowPlayingPanelHtml(np, upNext) {
   // or the channel grid for a listen video). Gate r1 W2: `np.artistTap === false` is the view's
   // veto (a listen video with no channel has nowhere to go - the plain line).
   var subArtist = (np.artistTap !== false && typeof np.artist === 'string') ? np.artist : '';
-  return S.buildPanelHtml({ title: np.title, subline: subline, subArtist: subArtist }, rows);
+  var panelNp = { title: np.title, subline: subline, subArtist: subArtist };
+  if (typeof np.artistTitle === 'string' && np.artistTitle) panelNp.subArtistTitle = np.artistTitle; // gate r2 S4: "Go to channel" for a listen video
+  return S.buildPanelHtml(panelNp, rows);
 }
 
 // The display year for an album drill: the min non-null Integer year across
@@ -423,7 +425,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // no first track) - the slot keeps its box, srcless and unshimmered (nothing to reveal).
     (artId
       ? '<img class="music-drill-art art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="' + escapeMusicHtml(title) + '" />'
-      : '<img class="music-drill-art" alt="' + escapeMusicHtml(title) + '" />') +
+      : '<img class="music-drill-art" alt="" />') + // gate r2 S5: a srcless img paints its alt text - keep the box empty
     '<div class="music-drill-info">' +
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
     // v1.317 (M1): the album drill's artist line drills into that artist (the card delegation).
@@ -906,7 +908,9 @@ if (typeof module !== 'undefined' && module.exports) {
       var meta = (pl && typeof pl.getCurrentMeta === 'function') ? pl.getCurrentMeta() : null;
       return SKINS.skinActiveFor(meta);
     }
-    function buildSkinCtx(ci) {
+    // `popout` = the ctx is for the desktop pop-out window's engine (the artist line's mode
+    // differs there - see artistTapMode).
+    function buildSkinCtx(ci, popout) {
       var mp = hostCtl('media-player');
       var dur = (mp && isFinite(mp.duration) && mp.duration > 0) ? mp.duration : ((queue[ci] && Number(queue[ci].durationSec)) || 0);
       var pos = mp ? (Number(mp.currentTime) || 0) : 0;
@@ -930,15 +934,19 @@ if (typeof module !== 'undefined' && module.exports) {
       // listen track's media thumbnail); the /albumart hardcode served a listen track (a
       // VIDEO id) the placeholder SVG. On the dock-return re-init the rebuilt queue misses
       // the listen track (the W1 seam), so the activeListenId marker supplies the same
-      // thumbnail route the original load used.
+      // thumbnail route the original load used. Gate r2 (qa W1's sibling reader of the same
+      // marker): any chapter of the listen file matches (sameMusicItem), and the route takes the
+      // BASE video id - `/thumbnail/<vid>::c1` is no media id (the placeholder SVG).
       var curArt = (ci >= 0 && queue[ci] && queue[ci].id === playingId && queue[ci].artUrl)
-        || (activeListenId === playingId && playingId ? ('/thumbnail/' + encodeURIComponent(playingId)) : '');
+        || ((playingId && activeListenId && sameMusicItem(playingId, activeListenId)) ? ('/thumbnail/' + encodeURIComponent(String(playingId).replace(/::c\d+$/, ''))) : '');
       return {
         track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
           artUrl: playingId ? musicArtUrl(playingId, curArt) : '' },
         // v1.317 gate r1 W2: the view's veto on the artist line (the engine ANDs it with its
-        // onArtist presence) - a listen video with no channel folder gets the plain line.
-        artistTap: artistTapAvailable(),
+        // onArtist presence) - a listen video with no channel folder gets the plain line, and in
+        // the pop-out a listen video's line is plain too (gate r2). The tooltip names the target.
+        artistTap: artistTapAvailable(popout),
+        artistTitle: artistTapTitle(popout),
         upNext: up, fullList: full, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         // iPod footer "N of M": the current track's 1-based place in the whole queue.
@@ -986,16 +994,17 @@ if (typeof module !== 'undefined' && module.exports) {
     // hidden controls, sticker quick-menu + the v1.249 Extras (hooks below), hold-to-fast-
     // scan on, shuffle proxied to this view's button. `panel`/`win` differ per surface.
     function skinEngineConfig(panel, winRef) {
+      var popout = winRef !== window; // gate r2: the desktop pop-out window's engine (not the in-tab one)
       return {
         panel: panel,
         win: winRef,
         getSkinId: function () { return SKINS.activeSkinId(); },
-        getCtx: function () { return buildSkinCtx(currentSkinIndex()); },
+        getCtx: function () { return buildSkinCtx(currentSkinIndex(), popout); },
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
         onSelectIndex: function (i) { playAt(i, { soloChapter: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onShuffle: function () { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); },
-        onArtist: function () { artistTap(); }, // v1.317 (M1): the skin's artist line -> the artist drill, or the channel grid for a listen video (both surfaces)
+        onArtist: function () { artistTap(undefined, popout); }, // v1.317 (M1): the skin's artist line -> the artist drill, or (in-tab only) the channel grid for a listen video
         fastScan: true,
         sticker: {
           getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
@@ -1148,7 +1157,7 @@ if (typeof module !== 'undefined' && module.exports) {
       playingId = id;
       var t = null, ti = -1;
       for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; ti = i; break; } }
-      if (t) nowPlaying = nowPlayingFrom(t, id);
+      if (t) nowPlaying = nowPlayingFrom(t);
       // v1.311 (Dean, tech-debt #230 part i): a chaptered album is ONE file whose `::c`
       // chapters are queue entries; the playhead rolls through them WITHOUT a reload, so
       // registerTrackNav ran exactly once (at load, on the STARTED chapter) and never again.
@@ -1324,8 +1333,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!id) return false;
       for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) return !!queue[i].listen; }
       // the dock-return re-init rebuilds `queue` WITHOUT the listen video - the module-scoped
-      // marker keeps the way back alive for the whole session (W1).
-      return id === activeListenId;
+      // marker keeps the way back alive for the whole session (W1). Gate r2 (qa W1): the marker
+      // holds the LOADED id, and a chaptered listen video rolls into later chapters without a
+      // reload (reflectChapter), so after a browse replaces `queue` the live id is `vid::c1`
+      // while the marker is `vid::c0` - an exact compare dropped the Watch row AND sent the
+      // artist line to the EMPTY artist drill. Any chapter of the same listen file matches.
+      return !!activeListenId && sameMusicItem(id, activeListenId);
     }
     function watchBackTap() {
       var id = effectiveCurrentId();
@@ -1343,19 +1356,22 @@ if (typeof module !== 'undefined' && module.exports) {
     // the listen dock-return restore, the dock-return seed from the player's meta.channelFolder -
     // each deriving the folder from the same item, so it survives every `queue` replacement (an
     // in-Music drill, a tab, a re-init). The former queue-entry lookup ahead of it was a second
-    // source that answered identically on every production path (the adversary's S6 survived
-    // every drive for that reason); one source cannot drift. '' = no channel.
+    // source that answered identically on every production path; one source cannot drift. The
+    // seed's source is the PLAYER's meta, which an adopting load (the same id re-opened from
+    // Watch -> Listen) refreshes through applyAdoptFlavor (player.js, gate r2). '' = no channel.
     function channelFolderCurrent() {
       var id = effectiveCurrentId();
       if (!id || !nowPlaying || !nowPlaying.id) return '';
-      // Gate r1 QA S2: the folder is per-FILE, so two CHAPTER ids match on their BASE id - a
-      // chapter cross after a re-init with an empty queue (the watcher advances
-      // effectiveCurrentId while nowPlaying stays at the loaded chapter) keeps the row. A
-      // non-chapter id must match exactly: the same file live as a RAW video ('film' beside a
-      // 'film::c1' record) is not this music item (effectiveCurrentId's adversarial W2 posture).
-      if (!sameMusicItem(nowPlaying.id, id)) return '';
+      // Exact: every seam that moves the effective id (a load, a chapter cross, the seed, the
+      // restore) rewrites the record with that same id, so they never differ by chapter here
+      // (gate r2: the chapter-base arm this compare once had was unreachable). A different id -
+      // e.g. the same file live as a RAW video beside a `::c` record - is not this music item.
+      if (nowPlaying.id !== id) return '';
       return (typeof nowPlaying.folderName === 'string') ? nowPlaying.folderName : '';
     }
+    // Two ids name the same listen/music FILE: equal, or two `::c` CHAPTER ids of one base (a
+    // chaptered file rolls through its chapters without a reload). A raw id never matches a
+    // `::c` id (effectiveCurrentId's adversarial W2 posture). Caller: watchBackVisible.
     function sameMusicItem(a, b) {
       a = String(a); b = String(b);
       if (a === b) return true;
@@ -1388,13 +1404,20 @@ if (typeof module !== 'undefined' && module.exports) {
     // track the artist line goes to the CHANNEL grid (for YouTube content the channel IS the
     // artist - Dean's ask) when it has a channel folder, and is NOT a control at all when it
     // has none; a normal track keeps the artist drill. 'drill' | 'channel' | 'none'.
-    function artistTapMode() {
+    // Gate r2 (qa W2, Dean's ruling): in the desktop POP-OUT (`popout`) a listen track's line is
+    // plain text - the channel grid is a navigation of the window BEHIND the pop-out, and the
+    // router's view swap would tear the pop-out down (the channel/Watch rows' main-document-only
+    // rule). The artist drill stays there: it renders in the main document and leaves it open.
+    function artistTapMode(popout) {
       if (!watchBackVisible()) return 'drill';
+      if (popout) return 'none';
       return channelVisible() ? 'channel' : 'none';
     }
-    function artistTapAvailable() { return artistTapMode() !== 'none'; }
-    function artistTap(name) {
-      var mode = artistTapMode();
+    function artistTapAvailable(popout) { return artistTapMode(popout) !== 'none'; }
+    // The control's tooltip names where it goes (gate r2 S4): '' = the renderers' "Go to artist".
+    function artistTapTitle(popout) { return artistTapMode(popout) === 'channel' ? 'Go to channel' : ''; }
+    function artistTap(name, popout) {
+      var mode = artistTapMode(popout);
       if (mode === 'channel') channelTap();
       else if (mode === 'drill') openArtistDrill(name);
     }
@@ -1655,7 +1678,7 @@ if (typeof module !== 'undefined' && module.exports) {
       nowPlayingPanel.className = 'music-nowplaying-panel';
       // v1.317 gate r1 W2: the artist line is a control only when it has somewhere to go
       // (artistTapAvailable: a listen video with no channel renders the plain line).
-      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(Object.assign({}, nowPlaying, { artistTap: artistTapAvailable() }), rows);
+      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(Object.assign({}, nowPlaying, { artistTap: artistTapAvailable(), artistTitle: artistTapTitle() }), rows);
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
       // v1.224 (Dean): the up-next now includes played history above the current
@@ -1703,7 +1726,8 @@ if (typeof module !== 'undefined' && module.exports) {
     if (nowPlayingPanel) {
       nowPlayingPanel.addEventListener('click', function (e) {
         // v1.317 (M1): the panel's artist · album line (buildPanelHtml's data-artist button)
-        // opens the artist drill - the "Playing from <Album>" line's model, one level over.
+        // opens the artist drill - the "Playing from <Album>" line's model, one level over - or,
+        // for a listen video, the channel grid (artistTap decides; gate r1 W2).
         var sub = e.target.closest('.mnp-sub[data-artist]');
         if (sub) { artistTap(sub.getAttribute('data-artist')); return; }
         var row = e.target.closest('.mnp-queue-row');
@@ -2897,7 +2921,7 @@ if (typeof module !== 'undefined' && module.exports) {
       chapterViewId = /::c\d+$/.test(String(live)) ? live : null;
       nowPlaying = null;
       for (var i = 0; i < queue.length; i++) {
-        if (queue[i].id === live) { nowPlaying = nowPlayingFrom(queue[i], live); break; }
+        if (queue[i].id === live) { nowPlaying = nowPlayingFrom(queue[i]); break; }
       }
       applyPlayingHighlight();
     }

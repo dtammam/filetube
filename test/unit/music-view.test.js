@@ -453,11 +453,11 @@ test('v1.317 (M1): buildNowPlayingPanelHtml keeps the plain sub-line (no data-ar
   assert.doesNotMatch(html, /data-artist/);
 });
 
-test('v1.317 gate r1 W3: nowPlayingFrom is the ONE writer of the now-playing record - a queue entry DERIVES the channel folder, a player meta CARRIES it, and an id override names a chapter', () => {
+test('v1.317 gate r1 W3: nowPlayingFrom is the ONE writer of the now-playing record - a queue entry DERIVES the channel folder, and a player meta CARRIES it (gate r2 S3: no id override - every caller\'s source carries its id)', () => {
   const { nowPlayingFrom } = require('../../public/js/music.js');
   const lib = { id: 'c1', title: 'T', artist: 'A', album: 'B', albumKey: 'k', source: 'library', folderName: ' Chan ' };
   assert.deepStrictEqual(nowPlayingFrom(lib), { id: 'c1', title: 'T', artist: 'A', album: 'B', albumKey: 'k', folderName: 'Chan' });
-  assert.strictEqual(nowPlayingFrom(lib, 'c1::c2').id, 'c1::c2', 'the id override names the chapter');
+  assert.strictEqual(nowPlayingFrom(lib, 'c1::c2').id, 'c1', 'a second argument is ignored (the dead override is gone)');
   const listenChapter = { id: 'v1::c0', title: 'Ch', artist: 'The Channel', albumKey: 'v1', source: 'library-chapter', listen: true, folderName: 'The Channel' };
   assert.deepStrictEqual(nowPlayingFrom(listenChapter), { id: 'v1::c0', title: 'Ch', artist: 'The Channel', album: '', albumKey: 'v1', folderName: 'The Channel' });
   assert.deepStrictEqual(nowPlayingFrom({ id: 'n1', title: 'N', artist: 'X', folderName: 'Music/Ripped' }), { id: 'n1', title: 'N', artist: 'X', album: '', albumKey: '', folderName: '' }, 'a native track carries no channel (the library gate)');
@@ -489,7 +489,8 @@ test('v1.317 gate r1 W3 census: music.js builds `nowPlaying` ONLY through nowPla
 test('v1.317 gate r1 W2: an EMPTY drill never requests /albumart/ with an empty id (header + sticky bar keep a srcless, unshimmered slot)', () => {
   const header = buildDrillHeaderHtml({ type: 'artist', label: 'Ghost' }, []);
   assert.doesNotMatch(header, /\/albumart\//, 'no art request without a first track');
-  assert.match(header, /<img class="music-drill-art" alt="Ghost" \/>/, 'the art slot stays (layout), srcless and without the shimmer');
+  assert.match(header, /<img class="music-drill-art" alt="" \/>/, 'the art slot stays (layout), srcless, without the shimmer, and with an EMPTY alt (gate r2 S5: a srcless img paints its alt text)');
+  assert.match(header, /<h3 class="music-drill-title" title="Ghost">Ghost<\/h3>/, 'the name still heads the drill');
   const sticky = buildStickyBarHtml({ type: 'artist', label: 'Ghost' }, []);
   assert.doesNotMatch(sticky, /\/albumart\//);
   assert.match(sticky, /<img class="music-sticky-thumb" alt="" \/>/);
@@ -502,6 +503,12 @@ test('v1.317 gate r1 W2: buildNowPlayingPanelHtml honours the view\'s veto - art
   assert.match(html, /<div class="mnp-sub">The Channel · Vid<\/div>/, 'a div');
   assert.doesNotMatch(html, /data-artist/);
   assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A', artistTap: true }, []), /<button type="button" class="mnp-sub" data-artist="A"/, 'true keeps the control');
+});
+
+test('v1.317 gate r2 S4: the panel line\'s tooltip names its target - "Go to channel" when the view says so, else "Go to artist"', () => {
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'The Channel', artistTitle: 'Go to channel' }, []), /<button type="button" class="mnp-sub" data-artist="The Channel" title="Go to channel">/);
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A' }, []), /<button type="button" class="mnp-sub" data-artist="A" title="Go to artist">/, 'the default');
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A', artistTitle: '' }, []), /title="Go to artist"/, 'an empty title keeps the default');
 });
 
 test('v1.317 (M1, D7): channelFolderOf - a LIBRARY-backed track (projection or listen) with a folderName has a channel; a native track never does', () => {

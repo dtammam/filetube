@@ -36,7 +36,9 @@
 //                  [data-skin-artist] control (ctx.artistTap): without it (podcasts) the line
 //                  renders as the plain div - never an inert button. The view may also
 //                  VETO it per track with getCtx().artistTap === false (music: a listen
-//                  video with no channel folder has nowhere to go).
+//                  video with no channel folder has nowhere to go, and a listen video in
+//                  the pop-out window, which must not navigate the window behind it), and
+//                  name the target with getCtx().artistTitle (default "Go to artist").
 //   sticker        the v1.238-249 sticker quick-menu (speed/loop/skin) + optional Extras:
 //     onSkinChange()  re-render after a skin pick (the view repaints its surfaces)
 //     getPlayer()     -> the FileTube player facade for loop get/set
@@ -1578,16 +1580,18 @@
   }
   // v1.317 (M1+M2), both OPTIONAL so podcasts' panel stays BYTE-IDENTICAL: `np.subArtist` (a
   // non-empty string) renders the sub-line as a `data-artist` button the view's delegated
-  // click opens the artist drill from (music passes its artist; podcasts pass nothing = the
-  // plain div); a row's `durLabel` (a non-empty string) renders `.mnp-queue-dur` after the
-  // title block - a chaptered album's row shows that chapter's own length; '' = no span.
+  // click acts on (music: the artist drill, or the channel grid for a listen video; podcasts
+  // pass nothing = the plain div), titled `np.subArtistTitle` when given (music's "Go to
+  // channel"), else "Go to artist"; a row's `durLabel` (a non-empty string) renders
+  // `.mnp-queue-dur` after the title block - a chaptered album's row shows that chapter's own
+  // length; '' = no span.
   function buildPanelHtml(np, rows) {
     np = np || {};
     var subArtist = (typeof np.subArtist === 'string') ? np.subArtist : '';
     var sub = '';
     if (np.subline) {
       sub = subArtist
-        ? '<button type="button" class="mnp-sub" data-artist="' + panelEscape(subArtist) + '" title="Go to artist">' + panelEscape(np.subline) + '</button>'
+        ? '<button type="button" class="mnp-sub" data-artist="' + panelEscape(subArtist) + '" title="' + panelEscape((typeof np.subArtistTitle === 'string' && np.subArtistTitle) ? np.subArtistTitle : 'Go to artist') + '">' + panelEscape(np.subline) + '</button>'
         : '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>';
     }
     var meta = '<div class="mnp-meta">' +

@@ -130,6 +130,13 @@ function isAdoptLoad(currentId, requestedId, state) {
 // that omits both (any legacy partial adopt call) changes nothing. Mutates
 // and returns currentData - the shape the adopt branch consumes; pure over
 // its inputs (no player state), so the binding is unit-testable.
+// v1.317 gate r2 (adversary W1): `channelFolder` (the music view's "Go to
+// channel" folder, read back by getCurrentMeta after a re-init) rides the
+// same contract. Watch -> Listen re-opens the SAME id, so music's load ADOPTS
+// and the watch load's data (which never declares the field) stayed - the
+// row and the listen artist line died on the next re-init. Music always
+// declares it (a string, '' = no channel); watch.js never does, so a Listen
+// -> Watch adopt keeps it (harmless: resumeMode null ends isMusic).
 function applyAdoptFlavor(currentData, data) {
   if (!currentData || !data) return currentData;
   if (Object.prototype.hasOwnProperty.call(data, 'readerHref')) {
@@ -137,6 +144,9 @@ function applyAdoptFlavor(currentData, data) {
   }
   if (Object.prototype.hasOwnProperty.call(data, 'resumeMode')) {
     currentData.resumeMode = (typeof data.resumeMode === 'string' && data.resumeMode) ? data.resumeMode : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'channelFolder')) {
+    currentData.channelFolder = (typeof data.channelFolder === 'string') ? data.channelFolder : undefined;
   }
   return currentData;
 }

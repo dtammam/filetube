@@ -538,3 +538,28 @@ test('v1.317 (seam): the DRIVEN podcast panel renders no length column and its s
     assert.strictEqual(sub.hasAttribute('data-artist'), false, 'and carries no artist-drill hook');
   });
 });
+
+// Gate r2 (qa W3, Dean's ruling): the Nordic (thumb) rows gained a length column in v1.317 (the
+// shared music-skins renderer), and podcasts share it - so an episode shows its length there
+// (the iPod list already did), and a 0/unknown duration is BLANK (no `0:00`), M2's desktop rule.
+test('v1.317 gate r2 qa W3: the podcast Nordic skin rows show an episode\'s length, and NO length span for an episode without one', async () => {
+  const episodes = [
+    { id: 'e1', subId: 's1', title: 'Ep One', showName: 'The Show', pubDateMs: 1690000000000, durationSec: 2465, description: 'n1', status: 'downloaded' },
+    { id: 'e2', subId: 's1', title: 'Ep Two', showName: 'The Show', pubDateMs: 1690100000000, description: 'n2', status: 'downloaded' }, // no duration
+    { id: 'e3', subId: 's1', title: 'Ep Three', showName: 'The Show', pubDateMs: 1690200000000, durationSec: 0, description: 'n3', status: 'downloaded' },
+  ];
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    dom.window.localStorage.setItem('ft-music-skin', 'spotify');
+    await playEp(dom, 0);
+    const el = panel(dom);
+    assert.match(el.className, /\bmms-spotify\b/, 'precondition: the Nordic skin painted');
+    const rows = [...el.querySelectorAll('.mms-qlist .mms-row')];
+    const byTitle = {};
+    for (const r of rows) byTitle[r.querySelector('.mms-rt').textContent] = r.querySelector('.mms-rd');
+    assert.deepStrictEqual(Object.keys(byTitle).sort(), ['Ep One', 'Ep Three', 'Ep Two'], 'every episode row rendered (non-vacuous)');
+    assert.ok(byTitle['Ep One'] && byTitle['Ep One'].textContent === '41:05', 'a known duration shows its length');
+    assert.strictEqual(byTitle['Ep Two'], null, 'no duration -> no length span (never 0:00)');
+    assert.strictEqual(byTitle['Ep Three'], null, 'a 0 duration -> no length span');
+  }, { meta, mm: { narrow: true }, episodes });
+});

@@ -559,6 +559,32 @@ test('v1.317 (M2): the Nordic (thumb) queue rows carry each row\'s length (.mms-
   assert.match(css, /\.mms-spotify \.mms-rd\{[^}]*flex:none;[^}]*font-variant-numeric:tabular-nums;/, 'a className with no rule behind it is a defect');
 });
 
+test('v1.317 gate r2 S4: every skin titles the artist control with ctx.artistTitle ("Go to channel" for a listen video), defaulting to "Go to artist"', () => {
+  for (const id of skins.IDS) {
+    const withTitle = skins.renderFull(id, Object.assign({}, CTX, { artistTap: true, artistTitle: 'Go to channel' }));
+    assert.match(withTitle, /data-skin-artist title="Go to channel">NESTALGIA</, id + ': the view\'s title');
+    const plain = skins.renderFull(id, Object.assign({}, CTX, { artistTap: true }));
+    assert.match(plain, /data-skin-artist title="Go to artist">NESTALGIA</, id + ': the default');
+  }
+});
+
+test('v1.317 gate r2 (qa W3, Dean\'s ruling): a 0/unknown length is BLANK on the Nordic rows - no `0:00` span (M2\'s desktop rule); the iPod list rows are unchanged', () => {
+  const ctx = Object.assign({}, CTX, { upNext: [
+    { index: 0, title: 'Known', durLabel: '41:05', state: 'current' },
+    { index: 1, title: 'Zero', durLabel: '0:00', state: 'next' }, // both producers format 0 s this way (music mmssMusic, podcasts skinDur)
+    { index: 2, title: 'None', durLabel: '', state: 'next' },
+    { index: 3, title: 'Absent', state: 'next' },
+    { index: 4, title: 'Hours', durLabel: '1:02:05', state: 'next' },
+  ] });
+  const html = skins.renderFull('spotify', ctx);
+  const rows = [...html.matchAll(/<button type="button" class="mms-row[^"]*" data-skin-go="(\d)">([\s\S]*?)<\/button>/g)];
+  assert.strictEqual(rows.length, 5, 'every row rendered (non-vacuous)');
+  const rd = rows.map((m) => { const r = /<span class="mms-rd">([^<]*)<\/span>/.exec(m[2]); return r ? r[1] : null; });
+  assert.deepStrictEqual(rd, ['41:05', null, null, null, '1:02:05'], 'a known length shows; 0/empty/absent render NO span');
+  const ipod = skins.renderFull('ipod', Object.assign({}, ctx, { fullList: ctx.upNext }));
+  assert.ok(ipod.includes('<span class="mms-rd">0:00</span>'), 'the iPod list keeps its pre-v1.317 bytes (out of scope)');
+});
+
 test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) across every renderer, so each consumer\'s own line rules keep winning', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
