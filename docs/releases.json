@@ -3148,5 +3148,11 @@
     "date": "2026-09-23",
     "title": "The channel bell flips in place and matches your theme",
     "intent": "On the Subscriptions page, turning a channel's notification bell on or off used to reload the whole list, so the page blinked and jumped on every tap. Now only that bell changes, right where you tapped it. The bell, the pin star and the settings button on each row also now look like the other buttons in whichever era you use: glossy in 2009, flat in 2005 and 2014, softly shadowed in 2021, in light and dark mode alike."
+  },
+  {
+    "version": "1.317.0",
+    "date": "2026-09-24",
+    "title": "Music: jump to a song's channel, like a single chapter, and see chapter lengths",
+    "intent": "In Music, tap a song's artist line or pick Go to channel from the menu to jump to that channel's videos, and the list beside the player now shows how long each chapter is. You can like one chapter of a long video as its own song and find it in your Liked list. The theatre button now sits in the player's own controls and works every time on desktop."
   }
 ]

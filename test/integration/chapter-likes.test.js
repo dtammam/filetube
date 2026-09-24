@@ -5,7 +5,7 @@
 // item whose chapters are music rows keyed `<mediaId>::c<n>`; a like on one of
 // them lives in the MEDIA like store (user_liked) under that chapter id. Through
 // the REAL app and routes, this file binds every acceptance line of
-// docs/exec-plans/active/2026-09-23-chapter-likes.md:
+// docs/exec-plans/completed/2026-09-23-chapter-likes.md:
 //   AC1  the row is stored under `<id>::c2`; the base FILE is NOT liked;
 //   AC2  GET /api/liked lists a track-shaped entry and counts it in `total`;
 //   AC3  the music row / resolve flag `liked` reads the media store, per chapter;
