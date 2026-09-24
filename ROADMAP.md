@@ -4,6 +4,21 @@
 
 _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
+- [ ] **Pocket menus: a song picked inside an artist's album should play through that album** (Dean,
+  2026-09-24, after the gyro work: "when I go to a recent artist and I pick the artist and I go into
+  the album and I pick something in an album, it just plays that song and then goes to a completely
+  other song from the artist, almost like a shuffle when I didn't expect or intend it. I would imagine
+  it would play through the rest of that album. Maybe there's a way to set that"). Diagnose which queue
+  the Recent Artists > artist > album > song path builds (the artist's all-songs flat list vs the
+  album) against the v1.323 rule (album and artist-album picks keep the album queue; only flat lists
+  play through the list); intake with Dean before building (a setting, or the album as the default).
+- [ ] **A design system for the pocket skins** (Dean, 2026-09-24, with an iPhone screenshot: a long
+  album title, "Ocarina of Time House Club Remix (Electronic House Remix)", wrapped the Click Black
+  LCD status bar to two lines on v1.324.0; v1.325.0 fixed that bar). Dean's read is broader: "not
+  having a proper token or just design system for the pocket skin, which at this point is getting
+  pretty advanced and is being pretty heavily relied upon". Scope a pocket-skin token set (the LCD
+  bar, row pitch, the type scale, the split pane, Seattle's large type, the controls) so every level
+  and skin reads from one source and overflow is handled systematically, not per incident.
 - [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
