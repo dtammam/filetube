@@ -57,6 +57,10 @@ function makeEl(tag) {
     insertBefore(c) { if (c) { try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ } el.children.unshift(c); } return c; },
     removeChild() {}, remove() { el.isConnected = false; },
     querySelectorAll() { return []; },
+    querySelector() { return null; }, // v1.317: the hydrated video path asks its action row for children ("not found" branch)
+    // v1.317: the hydrated video path (initWatch steps 3-9) mounts the action-row buttons;
+    // permissive no-ops like insertAdjacentHTML above (nothing here is under test).
+    replaceChildren() {}, append() {}, prepend() {}, before() {}, after() {}, matches() { return false; }, hasAttribute() { return false; }, contains() { return false; }, dispatchEvent() { return true; }, scrollIntoView() {},
     closest() { return null; },
     focus() {}, click() {},
     getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 100 }; },
@@ -70,6 +74,28 @@ function makeEl(tag) {
   });
   return el;
 }
+
+// v1.317 gate r1 fix: the REAL player api's property names, read from player.js's
+// `var api = { ... }` literal plus its `api.X = ` / defineProperty(api, 'X') additions,
+// so the harness Proxy answers exactly what production answers (see its get trap).
+const REAL_PLAYER_API = (() => {
+  const src = fs.readFileSync(path.join(REPO, 'public/js/player.js'), 'utf8');
+  const start = src.indexOf('\n  var api = {\n');
+  assert.ok(start !== -1, 'player.js: the `var api = {` literal moved - update REAL_PLAYER_API');
+  const end = src.indexOf('\n  };\n', start);
+  const names = new Set();
+  for (const m of src.slice(start, end).matchAll(/^ {4}([A-Za-z_$][\w$]*)\s*[:(]/gm)) names.add(m[1]);
+  for (const m of src.matchAll(/\bapi\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) names.add(m[1]);
+  for (const m of src.matchAll(/defineProperty\(api,\s*'([^']+)'/g)) names.add(m[1]);
+  return names;
+})();
+
+test('harness: REAL_PLAYER_API is read from player.js (non-vacuous; a misspelling is NOT on it)', () => {
+  for (const n of ['load', 'expand', 'dock', 'close', 'setTrackNav', 'getState', 'isLoopEnabled', 'currentId', 'ensureTheaterButton']) {
+    assert.ok(REAL_PLAYER_API.has(n), `REAL_PLAYER_API carries ${n} (got ${[...REAL_PLAYER_API].join(', ')})`);
+  }
+  assert.ok(!REAL_PLAYER_API.has('ensureTheatreButton'), 'the misspelled writer is not on the real api');
+});
 
 const FULL_SEED_ITEM = {
   id: 'vid1', title: 'T', filePath: '/downloads/Chan/vid.mp4', type: 'video',
@@ -93,6 +119,12 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   const loadCalls = [];
   const trackNavCalls = [];
   const fetchUrls = [];
+  // v1.317 (gate r1, adversary W1): the ONE writer of #theater-btn lives on the
+  // player api; a SPY (not the Proxy's `() => undefined` fallback) so a test can
+  // assert initWatch / initTvWatch actually CALL it - a source regex on the call
+  // string survived a one-letter typo in the `typeof` guard that removed the
+  // theatre button from every watch page.
+  const theaterCalls = [];
   const documentShim = {
     createElement: (t) => makeEl(t),
     createTextNode: () => makeEl('text'),
@@ -112,8 +144,14 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
         load: (id, data, opts) => { loadCalls.push({ id, data, opts }); return true; },
         setTrackNav: (h) => { trackNavCalls.push(h); },
         isLoopEnabled: () => false,
+        ensureTheaterButton: () => { theaterCalls.push(1); return getEl('#theater-btn'); },
       }, {
-        get(t, p) { if (p in t) return t[p]; return () => undefined; },
+        // v1.317 gate r1 fix (the guard-typo mutant SURVIVED the first spy): the old
+        // fallback answered EVERY unknown name with a function, so a misspelled
+        // `typeof player.ensureTheatreButton === 'function'` guard was true here while
+        // it is false in production. Unlisted names now answer a no-op only when the
+        // REAL player api carries them; anything else is undefined, as in the browser.
+        get(t, p) { if (p in t) return t[p]; return REAL_PLAYER_API.has(p) ? () => undefined : undefined; },
       }),
       consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
       registerView: (name, handlers) => { if (name === 'watch') capturedInit = handlers.init; },
@@ -151,7 +189,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');
-  return { init: capturedInit, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls };
+  return { init: capturedInit, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls, theaterCalls };
 }
 
 const WARM_SUBSCRIBED_CACHE = {
@@ -551,4 +589,81 @@ test('v1.314 gate S1: tapping the bell PATCHes { pushBell: true }, the label fol
   assert.equal(calls.filter((c) => c.method === 'PATCH').length, 2, 'a second PATCH was attempted');
   assert.equal(b.textContent, '🔔 Notifying', 'a 403 leaves the label at the unchanged state (D8)');
   assert.equal(b.disabled, false);
+});
+
+// ---- v1.317 (gate r1, adversary W1): the WATCH side of "each view calls the ONE
+// theatre-button writer" is bound by EXECUTION, not a source regex. The writer is
+// player.js's ensureTheaterButton (on the player api); watch's
+// ensureCogControlsInjected must CALL it post-mount on BOTH the video path (initWatch
+// step 9) and the ?tv= episode path (initTvWatch). The surviving mutant this kills: a
+// one-letter typo in the `typeof` guard (`ensureTheatreButton`) that never calls the
+// writer - the regex lock stayed green while the button vanished from every watch page.
+const VIDEO_DETAIL = { id: 'vid1', title: 'T', filePath: '/downloads/Chan/vid.mp4', type: 'video', size: 123, duration: 60, channel: 'Chan', liked: false, watchState: 'unwatched' };
+function routeVideoHydration(url) {
+  const u = String(url);
+  if (u.indexOf('/api/config') === 0) return Promise.resolve(jsonRes(200, { folderSettings: {}, folders: [], folderDisplayNames: {}, syntheticFolders: [] }));
+  if (u === '/api/videos/vid1') return Promise.resolve(jsonRes(200, VIDEO_DETAIL));
+  if (u.indexOf('/api/settings') === 0) return Promise.resolve(jsonRes(200, {})); // the cog toggles read it
+  return new Promise(() => {}); // everything else hangs (related rail, queue, subscriptions)
+}
+function mountVideoPath() {
+  // page-side common.js globals the hydration path reaches (not exported; stubbed like
+  // primePinnedSidebarFromCache above) - the harness's default hangs never got this far.
+  const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} } });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  realm.els.set('#subscribe-btn-mock', btn);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  realm.init(root);
+  return realm;
+}
+
+test('v1.317 gate W1: the video path CALLS the one theatre-button writer exactly once, post-mount (after player.load), never before the media resolves', async () => {
+  const realm = mountVideoPath();
+  assert.equal(realm.theaterCalls.length, 0, 'not called synchronously in init() - the host is mounted by player.load first');
+  for (let i = 0; i < 40 && realm.theaterCalls.length === 0; i++) await settle(); // hydration -> step 4 load -> step 9
+  for (let i = 0; i < 12; i++) await settle(); // and past it, so a SECOND call would be counted
+  // the seeded open loads twice by design: the synchronous early adopt in init() + step 4's
+  // idempotent re-load once the detail resolves (the real player treats the second as a reparent)
+  assert.equal(realm.loadCalls.length, 2, 'precondition: the media was mounted (seed adopt + step 4), got ' + realm.loadCalls.length);
+  assert.equal(realm.theaterCalls.length, 1, 'ensureCogControlsInjected called window.FileTube.player.ensureTheaterButton() exactly once (fetched: ' + realm.fetchUrls.join(', ') + ')');
+});
+
+test('v1.317 gate W1: the ?tv= episode path CALLS the one theatre-button writer exactly once (initTvWatch runs the same cog sequence)', async () => {
+  const epDetail = { id: 'ep1', type: 'video', title: 'Pilot', showId: 'show1', showName: 'My Show', seasonNum: 1, episodeNum: 2, duration: 100, needsTranscode: false, transcodeStatus: 'ready', streamSrc: '/tvepisode/ep1', statusUrl: '/api/tv/episode/ep1', artUrl: '/tvposter/show1', progress: 0, sizeBytes: 1, addedAtMs: Date.now(), fileName: 'p.mp4', ext: '.mp4' };
+  const showDetail = { id: 'show1', name: 'My Show', seasons: [{ seasonNum: 1, label: 'Season 1', episodes: [{ id: 'ep1' }] }] };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/api/tv/episode/ep1') === 0) return Promise.resolve(jsonRes(200, epDetail));
+    if (u.indexOf('/api/tv/show1') === 0) return Promise.resolve(jsonRes(200, showDetail));
+    if (u.indexOf('/api/settings') === 0) return Promise.resolve(jsonRes(200, {}));
+    return new Promise(() => {});
+  };
+  const realm = buildWatchRealm({ search: '?tv=ep1', fetchImpl });
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  realm.init(root);
+  for (let i = 0; i < 12; i++) await Promise.resolve();
+  for (let i = 0; i < 12; i++) await settle();
+  assert.equal(realm.loadCalls.length, 1, 'precondition: the episode was mounted');
+  assert.equal(realm.theaterCalls.length, 1, 'initTvWatch called the writer exactly once');
+});
+
+// ---- v1.317 (gate r1, adversary S2): the persistent host can arrive wearing the MUSIC
+// view's aria-pressed (its own key). init() applies `.theater-mode` synchronously from
+// ft-theater; the button's aria is re-stamped in the SAME synchronous pass, so the pressed
+// look never disagrees with the class for the hydration RTT.
+test('v1.317 gate S2: init() re-stamps #theater-btn aria-pressed from ft-theater synchronously, beside the class apply', () => {
+  for (const [stored, expected] of [['1', 'true'], ['0', 'false'], [null, 'false']]) {
+    const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE });
+    if (stored !== null) global.sessionStorage.setItem('ft-theater', stored); // the sandbox's localStorage IS this shim
+    const writes = [];
+    const tb = makeEl('button'); tb.setAttribute = (k, v) => { writes.push([k, v]); };
+    realm.els.set('#theater-btn', tb); // the host is already in the document (a soft-nav from music)
+    tb.setAttribute('aria-pressed', 'true'); writes.length = 0; // music left it pressed
+    const root = makeEl('div');
+    root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+    realm.init(root); // synchronous part only - no await
+    assert.deepEqual(writes, [['aria-pressed', expected]], `ft-theater=${stored}: aria re-stamped synchronously to ${expected}`);
+  }
 });
