@@ -383,6 +383,27 @@ test('a dropped row BEFORE the playing one (a shuffled list) keeps Prev/Next poi
   }, { desktop: true, server });
 });
 
+test('the RE-LIST re-registers nav too: when the server re-lists the rows in a DIFFERENT order, Prev/Next follow the new order (adversary W2, after the re-list)', async () => {
+  const server = { drill: [chapRow('f1::c0', 'Opening', 0), chapRow('f1::c1', 'Second Song', 60), chapRow('f1::c2', 'Closer', 120)] };
+  await boot(async (dom, ctx) => {
+    const mp = doc(dom).getElementById('media-player');
+    Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 62, set: () => {} });
+    Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
+    const menu = await openDesktopActions(dom);
+    click(dom, snapRow(menu));
+    await settleN(2);
+    // After the revert the server lists the two chapters with ::c1 FIRST (e.g. a title sort).
+    server.drill = [chapRow('f1::c1', 'Closer', 60, { durationSec: 120 }), chapRow('f1::c0', 'Opening', 0)];
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 60, title: 'Closer' }], chaptersSource: 'embedded', chaptersEdited: false });
+    await settleN(12);
+    assert.match(doc(dom).getElementById('music-nowplaying-panel').textContent, /Up next.*Closer.*Opening/, 'precondition: the re-listed order is ::c1, ::c0');
+    assert.strictEqual(lastNav(ctx).onPrev, undefined, 'no Prev: ::c1 is now FIRST in the re-listed queue');
+    assert.strictEqual(typeof lastNav(ctx).onNext, 'function', 'a Next: ::c0 follows it');
+    lastNav(ctx).onNext();
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'Next goes to the row after it in the NEW order');
+  }, { desktop: true, server });
+});
+
 test('Listen mode (qa S5): a chapter dropped by a count change does NOT come back after a dock-return (the listen stash is filtered too)', async () => {
   const v1 = { id: 'v1', type: 'video', title: 'A Long Talk', channelName: 'Someone', duration: 180, chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'Middle Part' }, { startTime: 120, title: 'Outro Ghost' }], liked: false, watchState: 'unwatched' };
   await boot(async (dom, ctx) => {
