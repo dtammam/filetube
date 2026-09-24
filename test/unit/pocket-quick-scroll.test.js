@@ -1194,6 +1194,26 @@ test('r2 (qa NEW-1 = adversary W, repro 1): playing FROM Recently Played, a queu
     pressMenu(b); await flush();
     assert.strictEqual(b.engine.menuState().title, 'Recently Played');
     assert.strictEqual(cursorLbl(b), 'T-e', 'the highlight is on the song that plays');
+    assert.strictEqual(b.spy.loads.filter((x) => x.type === 'playlist').length, 1, 'the list played from was NOT re-loaded by the recency mark (it mirrors the queue)');
+  } finally { b.restore(); }
+});
+
+test('r2: when the list being played from DOES re-load (a library change), its highlight lands on the song that plays now - not on the row it was on', async () => {
+  const T = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => ({ id: 'T-' + k, title: 'T-' + k }));
+  let rec = T.slice();
+  const b = bootEngine({ load: (n) => Promise.resolve(n.type === 'playlist'
+    ? { items: skins.menuSongItems(rec, artFor), tracks: rec.slice(), play: { ctx: {} } } : { items: [] }) });
+  try {
+    b.engine.paint(); pressMenu(b); pressSelect(b);
+    tapLabel(b, 'Playlists'); tapLabel(b, 'Recently Played'); await flush();
+    tapLabel(b, 'T-d');
+    b.state.current = 'T-d'; b.engine.paint(); await flush();
+    b.state.ver += 1; b.engine.paint(); await flush(); // a rescan while Now Playing is up: every level goes stale
+    b.state.current = 'T-e'; rec = [T[4], T[3], T[0], T[1], T[2], T[5]]; b.engine.paint(); await flush(); // the queue advances
+    pressMenu(b); await flush();
+    assert.strictEqual(b.engine.menuState().title, 'Recently Played');
+    assert.strictEqual(b.spy.loads.filter((x) => x.type === 'playlist').length, 2, 'precondition: it re-loaded');
+    assert.strictEqual(cursorLbl(b), 'T-e', 'on the song that plays');
   } finally { b.restore(); }
 });
 
