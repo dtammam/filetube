@@ -3,10 +3,10 @@ plan: pocket-quick-scroll
 harness: v2 · lean
 branch: feat/pocket-quick-scroll
 anchor: spec
-status: Gate r2 fixes built - awaiting gate r3
-next: gate r3 (adversary + qa; security-brief for the route line if wanted) on the head sha named in the hand-off; then Dean's device pass (#263)
+status: Gate closed
+next: release. Owed after the release: Dean's device pass (#263 the letter-mode threshold and tick) and his rulings - #265 (Brick on Seattle: the games entry is hidden today) and the recorded choices (Seattle's "recent" pivot placed last, MENU from Brick lands on Games, the About heading = the cheeky name, Settings = About only)
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
-gate: pending
+gate: APPROVED r3 @cb25fa06 — adversary, qa, security-brief
 ---
 
 # Pocket menus: quick scroll, Recent Artists, Extras / Settings / About, the cover drift
@@ -428,6 +428,13 @@ Disclosed (r1):
 - **G9** - a finished CHAPTERED file (a chapter album played to its end) is listed by its FIRST chapter in the
   Recently Played playlist (the position-0 row maps to the chapter containing 0); its artist in Recent Artists is
   right.
+- **G11 (#271, gate r3 suggestions)** - (a) a library change while you are PARKED in the list being played from
+  (on screen) re-loads it and jumps the highlight to the playing song, and that wheel turn is spent on the
+  re-load (the adversary tested a two-line fix: prefer the anchor, and anchor a stale playing list on the current
+  id in followCurrent); (b) the two `assert.ok(ms >= 0)` left where the jsdom timing bounds were dropped are
+  vacuous - delete them.
+- **G12 (#266 (d))** - a chaptered file played to its end shows chapter 1 in Recently Played; a scrub to 0 on an
+  unplayed track counts as recent.
 - **G10** - the new wheel clock rule changes the v1.233 row acceleration only where the handler ran late (the
   longer gap wins): at CPU x1 the trusted-input traces read the same band.
 
@@ -606,3 +613,143 @@ Instruments: the hook's full unit suite 7303 / 7303 at 6d48181f, 7304 / 7304 at 
 (the pocket-quick-scroll pair, music-pocket-menus unit / integration / -r1, music-skins, skin-surface,
 music-library-projection, continue-watching): `pass 217 fail 0`, the unit file `pass 56 fail 0`. eslint on the
 changed files: clean. No CSS change this round.
+
+## Gate r3 - security-brief (@cb25fa06)
+
+**Checks not completed (read first):** I still have no Bash. I ran no `git diff dfd0165e..cb25fa06`, no tests
+and no mutants. The builder's T5 / T7 / T8 / T9 RED results are the builder's claims, not re-run by me. I
+confirmed `refs/heads/feat/pocket-quick-scroll` = `cb25fa06d4347dc34871315c081ed45667861ae5` from `.git`. I could
+NOT confirm that the working tree has no uncommitted changes. To scope the delta I read the files and searched for
+the round's `gate r2` markers. The delta that touches security is `lib/music/routes.js:216-232` and
+`public/js/music-skins.js:475-489`, plus the two tests. The other r2 markers are menu cursor or identity work in
+music.js / skin-surface.js, with no security surface. `musicListProgressMap` is unchanged: server.js:4227-4235,
+still userId-filtered with a null-proto map.
+
+**Route. VERIFIED (read).** The filter is now `if (!p) return false; return Number(p.position) > 0 || withFinished;`.
+- Default (no opt-in): `> 0 || false` is exactly the pre-branch predicate `progressMap[id] && Number(position) > 0`.
+- Opt-in: any caller-owned progress row on an already-gated track.
+- `withFinished` is still strict `req.query.include === 'finished'`, so arrays and objects fall back to the default.
+- Dropping the `updatedAt` check widens nothing across users or visibility. At most, a row with no stamp would be
+  included and sort last, and it is still the caller's own row. The comment's claim that "both writers stamp one"
+  is plausible but I did not trace it. It has no security weight.
+- My r2 conclusions 1-3 still hold: the gate runs first and is the same KIND by construction, results are
+  per-user, and About counts come from the gated totals.
+
+**Cross-user test. VERIFIED (read)** at test/integration/pocket-quick-scroll.test.js:301-311. The member writes 90
+then 0. The control passes: the member's own opt-in read includes the track. The admin, who can see every item,
+has an opt-in read that does not. The test is meaningful, because the item is visible to the admin, so only
+per-user isolation can keep the row out. This closes my r2 INFO 2.
+
+**Cover filter.** `sameOriginPath` (music-skins.js:486-489) requires both of these:
+- (a) the prefix rule: character 0 is `/`, the length is at least 2, and character 1 is neither `/` nor `\`;
+- (b) `new URL(u, 'http://pocket-menu.invalid').origin === 'http://pocket-menu.invalid'`, with a throw treated as false.
+
+Reasoned case by case from the WHATWG URL parser, NOT executed. The unit test at
+test/unit/pocket-quick-scroll.test.js:1251-1255 covers the tab / LF / CR / `/\` / `//` / `/` rows and the
+encoded row.
+
+| Input | (a) | (b) | Result |
+|---|---|---|---|
+| `//evil.example/a` (protocol-relative) | rejects | would reject (host `evil.example`) | rejected |
+| `/\evil.example/a` (backslash) | rejects | would reject (`\` = `/` in a special scheme) | rejected |
+| `/\t/evil...`, `/\n/...`, `/\r\evil...` (tab / LF / CR mid-string) | passes | the parser strips them, giving `//evil...`, so the host is evil; rejects | rejected (INFO 1 closed) |
+| ` //evil`, `\t//evil` (whitespace-prefixed) | rejects (character 0) | the parser strips leading C0 / space, so (b) alone would reject too | rejected |
+| `javascript:...`, `data:...` | rejects | origin `null`, rejects | rejected |
+| `http:x` | rejects | would ACCEPT (same special scheme as the placeholder, so it resolves relative to it). In a real https page it resolves to `http://x/`, off-origin. | rejected, and (a) is load-bearing here: keep both halves |
+| `/%2F%2Fevil`, `/%5Cevil`, `/%09/evil` (encoded) | passes | the parser does not decode them, so it stays a path; same origin | accepted, correctly: a same-origin request |
+| `/..//evil` | passes | path `//evil` on the placeholder host; same origin | accepted, correctly: `https://<self>//evil`, same origin |
+
+Is the placeholder base equivalent to the real page's origin? Every input that passes (a) starts with `/`. For
+such input the parser goes relative-slash, then path, and the host always comes from the base. The only way to
+reach the authority state is a second `/` or `\` after stripping, and that check is the same for any special base.
+http and https are both special, so the placeholder's verdict matches the real document's. The real document
+could only differ if it had a `<base href>`: `public/` has none (the one search hit is a comment in music.js).
+
+Findings:
+- r2 INFO 1: **fixed as prescribed** (a stronger variant: origin equality against a fixed placeholder, plus the kept
+  prefix rule). Its comment (:479-483) is now accurate.
+- r2 INFO 2: **fixed** (test added, read above).
+- r2 INFO 3 (Recent Artists may show a remote channel avatar, the same as the existing Artists level): unchanged,
+  advisory, not a new exposure.
+- NEW: none. The r3 delta adds no route, write, field or HTML sink.
+
+Gate: APPROVED r3 @cb25fa06 — security-brief
+
+## Gate r3 - qa (@cb25fa06)
+
+Delta review of dfd0165e..cb25fa06 (verdicts 3b1f1587; fixes 6d48181f + 9c9fe5ad; record cb25fa06).
+
+Instruments (qa, `git archive cb25fa06` sandbox, node 22.23.1, verbatim):
+- `npm run test:unit`: `# tests 7304 # pass 7296 # fail 8` - the same 8 sandbox-only failures as r1/r2 (app-settings-store, comment-debt x2, dbjson-never-read, media-items-store, media-record-stores, media-trash-store, media-view-counts-store: `git ls-files` outside a repo / EISDIR on the node_modules symlink); those 7 files in the git-backed worktree: `# tests 69 # pass 69 # fail 0`. Net 7304 / 7304.
+- Touched suites (both pocket-quick-scroll files, music-pocket-menus unit/integration/-r1, music-skins, skin-surface, ipod-brick, music-skin-integration, music-library-projection, rbac-music-enforcement, menu-returns-to-origin, continue-watching, rbac-podcast-enforcement, podcasts-api): `# tests 451 # pass 451 # fail 0`. Census + skin set (18 files): `# tests 155 # pass 155 # fail 0`.
+- `lint:css` `TOTAL 0`; overlay-containment `clean (0 violations)`; eslint on the 5 changed js files exit 0, no output; check-markers `1 issue(s)`: `stale approval @dfd0165e` = the security-brief r2 line (expected; its r3 line @cb25fa06 now sits above this section).
+- Re-probe 390x844 (Click + Seattle, Chromium): default recent-listening `[s400,s6,s29,s5]` (the ended s800 absent), `include=finished` `[s800,...]`, an `include` array ignored; Recent Artists leads `Pixel Midnight 40`, Recently Played leads `Ion Arrival 800`; no badge on a slow wheel, badge on a finger scroll, badge fade 8 intermediates, overlay fade 9-11; picker 49x44 / 68x56, every cell reachable; letter mode lands on the first row of its letter. A 3-run drift trace at r2 and r3 is identical in shape (first cover on at 0.3-1.3 s, 2 layers after, 1 showing). One sample in the combined probe caught the overlay at 0 for ~750 ms after a flick on the first page of the session; a targeted 3-run trace at both shas shows the class on at 41-93 ms and the fade moving by 90-240 ms - the swiftshader first-raster cost, not reproduced, not a finding.
+
+r2 findings:
+1. **NEW-1 (Recently Played highlight after an advance) - FIXED.** My r2 repro on the real engine at cb25fa06: play `T-d` from Playlists > Recently Played, advance to `T-e`, MENU -> `Recently Played`, cursor 4 = `T-e` (the playing song), 1 load (the list played from is no longer reloaded under it). dfd0165e gave `T-b`. Bound by T1 / T4 (mutated RED per the record).
+2. **NEW-2 (stale comments) - FIXED.** The per-detent `fast` comment above `onGestureStart` is gone; skin-surface.js:2366-2367 now says letter mode is armed per MOVE by `noteMove`, one letter at most per move - accurate.
+3. **NEW-3 (Recent Artists back-out) - FIXED (identity restore).** Repro: Recent Artists > `Cat` (row 2) > play a Cat song, the recency order becomes `[Cat, Ann, Bob, Dan]`, MENU x2 -> Recent Artists re-loaded (2 loads), highlight on `Cat` (row 0). A library change with the highlighted artist still present keeps it by identity (`Dan` moved 3 -> 0); with it gone the cursor clamps (no throw).
+
+Also checked: the cover filter now resolves the path against a fixed placeholder origin - `/\t/evil.com`, `/\n\\evil.com`, `/\r/evil`, `//evil`, `/\\evil`, `javascript:` all rejected; `/albumart/x`, `/%2F/evil`, `/.//evil` kept, and each resolves on the page's own origin (`https://real.host//evil`), so nothing leaves the origin. The route's `Number(p.position) > 0 || withFinished` keeps the default output identical to the pre-branch predicate (probe above; the updatedAt check it dropped was dead - both writers stamp it). #266 (d) is filed with the chaptered-file and scrub-to-0 residue and a fix shape.
+
+New:
+
+1. **SUGGESTION - a library change under the ON-SCREEN list being played from moves the highlight to the playing song** (public/js/skin-surface.js, ensureLoaded: `want = pane.playing && currentId() ? 'id:' + currentId() : pane.anchor`). Reasoned from the code, not driven: play from Songs, park the highlight on another row with the list on screen, a rescan / chapter save bumps dataVersion -> the reload restores to the playing track rather than the recorded anchor (the parked row). Before this round the index was kept. The K1 rule ("the highlight you parked on stays put") only covers an advance, so this is a polish point, not a regression of a bound rule: prefer `pane.anchor` when the pane is visible.
+
+Verdict: APPROVED. Every r2 finding is fixed and re-verified by my own repro; no CRITICAL or WARNING open. The one new suggestion can go to the tracker.
+
+Gate: APPROVED r3 @cb25fa06 — qa
+
+## Gate r3 - adversary (@cb25fa06)
+
+Delta review of dfd0165e..cb25fa06. Instruments (adversary, `git archive cb25fa06` sandbox in /tmp, node 22.23.1, verbatim):
+- Targeted (both pocket-quick-scroll files, music-pocket-menus unit + integration + -r1, music-skins, skin-surface, ipod-brick): `# tests 273 # pass 273 # fail 0`. Every file that reads `recent-listening`: `# tests 442 # pass 442 # fail 0`.
+- `lint:css` TOTAL 0; `lint:overlay` clean (0); `eslint .` 0 errors, 6 warnings (the pre-existing six).
+- Mutants on the fix code (6; one anchor each, diff non-empty, restored; 649 tests): **6 of 6 RED**:
+  - the playing-list exclusion dropped;
+  - the identity restore removed;
+  - the playing override dropped;
+  - the anchor never recorded;
+  - the URL-resolve check dropped;
+  - finished rows in the default route.
+
+My r2 finding, re-measured on the real engine (jsdom, the same script at both SHAs):
+- **Recently Played:** play `T-d`, advance to `T-e`, then MENU from Now Playing. The highlight is on **`T-e`** (dfd0165e: `T-b`). FIXED.
+- **Recent Artists:** open `A2`, play a song, then MENU twice. The highlight is on **`A2`** (dfd0165e: `A1`). FIXED.
+
+Attacks on the identity restore:
+- **Duplicate keys:** none can occur within one pane.
+  - Artists and Recent Artists are one row per grouping key (server `groupArtists`, client dedupe).
+  - Albums are keyed by `albumKey`, not by name.
+  - Songs rows are unique ids, and chapters carry `::cN`.
+  - An artist's album rows share one `artist`.
+  - A track in two lists is two panes, each with its own anchor.
+- **Identity gone after the reload:** A3 dropped from Recent Artists, and the cursor falls back to the old index clamped (row 3, `A4`). No throw. Acceptable.
+- **A load racing the wheel:** setCursor ignores an empty (loading) pane, so no user move can be overwritten by the load that lands. There is nothing to win.
+- **A non-playing list on screen, library change:** the parked row is kept by identity. Ten earlier rows were deleted, so `t2500` moved from row 50 to row 40 and stayed highlighted (dfd0165e kept index 50 = `t3000`). Improved.
+- **Cover filter:** rejected, as they should be:
+  - `/\t/`, `/\n/`, `/\r\`, `/\`, `//`;
+  - `%2F%2F...`, ` //...` and a leading tab;
+  - `http:evil...`, `http:/evil...`.
+  
+  Kept, and each resolves on the page's own origin: `/%2F%2F...`, `/..//...`, `/<nbsp>/...`, `/thumbnail/x`.
+- **Route:** `Number(p.position) > 0 || withFinished` is byte-equivalent to the old default. The dropped `updatedAt` check was dead code.
+- **Other-user isolation:** the new test has both axes (the member's control is present, the admin's read is absent).
+- **Wall-clock asserts:** the jsdom timing bounds were dropped (the right call, given the flake history). The timing lives in the Chromium probe (r1: jumps 21-107 ms, long tasks `[]`).
+
+New:
+1. **SUGGESTION (measured; qa's r3 suggestion 1, which qa reasoned but did not drive) - a library change under the ON-SCREEN list being played from moves the highlight to the playing song and eats the wheel move.**
+   - Repro (real engine): play row 2 of Songs (3,008 rows), MENU back to the list, park the highlight on row 42 with the wheel, then bump dataVersion. The next detent reloads the list and the cursor lands on **row 2** (dfd0165e: row 42).
+   - The same happens in Recently Played: parked on `T-g`, the reload goes to `T-e`.
+   - Cause: `ensureLoaded`'s `want = pane.playing && currentId() ? ... : pane.anchor` puts the playing id ahead of the anchor it just recorded.
+   - Prescription VERIFIED in a copy, with every test green (the 5 pocket / menu files 133 of 133, incl. the builder's r2 bindings):
+     - `want = pane.anchor || (pane.playing && currentId() ? 'id:' + currentId() : null)`;
+     - plus, in `followCurrent`, a stale playing pane gets `p.anchor = 'id:' + cur`.
+
+     With those, the parked row 42 / `T-g` stays, T-d/T-e and A2 still pass, and the off-screen playing list still follows what plays.
+   - Why this is safe to ship if you choose (tracker): no wrong track plays, no data is lost, the trigger is rare (a library change while you are parked in the list you play from), and one MENU / Now Playing away it recovers.
+2. **SUGGESTION - the dropped timing bounds left vacuous asserts** (`assert.ok(ms >= 0)` in test/unit/pocket-quick-scroll.test.js). Delete them rather than keep an assert that cannot fail.
+
+Verdict: APPROVED. Every r1 and r2 finding is fixed and re-measured, every fix binding goes red when mutated, and no CRITICAL or WARNING is open. The two suggestions go to the tracker or a follow-up at the Architect's call.
+
+Gate: APPROVED r3 @cb25fa06 — adversary
