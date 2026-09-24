@@ -65,6 +65,10 @@ const TITLES = ['Night Transit', 'Sodium Lamps Over The Northbound Platform (Ext
   'Overpass', 'Signal Box', 'Tidewater And The Long Walk Home', 'Terminus'];
 const CHAPTERS = TITLES.map((title, i) => ({ startTime: i === 0 ? 0 : i * 240 + (i % 2 ? 1.5 : -3), title }));
 const SILENCES = TITLES.slice(1).map((_, k) => { const i = k + 1; return { start: i * 240 - 1, end: i * 240 + 2.5 }; });
+// Shift all (2026-09-24): the Music item's silence is a WHOLE-TRACK offset instead - every
+// song starts 2 s after its chapter - so the drill editor shows the suggested-shift button
+// (its longest control) and the watch editor the "No consistent offset" line.
+const OFFSET_SILENCES = CHAPTERS.slice(1).map((c) => ({ start: c.startTime + 0.5, end: c.startTime + 2 }));
 
 const MEASURE_JS = `(function () {
   var vw = document.documentElement.clientWidth, vh = window.innerHeight;
@@ -97,6 +101,19 @@ const MEASURE_JS = `(function () {
   out.timeFontPx = times ? parseFloat(getComputedStyle(times).fontSize) : null;
   out.suggestions = document.querySelectorAll('[data-act="snap"]').length;
   out.status = (document.querySelector('.chapter-snap-status') || {}).textContent || '';
+  // The Shift all row: where it sits, every one of its visible buttons, and what it says.
+  var shift = document.querySelector('.chapter-snap-shift');
+  if (shift) {
+    var sr = shift.getBoundingClientRect();
+    var sb = Array.prototype.slice.call(shift.querySelectorAll('button')).filter(function (b) { return b.offsetParent !== null; });
+    out.shift = { hidden: shift.hidden, x: Math.round(sr.x), y: Math.round(sr.y), w: Math.round(sr.width), h: Math.round(sr.height),
+      scrollWidth: shift.scrollWidth, clientWidth: shift.clientWidth,
+      buttons: sb.map(function (b) { var r = b.getBoundingClientRect(); return (b.textContent || '').trim().slice(0, 24) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + (b.disabled ? ' (off)' : ''); }),
+      below44: sb.filter(function (b) { var r = b.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).length,
+      readout: (shift.querySelector('.chapter-snap-shift-readout') || {}).textContent || '',
+      why: (function () { var e = shift.querySelector('.chapter-snap-shift-why'); return e && !e.hidden ? e.textContent : ''; })(),
+      note: (shift.querySelector('.chapter-snap-shift-note') || {}).textContent || '' };
+  }
   return JSON.stringify(out);
 })()`;
 
@@ -151,7 +168,7 @@ async function main() {
       const SILENCE_PARAMS_KEY = require(path.join(ROOT, 'lib', 'media', 'chapterSilence')).SILENCE_PARAMS_KEY;
       for (const [id, p] of [['vid1', vidPath], [audId, audPath]]) {
         const st = fs.statSync(p);
-        server0.chapterSilenceService.cache.write(id, { params: SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: SILENCES });
+        server0.chapterSilenceService.cache.write(id, { params: SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: id === audId ? OFFSET_SILENCES : SILENCES });
       }
     }
   };
@@ -274,6 +291,17 @@ async function main() {
           await new Promise((r) => setTimeout(r, 2500));
           console.log(`music-audition ${w}: ${await evaluate(AUDITION_JS)}`);
         }
+        // Shift all (after the audition, which reads chapter 2's SOURCE boundary): one tap on
+        // the suggested whole-track shift, then +1 s by hand (the Reset button and the readout
+        // appear), measured each time.
+        await evaluate("(function(){var b=document.querySelector('.chapter-snap-shift-apply'); if (b && !b.hidden) b.click(); return true;})()");
+        await new Promise((r) => setTimeout(r, 300));
+        console.log(`music-editor ${w} after the suggested shift: ${await evaluate(MEASURE_JS)}`);
+        await shot(`chapter-snap-music-${w}-shifted.png`);
+        await evaluate("(function(){var b=document.querySelector('.chapter-snap-shift-btn[data-shift=\"1000\"]'); if (b) b.click(); return true;})()");
+        await new Promise((r) => setTimeout(r, 300));
+        console.log(`music-editor ${w} after +1 s: ${await evaluate(MEASURE_JS)}`);
+        await shot(`chapter-snap-music-${w}-shifted-more.png`);
       }
     }
     ws.close();

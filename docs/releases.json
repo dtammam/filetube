@@ -3196,5 +3196,11 @@
     "date": "2026-09-24",
     "title": "Faster browsing in the iPod and Zune skins, plus Brick and About",
     "intent": "In the Click and Seattle music skins, spin the wheel fast to jump through long lists a letter at a time, or tap the letter badge to pick one. Music now starts with Recent Artists, the Main Menu has Extras with the Brick game and Settings with an About screen, and the Click menus show your album covers slowly drifting beside the list."
+  },
+  {
+    "version": "1.325.0",
+    "date": "2026-09-24",
+    "title": "Shift every chapter at once, and a tidier player top bar",
+    "intent": "When every chapter of an album starts a little too early or too late, Fix times now has Shift all at the top to move them all together, and it suggests how far when the quiet gaps agree, or tells you the chapters are off by different amounts. In the Click and Seattle skins, a very long song or album name now fits on one line in the top bar instead of pushing it taller."
   }
 ]
