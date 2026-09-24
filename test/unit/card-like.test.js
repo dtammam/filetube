@@ -16,6 +16,9 @@ const { routeSurfaceFiles } = require('../helpers/route-surface');
 
 const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
 const mainSrc = fs.readFileSync(path.join(__dirname, '../../public/js/main.js'), 'utf8');
+// Comment-porous source locks (v1.50/v1.77/v1.133 class): strip block comments and
+// full-line `//` comments ONCE at read, so a commented-out arm cannot keep a lock green.
+const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
 test('assets: heart.svg exists and is a valid single-path <svg>', () => {
   const svg = fs.readFileSync(path.join(__dirname, '../../public/assets/icons/heart.svg'), 'utf8');
@@ -100,9 +103,13 @@ test('main.js: the card renders a .card-like-btn reflecting item.liked, and togg
   // M3 chapter likes (v1.317): a `<id>::c<n>` chapter of a chaptered audio file is
   // a MEDIA-store like; the chapter arm must sit BEFORE the native track arm or the
   // native lane (ownTrack-gated) swallows it and an unlike strands the row.
-  const chapterArm = mainSrc.indexOf("if (kind === 'track' && /::c\\d+$/.test(String(id))) return '/api/liked/' + encId;");
-  const nativeArm = mainSrc.indexOf("if (kind === 'track') return '/api/music/liked/' + encId;");
-  assert.ok(chapterArm !== -1, 'chapter-track arm hits the media liked API');
+  // Gate r1 adversary W2: the lock reads COMMENT-STRIPPED source (a commented-out
+  // arm kept `includes` green - the v1.50/v1.77/v1.133 class); the behavioural
+  // drive of the grid heart on a `::c` card is the test below.
+  const live = stripComments(mainSrc);
+  const chapterArm = live.indexOf("if (kind === 'track' && /::c\\d+$/.test(String(id))) return '/api/liked/' + encId;");
+  const nativeArm = live.indexOf("if (kind === 'track') return '/api/music/liked/' + encId;");
+  assert.ok(chapterArm !== -1, 'chapter-track arm hits the media liked API (in LIVE code, not a comment)');
   assert.ok(nativeArm !== -1, 'track arm');
   assert.ok(chapterArm < nativeArm, 'the chapter arm precedes the native track arm');
   // Adversarial gate v1.72 W1: the book arm survived the whole suite as a
@@ -138,4 +145,108 @@ test('server.js: the GET /api/videos list tags each item with a `liked` flag fro
   const body = src.slice(start, next.index);
   assert.match(body, /const likedSet = new Set\(userStore\.getLiked\(req\.user\.id\)\)/);
   assert.match(body, /liked:\s*likedSet\.has\(item\.id\)/);
+});
+
+// ---------------------------------------------------------------------------
+// Gate r1, adversary W2 (M3 chapter likes, AC11): the BEHAVIOURAL drive of the
+// Liked-grid heart. A real jsdom `index.html` at `/?liked=1` (runScripts, static
+// files from disk - the harness shape of test/integration/card-corners-fullchain),
+// the REAL main.js grid and its delegated click handler, a scripted fetch. The
+// chapter card's UNLIKE must reach the MEDIA store (`DELETE /api/liked/<id>::c2`):
+// the native music lane is ownTrack-gated, so a chapter unlike sent there 404s and
+// strands the row. A native track card beside it is the discriminating sibling (it
+// still rides `/api/music/liked/`), so a mutant that sends EVERY track to the media
+// store reds too.
+const { JSDOM, VirtualConsole, requestInterceptor } = require('jsdom');
+const PUBLIC_DIR = path.join(__dirname, '../../public');
+
+function likedGridItems() {
+  const track = (id, title, liked) => ({
+    kind: 'track', id, title, type: 'audio', ext: '.mp3', duration: 60, size: 0,
+    addedAt: 1700000000000, artist: 'NESTALGIA', album: 'The Mix', liked, progressPercent: 0,
+  });
+  return [
+    { ...track('f1::c2', 'Third Song', true), source: 'library-chapter', mediaId: 'f1', chapterStartSec: 120 },
+    { ...track('f1::c3', 'Fourth Song', false), source: 'library-chapter', mediaId: 'f1', chapterStartSec: 180 },
+    track('n1', 'Native Track', true),
+  ];
+}
+
+function bootLikedGrid() {
+  const calls = [];
+  const items = likedGridItems();
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    const method = (init && init.method) || 'GET';
+    calls.push({ url, method });
+    const ok = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body });
+    if (url === '/api/config' && method === 'GET') return ok({ folders: ['/media/folder'], folderSettings: {} });
+    if (url === '/api/settings' && method === 'GET') return ok({ defaultView: '' });
+    if (url === '/api/auth/me' && method === 'GET') return ok({ user: { id: 1, username: 'u', role: 'member', canModifyLibrary: false }, settings: {} });
+    if (url.indexOf('/api/liked?') === 0 && method === 'GET') return ok({ items, total: items.length, offset: 0, limit: 60 });
+    if (/^\/api\/(music\/)?liked\/[^?]+$/.test(url) && (method === 'DELETE' || method === 'POST')) return ok({ success: true, liked: method === 'POST' });
+    return new Promise(() => {}); // everything else is irrelevant here
+  };
+  const dom = new JSDOM(fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8'), {
+    url: 'http://localhost/?liked=1',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    virtualConsole: new VirtualConsole(),
+    resources: {
+      interceptors: [
+        requestInterceptor((request) => {
+          const filePath = path.join(PUBLIC_DIR, new URL(request.url).pathname);
+          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            const type = filePath.endsWith('.js') ? 'text/javascript' : filePath.endsWith('.css') ? 'text/css' : 'application/octet-stream';
+            return new Response(fs.readFileSync(filePath, 'utf8'), { status: 200, headers: { 'Content-Type': type } });
+          }
+          return new Response('', { status: 404 });
+        }),
+      ],
+    },
+    beforeParse(window) {
+      window.fetch = fetchImpl;
+      window.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
+      window.matchMedia = (query) => ({ matches: false, media: query, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+    },
+  });
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => { if (!settled) { settled = true; resolve({ dom, calls }); } };
+    dom.window.addEventListener('load', () => setTimeout(finish, 20));
+    setTimeout(finish, 5000);
+  });
+}
+
+const flushGrid = async (n) => { for (let i = 0; i < (n || 8); i++) await new Promise((r) => setTimeout(r, 0)); };
+
+test('Liked grid (M3 AC11, gate r1 W2): the heart on a `::c` chapter card UNLIKES through DELETE /api/liked/<id>::c2 (the media store), a native track card through /api/music/liked/', async () => {
+  const { dom, calls } = await bootLikedGrid();
+  try {
+    await flushGrid();
+    const { document } = dom.window;
+    assert.ok(calls.some((c) => c.method === 'GET' && c.url.indexOf('/api/liked?') === 0), 'precondition: the grid read GET /api/liked');
+    const heart = (id) => document.querySelector(`#video-grid .card-like-btn[data-id="${id}"]`);
+    const chapterHeart = heart('f1::c2');
+    assert.ok(chapterHeart, 'precondition: the chapter card renders a heart');
+    assert.strictEqual(chapterHeart.getAttribute('data-kind'), 'track', 'the chapter card is a TRACK-kind card');
+    assert.ok(chapterHeart.classList.contains('liked'), 'precondition: it renders liked');
+    // Every POST/DELETE the page sent (the shell's own HEAD probes are not writes).
+    const writes = () => calls.filter((c) => c.method === 'POST' || c.method === 'DELETE').map((c) => c.method + ' ' + decodeURIComponent(c.url));
+
+    chapterHeart.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    await flushGrid();
+    assert.deepStrictEqual(writes(), ['DELETE /api/liked/f1::c2'], 'the chapter UNLIKE hits the media store under the chapter id, never /api/music/liked/');
+    assert.ok(!chapterHeart.classList.contains('liked'), 'the heart greys once the server answered');
+
+    // The un-liked sibling chapter: a LIKE is a POST on the same lane.
+    heart('f1::c3').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    await flushGrid();
+    assert.deepStrictEqual(writes().slice(1), ['POST /api/liked/f1::c3'], 'a chapter LIKE rides the media store too');
+
+    // The discriminating sibling: a NATIVE track keeps the music-native lane.
+    heart('n1').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    await flushGrid();
+    assert.deepStrictEqual(writes().slice(2), ['DELETE /api/music/liked/n1'], 'a native track unlike stays on /api/music/liked/');
+  } finally { dom.window.close(); }
 });

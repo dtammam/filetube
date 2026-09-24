@@ -296,3 +296,46 @@ test('AC8: the backup bundle round-trips a chapter like (the longer key rides th
   assert.deepStrictEqual(listed.items.map((i) => i.id), [L.c2], 'the Liked page lists it after the restore');
   assert.strictEqual(listed.items[0].title, 'Third Song');
 });
+
+// Gate r1, adversary W1 (presence-not-binding): the read arm's `if (!track) continue;`
+// in shapedLikedChapterItems was UNBOUND - with it deleted a re-chapter that strands
+// `::c4` makes GET /api/liked throw on `track.chapterStartSec` (a 500 for the whole
+// Liked page). Both halves of the disclosed rule are bound here: a stale index is
+// DROPPED from the read (200, [], total 0) and NOT deleted from storage (the row is
+// still in getLiked; a later edit restoring the index revives it). The session is
+// minted HERE (AC8 above clears and restores the users table, which invalidates the
+// suite-wide admin cookie), and every request carries it explicitly.
+test('W1: a chapter like whose index a re-chapter removed is dropped from the read (200, empty, total 0), never a 500, and the row stays in storage', async () => {
+  const L = seedLibrary();
+  const me = __mintTestSession();
+  const ck = me.cookie;
+  const editChapters = (text) => fetch(`${base}/api/videos/${enc(L.mix.id)}/chapters`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: ck }, body: JSON.stringify({ text }),
+  });
+  // The id comes from the REAL projection (never hand-typed): the fifth chapter row.
+  const c4 = libraryAudio.expandAudioToTracks(L.mix, () => FIVE)[4].id;
+  assert.strictEqual(c4, L.mix.id + '::c4', 'precondition: the last chapter row is `::c4`');
+  assert.strictEqual((await post(`/api/liked/${enc(c4)}`, ck)).status, 200);
+  const pre = await json('/api/liked?limit=50', ck);
+  assert.deepStrictEqual(pre.items.map((i) => i.id), [c4], 'precondition: listed');
+  assert.strictEqual(pre.total, 1, 'precondition: counted');
+  // Re-chapter to THREE chapters through the real editor route (manual chapters win).
+  const edit = await editChapters('0:00 One\n1:40 Two\n3:20 Three');
+  assert.strictEqual(edit.status, 200, await edit.text());
+  // Reachability: the file is STILL chaptered (three rows), so the entry reaches the
+  // index lookup and the drop is the `!track` guard, not the base/audio/visibility gate.
+  const rows = (await json('/api/music?limit=50', ck)).items.filter((t) => String(t.id).startsWith(L.mix.id + '::c')).map((t) => t.id);
+  assert.deepStrictEqual(rows, [0, 1, 2].map((n) => L.mix.id + '::c' + n), 'the edit re-chaptered the file to three rows');
+  const res = await get('/api/liked?limit=50', ck);
+  assert.strictEqual(res.status, 200, 'the Liked page still answers (no throw on the stranded index)');
+  const body = await res.json();
+  assert.deepStrictEqual(body.items, [], 'the stale `::c4` entry is dropped from the read');
+  assert.strictEqual(body.total, 0, 'and from the count');
+  assert.deepStrictEqual(userStore.getLiked(me.user.id), [c4], 'the row is NOT deleted from storage (disclosed: a hand DELETE or a restoring edit is the only way out)');
+  // Restoring a 5-chapter list revives it (the index is real again).
+  const back = await editChapters('0:00 A\n1:00 B\n2:00 C\n3:00 D\n4:00 E');
+  assert.strictEqual(back.status, 200);
+  const revived = await json('/api/liked?limit=50', ck);
+  assert.deepStrictEqual(revived.items.map((i) => i.id), [c4], 'revived once the index exists again');
+  assert.strictEqual(revived.items[0].title, 'E', 'under the RESTORING edit\'s title for index 4');
+});

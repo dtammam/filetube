@@ -107,7 +107,14 @@ async function boot(run, opts) {
       return Promise.resolve({ ok: true, json: async () => ({ items }) });
     }
     const idm = u.match(/^\/api\/music\/([^?]+)$/);
-    if (idm) { const t = tracks.find((x) => x.id === decodeURIComponent(idm[1])); return Promise.resolve(t ? { ok: true, json: async () => t } : { ok: false, status: 404, json: async () => ({}) }); }
+    if (idm) {
+      const id = decodeURIComponent(idm[1]);
+      // overlayFail: the chapter-flag overlay's fetch answers 404 (the resolve
+      // route's shape for an id the projection no longer mints).
+      if (opts.overlayFail && id === opts.overlayFail) return Promise.resolve({ ok: false, status: 404, json: async () => ({ error: 'no such track' }) });
+      const t = tracks.find((x) => x.id === id);
+      return Promise.resolve(t ? { ok: true, json: async () => t } : { ok: false, status: 404, json: async () => ({}) });
+    }
     return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
   }
 
@@ -314,3 +321,22 @@ test('the chapter target is captured at OPEN time: a REAL chapter roll while the
     assert.ok(ctx.calls.slice(before).some((c) => c.url === '/api/music/' + ENC_C0 && c.method === 'GET'), 'the re-open reads chapter 0 (the roll was real)');
   }, { desktop: true });
 });
+
+// Gate r1, adversary S4 (unbound failure arm): when the chapter-flag overlay's fetch
+// FAILS, the row must read "Like" and the tap must be an idempotent ADD (POST) - a
+// failed overlay that read as LIKED would turn the tap into a silent UNLIKE (the
+// C9 mutant `item.liked = track ? ... : true`). Driven on both Extras writers.
+for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras, false], ['desktop actions menu', openDesktopActions, true]]) {
+  test(`${label}: a FAILED chapter-flag overlay (GET /api/music/<chapterId> 404) reads as "Like" and the tap POSTs the chapter - never a silent unlike`, async () => {
+    await boot(async (dom, ctx) => {
+      const menu = await open(dom);
+      assert.ok(ctx.calls.some((c) => c.url === '/api/music/' + ENC_C1 && c.method === 'GET'), 'the overlay fetch was attempted');
+      const row = likeRow(menu);
+      assert.strictEqual(row.querySelector('.mms-sm-actlbl').textContent, 'Like', 'a failed overlay reads as not liked');
+      assert.ok(!row.classList.contains('is-on'));
+      click(dom, row);
+      await settleN(4);
+      assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['POST /api/liked/' + ENC_C1], 'the tap is an ADD under the chapter id (the server answers idempotently), never a DELETE');
+    }, { desktop, overlayFail: 'f1::c1' });
+  });
+}

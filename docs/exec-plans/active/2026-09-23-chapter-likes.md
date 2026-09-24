@@ -66,8 +66,9 @@ Routes:
   `/api/stats` member inventory :1659 filters likes to `has(visibleMetadata, id)`: a chapter like
   would be dropped from the member's own count unless the filter looks at the base id.
 - Music-store readers (`getMusicLiked`): `/api/music/liked` :298 (native ids only; no client
-  reads it: `grep 'api/music/liked' public/js` finds only the row heart's writes), the shaped
-  track arm of `/api/liked` :257. Untouched.
+  READS it: `grep 'api/music/liked' public/js` finds only WRITES, the music row heart and, at
+  main, the Liked grid's `cardLikeEndpoint` track arm), the shaped track arm of `/api/liked`
+  :257. Untouched.
 
 Clients:
 - Row heart: `buildSongRowHtml` public/js/music.js:169-200 (`data-like-id=item.id`);
@@ -154,6 +155,12 @@ Client:
 | Extras Like (sticker + desktop) | client write/read | chapter target + chapter flag |
 | Liked grid heart (main.js) | client write | `::c` track -> media store |
 | watch page Like, media card heart | client write | base file, unchanged |
+| client READERS of `GET /api/liked`: watch.js Prev/Next (~:2170/:2185), player.js autoplay (~:4925), common.js browse ctx (~:2209) | client read | filter to `kind:'media'`; a chapter entry is skipped like existing track entries (gate r1 qa S5, verified inert) |
+
+Follow-up (gate r1 qa S4): `/api/home` (lib/media/routes.js:431 + :587) reads `likedSet.has(item.id)`
+(base) and `getMusicLiked` (native), so a liked chapter never surfaces in the home feed's
+candidates - inert by construction; a home row for chapter likes would be a new feature, not a gap
+in this branch.
 
 ## Acceptance (each names its binding test)
 
@@ -259,7 +266,7 @@ for chapter-likes + music-chapter-likes-client), re-ran. Results (verbatim count
 | M5 | `rekeyLiked` exact-id only | KILLED 12/7/5 (AC6, AC7 + 3 carrier units) |
 | M6 | `trackIsLiked` reads the MUSIC set for every row | KILLED 7/5/2 (AC1/AC3, AC7) |
 | M7 | GET chapter arm: shaping gate AND filter arm removed | KILLED 7/6/1 (AC5) |
-| M7b | GET chapter arm: filter arm only removed (shaping gate kept) | GREEN 7/7/0 as expected (belt and suspenders; the shaping gate alone holds) |
+| M7b | GET chapter arm: filter arm only (shaping gate kept) - TWO different mutants (gate r1 qa W1 corrected this row) | REPLACING the arm with `return true` is GREEN 7/7/0 (RBAC is held by the shaping gate); DELETING the arm is RED 7/2/5 (AC2, AC5/AC12, AC6, AC7, AC8): the entry falls through to `trackVisibleTo(req, ownTrack(...))` = false and every chapter entry vanishes from /api/liked and total. The filter arm is load-bearing for ROUTING past the ownTrack fallthrough; the shaping gate is load-bearing for RBAC. |
 | M8 | row heart `r.ok` check removed | KILLED 8/7/1 |
 | M9 | `data-like-store` never stamped | KILLED 8/5/3 |
 | M10 | Extras chapter overlay removed | KILLED 8/5/3 |
@@ -287,10 +294,20 @@ Disclosed decisions and known limits:
   audio items only (a video chapter has no playable Liked card - `/api/music/:id` resolves audio
   projections only), and the client keeps today's file-level Like for them (bound by test).
 - A like keyed by chapter INDEX survives a re-chaptering of the file (chapters editor) under its
-  old index: the read arm DROPS an index no longer in the expansion (no ghost) but does not
-  delete the row (deleting user likes on an edit would itself be data loss); a re-ordered
-  chapter list can re-point index n at a different song - inherent to the `::c<n>` id scheme
-  the whole music chapter system uses (progress, queue entries) and not new here.
+  old index: the read arm DROPS an index no longer in the expansion (no ghost, never a 500 -
+  bound by the W1 test in chapter-likes.test.js) but does not delete the row (deleting user
+  likes on an edit would itself be data loss); a re-ordered chapter list can re-point index n
+  at a different song - inherent to the `::c<n>` id scheme the whole music chapter system uses
+  (progress, queue entries) and not new here. Gate r1 adversary W3 measured the FULL consequence
+  and it is disclosed as **tech-debt #235**: after a re-chapter that strands `::c4`, a member's
+  `/api/stats` inventory.liked stays 1 while `/api/liked` total is 0 (the two readers disagree -
+  stats counts by base visibility, the listing by expansion membership), the sidebar Liked entry
+  HIDES (`fetchLikedTotal` gates on total > 0), and the stranded row is reachable by no UI - only
+  a hand-built `DELETE /api/liked/<id>::c4` removes it (a restoring edit revives it instead); a
+  reorder re-points `::c1` from one song to another in the Liked list. Not data loss (the row
+  persists), a storage-kind stranding. Candidate fixes (tracker): count `/api/stats` through
+  the same expansion membership, or sweep stale-index rows in the chapters editor's own
+  post-commit seam.
 - The umbrella's "403 for a restricted member" is 404 on this surface (the repo's v1.80 rule:
   no restricted-id oracle; bound by rbac-video-enforcement.test.js:146 and AC5).
 
