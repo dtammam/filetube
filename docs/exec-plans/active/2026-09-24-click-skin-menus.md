@@ -3,8 +3,8 @@ plan: click-skin-menus
 harness: v2 · lean
 branch: feat/click-skin-menus
 anchor: spec
-status: Gate r1 fixed - awaiting gate r2
-next: gate r2 (adversary + qa) on the r1 fix record below. Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on), his rulings on D1 and on K4 (the Architect ruled for him overnight), and the Chapter Snap branch raising notifyLibraryChanged() on its save.
+status: Gate r2 fixed - awaiting gate r3
+next: gate r3 (adversary delta on the r2 fix record below; qa APPROVED r2). Owed after merge: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on), his rulings on D1 and on K4 (the Architect ruled for him overnight), and the Chapter Snap branch raising notifyLibraryChanged() on its save.
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -315,19 +315,19 @@ track, crafted-markup names, thirty fillers).
 | **K2** qa W1 = adversary W2 (chapter save) | ONE seam: common.js `notifyLibraryChanged()` / the `filetube:library-changed` document event, raised by `showChaptersEditor` on every successful save (any surface); the music view listens (and its drill onSaved invalidates directly); the engine reads `dataVersion` in EVERY `render()` and before every user action (`checkData`), so an open level re-loads with no skin repaint - the pop-out included | r1 "K2 ... RE-TIMES and DROPS" (the real drill button; re-time: the open level shows `Renamed A` and plays `chapterStartSec 600`; drop: the Songs level equals the server's list); r1 "the ONE seam" (the real common.js function re-loads an open level on the next wheel step); unit "the chapters editor raises the ONE event (not on a failed save)" | N2 RED 1, N3 RED 7, N4 RED 1, N5 RED 1, N6 RED 1 |
 | qa S8 (liked) | `likedVersion` bumped by the browse heart and the Extras like; only an open Liked Songs level re-loads | r1 "an unlike re-loads an OPEN Liked level"; unit "likedVersion ... ONLY" | N7 RED 1, N7b RED 2 |
 | **K3** qa W2 = adversary W3 (freeze) | a flat pick clears the browse list and re-builds it in 20-row chunks, ONE PER FRAME, each its own `.music-song-chunk` block (`content-visibility:auto`) - the list is a flex column, and rows appended straight into it re-laid out every row each frame (profiled: native rendering, not JS); the build stops only when superseded | r1 "K3 ... clears at once, chunks after, index-true, a newer pick abandons the older build"; r1 "an autoplay append mid-build never strands the list" | N8 RED 1; N9 (the old `list !== queue` stop) RED 1 - it stranded a half-built list when an autoplay append re-assigned `queue` mid-build, found by this pass |
-| **K4** adversary W4 (the Architect's ruling) | `flatQueue`: a pick from a FLAT list (no drill, or `play.flat` - an artist's All Songs) plays its own segment (start + its span), then `playAt(i + 1)`; a next row that IS the file's next segment rolls on untouched (no reload); the file's last chapter leaves it to the ended advance; the loop outranks it; a scrub is ignored; drill picks keep v1.311 (solo exit); the flat mode rides an autoplay append and a v1.320 retract; the seam asks v1.320's `autoplayHoldsAt` (Autoplay off ends the list at the segment) | r1 "K4 ... FLAT list" (the real interleaved Songs: Intro hands on to the list's next row; Track A rolls on into Track B with no reload); r1 "artist's All Songs"; r1 "a flat list's LAST row ... station appended"; r1 "Autoplay OFF after the station" (hold) and "through the real toggle RETRACTS" | N10 RED 3, N11 RED 2, N12 RED 1, N14 RED 3, N19 RED 1, N20 RED 1 (after its test); N13 (the last-chapter guard) SURVIVED - reasoned equivalent: without it the band fires `playAt(next)` a quarter-second before the ended advance does the same |
+| **K4** adversary W4 (the Architect's ruling) | `flatQueue`: a pick from a FLAT list (no drill, or `play.flat` - an artist's All Songs) plays its own segment (start + its span), then `playAt(i + 1)`; a next row that IS the file's next segment rolls on untouched (no reload); the file's last chapter leaves it to the ended advance; the loop outranks it; a scrub is ignored; drill picks keep v1.311 (solo exit); the flat mode rides an autoplay append and a v1.320 retract; the seam asks v1.320's `autoplayHoldsAt` (Autoplay off ends the list at the segment) | r1 "K4 ... FLAT list" (the real interleaved Songs: Intro hands on to the list's next row; Track A rolls on into Track B with no reload); r1 "artist's All Songs"; r1 "a flat list's LAST row ... station appended"; r1 "Autoplay OFF after the station" (hold) and "through the real toggle RETRACTS" | N10 RED 3, N11 RED 2, N12 RED 1, N14 RED 3, N19 RED 1, N20 RED 1 (after its test); N13 (the last-chapter guard) SURVIVED here and was WRONGLY called equivalent - refuted at gate r2 (adversary S2: without it a flat list ending at the file's LAST chapter pauses 0.2 s short and the file never ends); bound at r2, RED |
 | **K5** qa W3 (Seattle rows) | a Seattle list with sub-lines is a TWO-LINE list (`.ipm-2l`: 60 px pitch - uniform, the window math needs one - title + sub packed at the top) | unit "A20/A22 + K5" (the class, and none on a one-line list); probe bands below | N15 RED 1 |
 | **K6** adversary W5 bindings | (tests only, plus the fixes above) | A3/A4/A6 unit (one pointer, pointercancel, the axis - with a clean-swipe control); A5 unit (panel listener balance net 0 after destroy + a dead swipe); A14 unit (a pre-invalidation load lands last and stands down); A9/A10/A15/A23/A24 r1 integration; A20/A22 unit + a runtime probe across every level of both skins with crafted markup in a title, artist, album and genre | A3, A4, A5, A6, A9, A10, A14, A15, A20, A22, A23, A24 all RED |
 | qa S4 | no hold-to-scan on a pivot level (the pad moves the pivot) | unit "qa S4" (+ the Now Playing control scans) | N16 RED 1 |
 | qa S5 | the contract comment names `dataVersion` / `likedVersion` | - | - |
 | qa S6 | no menu (nor its title) in the Nano tray | unit "qa S6" | N17 RED 1 |
 | adversary 6 | the stale "within 220 chars" comment rewritten | - | - |
-| adversary 7 (and D6) | a browse render superseded by a menu pick does not paint (`menuPickGen`, every arm) | r1 "a drill render in flight ... never paints its header" | N18 RED 1 |
+| adversary 7 (and D6) | a browse render superseded by a menu pick does not paint (`menuPickGen`; at r1 the drill, songs, albums and artists arms - NOT yet Home or the catch arm, which gate r2 found and r2 fixed) | r1 "a drill render in flight ... never paints its header" | N18 RED 1 |
 
 **Mutant table at 8bab3d9a** (runner `click-skin-menus-mutants-r1.js` in the session scratchpad,
 sandbox extracted from 8bab3d9a, each anchor asserted unique, each diff non-empty; log
 `click-skin-menus-mutants-r1b.log`): **57 of 59 RED**; N20 survived there and is RED against the
-test added in this commit; **N13 survives (reasoned equivalent)**. The re-run r0 mutants (M1-M31)
+test added in this commit; **N13 survived** - the "reasoned equivalent" written here was wrong (refuted at r2, now bound and RED). The re-run r0 mutants (M1-M31)
 are all RED on the new tree (M9/M10 stay equivalent as recorded above).
 
 **Measurements (final tree, headless Chromium, 3,008-song fixture, 390x844):**
@@ -335,7 +335,7 @@ are all RED on the new tree (M9/M10 stay equivalent as recorded above).
 | | before (@25929acd) | after |
 |---|---|---|
 | pick Songs row 1506, CPU x1 | tap 1,408 ms; long tasks [1801, 206, 120] | tap 14 ms; long tasks none |
-| pick Songs row 1506, CPU x4 | tap 5,686 ms; long tasks [288, 6466, 493] | tap 68 ms; long tasks [78] |
+| pick Songs row 1506, CPU x4 | tap 5,686 ms; long tasks [288, 6466, 493] | tap 68 ms; long tasks [78] in the probe's 1.5 s window only - over the WHOLE fill qa measured 33 long tasks of 50-184 ms (about 10 s behind Now Playing; corrected at gate r2) |
 | Shuffle Songs, CPU x1 | long tasks [966, 146, 118] | none |
 | pick from a 3-song album, x1 / x4 | 108 / 43 ms | 30 / 32 ms |
 
@@ -475,3 +475,36 @@ Verdict: CHANGES for new finding 1 only, a one-line fix verified above. Findings
 Tree: this section is my only write. Before it, `git status` showed only QA's uncommitted r2 section in this file. No untracked files.
 
 Gate: CHANGES r2 @e76bc766 — adversary
+
+## Gate r2 fix record (builder, after @e76bc766)
+
+Commits: 0258d407 (both r2 sections, as-is) -> a088cbb4 (the fixes and their tests) -> this commit
+(this record). No merge of main (the Architect holds it for Chapter Snap).
+
+| Finding | Fix | Test (binding) | Mutant -> result (sandbox from a088cbb4) |
+|---|---|---|---|
+| **F1** adversary W1 (the end-of-list re-pause) | `flatQueue = null;` just before the pause in `enforceFlatSegmentEnd` (the adversary's verified one-liner): the list is done there, so a resume plays on as a plain listen | r1 "r2 F1": Autoplay off, Liked = `Track A` (mid-file), one pause at the segment end, then resume ticks 900.1 ... 901.35 through the old band: still one pause, no reload | F1 (the line dropped) RED 1 |
+| adversary S2 (N13 is NOT equivalent) | the guard was right; the r1 record's "equivalent" claim is corrected in place | r1 "r2 S2": Autoplay off, Liked = `Track B` (the file's LAST chapter), ticks 1500 / 1799.5 / 1799.8 / 1799.95: 0 pauses (the file reaches its own ended) | N13 RED 1 |
+| adversary S3 (R12) | (the guard existed) | r1 "r2 S3": the Songs level open, a library-changed event from another window, Select: the level re-loads (a second fetch), nothing plays, still on Songs | R12 RED 1 |
+| adversary S4 (Home, the catch) | `renderHome(stillMine)` returns before its write, and the catch arm clears only `if (stillMine())` - the stand-down is now on EVERY arm | r1 "r2 S4a" (a Home render in flight, then a flat pick: no Home shelves, the pick's list stays); r1 "r2 S4b" (a browse Songs fetch that FAILS after the pick: the list stays, no empty note) | S4a RED 1, S4b RED 1 |
+| qa S2 (the x4 record) | the r1 table row is corrected in place (33 long tasks of 50-184 ms over the whole fill, qa's measure). Chunks were NOT sized by a time budget: the per-chunk cost is the browser's layout of the new rows after the script returns, which a script-side clock cannot see, so a time budget would not bound it. Disclosed below | - | - |
+| qa S3 (inert `has-sub`) | the class and its presence assertion are gone; the packing is `.ipm-list.ipm-2l`, which N15 binds (the Click-list assertion now checks for no `ipm-2l`) | unit "A20/A22 + K5" | N15 RED 1 |
+| qa S4 (comment) | "the first chunk waits for the next animation frame (then a task)" | - | - |
+| qa S1 | disclosed (below) | - | - |
+
+Re-run around the touched seam, same sandbox: N18 RED 1, N10 RED 5, N11 RED 2, N14 RED 3,
+N19 RED 1, N20 RED 1. **12 of 12 RED**, every diff non-empty (log `click-skin-menus-mutants-r2.log`,
+runner `click-skin-menus-mutants-r2.js`, session scratchpad). The hook's full unit suite at
+a088cbb4: 7206 / 7206. The pocket-menu suites (both integration files + the unit file): 64 / 64.
+
+Disclosed (r2):
+- **qa S1** - after a library change the OPEN level (the pop-out, or an in-tab level with no
+  repaint) keeps SHOWING a dropped chapter row until the next wheel step, tap or Select. It can
+  no longer PLAY it: every action re-loads the level first (R12 and N4 bind that). Fix shape, if
+  wanted: re-render the shown level when `dataVersion` moves (the view's event handler poking the
+  engines).
+- **qa S2 residual** - the background browse build at phone-class CPU costs 50-184 ms per 20-row
+  chunk (layout), for about 10 s behind Now Playing; the tap itself is small (68-178 ms at x4) and
+  nothing freezes. Fix shape, if a device shows jank: window the browse song list instead of
+  building every row.
+
