@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: chore/precommit-docs-fast-path
 anchor: outcome
 status: Building
-next: slim gate (adversary; hooks/** is harness-and-config), then merge ahead of the wave release v1.317.0
+next: gate CLOSED r3 @b82ac126 (adversary; Dean approved round 3). Merge ahead of the wave release v1.317.0. Owed (r3 S4, non-blocking): put the GIT_* filter back into CLEAN_ENV as a second layer beside the process scrub, so reopening the incident takes two edits, not one
 design: Approved 2026-09-24 (Dean: "Yes you can add. Let's knock this out faster." on the docs-only fast path proposal)
-gate: pending
+gate: APPROVED r3 @b82ac126 — adversary
 ---
 
 # Pre-commit docs-only fast path
@@ -156,3 +156,14 @@ Gate: CHANGES r2 @a328d2f0 — adversary
 
 Targeted: precommit-docs-fast-path `tests 10 pass 10 fail 0`; eslint exit 0; 0 leaked sandbox dirs; the
 real repo's core.bare false throughout.
+
+## Gate r3 - adversary (@b82ac126)
+
+Delta only (`git diff a328d2f0 b82ac126`: the test file and this plan). Measured in a `git archive b82ac126` sandbox under /tmp and a decoy repo with a linked worktree; nothing ran in this repo or in a real hook here. Baseline: the test file `# tests 10 # pass 10 # fail 0`, also 10/0 under the worktree-shaped hook env (GIT_DIR = the decoy worktree gitdir, GIT_INDEX_FILE, GIT_CONFIG_PARAMETERS, no GIT_WORK_TREE) with the decoy byte-identical; 0 ft-precommit-fast dirs left after the whole matrix.
+
+- W3 fixed as re-prescribed. Under the worktree-shaped env: my mutant (the sandbox git helper drops `env: CLEAN_ENV`) `# pass 10 # fail 0`, decoy unchanged (core.bare false, config md5 5b603c2c, index a.txt); EVERY `env: CLEAN_ENV` dropped `# pass 9 # fail 1`, decoy unchanged. Inside a real pre-commit of the decoy worktree: the fixed file and my mutant both `# pass 10 # fail 0`, each commit carried only its own staged file, core.bare false. The scrub binds: removed, `# pass 3 # fail 7` and the decoy's core.bare flipped (decoy only); narrowed to GIT_DIR only, `# pass 5 # fail 5` and the fixture paths were staged into the decoy worktree's index. The new comment matches this behavior.
+- S3 fixed. `exit 0` after the fast-path `fi`: `# pass 9 # fail 1`; the lint step replaced by `true`: `# pass 9 # fail 1`.
+- Earlier bindings still red at b82ac126: drop `--no-renames` 9/1, drop the quoted-docs alternative 9/1, `|| true` on the fast-path run 9/1, `exit 0` before it 9/1, NODE_TEST_CONTEXT kept in CLEAN_ENV 9/1.
+- S4 SUGGESTION (non-blocking): the scrub is now the ONLY layer. CLEAN_ENV no longer filters GIT_*, so deleting the one scrub line reopens the incident by itself (measured above: core.bare flipped). At a328d2f0 plus the scrub, both layers held against each single-line mutant. Adding the GIT_* filter back to CLEAN_ENV means it takes two edits to reopen the incident. My r2 "keep CLEAN_ENV" did not say to keep its GIT_* filter; that was my ambiguity. It does not block: the scrub is commented and bound (a removal goes red), and the likely accident, a new call site without `env:`, is fully held.
+
+Gate: APPROVED r3 @b82ac126 — adversary
