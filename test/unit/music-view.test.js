@@ -453,6 +453,57 @@ test('v1.317 (M1): buildNowPlayingPanelHtml keeps the plain sub-line (no data-ar
   assert.doesNotMatch(html, /data-artist/);
 });
 
+test('v1.317 gate r1 W3: nowPlayingFrom is the ONE writer of the now-playing record - a queue entry DERIVES the channel folder, a player meta CARRIES it, and an id override names a chapter', () => {
+  const { nowPlayingFrom } = require('../../public/js/music.js');
+  const lib = { id: 'c1', title: 'T', artist: 'A', album: 'B', albumKey: 'k', source: 'library', folderName: ' Chan ' };
+  assert.deepStrictEqual(nowPlayingFrom(lib), { id: 'c1', title: 'T', artist: 'A', album: 'B', albumKey: 'k', folderName: 'Chan' });
+  assert.strictEqual(nowPlayingFrom(lib, 'c1::c2').id, 'c1::c2', 'the id override names the chapter');
+  const listenChapter = { id: 'v1::c0', title: 'Ch', artist: 'The Channel', albumKey: 'v1', source: 'library-chapter', listen: true, folderName: 'The Channel' };
+  assert.deepStrictEqual(nowPlayingFrom(listenChapter), { id: 'v1::c0', title: 'Ch', artist: 'The Channel', album: '', albumKey: 'v1', folderName: 'The Channel' });
+  assert.deepStrictEqual(nowPlayingFrom({ id: 'n1', title: 'N', artist: 'X', folderName: 'Music/Ripped' }), { id: 'n1', title: 'N', artist: 'X', album: '', albumKey: '', folderName: '' }, 'a native track carries no channel (the library gate)');
+  // the dock-return seed passes the player's getCurrentMeta() shape: `channelFolder` is the
+  // folder loadTrack already gated - it wins, including an explicit '' (no channel).
+  const meta = { isMusic: true, id: 'c1', title: 'T', artist: 'A', album: '', albumKey: 'k', channelFolder: 'Chan Dir', browseCtx: '' };
+  assert.deepStrictEqual(nowPlayingFrom(meta), { id: 'c1', title: 'T', artist: 'A', album: '', albumKey: 'k', folderName: 'Chan Dir' });
+  assert.strictEqual(nowPlayingFrom({ id: 'x', channelFolder: '', source: 'library', folderName: 'Leak' }).folderName, '', 'an explicit empty carry is honoured (never re-derived)');
+  assert.deepStrictEqual(nowPlayingFrom(null), { id: undefined, title: '', artist: '', album: '', albumKey: '', folderName: '' }, 'null-safe');
+});
+
+test('v1.317 gate r1 W3 census: music.js builds `nowPlaying` ONLY through nowPlayingFrom - no object literal, every assignment is null or the one writer (comments stripped)', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const raw = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  // strip block + line comments ONCE at read (a comment naming the old literal must not satisfy
+  // or trip the census); `://` inside URL strings is kept by requiring no preceding ':'.
+  const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\'"])\/\/[^\n]*/g, '$1');
+  assert.doesNotMatch(src, /\bnowPlaying\s*=\s*\{/, 'no hand-copied nowPlaying = { ... } literal');
+  assert.doesNotMatch(src, /\bnowPlaying\s*=\s*Object\.assign\(/, 'no Object.assign-built record either');
+  const assigns = [...src.matchAll(/\bnowPlaying\s*=(?!=)\s*([^;]+);/g)].map((m) => m[1].trim());
+  assert.ok(assigns.length >= 6, 'the assignments were found (non-vacuous): ' + assigns.length);
+  const bad = assigns.filter((rhs) => rhs !== 'null' && !/^nowPlayingFrom\([^()]*\)$/.test(rhs));
+  assert.deepStrictEqual(bad, [], 'every nowPlaying assignment is null or nowPlayingFrom(...)');
+  const writers = assigns.filter((rhs) => /^nowPlayingFrom\(/.test(rhs));
+  assert.strictEqual(writers.length, 4, 'the four seams (loadTrack, reflectChapter, restoreListenChapterQueue, seedNowPlayingFromPlayer) all route through it');
+  assert.strictEqual((src.match(/function nowPlayingFrom\(/g) || []).length, 1, 'ONE writer');
+});
+
+test('v1.317 gate r1 W2: an EMPTY drill never requests /albumart/ with an empty id (header + sticky bar keep a srcless, unshimmered slot)', () => {
+  const header = buildDrillHeaderHtml({ type: 'artist', label: 'Ghost' }, []);
+  assert.doesNotMatch(header, /\/albumart\//, 'no art request without a first track');
+  assert.match(header, /<img class="music-drill-art" alt="Ghost" \/>/, 'the art slot stays (layout), srcless and without the shimmer');
+  const sticky = buildStickyBarHtml({ type: 'artist', label: 'Ghost' }, []);
+  assert.doesNotMatch(sticky, /\/albumart\//);
+  assert.match(sticky, /<img class="music-sticky-thumb" alt="" \/>/);
+  // the populated axis is unchanged
+  assert.match(buildDrillHeaderHtml({ type: 'artist', label: 'X' }, [{ id: 't9' }]), /src="\/albumart\/t9"/);
+});
+
+test('v1.317 gate r1 W2: buildNowPlayingPanelHtml honours the view\'s veto - artistTap:false renders the plain sub-line even with an artist', () => {
+  const html = buildNowPlayingPanelHtml({ title: 'S', artist: 'The Channel', album: 'Vid', artistTap: false }, []);
+  assert.match(html, /<div class="mnp-sub">The Channel · Vid<\/div>/, 'a div');
+  assert.doesNotMatch(html, /data-artist/);
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A', artistTap: true }, []), /<button type="button" class="mnp-sub" data-artist="A"/, 'true keeps the control');
+});
+
 test('v1.317 (M1, D7): channelFolderOf - a LIBRARY-backed track (projection or listen) with a folderName has a channel; a native track never does', () => {
   assert.strictEqual(channelFolderOf({ source: 'library', folderName: ' The Channel ' }), 'The Channel', 'projected: the trimmed folder');
   assert.strictEqual(channelFolderOf({ source: 'library-chapter', folderName: 'Ch' }), 'Ch', 'a chapter of a projected file');

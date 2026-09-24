@@ -31,6 +31,12 @@
 //   fastScan       HOLD the rewind/ffwd wheel zone to fast-scan the timeline ~2x
 //                  (v1.242; release commits through the seek pipeline)
 //   onShuffle()    the [data-skin-shuffle] zone's action (the view's shuffle control)
+//   onArtist()     OPTIONAL (v1.317 M1): the artist line's action (music: the artist drill, or
+//                  the channel grid for a listen video). Its PRESENCE is what makes the line a
+//                  [data-skin-artist] control (ctx.artistTap): without it (podcasts) the line
+//                  renders as the plain div - never an inert button. The view may also
+//                  VETO it per track with getCtx().artistTap === false (music: a listen
+//                  video with no channel folder has nowhere to go).
 //   sticker        the v1.238-249 sticker quick-menu (speed/loop/skin) + optional Extras:
 //     onSkinChange()  re-render after a skin pick (the view repaints its surfaces)
 //     getPlayer()     -> the FileTube player facade for loop get/set
@@ -42,9 +48,6 @@
 //                     channel" row beside Watch when visible() (music: the playing item is a
 //                     library-backed track with a channel folder); onTap navigates to the
 //                     home grid filtered by that folder. Main-document only, as Watch.
-//   onArtist()     OPTIONAL (v1.317 M1): the [data-skin-artist] artist line's action (music: the
-//                  in-Music artist drill). Without it the line's tap does nothing (podcasts
-//                  pass nothing).
 //     tray            OPTIONAL (v1.257, INJECTED BY THE POP-OUT SHELL only) - { enabled(),
 //                     onToggle() }: page 1 gains a "Tray" row on the pop-out surface;
 //                     toggling reopens the pip window as the taskbar strip. Views never
@@ -966,7 +969,12 @@
       // properly, with its timers). This is the BACKSTOP for an endWheel that throws inside
       // that try/catch - a repaint must never leave a live spin behind.
       wheelSpin = null;
-      panel.innerHTML = SKINS.renderFull(id, getCtx());
+      // v1.317 gate r1 W1 (both seats): the artist line is a CONTROL only where a handler exists
+      // - this engine's onArtist (podcasts pass none, so their show line stays a plain div; the
+      // pop-out shell instantiates this same engine, so it follows) - and the view may veto it
+      // per track with ctx.artistTap === false (music: a listen video with no channel).
+      var ctx = getCtx() || {};
+      panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false }));
       panel.hidden = false;
       // Adversarial gate W1 (v1.250): shimmerArt lives on the MAIN window - a pop-out is a
       // blank scriptless window, so win.FileTube is undefined there and the art-shimmer would

@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/music-channel-chapters
 anchor: spec
 status: Building
-next: M1+M2 BUILT on feat/music-channel-chapters (main v1.316.0 merged, anchors re-verified; see "## Build record (M1+M2)"). Next: commit, mutation-test the bindings in a git-archive sandbox, then the gate (adversary floor + qa per scrutiny; brief the seats on the every-writer list + the podcast byte-identity). Wave order per D1 after this ships: T1 own slim branch, M3 own branch full gate, M4 own branch last.
+next: M1+M2 gate r1 (qa CHANGES, adversary CHANGES @35a3bb1d) FIXED on feat/music-channel-chapters - see "## r1 fix record (M1+M2)". Next: gate r2 delta re-confirmation (same seats), then merge. Wave order per D1 after this ships: T1 own slim branch, M3 own branch full gate, M4 own branch last.
 design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on the whole register D1-D15 as recommended, D15 as adjusted by the intake finding below)
 gate: pending
 ---
@@ -340,7 +340,7 @@ span). The Nordic thumb rows gain the `.mms-rd` length the iPod list already had
 - `public/js/music.js`: `channelFolderOf` (exported); `buildSongRowHtml` / `buildDrillHeaderHtml` artist buttons; `buildNowPlayingPanelHtml` `subArtist` + `durLabel`; `buildListenChapterTracks` + the single listen track carry `folderName`; `nowPlaying.folderName` at all four seams (reflectChapter, loadTrack, seedNowPlayingFromPlayer, restoreListenChapterQueue); `loadTrack` `channelFolder` on the load data; `updateNowPlayingPanel` `durLabel`; the data-artist dispatch widened to `.music-song-artist` / `.music-drill-artist`; the panel `.mnp-sub[data-artist]` branch; `channelFolderCurrent` / `channelVisible` / `channelTap` / `openArtistDrill`; `onArtist` + `channel` in the engine/sticker config; `hasChannel`/`onChannel` on the desktop menu.
 - `public/js/player.js`: `getCurrentMeta` returns `channelFolder` (3 lines).
 - `public/css/style.css`: the `:where()` resets + hover underline, `.mnp-queue-dur`, `.mms-spotify .mms-rd`. Token census stays 0; overlay containment clean.
-- Tests: `music-view` (2 adapted + 5 new), `music-nowplaying-view` (1 adapted + 5 new), `music-skins` (3 new), `music-skin-integration` (11 new), `music-actions-desktop` (harness extended + 3 new), `podcast-nowplaying-view` (2 new: the byte-identity lock + the driven no-dur/no-button check), `skin-surface` (1 extended: the pop-out never offers the channel row).
+- Tests: `music-view` (1 adapted + 5 new), `music-nowplaying-view` (1 adapted + 5 new), `music-skins` (3 new), `music-skin-integration` (10 new: 6 top-level + the 4-skin loop; counts corrected at the r1 fix per qa finding 4), `music-actions-desktop` (harness extended + 3 new), `podcast-nowplaying-view` (2 new: the byte-identity lock + the driven no-dur/no-button check), `skin-surface` (1 extended: the pop-out never offers the channel row).
 
 ### Podcast byte-identity proof
 
@@ -660,3 +660,90 @@ Tree after review: byte-identical to 35a3bb1d apart from this plan doc (the qa s
 above and this one); sandbox `/tmp/adv-m1m2-SF70` removed; no untracked files added.
 
 Gate: CHANGES r1 @35a3bb1d — adversary (see findings)
+
+## r1 fix record (M1+M2)
+
+Fixes against both r1 sections (@35a3bb1d). Each line: finding -> change -> binding test ->
+mutant result (the mutants ran after the fix commit, in a sandbox from `git archive` of that
+committed sha; results in the table below).
+
+### MUST
+
+1. **The podcast skin's inert "Go to artist" button (qa 1 + adversary 1).** Change: the
+   engine (`public/js/skin-surface.js` `paint`) hands the renderer
+   `artistTap: !!onArtist && ctx.artistTap !== false`; `artistLine(cls, artist, on)`
+   (`public/js/music-skins.js`) renders the button only when `on`, else the plain div with the
+   name. Podcasts pass no `onArtist`, so their show line is a div on every skin (the pop-out
+   shell instantiates the same engine, so it follows). Cfg doc moved beside `onShuffle()` and
+   states the presence rule + the per-track veto. Bindings: podcast-nowplaying-view "gate r1
+   W1 (apple / spotify / ipod / zune-classic)" (driven podcast boot per skin: the show line is a
+   DIV, no `[data-skin-artist]`, no "Go to artist", a click changes nothing / fetches nothing /
+   loads nothing); music-skins "WITHOUT artistTap ... plain div" (every skin, no flag and
+   `false`); the music axis keeps the existing driven in-tab x4 + pop-out artist-drill taps
+   (music's engine has `onArtist`, so the button renders and calls it) and the every-skin
+   render test now passes `artistTap: true`.
+2. **A listen video's artist tap opened an EMPTY drill (adversary 2, qa 3).** Architect
+   decision applied: the view decides per track (`artistTapMode()` in `public/js/music.js`):
+   a normal track -> the artist drill; a LISTEN track with a channel folder -> `channelTap()`
+   (the channel grid); a listen track without one -> not a control (`artistTapAvailable()`
+   false: the skin ctx carries `artistTap: false`, the desktop panel builder gets
+   `artistTap: false` and renders the plain `.mnp-sub` div). `buildDrillHeaderHtml` /
+   `buildStickyBarHtml` never emit `/albumart/` with an empty id (a srcless, unshimmered slot).
+   Bindings (driven through the REAL listen path: `?play=vid1&listen=1` -> `playListenItem`
+   -> the `/api/videos` body, never a hand-typed id): music-skin-integration "gate r1 W2
+   in-tab: a LISTEN video's artist line navigates to /?folder=" (navigate once, no
+   `artist=` fetch, no `/albumart/` empty-id request, no drill, `#music-empty` stays hidden),
+   "gate r1 W2 in-tab: ... NO channel folder renders ... a plain div", "gate r1 W2 desktop
+   panel" (both arms on `.mnp-sub`); music-view "an EMPTY drill never requests /albumart/"
+   and "honours the view's veto".
+3. **Four hand-copied `nowPlaying` literals; D7 carry seams live and unbound (adversary 3).**
+   Change: ONE writer `nowPlayingFrom(t, id)` (exported) builds the record at all four seams
+   (loadTrack, reflectChapter, restoreListenChapterQueue, seedNowPlayingFromPlayer - the seed
+   passes the player meta, whose string `channelFolder` wins over re-deriving). And
+   `channelFolderCurrent()` now reads the nowPlaying record ALONE: the queue-entry lookup that
+   ran first answered identically on every production path (the only music loader is
+   loadTrack, which writes the record from the same item it loads; that is why S6 survived
+   every drive), so it is removed rather than kept as a second source that could drift.
+   Bindings: music-view "nowPlayingFrom is the ONE writer" (queue entry derives, meta carries,
+   explicit '' honoured, id override, null-safe) and the census "music.js builds nowPlaying
+   ONLY through nowPlayingFrom" (comments stripped once at read; no `nowPlaying = {` literal,
+   no Object.assign-built record, every assignment is `null` or `nowPlayingFrom(...)`, exactly
+   4 writer sites, ONE function); music-skin-integration drives per seam: ADV-A (load seam:
+   artist drill replaces the queue, the row survives), ADV-B (buildListenChapterTracks carry:
+   `vid1::c0` load data + row), S1 (chapter-cross seam: a chaptered listen video rolls into
+   chapter two via timeupdate, a Songs-tab browse replaces the queue, the row survives), S4
+   (restore seam: dock-return re-init with a meta that carries NO folder, so only the restore
+   can serve it; Songs browse; the row survives), and the existing re-init test (seed seam).
+   The seed source lock now asserts `nowPlaying = nowPlayingFrom(meta);` inside the seed
+   function (tempered span) plus the writer's `channelFolder` precedence.
+
+### SHOULD
+
+- **Driven non-listen `::c` chapter row (adversary 4, qa).** music-skin-integration "gate r1
+  adversary finding 4 (+ qa): a NON-listen ::c chapter of a projected file (source
+  library-chapter)" - `?play=f9::c1`, no listen flag, the row navigates to `/?folder=Chan%20Dir`.
+- **Base-id compare in channelFolderCurrent (qa 2).** Done as `sameMusicItem(a, b)`: exact id,
+  or two `::c` CHAPTER ids of the same base. A non-chapter live id must match exactly, so the
+  same file live as a RAW video beside a `::c` record never borrows the music row (the
+  effectiveCurrentId W2 posture). DISCLOSED: not reachable by any drive I could build -
+  currentChapterId only advances to chapters present in `queue`, and reflectChapter then
+  rewrites the record from that same entry, so the record and the effective id stay equal on
+  every path found; the chapter-base arm is defensive (its mutant is recorded below).
+- **Desktop actions-menu wiring (adversary 6).** music-skin-integration "gate r1 adversary
+  finding 6": the real music.js wiring renders `[data-skin-x="channel"]` in
+  `#music-actions-menu` for a library track and its click navigates + closes the menu.
+- **Cfg doc placement (qa 5).** Moved beside `onShuffle()` (top-level keys), with the veto line.
+- **Build-record counts (qa 4).** Corrected above (music-view 1 adapted + 5 new;
+  music-skin-integration 10 new). `next:` refreshed.
+- Not changed: adversary 5 (marquee on a `<button>` in Firefox/iOS) is a device check, owed to
+  Dean with the release; the listen artist line on a channel-folder video is now a channel
+  link, so a long channel name there rides the same marquee.
+
+### Targeted suites at the fix commit (Node v22.23.1, tests/pass/fail)
+
+music-view 48/48/0 · music-nowplaying-view 21/21/0 · music-skins 39/39/0 ·
+music-skin-integration 109/109/0 · music-actions-desktop 13/13/0 ·
+podcast-nowplaying-view 28/28/0 · skin-surface 70/70/0. Every test file that reads
+music.js / music-skins.js / skin-surface.js (42 files) in one run: `# tests 732`,
+`# pass 732`, `# fail 0`. eslint on the 7 touched files: 0 problems. Full `npm test` not run
+(the pre-commit hook runs the unit suite).

@@ -520,9 +520,11 @@ test('v1.262 Seattle Classic: the METRO screen rides the shared machinery (sourc
 
 // ---- v1.317 (M1+M2): the artist line is a control on EVERY skin; the thumb rows show a length ----
 
-test('v1.317 (M1): every skin renders the now-playing artist line as a data-skin-artist BUTTON (escaped); an empty artist keeps the plain line with no hook', () => {
-  const ctx = Object.assign({}, CTX, { track: Object.assign({}, CTX.track, { artist: 'A & "B"' }) });
-  const empty = Object.assign({}, CTX, { track: Object.assign({}, CTX.track, { artist: '' }) });
+test('v1.317 (M1): every skin renders the now-playing artist line as a data-skin-artist BUTTON (escaped) when the engine says a handler exists (artistTap); an empty artist keeps the plain line with no hook', () => {
+  // gate r1 W1: `artistTap` is what the ENGINE sets from its onArtist presence - the control
+  // exists only with it. Music's engine passes onArtist, so its ctx carries artistTap: true.
+  const ctx = Object.assign({}, CTX, { artistTap: true, track: Object.assign({}, CTX.track, { artist: 'A & "B"' }) });
+  const empty = Object.assign({}, CTX, { artistTap: true, track: Object.assign({}, CTX.track, { artist: '' }) });
   for (const id of skins.IDS) {
     const cls = (id === 'apple' || id === 'spotify') ? 'mms-sub' : 'ip-artist';
     const html = skins.renderFull(id, ctx);
@@ -531,6 +533,20 @@ test('v1.317 (M1): every skin renders the now-playing artist line as a data-skin
     const bare = skins.renderFull(id, empty);
     assert.doesNotMatch(bare, /data-skin-artist/, id + ': no hook without an artist (no focusable nothing)');
     assert.match(bare, new RegExp('<div class="' + cls + '"></div>'), id + ': the plain line keeps its slot');
+  }
+});
+
+test('v1.317 gate r1 W1: WITHOUT artistTap (no engine handler - the podcast ctx shape, or the view\'s veto) every skin renders the artist as the plain div, never an inert button', () => {
+  const podcastShape = Object.assign({}, CTX, { track: Object.assign({}, CTX.track, { artist: 'The Show', album: 'The Show' }) });
+  const vetoed = Object.assign({}, podcastShape, { artistTap: false });
+  for (const id of skins.IDS) {
+    const cls = (id === 'apple' || id === 'spotify') ? 'mms-sub' : 'ip-artist';
+    for (const [label, c] of [['no flag', podcastShape], ['artistTap:false', vetoed]]) {
+      const html = skins.renderFull(id, c);
+      assert.doesNotMatch(html, /data-skin-artist/, id + ' (' + label + '): no hook, no control');
+      assert.doesNotMatch(html, /Go to artist/, id + ' (' + label + '): no "Go to artist" tooltip');
+      assert.match(html, new RegExp('<div class="' + cls + '">The Show</div>'), id + ' (' + label + '): the plain line still shows the name');
+    }
   }
 });
 

@@ -497,6 +497,36 @@ test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no du
   assert.strictEqual(S.buildPanelHtml(np, rows), EXPECTED, 'byte-identical to the pre-v1.317 podcast panel');
 });
 
+// Gate r1 W1 (both seats): the podcast MOBILE SKIN shares the music renderers, and the show line
+// (track.artist = showName) had become an inert "Go to artist" button on every skin. The engine
+// now sets ctx.artistTap from its onArtist presence; podcasts pass none, so the line is a DIV.
+for (const sk of ['apple', 'spotify', 'ipod', 'zune-classic']) {
+  test('v1.317 gate r1 W1 (' + sk + '): the podcast skin\'s show line is a plain DIV (no data-skin-artist, no "Go to artist"); a click changes nothing', async () => {
+    const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+    const mm = { narrow: true };
+    await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+      dom.window.localStorage.setItem('ft-music-skin', sk); // the picked skin (read at render)
+      await playEp(dom, 0);
+      const el = panel(dom);
+      assert.match(el.className, /\bmms-full\b/, 'precondition: the full-screen skin painted');
+      assert.match(el.className, new RegExp('\\bmms-' + sk + '\\b'), 'precondition: the picked skin');
+      const line = el.querySelector(sk === 'apple' || sk === 'spotify' ? '.mms-sub' : '.ip-artist');
+      assert.ok(line, 'the show line rendered (non-vacuous)');
+      assert.strictEqual(line.tagName, 'DIV', 'a plain div, not a button');
+      assert.strictEqual(line.textContent, 'The Show', 'still shows the show name');
+      assert.strictEqual(el.querySelector('[data-skin-artist]'), null, 'no artist hook anywhere on the podcast skin');
+      assert.strictEqual(el.querySelector('[title="Go to artist"]'), null, 'no "Go to artist" tooltip');
+      const before = el.innerHTML;
+      const fetchesBefore = mock.fetches.length;
+      line.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      await settle(); await settle();
+      assert.strictEqual(el.innerHTML, before, 'a click on the show line changes nothing');
+      assert.strictEqual(mock.fetches.length, fetchesBefore, 'and fetches nothing');
+      assert.strictEqual(mock.s.loadCalls.length, 1, 'and loads nothing new');
+    }, { meta, mm });
+  });
+}
+
 test('v1.317 (seam): the DRIVEN podcast panel renders no length column and its sub-line stays a plain div (the podcasts writer passes neither new field)', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
     await playEp(dom, 0);

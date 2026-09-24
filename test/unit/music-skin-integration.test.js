@@ -20,6 +20,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div class="music-toolbar"><div class="music-toolbar-actions">
     <select id="music-sort-select"></select><button id="music-view-toggle" hidden></button>
     <button id="music-theater-btn" hidden></button><button id="music-popout-btn" hidden></button><button id="music-shuffle-btn"></button><button id="music-scan-btn"></button>
+    <div class="music-actions-wrap"><button id="music-actions-btn" type="button" hidden aria-haspopup="true" aria-expanded="false"></button><div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div></div>
   </div></div>
   <div id="music-stage">
     <div id="player-slot">
@@ -2146,6 +2147,270 @@ test('v1.317 (M1, D7): "Go to channel" SURVIVES the dock-return re-init - the ch
   });
 });
 
+// ---- Gate r1 W2 (adversary): a LISTEN VIDEO's artist line goes to the CHANNEL, never an empty drill ----
+// A video is never in the music projection, so its artist drill was always empty ("No music
+// yet"). For a listen track with a channel folder the line is the channel grid (for YouTube
+// content the channel IS the artist); with no channel folder it is not a control at all.
+
+const LISTEN_NO_FOLDER = { id: 'vid2', title: 'Orphan Video', channelName: 'The Channel', duration: 500, type: 'video', filePath: '/lib/b.mp4' };
+
+test('v1.317 gate r1 W2 in-tab: a LISTEN video\'s artist line navigates to /?folder=<enc> - no artist fetch, no drill, no empty-id art request', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const btn = panel(dom).querySelector('[data-skin-artist]');
+      assert.ok(btn, 'the listen track HAS a channel, so its artist line is a control');
+      assert.strictEqual(btn.textContent, 'The Channel');
+      // the S5 background browse (an empty albums grid here) owns #music-empty before the tap;
+      // the tap must not TOUCH it (the old empty drill un-hid it as "No music yet").
+      const content = dom.window.document.getElementById('music-content');
+      const contentBefore = content.innerHTML;
+      const emptyBefore = dom.window.document.getElementById('music-empty').hidden;
+      log.length = 0;
+      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await settle();
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel'], 'the tap goes to the channel grid');
+      assert.ok(!log.some((c) => /[?&]artist=/.test(c.url)), 'no artist-scope fetch: ' + log.map((c) => c.url).join(' | '));
+      assert.ok(!log.some((c) => /\/albumart\/(\?|$)/.test(c.url)), 'no empty-id /albumart/ request');
+      assert.strictEqual(dom.window.document.querySelector('.music-drill-header'), null, 'no drill opened');
+      assert.strictEqual(content.innerHTML, contentBefore, 'the browse behind the skin is untouched (no drill render)');
+      assert.strictEqual(dom.window.document.getElementById('music-empty').hidden, emptyBefore, 'the "No music yet" note state is untouched by the tap');
+    },
+  });
+});
+
+test('v1.317 gate r1 W2 in-tab: a LISTEN video with NO channel folder renders the artist line as a plain div (no control, no tooltip)', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid2&listen=1',
+    fetchImpl: listenFetch([], LISTEN_NO_FOLDER), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      const el = panel(dom);
+      assert.match(el.className, /\bmms-full\b/, 'precondition: the skin painted for the listen track');
+      const line = el.querySelector('.mms-sub');
+      assert.ok(line, 'the artist line rendered (non-vacuous)');
+      assert.strictEqual(line.tagName, 'DIV', 'a div - nowhere to go');
+      assert.strictEqual(line.textContent, 'The Channel', 'the channel name still shows');
+      assert.strictEqual(el.querySelector('[data-skin-artist]'), null, 'no hook');
+      const menu = openSticker(dom);
+      assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'and no "Go to channel" row either (no folder)');
+      assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch way back is the escape');
+    },
+  });
+});
+
+test('v1.317 gate r1 W2 desktop panel: a LISTEN video\'s .mnp-sub navigates to the channel grid; with no channel folder it is a plain div', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const log = [];
+  await boot({
+    mobile: false, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const sub = panel(dom).querySelector('.mnp-sub[data-artist]');
+      assert.ok(sub, 'the desktop panel line is the control for a listen track with a channel');
+      log.length = 0;
+      sub.click();
+      for (let i = 0; i < 6; i++) await settle();
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel'], 'the desktop line goes to the channel grid too');
+      assert.ok(!log.some((c) => /[?&]artist=/.test(c.url)), 'no artist-scope fetch');
+      assert.strictEqual(dom.window.document.querySelector('.music-drill-header'), null, 'no drill opened');
+    },
+  });
+  const calls2 = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=vid2&listen=1',
+    fetchImpl: listenFetch([], LISTEN_NO_FOLDER), playerOverride: channelPlayer(calls2),
+    run: async (dom) => {
+      const sub = panel(dom).querySelector('.mnp-sub');
+      assert.ok(sub, 'the line rendered (non-vacuous)');
+      assert.strictEqual(sub.tagName, 'DIV', 'no channel folder -> not a control');
+      assert.strictEqual(sub.hasAttribute('data-artist'), false);
+    },
+  });
+});
+
+// ---- Gate r1 W3 (adversary): the D7 carry seams, DRIVEN ---------------------------------
+// loadSongs replaces `queue` on every in-Music drill load, so after the feature's OWN flow
+// (tap the artist line -> the drill) the row must come from the nowPlaying record, which
+// channelFolderCurrent now reads ALONE (ADV-A); every seam that writes it is driven below
+// (load: ADV-A, chapter cross: S1, listen restore: S4, the seed: the re-init test above). A chaptered listen video loads `vid1::c0` off buildListenChapter
+// Tracks' carry (ADV-B). A NON-listen `::c` chapter of a projected file binds the
+// 'library-chapter' arm on its own (adversary finding 4).
+
+test('v1.317 gate r1 ADV-A: after the artist-line drill REPLACES the queue, "Go to channel" still renders (the nowPlaying carry) and navigates', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const log = [];
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [CH_TRACK] }) });
+    if (/^\/api\/music\/c1$/.test(url)) return Promise.resolve({ ok: true, json: async () => CH_TRACK });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) }); // the artist drill loads NOTHING -> queue = []
+  };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=c1',
+    fetchImpl, playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const btn = panel(dom).querySelector('[data-skin-artist]');
+      assert.ok(btn, 'precondition: the artist line is a control for a normal library track');
+      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await settle();
+      assert.ok(log.some((c) => /[?&]artist=The\+Channel|[?&]artist=The%20Channel/.test(c.url)), 'the artist drill loaded (and replaced the queue): ' + log.map((c) => c.url).join(' | '));
+      const menu = openSticker(dom);
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the channel row survives the queue replacement (served by the nowPlaying carry)');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel%20Dir']);
+    },
+  });
+});
+
+test('v1.317 gate r1 ADV-B: a CHAPTERED listen video loads vid1::c0 and its page 1 offers "Go to channel" (buildListenChapterTracks carries the folder)', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const chaptered = Object.assign({}, LISTEN_VIDEO, { chapters: [{ startTime: 0, title: 'One' }, { startTime: 300, title: 'Two' }, { startTime: 600, title: 'Three' }] });
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch([], chaptered), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      assert.strictEqual(calls.loads.length, 1);
+      assert.strictEqual(calls.loads[0].id, 'vid1::c0', 'the first chapter loaded');
+      assert.strictEqual(calls.loads[0].data.channelFolder, 'The Channel', 'the chapter track carries the channel folder onto the load data');
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the channel row renders for the chapter');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel']);
+    },
+  });
+});
+
+const CHAPTERED_LISTEN = Object.assign({}, LISTEN_VIDEO, { chapters: [{ startTime: 0, title: 'One' }, { startTime: 300, title: 'Two' }, { startTime: 600, title: 'Three' }] });
+const clickSongsTab = (dom) => dom.window.document.querySelector('.music-tab[data-tab="songs"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+
+test('v1.317 gate r1 S1 (the reflectChapter seam): a chaptered listen video ROLLS into chapter two (no reload), the user browses to Songs (the queue is REPLACED) and "Go to channel" still renders from the chapter-cross record', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, CHAPTERED_LISTEN), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      assert.strictEqual(calls.loads.length, 1);
+      assert.strictEqual(calls.loads[0].id, 'vid1::c0', 'precondition: chapter one loaded');
+      const mp = dom.window.document.getElementById('media-player');
+      Object.defineProperty(mp, 'currentTime', { configurable: true, value: 350 });
+      mp.dispatchEvent(new dom.window.Event('timeupdate'));
+      for (let i = 0; i < 3; i++) await settle();
+      assert.match(panel(dom).querySelector('.mms-ttl').textContent, /^Two$/, 'reflectChapter rolled the displayed identity into chapter two (the seam under test ran)');
+      assert.strictEqual(calls.loads.length, 1, 'the same file keeps playing - no reload');
+      log.length = 0;
+      clickSongsTab(dom);
+      for (let i = 0; i < 6; i++) await settle();
+      assert.ok(log.some((c) => /^\/api\/music\?/.test(c.url)), 'the Songs tab loaded (and replaced the queue): ' + log.map((c) => c.url).join(' | '));
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the channel row survives: the chapter-cross record carries the folder');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel']);
+    },
+  });
+});
+
+test('v1.317 gate r1 S4 (the restoreListenChapterQueue seam): a chaptered listen video survives the dock-return re-init, then a browse to Songs REPLACES the queue - "Go to channel" still renders from the restored record', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const log = [];
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, CHAPTERED_LISTEN), playerOverride: channelPlayer(calls),
+    run: async (dom, spy, mod) => {
+      assert.strictEqual(calls.loads[0].id, 'vid1::c0', 'precondition: chapter one loaded');
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      // the player's meta carries NO folder on this re-init, so the SEED cannot serve the row:
+      // only the restore seam (restoreListenChapterQueue, which runs after the seed) can.
+      const p = dom.window.FileTube.player;
+      p._meta = Object.assign({}, p._meta, { channelFolder: '' });
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(calls.loads.length, 1, 'the re-init adopted the live chapter (no reload)');
+      log.length = 0;
+      clickSongsTab(dom);
+      for (let i = 0; i < 6; i++) await settle();
+      assert.ok(log.some((c) => /^\/api\/music\?/.test(c.url)), 'the Songs tab loaded (and replaced the restored queue)');
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the channel row survives: the restore seam rebuilt the record with the folder');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel']);
+    },
+  });
+});
+
+test('v1.317 gate r1 adversary finding 4 (+ qa): a NON-listen ::c chapter of a projected file (source library-chapter) offers "Go to channel"', async () => {
+  const chapter = { id: 'f9::c1', title: 'Part 2', artist: 'The Channel', album: 'Long Mix', albumKey: 'f9', durationSec: 300, source: 'library-chapter', streamSrc: '/video/f9', artUrl: '/thumbnail/f9', progressEndpoint: '/api/progress', chapterStartSec: 300, folderName: 'Chan Dir' };
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=f9::c1',
+    fetchImpl: continueFetch(chapter), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      assert.ok(calls.loads.length >= 1 && calls.loads[calls.loads.length - 1].id === 'f9::c1', 'the chapter loaded: ' + calls.loads.map((l) => l.id).join(','));
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the library-chapter arm serves the row (no listen flag involved)');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=Chan%20Dir']);
+    },
+  });
+});
+
+test('v1.317 gate r1 adversary finding 6: the DESKTOP actions menu (real music.js wiring) renders "Go to channel" for a library track and its click navigates via the router', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    if (url === '/api/videos/c1') return Promise.resolve({ ok: true, json: async () => ({ id: 'c1', title: 'From A Channel', liked: false, watchState: 'unwatched' }) });
+    return continueFetch(CH_TRACK)(u, init);
+  };
+  await boot({
+    mobile: false, isMusic: true, query: '?play=c1',
+    fetchImpl, playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const D = dom.window.document;
+      D.getElementById('music-actions-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await settle();
+      const menu = D.getElementById('music-actions-menu');
+      assert.strictEqual(menu.hidden, false, 'the desktop menu opened');
+      assert.ok(menu.querySelector('[data-skin-x="share"]'), 'the action set rendered (non-vacuous)');
+      const row = menu.querySelector('[data-skin-x="channel"]');
+      assert.ok(row, 'the "Go to channel" row is composed in by the real wiring (hasChannel: channelVisible)');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel%20Dir'], 'onChannel: channelTap');
+      assert.strictEqual(menu.hidden, true, 'the menu closed on the way out');
+    },
+  });
+});
+
 test('v1.317 (M1, D7) source-lock: player.js getCurrentMeta carries channelFolder off the load data (the re-init seed above reads it) - no jsdom harness drives the real facade', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const PLAYER = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
@@ -2154,5 +2419,9 @@ test('v1.317 (M1, D7) source-lock: player.js getCurrentMeta carries channelFolde
   assert.match(m[1], /channelFolder: \(typeof currentData\.channelFolder === 'string'\) \? currentData\.channelFolder : ''/, 'the carry reads the load data\'s channelFolder (albumKey\'s precedent)');
   const MUSIC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   assert.match(MUSIC, /channelFolder: channelFolderOf\(item\),/, 'loadTrack puts the gated channel folder on the load data');
-  assert.match(MUSIC, /folderName: \(typeof meta\.channelFolder === 'string'\) \? meta\.channelFolder : ''/, 'seedNowPlayingFromPlayer reads it back');
+  // gate r1 W3: the seed routes the meta through the ONE writer, whose string `channelFolder` wins
+  const seed = /function seedNowPlayingFromPlayer\(\) \{((?:(?!\n {4}(?:async )?function )[\s\S])*)/.exec(MUSIC);
+  assert.ok(seed, 'seedNowPlayingFromPlayer is found and isolated');
+  assert.match(seed[1], /nowPlaying = nowPlayingFrom\(meta\);/, 'seedNowPlayingFromPlayer reads it back through nowPlayingFrom');
+  assert.match(MUSIC, /folderName: \(typeof t\.channelFolder === 'string'\) \? t\.channelFolder : channelFolderOf\(t\),/, 'nowPlayingFrom takes the meta carry');
 });
