@@ -3,8 +3,8 @@ plan: snap-offset-status-bar
 harness: v2 · lean
 branch: fix/snap-offset-and-status-bar
 anchor: spec
-status: Built - awaiting the gate
-next: gate r1 (adversary + qa; FULL gate - item 1 edits chapter times, a data class). Owed after merge: Dean's device pass (Shift all on a real offset download; a long album name in Click and Seattle on the phone).
+status: Built - r1 fixes in, awaiting gate r2
+next: gate r2 (adversary + qa delta re-confirmation on the r1 fixes; security-brief approved r1). Owed after merge: Dean's device pass (Shift all on a real offset download; a long album name in Click and Seattle on the phone).
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -163,18 +163,31 @@ Design notes (decisions the spec left open):
   `suggest` boundaries would call two off-by-2-s boundaries out of five a consistent offset. A
   unit test binds it both ways.
 - **The median of an even count** is the midpoint of the middle two (rounded to the ms).
-- **Aligned**: when the boundaries agree and the median is under 0.05 s (half a tenth), there is
-  nothing to shift and the note says "The chapters line up with the silence (n of m agree)." -
-  what Dean sees right after applying the suggestion.
+- **The agreement rule, stated exactly** (corrected at gate r1, adversary 5): at least two
+  boundaries with a snap point, and at least 60 % of them EACH within +-0.3 s of the median. For an
+  even count the median is a midpoint, so two boundaries up to 0.6 s apart both agree (+1.0 / +1.6
+  suggests +1.3 s, each 0.3 s off its silence), and -0.3 / -0.3 / +0.3 / +0.3 reads "aligned,
+  4 of 4". Nothing is applied without a tap, and a per-row Snap fixes any 0.3 s leftover.
+- **Aligned** (median under 0.05 s, exclusive): nothing to shift. When EVERY boundary agrees the
+  note says "The chapters line up with the silence (n of m agree)." - what Dean sees right after
+  applying the suggestion. When only a majority does (gate r1, qa W1), it says "No whole-track
+  offset: n of m already line up. Fix the others one by one."
+- **One gap rule for every edit** (gate r1, adversary 4 / qa S3): the steps, the nudges, Reset
+  shift, the per-row Snap and Snap all all keep the server's `MIN_CHAPTER_GAP_SEC` (from the
+  editor state) from the neighbours an edit touches and from the end of the file
+  (`snapGapBreak`). A source list that already holds a closer pair is left alone unless the edit
+  moves one of that pair. The shift steps follow the spec's wording (a landing AT chapter 1 + the
+  gap is refused); the others allow exactly the gap, as the nudge clamp always did.
 - **The "No consistent offset" note carries no n-of-m.** With two clusters the median falls
   between them and "0 of 4 agree" would mislead; it says "the chapters are off by different
   amounts. Fix them one by one."
 - **Snap vs shift**: a snap places a row on the silence (absolute), so it clears that row's
   shift; Reset shift then leaves it on its snap. A nudge is relative and keeps the row's shift,
   so Reset takes the shift off and keeps the nudge. The readout names a mixed state ("Shifted
-  +1.0 s on 2 of 4 chapters (the others were snapped since)").
-- **Reset refuses a disorder**: when a row snapped after the shift would end up at or before its
-  neighbour, Reset is disabled with the reason and points at Undo changes.
+  +1.0 s on 2 of 4 chapters (the others carry no shift)", reworded at gate r1, qa S2).
+- **Reset refuses a disorder**: when a row it moves would end up at or before its neighbour, or
+  inside the minimum gap, or the last one inside the gap before the end of the file, Reset is
+  disabled with the reason and points at Undo changes.
 - **Placement**: the section is the first child of the scrolling list, above chapter 1 - not in
   the fixed head - so the phone head stays short and the list keeps its room (the head already
   carries title, source line, status, Snap all / Undo / Revert).
@@ -639,3 +652,81 @@ Blocking: 1, 2, 3 (the fixes are a lock extension and two bindings; no productio
 required for 2 or 3).
 
 Gate: CHANGES r1 @c05c6906 — adversary
+
+## r1 fix record (builder, after gate r1 @c05c6906)
+
+Commits (every one through the pre-commit hook, never --no-verify):
+- **3f01b5f3** the three r1 verdicts committed as the seats left them (docs-only hook, `tests 1299
+  pass 1299 fail 0`).
+- **dd7cfec4** the fixes and their bindings. Hook `tests 7266 pass 7266 fail 0`.
+- **this commit**: this section, the corrected design notes, and one census hardening in
+  skin-status-bar.test.js (only the ONE base rule object is exempt, so a later rule that
+  REPEATS the base selector is censused too).
+
+No merge of main was needed (the hook did not trip the release-ledger check).
+
+### Finding -> fix -> test -> mutant
+
+| Finding | Fix | Binding test | Mutants (RED) |
+|---|---|---|---|
+| **qa W1** "The chapters line up" when only some agree | The `aligned` note is split: every boundary agrees -> "The chapters line up with the silence (n of m agree)."; a majority -> "No whole-track offset: n of m already line up. Fix the others one by one." | integration "qa W1": 2 chapters 2 s early + 3 on their silence -> the partial note and Snap all (2); after Snap all -> "line up (5 of 5 agree)" | W1 |
+| **adversary W1** the status-bar lock missed parent, descendant and vendor spellings | skin-status-bar.test.js rebuilt: property names lower-cased and `-webkit-`/`-moz-`/`-ms-`/`-o-` stripped before every check; the bar's own `display:flex` (row, no wrap) locked; a census of EVERY rule that can REACH the title, the bar or the right cluster (last compound can match the element's tag + class, or `*`, a bare attribute, `:is()`/`:where()` alternatives; ancestors on the skin chain or none; pseudo-elements excluded) against a per-element table of forbidden / allowed values; a parser self-test | the 7 tests of skin-status-bar.test.js | C1, C2, C3, C4, C6, C7, C8, C9, C10, C11, C12, C13, C14 + C15 (a `> span:last-child` rule re-enabling the cluster's shrink, vendor spelling), C16 (`:is(.ip-status){display:block}`), C17 (the base `display:flex` dropped); B1-B10 re-run |
+| **adversary W2** the refused suggestion was unbound | (test only) | integration "adversary W2": the adversary's fixture (0 / 1.0 / 60 / 120) - "Suggested: shift all by −0.95 s (2 of 2 agree)" shown, disabled, reason shown, a tap moves nothing, and the SAME button forced back on (`disabled = false`) still moves nothing and the status says why; a second fixture (0 / 1.5 / 60 / 120) where every step is legal and only the −1.45 s suggestion is refused, so the reason on screen can only be the suggestion's. The stale-seed test now carries a cached silence so the suggestion button is on screen and must lock | A3, A4, A5, A6, **D1 (A3 + A5)** |
+| **adversary W3** Reset's past-the-end and equal-start refusals unbound | Reset now uses the shared gap rule (below), which covers both | integration "adversary W3": (1) 0 / 100 / 299.5, −1 s, last nudged to 4:59.9 -> Reset disabled "at or past the end of the file, or within 0.1 s of it", Save writes `[0, 99, 299.9]`; (2) 0 / 100 / 299.45 -> Reset would leave 50 ms before the end; (3) an EQUAL pair (chapter 3 back on chapter 2's snapped 60.5); (4) 0 / 0.35 / 100 -> Reset would leave 50 ms after chapter 1 | A1, A1r, A2, A2b, R3r |
+| **adversary 4 = qa S3** Reset (and the per-row Snap / Snap all) could save a start inside the server's minimum gap | NEW pure `snapGapBreak(times, changed, duration, minGapSec)` (common.js, exported): checks only the pairs an edit touches, exactly the gap allowed (as the nudge clamp), the last start at least the gap before the end. Used by Reset shift, the per-row Snap (message "would cross its neighbour or come within 0.1 s of it") and Snap all's plan. The nudges and the shift steps already honoured the gap | unit "snapGapBreak" (12 asserts); integration "qa S3 / adversary 4" (0 / 60 / 80, chapter 3 nudged to 61.8: Snap all and the per-row Snap both leave chapter 2's 61.75 alone; at 61.9 both take it) | A2c, G1, G2, G3, S12c, S12d |
+| **adversary 5** the agreement rule's edges | The dead `agree < 2` clause removed (with `of >= 2`, the 60 % share already forces two); the 50 ms cutoff bound; the rule re-stated exactly in the design notes (a midpoint median lets two boundaries 0.6 s apart agree; disclosed) | unit "the 50 ms aligned cutoff is exclusive" | A8 (A9 deleted with its clause) |
+| **adversary 6** a half-millisecond start stayed dirty after Shift + Reset | Shift and Reset arithmetic kept to the MICROSECOND (`micro`), not re-rounded to the ms: 120.0005 comes back exactly | integration "adversary 6": +0.1 s then Reset -> Save and Undo disabled | R1, R1b |
+| **adversary 7** a shift stopping the audition was unbound | (test only) | integration "adversary 7": a fake `<audio>`; auditioning chapter 2, +1 s -> the row is no longer playing and the audio was paused | A15 |
+| qa S2 the mixed readout named the wrong cause | "(the others carry no shift)" | integration "Snap all after a shift" | - |
+| qa S4 the polite readout rewritten on every render | written only when its words change | integration "qa S4": a MutationObserver sees no write for two nudges, a write for +1 s | R2 |
+| qa S5 the shift row is scrolled away when opened on a chapter | not taken (qa judged it acceptable; disclosed) | - | - |
+| security-brief INFO-1 / INFO-2 (probe CDP port, temp dirs) | not taken (dev tools on a single-user box) | - | - |
+
+### Mutant round @dd7cfec4
+
+Runners: `snap-offset-status-bar-mutants-r1.js` (the build's 42, anchors refreshed, plus the r1
+set) and `snap-offset-status-bar-mutants-r1b.js` (multi-edit D1 and the gap constant re-anchored
+per function) in the session scratchpad, on a sandbox from `git archive dd7cfec4` with
+`FILETUBE_TEST_FFMPEG` set; every anchor matched once and the bytes changed; the sandbox's
+common.js / style.css were byte-identical to the archive afterwards. Logs:
+`snap-offset-status-bar-mutants-r1.out`, `-r1b.out`.
+
+- **80 of 81 RED.** All 40 runnable build mutants still RED (S12 / S12b re-anchored in r1b: the
+  gap line now appears in two functions). All r1 mutants RED: A1, A1r, A2, A2b, A2c, A3, A4, A5,
+  A6, D1, A8, A15, W1, R1, R1b, R2, G1, G2, G3, R3r, S12, S12b, S12c, S12d, and C1-C4, C6-C17.
+- **Equivalent (1): A16**, the shift click handler ignoring `b.disabled`. Every action it could
+  reach re-checks on its own: `applyShift` re-runs the clamp (bound by A5 through the
+  forced-enabled button) and returns on busy / stale, `resetShift` re-runs the gap rule and returns
+  on busy / stale. So the handler's own check is defense in depth and cannot change behaviour.
+- The adversary's other r1 survivors: A9 is gone with its clause; A13 / A14 (unrounded
+  arithmetic) are now the implementation at microsecond precision, bound by R1 / R1b.
+
+### Instruments at dd7cfec4 (Node 22.23.1)
+- Targeted set with ffmpeg (unit chapter*, music*, skin*, player-chapters*, exec-plans*,
+  tech-debt*, comment-debt*, release-ledger*, css*, token*, overlay*, shell*, mobile-input*;
+  integration chapter-snap*, chapters-editor): `tests 957 pass 957 fail 0 skipped 0`.
+- The shift integration file: `pass 16 fail 0 skipped 0` (the REAL-ffmpeg test ran).
+- eslint on the touched js: `✖ 6 problems (0 errors, 6 warnings)` (the pre-existing six).
+- `bash .harness/lib/check-markers.sh`: `✗ ... stale approval @c05c6906 - reviewed code changed
+  since; re-gate` - expected until gate r2 re-binds (the security-brief's r1 APPROVED names the
+  old sha).
+
+### Probes @dd7cfec4
+- `scripts/skin-status-bar-probe.js` (all four skins at 390x844 and 380x700, the pop-out, the
+  tray): every SUMMARY `equal, battStill, playStill, longTruncated, noSpill` true; Click 31.2 x4,
+  Seattle 30.2 x4; pop-out Click 31.2 and Seattle 30.2 at every level; tray 31.2; no spill
+  anywhere. Log `snap-offset-status-bar-probe-r1.out`, PNGs `snap-offset-status-bar-shots-r1/`.
+- `scripts/chapter-snap-probe.js` (390x844, 844x390, 1440x900, a real 2000 s mp3): the numbers are
+  identical to the build's table (shift buttons 88x44 / 201x44 / 177x36, suggestion 356x44 /
+  810x44 / 285x36, 0 under 44 px on both phone viewports, doc scrollWidth = the viewport, notches
+  12.1125 % vs 12.113 %, the audition at 243.9 s). Log `snap-offset-status-bar-snap-probe-r1.out`,
+  PNGs `snap-offset-status-bar-snap-shots-r1/`.
+- The adversary's headless proof for C1-C12 stands (`adv-cssprobe.out`: each one grows or
+  restacks the bar, or pushes the play mark off the LCD); the lock now reds every one of them.
+
+### Disclosed (r1 round)
+- **The agreement rule's midpoint tolerance** (adversary 5): two boundaries up to 0.6 s apart can
+  both agree, and a symmetric +-0.3 s spread reads "line up". Nothing applies without a tap.
+- **The shift steps refuse exactly the gap while the other edits allow it** (the spec's wording
+  for the steps, the nudge clamp's for the rest): a 1 ms difference at the boundary.
+- **The shift row is scrolled away when the editor opens on a chapter** (qa S5, unchanged).

@@ -143,7 +143,10 @@ const CLUSTER_RULES = {
   position: null, float: null,
 };
 function census(el, base, table) {
-  const found = rulesReaching(el).filter((r) => !r.selectors.includes(base));
+  // Only the ONE base rule object is exempt: a later rule repeating the base selector is
+  // censused like any other (it would win the cascade).
+  const baseRule = exactly(base)[0];
+  const found = rulesReaching(el).filter((r) => r !== baseRule);
   const bad = [];
   for (const r of found) {
     for (const [p, v] of Object.entries(r.decls)) {
