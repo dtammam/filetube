@@ -735,3 +735,262 @@ common.js / style.css were byte-identical to the archive afterwards. Logs:
 e036d390`, log `snap-offset-status-bar-mutants-r1c.out`): B1-B10, B7b, C1-C4, C6-C17 and S28 -
 **28 of 28 RED**. C1, C6, C10, C11 and C12 (a later rule repeating `.mms-ipod .ip-status`) now
 red in the census as well as in the base-rule test.
+
+## Gate r2 - security-brief (@4b46555d)
+
+**What I could not do (first):** still no Bash, so no `git diff c05c6906 4b46555d`. I used the
+same method as r1:
+- **Reflog:** `.git/worktrees/agent-a4ecaf0edc36aa1e3/logs/HEAD` now runs c05c6906 -> 3f01b5f3
+  (docs) -> dd7cfec4 -> e036d390 -> 4b46555d = HEAD. There is no checkout, reset or merge in
+  between, so file mtimes still mean what they meant at r1.
+- **Files written since checkout:** sorted by mtime, only `public/css/style.css`,
+  `scripts/chapter-snap-probe.js`, `scripts/skin-status-bar-probe.js`, `public/js/common.js`,
+  the three new test files and this plan.
+- **Files still at checkout time:** all of `lib/media/**` and `lib/music/**`, `server.js`,
+  `package.json`, `package-lock.json`, `Dockerfile`, `docker-compose.yml`, `eslint.config.js`,
+  every `public/*.html`, `public/filetube-worker.js` and every other `public/js/*.js`.
+
+This is strong evidence but not a byte diff; the Architect should confirm with
+`git diff --stat c05c6906 4b46555d`. I also cannot tell from mtimes which of the r1-changed files
+(style.css, the probes) the r2 commits touched. I re-read the parts of them that matter, below.
+
+Verified (traced in the code at HEAD):
+- **Nothing new is sent to the server.** common.js has the same four `doFetch` calls in the
+  editor as at r1: GET state (:13502), POST `/scan` with `'{}'` (:13538), POST `/revert`
+  `{version, allowCountChange}` (:13733), and POST save `{ version: state.version, starts: times() }`
+  (:13783). The save and revert payloads are unchanged.
+- **The new `snapGapBreak`** (:13057) is pure: it takes integer-ms comparisons over its
+  arguments, returns null or `{index, end}`, and does no I/O. Reset shift, the per-row Snap and
+  Snap all use it only to REFUSE an edit. It can only make the client stricter than the server's
+  `validateSnapStarts` (strict order + before the duration), never looser.
+- **Microsecond arithmetic** (`micro`, :13302; `applyShift` :13385; `shiftResetTimes` :13307)
+  only keeps finite numbers finite: server-seeded times plus integer ms steps. At worst a
+  sub-ms start reaches the server's `round3`, which re-validates strict order after rounding. The
+  0.1 s client gap makes a rounding collision unreachable, and if one happened the server
+  refuses with 400. That is a failed save, not a bad write.
+- **Every new or reworded string is set as text.** That covers the `aligned` split note (:13364),
+  the "carry no shift" readout (:13324), the Reset and Snap refusals built with `gapText()`
+  (:13315/:13316/:13673/:13674), and the readout written only on change (:13342, a
+  `textContent !==` compare then `textContent =`). All of it goes through `.textContent` or
+  `setStatus` (textContent). These strings contain only numbers, `formatSnapShift` output and
+  fixed text; no chapter title or file text reaches them. There is no `innerHTML` anywhere in
+  the editor (13005-13835).
+- **test/unit/skin-status-bar.test.js** only reads files (`node:fs`, `node:path`,
+  `require('../../public/js/music-skins.js')`) and matches regexes. No process spawn, network
+  or file writes.
+- **The probes are unchanged in every security-relevant line:** a scratch `mkdtemp` DATA_DIR set
+  before the server is required, `app.listen(0, '127.0.0.1')`, and Chromium on a loopback
+  debugging port. `scripts/` is still not served (`server.js` is unchanged at checkout time and
+  serves only `public/`).
+
+Findings: none new. My r1 INFO-1 (the probe's DevTools port on a shared host) and INFO-2 (probe
+temp dirs left behind) were declined in the fix record. I agree: dev tools on a single-user box,
+advisory only. No CRITICAL, HIGH, MEDIUM or LOW findings.
+
+Gate: APPROVED r2 @4b46555d — security-brief
+
+## Gate r2 - qa (@4b46555d)
+
+A check of the changes since r1 (`git diff c05c6906 4b46555d`: common.js, the three test files, the plan).
+Instruments (Node 22.23.1, run by this seat):
+- The three touched test files with `FILETUBE_TEST_FFMPEG` set: `tests 34 pass 34 fail 0
+  skipped 0`, `real scan: Suggested: shift all by +1.75 s (4 of 4 agree) (applied 1750 ms)`.
+- Chapter-snap unit + integration, chapters-editor, chapter-likes, every census, the token /
+  overlay locks, music-skin*: `tests 345 pass 345 fail 0 cancelled 0 skipped 0`.
+- `npm run test:unit`: `tests 7266 pass 7266 fail 0 cancelled 0 skipped 0`.
+- `lint:css` `TOTAL 0`; `lint:overlay` `clean (0 violations)`; eslint on the six JS files
+  `6 problems (0 errors, 6 warnings)` (the pre-existing six); `check-markers`: `stale approval
+  @c05c6906 ... re-gate` (1 issue, the expected r1 marker).
+- Probes on a `git archive 4b46555d` sandbox: skin-status-bar - every SUMMARY true, Click 31.2 x4,
+  Seattle 30.2 x4, pop-out 31.2 / 30.2 at every level, tray 31.2, all 72 rows reached, no page
+  errors, no sideways scroll; chapter-snap - shift buttons 88x44 / 201x44 / 177x36, suggestion
+  356x44 / 810x44 / 285x36, 0 under 44 px on both phone viewports, doc scrollWidth = viewport,
+  notches 12.1125 vs 12.113, the watch editor's first note "No consistent offset", Snap all
+  still 7 of 7 on the probe fixture. Identical to the r1 numbers.
+
+My r1 findings:
+- **W1: fixed as prescribed.** My jsdom case re-run on the r2 sandbox: the head says "2 starts
+  look off" / "Snap all (2)" and the note now reads "No whole-track offset: 3 of 5 already line
+  up. Fix the others one by one."; the all-agree wording is kept. Bound by the integration test
+  "qa W1" (both arms: partial, then after Snap all "5 of 5 agree").
+- **S2: fixed as prescribed.** My case (+1 s, snap chapter 2, -1 s) now reads "Shifted -1.0 s on 1
+  of 4 chapters (the others carry no shift)"; the existing Snap-all test asserts the new text.
+- **S3: fixed, and more widely than I asked** (Reset, the per-row Snap and Snap all all go through
+  the new `snapGapBreak`). My r1 case is refused now. The widening has one side effect, finding 1
+  below.
+- **S4: fixed as prescribed.** Written only on change; the MutationObserver test binds it
+  (no write for two same-text re-renders, a write for +1 s).
+- **S5: not taken - accepted.** The r1 argument stands: Snap all in the fixed head covers the
+  whole-track case, the Music drill opens at the top, and it is disclosed.
+
+Disclosures checked: the midpoint rule (the "+1.0 / +1.6 -> +1.3 s", "-0.3/-0.3/+0.3/+0.3 ->
+aligned 4 of 4" examples compute as stated from `snapShiftSuggestion`) and the 1 ms difference
+(`snapShiftBlock` refuses `t1 + d <= t0 + gap`, `snapGapBreak` only `< gap`, so a step needs the gap
++ 1 ms where every other edit allows exactly the gap) are both accurate. The removed `agree < 2`
+clause really is dead (with `of >= 2`, 60 % forces at least 2). `micro()` and its comment are
+correct: a 120.0005 start comes back exactly (bound by "adversary 6").
+
+Findings:
+
+1. **WARNING (new in r2) - Reset shift is refused, with a false reason, on a list whose close
+   pair (or near-the-end last chapter) was already in the SOURCE** (common.js:13312
+   `shiftResetProblem` passes `changed = every row with a shift`). A shift moves BOTH rows of
+   an interior pair by the same amount, so Reset gives that pair back its SOURCE gap. But
+   `snapGapBreak` checks every pair with a moved row, so a source pair closer than 0.1 s blocks
+   Reset. Verified in jsdom on the r2 sandbox:
+   - Source `[0, 60, 60.05, 120]` (duration 300), press +1 s once. Reset is disabled, and
+     the reason reads "Resetting would put chapter 3 at or before chapter 2, or within 0.1 s
+     of it (a chapter was moved after the shift). Use Undo changes to start over." Nothing was
+     moved after the shift. At r1 this Reset worked.
+   - Source `[0, 60, 299.95]` (duration 300), press -1 s: Reset is disabled ("... or within
+     0.1 s of it"). The +1 s step is disabled too, so only Undo, which also drops any nudges,
+     gets back to the source.
+
+   This contradicts the helper's own comment (common.js:13052: "a source list may already hold
+   closer pairs; they are not this edit's to refuse") and the design note's intent. Nothing
+   normalises source chapters to the gap (`MIN_CHAPTER_GAP_SEC` is used only by the snap
+   routes), so an embedded chapter list can reach this state. No data is at risk. The state is
+   rare, and for the interior case the inverse step is an exact workaround.
+
+   Prescription: never refuse a Reset for a gap that is no worse than the stored one. Break a pair
+   only when its new gap is below `minGapSec` AND below the same pair's `savedStart` gap. Break
+   the end only when `duration - last` is below the gap AND below `duration - savedStart(last)`.
+   Alternatively, skip a pair whose two rows carry the same shift, since Reset leaves its gap
+   unchanged. Bind both scenarios above, and re-run the adversary's W3 cases (they must still
+   refuse).
+   - Acceptable alternative exit: disclose it in the plan's Disclosed gaps, add a tracker row,
+     and correct the reason text so it does not claim "a chapter was moved after the shift"
+     when none was. I would accept that as safe to ship.
+
+No CRITICAL. No other new findings. The tree's only change is the plan doc: my section and the
+security-brief's r2 section, which was already there uncommitted when I started.
+
+Verdict: CHANGES for finding 1 - a regression this fix round introduced, with a user-facing
+reason that is false. Either exit above is a small change, and I will check it as a delta.
+
+Gate: CHANGES r2 @4b46555d — qa
+
+## Gate r2 - adversary (@4b46555d)
+
+A check of the changes since r1 (`git diff c05c6906..4b46555d`: common.js, the three test files,
+the plan). Mutants ran only in `git archive 4b46555d` sandboxes in the session scratchpad; after
+every mutant the files were byte-compared with their pristine copies (`restore-check identical`).
+
+Instruments:
+- Targeted set on the sandbox (unit chapter*, music*, skin*, css*, token*, exec-plans*,
+  tech-debt*, player-chapters*, docs*; integration chapter-snap*, chapters-editor, ffmpeg set):
+  `tests 884 pass 884 fail 0 cancelled 0 skipped 0`.
+- eslint on the four touched js files: `6 problems (0 errors, 6 warnings)`. `lint:css` `TOTAL 0`.
+  `lint:overlay` clean.
+- `check-markers`: 1 issue, `stale approval @c05c6906` on security-brief's r1 line. That is expected
+  in a delta round.
+- **Instrument failure, verbatim:** one of my scratch drives (3000 random steps, Reset, then save,
+  run in the same file after another drive) ended `not ok ... AssertionError`. Rerun alone, the
+  identical sequence passed and saved; I did not find the cause. Its numbers below come from the
+  isolated rerun.
+
+### My r1 findings
+- **W1 (the CSS lock): fixed for every breaker I named.** C1-C4 and C6-C14 are all RED against
+  the rebuilt census. The builder's C15-C17 are RED too. BUT the census still has a hole, see
+  new finding 1.
+- **W2 (the refused suggestion): fixed as prescribed.** A3, A4, A5 and A6 are RED, and so is the
+  double mutant D1 (A3 + A5), which at r1 saved `[0, 0.05, 59.05, 119.05]`.
+- **W3 (Reset refusals): fixed.** R1 (the end arm of `snapGapBreak` removed), R14 (Reset's
+  changed-row mask set to "nothing") and the equal-pair case are all RED ("adversary W3").
+- **S4 (Reset into the gap): fixed in a wider form** (`snapGapBreak` on Reset, the per-row Snap and
+  Snap all; R2, R3, R3b, R6, R7 and R10 RED). The wider form brings new finding 2.
+- **S5 (the agreement rule):** the midpoint rule is disclosed and its comment is honest. The
+  dead clause is removed. A8 is RED.
+- **S6 (the half millisecond): fixed.** R9b (back to ms rounding) is RED. See drift below.
+- **S7 (the audition): fixed.** A15 is RED.
+
+### New findings
+
+1. **WARNING - the census still misses an ancestor that is not on its CHAIN list, and CSS
+   nesting.** `reaches()` needs every rule's ancestor to name a chain token, even when the last
+   compound is the title's own class. Each rule below was appended inside
+   `@media (max-width:768px)`. Each one keeps the whole skin set GREEN
+   (`skin-status-bar` + `music-skins` + `skin-surface` + `skin-scrollbar-hidden`:
+   `pass 120 fail 0`). `scripts/skin-status-bar-probe.js` then measures (control: 31.2 x4,
+   battery 338,27.6):
+   - N1 `#view-root .ip-np{white-space:normal}`: long album **85.8 px, battery y 54.9** (Dean's
+     bug, fully back). The panel sits inside `#view-root` (music.html:98/192).
+   - N2 `#view-root span{white-space:normal}`: 85.8 px, same.
+   - N5 `.mms-ipod{ & .ip-np{white-space:normal} }` (native CSS nesting, effective selector
+     `.mms-ipod .ip-np`): 85.8 px, same.
+   - N4 `.mms-zune-classic .ip-np{all:revert}`: Seattle long rows **66.6 px**, play mark y 45.9.
+   - N3 `.mms-ipod .ip-lcd-in{writing-mode:vertical-rl}` (an ancestor; the value is inherited):
+     the bar is 258.5 px at every level.
+
+   Caught (RED): N7 `.ip-lcd *`, N8 `[data-view] .mms-ipod .ip-np`, N9 nested `:is(:where())`, and
+   N6 / N10 (any later rule repeating the bar's selector).
+
+   Prescription:
+   - A last compound that names the element's own class reaches it whatever its ancestors.
+   - An ancestor compound the parser cannot place (an id, `&`, `:scope`) counts as reaching (fail
+     closed).
+   - Add `all` to the three tables.
+   - Add `writing-mode` and `direction` to a check of rules on the chain's ancestors
+     (`.ip-lcd*`, `.mms-*`, the panel).
+   - Then N1-N5 must go RED.
+
+   The shipped CSS is correct as measured. This is the anti-regression net, and N1 and N2 are the
+   plainest way to spell the regression.
+
+2. **WARNING (new in r2; qa found it independently) - Reset is refused, with a false reason, when
+   a close pair or a near-the-end last chapter comes from the SOURCE.** A shift moves both rows of
+   a pair together, so Reset returns that pair to its source gap. `shiftResetProblem` marks every
+   shifted row as "changed", so `snapGapBreak` checks the pair and refuses. Verified in jsdom:
+   - Source `[0, 60, 60.05, 120]`, +1 s, a nudge of the last row: Reset is disabled, "Resetting
+     would put chapter 3 at or before chapter 2, or within 0.1 s of it (a chapter was moved after
+     the shift)". No chapter was moved. A -1 s step still gets back ("No shift"), so the interior
+     case has a workaround.
+   - Source `[0, 0.05, 60]`, +1 s: Reset is disabled, AND the -1 s step is refused ("Shifting
+     earlier would put chapter 2 at or before chapter 1"). The only way back is Undo changes,
+     which also throws away the nudge made in between.
+
+   At r1 both Resets worked. The call-site masks are also unbound:
+   - R13 (Reset's mask = every row) survives, `pass 78 fail 0`.
+   - R15 (Snap all's mask = every row, so an untouched close pair anywhere blocks the snap)
+     survives, `pass 78 fail 0`.
+   - The unit test binds the helper's "untouched pair" semantics, but not what either caller passes.
+
+   No data is at risk: the server's rules are unchanged, and I found no server-ACCEPTED bad save.
+   Prescription (as qa's): break a pair only when its new gap is below the gap AND below the same
+   pair's `savedStart` gap. Do the same for the end. Correct the reason text. Bind both
+   scenarios above, then R13 and R15 must go RED.
+
+3. **SUGGESTION - `snapGapBreak`'s "end only when the last row moved" is unbound** (R5 survives,
+   `pass 78 fail 0`). Under R5, a per-row Snap of a middle chapter is refused whenever the source's
+   last chapter already sits within 0.1 s of the end. Add one unit case with
+   `changed = [.., true, false]` and the last chapter inside the end gap.
+
+### Destroy-the-data checks (verified holding)
+- **Can `snapGapBreak` pass an illegal state?** No. Every edit starts from a strictly increasing
+  list. An untouched pair keeps its current gap. A touched pair is checked in whole ms against
+  the server gap (equal and out-of-order give a negative or zero diff, so they are refused).
+  Chapter 1 never moves. The end is checked whenever the last row moves.
+- **Can it refuse a legal state?** Yes: finding 2 (Reset). For the per-row Snap and Snap all I
+  tried to build an improving snap that stays inside the gap, and it is not reachable. A server
+  `suggest` is at least 0.1 s from its stored start, so moving away from a close neighbour always
+  clears the gap.
+- **Microsecond arithmetic:**
+  - 3000 seeded-random steps (net -8.3 s) with stored starts 60.0004, 120.0005 and 180.123456789,
+    then Reset: every row read back as its stored start, and Save and Undo were both DISABLED
+    again.
+  - Then +1.2 s and Save: the display read `1:01.2, 2:01.2, 3:01.3, 4:01.3` and the server stored
+    `[0, 61.2, 121.201, 181.323, 241.3]`, with `snapFrom` holding the ns-precision source times.
+  - R8 and R9 (micro rounding dropped) survive but are equivalent, argued: `applyShift` alone
+    keeps rows on the microsecond grid, the dirty and Snap-all checks use 0.5 ms, and the server
+    rounds to 3 places.
+- **The 1 ms rule difference:** measured on chapter 2 at 0.2 s. The -0.1 s STEP is disabled
+  (lands exactly on the gap), while the -0.1 s NUDGE lands on 0.1. Both keep at least the gap,
+  and it is disclosed. No harm.
+- **My r1 kills, re-run:** S3 is RED (4 tests) and S6 is RED.
+
+Blocking: 1 and 2. Neither needs a data-path change for safety. Finding 2 is a regression this
+fix round introduced, with a false user-facing reason. Finding 1 is the crown-jewel lock class,
+with a concrete breaker that brings back Dean's exact 85.8 px bar. Per Dean's norm, this makes
+r3, which is the Architect's to raise with Dean.
+
+Gate: CHANGES r2 @4b46555d — adversary
