@@ -2846,8 +2846,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // already playing keeps playing; the picks sit at the queue tail, so no earlier row's index
     // moves), re-arm the nav so Next ends where your queue ends, and repaint the up-next.
     // Returns whether anything was dropped.
+    // Gate r1 (qa W1 = adversary W1): a PRIMED solo-chapter exit station (soloExitPicks) is left
+    // alone here - nulling it made Autoplay off-then-on during a solo chapter lose its exit
+    // station (a regression). The exit hand-off re-checks autoplayEnabled() itself, so an OFF
+    // exit is still refused and an ON one still stations on.
     function retractAutoplayPicks() {
-      soloExitPicks = null; // a primed solo-chapter station is a station too
       var kept = [];
       var dropped = 0;
       for (var k = 0; k < queue.length; k++) {
@@ -3058,6 +3061,14 @@ if (typeof module !== 'undefined' && module.exports) {
           .then(function (res) {
             if (res.body && res.body.cancel) { try { res.body.cancel(); } catch (_) { /* ignore */ } }
             if (gen !== playGen) return;
+            // Gate r1 (adversary S5): a STATION pick whose rendition was still being prepared
+            // when Autoplay went off (or whose row the switch retracted) is not started: the
+            // advance was asked for while on, but the pick is no longer the queue's to play.
+            if (res.ok && isAutoplayPick(item) && (!autoplayEnabled() || queue.indexOf(item) < 0)) {
+              setStatus('');
+              retractAutoplayPicks();
+              return;
+            }
             if (res.ok) { setStatus(''); loadTrack(item, i, opts); return; } // 200/206 -> ready
             attempts += 1;
             if (attempts >= MAX_ATTEMPTS) { setStatus('Could not prepare this track. Try again shortly.'); return; }

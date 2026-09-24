@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: fix/music-followups
 anchor: spec
 status: Building
-next: built at d95d42ec (+ the docs commit recording the mutants); gate r1 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
+next: gate r1 CHANGES @020bec0a fixed (see Gate r1 fix record); r2 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -76,12 +76,20 @@ on same-id adopt; test-quality items; VERIFY autoplay-pref-0 still advancing the
   change that re-chapters a file would still strand. Counting at the reader covers every writer.
   The request validation and the route are untouched (the sibling feat/chapter-snap saves
   through the same route).
-- **D-3 #237: the adopt carries album, albumKey AND autoAdvanceViaTrackNav.** The first two are
-  the tracker's ask (music's dock-return re-init reads both). The third is the same class, found
-  by driving the real adopt: the watch load never declares it, so after Watch -> Music the
-  track's natural end took the VIDEO autoplay path and the album queue never advanced
-  (measured). Watch declares none of the three, so a Listen -> Watch adopt keeps them - measured
-  harmless (that end still stops: music's track nav is gone with its view). Not changed here.
+- **D-3 #237: the adopt carries the FULL surface-flavor set** (widened at gate r1). The tracker
+  asked for album / albumKey; driving the real adopt found `autoAdvanceViaTrackNav` in the same
+  class (after Watch -> Music the natural end took the VIDEO path and the album never advanced),
+  and the adversary (r1 W4) found `title` / `channelName` too (the re-init read "file-a1
+  Uploader"). So the contract is now enumerated from what the loaders pass, not hand-picked:
+  every PRESENTATION field (title, channelName, folderName, album, albumKey, channelFolder,
+  artUrl, subId) plus `autoAdvanceViaTrackNav`, never a field that drives the loaded media; the
+  adopt also re-asserts the lock-screen metadata. **Correction (r1, qa W2 = adversary W3):** the
+  build's claim that a Listen -> Watch adopt keeping music's `autoAdvanceViaTrackNav: true` was
+  "measured harmless" was FALSE - the probe drove only `a1`, which has no watch neighbor. With
+  the server's autoplayNext off, `a2` -> `a1` and `a3` -> `a2` advanced (the v1.253 ledger quirk).
+  Architect ruling: watch.js's two adopt-capable `player.load` calls now declare
+  `autoAdvanceViaTrackNav: false` beside their readerHref / resumeMode null stamps; all three
+  now stop (measured below).
 - **D-4g ROLES already carries the `-active` tokens**: landed with T1 in v1.317 (the
   `// v1.317 (QA r2 suggestion on v1.316.0)` line in sub-row-chip-btn-family.test.js). Verified
   bound by a mutant (M4g below); no edit.
@@ -310,10 +318,20 @@ bound by the wall-time measurement above. Item 4e is a comment.
   them and retracts (S4). The toggle in this view retracts at once.
 - **The cog Loop row is hidden in Music, not driven** (D-1). Music keeps its toolbar / sticker
   Loop. Dean's call if he wants a cog Loop there too.
-- **Listen -> Watch adopt keeps music's `autoAdvanceViaTrackNav`** (D-3): measured harmless
-  (the natural end on the watch page stops). The v1.2xx ledger's "a finished video may jump to
-  the next one even if autoplay is off right after switching from Listen back to Watch" is the
-  documented shape of this; not reproduced here and not changed.
+- **An adopt does not re-render the audio-mode poster / visualizer text** that the GENUINE load
+  set (player.js load: `audioBgArt`, `audioVisualTitle`). The adopt now carries every
+  presentation field into the player's data (the meta, the re-init seeds, the lock screen), but
+  that paint is not redone. For a library item both loaders resolve the same art route.
+- **Three suspicions from the adversary, filed not fixed** (evidence in the rows): #244 a refused
+  Next leaves `immersiveCarryPending` armed (reasoned; binding it needs a real-player drive
+  through an immersive state); #245 a dock-return re-init while a station pick plays rebuilds
+  that pick's album as the queue (reasoned; Dean's call on the intended behaviour); #246 the
+  toolbar Autoplay button's pressed look lags a prefs-sync flip until the next repaint (measured
+  by the adversary; behaviour already follows the pref).
+- **qa S5 not taken** (memoize the Stats expansion per base file): the per-request memo needs
+  either a second "chapter ids of a file" helper beside `chapterLikeTrack` (two rules again - the
+  class #235 closed) or a cache keyed on db objects that outlive a request (stale after an edit).
+  The cost is the listing's own, pure and in memory; left as is.
 
 ## Gate r1 - security-brief (@020bec0a)
 
@@ -566,3 +584,44 @@ bound that is not; a plan claim measured false in the seam this branch edits); 4
 disclosed. 5-7 are advisory.
 
 Gate: CHANGES r1 @020bec0a — adversary
+
+## Gate r1 fix record
+
+Fixed on fix/music-followups from 020bec0a (r1 sections committed as-is at c04302a6). Node
+v22.23.1. Each finding, the change, the binding test, the mutant (table below).
+
+| Finding | Change | Binding test |
+|---|---|---|
+| F1 (qa W1 = adversary W1, a REGRESSION): Autoplay OFF then ON during a solo chapter lost its exit station | `retractAutoplayPicks` no longer nulls `soloExitPicks`; the hand-off's own `autoplayEnabled()` re-check refuses an OFF exit | music-chapter-reflect "gate r1 F1" (both axes through the REAL toolbar: OFF then ON -> `station-track`; OFF alone -> `film::c1`) |
+| F2 (qa W3 = adversary W2): AC0(b) "the up-next shows the truth" unbound (mutant U2 survived) | no code change | the toolbar test now asserts the RENDERED up-next (`.mnp-queue-title`: S1-S5 on screen before, only the three chapters after, the station back after ON) and `aria-pressed` after each click; the sticker test boots the Spotify skin and asserts its rendered queue (`[data-skin-go] .mms-rt`) drops the picks and the row reads Off (`aria-checked` false, qa S6) |
+| F3 (qa W2 = adversary W3): Listen -> Watch "harmless" was false | watch.js's two adopt-capable loads declare `autoAdvanceViaTrackNav: false`; the player.js comment, the unit test pin and D-3 corrected | player-adopt-flavor "gate r1 F3" (the REAL player: music load, the watch-shaped adopt, a watch neighbor, `ended`: the video path, no track-nav advance; the control with the pre-fix watch shape advances); watch-init-behavioral "gate r1 F3" (the REAL watch init through the ADOPT entry: both load calls declare it); the watch-prev-next-flash lock on `mountedEarly` updated |
+| F4 (adversary W4): the adopt kept the watch page's title / channelName | `applyAdoptFlavor` carries the enumerated presentation set (`ADOPT_FLAVOR_STRING_FIELDS`); the adopt re-asserts the lock screen (`setupMediaSession`) | player-adopt-flavor "#237: Watch -> Music ..." (a DIVERGENT fixture: file title `file-a1` / `Uploader` vs tag `Alpha One` / `Band`; meta AND lock-screen metadata follow the adopt) and "EVERY presentation field ... a media field never is" |
+| F5 (adversary S5): Autoplay OFF during a station pick's ALAC prewarm still started it | the prewarm's ready arm refuses a station pick when Autoplay is off OR its row is no longer queued (and retracts) | music-chapter-reflect "gate r1 F5": toolbar OFF, a storage-only flip, OFF then ON (the row was retracted), and the control (on: it starts) |
+| qa S4 | the server.js comment names the ENUMERATING readers and says why the per-row flags agree | (comment) |
+| qa S7 | the watch-init shim skips a listener whose `{ signal }` was aborted | the shim self-test (abort, then only the other listener fires) |
+| qa S5 | not taken (see Disclosed gaps) | - |
+| adversary 6 / 7 | filed #244, #245, #246 | - |
+
+A test-fixture lesson found on the way: the player KEEPS the load-data object it is handed
+(`currentData`) and the adopt mutates it, so the shared fixtures in player-adopt-flavor.test.js
+leaked the first test's adopt into the next (the control iteration read the video path). Every
+load there now gets a fresh copy.
+
+### Measurements (r1)
+
+Headless Chromium chromium-1234, the builder's CDP harness, this tree vs a `git archive 020bec0a`
+sandbox (20 s WAV tracks, album a1-a3, server autoplayNext off):
+
+| Probe | 020bec0a | this fix |
+|---|---|---|
+| Music -> Watch adopt, natural end on /watch, a1 / a2 / a3 | a1 stops; **a2 -> a1; a3 -> a2** | a1, a2, a3 all stop |
+| Watch -> Music adopt (divergent fixture: file `file-a1` / `Uploader`, tags `Alpha One` / `Band`): meta after the adopt | `file-a1` / `Uploader` | `Alpha One` / `Band` |
+| the same, the panel after the dock-return re-init | **"file-a1 / Uploader · Record"** | "Alpha One / Band · Record" (= the cold /music control) |
+| the adopted track's natural end | a1 -> a2 | a1 -> a2 |
+
+The item-0 probe (S1-S7) re-run on this tree, three runs: S1, S2, S4, S5, S6, S7 as before in
+every run. S3b (the pref UNSET) appended in one run and read `ft-music-autoplay` = '0' at the
+music load in two (then correctly stopped): the probe clears storage and navigates within
+prefs-sync's 1 s debounce, so the SYNCED key is restored from the server's last value (S2's
+'0'). A probe artifact of the synced key, not the view: in every run the behaviour matched the
+pref the page read.

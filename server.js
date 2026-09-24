@@ -4117,9 +4117,11 @@ function itemChapterTracks(item) {
 }
 // Tracker #235 (music follow-ups, 2026-09-24): the ONE answer to "does this `<id>::c<n>` like
 // still name a chapter of this item" - the chapter track from the item's REAL expansion (audio
-// only, the POST gate's rule), or null. Every reader of chapter-like membership routes through
-// it: the like POST's existence check, the Liked listing's chapter arm (GET /api/liked) and the
-// member's Stats count (GET /api/stats). Before this the count read base visibility only, so a
+// only, the POST gate's rule), or null. Every reader that ENUMERATES a user's chapter likes
+// routes through it: the like POST's existence check, the Liked listing's chapter arm (GET
+// /api/liked) and the member's Stats count (GET /api/stats). (The per-row `liked` flags -
+// musicLikedSets / trackIsLiked and the per-item lookups - read the raw set by an id the
+// expansion itself minted, so they agree by construction.) Before this the count read base visibility only, so a
 // re-chapter that dropped an index left the count at 1 while the listing said 0. A stranded
 // row is kept (never deleted on a chapter edit): an edit that restores the index revives it.
 function chapterLikeTrack(item, likeId) {

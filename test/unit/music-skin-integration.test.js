@@ -1453,12 +1453,15 @@ test('item 0: the sticker Autoplay row switched OFF after the early append retra
     if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
     return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
   };
+  // the Spotify skin renders the queue on screen ("Next in queue"), so the retract is visible
+  const queueTitles = (dom) => [...panel(dom).querySelectorAll('[data-skin-go] .mms-rt')].map((e) => e.textContent);
   await boot({
-    mobile: true, isMusic: true, query: '?play=t9',
+    mobile: true, isMusic: true, query: '?play=t9', skin: 'spotify',
     fetchImpl, playerOverride: listenPlayer(calls),
     run: async (dom) => {
       for (let i = 0; i < 10; i++) await settle();
       assert.strictEqual(typeof calls.navs[calls.navs.length - 1].onNext, 'function', 'precondition: the early append armed a Next');
+      assert.deepStrictEqual(queueTitles(dom).filter((t) => /^Pick/.test(t)), ['Pick 1', 'Pick 2', 'Pick 3'], 'precondition: the picks are ON SCREEN');
       const menu = openSticker(dom);
       const row = menu.querySelector('[data-skin-autoplay]');
       assert.ok(row, 'the sticker renders the Autoplay row');
@@ -1466,6 +1469,11 @@ test('item 0: the sticker Autoplay row switched OFF after the early append retra
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
       assert.strictEqual(dom.window.localStorage.getItem('ft-music-autoplay'), '0');
       assert.strictEqual(calls.navs[calls.navs.length - 1].onNext, undefined, 'the picks were retracted: the single song is the end of the queue again');
+      // gate r1 (qa W3 = adversary W2): the rendered queue shows the truth; qa S6: the row reads Off
+      assert.deepStrictEqual(queueTitles(dom).filter((t) => /^Pick/.test(t)), [], 'the skin\'s queue no longer lists the picks');
+      const row2 = openSticker(dom).querySelector('[data-skin-autoplay]');
+      assert.strictEqual(row2.getAttribute('aria-checked'), 'false', 'the sticker row reads Off');
+      assert.match(row2.textContent, /Off/);
       assert.strictEqual(calls.loads.length, 1, 'playback untouched');
     },
   });
@@ -2681,8 +2689,9 @@ function adoptingPlayer(calls, preload) {
   return p;
 }
 // watch.js's load data (initWatch: `{ ...mediaData, channelName, browseCtx, readerHref: null,
-// resumeMode: null }`) - mediaData is the /api/videos/<id> body. The player docked on the way out.
-const watchLoadData = (media) => Object.assign({}, media, { channelName: media.channelName || '', browseCtx: '', readerHref: null, resumeMode: null });
+// resumeMode: null, autoAdvanceViaTrackNav: false }` - the last stamp since the music follow-ups
+// gate r1) - mediaData is the /api/videos/<id> body. The player docked on the way out.
+const watchLoadData = (media) => Object.assign({}, media, { channelName: media.channelName || '', browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false });
 
 test('v1.317 gate r2 adversary W1: Watch -> Listen ADOPTS the loaded video, and "Go to channel" + the channel artist line SURVIVE the dock-return and the soft-nav re-init', async () => {
   const calls = { loads: [], navs: [], docks: 0, closes: 0 };

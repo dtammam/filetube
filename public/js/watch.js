@@ -1125,7 +1125,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // keep (the mini-bar then returned to the iPod view - Dean's repro).
       // Stamped HERE too (not just the full call below) so the flavor is right
       // even if the metadata fetch below fails or is slow under a dock-tap.
-      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null }, { slot: playerSlot });
+      // Gate r1 (music follow-ups, qa W2 = adversary W3): autoAdvanceViaTrackNav false is part of
+      // the same claim - a Listen play left music's `true`, and the adopted video's natural end
+      // then advanced through this page's track nav even with Autoplay off.
+      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false }, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
     } else if (entryReparentAction === 'reparent' && !canSeedPreload) {
       // Eagerly reparent the STILL-loaded previous video's host into THIS
@@ -1322,7 +1325,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // adopt path (see the early-adopt call's comment) - AFTER the spread,
         // so a hypothetical readerHref/resumeMode on the fetched media payload
         // can never smuggle a stale surface flavor through.
-        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null }, { slot: playerSlot });
+        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false }, { slot: playerSlot });
         if (!mounted) {
           showFatalViewError(root);
         }

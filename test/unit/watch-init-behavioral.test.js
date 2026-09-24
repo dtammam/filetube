@@ -55,7 +55,8 @@ function makeEl(tag) {
     addEventListener(t, fn, opts) {
       (el._ls = el._ls || []).push({ type: t, fn, opts });
       const ofType = () => el._ls.filter((x) => x.type === t);
-      (el._l = el._l || {})[t] = function () { const a = arguments; ofType().forEach((x) => x.fn.apply(el, a)); };
+      // gate r1 (qa S7): a listener whose { signal } was aborted is gone, as in the DOM
+      (el._l = el._l || {})[t] = function () { const a = arguments; ofType().filter((x) => !(x.opts && x.opts.signal && x.opts.signal.aborted)).forEach((x) => x.fn.apply(el, a)); };
       (el._lo = el._lo || {})[t] = ofType().map((x) => x.opts);
     },
     removeEventListener() {},
@@ -114,6 +115,11 @@ test('harness (music follow-ups item 4d): the element shim keeps EVERY listener 
   assert.equal(el._lo.click.length, 2, 'both registrations\' options are recorded');
   assert.strictEqual(el._lo.click[0].signal, ac.signal);
   assert.equal(el._lo.click[1], undefined);
+  // gate r1 (qa S7): an aborted signal removes its listener, as the DOM does
+  ac.abort();
+  ran.length = 0;
+  el._l.click();
+  assert.deepEqual(ran, ['second'], 'the aborted listener no longer fires; the other still does');
 });
 
 test('harness: REAL_PLAYER_API is read from player.js (non-vacuous; a misspelling is NOT on it)', () => {
@@ -139,7 +145,7 @@ const FULL_SEED_ITEM = {
 
 // Builds a fresh sandbox, evaluates the REAL watch.js in it, and returns
 // {init, els} -- els is the shared selector->element map, pre-seedable.
-function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides } = {}) {
+function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides, playerCurrentId } = {}) {
   storage.clear();
   if (cacheEntry) storage.set('ft-cap-cache-v1', JSON.stringify(cacheEntry));
 
@@ -181,7 +187,9 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   const windowShim = {
     FileTube: {
       player: new Proxy({
-        currentId: null, getState: () => ({ docked: false, loaded: false }),
+        // playerCurrentId (music follow-ups gate r1): the id the persistent player already holds, so
+        // a test can drive the ADOPT entry (a Listen -> Watch return re-opens the loaded id)
+        currentId: playerCurrentId || null, getState: () => ({ docked: false, loaded: false }),
         load: (id, data, opts) => { loadCalls.push({ id, data, opts }); return true; },
         setTrackNav: (h) => { trackNavCalls.push(h); },
         isLoopEnabled: () => false,
@@ -674,6 +682,35 @@ test('v1.317 gate W1: the video path CALLS the one theatre-button writer exactly
   // idempotent re-load once the detail resolves (the real player treats the second as a reparent)
   assert.equal(realm.loadCalls.length, 2, 'precondition: the media was mounted (seed adopt + step 4), got ' + realm.loadCalls.length);
   assert.equal(realm.theaterCalls.length, 1, 'ensureCogControlsInjected called window.FileTube.player.ensureTheaterButton() exactly once (fetched: ' + realm.fetchUrls.join(', ') + ')');
+});
+
+// ---- Music follow-ups gate r1 (qa W2 = adversary W3): BOTH of watch's adopt-capable
+// player.load calls (the seeded early adopt in init() and step 4's load once the detail
+// resolves) declare autoAdvanceViaTrackNav:false beside their readerHref/resumeMode null
+// stamps - a Listen play left music's `true`, and the adopted video's natural end advanced
+// through this page's track nav even with Autoplay off (measured a2 -> a1, a3 -> a2). The
+// player side (the declared false clears it on the adopt) is bound in player-adopt-flavor.
+test('gate r1 F3: both watch player.load calls claim the plain-video end: autoAdvanceViaTrackNav false (with readerHref/resumeMode null)', async () => {
+  // the ADOPT entry: the player already holds vid1 (a Listen play of it), so init() mounts through
+  // the synchronous early adopt call and step 4 re-loads once the detail resolves
+  const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} }, playerCurrentId: 'vid1' });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  realm.els.set('#subscribe-btn-mock', btn);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  realm.init(root);
+  assert.equal(realm.loadCalls.length, 1, 'precondition: the early adopt ran synchronously');
+  assert.deepStrictEqual(Object.keys(realm.loadCalls[0].data).sort(), ['autoAdvanceViaTrackNav', 'browseCtx', 'readerHref', 'resumeMode'], 'precondition: that is the mountedEarly call (flavor-only data)');
+  for (let i = 0; i < 40 && realm.theaterCalls.length === 0; i++) await settle();
+  for (let i = 0; i < 12; i++) await settle();
+  assert.equal(realm.loadCalls.length, 2, 'precondition: the early adopt + step 4 both ran');
+  for (const [n, c] of realm.loadCalls.entries()) {
+    assert.ok(Object.prototype.hasOwnProperty.call(c.data, 'autoAdvanceViaTrackNav'), 'load ' + n + ' DECLARES the flag');
+    assert.strictEqual(c.data.autoAdvanceViaTrackNav, false, 'load ' + n + ': false');
+    assert.strictEqual(c.data.readerHref, null, 'load ' + n + ': readerHref null');
+    assert.strictEqual(c.data.resumeMode, null, 'load ' + n + ': resumeMode null');
+  }
+  realm.destroy();
 });
 
 // ---- v1.317 gate r2 (qa W1 + adversary W1): watch's theatre click is bound on the VIEW
