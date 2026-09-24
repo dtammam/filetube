@@ -150,5 +150,38 @@ signal; the id-guard means whichever view injects first wins and the other reuse
   (24 files) = 429 pass / 0 fail. `npm run lint` 0 errors (7 pre-existing warnings in
   common.js; eslint over the changed files is clean). `npm run lint:css` TOTAL 0.
   `check-markers.sh` clean.
-- Mutation results: see the section appended after the WIP commit (mutants run on a
-  `git archive` sandbox of the committed tree, never on uncommitted edits).
+- `bash .harness/lib/check-markers.sh` mid-build (before the WIP commit): `✗
+  docs/exec-plans/active/2026-09-23-music-theatre-button.md: stale approval @6ea45237 - reviewed
+  code changed since; re-gate` / `check-markers: 1 issue(s) found` (exit 1). The expected
+  Building shape: the design approval is bound to the base sha and the checker's rule 2 greps
+  every `Approved ... @sha` line; the v1.316.0 plan recorded the identical output mid-build.
+- First WIP commit attempt refused by the pre-commit hook: `docs-link-census` red on ONE
+  backtick path in this doc (the wave doc lives only on feat/music-channel-chapters); the
+  reference was reworded without backticks, the census re-run green (2/2), then committed.
+- WIP commit bc488b95 (tree 56993b9f) landed through the pre-commit hook (full unit suite,
+  0 failures; lint 0 errors / 7 pre-existing warnings). The final commit adds only this build
+  record.
+- Mutation round (16 mutants + baseline; sandbox = `git archive` of the staged tree
+  56993b9f = the tree commit bc488b95 carries (verified by `git rev-parse HEAD^{tree}`), never
+  the live working tree; each mutant
+  asserts its pattern was found, so no mutant is a silent no-op; the baseline over the four
+  touched test files = 116 pass / 0 fail). Every mutant died; the killing test is named:
+
+  | # | Mutant (one edit) | Killed by |
+  |---|-------------------|-----------|
+  | M1 | writer without the id-guard (double inject) | writer test + watch -> music (count 1) |
+  | M2 | `api.ensureTheaterButton` not exposed on the player api | reachability test |
+  | M3 | music mount seam (`updateNowPlayingPanel`) never binds | cold-load, persisted, music -> watch |
+  | M4 | music init seam never binds | watch -> music |
+  | M5 | music click bound WITHOUT the view signal | watch -> music (destroy leaves a live listener) |
+  | M6 | idempotence guard removed (re-bind per mount seam) | cold-load (2 listeners = no flip), watch -> music |
+  | M7 | aria-pressed not re-stamped from the music key at bind | persisted, watch -> music |
+  | M8 | music sets `hidden` on the shared button | cold-load, music -> watch |
+  | M9 | watch.js carries a second copy of the glyph | ONE-writer census + watch-chrome-ambient |
+  | M10 | watch.js never calls the writer | watch-chrome-ambient |
+  | M11 | `#music-theater-btn` restored in music.html | ONE-writer census |
+  | M12 | CSS view-scope rule dropped | CSS test |
+  | M13 | CSS `#player-dock #theater-btn` hide dropped | CSS test |
+  | M14 | music.html stops loading player.js | SHELL PARITY |
+  | M15 | stats.html's template loses `#settings-btn` | SHELL PARITY |
+  | M16 | `.sub-row-bell-active { background: red }` | sub-row-chip-btn-family AC4 (the owed census add) |
