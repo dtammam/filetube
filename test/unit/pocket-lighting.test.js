@@ -94,7 +94,8 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   assert.strictEqual(L.readStrength(ls), 'pronounced');
   assert.strictEqual(L.setStrength('loud', ls), 'off');
   assert.deepStrictEqual(L.STRENGTHS, skins.LIGHTING_STRENGTHS.map((r) => r.value), 'one list of strengths, two modules: a census');
-  assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.5, pronounced: 1 });
+  assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.8, pronounced: 1 }, 'second swing: Subtle = the old Pronounced travel, Pronounced = the same + the strong profile');
+  assert.strictEqual(L.TILT_RANGE_DEG, 20, 'a wrist tilt reaches the edge');
   const rows = skins.menuLightingItems({ strength: 'subtle', note: '' });
   assert.deepStrictEqual(rows.map((r) => [r.label, r.action, r.value, r.check]), [['Off', 'lighting', 'off', false], ['Subtle', 'lighting', 'subtle', true], ['Pronounced', 'lighting', 'pronounced', false]]);
   assert.deepStrictEqual(skins.menuLightingItems(null).map((r) => r.check), [true, false, false], 'no driver state: Off is checked');
@@ -249,16 +250,21 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     tiltTo(b, 0, 3);              // the neutral pose (whatever you hold it at)
     b.clock.advance(200);
     assert.strictEqual(lx(b), 0, 'the opening pose is neutral: no offset');
-    tiltTo(b, 0, 3 + 28);         // tilt RIGHT by the full range
+    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG);         // tilt RIGHT by the full range
     b.clock.advance(100);
     assert.ok(S(b).raf, 'the frame loop is live while samples stream');
     b.clock.advance(600);
     assert.ok(lx(b) < -0.9, `the light slides LEFT (opposite the tilt): --lx = ${lx(b)}`);
     assert.ok(Math.abs(ly(b)) < 0.05, 'no front/back tilt: --ly stays ~0');
     // Subtle halves it
-    b.ls.setItem(L.KEY, 'subtle');
-    tiltTo(b, 0, 3 + 28); b.clock.advance(700); // the next sample re-reads the strength
-    assert.ok(lx(b) < -0.38 && lx(b) > -0.55, `subtle = half the amplitude, less ~1 s of re-centring (got ${lx(b)})`);
+    b.ls.setItem(L.KEY, 'subtle'); b.engine.paint(); // (in production a pick goes through choose() -> sync(); a paint re-syncs the same way)
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700); // a fresh start: a fresh neutral, then the tilt
+    assert.ok(lx(b) < -0.62 && lx(b) > -0.85, `subtle = 0.8 of the amplitude, less ~1 s of re-centring (got ${lx(b)})`);
+    assert.ok(!P(b).classList.contains('mms-lit-strong') && lit(b), 'Subtle: lit, but never the strong profile');
+    b.ls.setItem(L.KEY, 'pronounced'); b.engine.paint();
+    assert.ok(P(b).classList.contains('mms-lit-strong'), 'Pronounced: the strong profile class (AC1)');
+    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700);
+    assert.ok(Number(P(b).style.getPropertyValue('--lm')) > 0.6, `--lm = the light's distance from centre (AC2; less ~0.7 s of re-centring): ${P(b).style.getPropertyValue('--lm')}`);
     // gate r2 (adversary S5, J2): a hide while the loop is LIVE cancels the pending frame (the clock,
     // not the driver's own flag); no menu is open here, so nothing else may pend
     tiltTo(b, 0, 3 + 20);
@@ -266,7 +272,7 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     Object.defineProperty(b.doc, 'hidden', { configurable: true, value: true }); b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
     assert.strictEqual(b.clock.live(), 0, 'stop() cancelled the frame (cancelAnimationFrame is bound)');
     Object.defineProperty(b.doc, 'hidden', { configurable: true, value: false }); b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
-    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + 28); b.clock.advance(700);
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700);
     // a HELD tilt (G5): the neutral pose drifts onto it, the light eases home, and only then
     // does the loop park (no rAF, no timer, no writes) until the next sample
     b.clock.advance(7 * L.RECENTER_TAU_MS);
@@ -276,7 +282,7 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     b.clock.advance(2000);
     assert.strictEqual(S(b).writes, w0, 'no writes while parked');
     assert.strictEqual(b.clock.live(), 0, 'no timer of any kind pending');
-    tiltTo(b, 0, 3 + 28);
+    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG);
     assert.ok(S(b).raf, 'the next sample re-arms the loop');
   } finally { b.restore(); }
 });
@@ -322,7 +328,8 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Off', 'the check moved');
     assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', '--lx cleared');
     assert.strictEqual(P(b).style.getPropertyValue('--ly'), '', '--ly cleared');
-    assert.ok(!lit(b), 'the lit class dropped');
+    assert.strictEqual(P(b).style.getPropertyValue('--lm'), '', '--lm cleared');
+    assert.ok(!lit(b) && !P(b).classList.contains('mms-lit-strong'), 'both lit classes dropped');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'every listener unbound');
     assert.strictEqual(vis(b), 2, 'the driver keeps its visibilitychange (it re-lights on a return), the engine its own');
     assert.strictEqual(S(b).raf, false, 'the frame loop was live (samples streamed): Off cancelled its rAF (gate r1 J2/J3)');
@@ -465,7 +472,7 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.ok(!lbls(g).includes(L.NOTE_DENIED) && lit(g), 'granted: lit, no note');
     assert.deepStrictEqual(listening(g), { orient: 1, move: 1, leave: 1 });
     tiltTo(g, 0, 3); g.clock.advance(50); tiltTo(g, 0, 30); g.clock.advance(500);
-    assert.ok(lx(g) < -0.3 && lx(g) > -0.6, `subtle after a grant (got ${lx(g)})`);
+    assert.ok(lx(g) < -0.6 && lx(g) > -0.9, `subtle after a grant (got ${lx(g)})`);
   } finally { g.restore(); }
   // no permission API (Android / desktop): binds directly; no sensor AND no fine pointer: the note
   const n = boot({ strength: 'off', finePointer: false });
@@ -493,8 +500,9 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.ok(!lit(rl), 'NOT lit before a sample');
     rl.clock.advance(5000);
     assert.ok(!lit(rl) && P(rl).style.getPropertyValue('--lx') === '', 'still today\'s look: nothing streamed');
+    assert.ok(!P(rl).classList.contains('mms-lit-strong'), 'nor the strong profile before a sample');
     tiltTo(rl, 0, 3);
-    assert.ok(lit(rl), 'lit the moment the sensor streams');
+    assert.ok(lit(rl) && P(rl).classList.contains('mms-lit-strong'), 'lit (and strong: pronounced) the moment the sensor streams');
     // a stop/start cycle re-gates
     P(rl).hidden = true; P(rl).innerHTML = ''; await flush(); P(rl).hidden = false; rl.engine.paint();
     assert.ok(!lit(rl), 'a fresh start waits for its own first sample');
@@ -619,10 +627,14 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   assert.match(rule('.mms-zune-classic .znc-flank'), /box-shadow:var\(--mms-ipod-wheel-shadow\)/);
   assert.ok(!/\.mms-zune-classic[^{]*\{[^}]*--l[xy]/.test(CSS), 'no Seattle rule reads --lx/--ly');
   // the lit-only tokens: defined ONCE, on the lit panel; the band + glass are pseudo-elements gated by .mms-lit
-  assert.strictEqual((CSS.match(/--mms-lit-wheel-shadow\s*:/g) || []).length, 1);
-  assert.strictEqual((CSS.match(/--mms-lit-dome-shadow\s*:/g) || []).length, 1);
+  assert.strictEqual((CSS.match(/--mms-lit-wheel-shadow\s*:/g) || []).length, 2, 'the base profile and the strong override, nowhere else');
+  assert.strictEqual((CSS.match(/--mms-lit-dome-shadow\s*:/g) || []).length, 2);
+  const strong = rule('.mms-ipod.mms-lit-strong');
+  assert.match(strong, /--mms-lit-wheel-shadow:calc\(var\(--lx,0\) \* -7px\)/, 'the strong drop is longer (7px) and softer (5px blur)');
+  assert.match(strong, /inset calc\(var\(--lx,0\) \* -9px\) calc\(2px \+ var\(--ly,0\) \* -9px\) 12px -3px var\(--mms-lit-arc\)/, 'the lit rim arc: an inset crescent offset AWAY from the light (so it paints on the lit edge)');
+  assert.match(strong, /inset calc\(var\(--lx,0\) \* 9px\) calc\(-2px \+ var\(--ly,0\) \* 9px\) 14px -4px var\(--mms-lit-darc\)/, 'the dark arc opposite');
   const litRoot = rule('.mms-ipod.mms-lit');
-  assert.match(litRoot, /--mms-lit-wheel-shadow:calc\(var\(--lx,0\) \* -4px\) calc\(1px \+ var\(--ly,0\) \* -4px\) 2px var\(--mms-lit-drop\), inset calc\(var\(--lx,0\) \* 2px\) calc\(1px \+ var\(--ly,0\) \* 2px\) 1px var\(--mms-lit-rim\), inset calc\(var\(--lx,0\) \* -2px\) calc\(-2px \+ var\(--ly,0\) \* -2px\) 4px var\(--mms-lit-recess\)/, 'at --lx/--ly = 0 this is byte-identical to the static wheel shadow (0 1px 2px, inset 0 1px 1px, inset 0 -2px 4px)');
+  assert.match(litRoot, /--mms-lit-wheel-shadow:calc\(var\(--lx,0\) \* -4px\) calc\(1px \+ var\(--ly,0\) \* -4px\) 2px var\(--mms-lit-drop\), inset calc\(var\(--lx,0\) \* -2px\) calc\(1px \+ var\(--ly,0\) \* -2px\) 1px var\(--mms-lit-rim\), inset calc\(var\(--lx,0\) \* 2px\) calc\(-2px \+ var\(--ly,0\) \* 2px\) 4px var\(--mms-lit-recess\)/, 'at --lx/--ly = 0 this is byte-identical to the static wheel shadow (0 1px 2px, inset 0 1px 1px, inset 0 -2px 4px); the inset rim takes the light NEGATED (a +x inset offset paints the LEFT edge), the recess as is');
   const band = rule('.mms-ipod.mms-lit::before');
   assert.match(band, /position:absolute; inset:-25%; z-index:-1;/, 'the band sits over the body ramp, under the LCD and wheel; 2.25x the panel, not more (gate r1 S3)');
   assert.match(band, /pointer-events:none/);
@@ -640,6 +652,23 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   const litRules = litRuleList.map((r) => r.sel + '{' + r.body + '}').join('\n');
   assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-image)?)\s*:/i.test(litRules), 'no filter / backdrop / mask in any lighting rule: ' + litRules.match(/[^\n]*(?:filter|mask)[^\n]*/i));
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
+  // the STRONG profile (the second swing): exists for the three Click wheels and domes, the band and the
+  // glass; only under .mms-lit-strong; its layers travel inside their overhang
+  for (const sel of ['.mms-ipod.mms-lit-strong .ip-wheel', '.mms-ipod-black.mms-lit-strong .ip-wheel', '.mms-ipod-matte.mms-lit-strong .ip-wheel']) {
+    const r = rule(sel);
+    assert.match(r, /90% 55% at calc\(50% \+ var\(--lx,0\) \* 40%\) calc\(-8% \+ var\(--ly,0\) \* 30%\)/, sel + ': the sheen travels further');
+    assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 14%\)/, sel + ': the base ramp follows further');
+  }
+  for (const sel of ['.mms-ipod.mms-lit-strong .ip-center', '.mms-ipod-black.mms-lit-strong .ip-center', '.mms-ipod-matte.mms-lit-strong .ip-center']) assert.match(rule(sel), /var\(--mms-lit-far\)/, sel + ': the dark far side');
+  const hot = rule('.mms-ipod.mms-lit-strong .ip-center::after');
+  assert.match(hot, /pointer-events:none/); assert.match(hot, /opacity:calc\(1 - var\(--lm,0\) \* \.45\)/, 'the hot spot dims as the light moves off-centre');
+  const sband = rule('.mms-ipod.mms-lit-strong::before');
+  assert.match(sband, /inset:-35%;/, 'the strong band layer: 1.7x'); assert.match(sband, /translate3d\(calc\(var\(--lx,0\) \* 20%\), calc\(var\(--ly,0\) \* 16%\), 0\)/);
+  // (the strong band: 20% x 1.7 = 34% < 35% overhang; 16% x 1.7 = 27%: never exposed)
+  const sglass = rule('.mms-ipod.mms-lit-strong .ip-lcd-in::after');
+  assert.match(sglass, /inset:0 -70%;/); assert.match(sglass, /translate3d\(calc\(var\(--lx,0\) \* 25%\), 0, 0\)/);
+  // (the strong glass: 25% x 2.4 = 60% < 70% overhang: never exposed)
+  assert.strictEqual((CSS.match(/\.mms-lit-strong/g) || []).length >= 12, true, 'the strong profile is a class the driver adds (pronounced only)');
   // Matte is softer, Black dimmer than Click (G1)
   const alpha = (name) => Number((CSS.match(new RegExp(name + ':rgba\\(255,255,255,(\\.\\d+)\\)')) || [])[1]);
   assert.ok(alpha('--mms-lit-band') > alpha('--mms-litk-band') && alpha('--mms-litk-band') > alpha('--mms-litm-band'), 'Click > Black > Matte band strength');
