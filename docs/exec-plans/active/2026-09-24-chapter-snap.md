@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/chapter-snap
 anchor: spec
 status: Building
-next: r2 fixes built @45e97624 (main v1.320.0 merged in @a86c94b1, pre-authorized), mutants 84/84 RED; hand-off to the Architect for gate r3 (adversary + qa + security-brief S-5 re-engage; data class)
+next: pre-r3 merge of main v1.321.0 @00faee52 (no conflicts), head re-verified (2065/2065, 18/18 targeted mutants RED, theatre on/off probe); ready for gate r3 (adversary + qa + security-brief S-5 re-engage; data class)
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -1218,3 +1218,29 @@ Screenshots: `.../scratchpad/chapter-snap-shots-r2/`.
   possible.
 - **The watch page's version token after a Music-side save** is not refreshed. The next text
   save there is refused with a reload message, so it fails safe.
+
+## Pre-r3: main v1.321.0 merged (Architect's request)
+
+- **00faee52**: merge of main 580e5f7f (v1.321.0 = feat/desktop-theatre). **No conflicts.** The
+  tracker merged automatically with every row, in id order: this branch's #239-#242 and main's
+  #243-#249, including main's #247 and #249. ROADMAP.md, docs/releases.json and package.json are
+  byte-identical to main (`git diff --stat main -- ...` is empty). Hook `tests 7218 pass 7218
+  fail 0`.
+- **Checks on 00faee52:**
+  - `lint:css`: TOTAL 0.
+  - overlay-containment: clean.
+  - check-markers: 3 issues, all `stale approval` markers (@ecb61e1d the design line, @7aa10540
+    and @330aaa8b the earlier seat approvals). These are expected until the gate re-binds at the
+    reviewed sha.
+  - Broad affected set with real ffmpeg: `tests 2065 pass 2065 fail 0 skipped 0`. It covers the
+    earlier set plus theatre*, theater*, watch* (unit and integration), css* and overlay*.
+- **Mutants re-run on 00faee52 (a /tmp sandbox archived from it): 18 of 18 RED.**
+  - The watch page mutants: C4 N8, M38, N21, N1c, and entry point 3 (M25).
+  - R1a-R1f, R2, R2b, R3a-R3c, R5 and S4. R1d is RED by the known hang.
+- **Probe at 1440x900 on the watch page, theatre OFF and ON.** ON uses the new `--theatre` flag
+  (commit below), which clicks the real `#theater-btn`: `theatre:"click", theatreOn:true`.
+  - In both modes the chapters menu offers "Fix chapter times…" (`entry: reached`).
+  - The editor opens at 340,16 760x868 with 47 buttons and 0 past the viewport.
+  - After Save, the notches are `[12.1125,24.1125,36.1125]` against stored
+    `[12.113,24.113,36.113]`, so they follow the new boundary with theatre on and off.
+  - Screenshots: `.../scratchpad/chapter-snap-shots-r3pre/` (`chapter-snap-watch-1440x900[-theatre][-snapped].png`).

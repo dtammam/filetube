@@ -33,7 +33,11 @@ if (!OUT) {
 }
 // Viewports as WxH (gate r1: 390x844 portrait phone, 844x390 LANDSCAPE phone, 1440x900
 // desktop). A bare width keeps the old default height (844 phone / 900 desktop).
-const VIEWPORTS = process.argv.slice(3).map((a) => {
+// `--theatre` (desktop): turn the watch page's THEATRE mode on through the real
+// #theater-btn (the v1.321 desktop theatre block) before opening the chapters menu, so
+// the entry, the editor and the notch-after-Save are measured with theatre on.
+const THEATRE = process.argv.includes('--theatre');
+const VIEWPORTS = process.argv.slice(3).filter((a) => a !== '--theatre').map((a) => {
   const m = /^(\d+)(?:x(\d+))?$/.exec(a);
   if (!m) return null;
   const w = Number(m[1]);
@@ -216,6 +220,11 @@ async function main() {
       await send('Page.navigate', { url: `${base}/watch.html?v=vid1` });
       await waitFor("!!document.querySelector('.chapter-now') && typeof window.showChapterSnapEditor === 'function'", 'the watch player chapters trigger');
       await new Promise((r) => setTimeout(r, 1200));
+      let theatre = null;
+      if (THEATRE) {
+        theatre = await evaluate("(function(){var c=document.querySelector('.watch-container'); if (!c) return 'none'; if (c.classList.contains('theater-mode')) return 'persisted'; var b=document.getElementById('theater-btn'); if (b && b.getBoundingClientRect().width > 0) { b.click(); return c.classList.contains('theater-mode') ? 'click' : 'click-no-effect'; } return 'no-button'; })()");
+        await new Promise((r) => setTimeout(r, 600));
+      }
       const reached = await evaluate(`(async function () {
         var trigger = document.querySelector('.chapter-now');
         if (!trigger) return 'no trigger';
@@ -230,18 +239,18 @@ async function main() {
       // Measure only once the open scale-in has FINISHED (qa r1: a fixed 500 ms caught it
       // mid-animation at 320 wide) - a readiness condition, not a longer sleep.
       await waitFor("(function(){var m=document.querySelector('.chapter-snap-modal'); if(!m) return false; var t=getComputedStyle(m).transform; return t==='none'||t==='matrix(1, 0, 0, 1, 0, 0)';})()", 'the open scale-in to finish');
-      console.log(`watch ${w}: ${JSON.stringify({ entry: reached })} ${await evaluate(MEASURE_JS)}`);
-      await shot(`chapter-snap-watch-${w}.png`);
+      console.log(`watch ${w}${THEATRE ? ' theatre' : ''}: ${JSON.stringify({ entry: reached, theatre, theatreOn: await evaluate("!!(document.querySelector('.watch-container') && document.querySelector('.watch-container').classList.contains('theater-mode'))") })} ${await evaluate(MEASURE_JS)}`);
+      await shot(`chapter-snap-watch-${w}${THEATRE ? '-theatre' : ''}.png`);
       await evaluate("(function(){var b=document.querySelector('.chapter-snap-snapall'); if (b) b.click(); return true;})()");
       await new Promise((r) => setTimeout(r, 300));
       console.log(`watch ${w} after Snap all: ${await evaluate(MEASURE_JS)}`);
-      await shot(`chapter-snap-watch-${w}-snapped.png`);
+      await shot(`chapter-snap-watch-${w}${THEATRE ? '-theatre' : ''}-snapped.png`);
       // gate r1 (adversary W4, qa W2): SAVE on the watch page and read the seek-bar notches
       // and the stored starts back - the notch must sit on the NEW boundary.
       await evaluate("(function(){var b=document.querySelector('.chapter-snap-save'); if (b) b.click(); return true;})()");
       await waitFor("!document.querySelector('.chapter-snap-modal')", 'the editor closed after Save');
       await new Promise((r) => setTimeout(r, 400));
-      console.log(`watch ${w} after Save: ${await evaluate("JSON.stringify({ notches: Array.prototype.map.call(document.querySelectorAll('.seek-chapters-gap'), function (n) { return parseFloat(n.style.left); }).slice(0, 3) })")} stored ${JSON.stringify(await (await fetch(`${base}/api/videos/vid1`, { headers: { Cookie: cookie.split(';')[0] } })).json().then((d) => d.chapters.slice(1, 4).map((c) => Math.round(c.startTime / 2000 * 100000) / 1000)))}`);
+      console.log(`watch ${w}${THEATRE ? ' theatre' : ''} after Save: ${await evaluate("JSON.stringify({ notches: Array.prototype.map.call(document.querySelectorAll('.seek-chapters-gap'), function (n) { return parseFloat(n.style.left); }).slice(0, 3) })")} stored ${JSON.stringify(await (await fetch(`${base}/api/videos/vid1`, { headers: { Cookie: cookie.split(';')[0] } })).json().then((d) => d.chapters.slice(1, 4).map((c) => Math.round(c.startTime / 2000 * 100000) / 1000)))}`);
 
       // ---- music: album card -> drill "Fix times" ----
       await send('Page.navigate', { url: `${base}/music.html` });
