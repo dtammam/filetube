@@ -4,6 +4,15 @@
 
 _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
+- [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
+  a PWA or a web app to query the device for battery and show that battery instead of just an
+  arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
+  Shape: where `navigator.getBattery()` exists (Chromium: desktop Chrome / Edge, Android) the
+  Click / Seattle / tray / pop-out battery shows the real level and a charging mark, live on
+  levelchange / chargingchange, one shared reader, listeners removed on every teardown; everywhere
+  else the static battery stays exactly as today. Limit: iPhone (every iOS browser is WebKit) and
+  Firefox do not implement the Battery Status API, so Dean's iPhone would keep the static look.
+
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.
