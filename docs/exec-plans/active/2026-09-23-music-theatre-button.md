@@ -387,4 +387,33 @@ plus the two touched files (44 files) = 517 pass / 0 fail.
 
 ### Mutant results
 
-Pending: recorded in the docs commit that follows the fix commit.
+Sandbox: `git archive` of a committed sha, node_modules symlinked from the main checkout; each
+mutant asserts its pattern occurs exactly once (no silent no-op); files run: watch-init-behavioral,
+watch-chrome-ambient, music-theater-toggle, theatre-mode (Node 22.23.1).
+
+Run 1 @09340f30 (the spy alone), baseline 48 pass / 0 fail:
+
+| Mutant | Result |
+|--------|--------|
+| guard typo (`ensureTheatreButton` in the `typeof` guard) | SURVIVED: 48 pass / 0 fail (the Proxy fallback made the misspelled guard true; fixed in 2be106bc) |
+| M10 (watch.js never calls the writer) | killed, 44 pass / 4 fail: ONE writer, v1.186 ensureCogControlsInjected, both gate W1 tests |
+| S2 re-stamp line dropped | killed, 47 / 1: gate S2 |
+| S2 re-stamp inverted | killed, 47 / 1: gate S2 |
+| writer called twice | killed, 46 / 2: both gate W1 tests |
+
+Run 2 @2be106bc (tree 1d61a39f), baseline 49 pass / 0 fail:
+
+| Mutant | Result |
+|--------|--------|
+| guard typo (`ensureTheatreButton` in the `typeof` guard) | killed, 47 pass / 2 fail: gate W1 video path + gate W1 `?tv=` path |
+| M10 (watch.js never calls the writer) | killed, 45 / 4: ONE writer, v1.186 ensureCogControlsInjected, both gate W1 tests |
+| S2 re-stamp line dropped | killed, 48 / 1: gate S2 |
+| S2 re-stamp inverted | killed, 48 / 1: gate S2 |
+| writer called twice | killed, 47 / 2: both gate W1 tests |
+| initTvWatch drops `ensureCogControlsInjected()` | killed, 47 / 2: v1.197 W1 + gate W1 `?tv=` path |
+| initWatch step 9 drops `ensureCogControlsInjected()` | killed, 48 / 1: gate W1 video path |
+| qa S3 fix check: an empty `<template>` added before the player template in music.html | GREEN 49 / 0 with the new slice; with the OLD first-in-file slice restored, music-theater-toggle 8 / 1 (SHELL PARITY red) |
+
+`bash .harness/lib/check-markers.sh` after the fix commits: 2 issues, both stale approvals
+(`@6ea45237` the design, and `@7c31035f` qa r1 - code changed since, so r2 re-gates); the
+expected shape before gate r2.
