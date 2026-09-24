@@ -3,7 +3,7 @@ plan: precommit-docs-fast-path
 harness: v2 · lean
 branch: chore/precommit-docs-fast-path
 anchor: outcome
-status: Building
+status: Shipped v1.317.0
 next: gate CLOSED r3 @b82ac126 (adversary; Dean approved round 3). Merge ahead of the wave release v1.317.0. Owed (r3 S4, non-blocking): put the GIT_* filter back into CLEAN_ENV as a second layer beside the process scrub, so reopening the incident takes two edits, not one
 design: Approved 2026-09-24 (Dean: "Yes you can add. Let's knock this out faster." on the docs-only fast path proposal)
 gate: APPROVED r3 @b82ac126 — adversary
