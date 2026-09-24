@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/music-desktop-ambient
 anchor: spec
 status: Building
-next: gate r3 delta (same seats)
+next: gate CLOSED r3 @61904f6c (adversary + qa; round 3 by Dean's ruling to fix the natural-end blink before release). Release as v1.318.0 (Dean: tag without waiting for his device check). Owed: Dean's device check (desktop /music, dark, ambient on: the glow paints from the album art, holds across a track change and a natural end, clears on off / light / pause / nav away); the adversary's side observation that the music queue still advanced with the music autoplay pref at 0 (unverified, outside M4); X2 / X8 / E11 / N8b are text-lock-only or judged equivalent
 design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on D13/D14 in the wave umbrella)
-gate: pending
+gate: APPROVED r3 @61904f6c — adversary, qa
 ---
 
 # Desktop music ambient (wave item M4)
@@ -807,3 +807,126 @@ after 'ended', with 'ended' at readyState 1. That run is the finding in the tabl
   the pre-commit hook, which refuses red.
 - `npm run lint:css`: TOTAL 0. `node scripts/overlay-containment-lint.js --enforce`: clean (0
   violations). eslint on ambient.js, music.js and the three touched test files: exit 0.
+
+## Gate r3 - qa (@61904f6c)
+
+Delta reviewed: `git diff 45284736 61904f6c -- public test` (ambient.js, music.js and three
+unit tests; watch.js and style.css untouched). Node v22.23.1. Instruments, verbatim:
+
+- 229 unit files (the r2 set): `# tests 3467 / # pass 3467 / # fail 0 / # cancelled 0 /
+  # skipped 0`.
+- eslint on ambient.js, watch.js, music.js and the three touched tests: exit 0.
+- `npm run lint:css`: `TOTAL 0`. `overlay-containment-lint.js --enforce`: `clean (0 violations)`.
+- `check-markers.sh`: `8 issue(s) found`. Three are in this doc: the design line and the two r2
+  approvals at 45284736, which this round supersedes. The other five are outside this delta.
+
+I checked `evaluate()` by reading: run, else the end hold, else the load gap, else stop. The
+design:
+
+- One timer per hold kind, armed at that hold's first event.
+- The end hold latches across the player's rewind and lasts while readyState is 1 or more. At
+  readyState 0 the next load's gap takes over with the 8 s bound.
+- A load with `media.error` set is no gap, and 'error' re-evaluates. The 'error' and
+  'loadeddata' listeners are bound only when a hold is passed.
+- start() and stop() cancel any hold, so a toggle off, light mode, a hidden tab, the view gate,
+  teardown and `close()` (which detaches the player host) all clear.
+
+Harness runs (a `git archive 61904f6c` sandbox, the real music.js on the committed harness):
+
+- **My r1 blink sequence, verbatim:** mid-gap
+  `{"glowHidden":false,"isOn":true,"sidebarSignal":true}`. The new cover replaces the old one,
+  and the holds armed are `[8000]`.
+- **A natural-end advance** (pause + ended at readyState 4, the player's rewind to readyState 1,
+  a 400 ms queue wait, then the next track's load): lit right after the end, lit mid-load at
+  readyState 0, lit after playing. There were 0 attribute changes on the glow or root across the
+  whole advance, and the holds armed are `[1500, 8000]`.
+- **A finished queue:** held, then cleared 1508 ms after the end (holds `[1500]`).
+- **A 2000 ms queue wait:** dark at 1700 ms, lit again on playing. This is the disclosed
+  residual, and it matches the Known seams text.
+- **The watch shape** (the host with no hold passed and the player's rewind listener registered
+  first):
+  - A pause at readyState 4 cleared at the 'pause' itself.
+  - A natural end cleared at the 'pause' itself.
+  - A load gap at readyState 0 cleared at the 'pause' itself.
+  - 0 hold timers were armed, and no 'error' or 'loadeddata' listeners were bound.
+
+Spot mutants, both KILLED:
+
+- The `hold()` same-kind guard removed, so every event re-arms: 3 failed.
+- A load hold that the end hold can take over at readyState 1 or more: 1 failed.
+
+S4 (the stale test comment) is fixed. The Known seams entries (the natural-end fix and its
+residual over 1.5 s; a failed load clears at its error) and the AC2/AC3 gate-r2 lines match the
+tree. No new findings.
+
+Tree: unchanged except this section (before the append: clean, no untracked files).
+
+Gate: APPROVED r3 @61904f6c — qa
+
+## Gate r3 - adversary (@61904f6c)
+
+This is a delta review of `git diff 45284736 61904f6c -- public test`, at HEAD 61904f6c on Node
+v22.23.1. Everything ran in `git archive` sandboxes: 61904f6c for the tests and mutants, and
+b71fcd32 as the watch baseline. The worktree was never edited.
+
+**Test and lint runs (verbatim)**
+
+- The six ambient files: `# tests 138 / # pass 138 / # fail 0 / # cancelled 0 / # skipped 0`.
+- `lint:css`: `TOTAL 0`. overlay-containment: `clean (0 violations)`.
+- eslint on ambient.js, music.js, watch.js and the three touched test files: exit 0.
+
+**Mutants**
+
+- Every X mutant is re-run and KILLED: X1, X3-X6 and X9-X18. X2 and X8 survive as before;
+  at r1 I judged both equivalent, by reasoning, not measurement.
+- N-mutants:
+  - N7 (bound 10x) is now KILLED behaviorally, by the recorded timer delays.
+  - N4 (watch passes a load hold) is now KILLED by the watch "no hold" lock.
+  - N1b, N2b, N3b and N9 (the hold ignores pref, dark, visible or the view gate) are KILLED by
+    the behavioral clear-axes test, which now includes toggle-off.
+  - N5b (the bound re-lights unconditionally) and N6 are KILLED.
+  - N8b (a load gap at readyState 2) is KILLED only by the WIRING LOCK regex.
+- Mutants on the end hold:
+  - KILLED: E1 (no latch), E2 (no handover to the load bound), E3 (load gap asked first), E4
+    (no 'error' re-evaluation), E5 (inLoadGap ignores media.error), E6 (end bound 10x), E7 (the
+    bound re-arms), E8 (music passes no end hold), E9 (watch passes one), E10 (ignores is-on),
+    E12 (a user pause arms the end hold).
+  - E11 (holdExpired leaves holdKind) is KILLED only by the lock. It is equivalent anyway:
+    holdExpired always calls start() or stop(), and both run clearHold().
+
+**Real Chromium (music at 1600x1000, dark, ambient ON)**
+
+| Scenario | Result |
+|---|---|
+| Natural-end advance, aud2 to aud4 | 0 of 241 samples dark |
+| Row tap | 0 of 152 samples dark |
+| Finished queue (the next-track handler cleared) | 'ended' at 1284 ms; lit through 2788 ms; dark from 2804 ms to the end of the trace. It clears about 1.5 s after the end and stays clear. |
+| User pause right at the end (paused at 31.854 of 32 s) | Cleared 5 ms after pause(); `ended` false |
+| Failed load, from a lit row tap | Dark from the first sample |
+| Natural end advancing INTO a corrupt file | 'ended' at 1283 ms; dark from 1312 ms (about 29 ms), stays dark |
+| Toggle OFF about 300 ms into an end hold | Held at the moment of the action; cleared within 100 ms; 0 of 183 lit over 3 s |
+| Light mode about 300 ms into an end hold | Held at the moment of the action; cleared within 100 ms; 0 of 181 lit over 3 s |
+| Soft-nav home about 300 ms into an end hold | Held at the moment of the action; no root signal at home or 2.5 s later |
+| Watch page natural end | 'ended' at 1034 ms; dark from 1050 ms; no hold |
+| Watch checkpoints (soft-nav in, play, pause, play again, light, dark, into music, a cold load) | IDENTICAL on 61904f6c and b71fcd32 |
+
+No page errors.
+
+**Could a finished queue, a user pause at the end, a seek near the end, or a watch-page end
+stay lit?** No:
+- A user pause never sets `ended`, and E12 proves that axis is bound.
+- A seek near the end while playing is just a natural end.
+- A paused glow is already off, so the `is-on` check refuses any end hold.
+- The latch is bounded by the 1.5 s timer, and every clear axis still ends it.
+
+**Findings:** none that block, and no new SUGGESTION.
+
+**Probe caveat.** To make a finished queue I had to clear the next-track handler with
+`setTrackNav({})`. With `ft-music-autoplay` set to 0, the queue still advanced (aud4 to
+aud1::c1), so the finished-queue row exercises the host's end bound, not music's own
+"queue exhausted" path.
+
+Tree: I made no change except this section. qa's r3 section was already present and
+uncommitted. My sandboxes are verified pristine (cmp) and removed.
+
+Gate: APPROVED r3 @61904f6c — adversary
