@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: fix/music-followups
 anchor: spec
 status: Building
-next: gate r1 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
+next: built at d95d42ec (+ the docs commit recording the mutants); gate r1 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -84,7 +84,7 @@ on same-id adopt; test-quality items; VERIFY autoplay-pref-0 still advancing the
   harmless (that end still stops: music's track nav is gone with its view). Not changed here.
 - **D-4g ROLES already carries the `-active` tokens**: landed with T1 in v1.317 (the
   `// v1.317 (QA r2 suggestion on v1.316.0)` line in sub-row-chip-btn-family.test.js). Verified
-  bound by a mutant (M-4g below); no edit.
+  bound by a mutant (M4g below); no edit.
 
 ## Re-verified survey (every anchor re-read at ecb61e1d before editing; line numbers are the tree AFTER this branch unless noted)
 
@@ -159,8 +159,8 @@ Files:
 - `docs/exec-plans/tech-debt-tracker.md` - #235 and #237 CLOSED; #243 filed (the admin Stats
   "Liked items" counts the frozen pre-auth store - pre-existing, display only).
 - Tests: new `test/unit/player-adopt-flavor.test.js` (4); `test/integration/chapter-likes.test.js`
-  (+1, "#235"); `test/unit/music-chapter-reflect.test.js` (+4, the toolbar button added to its
-  HTML); `test/unit/music-skin-integration.test.js` (+2: the sticker retract, item 4f);
+  (+1, "#235"); `test/unit/music-chapter-reflect.test.js` (+6, the toolbar button added to its
+  HTML; two of them landed after the build commit - c7b81efb binds M0h, d95d42ec binds M0l); `test/unit/music-skin-integration.test.js` (+2: the sticker retract, item 4f);
   `test/unit/music-ambient.test.js` (+1, item 1); `test/unit/watch-init-behavioral.test.js`
   (the shim keeps every listener, +1 self-test, the theatre-signal test checks every
   registration); `test/unit/precommit-docs-fast-path.test.js` (`cleanEnv` + 1 test);
@@ -228,7 +228,11 @@ ecb61e1d: 7637 ms, 7678 ms. This branch: 3478 ms, 3103 ms (8 / 8 pass each).
 Item 1 is the only user-facing layout change: measured at 390 above (the rows hide in music,
 podcasts and home; the watch view keeps them). Items 0 and 3 change no layout.
 
-## Instruments (Node v22.23.1, this tree before the commit)
+## Instruments (Node v22.23.1)
+
+Commits (each through the pre-commit hook, the whole unit suite): a28f8b32 the build (hook:
+tests 7114, pass 7114, fail 0); c7b81efb the M0h test (7115 / 7115 / 0); d95d42ec the M0l test
+(7116 / 7116 / 0). Before the build commit:
 
 - Targeted suites, one run, 144 files (every test/unit file matching music*, player*, watch*,
   ambient*, shell-*, docs-*, exec-plans*, tech-debt*, sub-row-chip*, comment-debt*, card-like,
@@ -252,8 +256,47 @@ podcasts and home; the watch view keeps them). Items 0 and 3 change no layout.
 
 ## Mutant table
 
-(Pending: run in a /tmp sandbox built from the committed sha after the build commit; recorded
-in the next commit.)
+Sandbox: `git archive c7b81efb` into /tmp (node_modules symlinked); each mutant replaces EXACTLY
+one occurrence (the runner refuses 0 or 2+ matches and an empty diff), runs the named files,
+restores the file and byte-compares it. Runner: session scratchpad
+`music-followups-mutants.js`. "First red" is the first failing test.
+
+| # | Mutant | Result | First red |
+|---|---|---|---|
+| M0a | music: registerTrackNav onNext never asks autoplayHoldsAt | KILLED 1 fail | item 0: a pref that reaches storage with NO toggle |
+| M0b | music: the toggle OFF never retracts | KILLED 3 fail | item 0: Autoplay turned OFF (the REAL toolbar button) |
+| M0c | music: the toggle ON never re-arms the last track | KILLED 1 fail | item 0: Autoplay turned OFF (the REAL toolbar button) ... ON again |
+| M0d | music: markAutoplayPicks remembers nothing | KILLED 5 fail | item 0: Autoplay turned OFF (the REAL toolbar button) |
+| M0e | music: autoplayHoldsAt holds ANY next entry when off (your queue too) | KILLED 1 fail | item 0: ... YOUR queue still plays through |
+| M0f | music: the solo-exit append arm skips the Autoplay re-check | KILLED 1 fail | item 0: the solo-chapter exit re-checks Autoplay at the hand-off |
+| M0g | music: the solo-exit existing-row arm skips autoplayHoldsAt | KILLED 1 fail | item 0: the solo-chapter exit onto an EXISTING station row |
+| M0h | music: retract also drops the PLAYING pick (`k >= navIndex`) | KILLED 1 fail | item 0: switched OFF while a station pick is PLAYING |
+| M0i | music: the sticker onToggle bypasses the seam (the old setter) | KILLED 1 fail | item 0: the sticker Autoplay row switched OFF |
+| M0j | music: the toolbar click bypasses the seam (the old setter) | KILLED 2 fail | item 0: Autoplay turned OFF (the REAL toolbar button) |
+| M0k | music: the maybeExtend append does not mark its picks | KILLED 5 fail | item 0: Autoplay turned OFF (the REAL toolbar button) |
+| M0l | music: the solo-exit append does not mark its picks | run 1 at c7b81efb SURVIVED (39 pass / 0 fail): no test drove a toggle AFTER a solo-exit append; test added (d95d42ec, "a station the solo-chapter exit appended is a station too"); re-run at d95d42ec KILLED 1 fail | item 0: a station the solo-chapter exit appended is a station too |
+| M1a | css: the watch-only row rule removed | KILLED 1 fail | item 1: the cog Autoplay + Loop rows ... show only on the WATCH view |
+| M1b | watch: the Autoplay row label loses its id | KILLED 1 fail | item 1 |
+| M1c | watch: the Loop row label loses its id | KILLED 1 fail | item 1 |
+| M1d | css: the rule unscoped (hides the rows on watch too) | KILLED 1 fail | item 1 |
+| M2a | stats: the member count back to base visibility only (the pre-#235 line) | KILLED 1 fail | #235: through every re-chapter the member's Stats count equals their Liked listing |
+| M2b | stats: likeCounts counts any chapter of a visible base | KILLED 1 fail | #235 |
+| M2c | server: chapterLikeTrack drops the audio-only rule | KILLED 1 fail | AC4: out-of-range, skipped-invalid, non-chaptered, video, ... all 404 |
+| M2d | liked listing: the chapter arm without its `!track` guard | KILLED 2 fail | W1: a chapter like whose index a re-chapter removed is dropped from the read |
+| M2e | stats: likeCounts counts a plain like without the visibility check | KILLED 1 fail | rbac-census LIST SWEEP: a member blocked from all libraries sees NO seeded content |
+| M3a | player: the adopt does not carry album | KILLED 2 fail | #237: Watch -> Music on the SAME id ADOPTS through the real load() |
+| M3b | player: the adopt does not carry albumKey | KILLED 2 fail | #237: Watch -> Music on the SAME id ADOPTS |
+| M3c | player: the adopt does not carry autoAdvanceViaTrackNav | KILLED 2 fail | #237: after that adopt, the track's natural END advances through music's queue |
+| M3d | player: autoAdvanceViaTrackNav carried as truthy | KILLED 1 fail | applyAdoptFlavor (#237): ... declared-field contract |
+| M4a | test: cleanEnv without its GIT_* layer | KILLED 1 fail | CLEAN_ENV is its own GIT_* filter (the second layer) |
+| M4b | music: a failed overlay inherits the base file's liked (the chapter-likes r2 survivor) | KILLED 2 fail | sticker Extras page: a FAILED chapter-flag overlay ... reads as "Like" |
+| M4d | test: the watch-init shim keeps only the LAST listener | KILLED 1 fail | harness (item 4d): the element shim keeps EVERY listener |
+| M4f | music: watchBackVisible fallback back to an exact compare | KILLED 3 fail | v1.317 gate r2 qa W1 (and item 4f's collapse drive) |
+| M4g | css: a box property on `.sub-row-bell-active` | KILLED 1 fail | AC4: no rule targeting a chip role class declares a box property |
+
+31 mutants, 31 killed (M0l after a test, re-run recorded; the item-0 set M0a/b/d/f/g/h/k/l
+re-run together at d95d42ec: all KILLED). Item 4c (`unref`) has no behavioural mutant: it is
+bound by the wall-time measurement above. Item 4e is a comment.
 
 ## Disclosed gaps
 
