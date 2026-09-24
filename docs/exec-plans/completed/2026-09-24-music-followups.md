@@ -3,7 +3,7 @@ plan: music-followups
 harness: v2 · lean
 branch: fix/music-followups
 anchor: spec
-status: Gate closed
+status: Shipped v1.320.0
 next: release (gate CLOSED r2 @85ba5fd6, all three seats; the r2 SUGGESTIONs are tracker #248)
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: APPROVED r2 @85ba5fd6 — adversary, qa, security-brief
