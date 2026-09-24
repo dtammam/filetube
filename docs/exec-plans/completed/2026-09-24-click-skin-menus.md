@@ -3,7 +3,7 @@ plan: click-skin-menus
 harness: v2 · lean
 branch: feat/click-skin-menus
 anchor: spec
-status: Gate closed
+status: Shipped v1.323.0
 next: release. Owed after the release: Dean's device pass (phone Click + Seattle, the wheel feel on long lists, the pivot swipe, a flat-list chapter hand-on) and his rulings on D1 and on K4 (the Architect ruled for him overnight) - see Disclosed gaps.
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: APPROVED r3 @0489a1d9 — adversary, qa

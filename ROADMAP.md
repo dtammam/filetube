@@ -86,6 +86,37 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.323.0 - The Click and Seattle skins get the full iPod and Zune menus (2026-09-24)
+
+- **Pocket menus** (Dean: "I'd love classic pocket skin to truly emulate. Show artists, albums,
+  songs, etc. fully interactive"). The Click family (Click, Black, Matte) and Seattle now carry the
+  device's menu tree over the whole music library: Main Menu (Music, Shuffle Songs, Now Playing) >
+  Music (Playlists: Liked Songs, Recently Added, Recently Played; Artists > albums (+ All Songs) >
+  songs; Albums > songs; Songs; Genres > songs), chapters of long videos as songs. The wheel / pad
+  moves the highlight through the ONE existing rotary engine and sweep math, the center drills in,
+  MENU / Back climbs, rows are tappable; the skin opens on Now Playing and MENU climbs to the list you
+  came from, then the Main Menu (MENU there docks). Click draws the late-Classic split screen (list
+  left, the highlighted item's art easing in right, blue bar, chevrons); Seattle draws Zune pivots
+  (big lowercase headers moved by the pad or a swipe, large-type lists, the playing row pink).
+  A song plays in the list it came from; a chapter picked from a FLAT list (Songs, a genre, a
+  playlist, All Songs) plays its segment and the list moves on (the Architect's overnight ruling,
+  device-true); Autoplay off ends at the list's end. The browsed list never jumps on an advance
+  (only the speaker mark moves). A pick from a 3,008-song list taps in ~15 ms (was ~1.4 s): the
+  browse view behind the skin rebuilds in 20-row chunks per frame. Every chapter write (the
+  chapters editor, Chapter Snap's save and revert) raises one library-changed signal so open menus
+  reload. Gate r3 @0489a1d9 (adversary + qa); plan
+  docs/exec-plans/completed/2026-09-24-click-skin-menus.md.
+  Disclosed: "nothing playing opens the Main Menu" is built but no user path reaches it yet (#257,
+  Dean's call); the menu position does not survive a dock + return (#256); long lists are slow by
+  wheel alone, no letter-jump (#258); a menu queue's list context is not fully reproducible, and a
+  count-changing chapter write during a flat play falls back to the Songs list (#255); an open level
+  shows a dropped chapter row until the next action.
+
+Device check owed (Dean): on your phone, Click and Seattle: climb the menus, spin through Songs,
+play from an album, a genre and Liked Songs, swipe Seattle's pivots; the wheel's feel in menus.
+
+This closes the 2026-09-24 overnight wave (v1.319.0 - v1.323.0).
+
 ### v1.322.0 - Chapter Snap: fix where chapters start (2026-09-24)
 
 - **Chapter Snap** (Dean, 2026-09-23: "chapter albums starting in a lot of blank space or starting
