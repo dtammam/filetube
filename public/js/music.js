@@ -1766,6 +1766,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var chapters = body && Array.isArray(body.chapters) ? body.chapters : null;
       if (!chapters) return;
       chapterApplyGen += 1; // #269: a re-check whose fetch started before this apply stands down
+      markChapterFileVerified(String(baseId)); // #269 r2: the server's (or a local save's) list - verified
       // pocket menus (2026-09-24, with Chapter Snap v1.322): every Music-side chapter write lands
       // here (the snap editor's save and revert, the text editor's result) - the pocket menus'
       // cached lists and open levels hold the OLD times/titles/count, so re-load them. (The
@@ -1783,12 +1784,15 @@ if (typeof module !== 'undefined' && module.exports) {
         queuedCount = Math.max(queuedCount, Number(m[2]) + 1);
         fileDur = Math.max(fileDur, (Number(t.chapterStartSec) || 0) + (Number(t.durationSec) || 0));
       });
-      // #269 gate r1 (adversary W2 = qa W2): WHICH count changed. Only the album drill holds the
-      // file's COMPLETE chapter list, so only there does "queued rows != the server's count" mean the
-      // count changed (a new chapter needs its own row -> re-list). Any other queue (a flat pocket-menu
-      // list - Liked, Recently Played, a genre - an Up next, a search) holds SOME of the chapters: it
-      // is patched IN PLACE (times, titles) and loses only rows whose chapter no longer exists; it is
-      // never re-listed from the server (that swapped a flat list for the whole Songs library).
+      // #269 gate r1 (adversary W2 = qa W2): WHICH count changed. Only a single-file album drill of
+      // this file (ownsDrill) is treated as holding the file's COMPLETE chapter list, so only there does
+      // "queued rows != the server's count" mean the count changed (a new chapter needs its own row ->
+      // re-list). (A SEARCH inside that drill is still ownsDrill: a time-only move can then read as a
+      // count change and re-list the same searched drill - harmless, one extra request; gate r2 qa N4 /
+      // adversary 8.) Any other queue (a flat pocket-menu list - Liked, Recently Played, a genre - an Up
+      // next, a mixed-file drill) holds SOME of the chapters: it is patched IN PLACE (times, titles) and
+      // loses only rows whose chapter no longer exists; it is never re-listed from the server (that
+      // swapped a flat list for the whole Songs library).
       var droppedAny = false;
       // chapter snap gate r2 (qa S5): the Listen-mode stash (activeListenChapters) is the
       // queue a dock-return restores - it is often the SAME array as `queue`, and must
@@ -1869,21 +1873,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // (chapterApplyGen), and the listeners ride the view signal (removed on every teardown).
     var chapterApplyGen = 0;
     var chapterRecheckInFlight = false;
-    // #269 gate r1 (qa W3, the Architect's ruling): the return re-check covers ONE file. Every OTHER
-    // chaptered file in the queue at that return is UNVERIFIED: its rows may carry bounds another
-    // device has since changed. The first pick of a chapter of an unverified file asks the server
+    // #269 gate r2 (qa N1, the Architect's ruling - "verified since the last return"): the return
+    // re-check covers ONE file, but ANY list this view holds can carry bounds another device has
+    // since changed - the queue, and the pocket menus' cached Songs / Genres / artist levels too. So
+    // every return (visibilitychange -> visible, a bfcache pageshow) bumps `returnEpoch`, and a
+    // chaptered file counts as verified only when `verifiedEpoch[file]` has caught up with it. The
+    // first pick or advance of a chapter of a file NOT verified since the last return asks the server
     // once (the same GET), applies a change through the same seam, then plays the corrected row
-    // (playAt -> verifyChapterFileThenPlay). A file verified since the return never re-asks.
-    var unverifiedChapterFiles = Object.create(null);
-    function markOtherChapterFilesUnverified(checkedBaseId) {
-      var re = /^(.+)::c\d+$/;
-      for (var k = 0; k < queue.length; k++) {
-        var t = queue[k];
-        if (!t || t.source !== 'library-chapter') continue;
-        var m = re.exec(String(t.id));
-        if (m && m[1] !== checkedBaseId) unverifiedChapterFiles[m[1]] = true;
-      }
+    // (playAt -> verifyChapterFileThenPlay). A cold load is epoch 0: nothing to verify. The file the
+    // return re-check asks about counts as verified from that ask (re-opened on a failure); a save
+    // or an applied answer (applySnappedChapterTimes) verifies its file too.
+    var returnEpoch = 0;
+    var verifiedEpoch = Object.create(null);
+    var verifyWaiters = Object.create(null); // file -> the LATEST pick waiting on its one in-flight check
+    function chapterFileNeedsVerify(baseId) {
+      return returnEpoch > 0 && (verifiedEpoch[baseId] || 0) < returnEpoch;
     }
+    function markChapterFileVerified(baseId) { verifiedEpoch[baseId] = returnEpoch; }
     function chapterRecheckBaseId() {
       var cur = effectiveCurrentId();
       var m = cur ? /^(.+)::c\d+$/.exec(String(cur)) : null;
@@ -1896,10 +1902,11 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function recheckChaptersOnReturn() {
       if (signal.aborted) return;
+      returnEpoch += 1; // every file is unverified again until it is asked about
       var baseId = chapterRecheckBaseId();
-      markOtherChapterFilesUnverified(baseId);
       if (!baseId || chapterRecheckInFlight) return;
-      delete unverifiedChapterFiles[baseId]; // this return verifies it (re-marked below on a failure)
+      markChapterFileVerified(baseId); // this return verifies it (re-opened below on a failure)
+      var epoch = returnEpoch;
       var gen = chapterApplyGen;
       chapterRecheckInFlight = true;
       fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (v) {
@@ -1910,35 +1917,49 @@ if (typeof module !== 'undefined' && module.exports) {
         applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
       }).catch(function () {
         chapterRecheckInFlight = false;
-        unverifiedChapterFiles[baseId] = true; // not verified: its next pick asks again
+        if (verifiedEpoch[baseId] === epoch) verifiedEpoch[baseId] = epoch - 1; // not verified: its next pick asks
       });
     }
-    // playAt's gate for an UNVERIFIED file (see markOtherChapterFilesUnverified): true when it took
-    // the pick over (it plays the row itself once the server answered, or on a failure plays the row
-    // as queued and leaves the file unverified for the next pick).
+    // playAt's gate for a file NOT verified since the last return: true when it took the pick over.
+    // ONE check per file at a time (gate r2 qa N2: the flat segment-end band re-calls playAt every
+    // tick): a later pick while it is in flight only replaces the waiting pick. An ADVANCE
+    // (opts.keepPosition - the end of a segment, Next) HOLDS the element while it waits, as an
+    // Autoplay-off end would, so the file never bleeds on into its own next chapter. When the answer
+    // lands, the latest waiting pick plays (unless a newer pick superseded it - playGen); on a failure
+    // it plays the row as queued and the file stays unverified for the next pick.
     function verifyChapterFileThenPlay(item, opts) {
       if (!item || item.source !== 'library-chapter') return false;
       var baseId = String(item.id).replace(/::c\d+$/, '');
-      if (!unverifiedChapterFiles[baseId]) return false;
-      var gen = playGen; // playAt bumped it for THIS pick; a newer pick supersedes the fetch
+      if (!chapterFileNeedsVerify(baseId)) return false;
+      if (opts && opts.keepPosition) {
+        var hold = hostCtl('media-player');
+        try { if (hold && !hold.paused) hold.pause(); } catch (_) { /* nothing to hold */ }
+      }
+      var inFlight = !!verifyWaiters[baseId];
+      verifyWaiters[baseId] = { item: item, opts: opts, gen: playGen }; // playAt bumped playGen for THIS pick
+      if (inFlight) return true;
+      var epoch = returnEpoch;
+      function waiter() { var w = verifyWaiters[baseId]; delete verifyWaiters[baseId]; return w; }
       fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (v) {
         if (signal.aborted) return;
-        delete unverifiedChapterFiles[baseId];
+        var w = waiter();
+        if (verifiedEpoch[baseId] === undefined || verifiedEpoch[baseId] < epoch) verifiedEpoch[baseId] = epoch;
         var chapters = v && Array.isArray(v.chapters) ? v.chapters : null;
         if (chapters && queuedChaptersDiffer(queue, baseId, chapters)) {
           applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
         }
-        if (gen !== playGen) return;
-        var idx = queue.indexOf(item); // the SAME row object, patched in place (or dropped)
-        if (idx >= 0) playAt(idx, opts);
+        if (!w || w.gen !== playGen) return;
+        var idx = queue.indexOf(w.item); // the SAME row object, patched in place (or dropped)
+        if (idx >= 0) playAt(idx, w.opts);
       }).catch(function () {
-        if (signal.aborted || gen !== playGen) return;
-        var idx = queue.indexOf(item);
+        var w = waiter();
+        if (signal.aborted || !w || w.gen !== playGen) return;
+        var idx = queue.indexOf(w.item);
         if (idx < 0) return;
-        var keep = unverifiedChapterFiles[baseId];
-        delete unverifiedChapterFiles[baseId]; // play the queued row now...
-        playAt(idx, opts);
-        if (keep) unverifiedChapterFiles[baseId] = true; // ...and ask again on the next pick
+        var was = verifiedEpoch[baseId];
+        verifiedEpoch[baseId] = returnEpoch; // play the queued row now...
+        playAt(idx, w.opts);
+        if (was === undefined) delete verifiedEpoch[baseId]; else verifiedEpoch[baseId] = was; // ...and ask again on the next pick
       });
       return true;
     }

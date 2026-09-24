@@ -655,7 +655,7 @@ test('r1 P1: a Songs-list row tap that selects into the album (playTrackInAlbum)
   }, { extraRows: [g9row()] });
 });
 
-test('r1 P2: an album drill holding only SOME of the file\'s chapters (a partial list, not the complete file) is not re-listed when the server\'s count changes', async () => {
+test('r1 P2: a MIXED two-file album drill (f1\'s chapters beside g9\'s - not a single-file drill of f1) is patched and repainted, not re-listed, when f1\'s count changes', async () => {
   const rows = tracksFixture();
   await boot(async (dom, ctx) => {
     assert.ok(dom.window.document.querySelector('.music-drill'), 'precondition: the album drill is on screen');
@@ -801,4 +801,112 @@ test('r2 B12: a flat list redrawn after a remote edit draws no album drill heade
     assert.match(row(dom, 'f1::c1').textContent, /0:45/, 'the flat list was redrawn (non-vacuous)');
     assert.strictEqual(dom.window.document.querySelector('.music-drill'), null, 'still no drill header');
   }, { extraRows: [g9row()] });
+});
+
+// ---- Gate r2 fix (qa N1: "verified since the last return"; qa N2: one check per file, hold) ------
+
+const G3_BASE = { artist: 'X', album: 'Y', albumKey: 'X␟Y', source: 'library-chapter', streamSrc: '/video/g9', artUrl: '/thumbnail/g9', progressEndpoint: '/api/progress', liked: false };
+const g3 = () => [
+  { ...G3_BASE, id: 'g9::c0', title: 'G one', durationSec: 30, chapterStartSec: 0 },
+  { ...G3_BASE, id: 'g9::c1', title: 'G two', durationSec: 30, chapterStartSec: 30 },
+  { ...G3_BASE, id: 'g9::c2', title: 'G three', durationSec: 30, chapterStartSec: 60 },
+];
+const G3_CH = [{ startTime: 0, title: 'G one' }, { startTime: 30, title: 'G two' }, { startTime: 60, title: 'G three' }];
+const G3_MOVED = [{ startTime: 0, title: 'G one' }, { startTime: 40, title: 'G two' }, { startTime: 60, title: 'G three' }];
+const LIKED = { label: 'Liked Songs', ctx: { src: 'music', filter: 'liked' } };
+
+// qa r2 N1's repro: the pocket Songs level is cached per view; g9 is NOT queued at the return.
+async function cachedSongsPick(dom, ctx, withReturn) {
+  ctx.server.files = { g9: { chapters: G3_CH } };
+  const ec = ctx.engineCfg();
+  const lvl1 = await ec.menu.load({ type: 'songs' });
+  assert.strictEqual((lvl1.tracks || []).find((t) => t.id === 'g9::c1').chapterStartSec, 30, 'precondition: the Songs level cached g9::c1 at 30 s');
+  ec.menu.onPlay({ tracks: tracksFixture(), index: 0, play: LIKED }); await settleN(30);
+  assert.ok(!Array.prototype.some.call(dom.window.document.querySelectorAll('.music-song-row'), (r) => /^g9::/.test(r.getAttribute('data-id'))), 'precondition: g9 is not in the queue');
+  ctx.server.files.g9.chapters = G3_MOVED; // another device moves g9::c1 to 40 s
+  if (withReturn) { ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20); }
+  const lvl2 = await ec.menu.load({ type: 'songs' });
+  const t2 = lvl2.tracks.find((t) => t.id === 'g9::c1');
+  assert.strictEqual(t2.chapterStartSec, 30, 'the Songs level is still the cached one (non-vacuous)');
+  const g0 = ctx.videoGets.length;
+  ec.menu.onPlay({ tracks: lvl2.tracks, index: lvl2.tracks.indexOf(t2), play: lvl2.play || {} });
+  await settleN(30);
+  return { gets: ctx.videoGets.slice(g0), load: lastLoadOf(ctx.loads, 'g9::c1') };
+}
+
+test('r2 N1: after a return, a pick from the CACHED pocket Songs level of a file that was not queued asks once and plays its NEW start', async () => {
+  await boot(async (dom, ctx) => {
+    const r = await cachedSongsPick(dom, ctx, true);
+    assert.deepStrictEqual(r.gets, ['/api/videos/g9'], 'one GET for g9');
+    assert.strictEqual(r.load.data.chapterStartSec, 40, 'the new start, not the cached 30 s');
+  }, { extraRows: g3() });
+});
+
+test('r2 N1 control: the same cached pick without a return asks nothing (epoch 0 - nothing to verify)', async () => {
+  await boot(async (dom, ctx) => {
+    const r = await cachedSongsPick(dom, ctx, false);
+    assert.deepStrictEqual(r.gets, [], 'no GET on a page that never went away');
+    assert.strictEqual(r.load.data.chapterStartSec, 30, 'the listed start plays');
+  }, { extraRows: g3() });
+});
+
+test('r2 N1: a file verified since the last return is not asked again; the NEXT return asks again', async () => {
+  await boot(async (dom, ctx) => {
+    const r = await cachedSongsPick(dom, ctx, true);
+    assert.deepStrictEqual(r.gets, ['/api/videos/g9']);
+    const ec = ctx.engineCfg();
+    const lvl = await ec.menu.load({ type: 'songs' });
+    const g0 = ctx.videoGets.length;
+    ec.menu.onPlay({ tracks: lvl.tracks, index: lvl.tracks.findIndex((t) => t.id === 'g9::c2'), play: lvl.play || {} }); await settleN(30);
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), [], 'g9 is verified since this return');
+    const g1 = ctx.videoGets.length;
+    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20);
+    const lvl3 = await ec.menu.load({ type: 'songs' });
+    ec.menu.onPlay({ tracks: lvl3.tracks, index: lvl3.tracks.findIndex((t) => t.id === 'g9::c0'), play: lvl3.play || {} }); await settleN(30);
+    // g9 is the playing file at this return, so the return itself verified it: the pick does not ask again.
+    assert.strictEqual(ctx.videoGets.slice(g1).filter((u) => u === '/api/videos/g9').length, 1, 'exactly one g9 GET this return (the return re-check of the playing file), none from the pick');
+  }, { extraRows: g3() });
+});
+
+test('r2 N2: a flat segment end into an unverified file makes ONE check, HOLDS (no bleed into its own next chapter), then loads exactly once', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.files = { g9: { chapters: G3_CH } };
+    const ec = ctx.engineCfg();
+    ec.menu.onPlay({ tracks: [tracksFixture()[0], g3()[1]], index: 0, play: LIKED }); await settleN(30);
+    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20);
+    ctx.server.holdFiles = true;
+    const mp = dom.window.document.getElementById('media-player');
+    let pauses = 0; let paused = false;
+    mp.pause = () => { pauses += 1; paused = true; };
+    Object.defineProperty(mp, 'paused', { configurable: true, get: () => paused });
+    const g0 = ctx.videoGets.length; const l0 = ctx.loads.length;
+    for (const t of [59.5, 59.8, 60.05, 60.3, 60.55, 60.8, 61.1, 61.4]) {
+      ctx.media.t = t; mp.dispatchEvent(new dom.window.Event('timeupdate')); await settleN(2);
+    }
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'exactly ONE check for g9 across the whole boundary band');
+    assert.ok(pauses >= 1, 'the element was HELD at the segment end (no bleed into f1\'s next chapter)');
+    assert.strictEqual(ctx.loads.length, l0, 'nothing loads while the check is pending');
+    ctx.release(); await settleN(20);
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id), ['g9::c1'], 'then exactly one load: the next row');
+  }, { extraRows: g3() });
+});
+
+test('r2 N2 control: the same flat segment end with no return advances at once (no check, no hold)', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.files = { g9: { chapters: G3_CH } };
+    const ec = ctx.engineCfg();
+    ec.menu.onPlay({ tracks: [tracksFixture()[0], g3()[1]], index: 0, play: LIKED }); await settleN(30);
+    const mp = dom.window.document.getElementById('media-player');
+    let pauses = 0; mp.pause = () => { pauses += 1; };
+    const g0 = ctx.videoGets.length; const l0 = ctx.loads.length;
+    let ticks = 0;
+    for (const t of [59.5, 59.8, 60.05]) {
+      if (ctx.loads.length > l0) break; // advanced: the next ticks would belong to the new track
+      ticks += 1; ctx.media.t = t; mp.dispatchEvent(new dom.window.Event('timeupdate')); await settleN(2);
+    }
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), [], 'no check');
+    assert.strictEqual(pauses, 0, 'no hold');
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id), ['g9::c1'], 'advanced to the next row');
+    assert.ok(ticks <= 2, 'within the band (59.8 is the first in-band tick)');
+  }, { extraRows: g3() });
 });
