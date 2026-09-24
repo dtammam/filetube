@@ -33,6 +33,7 @@ let server, base, auth, authedFetch;
 const ROOT = path.join(DATA_DIR, 'ytdlp');
 const { menu, select, labels, cursorLabel, title, tapRow, inMenu, stepDown, settleNet, click, boot } = createPocketHarness(() => ({ base, authedFetch }));
 const XSS = '<img src=x onerror=window.__pwn=1>';
+const AUTOPLAY_KEY = 'ft-music-autoplay'; // music.js AUTOPLAY_STORAGE_KEY
 
 function audioItem(id, folderName, artistName, tags, extra) {
   return Object.assign({
@@ -380,4 +381,59 @@ test('adversary S7 (closes D6): a browse drill render still in flight when a fla
     assert.strictEqual(h.D.getElementById('music-crumb').textContent, 'Songs');
     assert.strictEqual(h.player.currentId, 'za1');
   } });
+});
+
+test('K3: an autoplay append landing mid-build (a pick of a long list\'s LAST row) never strands the browse list half-built', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    menu(h); select(h); tapRow(h, 'Genres'); await settleNet();
+    tapRow(h, 'Filler'); await settleNet();
+    assert.strictEqual(labels(h).length, 30, 'precondition: thirty fillers');
+    tapRow(h, 'Zz Filler 30'); // the LAST row: its load arms the endless-autoplay append
+    await settleNet(160);
+    assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: the autoplay append was fetched');
+    const behind = [...h.D.querySelectorAll('#music-content .music-song-row')];
+    assert.strictEqual(behind.length, 30, 'every row of the list was built');
+    assert.ok(behind.every((r, i) => r.getAttribute('data-index') === String(i)));
+  } });
+});
+
+test('K4: a flat list\'s LAST row, a chapter mid-file, still ends at its own segment once autoplay has appended a station', async () => {
+  const r = await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'POST' });
+  assert.ok(r.ok, 'liked the chapter Track A');
+  // the station is deterministic: its picks are REAL library rows of other files (the random
+  // arms would otherwise sometimes pick this mix's own next chapter, which rolls on by design)
+  const station = (await realApi('/api/music?sort=title-asc&limit=10000')).items.filter((t) => t.id === 'za1' || t.id === 'nd2');
+  try {
+    await boot({ skin: 'ipod', play: 'nd1', intercept: (u) => (/sort=random/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null), run: async (h) => {
+      menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
+      assert.deepStrictEqual(labels(h), ['Track A']);
+      tapRow(h, 'Track A'); await settleNet(60); // the last (only) row: the autoplay append lands
+      assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: a station was appended');
+      const loads = h.spy.loads.length;
+      const t = { v: 300 }; const el = mp(h, t, 1800);
+      await tick(h, el, t, 600); await tick(h, el, t, 899.9);
+      assert.strictEqual(h.spy.loads.length, loads + 1, 'at its segment end the queue moved on to its next row (a load)');
+      assert.ok(['za1', 'nd2'].includes(h.player.currentId), 'onto the appended station, never on through the rest of the file (' + h.player.currentId + ')');
+    } });
+  } finally { await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'DELETE' }); }
+});
+
+test('K4 x v1.320: with Autoplay switched OFF after the station was appended, a flat chapter\'s segment end stops there - it never steps into a station pick', async () => {
+  const r = await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'POST' });
+  assert.ok(r.ok);
+  const station = (await realApi('/api/music?sort=title-asc&limit=10000')).items.filter((t) => t.id === 'za1' || t.id === 'nd2');
+  try {
+    await boot({ skin: 'ipod', play: 'nd1', intercept: (u) => (/sort=random/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null), run: async (h) => {
+      menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
+      tapRow(h, 'Track A'); await settleNet(60);
+      assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: the station was appended');
+      h.dom.window.localStorage.setItem(AUTOPLAY_KEY, '0'); // Autoplay switched off (e.g. on another device)
+      const loads = h.spy.loads.length;
+      const t = { v: 300 }; const el = mp(h, t, 1800);
+      let paused = 0; el.pause = () => { paused += 1; };
+      await tick(h, el, t, 600); await tick(h, el, t, 899.9);
+      assert.strictEqual(h.spy.loads.length, loads, 'no step into the station');
+      assert.strictEqual(paused, 1, 'the list ended at the chapter\'s own segment end');
+    } });
+  } finally { await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'DELETE' }); }
 });

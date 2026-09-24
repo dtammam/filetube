@@ -2888,6 +2888,7 @@ if (typeof module !== 'undefined' && module.exports) {
         kept.push(queue[k]);
       }
       if (!dropped) return false;
+      if (flatQueue === queue) flatQueue = kept; // pocket menus K4: a retract keeps the flat list flat
       queue = kept;
       if (navIndex >= 0 && navIndex < queue.length) registerTrackNav(navIndex);
       updateNowPlayingPanel();
@@ -3331,8 +3332,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows
     // behind the skin are built in SMALL CHUNKS after the tap: the list is cleared synchronously
     // (so no row of the old queue can be tapped against the new one), the first chunk waits for
-    // the next task, and every chunk re-checks it still belongs to the live queue (a newer pick or
-    // browse load abandons it). A short list (up to one chunk) renders at once, as before.
+    // the next task, and every chunk re-checks it is still the live build (a newer pick or browse
+    // render abandons it). A short list (up to one chunk) renders at once, as before.
     var SONG_ROWS_PER_CHUNK = 20;
     var songChunkGen = 0;
     function renderSongListProgressive() {
@@ -3345,7 +3346,10 @@ if (typeof module !== 'undefined' && module.exports) {
       var next = 0;
       var shimmer = (window.FileTube && typeof window.FileTube.shimmerArt === 'function') ? window.FileTube.shimmerArt : null;
       function chunk() {
-        if (gen !== songChunkGen || list !== queue || signal.aborted || !host.isConnected) return;
+        // a newer build (or any re-render of the browse view) detached this host / bumped the gen.
+        // NOT `list !== queue`: an autoplay append re-assigns `queue` (concat) mid-build, and the
+        // rows being built still index it truly - stopping there stranded a half-built list.
+        if (gen !== songChunkGen || signal.aborted || !host.isConnected) return;
         var end = Math.min(list.length, next + SONG_ROWS_PER_CHUNK);
         // each chunk is its own block (.music-song-chunk): the list is a flex column, and appending
         // rows straight into it re-lays out EVERY row each frame (measured: the rendering cost grew
@@ -3411,7 +3415,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // order): let the file roll on untouched - reflectChapter advances the display, no reload gap.
       if (nx && nx.source === 'library-chapter' && String(nx.id).replace(/::c\d+$/, '') === String(item.id).replace(/::c\d+$/, '') &&
         Math.abs((Number(nx.chapterStartSec) || 0) - end) < 0.5) return true;
-      if (ci + 1 < queue.length) { playAt(ci + 1, { keepPosition: true }); return true; }
+      // Autoplay off never steps into a station pick (v1.320's advance-seam rule): the list ends here.
+      if (ci + 1 < queue.length && !autoplayHoldsAt(ci + 1)) { playAt(ci + 1, { keepPosition: true }); return true; }
       try { mp.pause(); } catch (_) { /* the list is done - nothing follows (autoplay off / nothing appended) */ }
       return true;
     }
