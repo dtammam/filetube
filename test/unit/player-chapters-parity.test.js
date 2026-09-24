@@ -404,10 +404,19 @@ test('v1.41.12 source-lock: the loop is cleared on every load and on every chapt
   const teardown = src.slice(src.indexOf('function teardownMediaState(opts)'), src.indexOf('function teardownMediaState(opts)') + 1200);
   assert.match(teardown, /chapterLoop = null;/, 'per-load clear');
   assert.match(teardown, /chapterNowEl\.classList\.remove\('chapter-looping'\)/, 'indicator cleared with it');
-  const apply = src.slice(src.indexOf('applyChaptersForMedia = function (data)'), src.indexOf('applyChaptersForMedia = function (data)') + 700);
+  // chapter snap (2026-09-24): bounded by the SEMANTIC unit - the applier ends where the next statement
+  // (the resetChaptersUi assignment) begins - not a character window (#213).
+  const applyStart = src.indexOf('applyChaptersForMedia = function (data)');
+  const apply = src.slice(applyStart, src.indexOf('resetChaptersUi = function', applyStart));
+  assert.ok(applyStart !== -1 && apply.length > 0, 'the applier and its successor are both found');
   assert.match(apply, /chapterLoop = null;/, 'new chapter set clears the loop');
-  const editor = src.slice(src.indexOf('window.showChaptersEditor(currentId'), src.indexOf('window.showChaptersEditor(currentId') + 700);
-  assert.match(editor, /chapterLoop = null;/, 'edited chapter set clears the loop');
+  // chapter snap (2026-09-24, gate r1): an edited chapter set now goes THROUGH that applier (the text
+  // editor and the time editor both call applySavedChapters -> applyChaptersForMedia).
+  const editor = src.slice(src.indexOf('window.showChaptersEditor(currentId'), src.indexOf('}, undefined, { version:', src.indexOf('window.showChaptersEditor(currentId')));
+  assert.match(editor, /applySavedChapters\(resolved\);/, 'the edited chapter set is applied through the shared seam');
+  const savedStart = src.indexOf('function applySavedChapters(resolved)');
+  const saved = src.slice(savedStart, src.indexOf('\n    }\n', savedStart));
+  assert.match(saved, /applyChaptersForMedia\(data\);/, 'which is applyChaptersForMedia (it clears the loop)');
 });
 
 // ---- v1.109 (Dean): chapter follow-along wiring source-locks -----------------
@@ -425,7 +434,13 @@ test('v1.109 source-lock: the fill loop dispatches the current chapter, and buil
   assert.match(disp, /applyCurrentChapterToMenu\(\);/, 'dispatcher updates the menu highlight');
   // buildChaptersMenu tags each row with its index and re-applies the highlight
   // after every (re)build so an OPEN menu shows the playing row immediately.
-  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 7600);
+  // chapter snap (2026-09-24): bounded by the SEMANTIC unit (the builder ends where the next statement,
+  // the applyCurrentChapterToMenu assignment, begins), not a character window that a
+  // longer builder silently outgrows (the #213 distance-lock lesson).
+  const buildStart = src.indexOf('function buildChaptersMenu()');
+  const buildEnd = src.indexOf('applyCurrentChapterToMenu = function', buildStart);
+  assert.ok(buildStart !== -1 && buildEnd > buildStart, 'the builder and its successor statement are both found');
+  const build = src.slice(buildStart, buildEnd);
   assert.match(build, /item\.setAttribute\('data-chapter-index', String\(index\)\);/, 'rows tagged with their chapter index');
   assert.match(build, /applyCurrentChapterToMenu\(\);/, 'highlight re-applied on (re)build');
   // The current-chapter idx is reset per load so the next item re-dispatches fresh.
@@ -541,7 +556,8 @@ test('v1.112 source-lock: the current-chapter NAME label is PERSISTENT, clickabl
   // WARNING-1 fix: applyChaptersForMedia syncs the label AFTER refreshCurrentChapter
   // so a pre-first-chapter load (where setCurrentChapter no-ops on the unchanged
   // idx -1) still renders "Chapters" -- the trigger appears the moment the item loads.
-  const apply112 = src.slice(src.indexOf('applyChaptersForMedia = function (data)'), src.indexOf('applyChaptersForMedia = function (data)') + 1800);
+  const apply112Start = src.indexOf('applyChaptersForMedia = function (data)');
+  const apply112 = src.slice(apply112Start, src.indexOf('resetChaptersUi = function', apply112Start)); // chapter snap (2026-09-24): the semantic unit, not a window
   assert.match(apply112, /refreshCurrentChapter\(\);[\s\S]*?updateChapterNowLabel\(false\);/, 'the chapter-set apply path syncs the name label (covers the pre-first case)');
   const reset = src.slice(src.indexOf('function resetSeekVisual()'), src.indexOf('function resetSeekVisual()') + 700);
   assert.match(reset, /currentChapterIdx = -1;\s*\n\s*updateChapterNowLabel\(false\);/, 'label hidden (no highlight) on per-load reset');

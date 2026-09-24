@@ -128,6 +128,9 @@ test('GET /api/settings returns the full-shape settings projection with backfill
     // DELIBERATE key-set change: performance-diagnostics suite, OPT-IN, OFF by
     // default. Mirrored in test/unit/database.test.js's DEFAULT_SETTINGS.
     perfDiagnosticsEnabled: false,
+    // chapter snap (2026-09-24) DELIBERATE key-set change: the Chapter Snap lead-in (seconds),
+    // server-wide, default 0.25. Mirrored in test/unit/database.test.js.
+    chapterSnapLeadInSec: 0.25,
   });
 });
 
