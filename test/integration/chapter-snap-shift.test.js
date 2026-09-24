@@ -2,7 +2,7 @@
 
 // [INTEGRATION] Chapter Snap "Shift all" (Dean 2026-09-24: "a global offset ... the whole
 // track is offset by a somewhat equivalent amount. It's not the same for everything").
-// Plan: docs/exec-plans/active/2026-09-24-snap-offset-status-bar.md. The ONE time editor
+// Plan: docs/exec-plans/completed/2026-09-24-snap-offset-status-bar.md. The ONE time editor
 // (common.js showChapterSnapEditor) driven in jsdom against the REAL server - every seed,
 // scan, save and revert goes through the real routes to the real stored record. Bound here:
 //   - the shift math: every chapter after the first moves by the same amount, chapter 1

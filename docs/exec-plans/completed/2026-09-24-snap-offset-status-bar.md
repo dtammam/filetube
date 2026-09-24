@@ -3,7 +3,7 @@ plan: snap-offset-status-bar
 harness: v2 · lean
 branch: fix/snap-offset-and-status-bar
 anchor: spec
-status: Gate closed
+status: Shipped v1.325.0
 next: release
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: APPROVED r3 @0cc5d68f — qa, security-brief; APPROVED r4 @ac07adc3 — adversary (code identical to 0cc5d68f)
