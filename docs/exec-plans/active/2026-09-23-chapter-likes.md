@@ -293,3 +293,301 @@ Disclosed decisions and known limits:
   the whole music chapter system uses (progress, queue entries) and not new here.
 - The umbrella's "403 for a restricted member" is 404 on this surface (the repo's v1.80 rule:
   no restricted-id oracle; bound by rbac-video-enforcement.test.js:146 and AC5).
+
+## Gate r1 - security-brief (@3f6ce330)
+
+Tool gaps (verbatim, before anything else): this seat has no Bash, so no `git diff 6ea45237`
+was run - the review read the touched regions from source, located by the plan's per-file list
+and the `M3` comment markers; hunks outside those regions were not enumerated, and a
+package.json / lockfile delta against base was NOT diffed (the plan lists neither; that is a
+reasoned "no dependency change", not a verified one). Midway the Grep backend died
+(`ENOENT: no such file or directory, posix_spawn 'rg'`, twice); the remaining lookups were done
+by Read. No test was executed by this seat.
+
+No exploitable weakness found. What was checked, with the exact path traced:
+
+1. Authorization on POST /api/liked/:id (lib/media/user-routes.js:187-206) - VERIFIED.
+   `parseChapterTrackId` runs first; `restrictedVideoMutation(req, res, baseId)` (server.js:1234)
+   gates the BASE id, so the raw `::c` id no longer falls through its `db.metadata[id]` miss.
+   Restricted base -> 404 `{ error: 'Media file not found' }` (server.js:1237); unknown base ->
+   404 with the byte-identical body (user-routes.js:196); visible base with a bad/absent chapter
+   or a non-audio base -> the same body (:201). No status/body oracle across the visibility
+   boundary. Timing: the chapter expansion (`itemChapterTracks`, incl. description parsing) runs
+   ONLY after the base passed the visibility gate, so its cost is never observable to a user who
+   cannot see the base (should-be-safe by reasoning; not timed).
+2. Read-side leaks - VERIFIED. GET /api/liked shaping arm gates `mediaVisibleTo(req, item)`
+   before any title/art/duration is shaped (user-routes.js:373) AND the filter arm re-gates by
+   `o.mediaId` (:461-463; `mediaVisibleTo(req, null)` is false); `total` (:485) is computed
+   after both. /api/stats member inventory (lib/media/routes.js:1660) filters by
+   `has(visibleMetadata, chapterLikeBaseId(id))` - own-property against the RBAC-filtered map,
+   the user's OWN rows only, count-only. /api/music?filter=liked (lib/music/routes.js:212-213)
+   filters a list already RBAC-filtered at :199-200; /api/music/:id projected arm resolves inside
+   `projectedLibraryTracks`, which gates `mediaVisibleTo` at server.js:4133 before expansion.
+   Backup bundle: GET /api/admin/backup is `requireAdmin`-gated (lib/admin/backup.js:527) and
+   carried every user's like rows before this branch; the `::c` key rides as an opaque string.
+   Pre-existing, admin-trusted.
+3. Input hygiene - VERIFIED. Both statements (lib/auth/store.js:80, :87) bind numbered
+   parameters; `||` concatenates a BOUND value with a literal, no id is interpolated into SQL
+   text. `parseChapterTrackId` (lib/music/libraryAudio.js:183-188): `$` without the `m` flag is
+   end-of-string in JS; `.` excludes `\n`, so a newline id decodes as null and takes the plain
+   path (unknown id -> 404); `x::c1::c1` decodes greedily to base `x::c1` -> no such item -> 404;
+   `x::c00001` decodes to index 1 but the stored key requires `t.id === req.params.id` against
+   the CONSTRUCTED `x::c1`, so a non-canonical spelling 404s and can never be persisted;
+   backtracking is bounded (only positions starting `::c` scan digits; total O(n)), and the URL
+   length is capped by Node's header limit - no ReDoS. The stored key is `track.id` from
+   `chapterTrackId(item.id, i)` (libraryAudio.js:218; user-routes.js:202), never
+   `req.params.id`, so a NUL or any foreign byte cannot reach `user_liked` through this route.
+4. Prefix arm boundaries - VERIFIED by reading the SQL. `substr(media_id, 1, length(?1)+3) =
+   ?1 || '::c'` with `length(media_id) > length(?1)+3`: base `abc` vs row `abcd::c1` compares
+   `abcd::` to `abc::c` (no match); a bare `abc::c` fails the length guard; row `abc::c1`
+   matches; the rekey keeps the suffix via `substr(media_id, length(?2)+1)`. Cross-item sweep
+   would need a base id that itself contains `::c`; media ids are md5 hex (`getMediaId`,
+   server.js:1469-1471) and trash ids are md5 of the trash path (lib/media/trashRecords.js:6),
+   so `::` cannot occur in a base id today.
+5. Client - VERIFIED. `buildSongRowHtml` (public/js/music.js:169-206) passes every data-derived
+   string through `escapeMusicHtml` / `encodeURIComponent`; `data-like-store="media"` is a
+   constant literal (:176). The toast text is a constant and `showToast` uses `textContent`
+   (public/js/common.js:13289). `extrasLikeRequest` / `extrasFetchItem` / `cardLikeEndpoint`
+   URL-encode the id (music.js:1395, :1401, :1416; main.js:3237-3242).
+6. No secrets, cookies, session, TLS/network-boundary or dependency changes in any region read.
+
+Advisory (INFO, no action required):
+- I1 The prefix arm's correctness is an ASSUMPTION about the id charset (item 4). If a future id
+  source ever mints ids containing `::c`, `removeMediaState('x')` would also sweep the chapter
+  likes of an item `x::c...`. Worth a one-line note beside the statements; not exploitable.
+- I2 POST /api/admin/restore re-inserts any string `mediaId` from the bundle (pre-existing);
+  an admin-crafted bundle is the one path by which a non-canonical `::c` key or NUL could enter
+  `user_liked`. Admin-trusted by design; the read arm drops what the expansion does not mint.
+
+Gate: APPROVED r1 @3f6ce330 — security-brief
+
+## Gate r1 - qa (@3f6ce330)
+
+Reviewed `git diff main...HEAD` (16 files) at 3f6ce330 in the branch worktree; Node v22.23.1;
+all suites and mutants ran in a `git archive HEAD` sandbox (`/tmp/qa-m3-v8Ax`) with
+`node_modules` symlinked from the main checkout; the sandbox was diffed back to HEAD (0 lines
+in all four mutated files) after the round. Never the full `npm test` (Dean's cadence).
+
+Instruments (verbatim):
+- `npm run lint`: `✖ 7 problems (0 errors, 7 warnings)` - the 7 pre-existing `no-unused-vars`
+  in `public/js/common.js` (untouched).
+- `npm run lint:css`: `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`.
+- `bash .harness/lib/check-markers.sh`: `✗ docs/exec-plans/active/2026-09-23-chapter-likes.md:
+  stale approval @6ea45237 - reviewed code changed since; re-gate` / `check-markers: 1 issue(s)
+  found` (the `design:` line; the tolerated Building-phase shape, re-binds at the gate sha).
+- Unit group (chapter-like-carriers, music-chapter-likes-client, music-library-audio, card-like,
+  music-liked-tab-retired, auth-store, music-chapter-playback, music-sticker-extras,
+  music-actions-desktop, skin-surface): `# tests 184 / # pass 184 / # fail 0`.
+- Integration group (chapter-likes, backup-restore, rbac-video-enforcement, liked,
+  liked-mixed-kind, music-api, rbac-music-enforcement, rbac-write-enforcement,
+  watch-like-button, watch-liked-sidebar, media-liked-carriers, move-files,
+  music-library-projection, feed-hidden-api, rbac-census, route-read-classification,
+  route-write-classification): `# tests 154 / # pass 154 / # fail 0`.
+- Mutants re-run (one at a time, replacement asserted non-empty, file restored):
+  M4 `tests 12 pass 8 fail 4` KILLED; M5 `tests 12 pass 7 fail 5` KILLED; M6 `tests 7 pass 5
+  fail 2` KILLED; M9 `tests 8 pass 5 fail 3` KILLED; M12 `tests 8 pass 7 fail 1` KILLED (the
+  open-time capture test is the one red - the corrected driver binds); **M7b `tests 7 pass 2
+  fail 5` KILLED** (AC2, AC5/AC12, AC6, AC7, AC8 red) - see finding 1.
+- SQL probe (node:sqlite, the two statements verbatim): base `abc` vs `abcd::c1` -> `abcd`,
+  `abcd::c1`, `abc::c`, `abc::x` survive a delete of `abc`; rekey `abc->zzz` carries `abc::c1`
+  to `zzz::c1` for both users and leaves `abcd::c1`; rekey `old->new` with `new`, `new::c1`
+  already present collapses to one row each (OR REPLACE on the (user_id, media_id) PK, no
+  throw); NUL-bearing, unicode and empty bases are inert. Note: the arm matches
+  `<id>::c<anything>` (it also deleted `abc::cx`), broader than the `::c<digits>` decoder -
+  harmless since only constructed ids reach the table, and the comment says "PREFIX".
+
+Correctness, verified against the code:
+- `publicTrackListItem(track, userId, likedSets, progressMap)`: the ONLY callers are
+  lib/music/routes.js:233, :428, :443 and all three pass `musicLikedSets(...)` (grep across
+  lib/, server.js, public/, test/). `itemChapterTracks` is the one `expandAudioToTracks` caller
+  outside its module (server.js:4116). `removeMediaState`/`rekeyMediaState` callers are
+  unchanged and route through the two rewritten statements.
+- The Liked grid renders a `kind:'track'` entry via main.js:632-645 (`/music?play=<id>`,
+  `/albumart/<id>`, `/track/<id>?download=1`); `playTrackFromContinue` resolves a `::c` id via
+  `GET /api/music/:id` (the projection arm) -> `playTrackInAlbum` (pre-existing chapter path);
+  `/albumart/:id` strips `::c` (lib/music/routes.js:500-510). `sortItems` reads
+  `addedAt/title/size` (lib/videoQuery.js:82), `filterByFormat` reads `type`, the watch filter
+  reads `watchState` - the shaped entry carries all of them (AC2 binds title/span/album/art).
+- The mixed `/api/liked` client readers not in the surface table all filter to `kind:'media'`
+  (watch.js:2170/2185 Prev/Next, player.js:4925 autoplay), so a chapter entry is skipped there
+  like the existing track entries.
+- Comments: every new comment matches the code it describes; "NUL cannot reach the table by
+  construction" holds (stored key = `track.id` from `chapterTrackId(item.id, i)`, AC4 drives
+  NUL-bearing ids to 404 + empty table); the 404-not-403 citation
+  rbac-video-enforcement.test.js:146 is exactly `post('/api/liked/blocked') -> 404`.
+- Standards: `user_liked.media_id TEXT NOT NULL` (lib/db/sqlite.js:469-474), no length/FK
+  constraint; docs/RELEASING.md rule 1 bumps `SCHEMA_VERSION` for a NEW/RENAMED persisted
+  namespace - a longer key in an existing column is neither, so no DDL / no bump is correct.
+  0 em dashes in the diff's added lines. No innerHTML with data (`data-like-store="media"` is a
+  constant literal; ids go through `escapeMusicHtml`). No CSS touched.
+- Tests: the client file's settle loops are fixed counts over synchronously-resolving stubs (no
+  timed wait can pass green); chapter-likes runs the real server with an admin and a member
+  under a `{kind:'folder'}` restriction (the media-only kind); backup round trip is a real
+  `/api/admin/backup` -> reset -> `/api/admin/restore` and lists the `::c` entry again.
+
+Security surface (standing section): LOW, covered. POST gates RBAC on the BASE id via
+`restrictedVideoMutation` (404, no oracle; AC5 + builder M3) and stores only a constructed id;
+GET re-gates on `mediaVisibleTo` twice (shaping + filter; M7b shows the filter arm is
+load-bearing, not redundant); `/api/stats` counts by base visibility (AC5: 0 for the
+restricted member); the backup bundle is `requireAdmin` (lib/admin/backup.js:527); the SQL is
+parameterized with numbered params, no string assembly; no new route, no unauthenticated
+surface, no secrets/logging, no shell.
+
+Findings:
+
+1. **WARNING** (plan doc accuracy, `docs/exec-plans/active/2026-09-23-chapter-likes.md` mutant
+   table row M7b, and the "belt and suspenders" characterization): the record says the filter
+   arm's removal is GREEN 7/7/0 because "the shaping gate alone holds". Reproduced: KILLED
+   `tests 7 pass 2 fail 5`. Mechanism: without the `library-chapter` arm the entry falls to
+   `if (o.kind === 'track') return trackVisibleTo(req, ownTrack(...))`; `ownTrack` of a `::c` id
+   is null and `trackVisibleTo(req, null)` is `false` (server.js:1147), so EVERY chapter entry
+   is dropped from the listing and the count. Scenario: a later refactor deletes the arm as
+   "redundant" on the strength of this record -> every chapter like silently vanishes from
+   `/?liked=1` and the sidebar count while the rows persist. The code is correct and the arm is
+   bound by five tests; the RECORD is wrong. Fix: rewrite the M7b row to `KILLED 7/2/5 - the
+   filter arm is load-bearing (the ownTrack arm eats an unrouted chapter entry)`. Safe to ship
+   once corrected; this is a one-line doc fix, so the verdict is CHANGES for r2 delta only.
+2. SUGGESTION (plan survey, lines 68-69): "no client reads it: grep 'api/music/liked' public/js
+   finds only the row heart's writes" - at main, `main.js:3239` (`cardLikeEndpoint`) also writes
+   there (the plan's own line 83 documents it). Reword to "no client READS it".
+3. SUGGESTION (lib/auth/store.js:78 comment): the substr-not-LIKE justification cites "`_` ... a
+   legal yt-dlp id character"; media ids are md5 hex (`getMediaId`, server.js:1469) and trash
+   ids md5 of the trash path, so no `_` can occur today. The choice is still right (ids are
+   opaque; never LIKE on an id) - say that instead of the yt-dlp claim.
+4. SUGGESTION (`/api/home`, lib/media/routes.js:431 + :587): the home feed's liked signal reads
+   `likedSet.has(item.id)` (base) and `getMusicLiked` (native) - a liked chapter never surfaces
+   in home's candidates. Inert by construction (as the table says); note it as a follow-up if
+   home is expected to reflect chapter likes.
+5. SUGGESTION (surface table): add the client READERS of `GET /api/liked` (watch.js Prev/Next,
+   player.js autoplay, common.js browse ctx) - all verified inert to a chapter entry.
+
+Tree proof: `git status --short` shows only `M docs/exec-plans/active/2026-09-23-chapter-likes.md`
+(this section and the security-brief's); no untracked files; HEAD 3f6ce330.
+
+Gate: CHANGES r1 @3f6ce330 — qa (see findings)
+
+## Gate r1 - adversary (@3f6ce330)
+
+Reviewed `git rev-parse HEAD` = 3f6ce330 in the worktree `.claude/worktrees/agent-a73e66f851b541859`
+(branch feat/chapter-likes, base main 6ea45237). Every measurement ran in a `git archive HEAD`
+sandbox (`/tmp/adv-m3-54mE`, `node_modules` symlinked from the main checkout; sandbox baseline
+re-established FIRST: chapter-likes + chapter-like-carriers + music-chapter-likes-client +
+music-library-audio + card-like `tests 48 pass 48 fail 0`, Node 22.23.1). Every mutant was applied to
+the committed tree, its `diff` vs HEAD shown non-empty before crediting, the file restored from
+`git show HEAD:<file>` and `cmp`-proven identical after each run.
+
+### Instruments (verbatim)
+
+- Touched-surface census in the sandbox (19 files: liked, liked-mixed-kind, rbac-census,
+  rbac-video/music-enforcement, media-liked-carriers, backup-restore, music-api,
+  music-library-projection, move-files, watch-liked-sidebar, route-read/write-classification,
+  auth-store, music-sticker-extras, music-actions-desktop, skin-surface, music-liked-tab-retired,
+  listen-video-chapters): `tests 270 pass 270 fail 0 cancelled 0 skipped 0`.
+- `npx eslint` over the 11 files the diff touches: no output (0 problems).
+- Two attack drivers of my own (9 + 1 tests through the REAL app, since deleted from the sandbox):
+  `tests 9 pass 9`, `tests 1 pass 1` - their measured dumps are the evidence quoted below.
+
+### Destruction drives (measured, all HELD)
+
+1. ORPHAN, every path to `removeMediaState`: (a) scan prune of a vanished file
+   (`fs.unlink` + `scanDirectories()`, pruneMissing) - admin `[]`, member keeps only the sibling
+   file like; (b) the NON-trash delete arm (file unlinked BEFORE `DELETE /api/videos/:id` ->
+   `if (!trashed)` legacy cleanup at lib/media/routes.js:1247) - rows `[]`; (c) notifications
+   phantom prune (`GET /api/notifications` with the item's metadata record dropped) - rows `[]`;
+   (d) trash -> restore -> purge and (e) HTTP move (the SAME `moveItemToFolder` ->
+   `rekeyInFlightState` seam lib/media/move.js:723 that lib/ytdlp/relocation.js:82 uses) are bound
+   by AC6/AC7 and re-driven below. No `::c` row survived its base on any path.
+2. LEAK across users: B likes `mix::c1`; A holds a pre-existing `mix::c1` and is restricted by
+   `{kind:'folder'}` AND (second pass) `{kind:'path'}`. For A on BOTH kinds: `/api/liked` items
+   `[]` total 0; `/api/stats` inventory.liked 0; `/api/music?filter=liked` `[]`; the mix rows absent
+   from `/api/music`; `GET /api/music/<c1>` 404; `POST /api/liked/<c3>` 404 (no oracle); B's row
+   and B's listing untouched. KIND binding: a mutant that gates the chapter arm (shaping AND filter)
+   through `trackVisibleTo` on the base item's descriptor instead of `mediaVisibleTo` ->
+   chapter-likes `7 pass 6 fail 1` (AC5 red): the `{kind:'folder'}` fixture DOES discriminate the
+   media gate from the track gate (lib/auth/visibility.js:66-68).
+3. DUPLICATE / COLLISION: HTTP move of `mix` to `Other/` with a stale `<newId>::c2` already
+   present for the admin (liked_at 2020) AND for another user: admin ends with exactly one
+   `<newId>::c2` (the MOVED row wins; the stale duplicate's liked_at is dropped - acceptable: the
+   base-id carrier has had the same OR REPLACE posture since v1.43, and the destination row can only
+   pre-exist through a re-key that ran ahead of us), the other user's row untouched, listing shows
+   one entry "Third Song"; move back to `Chan/` -> both users hold exactly `[mix::c2]`. Backup taken
+   BEFORE a purge, restored AFTER: the like AND the base metadata come back together (the bundle is
+   one transaction), `/api/liked` lists it; the file is gone on disk so the next scan prunes the
+   base and sheds the resurrected row - consistent with the base-id carrier.
+4. ID HYGIENE (all 404, no row): `::c01`, `::c99999`, `::c1::c1`, `::c+1`, `::c1 ` (trailing
+   space), `::C1`, a fullwidth digit, `<zero-chapter audio>::c0`, plus AC4's own table (NUL before
+   and after the suffix, bare `::c`, video chapter, skipped-invalid index). Accepted and listed:
+   a unicode base `ünï-cödé_x::c2`, the last index `::c4`.
+5. Backup access: a member's `GET /api/admin/backup` -> 403 (other users' chapter likes ride
+   only the admin bundle). No route was added by the diff (`grep app\.(get|post|...)` on the diff:
+   none) - no new unauthenticated surface.
+6. Read-arm shaping: progress 150s/300s on the file -> `::c0` watched 100%, `::c2` watching 50%,
+   `::c4` new 0%; `watch=new|watching|watched` each list exactly that one; a file latch marks all
+   three `watched` and `watch=new` lists none. Decision: acceptable ("one file, one latch" - a
+   finished album's songs are finished); disclosed here, no change asked.
+
+### Mutants (verbatim counts; the builder's table re-derived, not trusted)
+
+Builder's: M1 7/6/1, M2 7/6/1, M3 7/6/1, M4 12/8/4, M5 12/7/5, M6 7/5/2, M7 7/6/1, M7b (filter arm
+only) 7/7/0 as claimed, M8 8/7/1, M10 8/5/3, M12 (tap-time target, against the corrected driver)
+8/7/1, M13 7/6/1, M14 7/6/1, M15 28/27/1, M16 12/11/1 - all KILLED as claimed. Mine, KILLED:
+S7 `delLikedByMedia` via `LIKE ?1 || '::c%'` (the `_` wildcard eats `aXb::c1`) 12/11/1; S8 drop
+`OR REPLACE` on the rekey 12/11/1; S9 rekey drops the `::c` suffix (`SET media_id = ?1`) 12/7/5;
+S19 chapter arm removed from `others` 7/2/5; KIND (above) 7/6/1; C4 Extras chapter-id without the
+audio gate 8/6/2; C5 row-heart lane always media 8/7/1; C6 `data-like-store` on chapter rows only
+8/7/1; C7 overlay inverted 8/5/3; C8 toast dropped 8/7/1.
+
+SURVIVED (each is a finding or a suspicion below): S13b, C10, C9, S14, S15.
+
+### Findings
+
+1. **WARNING** (presence-not-binding; lib/media/user-routes.js:375, the chapter arm's
+   `if (!track) continue;`). Deleting that guard keeps chapter-likes `7 pass 7 fail 0`; with it
+   deleted, my driver (like `mix::c4`, then `POST /api/videos/:id/chapters` with a 3-line manual
+   list) makes `GET /api/liked` answer **500** for that user - the whole Liked page. The plan's
+   disclosed rule "the read arm DROPS an index no longer in the expansion (no ghost)" therefore has
+   NO binding test; HEAD's behaviour is correct (measured: items `[]`, total 0, row still present),
+   but nothing holds it. Prescription: an AC test that likes `::c4`, re-chapters to 3 through the
+   real editor route, and asserts 200 + `[]` + total 0 + the row still in `getLiked` (both halves of
+   the disclosure: dropped from the read, NOT deleted from storage).
+2. **WARNING** (comment-porous source lock, AC11; test/unit/card-like.test.js). The grid heart's
+   `::c` arm (public/js/main.js:3242) is bound only by `mainSrc.includes(<the line>)`; commenting the
+   line out (`// if (kind === 'track' && ...`) keeps card-like `7 pass 7 fail 0` (C10) - the class
+   memory calls comment-porous (v1.50/v1.77/v1.133). No behavioural driver of a chapter UNLIKE from
+   the Liked grid exists anywhere under test/ (`grep -rl cardLikeEndpoint test` = that lock only),
+   so the very strand-the-row bug this arm fixes has no repro. Prescription: strip comments before
+   the lock (the existing pattern) AND drive the grid heart on a `kind:'track'` `::c` card in jsdom
+   asserting `DELETE /api/liked/<id>::c2` (never `/api/music/liked/`).
+3. **WARNING, safe to ship DISCLOSED** (index-keyed likes after a re-chapter; the brief's item 4).
+   Measured with a member: like `::c4` -> stats.inventory.liked 1 / `/api/liked` total 1; after the
+   editor writes 3 chapters: stats.inventory.liked **1** while `/api/liked` total **0**, the home
+   sidebar's Liked entry HIDES (`fetchLikedTotal` gates on total > 0), and the row is reachable by
+   no UI - only a hand-built `DELETE /api/liked/<id>::c4` removes it (measured 200). A reorder
+   re-points `::c1` from "Second Song" to "Opening" in the Liked list (measured). Not data LOSS
+   (the row persists; a later edit restoring the index revives it) but a storage-kind stranding the
+   plan's disclosure covers only half of: it names the re-point, not the stats/total disagreement
+   nor "no UI can remove it". Ask: extend the disclosed-limits entry with both facts and open a
+   tracker issue (candidate fix later: count `/api/stats` through the same expansion membership, or
+   sweep stale-index rows in the chapters editor's own post-commit seam). Not blocking on its own.
+4. **SUGGESTION** (unbound failure arm; public/js/music.js extrasFetchItem). The comment "a failed
+   overlay reads as not liked: the tap is then an idempotent ADD, never a silent unlike" has no
+   test: mutant C9 (`item.liked = track ? track.liked === true : true`, i.e. a failed overlay reads
+   as LIKED so the tap DELETEs) survives `8 pass 8 fail 0`. Drive: answer `GET /api/music/<c1>` with
+   404 and assert the row shows "Like" and the tap is a POST.
+5. **SUGGESTION / suspicion, closed** (unreachable): the shaping arm's `item.type !== 'audio'` gate
+   is unbound (S14 survives 7/7) because POST never stores a video chapter; only a type flip of an
+   existing base on rescan could reach it. And a media id that itself ends in `::c<digits>` would be
+   unlikeable as a whole (`ab::c1` -> 404 since the parser strips it) and `removeMediaState('ab')`
+   would eat `ab::c1::c0` - unreachable because `getMediaId` is md5 hex (server.js:1469). No action;
+   recorded so the next reader does not re-derive it. S15 (shaping visibility gate dropped, filter
+   arm kept) survives by design - the belt-and-suspenders pair the builder's M7b documents.
+
+### Tree proof
+
+Sandbox files restored and `cmp`-identical to `git show HEAD:` after every mutant (user-routes,
+store, server.js, media/routes, libraryAudio, main.js, music.js each printed "restored"); my two
+driver files and the S13 repro deleted from the sandbox. Worktree `git status --short` before this
+append: only `M docs/exec-plans/active/2026-09-23-chapter-likes.md` (the qa and security-brief
+sections); no untracked files; HEAD 3f6ce330. This section is my only write.
+
+Gate: CHANGES r1 @3f6ce330 — adversary (see findings)
