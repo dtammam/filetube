@@ -185,3 +185,79 @@ test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneo
   assert.ok(subSheetField);
   assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(subSheetField[1])[1]), 13);
 });
+
+// ---- census: every CLASSED text-entry control in the shells ------------------
+// Gate r1 (lock-audio-measure, qa W2): the tests above are a hand-picked list of
+// surfaces, so a NEW control whose class sets a small font-size never enters it -
+// the timing log's fallback <textarea class="bg-timing-log-text"> shipped at 10px
+// on mobile, because a class selector outranks the v1.26.2 bare-element floor
+// (`input, select, textarea` in the max-width: 768px block). This census closes
+// that hole for every classed <input>/<select>/<textarea> in public/*.html: a
+// class that an unconditional rule sizes under 16px must be lifted back to
+// >=16px by a rule inside the mobile block. Rules are walked with their @media
+// context (comments stripped first).
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
+function cssRulesWithMedia(source) {
+  const rules = [];
+  (function walk(src, media) {
+    let i = 0;
+    while (i < src.length) {
+      const open = src.indexOf('{', i);
+      if (open < 0) break;
+      const head = src.slice(i, open).trim();
+      let depth = 1;
+      let j = open + 1;
+      while (j < src.length && depth) { if (src[j] === '{') depth++; else if (src[j] === '}') depth--; j++; }
+      const body = src.slice(open + 1, j - 1);
+      if (head.startsWith('@media')) walk(body, media.concat(head));
+      else if (!head.startsWith('@')) rules.push({ selectors: head.split(';').pop().split(',').map((x) => x.trim()), body, media });
+      i = j;
+    }
+  })(source.replace(/\/\*[\s\S]*?\*\//g, ''), []);
+  return rules;
+}
+function classedEntryControls() {
+  const out = [];
+  for (const file of fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.html'))) {
+    const html = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
+    const re = /<(textarea|select|input)\b([^>]*)>/g;
+    let m;
+    while ((m = re.exec(html))) {
+      if (m[1] === 'input') {
+        const type = /\btype="([^"]+)"/.exec(m[2]);
+        if (type && !/^(text|search|url|email|number|password|tel|date|time)$/.test(type[1])) continue; // no keyboard, no zoom
+      }
+      const cls = /\bclass="([^"]+)"/.exec(m[2]);
+      if (cls) for (const c of cls[1].split(/\s+/).filter(Boolean)) out.push({ cls: c, tag: m[1], file });
+    }
+  }
+  return out;
+}
+// Pre-existing, filed rather than fixed here: the Music and Books sort
+// <select class="btn btn-sm"> (tracker #252).
+const ZOOM_CENSUS_KNOWN = { btn: '#252' };
+
+test('census: every classed input/select/textarea in public/*.html that a class rule sizes under 16px is lifted to >=16px on mobile', () => {
+  const rules = cssRulesWithMedia(css);
+  const controls = classedEntryControls();
+  assert.ok(controls.some((c) => c.cls === 'bg-timing-log-text'), 'precondition: the census sees the timing-log text box');
+  const offenders = [];
+  const seen = new Set();
+  for (const { cls, tag, file } of controls) {
+    if (seen.has(cls) || ZOOM_CENSUS_KNOWN[cls]) continue;
+    seen.add(cls);
+    const hit = new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])');
+    let small = null;
+    let floored = false;
+    for (const r of rules) {
+      const fsDecl = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(r.body);
+      if (!fsDecl || !r.selectors.some((sel) => hit.test(sel))) continue;
+      const trimmed = fsDecl[1].trim().replace(/\s*!important$/, '');
+      if (!/^(var\(--fs-[a-z0-9-]+\)|[0-9]+px)$/.test(trimmed)) continue;
+      const px = resolveFontSizePx(trimmed);
+      if (r.media.some((q) => /max-width:\s*768px/.test(q))) { if (px >= 16) floored = true; } else if (!r.media.length && px < 16) small = px;
+    }
+    if (small !== null && !floored) offenders.push('.' + cls + ' (' + tag + ' in ' + file + ') computes ' + small + 'px on mobile');
+  }
+  assert.deepStrictEqual(offenders, [], 'add each to the v1.26.2 mobile floor list (style.css, beside .comment-input-box)');
+});
