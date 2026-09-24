@@ -186,6 +186,110 @@ test('v1.317 host: the CLEAR axis on a POPULATED glow - pause, the cog toggle, a
   }
 });
 
+// gate r1 (qa W1 / adversary W3): the music view reloads the SAME media element on every
+// track change - player.js teardownMediaState: 'pause' + 'emptied' at readyState 0 (the
+// browser has already reset it when the queued events fire), then the new src's
+// 'loadeddata' + 'playing' at readyState 4. The hold (loadHoldMs) keeps a LIT glow across
+// that gap; every other axis still clears, a real pause (readyState 4) and a natural end
+// clear at once, and the gap is bounded by the hold timer.
+function fakeTimers() {
+  const t = [];
+  return {
+    list: t,
+    setTimeout: (fn, ms) => { t.push({ fn, ms, cleared: false }); return t.length; },
+    clearTimeout: (id) => { if (t[id - 1]) t[id - 1].cleared = true; },
+    live: () => t.filter((x) => !x.cleared && !x.fired),
+    fireLive: () => { const x = t.find((y) => !y.cleared && !y.fired); x.fired = true; x.fn(); },
+  };
+}
+function loadGap(r) {
+  r.state.paused = true; r.state.ended = false; r.state.readyState = 0; r.state.currentTime = 0;
+  r.media.dispatchEvent(new r.W.Event('pause'));
+  r.media.dispatchEvent(new r.W.Event('emptied'));
+}
+function newSrcPlays(r) {
+  r.state.readyState = 4; r.state.paused = false;
+  r.media.dispatchEvent(new r.W.Event('loadeddata'));
+  r.media.dispatchEvent(new r.W.Event('playing'));
+}
+
+test('v1.317 gate r1 host: the LOAD-GAP hold - a lit glow survives pause + emptied at readyState 0 and the new src playing, with ONE bounded timer that the resume clears', async () => {
+  const r = realm({ pref: '1' });
+  const T = fakeTimers();
+  try {
+    const h = watchHost(r, { loadHoldMs: 5000, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout });
+    loadGap(r); // a gap BEFORE anything is lit (the first load) holds nothing
+    assert.strictEqual(T.list.length, 0, 'an UNLIT glow arms no hold');
+    assert.strictEqual(r.anyLit(), false);
+    r.state.readyState = 4; r.play(); await settleN();
+    assert.ok(r.lit() && r.painted(), 'precondition: lit and populated');
+    loadGap(r);
+    assert.ok(r.lit(), 'mid-gap: is-on, unhidden, root signal still set');
+    assert.strictEqual(h.engine.running(), true, 'the engine keeps its clock (the next cover cross-fades in)');
+    assert.strictEqual(T.live().length, 1, 'one hold timer, armed at the gap\'s first event (not re-armed by the second)');
+    assert.strictEqual(T.live()[0].ms, 5000, 'bounded by loadHoldMs');
+    newSrcPlays(r);
+    assert.ok(r.lit(), 'the new src plays: lit');
+    assert.strictEqual(T.live().length, 0, 'the resume cleared the hold timer');
+  } finally { r.restore(); }
+});
+
+test('v1.317 gate r1 host: the hold never swallows a real clear - the bound, a pause DURING the gap, a user pause, a natural end, light, a hidden tab and the view gate each clear', async () => {
+  const cases = [
+    ['the bound passes with nothing playing', (r, T) => { loadGap(r); assert.ok(r.lit(), 'held first'); T.fireLive(); }],
+    ['a user pause during the gap (data arrives paused)', (r) => { loadGap(r); assert.ok(r.lit(), 'held first'); r.state.readyState = 4; r.media.dispatchEvent(new r.W.Event('loadeddata')); }],
+    ['a user pause at readyState 4', (r) => { r.pause(); }],
+    ['a natural end (pause then ended, readyState 4)', (r) => { r.state.ended = true; r.state.paused = true; r.media.dispatchEvent(new r.W.Event('pause')); r.media.dispatchEvent(new r.W.Event('ended')); }],
+    ['a flip to light during the gap', async (r) => { loadGap(r); r.D.documentElement.setAttribute('data-mode', 'light'); await settle(); }],
+    ['a hidden tab during the gap', (r) => { loadGap(r); Object.defineProperty(r.D, 'hidden', { get: () => true, configurable: true }); r.D.dispatchEvent(new r.W.Event('visibilitychange')); }],
+    ['the view gate false during the gap (a dock)', (r, T, gate, h) => { loadGap(r); gate.ok = false; h.evaluate(); }],
+  ];
+  for (const [label, clear] of cases) {
+    const r = realm({ pref: '1' });
+    const T = fakeTimers();
+    const gate = { ok: true };
+    try {
+      const h = watchHost(r, { loadHoldMs: 5000, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout, canRun: () => gate.ok });
+      r.state.readyState = 4; r.play(); await settleN();
+      assert.ok(r.lit(), label + ': precondition lit');
+      await clear(r, T, gate, h); await settleN();
+      assert.strictEqual(r.anyLit(), false, label + ': cleared (is-on off, hidden, root signal gone)');
+      assert.strictEqual(h.engine.running(), false, label + ': the engine clock stopped');
+      assert.strictEqual(T.live().length, 0, label + ': no hold timer left armed');
+    } finally { r.restore(); }
+  }
+});
+
+test('v1.317 gate r1 host: WITHOUT loadHoldMs (the watch view) the gap clears exactly as v1.312 did, and no loadeddata listener is bound', async () => {
+  const r = realm({ pref: '1' });
+  try {
+    watchHost(r);
+    r.state.readyState = 4; r.play(); await settleN();
+    assert.ok(r.lit(), 'precondition: lit');
+    assert.strictEqual(r.bound.some((b) => b.target === r.media && b.type === 'loadeddata'), false, 'watch binds no loadeddata');
+    loadGap(r);
+    assert.strictEqual(r.anyLit(), false, 'watch: not playing = cleared at once (unchanged)');
+  } finally { r.restore(); }
+});
+
+test('v1.317 gate r1 host (adversary S3): a view with no glow or no Ambient toggle gets NO host - nothing bound, nothing observed, nothing lit', () => {
+  for (const [label, drop] of [['no toggle (a mount without the cog menu)', 'check'], ['no glow pair', 'glow']]) {
+    const r = realm({ pref: '1' });
+    try {
+      r.slot.appendChild(r.media);
+      r.state.paused = false;
+      const c = r.row();
+      const o = { glow: r.glow, check: c.check, row: c.row, getMedia: () => r.media, signal: r.ctl.signal };
+      o[drop] = null;
+      const before = r.bound.length;
+      assert.strictEqual(A.createAmbientHost(o), null, label + ': null');
+      assert.strictEqual(r.bound.length, before, label + ': no listener bound');
+      assert.strictEqual(r.observers.length, 0, label + ': no observer');
+      assert.strictEqual(r.anyLit(), false, label + ': nothing lit');
+    } finally { r.restore(); }
+  }
+});
+
 test('v1.317 host: the cog toggle writes the SHARED pref key both ways, and a light theme hides the row', async () => {
   const r = realm({ pref: '0' });
   try {

@@ -37,6 +37,7 @@ const REPO = path.join(__dirname, '..', '..');
 const AMBIENT_JS = fs.readFileSync(path.join(REPO, 'public/js/ambient.js'), 'utf8');
 const WATCH_JS = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
 const MUSIC_HTML = fs.readFileSync(path.join(REPO, 'public/music.html'), 'utf8');
+const MUSIC_JS = fs.readFileSync(path.join(REPO, 'public/js/music.js'), 'utf8');
 const WATCH_HTML = fs.readFileSync(path.join(REPO, 'public/watch.html'), 'utf8');
 const STYLE_CSS = fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8');
 
@@ -56,6 +57,23 @@ const STRIPPED_WATCH_JS = stripComments(WATCH_JS);
 const ENGINE_SRC = fnBody(STRIPPED_JS, 'function createAmbientEngine(opts) {', '');
 // The WIRING is the shared host now (v1.317 M4): watch and music both run through it.
 const WIRING_SRC = fnBody(STRIPPED_JS, 'function createAmbientHost(opts) {', '');
+// Gate r1 (adversary W2): EVERY ambient writer, not just the engine + host - the whole of
+// ambient.js (the row writer, the same-origin guard, anything added later), the watch view's
+// setupAmbientMode, and the music view's ambient block (the pure art helper, then from the
+// glow lookup through the end of syncAmbient). Each slice is anchored on a token that must
+// exist (a missing anchor fails loudly instead of scanning nothing).
+const STRIPPED_MUSIC_JS = stripComments(MUSIC_JS);
+const WATCH_AMBIENT_SRC = fnBody(STRIPPED_WATCH_JS, 'function setupAmbientMode() {', '    ');
+const MUSIC_AMBIENT_SRC = (() => {
+  const start = STRIPPED_MUSIC_JS.indexOf('    var ambientGlow = root.querySelector(');
+  assert.ok(start > 0, 'music.js: the ambient block starts at the glow lookup');
+  const sync = STRIPPED_MUSIC_JS.indexOf('    function syncAmbient() {', start);
+  assert.ok(sync > start, 'music.js: syncAmbient follows it');
+  const end = STRIPPED_MUSIC_JS.indexOf('\n    }', sync);
+  assert.ok(end > sync, 'music.js: syncAmbient closes');
+  return fnBody(STRIPPED_MUSIC_JS, 'function musicAmbientArtUrl(', '') + '\n' + STRIPPED_MUSIC_JS.slice(start, end);
+})();
+const ALL_AMBIENT_JS = [STRIPPED_JS, WATCH_AMBIENT_SRC, MUSIC_AMBIENT_SRC].join('\n');
 
 // A 40-frame, 10x4 storyboard for a 100s video: frame i at i*2.5s.
 const GEOM = { v: 1, interval: 2.5, count: 40, cols: 10, rows: 4, tileW: 320, tileH: 180 };
@@ -543,7 +561,7 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   assert.match(ENGINE_SRC, /c\.putImageData\(id, 0, 0\)[\s\S]*canvas\.toDataURL\('image\/png'\)/, 'written back, then encoded as a PNG');
   assert.match(ENGINE_SRC, /url\.indexOf\('data:image\/png'\) === 0/, 'anything but a PNG data URL is a failed sample (never a canvas/element() paint reference)');
   assert.match(ENGINE_SRC, /back\.style\.setProperty\('background-image', 'url\("' \+ dataUrl \+ '"\)'\)/, 'the back layer paints the bitmap as a plain background-image');
-  assert.doesNotMatch(ENGINE_SRC + WIRING_SRC, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint|gradient)\(/, 'no paint reference to a live canvas/element/paint worklet/gradient in any STRING the ambient JS writes (#232: gradient( joined the list - the v1.313 glow is a bitmap, never a gradient)');
+  assert.doesNotMatch(ALL_AMBIENT_JS, /-webkit-canvas|-moz-element|['"][^'"\n]*(?:element|image-set|cross-fade|paint|gradient)\(/, 'no paint reference to a live canvas/element/paint worklet/gradient in any STRING the ambient JS writes (#232: gradient( joined the list - the v1.313 glow is a bitmap, never a gradient)');
   // Tracker #232 (v1.313 gate r2 note): the lock is SCOPED to style writes, so an
   // unrelated `arr.filter(...)`, a `transform` in a variable name or a trailing
   // `// no transform` comment can never false-trip it, while `style.webkitFilter`,
@@ -551,7 +569,13 @@ test('v1.312 SOURCE LOCK: no drawImage from a media element anywhere in the ambi
   // (gate r1 adversary F3: the vendor camelCase slipped a case-sensitive lock) still
   // do. Trailing `//` comments are stripped first (the standing comment-porosity
   // lesson: stripComments drops only full-line comments).
-  const jsSrc = (ENGINE_SRC + '\n' + WIRING_SRC).replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  // Gate r1 (adversary W2): the scan covers EVERY ambient writer (ALL_AMBIENT_JS above), so a
+  // style write in the row writer, the watch view's setupAmbientMode or music's syncAmbient
+  // block trips it too.
+  assert.match(ALL_AMBIENT_JS, /function ensureAmbientToggleRow\(doc\)/, 'the scan includes the row writer');
+  assert.match(WATCH_AMBIENT_SRC, /ambient\.createAmbientHost\(\{/, 'the scan includes the watch view\'s host call');
+  assert.match(MUSIC_AMBIENT_SRC, /function syncAmbient\(\) \{[\s\S]*A\.createAmbientHost\(\{[\s\S]*signal: signal,/, 'the scan includes the music view\'s whole syncAmbient');
+  const jsSrc = ALL_AMBIENT_JS.replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
   // Gate r1 (adversary W3 / qa W2): compound assignment (+=, ||=, ??=) is a write
   // too, and a style write can hide behind an alias, Object.assign, or a
   // non-literal setProperty name - those forms are banned outright below.
@@ -598,10 +622,22 @@ test('v1.312 WIRING LOCK (v1.317: the shared host): createAmbientHost builds the
   const stopFn = fnBody(WIRING_SRC, 'function stop() {', '  ');
   assert.match(startFn, /glow\.hidden = false;[\s\S]*glow\.classList\.add\('is-on'\)[\s\S]*doc\.documentElement\.setAttribute\('data-ambient-on', ''\)[\s\S]*engine\.start\(\)/, 'start: reveal, is-on, the sidebar signal, then the engine');
   assert.match(stopFn, /engine\.stop\(\)[\s\S]*classList\.remove\('is-on'\)[\s\S]*glow\.hidden = true;[\s\S]*doc\.documentElement\.removeAttribute\('data-ambient-on'\)/, 'stop: the engine, is-on, hide, the sidebar signal');
-  assert.match(WIRING_SRC, /if \(shouldRun\(\)\) start\(\); else stop\(\);/, 'the one gate');
+  const evaluateFn = fnBody(WIRING_SRC, 'function evaluate() {', '  ');
+  assert.match(evaluateFn, /if \(shouldRun\(\)\) start\(\);\s*else if \(inLoadGap\(\)\) \{ if \(holdTimer == null\) holdTimer = setHoldT\(holdExpired, loadHoldMs\); \}\s*else stop\(\);/, 'the one gate: run, else HOLD a lit glow across the player\'s own load gap (bounded, armed once), else tear down');
+  // gate r1 (qa W1 / adversary W3): the hold is opt-in, needs a LIT glow, a real load gap
+  // (readyState below 2, not ended) and every OTHER axis still true; start/stop end it.
+  const gapFn = fnBody(WIRING_SRC, 'function inLoadGap() {', '  ');
+  assert.match(gapFn, /if \(!loadHoldMs \|\| !glow\.classList\.contains\('is-on'\)\) return false;/, 'no hold unless the view opted in AND the glow is lit');
+  assert.match(gapFn, /if \(!media \|\| !\(media\.readyState < 2\)\) return false;/, 'a real pause or a natural end (both at readyState 2+) is never a gap');
+  assert.match(gapFn, /ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: true, docVisible: !doc\.hidden \}\) && !!canRun\(\)/, 'every other axis must still hold');
+  assert.match(WIRING_SRC, /var loadHoldMs = opts\.loadHoldMs > 0 \? opts\.loadHoldMs : 0;/, 'opt-in: the watch view passes none (its v1.312 behavior)');
+  assert.match(fnBody(WIRING_SRC, 'function holdExpired() {', '  '), /holdTimer = null;\s*if \(shouldRun\(\)\) start\(\); else stop\(\);/, 'the bound re-decides');
+  assert.match(fnBody(WIRING_SRC, 'function start() {', '  '), /^function start\(\) \{\s*clearHold\(\);/, 'start ends a hold');
+  assert.match(fnBody(WIRING_SRC, 'function stop() {', '  '), /^function stop\(\) \{\s*clearHold\(\);/, 'stop (so teardown, light, a hard fail) ends a hold');
   assert.match(WIRING_SRC, /ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: currentlyPlaying\(\), docVisible: !doc\.hidden \}\) && !!canRun\(\)/, 'the pure predicate, all four axes, AND the view\'s own gate');
   assert.match(WIRING_SRC, /var canRun = typeof opts\.canRun === 'function' \? opts\.canRun : function \(\) \{ return true; \};/, 'a view without its own gate (watch) runs on the four axes alone - exactly as before v1.317');
   for (const ev of ['play', 'playing', 'pause', 'ended', 'emptied']) assert.match(WIRING_SRC, new RegExp("media\\.addEventListener\\('" + ev + "', evaluate, \\{ signal: mediaSignal \\}\\)"), ev + ' re-evaluates');
+  assert.match(WIRING_SRC, /if \(loadHoldMs\) media\.addEventListener\('loadeddata', evaluate, \{ signal: mediaSignal \}\);/, 'a holding view also re-decides when the new src\'s data lands');
   assert.match(WIRING_SRC, /doc\.addEventListener\('visibilitychange', evaluate, \{ signal: signal \}\)/, 'tab hide/show re-evaluates');
   assert.match(WIRING_SRC, /attributeFilter: \['data-mode', 'data-theme'\]/, 'a theme flip re-evaluates');
   assert.match(WIRING_SRC, /signal\.addEventListener\('abort', teardown, \{ once: true \}\)/, 'the view abort runs the teardown');

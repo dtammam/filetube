@@ -451,6 +451,12 @@ function ensureAmbientToggleRow(doc) {
   return { row: d.getElementById('ambient-toggle-row'), check: check };
 }
 
+// v1.317 M4 gate r1: the longest a LIT glow is held across the player's own load gap
+// (createAmbientHost loadHoldMs, music only). A track change on a local library loads in
+// well under a second; the bound only matters when the next src never plays (a load
+// error, a stalled network), and then the glow clears this long after the gap began.
+var AMBIENT_LOAD_HOLD_MS = 8000;
+
 // v1.317 M4: THE HOST - the v1.312 watch wiring (setupAmbientMode) factored out so a
 // second view drives the same engine through the same funnel. Paints ONLY when
 // ambientShouldRun (the user turned it on, the theme is DARK, the media is playing, the
@@ -472,8 +478,13 @@ function ensureAmbientToggleRow(doc) {
 //                #player-slot the host is appended into / moved out of on dock)
 //   signal       the view's AbortController signal: every listener and observer dies
 //                with it, and the abort stops the engine and clears the DOM state
+//   loadHoldMs   optional (music): HOLD a lit glow across the player's own load gap
+//                for up to this long (below); 0 / absent = no hold (watch: a new item
+//                is a new view, so its behavior is the v1.312 one, byte for byte)
 //   loadImage, makeCanvas  optional overrides (unit tests); defaults below
-// Returns { evaluate, stop, engine } or null when the view has no glow / toggle.
+//   setTimeout, clearTimeout  optional overrides for the hold timer (unit tests)
+// Returns { evaluate, stop, engine } or null when the view has no glow / toggle (a
+// view mounted without the cog menu or its glow pair: nothing to bind, nothing to light).
 function createAmbientHost(opts) {
   var doc = opts.doc || document;
   var glow = opts.glow;
@@ -481,6 +492,7 @@ function createAmbientHost(opts) {
   var row = opts.row;
   var signal = opts.signal;
   if (!check || !glow) return null;
+  // (gate r1 adversary S3: bound by ambient-host "no glow or no toggle: no host".)
   // A view that already tore down (a late async seam in a dead init closure - a slow
   // fetch that lands after the soft-nav) must never build a live host: its listeners
   // would bind to an aborted signal (a no-op) while the observers and the engine ran
@@ -488,6 +500,9 @@ function createAmbientHost(opts) {
   if (signal && signal.aborted) return null;
   var getMedia = typeof opts.getMedia === 'function' ? opts.getMedia : function () { return null; };
   var canRun = typeof opts.canRun === 'function' ? opts.canRun : function () { return true; };
+  var loadHoldMs = opts.loadHoldMs > 0 ? opts.loadHoldMs : 0;
+  var setHoldT = typeof opts.setTimeout === 'function' ? opts.setTimeout : setTimeout;
+  var clearHoldT = typeof opts.clearTimeout === 'function' ? opts.clearTimeout : clearTimeout;
 
   // Dark-only: reveal the toggle row only in a dark theme; a light theme
   // hides the control and guarantees the effect is off.
@@ -508,6 +523,34 @@ function createAmbientHost(opts) {
   }
   function shouldRun() {
     return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(doc), playing: currentlyPlaying(), docVisible: !doc.hidden }) && !!canRun();
+  }
+  // v1.317 M4 gate r1 (qa W1 / adversary W3): a view that advances WITHOUT a reload (music:
+  // the next track loads into the SAME media element) passes through the player's own
+  // load gap on every track change - player.js teardownMediaState pauses the element and
+  // empties it (removeAttribute('src') + load(): 'pause' + 'emptied' at readyState 0),
+  // then the new src plays. Read literally, "not playing" would drop a LIT glow and the
+  // root sidebar signal for the whole gap and re-light after it (a blink per track).
+  // So while the glow is lit, the element is in that gap (readyState below
+  // HAVE_CURRENT_DATA) and every OTHER axis still holds (pref, dark, visible, the view's
+  // own gate), the host keeps its lit state - the engine keeps its clock, so the new
+  // cover cross-fades in - for at most loadHoldMs, then re-decides. A real user pause and
+  // a natural end ('pause' then 'ended') happen at readyState 2+: not a gap, they clear
+  // at once.
+  function inLoadGap() {
+    if (!loadHoldMs || !glow.classList.contains('is-on')) return false;
+    var media = getMedia();
+    if (!media || !(media.readyState < 2)) return false;
+    return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(doc), playing: true, docVisible: !doc.hidden }) && !!canRun();
+  }
+  var holdTimer = null;
+  function clearHold() {
+    if (holdTimer != null) clearHoldT(holdTimer);
+    holdTimer = null;
+  }
+  // (a torn host never gets here: teardown's stop() cancels the timer)
+  function holdExpired() {
+    holdTimer = null;
+    if (shouldRun()) start(); else stop(); // the bound: nothing resumed -> the gap is over, clear
   }
 
   // Same-origin images only (the sprite / thumbnail / tv poster / album art routes), so
@@ -541,6 +584,7 @@ function createAmbientHost(opts) {
   });
 
   function start() {
+    clearHold();
     if (engine.hardFailed()) return;
     if (engine.running()) return;
     glow.hidden = false;
@@ -555,6 +599,7 @@ function createAmbientHost(opts) {
     engine.start();
   }
   function stop() {
+    clearHold();
     engine.stop();
     glow.classList.remove('is-on');
     glow.hidden = true;
@@ -577,6 +622,9 @@ function createAmbientHost(opts) {
     media.addEventListener('pause', evaluate, { signal: mediaSignal });
     media.addEventListener('ended', evaluate, { signal: mediaSignal });
     media.addEventListener('emptied', evaluate, { signal: mediaSignal });
+    // the hold's other exit: data for the new src arrived - playing re-decides at 'playing',
+    // and a user who paused DURING the gap is cleared here (readyState 2+ and paused)
+    if (loadHoldMs) media.addEventListener('loadeddata', evaluate, { signal: mediaSignal });
   }
   // The one gate everything funnels through: run iff eligible, else tear down. After
   // the view's teardown nothing may re-light it: a late async seam of the dead view (a
@@ -586,7 +634,11 @@ function createAmbientHost(opts) {
     if (torn) return;
     bindMedia();
     syncRowVisibility();
-    if (shouldRun()) start(); else stop();
+    // run; else HOLD a lit glow across the player's own load gap (the timer is armed at the
+    // gap's FIRST event, so the bound never extends); else tear down
+    if (shouldRun()) start();
+    else if (inLoadGap()) { if (holdTimer == null) holdTimer = setHoldT(holdExpired, loadHoldMs); }
+    else stop();
   }
 
   check.addEventListener('change', function () {
@@ -626,6 +678,7 @@ function createAmbientHost(opts) {
 }
 
 var FileTubeAmbientApi = {
+  AMBIENT_LOAD_HOLD_MS: AMBIENT_LOAD_HOLD_MS,
   isAmbientEnabled: isAmbientEnabled,
   ambientStorageValue: ambientStorageValue,
   ambientShouldRun: ambientShouldRun,

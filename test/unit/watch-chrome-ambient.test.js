@@ -204,9 +204,18 @@ test('v1.188 ambient bleeds over the LEFT BAR: root data-ambient-on toggled at t
   const fn = AMBIENT_JS.slice(AMBIENT_JS.indexOf('function createAmbientHost'), AMBIENT_JS.indexOf('\nvar FileTubeAmbientApi'));
   // Set in start() and cleared in stop() - the SAME funnel as the glow's is-on,
   // so the root signal tracks ambient exactly (and clears on teardown/light).
-  const startFn = fn.slice(fn.indexOf('function start()'), fn.indexOf('function stop()'));
-  const stopFn = fn.slice(fn.indexOf('function stop()'), fn.indexOf('var boundMedia'));
-  assert.ok(startFn.length > 0 && stopFn.length > 0, 'start/stop found in the host');
+  // Gate r1 (qa S2 / adversary S1): each span ends at ITS OWN closing brace (a missing
+  // end anchor used to run stop() to the end of the host, so a removal moved into
+  // teardown() still matched here).
+  const own = (header) => {
+    const a = fn.indexOf(header);
+    assert.ok(a > 0, header + ' found in the host');
+    const b = fn.indexOf('\n  }', a);
+    assert.ok(b > a, header + ' closes');
+    return fn.slice(a, b);
+  };
+  const startFn = own('function start() {');
+  const stopFn = own('function stop() {');
   assert.match(startFn, /glow\.classList\.add\('is-on'\)/, 'start still arms the glow');
   assert.match(startFn, /doc\.documentElement\.setAttribute\('data-ambient-on', ''\)/, 'start sets the root signal');
   assert.match(stopFn, /glow\.classList\.remove\('is-on'\)/, 'stop still disarms the glow');

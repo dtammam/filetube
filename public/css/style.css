@@ -9032,7 +9032,7 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
    drawImage(video) under a blurred + masked + scaled composited layer - both
    known iOS video/canvas/GPU-process breakage shapes. Now: NO filter, NO
    transform, NO mask, NO will-change on anything here. The glow is a div pair;
-   watch.js draws the storyboard sprite tile / the poster OFF-DOM onto a tiny
+   ambient.js draws the storyboard sprite tile / the poster OFF-DOM onto a tiny
    bitmap standing for this whole box, vignettes its alpha (opaque at the
    player's edge, transparent at this box's edge, rounded at the corners) and
    sets the PNG data URL as the layer's background-image at 100% 100% - the
@@ -9128,7 +9128,7 @@ body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: n
     right: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
   }
 }
-/* One layer = one painted source. watch.js sets the vignetted PNG data URL as
+/* One layer = one painted source. ambient.js sets the vignetted PNG data URL as
    the BACK layer's background-image, then swaps `is-front`, so a tile change is
    a cross-fade, never a pop (YouTube cross-fades two canvases continuously, one
    swap per ~3.5s). v1.314 (Dean: "ambient changes too much and is slow"): the

@@ -928,6 +928,10 @@ if (typeof module !== 'undefined' && module.exports) {
       return !!ambientCurrentArt();
     }
     function syncAmbient() {
+      // gate r1 (qa S3): a late seam of a DEAD view (a slow ?play= fetch after the soft-nav)
+      // must not even write the cog row into the persistent host - the host would refuse to
+      // build, but ensureAmbientToggleRow runs first.
+      if (signal.aborted) return;
       var A = window.FileTubeAmbient;
       if (!A || !ambientGlow) return;
       if (ambientHost) { ambientHost.evaluate(); return; }
@@ -942,6 +946,10 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaId: null, // art-only: the id reaches the engine through the art URL (base id), re-read per clock
         canRun: ambientEligible,
         observe: ambientSlot, // expand / dock / close move the player host in or out of this slot
+        // gate r1 (qa W1 / adversary W3): every track change reloads the SAME media element
+        // (pause + emptied at readyState 0, then the new src plays) - hold the lit glow and
+        // the root sidebar signal across that gap instead of blinking them off per track.
+        loadHoldMs: A.AMBIENT_LOAD_HOLD_MS,
         signal: signal,
       });
     }

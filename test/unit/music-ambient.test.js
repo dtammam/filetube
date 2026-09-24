@@ -89,7 +89,7 @@ async function boot(opts) {
   const D = W.document;
   D.documentElement.setAttribute('data-mode', opts.mode || 'dark');
   D.body.setAttribute('data-view', 'music');
-  const savedKeys = ['window', 'document', 'localStorage', 'fetch', 'AbortController', 'MutationObserver', 'Image', 'location'];
+  const savedKeys = ['window', 'document', 'localStorage', 'fetch', 'AbortController', 'MutationObserver', 'Image', 'location', 'requestAnimationFrame'];
   const saved = {};
   for (const k of savedKeys) saved[k] = global[k];
   // Browser collaborators, each observable.
@@ -149,11 +149,12 @@ async function boot(opts) {
     if (one) { const t = tracks.find((x) => x.id === decodeURIComponent(one[1])); return t ? json(t) : Promise.resolve({ ok: false, status: 404, json: async () => ({}) }); }
     return json({ items: [] });
   };
-  Object.assign(global, { window: W, document: D, localStorage: W.localStorage, fetch: fetchImpl, AbortController: W.AbortController, MutationObserver: SpyMO, Image: FakeImage, location: W.location });
+  // requestAnimationFrame: music.js's own 'emptied' listener (the real load gap fires it) reads the global
+  Object.assign(global, { window: W, document: D, localStorage: W.localStorage, fetch: fetchImpl, AbortController: W.AbortController, MutationObserver: SpyMO, Image: FakeImage, location: W.location, requestAnimationFrame: W.requestAnimationFrame.bind(W) });
   W.fetch = fetchImpl;
   // The player: clones the REAL template host once (player.js ensureHost) and reparents it
   // into the slot on a select / into the dock (load / dock / expand), like the real one.
-  const ps = { state: 'closed', host: null, media: null, meta: null, playing: { paused: true, ended: false, readyState: 4, currentTime: 0 } };
+  const ps = { state: 'closed', host: null, media: null, meta: null, srcId: null, playing: { paused: true, ended: false, readyState: 4, currentTime: 0 } };
   function ensureHost() {
     if (ps.host) return ps.host;
     ps.host = D.getElementById('player-host-template').content.cloneNode(true).querySelector('#player-wrapper');
@@ -172,7 +173,22 @@ async function boot(opts) {
     expand: (slot) => { ensureHost(); slot.appendChild(ps.host); ps.state = 'full'; },
     dock: () => { D.getElementById('player-dock').appendChild(ps.host); ps.state = 'docked'; },
     load: (id, data, o) => {
+      const hadSrc = !!ps.host && ps.srcId != null;
       ensureHost();
+      // player.js load() on the SAME element (gate r1 qa W1): teardownMediaState pauses it
+      // and empties it (removeAttribute('src') + load()), so 'pause' (if it was playing) and
+      // 'emptied' are QUEUED at readyState HAVE_NOTHING - they fire after this task, like the
+      // browser's media-element tasks - and the new src reaches readyState 4 only at c.play().
+      const wasPlaying = !ps.playing.paused;
+      ps.playing.paused = true; ps.playing.ended = false; ps.playing.readyState = 0; ps.playing.currentTime = 0;
+      ps.srcId = id;
+      if (hadSrc) {
+        const m = ps.media;
+        setImmediate(() => {
+          if (wasPlaying) m.dispatchEvent(new W.Event('pause'));
+          m.dispatchEvent(new W.Event('emptied'));
+        });
+      }
       if (o && o.slot) { o.slot.appendChild(ps.host); ps.state = 'full'; } else { D.getElementById('player-dock').appendChild(ps.host); ps.state = 'docked'; }
       player.currentId = id;
       ps.meta = { isMusic: true, id, title: data.title, artist: data.channelName, album: data.album, albumKey: data.albumKey };
@@ -208,7 +224,14 @@ async function boot(opts) {
       row.dispatchEvent(new W.MouseEvent('click', { bubbles: true }));
       await settleN();
     },
-    async play() { ps.playing.paused = false; ps.media.dispatchEvent(new W.Event('playing')); await settleN(); },
+    // the new src's data arrives (readyState 4: 'loadeddata' when it was loading), then 'playing'
+    async play() {
+      const loading = ps.playing.readyState < 2;
+      ps.playing.paused = false; ps.playing.readyState = 4;
+      if (loading) ps.media.dispatchEvent(new W.Event('loadeddata'));
+      ps.media.dispatchEvent(new W.Event('playing'));
+      await settleN();
+    },
     async pause() { ps.playing.paused = true; ps.media.dispatchEvent(new W.Event('pause')); await settleN(); },
     lit: () => glow().classList.contains('is-on') && !glow().hidden && D.documentElement.hasAttribute('data-ambient-on'),
     anyLit: () => !glow().hidden || glow().classList.contains('is-on') || D.documentElement.hasAttribute('data-ambient-on'),
@@ -274,6 +297,102 @@ test('v1.317 AC1c: a CHAPTER change inside one file keeps the same cover - the b
     await new Promise((r) => setTimeout(r, 1300)); // one engine clock
     assert.deepStrictEqual(c.loads, ['/thumbnail/yt1abcDEF'], 'the chapter change re-requested nothing (one file, one cover)');
     assert.ok(c.lit());
+  });
+});
+
+// ---- gate r1 (qa W1 / adversary W3 + W1): the per-advance seam, driven in its REAL shape --
+
+// Records every drop of the lit state while `run` executes: a MutationObserver on the glow's
+// hidden / class attributes and the root's data-ambient-on (a hide-then-show inside ONE task
+// still leaves its records), plus a sample of lit() after the host's own listener at each
+// media event of the change.
+async function watchLit(c, run) {
+  const drops = [];
+  const mo = new c.W.MutationObserver((recs) => {
+    for (const r of recs) {
+      if (r.target === c.D.documentElement && r.attributeName === 'data-ambient-on') drops.push('root signal ' + (r.oldValue === null ? 'set' : 'removed'));
+      else if (r.target === c.glow() && r.attributeName === 'hidden') drops.push('glow hidden toggled');
+      else if (r.target === c.glow() && r.attributeName === 'class' && !/\bis-on\b/.test(String(r.oldValue) + ' ' + c.glow().className)) drops.push('is-on dropped');
+    }
+  });
+  mo.observe(c.glow(), { attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class'] });
+  mo.observe(c.D.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['data-ambient-on'] });
+  const samples = [];
+  const ctl = new c.W.AbortController();
+  for (const ev of ['pause', 'emptied', 'loadeddata', 'playing']) c.ps.media.addEventListener(ev, () => samples.push(ev + ':' + (c.lit() ? 'lit' : 'DARK') + '@rs' + c.ps.media.readyState), { signal: ctl.signal });
+  try { await run(samples); } finally { await settle(); drops.push(...mo.takeRecords().filter((r) => r.attributeName === 'hidden' || r.attributeName === 'data-ambient-on').map((r) => 'late ' + r.attributeName)); mo.disconnect(); ctl.abort(); }
+  return { drops, samples };
+}
+
+test('v1.317 gate r1 (qa W1): a TRACK CHANGE through the real row tap - pause + emptied at readyState 0, then loadeddata + playing on the new src - never drops the glow or the root signal, and the NEXT cover replaces the old', async () => {
+  await withMusic({ pref: '1' }, async (c) => {
+    await c.tapRow('n1');
+    await c.play();
+    assert.ok(await until(() => c.painted() && c.lit()), 'precondition: lit on n1');
+    const firstPaint = c.glow().querySelector('.ambient-glow-layer.is-front').style.getPropertyValue('background-image');
+    const { drops, samples } = await watchLit(c, async (samples) => {
+      await c.tapRow('n2'); // music.js loadTrack -> player.load (the teardown) -> the per-advance seam
+      assert.strictEqual(c.player.currentId, 'n2');
+      assert.strictEqual(c.ps.media.readyState, 0, 'the REAL gap: the element was emptied');
+      assert.strictEqual(c.ps.media.paused, true);
+      assert.ok(c.lit(), 'mid-gap: still lit, root signal still set');
+      await c.play();
+      assert.ok(c.lit(), 'playing the new src: lit');
+    });
+    assert.deepStrictEqual(samples, ['pause:lit@rs0', 'emptied:lit@rs0', 'loadeddata:lit@rs4', 'playing:lit@rs4'], 'the real event sequence was driven, and lit held at every step');
+    assert.deepStrictEqual(drops, [], 'no hide, no is-on drop, no root-signal flicker across the change');
+    assert.ok(await until(() => c.loads.includes('/albumart/n2'), 6000), 'the next cover was requested (loads: ' + c.loads.join(',') + ')');
+    assert.ok(await until(() => {
+      const f = c.glow().querySelector('.ambient-glow-layer.is-front');
+      return f && f.style.getPropertyValue('background-image') !== firstPaint;
+    }, 8000), 'and the next cover REPLACED the old one on the front layer');
+    // the other axis, on the same populated glow: a REAL pause (readyState 4) still clears at once
+    await c.pause();
+    assert.strictEqual(c.anyLit(), false, 'a user pause is not a load gap: cleared immediately');
+  });
+});
+
+test('v1.317 gate r1: the load-gap hold is BOUNDED - a change whose new src never plays clears after the hold; a natural END clears at once', async () => {
+  await withMusic({ pref: '1', prep: ({ W }) => { W.FileTubeAmbient = Object.assign({}, AMBIENT, { AMBIENT_LOAD_HOLD_MS: 300 }); } }, async (c) => {
+    await c.tapRow('n1');
+    await c.play();
+    assert.ok(await until(() => c.lit()), 'precondition: lit');
+    await c.tapRow('n2'); // the gap begins ... and nothing ever plays
+    assert.ok(c.lit(), 'held through the gap');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(c.lit(), 'still held inside the bound');
+    assert.ok(await until(() => !c.anyLit(), 2000), 'cleared once the bound passed with nothing playing');
+    await c.play();
+    assert.ok(await until(() => c.lit()), 'the late play re-lights it');
+    // a natural end (the spec order: 'pause' then 'ended', both at readyState 4) is no gap
+    c.ps.playing.ended = true; c.ps.playing.paused = true;
+    c.ps.media.dispatchEvent(new c.W.Event('pause'));
+    c.ps.media.dispatchEvent(new c.W.Event('ended'));
+    await settleN();
+    assert.strictEqual(c.anyLit(), false, 'ended: cleared immediately');
+  });
+});
+
+test('v1.317 gate r1 (adversary W1): a real CHAPTER ROLL (the playhead crosses a chapter start, `timeupdate`, no row tap) keeps the glow lit and requests nothing new', async () => {
+  await withMusic({ pref: '1' }, async (c) => {
+    await c.tapRow('yt1abcDEF::c0');
+    await c.play();
+    assert.ok(await until(() => c.painted() && c.lit()), 'precondition: lit on chapter 1');
+    assert.deepStrictEqual(c.loads, ['/thumbnail/yt1abcDEF']);
+    const playingRow = () => { const r = c.D.querySelector('#music-content .music-song-row.playing'); return r && r.getAttribute('data-id'); };
+    assert.strictEqual(playingRow(), 'yt1abcDEF::c0');
+    const { drops } = await watchLit(c, async () => {
+      c.ps.playing.currentTime = 250; // past chapter 2's start (200s), inside the SAME file
+      c.ps.media.dispatchEvent(new c.W.Event('timeupdate'));
+      await settleN();
+    });
+    assert.strictEqual(c.player.currentId, 'yt1abcDEF::c0', 'no reload: the loaded id is still chapter 1');
+    assert.strictEqual(playingRow(), 'yt1abcDEF::c1', 'the view ROLLED to chapter 2 (reflectChapter)');
+    assert.deepStrictEqual(drops, [], 'the roll never dropped the glow');
+    assert.ok(c.lit(), 'lit after the roll');
+    await new Promise((r) => setTimeout(r, 1300)); // one engine clock
+    assert.ok(c.lit(), 'still lit a clock later');
+    assert.deepStrictEqual(c.loads, ['/thumbnail/yt1abcDEF'], 'one file, one cover: nothing re-requested');
   });
 });
 
@@ -416,6 +535,8 @@ test('v1.317 AC8: a LATE seam of a dead view never lights the next page - (a) th
     await new Promise((r) => setTimeout(r, 200));
     assert.strictEqual(c.anyLit(), false, 'but no ambient: a host is never built for an aborted view');
     assert.deepStrictEqual(c.loads, []);
+    assert.ok(c.D.getElementById('settings-menu'), 'the late load DID clone the player host (so a cog menu exists)');
+    assert.strictEqual(c.check(), null, 'gate r1 (qa S3): the dead closure never even wrote the Ambient row into the persistent host');
   });
 });
 
