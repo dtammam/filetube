@@ -98,7 +98,14 @@ async function boot(run, opts) {
     if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
     if (method !== 'GET') return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
     if (u.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: tracks }) });
-    if (u.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [tracks.find((t) => t.id === playId)] }) });
+    if (u.indexOf('filter=recent-listening') !== -1) {
+      // The ?play= path seeds the queue from this list: for a chapter, hand back the
+      // whole chaptered file (every `::c` sibling), as the real route would, so the
+      // view's chapter watcher (currentChapterId over the queue) can roll between them.
+      const baseOf = (id) => String(id).replace(/::c\d+$/, '');
+      const items = /::c\d+$/.test(playId) ? tracks.filter((t) => t.source === 'library-chapter' && baseOf(t.id) === baseOf(playId)) : [tracks.find((t) => t.id === playId)];
+      return Promise.resolve({ ok: true, json: async () => ({ items }) });
+    }
     const idm = u.match(/^\/api\/music\/([^?]+)$/);
     if (idm) { const t = tracks.find((x) => x.id === decodeURIComponent(idm[1])); return Promise.resolve(t ? { ok: true, json: async () => t } : { ok: false, status: 404, json: async () => ({}) }); }
     return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
@@ -281,14 +288,29 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
   });
 }
 
-test('the chapter target is captured at OPEN time: a chapter roll while the menu is open does not retarget the tap', async () => {
+test('the chapter target is captured at OPEN time: a REAL chapter roll while the menu is open does not retarget the tap', async () => {
   await boot(async (dom, ctx) => {
     const menu = await openDesktopActions(dom);
-    // The player advances to the NEXT chapter of the same file while the menu stays open
-    // (the desktop menu only closes on a BASE-id change).
-    dom.window.FileTube.player.currentId = 'f1::c0';
+    assert.ok(ctx.calls.some((c) => c.url === '/api/music/' + ENC_C1 && c.method === 'GET'), 'opened on chapter 1');
+    // A REAL roll, not a poked player id: the element's time crosses back into chapter 0
+    // (start 0; chapter 1 starts at 60) and the view's timeupdate watcher (reflectChapter ->
+    // currentChapterId over the queue) re-derives the SHOWN chapter - effectiveCurrentId()
+    // prefers that view pointer for a `::c` of the same file, so this is the only roll the
+    // Extras hooks can actually see. The desktop menu stays open (same base id).
+    const mp = doc(dom).getElementById('media-player');
+    Object.defineProperty(mp, 'currentTime', { value: 5, configurable: true });
+    mp.dispatchEvent(new dom.window.Event('timeupdate'));
+    await settleN(4);
     click(dom, likeRow(menu));
     await settleN(4);
     assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['DELETE /api/liked/' + ENC_C1], 'acts on the chapter the row SHOWED (c1), not the one now playing (c0)');
+    // Reachability of the driver (the presence-not-binding class): the roll must have MOVED
+    // the view's chapter, so a fresh open now reads chapter 0's flag.
+    const before = ctx.calls.length;
+    const btn = doc(dom).getElementById('music-actions-btn');
+    click(dom, btn); // close
+    click(dom, btn); // open again
+    await settleN(8);
+    assert.ok(ctx.calls.slice(before).some((c) => c.url === '/api/music/' + ENC_C0 && c.method === 'GET'), 'the re-open reads chapter 0 (the roll was real)');
   }, { desktop: true });
 });

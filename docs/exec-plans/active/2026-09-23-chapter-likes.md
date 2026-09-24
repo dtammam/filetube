@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/chapter-likes
 anchor: spec
 status: Building
-next: build per the design below, then commit and hand to the orchestrator for the FULL gate (adversary + qa + security-brief; D12 - the Adversary briefed to orphan, duplicate and leak likes across delete, move, rekey and restore)
+next: built and mutant-tested (two commits); hand to the orchestrator for the FULL gate (adversary + qa + security-brief; D12 - the Adversary briefed to orphan, duplicate and leak likes across delete, move, rekey and restore; see the build record's disclosed limits for the re-chaptering index case and the video-chapter scope)
 design: Approved 2026-09-23 @6ea45237 (Dean's GO on D9-D12, recorded on feat/music-channel-chapters at 10c3be1e)
 gate: pending
 ---
@@ -239,6 +239,48 @@ Instrument outputs (verbatim, Node 22.23.1):
   media-liked-carriers, backup-restore, music-api, music-library-projection, watch-like-button,
   feed-hidden-api, route-read/write-classification, api, watch-liked-sidebar)
   `tests 173 pass 173 fail 0`.
+
+### Commit 2 (the mutant round and the one driver it falsified)
+
+Mutants ran in a `git archive` sandbox of commit 1 (fe88f067), one mutation at a time, each
+against the test files that claim to bind it, the file restored between runs. FIRST RUN VOID:
+the sandbox's `node_modules` symlink pointed at the worktree (which has none; resolution walks
+up to the main checkout), so every integration/client file died at load (`Cannot find module
+'express'` / `'jsdom'`, reported as `tests 1 fail 1`) - a false "kill" for 14 of 17 mutants.
+Re-pointed the symlink, re-established the baseline in the sandbox (`tests 15 pass 15 fail 0`
+for chapter-likes + music-chapter-likes-client), re-ran. Results (verbatim counts):
+
+| Mutant | Mutation | Result |
+|---|---|---|
+| M1 | POST accepts ANY parsed chapter id (expansion membership removed) | KILLED 7/6/1 (AC4) |
+| M2 | POST audio gate removed (a VIDEO chapter accepted) | KILLED 7/6/1 (AC4) |
+| M3 | POST RBAC gate on the raw `::c` id, not the base | KILLED 7/6/1 (AC5) |
+| M4 | `delLikedByMedia` exact-id only | KILLED 12/8/4 (AC6 + 3 carrier units) |
+| M5 | `rekeyLiked` exact-id only | KILLED 12/7/5 (AC6, AC7 + 3 carrier units) |
+| M6 | `trackIsLiked` reads the MUSIC set for every row | KILLED 7/5/2 (AC1/AC3, AC7) |
+| M7 | GET chapter arm: shaping gate AND filter arm removed | KILLED 7/6/1 (AC5) |
+| M7b | GET chapter arm: filter arm only removed (shaping gate kept) | GREEN 7/7/0 as expected (belt and suspenders; the shaping gate alone holds) |
+| M8 | row heart `r.ok` check removed | KILLED 8/7/1 |
+| M9 | `data-like-store` never stamped | KILLED 8/5/3 |
+| M10 | Extras chapter overlay removed | KILLED 8/5/3 |
+| M11 | DESKTOP Extras writer drops the two hooks | KILLED 8/6/2 |
+| M11b | STICKER Extras writer drops the two hooks | KILLED 8/7/1 |
+| M12 | Extras target read at TAP time (open-time capture removed) | SURVIVED 8/8/0 on commit 1, then KILLED 8/7/1 with the corrected driver (below) |
+| M13 | Liked grid `::c` track arm removed | KILLED 7/6/1 (card-like) |
+| M14 | `/api/stats` member filter on the raw id | KILLED 7/6/1 (AC12) |
+| M15 | decoder accepts a bare `::c` (index 0) | KILLED 28/27/1 |
+| M16 | store prefix arm without the length guard | KILLED 5/4/1 |
+
+M12's survivor was a VACUOUS DRIVER (the presence-not-binding class): the test poked
+`player.currentId` to chapter 0, but `effectiveCurrentId()` prefers the VIEW's chapter pointer
+(`chapterViewId`) for a `::c` of the same file, so the tap never saw a roll and both the fix
+and the mutant answered c1. Corrected in commit 2: the test drives a REAL roll (the media
+element's `currentTime` crossing back into chapter 0 + `timeupdate`, consumed by
+`reflectChapter` -> `currentChapterId` over a queue that now carries the chapter siblings) and
+PROVES the roll reached the view by re-opening the menu and seeing it fetch chapter 0's flag.
+M12 was re-run against commit 1's CODE with the corrected driver copied into the sandbox
+(the code under mutation stayed committed): `M12 KILLED: tests 8 pass 7 fail 1`; M10/M11
+re-confirmed KILLED (8/5/3, 8/6/2) with the same driver.
 
 Disclosed decisions and known limits:
 - Listen-mode chapters of a VIDEO item are out of scope: the server accepts chapter likes for
