@@ -3,8 +3,8 @@ plan: chapter-snap-persist
 harness: v2 · lean
 branch: fix/chapter-snap-persist
 anchor: spec
-status: Gate r1 fixed @c49a3d73 (P1-P4 + W4 + suggestions; main merged at v1.325.0); awaiting gate r2
-next: gate r2 (FULL - data class: adversary + qa + security-brief)
+status: Gate r2 fixed @020e313b (N1 epoch rule, N2 one check + hold, N3/N4 docs, the adversary's r2 tests); awaiting gate r3
+next: gate r3 (FULL - data class: adversary + qa + security-brief)
 design: Approved 2026-09-24 @7482e432 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -479,6 +479,124 @@ Probe `chapter-snap-persist/probe.js` (flags per run, qa S8), the adversary's pr
 (qa S8: the earlier "498 -> 518" #269 row came from a COMBINED run, `PROBE_REAL=1 PROBE_268=1
 PROBE_269=1`, where the #268 section had already moved chapter 3 to 498; `PROBE_269=1` alone gives
 478 -> 498, as above.)
+
+## Gate r2 fix (round 3 by Dean's rule - an open WARNING; the Architect's rulings)
+
+Commits: 1a0b1a10 (test-only: the adversary's four r2 tests B3/B5/B6/B8 folded in with its
+`failFiles` hook, plus B7/B11/B12), 53a6d862 (the r2 verdicts, committed as the seats wrote them),
+02e57ddb (N1 + N2 + N3/N4), 020e313b (a local save verifies its file - binds the apply-side mark),
+and this docs commit. Hook: `tests 7367 pass 7367 fail 0` at 020e313b.
+`git diff 20f94dea HEAD -- server.js lib public/js/player.js`: empty.
+
+- **N1 (qa WARNING) FIXED - the Architect's ruling = qa's option (a), "verified since the last
+  return".** `markOtherChapterFilesUnverified` (which marked only files QUEUED at the return) is
+  gone. Every return (visibilitychange -> visible, bfcache pageshow) bumps `returnEpoch`; a file
+  counts as verified only when `verifiedEpoch[file]` has caught up with it. `playAt` ->
+  `verifyChapterFileThenPlay` asks GET /api/videos/:id once for ANY chaptered file not verified
+  since the last return - a queue row, a cached pocket Songs / Genres / artist level row, anything -
+  applies a change through `applySnappedChapterTimes`, then plays the corrected row. Verified: the
+  file the return re-check asks about (re-opened on its failure), a verify's answer, and any apply
+  (a local save or an applied server answer - `applySnappedChapterTimes` marks its file). A cold load
+  is epoch 0: nothing to verify, no request.
+- **N2 (qa SUGGESTION, taken) FIXED.** One check per file at a time: a later pick while it is in
+  flight only REPLACES the waiting pick (`verifyWaiters`, the latest wins; `playGen` still stands a
+  superseded one down). An ADVANCE (`opts.keepPosition`: the flat segment end, Next) HOLDS the
+  element (pause) while it waits, as an Autoplay-off end would, so the file never bleeds on into its
+  own next chapter; when the answer lands, exactly one load.
+- **N3 (docs):** tracker #268's CLOSED text names the pick-only rule (never a continue / re-mount /
+  Listen / dock-return). **N4 (docs):** the P2 comment says a SEARCH inside a single-file drill is
+  still treated as complete (a harmless re-list of the same searched drill; adversary r2 finding 8
+  too); the "partial drill" test is renamed for what it drives (a MIXED two-file drill). #269's
+  CLOSED text and #270 (c) follow the epoch rule (the wait, and the hold at a segment end).
+- **The adversary's r2 WARNING 6** (four unbound arms): bound at 1a0b1a10 with its own tests
+  (B3 the Listen re-mount keeps the playhead, B5 no load from a dead view, B6 a failed verify still
+  plays, B8 a late failure honours `playGen`), plus its SUGGESTION 7 (B7 a failed verify stays
+  unverified, B11 a return verifies the checked file, B12 a flat redraw draws no drill header).
+  Test-only; each went RED on its mutant @1a0b1a10 (runner `mutants5.sh`; control `# fail 0`).
+
+New acceptance criteria (chapter-snap-resume.test.js):
+- AC17 (N1) After a return, a pick from the CACHED pocket Songs level of a file that was NOT queued
+  asks once and plays the new start (qa's repro: 1 GET, start 40 not 30); the control without a
+  return asks nothing and plays 30; a file verified since the last return is not asked again, and
+  the NEXT return (it is now the playing file) re-checks it once with no extra ask from the pick; a
+  LOCAL save verifies its file (after a failed return re-check, a save then a pick asks nothing).
+- AC18 (N2) A flat segment end into an unverified file, its GET held across 8 in-band ticks: exactly
+  ONE GET, the element held (paused), no load while pending, then exactly one load of the next row;
+  the control (no return) advances at once with no check and no hold.
+
+Red at the pre-fix head (53a6d862, the same test file): `# pass 38 # fail 3` (the N1 cached pick,
+the next-return case and the N2 hold; the two controls pass there by design). Head: 42/42.
+
+### Mutants (gate r2 fix) @020e313b
+
+Runner `chapter-snap-persist/mutants6.sh` (sandbox per mutant from `git archive 020e313b`, exact
+anchors, sha1 printed; binding set chapter-snap-resume, music-chapter-playback, chapter-snap-client,
+music-chapter-reflect + the chapter-snap-return-flat integration file, 110 tests). CONTROL `# fail 0`.
+
+| # | Mutant (music.js) | Result | Binding test(s) |
+|---|---|---|---|
+| E1 | a cold load (epoch 0) needs a verify | RED (the unit file never completes: verify -> playAt -> verify; the integration file fails 2) | every cold-load test |
+| E2 | nothing ever needs a verify | RED (9) | r1 P3 x3, r2 B6/B7/B8, r2 N1 x2, r2 N2 |
+| E3 | a return does not bump the epoch | RED (9) | the same nine |
+| E4 | the return re-check does not verify the checked file | RED (2) | r2 B11, r2 N1 next-return |
+| E5 | an apply (a local save) does not verify its file | RED (2) | #269 local save in flight, r2 N1 local save |
+| E6 | no in-flight dedupe | RED (1) | r2 N2 (5 GETs instead of 1) |
+| E7 | no hold at an advance | RED (1) | r2 N2 |
+| E8 | the FIRST waiting pick kept (not the latest) | RED (1) | r2 N2 (nothing loads) |
+| E9 | a failed return re-check leaves the file verified | RED (1) | r1 P3 failed re-check |
+| E10 | a verify's answer not recorded | RED (the unit file never completes: verify -> playAt -> verify) | chapter-snap-resume.test.js |
+| B3 | Listen passes pick | RED (1) | r2 B3 |
+| B5 | no post-await liveness check in the verify | RED (1) | r2 B5 |
+| B6 | a failed verify swallows the pick | RED (1) | r2 B6 |
+| B7 | a failed verify leaves the file verified | RED (1) | r2 B7 |
+| B8 | a failed verify ignores `playGen` | RED (1) | r2 B8 |
+| B12 | the flat redraw always draws the drill | RED (1) | r2 B12 |
+
+### Measurements (gate r2 fix)
+
+qa's N1 repro needs two chaptered files in Music and a cached pocket Songs level; the real-Chromium
+probe drives the pocket menus but its fixture has ONE chaptered audio file, so N1 and N2 are
+measured in the jsdom harness with the REAL music.js + skin engine (AC17, AC18 above - qa's own
+repro shape, `gets=['/api/videos/g9']`, start 40; one GET across the band, held, one load). The
+real-Chromium drives were re-run on this tree (020e313b music.js) to show nothing regressed:
+
+```
+== PROBE_REAL=1 PROBE_STALE=1 PROBE_RELIST=1 (this tree)
+-- H3: move chapter 3 LATER past the saved position, then tap chapter 3
+  tap row 3 (old start 477): {"t":479.9,"paused":false,"playingRow":"<id>::c2"}
+  paused at: 491.112067 stored progress: {"timestamp":491.112067,"duration":2000,"updatedAt":"2026-09-24T19:15:09.920Z"}
+  [after save] API audio: source=manual edited=true starts=[0,242.5,498,722.5,958,1202.5,1438,1682.5]
+  SAME PAGE tap row 3 while it is the LOADED chapter (adopt): {"t":500.3,"paused":false,"playingRow":"<id>::c2"}
+  SAME PAGE tap row 1 (a different chapter): {"t":2.4,"paused":false,"playingRow":"<id>::c0"}
+  SAME PAGE tap row 3 (new start 498): {"t":500.4,"paused":false,"playingRow":"<id>::c2"} label=Last NorthboundHalden Arcs · Night Transit (Full Album)3:44
+  AFTER RELOAD tap row 3: {"t":502.7,"paused":false,"playingRow":"<id>::c2"}
+== PROBE_REAL=1 PROBE_268=1 (this tree)
+-- #268: re-tap the LOADED chapter after its start moved past the playhead (playing)
+  tap row 3: {"t":480,"paused":false,"playingRow":"<id>::c2"}
+  [after save] API audio: source=manual edited=true starts=[0,242.5,498,722.5,958,1202.5,1438,1682.5]
+  after save, still playing: {"t":493.5,"paused":false,"playingRow":"<id>::c1"}
+  RE-TAP row 3 (the loaded chapter): {"t":500.4,"paused":false,"playingRow":"<id>::c2"}
+== PROBE_REAL=1 PROBE_269=1 (this tree)
+-- #269: page B left open while page A saves; B comes back (visible)
+  B after A activated: vis=hidden
+  [A saved] API audio: source=manual edited=true starts=[0,242.5,498,722.5,958,1202.5,1438,1682.5]
+  B back: vis=visible /api/videos/:id requests on return: 1
+  B rows after return: {"edited":true,"rows":["Night TransitHalden Arcs · Night Transit (Full Album)4:02","Sodium LampsHalden Arcs · Night Transit (Full Album)4:15","Last NorthboundHalden Arcs · Ni
+  B tap row 3 (new start 498): {"t":500.4,"paused":false,"playingRow":"<id>::c2"}
+== PROBE_REAL=1 PROBE_FLAT=1 (this tree)
+-- r1 P2: flat Liked Songs queue [chapter 2], another client moves chapter 3, the page comes back
+  playing from Liked Songs: {"cur":"<id>::c1","t":244.8,"paused":false,"crumb":"Liked Songs","rows":[":c1"]}
+  music page while hidden: vis=hidden
+  remote save: 200 starts=[0,242.5,498,722.5]
+  back: vis=visible requests on return: ["/api/videos/<id>"]
+  after return: {"cur":"<id>::c1","t":249,"paused":false,"crumb":"Liked Songs","rows":[":c1"]}
+  2 s before the NEW segment end (498), after 4.5 s: {"cur":"<id>::c1","t":497.8,"paused":true,"crumb":"Liked Songs","rows":[":c1"]}
+== adv-probe MODE=268 (this tree)
+-- #268 x ?play= history re-entry
+  rolled on into chapter 3: {"url":"/music?play=<id>%3A%3Ac0","t":501.9,"paused":false,"currentId":"<id>::c0","state":"full","playingRow":"c2"}
+  BACK to the ?play= entry: {"url":"/music?play=<id>%3A%3Ac0","t":507.9,"paused":false,"currentId":"<id>::c0","state":"full","playingRow":"c2"}
+  stored resume position (GET /api/progress) after the back: {"timestamp":513.944099,"duration":2000,"updatedAt":"2026-09-24T19:17:39.767Z"}
+```
 
 ## Gate verdicts
 
