@@ -3,8 +3,8 @@ plan: desktop-theatre
 harness: v2 · lean
 branch: feat/desktop-theatre
 anchor: spec
-status: Building
-next: D2 round built (sidebar collapses in desktop theatre, Architect ruling); Architect runs the gate (adversary + qa, attack surfaces: CSS / SPA client traps incl. the persistent-shell sidebar across routes, the glow constraint, the reserve + guide observer lifecycles); device check owed
+status: Gate:CHANGES r1 @13f331d2
+next: gate r1 fixes built @4b893ba8 (W1 tv reserve, W2 breakpoint binding, W3 wide items, W4 -> ruling D5 disclosed, S5/S6 + the qa suggestions); Architect re-engages the seats for r2 delta confirmation; device check owed
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -35,7 +35,7 @@ Out of scope (brief): the default (non-theatre) layout, mobile layouts, the musi
 
 | Anchor | At ecb61e1d | Verdict |
 |---|---|---|
-| theatre class flip | watch.js `setupTheatreToggle` (was :2020; now :2084) toggles `.theater-mode` on `.watch-container`; init() applies the persisted `ft-theater` class synchronously at ANY width (was :854, now :878; only `#theater-btn` is hidden below 1025px, style.css `@media (max-width: 1024px)`) | verified; so a phone/tablet can carry the class, and the old rule reaches it |
+| theatre class flip | watch.js `setupTheatreToggle` (was :2020; :2221 at 4b893ba8) toggles `.theater-mode` on `.watch-container`; init() applies the persisted `ft-theater` class synchronously at ANY width (was :854; :964 at 4b893ba8, followed by `wireTheatreGuide()` :973; only `#theater-btn` is hidden below 1025px, style.css `@media (max-width: 1024px)`) | verified; so a phone/tablet can carry the class, and the old rule reaches it |
 | theatre layout | style.css `.watch-container.theater-mode` column stack + `.watch-sidebar` 100% (:8948, :8952) | verified, unchanged |
 | theatre height cap | style.css v1.190 rule (now :8981): `#player-wrapper` width `min(100%, (100vh - header - space-16 - space-8 - 40px - 2px) * 16/9)`, not media-scoped | verified: at every measured size the column is narrower than that budget, so the player filled the column and the video filled the height |
 | all-views cap | style.css `@media (min-width: 1025px) #player-slot:not(.reader-player-slot) #player-wrapper...` reading player.js's measured `--player-cap-h` (player.js `refreshPlayerHeightCap` :8313) | verified; lower specificity than the theatre rule on watch; untouched |
@@ -97,8 +97,10 @@ the 42px control strip under the picture (YouTube overlays its controls), the 16
 1280/1366 the views-count and star lines (the bar wraps to three lines in the 1002/1088px
 column). See D2 for the lever that recovers most of it.
 
-**Sidebar collapsed** (`--sidebar-collapsed`: the real `#menu-toggle` click AFTER theatre is on,
-no theatre click - the reserve follows through its ResizeObserver alone):
+**Sidebar collapsed** (r0, before D2, with the r0 probe flag `--sidebar-collapsed`: the real
+`#menu-toggle` click AFTER theatre is on, no theatre click - the reserve follows through its
+ResizeObserver alone; since D2 theatre collapses the bar itself and the flag is `--menu-toggle`,
+which REOPENS it):
 
 | Viewport | reserve | player | centre x | buttons y / fold gap |
 |---|---|---|---|---|
@@ -203,14 +205,27 @@ never narrower than 480px.
   the row back under the fold at 1280x720 and 1366x768 once FileTube's taller bar wraps (the
   sidebar reopened by hand: 3-line bar, 173px reserve); the width floor only binds on very
   short windows (1280x400 measured: 480 wide, row below the fold there).
+- **D5 - ruled (Architect, gate r1): the reserve stops at the ACTION ROW; the channel row is
+  NOT kept on the first screen.** Dean's words were "title + channel + action row"; YouTube's
+  channel shares its action row (#owner y 655 h 42 at 1280x720), FileTube's is a separate
+  panel (`.uploader-info-panel`: avatar, channel name, Subscribe) below the action bar. Dean's
+  emphasis was the controls, and the channel costs picture. MEASURED (the fix tree with the
+  reserve run through the panel instead, `sandbox-d5alt`, glow probe, theatre on): 1280x720
+  video 846x476 -> 686x386 (reserve 99 -> 189px, the panel 23.8px above the fold); 1920x1080
+  1486x836 -> 1326x746. Today the panel sits 66.2px below the fold (the channel name link 42.1px
+  below). Alternative for Dean: run the reserve through the channel panel (one line in
+  theatreReserveTargetRect), or fold the channel into the action row like YouTube (a layout
+  change). A TV episode has no action bar, so its SHOW row (the episode's channel) IS its
+  controls row and is kept on screen (gate r1 W1).
 
 ## Acceptance criteria
 
 | AC | Criterion | Bound by |
 |---|---|---|
-| AC1 | Desktop theatre at 1280x720 / 1366x768 / 1440x900 / 1920x1080 / 1920x1200: the title and every action button sit above the fold (bar bottom 24px above it where height-bound, YouTube 23) | probe (Measurements); theatre-mode.test.js "the STAGE carries the YouTube-matched width" |
+| AC1 | Desktop theatre at 1280x720 / 1366x768 / 1440x900 / 1920x1080 / 1920x1200: the title and every action button sit above the fold (bar bottom 24px above it where height-bound, YouTube 23); on a TV episode the show row does. The CHANNEL panel below a video's action bar is NOT included, by ruling D5 | probe (Measurements, r1 fix table); theatre-mode.test.js "the STAGE carries the YouTube-matched width" |
 | AC2 | The player is 16:9 at the budget, centred in the column, column-bound when narrower, never under 480px; the stage IS the player box | probe; theatre-mode.test.js stage + wrapper tests |
-| AC3 | The reserve follows the column/title: observer + next-frame write, synchronous on the theatre click, torn down with the view, on BOTH ?v= and ?tv= | watch-init-behavioral.test.js three v1.319 reserve tests; theatreReservePx units; probe `--menu-toggle` (99 -> 173 with no theatre click) |
+| AC3 | The reserve follows the column/title: observer + next-frame write, synchronous on the theatre click, torn down with the view, on BOTH ?v= (to the action bar) and ?tv= (to the show row: the bar is display:none there) | watch-init-behavioral.test.js v1.319 reserve tests (the ?tv= one drives the REAL hidden bar, red on 13f331d2); theatreReservePx / theatreReserveTargetRect units; probe `--menu-toggle` (99 -> 173 with no theatre click); the ?tv= Chromium table (r1 fix) |
+| AC9 (r1) | An item WIDER than 16:9 keeps its width (the stage takes its aspect, still column-capped); 16:9, 4:3 and portrait keep the 16:9 box | theatre-mode.test.js theatreWidthAspect + stage TERM; watch-init-behavioral "r1 theatre aspect"; the 21:9 table (r1 fix) |
 | AC4 | A taller-than-16:9 landscape item is capped at the SAME budget | 4:3 probe table; theatre-mode.test.js "the PICTURE is capped at the SAME budgeted height" (term-for-term equality) |
 | AC5 | The ambient glow paints around the new box in dark mode, with no filter / transform / mask / will-change / contain / isolation on any stage rule | glow probe table; the existing ambient-glow-engine sweep (covers the new stage rule, every vendor spelling) |
 | AC6 | Unchanged: theatre off (5 viewports), phone 390x844 and tablet 1024x768 (theatre on and off), music theatre; no action button deforms or wraps | probe diff (Measurements); theatre-mode.test.js "ONLY inside the 1025px+ block" |
@@ -451,6 +466,14 @@ Probe mutants (behavioural evidence for the glow claim; session scratchpad
 - D2: the theatre-scoped marker lives on `<body>` in the persistent shell; if a view teardown
   never ran, the bar would stay collapsed on the next page - still reopenable by hand, never
   persisted (a reload restores it).
+- D5 (ruling): the channel panel below a video's action bar stays below the fold (66.2px at
+  every height-bound size); keeping it would cost ~90px of picture height (measured above).
+- Browser zoom: 125% on a 1280-wide window is a 1024 CSS px viewport, below the 1025px desktop
+  breakpoint, so neither the YouTube-matched theatre nor the sidebar collapse applies there (the
+  v1.190 rule; adversary measured the bar 209px below the fold at 1024x576). By construction.
+- D2: a sidebar the user hand-reopened in theatre is collapsed again by the NEXT watch view (a
+  watch -> watch hop, autoplay-next): the hand toggle released theatre's ownership, and the new
+  view reads an open bar as "collapse it". YouTube-like; the hand choice lasts for that view.
 - Not device-checked: headless Chromium only. Dean's desktop check owed (theatre at his monitor
   size, light and dark, ambient on, a 4:3 TV episode).
 
@@ -633,3 +656,87 @@ Findings 1-4 block this round. 5-7 do not.
 Tree: only this section appended (qa's r1 section above is theirs); every mutation ran in /tmp.
 
 Gate: CHANGES r1 @13f331d2 — adversary
+
+## r1 fix record (gate r1 @13f331d2 -> fix commit 4b893ba8)
+
+Verdicts committed as found (37fb436b). Fix as one new commit, 4b893ba8; pre-commit hook (the
+whole unit suite, Node 22.23.1): tests 7120, pass 7120, fail 0. Targeted before it (ambient*,
+watch*, theatre*, music-theater-toggle, music-ambient, critter-mode, shell*, *parity*, the
+tech-debt / exec-plans / docs / comment-debt censuses): 493 / 493. `lint:css` TOTAL 0;
+overlay-containment clean; eslint on the five touched js files exit 0.
+
+| Finding | Fix (4b893ba8) | Bound by | Mutants (killed) |
+|---|---|---|---|
+| W1 (qa W1 = adversary W1): the ?tv= reserve inert (bar display:none, 0x0), its test a hand-typed shape | watch.js `theatreReserveTargetRect`: the lowest RENDERED controls row - the bar when it has a box, else the show row (`.uploader-info-panel`), else the title; the observer also watches the show row and `.watch-main` (the tv back link moves the row without resizing it) | theatre-mode "r1 theatreReserveTargetRect" (incl. the hidden-bar null); watch-init-behavioral "?tv=": the rects honour an inline `display:none` like a browser, precondition the tv path hid the bar, asserts 262px = show row bottom - stage bottom. The new test file run against 13f331d2's watch.js: 2 fail (the ?tv= test and the aspect test), 28 pass | R1 skip the show row, R2 always the bar (r0), R3 a 0x0 rect counts, R4 show row not observed, R5 column not observed |
+| W2 (adversary): the breakpoint QUERY unbound | test-only: the matchMedia fake evaluates `(min|max)-width: Npx` against a simulated width, throws on any other query, records every call; `setWidth()` fires the change listeners; every query asserted `(min-width: 1025px)`; no-op at 1024 / 900 / 700 / 390 cold, collapse at 1025, restore at 1024 and 700 on a crossing | watch-init-behavioral "D2: crossing the desktop breakpoint", "D2: theatre ON (persisted, desktop)" | R11 `(max-width: 1024px)` (4 fail), R12 `(min-width: 1024px)` |
+| W3 (adversary): a wider-than-16:9 item shrank | style.css stage width = budget height `* var(--watch-theatre-aspect, 16 / 9)` (vh + dvh); watch.js `theatreWidthAspect` (the item's `--media-aspect` when > 16:9, else 16:9) written by the same measure, removed for 16:9 / 4:3 / portrait / unknown | theatre-mode "r1 theatreWidthAspect" + the stage TERM (now names the aspect var); watch-init-behavioral "r1 theatre aspect (?v=)" (21:9 writes 2.3704, 16:9 / 4:3 / none remove it) | R6 dvh ignores the var, R7 vh ignores it, R8 a narrower item narrows, R9 never written, R10 never cleared |
+| W4 (qa W2 = adversary W4): the channel row narrowed silently | ARCHITECT RULING: the reserve stays at the action row -> decision D5 (Decisions) with the measured cost; AC1 now says the channel panel is not included; Disclosed gaps line | docs | - |
+| S5 (adversary): dead `isFinite(sb)` guard | one guard on the result: `Number.isFinite(px) && px >= 0` | theatre-mode units: -Infinity stage edge, a non-numeric bar edge | R13 guard dropped |
+| S6 (adversary): `content-visibility` missing from the v1.312 lock | FORBIDDEN_PROP + `content-visibility`, plus a self-test of the lock's reach (catches `content-visibility: auto`, `CONTENT-VISIBILITY:hidden`, `-webkit-content-visibility`, `contain: paint/layout/strict/content`, `Isolation`, `-webkit-transform`; leaves `container-type`, `contain-intrinsic-size` alone); the stage comment names it | ambient-glow-engine "v1.312 CSS LOCK" | R14 `content-visibility: auto` on the stage, R15 `Contain: paint` |
+| S7 (adversary) + qa S6: 125% zoom; the hop re-collapse | Disclosed gaps lines | docs | - |
+| qa S3: stale "three lines at 1280" prose | watch.js theatreReservePx comment, style.css stage comment: one line in the collapsed-sidebar column, three at 1280 only with the bar hand-reopened | - | - |
+| qa S4: probe residue | usage text lists `WxH`, `--theatre`, `--menu-toggle`, `--viewport-shot`; `--menu-toggle` without `--theatre` warns; the `WxH` tag is computed at the top of the viewport loop and used on every log line (reload, WARNING, page state, theatre via, ready, screenshot skipped, clip) | - | - |
+| qa S5: stale plan anchors | survey row 1 re-anchored at 4b893ba8; the r0 "Sidebar collapsed" note names the renamed flag | - | - |
+
+### Mutant table, re-run in full at 4b893ba8 (`desktop-theatre-mutants-r1.py`): 50 of 50 killed
+
+Fresh copy of the `git archive 4b893ba8` sandbox per mutant, credited only with a non-empty diff
+and a red test. R1-R15 (the r1 guards above), then every earlier guard re-anchored on the r1
+text: C1-C4 and C6-C11 (CSS; C5 retired with the r0 scope test unchanged), J1-J12 (reserve JS),
+G1-G11, G13, G14 (D2; G12 needs the two-part edit of the D2 script and was not re-run: its test
+is unchanged). Every line: `desktop-theatre/mutants-r1-4b893ba8.txt`.
+
+### Measurements at 4b893ba8 (headless Chromium, glow probe: real playing VP9 webm, dark, ambient on, theatre persisted)
+
+?v= (the action bar), all five sizes - unchanged from D2:
+
+| Viewport | video | bar bottom to fold | channel panel bottom to fold | glow vs player | L5 / R5 |
+|---|---|---|---|---|---|
+| 1280x720 | 846.2x476 | 23.8 | -66.2 | .12 .22 1.24 1.44 | [70,18,51] / [18,64,69] |
+| 1366x768 | 931.5x524 | 23.8 | -66.2 | same | [70,18,51] / [18,64,69] |
+| 1440x900 | 1166.2x656 | 23.8 | -66.2 | same | [71,18,52] / [18,65,70] |
+| 1920x1080 | 1486.2x836 | 23.8 | -66.2 | same | [71,18,52] / [18,66,70] |
+| 1920x1200 | 1699.5x956 | 23.8 | -66.2 | same | [71,18,52] / [18,66,71] |
+
+Action-row probe (FT_ROOT = the fix sandbox, `--theatre`, one Chromium per viewport): identical
+boxes to the D2 table; vs the ecb61e1d BEFORE: 10 buttons each, 0 deformed, rows 1 -> 1 (the
+buttons now share the stars' line at 1280 / 1366 / 1440, where the r0 bar wrapped them below:
+the intended un-wrap in the wider collapsed-sidebar column).
+
+?tv= (a seeded Shows episode, the same webm, `/watch.html?tv=ep1`; the bar is `display: none`
+on every run):
+
+| Viewport | 13f331d2: reserve / video / show row bottom to fold / show link bottom to fold | 4b893ba8: reserve / video / show row to fold / link to fold |
+|---|---|---|
+| 1280x720 | unset (CSS 98px) / 848x477 / -30.4 / -6.3 | 152px / 752x423 / 23.6 / 47.7 |
+| 1366x768 | unset / 933.3x525 / -30.4 / -6.3 | 152px / 837.3x471 / 23.6 / 47.7 |
+| 1440x900 | unset / 1168x657 / -30.4 / -6.3 | 152px / 1072x603 / 23.6 / 47.7 |
+| 1920x1080 | unset / 1488x837 / -30.4 / -6.3 | 152px / 1392x783 / 23.6 / 47.7 |
+| 1920x1200 | unset / 1701.3x957 / -30.4 / -6.3 | 152px / 1605.3x903 / 23.6 / 47.7 |
+
+(base ecb61e1d: the show row 115.9px below the fold at 1280x720 and 1920x1080.) The glow on
+?tv=: lit, player = stage, .12 / .22 / 1.24 / 1.44 at all five; no page errors.
+
+21:9 (`MEDIA_WH=2560x1080`, player.js sets `--media-aspect: 2560 / 1080`):
+
+| Viewport | base ecb61e1d video / bar to fold | 13f331d2 video / bar to fold | 4b893ba8 video / bar to fold (aspect var) | YouTube 2.39:1 (PfSHUU7na-M) video |
+|---|---|---|---|---|
+| 1280x720 | 1000x421.9 / 43.5 | 846.2x357 / 142.8 | 1128.3x476 / 23.8 (2.3704) | 1280x536 (band = the video) |
+| 1920x1080 | 1640x691.9 / 167.9 | 1486.2x627 / 232.8 | 1870x788.9 / 70.9 (column-bound) | 1920x804 |
+
+YouTube with a scope video (found by search, `desktop-theatre-yt-find-wide.js`; 854x358 source,
+"Official Trailer (2.39:1)", no ad on the measured runs): the band shrinks to the video
+(0,56 1280x536 and 0,56 1920x804, full width), title y 604 / 872, action row y 640 / 908 h 42 -
+so YouTube keeps the width and gives the height back. FileTube now does the same up to the
+column (the height budget stays the cap at 1280x720; at 1920x1080 the 1872px column binds).
+4:3 (`MEDIA_WH=640x480`): player 848.2x518 and 1488.2x878, picture box 846.2x476 / 1486.2x836
+(the 4:3 picture pillarboxed), bar 23.8 above the fold, no aspect var written.
+
+D5 cost (the channel panel reserved instead, `sandbox-d5alt`): 1280x720 reserve 189px, video
+686.2x386, panel 23.8 above the fold, bar 113.8 above; 1920x1080 video 1326.2x746.
+
+Screenshots (`desktop-theatre/sbs/`): YouTube | BEFORE | AFTER (4b893ba8)
+`desktop-theatre-sbs-<WxH>.png` x5; ?tv= 13f331d2 | 4b893ba8 `desktop-theatre-tv-sbs-<WxH>.png`
+x5; YouTube | glow AFTER `desktop-theatre-glow-sbs-<WxH>.png` x5; 21:9 YouTube | base | AFTER
+`desktop-theatre-219-sbs-{1280x720,1920x1080}.png`; 16:9 | 4:3 `desktop-theatre-43-sbs-*`;
+action row | channel reserved (D5) `desktop-theatre-d5alt-sbs-*`.
