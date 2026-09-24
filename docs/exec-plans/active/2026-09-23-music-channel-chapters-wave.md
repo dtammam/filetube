@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/music-channel-chapters
 anchor: spec
 status: Building
-next: M1+M2 gate r2 (qa CHANGES, adversary CHANGES @1ac34548) FIXED on feat/music-channel-chapters (round 3, Dean-approved, with his two rulings) - see "## r2 fix record (M1+M2)". Next: gate r3 delta re-confirmation (same seats; the last round), then merge. Wave order per D1 after this ships: T1 own slim branch, M3 own branch full gate, M4 own branch last.
+next: M1+M2 gate CLOSED r3 @8aa22622 (adversary + qa; round 3 by Dean's call, with his two rulings: pop-out listen artist line is plain text, Nordic rows blank for an unknown length). Merge to main; this umbrella closes at the wave release v1.317.0 (M4 has its own plan). Owed (r3 qa SUGGESTIONs): record that the chapter-aware watchBackVisible also changes dockToOrigin after a chapter cross + Songs browse (docks in place per the v1.283 listen rule instead of bouncing to the source video; correct, unbound) and the desktop menu Watch entry likewise; the sameMusicItem comment should name buildSkinCtx as a second caller. Device check owed (adversary S5): the marquee on a button in Firefox/iOS
 design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on the whole register D1-D15 as recommended, D15 as adjusted by the intake finding below)
-gate: pending
+gate: APPROVED r3 @8aa22622 — adversary, qa (M1+M2)
 ---
 
 # Music wave: channel access, chapter length, chapter likes, desktop ambient, and the bell polish
@@ -1157,3 +1157,180 @@ suites run, then the file restored and sha-compared (`restored=true` on all 20).
 
 16 of 20 killed; the 4 survivors are disclosed above (1 equivalent, 3 unreachable-state guards).
 Sandbox removed after the run.
+
+## Gate r3 - qa M1+M2 (@8aa22622)
+
+Delta re-confirmation of `git diff 1ac34548 8aa22622` (music.js, music-skins.js,
+skin-surface.js, player.js, 5 test files, tech-debt-tracker.md, this doc) against my r2
+findings, the adversary's r2 findings and "## r2 fix record (M1+M2)". VERIFIED = run by me at
+8aa22622 (Node v22.23.1); probes ran from a copy of music-skin-integration.test.js in the
+session scratchpad, and against `git show 1ac34548:` copies for the before/after.
+
+### Instruments (verbatim)
+
+- `node --test test/unit/<f>.test.js`, tests/pass/fail: music-view 49/49/0 ·
+  music-nowplaying-view 21/21/0 · music-skins 41/41/0 · music-skin-integration 115/115/0 ·
+  music-actions-desktop 13/13/0 · podcast-nowplaying-view 29/29/0 · skin-surface 70/70/0 ·
+  player-state 31/31/0 · listen-chapter-dock-return 2/2/0 · music-chapter-reflect 34/34/0.
+- music-*, podcast-*, skin-surface*, player-state plus every unit file naming music.js /
+  music-skins.js / skin-surface.js (55 files, one run): `# tests 861`, `# pass 861`,
+  `# fail 0`, `# cancelled 0`, `# skipped 0`, exit 0.
+- eslint on the 4 touched sources + 5 touched tests: no output, exit 0. No CSS in the delta.
+- `bash .harness/lib/check-markers.sh`: `✗ ...music-channel-chapters-wave.md: stale approval
+  @ef42a6d4 - reviewed code changed since; re-gate` / `check-markers: 1 issue(s) found`, exit 1
+  (the tolerated Building shape; the gate close re-binds it).
+- Docs censuses (comment-debt, docs-link, docs-status, tech-debt, docs-diagrams,
+  dockerfile-ships-scripts): `# tests 17 # pass 17 # fail 0` (the #237 row is census-clean).
+- Mutants not re-run by me (the Adversary's seat).
+
+### My r2 findings at 8aa22622
+
+- **W1 (chaptered listen, cross -> Songs -> artist tap): FIXED as prescribed.** My r2 probe,
+  re-driven: after the cross + Songs browse the line is `<button class="mms-sub"
+  data-skin-artist title="Go to channel">The Channel</button>`, the tap gives
+  `navs ["/?folder=The%20Channel"]`, no fetch, no drill header; the Watch row is back
+  (`watch row: true`). `sameMusicItem` now has real callers (watchBackVisible, the listen-art
+  fallback), bound by the qa W1 drives (R2-W1 / R2-W1-base killed per the record).
+- **W2 (pop-out listen tap): FIXED per Dean's ruling.** Re-driven (navigate stubbed to record
+  and call `destroy()` as the router does): the pip `[data-skin-artist]` is `null`, a tap
+  navigates nothing, `pip.closed= false`. `popout = winRef !== window`: the in-tab engine
+  passes `window` (music.js :1544), the pop-out shell passes its own window (:1776), so both
+  the PiP and the window.open fallback are covered.
+- **W3 (podcast Nordic): FIXED per Dean's ruling and pinned.** Main (14088c92) vs 8aa22622
+  `renderFull` on a podcast ctx (a 41:05 row + a `0:00` row): apple / ipod / ipod-black /
+  ipod-matte / zune-classic byte-identical; spotify 2289 -> 2322 bytes, i.e. exactly one
+  `<span class="mms-rd">41:05</span>` (33 bytes), no span for the zero row. The driven
+  podcast test pins known / missing / 0 durations. The iPod list still prints `0:00` (out of
+  scope, pinned by the music-skins unit, and the amended D8 scopes the ruling to the Nordic rows).
+- **Podcast DESKTOP panel: still byte-identical.** Main vs branch `buildPanelHtml` on a
+  podcast fixture: `identical= true 746 746`; the r1 EXPECTED lock is unmodified in the delta.
+- **S4 (tooltip): FIXED** ("Go to channel" in channel mode on skins + desktop panel; the
+  default "Go to artist" otherwise; the podcast panel passes no title, so its bytes hold).
+  **S5 (alt): FIXED** (`alt=""` on the srcless slot, :428).
+- **QA2 call: satisfied.** Both of my options landed: the chapter arm has a driven caller, and
+  `channelFolderCurrent` is back to the exact compare with a truthful comment.
+
+### Adversary r2 findings at 8aa22622
+
+- **W1 (adopt drops `channelFolder`): FIXED.** `applyAdoptFlavor` refreshes it under the
+  declared-field contract; watch.js declares `resumeMode: null` but never `channelFolder`
+  (watch.js :1505, :1702), and no server payload carries a `channelFolder` key (grep of lib/ +
+  server.js: none), so the `{...mediaData}` spread cannot smuggle one in. The player.js comment
+  is accurate (`isMusic` is `resumeMode === 'music'`, player.js :8706). #237 (albumKey) is
+  tracked, a pre-existing out-of-scope seam.
+- **S2 (exact compare), S3 (`nowPlayingFrom` id param), S4 (title): FIXED.** Dropping the id
+  override is safe: both former callers found `t` by that same id.
+
+### Also checked
+
+- The listen-art fallback change: re-driven, the chaptered listen cover after cross + Songs is
+  `/thumbnail/vid1` at 8aa22622 vs `/albumart/vid1%3A%3Ac1` (the placeholder) at 1ac34548.
+- Plan wording vs the tree: D6 (b) amendment, D8 amendment, acceptance M1, M1a and M2, the
+  "Go to channel" gating paragraph and the pop-out row of the every-writer table all describe
+  the code as it now stands.
+
+### Findings
+
+1. SUGGESTION - an undisclosed (beneficial) third effect of the watchBackVisible widening:
+   `dockToOrigin` (music.js :986) reads it too. Re-driven (chaptered listen, cross, Songs, tap
+   `[data-skin-collapse]`): at 1ac34548 `returnToPlayerOrigin= 1 clearPlayerLaunchOrigin= 0`
+   (the v1.283 bounce back to the source video), at 8aa22622 `returnToPlayerOrigin= 0
+   clearPlayerLaunchOrigin= 1` (dock in place, the v1.283 listen rule); the desktop actions
+   menu's `hasWatchBack` follows too. Correct direction, but the fix record says only "the
+   artist tap, the desktop .mnp-sub and the Watch row". Record it (and a drive, if cheap).
+2. SUGGESTION - `sameMusicItem`'s comment (music.js :1372-1374) says "Caller:
+   watchBackVisible"; `buildSkinCtx`'s listen-art fallback (:941) calls it too.
+
+Neither blocks. No security surface in the delta: no new fetch/route/header; the thumbnail
+route takes an `encodeURIComponent`'d base id; the new `title` values are static strings
+escaped through `esc` / `panelEscape`; `channelTap`'s `'/?folder=' + encodeURIComponent(...)`
+is unchanged.
+
+Tree: byte-identical to 8aa22622 apart from this section (and any concurrent adversary
+section); no untracked files added.
+
+Gate: APPROVED r3 @8aa22622 — qa
+
+## Gate r3 - adversary M1+M2 (@8aa22622)
+
+Delta `1ac34548..8aa22622`, the worktree read-only. I measured all of this in a /tmp sandbox
+built from `git archive 8aa22622` (node_modules symlinked). After the mutants ran, the sandbox
+was diffed against a fresh archive (identical) and then removed. Unmutated, the 10 suites
+(music-view, music-nowplaying-view, music-skins, music-skin-integration,
+music-actions-desktop, podcast-nowplaying-view, skin-surface, listen-chapter-dock-return,
+music-chapter-reflect, player-state) = 405 tests, 405 pass, 0 fail. tech-debt-census 1/1/0.
+eslint on the 4 touched sources + 5 touched tests: 0 problems. No em dash in any added code or
+test line. No `public/*.html` change and no new global (player.js changes only inside
+`applyAdoptFlavor`), so shell parity is not exposed. check-markers still reports only the
+tolerated stale design approval `@ef42a6d4`.
+
+### r2 findings at 8aa22622
+
+- **adversary W1 (an adopt never carried `channelFolder`): FIXED as prescribed.** I re-ran the
+  r2 drive myself with my own adopting player mock, independent of the committed
+  `adoptingPlayer`. Its `load` calls the REAL `isAdoptLoad`/`applyAdoptFlavor` exported by
+  player.js. It is pre-loaded with the watch.js :1702 data for `vid1`, boots
+  `?play=vid1&listen=1` (the load adopts), then re-inits at `/music?nowplaying=1` and at
+  `/music`. Result: the Watch row, "Go to channel" (navigates `/?folder=The%20Channel`) and the
+  artist line `<button ... title="Go to channel">` are all present (3/3 pass). With player.js
+  swapped back to 1ac34548 the two adopt drives go red (1/2 fail; the genuine-load control
+  stays green), so the drive binds the fix. The committed `adoptingPlayer` also routes through
+  the real exported pair. R2-adopt 402/3, R2-adopt-clear 404/1, and my X-adopt-type (a
+  non-string declared value carried through) 404/1.
+- **adversary S2 (the dead chapter arm):** FIXED by qa W1's route. `channelFolderCurrent` is
+  now an exact compare, and `sameMusicItem`'s chapter arm has a real, driven caller in
+  `watchBackVisible` (R2-W1-base 403/2 - the old QA2-base is now killed). The false comment is
+  gone.
+- **adversary S3:** FIXED (the dead `id` parameter was dropped; my X-np-arg, which re-honours a
+  second argument, 404/1).
+- **adversary S4 (tooltip):** FIXED (S4-skin/view/panel/wrapper each 403/2; my X-panel-title
+  404/1 and X-skin-title-ctx 404/1).
+- **qa W1 (chaptered listen, empty drill):** FIXED (R2-W1 403/2). Also fixed: the sibling art
+  fallback that built `/thumbnail/<vid>::c<n>` (R2-art 404/1, R2-art-base 404/1).
+- **qa W2 (pop-out navigated the main window):** FIXED per Dean's ruling (R2-W2 404/1,
+  R2-W2-flag 404/1, R2-W2-order 404/1, and my X-render-popout - the pop-out render loses the
+  flag - 404/1).
+- **qa W3 (Nordic 0:00):** FIXED per Dean's ruling (R2-W3 402/3, R2-W3-span 402/3; my
+  X-dur-broad - every label blanked - 401/4, so the known-length axis is bound too). The
+  producers were checked at source: `skinDur(0)` = `0:00` (podcasts.js :180).
+- **qa S5 (alt):** FIXED (S5 404/1).
+
+The builder's 20-mutant table reproduces EXACTLY: every count is identical, including the four
+survivors at 405/0. I added 6 mutants of my own, and all 6 were killed.
+
+### Rulings on the four survivors
+
+None is on a reachable path; none blocks.
+
+- **R2-W1-null: EQUIVALENT.** `sameMusicItem(id, null)` compares against the string `'null'`,
+  which no media id is.
+- **R2-W1-raw: unreachable (reasoned, not measured). Keep.** A raw live id beside a `::c`
+  listen marker with a MUSIC meta needs a music load of the raw id. Every non-listen
+  `loadTrack` rewrites `activeListenId` to `item.listen ? item.id : null`, and `playListenItem`
+  (called only from init) re-stamps it. A watch-page load of the raw id leaves `isMusic`
+  false, so the skin, the panel and the actions menu (which needs `full` + music) never render
+  it. The shipped exact direction is the conservative one.
+- **R2-cfc-exact: unreachable (reasoned). Keep.** A stale record does survive a re-init: the
+  seed returns early for a non-music meta, and nothing in init nulls `nowPlaying`. But every
+  surface that reads `channelVisible` needs a music meta, and with a music meta the seed has
+  just rewritten the record with the live id. The exact compare is the natural predicate (the
+  record must be the live item), not a speculative branch.
+- **R2-W2-tap: unreachable (reasoned). KEEP rather than delete.** A listen track starts only
+  in `playListenItem`, which is called only from init. `destroy()` tears the pop-out down
+  (music.js :3204 `activePopoutTeardown`). Any non-listen load clears the marker. So the
+  pop-out can never hold a stale button while the mode is 'channel'. It is not a separate
+  feature branch. It is the same `popout` flag the render uses, passed at click time so that
+  the click and the render compute the mode by ONE rule. Deleting it would leave the pop-out
+  click computing the in-tab rule, and a future path that made a listen transition reachable
+  would then navigate the window behind the pop-out and close it. It is disclosed in the fix
+  record; no test claims to bind it.
+
+### Findings
+
+None blocking. The tech-debt #237 row (the `albumKey` adopt blind spot) is the correct
+disclosure for the pre-existing sibling I named at r2.
+
+Tree: byte-identical to 8aa22622 apart from this plan doc (qa's r3 section above and this
+section); sandboxes removed; no untracked files.
+
+Gate: APPROVED r3 @8aa22622 — adversary
