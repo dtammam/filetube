@@ -3166,5 +3166,11 @@
     "date": "2026-09-24",
     "title": "A timing log for background audio, and coming back resumes the way you left it",
     "intent": "Settings has a new experimental timing log that records how long the audio goes quiet when you lock your phone during a video, so the gap can be measured and made shorter. When you come back to the app, the video now picks up where the audio got to, and only keeps playing if the audio was playing."
+  },
+  {
+    "version": "1.320.0",
+    "date": "2026-09-24",
+    "title": "Autoplay off in Music stops at the end of your queue",
+    "intent": "Turning Autoplay off in Music now stops playback when your album or list ends, instead of carrying on into suggested songs, and turning it back on picks the suggestions up again. Songs you like from a long video count and list the same way everywhere, and switching a song between Music and the watch page keeps its proper title, artist and art."
   }
 ]

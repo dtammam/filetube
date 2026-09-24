@@ -64,7 +64,8 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 // opts: tracks, playId, desktop (wide viewport: no in-tab skin, the toolbar actions
 // menu instead), failLike (every /api/liked/ write answers 404), videoType (the
-// `type` the /api/videos/:id payload carries; default 'audio').
+// `type` the /api/videos/:id payload carries; default 'audio'), baseLiked (the /api/videos/:id
+// payload says the whole FILE is liked).
 async function boot(run, opts) {
   opts = opts || {};
   const tracks = opts.tracks || tracksFixture();
@@ -92,7 +93,7 @@ async function boot(run, opts) {
     if (vm && method === 'GET') {
       const id = decodeURIComponent(vm[1]);
       const type = id === 'v1' ? 'video' : (opts.videoType || 'audio');
-      return Promise.resolve({ ok: true, json: async () => ({ id, type, title: 'The Mix', filePath: '/media/tube/' + id + '.mp3', watchUrl: 'https://www.youtube.com/watch?v=abc123DEF45', hasSubtitles: false, liked: false, watchState: 'unwatched', channelName: 'NESTALGIA' }) });
+      return Promise.resolve({ ok: true, json: async () => ({ id, type, title: 'The Mix', filePath: '/media/tube/' + id + '.mp3', watchUrl: 'https://www.youtube.com/watch?v=abc123DEF45', hasSubtitles: false, liked: opts.baseLiked === true, watchState: 'unwatched', channelName: 'NESTALGIA' }) });
     }
     if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ folders: ['Music'] }) });
     if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
@@ -326,6 +327,9 @@ test('the chapter target is captured at OPEN time: a REAL chapter roll while the
 // FAILS, the row must read "Like" and the tap must be an idempotent ADD (POST) - a
 // failed overlay that read as LIKED would turn the tap into a silent UNLIKE (the
 // C9 mutant `item.liked = track ? ... : true`). Driven on both Extras writers.
+// Music follow-ups item 4b (the chapter-likes r2 suggestion, a divergent fixture): the base FILE
+// answers liked:true here, so a failed overlay that INHERITS the file's flag (the surviving mutant
+// `item.liked = track ? track.liked === true : item.liked`) would read "Liked" and DELETE.
 for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras, false], ['desktop actions menu', openDesktopActions, true]]) {
   test(`${label}: a FAILED chapter-flag overlay (GET /api/music/<chapterId> 404) reads as "Like" and the tap POSTs the chapter - never a silent unlike`, async () => {
     await boot(async (dom, ctx) => {
@@ -337,6 +341,6 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
       click(dom, row);
       await settleN(4);
       assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['POST /api/liked/' + ENC_C1], 'the tap is an ADD under the chapter id (the server answers idempotently), never a DELETE');
-    }, { desktop, overlayFail: 'f1::c1' });
+    }, { desktop, overlayFail: 'f1::c1', baseLiked: true });
   });
 }

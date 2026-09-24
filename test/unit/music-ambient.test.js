@@ -713,6 +713,30 @@ test('v1.317 CSS: the cog Ambient row shows only where it is WIRED - watch, and 
   assert.doesNotMatch(mediaBlocks('(max-width: 768px)'), /body\[data-view="watch"\] #ambient-toggle-row/, 'the phone WATCH view keeps its row (watch ambient runs on mobile)');
 });
 
+// Music follow-ups item 1 (2026-09-24): the Autoplay + Loop rows ride the same persistent host,
+// bound on the WATCH signal only - MEASURED in headless Chromium they were checked but dead in Music
+// (and podcasts, home) after a watch visit. Only the watch view wires them, so the rule hides them
+// everywhere else (Music keeps its own toolbar / sticker Autoplay + Loop). The real injector must
+// write the ids the rule keys off.
+test('item 1: the cog Autoplay + Loop rows carry their ids (the REAL watch injector) and show only on the WATCH view', async () => {
+  await withMusic({ pref: '1' }, async (c) => {
+    await c.tapRow('n1'); // the player host (and its cog menu) is cloned lazily at the first load
+    const W = c.W;
+    W.FileTube.player.ensureTheaterButton = () => null;
+    watchCogInjector(W)();
+    const ap = c.D.getElementById('watch-autoplay-row');
+    const lp = c.D.getElementById('watch-loop-row');
+    assert.ok(ap && ap.querySelector('#watch-autoplay-check'), 'the Autoplay row label carries #watch-autoplay-row');
+    assert.ok(lp && lp.querySelector('#watch-loop-check'), 'the Loop row label carries #watch-loop-row');
+  });
+  const rules = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(STYLE))) if (/#watch-(autoplay|loop)-row\b/.test(m[1])) rules.push({ sel: m[1].trim().replace(/\s+/g, ' '), body: m[2].trim() });
+  assert.deepStrictEqual(rules, [{ sel: 'body:not([data-view="watch"]) #watch-autoplay-row, body:not([data-view="watch"]) #watch-loop-row', body: 'display: none;' }],
+    'ONE rule names the rows: hidden on every view but watch (no media query - phone and desktop alike, the watch view wires them on both)');
+});
+
 test('v1.317 CSS: the music player stage owns its stacking context on DESKTOP only, and in theatre the player\'s bottom margin moves OUT to the stage (the glow box = the player box)', () => {
   const desk = mediaBlocks('(min-width: 769px)');
   assert.match(desk, /\.music-player-stage \{\s*position: relative;\s*z-index: 0;/, 'desktop: the stage scopes the glow');

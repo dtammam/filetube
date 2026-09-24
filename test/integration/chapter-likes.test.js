@@ -339,3 +339,68 @@ test('W1: a chapter like whose index a re-chapter removed is dropped from the re
   assert.deepStrictEqual(revived.items.map((i) => i.id), [c4], 'revived once the index exists again');
   assert.strictEqual(revived.items[0].title, 'E', 'under the RESTORING edit\'s title for index 4');
 });
+
+// Tracker #235 (music follow-ups, 2026-09-24): a re-chapter could strand a chapter like - the
+// member's /api/stats count read base visibility only, so after an edit that dropped the index it
+// said 1 while their Liked listing said 0. Fix: both readers route through ONE rule
+// (chapterLikeTrack: the chapter must still be in the file's REAL expansion), and NO chapter edit
+// deletes a like (a retimed or re-pointed index keeps it; a dropped one is kept in storage and
+// revives when an edit restores it). The adversary drive from the brief: a real like on c5 of a
+// SIX-chapter item (plus c1-c4), re-chapter to FOUR, to EIGHT, then a TIMES-ONLY edit.
+test('#235: through every re-chapter the member\'s Stats count equals their Liked listing, a times-only edit changes nothing, and no edit deletes a like', async () => {
+  const L = seedLibrary();
+  const adm = __mintTestSession(); // the editor route is requireModifyLibrary (AC8 above resets the users table)
+  const member = __mintTestSession({ username: 'rechapter', role: 'member' });
+  const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  const lines = (n, step) => Array.from({ length: n }, (_, i) => `${mmss(i * step)} Song ${i + 1}`).join('\n');
+  const edit = async (text) => {
+    const r = await fetch(`${base}/api/videos/${enc(L.mix.id)}/chapters`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adm.cookie }, body: JSON.stringify({ text }),
+    });
+    assert.strictEqual(r.status, 200, await r.text());
+  };
+  const rowsOf = async () => (await json('/api/music?limit=100', member.cookie)).items
+    .filter((t) => String(t.id).startsWith(L.mix.id + '::c')).map((t) => t.id);
+  const view = async () => {
+    const listed = await json('/api/liked?limit=50', member.cookie);
+    return { ids: listed.items.map((i) => i.id).sort(), total: listed.total, stats: (await json('/api/stats', member.cookie)).inventory.liked };
+  };
+  const stored = () => userStore.getLiked(member.user.id).slice().sort();
+
+  await edit(lines(6, 45)); // six chapters over the 300 s file
+  const six = await rowsOf();
+  assert.strictEqual(six.length, 6, 'precondition: the REAL projection mints six chapter rows');
+  const liked = six.slice(1); // c1..c5, ids from the projection (never hand-typed)
+  for (const id of liked) assert.strictEqual((await post(`/api/liked/${enc(id)}`, member.cookie)).status, 200, 'liked ' + id);
+  const all = liked.slice().sort();
+  let v = await view();
+  assert.deepStrictEqual(v.ids, all, 'precondition: c1..c5 listed');
+  assert.strictEqual(v.total, 5);
+  assert.strictEqual(v.stats, 5, 'precondition: counted');
+
+  // FOUR chapters: indexes 4 and 5 are GONE; c1..c3 keep their likes.
+  await edit(lines(4, 70));
+  assert.deepStrictEqual(await rowsOf(), [0, 1, 2, 3].map((n) => L.mix.id + '::c' + n), 'reachability: the file is still chaptered (four rows), so the drop is the index rule');
+  v = await view();
+  assert.deepStrictEqual(v.ids, liked.slice(0, 3).sort(), 'c1..c3 listed; c4 and c5 dropped from the read');
+  assert.strictEqual(v.total, 3);
+  assert.strictEqual(v.stats, 3, 'the Stats count AGREES with the listing (was 5 before #235: base visibility only)');
+  assert.deepStrictEqual(stored(), all, 'NO like was deleted: c4 and c5 stay in storage');
+
+  // EIGHT chapters: the indexes exist again, so c4 and c5 revive (under the new titles).
+  await edit(lines(8, 35));
+  v = await view();
+  assert.deepStrictEqual(v.ids, all, 'every like is listed again');
+  assert.strictEqual(v.total, 5);
+  assert.strictEqual(v.stats, 5);
+  const titles = (await json('/api/liked?limit=50', member.cookie)).items.map((i) => i.title).sort();
+  assert.deepStrictEqual(titles, ['Song 2', 'Song 3', 'Song 4', 'Song 5', 'Song 6']);
+
+  // TIMES-ONLY (the Chapter Snap shape: same count, same titles, every boundary moved).
+  await edit(lines(8, 36));
+  v = await view();
+  assert.deepStrictEqual(v.ids, all, 'a retime keeps every like listed');
+  assert.strictEqual(v.total, 5);
+  assert.strictEqual(v.stats, 5);
+  assert.deepStrictEqual(stored(), all, 'and deletes nothing');
+});
