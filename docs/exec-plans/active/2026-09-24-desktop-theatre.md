@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/desktop-theatre
 anchor: spec
 status: Gate closed
-next: merge main after v1.320.0 lands, delta confirm, release
+next: release (gate CLOSED r3 @303b3ca3 after the merge of main v1.320.0; delta confirm adversary + qa)
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
-gate: APPROVED r2 @7c62aeba — adversary, qa
+gate: APPROVED r3 @303b3ca3 — adversary, qa
 ---
 
 # Desktop theatre sized like YouTube (wave item 3)
@@ -896,3 +896,77 @@ New in this round:
 No CRITICAL is open. N1 is disclosed above as safe to ship.
 
 Gate: APPROVED r2 @7c62aeba — qa
+
+## Gate r3 - adversary (@303b3ca3)
+
+Merge-only delta (490042ec docs close + the merge of main 57c8ab84, v1.320.0).
+- Resolution: for public/css/style.css, public/js/{watch,player,music}.js the branch's
+  `7c62aeba..303b3ca3` change lines are IDENTICAL (sorted +/- line sets, md5) to main's own
+  `598f25f7..57c8ab84`; no theatre line touched. The only branch-specific delta is
+  watch-init-behavioral.test.js (the D2 hand-toggle test): `mt._lo.click` is now a list, so it
+  asserts exactly one registration from the view, bound on the live signal, aborted by
+  destroy(). Correct for the new harness shape.
+- Interaction: main's watch.js adds `autoAdvanceViaTrackNav: false` to two player.load calls
+  and ids on the two cog rows; style.css hides those rows off the watch view. None reaches the
+  theatre block, the sidebar guide or the reserve observer (measured below).
+- Bindings: G13 (listener off the signal), a doubled release listener, G6 (no release) all
+  red on the adapted test (1 fail each); re-run too: A18 x2, N7, content-visibility x2, all
+  killed. Targeted units (31 files: watch*, theatre*, ambient*, music-theater*, music-ambient,
+  shell*, critter-mode, player-adopt*, *parity*): tests 485, pass 485, fail 0.
+- Real Chromium 1280x720 at 303b3ca3: vid1 stage 848.2x518, video 846.2x476, bar 23.8 above the
+  fold, sidebar collapsed (w1); SPA hop to the 21:9 item 1128.3x476, 23.8 (w2); Music: sidebar
+  restored, marker gone, the two cog rows display none; ?tv= reserve 152px, collapsed (w3);
+  0 page errors. `action-row-probe.js 1280x720 --theatre`: player 216,80 848x518, reserve 99px,
+  11 buttons, 1 row, lowest button bottom 683 (37 above the fold). All equal to r2.
+
+Tree: only this section appended; every mutation ran in /tmp.
+
+Gate: APPROVED r3 @303b3ca3 — adversary
+
+## Gate r3 - qa (@303b3ca3)
+
+Merge-only delta since my r2 verdict: the docs close at 490042ec and the main (v1.320.0) merge
+at 303b3ca3. Run at 303b3ca3 with Node 22.23.1.
+
+- Touched tests + censuses (watch-init-behavioral, theatre-mode, ambient-glow-engine,
+  music-ambient, player-adopt-flavor, music-skin-integration, watch-prev-next-flash, tech-debt,
+  exec-plans, comment-debt, css-token-lint, overlay-containment): tests 281, pass 281, fail 0.
+- `npm run test:unit`: tests 7176, pass 7176, fail 0, cancelled 0, skipped 0.
+- `lint:css` TOTAL 0. Overlay lint clean, exit 0. eslint on watch.js and the adapted test file:
+  exit 0.
+- check-markers: exit 1 with 5 issues, all of them the expected kind: the three older-sha gate
+  lines, the `@ecb61e1d` design line, and the example sha quoted in my own r2 prose (N1). All
+  are stale-sha flags; none is sha-less. This round's verdict lines bind to 303b3ca3.
+
+Merge resolution:
+
+- **Tracker:** 224 rows = main's 222 + #247 + #249, in id order. No row lost, no duplicate
+  number. Rows #235 and #237 carry main's CLOSED text byte-for-byte. The non-row prose is
+  identical to main's.
+- **Code:** for watch.js and style.css, the branch's changed lines against main at the merge
+  are identical to its changed lines at 490042ec against the merge base 598f25f7. The probe,
+  theatre-mode and ambient-glow-engine carry the same count of changed lines on both sides.
+  That is the clean shape: this branch's work laid on top of main.
+
+**Interplay.** Main's delta cannot reach the theatre code:
+
+- watch.js passes `autoAdvanceViaTrackNav: false` to both `player.load` calls, and gives the
+  cog rows their ids.
+- style.css hides `#watch-autoplay-row` / `#watch-loop-row` outside the watch view.
+- player.js makes adopt-path changes, but none of its changed lines touch `--media-aspect`,
+  the host's inline style, the slot or reparenting (grep).
+
+**Adapted test (watch-init-behavioral :1041).** It is correct, and it binds more than before.
+
+- `_lo.click` is now the list of registrations. The test asserts exactly one `#menu-toggle`
+  registration from the view (so a double bind now goes red).
+- It asserts that the registration's live signal is not aborted, then aborted after
+  `destroy()`. The captured signal object is live, so the post-destroy read means something.
+- The harness's `_l` also skips aborted registrations. No other theatre test reads the old
+  `_lo.<type>.signal` shape (grep).
+
+Tracker #249 records my r2 N2 and N3 accurately. The design line is now bound (my N1).
+
+No findings.
+
+Gate: APPROVED r3 @303b3ca3 — qa
