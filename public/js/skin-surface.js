@@ -204,7 +204,7 @@
       // ALSO needs canModify to RENDER is cfg-driven (video/music: yes; podcasts:
       // deleteNeedsModify:false shows it to all like the list-row delete - the SERVER still
       // enforces requireModifyLibrary on the actual DELETE).
-      // v1.319 Chapter Snap (Dean): "This chapter starts wrong" - opens the chapter TIME
+      // Chapter Snap (2026-09-24) (Dean): "This chapter starts wrong" - opens the chapter TIME
       // editor on the chapter that is playing. Rendered only when the view supplies the
       // hook, the open-time fetch stamped the playing chapter's index (chapterSnapIndex,
       // captured at OPEN so a chapter roll cannot retarget the tap), and the viewer may
@@ -785,7 +785,7 @@
       onQueue: extrasCfg ? extrasCfg.onQueue : undefined,
       likeRequest: extrasCfg ? extrasCfg.likeRequest : undefined,
       watchedRequest: extrasCfg ? extrasCfg.watchedRequest : undefined,
-      onChapterSnap: extrasCfg ? extrasCfg.onChapterSnap : undefined, // v1.319 Chapter Snap: "This chapter starts wrong"
+      onChapterSnap: extrasCfg ? extrasCfg.onChapterSnap : undefined, // Chapter Snap (2026-09-24): "This chapter starts wrong"
     });
     function openStickerExtras() {
       var menu = panel.querySelector('[data-skin-sticker-menu]');

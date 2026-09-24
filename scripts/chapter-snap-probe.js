@@ -1,6 +1,6 @@
 'use strict';
 
-// chapter-snap-probe - the MEASUREMENT instrument for the v1.319 Chapter Snap
+// chapter-snap-probe - the MEASUREMENT instrument for the Chapter Snap (2026-09-24)
 // editor (common.js showChapterSnapEditor). Dean: "PHONE IS A PRIMARY VIEWPORT" -
 // the editor must be fully usable on a phone: every control a real tap target
 // (>= 44px), nothing drag-only, nothing clipped or sideways-scrolling at 390x844.

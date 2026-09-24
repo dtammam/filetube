@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor
+// [INTEGRATION] Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor
 // through the REAL app, the REAL stored record and the REAL music projection.
 // Plan: docs/exec-plans/active/2026-09-24-chapter-snap.md. Bound here:
 //   - a REAL ffmpeg silencedetect run over a REAL generated file (tone,
@@ -495,6 +495,72 @@ test('S8 (adversary): a TEXT editor opened before a snap save cannot overwrite i
   assert.strictEqual((await stale.json()).stale, true);
   assert.deepStrictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.map((c) => c.startTime), [0, 61, 121, 181, 241], 'the snap survived');
   assert.strictEqual((await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: 'x', version: 7 })).status, 400, 'a non-string version is refused');
+});
+
+test('R2 (gate r2, Architect ruling on adversary W1): a revert with an UNCHANGED count restores the source TIMES and KEEPS the typed titles; a count-changing revert takes the source titles', async () => {
+  const { recordRepulledItemMeta } = require('../../server');
+  const L = seedLibrary();
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 61.75, 120, 184.75, 240] })).status, 200);
+  // The adversary's repro: rename two chapters in the TEXT editor (title-only: Edited survives).
+  const d = await json(`/api/videos/${enc(L.mix.id)}`);
+  const renamed = seedTextOf(d.chapters).replace('Second Song', 'Heartbeats (José González)').replace('Fourth Song', 'Crosses');
+  const r = await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: renamed, version: d.chaptersVersion });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual((await r.json()).chaptersEdited, true, 'precondition: still a snap edit after the rename');
+  const s2 = await json(url);
+  assert.deepStrictEqual(s2.revert, { source: 'embedded', count: 5 });
+  assert.strictEqual((await postJson(`${url}/revert`, { version: s2.version })).status, 200);
+  const stored = loadDatabase().metadata[L.mix.id].chaptersManual;
+  assert.deepStrictEqual(stored.map((c) => c.title), ['Opening', 'Heartbeats (José González)', 'Third Song', 'Crosses', 'Closer'], 'the TYPED titles survive the revert');
+  assert.deepStrictEqual(stored.map((c) => c.startTime), [0, 60, 120, 180, 240], 'the TIMES are the source times');
+  assert.ok(stored.every((c) => c.snapFrom === undefined && c.snapBase === undefined), 'a plain typed list now: no snap provenance');
+  assert.strictEqual((await json(url)).edited, false, 'no longer Edited');
+  // A count-changing revert (the source grew) takes the SOURCE list, titles included.
+  const s3 = await json(url);
+  const typedStarts = [0, 61, 120, 181, 240];
+  assert.strictEqual((await postJson(url, { version: s3.version, starts: typedStarts })).status, 200);
+  const six = FIVE.map((c) => ({ ...c })).concat([{ startTime: 280, title: 'Bonus' }]);
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, L.mix.id, { filePath: L.mix.filePath, chapters: six, markComplete: false }, 1_900_000_000_000);
+  const s4 = await json(url);
+  assert.deepStrictEqual(s4.revert, { source: 'manual', count: 5 }, 'the base of THIS snap edit is the typed list (the rename made it plain) - its typed titles come back');
+  assert.strictEqual((await postJson(`${url}/revert`, { version: s4.version })).status, 200);
+  assert.deepStrictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.map((c) => c.title)[1], 'Heartbeats (José González)');
+});
+
+test('R2: a count-changing revert of an EMBEDDED-based snap takes the source titles with the source list (and says so)', async () => {
+  const { recordRepulledItemMeta } = require('../../server');
+  const L = seedLibrary();
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 61, 121, 181, 241] })).status, 200);
+  const six = [{ startTime: 0, title: 'N1' }, { startTime: 50, title: 'N2' }, { startTime: 100, title: 'N3' }, { startTime: 150, title: 'N4' }, { startTime: 200, title: 'N5' }, { startTime: 250, title: 'N6' }];
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, L.mix.id, { filePath: L.mix.filePath, chapters: six, markComplete: false }, 1_900_000_000_000);
+  const g = await json(url);
+  const refused = await postJson(`${url}/revert`, { version: g.version });
+  assert.strictEqual(refused.status, 409);
+  assert.match((await refused.json()).error, /takes the source's titles/);
+  assert.strictEqual((await postJson(`${url}/revert`, { version: g.version, allowCountChange: true })).status, 200);
+  assert.strictEqual(loadDatabase().metadata[L.mix.id].chaptersManual, undefined, 'the manual list is dropped');
+  assert.deepStrictEqual((await json(`/api/videos/${enc(L.mix.id)}`)).chapters.map((c) => c.title), ['N1', 'N2', 'N3', 'N4', 'N5', 'N6']);
+});
+
+test('R5 (adversary S3): a text save of a SNAP EDIT must carry the version (409 without it, nothing written); a plain typed list keeps the optional contract', async () => {
+  const L = seedLibrary();
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 61.75, 120, 184.75, 240] })).status, 200);
+  const noVersion = await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: '0:00 A\n1:00 B\n2:00 C\n3:00 D\n4:00 E' });
+  assert.strictEqual(noVersion.status, 409);
+  const b = await noVersion.json();
+  assert.strictEqual(b.stale, true);
+  assert.match(b.error, /Reload the page/);
+  assert.deepStrictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.map((c) => c.startTime), [0, 61.75, 120, 184.75, 240], 'the snap survived');
+  // A plain typed list (no snap provenance) still saves without a version.
+  const L2 = seedLibrary();
+  assert.strictEqual((await postJson(`/api/videos/${enc(L2.mix.id)}/chapters`, { text: '0:00 A\n1:00 B' })).status, 200);
+  assert.strictEqual((await postJson(`/api/videos/${enc(L2.mix.id)}/chapters`, { text: '0:00 A\n1:30 B' })).status, 200, 'plain over plain, no version: the old contract');
 });
 
 test('A2 (adversary W2): a reheat that re-pulls the SOURCE after the revert was planned changes the version - the old revert is refused (409) even with allowCountChange, and lands only after a re-plan', async () => {

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.319 Chapter Snap - the MUSIC entry points, driven through REAL music.js
+// [UNIT] Chapter Snap (2026-09-24) - the MUSIC entry points, driven through REAL music.js
 // (+ skin-surface.js and music-skins.js, as music.html loads them) with a routed
 // fetch spy and a spy on the ONE editor (window.showChapterSnapEditor):
 //   (1) the album drill's "Fix times" - only on a chaptered album, only for a
@@ -58,7 +58,7 @@ async function boot(run, opts) {
   opts = opts || {};
   const tracks = tracksFixture();
   const playId = opts.playId || 'f1::c1';
-  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent(playId) });
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent(playId) + (opts.listen ? '&listen=1' : '') });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
   const mobile = !opts.desktop;
   dom.window.matchMedia = () => ({ matches: mobile, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
@@ -66,6 +66,7 @@ async function boot(run, opts) {
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
   const calls = [];
   const editor = [];
+  const navs = [];
   global.fetch = (url, init) => {
     const u = String(url);
     const method = (init && init.method) || 'GET';
@@ -73,6 +74,7 @@ async function boot(run, opts) {
     const vm = u.match(/^\/api\/videos\/([^/?]+)$/);
     if (vm && method === 'GET') {
       const id = decodeURIComponent(vm[1]);
+      if (opts.videos && opts.videos[id]) return Promise.resolve({ ok: true, json: async () => opts.videos[id] });
       return Promise.resolve({ ok: true, json: async () => ({ id, type: 'audio', title: id === 'f1' ? 'The Mix' : 'Plain File', chapters: id === 'f1' ? (opts.fileChapters || FILE_CHAPTERS) : [], chaptersVersion: opts.version, liked: false, watchState: 'unwatched', channelName: 'NESTALGIA' }) });
     }
     if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
@@ -101,7 +103,7 @@ async function boot(run, opts) {
       currentId: playId, getState: () => opts.state || 'full', expand: () => {}, dock: () => {},
       getCurrentMeta: () => metaById(dom.window.FileTube.player.currentId),
       load: (id) => { dom.window.FileTube.player.currentId = id; },
-      setTrackNav: () => {}, isLoopEnabled: () => false, setLoop: () => {},
+      setTrackNav: (nav) => { navs.push(nav || {}); }, isLoopEnabled: () => false, setLoop: () => {},
       close: () => { dom.window.FileTube.player.currentId = null; },
     },
   };
@@ -121,7 +123,7 @@ async function boot(run, opts) {
     require(musicPath);
     registered.init(dom.window.document.getElementById('view-root'));
     await settleN(12);
-    await run(dom, { calls, editor });
+    await run(dom, { calls, editor, navs, registered, root: dom.window.document.getElementById('view-root') });
   } finally {
     try { if (registered) registered.destroy(); } catch (_) { /* best-effort */ }
     delete require.cache[musicPath];
@@ -331,6 +333,77 @@ test('entry 4 from the drill (qa S10): a text-editor save - the path the time ed
     assert.ok(row('f1::c1').classList.contains('playing'), 'the playing chapter re-derived from the NEW starts without a timeupdate');
     assert.ok(!row('f1::c0').classList.contains('playing'), 'and the old row cleared');
   }, { state: 'docked', playId: 'f1::c0', fileChapters: [{ startTime: 0, title: 'Opening' }, { startTime: 60.5, title: 'Second Song' }, { startTime: 120, title: 'Closer' }], version: 'ver-f1' });
+});
+
+// ---- gate r2 (adversary W2, qa S5): a count change re-registers nav by the NEW index ----
+const chapRow = (id, title, start, extra) => ({ artist: 'NESTALGIA', album: 'The Mix', albumKey: AK, progressEndpoint: '/api/progress', source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', liked: false, id, title, durationSec: 60, chapterStartSec: start, ...(extra || {}) });
+const lastNav = (ctx) => ctx.navs[ctx.navs.length - 1] || {};
+
+test('3 -> 2 revert while PLAYING f1::c1 (in order): nav re-registers at once - no stale Next, and the radio arms because ::c1 became the LAST chapter', async () => {
+  const server = { drill: [chapRow('f1::c0', 'Opening', 0), chapRow('f1::c1', 'Second Song', 60), chapRow('f1::c2', 'Closer', 120)] };
+  await boot(async (dom, ctx) => {
+    // The playhead sits at 62 s - inside ::c1 before AND after the save.
+    const mp = doc(dom).getElementById('media-player');
+    Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 62, set: () => {} });
+    Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
+    const menu = await openDesktopActions(dom);
+    click(dom, snapRow(menu));
+    await settleN(2);
+    assert.strictEqual(typeof lastNav(ctx).onNext, 'function', 'precondition: ::c1 had a Next (::c2)');
+    const regsBefore = ctx.navs.length;
+    const artistFetchesBefore = ctx.calls.filter((c) => c.indexOf('artist=') !== -1).length;
+    server.drill = [chapRow('f1::c0', 'Opening', 0), chapRow('f1::c1', 'Closer', 60, { durationSec: 120 })];
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 60, title: 'Closer' }], chaptersSource: 'embedded', chaptersEdited: false });
+    assert.ok(ctx.navs.length > regsBefore, 'nav re-registered SYNCHRONOUSLY on the save (the playing id did not change)');
+    assert.strictEqual(lastNav(ctx).onNext, undefined, 'no stale Next: ::c1 is now the last chapter');
+    await settleN(12);
+    assert.strictEqual(lastNav(ctx).onNext, undefined, 'and still none after the re-list');
+    assert.ok(ctx.calls.filter((c) => c.indexOf('artist=') !== -1).length > artistFetchesBefore, 'the last-index radio armed (the autoplay picker fetched)');
+    lastNav(ctx).onPrev();
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'Prev goes to the right row');
+  }, { desktop: true, server });
+});
+
+test('a dropped row BEFORE the playing one (a shuffled list) keeps Prev/Next pointing at the right rows', async () => {
+  // Queue order c2, c0, c1 - playing c1 at index 2. The revert drops c2 (index 0), so c1 moves to index 1.
+  const server = { drill: [chapRow('f1::c2', 'Closer', 120), chapRow('f1::c0', 'Opening', 0), chapRow('f1::c1', 'Second Song', 60)] };
+  await boot(async (dom, ctx) => {
+    const mp = doc(dom).getElementById('media-player');
+    Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 62, set: () => {} });
+    Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
+    const menu = await openDesktopActions(dom);
+    click(dom, snapRow(menu));
+    await settleN(2);
+    server.drill = [chapRow('f1::c0', 'Opening', 0), chapRow('f1::c1', 'Second Song', 60)];
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 60, title: 'Second Song' }], chaptersSource: 'embedded', chaptersEdited: false });
+    // Synchronously, before any re-list: Prev must be ::c0 (the stale closure was playAt(1) = ::c1 itself).
+    lastNav(ctx).onPrev();
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'Prev is the row BEFORE the playing one in the filtered queue');
+    await settleN(12); // let the re-list settle inside the test
+  }, { desktop: true, server });
+});
+
+test('Listen mode (qa S5): a chapter dropped by a count change does NOT come back after a dock-return (the listen stash is filtered too)', async () => {
+  const v1 = { id: 'v1', type: 'video', title: 'A Long Talk', channelName: 'Someone', duration: 180, chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'Middle Part' }, { startTime: 120, title: 'Outro Ghost' }], liked: false, watchState: 'unwatched' };
+  await boot(async (dom, ctx) => {
+    await settleN(8);
+    const menu = await openDesktopActions(dom);
+    const row = snapRow(menu);
+    assert.ok(row, 'the listen chapter offers "This chapter starts wrong"');
+    click(dom, row);
+    await settleN(2);
+    assert.match(doc(dom).getElementById('music-nowplaying-panel').textContent, /Outro Ghost/, 'precondition: three listen chapters queued');
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'Middle Part' }], chaptersSource: 'embedded', chaptersEdited: false });
+    await settleN(4);
+    assert.doesNotMatch(doc(dom).getElementById('music-nowplaying-panel').textContent, /Outro Ghost/, 'gone from the live queue');
+    // Dock-return: the view re-inits and restores the listen queue FROM THE STASH.
+    ctx.registered.destroy();
+    dom.reconfigure({ url: 'http://localhost/music?nowplaying=1' });
+    ctx.registered.init(ctx.root);
+    await settleN(12);
+    assert.match(doc(dom).getElementById('music-nowplaying-panel').textContent, /Middle Part/, 'the restored queue is there (non-vacuous)');
+    assert.doesNotMatch(doc(dom).getElementById('music-nowplaying-panel').textContent, /Outro Ghost/, 'the dropped chapter did not come back from the stash');
+  }, { desktop: true, playId: 'v1', listen: true, videos: { v1 } });
 });
 
 // ---- (3) the watch page chapters menu ------------------------------------------------

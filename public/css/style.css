@@ -7311,7 +7311,7 @@ body.ft-audio-expanded {
   resize: vertical;
 }
 
-/* v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor
+/* Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor
    (common.js showChapterSnapEditor). PHONE IS A PRIMARY VIEWPORT: every control
    is a real button of at least --size-touch on phones, nothing is drag-only,
    the nudge row is a four-column grid of equal targets, and at phone widths the

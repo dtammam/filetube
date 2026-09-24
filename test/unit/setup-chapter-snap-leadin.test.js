@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.319 Chapter Snap (gate r1 qa S8): the Setup "Chapter snap lead-in" select,
+// [UNIT] Chapter Snap (2026-09-24) (gate r1 qa S8): the Setup "Chapter snap lead-in" select,
 // through the REAL setup.js in jsdom - BOTH directions: the load populates it from
 // /api/settings (a stored value that is not one of the offered options gets its own
 // option rather than silently showing the default), and a change POSTs the number.

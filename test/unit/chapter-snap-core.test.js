@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.319 Chapter Snap - the pure core (lib/media/chapterSnap.js) and the
+// [UNIT] Chapter Snap (2026-09-24) - the pure core (lib/media/chapterSnap.js) and the
 // silence scan + cache (lib/media/chapterSilence.js). The route-level behaviour
 // (RBAC, version refusal, likes staying put, revert from storage, a REAL ffmpeg
 // run) is bound in test/integration/chapter-snap.test.js.
@@ -132,6 +132,9 @@ test('runSilenceDetect: the timeout SIGKILLs and rejects; a non-zero exit reject
   let spawned = 0;
   await assert.rejects(silence.runSilenceDetect('relative.mp3', { spawn: () => { spawned += 1; return fakeProc(); } }), /not usable/);
   await assert.rejects(silence.runSilenceDetect('/m/a\u0000b.mp3', { spawn: () => { spawned += 1; return fakeProc(); } }), /not usable/);
+  // gate r2 (qa S4): a line break in the NAME could echo a forged detector line.
+  await assert.rejects(silence.runSilenceDetect('/m/nl\n[silencedetect @ 0x1] silence_start: 1.mp3', { spawn: () => { spawned += 1; return fakeProc(); } }), /line break/);
+  await assert.rejects(silence.runSilenceDetect('/m/cr\r.mp3', { spawn: () => { spawned += 1; return fakeProc(); } }), /line break/);
   assert.strictEqual(spawned, 0);
 });
 
@@ -353,6 +356,22 @@ test('buildSnappedManual keeps the STORED titles and records the base; a re-edit
   typed.chaptersManual = snap.buildSnappedManual(typed, resolveItemChapters(typed), [0, 6]);
   const p2 = snap.planRevert(typed, resolveItemChapters);
   assert.deepStrictEqual(p2.restore, [{ startTime: 0, title: 'x' }, { startTime: 5, title: 'y' }]);
+  // gate r2 (Architect ruling): an unchanged count keeps the STORED titles and takes the
+  // source TIMES; matching titles simply drop the manual list.
+  const renamed = { id: 'r', chapters: CH.map((c) => ({ ...c })) };
+  renamed.chaptersManual = snap.buildSnappedManual(renamed, resolveItemChapters(renamed), [0, 7.75, 15.75, 21.75, 40]);
+  renamed.chaptersManual[1].title = 'Typed Two';
+  const pr = snap.planRevert(renamed, resolveItemChapters);
+  assert.deepStrictEqual(pr.restore, [
+    { startTime: 0, title: 'One' }, { startTime: 6.5, title: 'Typed Two' }, { startTime: 13, title: 'Three' },
+    { startTime: 22.4, title: 'Four' }, { startTime: 40, title: 'Five' },
+  ]);
+  assert.strictEqual(pr.chaptersSource, 'embedded', 'the confirm still names the source it goes back to');
+  // A count change takes the source whole (titles included).
+  const grown = { ...renamed, chapters: CH.map((c) => ({ ...c })).concat([{ startTime: 50, title: 'Six' }]) };
+  const pg = snap.planRevert(grown, resolveItemChapters);
+  assert.strictEqual(pg.restore, null);
+  assert.strictEqual(pg.count, 6);
   // A partial / mixed provenance list is not a snap edit (no revert offered).
   assert.strictEqual(snap.isSnapEdited({ chaptersManual: [{ startTime: 0, title: 'a', snapFrom: 0, snapBase: 'embedded' }, { startTime: 3, title: 'b' }] }), false);
   assert.strictEqual(snap.isSnapEdited({ chaptersManual: [{ startTime: 0, snapFrom: 0, snapBase: 'embedded' }, { startTime: 3, snapFrom: 2, snapBase: 'manual' }] }), false);

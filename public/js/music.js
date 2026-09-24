@@ -406,7 +406,7 @@ function buildListenChapterTracks(v) {
 function chapterStamp(seconds) {
   var s = Number(seconds);
   if (!s || !isFinite(s) || s <= 0) return '0:00';
-  // v1.319 (gate r1, adversary W1): LOSSLESS - a sub-second start keeps its fraction to
+  // chapter snap (2026-09-24, gate r1, adversary W1): LOSSLESS - a sub-second start keeps its fraction to
   // the millisecond ("1:01.75"), exactly as common.js formatChapterStamp writes it
   // (parity-tested); whole seconds read as before. Flooring turned a title-only fix of
   // a snap edit into a rewrite of every time, and could merge two starts into one.
@@ -459,7 +459,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // v1.317 (M1): the album drill's artist line drills into that artist (the card delegation).
     (artist ? '<button type="button" class="music-drill-artist" data-artist="' + escapeMusicHtml(artist) + '" title="Go to artist">' + escapeMusicHtml(artist) + '</button>' : '') +
     '<div class="music-drill-meta">' + escapeMusicHtml(meta) +
-    // v1.319 Chapter Snap: "Edited" when this chaptered album's times were corrected
+    // Chapter Snap (2026-09-24): "Edited" when this chaptered album's times were corrected
     // (the rows carry chaptersEdited from the server's projection).
     (isChapterAlbum(tracks) && first.chaptersEdited === true ? ' <span class="music-drill-edited">Edited</span>' : '') +
     '</div>' +
@@ -473,7 +473,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // a real album's track titles are file tags and are not editable here.
     (isChapterAlbum(tracks) && !!(opts && opts.canEditChapters)
       ? '<button type="button" class="music-drill-chapters btn btn-sm"><i class="icon-list"></i> Edit chapters</button>' +
-        // v1.319 Chapter Snap (Dean): fix WHEN the songs start (silence snap + nudges) -
+        // Chapter Snap (2026-09-24) (Dean): fix WHEN the songs start (silence snap + nudges) -
         // the ONE time editor (common.js showChapterSnapEditor), same write-RBAC gate.
         '<button type="button" class="music-drill-snap btn btn-sm">Fix times</button>'
       : '') +
@@ -1156,7 +1156,7 @@ if (typeof module !== 'undefined' && module.exports) {
             // M3 chapter likes: the Like row targets the playing CHAPTER (see the helpers).
             fetchItem: extrasFetchItem,
             likeRequest: extrasLikeRequest,
-            onChapterSnap: extrasChapterSnap, // v1.319 Chapter Snap: "This chapter starts wrong"
+            onChapterSnap: extrasChapterSnap, // Chapter Snap (2026-09-24): "This chapter starts wrong"
           },
           // v1.254 (ENDLESS AUTOPLAY): the page-1 toggle. Lives HERE (not the Extras
           // page) deliberately: Extras exists only for library-backed items, and the
@@ -1578,7 +1578,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // writers of the Extras cfg - both must carry them or one surface likes the file).
         fetchItem: extrasFetchItem,
         likeRequest: extrasLikeRequest,
-        onChapterSnap: extrasChapterSnap, // v1.319 Chapter Snap: the SAME hook the sticker cfg passes (two writers)
+        onChapterSnap: extrasChapterSnap, // Chapter Snap (2026-09-24): the SAME hook the sticker cfg passes (two writers)
         getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
         getSignal: function () { return signal; },
         close: hideActionsMenu,
@@ -1666,7 +1666,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!item || item.type !== 'audio') return null;
       return String(cur).replace(/::c\d+$/, '') === String(item.id) ? String(cur) : null;
     }
-    // v1.319 Chapter Snap: the index of the PLAYING chapter of `item` (audio album or a
+    // Chapter Snap (2026-09-24): the index of the PLAYING chapter of `item` (audio album or a
     // listen-mode video), captured at Extras OPEN time like likeTargetId, or null.
     function extrasChapterSnapIndexFor(item) {
       var cur = effectiveCurrentId();
@@ -1685,7 +1685,7 @@ if (typeof module !== 'undefined' && module.exports) {
         onSaved: function (body) { applySnappedChapterTimes(baseId, body); },
       });
     }
-    // v1.319 Chapter Snap: the ONE queue seam for a chapter save of `baseId` (the time
+    // Chapter Snap (2026-09-24): the ONE queue seam for a chapter save of `baseId` (the time
     // editor's save or revert, or a text-editor save). It re-registers everything keyed
     // to the chapter list IN PLACE: every queued `<baseId>::c<n>` takes chapter n's new
     // start, span AND title, so the chapter watcher (currentChapterId /
@@ -1713,7 +1713,11 @@ if (typeof module !== 'undefined' && module.exports) {
         fileDur = Math.max(fileDur, (Number(t.chapterStartSec) || 0) + (Number(t.durationSec) || 0));
       });
       var countChanged = queuedCount > 0 && queuedCount !== chapters.length;
-      queue = queue.filter(function (t) {
+      // chapter snap gate r2 (qa S5): the Listen-mode stash (activeListenChapters) is the
+      // queue a dock-return restores - it is often the SAME array as `queue`, and must
+      // lose a dropped chapter too, or the ghost comes back after dock/return.
+      var listenAliased = !!activeListenChapters && activeListenChapters === queue;
+      function keepPatched(t) {
         if (!t || t.source !== 'library-chapter') return true;
         var m = chapterRe.exec(String(t.id));
         if (!m || m[1] !== String(baseId)) return true;
@@ -1728,8 +1732,15 @@ if (typeof module !== 'undefined' && module.exports) {
         t.title = (typeof ch.title === 'string' && ch.title.trim()) ? ch.title.trim() : ('Track ' + (n + 1));
         if (edited) t.chaptersEdited = true; else delete t.chaptersEdited;
         return true;
-      });
+      }
+      queue = queue.filter(keepPatched);
+      if (activeListenChapters) activeListenChapters = listenAliased ? queue : activeListenChapters.filter(keepPatched);
       reflectChapter();
+      // chapter snap gate r2 (adversary W2): a dropped row SHIFTS queue indices, but
+      // reflectChapter re-registers nav only when the playing chapter's ID changes - so
+      // re-register around the playing id's NEW index unconditionally (onPrev/onNext by
+      // index, and the last-index autoplay arm when it just became the last).
+      renavPlaying();
       reflectEngines();
       if (countChanged) updateNowPlayingPanel(); // the Up next list reads the (filtered) queue
       if (opts && opts.skipDrillRefresh) return;
@@ -1739,6 +1750,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // reload the list from the server, never leave rows pointing past a filtered queue.
         render().then(function () {
           reflectChapter();
+          renavPlaying(); // the re-listed queue has its own indices
           reflectEngines();
         }).catch(function () {
           if (typeof window.showToast === 'function') window.showToast('Chapters saved, but the list could not be refreshed.');
@@ -1746,6 +1758,16 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
       if (ownsDrill) renderDrillView();
+    }
+    // Re-register track nav around the index the PLAYING track has in the CURRENT queue
+    // (chapter snap gate r2): after a chapter save drops or re-lists rows, the indices the
+    // registered onPrev/onNext closed over are stale even when the playing id is not.
+    function renavPlaying() {
+      var cur = effectiveCurrentId();
+      if (!cur) return;
+      for (var k = 0; k < queue.length; k++) {
+        if (queue[k] && queue[k].id === cur) { registerTrackNav(k); return; }
+      }
     }
     function extrasFetchItem(id) {
       return fetch('/api/videos/' + encodeURIComponent(id))
@@ -2615,7 +2637,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // names here, and the editor that writes them already exists on the watch page -
       // this is the same dialog, reached from where the names are actually read.
       if (e.target.closest('.music-drill-snap')) {
-        // v1.319 Chapter Snap: the editor seeds itself from STORAGE (GET
+        // Chapter Snap (2026-09-24): the editor seeds itself from STORAGE (GET
         // /api/videos/:id/chapter-snap), never from this drill's rows - a searched
         // drill shows a subset, and the editor must see every chapter.
         var snapBaseId = chapterAlbumBaseId(queue);
@@ -2664,7 +2686,7 @@ if (typeof module !== 'undefined' && module.exports) {
             return chapterStamp(Number(ch.startTime) || 0) + ' ' + (ch.title || '');
           }).join('\n');
           window.showChaptersEditor(baseId, lines, function (body) {
-            // v1.319 (gate r1, qa S10): the ONE queue seam first - it patches the playing
+            // chapter snap (2026-09-24, gate r1, qa S10): the ONE queue seam first - it patches the playing
             // file's queued chapters (times, titles, a count change) and re-derives the
             // playing chapter even while PAUSED. This path also carries the time editor's
             // result (the text editor's "Fix times..." hands it through here).
@@ -2678,6 +2700,7 @@ if (typeof module !== 'undefined' && module.exports) {
               if (drill !== scopeAtClick || !content.isConnected) return; // v1.203: ask, do not assume
               renderDrillView();
               reflectChapter(); // the reloaded queue carries the new starts - re-derive the playing chapter
+              renavPlaying(); // ...and its own indices (chapter snap gate r2)
               reflectEngines(); // the skins show a chapter title; a rename must reach them
             }).catch(function () {
               if (typeof window.showToast === 'function') window.showToast('Chapters saved, but the list could not be refreshed.');

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.319 Chapter Snap - the routes module's POST-AWAIT re-checks
+// [UNIT] Chapter Snap (2026-09-24) - the routes module's POST-AWAIT re-checks
 // (lib/media/chapterSnapRoutes.js), driven with injected deps so the one window an
 // HTTP test cannot time is pinned exactly: the request PASSES the pre-await gate
 // (restrictedVideoMutation, the cached item visible), and by the time its write tick

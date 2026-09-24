@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.319 Chapter Snap gate r1 (adversary W4, qa W2): the WATCH page, driven
+// [UNIT] Chapter Snap (2026-09-24) gate r1 (adversary W4, qa W2): the WATCH page, driven
 // through the REAL player.js in jsdom (the player-immersive-lock-grace harness shape):
 // every chapter save on the page - the time editor's save AND the text editor's save -
 // must re-derive EVERYTHING keyed to the chapter list, not just the menu: the seek-bar

@@ -12774,7 +12774,7 @@ function showMoveModal(item, folders, onMove, doc) {
  */
 function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   const d = doc || document;
-  // v1.319 (gate r1, adversary S8): the `version` the list was seeded with (GET
+  // chapter snap (2026-09-24, gate r1, adversary S8): the `version` the list was seeded with (GET
   // /api/videos/:id chaptersVersion) rides the save, so a list changed elsewhere since
   // (a snap save, a reheat) is refused by the server instead of overwritten.
   const seedVersion = opts && typeof opts.version === 'string' ? opts.version : undefined;
@@ -12817,7 +12817,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   const actionsRow = d.createElement('div');
   actionsRow.className = 'modal-actions';
 
-  // v1.319 Chapter Snap (Dean): the text box stays for pasting a whole list; this
+  // Chapter Snap (2026-09-24) (Dean): the text box stays for pasting a whole list; this
   // opens the SAME time editor every other entry point opens (showChapterSnapEditor),
   // seeded from storage. Offered once the item has at least two chapters; refused
   // while the textarea holds unsaved typing (switching would silently drop it).
@@ -12902,7 +12902,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   return { backdrop, modal, textarea, statusEl, cancelBtn, saveBtn, snapBtn, teardown };
 }
 
-// ---- v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor ---------
+// ---- Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor ---------
 //
 // ONE component, opened from four places (the Music album drill, the now-playing
 // "This chapter starts wrong", the watch page's chapters list, and the text
@@ -12917,7 +12917,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
 // .chapter-snap-*), nothing is drag-only, and the list scrolls inside a
 // full-height sheet at phone widths.
 
-// v1.319 (gate r1, adversary W1): the text chapters editor's SEED stamp - LOSSLESS.
+// chapter snap (2026-09-24, gate r1, adversary W1): the text chapters editor's SEED stamp - LOSSLESS.
 // Whole seconds read exactly as formatDuration writes them ("1:05", "1:02:05");
 // a start with a fraction keeps it to the millisecond ("1:01.75"), which the
 // server's editor grammar (server.js parseManualChapterText) reads back. Flooring
@@ -13087,7 +13087,7 @@ function showChapterSnapEditor(mediaId, opts) {
   function times() { return rows.map((r) => r.time); }
   function suggestionFor(i) { return state && Array.isArray(state.suggestions) ? state.suggestions[i] || null : null; }
   function silenceState() { return state && state.silence ? state.silence.state : 'none'; }
-  // v1.319 (gate r1, qa W1): "Snap all" is ONE plan, counted and applied from the
+  // chapter snap (2026-09-24, gate r1, qa W1): "Snap all" is ONE plan, counted and applied from the
   // same function. It touches only rows that have a server suggestion AND are still
   // at their saved time - a row the user nudged or snapped by hand is theirs - and
   // each snapped time must stay strictly between the CURRENT neighbours (a nudged
@@ -13475,9 +13475,11 @@ function showChapterSnapEditor(mediaId, opts) {
     if (busy || !state || !state.revert) return;
     const src = sourceWord(state.revert.source);
     let text = 'Go back to the chapter times from ' + src + '? Your corrected times are removed.';
+    // chapter snap gate r2 (Architect ruling): an unchanged count keeps YOUR titles;
+    // a count change takes the source's list, titles included - the confirm says which.
     text += state.revert.count === rows.length
-      ? ' Likes and progress stay on the same chapters, because the chapter count does not change.'
-      : ' The source now has ' + state.revert.count + ' chapters instead of ' + rows.length + ', so liked chapters can move to a different song.';
+      ? ' Your chapter titles are kept. Likes and progress stay on the same chapters, because the chapter count does not change.'
+      : ' The source now has ' + state.revert.count + ' chapters instead of ' + rows.length + ', so the chapter list AND its titles come from the source, and liked chapters can move to a different song.';
     askConfirm(text, 'Revert', 'Keep my corrections', function () { doRevert(state.revert.count !== rows.length); });
   });
 
@@ -16262,7 +16264,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested)
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).
     withShareStartTime,
-    // v1.319 Chapter Snap: the ONE chapter-time editor + its pure helpers (jsdom-tested).
+    // Chapter Snap (2026-09-24): the ONE chapter-time editor + its pure helpers (jsdom-tested).
     showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor, formatChapterStamp,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,

@@ -75,7 +75,7 @@ const DEFAULT_SETTINGS = {
   // Experimental) is OPT-IN, OFF by default. Gates /diag, the probes, and the
   // shell perf-collector. See server.js DEFAULT_SETTINGS.
   perfDiagnosticsEnabled: false,
-  // v1.319 DELIBERATE key-set change: the Chapter Snap lead-in (seconds before
+  // chapter snap (2026-09-24) DELIBERATE key-set change: the Chapter Snap lead-in (seconds before
   // the first sound after a silence), server-wide, default 0.25.
   chapterSnapLeadInSec: 0.25,
 };

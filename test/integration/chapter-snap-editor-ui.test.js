@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.319 Chapter Snap: the ONE time editor (common.js
+// [INTEGRATION] Chapter Snap (2026-09-24): the ONE time editor (common.js
 // showChapterSnapEditor) driven in jsdom against the REAL server - every request
 // the editor makes goes through the real routes to the real stored record, so the
 // seed, the save, the version refusal and the revert are the production shapes,

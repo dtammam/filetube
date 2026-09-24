@@ -7298,7 +7298,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function openChaptersEditorFromMenu() {
       closeChaptersMenu();
       if (typeof window.showChaptersEditor !== 'function' || !currentId) return;
-      // v1.319 (gate r1, adversary W1): the seed is LOSSLESS - formatChapterStamp keeps a
+      // chapter snap (2026-09-24, gate r1, adversary W1): the seed is LOSSLESS - formatChapterStamp keeps a
       // sub-second start ("1:01.75"); formatDuration floored it, so a title-only fix
       // rewrote every snapped time and could merge two starts into one chapter.
       var stamp = typeof window.formatChapterStamp === 'function' ? window.formatChapterStamp : formatDuration;
@@ -7311,7 +7311,7 @@ if (typeof module !== 'undefined' && module.exports) {
         applySavedChapters(resolved);
       }, undefined, { version: currentData && currentData.chaptersVersion });
     }
-    // v1.319 (gate r1: adversary W4, qa W2): EVERY chapter save on this page (the text
+    // chapter snap (2026-09-24, gate r1: adversary W4, qa W2): EVERY chapter save on this page (the text
     // editor, the time editor, a revert) goes through applyChaptersForMedia - the one
     // seam that re-segments the seek bar, resets and re-derives the current chapter
     // (label + menu highlight, even while PAUSED) and drops an armed loop. Rebuilding
@@ -7324,7 +7324,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (resolved && typeof resolved.version === 'string') data.chaptersVersion = resolved.version;
       applyChaptersForMedia(data);
     }
-    // v1.319 Chapter Snap: the chapters menu's two additions, as helpers so the
+    // Chapter Snap (2026-09-24): the chapters menu's two additions, as helpers so the
     // builder stays one readable unit. (a) The header's "Edited" badge when these
     // times were corrected in the time editor (GET /api/videos/:id chaptersEdited,
     // refreshed on save/revert). (b) "Fix chapter times…" beside the text editor's
@@ -7346,7 +7346,7 @@ if (typeof module !== 'undefined' && module.exports) {
       snapEntry.addEventListener('click', openChapterSnapFromMenu);
       chaptersMenu.appendChild(snapEntry);
     }
-    // v1.319 Chapter Snap: open the time editor for the loaded item at the current
+    // Chapter Snap (2026-09-24): open the time editor for the loaded item at the current
     // chapter. A save (or revert) goes through applySavedChapters above.
     function openChapterSnapFromMenu() {
       closeChaptersMenu();
@@ -7371,7 +7371,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var headerTitle = document.createElement('span');
       headerTitle.textContent = 'Chapters';
       header.appendChild(headerTitle);
-      appendChaptersEditedBadge(header); // v1.319 Chapter Snap
+      appendChaptersEditedBadge(header); // Chapter Snap (2026-09-24)
       var closeBtn = document.createElement('button');
       closeBtn.type = 'button';
       closeBtn.className = 'chapters-menu-close';
@@ -7478,7 +7478,7 @@ if (typeof module !== 'undefined' && module.exports) {
         edit.textContent = currentChapters.length > 0 ? 'Edit chapters…' : 'Add chapters…';
         edit.addEventListener('click', openChaptersEditorFromMenu);
         chaptersMenu.appendChild(edit);
-        appendChapterSnapEntry(); // v1.319 Chapter Snap: "Fix chapter times…" (same gate)
+        appendChapterSnapEntry(); // Chapter Snap (2026-09-24): "Fix chapter times…" (same gate)
       }
       // v1.109: a fresh build starts with no row marked -- re-apply the live
       // current-chapter highlight so an OPEN menu (Loop arm/disarm rebuilds it,
@@ -7502,7 +7502,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Exposed to setupForMedia (which runs outside this wiring closure).
     applyChaptersForMedia = function (data) {
       currentChapters = data && Array.isArray(data.chapters) ? data.chapters : [];
-      // v1.319: the chapter set's companions ride with it into the LOADED item's data -
+      // chapter snap (2026-09-24): the chapter set's companions ride with it into the LOADED item's data -
       // the late-detail path (applyLateDetail) hands a fresh payload while currentData
       // is the list seed, and the "Edited" badge + the text editor's version token read
       // currentData.

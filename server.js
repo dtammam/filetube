@@ -534,7 +534,7 @@ const DEFAULT_SETTINGS = {
   // so a normal install carries zero diagnostic script/timing cost until an
   // admin opts in. FT_DIAG=1 force-enables headlessly. See isDiagEnabled().
   perfDiagnosticsEnabled: false,
-  // v1.319 Chapter Snap (Dean 2026-09-24): the LEAD-IN, in seconds - how far
+  // Chapter Snap (2026-09-24) (Dean 2026-09-24): the LEAD-IN, in seconds - how far
   // before the first sound after a silence a snapped chapter starts. One
   // server-wide value (Setup > Scan > Chapter snap), 0-2 s, clamped again at
   // read time (lib/media/chapterSnap.js clampLeadIn).
@@ -2374,7 +2374,7 @@ function parseChapterLines(text) {
   return finalizeChapters(out);
 }
 
-// v1.319 Chapter Snap (gate r1, adversary W1): the MANUAL editor's grammar - the
+// Chapter Snap (2026-09-24) (gate r1, adversary W1): the MANUAL editor's grammar - the
 // line grammar above plus an optional millisecond fraction on the timestamp
 // ("1:01.75 Title", `(?!\d)` so "3:00.1999 remix" keeps its old reading), so a
 // snapped start round-trips through the text box without flooring. Descriptions
@@ -4141,7 +4141,7 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
     // v1.221: the seek offset for a virtual chapter-track (the client seeks the
     // one file here on play; absent on a plain track).
     ...(isChapter ? { chapterStartSec: track.chapterStartSec } : {}),
-    // v1.319 Chapter Snap: the file's chapter times were corrected (the drill's "Edited" badge).
+    // Chapter Snap (2026-09-24): the file's chapter times were corrected (the drill's "Edited" badge).
     ...(isChapter && track.chaptersEdited === true ? { chaptersEdited: true } : {}),
   };
 }
@@ -4158,7 +4158,7 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
 // /api/liked/:id) and the Liked page's chapter arm (GET /api/liked) all read the
 // SAME expansion, so "likeable" == "appears in Music" by construction (the
 // two-reader-seam class). A non-chaptered item yields its single base track.
-// v1.319 Chapter Snap: a chaptered file whose times were corrected in the snap
+// Chapter Snap (2026-09-24): a chaptered file whose times were corrected in the snap
 // editor marks every chapter track `chaptersEdited` (the Music album drill's
 // "Edited" badge reads it off its rows - no extra request).
 const chapterSnap = require('./lib/media/chapterSnap');
@@ -4857,7 +4857,7 @@ configRoutes.registerSettingsRoutes(app, {
   TRASH_RETENTION_DAYS_VALID_VALUES,
   VALID_DEFAULT_SORTS,
   armScanTimer, // re-arms the periodic scan when the interval changes
-  chapterSnap, // v1.319: the chapter-snap lead-in validator + read clamp
+  chapterSnap, // chapter snap (2026-09-24): the chapter-snap lead-in validator + read clamp
   effectiveCacheCap, // settingsResponse's read-only effectiveCacheMaxBytes
   inSaveTransaction,
   requireAdmin,
@@ -4960,8 +4960,8 @@ mediaRoutes.registerBrowseRoutes(app, {
   bookVisibleTo,
   booksDb,
   buildWatchUrl, // lib/ytdlp/url - the search results' canonical watch links
-  chaptersSnapEdited: chapterSnap.isSnapEdited, // v1.319 Chapter Snap: the GET /api/videos/:id "Edited" flag
-  chaptersVersionOf: (item) => chapterSnap.chaptersVersion(item, resolveItemChapters), // v1.319 gate r1: the text editor's version token
+  chaptersSnapEdited: chapterSnap.isSnapEdited, // Chapter Snap (2026-09-24): the GET /api/videos/:id "Edited" flag
+  chaptersVersionOf: (item) => chapterSnap.chaptersVersion(item, resolveItemChapters), // chapter snap (2026-09-24) gate r1: the text editor's version token
   effectiveProgress, // the stored position with any un-flushed ping overlaid
   folderDisplayNameStore,
   folderSettingsStore,
@@ -6265,8 +6265,8 @@ mediaRoutes.registerLibraryRoutes(app, {
   mediaVisibleTo,
   moveItemToFolder, // lib/media/move.js's collision-safe file mover (slice S5)
   musicDb,
-  chapterSnap, // v1.319: the text editor's version token + snap provenance carry
-  parseManualChapterText, // v1.319 gate r1: the editor grammar (fraction, no silent dedup)
+  chapterSnap, // chapter snap (2026-09-24): the text editor's version token + snap provenance carry
+  parseManualChapterText, // chapter snap (2026-09-24) gate r1: the editor grammar (fraction, no silent dedup)
   path,
   progressStore,
   refuseIfReadOnlyMedia,
@@ -6294,7 +6294,7 @@ mediaRoutes.registerLibraryRoutes(app, {
   ytdlpDb,
 });
 
-// v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor's routes
+// Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor's routes
 // (seed, silence scan, save, revert), registered beside the text chapter
 // editor above and behind the SAME gates. The silence scan's cache is a
 // feature-owned store under DATA_DIR/.chapter-silence (lib/media/chapterSilence.js).
@@ -7094,7 +7094,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
-  chapterSilenceService, // v1.319 Chapter Snap: tests await a scan (whenIdle) and read its cache
+  chapterSilenceService, // Chapter Snap (2026-09-24): tests await a scan (whenIdle) and read its cache
   needsTranscode,
   transcodedPath,
   // v1.317 M4: the music list serializer, so a client unit test drives the REAL row
@@ -7363,7 +7363,7 @@ module.exports = {
   // v1.34 T3 (chapters): the pure parsers/resolver, re-exported under the
   // same testing contract.
   parseFfprobeChapters,
-  parseManualChapterText, // v1.319 gate r1: the text editor's grammar (tests)
+  parseManualChapterText, // chapter snap (2026-09-24) gate r1: the text editor's grammar (tests)
   parseChapterLines,
   deriveDescriptionChapters,
   resolveItemChapters,
