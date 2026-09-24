@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: fix/music-theatre-button
 anchor: spec
 status: Building
-next: the orchestrator gates this branch (adversary floor + qa per scrutiny.toml); then Dean's device check (desktop /music: play a track, the popcorn button in the control bar flips the album beside the player; resize below 1024px and it is gone; /watch theatre unchanged; a watch -> music -> watch trip toggles the right layout on each page)
+next: gate CLOSED r3 @c8767eb6 (adversary + qa; Dean approved round 3). Merge to main, close out at the wave release v1.317.0. Then Dean's device check (desktop /music: play a track, the popcorn button in the control bar flips the album beside the player; resize below 1024px and it is gone; /watch theatre unchanged; a watch -> music -> watch trip toggles the right layout on each page). Owed SUGGESTION (r3 adversary): the harness's fake element keeps only the LAST listener per event type - record every registration if a second handler is ever added to the shared button
 design: Approved 2026-09-23 @6ea45237 (Dean's GO on D15, recorded on feat/music-channel-chapters at 10c3be1e)
-gate: pending
+gate: APPROVED r3 @c8767eb6 — adversary, qa
 ---
 
 # T1: the music view's theatre button is the player's own
@@ -113,15 +113,20 @@ signal; the id-guard means whichever view injects first wins and the other reuse
   `hidden`, and the writer reuses it. ("music -> watch" test.) On the watch side (gate r1,
   adversary W1): the CALL to the one writer is bound by execution in
   `watch-init-behavioral.test.js` (a spy on the harness's player api; the hydrated video path
-  and the `?tv=` path each call it exactly once, post-mount); the post-mount re-query and the
-  `{ signal }` click binding in `setupTheatreToggle` stay SOURCE-locked in
-  `watch-chrome-ambient.test.js` (that vm harness has no button to bind, so the click itself is
-  not executed there).
+  and the `?tv=` path each call it exactly once, post-mount). The `{ signal }` click binding in
+  `setupTheatreToggle` is bound by execution too (gate r2, both seats' W1): the hydrated video
+  path in `watch-init-behavioral.test.js` reaches `setupTheatreToggle`, the shim records the
+  listener options, and the "gate r2 W1" test asserts the click's signal IS init()'s controller
+  signal, live while the view is up and aborted by destroy(). `watch-chrome-ambient.test.js` (a
+  regex-only file) keeps the post-mount `root.querySelector('#theater-btn')` re-query lock and
+  adds a source backstop for the `}, { signal });` tail of `setupTheatreToggle`.
 - AC12 (gate r1, adversary S2) The watch init re-stamps `#theater-btn`'s `aria-pressed` from
   `ft-theater` in the same synchronous pass as the `.theater-mode` class apply, so a host
   arriving with music's aria never disagrees with the class for the hydration RTT. ("gate S2"
-  test in `watch-init-behavioral.test.js`: three stored values, the write recorded
-  synchronously before any await.)
+  test in `watch-init-behavioral.test.js`: three stored values x two init paths, `?v=` and
+  `?tv=`, the write recorded synchronously before any await; the view root answers null for
+  `#theater-btn`, so only the document-wide lookup can reach the host, as in every real shape
+  where the docked host sits outside `#view-root`.)
 - AC8 CSS: hidden below 1024px, in the dock, and on every view but watch/music; the pressed look
   keys off `aria-pressed`; the podcast toolbar button keeps its mobile hide. ("CSS" test.)
 - AC9 SHELL PARITY (dynamic roster over public/*.html + lib/ytdlp/views/*.html, floors 12/11/10):
@@ -417,3 +422,329 @@ Run 2 @2be106bc (tree 1d61a39f), baseline 49 pass / 0 fail:
 `bash .harness/lib/check-markers.sh` after the fix commits: 2 issues, both stale approvals
 (`@6ea45237` the design, and `@7c31035f` qa r1 - code changed since, so r2 re-gates); the
 expected shape before gate r2.
+
+## Gate r2 - qa (@1d87e52c)
+
+Delta review: `git diff 7c31035f 1d87e52c` (09340f30, 2be106bc, 1d87e52c; 5 files). HEAD ==
+1d87e52c on fix/music-theatre-button; tree clean before this section.
+
+Instruments (verbatim, Node v22.23.1):
+- `node --test` watch-init-behavioral, music-theater-toggle, theatre-mode, watch-chrome-ambient:
+  `# tests 49 / # pass 49 / # fail 0`.
+- Every unit file matching `grep -l "watch\.js" test/unit/*.test.js` (52 files) + tech-debt-census:
+  `# tests 1019 / # pass 1019 / # fail 0`.
+- docs-link-census, tech-debt-census, docs-status-census, comment-debt-census,
+  docs-diagrams-census: `# tests 14 / # pass 14 / # fail 0`.
+- `npx eslint` public/js/watch.js + the two touched tests: exit 0, no output.
+- `bash .harness/lib/check-markers.sh`: `✗ ... stale approval @6ea45237` and `✗ ... stale approval
+  @7c31035f` / `check-markers: 2 issue(s) found` (exit 1) - the expected pre-r2 shape, exactly as
+  the fix record states.
+- Em-dash scan of added lines: 3, all verbatim checker output or `Gate:` lines.
+
+Verified: the aria re-stamp (watch.js:1239-1247) runs before the early adopt (:1503) and uses a
+document-wide lookup, so it reaches the host in `#player-dock` (outside `#view-root` in every
+shell); `isTheaterModeActive` is `=== '1'`, matching the test's three values; `buildWatchRealm`
+clears storage, so the S2 "absent" case really is absent. `REAL_PLAYER_API` extracts 13 names;
+every `player.X` watch.js reads is on it (the only miss, `js`, is the word "player.js" in comments).
+Tracker #236's claims hold (books.html loads watch.js:211 + player.js:213, no template/dock,
+byte-unchanged since 6ea45237). The r1 W1 fix is closed: the Build-record bullet now states the
+true 1-issue output. The code delta regresses nothing I can find.
+
+Findings:
+
+1. WARNING (plan doc AC7; r1 qa W2 NOT closed): the reworded AC7 says the `{ signal }` click
+   binding in `setupTheatreToggle` stays "SOURCE-locked in `watch-chrome-ambient.test.js`
+   (that vm harness has no button to bind ...)". Both halves are false. watch-chrome-ambient has
+   no vm harness (it is regex-only), and no test anywhere locks the theatre click's `{ signal }`.
+   Its only theatre lock is the `root.querySelector('#theater-btn')` re-query (:117). The same
+   false claim sits in the comment at test/unit/music-theater-toggle.test.js:252. Verified by a
+   sandbox mutant (`git archive 1d87e52c` in /tmp, since deleted): `}, { signal });` -> `});` at
+   watch.js:2435 leaves all 52 watch.js-reading files green, `# tests 1016 / # pass 1016 / # fail
+   0`. Scenario: after T1, music and watch share ONE visible button. If a watch listener outlives
+   its view, a click on /music (after any watch visit) also runs watch's handler. That writes
+   `ft-theater` and toggles a detached `.watch-container`, so the user's watch theatre setting
+   flips from the music page. The suite stays green. Prescription: in the v1.186 re-query test
+   of watch-chrome-ambient.test.js (the `th` slice), add
+   `assert.match(th, /\}, \{ signal \}\);\s*\}\s*$/, 'the theatre click is bound on the view signal')`,
+   then re-run the mutant red. (Alternative: the hydrated video path in watch-init-behavioral now
+   REACHES setupTheatreToggle, because the auto-created `#theater-btn` is truthy. Record the
+   listener opts in the makeEl shim and assert `signal` there.) Then fix AC7 so it names the real
+   lock. With the lock in place, the music-theater-toggle comment becomes true.
+2. SUGGESTION (test/unit/watch-init-behavioral.test.js "gate S2"): the test does not bind the
+   fix's essential property, the DOCUMENT-wide lookup. The harness maps
+   `document.getElementById('theater-btn')` and `root.querySelector('#theater-btn')` to the same
+   `els` entry. Verified by a sandbox mutant (`root.querySelector('#theater-btn')` at :1246):
+   `# tests 49 / # pass 49 / # fail 0`. In production that mutant is inert, because the docked
+   host lives outside `#view-root`, so the one-RTT seam returns. Fix: give the S2 test's `root`
+   a querySelector that returns null for `#theater-btn`, so only the document can find it.
+3. SUGGESTION (test/unit/watch-init-behavioral.test.js header :13): "hydration fetches hang
+   forever (frame-one only)" is now only the DEFAULT. The v1.314 bell tests and the new W1 tests
+   route resolving fetches. Say "by default".
+
+Security-brief (standing): no security surface in the delta. The only runtime change is one
+`setAttribute('aria-pressed', 'true'|'false')` from a boolean. Everything else is test harness
+code (a readFileSync of a repo file, regex extraction) and docs. No input, network, storage key
+or command is involved.
+
+Tree: `git status --short` was empty before this section. This appended section is the only
+change; the sandbox lived in /tmp and has been removed.
+
+Gate: CHANGES r2 @1d87e52c — qa
+
+## Gate r2 - adversary (@1d87e52c)
+
+Delta review of `git diff 7c31035f 1d87e52c` (fresh instance). HEAD == 1d87e52c on
+fix/music-theatre-button. Every number below was produced here, in a `git archive 1d87e52c`
+sandbox (/tmp/adv-r2-WInJ, node_modules symlinked from the main checkout); the worktree was never
+edited except this section.
+
+Instruments (Node v22.23.1): the four targeted files (watch-init-behavioral, watch-chrome-ambient,
+music-theater-toggle, theatre-mode) = `# tests 49 / # pass 49 / # fail 0`. eslint on watch.js + the
+two touched tests: exit 0. `check-markers.sh`: 2 issues (stale @6ea45237, stale @7c31035f), exit 1,
+the expected pre-r2 shape.
+
+r1 findings, verified at 1d87e52c:
+- adversary W1 (guard-typo survivor): FIXED. Guard typo -> 47/2 (both gate W1 tests); M10 -> 45/4;
+  a typo in the call line only -> 43/6; the writer called twice -> 47/2; an extra synchronous call
+  in init() -> 47/2; initWatch step 9 drops `ensureCogControlsInjected()` -> 48/1; initTvWatch drops
+  it -> 47/2. The Proxy change carries the fix: the old `() => undefined` fallback plus the guard
+  typo -> 49/0 (survives), exactly as the fix record says.
+- REAL_PLAYER_API (brief item a): at this sha the extracted set EQUALS the runtime api. I loaded the
+  real player.js in jsdom and compared with `Object.getOwnPropertyNames(window.FileTube.player)`: 13
+  names on both sides, none missing and none extra. Every `player.X` that watch.js reads is on it.
+  It is shape-fragile, though: see S1.
+- adversary S2 (the aria seam; AC12, brief item b): the runtime FIX is VERIFIED on the real shape.
+  I re-ran my r1 drive (the real player.js + watch.js + music.js in one jsdom, router swaps
+  simulated) with a `?tv=` scenario added. Music theatre ON with ft-theater=0, then a soft-nav to
+  watch. At the synchronous point after init(), the button reads aria `false` on the video defer
+  path (host in the dock), the early-adopt path, and the `?tv=` path. The same drive on the r1 tree
+  reads aria `true` on the early-adopt and `?tv=` paths, so the drive can tell the two trees apart.
+  The reverse axis: ft-theater=1 with music OFF gives aria `true` synchronously on `?tv=`. The
+  re-stamp runs before the `?tv=` return, so both init paths reach it. The TEST does not bind it
+  on either axis: see W2.
+- qa S3 (the SHELL PARITY slice, brief item c): FIXED. On all 11 shells that carry a player
+  template (public/*.html + lib/ytdlp/views/*.html), the new end equals the old first-in-file
+  `</template>`, so the change alters no current slice and cannot make the census vacuous.
+  Fix check: I added an early `<template>` to music.html. With the new slice the suite is 9/0.
+  With the old slice restored it is 8/1 (SHELL PARITY goes red).
+- qa W1 (check-markers wording): fixed. My NOTE 4 went to tracker #236: present.
+- Watch's own toggle does not regress (brief item d). The drive's wmwm / cold / dockreturn /
+  transient scenarios on this tree: watch click flips `.theater-mode` + aria + ft-theater with
+  live=1, music click flips only the music stage, one node, and every cog row stays at 1.
+
+### Findings
+
+1. WARNING (test binding and a false plan claim; I independently confirm qa r2 W1, which my r1
+   also missed): watch's theatre click `{ signal }` (public/js/watch.js:2435) is bound by NO
+   test. AC7 says it stays "SOURCE-locked in watch-chrome-ambient.test.js", but that file has only
+   the re-query regex (:117) and the click->scatter regex (:172). Mutant `}, { signal });` ->
+   `});` at :2435 leaves the four files at 49/0. THIS diff makes the gap load-bearing, because
+   the button is now shared with /music. The repro, measured with the drive and that mutant: open
+   watch, then soft-nav to /music. Both listeners stay live (live=2). Each MUSIC theatre click
+   also runs watch's leaked handler, so the user's persisted watch preference `ft-theater` flips
+   1 -> 0 -> 1 from the music page. The symmetric music-side mutant (music.js:811 drops `{ signal
+   }`) IS red (48/1, the "watch -> music" census), so only watch's axis is unbound.
+   Prescription: bind it by execution in watch-init-behavioral. mountVideoPath already reaches
+   setupTheatreToggle. Record the `opts` in the shim's addEventListener for the `#theater-btn`
+   click, assert that `opts.signal` is the init's signal, and assert that it is aborted after
+   destroy(). qa's source regex is the fallback. Then re-run the mutant red. Reword AC7, and fix
+   the matching claim in the test/unit/music-theater-toggle.test.js:252 comment.
+2. WARNING (AC12's binding test does not bind the fix; divergent fixture): the "gate S2" test's
+   harness answers `document.getElementById('theater-btn')` and `root.querySelector('#theater-btn')`
+   from the same `els` map, and it runs only `?v=`. Two mutants survive at 49/0:
+   (i) `const tb = root.querySelector('#theater-btn');`. With this mutant the drive reads aria `true`
+   at the sync point on all three shapes, identical to the r1 tree. At that line the host is ALWAYS
+   outside `#view-root` (in the dock, or still in the template), so this mutant makes AC12 fully
+   INERT in production while its test stays green.
+   (ii) Moving the re-stamp below the `?tv=` return. The drive then reads aria `true` on `?tv=` and
+   `false` on `?v=`.
+   The runtime cost of a regression is cosmetic (a one-RTT aria mismatch). The finding is that
+   AC12 claims a binding test, and that test cannot see either of the two ways the fix breaks.
+   Prescription: in the S2 test, make `root.querySelector('#theater-btn')` return null, so only
+   the document can find the button, as in every real shape. Add a `?tv=ep1` iteration. Re-run
+   both mutants red.
+3. SUGGESTION (REAL_PLAYER_API shape-fragility, brief item a): the literal scan needs `name:` or
+   `name(` at exactly 4 spaces. An ES shorthand member (`    setLoop,`) is silently dropped.
+   Measured: that one-line player.js edit removes `setLoop` from the set, the harness test stays
+   green, and the four files stay 49/0. A getter written inside the literal or an `Object.assign(api,
+   ...)` would be missed the same way. The direction is a silent SUBSET: the harness answers
+   `undefined` for a real member, so a `typeof`-guarded branch is skipped in the harness and runs in
+   production. No lint rule forbids shorthand, and player.js already has 70 shorthand-shaped lines
+   elsewhere. Fix: derive the set from the runtime object (load player.js in jsdom, as the
+   music-theater-toggle reachability test already does), or assert the extracted set against
+   `Object.getOwnPropertyNames` of it.
+4. SUGGESTION (harness fidelity; no effect today): `currentId` is an accessor on the real api, but
+   the Proxy answers it with a no-op FUNCTION. The comment says it "answers exactly what production
+   answers", and for data properties that overstates it. Harmless today:
+   `resolveWatchEntryReparentAction(fn, id, undefined)` returns 'defer', the same as production's
+   `(null, id, 'closed')`.
+
+Nothing else is new in the delta. The added makeEl no-ops (querySelector null, contains/matches/
+hasAttribute false) let the hydrated path run. All 49 tests pass, but I did not audit whether they
+change a branch in any pre-existing test.
+
+Verdict: CHANGES. W1 is the same class as my r1 blocker (a presence-not-binding gap on a binding
+this diff made load-bearing), and its repro corrupts a persisted preference. W2 is a green test
+whose realistic mutant makes the fix inert. Both are small test-only changes plus AC7/AC12
+wording. The sandbox (/tmp/adv-r2-WInJ, including drive.js and mut.js for r3) is outside the tree.
+Tree: before this section the only change was qa's uncommitted r2 section in this doc. No
+untracked files.
+
+Gate: CHANGES r2 @1d87e52c — adversary
+
+## r2 fix record
+
+One test-only fix commit on top of 1d87e52c (no production code changed; watch.js and player.js
+are byte-identical to 1d87e52c). Mutants ran in a `git archive` sandbox of the STAGED tree
+`5704d32b` (written with `git write-tree` before this section was added; the code and test paths
+in the commit are identical to that tree, only this doc differs), node_modules symlinked from the
+main checkout, never on the live tree.
+
+| Finding | What changed | Binding test | Mutant result |
+|---------|--------------|--------------|---------------|
+| qa W1 + adversary W1 (watch's theatre click `{ signal }` unbound) | `test/unit/watch-init-behavioral.test.js`: the makeEl shim records listener OPTIONS (`_lo`) beside the listener; the realm records every AbortController it creates and returns `destroy`; `mountVideoPath` names init()'s controller. `test/unit/watch-chrome-ambient.test.js`: qa's regex added to the v1.186 re-query test as a source backstop. | "v1.317 gate r2 W1" (the hydrated video path reaches `setupTheatreToggle`; the click's `opts.signal` IS init()'s controller signal, live, then aborted by `destroy()`) + the v1.186 re-query regex. | `}, { signal });` -> `});` in `setupTheatreToggle`: killed, 49 pass / 2 fail (gate r2 W1 + v1.186 re-query). |
+| adversary W2 (AC12's test does not bind the document-wide lookup or the pre-`?tv=` placement) | The "gate S2" test's view root answers null for `#theater-btn` (only `document.getElementById` finds the host, as in every real shape), and the three stored values run on both `?v=vid1` and `?tv=ep1`. | "v1.317 gate S2" (6 iterations). | (a) `root.querySelector('#theater-btn')` at the re-stamp: killed, 50 / 1 (first failing iteration `?v=vid1 ft-theater=1`). (b) the re-stamp moved below the `?tv=` return: killed, 50 / 1 (first failing iteration `?tv=ep1 ft-theater=1`). |
+| qa W1 + adversary W1 (false AC7 claim; the test comment) | AC7 names the real binding (the executed "gate r2 W1" test; watch-chrome-ambient is regex-only and keeps the re-query lock plus the new backstop). AC12 names the six iterations and the null view-root lookup. The comment at test/unit/music-theater-toggle.test.js:252 now names the executed test. | Doc and comment only. | n/a |
+| qa S3 (header wording) | The watch-init-behavioral header says hydration fetches hang "by default" and names the tests that route resolving fetches. | Comment only. | n/a |
+| adversary S3 (REAL_PLAYER_API shape-fragile) | Taken (small): a harness test evaluates the real player.js in a bare jsdom window and asserts the regex-extracted set deep-equals `Object.getOwnPropertyNames(window.FileTube.player)`. | "harness: REAL_PLAYER_API equals the runtime api of the real player.js (jsdom)". | `setLoop: setLoop,` -> `setLoop,` in the api literal: killed, 50 / 1 (that harness test). |
+| adversary S4 (`currentId` is an accessor, the Proxy answers a function) | Not changed: harmless today (the adversary's own analysis: `resolveWatchEntryReparentAction` returns 'defer' on both shapes). Disclosed. | n/a | n/a |
+| Tracker id clash (feat/chapter-likes merged row 235 to main) | This branch's books.html row renumbered 235 -> 236 in docs/exec-plans/tech-debt-tracker.md; every `#235` in this doc (Known seams, r1 fix record, and the two r2 seat sections that cite it) now reads `#236`. The tracker merge with main's row 235 is a textual conflict for the merge step. | tech-debt census. | n/a |
+
+Regression check in the same sandbox: the r1 guard-typo mutant (`ensureTheatreButton` in the
+`typeof` guard) is still killed, 49 / 2 (both gate W1 writer-call tests). Baseline before and
+after the mutant loop: 51 pass / 0 fail.
+
+Targeted runs (Node 22.23.1, live tree before this section): watch-init-behavioral +
+watch-chrome-ambient + music-theater-toggle + theatre-mode = `# tests 51 / # pass 51 / # fail 0`
+(watch-init-behavioral alone 21 / 21); docs-link, tech-debt, docs-status, comment-debt and
+docs-diagrams censuses = `# tests 14 / # pass 14 / # fail 0`; `npx eslint` on the three touched
+tests: exit 0.
+
+## Gate r3 - qa (@c8767eb6)
+
+Delta review: `git diff 1d87e52c c8767eb6` (one commit; 5 files, tests + docs only;
+`git diff --stat 1d87e52c c8767eb6 -- public/` is empty). HEAD == c8767eb6 on
+fix/music-theatre-button; tree clean before this section.
+
+Instruments (verbatim, Node v22.23.1):
+- `node --test` watch-init-behavioral, music-theater-toggle, theatre-mode, watch-chrome-ambient:
+  `# tests 51 / # pass 51 / # fail 0`.
+- docs-link, tech-debt, docs-status, comment-debt, docs-diagrams censuses:
+  `# tests 14 / # pass 14 / # fail 0`.
+- `npx eslint` on the three touched tests + public/js/watch.js: exit 0, no output.
+- `bash .harness/lib/check-markers.sh`: stale approvals @6ea45237 and @7c31035f,
+  `check-markers: 2 issue(s) found` (exit 1). This is the expected pre-close shape: both are
+  superseded seat or design markers, and neither is an r3 marker.
+- Mutants in a /tmp `git archive c8767eb6` copy (node_modules symlinked, since deleted), same
+  four files, baseline `# pass 51 / # fail 0`:
+  - `}, { signal });` -> `});` in setupTheatreToggle: `# pass 49 / # fail 2`, both killers
+    named: "v1.186 the moved controls are RE-QUERIED" (the regex backstop) and "v1.317 gate r2 W1"
+    (the executed binding).
+  - My own extra: `{ signal: new AbortController().signal }`, a live signal that is not the
+    view's: `# pass 49 / # fail 2`, same two tests. The identity assert against init()'s
+    controller does the work, not only "a signal is present".
+  - The r2 S2 scope mutant, `root.querySelector('#theater-btn')` at the re-stamp:
+    `# pass 50 / # fail 1` (gate S2).
+
+Delta items, each verified against the code:
+- r2 W1 (AC7 and the theatre `{ signal }`) is FIXED. The binding is now executed: the shim
+  records listener options, the realm records its AbortControllers, and the test compares
+  `opts.signal` by identity with the controller made by init()'s first statement
+  (watch.js:1093). It checks the signal is live, then aborted by `destroy()` (watch.js:4527-4531).
+  The regex backstop sits in the correct slice. AC7 now describes this accurately:
+  watch-chrome-ambient is called regex-only, and the re-query lock plus the backstop are named.
+  The comment at music-theater-toggle.test.js:252 is now true.
+- r2 S2 (scope binding) is FIXED. The view root answers null for `#theater-btn`, and the mutant
+  above goes red. The added `?tv=` iterations bind the placement before the tv return, which the
+  fix record says it mutation-checked. AC12's wording ("three stored values x two init paths",
+  the null view-root lookup) matches the test.
+- r2 S3 (header) is FIXED. "by default", and the three named routed-fetch users (?tv=, the bell
+  arms, the hydrated video path) all exist in the file.
+- The tracker renumber is correct. The branch has exactly one row 236 and no row 235; main's
+  235 is chapter-likes. The fix record discloses the textual merge conflict for the merge step.
+  It also discloses that `#235` -> `#236` was rewritten inside the two r2 seat sections. That
+  edit changes only the id and keeps my r2 section's substance, so I accept it.
+- The new jsdom harness test ("REAL_PLAYER_API equals the runtime api") is sound. It compares
+  the extracted set with `Object.getOwnPropertyNames` of the real api. That comparison includes
+  accessors, so a silent subset now goes red.
+
+Findings: none new. No regression: the production code is byte-identical to 1d87e52c, and the
+r2 behaviour is unchanged. (The adversary S4 disclosure about the Proxy fallback for `currentId`
+stands as disclosed. It has no runtime effect.)
+
+Security-brief (standing): no security surface. The delta is test harness code and docs. The
+only new code path evaluates the repo's own player.js inside jsdom during a unit test. No
+production code, input, network call or storage key changes.
+
+Tree: `git status --short` was empty before this section. This appended section is the only
+change; the /tmp copy has been removed.
+
+Gate: APPROVED r3 @c8767eb6 — qa
+
+## Gate r3 - adversary (@c8767eb6)
+
+Delta only: `git diff 1d87e52c c8767eb6`, 5 files. The changes are tests and docs. `public/` is
+byte-identical to 1d87e52c: `git diff --stat 1d87e52c c8767eb6 -- public/` is empty. HEAD ==
+c8767eb6 and the worktree was clean before this section. I measured everything in a
+`git archive c8767eb6` sandbox (/tmp/adv-r3-c876) and never edited the worktree except for this
+section.
+
+Instruments (Node v22.23.1):
+- **Targeted tests:** watch-init-behavioral, watch-chrome-ambient, music-theater-toggle and
+  theatre-mode give `# tests 51 / # pass 51 / # fail 0`.
+- **Censuses:** tech-debt, docs-link and docs-status give `# tests 4 / # pass 4 / # fail 0`.
+- **Lint:** eslint on the three touched tests exits 0.
+
+r2 findings at c8767eb6:
+- W1 (watch's theatre click `{ signal }`): FIXED. Every mutant is killed:
+
+  | Mutant | Result | What caught it |
+  |---|---|---|
+  | `}, { signal });` -> `});` | 49/2 | "gate r2 W1" + the v1.186 re-query source backstop |
+  | Bound to a foreign signal (`{ signal: new AbortController().signal }`) | 49/2 | same pair; the test checks the signal's identity, not just that one exists |
+  | destroy() no longer calls `controller.abort()` | 50/1 | "gate r2 W1" |
+
+  The test reaches its precondition: the hydrated path binds a real click on `#theater-btn`.
+- W2 (the AC12 binding test): FIXED.
+
+  | Mutant | Result |
+  |---|---|
+  | W2a: `root.querySelector('#theater-btn')` | 50/1 |
+  | W2b: re-stamp moved below the `?tv=` return | 50/1 |
+  | Re-stamp line dropped | 50/1 |
+  | Re-stamp inverted | 50/1 |
+
+  The runtime behaviour is unchanged (`public/` is identical). My real-shape drive on this tree
+  still reads aria `false` synchronously on the `?v=` early-adopt and `?tv=` paths. A watch click
+  toggles `.theater-mode`, aria and ft-theater with live=1. A music click leaves ft-theater
+  alone.
+- S3 (REAL_PLAYER_API): FIXED. The new jsdom test deep-equals the extracted set against the runtime
+  api. Each of these mutants is killed at 50/1:
+  - a shorthand member `setLoop,`
+  - a getter added inside the literal
+  - an `Object.assign(api, {...})` addition
+- Regression check: the r1 guard typo is killed at 49/2 and M10 at 47/4.
+- Tracker renumber: VERIFIED. Main's row 235 is chapter likes (M3). This branch's books.html
+  row is now 236, and `git grep` finds no stale `#235` reference to it. The builder also edited
+  the two committed r2 seat sections from `#235` to `#236`, and the r2 fix record discloses
+  this. My r2 section is still 101 lines, and its `Gate:` line is intact. The tracker change
+  will be a textual conflict with main's row 235 at merge time, as the fix record says.
+- AC7 and AC12 now name the executed bindings. The comment at
+  test/unit/music-theater-toggle.test.js:252 is true.
+
+### Findings
+
+1. SUGGESTION (test/unit/watch-init-behavioral.test.js makeEl shim): the shim records only the
+   LAST listener per event type (`_l[t]` / `_lo[t]`). I added an extra click listener on
+   `theaterBtn` WITHOUT a signal, registered before the real one. It survives at 51/0. This is a
+   new write, not a regression of the binding that is now tested: the prescribed `{ signal }`
+   on the existing handler is bound. If someone later hangs a second handler on the shared
+   button, recording every registration (a list, not last-wins) would close the gap. It does
+   not block.
+2. S4 from r2 (`currentId` answered as a function) stays disclosed and harmless, as argued in r2.
+
+Every CRITICAL and WARNING is closed, and each prescribed mutant goes red at this sha. The
+sandbox is in /tmp, outside the tree. The only change to the tree is this section, which I did
+not commit. qa's r3 section above was appended concurrently. There are no untracked files.
+
+Gate: APPROVED r3 @c8767eb6 — adversary

@@ -125,6 +125,10 @@ test('v1.186 the moved controls are RE-QUERIED post-mount (the v1.181 lesson: no
   assert.match(lp, /const loopCheck = root\.querySelector\('#watch-loop-check'\);/, 'loop re-queries post-mount');
   const th = WATCH_JS.slice(WATCH_JS.indexOf('function setupTheatreToggle'), WATCH_JS.indexOf('\n    // v1.186 (Dean): AMBIENT MODE'));
   assert.match(th, /const theaterBtn = root\.querySelector\('#theater-btn'\);/, 'theatre re-queries #theater-btn post-mount');
+  // v1.317 gate r2 (qa W1): a cheap source backstop for the click's view-signal binding
+  // (the button is shared with /music now); the EXECUTED binding is the "gate r2 W1" test
+  // in watch-init-behavioral.test.js.
+  assert.match(th, /\}, \{ signal \}\);\s*\}\s*$/, 'the theatre click is bound on the view signal');
 });
 
 // ---- item 4: ambient canvas (watch-view) + lifecycle ------------------------
