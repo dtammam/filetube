@@ -1919,12 +1919,11 @@ if (typeof module !== 'undefined' && module.exports) {
       var baseId = String(item.id).replace(/::c\d+$/, '');
       if (!unverifiedChapterFiles[baseId]) return false;
       var gen = playGen; // playAt bumped it for THIS pick; a newer pick supersedes the fetch
-      var applyGen = chapterApplyGen;
       fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (v) {
         if (signal.aborted) return;
         delete unverifiedChapterFiles[baseId];
         var chapters = v && Array.isArray(v.chapters) ? v.chapters : null;
-        if (chapters && applyGen === chapterApplyGen && queuedChaptersDiffer(queue, baseId, chapters)) {
+        if (chapters && queuedChaptersDiffer(queue, baseId, chapters)) {
           applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
         }
         if (gen !== playGen) return;
