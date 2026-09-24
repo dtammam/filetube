@@ -3,7 +3,7 @@ plan: chapter-snap
 harness: v2 · lean
 branch: feat/chapter-snap
 anchor: spec
-status: Gate closed
+status: Shipped v1.322.0
 next: release
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: APPROVED r3 @34a7fe27 — adversary, qa, security-brief

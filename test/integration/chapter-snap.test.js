@@ -2,7 +2,7 @@
 
 // [INTEGRATION] Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor
 // through the REAL app, the REAL stored record and the REAL music projection.
-// Plan: docs/exec-plans/active/2026-09-24-chapter-snap.md. Bound here:
+// Plan: docs/exec-plans/completed/2026-09-24-chapter-snap.md. Bound here:
 //   - a REAL ffmpeg silencedetect run over a REAL generated file (tone,
 //     silence, tone...) reaches the suggestions (skips, loudly, when no ffmpeg);
 //   - TIMES ONLY: a save never renumbers - a like on `<id>::c3` still names the
