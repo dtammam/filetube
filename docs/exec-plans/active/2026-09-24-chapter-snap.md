@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/chapter-snap
 anchor: spec
 status: Building
-next: r1 fixes built @23db164c (main v1.319.0 merged in @5ed10a46, authorized), mutants 71/71 RED; hand-off to the Architect for gate r2 (adversary + qa + security-brief; data class)
+next: r2 fixes built @45e97624 (main v1.320.0 merged in @a86c94b1, pre-authorized), mutants 84/84 RED; hand-off to the Architect for gate r3 (adversary + qa + security-brief S-5 re-engage; data class)
 design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -338,8 +338,12 @@ reaches the suggestions; a parser that cannot read it reds.
   buttons covers every action; phone-first).
 - #241 the "Edited" badge is on the watch menu, the drill header and the editor, not in the music
   skins' chapter lists or Up next.
-- A text-editor save of a snapped item replaces the manual list and drops the provenance (the
-  badge and Revert go away) - by design: typed chapters are plain manual chapters.
+- A text-editor save of a snapped item KEEPS the provenance when it changes titles only (the
+  same count, and every start within 0.5 ms of the stored one), so "Edited" and Revert survive a
+  rename. Any time or count change makes a plain typed list with no provenance, and the badge and
+  Revert go away. A text save of a snap edit must carry the version (gate r2 R5). Revert keeps
+  the stored titles while the count is unchanged (gate r2 R2). (Corrected at gate r2, qa W1: this
+  line used to say every text save dropped the provenance.)
 - Revert of a `description`/`embedded` base lands on the source AS STORED NOW; when the source's
   count changed since, it needs an explicit yes (the confirm says liked chapters can move).
 - The silence scan needs ffmpeg on the server (the Docker image has it); without it the editor says
@@ -1132,3 +1136,85 @@ Tree: the sandbox, the probe temp dirs and Chromium are gone. Apart from this ap
 `node_modules` symlink was left untouched.
 
 Gate: CHANGES r2 @330aaa8b — adversary
+
+## r2 fix record (builder, after gate r2 @330aaa8b)
+
+Commits (all through the pre-commit hook, never --no-verify):
+- a5eeb850: the three r2 verdicts committed as the seats left them.
+- **a86c94b1**: merge of main 57c8ab84 (v1.320.0 = fix/music-followups), pre-authorized for a
+  release-ledger trip. The fix commit tripped `release-ledger.test.js` ("tags with no ledger
+  entry"). I saved the staged fixes as a patch, returned the tree to HEAD, merged, and re-applied
+  the patch with a 3-way merge. One conflict each time, both in `docs/exec-plans/tech-debt-tracker.md`,
+  both resolved by keeping every row in id order: this branch's #239-#242, and main's #243-#246
+  and #248. lib/media/routes.js, style.css, music.js, player.js and server.js merged automatically.
+  Hook `tests 7195 pass 7195 fail 0`.
+- **d24eb564**: the fixes R1-R5 and qa S2/S3/S4. Hook `tests 7198 pass 7198 fail 0`.
+- **45e97624**: binds R3b, the one survivor of the round below. Hook `tests 7199 pass 7199 fail 0`.
+
+### Finding -> fix -> test -> mutant
+
+| Finding | Fix (d24eb564) | Binding test | Mutant (RED) |
+|---|---|---|---|
+| **R1** security S-5 MEDIUM (pre-existing): `__proto__` media id polluted Object.prototype through the text chapters route | New module helper `ownMediaItem(db, id)` in lib/media/routes.js (an own-property lookup). **Every WRITE route** in the module uses it: DELETE /api/videos/:id, POST /dimensions, /chapters, /attribute-channel, and /prepare-audio. Grepped 2026-09-24, the remaining plain lookups are all READ routes and are filed as tracker **#242**: GET /api/videos/:id, /api/subtitles/:id, /api/transcript/:id, music /audio/:id, and the streams /thumbnail, /storyboard, /preview and /video. | NEW test/integration/media-write-proto-ids.test.js. For each of `__proto__`, `constructor`, `toString`, `hasOwnProperty` and `valueOf`, all five write routes return 404. Afterwards Object.prototype, Object and toString carry no `chaptersManual`, `width`, `height`, `channelAttributedManually`, `channelUrl` or `channelName`. The same routes still reach a real item (discrimination). | R1a (chapters), R1b (dimensions), R1c (attribute), R1d (delete), R1e (prepare-audio), R1f (the helper trusting any key) |
+| **R2** adversary W1, **Architect ruling**: Revert erased titles typed in the text editor | `planRevert`: when the chapter count is unchanged, revert writes the source TIMES with the STORED titles as a plain manual list. When the titles already match the source, it just drops the manual list, as before. A count-changing revert (which needs `allowCountChange`) takes the source list whole, titles included. Both confirm texts say which case applies ("Your chapter titles are kept." / "...the chapter list AND its titles come from the source..."), and so does the server's `countChange` 409 message. | chapter-snap.test.js "R2 ... KEEPS the typed titles": the adversary's repro. Snap, then rename two chapters in the text editor, then revert: the titles are `Heartbeats (José González)` and `Crosses`, the times are `[0,60,120,180,240]`, there is no provenance, and the item is no longer Edited. "R2: a count-changing revert of an EMBEDDED-based snap takes the source titles": the 409 says so, and with the yes the list is N1-N6. The core planRevert test covers both branches. The editor-ui confirm tests pass with the new text. | R2 (same count drops titles), R2b (keeps titles even on a count change) |
+| **R3** adversary W2: nav was not re-registered after a count change; **qa S5**: the Listen stash kept dropped chapters | `applySnappedChapterTimes` now calls `renavPlaying()` (registerTrackNav at the playing id's NEW index; the last index arms the autoplay radio) right after the filter, and again after the re-list. The drill text path does the same after its reload. The Listen stash `activeListenChapters` is filtered with the same predicate (or re-pointed when it aliased the queue). | chapter-snap-client.test.js: "3 -> 2 revert while PLAYING f1::c1": nav re-registers synchronously with no stale Next, still none after the re-list, the radio's artist fetch fires, and Prev goes to f1::c0. "a dropped row BEFORE the playing one (a shuffled list)": Prev is ::c0, where the stale closure was playAt(1), which is ::c1 itself. "Listen mode ... does NOT come back after a dock-return": a real `?listen=1` play, then destroy and re-init with `?nowplaying=1`, and the restored queue has no ghost. | R3a (after the filter), R3b (after the re-list), R3c (stash) |
+| **R4** qa W1: the persistence contract was stale | lib/media/chapterSnap.js header now states the shipped rules. A title-only text save (same count, every start within 0.5 ms) keeps the provenance; any time or count change makes a plain typed list. Revert keeps the stored titles at an unchanged count. This plan's "Disclosed gaps" line is corrected below. | (a comment) | - |
+| **R5** adversary S3: a text save without a version could replace a snap edit | The text route refuses a save with no `version` when the STORED list is a snap edit: 409 `stale`, "Reload the page and open the editor again". A plain typed list keeps the optional contract. | chapter-snap.test.js "R5": a snap edit with no version gets 409 and its sub-second times survive; plain over plain with no version gets 200 twice. | R5 |
+| qa S2: a doc comment sat on the wrong function | `wireChapterSnapLeadIn` moved above `saveAutomationSetting`'s doc comment. | (the Setup tests still pass) | - |
+| qa S3: stale "v1.319" labels | Every "v1.319" label this branch added in code, tests and scripts (75 occurrences) now reads "chapter snap (2026-09-24)" or "Chapter Snap (2026-09-24)". `grep -rn v1.319 lib public server.js scripts test` finds only main's own. | - | - |
+| qa S4: a file name could forge a gap | `runSilenceDetect` refuses a path containing `\r` or `\n` before spawning: "This file name contains a line break, so its silence cannot be read safely. Rename the file and try again." | core "runSilenceDetect: ... a line break": a LF name shaped like a detector line and a CR name both reject without spawning. | S4 |
+| adversary S5 (suspicion): the watch player's version token after a Music-side snap save | **Not taken; it fails safe.** A text editor opened later on the watch page with the old token is refused (409 with the reload message) and never overwrites. Refreshing it needs a cross-surface signal (the Music view and the watch player keep separate copies of the item) that is not cheap. | - | - |
+
+### Mutant round @d24eb564
+
+The same runner as round r1 (`chapter-snap-mutants-r1fix.js`), with its anchors re-verified at the
+new sha. Five anchors changed and were updated: M20/M21/M25 (their comments were relabelled), M22
+(renavPlaying now follows it), and M5/M11 (the message text). 13 r2 mutants were added: R1a-R1f,
+R2, R2b, R3a-R3c, R5 and S4.
+
+- **@d24eb564: 83 of 84 RED.** All 71 r1-fix mutants are still RED. Of the 13 new ones, 12 are RED.
+  - R1d (DELETE with the plain lookup) is RED by a HANG. `resolveOnDiskPath(undefined)` throws
+    inside the async handler, so the request never answers, and the file is cancelled at the
+    runner's timeout. That is a real bug the guard removes.
+  - **Survivor: R3b** (no nav re-register after the re-list). Every fixture re-listed the rows in
+    the filtered queue's order.
+- **@45e97624: R3b bound** by chapter-snap-client.test.js "the RE-LIST re-registers nav too". The
+  server re-lists `::c1` first, so there must be no Prev, and Next must be `::c0`. The 15
+  client-side mutants were re-run at 45e97624: M19-M25, N9, N9b, N10, N10b, R3a, R3b, R3c and MB.
+  **15 of 15 RED.**
+- **Total: 84 of 84 RED. No survivors.** MH is still argued equivalent, as in r1.
+
+### Instruments at d24eb564 (Node 22.23.1)
+- `npm run lint`: `✖ 6 problems (0 errors, 6 warnings)`. These are the 6 existing warnings in
+  common.js.
+- `npm run lint:css`: `TOTAL 0`.
+- `overlay-containment-lint --enforce`: `clean (0 violations)`.
+- Broad affected set on the merged tree with the r2 fixes, `FILETUBE_TEST_FFMPEG` set: `tests
+  1800 pass 1800 fail 0 skipped 0`. It covered chapter-snap-*, setup*, music*, player*, skin*,
+  chapter* integration, media-write-proto-ids, rbac*, route*, settings-cache-api, music*/liked*
+  integration, database, and the tech-debt, exec-plans, release-ledger and comment-debt censuses.
+- Hook unit suite: 7198/7198 (d24eb564) and 7199/7199 (45e97624).
+
+### Probe @d24eb564
+`FT_PROBE_AUDIO=<a real 2000 s mp3> node scripts/chapter-snap-probe.js <out>` (390x844, 844x390,
+1440x900). The numbers are unchanged from r1-fix:
+
+| Viewport | buttons | min | < 44 | past viewport | doc scrollWidth | notch after Save vs stored | audition |
+|---|---|---|---|---|---|---|---|
+| 390x844 | 47 | 88x44 | 0 | 0 | 390 | 12.1125% vs 12.113% | playing 243.9 s (boundary 241.5) |
+| 844x390 | 47 | 201x44 | 0 | 0 | 844 | 12.1125% vs 12.113% | playing 243.9 s |
+| 1440x900 | 47 | 52x36 (desktop) | 47 | 0 | 1440 | 12.1125% vs 12.113% | playing 243.9 s |
+
+The editor was reached through the real UI at every viewport. The drill buttons are unchanged.
+Screenshots: `.../scratchpad/chapter-snap-shots-r2/`.
+
+### Disclosed (corrected by R4, replaces the stale line in "Disclosed gaps" above)
+- **Text saves of a snapped item.** A title-only edit (same count, every start within 0.5 ms)
+  KEEPS the snap provenance, so "Edited" and Revert remain. Any time or count change makes it a
+  plain typed list with no provenance. A text save of a snap edit must carry the version (R5).
+- **Revert** restores the source TIMES and keeps the stored titles while the count is unchanged.
+  A count-changing revert takes the source's list and titles, and needs the explicit yes.
+- **Read routes** with the plain metadata lookup are tracker #242: read-only, no pollution
+  possible.
+- **The watch page's version token after a Music-side save** is not refreshed. The next text
+  save there is refused with a reload message, so it fails safe.
