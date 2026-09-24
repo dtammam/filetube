@@ -107,7 +107,7 @@ lighting rules (the iPhone black-video lesson; a lock test enforces vendor + cas
    var(--ly,0) * 10%)`. Rim + recess (G6): the wheel shadow becomes directional at the consumer rule
    (NOT inside the `:root` token, whose `var()` would substitute at `:root`):
    `inset calc(var(--lx,0)*2px) calc(1px + var(--ly,0)*2px) 1px <rim>, inset calc(var(--lx,0)*-2px)
-   calc(-2px + var(--ly,0)*-2px) 4px <recess>, calc(var(--lx,0)*-4px) calc(1px + var(--ly,0)*-4px) 3px <drop>`.
+   calc(-2px + var(--ly,0)*-2px) 4px <recess>, calc(var(--lx,0)*-4px) calc(1px + var(--ly,0)*-4px) 2px <drop>`.
 2. **Center dome** (`.ip-center` on the three Click skins): `circle at calc(50% + var(--lx,0)*16%) calc(40% +
    var(--ly,0)*16%)`; its shadow directional the same way.
 3. **Body / front face**: `.mms-ipod.mms-lit::before` - a reflection band, `position:absolute;
@@ -140,8 +140,8 @@ in tokens).
   Pronounced]` + an info row for a `note`. The pocket controller re-derives this level on every draw
   (like Main) from `lighting.state()`. `activate` on `action:'lighting'` -> `lighting.choose(value)`
   then re-render (the level stays up, the check moves; a note appears once the permission promise
-  settles). `renderMenuList` draws `<span class="ipm-check">` on `check` rows (Click: the iPod's
-  check at the row's right; Seattle: the same glyph in pink, big type).
+  settles). `renderMenuList` draws `<span class="ipm-check">` on `check` rows (the iPod's check at
+  the row's right; Seattle never shows the level).
 
 ### Files
 
@@ -249,3 +249,92 @@ in tokens).
   but carry no Settings menu (podcasts have no pocket menus), so the strength is set from Music.
 - The landscape mapping is tested purely; on a phone the skin un-renders in landscape (the 768px
   gate), so it matters on tablets only.
+
+## Gate r1 - adversary
+
+Gate: CHANGES r1 @50f6158e — adversary
+
+Instruments (live tree, read-only): pocket-lighting + pocket-quick-scroll + music-skins `# tests 111 # pass 111 # fail 0`; `npm run lint:css` TOTAL 0; overlay-containment clean (0). Every mutant and repro below ran in a `git archive HEAD` sandbox in the scratchpad (`zz-adv.test.js` = the builder's own boot() harness, the REAL engine).
+
+Verified GREEN (measured, not read): risk 4 Off = today - headless Chromium 390x844, `git archive 71b5e6dd` vs HEAD with strength Off: the screenshot PNGs are BYTE-EQUAL for ipod / ipod-black / ipod-matte / zune-classic (0 px changed). Lit at --lx/--ly unset with the two pseudo layers hidden: 0 px changed, so the directional shadow tokens resolve to the static ones. Risk 2 z-order: lit at neutral changes ~115k body px (band maxd 106-117) but inside the wheel circle only maxd 3 (compositing noise). So the band paints over the body ramp and under the wheel/LCD. Panel computed `position:fixed; z-index:1100; overflow:hidden`. Seattle lit = 0 px changed. Risk 3: activate() is synchronous from the delegated click; requestPermission is called before any await.
+
+WARNING W1 - hide then return kills the light until the next paint (named risk 1, the reverse axis). stop() unbinds the driver's own visibilitychange listener, so nothing re-syncs on the return. Nothing in production repaints on visible: music.js's visibilitychange only runs recheckChaptersOnReturn, and the engine's onDocVisibility only drives the cover drift. So on an iPhone, lock then unlock (or any app switch) = lighting dead until the next track. AC3(b)'s test hides the gap by calling `b.engine.paint()` before it re-asserts. Repro (ADV-A): paint, then hidden + visibilitychange, then visible + visibilitychange:
+  `ADV-A before {"orient":1,"move":1,"leave":1} after return {"orient":0,"move":0,"leave":0} lit false` / `after a real tilt: --lx = ""`
+  Fix: keep the visibility listener bound from create() until destroy(), or call lighting.sync() from the engine's onDocVisibility. Bind it with a hide-then-return test that has NO paint.
+WARNING W2 - Seattle's Settings now shows Lighting. This breaks Dean's Seattle-unchanged ruling and the plan's "its Settings level shows no Lighting row". The engine creates the driver for EVERY skin, so `hasLighting: !!lighting` is true on Seattle. menuStaticItems ignores the `style` it is passed. Repro (ADV-F, skin zune-classic):
+  `ADV-F seattle settings rows ["Lighting","About"]` / `after picking Pronounced ON SEATTLE: stored pronounced lit false`
+  On iOS that tap asks for motion permission for a feature Seattle never shows. Gate the row on style === 'click' and add a Seattle census assert.
+WARNING W3 - after an iOS deny, the note says "The look stays as today" but the panel is LIT and BOUND. AC4 says "denied ... binds nothing". Repro (ADV-B):
+  `ADV-B note shown true mms-lit true listening {"orient":1,"move":1,"leave":1}`
+  mms-lit on = the band + glass streak paint. Measured lit-neutral vs Off: 143,209 px changed, maxd 106. So the look is NOT today's. The AC4 test asserts only `lx ~ 0`, never `lit`/`listening` (a vacuous floor on the deny axis). Either drop .mms-lit while permission is denied and no mouse is driving, or change the note text and AC4.
+WARNING W4 - the hard-constraint CSS lock is line-scoped. It only scans LINES matching `--l[xy]|mms-lit`, so a filter on its own line INSIDE the band rule slips through. Mutant MX1: `-webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);` inserted as a new line in `.mms-ipod.mms-lit::before` -> `# pass 14 # fail 0`. Scope the lock by RULE BLOCK (any rule whose selector has mms-lit, plus every declaration that reads --lx/--ly).
+SUGGESTION S1 - JS mutants that survive the 14 tests (each `# pass 14 # fail 0`): J1 stop() never disconnects the observer (one leaked MutationObserver per start/stop cycle). J2 disarm never calls cancelAnimationFrame. J3 tick drops the `!on` guard (J2 and J3 cover for each other, and each survives alone). J4 `if (moved)` removed, so every tick writes; the "writes only when moved" claim is bound only by the probe. J5 painted() ignores isConnected. J7 pointerleave eases home in tilt mode. J8 pointerLight unclamped (a captured wheel drag outside the panel can then write |--lx| > 1). J9 start() keeps the old neutral pose (G5 "a fresh open = a fresh neutral pose"). J11 orientationAngle ignores screen.orientation. J12 the no-sensor note also fires on a fine pointer. J15 a stale note survives a re-pick. Bind J1, J8, J9 and J15 at least.
+SUGGESTION S2 (TOCTOU, low reachability on iOS since the prompt is modal) - choose()'s post-await sync() has no destroyed guard. A late grant re-binds a DESTROYED engine's driver, and it writes. Repro (ADV-C):
+  `after destroy {"orient":0,...} lit false` -> `after the late grant {"orient":1,"move":1,"leave":1} lit true` -> `--lx = "-0.913"`
+SUGGESTION S3 (suspicion, not measured on a device) - the band layer is `inset:-40%` + will-change. That is 1.8W x 1.8H = 3.24x the panel area: 702x1519 CSS px, about 9.6 Mpx at DPR 3. The translate only needs ~22% (x) / 18% (y) of overhang. The panel's overflow:hidden may or may not shrink WebKit's backing store. Shrinking the inset (and checking the gradient still reads) is cheap insurance under the ambient-mode lesson.
+SUGGESTION S4 (suspicion) - the plan's "iOS remembers a grant/deny per site" is unverified at primary source. If WebKit keeps the decision per session only, a relaunched PWA binds with no stream and no prompt: a static band, no motion, no note. Worth a device check.
+Tree: no live-tree mutation; the sandbox lives only in the scratchpad.
+
+## Gate r1 - qa
+
+Gate: CHANGES r1 @50f6158e — qa
+
+Instruments (live tree, verbatim): `node --test test/unit/pocket-lighting.test.js` -> `# tests 14 # pass 14 # fail 0`; `npm run lint:css` -> `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`; `node scripts/overlay-containment-lint.js --enforce` -> `overlay-containment: clean (0 violations)`, exit 0; `npx eslint public/js/pocket-lighting.js public/js/skin-surface.js public/js/music-skins.js` -> no output, exit 0. Repros ran in a `git archive HEAD` sandbox (`qa-probe.test.js` = the builder's boot() harness, the REAL engine) and a headless-Chromium probe (a copy of pocket-lighting-probe.js on port 9347). Base = a `git archive 71b5e6dd` sandbox.
+
+Verified GREEN: risk 3. activate() is reached synchronously from the delegated click (the ghost path re-dispatches `under.click()` inside the real click). choose() calls requestPermission before any await (asks=1 synchronously in AC4). Risk 4 Off = today: base vs HEAD, strength Off, each skin booted in isolation -> `IDENTICAL ipod-black-np / ipod-matte-np`. ipod-np and zune-classic-np were also IDENTICAL in the full-sequence run. The sequence run showed sparse dither noise on black/matte (maxDelta 13), and base-vs-base itself differs on Seattle, so that is raster noise, not CSS. Risk 5: the script is on all 10 shells that load skin-surface.js (grep -l on both = the same 10 files). TYPE_TITLE, NON_ITEM_LEVELS and the census carry `lighting`; lib/media-capabilities is not a lighting surface. Risk 6: the mouse path reads from source (mouseOnly, the SENSOR_FRESH_MS gate, pointerLight returns null at 0 size). The UX: the note row wraps inside Click's 173px pane (probe: `["Motion access was denied. The ", top 151, h 42, w 173]`, list 227/227, no overflow). The check glyph renders on the picked row (lighting-denied.png). MENU pops the level. The post-answer render is guarded to the lighting level.
+
+WARNING W1 - Seattle gets the Lighting row, and on iOS the tap asks for motion permission. This breaks Dean's ruling and the plan's "Seattle's engine gets no driver". skin-surface.js:1333 creates the driver for every skin, :641 passes `hasLighting: !!lighting`, and music-skins.js:353 ignores `style`. Repro (QA1, skin zune-classic):
+  `seattle settings rows: Lighting|About` / `asks after Seattle pick: 1 stored: pronounced lit: false`
+  Headless: base `zune-classic Settings = About`, HEAD `Lighting|About` (the settings PNG DIFFERs). Fix: gate the row on `style === 'click'` and add a Seattle census assert.
+WARNING W2 - hide then return leaves the light dead until the next paint (the resume axis of risk 1). stop() removes the driver's own visibilitychange listener. The engine's onDocVisibility (skin-surface.js:1866) only drives pocket.onVisibility, and music.js:1994 only re-checks chapters. So the plan's "sync() is called ... on visibilitychange" is false, and an iPhone lock/unlock kills the feature until the next track. AC3(b) hides this by calling `b.engine.paint()` before it re-asserts. Repro (QA4, no paint):
+  `before: {"orient":1,...} lit true` -> `visible again, no paint: {"orient":0,"move":0,"leave":0} lit false --lx "" state.on false`
+WARNING W3 - after an iOS deny the note says "The look stays as today", but the panel is lit and bound. AC4 says "denied ... binds nothing", and its test title quietly softened that to "binds nothing that streams". Its `lx ~ 0` assert passes whatever the deny does, because the first sample is always neutral. Repro (QA2):
+  `denied: mms-lit class on panel = true ; listening = {"orient":1,"move":1,"leave":1}`
+  Headless, Off vs lit-with-no-sample: `{"px":1316640,"differing":479631,"maxDelta":107}`. lit-nosample.png shows the static glass streak on the LCD and the body band. The same static look applies to any lit state with no stream.
+(W1-W3 were also found independently by the adversary seat. I reproduced each one myself; I did not copy them.)
+SUGGESTION S1 (comment accuracy):
+  - music-skins.js:350-352 says hasLighting means "the Click skins with pocket-lighting.js loaded". It is true on Seattle (W1).
+  - pocket-lighting.js:16-18 says the CSS animates "a transform and an opacity on small layers". No opacity is animated. The probe's LayerTree shows the band as a 702x1520 composited layer, 3.24x the 390x844 panel. That is the brief's "large animated layer" question; the adversary's S3 shrink applies.
+  - The plan's wheel drop shadow reads `3px`; the code and the static token use `2px`, and the code is right.
+  - The plan says Seattle's check is pink; there is no Seattle .ipm-check rule.
+SUGGESTION S2 (reasoned, not driven) - on the denied level, setCursor (skin-surface.js:1077) clamps to items.length-1, so the wheel can park the cursor on the note row. renderMenuList never gives an info row `is-cursor`, so the highlight disappears and Select no-ops there. Clamp the cursor to the last non-info row.
+SUGGESTION S3 (suspicion, device) - mapTilt uses raw beta/gamma. Near beta 90 (a phone held upright) gamma is unstable, so the light can swing edge to edge. Check on Dean's iPhone.
+Security: no security surface of substance. There is no server route, network call or new dependency. The sensor values only ever become two CSS custom properties on the panel; nothing is sent or logged. The stored strength is whitelisted (normalizeStrength) before setItem and on read. The note text goes through esc(). The probe is a 127.0.0.1 dev script with a normalized, startsWith-checked static path.
+Standards: no em dashes in the added diff (`grep -c` on the added lines = 0; the Gate line keeps the harness grammar). The tokens hold: lint TOTAL 0, and the z-index:-1/5 and 34px values carry token-exempt notes.
+Tree: live tree untouched apart from this append. The adversary's r1 section was already uncommitted in this file when I started.
+
+## Fix round 1 (the Architect, after both r1 verdicts)
+
+Both seats found the same three warnings; every one is fixed, plus the hardening they suggested:
+
+- adversary W1 / qa W2 (the light stays dead after a hide-and-return): the driver's `visibilitychange`
+  listener now lives from `create()` to `destroy()`, not from `start()` to `stop()`, so the RETURN
+  re-syncs by itself with no paint. AC3's hidden arm now asserts the return WITHOUT a paint and drives
+  a tilt after it; `destroy()` is terminal (a visibility flip after it re-binds nothing).
+- adversary W2 / qa W1 (Seattle's Settings showed Lighting): the controller passes `hasLighting` only
+  when `style() === 'click'`; the census test and the AC3 Seattle arm assert `[About]` on Seattle.
+- adversary W3 / qa W3 (a deny left the panel lit + listening): `wanted()` is false after a remembered
+  deny on a device with no fine pointer; AC4 asserts not lit, nothing bound, `--lx` never written, and
+  a re-pick clears the stale note (J15).
+- adversary W4 (the CSS lock scanned lines): the lock now scans WHOLE RULES (every rule whose selector
+  names `mms-lit` or whose body reads `--lx/--ly`).
+- adversary S1 hardening tests: J1 (observers balance over 4 cycles), J2/J3 (Off cancels a live rAF),
+  J4 (a still device at its neutral pose writes nothing over 60 sampled frames), J7 (a pointerleave
+  never eases a sensor-driven light), J8 (pointerLight clamps a far-outside pointer), J9 (a fresh open
+  is a fresh neutral pose), J11 (`screen.orientation.angle` 90 maps the tilt onto `--ly`), J12 (no
+  no-sensor note on a fine pointer). Not covered by a test (disclosed): J5 (`isConnected` in
+  `painted()`).
+- adversary S2 (a late permission answer re-binding a destroyed driver): a `destroyed` flag; tested.
+- adversary S3 / qa S1 (the band layer's size): `inset:-40%` -> `-25%` (2.25x the panel, not 3.24x;
+  the largest translate is 12% of that box, so no overhang is ever exposed); the lock reads the new value.
+- qa S3 (raw gamma is unstable upright): the left/right axis is now the GRAVITY-PROJECTED roll,
+  `asin(cos(beta) * sin(gamma))` - flat it is gamma, upright it shrinks smoothly to 0 and keeps its
+  sign past vertical (unit-tested at beta 40 / 80 / 90 / 100). Amplitude on a phone held at ~45 deg
+  reads ~0.7x the flat range; `TILT_RANGE_DEG` is the knob if Dean wants more.
+- qa S2 (the wheel could park on the note row): `setCursor` clamps to the last selectable row.
+- qa S1 comment/plan slips fixed (no opacity animates; the drop blur is 2px; no Seattle check).
+- Not changed, disclosed: adversary S4 / the plan's "iOS remembers a grant per site" is a device check.
+
+Re-run on the fixed tree: `pocket-lighting.test.js` 15/15; the touched suites 272/272; eslint clean;
+`lint:css` TOTAL 0; overlay clean. Probe: listeners Off 0 / On 1 / docked 0 / destroyed 0 / Seattle 0;
+moving 0.17 ms script + 1.12 ms style per frame, 0 layouts; still 0 writes, 0 recalcs.

@@ -14,8 +14,8 @@
 // from the pocket menu's Settings > Lighting; the strength tap is what asks iOS for motion access.
 //
 // The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever
-// writes two numbers; the CSS it feeds animates gradient positions, a transform and an opacity on
-// small layers - no filter, blur, mask or backdrop, ever. The frame loop runs only while a Click
+// writes two numbers; the CSS it feeds moves gradient positions and translates two thin gradient
+// layers - no filter, blur, mask or backdrop, ever. The frame loop runs only while a Click
 // skin is painted, visible and lit, writes only when a value moved, and parks itself when the light
 // has settled; every teardown arm (skin switch, dock, hidden tab, pop-out close, reduced motion)
 // unbinds the listener and cancels the loop. The pure half (mapping, filter, strength) is
@@ -57,14 +57,24 @@
   // Device axes (beta = front/back, gamma = left/right, W3C DeviceOrientation) to SCREEN axes by
   // the screen's rotation: +x = the device's top-right side is up, +y = its bottom is down. A null
   // component = no sensor sample (desktop Chrome fires the event with nulls).
+  // Gate r1 (qa S3): the left/right axis is the GRAVITY-PROJECTED roll, asin(cos(beta) * sin(gamma)),
+  // not raw gamma - held upright (beta near 90) raw gamma is unstable and flips sign past vertical
+  // (the gimbal), which would throw the light edge to edge; the projection shrinks smoothly to 0 at
+  // vertical and keeps its sign through it. Flat (beta 0) it IS gamma.
+  var RAD = Math.PI / 180;
+  function roll(b, g) {
+    var v = Math.cos(b * RAD) * Math.sin(g * RAD);
+    return Math.asin(v > 1 ? 1 : (v < -1 ? -1 : v)) / RAD;
+  }
   function mapTilt(beta, gamma, angle) {
     var b = num(beta); var g = num(gamma);
     if (b === null || g === null) return null;
+    var r = roll(b, g);
     var a = ((Math.round(Number(angle) || 0) % 360) + 360) % 360;
-    if (a === 90) return { x: b, y: -g };
-    if (a === 180) return { x: -g, y: -b };
-    if (a === 270) return { x: -b, y: g };
-    return { x: g, y: b };
+    if (a === 90) return { x: b, y: -r };
+    if (a === 180) return { x: -r, y: -b };
+    if (a === 270) return { x: -b, y: r };
+    return { x: r, y: b };
   }
   // The screen's rotation: screen.orientation (iOS 16.4+, Android, desktop), else the legacy
   // window.orientation (older iOS; -90 = 270), else portrait.
@@ -118,6 +128,7 @@
     var samples = 0, writes = 0;
     var note = '', permission = '';
     var observer = null;           // the dock watcher (see start): the panel emptied or hidden with no destroy()
+    var destroyed = false;         // destroy() ran: nothing may re-bind (a late permission answer, gate r1 S2)
 
     function strength() { return readStrength(store); }
     function gain() { return GAIN[strength()] || 0; }
@@ -128,7 +139,9 @@
     // The one question every arm asks: should the light be live on this surface right now?
     function wanted() {
       var ok = false;
-      try { ok = gain() > 0 && !!isPocket() && painted() && !doc.hidden && !trayUp() && !reduced(); } catch (_) { ok = false; }
+      // gate r1 (adversary W3): after an iOS DENY nothing can drive the light on a device with no mouse
+      // - the look must stay today's (no lit band), not a lit panel waiting for samples that never come.
+      try { ok = !destroyed && gain() > 0 && !!isPocket() && painted() && !doc.hidden && !trayUp() && !reduced() && (permission !== 'denied' || finePointer()); } catch (_) { ok = false; }
       return ok;
     }
     function write() {
@@ -205,7 +218,6 @@
       lastSampleAt = lastTiltAt = -Infinity;
       try { win.addEventListener('deviceorientation', onOrient); } catch (_) { /* no window */ }
       try { panel.addEventListener('pointermove', onMove); panel.addEventListener('pointerleave', onLeave); } catch (_) { /* detached */ }
-      try { doc.addEventListener('visibilitychange', onVisibility); } catch (_) { /* detached */ }
       // The DOCK: the view clears the panel (hidden + innerHTML = '') WITHOUT destroy() (the v1.256
       // class). The frame loop notices on its next tick - but a PARKED loop (a still device, a
       // desktop with no sensor) has no next tick, and the sensor listener would sit bound until the
@@ -225,6 +237,14 @@
       if (observer) { try { observer.disconnect(); } catch (_) { /* gone */ } observer = null; }
       try { win.removeEventListener('deviceorientation', onOrient); } catch (_) { /* ignore */ }
       try { panel.removeEventListener('pointermove', onMove); panel.removeEventListener('pointerleave', onLeave); } catch (_) { /* ignore */ }
+    }
+    // Gate r1 (adversary W1): the visibility listener is NOT one of start()'s - it lives from
+    // create() to destroy(), because the RETURN from a hidden tab (an iPhone unlock, an app switch)
+    // is what re-lights the panel, and nothing else in the app repaints on return.
+    try { doc.addEventListener('visibilitychange', onVisibility); } catch (_) { /* detached fixture */ }
+    function destroy() {
+      destroyed = true;
+      stop();
       try { doc.removeEventListener('visibilitychange', onVisibility); } catch (_) { /* ignore */ }
     }
     // Called by the engine after every paint (paint rebuilds the panel's className, so the lit
@@ -238,7 +258,7 @@
     // activation is live - ask iOS for motion access. Resolves with state() once the answer is in.
     function choose(v) {
       var n = setStrength(v, store);
-      note = '';
+      note = ''; permission = ''; // a re-pick starts clean: a stale note or answer never survives it (gate r1 J15)
       if (n === 'off') { sync(); return Promise.resolve(state()); }
       if (reduced()) { note = NOTE_REDUCED; sync(); return Promise.resolve(state()); }
       var DOE = null;
@@ -249,6 +269,7 @@
         sync(); // bind now: a remembered grant streams at once; a pending prompt streams after it
         return Promise.resolve(p).then(function (r) { permission = r === 'granted' ? 'granted' : 'denied'; }, function () { permission = 'denied'; })
           .then(function () {
+            if (destroyed) return state(); // gate r1 S2: a late answer after destroy() re-binds nothing
             if (permission !== 'granted') note = NOTE_DENIED;
             sync();
             return state();
@@ -261,7 +282,7 @@
       if (finePointer()) return Promise.resolve(state());
       return new Promise(function (resolve) {
         var t = null;
-        try { t = win.setTimeout(function () { if (on && samples === 0) note = NOTE_NO_SENSOR; resolve(state()); }, SENSOR_WAIT_MS); } catch (_) { t = null; }
+        try { t = win.setTimeout(function () { if (!destroyed && on && samples === 0) note = NOTE_NO_SENSOR; resolve(state()); }, SENSOR_WAIT_MS); } catch (_) { t = null; }
         if (t == null) resolve(state());
       });
     }
@@ -269,7 +290,7 @@
       return { on: on, listening: on, raf: raf != null, samples: samples, writes: writes, lx: st.x, ly: st.y, mode: mode,
         strength: strength(), gain: gain(), note: note, permission: permission };
     }
-    return { sync: sync, choose: choose, state: state, destroy: stop };
+    return { sync: sync, choose: choose, state: state, destroy: destroy };
   }
 
   var api = {

@@ -12100,13 +12100,15 @@ html[data-modern="on"] .video-uploader {
      as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
      dome shadows turn DIRECTIONAL (the rim catches the light, the drop falls away from it - G6),
      the body carries a moving reflection band (a transform on one gradient layer under the LCD
-     and wheel), and the LCD glass a faint streak (over the screen, never a tap target). Nothing
+     and wheel; inset:-25% - the largest translate is 12% of that box, so the overhang is never
+     exposed, and the layer stays 2.25x the panel, not 3.24x - gate r1 S3), and the LCD glass a
+     faint streak (over the screen, never a tap target). Nothing
      here is a filter, blur, mask or backdrop - the ambient-mode iPhone black-video lesson; a lock
      test enforces it. Seattle is untouched (Dean's focus ruling): the driver never lights it. */
   .mms-ipod.mms-lit{
     --mms-lit-wheel-shadow:calc(var(--lx,0) * -4px) calc(1px + var(--ly,0) * -4px) 2px var(--mms-lit-drop), inset calc(var(--lx,0) * 2px) calc(1px + var(--ly,0) * 2px) 1px var(--mms-lit-rim), inset calc(var(--lx,0) * -2px) calc(-2px + var(--ly,0) * -2px) 4px var(--mms-lit-recess);
     --mms-lit-dome-shadow:inset calc(var(--lx,0) * 2px) calc(1px + var(--ly,0) * 2px) 2px var(--mms-lit-dome-hi), calc(var(--lx,0) * -3px) calc(1px + var(--ly,0) * -3px) 2px var(--mms-lit-dome-drop); }
-  .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-40%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
+  .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-25%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
     background:linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--mms-lit-band) 47%, var(--mms-lit-band2) 50%, var(--mms-ipod-sheen-0) 60%);
     transform:translate3d(calc(var(--lx,0) * 12%), calc(var(--ly,0) * 10%), 0); will-change:transform; }
   .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0 -50%; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none;

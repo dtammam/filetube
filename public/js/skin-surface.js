@@ -638,7 +638,9 @@
         return;
       }
       if (pane.state !== 'idle') return;
-      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting, style: style() });
+      // gate r1 (adversary W2): the row only where the driver can light THIS skin - Click; Seattle's
+      // Settings stays [About] (Dean's ruling), whatever driver the engine holds.
+      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting && style() === 'click', style: style() });
       if (st) { pane.items = st; pane.state = 'ready'; return; }
       pane.state = 'loading';
       var tok = ++pane.token;
@@ -1074,7 +1076,11 @@
     function setCursor(i) {
       var pane = curPane();
       if (!pane || !pane.items.length) return;
-      pane.cursor = Math.max(0, Math.min(pane.items.length - 1, i));
+      // gate r1 (qa S2): a trailing read-only row (Lighting's note) is never a wheel stop - the
+      // highlight would vanish there and Select would do nothing. Clamp to the last option.
+      var last = pane.items.length - 1;
+      while (last > 0 && pane.items[last] && pane.items[last].info) last -= 1;
+      pane.cursor = Math.max(0, Math.min(last, i));
       scrollCursorIntoView(pane, false);
       renderList();
       scheduleArt();

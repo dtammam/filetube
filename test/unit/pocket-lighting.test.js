@@ -24,12 +24,19 @@ const skins = require(skinsPath);
 const L = require(lightPath);
 
 // ---------------------------------------------------------------- the pure half
-test('mapTilt: device axes to screen axes by the screen rotation; a null component is no sample', () => {
-  assert.deepStrictEqual(L.mapTilt(10, 5, 0), { x: 5, y: 10 }, 'portrait: x = gamma (left/right), y = beta (front/back)');
-  assert.deepStrictEqual(L.mapTilt(10, 5, 90), { x: 10, y: -5 });
-  assert.deepStrictEqual(L.mapTilt(10, 5, 180), { x: -5, y: -10 });
-  assert.deepStrictEqual(L.mapTilt(10, 5, 270), { x: -10, y: 5 });
-  assert.deepStrictEqual(L.mapTilt(10, 5, -90), { x: -10, y: 5 }, 'the legacy window.orientation -90 is 270');
+test('mapTilt: device axes to screen axes by the screen rotation; the roll is gravity-projected (no gimbal flip upright); a null component is no sample', () => {
+  const near = (a, b, m) => assert.ok(Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9, m + ` got ${JSON.stringify(a)} want ${JSON.stringify(b)}`);
+  near(L.mapTilt(0, 5, 0), { x: 5, y: 0 }, 'flat (beta 0): x = gamma (left/right), y = beta (front/back)');
+  near(L.mapTilt(0, 5, 90), { x: 0, y: -5 }, 'landscape 90');
+  near(L.mapTilt(0, 5, 180), { x: -5, y: 0 }, 'upside down');
+  near(L.mapTilt(0, 5, 270), { x: 0, y: 5 }, 'landscape 270');
+  near(L.mapTilt(0, 5, -90), { x: 0, y: 5 }, 'the legacy window.orientation -90 is 270');
+  // gate r1 (qa S3): held UPRIGHT the raw gamma is unstable and flips sign past vertical; the
+  // projected roll shrinks smoothly toward 0 at vertical and keeps its sign through it
+  const r40 = L.mapTilt(40, 30, 0).x, r80 = L.mapTilt(80, 30, 0).x, r90 = L.mapTilt(90, 30, 0).x, r100 = L.mapTilt(100, -30, 0).x;
+  assert.ok(r40 > 20 && r40 < 30 && r80 > 0 && r80 < r40 && Math.abs(r90) < 1e-9, `the same physical roll reads smaller the more upright the phone (${r40}, ${r80}, ${r90})`);
+  assert.ok(r100 > 0 && r100 < 10, `past vertical gamma flips sign (W3C) but the projected roll keeps its sign (${r100})`);
+  assert.strictEqual(L.mapTilt(40, 3, 0).y, 40, 'pitch is beta as is');
   assert.strictEqual(L.mapTilt(null, 5, 0), null, 'desktop Chrome fires the event with nulls: no sample');
   assert.strictEqual(L.mapTilt(1, undefined, 0), null);
   assert.strictEqual(L.mapTilt('x', 1, 0), null);
@@ -74,6 +81,7 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   assert.deepStrictEqual(noted[3], { label: L.NOTE_DENIED, note: true, info: true }, 'a read-only note row');
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: true }).map((r) => r.label), ['Lighting', 'About']);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, {}).map((r) => r.label), ['About'], 'no driver: no row that leads nowhere');
+  assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: false, style: 'seattle' }).map((r) => r.label), ['About'], 'Seattle: the engine passes hasLighting false (Dean\'s ruling)');
   assert.strictEqual(skins.menuTitle({ type: 'lighting' }, 'click'), 'Lighting');
   assert.ok(!skins.menuIsItemLevel({ type: 'lighting' }), 'a menu level (Click keeps the cover drift there)');
   const html = skins.renderMenuList({ style: 'click', items: noted, cursor: 1, start: 0, end: 4, rowH: 0, state: 'ready' });
@@ -186,8 +194,9 @@ const lx = (b) => Number(P(b).style.getPropertyValue('--lx'));
 const ly = (b) => Number(P(b).style.getPropertyValue('--ly'));
 const lit = (b) => P(b).classList.contains('mms-lit');
 const S = (b) => b.engine.lightingState();
-// (visibilitychange is counted apart: the engine binds its own on the document while bound - the
-// driver adds one more; 2 = engine + driver, 1 = engine only, 0 = destroyed)
+// (visibilitychange is counted apart: the engine binds its own on the document while bound, and the
+// driver binds ONE from create() to destroy() - gate r1 W1: the RETURN from a hidden tab is what
+// re-lights the panel, so that listener never goes with a stop(); 2 = engine + driver, 0 = destroyed)
 const listening = (b) => ({ orient: b.count('win:deviceorientation'), move: b.count('panel:pointermove'), leave: b.count('panel:pointerleave') });
 const vis = (b) => b.count('doc:visibilitychange');
 
@@ -198,10 +207,10 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     assert.ok(lit(b) && S(b).listening, 'a painted Click skin with the strength on is lit and listening');
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'exactly one listener each');
     assert.strictEqual(vis(b), 2, 'the engine\'s visibilitychange + the driver\'s');
-    tiltTo(b, 40, 3);              // the neutral pose (whatever you hold it at)
+    tiltTo(b, 0, 3);              // the neutral pose (whatever you hold it at)
     b.clock.advance(200);
     assert.strictEqual(lx(b), 0, 'the opening pose is neutral: no offset');
-    tiltTo(b, 40, 3 + 28);         // tilt RIGHT by the full range
+    tiltTo(b, 0, 3 + 28);         // tilt RIGHT by the full range
     b.clock.advance(100);
     assert.ok(S(b).raf, 'the frame loop is live while samples stream');
     b.clock.advance(600);
@@ -209,7 +218,7 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     assert.ok(Math.abs(ly(b)) < 0.05, 'no front/back tilt: --ly stays ~0');
     // Subtle halves it
     b.ls.setItem(L.KEY, 'subtle');
-    tiltTo(b, 40, 3 + 28); b.clock.advance(700); // the next sample re-reads the strength
+    tiltTo(b, 0, 3 + 28); b.clock.advance(700); // the next sample re-reads the strength
     assert.ok(lx(b) < -0.38 && lx(b) > -0.55, `subtle = half the amplitude, less ~1 s of re-centring (got ${lx(b)})`);
     // a HELD tilt (G5): the neutral pose drifts onto it, the light eases home, and only then
     // does the loop park (no rAF, no timer, no writes) until the next sample
@@ -220,7 +229,7 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     b.clock.advance(2000);
     assert.strictEqual(S(b).writes, w0, 'no writes while parked');
     assert.strictEqual(b.clock.live(), 0, 'no timer of any kind pending');
-    tiltTo(b, 40, 3 + 28);
+    tiltTo(b, 0, 3 + 28);
     assert.ok(S(b).raf, 'the next sample re-arms the loop');
   } finally { b.restore(); }
 });
@@ -242,7 +251,7 @@ test('AC1 desktop: a MOUSE pointermove over the panel drives the light when no s
     b.clock.advance(3000);
     assert.ok(Math.abs(lx(b)) < 0.01, 'eases back to neutral after the pointer leaves');
     // a live sensor outranks the mouse
-    tiltTo(b, 40, 3); b.clock.advance(100); tiltTo(b, 40, 3 + 14); b.clock.advance(500);
+    tiltTo(b, 0, 3); b.clock.advance(100); tiltTo(b, 0, 3 + 14); b.clock.advance(500);
     const sensorX = lx(b);
     assert.ok(sensorX < -0.4, 'the sensor drives');
     mouseAt(b, 380, 400, 'mouse'); b.clock.advance(500);
@@ -254,7 +263,7 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
   const b = boot({ strength: 'pronounced' });
   try {
     b.engine.paint();
-    tiltTo(b, 40, 3); b.clock.advance(50); tiltTo(b, 40, 30); b.clock.advance(500);
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(500);
     assert.ok(lx(b) < -0.5 && lit(b), 'populated AND lit before the clear axis is driven');
     // through the REAL Settings > Lighting path
     pressMenu(b); tapLabel(b, 'Settings');
@@ -268,7 +277,8 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
     assert.strictEqual(P(b).style.getPropertyValue('--ly'), '', '--ly cleared');
     assert.ok(!lit(b), 'the lit class dropped');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'every listener unbound');
-    assert.strictEqual(vis(b), 1, 'only the engine\'s own visibilitychange remains');
+    assert.strictEqual(vis(b), 2, 'the driver keeps its visibilitychange (it re-lights on a return), the engine its own');
+    assert.strictEqual(S(b).raf, false, 'the frame loop was live (samples streamed): Off cancelled its rAF (gate r1 J2/J3)');
     assert.strictEqual(S(b).raf, false);
     assert.strictEqual(b.ls.getItem(L.KEY), 'off', 'stored');
     tapLabel(b, 'Subtle'); await flush();
@@ -276,7 +286,7 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'two picks: still exactly one listener each');
     assert.strictEqual(vis(b), 2);
     assert.ok(lit(b));
-    tiltTo(b, 40, 3); b.clock.advance(50); tiltTo(b, 40, 30); b.clock.advance(500);
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(500);
     assert.ok(lx(b) < -0.5, 'lit again through the real path');
   } finally { b.restore(); }
 });
@@ -286,14 +296,14 @@ test('AC3 every teardown arm unbinds: the dock (no destroy), a hidden document, 
   try {
     const zero = { orient: 0, move: 0, leave: 0 };
     const one = { orient: 1, move: 1, leave: 1 };
-    const light = () => { b.engine.paint(); tiltTo(b, 40, 3); b.clock.advance(50); tiltTo(b, 40, 30); b.clock.advance(300); assert.deepStrictEqual(listening(b), one); assert.ok(lit(b) && lx(b) < 0); };
+    const light = () => { b.engine.paint(); tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300); assert.deepStrictEqual(listening(b), one); assert.ok(lit(b) && lx(b) < 0); };
     for (let n = 0; n < 3; n++) {
       // (a) the DOCK: the view clears the panel synchronously WITHOUT destroy() (v1.256 class)
       light();
       P(b).hidden = true; P(b).innerHTML = '';
       b.clock.advance(40); // one frame: the LIVE loop notices and stops itself (the observer would too)
       assert.deepStrictEqual(listening(b), zero, `dock #${n}: unbound within a frame`);
-      assert.strictEqual(vis(b), 1, 'the driver\'s visibilitychange went; the engine\'s stays (it is still bound)');
+      assert.strictEqual(vis(b), 2, 'the driver\'s visibilitychange stays (it re-lights on a return); the engine\'s too');
       assert.strictEqual(S(b).raf, false);
       assert.strictEqual(b.clock.live(), 0, 'nothing pending');
       P(b).hidden = false;
@@ -303,8 +313,11 @@ test('AC3 every teardown arm unbinds: the dock (no destroy), a hidden document, 
       b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
       assert.deepStrictEqual(listening(b), zero, `hidden #${n}: unbound on visibilitychange`);
       Object.defineProperty(b.doc, 'hidden', { configurable: true, value: false });
-      b.engine.paint();
-      assert.deepStrictEqual(listening(b), one, 'visible + painted again: re-bound (through paint)');
+      b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
+      assert.deepStrictEqual(listening(b), one, `return #${n}: re-bound by the visibility listener alone, NO paint (gate r1 W1: an iPhone unlock)`);
+      assert.ok(lit(b));
+      tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300);
+      assert.ok(lx(b) < 0, 'and it moves again after the return');
       // (c) a repaint as a non-Click skin
       b.state.skin = 'apple'; b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `Cider #${n}: no lighting`);
@@ -312,19 +325,24 @@ test('AC3 every teardown arm unbinds: the dock (no destroy), a hidden document, 
       b.state.skin = 'zune-classic'; b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `Seattle #${n}: out of scope (Dean), never lit`);
       assert.ok(!lit(b) && P(b).style.getPropertyValue('--lx') === '');
+      pressMenu(b); tapLabel(b, 'Settings');
+      assert.deepStrictEqual(lbls(b), ['About'], `Seattle #${n}: Settings shows no Lighting row (gate r1 W2)`);
+      pressMenu(b); pressMenu(b);
       b.state.skin = 'ipod-matte';
       // (d) the tray (the pop-out's Nano strip)
       b.doc.body.classList.add('mms-tray'); b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `tray #${n}: no lighting`);
       b.doc.body.classList.remove('mms-tray');
-      // (e) destroy
-      light();
-      b.engine.destroy();
-      assert.deepStrictEqual(listening(b), zero, `destroy #${n}`);
-      assert.strictEqual(vis(b), 0, 'destroy: engine and driver both unbound');
-      assert.strictEqual(S(b).raf, false);
-      assert.strictEqual(P(b).style.getPropertyValue('--lx'), '');
     }
+    // (e) destroy - terminal (the view / pop-out shell never paints a destroyed engine again)
+    light();
+    b.engine.destroy();
+    assert.deepStrictEqual(listening(b), zero, 'destroy');
+    assert.strictEqual(vis(b), 0, 'destroy: engine and driver both unbound');
+    assert.strictEqual(S(b).raf, false);
+    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '');
+    b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
+    assert.deepStrictEqual(listening(b), zero, 'a visibility flip after destroy re-binds nothing');
   } finally { b.restore(); }
 });
 
@@ -337,7 +355,7 @@ test('AC3 the PARKED dock (the probe\'s finding): with no sample in flight the f
     P(b).hidden = true; P(b).innerHTML = '';
     await flush();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'the observer released it');
-    assert.strictEqual(vis(b), 1);
+    assert.strictEqual(vis(b), 2, 'the standing visibility listeners stay (engine + driver)');
     P(b).hidden = false; b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'a repaint re-binds');
     P(b).hidden = true; // hidden alone (the attribute arm), the DOM still populated
@@ -351,9 +369,9 @@ test('AC3 reduced motion: nothing binds, nothing is written; the Lighting level 
   try {
     b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 });
-    assert.strictEqual(vis(b), 1, 'the engine\'s own only');
+    assert.strictEqual(vis(b), 2, 'the driver\'s standing visibility listener + the engine\'s; nothing else');
     assert.ok(!lit(b));
-    tiltTo(b, 40, 30); b.clock.advance(500);
+    tiltTo(b, 0, 30); b.clock.advance(500);
     assert.strictEqual(P(b).style.getPropertyValue('--lx'), '');
     pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting'); tapLabel(b, 'Subtle'); await flush();
     assert.ok(lbls(b).includes(L.NOTE_REDUCED), 'the note row');
@@ -363,7 +381,7 @@ test('AC3 reduced motion: nothing binds, nothing is written; the Lighting level 
 
 test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + the note and binds nothing that streams; granted binds', async () => {
   let asks = 0;
-  const b = boot({ strength: 'off', permission: () => { asks += 1; return Promise.resolve('denied'); } });
+  const b = boot({ strength: 'off', finePointer: false, permission: () => { asks += 1; return Promise.resolve('denied'); } });
   try {
     b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'Off: nothing');
@@ -374,10 +392,14 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.ok(lbls(b).includes(L.NOTE_DENIED), 'denied: the note row');
     assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'the pick is kept (Dean: keep the strength + a note)');
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
-    // iOS streams nothing after a deny; the listener is harmless but the look must stay as today
-    tiltTo(b, 40, 30); b.clock.advance(500);
-    assert.ok(lx(b) === 0 || Number.isNaN(lx(b)) || Math.abs(lx(b)) < 0.05, 'no offset from a synthetic sample after a deny (first sample is neutral anyway)');
+    // gate r1 (adversary W3): a deny on a device with no mouse = the look stays TODAY's - not lit,
+    // not listening (a lit band waiting for samples that never come is not "as today")
+    assert.ok(!lit(b), 'not lit after a deny');
+    assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'nothing bound after a deny');
+    tiltTo(b, 0, 30); b.clock.advance(500);
+    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', 'no offset ever written after a deny');
     tapLabel(b, 'Off'); await flush();
+    assert.ok(!lbls(b).includes(L.NOTE_DENIED), 'a re-pick clears the stale note (gate r1 J15)');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 });
   } finally { b.restore(); }
   let asks2 = 0;
@@ -389,7 +411,7 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.strictEqual(asks2, 1);
     assert.ok(!lbls(g).includes(L.NOTE_DENIED) && lit(g), 'granted: lit, no note');
     assert.deepStrictEqual(listening(g), { orient: 1, move: 1, leave: 1 });
-    tiltTo(g, 40, 3); g.clock.advance(50); tiltTo(g, 40, 30); g.clock.advance(500);
+    tiltTo(g, 0, 3); g.clock.advance(50); tiltTo(g, 0, 30); g.clock.advance(500);
     assert.ok(lx(g) < -0.3 && lx(g) > -0.6, `subtle after a grant (got ${lx(g)})`);
   } finally { g.restore(); }
   // no permission API (Android / desktop): binds directly; no sensor AND no fine pointer: the note
@@ -401,6 +423,24 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.ok(lbls(n).includes(L.NOTE_NO_SENSOR), 'a coarse pointer and no sample within the wait: says so');
     assert.deepStrictEqual(listening(n), { orient: 1, move: 1, leave: 1 }, 'still bound: a sensor that appears later streams');
   } finally { n.restore(); }
+  // a FINE pointer (a desktop) never gets the no-sensor note: the mouse is the light (gate r1 J12)
+  const f = boot({ strength: 'off', finePointer: true });
+  try {
+    f.engine.paint(); pressMenu(f); tapLabel(f, 'Settings'); tapLabel(f, 'Lighting'); tapLabel(f, 'Pronounced'); await flush();
+    f.clock.advance(L.SENSOR_WAIT_MS + 10); await flush(); await flush();
+    assert.ok(!lbls(f).includes(L.NOTE_NO_SENSOR), 'no note on a desktop');
+  } finally { f.restore(); }
+  // a LATE answer after destroy() re-binds nothing (gate r1 S2)
+  let late = null;
+  const d = boot({ strength: 'off', permission: () => new Promise((r) => { late = r; }) });
+  try {
+    d.engine.paint(); pressMenu(d); tapLabel(d, 'Settings'); tapLabel(d, 'Lighting'); tapLabel(d, 'Pronounced');
+    d.engine.destroy();
+    assert.deepStrictEqual(listening(d), { orient: 0, move: 0, leave: 0 });
+    late('granted'); await flush(); await flush();
+    assert.deepStrictEqual(listening(d), { orient: 0, move: 0, leave: 0 }, 'the late grant found a destroyed driver');
+    assert.strictEqual(vis(d), 0);
+  } finally { d.restore(); }
 });
 
 test('the pop-out surface (another document): the driver listens on THAT window and panel, and dies with the pop-out engine', () => {
@@ -412,8 +452,48 @@ test('the pop-out surface (another document): the driver listens on THAT window 
     assert.ok(lx(b) < -0.3);
     b.engine.destroy();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 });
-    assert.strictEqual(vis(b), 0);
+    assert.strictEqual(vis(b), 0, 'destroy drops the driver\'s standing visibility listener with the engine\'s');
   } finally { b.restore(); }
+});
+
+test('gate r1 hardening: a fresh open is a fresh neutral pose (J9); the observer never leaks (J1); pointerLight clamps (J8); a still stream writes nothing (J4); pointerleave never eases a SENSOR-driven light (J7); screen.orientation maps the axes (J11)', async () => {
+  const b = boot({ strength: 'pronounced' });
+  try {
+    // J1: observers balance over start/stop cycles
+    let observing = 0;
+    const MO = b.win.MutationObserver;
+    b.win.MutationObserver = class extends MO { observe(...a) { observing += 1; return super.observe(...a); } disconnect() { observing -= 1; return super.disconnect(); } };
+    for (let i = 0; i < 4; i++) { b.engine.paint(); assert.strictEqual(observing, 1, 'one observer while lit'); P(b).hidden = true; P(b).innerHTML = ''; await flush(); assert.strictEqual(observing, 0, 'none after the dock'); P(b).hidden = false; }
+    // J9: the neutral pose is the pose of THIS open, not the last one
+    b.engine.paint();
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(400);
+    assert.ok(lx(b) < -0.5, 'lit and offset');
+    P(b).hidden = true; P(b).innerHTML = ''; await flush(); P(b).hidden = false;
+    b.engine.paint();
+    tiltTo(b, 0, 30); b.clock.advance(400); // the SAME pose the last open ended in is neutral now
+    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', 'the first sample of a fresh open is neutral (nothing written)');
+    // J4: a still device at its neutral pose (the same sample every frame) writes NOTHING
+    const w0 = S(b).writes;
+    for (let i = 0; i < 60; i++) { tiltTo(b, 0, 30); b.clock.advance(16); }
+    assert.strictEqual(S(b).writes - w0, 0, 'a still device streams samples but writes nothing (gate r1 J4)');
+    // J7: a pointerleave while the SENSOR drives does not ease the light home
+    tiltTo(b, 0, 30 + 14); b.clock.advance(1000);
+    const before = lx(b);
+    assert.ok(before < -0.3, 'offset');
+    const leave = new b.win.MouseEvent('pointerleave', { bubbles: false }); Object.defineProperty(leave, 'pointerType', { value: 'mouse' });
+    P(b).dispatchEvent(leave); tiltTo(b, 0, 30 + 14); b.clock.advance(300);
+    assert.ok(Math.abs(lx(b) - before) < 0.05, `sensor-driven: the mouse leaving changes nothing (${before} -> ${lx(b)})`);
+  } finally { b.restore(); }
+  // J8: the pointer far outside the panel (a captured drag) clamps to the edge
+  assert.deepStrictEqual(L.pointerLight(5000, -5000, { left: 0, top: 0, width: 100, height: 100 }), { x: 1, y: -1 });
+  // J11: screen.orientation.angle 90 swaps the axes through the real listener
+  const r = boot({ strength: 'pronounced' });
+  try {
+    Object.defineProperty(r.win, 'screen', { configurable: true, value: { orientation: { angle: 90 } } });
+    r.engine.paint();
+    tiltTo(r, 0, 3); r.clock.advance(50); tiltTo(r, 0, 30); r.clock.advance(500); // a gamma tilt...
+    assert.ok(Math.abs(lx(r)) < 0.05 && ly(r) > 0.5, `...lands on --ly in landscape (lx ${lx(r)}, ly ${ly(r)})`);
+  } finally { r.restore(); }
 });
 
 test('a shell without pocket-lighting.js: the engine paints, Settings shows About only, no lighting state', () => {
@@ -468,15 +548,20 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   const litRoot = rule('.mms-ipod.mms-lit');
   assert.match(litRoot, /--mms-lit-wheel-shadow:calc\(var\(--lx,0\) \* -4px\) calc\(1px \+ var\(--ly,0\) \* -4px\) 2px var\(--mms-lit-drop\), inset calc\(var\(--lx,0\) \* 2px\) calc\(1px \+ var\(--ly,0\) \* 2px\) 1px var\(--mms-lit-rim\), inset calc\(var\(--lx,0\) \* -2px\) calc\(-2px \+ var\(--ly,0\) \* -2px\) 4px var\(--mms-lit-recess\)/, 'at --lx/--ly = 0 this is byte-identical to the static wheel shadow (0 1px 2px, inset 0 1px 1px, inset 0 -2px 4px)');
   const band = rule('.mms-ipod.mms-lit::before');
-  assert.match(band, /position:absolute; inset:-40%; z-index:-1;/, 'the band sits over the body ramp, under the LCD and wheel');
+  assert.match(band, /position:absolute; inset:-25%; z-index:-1;/, 'the band sits over the body ramp, under the LCD and wheel; 2.25x the panel, not more (gate r1 S3)');
   assert.match(band, /pointer-events:none/);
   assert.match(band, /transform:translate3d\(calc\(var\(--lx,0\) \* 12%\), calc\(var\(--ly,0\) \* 10%\), 0\)/, 'a transform on one gradient layer (compositor-only)');
   const glass = rule('.mms-ipod.mms-lit .ip-lcd-in::after');
   assert.match(glass, /pointer-events:none/, 'the glass streak never takes a tap');
   assert.match(glass, /var\(--mms-lit-glass\)/);
   assert.ok(!/\n {2}\.mms-ipod::before\{/.test(CSS) && !/\n {2}\.mms-ipod \.ip-lcd-in::after\{/.test(CSS), 'no band or glass layer exists when NOT lit');
-  // the HARD constraint: nothing animated is a filter, blur, mask or backdrop - vendor + case + sibling spellings (v1.313 lesson)
-  const litRules = CSS.split('\n').filter((l) => /--l[xy]|mms-lit/.test(l)).join('\n');
+  // the HARD constraint: nothing animated is a filter, blur, mask or backdrop - vendor + case + sibling
+  // spellings (v1.313 lesson), over WHOLE RULES (gate r1 W4: a line filter let a filter on its own line
+  // inside the band rule through): every rule whose selector names mms-lit or whose body reads --lx/--ly.
+  const allRules = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+  const litRuleList = allRules.filter((r) => /mms-lit/.test(r.sel) || /--l[xy]\b/.test(r.body));
+  assert.ok(litRuleList.length >= 8, 'the lighting rules were found (' + litRuleList.length + ')');
+  const litRules = litRuleList.map((r) => r.sel + '{' + r.body + '}').join('\n');
   assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-image)?)\s*:/i.test(litRules), 'no filter / backdrop / mask in any lighting rule: ' + litRules.match(/[^\n]*(?:filter|mask)[^\n]*/i));
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
   // Matte is softer, Black dimmer than Click (G1)

@@ -347,9 +347,9 @@
     if (t === 'playlists') return PLAYLISTS.map(function (p) { return { label: p.label, node: { type: 'playlist', key: p.key, label: p.label } }; });
     if (t === 'extras') return [{ label: 'Games', node: { type: 'games' } }];
     if (t === 'games') return [{ label: 'Brick', action: 'brick' }];
-    // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the engine hands the
-    // controller a lighting driver (opts.hasLighting: the Click skins with pocket-lighting.js
-    // loaded) - never a row that leads to nothing.
+    // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the controller says the driver
+    // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded; the
+    // controller passes false on Seattle - gate r1 W2) - never a row that leads to nothing.
     if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
     return null;
   }
