@@ -12,6 +12,9 @@
 // INSIDE the tapped chapter's CURRENT bounds, read from the row itself at tap time.
 // Driven through REAL music.js (+ skin-surface.js, music-skins.js): the album drill, its
 // "Fix times" save seam, and a real row click into a player.load spy.
+// Widened (Dean): #268 - a re-tap of the LOADED chapter whose bounds moved away from the
+// playhead (the player ADOPTS a same-id load) seeks to it; #269 - a page coming back
+// (visibilitychange / bfcache pageshow) re-checks the file's chapters against the server.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -60,7 +63,7 @@ const FILE_CHAPTERS = [{ startTime: 0, title: 'Opening' }, { startTime: 60, titl
 async function boot(run, opts) {
   opts = opts || {};
   const server = Object.assign({ chapters: FILE_CHAPTERS, chaptersEdited: false, hold: false }, opts.server || {});
-  const tracks = tracksFixture();
+  const tracks = tracksFixture().concat(opts.extraRows || []);
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent('f1::c0') });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
   dom.window.matchMedia = () => ({ matches: false, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
@@ -265,9 +268,11 @@ test('#269: back to visible after ANOTHER device moved a start - the rows, the s
     // Unchanged on the server: one request, nothing applied (the drill keeps its rows).
     ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); await settleN(4);
     assert.strictEqual(ctx.videoGets.length, 0, 'hidden: no request');
+    const rowBefore = row(dom, 'f1::c0'); // the drill re-renders its rows on an apply
     ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(6);
     assert.strictEqual(ctx.videoGets.length, 1, 'visible: ONE request for the file');
     assert.match(rowText(dom, 'f1::c0'), /1:00/, 'unchanged -> the rows are untouched');
+    assert.ok(rowBefore.isConnected, 'unchanged -> nothing applied (the drill was not re-rendered)');
     assert.strictEqual(dom.window.document.querySelector('.music-drill-edited'), null, 'no Edited badge (the populated clear axis follows below)');
     // Another device saves chapter 2 at 75 s.
     ctx.server.chapters = MOVED; ctx.server.chaptersEdited = true;
@@ -335,4 +340,17 @@ test('#269 queuedChaptersDiffer: a moved start, title, span-to-next or a dropped
   assert.strictEqual(queuedChaptersDiffer(rows, 'f1', [FILE_CHAPTERS[0], { startTime: 60, title: '' }, FILE_CHAPTERS[2]]), true, 'a blank title reads "Track 2", not "Second Song"');
   assert.strictEqual(queuedChaptersDiffer(rows, 'f1', FILE_CHAPTERS.map((c, i) => (i === 1 ? { startTime: 60.0004, title: c.title } : c))), false, 'sub-millisecond noise is not a move');
   delete require.cache[musicPath];
+});
+
+test('#269: the re-check follows the PLAYING chapter\'s file even when the list mixes files (no single chapter album on screen)', async () => {
+  const g9 = { id: 'g9::c0', title: 'Elsewhere', artist: 'NESTALGIA', album: 'The Mix', albumKey: AK, durationSec: 30, chapterStartSec: 0, source: 'library-chapter', streamSrc: '/video/g9', artUrl: '/thumbnail/g9', progressEndpoint: '/api/progress', liked: false };
+  await boot(async (dom, ctx) => {
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'precondition: a chapter of f1 is playing');
+    assert.ok(row(dom, 'g9::c0'), 'precondition: the list mixes two files');
+    ctx.server.chapters = MOVED;
+    fire(dom, 'visibilitychange'); await settleN(8);
+    assert.strictEqual(ctx.videoGets.length, 1, 'asked for the playing file f1');
+    click(dom, row(dom, 'f1::c1')); await settleN(6);
+    assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c1').data.chapterStartSec, 75, 'and applied its new bounds');
+  }, { extraRows: [g9] });
 });
