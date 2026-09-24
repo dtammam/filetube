@@ -846,3 +846,23 @@ test('item 0: the solo-chapter exit onto an EXISTING station row (gate r3 F1b) i
     assert.strictEqual(ctx.playerState.currentId, 'film::c1', 'did NOT land on the existing station row');
   }, { radio: RADIO });
 });
+
+test('item 0: switched OFF while a station pick is PLAYING, that pick keeps playing and only the picks after it retract (it becomes the end; Prev still steps back into the album)', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(250); await settle();
+    await ctx.drain(); // the station is appended at the last chapter
+    ctx.getNav().onNext(); await settle(); // onto the first station pick
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'st1', 'precondition: a station pick is playing');
+    assert.strictEqual(typeof ctx.getNav().onNext, 'function', 'precondition: more picks follow it');
+    autoplayBtn(dom).click();
+    const nav = ctx.getNav();
+    assert.strictEqual(ctx.playerState.currentId, 'st1', 'the playing pick is untouched');
+    assert.strictEqual(nav.onNext, undefined, 'the picks after it are retracted: it is the end of the queue');
+    assert.strictEqual(typeof nav.onPrev, 'function', 'Prev is still armed');
+    nav.onPrev(); await settle();
+    assert.strictEqual(ctx.playerState.currentId, 'film::c2', 'Prev lands on the album\'s last chapter (the playing pick kept its place)');
+  }, { radio: STATION() });
+});
