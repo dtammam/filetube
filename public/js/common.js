@@ -13010,7 +13010,9 @@ function snapChipText(i, row, sug, silenceState) {
 // MILLISECONDS so a shift and its reset cancel exactly.
 
 // The agreement rule for a suggested shift: at least SNAP_SHIFT_MIN_BOUNDARIES boundaries
-// with a snap point, and at least 60 % of them within SNAP_SHIFT_AGREE_SEC of the median.
+// with a snap point, and at least 60 % of them each within SNAP_SHIFT_AGREE_SEC of the median
+// (for an even count the median is the midpoint of the middle two, so two boundaries up to
+// 0.6 s apart can both agree).
 const SNAP_SHIFT_AGREE_SEC = 0.3;
 const SNAP_SHIFT_AGREE_TENTHS = 6; // 60 %, compared in integers (agree * 10 >= of * 6)
 const SNAP_SHIFT_MIN_BOUNDARIES = 2;
@@ -13045,6 +13047,27 @@ function snapShiftBlock(times, deltaMs, durationSec, minGapSec) {
   return { ok: true };
 }
 
+// Where an edit breaks the server's minimum gap (the editor state's `minGapSec`, i.e.
+// lib/media/chapterSnap.js MIN_CHAPTER_GAP_SEC), looking ONLY at the pairs the edit touched:
+// `changed[i]` is true for a row the edit moves (a source list may already hold closer pairs;
+// they are not this edit's to refuse). A pair is fine at exactly the gap, as the nudge clamp
+// allows; the last start must stay at least the gap before the end of the file. Returns null or
+// { index, end } (end = the last row against the end of the file). Pure; shared by Reset shift,
+// the per-row Snap and Snap all.
+function snapGapBreak(times, changed, durationSec, minGapSec) {
+  const t = Array.isArray(times) ? times : [];
+  const ch = Array.isArray(changed) ? changed : [];
+  const gapMs = Math.round((typeof minGapSec === 'number' && isFinite(minGapSec) && minGapSec > 0 ? minGapSec : 0.1) * 1000);
+  const ms = t.map((x) => Math.round(Number(x) * 1000));
+  for (let i = 1; i < ms.length; i += 1) {
+    if ((ch[i] || ch[i - 1]) && ms[i] - ms[i - 1] < gapMs) return { index: i, end: false };
+  }
+  const last = ms.length - 1;
+  const dur = Number(durationSec);
+  if (last >= 1 && ch[last] && isFinite(dur) && dur > 0 && Math.round(dur * 1000) - ms[last] < gapMs) return { index: last, end: true };
+  return null;
+}
+
 // The shift the silence suggests, measured from the CURRENT times. A boundary counts when
 // the scan found a snap point near it (a server suggestion of status 'suggest' OR 'fine' -
 // a boundary that already sits on its silence is evidence against an offset too, so it
@@ -13072,7 +13095,8 @@ function snapShiftSuggestion(times, suggestions) {
   const median = of % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
   const tol = Math.round(SNAP_SHIFT_AGREE_SEC * 1000);
   const agree = deltas.filter((x) => Math.abs(x - median) <= tol).length;
-  if (agree < SNAP_SHIFT_MIN_BOUNDARIES || agree * 10 < of * SNAP_SHIFT_AGREE_TENTHS) return { kind: 'none', agree, of };
+  // (With of >= 2, the 60 % share alone already means at least two agree.)
+  if (agree * 10 < of * SNAP_SHIFT_AGREE_TENTHS) return { kind: 'none', agree, of };
   if (Math.abs(median) < SNAP_SHIFT_ALIGNED_SEC * 1000) return { kind: 'aligned', agree, of };
   return { kind: 'suggest', deltaMs: median, agree, of };
 }
@@ -13225,7 +13249,7 @@ function showChapterSnapEditor(mediaId, opts) {
   // chapter snap (2026-09-24, gate r1, qa W1): "Snap all" is ONE plan, counted and applied from the
   // same function. It touches only rows that have a server suggestion AND are still
   // at their saved time - a row the user nudged or snapped by hand is theirs - and
-  // each snapped time must stay strictly between the CURRENT neighbours (a nudged
+  // each snapped time must stay at least the minimum gap inside the CURRENT neighbours (a nudged
   // neighbour included), checked in order so the result is strictly increasing.
   function snapAllPlan() {
     const plan = [];
@@ -13239,8 +13263,11 @@ function showChapterSnapEditor(mediaId, opts) {
       if (Math.abs(rows[i].time - (rows[i].savedStart + rows[i].shift / 1000)) >= 0.0005) continue;
       const target = state.snapAll[i];
       if (!(Math.abs(target - rows[i].time) >= 0.0005)) continue;
-      const next = i + 1 < rows.length ? t[i + 1] : Infinity;
-      if (!(target > t[i - 1] && target < next)) continue;
+      // At least the server's minimum gap from the CURRENT neighbours (and the end of the
+      // file), the rule the nudges, the shift and Reset keep too (gate r1, adversary 4 / qa S3).
+      const tt = t.slice();
+      tt[i] = target;
+      if (snapGapBreak(tt, onlyRow(i), state.duration, state.minGapSec)) continue;
       t[i] = target;
       plan.push([i, target]);
     }
@@ -13269,19 +13296,24 @@ function showChapterSnapEditor(mediaId, opts) {
   // The times a Reset would restore: each row minus exactly what the shift added to IT
   // (a nudge made after the shift stays; a row snapped since carries no shift). null when
   // no row carries a shift.
+  // Times are kept to the MICROSECOND (not the millisecond) so a start stored on a half
+  // millisecond (120.0005) comes back exactly after Shift + Reset, and whole-ms steps never
+  // accumulate float drift (gate r1, adversary 6).
+  function micro(x) { return Math.round(x * 1e6) / 1e6; }
+  function onlyRow(i) { return rows.map(function (_, k) { return k === i; }); }
+  function gapText() { return formatSnapShift(Math.round(((state && state.minGapSec) || 0.1) * 1000)).slice(1); }
   function shiftResetTimes() {
     if (!rows.some(function (r) { return r.shift !== 0; })) return null;
-    return rows.map(function (r) { return Math.round(r.time * 1000 - r.shift) / 1000; });
+    return rows.map(function (r) { return micro(r.time - r.shift / 1000); });
   }
-  // A reset is refused only when a row snapped since would end up out of order (the server's
-  // own rule: strictly increasing, the last before the end of the file).
+  // A reset is refused when a row it moves would land before, on, or closer than the server's
+  // minimum gap to its neighbour (a row snapped or nudged since can be in the way), or the last
+  // one within the gap of the end of the file (gate r1: adversary 3 + 4, qa S3).
   function shiftResetProblem(t) {
-    for (let i = 1; i < t.length; i += 1) {
-      if (!(t[i] > t[i - 1])) return 'Resetting would put chapter ' + (i + 1) + ' at or before chapter ' + i + ' (a chapter was snapped after the shift). Use Undo changes to start over.';
-    }
-    const dur = state ? Number(state.duration) : NaN;
-    if (isFinite(dur) && dur > 0 && !(t[t.length - 1] < dur)) return 'Resetting would put the last chapter past the end of the file. Use Undo changes to start over.';
-    return '';
+    const brk = snapGapBreak(t, rows.map(function (r) { return r.shift !== 0; }), state && state.duration, state && state.minGapSec);
+    if (!brk) return '';
+    if (brk.end) return 'Resetting would put the last chapter at or past the end of the file, or within ' + gapText() + ' of it. Use Undo changes to start over.';
+    return 'Resetting would put chapter ' + (brk.index + 1) + ' at or before chapter ' + brk.index + ', or within ' + gapText() + ' of it (a chapter was moved after the shift). Use Undo changes to start over.';
   }
   function shiftReadout() {
     const after = rows.slice(1);
@@ -13289,7 +13321,7 @@ function showChapterSnapEditor(mediaId, opts) {
     if (moved.length === 0) return 'No shift';
     const same = moved.every(function (r) { return r.shift === moved[0].shift; });
     if (same && moved.length === after.length) return 'All chapters shifted ' + formatSnapShift(moved[0].shift);
-    if (same) return 'Shifted ' + formatSnapShift(moved[0].shift) + ' on ' + moved.length + ' of ' + after.length + ' chapters (the others were snapped since)';
+    if (same) return 'Shifted ' + formatSnapShift(moved[0].shift) + ' on ' + moved.length + ' of ' + after.length + ' chapters (the others carry no shift)';
     return 'Shifted on ' + moved.length + ' of ' + after.length + ' chapters, by different amounts (some were snapped between shifts)';
   }
   function renderShift() {
@@ -13304,7 +13336,10 @@ function showChapterSnapEditor(mediaId, opts) {
       b.disabled = lock || !blk.ok;
       if (!blk.ok && reasons.indexOf(blk.reason) === -1) reasons.push(blk.reason);
     });
-    shiftReadoutEl.textContent = shiftReadout();
+    // A polite live region: written only when the words change, so a screen reader announces a
+    // new shift, not every re-render (gate r1, qa S4).
+    const readout = shiftReadout();
+    if (shiftReadoutEl.textContent !== readout) shiftReadoutEl.textContent = readout;
     const rt = shiftResetTimes();
     shiftResetBtn.hidden = !rt;
     const rp = rt ? shiftResetProblem(rt) : '';
@@ -13324,7 +13359,11 @@ function showChapterSnapEditor(mediaId, opts) {
         shiftApplyBtn.disabled = lock || !blk.ok;
         if (!blk.ok && reasons.indexOf(blk.reason) === -1) reasons.push(blk.reason);
       } else if (g.kind === 'aligned') {
-        shiftNote.textContent = 'The chapters line up with the silence (' + g.agree + ' of ' + g.of + ' agree).';
+        // Only when EVERY boundary agrees do "the chapters" line up; a majority on the silence
+        // with the rest off is real misalignment, not a whole-track offset (gate r1, qa W1).
+        shiftNote.textContent = g.agree === g.of
+          ? 'The chapters line up with the silence (' + g.agree + ' of ' + g.of + ' agree).'
+          : 'No whole-track offset: ' + g.agree + ' of ' + g.of + ' already line up. Fix the others one by one.';
       } else if (g.kind === 'few') {
         shiftNote.textContent = 'No consistent offset (too few gaps to compare).';
       } else {
@@ -13343,7 +13382,7 @@ function showChapterSnapEditor(mediaId, opts) {
     const blk = snapShiftBlock(times(), d, state && state.duration, state && state.minGapSec);
     if (!blk.ok) { setStatus(blk.reason); return; }
     for (let i = 1; i < rows.length; i += 1) {
-      rows[i].time = Math.round(rows[i].time * 1000 + d) / 1000;
+      rows[i].time = micro(rows[i].time + d / 1000);
       rows[i].shift += d;
     }
     if (auditionIndex > 0) stopAudition();
@@ -13626,9 +13665,15 @@ function showChapterSnapEditor(mediaId, opts) {
     if (act === 'snap') {
       const sug = suggestionFor(i);
       if (!sug || sug.status !== 'suggest') return;
-      const prev = rows[i - 1].time;
-      const next = i + 1 < rows.length ? rows[i + 1].time : Infinity;
-      if (!(sug.time > prev && sug.time < next)) { setStatus('Snapping chapter ' + (i + 1) + ' would cross its neighbour. Nudge the neighbour first.'); return; }
+      const tt = times();
+      tt[i] = sug.time;
+      const brk = snapGapBreak(tt, onlyRow(i), state && state.duration, state && state.minGapSec);
+      if (brk) {
+        setStatus(brk.end
+          ? 'Snapping chapter ' + (i + 1) + ' would put it within ' + gapText() + ' of the end of the file.'
+          : 'Snapping chapter ' + (i + 1) + ' would cross its neighbour or come within ' + gapText() + ' of it. Nudge the neighbour first.');
+        return;
+      }
       setTime(i, sug.time, true);
     }
   });
@@ -16514,7 +16559,7 @@ if (typeof module !== 'undefined' && module.exports) {
     withShareStartTime,
     // Chapter Snap (2026-09-24): the ONE chapter-time editor + its pure helpers (jsdom-tested).
     showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor, formatChapterStamp,
-    formatSnapShift, snapShiftBlock, snapShiftSuggestion,
+    formatSnapShift, snapShiftBlock, snapShiftSuggestion, snapGapBreak,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,

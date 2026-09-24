@@ -97,6 +97,29 @@ test('snapShiftSuggestion measures from the CURRENT times: after the shift is ap
   assert.deepStrictEqual(snapShiftSuggestion([0, 61.75, 121.75, 181.75], s), { kind: 'aligned', agree: 3, of: 3 });
 });
 
+test('snapShiftSuggestion: the 50 ms "aligned" cutoff is exclusive (adversary A8)', () => {
+  assert.deepStrictEqual(snapShiftSuggestion([0, 60, 120], sug([['suggest', 60.05], ['suggest', 120.05]])), { kind: 'suggest', deltaMs: 50, agree: 2, of: 2 }, 'exactly 50 ms is still a shift to offer');
+  assert.deepStrictEqual(snapShiftSuggestion([0, 60, 120], sug([['fine', 60.049], ['fine', 120.049]])), { kind: 'aligned', agree: 2, of: 2 }, '49 ms lines up');
+});
+
+test('snapGapBreak: only the pairs an edit touched, the server gap inclusive, the end of the file', () => {
+  const { snapGapBreak } = common;
+  const t = [0, 10, 10.05, 20];
+  assert.strictEqual(snapGapBreak(t, [false, false, false, false], 30, GAP), null, 'a pre-existing close pair is not this edit\'s to refuse');
+  assert.strictEqual(snapGapBreak(t, [false, false, false, true], 30, GAP), null, 'an edit elsewhere ignores it too');
+  assert.deepStrictEqual(snapGapBreak(t, [false, false, true, false], 30, GAP), { index: 2, end: false }, 'a moved row inside the gap');
+  assert.deepStrictEqual(snapGapBreak(t, [false, true, false, false], 30, GAP), { index: 2, end: false }, 'either side of the pair counts');
+  assert.strictEqual(snapGapBreak([0, 10, 10.1], [false, false, true], 30, GAP), null, 'exactly the gap is allowed (as the nudge clamp allows)');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 10], [false, false, true], 30, GAP), { index: 2, end: false }, 'an equal pair');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 9], [false, false, true], 30, GAP), { index: 2, end: false }, 'out of order');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 29.95], [false, false, true], 30, GAP), { index: 2, end: true }, 'inside the gap before the end');
+  assert.strictEqual(snapGapBreak([0, 10, 29.9], [false, false, true], 30, GAP), null, 'exactly the gap before the end');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 30.9], [false, false, true], 30, GAP), { index: 2, end: true }, 'past the end');
+  assert.strictEqual(snapGapBreak([0, 10, 30.9], [false, false, true], null, GAP), null, 'no known end');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 10.2], [false, false, true], 30, 0.3), { index: 2, end: false }, 'the gap is the one passed in (the server\'s)');
+  assert.strictEqual(snapGapBreak([0, 10, 10.2], [false, false, true], 30, GAP), null);
+});
+
 // ---- phone sizing (the probe measures it; this lock keeps the rule from silently dropping) ----
 const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 

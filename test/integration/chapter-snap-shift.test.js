@@ -271,7 +271,7 @@ test('Snap all after a shift still snaps to the silence (absolute), and a snappe
   assert.match(h.snapAllBtn.textContent, /Snap all \(1\)/);
   click(h.snapAllBtn);
   assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:01.8', '2:01.0', '3:04.8', '4:01.0'], 'the two suggestions snapped to the silence, absolute');
-  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'Shifted +1.0 s on 2 of 4 chapters (the others were snapped since)');
+  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'Shifted +1.0 s on 2 of 4 chapters (the others carry no shift)');
   click(q(h, '.chapter-snap-shift-reset'));
   assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:01.8', '2:00.0', '3:04.8', '4:00.0'], 'Reset took the shift off the shifted rows only; both snaps stay');
   click(h.saveBtn);
@@ -304,16 +304,224 @@ test('Reset shift is REFUSED (with the reason) when a row snapped after the shif
 
 test('a stale seed locks the shift controls along with Save', async () => {
   const [mix] = seedItems([{ duration: 300, chapters: FIVE }]);
+  // A whole-track offset in the cached silence, so the SUGGESTION button is on screen too.
+  seedSilence(mix, [{ start: 60.5, end: 62 }, { start: 120.5, end: 122 }, { start: 180.5, end: 182 }, { start: 240.5, end: 242 }]);
   const { common, fetchImpl } = bootEditor();
   const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
   await h.ready;
   click(step(h, 1000));
+  const apply = q(h, '.chapter-snap-shift-apply');
+  assert.ok(shown(apply) && apply.disabled === false, 'precondition: the suggestion (+0.75 s) is shown and enabled');
+  assert.ok(shown(q(h, '.chapter-snap-shift-reset')) && q(h, '.chapter-snap-shift-reset').disabled === false, 'precondition: Reset is shown and enabled');
   const typed = '0:00 Opening\n1:05 Second Song\n2:00 Third Song\n3:00 Fourth Song\n4:00 Closer';
   assert.strictEqual((await fetch(base + '/api/videos/' + enc(mix.id) + '/chapters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: typed }) })).status, 200);
   click(h.saveBtn);
   await until(() => /changed since/.test(h.statusEl.textContent), 'the refusal');
   assert.ok(Array.from(h.shiftBox.querySelectorAll('button')).every((b) => b.disabled || b.hidden), 'no shift control can act on a stale seed');
+  assert.strictEqual(apply.disabled, true, 'the suggestion button locks too');
+  const before = nowOf(h);
+  apply.disabled = false; // even a button forced back on (devtools, a stale render) cannot act
+  click(apply);
+  assert.deepStrictEqual(nowOf(h), before, 'nothing moved');
   assert.deepStrictEqual(loadDatabase().metadata[mix.id].chaptersManual.map((c) => c.startTime), [0, 65, 120, 180, 240], 'the shifted times were not written');
+  h.close();
+});
+
+// ---- gate r1 fixes ------------------------------------------------------------------
+
+test('qa W1: a majority already on the silence with the rest off is NOT "the chapters line up" - the note says only some do', async () => {
+  const [mix] = seedItems([{ duration: 360, chapters: [0, 60, 120, 180, 240, 300].map((t, i) => ({ startTime: t, title: 'C' + (i + 1) })) }]);
+  // Chapters 2-3 start 2 s early (their songs start at 62 / 122); chapters 4-6 sit on their silence.
+  seedSilence(mix, [{ start: 60.5, end: 62 }, { start: 120.5, end: 122 }, { start: 179, end: 180.25 }, { start: 239, end: 240.25 }, { start: 299, end: 300.25 }]);
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  assert.match(h.snapAllBtn.textContent, /Snap all \(2\)/, 'precondition: the head says two starts look off');
+  assert.strictEqual(shown(q(h, '.chapter-snap-shift-apply')), false, 'no whole-track shift is offered');
+  assert.strictEqual(q(h, '.chapter-snap-shift-note').textContent, 'No whole-track offset: 3 of 5 already line up. Fix the others one by one.');
+  // Snap the two: now every boundary agrees, and the note may say the chapters line up.
+  click(h.snapAllBtn);
+  assert.strictEqual(q(h, '.chapter-snap-shift-note').textContent, 'The chapters line up with the silence (5 of 5 agree).');
+  h.close();
+});
+
+test('adversary W2: a suggestion the clamps REFUSE is shown disabled with its reason, and a tap (even on a button forced back on) moves nothing', async () => {
+  const [a, b] = seedItems([
+    // The adversary's fixture: -0.95 s would put chapter 2 (at 1.0) at 0.05, inside the gap.
+    { name: 'a', duration: 180, chapters: [0, 1, 60, 120].map((t, i) => ({ startTime: t, title: 'A' + (i + 1) })) },
+    // Chapter 2 at 1.5: the -1 s step is legal, only the -1.45 s suggestion is refused, so the
+    // reason on screen can only have come from the suggestion.
+    { name: 'b', duration: 180, chapters: [0, 1.5, 60, 120].map((t, i) => ({ startTime: t, title: 'B' + (i + 1) })) },
+  ]);
+  seedSilence(a, [{ start: 58.5, end: 59.3 }, { start: 118.5, end: 119.3 }]);
+  seedSilence(b, [{ start: 58, end: 58.8 }, { start: 118, end: 118.8 }]);
+  const { common, fetchImpl } = bootEditor();
+  let h = common.showChapterSnapEditor(a.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  let apply = q(h, '.chapter-snap-shift-apply');
+  assert.ok(shown(apply), 'the suggestion is shown');
+  assert.strictEqual(apply.textContent, 'Suggested: shift all by −0.95 s (2 of 2 agree)');
+  assert.strictEqual(apply.disabled, true, 'and disabled');
+  assert.match(q(h, '.chapter-snap-shift-why').textContent, /Shifting earlier would put chapter 2 at or before chapter 1\./);
+  const before = nowOf(h);
+  click(apply);
+  assert.deepStrictEqual(nowOf(h), before, 'a tap on the disabled suggestion moves nothing');
+  apply.disabled = false; // a stale render / devtools: applyShift refuses on its own
+  click(apply);
+  assert.deepStrictEqual(nowOf(h), before, 'even an enabled button cannot apply a refused shift');
+  assert.match(h.statusEl.textContent, /Shifting earlier would put chapter 2 at or before chapter 1\./, 'and it says why');
+  assert.strictEqual(h.saveBtn.disabled, true, 'nothing to save');
+  h.close();
+
+  h = common.showChapterSnapEditor(b.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  apply = q(h, '.chapter-snap-shift-apply');
+  assert.strictEqual(apply.textContent, 'Suggested: shift all by −1.45 s (2 of 2 agree)');
+  assert.strictEqual(apply.disabled, true);
+  assert.strictEqual(step(h, -1000).disabled, false, 'every STEP is legal here');
+  assert.ok(shown(q(h, '.chapter-snap-shift-why')), 'so the reason shown is the suggestion\'s own');
+  assert.match(q(h, '.chapter-snap-shift-why').textContent, /Shifting earlier would put chapter 2 at or before chapter 1\./);
+  h.close();
+});
+
+test('adversary W3: Reset is refused when it would put the last chapter at or past the end (or inside the gap before it), or two chapters on the SAME start or inside the gap', async () => {
+  const [end, endGap, equal, midGap] = seedItems([
+    { name: 'end', duration: 300, chapters: [0, 100, 299.5].map((t, i) => ({ startTime: t, title: 'E' + (i + 1) })) },
+    { name: 'endgap', duration: 300, chapters: [0, 100, 299.45].map((t, i) => ({ startTime: t, title: 'G' + (i + 1) })) },
+    { name: 'equal', duration: 300, chapters: [0, 60, 61.5, 120].map((t, i) => ({ startTime: t, title: 'Q' + (i + 1) })) },
+    { name: 'midgap', duration: 300, chapters: [0, 0.35, 100].map((t, i) => ({ startTime: t, title: 'M' + (i + 1) })) },
+  ]);
+  seedSilence(equal, [{ start: 60.2, end: 60.75 }]); // chapter 2's snap point: 60.5
+  const { common, fetchImpl } = bootEditor();
+  const reset = (h) => q(h, '.chapter-snap-shift-reset');
+  const why = (h) => q(h, '.chapter-snap-shift-why').textContent;
+  const nudge = (h, i, d) => click(rowsOf(h)[i].querySelector('[data-act="nudge"][data-delta="' + d + '"]'));
+
+  // (1) past the end: -1 s, then the last chapter nudged up to 4:59.9; Reset would add 1 s back.
+  let h = common.showChapterSnapEditor(end.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(step(h, -1000));
+  nudge(h, 2, '1');
+  for (let k = 0; k < 6; k++) nudge(h, 2, '0.1');
+  assert.strictEqual(nowOf(h)[2], '4:59.9');
+  assert.ok(shown(reset(h)));
+  assert.strictEqual(reset(h).disabled, true, 'Reset would put chapter 3 at 5:00.9 on a 300 s file');
+  assert.match(why(h), /Resetting would put the last chapter at or past the end of the file, or within 0\.1 s of it\./);
+  click(reset(h));
+  assert.strictEqual(nowOf(h)[2], '4:59.9', 'nothing moved');
+  click(h.saveBtn);
+  await until(() => h.isClosed(), 'the list on screen saves');
+  assert.deepStrictEqual(loadDatabase().metadata[end.id].chaptersManual.map((c) => c.startTime), [0, 99, 299.9]);
+
+  // (2) inside the gap before the end: -0.1 s, the last nudged +0.5 s; Reset -> 299.95 (50 ms from the end).
+  h = common.showChapterSnapEditor(endGap.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(step(h, -100));
+  for (let k = 0; k < 5; k++) nudge(h, 2, '0.1');
+  assert.strictEqual(reset(h).disabled, true, 'Reset would leave the last chapter 50 ms before the end');
+  assert.match(why(h), /Resetting would put the last chapter/);
+  h.close();
+
+  // (3) an EQUAL pair: +1 s, chapter 3 nudged -1 s (61.5, still carrying the shift), chapter 2
+  // snapped to 60.5; Reset would put chapter 3 at 60.5 = chapter 2.
+  h = common.showChapterSnapEditor(equal.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(step(h, 1000));
+  nudge(h, 2, '-1');
+  click(rowsOf(h)[1].querySelector('[data-act="snap"]'));
+  assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:00.5', '1:01.5', '2:01.0']);
+  assert.strictEqual(reset(h).disabled, true, 'two chapters on one start');
+  assert.match(why(h), /Resetting would put chapter 3 at or before chapter 2/);
+  h.close();
+
+  // (4) inside the gap in the middle: +0.1 s, chapter 2 nudged -0.3 s to 0.15; Reset -> 0.05.
+  h = common.showChapterSnapEditor(midGap.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(step(h, 100));
+  for (let k = 0; k < 3; k++) nudge(h, 1, '-0.1');
+  assert.strictEqual(nowOf(h)[1], '0:00.2');
+  assert.strictEqual(reset(h).disabled, true, 'Reset would put chapter 2 50 ms after chapter 1');
+  assert.match(why(h), /Resetting would put chapter 2 at or before chapter 1, or within 0\.1 s of it/);
+  h.close();
+});
+
+test('qa S3 / adversary 4: the per-row Snap and Snap all keep the server\'s minimum gap from a nudged neighbour', async () => {
+  const [mix] = seedItems([{ duration: 300, chapters: [0, 60, 80].map((t, i) => ({ startTime: t, title: 'N' + (i + 1) })) }]);
+  seedSilence(mix, [{ start: 58, end: 62 }]); // chapter 2's snap point: 61.75 (chapter 3 has no gap near it)
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  const nudge = (i, d) => click(rowsOf(h)[i].querySelector('[data-act="nudge"][data-delta="' + d + '"]'));
+  for (let k = 0; k < 18; k++) nudge(2, '-1');
+  nudge(2, '-0.1');
+  nudge(2, '-0.1');
+  assert.strictEqual(nowOf(h)[2], '1:01.8', 'chapter 3 nudged to 61.8, 50 ms after chapter 2\'s snap point');
+  assert.match(h.snapAllBtn.textContent, /^Snap all$/, 'Snap all leaves chapter 2 alone (it would land inside the gap)');
+  assert.strictEqual(h.snapAllBtn.disabled, true);
+  click(rowsOf(h)[1].querySelector('[data-act="snap"]'));
+  assert.strictEqual(nowOf(h)[1], '1:00.0', 'the per-row Snap refuses too');
+  assert.match(h.statusEl.textContent, /Snapping chapter 2 would cross its neighbour or come within 0\.1 s of it/);
+  nudge(2, '0.1'); // 61.9: now 150 ms clear
+  assert.match(h.snapAllBtn.textContent, /Snap all \(1\)/, 'once clear of the gap, Snap all takes it');
+  click(rowsOf(h)[1].querySelector('[data-act="snap"]'));
+  assert.strictEqual(nowOf(h)[1], '1:01.8');
+  h.close();
+});
+
+test('adversary 6: a start stored on a half millisecond survives Shift + Reset exactly - Save and Undo are off again', async () => {
+  const [mix] = seedItems([{ duration: 300, chapters: [{ startTime: 0, title: 'A' }, { startTime: 60, title: 'B' }, { startTime: 120.0005, title: 'C' }, { startTime: 180, title: 'D' }] }]);
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  assert.strictEqual(h.saveBtn.disabled, true);
+  click(step(h, 100));
+  assert.strictEqual(h.saveBtn.disabled, false);
+  click(q(h, '.chapter-snap-shift-reset'));
+  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'No shift');
+  assert.strictEqual(h.saveBtn.disabled, true, 'nothing left to save');
+  assert.strictEqual(h.undoBtn.disabled, true, 'nothing left to undo');
+  h.close();
+});
+
+test('adversary 7: a shift stops the audition of a row it moves (the old time must not keep playing)', async () => {
+  const [mix] = seedItems([{ duration: 300, chapters: FIVE }]);
+  const { common, fetchImpl } = bootEditor();
+  let pauses = 0;
+  const fake = dom.window.document.createElement('audio');
+  Object.defineProperty(fake, 'readyState', { configurable: true, get: () => 1 });
+  fake.play = () => Promise.resolve();
+  fake.pause = () => { pauses += 1; };
+  fake.load = () => {};
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document, audioFactory: () => fake });
+  await h.ready;
+  click(rowsOf(h)[1].querySelector('[data-act="play"]'));
+  assert.ok(rowsOf(h)[1].classList.contains('is-playing'), 'precondition: chapter 2 is auditioning');
+  const p0 = pauses;
+  click(step(h, 1000));
+  assert.strictEqual(rowsOf(h)[1].classList.contains('is-playing'), false, 'the audition stopped');
+  assert.ok(pauses > p0, 'and the audio was paused');
+  h.close();
+});
+
+test('qa S4: the readout is a polite live region written only when its words change', async () => {
+  const [mix] = seedItems([{ duration: 300, chapters: FIVE }]);
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  const el = q(h, '.chapter-snap-shift-readout');
+  assert.strictEqual(el.getAttribute('aria-live'), 'polite');
+  const seen = [];
+  const mo = new dom.window.MutationObserver((ms) => { seen.push(...ms); });
+  mo.observe(el, { childList: true, characterData: true, subtree: true });
+  click(rowsOf(h)[2].querySelector('[data-act="nudge"][data-delta="0.1"]')); // a re-render, same words
+  click(rowsOf(h)[3].querySelector('[data-act="nudge"][data-delta="1"]'));
+  await tick();
+  assert.strictEqual(seen.length, 0, 'no rewrite for an unchanged "No shift"');
+  click(step(h, 1000));
+  await tick();
+  assert.ok(seen.length > 0, 'a new shift is written (and announced)');
+  assert.strictEqual(el.textContent, 'All chapters shifted +1.0 s');
+  mo.disconnect();
   h.close();
 });
 
