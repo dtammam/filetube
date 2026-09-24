@@ -3236,6 +3236,10 @@ const PreviewCards = (function () {
     function cardLikeEndpoint(kind, id) {
       const encId = encodeURIComponent(id);
       if (kind === 'podcast') return '/api/podcasts/episodes/' + encId + '/liked';
+      // M3 chapter likes (v1.317): a `<mediaId>::c<n>` chapter of a chaptered
+      // audio file is liked in the MEDIA store (POST/DELETE /api/liked/:id) - the
+      // music-native lane is ownTrack-gated and would strand the row on unlike.
+      if (kind === 'track' && /::c\d+$/.test(String(id))) return '/api/liked/' + encId;
       if (kind === 'track') return '/api/music/liked/' + encId;
       if (kind === 'book') return '/api/books/liked/' + encId;
       return '/api/liked/' + encId;

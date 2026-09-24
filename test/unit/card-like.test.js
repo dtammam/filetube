@@ -97,7 +97,14 @@ test('main.js: the card renders a .card-like-btn reflecting item.liked, and togg
   assert.ok(mainSrc.includes('fetch(cardLikeEndpoint(btn.dataset.kind, id)'), 'the fetch consumes the kind dispatcher');
   assert.ok(mainSrc.includes("return '/api/liked/' + encId;"), 'media (default) arm hits the liked API by id');
   assert.ok(mainSrc.includes("if (kind === 'podcast') return '/api/podcasts/episodes/' + encId + '/liked';"), 'podcast arm');
-  assert.ok(mainSrc.includes("if (kind === 'track') return '/api/music/liked/' + encId;"), 'track arm');
+  // M3 chapter likes (v1.317): a `<id>::c<n>` chapter of a chaptered audio file is
+  // a MEDIA-store like; the chapter arm must sit BEFORE the native track arm or the
+  // native lane (ownTrack-gated) swallows it and an unlike strands the row.
+  const chapterArm = mainSrc.indexOf("if (kind === 'track' && /::c\\d+$/.test(String(id))) return '/api/liked/' + encId;");
+  const nativeArm = mainSrc.indexOf("if (kind === 'track') return '/api/music/liked/' + encId;");
+  assert.ok(chapterArm !== -1, 'chapter-track arm hits the media liked API');
+  assert.ok(nativeArm !== -1, 'track arm');
+  assert.ok(chapterArm < nativeArm, 'the chapter arm precedes the native track arm');
   // Adversarial gate v1.72 W1: the book arm survived the whole suite as a
   // deletable mutant - a book unlike falling to the media default would
   // DELETE /api/liked/<bookId>, a cross-kind kill when a media item shares

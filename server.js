@@ -4024,8 +4024,27 @@ function ownTrack(tracks, id) {
 // The public list-item shape for a track: the track record plus this user's
 // liked flag and resume position (per-user, keyed by req.user.id -- never the
 // frozen doc record). filePath is deliberately NOT surfaced (path scrub).
-function publicTrackListItem(track, userId, likedSet, progressMap) {
-  const liked = likedSet ? likedSet.has(track.id) : false;
+// M3 chapter likes (v1.317): the two like stores a music row can read from. A
+// NATIVE track's like lives in user_music_liked; a PROJECTED library row (a
+// yt-dlp audio file, or one chapter of it - source 'library'/'library-chapter')
+// lives in the MEDIA store (user_liked) under the row's own id, because the
+// music-native POST is ownTrack-gated and 404s every projected id. Before this,
+// every projected row read the music set and could never render liked.
+function musicLikedSets(userId) {
+  return {
+    music: new Set(userStore.getMusicLiked(userId)),
+    media: new Set(userStore.getLiked(userId)),
+  };
+}
+function trackIsLiked(track, likedSets) {
+  if (!likedSets || !track) return false;
+  const isLib = track.source === 'library' || track.source === 'library-chapter';
+  const set = isLib ? likedSets.media : likedSets.music;
+  return !!(set && set.has(track.id));
+}
+
+function publicTrackListItem(track, userId, likedSets, progressMap) {
+  const liked = trackIsLiked(track, likedSets);
   const prog = progressMap ? progressMap[track.id] : null;
   // Wave G: a PROJECTED library-audio track (source 'library') streams the mp3
   // from the media byte route, arts from its YouTube thumbnail, and saves
@@ -4088,6 +4107,15 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
 // kind), and does not collide with a native music-track id (dedup: the real track wins), is
 // shaped into a music-track record. `nativeTracks` is the already-RBAC-filtered
 // native list, so the dedup set only holds ids this user may already see.
+// M3 chapter likes (v1.317): the ONE writer of an item's music expansion - the
+// list/search projection above AND the chapter-like existence check (POST
+// /api/liked/:id) and the Liked page's chapter arm (GET /api/liked) all read the
+// SAME expansion, so "likeable" == "appears in Music" by construction (the
+// two-reader-seam class). A non-chaptered item yields its single base track.
+function itemChapterTracks(item) {
+  return libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
+}
+
 function projectedLibraryTracks(req, nativeTracks) {
   // v1.242 (Dean): audio-only items project into Music UNCONDITIONALLY - no per-user
   // opt-in (the old default-OFF `musicIncludesLibrary` gate is retired), no genre/majority
@@ -4108,7 +4136,7 @@ function projectedLibraryTracks(req, nativeTracks) {
     // chapter (else a single track). resolveChapters is server.js's own resolver
     // (embedded|manual|description); the chapter-tracks share the file's title as
     // their album, so groupAlbums folds them into one Album.
-    const tracks = libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
+    const tracks = itemChapterTracks(item);
     // Music redesign Slice 1: carry the channel avatar so the artist circle has a
     // real picture (the resolver is READ-ONLY: item -> channelId registry ->
     // subscription). Native music tracks have no channel, so no avatar.
@@ -4179,11 +4207,13 @@ musicRoutes.registerLibraryRoutes(app, {
   libraryAudio,
   mediaVisibleTo,
   musicDb,
+  musicLikedSets, // M3 chapter likes: the {music, media} like-set pair a row reads by source
   musicListProgressMap,
   musicQuery,
   ownTrack,
   projectedLibraryTracks,
   publicTrackListItem,
+  trackIsLiked, // M3: the per-row like predicate (filter=liked)
   trackVisibleTo,
   userStore,
   videoQuery,
@@ -4229,6 +4259,7 @@ musicRoutes.registerTrackRoutes(app, {
   mediaVisibleTo,
   musicCodecNeedsTranscode,
   musicDb,
+  musicLikedSets, // M3 chapter likes: the {music, media} like-set pair a row reads by source
   musicListProgressMap,
   ownTrack,
   path,
@@ -5232,9 +5263,11 @@ mediaUserRoutes.registerLikedRoutes(app, {
   effectiveMusicProgress,
   effectiveProgress,
   getCachedDatabase,
+  itemChapterTracks, // M3 chapter likes: the ONE music expansion (existence check + the Liked chapter arm)
   mediaVisibleTo, // v1.80 RBAC: the per-user visibility gate for media items
   musicDb,
   ownTrack, // the music store's own-track lookup (a track row by id)
+  parseChapterTrackId: libraryAudio.parseChapterTrackId, // M3: the `<id>::c<n>` decoder
   pendingProgress, // the coalescer's staging Map - the LIVE object (read-your-writes)
   podcastEpisodeVisibleTo,
   podcastsDb,
@@ -6143,6 +6176,7 @@ mediaRoutes.registerLibraryRoutes(app, {
   bookVisibleTo,
   booksDb,
   buildStoreZip,
+  chapterLikeBaseId: libraryAudio.chapterLikeBaseId, // M3 chapter likes: a `<id>::c<n>` like counts by its BASE item's visibility
   configuredLibraryRoots, // the bulk selector's root confinement
   crittersDir, // resolves against server.js's __dirname, so it cannot move here
   express, // the critters upload's route-scoped express.raw parser
