@@ -3,7 +3,7 @@ plan: lock-audio-measure
 harness: v2 · lean
 branch: feat/lock-audio-measure
 anchor: spec
-status: Gate closed
+status: Shipped v1.319.0
 next: release
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: APPROVED r2 @3e3b898e — adversary, qa
