@@ -66,6 +66,8 @@ test('snapShiftSuggestion AGREE: every boundary off by the same amount -> sugges
 test('snapShiftSuggestion DISAGREE: under 60 % within +-0.3 s of the median -> no consistent offset', () => {
   // Two late by 2 s, two early by 4-5 s.
   assert.deepStrictEqual(snapShiftSuggestion([0, 60, 120, 180, 240], sug([['suggest', 62], ['suggest', 122], ['suggest', 175], ['suggest', 236]])).kind, 'none');
+  // Two of four agree ON the median (50 %): under the 60 % share, so no suggestion.
+  assert.deepStrictEqual(snapShiftSuggestion([0, 60, 120, 180, 240], sug([['suggest', 62], ['suggest', 122], ['suggest', 185], ['suggest', 236]])), { kind: 'none', agree: 2, of: 4 });
   // Two clusters: the median falls between them, nothing agrees.
   assert.deepStrictEqual(snapShiftSuggestion([0, 60, 120, 180, 240], sug([['suggest', 61.75], ['suggest', 116.75], ['suggest', 181.75], ['suggest', 236.75]])), { kind: 'none', agree: 0, of: 4 });
   // Just outside the tolerance: 0.301 s from the median does not agree.

@@ -266,14 +266,40 @@ test('Snap all after a shift still snaps to the silence (absolute), and a snappe
   click(step(h, 1000));
   assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:01.0', '2:01.0', '3:01.0', '4:01.0']);
   assert.match(h.snapAllBtn.textContent, /Snap all \(2\)/, 'rows moved only by the shift are still snappable');
+  // One row snapped by its own button, the other by Snap all: both are absolute.
+  click(rowsOf(h)[1].querySelector('[data-act="snap"]'));
+  assert.match(h.snapAllBtn.textContent, /Snap all \(1\)/);
   click(h.snapAllBtn);
   assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:01.8', '2:01.0', '3:04.8', '4:01.0'], 'the two suggestions snapped to the silence, absolute');
   assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'Shifted +1.0 s on 2 of 4 chapters (the others were snapped since)');
   click(q(h, '.chapter-snap-shift-reset'));
-  assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:01.8', '2:00.0', '3:04.8', '4:00.0'], 'Reset took the shift off the shifted rows only; the snaps stay');
+  assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:01.8', '2:00.0', '3:04.8', '4:00.0'], 'Reset took the shift off the shifted rows only; both snaps stay');
   click(h.saveBtn);
   await until(() => h.isClosed(), 'saved');
   assert.deepStrictEqual(loadDatabase().metadata[mix.id].chaptersManual.map((c) => c.startTime), [0, 61.75, 120, 184.75, 240]);
+});
+
+test('Reset shift is REFUSED (with the reason) when a row snapped after the shift would end up out of order; Undo changes still works', async () => {
+  const [mix] = seedItems([{ duration: 300, chapters: [{ startTime: 0, title: 'A' }, { startTime: 60, title: 'B' }, { startTime: 61.5, title: 'C' }, { startTime: 120, title: 'D' }] }]);
+  // A gap that ends at 61.05: chapter 2's snap point is 60.8 (the 0.25 s lead-in).
+  seedSilence(mix, [{ start: 60.3, end: 61.05 }]);
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(step(h, 1000)); // [0, 61, 62.5, 121]
+  click(rowsOf(h)[2].querySelector('[data-act="nudge"][data-delta="-1"]')); // chapter 3 -> 61.5 (keeps its +1 s shift)
+  click(rowsOf(h)[1].querySelector('[data-act="snap"]')); // chapter 2 -> 60.8, absolute
+  assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:00.8', '1:01.5', '2:01.0']);
+  const reset = q(h, '.chapter-snap-shift-reset');
+  assert.ok(shown(reset), 'rows still carry the shift');
+  assert.strictEqual(reset.disabled, true, 'taking 1 s off chapter 3 (61.5 -> 60.5) would put it before the snapped chapter 2 (60.8)');
+  assert.match(q(h, '.chapter-snap-shift-why').textContent, /Resetting would put chapter 3 at or before chapter 2/);
+  click(reset);
+  assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:00.8', '1:01.5', '2:01.0'], 'nothing moved');
+  click(h.undoBtn);
+  assert.deepStrictEqual(nowOf(h), ['0:00.0', '1:00.0', '1:01.5', '2:00.0']);
+  assert.strictEqual(shown(q(h, '.chapter-snap-shift-why')), false, 'the reason clears with the shift');
+  h.close();
 });
 
 test('a stale seed locks the shift controls along with Save', async () => {
