@@ -45,6 +45,18 @@ test('snapShiftBlock LATER: refused when the last chapter would land AT or past 
   assert.strictEqual(snapShiftBlock([0], 100, 100, GAP).ok, false, 'one chapter: nothing to shift');
 });
 
+test('snapShiftBlock with the SAVED list: a source chapter 2 within the gap of chapter 1 (or a source last chapter within the gap of the end) may always be shifted back to where it was saved (gate r2)', () => {
+  const saved = [0, 0.05, 60];
+  assert.strictEqual(snapShiftBlock(saved, -100, 100, GAP, saved).ok, false, 'at the saved list, earlier is still refused (it would narrow below the saved 50 ms)');
+  assert.strictEqual(snapShiftBlock([0, 1.05, 61], -1000, 100, GAP, saved).ok, true, 'after +1 s, -1 s goes back to exactly the saved 50 ms');
+  assert.strictEqual(snapShiftBlock([0, 1.05, 61], -1001, 100, GAP, saved).ok, false, 'one millisecond more is refused');
+  assert.strictEqual(snapShiftBlock([0, 1.05, 61], -1000, 100, GAP).ok, false, 'without the saved list the plain rule applies');
+  const end = [0, 60, 299.95];
+  assert.strictEqual(snapShiftBlock(end, 100, 300, GAP, end).ok, false, 'at the saved list, later is still refused');
+  assert.strictEqual(snapShiftBlock([0, 59, 298.95], 1000, 300, GAP, end).ok, true, 'after -1 s, +1 s goes back to the saved 50 ms before the end');
+  assert.strictEqual(snapShiftBlock([0, 59, 298.95], 1001, 300, GAP, end).ok, false);
+});
+
 // Suggestions in the server's shape (lib/media/chapterSnap.js suggestSnaps).
 const sug = (entries) => [{ index: 0, status: 'first', time: 0 }].concat(entries.map((e, i) => (
   e === null ? { index: i + 1, status: 'no-gap', time: null } : { index: i + 1, status: e[0], time: e[1] })));
@@ -102,22 +114,41 @@ test('snapShiftSuggestion: the 50 ms "aligned" cutoff is exclusive (adversary A8
   assert.deepStrictEqual(snapShiftSuggestion([0, 60, 120], sug([['fine', 60.049], ['fine', 120.049]])), { kind: 'aligned', agree: 2, of: 2 }, '49 ms lines up');
 });
 
-test('snapGapBreak: only the pairs an edit touched, the server gap inclusive, the end of the file', () => {
+test('snapGapBreak: a pair breaks only when the edit NARROWS it into the gap AND closer than the saved list; the end likewise (gate r2)', () => {
   const { snapGapBreak } = common;
-  const t = [0, 10, 10.05, 20];
-  assert.strictEqual(snapGapBreak(t, [false, false, false, false], 30, GAP), null, 'a pre-existing close pair is not this edit\'s to refuse');
-  assert.strictEqual(snapGapBreak(t, [false, false, false, true], 30, GAP), null, 'an edit elsewhere ignores it too');
-  assert.deepStrictEqual(snapGapBreak(t, [false, false, true, false], 30, GAP), { index: 2, end: false }, 'a moved row inside the gap');
-  assert.deepStrictEqual(snapGapBreak(t, [false, true, false, false], 30, GAP), { index: 2, end: false }, 'either side of the pair counts');
-  assert.strictEqual(snapGapBreak([0, 10, 10.1], [false, false, true], 30, GAP), null, 'exactly the gap is allowed (as the nudge clamp allows)');
-  assert.deepStrictEqual(snapGapBreak([0, 10, 10], [false, false, true], 30, GAP), { index: 2, end: false }, 'an equal pair');
-  assert.deepStrictEqual(snapGapBreak([0, 10, 9], [false, false, true], 30, GAP), { index: 2, end: false }, 'out of order');
-  assert.deepStrictEqual(snapGapBreak([0, 10, 29.95], [false, false, true], 30, GAP), { index: 2, end: true }, 'inside the gap before the end');
-  assert.strictEqual(snapGapBreak([0, 10, 29.9], [false, false, true], 30, GAP), null, 'exactly the gap before the end');
-  assert.deepStrictEqual(snapGapBreak([0, 10, 30.9], [false, false, true], 30, GAP), { index: 2, end: true }, 'past the end');
-  assert.strictEqual(snapGapBreak([0, 10, 30.9], [false, false, true], null, GAP), null, 'no known end');
-  assert.deepStrictEqual(snapGapBreak([0, 10, 10.2], [false, false, true], 30, 0.3), { index: 2, end: false }, 'the gap is the one passed in (the server\'s)');
-  assert.strictEqual(snapGapBreak([0, 10, 10.2], [false, false, true], 30, GAP), null);
+  // An edit that moves chapter 3 of [0, 10, 12, 20] (saved the same) to the given time.
+  const saved = [0, 10, 12, 20];
+  const move = (t3) => snapGapBreak([0, 10, t3, 20], saved, saved, 30, GAP);
+  assert.strictEqual(move(10.1), null, 'exactly the gap is allowed (as the nudge clamp allows)');
+  assert.deepStrictEqual(move(10.05), { index: 2, end: false }, 'inside the gap');
+  assert.deepStrictEqual(move(10), { index: 2, end: false }, 'an equal pair');
+  assert.deepStrictEqual(move(9), { index: 2, end: false }, 'out of order');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 10.2, 20], saved, saved, 30, 0.3), { index: 2, end: false }, 'the gap is the one passed in (the server\'s)');
+  assert.strictEqual(snapGapBreak([0, 10, 10.2, 20], saved, saved, 30, GAP), null);
+  // A close pair that came from the SOURCE: an edit that does not narrow it is never refused.
+  const src = [0, 10, 10.05, 20];
+  assert.strictEqual(snapGapBreak(src, src, src, 30, GAP), null, 'the saved list itself is never a break');
+  assert.strictEqual(snapGapBreak([0, 11, 11.05, 21], src, src, 30, GAP), null, 'a shift keeps the pair at its saved gap');
+  assert.strictEqual(snapGapBreak(src, [0, 11, 11.05, 21], src, 30, GAP), null, 'a Reset that returns the pair to its saved gap');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 10.02, 20], src, src, 30, GAP), { index: 2, end: false }, 'narrowed below the saved 50 ms: a real new violation');
+  assert.strictEqual(snapGapBreak([0, 10, 10.07, 20], src, src, 30, GAP), null, 'widened but still inside the gap: no worse than saved, not refused');
+  // A pair the edit does not change is never checked (before = next for that pair), even when it
+  // is inside the gap and closer than saved (a nudge squeezed between two close neighbours can
+  // leave one): only the pairs the edit narrows count.
+  const squeezed = [0, 10, 10.1, 10.15, 100];
+  const squeezedSaved = [0, 10, 10.05, 10.15, 100];
+  assert.strictEqual(snapGapBreak([0, 10, 10.1, 10.15, 101.75], squeezed, squeezedSaved, 300, GAP), null, 'moving chapter 5 does not answer for the squeezed pair');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 10.1, 10.15, 101.75], null, squeezedSaved, 300, GAP), { index: 3, end: false }, 'with no `before`, every pair is checked (the caller must pass it)');
+  // The end of the file: narrowed, inside the gap, and closer than saved.
+  const e = [0, 10, 20];
+  assert.deepStrictEqual(snapGapBreak([0, 10, 29.95], e, e, 30, GAP), { index: 2, end: true }, 'inside the gap before the end');
+  assert.strictEqual(snapGapBreak([0, 10, 29.9], e, e, 30, GAP), null, 'exactly the gap before the end');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 30.9], e, e, 30, GAP), { index: 2, end: true }, 'past the end');
+  assert.strictEqual(snapGapBreak([0, 10, 30.9], e, e, null, GAP), null, 'no known end');
+  const nearEnd = [0, 10, 29.95];
+  assert.strictEqual(snapGapBreak(nearEnd, [0, 9, 28.95], nearEnd, 30, GAP), null, 'a SOURCE last chapter 50 ms from the end: going back to it is fine');
+  assert.strictEqual(snapGapBreak([0, 12, 29.95], nearEnd, nearEnd, 30, GAP), null, 'the end is checked only when the last row moves (adversary r2 S3): a middle edit is not refused for a source-close end');
+  assert.deepStrictEqual(snapGapBreak([0, 10, 29.97], [0, 10, 29.9], [0, 10, 29.8], 30, GAP), { index: 2, end: true }, 'narrowed past both the gap and the saved distance');
 });
 
 // ---- phone sizing (the probe measures it; this lock keeps the rule from silently dropping) ----

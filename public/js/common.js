@@ -13031,40 +13031,58 @@ function formatSnapShift(ms) {
 // by the same amount, so only the two ends can break: chapter 2 must stay after chapter
 // 1's start plus the minimum gap, and the last chapter before the end of the file minus
 // the gap. `minGapSec` and `durationSec` are the SERVER's (the editor state carries them).
+// `stored` (the saved starts, optional): a SOURCE list may already hold chapter 2 within the
+// gap of chapter 1, or the last chapter within the gap of the end - a shift may always go back
+// to (or past) what the saved list has, so an end is refused only when it lands inside the gap
+// AND closer than it is in the saved list (gate r2, qa 1 / adversary 2).
 // Returns { ok: true } or { ok: false, dir: 'earlier' | 'later', reason }.
-function snapShiftBlock(times, deltaMs, durationSec, minGapSec) {
+function snapShiftBlock(times, deltaMs, durationSec, minGapSec, stored) {
   if (!Array.isArray(times) || times.length < 2) return { ok: false, dir: '', reason: 'There are no chapters after the first to shift.' };
   const d = Math.round(Number(deltaMs)) || 0;
   const gapMs = Math.round((typeof minGapSec === 'number' && isFinite(minGapSec) && minGapSec > 0 ? minGapSec : 0.1) * 1000);
-  const t0 = Math.round(Number(times[0]) * 1000);
-  const t1 = Math.round(Number(times[1]) * 1000);
-  const tl = Math.round(Number(times[times.length - 1]) * 1000);
-  if (d < 0 && t1 + d <= t0 + gapMs) return { ok: false, dir: 'earlier', reason: 'Shifting earlier would put chapter 2 at or before chapter 1.' };
+  const ms = (x) => Math.round(Number(x) * 1000);
+  const last = times.length - 1;
+  const saved = Array.isArray(stored) && stored.length === times.length ? stored : null;
+  const newFirst = ms(times[1]) + d - ms(times[0]);
+  const savedFirst = saved ? ms(saved[1]) - ms(saved[0]) : Infinity;
+  if (d < 0 && newFirst <= gapMs && newFirst < savedFirst) return { ok: false, dir: 'earlier', reason: 'Shifting earlier would put chapter 2 at or before chapter 1.' };
   const dur = Number(durationSec);
-  if (d > 0 && isFinite(dur) && dur > 0 && tl + d >= Math.round(dur * 1000) - gapMs) {
-    return { ok: false, dir: 'later', reason: 'Shifting later would put the last chapter at or past the end of the file.' };
+  if (d > 0 && isFinite(dur) && dur > 0) {
+    const newEnd = ms(dur) - (ms(times[last]) + d);
+    const savedEnd = saved ? ms(dur) - ms(saved[last]) : Infinity;
+    if (newEnd <= gapMs && newEnd < savedEnd) return { ok: false, dir: 'later', reason: 'Shifting later would put the last chapter at or past the end of the file.' };
   }
   return { ok: true };
 }
 
 // Where an edit breaks the server's minimum gap (the editor state's `minGapSec`, i.e.
-// lib/media/chapterSnap.js MIN_CHAPTER_GAP_SEC), looking ONLY at the pairs the edit touched:
-// `changed[i]` is true for a row the edit moves (a source list may already hold closer pairs;
-// they are not this edit's to refuse). A pair is fine at exactly the gap, as the nudge clamp
-// allows; the last start must stay at least the gap before the end of the file. Returns null or
-// { index, end } (end = the last row against the end of the file). Pure; shared by Reset shift,
-// the per-row Snap and Snap all.
-function snapGapBreak(times, changed, durationSec, minGapSec) {
-  const t = Array.isArray(times) ? times : [];
-  const ch = Array.isArray(changed) ? changed : [];
+// lib/media/chapterSnap.js MIN_CHAPTER_GAP_SEC). `next` = the times after the edit, `before` =
+// the times on screen before it, `stored` = the saved starts. A pair breaks only when the edit
+// NARROWS it (closer than `before`), into the gap (closer than the minimum; exactly the gap is
+// fine, as the nudge clamp allows), AND closer than the saved list has that pair - so a close pair
+// that came from the SOURCE, or that the edit does not touch, is never this edit's to refuse
+// (gate r2, qa 1 / adversary 2). The last start against the end of the file follows the same
+// three conditions. `before` / `stored` may be null (that condition is then not applied). Returns
+// null or { index, end } (end = the last row against the end of the file). Pure; shared by Reset
+// shift, the per-row Snap and Snap all.
+function snapGapBreak(next, before, stored, durationSec, minGapSec) {
+  const n = Array.isArray(next) ? next : [];
   const gapMs = Math.round((typeof minGapSec === 'number' && isFinite(minGapSec) && minGapSec > 0 ? minGapSec : 0.1) * 1000);
-  const ms = t.map((x) => Math.round(Number(x) * 1000));
-  for (let i = 1; i < ms.length; i += 1) {
-    if ((ch[i] || ch[i - 1]) && ms[i] - ms[i - 1] < gapMs) return { index: i, end: false };
+  const ms = (a) => (Array.isArray(a) && a.length === n.length ? a.map((x) => Math.round(Number(x) * 1000)) : null);
+  const nm = ms(n);
+  const bm = ms(before);
+  const sm = ms(stored);
+  for (let i = 1; i < nm.length; i += 1) {
+    const g = nm[i] - nm[i - 1];
+    if (g < gapMs && (!sm || g < sm[i] - sm[i - 1]) && (!bm || g < bm[i] - bm[i - 1])) return { index: i, end: false };
   }
-  const last = ms.length - 1;
+  const last = nm.length - 1;
   const dur = Number(durationSec);
-  if (last >= 1 && ch[last] && isFinite(dur) && dur > 0 && Math.round(dur * 1000) - ms[last] < gapMs) return { index: last, end: true };
+  if (last >= 1 && isFinite(dur) && dur > 0) {
+    const durMs = Math.round(dur * 1000);
+    const e = durMs - nm[last];
+    if (e < gapMs && (!sm || e < durMs - sm[last]) && (!bm || e < durMs - bm[last])) return { index: last, end: true };
+  }
   return null;
 }
 
@@ -13267,7 +13285,7 @@ function showChapterSnapEditor(mediaId, opts) {
       // file), the rule the nudges, the shift and Reset keep too (gate r1, adversary 4 / qa S3).
       const tt = t.slice();
       tt[i] = target;
-      if (snapGapBreak(tt, onlyRow(i), state.duration, state.minGapSec)) continue;
+      if (snapGapBreak(tt, t, savedTimes(), state.duration, state.minGapSec)) continue;
       t[i] = target;
       plan.push([i, target]);
     }
@@ -13300,7 +13318,7 @@ function showChapterSnapEditor(mediaId, opts) {
   // millisecond (120.0005) comes back exactly after Shift + Reset, and whole-ms steps never
   // accumulate float drift (gate r1, adversary 6).
   function micro(x) { return Math.round(x * 1e6) / 1e6; }
-  function onlyRow(i) { return rows.map(function (_, k) { return k === i; }); }
+  function savedTimes() { return rows.map(function (r) { return r.savedStart; }); }
   function gapText() { return formatSnapShift(Math.round(((state && state.minGapSec) || 0.1) * 1000)).slice(1); }
   function shiftResetTimes() {
     if (!rows.some(function (r) { return r.shift !== 0; })) return null;
@@ -13310,10 +13328,10 @@ function showChapterSnapEditor(mediaId, opts) {
   // minimum gap to its neighbour (a row snapped or nudged since can be in the way), or the last
   // one within the gap of the end of the file (gate r1: adversary 3 + 4, qa S3).
   function shiftResetProblem(t) {
-    const brk = snapGapBreak(t, rows.map(function (r) { return r.shift !== 0; }), state && state.duration, state && state.minGapSec);
+    const brk = snapGapBreak(t, times(), savedTimes(), state && state.duration, state && state.minGapSec);
     if (!brk) return '';
-    if (brk.end) return 'Resetting would put the last chapter at or past the end of the file, or within ' + gapText() + ' of it. Use Undo changes to start over.';
-    return 'Resetting would put chapter ' + (brk.index + 1) + ' at or before chapter ' + brk.index + ', or within ' + gapText() + ' of it (a chapter was moved after the shift). Use Undo changes to start over.';
+    if (brk.end) return 'Resetting would put the last chapter at or past the end of the file, or within ' + gapText() + ' of it and closer than your saved chapters have it. Use Undo changes to start over.';
+    return 'Resetting would put chapter ' + (brk.index + 1) + ' at or before chapter ' + brk.index + ', or within ' + gapText() + ' of it and closer than your saved chapters have them. Use Undo changes to start over.';
   }
   function shiftReadout() {
     const after = rows.slice(1);
@@ -13332,7 +13350,7 @@ function showChapterSnapEditor(mediaId, opts) {
     const lock = busy || staleSeed;
     const reasons = [];
     shiftStepBtns.forEach(function (b) {
-      const blk = snapShiftBlock(t, Number(b.getAttribute('data-shift')), state.duration, state.minGapSec);
+      const blk = snapShiftBlock(t, Number(b.getAttribute('data-shift')), state.duration, state.minGapSec, savedTimes());
       b.disabled = lock || !blk.ok;
       if (!blk.ok && reasons.indexOf(blk.reason) === -1) reasons.push(blk.reason);
     });
@@ -13355,7 +13373,7 @@ function showChapterSnapEditor(mediaId, opts) {
         shiftApplyBtn.hidden = false;
         shiftApplyBtn.textContent = 'Suggested: shift all by ' + formatSnapShift(g.deltaMs) + ' (' + g.agree + ' of ' + g.of + ' agree)';
         shiftApplyBtn.setAttribute('data-shift', String(g.deltaMs));
-        const blk = snapShiftBlock(t, g.deltaMs, state.duration, state.minGapSec);
+        const blk = snapShiftBlock(t, g.deltaMs, state.duration, state.minGapSec, savedTimes());
         shiftApplyBtn.disabled = lock || !blk.ok;
         if (!blk.ok && reasons.indexOf(blk.reason) === -1) reasons.push(blk.reason);
       } else if (g.kind === 'aligned') {
@@ -13379,7 +13397,7 @@ function showChapterSnapEditor(mediaId, opts) {
   function applyShift(deltaMs) {
     const d = Math.round(Number(deltaMs)) || 0;
     if (!d || busy || staleSeed || rows.length < 2) return;
-    const blk = snapShiftBlock(times(), d, state && state.duration, state && state.minGapSec);
+    const blk = snapShiftBlock(times(), d, state && state.duration, state && state.minGapSec, savedTimes());
     if (!blk.ok) { setStatus(blk.reason); return; }
     for (let i = 1; i < rows.length; i += 1) {
       rows[i].time = micro(rows[i].time + d / 1000);
@@ -13667,7 +13685,7 @@ function showChapterSnapEditor(mediaId, opts) {
       if (!sug || sug.status !== 'suggest') return;
       const tt = times();
       tt[i] = sug.time;
-      const brk = snapGapBreak(tt, onlyRow(i), state && state.duration, state && state.minGapSec);
+      const brk = snapGapBreak(tt, times(), savedTimes(), state && state.duration, state && state.minGapSec);
       if (brk) {
         setStatus(brk.end
           ? 'Snapping chapter ' + (i + 1) + ' would put it within ' + gapText() + ' of the end of the file.'

@@ -406,7 +406,7 @@ test('adversary W3: Reset is refused when it would put the last chapter at or pa
   assert.strictEqual(nowOf(h)[2], '4:59.9');
   assert.ok(shown(reset(h)));
   assert.strictEqual(reset(h).disabled, true, 'Reset would put chapter 3 at 5:00.9 on a 300 s file');
-  assert.match(why(h), /Resetting would put the last chapter at or past the end of the file, or within 0\.1 s of it\./);
+  assert.match(why(h), /Resetting would put the last chapter at or past the end of the file, or within 0\.1 s of it and closer than your saved chapters have it\./);
   click(reset(h));
   assert.strictEqual(nowOf(h)[2], '4:59.9', 'nothing moved');
   click(h.saveBtn);
@@ -441,7 +441,7 @@ test('adversary W3: Reset is refused when it would put the last chapter at or pa
   for (let k = 0; k < 3; k++) nudge(h, 1, '-0.1');
   assert.strictEqual(nowOf(h)[1], '0:00.2');
   assert.strictEqual(reset(h).disabled, true, 'Reset would put chapter 2 50 ms after chapter 1');
-  assert.match(why(h), /Resetting would put chapter 2 at or before chapter 1, or within 0\.1 s of it/);
+  assert.match(why(h), /Resetting would put chapter 2 at or before chapter 1, or within 0\.1 s of it and closer than your saved chapters have them\./);
   h.close();
 });
 
@@ -523,6 +523,119 @@ test('qa S4: the readout is a polite live region written only when its words cha
   assert.strictEqual(el.textContent, 'All chapters shifted +1.0 s');
   mo.disconnect();
   h.close();
+});
+
+// ---- gate r2 fixes ------------------------------------------------------------------
+
+test('qa 1 / adversary 2 (r2): a close pair or a near-the-end last chapter that came from the SOURCE never blocks Reset, the steps back, or a later edit', async () => {
+  const [pair, first, end] = seedItems([
+    { name: 'pair', duration: 300, chapters: [0, 60, 60.05, 120].map((t, i) => ({ startTime: t, title: 'P' + (i + 1) })) },
+    { name: 'first', duration: 300, chapters: [0, 0.05, 60].map((t, i) => ({ startTime: t, title: 'F' + (i + 1) })) },
+    { name: 'end', duration: 300, chapters: [0, 60, 299.95].map((t, i) => ({ startTime: t, title: 'E' + (i + 1) })) },
+  ]);
+  const { common, fetchImpl } = bootEditor();
+  const reset = (h) => q(h, '.chapter-snap-shift-reset');
+  const nudge = (h, i, d) => click(rowsOf(h)[i].querySelector('[data-act="nudge"][data-delta="' + d + '"]'));
+
+  // (1) a 50 ms pair in the middle: +1 s, the last chapter nudged, Reset -> the pair is back at 50 ms.
+  let h = common.showChapterSnapEditor(pair.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(step(h, 1000));
+  nudge(h, 3, '0.1');
+  assert.strictEqual(reset(h).disabled, false, 'Reset is offered: it gives the pair back its saved gap');
+  assert.strictEqual(shown(q(h, '.chapter-snap-shift-why')), false, 'and no reason claims otherwise');
+  click(reset(h));
+  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'No shift');
+  click(h.saveBtn);
+  await until(() => h.isClosed(), 'saved');
+  assert.deepStrictEqual(loadDatabase().metadata[pair.id].chaptersManual.map((c) => c.startTime), [0, 60, 60.05, 120.1], 'the source pair kept, the nudge kept');
+
+  // (2) chapter 2 50 ms after chapter 1: -0.1 s is refused at the source (it would narrow below the
+  // saved 50 ms), but after +1 s both -1 s and Reset go back to it.
+  h = common.showChapterSnapEditor(first.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  assert.strictEqual(step(h, -100).disabled, true, 'narrowing the source pair further is still refused');
+  click(step(h, 1000));
+  assert.strictEqual(step(h, -1000).disabled, false, '-1 s back to the saved 50 ms is allowed');
+  assert.strictEqual(reset(h).disabled, false, 'and so is Reset');
+  click(step(h, -1000));
+  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'No shift');
+  assert.strictEqual(h.saveBtn.disabled, true, 'back at the saved list');
+  click(step(h, 1000));
+  click(reset(h));
+  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'No shift');
+  assert.strictEqual(h.saveBtn.disabled, true);
+  h.close();
+
+  // (3) the last chapter 50 ms before the end: -1 s, then +1 s or Reset go back to it.
+  h = common.showChapterSnapEditor(end.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  assert.strictEqual(step(h, 100).disabled, true, 'later than the saved 50 ms is refused');
+  click(step(h, -1000));
+  assert.strictEqual(step(h, 1000).disabled, false, '+1 s back to the saved end is allowed');
+  assert.strictEqual(reset(h).disabled, false, 'and so is Reset');
+  click(reset(h));
+  assert.strictEqual(h.saveBtn.disabled, true);
+  h.close();
+});
+
+test('adversary 2 (r2): a pair the edit does not narrow is never its business - Reset and Snap all pass over a nudge-squeezed pair elsewhere', async () => {
+  // Chapters 3 and 4 sit 100 ms apart with chapter 2 only 50 ms before chapter 3: a nudge of
+  // chapter 3 has no legal room and is clamped to chapter 2 + the gap, which leaves chapter 3 and
+  // 4 only 50 ms apart (the nudge clamp's squeeze; that pair is now narrower than saved).
+  const [a, b] = seedItems([
+    { name: 'a', duration: 300, chapters: [0, 10, 10.05, 10.15, 100].map((t, i) => ({ startTime: t, title: 'A' + (i + 1) })) },
+    { name: 'b', duration: 300, chapters: [0, 10, 10.05, 10.15, 100, 200].map((t, i) => ({ startTime: t, title: 'B' + (i + 1) })) },
+  ]);
+  seedSilence(b, [{ start: 98, end: 102 }]); // chapter 5 of b: snap point 101.75
+  const { common, fetchImpl } = bootEditor();
+  const nudge = (h, i, d) => click(rowsOf(h)[i].querySelector('[data-act="nudge"][data-delta="' + d + '"]'));
+
+  let h = common.showChapterSnapEditor(a.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  nudge(h, 2, '0.1');
+  assert.strictEqual(nowOf(h)[2], '0:10.1', 'precondition: the squeeze (chapters 3 and 4 now 50 ms apart)');
+  click(step(h, 1000));
+  const reset = q(h, '.chapter-snap-shift-reset');
+  assert.strictEqual(reset.disabled, false, 'Reset does not change that pair, so it does not answer for it');
+  click(reset);
+  assert.deepStrictEqual(nowOf(h), ['0:00.0', '0:10.0', '0:10.1', '0:10.2', '1:40.0']);
+  h.close();
+
+  h = common.showChapterSnapEditor(b.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  nudge(h, 2, '0.1');
+  assert.match(h.snapAllBtn.textContent, /Snap all \(1\)/, 'Snap all still takes chapter 5');
+  click(h.snapAllBtn);
+  assert.strictEqual(nowOf(h)[4], '1:41.8');
+  click(h.undoBtn);
+  nudge(h, 2, '0.1');
+  click(rowsOf(h)[4].querySelector('[data-act="snap"]'));
+  assert.strictEqual(nowOf(h)[4], '1:41.8', 'and so does its own Snap');
+  h.close();
+});
+
+test('adversary r2 (the unexplained failure): 400 mixed steps and nudges, Reset, then a shift and Save - in the same file as the other shift tests', async () => {
+  const [mix] = seedItems([{ duration: 300, chapters: [0, 60.0004, 120.0005, 180.123456789, 240].map((t, i) => ({ startTime: t, title: 'R' + (i + 1) })) }]);
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const steps = [-1000, -100, 100, 1000];
+  for (let k = 0; k < 400; k++) {
+    const b = step(h, steps[Math.floor(rnd() * 4)]);
+    if (!b.disabled) click(b);
+  }
+  assert.ok(q(h, '.chapter-snap-shift-reset').disabled === false || q(h, '.chapter-snap-shift-readout').textContent === 'No shift');
+  if (!q(h, '.chapter-snap-shift-reset').hidden) click(q(h, '.chapter-snap-shift-reset'));
+  assert.strictEqual(q(h, '.chapter-snap-shift-readout').textContent, 'No shift');
+  assert.strictEqual(h.saveBtn.disabled, true, 'every row back on its stored start');
+  click(step(h, 1000));
+  click(step(h, 100));
+  click(h.saveBtn);
+  await until(() => h.isClosed(), 'saved');
+  assert.deepStrictEqual(loadDatabase().metadata[mix.id].chaptersManual.map((c) => c.startTime), [0, 61.1, 121.101, 181.223, 241.1]);
 });
 
 // ---- REAL ffmpeg: a whole-track offset, found and fixed end to end --------------------
