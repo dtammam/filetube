@@ -11612,6 +11612,16 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
   --mms-ipod-wheel-shadow:0 1px 2px rgba(0,0,0,.25), inset 0 1px 1px rgba(255,255,255,.7), inset 0 -2px 4px rgba(0,0,0,.1);
   --mms-ipod-center-shadow:inset 0 1px 2px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.14);
+  /* pocket lighting (2026-09-24): the directional shadow parts (the wheel's rim / recess / drop and
+     the dome's highlight / drop - the SAME alphas as the two static tokens above, so a neutral light
+     is byte-identical), the body's reflection band per Click colorway (Black dimmer, Matte softer -
+     Dean's G1), and the LCD glass streak (a cool tint; black text stays > 7:1 on the white screen). */
+  --mms-lit-rim:rgba(255,255,255,.7); --mms-lit-recess:rgba(0,0,0,.1); --mms-lit-drop:rgba(0,0,0,.25);
+  --mms-lit-dome-hi:rgba(255,255,255,.9); --mms-lit-dome-drop:rgba(0,0,0,.14);
+  --mms-lit-band:rgba(255,255,255,.34); --mms-lit-band2:rgba(255,255,255,.2);
+  --mms-litk-band:rgba(255,255,255,.16); --mms-litk-band2:rgba(255,255,255,.09);
+  --mms-litm-band:rgba(255,255,255,.09); --mms-litm-band2:rgba(255,255,255,.05);
+  --mms-lit-glass:rgba(205,218,236,.16);
   /* shared type/shape metrics (governed props) */
   --mms-r-art:16px; --mms-r-art-ipod:6px; --mms-r-queue:16px; --mms-r-th:6px; --mms-ipod-r-sm:2px;
   --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.1;
@@ -12042,9 +12052,12 @@ html[data-modern="on"] .video-uploader {
   /* v1.239 (Dean): sized proportional to the REAL iPod Classic wheel (~70% of the body
      width) instead of a fixed 224px, capped so the desktop pop-out (~380px) stays sane.
      The zone buttons are all %-based so they scale with this automatically. */
+  /* pocket lighting (2026-09-24): the sheen and the base ramp sit where the LIGHT is - `--lx` /
+     `--ly` (each -1..1) are written on the panel by pocket-lighting.js while a Click skin is lit;
+     unset (Off, Seattle, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
   .mms-ipod .ip-wheel{ width:min(70vw,288px); height:min(70vw,288px); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
-    background:radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at 50% 40%, var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-ipod-wheel-shadow); }
+    background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
   .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--mms-ipod-wheel-lbl); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
   .mms-ipod .ip-zone svg{ width:25px; height:25px; fill:currentColor; display:block; }
   .mms-ipod .ip-z-menu{ top:0; left:26%; width:48%; height:30%; align-content:start; padding-top:var(--space-3); font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); }
@@ -12052,7 +12065,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-z-right{ top:26%; right:0; width:30%; height:48%; justify-content:end; padding-right:var(--space-4); font-size:var(--fs-xl); }
   .mms-ipod .ip-z-down{ bottom:0; left:26%; width:48%; height:30%; align-content:end; padding-bottom:var(--space-3); font-size:var(--fs-base); }
   .mms-ipod .ip-center{ width:min(26vw,108px); height:min(26vw,108px); border-radius:var(--radius-full); border:0; cursor:pointer;
-    background:radial-gradient(circle at 50% 40%, var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-ipod-center-shadow); }
+    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-lit-dome-shadow, var(--mms-ipod-center-shadow)); }
 
   /* --- iPod BLACK (v1.232, Dean): shares all iPod structure via the base `mms-ipod`
      class; overrides ONLY the body + wheel palette to the space-black variant. The
@@ -12065,10 +12078,10 @@ html[data-modern="on"] .video-uploader {
       linear-gradient(158deg, var(--mms-ipodk-body1), var(--mms-ipodk-body2));
     box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
   .mms-ipod-black .ip-wheel{ background:
-      radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at 50% 40%, var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
+      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
   .mms-ipod-black .ip-zone{ color:var(--mms-ipodk-wheel-lbl); }
-  .mms-ipod-black .ip-center{ background:radial-gradient(circle at 50% 40%, var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
+  .mms-ipod-black .ip-center{ background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
   /* CLICK (MATTE) - matte graphite metal, top-lit, with a dark click wheel. Same silver
      iPod screen; only the body/wheel palette overrides (the ipod-black pattern). The top
      chamfer + side edges are the reference photo's directional lighting. */
@@ -12078,10 +12091,34 @@ html[data-modern="on"] .video-uploader {
       linear-gradient(180deg, var(--mms-ipodm-t1) 0%, var(--mms-ipodm-t2) 7%, var(--mms-ipodm-t3) 40%, var(--mms-ipodm-t4) 55%, var(--mms-ipodm-t5) 74%, var(--mms-ipodm-t6) 90%, var(--mms-ipodm-t7) 100%);
     box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
   .mms-ipod-matte .ip-wheel{ background:
-      radial-gradient(90% 55% at 50% -8%, var(--mms-ipodm-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at 50% 42%, var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
+      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipodm-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(42% + var(--ly,0) * 10%), var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
   .mms-ipod-matte .ip-zone{ color:var(--mms-ipodm-wheel-lbl); }
-  .mms-ipod-matte .ip-center{ background:radial-gradient(circle at 50% 38%, var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
+  .mms-ipod-matte .ip-center{ background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(38% + var(--ly,0) * 16%), var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
+  /* POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting): a fixed light in the
+     room, read from the phone's tilt (or the mouse on a desktop) by pocket-lighting.js and written
+     as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
+     dome shadows turn DIRECTIONAL (the rim catches the light, the drop falls away from it - G6),
+     the body carries a moving reflection band (a transform on one gradient layer under the LCD
+     and wheel), and the LCD glass a faint streak (over the screen, never a tap target). Nothing
+     here is a filter, blur, mask or backdrop - the ambient-mode iPhone black-video lesson; a lock
+     test enforces it. Seattle is untouched (Dean's focus ruling): the driver never lights it. */
+  .mms-ipod.mms-lit{
+    --mms-lit-wheel-shadow:calc(var(--lx,0) * -4px) calc(1px + var(--ly,0) * -4px) 2px var(--mms-lit-drop), inset calc(var(--lx,0) * 2px) calc(1px + var(--ly,0) * 2px) 1px var(--mms-lit-rim), inset calc(var(--lx,0) * -2px) calc(-2px + var(--ly,0) * -2px) 4px var(--mms-lit-recess);
+    --mms-lit-dome-shadow:inset calc(var(--lx,0) * 2px) calc(1px + var(--ly,0) * 2px) 2px var(--mms-lit-dome-hi), calc(var(--lx,0) * -3px) calc(1px + var(--ly,0) * -3px) 2px var(--mms-lit-dome-drop); }
+  .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-40%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
+    background:linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--mms-lit-band) 47%, var(--mms-lit-band2) 50%, var(--mms-ipod-sheen-0) 60%);
+    transform:translate3d(calc(var(--lx,0) * 12%), calc(var(--ly,0) * 10%), 0); will-change:transform; }
+  .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0 -50%; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none;
+    background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 50%, var(--mms-ipod-sheen-0) 56%);
+    transform:translate3d(calc(var(--lx,0) * 22%), 0, 0); will-change:transform; }
+  .mms-ipod-black.mms-lit{ --mms-lit-band:var(--mms-litk-band); --mms-lit-band2:var(--mms-litk-band2); }
+  .mms-ipod-matte.mms-lit{ --mms-lit-band:var(--mms-litm-band); --mms-lit-band2:var(--mms-litm-band2); }
+  /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
+  .mms-ipod .ipm-check{ flex:none; font-size:var(--fs-md); color:var(--mms-ipod-blue1); }
+  .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--mms-white); }
+  .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:34px; /* token-exempt: the menu row pitch */ padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--fs-sm); font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
+  .mms-ipod .ipm-noterow .ipm-lbl{ white-space:normal; }
   /* v1.260: SEATTLE CLASSIC - the brown Zune 30 on the same wheel chassis (Dean: "the
      original zune with the circle wheel"). Palette-only, the ipod-black pattern. */
   /* v1.261 (Dean's reference photo): the REAL Zune 30, not a brown iPod. Brown body +

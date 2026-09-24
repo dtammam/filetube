@@ -530,6 +530,7 @@
     var SK = o.SKINS;
     var getSkinId = o.getSkinId;
     var games = o.games || null; // the view's Brick hook {visible, onTap} - main document only (the engine decides)
+    var lighting = o.lighting || null; // the engine's pocket-lighting driver (Settings > Lighting; null = no row)
     var destroyed = false;
     var stack = [];
     var builtFor = null;       // the menu style the stack was built for (a skin pick can change it)
@@ -628,8 +629,16 @@
         pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
         return;
       }
+      // Settings > Lighting re-derives every draw too: the check follows the pick, the note the
+      // permission answer (the driver's live state, never a copy).
+      if (pane.node.type === 'lighting') {
+        pane.items = SK.menuLightingItems(lighting ? lighting.state() : null) || [];
+        pane.state = 'ready';
+        pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
+        return;
+      }
       if (pane.state !== 'idle') return;
-      var st = SK.menuStaticItems(pane.node, {});
+      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting, style: style() });
       if (st) { pane.items = st; pane.state = 'ready'; return; }
       pane.state = 'loading';
       var tok = ++pane.token;
@@ -1095,6 +1104,21 @@
         showNowPlaying();
         return;
       }
+      if (it.action === 'lighting') {
+        // Settings > Lighting: the pick is stored and (on iOS) motion access is asked for INSIDE this
+        // tap (the delegated click reaches here synchronously, so the user activation is live). The
+        // level stays up; the check moves now, a note row appears once the answer is in.
+        if (!lighting) { render(); return; }
+        var pr = null;
+        try { pr = lighting.choose(it.value); } catch (_) { pr = null; }
+        render();
+        Promise.resolve(pr).then(function () {
+          if (destroyed) return;
+          var p2 = curPane();
+          if (p2 && p2.node.type === 'lighting' && screen === 'menu') render();
+        }, function () { /* the driver's promise never rejects; belt-and-braces */ });
+        return;
+      }
       if (it.action === 'brick') {
         // Addendum C: the SAME launch the sticker's Brick row makes (the view's hook: it mounts
         // the game on this engine's LCD and hands it the wheel). MENU, a repaint, a dock, a skin
@@ -1301,8 +1325,17 @@
     // IN-TAB engine's LCD, and wire() is per-view, not per-surface). The pop-out gets no hook, so
     // its menus draw no Extras/Games entry at all.
     var menuGames = (inMainDoc && stickerCfg && stickerCfg.brick) || null;
+    // Pocket lighting (2026-09-24, plan pocket-gyro-lighting): one driver per surface, optional
+    // like SKINS (a shell without pocket-lighting.js just has no lighting and no Settings row).
+    // The scope question the driver must not answer itself: WHICH skins are lit - the registry's
+    // menus === 'click' (Click, Click Black, Click Matte; Seattle is out by Dean's ruling).
+    var LIT = (typeof window !== 'undefined' && window.FileTubePocketLighting) || null;
+    var lighting = (LIT && typeof LIT.create === 'function')
+      ? LIT.create({ panel: panel, win: win, doc: doc, store: config.lightingStore || null, now: config.lightingNow || null,
+        isPocket: function () { try { return SKINS.menuStyle(getSkinId()) === 'click'; } catch (_) { return false; } } })
+      : null;
     var pocket = (config.menu && typeof config.menu.load === 'function')
-      ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames,
+      ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames, lighting: lighting,
         takeoverLive: function () { return !!wheelTakeover; },
         onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
       : null;
@@ -1795,6 +1828,7 @@
       if (stickerCfg) injectSticker(); // v1.238: the quick-menu sticker on every skin paint
       mountWheelGhost(); // v1.256: the haptic ghost (capable devices + a wheel skin only)
       if (pocket) pocket.afterPaint(ctx); // pocket menus: re-draw the menu level this repaint just replaced
+      if (lighting) lighting.sync();     // pocket lighting: re-apply the lit class (className was rebuilt) or stop on a non-Click skin
       if (marqueeOn) {
         // measure + start the marquee AFTER layout (rAF), so scrollWidth is real (music parity).
         var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
@@ -2444,6 +2478,7 @@
       if (wheelSpin) { try { endWheel(wheelSpin, false); } catch (_) { /* ignore */ } }
       extrasMenu.destroy();   // stop the reheat poll + invalidate a late extras fetch (shared factory)
       if (pocket) pocket.destroy(); // pocket menus: drop the art timer + invalidate a late menu load
+      if (lighting) lighting.destroy(); // pocket lighting: unbind the sensor / pointer / visibility listeners, cancel the frame loop
       menuSwipe = null;
       unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
       unwatchGhost();
@@ -2459,6 +2494,8 @@
       isListMode: function () { return panel.classList.contains('mms-listmode'); },
       // pocket menus: the pocket menu's live state (null when the view supplies no menus).
       menuState: function () { return pocket ? pocket.state() : null; },
+      // pocket lighting: the driver's live state (null when pocket-lighting.js is not loaded).
+      lightingState: function () { return lighting ? lighting.state() : null; },
       // v1.270: set (or clear, with null) the single wheel takeover -
       // {onRotate, onSelect, onExit}, all optional. Generic on purpose: the engine
       // never learns what is listening. The caller owns its own teardown.
