@@ -28,8 +28,18 @@ const { isDocsOnly, docsReadingTests } = require(SCRIPT);
 // CLEAN_ENV additionally drops NODE_TEST_CONTEXT (not scrubbed here - this
 // process's own runner reports through it) so the nested `node --test` inside
 // the sandbox hook reports on its own.
+// Music follow-ups item 4a (the docs fast-path gate's suggestion): CLEAN_ENV filters GIT_* a
+// SECOND time, so a later edit that moves or drops the process-wide scrub above still cannot
+// hand the hook's repo variables to a child that is given CLEAN_ENV explicitly.
 for (const k of Object.keys(process.env)) if (k.startsWith('GIT_')) delete process.env[k];
-const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'NODE_TEST_CONTEXT'));
+const cleanEnv = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== 'NODE_TEST_CONTEXT' && !k.startsWith('GIT_')));
+const CLEAN_ENV = cleanEnv(process.env);
+
+test('CLEAN_ENV is its own GIT_* filter (the second layer): the hook\'s repo variables never reach a child given it, even with the process scrub gone', () => {
+  const hookEnv = { PATH: '/bin', HOME: '/h', GIT_DIR: '/repo/.git', GIT_INDEX_FILE: '/repo/.git/index', GIT_CONFIG_PARAMETERS: "'core.bare=true'", GIT_WORK_TREE: '/repo', NODE_TEST_CONTEXT: 'child-v8' };
+  assert.deepEqual(cleanEnv(hookEnv), { PATH: '/bin', HOME: '/h' });
+  assert.deepEqual(Object.keys(CLEAN_ENV).filter((k) => k.startsWith('GIT_') || k === 'NODE_TEST_CONTEXT'), [], 'the live CLEAN_ENV carries none');
+});
 
 test('isDocsOnly: only a non-empty set of docs/**/*.md paths qualifies', () => {
   assert.equal(isDocsOnly(['docs/exec-plans/active/2026-09-24-x.md']), true);
