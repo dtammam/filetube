@@ -747,3 +747,43 @@ podcast-nowplaying-view 28/28/0 · skin-surface 70/70/0. Every test file that re
 music.js / music-skins.js / skin-surface.js (42 files) in one run: `# tests 732`,
 `# pass 732`, `# fail 0`. eslint on the 7 touched files: 0 problems. Full `npm test` not run
 (the pre-commit hook runs the unit suite).
+
+### Mutation results (r1 fix)
+
+Run in a sandbox from `git archive 850f4e4a` (the fix commit; node_modules symlinked, the
+live tree never edited), unmutated baseline first: 9 suites (music-view,
+music-nowplaying-view, music-skins, music-skin-integration, music-actions-desktop,
+podcast-nowplaying-view, skin-surface, listen-chapter-dock-return, music-chapter-reflect)
+= 364 tests, 364 pass, 0 fail. Each mutant is ONE exact-string edit verified to land exactly
+once, the same 9 suites, then the file restored and compared byte-for-byte to the archive
+(`restored=True` on all 20). The seam mutants S1-S4 are written CENSUS-INVISIBLE (the record
+is still built by `nowPlayingFrom`, then its folder is blanked) so only the driven test can
+kill them; S1-lit / W3-census show the census on its own. The adversary's old S6 (drop the
+queue lookup) no longer exists - the lookup is gone; S6 here is its inverse (the record
+replaced by a queue-only lookup), which proves the record is the load-bearing source.
+
+| # | Mutant | tests/pass/fail | Killed by |
+|---|--------|-----------------|-----------|
+| S1 | reflectChapter seam blanks the folder | 364/363/1 | integration "gate r1 S1 (the reflectChapter seam)" |
+| S1-lit | reflectChapter seam back to a literal without the folder | 364/362/2 | music-view census; integration S1 |
+| S2 | loadTrack seam blanks the folder | 364/356/8 | integration: M1 positive, D7 listen, W2 in-tab, W2 desktop, ADV-A, ADV-B, finding 4, finding 6 |
+| S3 | seed seam blanks the folder | 364/363/1 | integration D7 "SURVIVES the dock-return re-init" |
+| S4 | restoreListenChapterQueue seam blanks the folder | 364/363/1 | integration "gate r1 S4 (the restoreListenChapterQueue seam)" |
+| S6 | channelFolderCurrent reads a queue-only lookup instead of the record | 364/360/4 | integration: D7 re-init, ADV-A, S1, S4 |
+| S8 | buildListenChapterTracks drops folderName | 364/361/3 | integration: ADV-B, S1, S4 |
+| W3-carry | nowPlayingFrom ignores the meta `channelFolder` | 364/361/3 | music-view nowPlayingFrom unit; integration D7 re-init + source lock |
+| W3-census | seed back to an EQUIVALENT hand-copied literal | 364/362/2 | music-view census; integration seed source lock |
+| W1-presence | engine drops the `!!onArtist` gate | 364/360/4 | podcast-nowplaying-view W1 x4 skins |
+| W1-render | `artistLine` ignores `on` | 364/358/6 | music-skins "WITHOUT artistTap"; integration W2 no-folder; podcast W1 x4 |
+| W1-veto | engine drops the view veto | 364/363/1 | integration W2 in-tab no-folder |
+| W2-mode | a listen track drills again | 364/361/3 | integration W2 in-tab (both arms) + W2 desktop |
+| W2-avail | `artistTapAvailable` always true | 364/362/2 | integration W2 in-tab no-folder + W2 desktop |
+| W2-builder | the panel builder ignores the veto | 364/362/2 | music-view veto unit; integration W2 desktop |
+| W2-panel | updateNowPlayingPanel passes no veto | 364/363/1 | integration W2 desktop |
+| W2-hdr-art | the drill header requests `/albumart/` with an empty id | 364/363/1 | music-view empty-drill unit |
+| W2-sticky-art | the sticky bar requests `/albumart/` with an empty id | 364/363/1 | music-view empty-drill unit |
+| QA2-base | `sameMusicItem` loses the chapter-base arm | 364/364/0 SURVIVED | none - disclosed above: no production path found where the record and the effective id differ by chapter |
+| QA2-raw | `sameMusicItem` lets a raw id match a `::c` record | 364/364/0 SURVIVED | none - defensive (a raw non-music load unmounts the music skin); not driven |
+
+18 of 20 killed; the 2 survivors are the two arms of the qa-2 SHOULD, both disclosed as
+defensive / not reachable by any drive found. Sandbox removed after the run.
