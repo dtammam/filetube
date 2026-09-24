@@ -234,7 +234,10 @@ test('isDebugLifecycleEnabled() reads a single, dedicated localStorage flag', ()
 test('recordLifecycleEvent() is a no-op (returns immediately) unless the debug flag is on', () => {
   const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find recordLifecycleEvent()\'s source body');
-  assert.match(match[1].trim(), /^if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the very first statement to bail out when the flag is off');
+  // Lock-to-audio phase 1: ONE statement may precede the bail - the timing
+  // log's in-memory tap, itself gated on an open timing record (its own
+  // opt-in toggle, never this flag). Nothing of the LIFECYCLE log runs first.
+  assert.match(match[1].trim(), /^(?:if \(bgTimingCur\) bgTimingTap\(type, extraCtx\);[ \t]*(?:\/\/[^\n]*)?\n\s*)?if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the first lifecycle-log statement to bail out when the flag is off');
 });
 
 test('recordLifecycleEvent() caps the ring buffer at 30 entries (bumped from 20 in v1.27.1 for the extra bgAudio:* diagnostic events)', () => {
@@ -389,7 +392,7 @@ test('the pre-existing non-bgAudio listeners (pagehide/freeze/visibilitychange/r
 
 test('recordLifecycleEvent() is STILL a complete no-op (zero recording, zero DOM) unless the debug flag is on -- the v1.27.1 bgAudio:* additions did not weaken this gate', () => {
   const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
-  assert.match(match[1].trim(), /^if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the very first statement to still bail out when the flag is off, even with the extra bgAudio call sites added elsewhere in the file');
+  assert.match(match[1].trim(), /^(?:if \(bgTimingCur\) bgTimingTap\(type, extraCtx\);[ \t]*(?:\/\/[^\n]*)?\n\s*)?if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the first lifecycle-log statement to still bail out when the flag is off, even with the extra bgAudio call sites added elsewhere in the file (only the lock-audio timing tap may precede it)');
 });
 
 test('pageshow and resume listeners only record -- they never call handleBackgroundLifecycle (no behavior change, PART B is pure observation)', () => {

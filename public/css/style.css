@@ -3517,6 +3517,45 @@ select {
 .action-bar-cell {
   display: block;
 }
+/* Lock-to-audio phase 1: Setup > Experimental "Background audio timing log"
+   (setup.js renderBgTimingLog). Built for a 390-wide phone: six short
+   numeric columns plus a full-width note line per record. The scroller has
+   no radius (the overlay-containment rule) and only scrolls if a narrow
+   screen ever overflows. */
+.bg-timing-log { margin-top: var(--space-4); }
+.bg-timing-log .action-status { display: block; margin-top: var(--space-2); }
+.bg-timing-log-table { overflow-x: auto; margin-top: var(--space-2); }
+.bg-timing-log-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.bg-timing-log-table th,
+.bg-timing-log-table td {
+  padding: var(--space-1) var(--space-2);
+  text-align: right;
+  vertical-align: bottom;
+}
+.bg-timing-log-table th { font-weight: var(--fw-normal); color: var(--text-secondary); }
+.bg-timing-log-row td { white-space: nowrap; } /* a number or a drift never breaks mid-value */
+.bg-timing-log-table th:first-child,
+.bg-timing-log-table td:first-child { text-align: left; }
+.bg-timing-log-note td {
+  text-align: left;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: var(--space-3);
+}
+.bg-timing-log-empty { font-size: var(--fs-xs); color: var(--text-secondary); }
+.bg-timing-log-text {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  margin-top: var(--space-2);
+  font-size: var(--fs-2xs); /* desktop only: the mobile block lifts it to the iOS no-zoom floor (v1.26.2 list) */
+}
+.bg-timing-log-text[hidden] { display: none; }
 /* The management-box footer row: status line left, an .action-bar cluster
    right. Replaces per-box inline flex styles (setup.html had three
    byte-identical copies). */
@@ -5289,6 +5328,12 @@ a.sub-row-channel-link:focus-visible {
      here restore the 16px no-zoom floor for them specifically. */
   .comment-input-box,
   .folder-name-input {
+    font-size: var(--fs-input-min);
+  }
+  /* Lock-to-audio phase 1 (gate r1 qa W2): the timing log's fallback text box
+     is the same case - a class rule sizes it for desktop, so it needs its own
+     mobile floor (mobile-input-zoom-fontsize.test.js's census binds it). */
+  .bg-timing-log-text {
     font-size: var(--fs-input-min);
   }
 
