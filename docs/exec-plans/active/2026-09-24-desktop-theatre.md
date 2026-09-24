@@ -3,10 +3,10 @@ plan: desktop-theatre
 harness: v2 · lean
 branch: feat/desktop-theatre
 anchor: spec
-status: Gate:CHANGES r1 @13f331d2
-next: gate r1 fixes built @4b893ba8 (W1 tv reserve, W2 breakpoint binding, W3 wide items, W4 -> ruling D5 disclosed, S5/S6 + the qa suggestions); Architect re-engages the seats for r2 delta confirmation; device check owed
-design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
-gate: pending
+status: Gate closed
+next: merge main after v1.320.0 lands, delta confirm, release
+design: Approved 2026-09-24 @ecb61e1d (Dean's intake, recorded in memory wave-2026-09-24-intake)
+gate: APPROVED r2 @7c62aeba — adversary, qa
 ---
 
 # Desktop theatre sized like YouTube (wave item 3)
@@ -740,3 +740,159 @@ Screenshots (`desktop-theatre/sbs/`): YouTube | BEFORE | AFTER (4b893ba8)
 x5; YouTube | glow AFTER `desktop-theatre-glow-sbs-<WxH>.png` x5; 21:9 YouTube | base | AFTER
 `desktop-theatre-219-sbs-{1280x720,1920x1080}.png`; 16:9 | 4:3 `desktop-theatre-43-sbs-*`;
 action row | channel reserved (D5) `desktop-theatre-d5alt-sbs-*`.
+
+## Gate r2 - adversary (@7c62aeba)
+
+Delta review of 4b893ba8 (fixes) and 906d21d5 (merge of main v1.319.0). Instruments: a
+`git archive 7c62aeba` sandbox in /tmp, Node 22.23.1, headless Chromium 1234 with the r1
+harness (seeds added: a 21:9 item with stored dims 2560x1080, a 4:3 item, an audio item, the TV
+show). Targeted units: 42 files (the r1 set plus the merge's player-bg-timing-log /
+player-background / player-lifecycle / mobile-input tests): tests 737, pass 737, fail 0.
+`lint:css` TOTAL 0; eslint on the 5 touched js files exit 0; overlay-containment clean. The
+merge touches no theatre / stage / player-wrapper / media-player CSS (diffed).
+
+r1 findings, re-measured at 7c62aeba:
+
+1. W1 (?tv= reserve inert): FIXED as prescribed. Real Chromium `/watch.html?tv=ep1`, cold and
+   via an SPA hop: reserve 152px, bar display none, show row 622.4-696.4 at 1280x720 and
+   982.4-1056.4 at 1920x1080 (23.6px above the fold), show link fully on screen, video 752x423
+   / 1392x783; equal to the builder's table. The tv test now hides the bar the real way and
+   asserts the show-row reserve. My r1 repro (the hidden-bar rect) is now the test's own shape.
+2. W2 (breakpoint query unbound): FIXED. My r1 mutant (`(max-width: 1024px)` in
+   syncTheatreGuide) now 4 fail; the same in the listener query 2 fail; the builder's R12
+   `(min-width: 1024px)` 2 fail.
+3. W3 (21:9 shrank): FIXED. 1280x720: stage 1130.3 wide, picture 1128.3x476 (base 1000x421.9,
+   r1 846.2x357), bar 23.8 above the fold, `--watch-theatre-aspect` 2.3704. 1920x1080:
+   column-bound 1870x788.9, bar 70.9 above. 4:3 / audio / 16:9 items: var absent, 848.2x518
+   box. Theatre OFF with the 21:9 item at 1280x720 / 1920x1080 / 390x844: every box identical to
+   base. The var has one consumer (the stage width rule), so it cannot leak elsewhere.
+4. W4 (channel dropped): RULED as D5, recorded honestly. My numbers match the cost the plan
+   states: the channel panel bottom 66.2px below the fold (712.2-786.2 at 720), the name link
+   42.1px below; the plan also gives the measured alternative (reserve 189px, video 846x476 ->
+   686x386) and names Dean's two options. Dean's call now, disclosed.
+5. S5 (dead guard): fixed, one result guard; the builder's R13 (guard dropped) killed, re-run.
+6. S6 (content-visibility): fixed. `content-visibility: auto` and `Content-Visibility:hidden` on
+   the stage rule: both killed by the v1.312 lock (1 fail each).
+7. S7 (125% zoom): disclosed.
+
+What the fix introduced, hunted:
+- Oscillation / resize loop: a counting ResizeObserver shim, dark + ambient on + playing, 21:9
+  / ?tv= / 16:9 at 1280x720: the reserve observer (5 targets: stage, bar, title, show row,
+  column) fired 2 / 3 / 2 times in total and ZERO times over 4s of playback; 0 page errors on
+  every run. The chosen row depends only on the bar being rendered (never on the reserve), and
+  every row below the stage is full column width, so the distance cannot follow the player.
+  The queue up-next box (the one block that could sit between the bar and the show row) is
+  rendered only on the ?v= path (setupTrackNavContext), where the bar is the target.
+- Aspect across item changes (SPA hops, frame-sampled): 21:9 -> 16:9 clears the var at the first
+  new-view frame (no stale value; the old picture aspect shows for under 300ms until player.js
+  resets `--media-aspect`, the existing per-load reset, not new); 16:9 -> 21:9 -> audio -> 4:3
+  -> 21:9 -> ?tv= each land on the right box; nav home removes the container along with the
+  var.
+- New mutants of mine at 7c62aeba: 14 killed (row before bar, title before row, 0x0 counts,
+  show row / column not observed, aspect never removed, rounded to 2dp, read off the container,
+  dvh drops the aspect, picture cap edited, both query mutants, both content-visibility
+  spellings). 2 survive, both behaviourally equivalent, not findings: `r >= 16/9` in
+  theatreWidthAspect (the caller's own `aspect > 16/9` check still removes the var), and
+  skipping the aspect update while the stage is empty (the stage's own resize re-runs it once
+  the player is in it).
+- The builder's 50 of 50: I spot-checked R2, R8, R12 and R13 (all killed) plus my own r1 set;
+  no claim I checked failed.
+
+No CRITICAL or WARNING open. Tree: only this section appended; every mutation ran in /tmp.
+
+Gate: APPROVED r2 @7c62aeba — adversary
+
+## Gate r2 - qa (@7c62aeba)
+
+Delta confirmation of my r1 findings against 4b893ba8 (fix), 906d21d5 (main merge) and 7c62aeba
+(plan record). Instruments run by this seat at 7c62aeba, Node 22.23.1:
+
+- Touched tests + censuses (theatre-mode, watch-init-behavioral, ambient-glow-engine,
+  ambient-host, music-ambient, watch-chrome-ambient, css-token-lint, overlay-containment,
+  comment-debt, exec-plans, tech-debt, docs-status, docs-link): tests 174, pass 174, fail 0.
+- `npm run test:unit`: tests 7156, pass 7156, fail 0, cancelled 0, skipped 0.
+- `npm run lint:css`: TOTAL 0. `overlay-containment-lint --enforce`: clean (0 violations), exit 0.
+  eslint on watch.js, the probe, theatre-mode / watch-init-behavioral / ambient-glow-engine
+  tests: exit 0.
+- `bash .harness/lib/check-markers.sh`: exit 1, 1 issue - see N1.
+- The new watch-init-behavioral file run against 13f331d2's watch.js (session-scratchpad
+  sandbox): pass 28, fail 2 (the ?tv= test and the aspect test) - the plan's "red on the old
+  code" claim holds.
+- Probe: a `git archive 7c62aeba` sandbox in the session scratchpad (my environment rules
+  forbid /tmp unless the user asks; the scratchpad is under /tmp/claude-1000). The shipped
+  probe is byte-identical there. For the extra readings I used a sandbox-only copy that adds
+  the channel panel, the tv back link, the aspect vars and the page errors to the JSON, plus
+  env `PROBE_TV` / `PROBE_PATH`, which seed a real Shows episode through `tvDb.replaceAll` and
+  open `/watch.html?tv=ep1` (the real initTvWatch route).
+
+| Run (theatre via the real click) | stage = player | picture | reserve / aspect var | controls row bottom to fold | channel / show panel bottom to fold |
+|---|---|---|---|---|---|
+| ?v= 1280x720 | 216,80 848x518 | 846x476 | 99px / unset | bar 24 (buttons 37, 10 on 1 row) | -66 (name link -42) |
+| ?v= 1920x1080 | 216,80 1488x878 | 1486x836 | 99px / unset | bar 24 (buttons 37, 10 on 1 row) | -66 |
+| ?tv= 1280x720 | 263,80 754x465 | 752x423 | 152px / unset | show row 24 (bar display none, 0x0) | show row 24, show link 48 |
+| ?tv= 1920x1080 | 263,80 1394x825 | 1392x783 | 152px / unset | show row 24 | show row 24 |
+| 21:9 (2560x1080) 1280x720 | 75,80 1130x518 (centre 640) | 1128x476 | 99px / 2.3704 | bar 24 | -66 |
+| 21:9 1920x1080 | 24,80 1872x831 (column-bound) | 1870x789 | 99px / 2.3704 | bar 71 | -19 |
+| 4:3 (640x480) 1280x720 | 216,80 848x518 | 846x476 (pillarboxed) | 99px / unset | bar 24 | - |
+
+Every row equals the plan's r1 fix tables. No page errors on the ?tv= run or on either 21:9
+viewport (the second 21:9 viewport cold-loaded theatre from the persisted pref), so no
+ResizeObserver loop error with the column observed.
+
+My r1 findings:
+
+1. W1 (?tv= reserve inert, divergent test): **fixed as prescribed.** `theatreReserveTargetRect`
+   measures to the lowest rendered row: the bar, else the show row (the episode's channel),
+   else the title. That goes one step past my title-only prescription and is the better call,
+   because the show row is the episode's controls. The observer now also watches the show row
+   and `.watch-main`. The ?tv= test's rects now read all zeros under an inline `display:none`,
+   assert the precondition that the tv path hid the bar, and expect 262 = show row minus
+   stage. Verified on the real ?tv= route (table above). AC3 now says what the code does.
+2. W2 (channel narrowed silently): **resolved by ruling D5**, disclosed with measured numbers
+   (Decisions, AC1, Disclosed gaps). My runs match its numbers: the panel is 66px below the
+   fold at both sizes, and reserving it would cost 90px (bar bottom 696 to panel bottom 786 at
+   1280x720). It is Dean's call to reverse.
+3. S3 (stale "three at 1280" prose): fixed in the watch.js and style.css comments.
+4. S4 (probe residue): fixed. Verified: no-args prints the full usage and exits 2. A bare
+   `--menu-toggle` warns "only acts with --theatre (ignored)". Every log line carries the WxH
+   tag. One residue remains, see N3.
+5. S5 (stale plan anchors): fixed. At 4b893ba8, :2221 / :964 / :973 are exact, and they are the
+   same at HEAD. The r0 table names its flag as historical.
+6. S6 (hop re-collapse): disclosed in Disclosed gaps.
+
+Also checked:
+
+- The merged tracker keeps all 217 rows of 598f25f7 plus #247. There are no duplicate numbers,
+  and #247 has the same 8-cell shape as its neighbours.
+- `--media-aspect` really is written "w / h" on `#player-wrapper` by player.js
+  `applyMediaAspect`, the shape `theatreWidthAspect` parses.
+- Security: no surface in the delta. It changes a client-side CSS var and reads the player's
+  own inline var. The probe's new env knobs are dev-only.
+
+New in this round:
+
+- **N1. WARNING (safe to ship disclosed; argued below).** `check-markers.sh` fails on this
+  plan's frontmatter, `design: Approved 2026-09-24 (...)`, because it has no `@<sha>`
+  ("approval marker has no @<sha>"). The marker has been there since the plan's first commit,
+  and I missed it at r1 because I did not run the instrument. Every other plan binds its
+  design approval (e.g. `design: Approved 2026-09-23 @92d48874 (the Architect brief ...)`).
+  Why it does not block: the fix is plan-only (bind it, e.g. `@ecb61e1d`, the base Dean's
+  intake was taken against). check-markers leaves the plans dir out of its staleness check, so
+  the edit invalidates no binding. It can ride in the same commit that records these r2
+  verdicts. It must land before /release, because RELEASING.md runs this check.
+- **N2. SUGGESTION.** public/css/style.css picture-cap comment in the 1025px block: "The width
+  above assumes a 16:9 picture" and "A 16:9 item lands exactly on the cap". Since W3 the width
+  assumes 16:9 OR a wider item's own aspect, and a height-bound wide item also lands on the cap
+  (measured 1128x476). One clause fixes it.
+- **N3. SUGGESTION.** scripts/action-row-probe.js file names: an ignored `--menu-toggle` still
+  adds the `-menutoggle` suffix. `1280x720 --menu-toggle` wrote
+  `action-bar-1280x720-menutoggle.png` of a run where no toggle happened. The suffix should
+  require `THEATRE` too.
+- **N4. NOTE (process, not the diff).** Local `main` has moved past 598f25f7: 1815f9cf merged
+  fix/music-followups, which touches watch.js, style.css and player.js. This approval binds to
+  7c62aeba. The next main merge moves the reviewed code, so it needs re-engagement before
+  close. Row #247 is still free on main (main uses 244-246 and 248).
+
+No CRITICAL is open. N1 is disclosed above as safe to ship.
+
+Gate: APPROVED r2 @7c62aeba — qa
