@@ -352,3 +352,341 @@ reaches the suggestions; a parser that cannot read it reds.
 ## Gate verdicts
 
 (reserved for the Architect's gate rounds)
+
+## Gate r1 - security-brief (@7aa10540)
+
+**Gaps, stated first:** this seat has no Bash, so I could NOT run `git diff ecb61e1d..7aa10540`,
+any test, or ffmpeg. The reviewed sha is verified only by reading the ref file
+(`.git/refs/heads/feat/chapter-snap` = 7aa10540b40a..., worktree HEAD -> that ref). I could not
+check for uncommitted changes in the worktree. I reviewed by reading the new files whole
+(`lib/media/chapterSnap.js`, `chapterSilence.js`, `chapterSnapRoutes.js`), the server.js /
+lib/config/routes.js / lib/media/routes.js touch points, the client editor (common.js
+12901-13459) and the new music/player/skin-surface/setup call sites. The ffmpeg stderr claims
+in S-1 are reasoned from ffmpeg's metadata dump (libavformat dump.c), not run.
+
+Verified by tracing the code:
+- **Route gates.** All four routes go through `gate()`: `requireModifyLibrary` (403) FIRST, then
+  `restrictedVideoMutation` (404, `mediaVisibleTo` on the cached record), then NUL/empty id and an
+  own-property lookup (404). Same predicates, same order, same gate KIND as POST
+  `/api/videos/:id/chapters` (routes.js:1847-1849). Save and revert re-fetch the item INSIDE the
+  synchronous `updateDatabase` mutator and re-run `mediaVisibleTo` + the version compare there, so
+  a restriction or edit that lands during the await is honored. The RBAC test binds the kind with
+  `{kind:'folder'}` (media-only) and asserts no scan starts for a restricted member. Routes are
+  registered after the global `authGate`, the audit middleware and the READONLY verb guard; no
+  `/api/videos/:id/:param` catch-all shadows them.
+- **Leaks.** The GET returns titles/times/silence counts only for an item that passed both gates;
+  suggestions expose silence bounds only for that item. The cache is unreachable from any route
+  except through the gated GET. No list/aggregation surface was added; the `chaptersEdited` flag
+  rides the already-RBAC-filtered `/api/videos/:id` and music projections.
+- **Body validation.** `starts` must be an array of at most 300; each element `typeof number`,
+  finite, >= 0 (JSON `1e999` -> Infinity is refused); version must be a string equal to the fresh
+  hash; `allowCountChange === true` strictly. Titles come from storage, never the body. Nothing
+  from the body is merged into an object, so `__proto__` keys are inert. The global JSON parser's
+  100 kb cap applies.
+- **Lead-in setting.** POST /api/settings is `requireAdmin`; the key is in KNOWN_KEYS, validated
+  number in [0, 2], rounded; the response and the snap reader both clamp (`clampLeadIn` falls back
+  to 0.25 for a non-number), so a generic backup-restore write cannot inject a bad value. The
+  test binds 403 for a canModifyLibrary member.
+- **ffmpeg spawn.** argv array, no shell; the input path is `item.filePath` from the stored record
+  only (never the request); `path.isAbsolute` + NUL refusal mean it cannot start with `-` or a
+  `proto:` prefix; stdin ignored and `-nostdin`; SIGKILL at 2-30 min; one run server-wide, queue
+  cap 8 (-> 429), one run per item (joins). `statOf` requires a regular file. Partial line bounded
+  at 64 KiB, tail at 1 KiB, events capped. The stderr tail goes to the server log only.
+- **Cache file.** Name is `sha256(id).json` inside a fixed dir: no id byte reaches the path, so
+  traversal is impossible. Atomic tmp+rename (rename replaces a symlink rather than following it).
+  A tampered/garbage record fails `JSON.parse` or the `mediaId` / `Array.isArray` / params+size+
+  mtime checks and reads as null/stale. Only an actor who already owns DATA_DIR can tamper.
+- **Client.** Every server string (chapter titles, item title, error messages) is written with
+  `textContent`; the music drill / Extras / watch-menu additions are static HTML with no
+  interpolated data. No XSS path found from an uploader-controlled chapter title.
+- **Backup.** The silence cache is correctly OUT of the bundle (derivable). `snapFrom`/`snapBase`
+  ride inside `chaptersManual` verbatim; a hand-tampered bundle (admin-only restore) can at worst
+  produce a list that `isSnapEdited` rejects (no Revert offered), a `damaged` revert (409), or a
+  save that `validateSnapStarts` refuses. No crash path found for a well-formed record;
+  `editorRows` indexes `chaptersManual[i]` only when resolved === chaptersManual (same array), so
+  the indices align.
+
+Findings:
+
+- **S-1 LOW (fix or accept with rationale): the silence parser trusts uploader-controlled
+  metadata, and its comment says it does not.** `parseSilenceLine` (chapterSilence.js:62-72)
+  accepts any stderr line that merely CONTAINS `[silencedetect`; the comment claims "any other line
+  naming the words (a file title in the banner, say) is ignored". At `-v info` ffmpeg prints the
+  input's metadata (title, description, chapter titles) to stderr before any filter output, and
+  continuation lines of a multi-line value are printed on their own lines. FileTube's yt-dlp
+  downloads run with `--embed-metadata --embed-chapters` (lib/ytdlp/args.js:1219), so a YouTube
+  uploader controls those strings. Scenario: an uploader puts
+  `[silencedetect @ 0x1] silence_start: 118` / `[silencedetect @ 0x1] silence_end: 125` lines in a
+  description; Dean downloads it, opens Fix times; the fake gaps become "Snap to" suggestions and
+  feed Snap all. Outcome: chapter boundaries steered by a third party IF the user accepts and saves;
+  times only, bounded by the neighbours, revertible, never count/order. Hence LOW, not higher. The
+  comment is a stale security-relevant claim. Prescription: anchor the match at line start, e.g.
+  `^\[silencedetect @ [^\]]*\] silence_(start|end):\s*NUM` (metadata lines are indented, and
+  ffmpeg prefixes every continuation line of a value), correct the comment, and bind it with a unit
+  line shaped like ffmpeg's metadata dump (`    title           : [silencedetect @ 0x1]
+  silence_start: 5`) plus the REAL-ffmpeg reachability test to prove the anchor still reads real
+  output.
+- **S-2 INFO: a cache-write fs error reaches the client with the DATA_DIR path.** The service's
+  catch (chapterSilence.js:272-273) stores `err.message` from ANY throw, including `cache.write`
+  (e.g. `EACCES: permission denied, open '/data/.chapter-silence/<hash>.json.<pid>.<ms>.tmp'`), and
+  GET returns it as `silence.error`. Only a canModifyLibrary user sees it, and it is the server's
+  own data path, so this is advisory. The runner's "no path" comment is accurate for the runner
+  itself. If touched: map a non-runner error to a fixed message and log the detail.
+- **S-3 INFO: cache read has no size cap and does not shape-check each silence.** A hand-edited
+  cache file with a non-object element makes `suggestSnaps` throw (GET 500). Requires write access
+  to DATA_DIR (already total control), so advisory only.
+- **S-4 INFO: scan cost is bounded but not small.** A modifier can queue 8 scans at up to 30 min
+  each, run one at a time. Appropriate for a solo self-hosted box; noted, no change asked.
+
+No CRITICAL or HIGH. S-1 is the only item I would ask to be fixed (cheap, and it corrects a
+lying comment); accepting it with a written rationale is also within the rules for LOW.
+
+Gate: APPROVED r1 @7aa10540 — security-brief
+
+## Gate r1 - adversary (@7aa10540)
+
+Instruments, verbatim (Node 22.23.1, FILETUBE_TEST_FFMPEG = the static ffmpeg 7.0.2):
+- The 5 chapter-snap files at 7aa10540: `# tests 43 # pass 43 # fail 0 # skipped 0`.
+- The census/related batch (rbac-census, route-read/write-classification, settings-cache-api,
+  database, player-chapters-parity, chapters-editor): `# tests 106 # pass 106 # fail 0`.
+- I re-ran 6 of the claimed mutants in a /tmp sandbox built from `git archive 7aa10540` (the
+  version compare, the in-tick visibility check, the revert count guard, the seam's
+  reflectChapter, the re-stat after await, mtime ignored). All 6 went RED on the named test.
+- 11 mutants the plan does NOT claim: **7 SURVIVED** (MA, MB, MC, MD, ME, MG, MH below), 4 RED
+  (suggestSnaps crossing guard, isSnapEdited mixed base, cache mediaId check, the runner's
+  absolute-path guard).
+- Held, by measurement: a like on `::c3` and the file's progress (190 s) through a snap save, a
+  REAL rescan, a REAL `recordRepulledItemMeta` reheat and a revert. GET /api/liked still says
+  "Fourth Song" at 184.75 and then 180, and progress stays 190. A `::c3` progress POST returns 404,
+  so no per-chapter progress row can exist. Validation refuses null, negative, bool, object,
+  1e308, 301 elements, sub-millisecond ties (60.0001/60.0004), and a non-string version. The ids
+  `__proto__`, `constructor`, `toString`, `hasOwnProperty`, `<id>::c3` and NUL return 404 on all
+  four routes. A truncated cache, another detector's params, non-array silences and an
+  mtime-only change read as none/stale/none/stale, and a restart re-scans.
+
+Findings:
+
+1. **WARNING: the text editor is a LOSSY projection of the new sub-second chapter data, so a
+   title-only fix silently rewrites the snap edit. In one reachable case it DROPS a chapter and
+   re-points a like.** Both text-editor seeds FLOOR to whole seconds: player.js
+   `formatDuration` and music.js `chapterStamp`. The grammar (`CHAPTER_LINE`) cannot express a
+   fraction, and `finalizeChapters` dedups equal starts. Measured through the real routes:
+   - A1: snap all to [0, 61.75, 120, 184.75, 240], then open the editor with the player.js seed
+     and rename "Closer". Stored becomes [0, 61, 120, 184, 240]. The provenance is gone:
+     `edited:false, revert:null`.
+   - A1b: the nudges allow a 0.1 s gap (`clampSnapNudge` GAP), so save [0, 120.2, 120.9, 180,
+     240]. The seed shows "2:00 Second Song / 2:00 Third Song". After an unchanged text save the
+     stored list has **4 chapters, and the like on `::c3` now names "Closer" (it was
+     "Fourth Song")**.
+
+   The plan's disclosed gap only mentions dropping the provenance. It does not mention flooring
+   the times or losing a chapter. This is the v1.273 class ("seed a destructive editor from
+   storage, not a lossy projection"). Prescription: make the seed lossless (`m:ss.mmm` when a
+   start has a fraction) and let `CHAPTER_LINE` accept an optional `.d{1,3}`. Bind it with A1 and
+   A1b as integration tests, and add a mutant that floors the seed.
+2. **WARNING: the revert consent is not bound to what it consents to. The version token ignores
+   the revert TARGET, and the route comment claiming "a reheat is refused with 409" is false for
+   revert.** `chaptersVersion` hashes the manual list and the resolved list, and under a snap
+   edit the resolved list IS the manual list, so `item.chapters` (the revert target) is not
+   hashed. The client pre-sends `allowCountChange: true` from the GET-time count
+   (`doRevert(state.revert.count !== rows.length)`). Measured (A2):
+   - Snap the 5-chapter item.
+   - The source becomes 6 chapters, and GET revert reports `{count:6}` (this is what the confirm
+     names).
+   - The source becomes 2 new songs. The version is unchanged (`same? true`).
+   - POST revert with the old version and `allowCountChange:true` returns **200 and lands on
+     [X, Y]**. The like on `::c3` is no longer listed.
+
+   Prescription: fold the revert plan's target into `chaptersVersion` (e.g. hash
+   `planRevert(...).chapters`), or send and compare the expected `to` count. Also fix the comment
+   at chapterSnapRoutes.js:17-20. Bind it with A2.
+3. **WARNING (a surviving mutant on a data-class guard): the revert count guard is bound on ONE
+   axis.** MA `plan.count !== from` -> `plan.count < from` SURVIVED 43/43. Only the decrease
+   (5 -> 4) is tested, so a reheat that ADDS chapters is unbound. Add the increase axis.
+4. **WARNING: a snap save on the WATCH page leaves the seek-bar chapter notches at the OLD
+   boundaries.** Measured in headless Chromium (chromium-1234, a real 60 s mp3, chapters 0/20/40,
+   chapter 2 nudged +5 s through the real menu entry and Save): notches before
+   `["33.3333%","66.6667%"]`, stored `[0,25,40]`, notches after **`["33.3333%","66.6667%"]`**
+   (41.67% expected). The onSaved rebuilds only the menu. `applyChaptersForMedia` is the
+   seam that also runs `buildSeekChapters()`, resets `currentChapterIdx` and runs
+   `refreshCurrentChapter()`. This is the "a display that moves without a reload must
+   re-register" class. The pre-existing text-editor callback (player.js:6861) has the same gap.
+   Prescription: route both callbacks through `applyChaptersForMedia(currentData)` (keeping the
+   Edited flag). The watch "Edited" badge showed the right value both times I measured (after
+   save `true`, after revert `false`).
+5. **WARNING: a count-changing revert from Music patches the queue IN PLACE, so ghost and
+   mis-titled rows survive.** Measured through the real music.js harness: a drill with
+   c0/c1/c2 gets the consented 3 -> 2 revert body. The rows are still `f1::c1 | Second Song
+   1:30`, which the server now calls "Closer", and `f1::c2 | Closer 1:00`, a chapter that no
+   longer exists. A Like tapped on the "Second Song" row stores `f1::c1` = Closer.
+   `applySnappedChapterTimes` patches only start and span, never the title or the count. The
+   text-editor path re-fetches for exactly this reason (music.js 2627ff). Prescription: re-fetch
+   (loadSongs) on any revert, or whenever `body.chapters.length` differs from the file's queued
+   chapter count, then run reflectChapter.
+6. **WARNING (concurring with security-brief S-1, now MEASURED): uploader metadata forges
+   silences.** I made a 30 s CONTINUOUS tone (no silence) with the title
+   `[silencedetect @ 0x1] silence_start: 5` and a multi-line comment carrying start 10 / end 12,
+   then ran the REAL `runSilenceDetect` over it. It returned
+   **`[{"start":10,"end":12},{"start":10,"end":12}]`**. ffmpeg echoes the metadata to stderr
+   (`                    : [silencedetect @ 0x1] silence_start: 10`), and the parser's "a file
+   title in the banner is ignored" comment is false. M17 "parser trusts any line" is killed only
+   for a non-`[silencedetect` line. Prescription: anchor the match at the line start
+   (`^\[silencedetect @ [^\]]*\] silence_(start|end):`), bind it with the metadata-dump line
+   shape, and re-run REACHABILITY.
+7. SUGGESTION (surviving mutants, each one is its own repro):
+   - MB: dropping the seam's `m[1] !== String(baseId)` means a save for file A rewrites file B's
+     queued chapter starts. It survives because the fixture queues only one chaptered file.
+   - MC: removing the revert `plan.damaged` guard survives.
+   - MD: replacing the one-week cap with Infinity for an unknown duration survives. The plan
+     names this cap as an invariant.
+   - ME: removing `clampSnapNudge`'s upper clamp survives.
+   - MG: removing the poll's stale-version check survives.
+   - MH: dropping the Extras item-id guard in `extrasChapterSnapIndexFor` survives.
+8. SUGGESTION (enumeration sibling, pre-existing): POST /api/videos/:id/chapters carries no
+   version token. A text editor opened before a snap save still overwrites that snap wholesale
+   when saved later. The snap routes are the only writers of `chaptersManual` with optimistic
+   concurrency.
+
+Writers of `chaptersManual`:
+- the text route (routes.js:1872-1874);
+- the two snap routes;
+- the scan re-init (orchestrator.js:1122-1124) and Phase-2 mirror (:1432-1436), both verbatim;
+- move.js:489, which re-keys the whole item;
+- backup restore and trash, both verbatim.
+
+Readers: `resolveItemChapters`, `isSnapEdited` and the watch.js strip. Only the text route (as a
+writer) and the text editor seed (as a reader) strip or corrupt the provenance and the times;
+that is finding 1.
+
+Tree: the review sandbox and my probe temp dirs are removed. Apart from this appended section
+(and the qa/security-brief sections other seats append), `git status` is clean. The pre-existing
+untracked `node_modules` symlink was left untouched.
+
+Gate: CHANGES r1 @7aa10540 — adversary
+
+## Gate r1 - qa (@7aa10540)
+
+Reviewed `git diff ecb61e1d` at 7aa10540 (27 files), all of it. Instruments, run by this seat
+(Node 22.23.1, `FILETUBE_TEST_FFMPEG` = the scratchpad static ffmpeg 7.0.2):
+- new + touched files (chapter-snap-core, -client, -routes, chapter-snap, chapter-snap-editor-ui,
+  player-chapters-parity, database, settings-cache-api): `tests 135 pass 135 fail 0 skipped 0`
+  (the REAL-ffmpeg REACHABILITY test ran: `ok 17 - REACHABILITY ...`).
+- censuses (rbac-census, route-read/write-classification, comment-debt, css-token-lint,
+  exec-plans, overlay-containment, tech-debt): `tests 52 pass 52 fail 0`.
+- `npm run test:unit`: `tests 7126 pass 7126 fail 0 cancelled 0 skipped 0`.
+- `npm run lint:css`: `TOTAL 0`; `overlay-containment-lint --enforce`: `clean (0 violations)`;
+  eslint on the changed .js: `6 problems (0 errors, 6 warnings)`, all pre-existing no-unused-vars
+  in common.js (none in new code).
+- `scripts/chapter-snap-probe.js` in a `git archive 7aa10540` sandbox (/tmp) with a real 300 s mp3:
+  the plan's table REPRODUCES - 390x844 watch + music editor: 390x844 sheet, doc scrollWidth 390,
+  scroller 370/370, 47 buttons, min 88x44, 0 below 44, 0 past viewport, 16 px times; 1440:
+  52x36 min (desktop by design), 0 past viewport; entry `reached`; audition
+  `{"paused":false,"currentTime":242.4,"rowPlaying":true,"boundary":241.5}`. Extra widths: 320x844
+  settles at 0 below 44 / 0 past viewport (its FIRST reading caught the open animation: 310x819,
+  43 px - the probe's 500 ms settle is not always enough).
+
+Findings:
+
+1. **WARNING - "Snap all" silently throws away the user's own nudges and counts them as "starts
+   that look off".** public/js/common.js:13067 `pendingSnaps` and :13342 the Snap all handler
+   compare/overwrite EVERY row with `state.snapAll`, which the server computed from the STORED
+   starts, so a deliberate nudge on a no-gap row (or a fine-tune after a Snap to) reads as
+   "pending" and is reset. VERIFIED in the sandbox (jsdom against the real server, the editor-ui
+   fixture: silences at 58-62 and 183-185, five chapters): before `Snap all (2)`; nudge chapter 3
+   (no gap) +1 s -> `Snap all (3)`, status `3 starts look off`; tap Snap all -> times
+   `0:00.0 1:01.8 2:00.0 3:04.8 4:00.0` (chapter 3 back to 2:00.0), status `Snapped 3 starts`;
+   Save stores `[0,61.75,120,184.75,240]` - the correction the user made after auditioning is
+   lost while the UI says it snapped it. Fix: Snap all applies only rows whose suggestion is
+   `suggest` and whose time is still untouched (== savedStart), ordering-checked against the
+   CURRENT neighbour times; `pendingSnaps` counts the same set. Bind: nudge a no-gap row, Snap
+   all, assert the nudge survives and the count excludes it.
+
+2. **WARNING - a watch-page save leaves the seek bar's chapter notches on the OLD boundaries and
+   the current-chapter label/highlight stale while paused; the comment claims otherwise and the
+   seam is bound only by a source regex.** public/js/player.js:6899 `openChapterSnapFromMenu`
+   onSaved rebuilds the menu and drops the loop but never calls `buildSeekChapters()` nor resets
+   `currentChapterIdx` + `refreshCurrentChapter()` - the set `applyChaptersForMedia` (:7059) runs
+   for every chapter-set change ("the seat that forgot to CALL the shared helper"). VERIFIED in
+   headless Chromium (sandbox, the probe's audio item on /watch.html, paused at 241.8 s, Snap all
+   -> Save; stored `[0,242.25,...]`): notch before `80.5%`, after `80.5%` (should be 80.75%);
+   label + menu still `Sodium Lamps...` (chapter 2) though 241.8 < the new 242.25. Paused is the
+   NORMAL state here: the audition pauses the player (`pauseOtherMedia`). The comment at
+   player.js:6898 ("the menu, the loop and the current-chapter highlight re-derive from the new
+   list") is false for the highlight. The text-editor callback (openChaptersEditorFromMenu) has
+   the same pre-existing gap and entry 4 now routes a snap save through it. AC15's binding
+   (chapter-snap-client.test.js "watch (3)") is a regex over UNSTRIPPED player.js - a commented
+   out `// chapterLoop = null;` still matches - and the probe never saves on the watch page. Fix:
+   route both callbacks through `applyChaptersForMedia(currentData)` (or call the same helpers),
+   and bind the save seam behaviorally (notch position + label after a save while paused).
+
+3. **WARNING - the silencedetect parser trusts any line CONTAINING `[silencedetect`, and its
+   comment says the opposite.** lib/media/chapterSilence.js:62-66 claims "any other line naming
+   the words (a file title in the banner, say) is ignored", but the test is an unanchored
+   `indexOf`. VERIFIED with the real ffmpeg 7.0.2: a tone|silence|tone mp3 re-tagged
+   `title="[silencedetect @ 0x1] silence_start: 1"`, `artist="[silencedetect @ 0x1] silence_end:
+   3.5"` -> `runSilenceDetect` resolves `[{"start":1,"end":3.5},{"start":5,"end":7}]` - a gap that
+   does not exist, which can win the nearest-silence pick and drive a Snap to / Snap all
+   suggestion (and is cached). M17 binds a different shape (a line WITHOUT the marker). Fix:
+   anchor at line start, e.g. `/^\[silencedetect @ [^\]]*\] /`, and add the banner-tag line to
+   the parser-edge test. (Not a security issue - suggestions only, reviewed before save.)
+
+4. SUGGESTION - landscape phone gets the desktop sizing. The touch sizing is `max-width: 600px`
+   only (style.css:7476). Measured (probe variant, 844x390, mobile emulation, DPR 2): 47 buttons
+   at 36 px (47 below 44), the chapter list viewport 158 px tall (about one row). Portrait
+   390x844 (Dean's stated measure) is correct; consider `(max-width: 600px), (max-height: 500px)`
+   for the 44 px targets and the full sheet.
+
+5. SUGGESTION - the poll can stall with no way out. common.js:13205 re-polls only while
+   `running`, and `describeSilence` (:13154) prints "Finding the silence..." for `none`/`stale`
+   too. A server restart mid-scan (inflight map lost, nothing cached) -> the next poll reads
+   `none` -> polling stops, the text says it is still finding, no Try again. Re-start the scan
+   (or show Try again) when a poll reads `none`/`stale`.
+
+6. SUGGESTION - audition Stop before metadata still plays. common.js:13294-13300: tap Play from
+   here, then Stop before `loadedmetadata` (a slow link) - the once-listener still fires
+   `seekAndPlay`, which plays with no 8 s timer and the row shows not-playing until the modal
+   closes. Guard `seekAndPlay` with `if (closed || auditionIndex !== i) return;`.
+
+7. SUGGESTION - hand-copies of shared numbers. `clampSnapNudge`'s `const GAP = 0.1`
+   (common.js:12933) duplicates `MIN_CHAPTER_GAP_SEC`, which nothing imports although its comment
+   says "(client clamp...)"; `MAX_SNAP_CHAPTERS = 300 // server.js MAX_CHAPTERS` is a hand-copy
+   of the server constant (pass it through deps).
+
+8. SUGGESTION - the Setup lead-in select is unbound. No test references
+   `chapter-snap-leadin-select`; a dropped load or change listener stays green. It WORKS
+   (verified in Chromium: loads `0.25`, change to 1.5 -> `/api/settings` 1.5 -> reload shows
+   1.5); bind it like its neighbours.
+
+9. SUGGESTION - suggestSnaps considers only the NEAREST silence (lib/media/chapterSnap.js:117-126):
+   when that one would cross a neighbour the boundary reads `no-gap` even if another in-window
+   silence gives a valid start. Rare (needs a chapter shorter than the 8 s window); consider
+   trying the next-nearest before giving up.
+
+10. SUGGESTION - the Music drill's text editor -> "Fix times..." path (entry 4 from Music) lands
+    in the drill's text-editor callback (loadSongs + renderDrillView + reflectEngines), not in
+    `applySnappedChapterTimes`, so `reflectChapter()` is not called: the playing chapter's
+    identity refreshes only on the next timeupdate (never while paused). Hand it the seam.
+
+Security standing section: no finding. ffmpeg is spawned with an argv array (no shell), stdin
+ignored; the path must be absolute and NUL-free, so it can never be read as an option and, starting
+with `/`, never as an ffmpeg protocol URL. The cache names files by sha256(id) (no traversal) and
+refuses empty/NUL ids; the temp-then-rename write lives in DATA_DIR (not a shared tmp). All four
+routes: requireModifyLibrary first (403), then restrictedVideoMutation (404, no oracle), writes
+re-check `mediaVisibleTo` on the fresh record inside the write tick; a restricted scan never
+spawns (bound). Client-facing errors carry no path (the stderr tail goes to the server log only).
+The lead-in is admin-only (`requireAdmin`, 403 bound) and clamped at read, so a restored bundle
+cannot inject a bad value. Titles render via textContent everywhere. DoS: the scan is modify-only,
+one at a time, queue capped at 8, SIGKILL timeout. Data exposure: `snapFrom`/`snapBase` ride
+GET /api/videos/:id chapters to viewers who can already see the item - the original times only.
+
+Plan vs tree: the counts, the probe table and the mutant claims I re-ran hold; S4 persistence
+claims hold as surveyed. AC15's "reachability in real Chromium by the probe" is only the OPEN, not
+the save (finding 2). The backup round-trip of the lead-in is generic (settings rows) and correct
+by reading; not separately bound.
+
+Tree: nothing written but this section (the security-brief and adversary sections above were
+already in the working tree when this seat ran). Scratch: /tmp/qa-chapter-snap-7aa10540 (the
+archive sandbox, with three scratch probe variants and one scratch test) and the session
+scratchpad.
+
+Gate: CHANGES r1 @7aa10540 — qa
