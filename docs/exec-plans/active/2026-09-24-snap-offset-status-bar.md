@@ -124,7 +124,8 @@ Item 2 - the status bar:
   confirm) restores the source times with the like still on "Four". (integration "REAL ffmpeg")
 - **AC5 Snap all after a shift** - still snaps the suggestion rows to the silence (absolute);
   a snapped row keeps its snap through Reset shift; the readout says how many rows still carry
-  the shift. (integration "Snap all after a shift")
+  the shift. Reset shift is refused, with the reason, when a row snapped after the shift would
+  end up out of order. (integration "Snap all after a shift", "Reset shift is REFUSED")
 - **AC6 stale seed** - the shift controls lock with Save; nothing shifted is written.
   (integration "a stale seed locks the shift controls")
 - **AC7 phone** - every Shift all control >= 44x44 at 390x844 and 844x390, no sideways scroll,
@@ -154,7 +155,7 @@ Files:
   button is measured, then applied, then +1 s.
 - NEW `scripts/skin-status-bar-probe.js`: the status bar instrument (below).
 - NEW tests: test/unit/chapter-snap-shift.test.js (9), test/unit/skin-status-bar.test.js (4),
-  test/integration/chapter-snap-shift.test.js (8, one needs ffmpeg).
+  test/integration/chapter-snap-shift.test.js (9, one needs ffmpeg).
 
 Design notes (decisions the spec left open):
 - **"Boundaries with a snap suggestion" includes `fine` ones.** A boundary the scan found
@@ -180,7 +181,24 @@ Design notes (decisions the spec left open):
 - **Status bar height**: one line by `nowrap` + a shrinkable title; no declared `height` (a
   fixed px height would clip at a larger text size). Measured equal below.
 
-Commits: (filled in at hand-off)
+Commits (every one through the pre-commit hook, never --no-verify):
+- **49f45468** the build. Hook `tests 7261 pass 7261 fail 0`.
+- **e9951751** tests: the single-row snap and Snap all each clear the shift, the Reset disorder
+  refusal, the 60 % share case. Hook `tests 7261 pass 7261 fail 0`.
+- **commit 3** (this plan's mutant table and measurements; the status-bar probe's
+  `spillsOverPlayMark` check; the REAL-ffmpeg test asserts the applied sign).
+
+Instruments (Node 22.23.1, at 49f45468 unless noted):
+- `npx eslint` on every touched file: `✖ 6 problems (0 errors, 6 warnings)` - the 6
+  pre-existing no-unused-vars warnings in common.js.
+- `npm run lint:css`: `TOTAL 0`. `overlay-containment-lint --enforce`: `clean (0 violations)`.
+- `bash .harness/lib/check-markers.sh`: `check-markers: clean (docs/exec-plans)`.
+- Targeted set with `FILETUBE_TEST_FFMPEG=<static ffmpeg 7.0.2>` (unit chapter*, music*, skin*,
+  player-chapters*, exec-plans*, tech-debt*, comment-debt*, release-ledger*, css*, token*,
+  overlay*, shell*, mobile-input*; integration chapter-snap*, chapters-editor): `tests 944 pass
+  944 fail 0 skipped 0`.
+- The new integration file at e9951751 + the sign assert: `pass 9 fail 0 skipped 0`, diagnostic
+  `real scan: Suggested: shift all by +1.75 s (4 of 4 agree) (applied 1750 ms)`.
 
 ## Measurements
 
@@ -206,9 +224,28 @@ chaptered-file title drilled.
 | Nano tray (310x133 inner) | 31.2 (title is always "Now Playing") | 31.2 | 250,33.6,22,11 |
 
 - AFTER, every long row reads `truncated: true`, `white-space: nowrap`, `text-overflow:
-  ellipsis`; `docScrollWidth` = the viewport width everywhere; no page errors.
+  ellipsis`, `spillsOverPlayMark: false` (re-run with the spill check at commit 3: every SUMMARY
+  `equal, battStill, playStill, longTruncated, noSpill` all true, the pop-out and tray 0 spills);
+  `docScrollWidth` = the viewport width everywhere; no page errors.
 - Seattle's drilled dim title `.ipm-title` is 47.2 px for the short and the long album, before
   and after (it was already one line with an ellipsis).
+- **The same instrument against mutants in the real browser** (a `git archive 49f45468` sandbox,
+  each edit on the ONE `.mms-ipod .ip-np` rule, Click + Seattle at 390x844; the probe gained a
+  `spillsOverPlayMark` check for this - the title's text rect vs the play mark, when the title is
+  not clipped). Log `snap-offset-status-bar-probe-mutants.out`:
+
+  | Mutant | Click heights | Seattle heights | right cluster | title |
+  |---|---|---|---|---|
+  | control (unmutated) | 31.2 x4 | 30.2 x4 | still | truncated, no spill |
+  | B1 drop `white-space:nowrap` | 31.2, 31.2, **85.8, 85.8** | 30.2, 30.2, **66.6, 66.6** | battery pushed to y 54.9 | wraps |
+  | B2 drop `min-width:0` only | 31.2 x4 | 30.2 x4 | still | truncated, no spill - **equivalent in layout** |
+  | B3 drop `overflow:hidden` only | 31.2 x4 | 30.2 x4 | still | **the text paints over the play mark and battery** (`noSpill: false`; PNG `snap-offset-status-bar-shots-B3/ipod-390x844-5-album-long.png`) |
+  | B2 + B3 | 31.2 x4 | 30.2 x4 | **pushed off the LCD** (battery x 843.7, play mark x 825.7) | not truncated |
+
+  B2 is equivalent because a flex item whose `overflow` is not `visible` already has an automatic
+  minimum size of 0: `overflow:hidden` and `min-width:0` each keep the bar one line alone, and
+  `overflow:hidden` is also what the ellipsis needs. Both are kept (belt and braces, the usual
+  flex-truncation idiom) and the CSS lock binds both.
 - Logs: session scratchpad `snap-offset-status-bar-probe-before.out` / `-after.out`; PNGs in
   `snap-offset-status-bar-shots-before/` and `-after/` (e.g. `ipod-390x844-5-album-long.png`,
   `zune-classic-380x700-8-file-long.png`, `ipod-popout-5-album-long.png`,
@@ -239,7 +276,63 @@ times..."; Music: album card -> drill "Fix times"). Shift row numbers:
 
 ## Mutant table
 
-(filled in after the build commit - mutants run on a `git archive` of the committed sha)
+Runner: session scratchpad `snap-offset-status-bar-mutants.js` - edits ONE file in a sandbox
+built from `git archive e9951751` (+ a node_modules symlink), asserts the anchor matched exactly
+once and the bytes changed, runs the named binding tests (with `FILETUBE_TEST_FFMPEG` set, so
+the REAL-ffmpeg test runs), restores. RED = any `not ok` or a non-zero exit. Log
+`snap-offset-status-bar-mutants.out` (+ `-b3.out`: B3's first anchor matched 4 rules and was NOT
+run; re-anchored on the one rule, then RED).
+
+**42 of 42 RED. No survivors.**
+
+| # | Mutant | File | Binding test that reds |
+|---|---|---|---|
+| S1 | chapter 1 moves with the shift | common.js | integration shift math (+6 more) |
+| S2 | Reset returns to the saved times (drops nudges) | common.js | shift math, Reset EXACT, Snap all after a shift |
+| S3 | a nudge clears the row's shift | common.js | shift math, Reset EXACT, disorder refusal |
+| S4 | a single-row snap keeps the shift | common.js | Snap all after a shift, disorder refusal |
+| S5 | Snap all keeps the shift | common.js | Snap all after a shift |
+| S6 | Snap all plan counts a shifted row as hand-edited | common.js | Snap all after a shift |
+| S7 | Undo leaves the shift | common.js | shift math |
+| S8 | earlier clamp removed | common.js | unit EARLIER, integration clamp EARLIER |
+| S9 | later clamp removed | common.js | unit LATER, integration clamp LATER |
+| S10 | earlier "at or before" -> "before" | common.js | unit EARLIER, integration clamp EARLIER |
+| S11 | later "at or past" -> "past" | common.js | unit LATER, integration clamp LATER |
+| S12 | the server gap ignored (0) | common.js | both clamp suites (4 fail) |
+| S12b | a hand-copied gap (always 0.1) | common.js | unit EARLIER (the 0.3 s gap case) |
+| S13 | `fine` boundaries not counted | common.js | unit FINE |
+| S14 | the 60 % share ignored | common.js | unit DISAGREE (2 of 4 ON the median) |
+| S15 | the two-boundary minimum ignored | common.js | unit TOO FEW, integration cached + REAL ffmpeg |
+| S16 | +-0.3 s inclusive -> exclusive | common.js | unit DISAGREE (exactly 0.3 s) |
+| S16b | tolerance 0 | common.js | unit AGREE / DISAGREE, integration |
+| S17 | no "aligned" state | common.js | unit FINE / CURRENT, integration cached |
+| S17b | the median is the mean | common.js | unit AGREE / DISAGREE / FINE |
+| S18 | a blocked step is not disabled | common.js | integration clamp EARLIER / LATER |
+| S19 | the reason never shows | common.js | integration clamp EARLIER |
+| S20 | the reason never clears | common.js | integration clamp EARLIER, disorder refusal |
+| S21 | a stale seed does not lock the shift | common.js | integration stale seed |
+| S22 | the suggestion applies the wrong sign | common.js | integration cached suggestion (the REAL test now asserts the sign too, commit 3) |
+| S23 | Reset enabled over a disorder | common.js | integration disorder refusal |
+| S24 | Reset never hides | common.js | integration shift math |
+| S25 | renderShift not called on re-render | common.js | 9 integration tests |
+| S26 | the shift row below the chapter rows | common.js | integration shift math |
+| S27 | the suggestion measured from the STORED starts | common.js | integration cached suggestion |
+| S28 | the phone 44 px list drops the shift row | style.css | unit CSS lock |
+| B1 | status title: `white-space:nowrap` dropped | style.css | unit skin-status-bar (+ headless: 85.8 px) |
+| B2 | status title: `min-width:0` dropped | style.css | unit skin-status-bar (headless: equivalent, see Measurements) |
+| B3 | status title: `overflow:hidden` dropped | style.css | unit skin-status-bar (+ headless: the text paints over the play mark) |
+| B4 | no ellipsis | style.css | unit skin-status-bar |
+| B5 | title `flex:1 0 auto` (cannot shrink) | style.css | unit skin-status-bar |
+| B6 | the right cluster loses `flex:none` | style.css | unit skin-status-bar |
+| B7 | Seattle's rule sets `white-space:normal` | style.css | unit override census |
+| B7b | a later rule sets `TEXT-WRAP:wrap` (upper case) | style.css | unit override census |
+| B8 | the rule survives only inside a comment | style.css | unit (comment-stripped read) |
+| B9 | the status bar gets `flex-wrap:wrap` | style.css | unit skin-status-bar |
+| B10 | the tray sets `min-width:auto` on the title | style.css | unit override census |
+
+Equivalent (argued, not run): `applyShift`'s own `snapShiftBlock` re-check and `resetShift`'s
+own disorder re-check are defense in depth behind the disabled buttons (the click listener
+returns on a disabled button), so removing either alone cannot change behavior.
 
 ## Disclosed gaps
 

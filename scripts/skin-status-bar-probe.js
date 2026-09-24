@@ -74,6 +74,14 @@ const STATE_JS = `(function () {
     title: np ? np.textContent : null, titleLen: np ? np.textContent.length : 0,
     statusH: st ? Math.round(st.getBoundingClientRect().height * 10) / 10 : null,
     np: r(np), truncated: np ? np.scrollWidth > np.clientWidth : null,
+    // The title's text must never paint over the play mark: either it is clipped (overflow not
+    // visible) or its text ends before the play mark starts.
+    spillsOverPlayMark: (function () {
+      var pm = p && p.querySelector('.mms-playind');
+      if (!np || !pm || getComputedStyle(np).overflowX !== 'visible') return false;
+      var rg = document.createRange(); rg.selectNodeContents(np);
+      return rg.getBoundingClientRect().right > pm.getBoundingClientRect().left;
+    })(),
     npWhiteSpace: cs ? cs.whiteSpace : null, npTextOverflow: cs ? cs.textOverflow : null,
     playind: r(p && p.querySelector('.mms-playind')), batt: batt ? Object.assign(r(batt), { display: getComputedStyle(batt).display }) : null,
     seattleTitle: t ? Object.assign(r(t), { text: t.textContent.length + ' chars', truncated: t.scrollWidth > t.clientWidth }) : null,
@@ -196,7 +204,8 @@ async function main() {
       const batts = rows.map((r) => r.batt && r.batt.display !== 'none' ? [r.batt.x, r.batt.y, r.batt.w, r.batt.h].join(',') : 'hidden');
       const plays = rows.map((r) => r.playind ? [r.playind.x, r.playind.y, r.playind.w, r.playind.h].join(',') : 'none');
       out({ tag: pre + ' SUMMARY', statusHeights: hs, equal: hs.every((h) => h === hs[0]), battXYWH: batts, battStill: batts.every((b) => b === batts[0]),
-        playXYWH: plays, playStill: plays.every((b) => b === plays[0]), longTruncated: rows.slice(2).every((r) => r.truncated === true) });
+        playXYWH: plays, playStill: plays.every((b) => b === plays[0]), longTruncated: rows.slice(2).every((r) => r.truncated === true),
+        noSpill: rows.every((r) => r.spillsOverPlayMark === false) });
     }
   }
 

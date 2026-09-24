@@ -373,6 +373,7 @@ test('REAL ffmpeg: every stored chapter 2 s early -> the scan suggests +1.75 s (
     assert.ok(Math.abs(Number(m[1]) - 1.75) <= 0.05, `+2 s minus the 0.25 s lead-in (got +${m[1]} s)`);
     const delta = Number(apply.getAttribute('data-shift'));
     t.diagnostic('real scan: ' + apply.textContent + ' (applied ' + delta + ' ms)');
+    assert.ok(Math.abs(delta - 1750) <= 50, 'the button applies what it says, sign included (got ' + delta + ' ms)');
     click(apply);
     click(h.saveBtn);
     await until(() => h.isClosed(), 'saved');
