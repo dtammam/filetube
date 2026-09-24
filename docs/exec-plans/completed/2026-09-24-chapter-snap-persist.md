@@ -3,7 +3,7 @@ plan: chapter-snap-persist
 harness: v2 · lean
 branch: fix/chapter-snap-persist
 anchor: spec
-status: Gate closed
+status: Shipped v1.326.0
 next: release
 design: Approved 2026-09-24 @7482e432 (Dean's report, relayed by the Architect; the wave intake is recorded in memory wave-2026-09-24-intake)
 gate: APPROVED r4 @7516fb0a — adversary, qa, security-brief

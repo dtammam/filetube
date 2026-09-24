@@ -3202,5 +3202,11 @@
     "date": "2026-09-24",
     "title": "Shift every chapter at once, and a tidier player top bar",
     "intent": "When every chapter of an album starts a little too early or too late, Fix times now has Shift all at the top to move them all together, and it suggests how far when the quiet gaps agree, or tells you the chapters are off by different amounts. In the Click and Seattle skins, a very long song or album name now fits on one line in the top bar instead of pushing it taller."
+  },
+  {
+    "version": "1.326.0",
+    "date": "2026-09-24",
+    "title": "Fixed chapter times now play from the right spot everywhere",
+    "intent": "After you fix a chapter's start time, tapping that chapter now starts it at the new spot instead of in the tail of the song before it, including the chapter that is already playing. If the app was left open on another device, it picks up the new times when you come back to it."
   }
 ]

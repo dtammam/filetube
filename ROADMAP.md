@@ -116,6 +116,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.326.0 - Edited chapter times play from the right spot, on every device (2026-09-24)
+
+- **Chapter Snap persistence** (Dean: "it works on desktop and mobile but doesn't survive a page
+  refresh ... it's as if the relative offset underneath is off"). Diagnosed first, measured in real
+  headless Chromium with a real SQLite read: the saved chapter times DID survive every refresh; the
+  bug was the per-row "resume here" spot, computed with the old boundaries, so a chapter whose start
+  moved later resumed BEFORE its new start (the previous song's tail; now-playing even flipped to it;
+  measured t 493.5 in chapter 2 -> t 500.3 in chapter 3). A saved spot before a chapter's start now
+  means "start this chapter at its head". Also fixed (Dean's call): tapping the chapter that is
+  already loaded after its times changed now seeks to the new start (#268), and a page left open on
+  another device re-checks the playing file's chapters when you come back to it (#269), and any other
+  chapter file is checked once on its first pick after you come back (pocket-menu lists included).
+  The gate caught a CRITICAL in the first cut (a Back navigation to a ?play= link rewound playback
+  and overwrote the stored listening position) - fixed and bound on every continue path. Client-only
+  (music.js); nothing about saving changed. Full gate (data class) closed at r4 @7516fb0a (adversary + qa + security-brief; the last round simplified the fix by Dean's call: an automatic advance never waits or pauses, a tap waits at most 4 s); plan
+  docs/exec-plans/completed/2026-09-24-chapter-snap-persist.md.
+  Disclosed: an automatic advance into a chapter edited on another device may start at the old
+  boundary once (the next pick is corrected); a chapter whose saved spot now falls in a different
+  chapter starts at its head until the list is next fetched (#267); the watch page is not re-checked
+  on return, and a page that stays visible is not re-checked (#270).
+  Suites: Node 24.20.0 full run on the fix head 7516fb0a 9546 pass / 0 fail / 3 skipped (the worktree lacked
+  tools/capture); the release commit runs the unit suite (hook) and the full Node 22.23.1 suite (pre-push) -
+  a time-saving deviation from dual-Node on the release commit, taken with Dean's go.
+
+Device check owed (Dean): fix a chapter's start on one device, then on your phone (PWA left open)
+come back to the app and play that chapter from the album and from a pocket menu: it starts at the
+new spot; lock the phone mid-album and let it advance: background playback continues.
+
 ### v1.325.0 - Chapter Snap "Shift all" for a whole-track offset, and a one-line pocket status bar (2026-09-24)
 
 - **Shift all** (Dean, 2026-09-24: "a top level option ... called a global offset ... some files ...
