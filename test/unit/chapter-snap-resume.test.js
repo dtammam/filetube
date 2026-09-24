@@ -868,29 +868,6 @@ test('r2 N1: a file verified since the last return is not asked again; the NEXT 
   }, { extraRows: g3() });
 });
 
-test('r2 N2: a flat segment end into an unverified file makes ONE check, HOLDS (no bleed into its own next chapter), then loads exactly once', async () => {
-  await boot(async (dom, ctx) => {
-    ctx.server.files = { g9: { chapters: G3_CH } };
-    const ec = ctx.engineCfg();
-    ec.menu.onPlay({ tracks: [tracksFixture()[0], g3()[1]], index: 0, play: LIKED }); await settleN(30);
-    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20);
-    ctx.server.holdFiles = true;
-    const mp = dom.window.document.getElementById('media-player');
-    let pauses = 0; let paused = false;
-    mp.pause = () => { pauses += 1; paused = true; };
-    Object.defineProperty(mp, 'paused', { configurable: true, get: () => paused });
-    const g0 = ctx.videoGets.length; const l0 = ctx.loads.length;
-    for (const t of [59.5, 59.8, 60.05, 60.3, 60.55, 60.8, 61.1, 61.4]) {
-      ctx.media.t = t; mp.dispatchEvent(new dom.window.Event('timeupdate')); await settleN(2);
-    }
-    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'exactly ONE check for g9 across the whole boundary band');
-    assert.ok(pauses >= 1, 'the element was HELD at the segment end (no bleed into f1\'s next chapter)');
-    assert.strictEqual(ctx.loads.length, l0, 'nothing loads while the check is pending');
-    ctx.release(); await settleN(20);
-    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id), ['g9::c1'], 'then exactly one load: the next row');
-  }, { extraRows: g3() });
-});
-
 test('r2 N2 control: the same flat segment end with no return advances at once (no check, no hold)', async () => {
   await boot(async (dom, ctx) => {
     ctx.server.files = { g9: { chapters: G3_CH } };
@@ -924,7 +901,7 @@ test('r2 N1: a LOCAL save verifies its file - after a failed return re-check, a 
   });
 });
 
-// ---- Gate r3 fix (round 4: background listening in the PWA - the hold must never strand audio) ---
+// ---- Gate r3 fix (Dean's pivot: an advance never waits or pauses; a pick waits, bounded) --------
 
 const flip = async (dom, ctx) => { ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20); };
 const holdMp = (dom) => {
@@ -945,101 +922,77 @@ async function flatIntoG9(dom, ctx, rows) {
   await flip(dom, ctx);
 }
 
-test('r3 H1 + H3: a HUNG check at a segment end - the user presses Play (never paused again), and the deadline plays the row as queued', async () => {
+test('pivot (Dean, gate r3): an ADVANCE into an unverified file plays the LISTED row at once - no pause, exactly one background GET - and the answer corrects the listed rows and verifies the file for the next pick', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.files = { g9: { chapters: G3_MOVED } }; // another device moved g9::c1 30 -> 40
+    await flatIntoG9(dom, ctx, [g3()[1], g3()[2]]);
+    const { mp, st } = holdMp(dom);
+    const l0 = ctx.loads.length; const g0 = ctx.videoGets.length;
+    for (const t of [59.5, 59.8, 60.05]) {
+      if (ctx.loads.length > l0) break; // advanced: later ticks would belong to the new track
+      await tick(dom, ctx, mp, t);
+    }
+    assert.strictEqual(st.pauses, 0, 'never paused');
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c1@30'], 'the listed row played at once');
+    await settleN(20);
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'exactly one background check');
+    assert.match(row(dom, 'g9::c1').textContent, /0:20/, 'the background answer corrected the listed row in place (40 -> 60 now)');
+    // the next pick of the file: verified, so it asks nothing more (a menu pick of the patched row
+    // plays its corrected start; a row tap re-fetches the album from the server, which has it too)
+    const ec = ctx.engineCfg();
+    const lvl = await ec.menu.load({ type: 'songs' });
+    ec.menu.onPlay({ tracks: lvl.tracks, index: lvl.tracks.findIndex((t) => t.id === 'g9::c2'), play: lvl.play || {} }); await settleN(30);
+    assert.strictEqual(ctx.videoGets.length - g0, 1, 'g9 is verified: no second GET');
+  }, { extraRows: g3() });
+});
+
+test('pivot: a HUNG check on a PICK plays the listed row after the deadline; the old audio is never paused while it waits', async () => {
   await boot(async (dom, ctx) => {
     const T = verifyTunable(); // the instance THIS boot required (each boot re-requires music.js)
     assert.strictEqual(T.timeoutMs, 4000, 'the production deadline');
     T.timeoutMs = 150; // shortened for the harness
     await flatIntoG9(dom, ctx, [g3()[1]]);
     ctx.server.holdFiles = true; // the check never answers
-    const { mp, st } = holdMp(dom);
-    const l0 = ctx.loads.length; const g0 = ctx.videoGets.length;
-    for (const t of [59.5, 59.8, 60.05]) await tick(dom, ctx, mp, t);
-    assert.strictEqual(st.pauses, 1, 'held once at the segment end');
-    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'one check');
-    mp.play(); // the user presses Play during the wait
-    for (const t of [60.3, 60.6, 60.9]) await tick(dom, ctx, mp, t);
-    assert.strictEqual(st.pauses, 1, 'the user\'s Play wins: the band never pauses again (H3)');
-    assert.strictEqual(ctx.loads.length, l0, 'still waiting on the check');
+    const { st } = holdMp(dom);
+    const l0 = ctx.loads.length;
+    click(dom, row(dom, 'g9::c1')); await settleN(10);
+    assert.strictEqual(ctx.loads.length, l0, 'the pick waits on its check');
+    assert.strictEqual(st.pauses, 0, 'the old audio plays on while it waits');
     await new Promise((r) => setTimeout(r, 250)); await settleN(10); // past the deadline, the GET still hung
-    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c1@30'], 'the deadline played the row as queued (H1)');
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c1@30'], 'the deadline played the listed row');
   }, { extraRows: g3() });
 });
 
-test('r3 H2: with the screen locked (document hidden) a segment end into an unverified file NEVER holds - it plays the queued row at once; the next visible pick checks the file', async () => {
+test('pivot: ONE check per file - two picks of the same file while its check runs make one GET, and the LATEST pick plays', async () => {
   await boot(async (dom, ctx) => {
     await flatIntoG9(dom, ctx, [g3()[1], g3()[2]]);
-    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); await settleN(5); // locked again; audio plays on
-    const { mp, st } = holdMp(dom);
-    const l0 = ctx.loads.length; const g0 = ctx.videoGets.length;
-    for (const t of [59.5, 59.8, 60.05]) await tick(dom, ctx, mp, t);
-    assert.strictEqual(st.pauses, 0, 'never paused in the background');
-    assert.deepStrictEqual(ctx.videoGets.slice(g0), [], 'no check while hidden');
-    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id), ['g9::c1'], 'the next row played at once');
-    ctx.setVisibility('visible'); // the user looks again (no return event needed for a pick)
-    const g1 = ctx.videoGets.length;
-    click(dom, row(dom, 'g9::c2')); await settleN(20);
-    assert.deepStrictEqual(ctx.videoGets.slice(g1), ['/api/videos/g9'], 'g9 stayed unverified: the next visible pick checks it');
+    ctx.server.holdFiles = true;
+    const g0 = ctx.videoGets.length; const l0 = ctx.loads.length;
+    click(dom, row(dom, 'g9::c1')); await settleN(6);
+    click(dom, row(dom, 'g9::c2')); await settleN(6);
+    assert.deepStrictEqual(ctx.videoGets.slice(g0), ['/api/videos/g9'], 'one GET');
+    ctx.release(); await settleN(20);
+    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id), ['g9::c2'], 'the latest pick played, once');
   }, { extraRows: g3() });
 });
 
-test('r3 H4: the view is torn down while an advance is held - nothing loads or plays from the dead view (answer OR failure)', async () => {
+test('pivot: the view is torn down while a pick waits - nothing loads or plays (answer OR failure)', async () => {
   for (const fail of [false, true]) {
     await boot(async (dom, ctx) => {
       await flatIntoG9(dom, ctx, [g3()[1]]);
       ctx.server.holdFiles = true;
       if (fail) ctx.server.failFiles = { g9: true };
-      const { mp, st } = holdMp(dom);
+      const { st } = holdMp(dom);
       const l0 = ctx.loads.length;
-      for (const t of [59.5, 59.8, 60.05]) await tick(dom, ctx, mp, t);
-      assert.strictEqual(st.paused, true, 'held (populated)');
+      click(dom, row(dom, 'g9::c1')); await settleN(6);
+      assert.strictEqual(ctx.loads.length, l0, 'waiting (populated)');
       const plays = st.plays;
       ctx.registered.destroy();
       ctx.release(); await settleN(20);
       assert.strictEqual(ctx.loads.length, l0, 'no load from a dead view (' + (fail ? 'failure' : 'answer') + ')');
-      assert.strictEqual(st.plays, plays, 'no play from a dead view: the element stays as the hold left it (the player governs it)');
+      assert.strictEqual(st.plays, plays, 'no play from a dead view');
     }, { extraRows: g3() });
   }
-});
-
-test('r3 H5 (qa QA-I): the answer DROPS the row an advance was heading for - it moves on to the row that followed', async () => {
-  await boot(async (dom, ctx) => {
-    ctx.server.files = { g9: { chapters: G3_CH } };
-    await flatIntoG9(dom, ctx, [g3()[2], g3()[0]]); // Liked: [f1::c0, g9::c2, g9::c0]
-    ctx.server.files.g9.chapters = [{ startTime: 0, title: 'G one' }, { startTime: 30, title: 'G two' }]; // g9's chapter 3 removed elsewhere
-    ctx.server.holdFiles = true;
-    const { mp, st } = holdMp(dom);
-    const l0 = ctx.loads.length;
-    for (const t of [59.5, 59.8, 60.05, 60.3]) await tick(dom, ctx, mp, t);
-    assert.strictEqual(st.paused, true, 'held on the check');
-    ctx.release(); await settleN(30);
-    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c0@0'], 'the next row that still exists plays - never held on nothing');
-    assert.strictEqual(row(dom, 'g9::c2'), null, 'the dropped row left the list');
-  }, { extraRows: g3() });
-});
-
-test('r3 (qa QA-G / QA-H stay green): the held advance loads ONCE at the moved start when the answer changes it, and plays the queued row when the check fails', async () => {
-  await boot(async (dom, ctx) => {
-    ctx.server.files = { g9: { chapters: G3_CH } };
-    await flatIntoG9(dom, ctx, [g3()[2], g3()[0]]);
-    ctx.server.files.g9.chapters = [{ startTime: 0, title: 'G one' }, { startTime: 30, title: 'G two' }, { startTime: 65, title: 'G three' }];
-    ctx.server.holdFiles = true;
-    const { mp } = holdMp(dom);
-    const l0 = ctx.loads.length;
-    for (const t of [59.5, 59.8, 60.05, 60.3]) await tick(dom, ctx, mp, t);
-    ctx.release(); await settleN(30);
-    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c2@65'], 'once, at the moved start');
-  }, { extraRows: g3() });
-  await boot(async (dom, ctx) => {
-    ctx.server.files = { g9: { chapters: G3_CH } };
-    await flatIntoG9(dom, ctx, [g3()[2], g3()[0]]);
-    ctx.server.failFiles = { g9: true }; ctx.server.holdFiles = true;
-    const { mp } = holdMp(dom);
-    const l0 = ctx.loads.length;
-    for (const t of [59.5, 59.8, 60.05, 60.3]) await tick(dom, ctx, mp, t);
-    ctx.release(); await settleN(30);
-    assert.deepStrictEqual(ctx.loads.slice(l0).map((l) => l.id + '@' + l.data.chapterStartSec), ['g9::c2@60'], 'the queued row, as listed');
-  }, { extraRows: g3() });
 });
 
 test('r3 (adversary S5): a continue arm (the "Jump back in" tile of the loaded chapter) after a FAILED return re-check never seeks', async () => {
