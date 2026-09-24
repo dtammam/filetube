@@ -10,9 +10,11 @@
 // strongest form. These tests RUN the real init; a reintroduced TDZ (or any
 // throw on the synchronous path) fails here outright.
 //
-// Scope honesty: hydration fetches hang forever (frame-one only), so the
-// CONFIRMED apply pass is not executed here -- its remove-vs-re-mount
-// semantics are locked structurally in capability-cache.test.js.
+// Scope honesty: by default hydration fetches hang forever (frame-one only), so
+// the CONFIRMED apply pass is not executed here -- its remove-vs-re-mount
+// semantics are locked structurally in capability-cache.test.js. (Some tests
+// route resolving fetches: the v1.196 ?tv= path, the v1.314 bell arms and the
+// v1.317 hydrated video path.)
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -45,8 +47,9 @@ function makeEl(tag) {
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
     // v1.314 gate r1: listeners are RECORDED (last per type) so a test can drive a
-    // click; every earlier test ignores them.
-    addEventListener(t, fn) { (el._l = el._l || {})[t] = fn; }, removeEventListener() {},
+    // click; every earlier test ignores them. v1.317 gate r2: the OPTIONS too (_lo),
+    // so a test can bind a listener's `{ signal }` by execution.
+    addEventListener(t, fn, opts) { (el._l = el._l || {})[t] = fn; (el._lo = el._lo || {})[t] = opts; }, removeEventListener() {},
     // v1.197: the tv path now runs the cog-injection + ambient setup, which use
     // insertAdjacentHTML (and, v1.312, an OFF-DOM sample canvas the engine creates
     // only on its first sample) - permissive stubs (the ambient engine never
@@ -97,6 +100,14 @@ test('harness: REAL_PLAYER_API is read from player.js (non-vacuous; a misspellin
   assert.ok(!REAL_PLAYER_API.has('ensureTheatreButton'), 'the misspelled writer is not on the real api');
 });
 
+// v1.317 gate r2 (adversary S3): the regex scan above misses an ES shorthand member or a
+// getter in the literal (a silent SUBSET); bind it to the RUNTIME api of the real player.js.
+test('harness: REAL_PLAYER_API equals the runtime api of the real player.js (jsdom)', () => {
+  const w = new (require('jsdom').JSDOM)('<body></body>', { url: 'http://localhost/', runScripts: 'outside-only' }).window;
+  w.eval(fs.readFileSync(path.join(REPO, 'public/js/player.js'), 'utf8'));
+  assert.deepStrictEqual([...REAL_PLAYER_API].sort(), Object.getOwnPropertyNames(w.FileTube.player).sort());
+});
+
 const FULL_SEED_ITEM = {
   id: 'vid1', title: 'T', filePath: '/downloads/Chan/vid.mp4', type: 'video',
   size: 123, addedAt: Date.now() - 1000, duration: 60,
@@ -136,7 +147,14 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
     title: '',
   };
   let capturedInit = null;
+  let capturedDestroy = null;
   const seedCalls = [];
+  // v1.317 gate r2: every AbortController the realm creates, so a test can name the
+  // one init() made (its first statement) and compare a listener's signal to it.
+  const abortControllers = [];
+  class RecordingAbortController extends AbortController {
+    constructor() { super(); abortControllers.push(this); }
+  }
   const windowShim = {
     FileTube: {
       player: new Proxy({
@@ -154,7 +172,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
         get(t, p) { if (p in t) return t[p]; return REAL_PLAYER_API.has(p) ? () => undefined : undefined; },
       }),
       consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
-      registerView: (name, handlers) => { if (name === 'watch') capturedInit = handlers.init; },
+      registerView: (name, handlers) => { if (name === 'watch') { capturedInit = handlers.init; capturedDestroy = handlers.destroy; } },
       navigate: () => {},
     },
     location: { pathname: '/watch.html', search, origin: 'http://x', href: 'http://x/watch.html' + search },
@@ -172,7 +190,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
     sessionStorage: global.sessionStorage, localStorage: global.sessionStorage,
     navigator: { userAgent: 'x', clipboard: {} },
     fetch: (url, opts) => { fetchUrls.push(String(url)); return fetchImpl ? fetchImpl(url, opts) : new Promise(() => {}); }, // default: hydration hangs (frame-one only)
-    console, URL, URLSearchParams, AbortController, Date, Math, JSON, Promise,
+    console, URL, URLSearchParams, AbortController: RecordingAbortController, Date, Math, JSON, Promise,
     setTimeout, clearTimeout, setInterval, clearInterval,
     Node: function Node() {}, requestAnimationFrame: windowShim.requestAnimationFrame,
     history: windowShim.history, location: windowShim.location,
@@ -189,7 +207,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');
-  return { init: capturedInit, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls, theaterCalls };
+  return { init: capturedInit, destroy: capturedDestroy, els, loc: windowShim.location, seedCalls, loadCalls, trackNavCalls, fetchUrls, theaterCalls, abortControllers };
 }
 
 const WARM_SUBSCRIBED_CACHE = {
@@ -614,7 +632,9 @@ function mountVideoPath() {
   realm.els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  const before = realm.abortControllers.length;
   realm.init(root);
+  realm.initController = realm.abortControllers[before]; // init()'s first statement creates the view's controller
   return realm;
 }
 
@@ -627,6 +647,27 @@ test('v1.317 gate W1: the video path CALLS the one theatre-button writer exactly
   // idempotent re-load once the detail resolves (the real player treats the second as a reparent)
   assert.equal(realm.loadCalls.length, 2, 'precondition: the media was mounted (seed adopt + step 4), got ' + realm.loadCalls.length);
   assert.equal(realm.theaterCalls.length, 1, 'ensureCogControlsInjected called window.FileTube.player.ensureTheaterButton() exactly once (fetched: ' + realm.fetchUrls.join(', ') + ')');
+});
+
+// ---- v1.317 gate r2 (qa W1 + adversary W1): watch's theatre click is bound on the VIEW
+// signal, by EXECUTION. After T1 music and watch share ONE button, so a watch listener
+// that outlives its view runs on every MUSIC theatre click and flips the persisted
+// ft-theater from the music page (measured by the adversary with a real-DOM drive). The
+// hydrated video path reaches setupTheatreToggle (the auto-created #theater-btn is
+// truthy); the shim records the listener options, so dropping `{ signal }` is red here.
+test('v1.317 gate r2 W1: setupTheatreToggle binds the #theater-btn click on init()\'s signal, and destroy() aborts it', async () => {
+  const realm = mountVideoPath();
+  for (let i = 0; i < 40 && realm.theaterCalls.length === 0; i++) await settle();
+  for (let i = 0; i < 12; i++) await settle();
+  const tb = realm.els.get('#theater-btn');
+  assert.ok(tb && tb._l && typeof tb._l.click === 'function', 'precondition: setupTheatreToggle ran and bound a click on #theater-btn');
+  assert.ok(realm.initController, 'precondition: init() created its view controller');
+  const opts = tb._lo.click;
+  assert.ok(opts && opts.signal, 'the theatre click is registered WITH a signal (got ' + JSON.stringify(opts) + ')');
+  assert.strictEqual(opts.signal, realm.initController.signal, 'it is init()\'s own view signal');
+  assert.equal(opts.signal.aborted, false, 'live while the view is up');
+  realm.destroy();
+  assert.equal(opts.signal.aborted, true, 'destroy() aborts it, so the listener dies with the view');
 });
 
 test('v1.317 gate W1: the ?tv= episode path CALLS the one theatre-button writer exactly once (initTvWatch runs the same cog sequence)', async () => {
@@ -653,17 +694,27 @@ test('v1.317 gate W1: the ?tv= episode path CALLS the one theatre-button writer 
 // view's aria-pressed (its own key). init() applies `.theater-mode` synchronously from
 // ft-theater; the button's aria is re-stamped in the SAME synchronous pass, so the pressed
 // look never disagrees with the class for the hydration RTT.
-test('v1.317 gate S2: init() re-stamps #theater-btn aria-pressed from ft-theater synchronously, beside the class apply', () => {
-  for (const [stored, expected] of [['1', 'true'], ['0', 'false'], [null, 'false']]) {
-    const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE });
-    if (stored !== null) global.sessionStorage.setItem('ft-theater', stored); // the sandbox's localStorage IS this shim
-    const writes = [];
-    const tb = makeEl('button'); tb.setAttribute = (k, v) => { writes.push([k, v]); };
-    realm.els.set('#theater-btn', tb); // the host is already in the document (a soft-nav from music)
-    tb.setAttribute('aria-pressed', 'true'); writes.length = 0; // music left it pressed
-    const root = makeEl('div');
-    root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
-    realm.init(root); // synchronous part only - no await
-    assert.deepEqual(writes, [['aria-pressed', expected]], `ft-theater=${stored}: aria re-stamped synchronously to ${expected}`);
+test('v1.317 gate S2: init() re-stamps #theater-btn aria-pressed from ft-theater synchronously, beside the class apply (?v= and ?tv=)', () => {
+  // gate r2 (adversary W2): the host is reachable ONLY through the document here - the
+  // docked host lives outside #view-root in every shell, so root.querySelector must not
+  // find it (a `root.querySelector('#theater-btn')` mutant makes AC12 inert in
+  // production). The ?tv= iteration binds that the re-stamp runs before the tv return.
+  for (const search of ['?v=vid1', '?tv=ep1']) {
+    for (const [stored, expected] of [['1', 'true'], ['0', 'false'], [null, 'false']]) {
+      const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, search });
+      if (stored !== null) global.sessionStorage.setItem('ft-theater', stored); // the sandbox's localStorage IS this shim
+      const writes = [];
+      const tb = makeEl('button'); tb.setAttribute = (k, v) => { writes.push([k, v]); };
+      realm.els.set('#theater-btn', tb); // the host is already in the document (a soft-nav from music)
+      tb.setAttribute('aria-pressed', 'true'); writes.length = 0; // music left it pressed
+      const root = makeEl('div');
+      root.querySelector = (sel) => {
+        if (sel === '#theater-btn') return null; // outside #view-root: only the document finds it
+        if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div'));
+        return realm.els.get(sel);
+      };
+      realm.init(root); // synchronous part only - no await
+      assert.deepEqual(writes, [['aria-pressed', expected]], `${search} ft-theater=${stored}: aria re-stamped synchronously to ${expected}`);
+    }
   }
 });

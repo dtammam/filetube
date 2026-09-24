@@ -249,8 +249,9 @@ test('v1.317 watch -> music: the button watch injected is REUSED (no second inje
       // DOCKED (the router docks the player on nav-away), the popcorn button is already in
       // it (watch's ensureCogControlsInjected through the same writer), and watch's own
       // click listener was bound on the WATCH view's signal, which the router aborted at
-      // the swap (setupTheatreToggle's `{ signal }` binding is source-locked in
-      // watch-chrome-ambient.test.js; this stands in for it on a real DOM).
+      // the swap (setupTheatreToggle's `{ signal }` binding is bound by EXECUTION in
+      // watch-init-behavioral.test.js "gate r2 W1": the real watch.js registers the click
+      // with init()'s signal and destroy() aborts it; this stands in for it on a real DOM).
       const t = D.getElementById('player-host-template');
       playerState.host = t.content.cloneNode(true).querySelector('#player-wrapper');
       D.getElementById('player-dock').appendChild(playerState.host);
