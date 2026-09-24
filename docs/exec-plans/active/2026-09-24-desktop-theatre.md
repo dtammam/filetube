@@ -332,6 +332,39 @@ Screenshots (session scratchpad `desktop-theatre/sbs/`): YouTube | BEFORE | AFTE
 `desktop-theatre-4x3-sbs-1280x720.png`; theatre | theatre + hand reopen
 `desktop-theatre-menutoggle-sbs-1280x720.png`.
 
+### D2 confirmation at the committed sha (fcede744)
+
+- Pre-commit hook (the whole unit suite, Node 22.23.1): tests 7117, pass 7117, fail 0.
+  Targeted before the commit (ambient*, watch*, theatre*, music-theater-toggle, music-ambient,
+  critter-mode, shell*, *parity*, tech-debt / exec-plans / docs censuses): 485 / 485.
+  `lint:css` TOTAL 0; overlay-containment clean; eslint exit 0.
+- Real Chromium on an archive sandbox of fcede744 (glow probe + `NAV_AWAY`, dark, ambient on,
+  playing, 1280x720, theatre persisted): theatre OFF by the real button -> the sidebar back
+  (player 598x377.3 at x 254, the theatre-off geometry), ON again -> collapsed (848.2x518,
+  bar at 24,651.2); SPA nav to `/` via `FileTube.navigate` -> `data-view` home, sidebar
+  `sidebar`, main `main-content`, margin-left 230px, `data-theatre-guide` gone; `history.back()`
+  to the watch page -> collapsed again, owned by the new view ("w2"); no storage key matching
+  side / guide / menu / collapse at any step; no page errors.
+
+### D2 guard mutants (fcede744 sandbox, `desktop-theatre-mutants-d2.py`): 14 of 14 killed
+
+| # | Mutant | Killed by |
+|---|---|---|
+| G1 | theatre OFF never restores | D2 "theatre ON ... theatre OFF restores" + "crossing the desktop breakpoint" |
+| G2 | no nav-away restore (abort hook removed) | D2 "leaving the watch view (destroy) restores" |
+| G3 | nav-away restore synchronous | same (the watch -> watch hop re-opens the bar) |
+| G4 | restore ignores the owner | theatreGuide owner + re-claim units; D2 "leaving the watch view" |
+| G5 | collapse takes over a USER-collapsed bar | theatreGuide "USER collapsed ... left alone"; D2 "USER collapsed ... never opened"; D2 "HAND toggle" |
+| G6 | a hand toggle does not release | D2 "HAND toggle" |
+| G7 | theatre writes `localStorage['ft-sidebar-collapsed']` (a persisted pref) | D2 "theatre ON ..." (the storage-write spy) |
+| G8 | collapse skips `mobile-open` (the trio desyncs from the menu toggle) | theatreGuide trio units; D2 tests x4 |
+| G9 | no desktop gate | D2 "theatre ON below it never collapses" |
+| G10 | no breakpoint-crossing listener | D2 "crossing the desktop breakpoint" |
+| G11 | the theatre click does not re-sync | D2 "theatre ON ... OFF restores ... ON again" |
+| G12 | init does not collapse (click-only) | D2 "theatre ON (persisted) collapses ... in init() itself" + two more |
+| G13 | the #menu-toggle listener not bound on the view signal | D2 "HAND toggle ... the listener dies with the view" |
+| G14 | restore drops the marker but leaves the classes | theatreGuide units; D2 tests x3 |
+
 ## Confirmation at the committed sha (894b25bd)
 
 - Theatre probe re-run with FT_ROOT on a `git archive 894b25bd` sandbox (session scratchpad
@@ -411,5 +444,12 @@ Probe mutants (behavioural evidence for the glow claim; session scratchpad
   (D4).
 - Tracker #247 (default view, very wide monitor, glow sized from the stage): pre-existing, out of
   scope.
+- D2: the collapse and the restore animate with the existing sidebar slide (`--dur-fast`, 0.15s);
+  on a cold theatre load the bar is collapsed in init(), after the shell's first paint, so a
+  slow device may show the bar for a frame before it slides out. The reserve follows the slide
+  through the observer (a frame or two at the pre-slide reserve after a click).
+- D2: the theatre-scoped marker lives on `<body>` in the persistent shell; if a view teardown
+  never ran, the bar would stay collapsed on the next page - still reopenable by hand, never
+  persisted (a reload restores it).
 - Not device-checked: headless Chromium only. Dean's desktop check owed (theatre at his monitor
   size, light and dark, ambient on, a 4:3 TV episode).
