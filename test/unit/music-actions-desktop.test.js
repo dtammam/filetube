@@ -101,6 +101,7 @@ function bootFactory(opts) {
   };
   w.fetchCurrentUser = () => Promise.resolve({ user: { role: 'admin' } });
   let watched = 0;
+  let channels = 0; // v1.317 (M1): onChannel calls
   let closed = 0;
   const menuEl = w.document.getElementById('menu');
   // Load skin-surface.js against this window (createExtrasMenu is standalone - no skins
@@ -120,8 +121,10 @@ function bootFactory(opts) {
     onMutated: () => {},
     hasWatchBack: () => !!opts.hasWatchBack,
     onWatch: () => { watched++; },
+    hasChannel: () => !!opts.hasChannel, // v1.317 (M1)
+    onChannel: () => { channels++; },
   });
-  return { w, menuEl, menu, calls, get watched() { return watched; }, get closed() { return closed; } };
+  return { w, menuEl, menu, calls, get watched() { return watched; }, get channels() { return channels; }, get closed() { return closed; } };
 }
 
 const settle = () => new Promise((r) => setImmediate(r));
@@ -161,4 +164,41 @@ test('desktop factory: dispatching Watch calls onWatch and closes; a stale fetch
   b.menuEl.hidden = true; // closed while the fetch is in flight
   await settle();
   assert.strictEqual(b.menuEl.querySelector('[data-skin-x="share"]'), null, 'a fetch that resolves after close does not paint');
+});
+
+// ---- v1.317 (M1): "Go to channel" beside Watch in the desktop menu -----------------------
+
+test('v1.317 (M1) music.js composes "Go to channel" into the desktop menu from the SAME hoisted predicate/tap the sticker uses', () => {
+  assert.match(MUSIC, /hasChannel:\s*channelVisible/, 'the row gates on the hoisted channelVisible');
+  assert.match(MUSIC, /onChannel:\s*channelTap/, 'the row navigates via the hoisted channelTap');
+  assert.match(MUSIC, /channel:\s*\{ visible: channelVisible, onTap: channelTap \}/, 'the sticker page 1 uses the same pair (one truth)');
+  const tap = /function channelTap\(\) \{([\s\S]*?)\n {4}\}/.exec(MUSIC);
+  assert.ok(tap, 'channelTap exists');
+  assert.match(tap[1], /'\/\?folder=' \+ encodeURIComponent\(folder\)/, 'the target is the home grid filtered by folder (D5) - a CROSS-route path, so the same-route no-op cannot swallow it');
+  assert.match(tap[1], /window\.FileTube\.navigate\(target\)/, 'through the SPA router, so the persistent player host keeps playing');
+});
+
+test('v1.317 (M1) desktop factory: hasChannel renders "Go to channel" right after Watch; dispatching it calls onChannel and closes', async () => {
+  const b = bootFactory({ hasWatchBack: true, hasChannel: true });
+  b.menuEl.hidden = false;
+  b.menu.open();
+  await settle();
+  const ch = b.menuEl.querySelector('[data-skin-x="channel"]');
+  assert.ok(ch, 'the channel row rendered');
+  assert.match(ch.textContent, /Go to channel/);
+  const watch = b.menuEl.querySelector('[data-skin-x="watch"]');
+  assert.strictEqual(watch.nextElementSibling, ch, 'beside Watch (immediately after it)');
+  b.menu.handleAction('channel', ch);
+  assert.strictEqual(b.channels, 1, 'onChannel navigated');
+  assert.strictEqual(b.watched, 0, 'and not Watch');
+  assert.strictEqual(b.closed, 1, 'menu closed on a navigating action');
+});
+
+test('v1.317 (M1) desktop factory: "Go to channel" is cfg-gated - absent when hasChannel is false, and the Watch row is unaffected', async () => {
+  const b = bootFactory({ hasWatchBack: true, hasChannel: false });
+  b.menuEl.hidden = false;
+  b.menu.open();
+  await settle();
+  assert.strictEqual(b.menuEl.querySelector('[data-skin-x="channel"]'), null, 'no channel row when the surface says no channel');
+  assert.ok(b.menuEl.querySelector('[data-skin-x="watch"]'), 'Watch still present');
 });

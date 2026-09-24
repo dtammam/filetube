@@ -10935,6 +10935,42 @@ html[data-modern="on"] .video-uploader {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* v1.317 (M1): the now-playing ARTIST LINE is a real <button> on every renderer (the desktop
+   panel .mnp-sub, the Apple/Spotify skins' .mms-sub, the iPod/Zune LCD .ip-artist, the album
+   drill's .music-drill-artist) and the song row's artist name (.music-song-artist, inline).
+   ONE reset at ZERO specificity (:where) strips the UA button chrome, so every existing
+   consumer rule (font-size, color, margin, the per-skin palettes) keeps winning at any
+   order - no hand-copied per-skin override to drift. `font: inherit` here loses to any
+   consumer font-size for the same reason. */
+:where(button.mnp-sub, button.mms-sub, button.ip-artist, button.music-drill-artist) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+:where(button.music-song-artist) {
+  display: inline;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.music-song-artist:hover, .mnp-sub[data-artist]:hover, .music-drill-artist[data-artist]:hover { text-decoration: underline; }
 /* v1.105: the podcast now-playing show-notes block. Descriptions can be long
    (64KB store cap), so cap the height and let it scroll rather than push the
    up-next list off-screen. Plain text (stripped at parse + set via textContent). */
@@ -10994,6 +11030,9 @@ html[data-modern="on"] .video-uploader {
 .mnp-queue-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .mnp-queue-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mnp-queue-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* v1.317 (M2): each row's own length, a trailing right column (the .music-song-duration
+   pattern); absent when the view has no duration (podcasts render no span). */
+.mnp-queue-dur { flex: none; font-size: var(--fs-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 /* ===================== MOBILE MUSIC SKINS (Dean's wave) =====================
    A new full-screen PRESENTATION for a music item on a phone, in the user's chosen
@@ -11332,6 +11371,7 @@ html[data-modern="on"] .video-uploader {
   .mms-spotify .mms-rtext{ display:flex; flex-direction:column; min-width:0; flex:1; }
   .mms-spotify .mms-rt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
   .mms-spotify .mms-ra{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-sm); color:var(--mms-sp-dim); margin-top:var(--space-1); }
+  .mms-spotify .mms-rd{ flex:none; font-size:var(--fs-sm); color:var(--mms-sp-dim); font-variant-numeric:tabular-nums; } /* v1.317 (M2): the thumb row's own length */
   .mms-spotify .mms-row.is-played .mms-rt{ color:var(--mms-sp-dim); }
   .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); font-weight:var(--fw-bold); }
 
