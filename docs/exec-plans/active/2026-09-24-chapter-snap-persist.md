@@ -807,3 +807,320 @@ Scratch (outside the worktree): `/tmp/claude-1000/.../scratchpad/qa-csp/` (probe
 sb2/test/unit/qa-scratch-flat.test.js with the two repros).
 
 Gate: CHANGES r1 @5d1e9ada — qa
+
+## Gate r2 - security-brief (@20f94dea)
+
+**Could NOT complete (no Bash):** I could not run `git diff` or `git log` and could not check the
+tree is clean, so I could not separate the branch's own commits (aba8633e, 7fe73cdf, c49a3d73)
+from the two main merges (58753b65, ade79b21) line by line. So I did NOT verify "player.js / server
+/ lib untouched by the branch's own commits". I read the files as they are at the head. I confirmed
+the branch ref = `20f94dea2ecc...` (the ref file). Out of scope, as briefed: the merged-in v1.324 /
+v1.325 main code (`menuTotal`, `MENU_RECENT_URL`, `letters:`).
+
+Re-verified at 20f94dea (public/js/music.js; I traced each path in the code):
+- **Still one authenticated read route; no new request target.** music.js now has four
+  `fetchJson('/api/videos/' + encodeURIComponent(...))` calls: the return re-check (:1905), the new
+  lazy verify (:1924) and the two existing ones (:2864, :3854). The new one is the same
+  same-origin route. `lib/media/routes.js:732/739` still 404s a missing item and one that fails
+  `mediaVisibleTo` alike. I compared the storage and network calls (`setItem`, `method:`,
+  `fetch(`, `sendBeacon`, `caches.`, `document.cookie`) with my r1 list. The branch adds no new
+  storage write, no new POST/DELETE and no new endpoint.
+- **No polling, and the lazy check cannot loop.** `verifyChapterFileThenPlay` (:1919) runs only
+  from `playAt` (:3467), which only a user pick or a queue advance reaches. Nothing re-arms it
+  with a timer.
+  - Success arm: `delete unverifiedChapterFiles[baseId]` runs BEFORE `playAt(idx, opts)` (:1926
+    then :1933). So the nested `playAt` -> `verifyChapterFileThenPlay` returns false at :1922 and
+    loads the row. Your own mutant R15 (the clear removed) shows the loop this delete prevents.
+  - Failure arm: it deletes the flag, calls `playAt` synchronously (the nested verify again returns
+    false), and only THEN re-sets the flag (:1938-1941). So a failure costs one GET plus one
+    play, and the retry waits for the next `playAt`. A superseded pick (`gen !== playGen`) or a
+    dropped row (`idx < 0`) returns without calling `playAt`.
+  - Upper bound: markings come only from `markOtherChapterFilesUnverified`, which runs once per
+    return over the queue at that moment. On success the check fires at most once per file per
+    return. Only when the requests keep failing (offline, or a file that now 404s) does it fire
+    once per `playAt` of that file's rows, never on its own.
+- **404 (restricted or deleted) applies nothing and does not block playback.** `fetchJson` throws
+  on `!res.ok`. The catch arm applies nothing and plays the row as queued (the player's own
+  `/track` request then gets the server's answer). A successful but empty or malformed body gives
+  `chapters = null`: nothing is applied and the row plays. The return re-check's catch (:1911)
+  clears the in-flight flag and re-marks the file, with no apply.
+- **The listeners and liveness are unchanged from r1.** Both still register with `{ signal }`,
+  and `signal.aborted` is checked after each await (:1907, :1925, :1935).
+- **Strings are still escaped.** The new repaint paths (`renderSongListProgressive`, and
+  `renderDrillView` for flat or partial drills) render rows only through `buildSongRowHtml`
+  (`escapeMusicHtml`, :219). The drill header and sticky bar also escape (`escapeMusicHtml`,
+  :455-461, :500). Numbers pass through `Number`/`isFinite`.
+- **`opts.pick` gating (P1) is pure client logic.** It adds a condition in front of
+  `seekAdoptedChapter` (:3112), which now only sets `currentTime` and calls `play()`.
+  `isAdoptingLoad` only reads the player's `isAdoptLoad` global. None of this adds a write.
+
+Findings:
+- **INFO-4 (new): a verify that never resolves swallows that one pick.** `fetchJson` has no
+  timeout. If the GET hangs, the pick waits forever. The user's next pick bumps `playGen` and asks
+  again (the file is still marked), so there is no deadlock and no loop. It only affects the local
+  user's availability.
+- INFO-1 / INFO-2 / INFO-3 from r1 still stand as written. INFO-1 does not apply to the verify
+  path, which plays after one apply and never re-checks.
+
+No CRITICAL / HIGH / MEDIUM / LOW.
+
+Gate: APPROVED r2 @20f94dea — security-brief
+
+## Gate r2 - adversary (@20f94dea)
+
+Delta review of the r1 fix (aba8633e, 7fe73cdf, c49a3d73), in /tmp sandboxes from `git archive
+20f94dea` (AFTER) and `git archive 12e16523` (BEFORE = the r1 code + the v1.324 merge). Node
+22.23.1.
+
+Instruments:
+- Tests: the binding set (chapter-snap-resume, music-chapter-playback, chapter-snap-client,
+  music-chapter-reflect, integration chapter-snap-return-flat) gave `# tests 97 # pass 97 # fail
+  0`. `test/unit/music*.test.js chapter* skin* listen* pocket*` gave `# tests 835 # pass 835 #
+  fail 0`. `test/integration/music-pocket-menus*.test.js chapter-snap*.test.js` gave `# tests 94
+  # pass 94 # fail 0`.
+- eslint on music.js and the three touched test files: exit 0.
+- No change to player.js, server.js or lib from the branch's own commits: every commit
+  12e16523..20f94dea shows an empty `--stat` for those paths, and `git diff 2be1ebb2 20f94dea --
+  public/js/player.js server.js lib` (main v1.325.0 against the head) is empty. The 25 lines in
+  `7482e432..20f94dea` all came in with the two main merges.
+
+r1 findings, re-measured:
+1. **CRITICAL 1: FIXED as prescribed.** I re-ran my real-Chromium probe (a 2000 s mp3 with 8
+   chapters, 1440x900). In every row the playhead was at ~500 (chapter 3) before the step.
+
+   | Path | BEFORE 12e16523 | AFTER 20f94dea |
+   |---|---|---|
+   | history BACK to `?play=<id>::c0` | t 3.4, row `c0`, stored 9.38 | t 507.9, row `c2`, stored 513.93 |
+   | Home Continue card (a fresh navigate to `?play=` for the loaded chapter) | t 3.4, stored 8.39 | t 507.5, stored 512.50 |
+   | "Jump back in" tile naming the loaded chapter (tiles `["c0"]`) | t 15.7, stored 20.72 | t 505.4, stored 510.44 |
+   | Listen re-mount (BACK to `?play=<video>&listen=1`) | t 3.4 | t 507.5 |
+   | dock-return (`?nowplaying=1`) | t 507.4 | t 507.5 |
+
+   The builder's harness re-mount test is RED on the mutant where the continue arm passes `pick`
+   (B1).
+2. **WARNING 2: FIXED.** I re-ran my real-server integration repro (Liked Songs `[Track A]`,
+   Autoplay off, Track B moved 900 -> 905 elsewhere, then the page comes back).
+
+   | | BEFORE | AFTER |
+   |---|---|---|
+   | requests on return | `/api/videos/djmix1`, `/api/music?sort=newest&limit=1000` | `/api/videos/djmix1` only |
+   | at the new segment end (905) | pauses +0 (plays on) | pauses +1 |
+   | onNext | armed | not armed |
+
+3. **WARNING 3: FIXED.** Each of my r1 mutants is now RED against the binding set: A15 (the album
+   fallback), A1 (the catch path's in-flight reset) and A2 (the post-await liveness check), 1 each.
+4. **SUGGESTION 4: FIXED.** A11 (a 1 s start tolerance) is RED (r1 S4).
+5. **SUGGESTION 5: done.** The dead code is removed.
+
+Threading of `pick` (a whole-file grep of every `playAt` / `playTrackInAlbum` / `loadTrack` /
+`playRowAt` caller):
+- Passing `pick`: `onSelectIndex`, the up-next row, `playRowAt` (both arms, with
+  `playTrackInAlbum` threading it), `playFromMenu` (also used by Shuffle Songs), and Prev/Next.
+  The verify path forwards the caller's own `opts`.
+- Not passing `pick`: `playTrackFromContinue` (both arms), `playListenItem`, the drill Play and
+  Shuffle buttons, the toolbar shuffle, the station continuations and the flat segment-end
+  advance.
+- No pick path forgets it, and no continue path passes it. The flat `playTrackFromContinue` arm
+  (B2) can never carry a chapter, because projected tracks always have an `albumKey`
+  (`albumKeyFor`).
+
+New findings:
+
+6. **WARNING - four arms the fix claims are unbound; each mutant stays green on the full binding
+   set (97/97).** The code is right today (measured below). But each arm guards the CRITICAL's
+   class or a claimed P3 behavior, so a regression would ship green:
+   - **B3:** `playListenItem` passing `pick: true`. This re-opens the CRITICAL on the Listen path
+     (r1 code: t 3.4 above). AC13 names "a Listen play" but binds only the `?play=` album arm.
+   - **B6:** the verify path's `.catch` no longer plays the row. The plan says "a failed verify
+     plays the row as queued"; with the mutant, an offline pick of an unverified file is swallowed.
+   - **B8:** the `.catch` ignores `playGen`. A failure arriving late then starts the OLDER pick
+     over a newer one (the v1.104 wrong-track class). R16 binds only the `.then` arm.
+   - **B5:** the verify path's post-await `signal.aborted` check removed. A late answer would
+     load a row from a dead view.
+
+   Prescription, ready-made: /tmp/adv-csp/sb2/test/unit/zz-adv-r2.test.js holds four tests in the
+   builder's own harness (a `failFiles` hook added to its fetch stub). They pass at 20f94dea (the
+   code behaves: a failed verify plays `g9::c1`; a late failure leaves `f1::c2` with 0 `g9` loads;
+   0 loads after destroy; the Listen re-mount keeps t 130, 0 seeks, 0 plays). They go RED on B6,
+   B8, B5 and B3 respectively (control `# fail 0`). Folding them in is a test-only change.
+
+7. **SUGGESTION - bookkeeping and redraw mutants that survive.**
+   - B7: a failed verify no longer re-marks the file unverified.
+   - B11: the return no longer deletes the checked file from the unverified set, which costs one
+     redundant GET.
+   - B12: the flat redraw always uses `renderDrillView`, even with `drill == null`. The rows
+     still pass, but nothing asserts that no drill header is drawn over a flat list.
+
+8. **SUGGESTION (reasoned, not measured) - a SEARCHED album drill is a partial single-file
+   drill.** `loadSongs` folds `search` into the drill query, so `chapterAlbumBaseId(queue)` still
+   names the file and `ownsDrill` is true. A time-only remote move then reads as a count change
+   when the highest match index + 1 differs from the count, and it costs one re-list of the same
+   searched drill. That is harmless, but the "complete list" premise in the P2 comment is not
+   always true. A related case: c49a3d73 repaints any `drill` holding the file's rows, including
+   `playTrackInAlbum`'s miss path, where `drill` stays set over a flat one-row list.
+
+9. **SUGGESTION (reasoned) - the verify GET has no timeout.** The first pick of an unverified file
+   after a return waits one round trip before the stream request starts. On a hung socket it
+   waits until the fetch settles. This is the same property security-brief noted as INFO-2 for
+   the return re-check.
+
+Not a finding: removing the apply-generation check from the verify path (R18). An apply to the
+same file inside the verify window needs a local save of a file that is not playing, landing
+within one GET. I could not build it without a hung request.
+
+Tree state: only this section was appended (after security-brief's r2 section). Scratch is in
+/tmp/adv-csp (probe2.js, mut2.js with m3/m4/m5, sandboxes r2, r1b and sb2).
+
+Gate: CHANGES r2 @20f94dea — adversary
+
+## Gate r2 - qa (@20f94dea)
+
+Delta re-confirmation of my r1 findings, plus a review of the r1-fix code (aba8633e, 7fe73cdf,
+c49a3d73). The branch's own change against main is `git diff 2be1ebb2 20f94dea`: music.js, two
+test files, the plan and the tracker. `-- public/js/player.js server.js lib` is 0 lines. Node
+22.23.1, FILETUBE_TEST_FFMPEG set. Every run below finished before 1a0b1a10 landed (18:34:53 UTC;
+my full unit run ended 18:26), so each one ran against 20f94dea content.
+
+Instruments:
+- `node --test test/unit/chapter-snap-resume.test.js`: `# tests 29 # pass 29 # fail 0`.
+- `test/integration/chapter-snap-return-flat.test.js`: `# tests 2 # pass 2 # fail 0`.
+- `test/unit/chapter-snap*.test.js music*.test.js *pocket*.test.js player-adopt*.test.js
+  *census*.test.js test/integration/chapter-snap*.test.js *pocket*.test.js`: `# tests 862 # pass
+  862 # fail 0 # skipped 0`.
+- `npm run test:unit`: `# tests 7354 # pass 7354 # fail 0`. The r1 release-ledger failure is gone
+  now that main is merged.
+- `lint:css`: `TOTAL 0`. `lint:overlay`: `clean (0 violations)`. `eslint .`: `6 problems (0 errors,
+  6 warnings)`, the same 6 in common.js. eslint on the four touched source/test files: exit 0.
+- `check-markers.sh`: exit 1, with 2 findings: `stale approval @7482e432` (the design line) and
+  `stale approval @5d1e9ada` (security-brief r1). Both are the rule that an active plan's approval
+  goes stale once code moves on. In a scratch clone of 20f94dea I moved the plan to completed/ with
+  a Shipped status, and check-markers then printed `clean (docs/exec-plans)`, exit 0. So these two
+  clear at close-out and do not block. See W4 below.
+- Real Chromium (chromium-1234; `git archive 20f94dea` sandbox; the builder's `probe.js` and the
+  adversary's `adv-probe.js`, byte-identical copies). Flags are listed per run.
+
+  | Drive | AFTER 20f94dea |
+  |---|---|
+  | `PROBE_REAL=1 PROBE_STALE=1 PROBE_RELIST=1` (390x844): tap chapter 1, then chapter 3 after 478 -> 498 | t 500.4, row `::c2` |
+  | the same after `Page.reload` | t 502.7 `::c2` |
+  | `PROBE_REAL=1 PROBE_268=1`: re-tap the loaded chapter 3 (playhead 493.4 in `::c1`) | t 500.4, playing, `::c2` |
+  | `PROBE_REAL=1 PROBE_269=1`: B's requests on return / spans / B taps chapter 3 | 1 / 4:15, 3:44 (new) / t 500.3 `::c2` |
+  | `PROBE_REAL=1 PROBE_FLAT=1`: Liked Songs `[c1]`, remote move 478 -> 498, then the page returns | requests `["/api/videos/<id>"]` only; crumb "Liked Songs", rows `[c1]`; at the new end t 497.8, paused (K4) |
+  | adversary `MODE=268` (1440x900): `?play=<id>::c0`, roll to 500, Home, then `history.back()` | t 508, row `c2`; stored progress 513.98 |
+
+My r1 findings, re-verified with my own repros. Each ran in the builder's harness, in
+`sbr2/test/unit/qa-r2-scratch.test.js` on the 20f94dea sandbox:
+
+1. **CRITICAL (`?play=` re-mount seek): FIXED as prescribed.**
+   - My r1 re-init repro now prints `t=130 newSeeks=[] newPlays=0`. At r1 it printed `t=0
+     newSeeks=[0] newPlays=1`.
+   - The "Jump back in" tile naming the loaded chapter keeps t 130 with no seek. So does the drill
+     Play button.
+   - Control: a row tap on the loaded chapter is a pick and still seeks, `newSeeks=[0]`.
+   - The real-Chromium BACK drive keeps t 508 and stored progress 513.98.
+   - By grep, `pick` is passed only by the pick/nav callers. The adversary's r2 table covers the
+     Home Continue, Listen and dock-return arms as well.
+   - The adopt test now calls player.js's own `isAdoptLoad`, which is a page global:
+     `<script src="/js/player.js">` loads it as a classic script in all 10 shells, and the function
+     is top-level (:116). So S5 is done.
+2. **W2 (flat queue re-listed): FIXED as prescribed.** `[f1::c1, g9::c0]` from the real engine's
+   `menu.onPlay` after a remote move and a return:
+   - fetches: `["GET /api/videos/f1"]` only;
+   - rows: `["f1::c1","g9::c0"]`;
+   - crumb: "Recently Played", still visible;
+   - toasts: `[]`;
+   - the f1::c1 row is patched in place (0:45);
+   - `onNext` loads `g9::c0`.
+
+   The real-Chromium FLAT drive agrees. The builder's point about the toast also checks out:
+   `render()` catches its own failures and never rejects, so that toast arm cannot be reached from
+   a failed re-list. My r1 toast scenario was wrong.
+3. **W3 (other queued files): FIXED differently, and the change is sound.** The lazy check runs on
+   the first pick. The queue was `[f1::c0, g9::c0..c2]` with g9 moved elsewhere to 40:
+   - the return asks only `/api/videos/f1`;
+   - the tap on g9::c1 asks `/api/videos/g9` once and loads `chapterStartSec 40` (t=40);
+   - a second pick of g9 asks nothing.
+
+   The corrected gap (b) text matches the code. But the lazy check covers only files that were in
+   the QUEUE at the return, not the pocket-menu caches (new finding N1).
+4. **W4 (unbound design line): FIXED as prescribed** (`@7482e432`). My own prescription was
+   incomplete: check-markers rule 2 flags a design sha as stale once code moves past it, so this
+   line trips check-markers while the plan is active, whatever sha it names. It is clean after the
+   move to completed/ (measured above), which is the only point where flow.md requires a clean run
+   (before push). Not a finding.
+5. **Suggestions S5-S8:** all done as written. S6 is recorded honestly as an untested reading
+   rather than a claim.
+
+New findings in the r1-fix code:
+
+N1. **WARNING - after a return, a pick from the cached pocket Songs, Genres or artist menus of a
+   chaptered file that was not in the queue at that return plays the file's OLD start.** It makes
+   no request, so the lazy verify never runs.
+   - `menuSongsPromise` and `menuArtistCache` are cached once per view. `invalidateMenuData()`
+     runs only when an apply lands, i.e. only when the PLAYING file changed.
+     `markOtherChapterFilesUnverified` marks only files in `queue`.
+   - My repro in the builder's harness: load the pocket Songs level (g9::c1 at 30). Pick an f1-only
+     list, so g9 leaves the queue. Move g9::c1 to 40 elsewhere, then return. The return asks
+     `/api/videos/f1` only, and the Songs level is not re-fetched (it still says 30). Picking g9::c1
+     from that level gives `gets=[]` and `load start=30`.
+   - With the same pick while g9 WAS queued at the return, it asks and loads 40, so the verify
+     path works where it is reached.
+   - This is pre-existing, not a regression. But it is Dean's own setup (a pocket skin in a PWA
+     left open), and it is the headline symptom (a start moved later -> the previous song's tail).
+     #269's CLOSED text says it covers "the pocket menus via `invalidateMenuData`", which is true
+     only for the playing file, and #270 does not list this case.
+   - Prescription, either of two:
+     - (a) The small code change: flip the set to "verified since the last return". Every return
+       clears it (after the one re-check), and `verifyChapterFileThenPlay` asks for any chapter file
+       not verified since then. That covers cached menu rows and every other entry at once, and
+       `markOtherChapterFilesUnverified` goes away. Bind it with the repro above: red today, then
+       one GET and start 40.
+     - (b) Docs only: correct #269's closing text and add the case to #270 as (e).
+
+     Either one closes this for me.
+N2. **SUGGESTION - #270 (c) says a first pick into an unverified file costs "a latency, never a
+   wrong start". On the flat segment-end advance, that latency is audible bleed plus repeated
+   requests.** My repro, in the builder's harness:
+   - Setup: a flat list `[f1::c0, g9::c1]`, then a return, which marks g9. g9's GET is held while
+     timeupdates run 59.5 -> 61.4 across f1::c0's end (60).
+   - Result: 5 GETs of `/api/videos/g9` (one per in-band tick, because every tick in the 1.25 s
+     band re-calls `playAt`, which bumps `playGen` and starts a new verify), 0 loads, 0 pauses. f1
+     plays on into its own next chapter until the answer lands. Then exactly one load, `g9::c1`, so
+     the sequence converges with no double load.
+   - Control without a return: it advances on the first in-band tick.
+   - On a LAN the round trip is under one tick, so this is usually invisible. Fix the #270 (c)
+     wording (the K4 "own segment only" promise lapses for one round trip). Optionally skip starting
+     a second verify for a file whose verify is already in flight.
+N3. **SUGGESTION - tracker #268's CLOSED text is stale.** It still describes the r2 mechanism ("...
+   seeks ... ONLY when the playhead is outside the row's current bounds") without the r1 limit that
+   only a pick or nav (`opts.pick`) re-seeks. #269's row was updated; #268's needs the same line.
+N4. **SUGGESTION - the P2 comment in `applySnappedChapterTimes` is slightly off.** It says "Only
+   the album drill holds the file's COMPLETE chapter list ... Any other queue (... a search) ... is
+   patched IN PLACE". A search inside an album drill is still `ownsDrill`, so it is re-listed (the
+   same searched drill comes back, which is harmless). I agree with adversary r2 finding 8. Also,
+   the unit test named "an album drill holding only SOME of the file's chapters" drives a MIXED drill
+   (f1 + g9), not a partial single-file drill. The name overstates what it binds.
+
+On the adversary's r2 finding 6 (four unbound verify/Listen arms): HEAD has since moved to
+1a0b1a10, a test-only commit (+105 lines in chapter-snap-resume.test.js) that says it binds those
+arms. It is outside this verdict's sha and I have not reviewed it.
+
+Comment accuracy: I checked every comment the r1 fix touched: `loadTrack`'s pick/adopt block,
+`seekAdoptedChapter`, `isAdoptingLoad`, the P2 block, the flat-redraw and drill-repaint comments,
+the verify/unverified block, the `playTrackInAlbum` pick line and the reflect-test lock. Each
+matches the code, except N4. The corrected claims in the plan (AC12, the Build record correction,
+gap (b)) match the code and my repros. #267 is unchanged and correctly OPEN. #270 is OPEN and
+well-formed (six columns; tech-debt-census green), and its (a) through (d) are accurate apart from
+the wording in N2.
+
+Security (standing section): the only new request is one more same-origin GET to the same
+RBAC-gated read (`/api/videos/<encodeURIComponent(baseId)>`, baseId taken from server-minted queue
+ids), on a pick. There is no new write, route, storage or logging. On failure the pick plays the
+queued row and applies nothing. No new exposure.
+
+Tree state: only this section was appended, after the r2 sections of security-brief and adversary.
+HEAD is 1a0b1a10, which the Architect added during this review, and this verdict binds to 20f94dea
+as briefed. Scratch is in `/tmp/claude-1000/.../scratchpad/qa-csp/`: `probe-r2.out`, and
+`sbr2/test/unit/qa-r2-scratch.test.js` with QA-A to QA-F.
+
+Gate: CHANGES r2 @20f94dea — qa
