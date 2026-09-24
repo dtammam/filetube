@@ -297,3 +297,15 @@ test('r1 Q6: a song played to its END (the player\'s ended arm writes position 0
   } finally { userStore.setRestrictions(member.user.id, []); }
 });
 
+
+test('r2 (security-brief INFO 2): ANOTHER user\'s finished play (their position-0 row) is absent from the caller\'s include=finished read', async () => {
+  const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
+  const t = songs.find((x) => x.artist === 'Yex Artist');
+  assert.ok(t, 'precondition: a track nobody else played');
+  await played(t.id, memberFetch, 90);
+  await played(t.id, memberFetch, 0); // the member plays it to its end
+  const mine = (await realApi('/api/music?filter=recent-listening&include=finished&limit=200', memberFetch)).items;
+  assert.ok(mine.some((x) => x.id === t.id), 'control: the member sees their own finished play');
+  const theirs = (await realApi('/api/music?filter=recent-listening&include=finished&limit=200')).items;
+  assert.ok(!theirs.some((x) => x.id === t.id), 'the admin never gets the member\'s row');
+});

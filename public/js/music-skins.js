@@ -477,9 +477,16 @@
   // rule, same-origin paths only (never a remote avatar). Empty = no art in the library.
   // gate r1: a RANDOM sample across the whole album list (Dean asked for random covers - the
   // first 60 by title were all one letter), and a same-origin PATH only: one '/' followed by
-  // neither '/' nor '\' ('//host' and '/\host' both resolve off-site).
+  // neither '/' nor '\'. Gate r2 (security-brief INFO 1, adversary S-a): the prefix rule alone
+  // was bypassable - the URL parser drops tab / CR / LF, so '/\t/host' became '//host'. A path
+  // now also has to RESOLVE on the origin it is resolved against (a fixed placeholder origin, so
+  // the rule is the same in every window, pop-out included).
   var COVER_POOL_MAX = 60;
-  function sameOriginPath(u) { return typeof u === 'string' && u.charAt(0) === '/' && u.length > 1 && u.charAt(1) !== '/' && u.charAt(1) !== '\\'; }
+  var PATH_BASE = 'http://pocket-menu.invalid';
+  function sameOriginPath(u) {
+    if (typeof u !== 'string' || u.charAt(0) !== '/' || u.length < 2 || u.charAt(1) === '/' || u.charAt(1) === '\\') return false;
+    try { return new URL(u, PATH_BASE).origin === PATH_BASE; } catch (_) { return false; }
+  }
   function menuCoverPool(tracks, artFor, rand) {
     var seen = Object.create(null);
     var all = [];

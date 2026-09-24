@@ -588,11 +588,20 @@
     // nothing, and the desktop pop-out's menu can sit open while the main window edits. Returns
     // true when the level ON SCREEN just went stale (the caller re-draws instead of acting on it).
     function readVer(fn) { try { return (typeof fn === 'function') ? fn() : null; } catch (_) { return null; } }
+    // gate r2 (qa NEW-1 = adversary W): a re-loaded level puts its highlight back on the SAME item
+    // (a track id / a drill node's key), never on the same INDEX - a recency list re-orders itself.
+    function identityOf(it) {
+      if (!it) return null;
+      if (it.id != null) return 'id:' + it.id;
+      if (it.node) return 'node:' + it.node.type + ':' + (it.node.key == null ? '' : it.node.key) + ':' + (it.node.artist == null ? '' : it.node.artist);
+      return 'label:' + it.label;
+    }
     function markStale(pred) {
       stack.forEach(function (l) {
         l.panes.forEach(function (p) {
           if (p.node.type === 'main' || SK.menuStaticItems(p.node, {})) return;
           if (!pred(p)) return;
+          if (p.items.length) p.anchor = identityOf(p.items[p.cursor]);
           p.state = 'idle'; p.token += 1; p.items = []; p.tracks = null; p.runs = null;
         });
       });
@@ -635,6 +644,12 @@
         pane.letters = !!(res && res.letters); // the VIEW says these rows are in label order
         pane.runs = null;
         pane.state = pane.items.length ? 'ready' : 'empty';
+        // the highlight goes back on the item it was on (the list being played from: on what plays)
+        var want = pane.playing && currentId() ? 'id:' + currentId() : pane.anchor;
+        pane.anchor = null;
+        var at = -1;
+        if (want) for (var ai = 0; ai < pane.items.length; ai++) { if (identityOf(pane.items[ai]) === want) { at = ai; break; } }
+        if (at >= 0) { pane.cursor = at; pane.center = true; }
         pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
         if (isVisible(pane)) render();
       }, function () {
@@ -1122,8 +1137,10 @@
       if (cur === lastCurrent) return;
       lastCurrent = cur;
       // gate r1 (qa S8): a new track is a new listen - the "recent" lists NOT on screen re-load
-      // when next shown (the one on screen keeps its rows under your finger).
-      markStale(function (p) { return !isVisible(p) && (p.node.type === 'recentArtists' || (p.node.type === 'playlist' && p.node.key === 'recent-played')); });
+      // when next shown (the one on screen keeps its rows under your finger), their highlight put
+      // back by identity (gate r2). The list being PLAYED FROM is never re-loaded here: it mirrors
+      // the queue, and the follow below moves its highlight onto what plays (the K1 rule).
+      markStale(function (p) { return !isVisible(p) && !p.playing && (p.node.type === 'recentArtists' || (p.node.type === 'playlist' && p.node.key === 'recent-played')); });
       if (!cur) return;
       stack.forEach(function (l) {
         l.panes.forEach(function (p) {
@@ -1185,8 +1202,6 @@
         switchPivot(lvl.pane + dir);
         return true;
       },
-      // One wheel detent. `fast` = the engine's own speed band said this detent was fast. Returns
-      // how many LETTERS the detent crossed (the engine ticks the haptic once per letter).
       // A new wheel gesture: the fast-move count starts again (never latched across a lift).
       onGestureStart: function () { lm.fastRun = 0; },
       // ONE call per pointermove in cursor mode: was this move fast (the engine's own band)?
@@ -2348,8 +2363,8 @@
         while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
           var sign = st.accum > 0 ? 1 : -1;
           st.moved = true;
-          // pocket menus: the SAME rotary step, onto the menu - with the step's speed band, which
-          // arms the quick-scroll letter mode on a long alphabetical list (the return = letters crossed)
+          // pocket menus: the SAME rotary step, onto the menu (letter mode was armed per MOVE by
+          // noteMove above; the return = letters crossed, one at most per move)
           if (st.menu && pocket) letters += (pocket.moveCursor(sign * mult) || 0);
           else setWheelCursor(wheelCursorRow + sign * mult, false);
           st.accum -= sign * WHEEL_STEP_DEG;
