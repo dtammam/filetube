@@ -410,3 +410,253 @@ shape while Building; the gate re-binds it).
 ## Out of scope (say so at intake)
 A dedicated channel page/route; per-user bells; Pause's page reload (same shape as B1, later);
 podcast chapter likes; mobile music ambient (desktop first per Dean).
+
+## Gate r1 - qa (@35a3bb1d)
+
+Reviewed `git diff main...HEAD` at 35a3bb1d (13 files, +1043/-21) against the register (D5-D8),
+"### M1"/"### M2", the acceptance lines and the build record. Everything below marked
+VERIFIED was run in the worktree (or a `git archive 35a3bb1d` sandbox, `/tmp/qa-m1m2-UQw6`);
+nothing here is "should work" unless it says so.
+
+### Instruments (verbatim)
+
+- `npm run lint`: `✖ 7 problems (0 errors, 7 warnings)` - the 7 pre-existing `no-unused-vars`
+  warnings in common.js (setTheme, homeFeedEnabled, setIconSet, addToQueue, openTranscriptFor,
+  showChaptersEditor, shareExternalUrl). 0 errors.
+- `npm run lint:css`: `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`.
+- `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`.
+- `bash .harness/lib/check-markers.sh`: `✗ docs/exec-plans/active/2026-09-23-music-channel-chapters-wave.md:
+  stale approval @ef42a6d4 - reviewed code changed since; re-gate` / `check-markers: 1 issue(s)
+  found` (the tolerated Building shape: the design line is bound to the pre-build sha; the
+  gate close re-binds it). Frontmatter otherwise valid: `status: Building`, `gate: pending`.
+- Suites (`node --test test/unit/<file>`, Node v22.23.1), tests/pass/fail:
+  music-view 44/44/0 · music-nowplaying-view 21/21/0 · music-skins 38/38/0 ·
+  music-skin-integration 100/100/0 · music-actions-desktop 13/13/0 ·
+  podcast-nowplaying-view 24/24/0 · skin-surface 70/70/0 · uploader-channel-link 9/9/0 ·
+  music-nav 6/6/0 · music-home-row 12/12/0 · music-album-view 19/19/0 · music-back-stack 7/7/0 ·
+  music-library-audio 19/19/0. (Full `npm test` NOT run - the box is loaded, per the brief.)
+
+### Re-verified claims (VERIFIED unless noted)
+
+- Podcast byte-identity: ran `git show main:public/js/skin-surface.js`'s `buildPanelHtml` on
+  the test's exact fixture in the sandbox: `main builder === test EXPECTED: true`;
+  `branch builder === main builder: true`. The frozen string is main's real output.
+- Mutants re-run myself (one exact-string edit each, landed exactly once, source restored
+  and `diff -q` clean after each): **D** (song-row/drill artist unwired from the data-artist
+  dispatch) -> music-nowplaying-view 21 tests, 19 pass, 2 fail: "tapping the artist NAME inside
+  a song row" + "inside an album drill, the header's artist line". **I** (re-init seed drops the
+  meta carry) -> music-skin-integration 100, 98 pass, 2 fail: the "SURVIVES the dock-return
+  re-init" test + the source lock. **K** (`channelFolderOf` gate -> `var lib = true`) ->
+  music-view 44/43/1 (the pure unit) + music-skin-integration 100/99/1 (the negative axes).
+  All three match the build record's table (19/2, 98/2, 142/2).
+- `AUDIO_PLAYER_MODE` is `var AUDIO_PLAYER_MODE = 'background'` (player.js:2030), referenced
+  once more at :8166 (the branch) and never reassigned; `audioVisualFolder` is written only at
+  :8179 inside the `else` (visualizer) arm. The "dead branch" disclosure is true.
+- player.js `load` does `currentData = data || {}` (:8626) - the whole load object is kept, so
+  `channelFolder` reaches `getCurrentMeta` (:8687) without a whitelist dropping it.
+- `expandAudioToTracks` spreads `base` (the projected item, folderName included) into every
+  chapter track with `source: 'library-chapter'` - Dean's chaptered case reaches the gate.
+- `/api/music?artist=` (lib/music/routes.js:196-205) filters `ns.tracks` + the Wave G
+  projection, so the artist drill for a projected YouTube channel is reachable (see S3 for
+  the listen exception).
+- The sticker's own `createExtrasMenu` cfg (skin-surface.js:753-772) passes neither
+  `hasChannel` nor `onChannel`: the mobile Extras page 2 is byte-unchanged as claimed.
+- Every-writer table vs the tree: exact (3 `artistLine` call sites, `.mnp-sub`, `.music-song-
+  artist`, `.music-drill-artist`, applyMarquee untouched at :861-879 - it re-parents
+  `textContent` into `.mms-mq` inside whatever element it finds, the button's `data-skin-
+  artist` survives).
+- `.icon-folder` has a rule (style.css:4776/4852 + rounded/filled variants); `.mnp-queue-dur`,
+  `.mms-spotify .mms-rd`, and the `:where()` resets all bind their classNames. No bare className.
+- Delegated click order (music.js:2338-2377): the widened artistCard branch runs before the
+  download/queue/like branches and the `.music-song-row` play fall-through; the mutant-D run
+  proves the row does not play. The panel's `.mnp-sub[data-artist]` branch (:1642-1645) returns
+  before the `.mnp-queue-row` lookup.
+- No em dashes in any added line (`git diff main...HEAD | grep '^+' | grep '—'` = empty). No
+  "Safari" claim exists in the diff (the brief's example does not apply).
+- Settle loops are fixed-count `await settle()` runs followed by hard asserts - none can time
+  out green. The pop-out test goes through `documentPictureInPicture.requestWindow` ->
+  `clickPopout` -> the real `createPopoutShell` engine and clicks the pip panel's
+  `[data-skin-artist]` with the pip window's MouseEvent.
+
+### Findings
+
+1. **WARNING** - `public/js/music-skins.js:88-92` (`artistLine`) + `public/js/skin-surface.js:1017`
+   + `public/js/podcasts.js:201`. **The podcast mobile skin's show line is now an INERT
+   control on every skin.** `podcastSkinCtx` passes `track: { artist: showName, ... }` and the
+   podcast engine config passes no `onArtist`; `artistLine` keys only on a non-empty artist, so
+   the show name renders as `<button class="mms-sub"|"ip-artist" data-skin-artist title="Go to
+   artist">` with `cursor: pointer` from the `:where()` reset, and the engine's branch
+   `if (onArtist) onArtist(); return;` swallows the tap. VERIFIED by driving the real renderer
+   with the podcast ctx shape in the sandbox: `apple/spotify/ipod/zune-classic podcast show
+   line is the data-skin-artist button: true` (all four). Scenario: phone, podcast playing,
+   mobile skin on -> the show name is a focusable pointer-cursor button whose tooltip says
+   "Go to artist" and which does nothing (Tab reaches it too). This is the exact class D15
+   rules a defect ("an inert visible control"), and it is a regression on a surface the build
+   record never mentions (its "podcast byte-identical" proof covers only the DESKTOP
+   `buildPanelHtml`, not the skin). The `onArtist` cfg doc ("Without it the line's tap does
+   nothing (podcasts pass nothing)") describes the mechanism accurately and thereby documents
+   the defect. No podcast test drives the mobile skin's show line, so nothing caught it.
+   Prescription: make the hook's PRESENCE gate the control - the engine hands the renderer
+   `Object.assign({}, getCtx(), { artistTap: !!onArtist })` at skin-surface.js:969 (the pop-out
+   shell instantiates the same engine, so it follows) and `artistLine(cls, artist, on)` renders
+   the button only when `on` is truthy, else the plain div (extend the "no focusable nothing"
+   rule to "no hook = no control"). Bind it on BOTH axes: a podcast-nowplaying-view driven test
+   (mobile skin on, `.mms-sub`/`.ip-artist` is a DIV with no `[data-skin-artist]`) and the
+   existing music-skins every-skin test gaining `artistTap: true` in its ctx (so the music
+   side still goes red when the button is dropped). Alternative (Dean's call): podcasts pass
+   an `onArtist` that opens the show - then the tooltip must not say "artist".
+2. **SUGGESTION** - `public/js/music.js:1310-1316` (`channelFolderCurrent`). After a re-init the
+   `nowPlaying` carry is keyed by the LOADED id, but `effectiveCurrentId()` follows the
+   watcher-advanced `::c` chapter; with an EMPTY queue at a chapter boundary (a grid tab after
+   the drill closes) `reflectChapter` finds no queue entry, `nowPlaying.id` stays at the earlier
+   chapter, and the row disappears for the rest of the file. This is parity with the panel's
+   pre-existing posture (`deriveNowPlayingLabel` blanks on the same id mismatch, v1.237) and
+   `watchBackVisible` has the same shape via `activeListenId`, so not a regression - but the
+   folder is per-FILE, so comparing base ids (`String(id).replace(/::c\d+$/, '')`) in the
+   nowPlaying fallback would make "Go to channel" robust where the label cannot be. Suspicion
+   only for reachability (I did not drive it); no scenario built, so not a blocking finding.
+3. **SUGGESTION** - reachability of the artist drill for a LISTEN track. `buildListenChapter
+   Tracks`/the single listen track set `artist = channelName || folderName`; the projection is
+   audio-only ("a VIDEO item is NEVER eligible", music-library-audio), so a video played via
+   `?listen=1` from a channel with no projected audio opens an artist drill whose
+   `/api/music?artist=<channel>` returns nothing: header + empty list. The "Go to channel" row
+   is the right escape for that item and IS offered (D7 listen carry, driven test), so this is
+   a UX rough edge, not a broken ask; consider hiding the artist line's hook when
+   `item.listen` and no projected artist exists, or say so in the report.
+4. **SUGGESTION** - plan doc counts (`Per-file changes`, Tests line): music-view is 1 adapted +
+   5 new (the record says 2 adapted; only the v1.104 hunk changed); music-skin-integration is
+   10 new (6 top-level + the 4-skin loop = 100 - 90; the record says 11). The `next:`
+   frontmatter still reads "Next: commit, mutation-test ... then the gate" - stale now that all
+   three are done; refresh it with the gate close. The design line `@ef42a6d4` is the stale
+   tolerated shape (reported above, not a finding).
+5. **SUGGESTION** - `public/js/skin-surface.js:45-47`: the new `onArtist()` cfg doc line is a
+   TOP-LEVEL engine key but was inserted in the middle of the `sticker` sub-key list (between
+   `channel` and `tray`, at the top-level indent). Move it up beside `onShuffle()` so the
+   sticker block reads as one list.
+
+### Security-brief (standing section)
+
+No new network surface: no new fetch, route, header or endpoint. Data reaching the DOM: the
+artist reaches `data-artist`/text through `escapeMusicHtml` (song rows, drill header),
+`panelEscape` (desktop panel) and the skins' `esc` (all three escape `"`, and every attribute
+is double-quoted); `durLabel` is derived from a Number; the `title` attributes are static
+strings. Data reaching a URL: `folderName` -> `'/?folder=' + encodeURIComponent(folder)`, a
+fixed same-origin path prefix handed to `FileTube.navigate` (fallback `location.href` with the
+same encoded string) - no open-redirect shape. No shell, no eval, no temp files. The gating
+disclosure ("cannot distinguish yt-dlp from local folders") is an authorization non-issue: the
+target grid applies its own visibility rules server-side. Nothing here needs the security-brief
+seat.
+
+Gate: CHANGES r1 @35a3bb1d — qa (see findings)
+
+## Gate r1 - adversary (@35a3bb1d)
+
+Reviewed `feat/music-channel-chapters` HEAD 35a3bb1d against main 6ea45237, in the worktree
+only. Instruments run by me (never restated): the seven touched suites at HEAD = 310 tests,
+310 pass, 0 fail (music-actions-desktop 13, music-nowplaying-view 21, music-skin-integration
+100, music-skins 38, music-view 44, podcast-nowplaying-view 24, skin-surface 70); `npm run
+lint:css` TOTAL 0; `overlay-containment-lint --enforce` 0 violations; eslint 0 on the 11
+touched files. Mutants ran in a `git archive HEAD` sandbox (removed after), one exact-string
+edit each, landing verified exactly once. Verdict rests on the findings, not the tables.
+
+### Verified (measured)
+
+- Podcast byte-identity recomputed independently: `git show main:public/js/skin-surface.js`
+  builder vs the branch builder on the test's fixture = identical (771 bytes) = the frozen
+  EXPECTED; a no-subline fixture is identical too.
+- `#audio-visual-folder` dead-branch claim holds: `AUDIO_PLAYER_MODE` has exactly two
+  references in player.js (:2030 `var` literal, :8166 the read) - never reassigned, no pref.
+- No nested interactive: the song row is a `div` (music.js:188); `.mms-head`/`.mms-meta`
+  (music-skins.js:126/:137), `.ip-meta` (:165), `.mnp-meta` (skin-surface.js:1586) and
+  `.music-drill-info` (music.js:400) are all `div`s around the new buttons.
+- Escaping: every new interpolation goes through `esc` / `escapeMusicHtml` / `panelEscape`
+  (`data-artist`, the button text); `data-skin-channel` and the `title` attrs are static.
+  `encodeURIComponent` round-trips `A & B`, `#1 / two`, `x?y=z`, `Émilie ünicode` through
+  `URLSearchParams.get('folder')` (main.js:1263 is the reader). Mutant R1 (drop the encoder)
+  reds 3 tests.
+- Cross-route: `isSameLocationNav` compares pathname+search (common.js:10769), so
+  `/music...` -> `/?folder=` is never swallowed. `destroy()` (music.js:3099) never touches the
+  player. NOTE: the "player keeps playing across the nav" acceptance is REASONED from those two
+  reads - the test stubs `FileTube.navigate`, so the real router swap is not driven.
+- CSS: the `:where()` reset is zero-specificity; every consumer line rule (style.css :10923
+  `.mnp-sub`, :10549, :11321, :11342, :11418, :11558) outranks it, so per-skin font/colour/
+  margin win. The only two `outline: none` rules (:925, :3389) are input rules, not these
+  buttons; `.mms-sticker-menu ... :focus-visible` adds an outline. Keyboard Enter/Space is the
+  native `<button>` activation (reasoned, jsdom does not synthesise it).
+- Mutants killed by DISTINCT tests (label: suite pass/fail, killer): S3 seedNowPlayingFromPlayer
+  carry 98/2 (re-init survive + source lock); S5 drop the nowPlaying fallback 99/1 (re-init);
+  S7 listen single-track carry 99/1 (listen row); K2 drop `.trim()` 43/1 (pure unit); J1 the
+  artist dispatch no longer `return`s (falls into row-play) 20/1 ("does NOT play the row");
+  P1 `openArtistDrill` no-op body 95/5 + 20/1; E2 every panel row shows the CURRENT track's
+  length 19/2; N1 `subArtist` -> '' 43/1 + 19/2; Q1 `onArtist` unwired 95/5; O1 engine
+  `[data-skin-artist]` branch removed 95/5; F3 dur span for '' 43/1; R2 sticker row ignores
+  `inMainDoc` 69/1; G1 channel row before Watch 99/1; L1 desktop row after Download 12/1; A1
+  `artistLine` renders a div hook 37/1 (music-skins only - integration 100/0, a div still
+  clicks in jsdom); M1 thumb `.mms-rd` dropped 37/1; Z1 `getCurrentMeta` drops `channelFolder`
+  99/1 (the source lock only, as the builder disclosed).
+
+### Findings
+
+1. **WARNING - the PODCAST mobile skin ships an inert control.** `artistLine()`
+   (public/js/music-skins.js:76-80) renders `<button data-skin-artist title="Go to artist">`
+   for ANY non-empty artist, and podcasts render through the same `FileTubeMusicSkins`
+   (public/js/podcasts.js:161, `track.artist = showName` :201) while passing no `onArtist`
+   (skin-surface.js:1015 then does nothing). Measured by a driven podcast-skin boot
+   (`/podcasts?show=s1`, narrow, play episode 0): the show line is
+   `BUTTON class=mms-sub title="Go to artist" text="The Show"`; a bubbling click -> no
+   navigation, zero DOM change. The repo's own standard (D15: "an inert visible control is a
+   defect") applies; it is `cursor:pointer`, focusable, announced as a button, titled "Go to
+   artist" - and the seam test only checks the DESKTOP podcast panel (`.mnp-sub` is a div), not
+   the skin. Prescription: gate the button on a ctx flag the VIEW sets (music's buildSkinCtx
+   `artistTap: true`; podcasts never), else the plain div; add a driven podcast-skin assertion
+   that `.mms-sub`/`.ip-artist` is a DIV with no `data-skin-artist`.
+2. **WARNING - a LISTEN VIDEO's artist line opens an empty drill that says "No music yet. Add
+   a music folder in Settings".** Measured (integration harness, `?play=vid1&listen=1`,
+   LISTEN_VIDEO, in-tab skin): tapping `[data-skin-artist]` fetches
+   `/api/music?sort=release-newest&artist=The+Channel&limit=1000`, renders the artist drill with
+   0 song rows, un-hides `#music-empty` (renderDrillView: `emptyNote.hidden = queue.length > 0`;
+   the production copy is public/music.html:211-213), and paints the header + sticky thumb with
+   `src="/albumart/"` (empty id: `first.id || ''`, music.js:383/:428 - a request the
+   `/albumart/:id` route cannot match). A listen VIDEO is never in the music projection, so this
+   is the outcome for every yt-dlp video whose channel has no projected audio - Dean's named
+   "YouTube" case - on the skins, the pop-out AND the desktop panel `.mnp-sub` (same
+   `openArtistDrill`). The diff implements D6b faithfully; the plan is what is wrong for
+   listen tracks. Prescription (pick one, test it driven): for a `listen` track route the artist
+   line to `channelTap()` (for a video the channel IS the artist), or hide the hook when
+   `channelFolderOf(track)` is set and the track is a listen video; at minimum an artist-scoped
+   empty state and no empty-id art request. Shippable-disclosed only if Dean accepts that the
+   line tells him to add a music folder.
+3. **WARNING - two D7 carry seams are LIVE and UNBOUND (the plan's "all four seams" claim
+   overstates its bindings).** Against the committed suite: S1 reflectChapter `folderName ->
+   ''` 100/0 + 21/0; S2 loadTrack `nowPlaying.folderName -> ''` 100/0 + 21/0; S4
+   restoreListenChapterQueue 100/0 + 21/0; S8 buildListenChapterTracks `folderName -> ''`
+   100/0 + 21/0; S6 drop the queue lookup in channelFolderCurrent 100/0 (every scenario is
+   served by the OTHER source). They are not dead: `loadSongs` (music.js:1980) replaces `queue`
+   on every in-Music drill load, so after the feature's OWN flow (tap the artist line -> drill)
+   `channelFolderCurrent` misses the queue and reads `nowPlaying.folderName`. Repro ADV-A
+   (`?play=c1`, tap `[data-skin-artist]`, settle, open the sticker): pristine = row present and
+   navigates to `/?folder=The%20Channel%20Dir`; under S2 = 102/1 red (no row). Repro ADV-B
+   (`?play=vid1&listen=1` with 3 `chapters`, loads `vid1::c0`, open the sticker): pristine =
+   row present; under S8 = 102/1 red. S1 and S4 survived even those drives - they need a
+   chapter advance / a listen re-init followed by a browse-away; live by the same mechanism,
+   REASONED not measured. Prescription: add the two drives above; and collapse the four
+   hand-copied `nowPlaying = { id, title, artist, album, albumKey, folderName }` literals into
+   ONE `nowPlayingFrom(t)` writer (the INERT SIBLING class) so a seam cannot drop the field.
+4. SUGGESTION - `channelFolderOf`'s `listen === true` arm and `'library-chapter'` arm are
+   mutually redundant in every driven scenario (K1 and K3 each survive music-skin-integration
+   100/0; only the pure unit kills them) because listen chapters carry both. No driven test
+   plays a NON-listen `::c` chapter of a projected file (the chaptered album Dean named) and
+   asserts the row - add one (CH_TRACK-shaped `::c` rows, `source: 'library-chapter'`).
+5. SUGGESTION (suspicion, not measured - no browser here) - `applyMarquee`
+   (skin-surface.js:861-877) now measures `scrollWidth - clientWidth` on a `<button>`; engines
+   differ on overflow/scroll metrics for button elements (Firefox historically ignores
+   `overflow` on buttons). Check on device that a long channel name still ellipsizes/marquees
+   on the Apple and iPod lines.
+6. SUGGESTION - the desktop actions-menu wiring (`hasChannel: channelVisible` /
+   `onChannel: channelTap`, music.js:1364-1365) is bound only by a source regex; the factory is
+   driven with a stub cfg. Same posture as the existing Watch wiring, so not blocking.
+
+Tree after review: byte-identical to 35a3bb1d apart from this plan doc (the qa seat's section
+above and this one); sandbox `/tmp/adv-m1m2-SF70` removed; no untracked files added.
+
+Gate: CHANGES r1 @35a3bb1d — adversary (see findings)
