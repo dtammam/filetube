@@ -675,19 +675,73 @@ function buildMusicSkeletonRows(n) {
 // starts the chapter over. Before this, re-tapping that chapter played ~0.3s of it and then
 // exited to radio. Returns the absolute file second to seek, or undefined for the chapter
 // head. `item` is a library-chapter track (chapterStartSec + durationSec = its own span).
+// Chapter Snap persist follow-up (2026-09-24, Dean: "the relative offset underneath is off"):
+// the saved place must lie INSIDE the chapter's CURRENT bounds, checked here against the row
+// at tap time. The server attaches `progress` against the bounds of the moment the list was
+// fetched, and a snap save moves a row's start in place (applySnappedChapterTimes) without
+// re-homing it - so a start moved LATER past the saved place made the tap seek into the
+// PREVIOUS song under this chapter's name. A place before the start is the chapter head.
 var CHAPTER_RESUME_TAIL_SEC = 5;
+// Chapter Snap persist (#269, gate r3 H1): how long a pick waits for its chapter check before it
+// plays the row as queued. An object so a harness can shorten it (module.exports.CHAPTER_VERIFY).
+var CHAPTER_VERIFY = { timeoutMs: 4000 };
 function chapterResumeSecFor(item) {
   var p = item && item.progress;
   if (!p || typeof p.resumeSec !== 'number' || !isFinite(p.resumeSec)) return undefined;
   var start = Number(item.chapterStartSec) || 0;
   var span = Number(item.durationSec) || 0;
+  if (p.resumeSec < start) return undefined;
   if (span > 0 && p.resumeSec >= start + span - CHAPTER_RESUME_TAIL_SEC) return undefined;
   return p.resumeSec;
 }
 
+// Tracker #268 (Chapter Snap persist, 2026-09-24): a tap on the chapter that is ALREADY loaded is
+// a same-id player.load, which the player ADOPTS (keeps the media, never re-seeks). That is right
+// while the playhead is inside the tapped chapter (tapping the playing song does not restart it),
+// but after a snap save moved the chapter's start past the playhead - or a playthrough rolled the
+// file on into the next chapter - the tap did nothing while the row said this chapter. Returns the
+// file second to seek to (the saved place when it lies inside the chapter, else the chapter head),
+// or undefined when the playhead is already inside the chapter (the adopt stands). `t` is the
+// element's currentTime; the 0.25 s tolerance is the chapter watcher's (currentChapterId).
+function chapterAdoptSeekFor(item, t) {
+  if (!item || item.source !== 'library-chapter') return undefined;
+  var start = Number(item.chapterStartSec) || 0;
+  var span = Number(item.durationSec) || 0;
+  var now = Number(t);
+  if (isFinite(now) && now >= start - 0.25 && (!(span > 0) || now < start + span)) return undefined;
+  var resume = chapterResumeSecFor(item);
+  return typeof resume === 'number' ? resume : start;
+}
+
+// Tracker #269 (Chapter Snap persist, 2026-09-24): do the queued `<baseId>::c<n>` rows still match
+// the server's resolved chapters of that file? A start, a title, or a span to the NEXT chapter that
+// moved (a chapter added after the last row shows up as that row's span) - or a row whose chapter
+// no longer exists - is a change. Titles follow the projection's rule (a blank title shows as
+// "Track n"). Pure; the visibility re-check applies a change through applySnappedChapterTimes.
+function queuedChaptersDiffer(rows, baseId, chapters) {
+  if (!Array.isArray(rows) || !Array.isArray(chapters)) return false;
+  var re = /^(.+)::c(\d+)$/;
+  for (var k = 0; k < rows.length; k++) {
+    var t = rows[k];
+    if (!t || t.source !== 'library-chapter') continue;
+    var m = re.exec(String(t.id));
+    if (!m || m[1] !== String(baseId)) continue;
+    var n = Number(m[2]);
+    var ch = chapters[n];
+    if (!ch || !isFinite(Number(ch.startTime))) return true;
+    var start = Number(ch.startTime);
+    if (Math.abs(start - (Number(t.chapterStartSec) || 0)) > 0.0005) return true;
+    var title = (typeof ch.title === 'string' && ch.title.trim()) ? ch.title.trim() : ('Track ' + (n + 1));
+    if (title !== t.title) return true;
+    var next = chapters[n + 1];
+    if (next && isFinite(Number(next.startTime)) && Math.abs((Number(next.startTime) - start) - (Number(t.durationSec) || 0)) > 0.001) return true;
+  }
+  return false;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC,
+    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -810,6 +864,25 @@ if (typeof module !== 'undefined' && module.exports) {
     var res = await fetch(url);
     if (!res.ok) throw new Error(url + ' -> ' + res.status);
     return res.json();
+  }
+  // fetchJson with a deadline (gate r3 H1): rejects after `ms` and aborts the request where
+  // AbortController exists (a plain timer race where it does not - never AbortSignal.timeout alone).
+  function fetchJsonWithin(url, ms) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var ctl = null;
+      try { ctl = typeof AbortController === 'function' ? new AbortController() : null; } catch (_) { ctl = null; }
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        try { if (ctl) ctl.abort(); } catch (_) { /* already settled */ }
+        reject(new Error(url + ' -> timeout'));
+      }, ms);
+      fetch(url, ctl ? { signal: ctl.signal } : undefined)
+        .then(function (res) { if (!res.ok) throw new Error(url + ' -> ' + res.status); return res.json(); })
+        .then(function (v) { if (done) return; done = true; clearTimeout(timer); resolve(v); },
+          function (err) { if (done) return; done = true; clearTimeout(timer); reject(err); });
+    });
   }
 
   function init(root) {
@@ -1130,7 +1203,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getSkinId: function () { return SKINS.activeSkinId(); },
         getCtx: function () { return buildSkinCtx(currentSkinIndex(), popout); },
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
-        onSelectIndex: function (i) { playAt(i, { soloChapter: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
+        onSelectIndex: function (i) { playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onShuffle: function () { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); },
         onArtist: function () { artistTap(undefined, popout); }, // v1.317 (M1): the skin's artist line -> the artist drill, or (in-tab only) the channel grid for a listen video
@@ -1714,6 +1787,8 @@ if (typeof module !== 'undefined' && module.exports) {
     function applySnappedChapterTimes(baseId, body, opts) {
       var chapters = body && Array.isArray(body.chapters) ? body.chapters : null;
       if (!chapters) return;
+      chapterApplyGen += 1; // #269: a re-check whose fetch started before this apply stands down
+      markChapterFileVerified(String(baseId)); // #269 r2: the server's (or a local save's) list - verified
       // pocket menus (2026-09-24, with Chapter Snap v1.322): every Music-side chapter write lands
       // here (the snap editor's save and revert, the text editor's result) - the pocket menus'
       // cached lists and open levels hold the OLD times/titles/count, so re-load them. (The
@@ -1731,7 +1806,16 @@ if (typeof module !== 'undefined' && module.exports) {
         queuedCount = Math.max(queuedCount, Number(m[2]) + 1);
         fileDur = Math.max(fileDur, (Number(t.chapterStartSec) || 0) + (Number(t.durationSec) || 0));
       });
-      var countChanged = queuedCount > 0 && queuedCount !== chapters.length;
+      // #269 gate r1 (adversary W2 = qa W2): WHICH count changed. Only a single-file album drill of
+      // this file (ownsDrill) is treated as holding the file's COMPLETE chapter list, so only there does
+      // "queued rows != the server's count" mean the count changed (a new chapter needs its own row ->
+      // re-list). (A SEARCH inside that drill is still ownsDrill: a time-only move can then read as a
+      // count change and re-list the same searched drill - harmless, one extra request; gate r2 qa N4 /
+      // adversary 8.) Any other queue (a flat pocket-menu list - Liked, Recently Played, a genre - an Up
+      // next, a mixed-file drill) holds SOME of the chapters: it is patched IN PLACE (times, titles) and
+      // loses only rows whose chapter no longer exists; it is never re-listed from the server (that
+      // swapped a flat list for the whole Songs library).
+      var droppedAny = false;
       // chapter snap gate r2 (qa S5): the Listen-mode stash (activeListenChapters) is the
       // queue a dock-return restores - it is often the SAME array as `queue`, and must
       // lose a dropped chapter too, or the ghost comes back after dock/return.
@@ -1742,7 +1826,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (!m || m[1] !== String(baseId)) return true;
         var n = Number(m[2]);
         var ch = chapters[n];
-        if (!ch || !isFinite(Number(ch.startTime))) return false; // a chapter that no longer exists
+        if (!ch || !isFinite(Number(ch.startTime))) { droppedAny = true; return false; } // a chapter that no longer exists
         var start = Number(ch.startTime);
         var next = chapters[n + 1];
         var end = next && isFinite(Number(next.startTime)) ? Number(next.startTime) : fileDur;
@@ -1756,6 +1840,7 @@ if (typeof module !== 'undefined' && module.exports) {
       queue = queue.filter(keepPatched);
       if (wasFlat) flatQueue = queue;
       if (activeListenChapters) activeListenChapters = listenAliased ? queue : activeListenChapters.filter(keepPatched);
+      var countChanged = ownsDrill ? (queuedCount > 0 && queuedCount !== chapters.length) : droppedAny;
       reflectChapter();
       // chapter snap gate r2 (adversary W2): a dropped row SHIFTS queue indices, but
       // reflectChapter re-registers nav only when the playing chapter's ID changes - so
@@ -1766,6 +1851,13 @@ if (typeof module !== 'undefined' && module.exports) {
       if (countChanged) updateNowPlayingPanel(); // the Up next list reads the (filtered) queue
       if (opts && opts.skipDrillRefresh) return;
       if (!content || !content.isConnected || drillLoadInFlight) return;
+      if (wasFlat) {
+        // A flat pocket-menu list: redraw ITS rows from the patched queue (new spans and titles; the
+        // indices shifted if a row was dropped) - the list stays the one the user picked from, never
+        // the whole library.
+        if (drill) renderDrillView(); else renderSongListProgressive();
+        return;
+      }
       if (countChanged && (drill || tab === 'songs')) {
         // Rows on screen are indexed into the queue (data-index): a count change must
         // reload the list from the server, never leave rows pointing past a filtered queue.
@@ -1778,7 +1870,9 @@ if (typeof module !== 'undefined' && module.exports) {
         });
         return;
       }
-      if (ownsDrill) renderDrillView();
+      // Any drill holding rows of this file repaints them (a mixed or partial album drill too - its
+      // rows are patched in place above; only the COMPLETE drill re-lists on a count change).
+      if (ownsDrill || (drill && queuedCount > 0)) renderDrillView();
     }
     // Re-register track nav around the index the PLAYING track has in the CURRENT queue
     // (chapter snap gate r2): after a chapter save drops or re-lists rows, the indices the
@@ -1790,6 +1884,118 @@ if (typeof module !== 'undefined' && module.exports) {
         if (queue[k] && queue[k].id === cur) { registerTrackNav(k); return; }
       }
     }
+    // Tracker #269 (Chapter Snap persist, 2026-09-24): a page left open on one device while the
+    // chapter times were corrected on ANOTHER kept its old bounds (queue rows, drill, pocket-menu
+    // caches, the resume guard's spans) until it reloaded. When the page comes BACK
+    // (visibilitychange -> visible, or a bfcache pageshow), ask the server once for the chapters
+    // of the file this view is about (the playing chapter's file, else the chapter album on screen)
+    // and, when they moved, apply them through the SAME seam a local save uses
+    // (applySnappedChapterTimes: queue patch, re-register, count-change re-list, menu invalidation).
+    // No polling; one request per return; a save that lands while it is in flight wins
+    // (chapterApplyGen), and the listeners ride the view signal (removed on every teardown).
+    var chapterApplyGen = 0;
+    var chapterRecheckInFlight = false;
+    // #269 gate r2 (qa N1, the Architect's ruling - "verified since the last return"): the return
+    // re-check covers ONE file, but ANY list this view holds can carry bounds another device has
+    // since changed - the queue, and the pocket menus' cached Songs / Genres / artist levels too. So
+    // every return (visibilitychange -> visible, a bfcache pageshow) bumps `returnEpoch`, and a
+    // chaptered file counts as verified only when `verifiedEpoch[file]` has caught up with it. A file
+    // NOT verified since the last return is asked about once (the same GET) and a change applied
+    // through the same seam: a PICK waits for it (bounded), an ADVANCE plays now and the check runs in
+    // the background (playAt -> verifyChapterFileThenPlay). A cold load is epoch 0: nothing to verify. The file the
+    // return re-check asks about counts as verified from that ask (re-opened on a failure); a save
+    // or an applied answer (applySnappedChapterTimes) verifies its file too.
+    var returnEpoch = 0;
+    var verifiedEpoch = Object.create(null);
+    var verifyWaiters = Object.create(null); // file -> the LATEST pick waiting on its check
+    var checksInFlight = Object.create(null); // file -> true while its ONE check runs
+    function chapterFileNeedsVerify(baseId) {
+      return returnEpoch > 0 && (verifiedEpoch[baseId] || 0) < returnEpoch;
+    }
+    function markChapterFileVerified(baseId) { verifiedEpoch[baseId] = returnEpoch; }
+    function chapterRecheckBaseId() {
+      var cur = effectiveCurrentId();
+      var m = cur ? /^(.+)::c\d+$/.exec(String(cur)) : null;
+      if (m) {
+        for (var k = 0; k < queue.length; k++) {
+          if (queue[k] && queue[k].source === 'library-chapter' && String(queue[k].id).replace(/::c\d+$/, '') === m[1]) return m[1];
+        }
+      }
+      return chapterAlbumBaseId(queue) || null;
+    }
+    function recheckChaptersOnReturn() {
+      if (signal.aborted) return;
+      returnEpoch += 1; // every file is unverified again until it is asked about
+      var baseId = chapterRecheckBaseId();
+      if (!baseId || chapterRecheckInFlight) return;
+      markChapterFileVerified(baseId); // this return verifies it (re-opened below on a failure)
+      var epoch = returnEpoch;
+      var gen = chapterApplyGen;
+      chapterRecheckInFlight = true;
+      fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (v) {
+        chapterRecheckInFlight = false;
+        if (signal.aborted || gen !== chapterApplyGen || !v) return; // gone, or a newer apply landed
+        var chapters = Array.isArray(v.chapters) ? v.chapters : null;
+        if (!chapters || !queuedChaptersDiffer(queue, baseId, chapters)) return;
+        applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
+      }).catch(function () {
+        chapterRecheckInFlight = false;
+        if (verifiedEpoch[baseId] === epoch) verifiedEpoch[baseId] = epoch - 1; // not verified: its next pick asks
+      });
+    }
+    // playAt's gate for a file NOT verified since the last return (Dean, gate r3: the simplest safe
+    // shape - background listening in the PWA must never be paused or stranded by a check):
+    //  - an ADVANCE (opts.keepPosition: a segment end, Next / Prev, the ended advance) NEVER waits
+    //    and never pauses: it plays the listed row at once and starts the file's check in the
+    //    background, so the NEXT pick of that file plays the corrected start (an advance may start
+    //    at a stale boundary once after a remote edit - #270);
+    //  - a user PICK waits for the check - the old audio plays on, nothing is paused - for at most
+    //    CHAPTER_VERIFY.timeoutMs; a hung or failed check plays the row as listed; a newer pick wins
+    //    (playGen); a torn-down view plays nothing (the arms stand down on the view signal).
+    // ONE check per file at a time (a later pick while it runs only replaces the waiting pick). The
+    // verify's own playAt passes `skipVerify`, so it never re-enters the check (adversary r3).
+    // Returns true when it took the pick over.
+    function verifyChapterFileThenPlay(item, opts) {
+      if (!item || item.source !== 'library-chapter') return false;
+      var baseId = String(item.id).replace(/::c\d+$/, '');
+      if (!chapterFileNeedsVerify(baseId)) return false;
+      if (opts && opts.keepPosition) { startChapterCheck(baseId); return false; } // an advance plays now
+      verifyWaiters[baseId] = { item: item, opts: opts, gen: playGen }; // playAt bumped playGen for THIS pick
+      startChapterCheck(baseId);
+      return true;
+    }
+    function startChapterCheck(baseId) {
+      if (checksInFlight[baseId]) return;
+      checksInFlight[baseId] = true;
+      var epoch = returnEpoch;
+      function waiter() { var w = verifyWaiters[baseId]; delete verifyWaiters[baseId]; return w; }
+      function playWaiter() {
+        var w = waiter();
+        if (!w || w.gen !== playGen) return; // no pick waits, or a newer pick superseded it
+        var idx = queue.indexOf(w.item); // the SAME row object, patched in place (or dropped)
+        if (idx >= 0) playAt(idx, Object.assign({}, w.opts, { skipVerify: true }));
+      }
+      fetchJsonWithin('/api/videos/' + encodeURIComponent(baseId), CHAPTER_VERIFY.timeoutMs).then(function (v) {
+        delete checksInFlight[baseId];
+        if (signal.aborted) return;
+        if (verifiedEpoch[baseId] === undefined || verifiedEpoch[baseId] < epoch) verifiedEpoch[baseId] = epoch;
+        var chapters = v && Array.isArray(v.chapters) ? v.chapters : null;
+        if (chapters && queuedChaptersDiffer(queue, baseId, chapters)) {
+          applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
+        }
+        playWaiter();
+      }).catch(function () {
+        delete checksInFlight[baseId];
+        if (signal.aborted) return;
+        playWaiter(); // the row as listed; the file stays unverified, so the next pick asks again
+      });
+    }
+    try {
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') recheckChaptersOnReturn();
+      }, { signal: signal });
+      window.addEventListener('pageshow', function (e) { if (e && e.persisted) recheckChaptersOnReturn(); }, { signal: signal });
+    } catch (_) { /* no document/window (a test harness) */ }
     function extrasFetchItem(id) {
       return fetch('/api/videos/' + encodeURIComponent(id))
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -2054,7 +2260,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var row = e.target.closest('.mnp-queue-row');
         if (!row) return;
         var idx = parseInt(row.getAttribute('data-index'), 10);
-        if (!isNaN(idx)) playAt(idx, { soloChapter: true }); // v1.311: an up-next row tap is a single-chapter SELECT (exit after that segment)
+        if (!isNaN(idx)) playAt(idx, { soloChapter: true, pick: true }); // v1.311: an up-next row tap is a single-chapter SELECT (exit after that segment)
       }, { signal: signal });
     }
 
@@ -2943,7 +3149,17 @@ if (typeof module !== 'undefined' && module.exports) {
       var useSlot = opts.keepPosition
         ? (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
         : true;
+      // Tracker #268: a same-id load is an ADOPT (the player keeps the media, never re-seeks - its
+      // shared contract, untouched here). Music decides AFTER the adopt whether this chapter load must
+      // move the playhead: ONLY for an explicit user pick or nav (opts.pick - a row tap, the skin's
+      // select, a pocket-menu pick, Prev/Next), and only when the playhead lies OUTSIDE the picked
+      // chapter's current bounds. A continue / re-mount (`?play=` re-init incl. history BACK, the
+      // "Jump back in" tiles, a Home Continue card, a Listen play, a dock-return) never passes
+      // opts.pick: there the adopt means "keep playing where you are" (gate r1 CRITICAL - the seek
+      // rewound playback and overwrote the stored resume position).
+      var adoptingChapter = !!opts.pick && isChapter && isAdoptingLoad(pl, item.id);
       pl.load(item.id, data, (useSlot && slot) ? { slot: slot } : { dock: true });
+      if (adoptingChapter) seekAdoptedChapter(item);
       // Bring the freshly-expanded player into view (it mounts at the top of the
       // view, above the list). Only on a SELECT - a nav keeps you where you are.
       if (!opts.keepPosition && useSlot && slot) { try { window.scrollTo(0, 0); } catch (_) { /* no window scroll */ } }
@@ -2968,6 +3184,26 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // Tracker #268: after an ADOPTED chapter tap, move the element to the tapped chapter when the
+    // playhead is outside its current bounds (chapterAdoptSeekFor), and play - a tap is a request
+    // to hear THIS chapter. Inside the bounds the adopt stands (no restart, as before).
+    function seekAdoptedChapter(item) {
+      var mp = hostCtl('media-player');
+      if (!mp) return;
+      var target = chapterAdoptSeekFor(item, mp.currentTime);
+      if (typeof target !== 'number') return;
+      try { mp.currentTime = target; } catch (_) { return; }
+      try { var pr = mp.play(); if (pr && typeof pr.catch === 'function') pr.catch(function () {}); } catch (_) { /* autoplay refused */ }
+    }
+    // Will player.load(id) ADOPT? The player's OWN predicate (player.js `isAdoptLoad`, a page
+    // global - qa S5: never a hand copy of the adopt rule); the inline form only where player.js
+    // is not on the page (a unit harness).
+    function isAdoptingLoad(pl, id) {
+      var state = typeof pl.getState === 'function' ? pl.getState() : null;
+      if (typeof window.isAdoptLoad === 'function') return !!window.isAdoptLoad(pl.currentId, id, state);
+      return pl.currentId != null && pl.currentId === id && state !== 'closed';
+    }
+
     // The lock-screen / expanded-view Prev/Next handlers for queue index `i`.
     // Factored out so a re-init reseed (rebuildPlayingQueue) can re-register them
     // around the recovered playing index, not just a fresh loadTrack.
@@ -2977,12 +3213,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // i<0 (no known index) registers NO neighbors - clears any stale closures
       // rather than binding onNext to playAt(0) off a negative index.
       window.FileTube.player.setTrackNav({
-        onPrev: i > 0 ? function () { playAt(i - 1, { keepPosition: true }); } : undefined,
+        onPrev: i > 0 ? function () { playAt(i - 1, { keepPosition: true, pick: true }); } : undefined,
         // Music follow-ups item 0: Next (the natural-end advance AND a manual Next) never steps
         // INTO a station pick while Autoplay is off - it retracts them instead (see below).
         onNext: (i >= 0 && i < queue.length - 1) ? function () {
           if (autoplayHoldsAt(i + 1)) return;
-          playAt(i + 1, { keepPosition: true });
+          playAt(i + 1, { keepPosition: true, pick: true });
         } : undefined,
       });
       // v1.254 (Dean, ENDLESS AUTOPLAY): the last-track register is THE exhaustion
@@ -3276,6 +3512,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
       var item = queue[i];
       playGen += 1;
+      if (!(opts && opts.skipVerify) && verifyChapterFileThenPlay(item, opts)) return; // #269: a remote edit to a listed file
       if (item.needsTranscode) { prewarmThenLoad(item, i, playGen, opts); return; }
       setStatus('');
       loadTrack(item, i, opts);
@@ -3291,6 +3528,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // continue-listening / open-from-home resume (playTrackFromContinue) passes no opts and
       // plays the album straight through - it is NOT a single-chapter select.
       var solo = !!(opts && opts.solo);
+      var pick = !!(opts && opts.pick); // #268: only a user pick may re-seek an adopted chapter (never a continue)
       var myGen = ++playSelectGen; // claim this select BEFORE the async album load
       drill = { type: 'album', key: item.albumKey, label: item.album || 'Album' };
       await render(); // loads the album into `queue` + renders the drill (render never throws)
@@ -3309,10 +3547,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // it.
         queue = [item];
         renderSongList();
-        playAt(0, { soloChapter: solo });
+        playAt(0, { soloChapter: solo, pick: pick });
         return;
       }
-      playAt(ai, { soloChapter: solo }); // v1.311: a row-tap select exits after this chapter; a resume plays through
+      playAt(ai, { soloChapter: solo, pick: pick }); // v1.311: a row-tap select exits after this chapter; a resume plays through
     }
 
     // A fresh user SELECT of a song row. Unless the track has no album, or we
@@ -3331,10 +3569,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // the INTERACTIVE path only; the ?play= init path calls playTrackInAlbum
         // directly (no push -> no per-load history spam).
         pushDrillLevel({ type: 'album', key: item.albumKey, label: item.album || 'Album' });
-        playTrackInAlbum(item, { solo: true }); // v1.311: a row tap = a single-chapter SELECT
+        playTrackInAlbum(item, { solo: true, pick: true }); // v1.311: a row tap = a single-chapter SELECT
         return;
       }
-      playAt(i, { soloChapter: true }); // v1.311: an in-album chapter re-tap = exit after that segment
+      playAt(i, { soloChapter: true, pick: true }); // v1.311: an in-album chapter re-tap = exit after that segment
     }
 
     // ---- POCKET MENUS (2026-09-24): the view's half (data + play) --------------------------------
@@ -3511,7 +3749,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (crumb) { crumb.hidden = false; crumb.textContent = play.label || 'Songs'; }
         renderSongListProgressive();
       }
-      playAt(i, { soloChapter: !flat && !(opts && opts.playThrough) });
+      playAt(i, { soloChapter: !flat && !(opts && opts.playThrough), pick: true });
     }
     // Gate r1 K3 (qa W2 + adversary W3, measured: a pick from a 3,008-song list blocked the main
     // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows

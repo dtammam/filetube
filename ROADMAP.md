@@ -4,6 +4,21 @@
 
 _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
+- [ ] **Pocket menus: a song picked inside an artist's album should play through that album** (Dean,
+  2026-09-24, after the gyro work: "when I go to a recent artist and I pick the artist and I go into
+  the album and I pick something in an album, it just plays that song and then goes to a completely
+  other song from the artist, almost like a shuffle when I didn't expect or intend it. I would imagine
+  it would play through the rest of that album. Maybe there's a way to set that"). Diagnose which queue
+  the Recent Artists > artist > album > song path builds (the artist's all-songs flat list vs the
+  album) against the v1.323 rule (album and artist-album picks keep the album queue; only flat lists
+  play through the list); intake with Dean before building (a setting, or the album as the default).
+- [ ] **A design system for the pocket skins** (Dean, 2026-09-24, with an iPhone screenshot: a long
+  album title, "Ocarina of Time House Club Remix (Electronic House Remix)", wrapped the Click Black
+  LCD status bar to two lines on v1.324.0; v1.325.0 fixed that bar). Dean's read is broader: "not
+  having a proper token or just design system for the pocket skin, which at this point is getting
+  pretty advanced and is being pretty heavily relied upon". Scope a pocket-skin token set (the LCD
+  bar, row pitch, the type scale, the split pane, Seattle's large type, the controls) so every level
+  and skin reads from one source and overflow is handled systematically, not per incident.
 - [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
@@ -100,6 +115,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.326.0 - Edited chapter times play from the right spot, on every device (2026-09-24)
+
+- **Chapter Snap persistence** (Dean: "it works on desktop and mobile but doesn't survive a page
+  refresh ... it's as if the relative offset underneath is off"). Diagnosed first, measured in real
+  headless Chromium with a real SQLite read: the saved chapter times DID survive every refresh; the
+  bug was the per-row "resume here" spot, computed with the old boundaries, so a chapter whose start
+  moved later resumed BEFORE its new start (the previous song's tail; now-playing even flipped to it;
+  measured t 493.5 in chapter 2 -> t 500.3 in chapter 3). A saved spot before a chapter's start now
+  means "start this chapter at its head". Also fixed (Dean's call): tapping the chapter that is
+  already loaded after its times changed now seeks to the new start (#268), and a page left open on
+  another device re-checks the playing file's chapters when you come back to it (#269), and any other
+  chapter file is checked once on its first pick after you come back (pocket-menu lists included).
+  The gate caught a CRITICAL in the first cut (a Back navigation to a ?play= link rewound playback
+  and overwrote the stored listening position) - fixed and bound on every continue path. Client-only
+  (music.js); nothing about saving changed. Full gate (data class) closed at r4 @7516fb0a (adversary + qa + security-brief; the last round simplified the fix by Dean's call: an automatic advance never waits or pauses, a tap waits at most 4 s); plan
+  docs/exec-plans/completed/2026-09-24-chapter-snap-persist.md.
+  Disclosed: an automatic advance into a chapter edited on another device may start at the old
+  boundary once (the next pick is corrected); a chapter whose saved spot now falls in a different
+  chapter starts at its head until the list is next fetched (#267); the watch page is not re-checked
+  on return, and a page that stays visible is not re-checked (#270).
+  Suites: Node 24.20.0 full run on the fix head 7516fb0a 9546 pass / 0 fail / 3 skipped (the worktree lacked
+  tools/capture); the release commit runs the unit suite (hook) and the full Node 22.23.1 suite (pre-push) -
+  a time-saving deviation from dual-Node on the release commit, taken with Dean's go.
+
+Device check owed (Dean): fix a chapter's start on one device, then on your phone (PWA left open)
+come back to the app and play that chapter from the album and from a pocket menu: it starts at the
+new spot; lock the phone mid-album and let it advance: background playback continues.
 
 ### v1.325.0 - Chapter Snap "Shift all" for a whole-track offset, and a one-line pocket status bar (2026-09-24)
 
