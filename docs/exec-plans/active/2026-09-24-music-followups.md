@@ -314,3 +314,255 @@ bound by the wall-time measurement above. Item 4e is a comment.
   (the natural end on the watch page stops). The v1.2xx ledger's "a finished video may jump to
   the next one even if autoplay is off right after switching from Listen back to Watch" is the
   documented shape of this; not reproduced here and not changed.
+
+## Gate r1 - security-brief (@020bec0a)
+
+**Check I could NOT complete:** this seat has no Bash, so `git diff ecb61e1d..020bec0a`, `git
+status` and every test run were NOT executed. The sha binding was read from
+`.git/refs/heads/fix/music-followups` (= 020bec0a0465b0870d2a4bf4dd65504f8f0eb047) with the
+worktree HEAD pointing at that branch; the checkout's cleanliness was not machine-checked. The
+before-state was read from the main checkout (clean, at ecb61e1d) file by file instead of a
+diff. Nothing below is a test result; "verified" means I traced the code path by reading it.
+
+Scope: the named surfaces (`chapterLikeTrack` and its three consumers, likeId parsing, the
+gate kind, admin #243), then a sweep of the rest of the branch (music.js item 0, player.js
+`applyAdoptFlavor`, watch.js row ids, css, the CLEAN_ENV test).
+
+**Verified (traced):**
+
+- **Like POST** (lib/media/user-routes.js:187-206). The RBAC gate runs on the parsed BASE id
+  through `restrictedVideoMutation` -> `mediaVisibleTo` before any existence check; an unknown
+  base, a restricted base, a non-audio base and a visible audio base without that chapter all
+  answer the SAME `404 {error:'Media file not found'}`, so no existence/restriction oracle. The
+  stored key is `track.id` from the expansion, never `req.params.id`. Behaviour is identical to
+  ecb61e1d (the old inline `item.type === 'audio' ? itemChapterTracks(item).find(...) : null`
+  moved into `chapterLikeTrack`, server.js:4125, unchanged in meaning).
+- **likeId parsing.** `parseChapterTrackId` (`/^(.+)::c(\d+)$/`) only splits; membership is
+  EXACT string equality against `chapterTrackId(item.id, i)` minted by `expandAudioToTracks`.
+  NUL / newline, a negative (`\d` excludes `-`), a non-integer, leading zeros (`::c01`) and a
+  huge n (the parsed `index` is never used by `chapterLikeTrack`) all fail that equality -> 404
+  or dropped. A doubled suffix (`X::c1::c2`) parses to base `X::c1`, which is not an own key of
+  `db.metadata` (own-property check) -> 404. Prefix confusion between ids sharing a prefix
+  cannot occur: the base is looked up exactly and the full id compared exactly.
+- **Liked listing chapter arm** (user-routes.js:369-408). Gate order unchanged: own-property
+  base, `type === 'audio'`, `mediaVisibleTo(req, item)` BEFORE `chapterLikeTrack`, so a chapter
+  title or album of a hidden file never reaches the response. Same predicate as ecb61e1d.
+- **Member Stats count** (lib/media/routes.js:1638-1672). `likeCounts` requires the base in
+  `visibleMetadata` (built by `mediaVisibleTo`, :1606-1609) and, for a chapter like, a chapter
+  the file still has. This is a strict NARROWING of the ecb61e1d rule (base visibility only),
+  so it can only count fewer rows; it counts only the caller's own `user_liked` rows and emits a
+  number, no titles. `withEffectiveViewCounts` items are shallow copies, so `type`,
+  `chaptersManual`, `chapters`, `tags.description` and `id` all reach `resolveItemChapters`
+  (pure, no I/O: server.js:2386).
+- **Gate KIND.** All three consumers use the MEDIA gate (`mediaVisibleTo`), matching
+  `projectedLibraryTracks` (server.js:4144) that mints these ids; none uses `trackVisibleTo`.
+  Consistent with the rest of the like surface.
+- **Admin #243.** The `likedStore.list()` read is only in the `isAdmin` arm (routes.js:1649-1656),
+  unchanged by this branch; admin already sees the whole library. Nothing new is exposed.
+- **Not touched:** DELETE /api/liked/:id (own rows only), the backup bundle, any other
+  mutating or list route. `server.js` wires `chapterLikeTrack` into exactly the two
+  registrations that consume it (:5277, :6191).
+
+**Sweep, no security surface:** music.js item 0 (WeakSet of picks, queue retraction, no new
+fetch or DOM sink), player.js `applyAdoptFlavor` (copies `album`/`albumKey` strings and a
+strict-`=== true` boolean from the player's own load data; no new source of untrusted input),
+watch.js static ids, the css rule, and the CLEAN_ENV test (a second GIT_* filter; tightens the
+child env, no secret handling).
+
+**Findings:** none at CRITICAL / HIGH / MEDIUM / LOW.
+
+- INFO: `/api/stats` now runs the chapter expansion once per chapter like per request (pure,
+  in-memory; the Liked listing already does the same). Not a security concern at this
+  deployment's scale.
+
+Gate: APPROVED r1 @020bec0a — security-brief
+
+## Gate r1 - qa (@020bec0a)
+
+Instruments (Node v22.23.1, run by this seat at 020bec0a):
+
+- Targeted: chapter-likes, liked*, stats-and-view, rbac-census, chapters-editor (integration) +
+  player-adopt-flavor, music*, watch-init*, card-like, precommit-docs-fast-path,
+  sub-row-chip-btn-family, every *census* and *parity* unit file: tests 775, pass 775, fail 0.
+- `npm run test:unit`: tests 7116, pass 7116, fail 0, cancelled 0, skipped 0.
+- `npm run lint:css`: TOTAL 0. `node scripts/overlay-containment-lint.js --enforce`: clean (0
+  violations). eslint on the 6 source + 9 test files: exit 0.
+- `.harness/lib/check-markers.sh`: 1 issue (this doc's `design:` line has no `@<sha>`; the
+  disclosed one).
+
+Findings:
+
+1. **WARNING - regression (verified): turning Autoplay OFF then ON during a solo chapter drops
+   its exit station.** public/js/music.js:2850 (`retractAutoplayPicks` nulls `soloExitPicks`)
+   with :2873-2878 (`applyAutoplayToggle(true)` only re-arms the last-track case, never
+   re-primes). Scenario: tap chapter two of a chaptered album (solo; the station is primed),
+   click the toolbar Autoplay off, then on again, let the segment reach its end. At ecb61e1d it
+   stations on (`station-track`); at 020bec0a the hand-off finds no picks and the file plays
+   straight on into chapter three (currentId stays `film::c1`). Driven in /tmp sandboxes of both
+   shas with the music-chapter-reflect harness (control without the toggles: `station-track`).
+   The null is redundant: the append arm already re-checks `autoplayEnabled()` at :1415. Fix:
+   drop `soloExitPicks = null` from the retract (or re-prime on ON), and bind OFF -> ON with
+   that drive.
+2. **WARNING - a false mechanism stated as measured (comment, test message, plan D-3).**
+   public/js/player.js:146-148 ("a Listen -> Watch adopt keeps them (measured: that end still
+   stops - the music view's track nav is gone with its view)"), the same claim in
+   test/unit/player-adopt-flavor.test.js's last test, and the plan's D-3 and disclosed gap.
+   Music's `destroy()` never clears the track nav, and watch.js's `registerTrackNav` replaces it
+   whenever the watch context has a neighbor. The kept `autoAdvanceViaTrackNav: true` then sends
+   the natural end down `fallbackToTrackNav` into watch's `effNext`, IGNORING the server
+   autoplayNext setting. Driven on the real player.js in jsdom (a listen load of `a1`, then the
+   watch-shaped adopt, then a watch `setTrackNav({ onNext })`, then `ended` with
+   `/api/settings` answering `autoplayNext: false`): fetches `['GET /api/queue']`, and watch's
+   onNext fired 1 time. So the video advances with Autoplay off. That is the v1.253 ledger's
+   known quirk ("a finished video may jump to the next one even if autoplay is off right after
+   switching from Listen back to Watch"). It is pre-existing, NOT a regression. But the new
+   comment calls it harmless for a reason that does not exist, and the unit test pins the flag
+   staying `true` as intended. Fix, preferred: watch.js's adopt-capable loads (:1128, :1325)
+   declare `autoAdvanceViaTrackNav: false`, the same "claim the plain-video flavor" posture as
+   their `readerHref: null` / `resumeMode: null`. That closes the ledger quirk; then flip the
+   test to bind it. Minimum: reword the comment, the test message and D-3 to the true behavior,
+   and file a tracker row.
+3. **WARNING - AC0(b) "the up-next shows the truth" is unbound.** public/js/music.js:2860.
+   Mutant (in /tmp, `git archive 020bec0a`): delete `updateNowPlayingPanel();` from
+   `retractAutoplayPicks`. It SURVIVED all music* units (555 pass / 0 fail). Every item-0 test
+   asserts the nav (`onNext === undefined`), never the rendered up-next. Scenario the suite would
+   miss: Autoplay off after the early append leaves the station rows on screen. A tap on one
+   runs `playAt(k)` with k past the shrunken queue. Fix: after the toolbar click (and the
+   sticker click), assert that the panel's up-next rows no longer list the picks.
+4. **SUGGESTION - the server.js:4118-4125 comment overstates "Every reader of chapter-like
+   membership routes through it".** `musicLikedSets` / `trackIsLiked` (server.js:4033) and the
+   per-item `liked` flags read the raw set. They agree only because they look up ids of rows the
+   expansion itself minted. Say "every reader that ENUMERATES a user's chapter likes (the POST,
+   the Liked listing, the Stats count)".
+5. **SUGGESTION - the Stats count re-expands the file once per chapter like** (lib/media/routes.js
+   `likeCounts`), with no per-base memo. The Liked listing already pays the same cost, and it is
+   pure and in memory, so there is no regression at this scale. A `Map` keyed by base inside the
+   request would make it O(files).
+6. **SUGGESTION - the sticker test's title claims "the row reads Off"**
+   (test/unit/music-skin-integration.test.js, item 0). Nothing asserts the row's `aria-checked`
+   after the click, only the pref and the nav.
+7. **SUGGESTION - the watch-init shim now fires every kept listener, but ignores `{ signal }`
+   aborts** (test/unit/watch-init-behavioral.test.js `makeEl`). A test that destroys and
+   re-inits a view would see the dead view's listener fire, which the DOM would have dropped.
+   Skip entries whose `opts.signal.aborted`.
+
+Checked and clean: the D-0 own-queue semantics. No `queue` writer mutates in place, so picks
+are always the tail and the retract moves no earlier index. The var-hoist of
+`autoplayPicks` / `navIndex` runs before any `registerTrackNav` in the synchronous `init`. The
+in-flight extend re-checks `autoplayEnabled()` after its await. `chapterLikeTrack` is
+byte-equivalent to the old POST check, and both readers agree (#235 test re-run green).
+`applyAdoptFlavor`: media items carry no top-level `album` field, so watch's spread cannot
+declare one. CSS: specificity (1,1,1) beats `#settings-menu .settings-menu-toggle`, the rule sits
+outside any media query, `body[data-view]` comes from `applyZoomPolicy` (`/watch.html` ->
+`watch`), no `[hidden]` interplay and no raw literal. Tracker: #235 and #237 are CLOSED with
+their binding named, and #243 is filed OPEN with a trigger. The id range does not collide
+(chapter-snap holds 239-241, desktop-theatre 247, this branch 243). Expect a textual conflict
+at the table tail on merge: keep every row. Plan anchors spot-checked (15 of them): accurate.
+
+Security (standing section): no new surface. The Stats change can only LOWER a member's own
+count, and base visibility (`has(visMap, base)`, built through `mediaVisibleTo`) is checked
+before the expansion, so no title or count of a restricted item is reachable. The like id is
+matched by `===` against minted ids after an anchored-regex parse. No injection path: the CSS
+and HTML are static strings, and music.js writes no untrusted input to the DOM. The POST's
+`restrictedVideoMutation` still runs first.
+
+Gate: CHANGES r1 @020bec0a — qa
+
+## Gate r1 - adversary (@020bec0a)
+
+Instruments (Node v22.23.1, sandbox `git archive 020bec0a` in /tmp, node_modules symlinked; base
+sandbox `git archive ecb61e1d`): the 10 touched/related test files 251 pass / 0 fail; the related
+set (music-playback-modes, prefs-sync-client, rbac-census, stats-and-view, liked,
+liked-mixed-kind, chapters-editor, music-actions-desktop + the doc censuses) 89 tests, 87 pass,
+2 fail: both `comment-debt-census` TIER 1/2 with `EISDIR` in the SANDBOX (not a git repo, the
+walk reads the node_modules symlink); the same file in the worktree: 5 pass / 0 fail. eslint
+(6 source + 9 test files) exit 0; `npm run lint:css` TOTAL 0. Headless Chromium chromium-1234
+over CDP (the builder's harness, copied). Mutants: 10 of the builder's re-run (M2a, M2c, M2e,
+M3c, M4a, M4b, M4d, M4f, M4g, M1a): all KILLED. 4c: card-like 6006 / 6398 ms with `unref`,
+9495 / 9532 ms without (8/8 pass each): verified.
+
+**Surfaces that held (verified):**
+- #235: `/api/stats` inventory.liked equals the Liked listing through fewer / more / retime
+  (the test; M2a, M2b killed). Folder-kind RBAC on a chapter like in Stats is bound (AC5/AC12
+  test). Every other reader of `user_liked` (`/api/videos`, `/api/home`, `/api/feed-hidden`,
+  `/api/history`, the watch route, music `trackIsLiked`) is a per-item `likedSet.has(item.id)`
+  flag, never an aggregate of `::c` rows; admin inventory is `likedStore` (#243). No new
+  deletion path (the only `user_liked` deletes remain `removeLiked` on DELETE and
+  `delLikedByMedia` on remove/prune; restore re-inserts every row). Revive holds (the test).
+- Item 0 on a ONE-FILE chaptered album, real Chromium, 40 s file, chapters 0/10/20: C1 ON, last
+  chapter, toolbar OFF -> up-next retracts to the 3 chapters, the end stops; C2 OFF throughout
+  -> stops; C3 OFF then ON on the last chapter -> station appended at the click, end plays it;
+  C4 ON, OFF, ON -> re-appended, end plays it; C5 storage-only '0' -> end refused, retracted.
+  0 page errors.
+- Item 1: cold /watch.html rows `flex` at 1600 and 390, the Autoplay row writes
+  `autoplayNext` (false -> true -> false) on a cold watch AND after a music visit; SPA
+  watch -> stats / history / music / tv all `none`; cold stats / history / tv / podcasts / home
+  `absent`. Extra CSS mutants (rule hides only Autoplay; scoped to music only;
+  `visibility:hidden`) all KILLED.
+- Unclaimed item-0 mutants KILLED: retract never re-arms nav (U1), holds without retracting
+  (U3), toggle skips reflectPlaybackModes (U4), navIndex never written (U7), onNext holds ANY
+  entry when off (U8), retract drops only the next pick (U9); adopt writes an UNDECLARED
+  autoAdvanceViaTrackNav / album (U10, U11). U5 (ON re-registers at any index) survives:
+  equivalent, not a finding.
+
+**Findings:**
+
+1. **WARNING (regression vs ecb61e1d, verified) - Autoplay OFF then ON during a solo-chapter
+   selection kills the solo exit's station.** `retractAutoplayPicks` nulls `soloExitPicks`, and
+   `applyAutoplayToggle(true)` only re-arms the end-of-queue extension (`navIndex ===
+   queue.length - 1`), never re-primes. Repro (jsdom, the reflect harness): solo-select
+   chapter two (`.music-song-row[data-index="1"]`), drain, click the toolbar button twice
+   (pref back to '1'), cross the segment end (130 -> 240). This branch: `film::c1` keeps playing
+   (straight-through listen with Autoplay ON). ecb61e1d, same test: `sx1` (stations on). Mutant
+   U6 (drop the nulling line) SURVIVES all 163 item-0 tests - the line is unbound AND it is the
+   bug. Prescription, verified: delete `soloExitPicks = null;` from `retractAutoplayPicks` (the
+   hand-off's own `if (!autoplayEnabled()) return;` already refuses an OFF exit): with it,
+   OFF-then-ON stations on (`sx1`), OFF alone still refuses (`film::c1`), and
+   music-chapter-reflect + music-skin-integration are 159 / 159. Bind both with a test.
+2. **WARNING (test gap, verified) - the retract's up-next repaint is unbound.** AC0(b) claims
+   "the up-next shows the truth" as bound. Mutant U2 (drop `updateNowPlayingPanel()` from
+   `retractAutoplayPicks`) SURVIVES (163 pass / 0 fail). In Chromium under U2, C1 after the
+   toolbar OFF still lists `Other One / Other Two / Other Three` below the last chapter (and
+   C5 after the refused end the same), while HEAD shows the 3 chapters only. Add an assertion
+   on the rendered up-next rows after OFF.
+3. **WARNING (false plan claim, verified; the bug is pre-existing) - "Listen -> Watch adopt
+   keeps autoAdvanceViaTrackNav ... measured harmless (the natural end on the watch page
+   stops)" is wrong.** The builder's reverse probe drove only `a1`. Same probe per album
+   position (server `autoplayNext` false, measured): `a1` stops; `a2` -> `a1`; `a3` -> `a2` -
+   the watch page advanced to another video with autoplay OFF (the ledger's "a finished video
+   may jump to the next one even if autoplay is off" bug, reproduced). ecb61e1d: identical.
+   Prescription, verified in Chromium: add `autoAdvanceViaTrackNav: false` to watch.js's two
+   `player.load` data objects (`mountedEarly`, `mounted`); this branch's own `applyAdoptFlavor`
+   arm then clears it on the adopt, and `a1`, `a2`, `a3` all stop. Fix it (one field per call
+   site, plus a player-adopt-flavor test) or, at minimum, correct D-3 and the disclosed gap
+   to say it reproduces and file it.
+4. **WARNING (enumeration gap in the #237 class, verified; safe to ship if disclosed) - the
+   same-id adopt still keeps the watch load's `title` and `channelName`.** Divergent fixture
+   (file title `file-a1`, channel `Uploader`, tags `Alpha One` / `Band`): Watch -> Music adopt,
+   then the dock-return re-init. `getCurrentMeta` = `{title:'file-a1', artist:'Uploader'}` and
+   the now-playing panel reads "file-a1 Uploader · Record"; the control (cold /music) reads
+   "Alpha One Band · Record". Display only, pre-existing, no data at risk, so I do not block
+   on it IF the tracker says so: #237 is marked CLOSED while its class is still open - file a
+   row (or carry the two fields in `applyAdoptFlavor` when declared).
+5. **SUGGESTION (verified in jsdom) - Autoplay OFF during a station pick's ALAC prewarm still
+   starts that pick.** Picks with `needsTranscode: true`, the natural-end advance into the
+   first (prewarm fetch held), toolbar OFF, release the fetch: `currentId` = `al1`, the nav has
+   only `onPrev` (the retract dropped the pick from the queue because `navIndex` was still the
+   previous track). The advance was committed while ON, so it is arguably "reached"; the
+   visible cost is a playing track missing from the up-next. Cheap fix: re-check
+   `autoplayEnabled()` / `isAutoplayPick(item)` in the prewarm ready arm.
+6. **Suspicion (reasoned, not driven) - `immersiveCarryPending` stays armed when
+   `autoplayHoldsAt` refuses.** player.js `fallbackToTrackNav` sets it BEFORE calling
+   `onNext`, which now returns without loading (reachable via the storage-only flip). It is
+   consumed only if the host is still immersive at the next load, so the effect is small.
+7. **Suspicion (reasoned) - a dock-return re-init while a station pick plays (Autoplay OFF)
+   rebuilds that pick's ALBUM as the queue** (the `?nowplaying=1` album restore), so its end
+   plays on into an album the user never queued. Pre-existing re-init semantics; Dean's call.
+   Also noted: after a storage-only flip the toolbar still reads `aria-pressed="true"` (C5)
+   until the next reflect - pre-existing, adjacent to the disclosed prefs-sync gap.
+
+Verdict: 1 blocks (a regression with a verified one-line fix); 2 and 3 block (an AC claimed
+bound that is not; a plan claim measured false in the seam this branch edits); 4 can ship
+disclosed. 5-7 are advisory.
+
+Gate: CHANGES r1 @020bec0a — adversary
