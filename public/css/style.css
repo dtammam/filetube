@@ -7470,9 +7470,55 @@ body.ft-audio-expanded {
 .chapter-snap-ctl .btn,
 .chapter-snap-tools .btn,
 .chapter-snap-confirm-actions .btn,
-.chapter-snap-actions .btn {
+.chapter-snap-actions .btn,
+.chapter-snap-shift .btn {
   min-height: var(--size-control);
   justify-content: center;
+}
+/* Shift all (Dean 2026-09-24): the list's top row - move every chapter after the first by
+   the same amount. The four steps reuse the nudge grid; the readout, the reason a
+   direction is off, and the silence's suggestion sit under them. */
+.chapter-snap-shift {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-2);
+  border-bottom: 1px solid var(--border-color);
+}
+.chapter-snap-shift[hidden],
+.chapter-snap-shift [hidden] { display: none !important; }
+.chapter-snap-shift-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+.chapter-snap-shift-label {
+  font-weight: var(--fw-semibold);
+}
+.chapter-snap-shift-readout {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.chapter-snap-shift-why,
+.chapter-snap-shift-note {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.chapter-snap-shift-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chapter-snap-shift-apply {
+  max-width: 100%;
+  text-align: left;
 }
 .chapter-snap-nudge {
   font-family: var(--mono-font);
@@ -7543,8 +7589,13 @@ body.ft-audio-expanded {
   .chapter-snap-ctl .btn,
   .chapter-snap-tools .btn,
   .chapter-snap-confirm-actions .btn,
-  .chapter-snap-actions .btn {
+  .chapter-snap-actions .btn,
+  .chapter-snap-shift .btn {
     min-height: var(--size-touch);
+  }
+  .chapter-snap-shift-apply,
+  .chapter-snap-shift-reset {
+    flex: 1 1 auto;
   }
   .chapter-snap-nudge {
     min-width: 0;
@@ -11837,8 +11888,14 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-lcd-in{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
   .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--space-3) var(--space-4);
     background:linear-gradient(var(--mms-ipod-bar1), var(--mms-ipod-bar2)); border-bottom:1px solid var(--mms-ipod-hair); }
-  .mms-ipod .ip-np{ font-size:var(--fs-base); font-weight:var(--fw-bold); }
-  .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); }
+  /* The status bar is ONE line, whatever the title (Dean 2026-09-24: a long album or song
+     name grew the bar by a row). The title is the flex child that gives: it may shrink below
+     its text (min-width:0), never wraps, and truncates with an ellipsis the way a real iPod
+     Classic's status title does. The play mark + battery cluster never shrinks or moves.
+     Covers every screen that draws this bar: the Click trio, Seattle, the desktop pop-out
+     and the Nano tray (scripts/skin-status-bar-probe.js measures them). */
+  .mms-ipod .ip-np{ font-size:var(--fs-base); font-weight:var(--fw-bold); flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
   .mms-ipod .mms-playind{ font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); }
   .mms-ipod .ip-batt{ width:22px; height:11px; flex:none; overflow:hidden; background:var(--mms-white); border:1px solid var(--mms-ipod-batt-line); border-radius:var(--mms-ipod-r-sm); }
   .mms-ipod .ip-batt i{ display:block; height:100%; width:82%; background:linear-gradient(var(--mms-ipod-batt1), var(--mms-ipod-batt2)); }

@@ -13002,6 +13002,81 @@ function snapChipText(i, row, sug, silenceState) {
   return { text: 'No gap found near this start. Nudge it if it sounds wrong.', kind: 'fine' };
 }
 
+// ---- Shift all (Dean 2026-09-24): "a global offset ... the whole track is offset by a
+// somewhat equivalent amount. It's not the same for everything." One control moves EVERY
+// chapter after the first by the same amount (chapter 1 keeps its start), and the silence
+// the editor already found says whether the file looks like a whole-track offset at all.
+// Pure helpers (the editor and the unit tests share them). Times are handled in whole
+// MILLISECONDS so a shift and its reset cancel exactly.
+
+// The agreement rule for a suggested shift: at least SNAP_SHIFT_MIN_BOUNDARIES boundaries
+// with a snap point, and at least 60 % of them within SNAP_SHIFT_AGREE_SEC of the median.
+const SNAP_SHIFT_AGREE_SEC = 0.3;
+const SNAP_SHIFT_AGREE_TENTHS = 6; // 60 %, compared in integers (agree * 10 >= of * 6)
+const SNAP_SHIFT_MIN_BOUNDARIES = 2;
+// Below this the chapters already sit on the silence: nothing to suggest.
+const SNAP_SHIFT_ALIGNED_SEC = 0.05;
+
+// "+2.3 s", "−1.75 s" (the nudges' minus sign). Whole milliseconds in.
+function formatSnapShift(ms) {
+  const n = Math.round(Number(ms)) || 0;
+  let s = (Math.abs(n) / 1000).toFixed(3).replace(/0+$/, '');
+  if (s.endsWith('.')) s += '0';
+  return (n < 0 ? '−' : '+') + s + ' s';
+}
+
+// Whether moving chapters 2..N by `deltaMs` keeps the list valid. Every one of them moves
+// by the same amount, so only the two ends can break: chapter 2 must stay after chapter
+// 1's start plus the minimum gap, and the last chapter before the end of the file minus
+// the gap. `minGapSec` and `durationSec` are the SERVER's (the editor state carries them).
+// Returns { ok: true } or { ok: false, dir: 'earlier' | 'later', reason }.
+function snapShiftBlock(times, deltaMs, durationSec, minGapSec) {
+  if (!Array.isArray(times) || times.length < 2) return { ok: false, dir: '', reason: 'There are no chapters after the first to shift.' };
+  const d = Math.round(Number(deltaMs)) || 0;
+  const gapMs = Math.round((typeof minGapSec === 'number' && isFinite(minGapSec) && minGapSec > 0 ? minGapSec : 0.1) * 1000);
+  const t0 = Math.round(Number(times[0]) * 1000);
+  const t1 = Math.round(Number(times[1]) * 1000);
+  const tl = Math.round(Number(times[times.length - 1]) * 1000);
+  if (d < 0 && t1 + d <= t0 + gapMs) return { ok: false, dir: 'earlier', reason: 'Shifting earlier would put chapter 2 at or before chapter 1.' };
+  const dur = Number(durationSec);
+  if (d > 0 && isFinite(dur) && dur > 0 && tl + d >= Math.round(dur * 1000) - gapMs) {
+    return { ok: false, dir: 'later', reason: 'Shifting later would put the last chapter at or past the end of the file.' };
+  }
+  return { ok: true };
+}
+
+// The shift the silence suggests, measured from the CURRENT times. A boundary counts when
+// the scan found a snap point near it (a server suggestion of status 'suggest' OR 'fine' -
+// a boundary that already sits on its silence is evidence against an offset too, so it
+// must count). delta = snap point - current start. Returns
+//   { kind: 'suggest', deltaMs, agree, of }  - a whole-track offset (apply deltaMs)
+//   { kind: 'aligned', agree, of }           - they agree and already line up
+//   { kind: 'none', agree, of }              - no consistent offset (real misalignment)
+//   { kind: 'few', agree: 0, of }            - fewer than two boundaries to compare
+function snapShiftSuggestion(times, suggestions) {
+  const deltas = [];
+  const t = Array.isArray(times) ? times : [];
+  const sug = Array.isArray(suggestions) ? suggestions : [];
+  for (let i = 1; i < t.length; i += 1) {
+    const s = sug[i];
+    if (!s || (s.status !== 'suggest' && s.status !== 'fine')) continue;
+    const at = Number(s.time);
+    const cur = Number(t[i]);
+    if (!isFinite(at) || !isFinite(cur)) continue;
+    deltas.push(Math.round(at * 1000) - Math.round(cur * 1000));
+  }
+  const of = deltas.length;
+  if (of < SNAP_SHIFT_MIN_BOUNDARIES) return { kind: 'few', agree: 0, of };
+  const sorted = deltas.slice().sort((a, b) => a - b);
+  const mid = Math.floor(of / 2);
+  const median = of % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+  const tol = Math.round(SNAP_SHIFT_AGREE_SEC * 1000);
+  const agree = deltas.filter((x) => Math.abs(x - median) <= tol).length;
+  if (agree < SNAP_SHIFT_MIN_BOUNDARIES || agree * 10 < of * SNAP_SHIFT_AGREE_TENTHS) return { kind: 'none', agree, of };
+  if (Math.abs(median) < SNAP_SHIFT_ALIGNED_SEC * 1000) return { kind: 'aligned', agree, of };
+  return { kind: 'suggest', deltaMs: median, agree, of };
+}
+
 /**
  * Open the chapter time editor for `mediaId`. `opts`:
  *   focusIndex - the chapter to scroll to and highlight (now playing's current)
@@ -13018,7 +13093,8 @@ function showChapterSnapEditor(mediaId, opts) {
   const base = '/api/videos/' + encodeURIComponent(mediaId) + '/chapter-snap';
 
   let state = null; // the server's editor state (seed)
-  let rows = [];    // [{index, title, sourceStart, savedStart, time}]
+  let rows = [];    // [{index, title, sourceStart, savedStart, time, shift}] - `shift` = the whole ms
+                    // the Shift all control has added to THIS row's time (a snap clears it)
   let busy = false;
   let closed = false;
   let pollTimer = null;
@@ -13090,6 +13166,45 @@ function showChapterSnapEditor(mediaId, opts) {
   modal.appendChild(head);
 
   const scroller = el('div', 'chapter-snap-scroll');
+  // Shift all (Dean 2026-09-24): the top row of the list - every chapter after the first
+  // moves by the same amount; the net shift reads out live; the silence says whether the
+  // file looks like a whole-track offset. It scrolls with the rows (phone-first: the head
+  // stays short so the list keeps its room).
+  const shiftBox = el('section', 'chapter-snap-shift');
+  shiftBox.setAttribute('aria-label', 'Shift all chapters');
+  shiftBox.hidden = true;
+  const shiftTop = el('div', 'chapter-snap-shift-top');
+  shiftTop.appendChild(el('span', 'chapter-snap-shift-label', 'Shift all'));
+  const shiftReadoutEl = el('span', 'chapter-snap-shift-readout', 'No shift');
+  shiftReadoutEl.setAttribute('aria-live', 'polite');
+  shiftTop.appendChild(shiftReadoutEl);
+  const shiftResetBtn = btn('btn chapter-snap-shift-reset', 'Reset shift', 'Reset the shift (your nudges stay)');
+  shiftResetBtn.setAttribute('data-shift-act', 'reset');
+  shiftResetBtn.hidden = true;
+  shiftTop.appendChild(shiftResetBtn);
+  shiftBox.appendChild(shiftTop);
+  const shiftBtnsEl = el('div', 'chapter-snap-nudges chapter-snap-shift-btns');
+  const shiftStepBtns = [[-1000, '−1 s', 'earlier by 1 second'], [-100, '−0.1 s', 'earlier by a tenth of a second'], [100, '+0.1 s', 'later by a tenth of a second'], [1000, '+1 s', 'later by 1 second']].map(function (n) {
+    const b = btn('btn chapter-snap-nudge chapter-snap-shift-btn', n[1], 'Shift every chapter after the first ' + n[2]);
+    b.setAttribute('data-shift-act', 'step');
+    b.setAttribute('data-shift', String(n[0]));
+    shiftBtnsEl.appendChild(b);
+    return b;
+  });
+  shiftBox.appendChild(shiftBtnsEl);
+  const shiftWhy = el('div', 'chapter-snap-shift-why', '');
+  shiftWhy.hidden = true;
+  shiftBox.appendChild(shiftWhy);
+  const shiftSuggestEl = el('div', 'chapter-snap-shift-suggest');
+  shiftSuggestEl.hidden = true;
+  const shiftApplyBtn = btn('btn btn-primary chapter-snap-shift-apply', '');
+  shiftApplyBtn.setAttribute('data-shift-act', 'apply');
+  shiftApplyBtn.hidden = true;
+  const shiftNote = el('span', 'chapter-snap-shift-note', '');
+  shiftSuggestEl.appendChild(shiftApplyBtn);
+  shiftSuggestEl.appendChild(shiftNote);
+  shiftBox.appendChild(shiftSuggestEl);
+  scroller.appendChild(shiftBox);
   const list = el('ol', 'chapter-snap-list');
   list.setAttribute('aria-label', 'Chapters');
   scroller.appendChild(list);
@@ -13119,7 +13234,9 @@ function showChapterSnapEditor(mediaId, opts) {
     for (let i = 1; i < rows.length; i += 1) {
       const sug = state.suggestions[i];
       if (!sug || sug.status !== 'suggest') continue;
-      if (Math.abs(rows[i].time - rows[i].savedStart) >= 0.0005) continue; // hand-edited: leave it
+      // hand-edited: leave it. A row moved ONLY by Shift all is not hand-edited (Dean: Snap all
+      // after a shift still snaps to the silence, absolute), so its shift is allowed for.
+      if (Math.abs(rows[i].time - (rows[i].savedStart + rows[i].shift / 1000)) >= 0.0005) continue;
       const target = state.snapAll[i];
       if (!(Math.abs(target - rows[i].time) >= 0.0005)) continue;
       const next = i + 1 < rows.length ? t[i + 1] : Infinity;
@@ -13145,7 +13262,111 @@ function showChapterSnapEditor(mediaId, opts) {
     revertBtn.disabled = busy || staleSeed;
     saveBtn.disabled = busy || staleSeed || !dirty();
     cancelBtn.disabled = busy;
+    renderShift();
   }
+
+  // ---- Shift all -----------------------------------------------------------------
+  // The times a Reset would restore: each row minus exactly what the shift added to IT
+  // (a nudge made after the shift stays; a row snapped since carries no shift). null when
+  // no row carries a shift.
+  function shiftResetTimes() {
+    if (!rows.some(function (r) { return r.shift !== 0; })) return null;
+    return rows.map(function (r) { return Math.round(r.time * 1000 - r.shift) / 1000; });
+  }
+  // A reset is refused only when a row snapped since would end up out of order (the server's
+  // own rule: strictly increasing, the last before the end of the file).
+  function shiftResetProblem(t) {
+    for (let i = 1; i < t.length; i += 1) {
+      if (!(t[i] > t[i - 1])) return 'Resetting would put chapter ' + (i + 1) + ' at or before chapter ' + i + ' (a chapter was snapped after the shift). Use Undo changes to start over.';
+    }
+    const dur = state ? Number(state.duration) : NaN;
+    if (isFinite(dur) && dur > 0 && !(t[t.length - 1] < dur)) return 'Resetting would put the last chapter past the end of the file. Use Undo changes to start over.';
+    return '';
+  }
+  function shiftReadout() {
+    const after = rows.slice(1);
+    const moved = after.filter(function (r) { return r.shift !== 0; });
+    if (moved.length === 0) return 'No shift';
+    const same = moved.every(function (r) { return r.shift === moved[0].shift; });
+    if (same && moved.length === after.length) return 'All chapters shifted ' + formatSnapShift(moved[0].shift);
+    if (same) return 'Shifted ' + formatSnapShift(moved[0].shift) + ' on ' + moved.length + ' of ' + after.length + ' chapters (the others were snapped since)';
+    return 'Shifted on ' + moved.length + ' of ' + after.length + ' chapters, by different amounts (some were snapped between shifts)';
+  }
+  function renderShift() {
+    const on = !!state && rows.length >= 2;
+    shiftBox.hidden = !on;
+    if (!on) return;
+    const t = times();
+    const lock = busy || staleSeed;
+    const reasons = [];
+    shiftStepBtns.forEach(function (b) {
+      const blk = snapShiftBlock(t, Number(b.getAttribute('data-shift')), state.duration, state.minGapSec);
+      b.disabled = lock || !blk.ok;
+      if (!blk.ok && reasons.indexOf(blk.reason) === -1) reasons.push(blk.reason);
+    });
+    shiftReadoutEl.textContent = shiftReadout();
+    const rt = shiftResetTimes();
+    shiftResetBtn.hidden = !rt;
+    const rp = rt ? shiftResetProblem(rt) : '';
+    shiftResetBtn.disabled = lock || !!rp;
+    if (rp) reasons.push(rp);
+    // The suggestion, from the silence already found (no new scan).
+    shiftApplyBtn.hidden = true;
+    shiftApplyBtn.removeAttribute('data-shift');
+    shiftNote.textContent = '';
+    if (silenceState() === 'ready' && Array.isArray(state.suggestions)) {
+      const g = snapShiftSuggestion(t, state.suggestions);
+      if (g.kind === 'suggest') {
+        shiftApplyBtn.hidden = false;
+        shiftApplyBtn.textContent = 'Suggested: shift all by ' + formatSnapShift(g.deltaMs) + ' (' + g.agree + ' of ' + g.of + ' agree)';
+        shiftApplyBtn.setAttribute('data-shift', String(g.deltaMs));
+        const blk = snapShiftBlock(t, g.deltaMs, state.duration, state.minGapSec);
+        shiftApplyBtn.disabled = lock || !blk.ok;
+        if (!blk.ok && reasons.indexOf(blk.reason) === -1) reasons.push(blk.reason);
+      } else if (g.kind === 'aligned') {
+        shiftNote.textContent = 'The chapters line up with the silence (' + g.agree + ' of ' + g.of + ' agree).';
+      } else if (g.kind === 'few') {
+        shiftNote.textContent = 'No consistent offset (too few gaps to compare).';
+      } else {
+        shiftNote.textContent = 'No consistent offset: the chapters are off by different amounts. Fix them one by one.';
+      }
+    }
+    shiftSuggestEl.hidden = shiftApplyBtn.hidden && !shiftNote.textContent;
+    shiftWhy.textContent = reasons.join(' ');
+    shiftWhy.hidden = reasons.length === 0;
+  }
+  // Move chapters 2..N by `deltaMs` (chapter 1 keeps its start). Refused - with the reason -
+  // when it would break the order; renderShift already disables such a button.
+  function applyShift(deltaMs) {
+    const d = Math.round(Number(deltaMs)) || 0;
+    if (!d || busy || staleSeed || rows.length < 2) return;
+    const blk = snapShiftBlock(times(), d, state && state.duration, state && state.minGapSec);
+    if (!blk.ok) { setStatus(blk.reason); return; }
+    for (let i = 1; i < rows.length; i += 1) {
+      rows[i].time = Math.round(rows[i].time * 1000 + d) / 1000;
+      rows[i].shift += d;
+    }
+    if (auditionIndex > 0) stopAudition();
+    renderList();
+    setStatus('Moved every chapter after the first ' + formatSnapShift(d) + '. Play one to check, then Save.');
+  }
+  function resetShift() {
+    if (busy || staleSeed) return;
+    const t = shiftResetTimes();
+    if (!t) return;
+    const problem = shiftResetProblem(t);
+    if (problem) { setStatus(problem); return; }
+    rows.forEach(function (r, i) { r.time = t[i]; r.shift = 0; });
+    if (auditionIndex > 0) stopAudition();
+    renderList();
+    setStatus('The shift is gone. Your other changes stay.');
+  }
+  shiftBox.addEventListener('click', function (e) {
+    const b = e.target && e.target.closest ? e.target.closest('button[data-shift-act]') : null;
+    if (!b || b.disabled || busy) return;
+    if (b.getAttribute('data-shift-act') === 'reset') { resetShift(); return; }
+    applyShift(Number(b.getAttribute('data-shift')));
+  });
 
   function renderRow(li, i) {
     const r = rows[i];
@@ -13229,9 +13450,11 @@ function showChapterSnapEditor(mediaId, opts) {
 
   function applySeed(s, keepEdits) {
     const prevTimes = keepEdits ? times() : null;
+    const prevShift = keepEdits ? rows.map(function (r) { return r.shift; }) : null;
     state = s;
     rows = (s.chapters || []).map(function (c, i) {
-      return { index: c.index, title: c.title, sourceStart: Number(c.sourceStart), savedStart: Number(c.startTime), time: prevTimes && prevTimes.length === s.chapters.length ? prevTimes[i] : Number(c.startTime) };
+      const keep = !!prevTimes && prevTimes.length === s.chapters.length;
+      return { index: c.index, title: c.title, sourceStart: Number(c.sourceStart), savedStart: Number(c.startTime), time: keep ? prevTimes[i] : Number(c.startTime), shift: keep ? prevShift[i] : 0 };
     });
     if (focusIndex >= rows.length) focusIndex = -1;
   }
@@ -13371,9 +13594,12 @@ function showChapterSnapEditor(mediaId, opts) {
   }
 
   // ---- edits -------------------------------------------------------------------
-  function setTime(i, t) {
+  function setTime(i, t, absolute) {
     if (i <= 0 || i >= rows.length || staleSeed) return;
     rows[i].time = t;
+    // A snap places the row on the silence, absolute: the shift no longer lives in it (so a
+    // Reset shift leaves it on its snap). A nudge is relative and keeps the row's shift.
+    if (absolute) rows[i].shift = 0;
     if (auditionIndex === i) stopAudition();
     // A neighbour's snap button is only valid relative to this row's time, so
     // the whole (small) list re-renders.
@@ -13403,7 +13629,7 @@ function showChapterSnapEditor(mediaId, opts) {
       const prev = rows[i - 1].time;
       const next = i + 1 < rows.length ? rows[i + 1].time : Infinity;
       if (!(sug.time > prev && sug.time < next)) { setStatus('Snapping chapter ' + (i + 1) + ' would cross its neighbour. Nudge the neighbour first.'); return; }
-      setTime(i, sug.time);
+      setTime(i, sug.time, true);
     }
   });
 
@@ -13411,13 +13637,13 @@ function showChapterSnapEditor(mediaId, opts) {
     if (busy || !state || !Array.isArray(state.snapAll)) return;
     const plan = snapAllPlan();
     const n = plan.length;
-    plan.forEach(function (p) { rows[p[0]].time = p[1]; });
+    plan.forEach(function (p) { rows[p[0]].time = p[1]; rows[p[0]].shift = 0; });
     renderList();
     setStatus(n > 0 ? 'Snapped ' + n + (n === 1 ? ' start' : ' starts') + '. Review them, then Save.' : describeSilence());
   });
   undoBtn.addEventListener('click', function () {
     if (busy) return;
-    rows.forEach(function (r) { r.time = r.savedStart; });
+    rows.forEach(function (r) { r.time = r.savedStart; r.shift = 0; });
     stopAudition();
     renderList();
     setStatus(describeSilence());
@@ -13559,7 +13785,7 @@ function showChapterSnapEditor(mediaId, opts) {
   openOverlay(backdrop, 'modal-open');
   const ready = load(false);
 
-  return { backdrop, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, close: teardown, ready, isClosed: () => closed };
+  return { backdrop, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, shiftBox, close: teardown, ready, isClosed: () => closed };
 }
 
 /**
@@ -16288,6 +16514,7 @@ if (typeof module !== 'undefined' && module.exports) {
     withShareStartTime,
     // Chapter Snap (2026-09-24): the ONE chapter-time editor + its pure helpers (jsdom-tested).
     showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor, formatChapterStamp,
+    formatSnapShift, snapShiftBlock, snapShiftSuggestion,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,
