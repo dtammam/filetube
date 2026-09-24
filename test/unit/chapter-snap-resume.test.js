@@ -108,6 +108,8 @@ async function boot(run, opts) {
       return Promise.resolve(res);
     }
     const other = u.match(/^\/api\/videos\/([^/?]+)$/);
+    // server.failFiles[id]: that file's GET fails (a 503), parked too under holdFiles (gate r2, adversary).
+    if (other && server.failFiles && server.failFiles[other[1]]) { videoGets.push(u); const r503 = { ok: false, status: 503, json: async () => ({}) }; if (server.holdFiles) return new Promise((resolve) => parked.push(() => resolve(r503))); return Promise.resolve(r503); }
     if (other && server.files && server.files[other[1]]) {
       videoGets.push(u);
       const f = server.files[other[1]];
@@ -696,4 +698,107 @@ test('r1 P3: a FAILED return re-check leaves the playing file unverified - its n
     assert.strictEqual(ctx.videoGets.length, 2, 'the pick asked for f1 before playing');
     assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c1').data.chapterStartSec, 75, 'and played the corrected start');
   });
+});
+
+// ---- Gate r2 (adversary WARNING 6: four claimed arms unbound; its ready-made tests, folded in) ----
+
+const playRecentWithG9 = async (dom, ctx) => {
+  const ec = ctx.engineCfg();
+  ec.menu.onPlay({ tracks: [tracksFixture()[0], tracksFixture()[2], g2()[0], g2()[1]], index: 0, play: RECENT });
+  await settleN(30);
+  fire(dom, 'visibilitychange'); await settleN(20); // f1 re-checked; g9 marked unverified
+};
+
+test('r2 B6: a FAILED verify of a pick still plays the row as queued (an offline pick is never swallowed)', async () => {
+  await boot(async (dom, ctx) => {
+    await playRecentWithG9(dom, ctx);
+    ctx.server.failFiles = { g9: true };
+    const gets = ctx.videoGets.length;
+    click(dom, row(dom, 'g9::c1')); await settleN(20);
+    assert.strictEqual(ctx.videoGets.length - gets, 1, 'the verify was tried (non-vacuous: the failure arm ran)');
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'g9::c1', 'the pick played despite the failed verify');
+  }, { extraRows: g2() });
+});
+
+test('r2 B8: a FAILED verify of an OLDER pick does not play over a newer pick', async () => {
+  await boot(async (dom, ctx) => {
+    await playRecentWithG9(dom, ctx);
+    ctx.server.failFiles = { g9: true }; ctx.server.holdFiles = true;
+    click(dom, row(dom, 'g9::c1')); await settleN(6); // its verify is parked, and will fail
+    click(dom, row(dom, 'f1::c2')); await settleN(10);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c2');
+    ctx.release(); await settleN(20);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c2', 'the late failed verification did not start g9 over the newer pick');
+    assert.strictEqual(ctx.loads.filter((l) => l.id === 'g9::c1').length, 0, 'g9::c1 never loaded');
+  }, { extraRows: g2() });
+});
+
+test('r2 B5: a verify answer that lands after the view was torn down plays nothing', async () => {
+  await boot(async (dom, ctx) => {
+    await playRecentWithG9(dom, ctx);
+    ctx.server.files = { g9: { chapters: G9_MOVED } }; ctx.server.holdFiles = true;
+    click(dom, row(dom, 'g9::c1')); await settleN(6);
+    const loads = ctx.loads.length;
+    ctx.registered.destroy();
+    ctx.release(); await settleN(20);
+    assert.strictEqual(ctx.loads.length, loads, 'a dead view never loads the verified row');
+  }, { extraRows: g2() });
+});
+
+test('r2 B3: a Listen re-mount (/music?play=f1&listen=1) of the LOADED chapter with the file rolled on keeps the playhead', async () => {
+  await boot(async (dom, ctx) => {
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0');
+    ctx.media.t = 130;
+    const seeks = ctx.media.seeks.length; const plays = ctx.media.plays;
+    ctx.registered.destroy();
+    dom.window.history.replaceState(null, '', '/music?play=f1&listen=1');
+    ctx.registered.init(dom.window.document.getElementById('view-root'));
+    await settleN(30);
+    const l = ctx.loads[ctx.loads.length - 1];
+    assert.strictEqual(l.id, 'f1::c0', 'the listen arm re-loaded the loaded chapter id (an adopt - non-vacuous)');
+    assert.strictEqual(ctx.media.t, 130, 'no seek back to the head of chapter 1');
+    assert.deepStrictEqual(ctx.media.seeks.slice(seeks), [], 'no seek');
+    assert.strictEqual(ctx.media.plays, plays, 'no forced play');
+  });
+});
+
+// Gate r2 adversary SUGGESTION 7 (B7, B11, B12): the bookkeeping and the flat redraw.
+test('r2 B7: a FAILED verify keeps the file unverified - its next pick asks again and plays the corrected start', async () => {
+  await boot(async (dom, ctx) => {
+    await playRecentWithG9(dom, ctx);
+    ctx.server.failFiles = { g9: true };
+    click(dom, row(dom, 'g9::c1')); await settleN(20); // failed verify: played as queued
+    const gets = ctx.videoGets.length;
+    ctx.server.failFiles = null; ctx.server.files = { g9: { chapters: G9_MOVED } };
+    click(dom, row(dom, 'g9::c0')); await settleN(20);
+    assert.strictEqual(ctx.videoGets.length - gets, 1, 'the next pick of g9 asked again');
+    click(dom, row(dom, 'g9::c1')); await settleN(20);
+    assert.strictEqual(lastLoadOf(ctx.loads, 'g9::c1').data.chapterStartSec, 48, 'and the corrected bounds took');
+  }, { extraRows: g2() });
+});
+
+test('r2 B11: a return that re-checks a file clears its unverified mark - its next pick does not ask again', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.fail = true;
+    fire(dom, 'visibilitychange'); await settleN(10); // failed: f1 stays unverified
+    ctx.server.fail = false;
+    fire(dom, 'visibilitychange'); await settleN(10); // succeeds: f1 verified
+    const gets = ctx.videoGets.length;
+    assert.strictEqual(gets, 2, 'precondition: two return re-checks');
+    click(dom, row(dom, 'f1::c1')); await settleN(20);
+    assert.strictEqual(ctx.videoGets.length, gets, 'no redundant GET on the pick');
+  });
+});
+
+test('r2 B12: a flat list redrawn after a remote edit draws no album drill header over it', async () => {
+  await boot(async (dom, ctx) => {
+    const ec = ctx.engineCfg();
+    ec.menu.onPlay({ tracks: [tracksFixture()[1], g9row()], index: 0, play: RECENT });
+    await settleN(30);
+    assert.strictEqual(dom.window.document.querySelector('.music-drill'), null, 'precondition: a flat list, no drill');
+    ctx.server.chapters = MOVED;
+    fire(dom, 'visibilitychange'); await settleN(30);
+    assert.match(row(dom, 'f1::c1').textContent, /0:45/, 'the flat list was redrawn (non-vacuous)');
+    assert.strictEqual(dom.window.document.querySelector('.music-drill'), null, 'still no drill header');
+  }, { extraRows: [g9row()] });
 });
