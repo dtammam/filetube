@@ -1236,7 +1236,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // #theater-btn itself is wired post-mount in setupTheatreToggle().
     try {
       const wc = root.querySelector('.watch-container');
-      if (wc) wc.classList.toggle('theater-mode', isTheaterModeActive(localStorage.getItem('ft-theater')));
+      const theatreOn = isTheaterModeActive(localStorage.getItem('ft-theater'));
+      if (wc) wc.classList.toggle('theater-mode', theatreOn);
+      // v1.317 (gate r1, adversary S2): the persistent host can arrive here wearing
+      // the MUSIC view's aria-pressed (its own ft-music-theater key) - the early
+      // adopt mounts it synchronously, so re-stamp watch's state in this same
+      // pass; else the pressed look disagrees with the class for one RTT until
+      // setupTheatreToggle re-stamps post-fetch. No-op when no button exists yet.
+      const tb = document.getElementById('theater-btn');
+      if (tb) tb.setAttribute('aria-pressed', theatreOn ? 'true' : 'false');
     } catch (_) { /* storage disabled - default off */ }
 
     // #sidebar-folders-list lives in the PERSISTENT shell (outside

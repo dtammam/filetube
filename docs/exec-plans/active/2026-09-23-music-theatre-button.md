@@ -110,9 +110,18 @@ signal; the id-guard means whichever view injects first wins and the other reuse
   re-init binds exactly one more (no accumulation) and one click = one flip. ("watch -> music"
   test, listener registrations counted on the shared node.)
 - AC7 music -> watch: music's init/destroy leaves the same node, in place before the cog, with no
-  `hidden`, and the writer reuses it. ("music -> watch" test.) The watch page's own post-mount
-  re-query + `{ signal }` binding stay locked in `watch-chrome-ambient.test.js` and executed
-  in `watch-init-behavioral.test.js`.
+  `hidden`, and the writer reuses it. ("music -> watch" test.) On the watch side (gate r1,
+  adversary W1): the CALL to the one writer is bound by execution in
+  `watch-init-behavioral.test.js` (a spy on the harness's player api; the hydrated video path
+  and the `?tv=` path each call it exactly once, post-mount); the post-mount re-query and the
+  `{ signal }` click binding in `setupTheatreToggle` stay SOURCE-locked in
+  `watch-chrome-ambient.test.js` (that vm harness has no button to bind, so the click itself is
+  not executed there).
+- AC12 (gate r1, adversary S2) The watch init re-stamps `#theater-btn`'s `aria-pressed` from
+  `ft-theater` in the same synchronous pass as the `.theater-mode` class apply, so a host
+  arriving with music's aria never disagrees with the class for the hydration RTT. ("gate S2"
+  test in `watch-init-behavioral.test.js`: three stored values, the write recorded
+  synchronously before any await.)
 - AC8 CSS: hidden below 1024px, in the dock, and on every view but watch/music; the pressed look
   keys off `aria-pressed`; the podcast toolbar button keeps its mobile hide. ("CSS" test.)
 - AC9 SHELL PARITY (dynamic roster over public/*.html + lib/ytdlp/views/*.html, floors 12/11/10):
@@ -132,6 +141,15 @@ signal; the id-guard means whichever view injects first wins and the other reuse
   visible toggle. The old toolbar button hid at 1023px. Left as is to keep the watch rule
   byte-identical (D15: "watch's wiring unchanged"); a follow-up could move music's stage
   breakpoint to 1025px alongside the all-views player cap (`@media (min-width: 1025px)`).
+  Gate r1: confirmed by both seats (qa: "the disclosure is exact"; adversary S3: reachable only
+  by resizing from >=1025 with ON persisted, the key is not in the synced-prefs set).
+- books.html (pre-existing, out of scope; gate r1 adversary NOTE 4): it ships neither
+  `#player-host-template` nor `#player-dock` yet loads watch.js + player.js, so the writer
+  returns null there and the parity census's consumer arm passes it; a soft-nav
+  /books -> /watch.html would hit `ensureHost()` null. Tracked as tech-debt #235 in
+  `docs/exec-plans/tech-debt-tracker.md`.
+- The one-RTT aria seam on watch (gate r1 adversary S2) is FIXED in the r1 fix commit: init()
+  re-stamps the button's aria beside the synchronous class apply (AC12).
 - The podcast view keeps its own toolbar theatre button (`#podcast-theater-btn`) with its own
   copy of the SVG in podcasts.html - the same shape Dean disliked, out of scope by intake.
 - The action-row probe (`scripts/action-row-probe.js`) measures the WATCH action row only; the
@@ -149,7 +167,8 @@ signal; the id-guard means whichever view injects first wins and the other reuse
   music.html readers + player parity + player/skin/body-lock/prefs-sync/overlay suites
   (24 files) = 429 pass / 0 fail. `npm run lint` 0 errors (7 pre-existing warnings in
   common.js; eslint over the changed files is clean). `npm run lint:css` TOTAL 0.
-  `check-markers.sh` clean.
+  `check-markers.sh`: 1 issue (the stale design approval @6ea45237, the tolerated Building
+  shape - verbatim in the next bullet; gate r1 qa W1 corrected an earlier "clean" here).
 - `bash .harness/lib/check-markers.sh` mid-build (before the WIP commit): `✗
   docs/exec-plans/active/2026-09-23-music-theatre-button.md: stale approval @6ea45237 - reviewed
   code changed since; re-gate` / `check-markers: 1 issue(s) found` (exit 1). The expected
@@ -342,3 +361,29 @@ Tree: `git status --porcelain` shows only this plan doc (the qa section above an
 uncommitted); no untracked files; the sandbox lives in /tmp/adv-t1-JCRB, outside the tree.
 
 Gate: CHANGES r1 @7c31035f — adversary (see findings)
+
+## r1 fix record
+
+One fix commit on top of ea98921e (code + tests + this doc + the tracker row), then a docs
+commit recording the mutant results below; the mutants ran in a `git archive` sandbox of the
+fix commit's sha, never on the live tree.
+
+| Finding | What changed | Binding test / evidence |
+|---------|--------------|-------------------------|
+| adversary W1 (the guard-typo survivor; M10 killed only by regexes) | `test/unit/watch-init-behavioral.test.js`: the harness's Proxy player gains an `ensureTheaterButton` SPY (`theaterCalls`), so the property is present and counted instead of falling through to the Proxy's `() => undefined`. Two tests drive the REAL watch.js with resolving fetches: the hydrated video path (config + `/api/videos/vid1` + settings resolve; step 4 load, step 9 cog injection) asserts 0 calls synchronously in init() and exactly 1 after hydration (with 2 `load` calls as the reachability precondition); the `?tv=` episode path asserts exactly 1 (with 1 `load`). The DOM shim gained permissive no-ops the hydrated path reaches. | "v1.317 gate W1" x2. Guard-typo mutant and M10: see Mutant results. |
+| qa W2 + adversary W1 (AC7 "executed" overstated) | AC7 reworded: the CALL is bound by execution (the spy); the post-mount re-query and `{ signal }` click binding in `setupTheatreToggle` stay SOURCE-locked in `test/unit/watch-chrome-ambient.test.js` (that harness has no button to click). | Doc only. |
+| qa W1 (false "check-markers clean") | Build record bullet 2 reworded to the true 1-issue output (the tolerated Building shape). | Doc only. |
+| adversary S2 (one-RTT aria seam on watch) | `public/js/watch.js` init(): `#theater-btn` `aria-pressed` is re-stamped from `ft-theater` in the same synchronous try block as the `.theater-mode` class apply (a no-op when no button exists yet). New AC12. | "v1.317 gate S2" (stored `1` / `0` / absent -> exactly one synchronous write of `true` / `false` / `false`). Mutant S2-drop below. |
+| qa S3 (SHELL PARITY slice) | `test/unit/music-theater-toggle.test.js`: the template slice ends at the first `</template>` AFTER the start index. | Fix check below (an earlier empty `<template>` in a shell). |
+| adversary NOTE 4 (books.html has no player template/dock) | Tracker row #235 (Low, OPEN, revisit trigger = drive cold /books -> soft-nav /watch.html in the shell-smoke test) + a Known seams bullet. | Tracker. |
+| adversary S3 / qa (1024px seam) | Known seams bullet now records both seats' confirmation; behaviour unchanged by intent (watch rule byte-identical). | Disclosure. |
+| qa S4 (7 lint warnings) | None: pre-existing in common.js, none in the changed files. | Disclosure. |
+
+Targeted runs (Node 22.23.1, before the fix commit): `node --test
+test/unit/watch-init-behavioral.test.js` = 18 pass / 0 fail; `node --test
+test/unit/music-theater-toggle.test.js` = 9 pass / 0 fail; every unit file that reads watch.js
+plus the two touched files (44 files) = 517 pass / 0 fail.
+
+### Mutant results
+
+Pending: recorded in the docs commit that follows the fix commit.

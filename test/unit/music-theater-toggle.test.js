@@ -378,7 +378,9 @@ test('v1.317 SHELL PARITY (dynamic roster): every shell that loads watch.js or m
     if (html.includes('id="player-host-template"')) {
       hosts++;
       assert.ok(tagAt(html, 'player.js') !== -1, `${rel}: a player template without player.js`);
-      const tpl = html.slice(html.indexOf('id="player-host-template"'), html.indexOf('</template>'));
+      // gate r1 (qa S3): anchor the end on the first `</template>` AFTER the start, not the first in the file
+      const start = html.indexOf('id="player-host-template"');
+      const tpl = html.slice(start, html.indexOf('</template>', start));
       assert.ok(tpl.includes('id="player-controls"'), `${rel}: the template must carry #player-controls`);
       assert.ok(tpl.includes('id="settings-btn"'), `${rel}: the template must carry the cog the button is anchored before`);
     }
