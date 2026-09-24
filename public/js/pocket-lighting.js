@@ -14,8 +14,8 @@
 // from the pocket menu's Settings > Lighting; the strength tap is what asks iOS for motion access.
 //
 // The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever
-// writes two numbers; the CSS it feeds moves gradient positions and translates two thin gradient
-// layers - no filter, blur, mask or backdrop, ever. The frame loop runs only while a Click
+// writes two numbers; the CSS it feeds moves gradient positions and translates two gradient
+// layers (each painting one thin stripe) - no filter, blur, mask or backdrop, ever. The frame loop runs only while a Click
 // skin is painted, visible and lit, writes only when a value moved, and parks itself when the light
 // has settled; every teardown arm (skin switch, dock, hidden tab, pop-out close, reduced motion)
 // unbinds the listener and cancels the loop. The pure half (mapping, filter, strength) is
@@ -61,20 +61,25 @@
   // not raw gamma - held upright (beta near 90) raw gamma is unstable and flips sign past vertical
   // (the gimbal), which would throw the light edge to edge; the projection shrinks smoothly to 0 at
   // vertical and keeps its sign through it. Flat (beta 0) it IS gamma.
+  // Gate r2 (adversary W5): the pitch is atan2(sin(beta), cos(beta) * cos(gamma)), not raw beta -
+  // at vertical the W3C Euler angles swap (beta, gamma) -> (180 - beta, -gamma), and raw beta jumped
+  // by twice the roll there; the atan2 pitch is continuous through vertical and equals beta flat.
+  // (It still wraps at +-180, which wrapDiff below takes care of.)
   var RAD = Math.PI / 180;
   function roll(b, g) {
     var v = Math.cos(b * RAD) * Math.sin(g * RAD);
     return Math.asin(v > 1 ? 1 : (v < -1 ? -1 : v)) / RAD;
   }
+  function pitch(b, g) { return Math.atan2(Math.sin(b * RAD), Math.cos(b * RAD) * Math.cos(g * RAD)) / RAD; }
   function mapTilt(beta, gamma, angle) {
     var b = num(beta); var g = num(gamma);
     if (b === null || g === null) return null;
-    var r = roll(b, g);
+    var r = roll(b, g); var p = pitch(b, g);
     var a = ((Math.round(Number(angle) || 0) % 360) + 360) % 360;
-    if (a === 90) return { x: b, y: -r };
-    if (a === 180) return { x: -r, y: -b };
-    if (a === 270) return { x: -b, y: r };
-    return { x: r, y: b };
+    if (a === 90) return { x: p, y: -r };
+    if (a === 180) return { x: -r, y: -p };
+    if (a === 270) return { x: -p, y: r };
+    return { x: r, y: p };
   }
   // The screen's rotation: screen.orientation (iOS 16.4+, Android, desktop), else the legacy
   // window.orientation (older iOS; -90 = 270), else portrait.
@@ -84,14 +89,20 @@
     return 0;
   }
   function k(dt, tau) { return dt > 0 ? 1 - Math.exp(-dt / tau) : 0; }
+  // Gate r2 (qa W5): the pitch (beta) wraps at +-180 - lying on your back with the phone overhead
+  // (Dean's G5 pose) the sensor jitters between +179 and -179, and a plain difference read that as a
+  // 358-degree tilt and averaged the neutral pose to 0. Every angle difference takes the SHORT way
+  // round, and the baseline stays folded into [-180, 180).
+  function wrapDiff(a, b) { return ((a - b + 540) % 360 + 360) % 360 - 180; }
+  function fold(a) { return ((a + 180) % 360 + 360) % 360 - 180; }
   // The neutral pose (G5): the FIRST sample after a start is neutral; from then on the baseline
   // drifts toward the live sample with RECENTER_TAU_MS, so a held tilt slowly reads as level again.
   // Returns the light's GOAL for this sample (opposite the tilt, TILT_RANGE_DEG = the edge).
   function recentre(st, tx, ty, dt) {
     if (!st.seeded) { st.bx = tx; st.by = ty; st.seeded = true; }
-    else { var kb = k(dt, RECENTER_TAU_MS); st.bx += (tx - st.bx) * kb; st.by += (ty - st.by) * kb; }
+    else { var kb = k(dt, RECENTER_TAU_MS); st.bx = fold(st.bx + wrapDiff(tx, st.bx) * kb); st.by = fold(st.by + wrapDiff(ty, st.by) * kb); }
     // (`|| 0` folds a -0 to 0: a neutral pose is exactly 0)
-    return { x: clamp1(TILT_SIGN * (tx - st.bx) / TILT_RANGE_DEG) || 0, y: clamp1(TILT_SIGN * (ty - st.by) / TILT_RANGE_DEG) || 0 };
+    return { x: clamp1(TILT_SIGN * wrapDiff(tx, st.bx) / TILT_RANGE_DEG) || 0, y: clamp1(TILT_SIGN * wrapDiff(ty, st.by) / TILT_RANGE_DEG) || 0 };
   }
   // Ease the light toward its goal; true when the eased value differs from the last WRITTEN one
   // by more than WRITE_EPS (the caller writes then).
@@ -126,6 +137,7 @@
     var leaving = false;           // the mouse left: ease home slowly
     var lastSampleAt = -Infinity, lastTiltAt = -Infinity;
     var samples = 0, writes = 0;
+    var sessionSamples = 0;        // samples since the last start() (the lit gate below)
     var note = '', permission = '';
     var observer = null;           // the dock watcher (see start): the panel emptied or hidden with no destroy()
     var destroyed = false;         // destroy() ran: nothing may re-bind (a late permission answer, gate r1 S2)
@@ -135,6 +147,15 @@
     function reduced() { try { return !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; } }
     function finePointer() { try { return !!(win.matchMedia && win.matchMedia('(pointer: fine)').matches); } catch (_) { return false; } }
     function painted() { return !!(panel && !panel.hidden && panel.firstChild && panel.isConnected); }
+    function permissionApi() { try { var D = win.DeviceOrientationEvent; return !!(D && typeof D.requestPermission === 'function'); } catch (_) { return false; } }
+    // Gate r2 (qa W4, + the adversary's r1 S4): where the sensor sits behind a permission API AND no
+    // mouse can drive the light (an iPhone), the lit class waits for the FIRST sample of this start -
+    // a relaunch after a remembered deny, or after a grant iOS did not keep, must never show a
+    // lit-but-still band. A desktop or Android streams or has a mouse: lit at once.
+    function litGated() { return permissionApi() && !finePointer(); }
+    function applyLit() {
+      try { if (!litGated() || sessionSamples > 0) panel.classList.add('mms-lit'); else panel.classList.remove('mms-lit'); } catch (_) { /* detached */ }
+    }
     function trayUp() { try { return !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; } }
     // The one question every arm asks: should the light be live on this surface right now?
     function wanted() {
@@ -187,7 +208,8 @@
     function onOrient(e) {
       var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win));
       if (!m) return;
-      samples += 1;
+      samples += 1; sessionSamples += 1;
+      if (sessionSamples === 1) applyLit(); // the sensor streams: light the panel (see litGated)
       tilt = m; mode = 'tilt'; leaving = false;
       lastSampleAt = lastTiltAt = nowFn();
       arm();
@@ -214,7 +236,7 @@
     function start() {
       if (on) return;
       on = true;
-      st = newFilter(); tilt = null; goal = { x: 0, y: 0 }; mode = 'none'; leaving = false; lastTick = -1;
+      st = newFilter(); tilt = null; goal = { x: 0, y: 0 }; mode = 'none'; leaving = false; lastTick = -1; sessionSamples = 0;
       lastSampleAt = lastTiltAt = -Infinity;
       try { win.addEventListener('deviceorientation', onOrient); } catch (_) { /* no window */ }
       try { panel.addEventListener('pointermove', onMove); panel.addEventListener('pointerleave', onLeave); } catch (_) { /* detached */ }
@@ -252,7 +274,7 @@
     function sync() {
       if (!wanted()) { stop(); return; }
       start();
-      try { panel.classList.add('mms-lit'); } catch (_) { /* detached */ }
+      applyLit();
     }
     // Settings > Lighting (G4): store the pick, and - from the TAP that chose it, so the user
     // activation is live - ask iOS for motion access. Resolves with state() once the answer is in.
@@ -287,7 +309,8 @@
       });
     }
     function state() {
-      return { on: on, listening: on, raf: raf != null, samples: samples, writes: writes, lx: st.x, ly: st.y, mode: mode,
+      var isLit = false; try { isLit = panel.classList.contains('mms-lit'); } catch (_) { isLit = false; }
+      return { on: on, listening: on, lit: isLit, raf: raf != null, samples: samples, writes: writes, lx: st.x, ly: st.y, mode: mode,
         strength: strength(), gain: gain(), note: note, permission: permission };
     }
     return { sync: sync, choose: choose, state: state, destroy: destroy };
@@ -298,7 +321,7 @@
     SMOOTH_TAU_MS: SMOOTH_TAU_MS, RECENTER_TAU_MS: RECENTER_TAU_MS, WRITE_EPS: WRITE_EPS, PARK_MS: PARK_MS, SENSOR_WAIT_MS: SENSOR_WAIT_MS,
     NOTE_DENIED: NOTE_DENIED, NOTE_NO_SENSOR: NOTE_NO_SENSOR, NOTE_REDUCED: NOTE_REDUCED,
     normalizeStrength: normalizeStrength, readStrength: readStrength, setStrength: setStrength,
-    mapTilt: mapTilt, orientationAngle: orientationAngle, recentre: recentre, ease: ease, pointerLight: pointerLight, newFilter: newFilter,
+    mapTilt: mapTilt, orientationAngle: orientationAngle, recentre: recentre, ease: ease, pointerLight: pointerLight, newFilter: newFilter, wrapDiff: wrapDiff,
     create: create,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

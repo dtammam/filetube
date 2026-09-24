@@ -338,3 +338,79 @@ Both seats found the same three warnings; every one is fixed, plus the hardening
 Re-run on the fixed tree: `pocket-lighting.test.js` 15/15; the touched suites 272/272; eslint clean;
 `lint:css` TOTAL 0; overlay clean. Probe: listeners Off 0 / On 1 / docked 0 / destroyed 0 / Seattle 0;
 moving 0.17 ms script + 1.12 ms style per frame, 0 layouts; still 0 writes, 0 recalcs.
+
+## Gate r2 - qa
+
+Gate: CHANGES r2 @f7f7af9d — qa
+
+Instruments (live tree, verbatim): `node --test test/unit/pocket-lighting.test.js` -> `# tests 15 # pass 15 # fail 0`; `npm run lint:css` -> `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`; `node scripts/overlay-containment-lint.js --enforce` -> `overlay-containment: clean (0 violations)`, exit 0; eslint on the three files -> no output, exit 0. The added lines carry no em dashes other than the two Gate lines. Repros ran in a fresh `git archive f7f7af9d` sandbox (`qa-r2.test.js`, the builder's boot() harness).
+
+My r1 findings against f7f7af9d:
+- W1 Seattle row: FIXED as prescribed. QA1 -> `seattle settings rows: About`.
+- W2 hide/return: FIXED (the listener now lives from create() to destroy()). QA4, no paint -> `visible again, no paint: {"orient":1,"move":1,"leave":1} lit true --lx "-0.685"`.
+- W3 deny: FIXED IN-SESSION. QA2b (coarse pointer, the iPhone shape) -> `lit false ; listening {"orient":0,...}`, and still `lit false` after a hide/return.
+- S1 comments: fixed. I checked the new CSS arithmetic: 12% of a 1.5W box is 0.18W and 10% is 0.15H, both inside the 0.25 overhang, and 1.5^2 = 2.25x.
+- S2 cursor clamp: fixed. On an all-info level (About) the clamp parks at 0. About's 4-5 rows fit the 227px list, so nothing becomes unreachable.
+- S3 roll: fixed. asin(cos(beta)*sin(gamma)) is the device x-axis elevation derived from the rotation matrix, so it is independent of representation and continuous through vertical. The neutral-pose drift works on that continuous value, so the drift is unaffected.
+- New surfaces: the standing visibility listener balances on both surfaces (QA6: `otherDoc false/true vis created 1 painted 2 destroyed 0`, and a hide/return after destroy leaves `{"orient":0,...} lit false`). The pop-out teardown -> pipEngine.destroy() path is unchanged.
+
+WARNING W4 - after an iOS deny, the NEXT launch is lit again, with no note. `permission` lives only in memory, so a cold start forgets the deny. `wanted()` is then true, and the panel shows the static band + glass streak with a listener that iOS will never feed. That is the same look the r1 W3 note ("The look stays as today") promised away. It happens on every launch until the user picks Off. The outcome is deterministic whatever iOS persists: a remembered deny streams nothing, and a per-session policy streams nothing without a tap. Repro (QA5, strength pronounced, coarse pointer, a deny behind requestPermission, a fresh boot):
+  `relaunch after deny: lit true listening {"orient":1,"move":1,"leave":1}`
+  Fix (cheap): on a device where `requestPermission` exists and there is no fine pointer, add `.mms-lit` only once the first sample arrives (lit-on-first-sample). That also closes the adversary's S4 grant-not-persisted case with no device knowledge. The alternative is to persist the deny next to the strength and clear it on a re-pick.
+WARNING W5 (new, in r1 code I missed) - the "lying down" pose (G5) slams the light edge to edge. `y` is raw beta, and beta wraps at +-180. Holding the phone overhead screen-down (lying on your back) jitters across that wrap. Measured through the pure functions (mapTilt -> recentre, gamma 2):
+  `beta 179.5 -> y goal -0.018` / `beta -179.8 -> y goal 1.000` / `beta 179.6 -> y goal -0.047` / `beta -179.5 -> y goal 1.000`
+  The baseline drift then averages +179 and -179 toward 0, a nonsense neutral pose. Fix: take the wrap-aware difference (((t - b + 540) % 360) - 180) in recentre, and a unit test across the seam.
+SUGGESTION - the pocket-lighting.js header now says the CSS "translates two thin gradient layers". The layers are 2.25x the panel and 2x the LCD; the thin part is the stripe painted on them. Say "two gradient layers".
+Security: unchanged from r1 - no route, network, dependency or logging. The `destroyed` guard now also stops a late permission answer from re-binding.
+Tree: live tree untouched apart from this append (plus the uncommitted r2 sections of other seats, if any); the sandboxes are in the scratchpad.
+
+## Gate r2 - adversary
+
+Gate: CHANGES r2 @f7f7af9d — adversary
+
+Every check below re-ran in a fresh `git archive f7f7af9d` sandbox, with my ADV repros moved onto the new boot() harness. Baseline in the sandbox: `pocket-lighting.test.js # pass 15 # fail 0`.
+
+My r1 findings against f7f7af9d:
+- W1 hide/return: FIXED. ADV-A, no paint -> `after return {"orient":1,"move":1,"leave":1} lit true` / `after a real tilt: --lx = "-0.685"`. Reverting the fix (R1) -> `# pass 8 # fail 7`.
+  - The new standing listener balances on both surfaces (ADV-G). In-tab and pop-out, Off and Pronounced, all read `vis created 1 painted 2 ... after destroy vis 0`, and a visibilitychange after destroy leaves `{"orient":0,...} lit false`. R6 (destroy never unbinds it) -> `# fail 3`.
+- W2 Seattle row: FIXED. ADV-F -> `seattle settings rows ["About"]`. R7 revert -> `# fail 1`.
+- W3 deny: FIXED FOR THE SESSION ONLY. ADV-B2 (coarse pointer) -> `mms-lit false listening {"orient":0,...}`. The re-create arm still lights: `cold relaunch, stored pronounced ...: lit true {"orient":1,"move":1,"leave":1}`. That is the same finding as qa's r2 W4, and I endorse qa's lit-on-first-sample fix. A music view swap re-creates the engine too, so it reaches in-session as well as on relaunch.
+- W4 CSS lock: FIXED. Five mutants now go red (each `# fail 1`): MX1 (backdrop blur on its own line in the band), MX3 (`FILTER:` caps in the glass), MX4 (mask in the lit root), MX5 (a blur in a sibling lit rule), MX7 (inset back to -40%).
+- S2 late grant: FIXED. ADV-C -> `after the late grant {"orient":0,...} lit false`, `--lx = ""`. R3 and R4 each survive alone (two guards covering each other). Together they give `# fail 1`, so it is bound.
+- S3 inset -25%: headless Chromium, base 71b5e6dd vs f7f7af9d with lighting Off. The PNGs are still BYTE-EQUAL for ipod / black / matte / zune-classic (0 px). Lit at neutral with the pseudo layers hidden: 0 px. The band still sits under the wheel (maxd 3 inside the wheel circle) and over the body (~126k px changed). Seattle lit: 0 px.
+- S1 surviving mutants, now `# pass 14 # fail 1` each: J1, J4, J8, J9, J11, J12, J15. J5 is disclosed as untested.
+
+WARNING W5 (new, in the fix's own claim "an upright phone never flips") - the y axis still flips at vertical. x is now the projected roll and is continuous, but y is still raw beta. When a slightly rolled upright phone crosses vertical, the W3C decomposition swaps (beta b, gamma g) for (180-b, -g). So the y goal jumps by about 2x the roll. I checked this through the real `mapTilt`, feeding it W3C Euler angles derived from a physical up-vector (roll 8 deg, the pitch crossing vertical):
+  `pitch -0.2: beta 82.0 gamma 88.6 -> x 8.00 y 82.0` / `pitch 0.2: beta 98.0 gamma -88.6 -> x 8.00 y 98.0`
+  - With roll 20 the jump is 70.0 -> 110.0. That is 40 deg against a TILT_RANGE of 28, which is qa's "edge to edge" symptom, now on y.
+  - Fix: y = atan2(sin b, cos b * cos g). It is continuous through vertical (`roll 20: 89.8 -> 90.2`) and equals beta when flat (`atan2 at b=30,g=0 -> 30.0`).
+  - It still wraps at +-180, so qa's r2 W5 wrap-aware difference is needed too. Add a unit test that sweeps a physical pose through vertical.
+  - Verified against the W3C formula, not on a device.
+SUGGESTION S5 - three "hardening" claims are still unbound (vacuous):
+  - J2 (no cancelAnimationFrame) and J3 (tick drops `!on`) each give `# pass 15 # fail 0`. The Off test asserts `S(b).raf === false`, which reads the driver's own bookkeeping, and disarm nulls that whether or not the frame is cancelled. Assert `b.clock.live() === 0` instead.
+  - J7 (a pointerleave eases a sensor-driven light) gives `# pass 15 # fail 0`. The test dispatches the leave and then a tilt at once, and that tilt resets `leaving` before any frame runs. Advance the clock between the leave and the next sample.
+  - qa's S2 cursor clamp (R8) is unbound across pocket-lighting, pocket-quick-scroll, music-pocket-menus and skin-surface: `# pass 155 # fail 0` with the clamp deleted.
+Tree: the only change to the live tree is this append. The file also holds the uncommitted r1/r2 sections from both seats; I did not touch them.
+
+## Fix round 2 (the Architect, after both r2 verdicts; Dean's ruling: "Fix now + short round 3")
+
+- qa W4 / adversary W3-relaunch (a re-created engine after a deny, or a forgotten grant, showed a
+  lit-but-still panel): where the sensor sits behind a permission API AND no fine pointer exists,
+  `.mms-lit` waits for the FIRST sample of this start (`litGated` / `applyLit`); a desktop or Android
+  is lit at once. Tested: bound but not lit until a sample; a stop/start re-gates; the two non-gated
+  shapes lit at once. This also closes the adversary's r1 S4 without device knowledge.
+- qa W5 (beta wraps at +-180 lying on your back): every angle difference is `wrapDiff` (the short way
+  round) and the baseline stays folded; tested across the seam (pure) and the held pose settles the
+  short way.
+- adversary W5 (raw beta jumped by twice the roll when a rolled upright phone crossed vertical): the
+  pitch is `atan2(sin b, cos b * cos g)` - continuous through vertical, beta when flat; tested with a
+  physical pose (roll 20 deg) swept through vertical via W3C Euler angles: y moves < 1.5 deg per step.
+- adversary S5: J2 bound by the clock (a hide while the loop is live leaves no frame pending); J7's
+  test advances between the leave and the next sample; the cursor clamp (qa r1 S2) is now driven by
+  the REAL wheel gesture on the denied Lighting level (4 detents down parks on Pronounced, not the
+  note; 1 up lands on Subtle). J3 alone is still covered by J2 (disclosed).
+- The header comment: "two gradient layers (each painting one thin stripe)".
+
+Re-run: `pocket-lighting.test.js` 15/15; the touched suites 257/257; eslint clean; `lint:css` TOTAL 0;
+overlay clean. Probe: listeners Off 0 / On 1 / docked 0 / destroyed 0 / Seattle 0; moving 0.17 ms
+script + 1.02 ms style per frame, 0 layouts; still 0 writes, 0 recalcs.

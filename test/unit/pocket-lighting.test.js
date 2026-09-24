@@ -36,7 +36,20 @@ test('mapTilt: device axes to screen axes by the screen rotation; the roll is gr
   const r40 = L.mapTilt(40, 30, 0).x, r80 = L.mapTilt(80, 30, 0).x, r90 = L.mapTilt(90, 30, 0).x, r100 = L.mapTilt(100, -30, 0).x;
   assert.ok(r40 > 20 && r40 < 30 && r80 > 0 && r80 < r40 && Math.abs(r90) < 1e-9, `the same physical roll reads smaller the more upright the phone (${r40}, ${r80}, ${r90})`);
   assert.ok(r100 > 0 && r100 < 10, `past vertical gamma flips sign (W3C) but the projected roll keeps its sign (${r100})`);
-  assert.strictEqual(L.mapTilt(40, 3, 0).y, 40, 'pitch is beta as is');
+  assert.ok(Math.abs(L.mapTilt(40, 0, 0).y - 40) < 1e-9, 'flat-rolled: the pitch is beta');
+  // gate r2 (adversary W5): a physical pose swept THROUGH vertical (W3C Euler angles built from the
+  // up-vector, roll 20 deg): raw beta jumps 70 -> 110 at the crossing; the atan2 pitch is continuous
+  const euler = (pitchDeg, rollDeg) => { // the device's up-vector in its own frame -> W3C beta/gamma
+    const p = pitchDeg * Math.PI / 180, r = rollDeg * Math.PI / 180;
+    const gx = -Math.cos(p) * Math.sin(r), gy = Math.sin(p), gz = Math.cos(p) * Math.cos(r);
+    const beta = Math.atan2(gy, gz) * 180 / Math.PI;
+    const gamma = Math.atan2(-gx, Math.hypot(gy, gz)) * 180 / Math.PI * (Math.cos(beta * Math.PI / 180) < 0 ? -1 : 1);
+    return [beta, gamma];
+  };
+  const ys = [-0.4, -0.2, 0.2, 0.4].map((d) => L.mapTilt(...euler(90 + d, 20), 0).y);
+  for (let i = 1; i < ys.length; i++) assert.ok(Math.abs(ys[i] - ys[i - 1]) < 1.5, `continuous through vertical: ${ys.map((v) => v.toFixed(1))}`);
+  const xs = [-0.4, 0.4].map((d) => L.mapTilt(...euler(90 + d, 20), 0).x);
+  assert.ok(Math.abs(xs[0] - xs[1]) < 1.5, `the roll stays continuous too: ${xs.map((v) => v.toFixed(1))}`);
   assert.strictEqual(L.mapTilt(null, 5, 0), null, 'desktop Chrome fires the event with nulls: no sample');
   assert.strictEqual(L.mapTilt(1, undefined, 0), null);
   assert.strictEqual(L.mapTilt('x', 1, 0), null);
@@ -48,11 +61,20 @@ test('the filter: the FIRST sample is neutral; a tilt to the right moves the lig
   assert.deepStrictEqual(g, { x: 0, y: 0 }, 'the pose the skin opened in is neutral, whatever it is');
   g = L.recentre(st, 3 + L.TILT_RANGE_DEG / 2, 40, 16);
   assert.ok(g.x < -0.45 && g.x > -0.5, `half the range right -> the light about half way LEFT (got ${g.x})`);
-  g = L.recentre(st, 3 + 200, 40, 16);
-  assert.strictEqual(g.x, -1, 'clamped at the edge');
+  g = L.recentre(st, 3 + 100, 40, 16);
+  assert.strictEqual(g.x, -1, 'clamped at the edge (a 100-degree roll is past the range; the wrap-safe difference keeps its sign below 180)');
   // hold that tilt: the baseline drifts to it and the goal returns to 0 (G5)
   for (let i = 0; i < 5 * L.RECENTER_TAU_MS / 16; i++) g = L.recentre(st, 3 + 20, 40, 16);
   assert.ok(Math.abs(g.x) < 0.01, `a held tilt reads as level again within ~5 tau (got ${g.x})`);
+  // gate r2 (qa W5): the pitch wraps at +-180 (lying on your back, the phone overhead): the goal never
+  // jumps across the seam, and the baseline follows the short way round
+  const w = L.newFilter();
+  L.recentre(w, 2, 179.5, 16);
+  const seam = [[2, -179.8], [2, 179.6], [2, -179.5], [2, 179.9]].map(([x, y]) => L.recentre(w, x, y, 16).y);
+  assert.ok(seam.every((v) => Math.abs(v) < 0.05), `jitter across the +-180 seam reads as a tiny tilt, never edge to edge: ${seam.map((v) => v.toFixed(3))}`);
+  for (let i = 0; i < 3000; i++) L.recentre(w, 2, -179.6, 16);
+  assert.ok(Math.abs(Math.abs(w.by) - 179.6) < 0.5, `the baseline settled on the held pose the short way round (by ${w.by})`);
+  assert.strictEqual(L.wrapDiff(-179, 179), 2); assert.strictEqual(L.wrapDiff(179, -179), -2); assert.strictEqual(L.wrapDiff(10, 4), 6);
   // ease: moves toward the goal, reports a write only past WRITE_EPS
   const e = L.newFilter();
   assert.strictEqual(L.ease(e, 0, 0, 16, L.SMOOTH_TAU_MS), false, 'at the goal: nothing to write');
@@ -178,6 +200,23 @@ const tapLabel = (b, label) => {
   tap(b, r);
 };
 const flush = () => new Promise((r) => setImmediate(r));
+// The REAL wheel gesture (pocket-quick-scroll.test.js's spin): pointerdown on the ring, `moves`
+// pointermoves of `step` degrees each, `ms` apart on a fake performance clock, then release.
+function spin(b, { from = 0, moves, step, ms }) {
+  const wheel = P(b).querySelector('.ip-wheel');
+  const at = (deg) => { const r = deg * Math.PI / 180; return { clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) }; };
+  const realNow = performance.now;
+  let t = realNow.call(performance);
+  Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: () => t });
+  try {
+    const s = at(from);
+    wheel.dispatchEvent(new b.win.MouseEvent('pointerdown', { bubbles: true, clientX: s.clientX, clientY: s.clientY }));
+    let deg = from;
+    for (let i = 0; i < moves; i++) { t += ms; deg += step; const q = at(deg); wheel.dispatchEvent(new b.win.MouseEvent('pointermove', { bubbles: true, clientX: q.clientX, clientY: q.clientY })); }
+    wheel.dispatchEvent(new b.win.MouseEvent('pointerup', { bubbles: true }));
+  } finally { Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: realNow }); }
+}
+const slowSpin = (b, detents, dir = 1) => spin(b, { moves: detents * 4, step: 5.6 * dir, ms: 60 });
 // the REAL event shape: a `deviceorientation` event on the window with beta/gamma (jsdom has no
 // DeviceOrientationEvent class; the handler reads the two fields off the event, as it does on iOS)
 function tiltTo(b, beta, gamma) {
@@ -220,9 +259,17 @@ test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the pa
     b.ls.setItem(L.KEY, 'subtle');
     tiltTo(b, 0, 3 + 28); b.clock.advance(700); // the next sample re-reads the strength
     assert.ok(lx(b) < -0.38 && lx(b) > -0.55, `subtle = half the amplitude, less ~1 s of re-centring (got ${lx(b)})`);
+    // gate r2 (adversary S5, J2): a hide while the loop is LIVE cancels the pending frame (the clock,
+    // not the driver's own flag); no menu is open here, so nothing else may pend
+    tiltTo(b, 0, 3 + 20);
+    assert.ok(S(b).raf && b.clock.live() >= 1, 'a frame is pending');
+    Object.defineProperty(b.doc, 'hidden', { configurable: true, value: true }); b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
+    assert.strictEqual(b.clock.live(), 0, 'stop() cancelled the frame (cancelAnimationFrame is bound)');
+    Object.defineProperty(b.doc, 'hidden', { configurable: true, value: false }); b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + 28); b.clock.advance(700);
     // a HELD tilt (G5): the neutral pose drifts onto it, the light eases home, and only then
     // does the loop park (no rAF, no timer, no writes) until the next sample
-    b.clock.advance(5 * L.RECENTER_TAU_MS);
+    b.clock.advance(7 * L.RECENTER_TAU_MS);
     assert.ok(Math.abs(lx(b)) < 0.02, `a held tilt re-centres through the real engine (got ${lx(b)})`);
     assert.strictEqual(S(b).raf, false, 'settled and no new sample: the loop parked');
     const w0 = S(b).writes;
@@ -390,6 +437,12 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.strictEqual(asks, 1, 'requestPermission ran inside the tap (user activation)');
     await flush(); await flush();
     assert.ok(lbls(b).includes(L.NOTE_DENIED), 'denied: the note row');
+    // gate r1 qa S2 / r2 adversary R8: the wheel never parks the highlight on the note row
+    slowSpin(b, 4, 1);
+    assert.strictEqual(b.engine.menuState().cursor, 2, 'clamped to the last option (Pronounced), not the note');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Pronounced');
+    slowSpin(b, 1, -1);
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Subtle', 'the wheel still moves among the options');
     assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'the pick is kept (Dean: keep the strength + a note)');
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
     // gate r1 (adversary W3): a deny on a device with no mouse = the look stays TODAY's - not lit,
@@ -430,6 +483,27 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     f.clock.advance(L.SENSOR_WAIT_MS + 10); await flush(); await flush();
     assert.ok(!lbls(f).includes(L.NOTE_NO_SENSOR), 'no note on a desktop');
   } finally { f.restore(); }
+  // gate r2 (qa W4): a RELAUNCH with the strength stored, behind a permission API, on a device with no
+  // mouse - a remembered deny or a forgotten grant streams nothing: the panel must not be lit until the
+  // first sample proves the sensor streams (never a lit-but-still band on every launch)
+  const rl = boot({ strength: 'pronounced', finePointer: false, permission: () => Promise.resolve('granted') });
+  try {
+    rl.engine.paint();
+    assert.deepStrictEqual(listening(rl), { orient: 1, move: 1, leave: 1 }, 'bound (a remembered grant streams at once on iOS)');
+    assert.ok(!lit(rl), 'NOT lit before a sample');
+    rl.clock.advance(5000);
+    assert.ok(!lit(rl) && P(rl).style.getPropertyValue('--lx') === '', 'still today\'s look: nothing streamed');
+    tiltTo(rl, 0, 3);
+    assert.ok(lit(rl), 'lit the moment the sensor streams');
+    // a stop/start cycle re-gates
+    P(rl).hidden = true; P(rl).innerHTML = ''; await flush(); P(rl).hidden = false; rl.engine.paint();
+    assert.ok(!lit(rl), 'a fresh start waits for its own first sample');
+  } finally { rl.restore(); }
+  // ...and a desktop (a fine pointer) or Android (no permission API) is lit at once
+  const dk = boot({ strength: 'pronounced', finePointer: true, permission: () => Promise.resolve('granted') });
+  try { dk.engine.paint(); assert.ok(lit(dk), 'a fine pointer drives: lit at once'); } finally { dk.restore(); }
+  const an = boot({ strength: 'pronounced', finePointer: false });
+  try { an.engine.paint(); assert.ok(lit(an), 'no permission API: lit at once'); } finally { an.restore(); }
   // a LATE answer after destroy() re-binds nothing (gate r1 S2)
   let late = null;
   const d = boot({ strength: 'off', permission: () => new Promise((r) => { late = r; }) });
@@ -481,8 +555,10 @@ test('gate r1 hardening: a fresh open is a fresh neutral pose (J9); the observer
     const before = lx(b);
     assert.ok(before < -0.3, 'offset');
     const leave = new b.win.MouseEvent('pointerleave', { bubbles: false }); Object.defineProperty(leave, 'pointerType', { value: 'mouse' });
-    P(b).dispatchEvent(leave); tiltTo(b, 0, 30 + 14); b.clock.advance(300);
+    P(b).dispatchEvent(leave); b.clock.advance(300); // frames run BEFORE the next sample
     assert.ok(Math.abs(lx(b) - before) < 0.05, `sensor-driven: the mouse leaving changes nothing (${before} -> ${lx(b)})`);
+    tiltTo(b, 0, 30 + 14); b.clock.advance(300);
+    assert.ok(Math.abs(lx(b) - before) < 0.05, 'and the next sample continues from there');
   } finally { b.restore(); }
   // J8: the pointer far outside the panel (a captured drag) clamps to the edge
   assert.deepStrictEqual(L.pointerLight(5000, -5000, { left: 0, top: 0, width: 100, height: 100 }), { x: 1, y: -1 });
