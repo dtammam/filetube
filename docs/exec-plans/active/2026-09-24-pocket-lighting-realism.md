@@ -3,10 +3,10 @@ plan: pocket-lighting-realism
 harness: v2 · lean
 branch: feat/pocket-lighting-realism
 anchor: spec
-status: Built, in gate
-next: ONE gate round (adversary + qa) at the sha below, release v1.328.0
+status: Gate closed
+next: release v1.328.0
 design: this document, on the v1.327.0 skeleton (docs/exec-plans/completed/2026-09-24-pocket-gyro-lighting.md)
-gate: pending
+gate: APPROVED r1 @ffdc5df3 (adversary + qa); the warnings are test guards, filed as #275
 ---
 
 # Pocket lighting, second swing: more realistic, more joyful
@@ -29,7 +29,8 @@ ARC on the lit edge of a ring and a dark arc opposite; every shadow falls away f
 
 ## Design
 
-**Two profiles, one skeleton.** `.mms-lit` (Subtle) keeps v1.327.0's Pronounced look byte-for-byte.
+**Two profiles, one skeleton.** `.mms-lit` (Subtle) keeps v1.327.0's Pronounced look (pixel-identical at
+neutral, measured by qa; tilted it differs by the inset-sign fix and the .8 gain over the 20-degree range).
 `.mms-lit-strong` (Pronounced) layers the realism on top. The driver adds the strong class when the
 strength is `pronounced` (in `applyLit`, gated exactly like `.mms-lit`); Off clears both.
 
@@ -60,7 +61,8 @@ property `--lm` (the light's distance from centre, 0..1) drives the hot core's d
 
 All of it: gradient positions + two translated gradient layers, no filter / blur / mask / backdrop
 (the whole-rule lock from v1.327 covers the new rules automatically: every rule whose selector names
-`mms-lit` or reads `--lx/--ly`). Off stays byte-identical (no base rule changes).
+`mms-lit` or reads `--lx/--ly`). Off stays byte-identical (the only base change is the inset-sign fix in
+the two `.mms-lit` shadow tokens, which resolve to the same constants at neutral).
 
 ## Acceptance
 
@@ -70,7 +72,8 @@ All of it: gradient positions + two translated gradient layers, no filter / blur
 - AC3: constants: `TILT_RANGE_DEG` 20; `GAIN` {off 0, subtle .8, pronounced 1}; a tilt of
   `TILT_RANGE_DEG` reaches |1|.
 - AC4 (CSS lock): the strong rules exist for the three Click wheels + domes, the band and the glass;
-  the base (Subtle) rules are unchanged from v1.327.0 (the lock's existing regexes still hold); no
+  the base (Subtle) gradient rules are unchanged from v1.327.0 and its shadow tokens carry the corrected
+  signs (the lock asserts the wheel's; the dome's are #275a); no
   filter / blur / mask / backdrop in any lighting rule (whole rules); no Seattle rule reads the light.
 - AC5 (probe): `scripts/pocket-lighting-probe.js --strength=<s>` screenshots Subtle and Pronounced per
   skin at the three light positions; the CPU numbers stay in the v1.327 band (< 2 ms/frame moving on
@@ -93,3 +96,44 @@ All of it: gradient positions + two translated gradient layers, no filter / blur
 
 - The feel is Dean's iPhone again; the same knobs plus the strong profile's alphas (all tokens).
 - Seattle stays out (#273). The iPad-trackpad partial look (#274a) is unchanged by this swing.
+
+## Gate r1 - adversary
+
+Gate: APPROVED r1 @ffdc5df3 — adversary
+
+Measured (sandboxes from `git archive 8583236e` / `git archive HEAD`, headless Chromium 1234, 390x844):
+- Instruments: `node --test test/unit/pocket-lighting.test.js` 15 pass 0 fail; `npm run lint:css` TOTAL 0; overlay "clean (0 violations)"; eslint (js + probe + test) exit 0.
+- R1 Off: ipod / ipod-black / ipod-matte / zune-classic strength off, main vs HEAD PNGs: 4/4 `cmp` IDENTICAL (md5 63eb3e95.., 7f631ecd.., e1923d64.., 541be55e..).
+- R2 inset sign, `--lx=1`, mean luminance 2-6px inside the wheel edge L/R: HEAD pronounced ipod 177/215, black 38/94, matte 37/90; HEAD subtle 194/203, 42/50, 40/45; MAIN subtle 208/202, 74/49, 73/45. Main lit the LEFT (the v1.327 bug is real), HEAD lights the RIGHT: +x inset paints the left edge, the fix is correct. Drop shadow falls left (outside L < R in every case). Dome L/R: HEAD R brighter in all six.
+- R3 overhang: layers forced solid (band red, glass blue) at R/L/U/D and all 4 corners x 3 skins: 0/2468 body-edge px and 0/500 LCD-edge px not the layer. Instrument non-vacuous: inset:-30% -> 860/2468 exposed; glass 0 -45% -> 250/500. Margin is 1% of panel width (0.34 vs 0.35), ratio-invariant.
+- R4 gating mutants (all RED): subtle-gets-strong, strong-ungated-by-lit, strong-not-cleared, --lm not cleared, --lm not written, range 28, subtle .5, base wheel sign reverted, strong drop sign flipped.
+- R5 perf (`pocket-lighting-probe.js --strength=pronounced`, private port): HEAD moving 0.151/0.157 ms script + 1.078/1.096 ms style, task 1.763 ms/frame, 1 layout; main 0.159 + 1.161, task 1.981. Still: 0 writes, 0 recalcs. Listeners off 0 / on 1 / docked 0 / destroyed 0 / seattle 0. Under 2.5 ms. (Raster/paint of the larger blurred shadows is NOT in these metrics: unmeasured.)
+- R6/R7: `grep -i blend-mode public/css/style.css` 0 hits; CSS trig (atan2/sin/cos/hypot/sqrt/pow) 0 hits; the diff's only filter/blur/mask token is in a comment.
+
+WARNING (ships disclosed: the code is measured correct, the guard is missing) W1 - the plan says "the lock asserts the signs"; it asserts only the WHEEL's. Mutants that SURVIVE 15/15: base dome-hi inset sign reverted to v1.327's (M11), strong dome far inset sign flipped (M13), hot-spot radial sign flipped (M16), far radial sign flipped (M17), strong dome drop sign flipped (M19). The v1.327 swapped-sign bug can come back on the dome with the suite green. Repro: `perl -0pi -e 's/--mms-lit-dome-shadow:inset calc\(var\(--lx,0\) \* -2px\) calc\(1px \+ var\(--ly,0\) \* -2px\)/--mms-lit-dome-shadow:inset calc(var(--lx,0) * 2px) calc(1px + var(--ly,0) * 2px)/' public/css/style.css` in a sandbox -> `# pass 15 # fail 0`.
+SUGGESTION S1 - `.mms-ipod.mms-lit-strong .ip-center{ position:relative; overflow:hidden }` is unbound (M12 survives 15/15); dropping position:relative makes the hot-spot ::after resolve against .ip-wheel, a glow smeared across the wheel (verified by screenshot).
+SUGGESTION S2 - no lock for the swing's own new rules: adding `mix-blend-mode:screen` (M14) or `rotate:atan2(1,1)` (M15) to a lighting rule survives 15/15. Extend the whole-rule lock regex.
+SUGGESTION S3 - `--lm` clamp/metric unbound: `Math.hypot` unclamped (M6) or max(|x|,|y|) (M7) survive. Minor (corner opacity .37 vs .55).
+SUGGESTION S4 - the plan doc's "Subtle keeps v1.327.0's Pronounced look byte-for-byte" and AC4 "the base (Subtle) rules are unchanged from v1.327.0" are false: the base shadow tokens changed sign (correctly) and the range is 20 deg. Reword.
+SUGGESTION S5 (instrument) - the probe's DEBUG_PORT is a fixed 9333: my first HEAD run died "Runtime.evaluate: Inspected target navigated or closed" because QA's probe (pid 2432386, 23:01) held 9333 and I navigated its page. QA's probe numbers from ~23:01-23:05 may be contaminated; mine were re-run on port 9471 in the sandbox copy. Take the port from argv/env.
+
+## Gate r1 - qa
+
+Gate: APPROVED r1 @ffdc5df3 — qa
+
+Measured on the live tree (HEAD ffdc5df3):
+- `node --test test/unit/pocket-lighting.test.js`: "# tests 15 / # pass 15 / # fail 0". `npm run lint:css`: "TOTAL 0 (the token census; ceiling ZERO since v1.61.0)". `node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)", exit 0. `npx eslint public/js/pocket-lighting.js`: no output, exit 0.
+- R4 gating, sandbox mutants (`git archive HEAD`, diff non-empty before each run): strong for Subtle (`toggle(..., lit)`) RED test 4; strong ungated by lit RED test 10; strong never RED tests 4+10; clearProps keeps strong RED test 6; keeps `--lm` RED test 6; `--lm` never written RED test 4; base wheel sign reverted RED test 14.
+- Subtle = v1.327 Pronounced: the diff's only removed CSS lines are the two `.mms-ipod.mms-lit` shadow tokens (`git diff 8583236e..ffdc5df3 -- public/css/style.css | grep '^-'`). Headless, lit + neutral, main Pronounced vs HEAD Subtle: 0 differing px on ipod / black / matte (780x1688); the control (main Pronounced vs HEAD Pronounced) differs by 628739 / 774009 / 786093 px, so the comparison is not vacuous. Tilted, Subtle differs from v1.327 by design (the sign fix, and max |lx| 0.800 instead of 1.000).
+- Strong never leaks into Subtle: the probe copy at |lx| = |ly| = 1 (4 corners x 3 skins) reported `mms-lit-strong` false on all 15 Subtle shots and true on all 15 Pronounced shots.
+- R2 inset sign, standalone headless (`box-shadow:inset -9px 0 12px -3px #fff` on black): left inner edge [0,0,0], right inner edge [170,170,170]. A negative x paints the RIGHT edge, so the new comment's rule holds. Pronounced black at lx=1, ly=-1 (screenshot): bright crescent upper right, dark arc and drop lower left, no exposed layer edge.
+- R3 arithmetic: inset:-35% gives 1.7x; 20% of 1.7 = 34% < 35%; 16% of 1.7 = 27.2% < 35%; inset:0 -70% gives 2.4x; 25% of 2.4 = 60% < 70%. The JS clamps and never exceeds |1|: clamp1 comes before the gain, and the ease cannot overshoot.
+- R6/R7: the added CSS lines contain no blend-mode and no CSS trig function. The only filter/blur/mask/backdrop match is a comment. No em dash on any added line (count 0). `--lm` is written by JS `Math.hypot`.
+- Perf (probe copy, pronounced CPU leg): 0.161 ms script + 1.205 ms style per frame, task 1.984 ms/frame, 1 layout; still 0 writes. A second identical leg read task 3.216 ms/frame. That run overlapped the adversary's probe on the shared port 9333, so read it as contention, not a finding.
+- Security: no security surface. Nothing changed in routes, the server, the network, auth or storage. The only new write is a numeric `toFixed` custom property. The probe's `--strength` argv reaches `JSON.stringify` and a filename under the operator's own out-dir. That is dev-only, and it is not a trust boundary.
+
+WARNING W1 (safe to ship disclosed: the shipped code is correct, as measured above; only the guard is missing): the plan says "the lock asserts the signs", but only the wheel's are asserted. Mutant: base `--mms-lit-dome-shadow` dome-hi inset reverted to v1.327's `calc(var(--lx,0) * 2px) calc(1px + var(--ly,0) * 2px)`. Result: `# pass 15 # fail 0`. Scenario: a later edit re-swaps the dome sign, the dome rim brightens the far side on every lit tilt, and the suite stays green. Fix: assert both dome-shadow tokens in the lock.
+WARNING W2 (safe to ship disclosed: the tree is clean by grep): the new constraint for this swing (no blend modes, no CSS trig) is not locked. Mutants that survive 15/15: `mix-blend-mode:overlay` added to `.ip-center::after`, and `rotate:atan2(var(--ly,0), var(--lx,0))` added to the same rule. Fix: extend the whole-rule regex with `(?:mix|background)-blend-mode` and `\b(?:a?sin|a?cos|a?tan2?|hypot)\(`. Consider matching `--lm` in the rule filter too.
+SUGGESTION S1 (stale comments): pocket-lighting.js:6 says "TWO CSS custom properties" and :17-18 says "only ever writes two numbers ... two gradient layers (each painting one thin stripe)"; the code now writes three, and the strong band paints a broad room-light radial plus two glass stripes. Also, test:259 still says "// Subtle halves it" (the gain is .8). The JS comment's "within 10%" is wrong too: Subtle is +12% per degree (0.8/20 vs 1/28) and -20% at the edge.
+SUGGESTION S2 (plan wording): line 32 says "byte-for-byte", line 63 says "no base rule changes", and AC4 says "base rules unchanged ... existing regexes still hold". None of that holds, because the base tokens changed sign and the lock regex was edited. The accurate statement: pixel-identical at neutral (0 px, above). Off is untouched.
+SUGGESTION S3 (probe fidelity): the CPU leg is hard-coded `'pronounced'` (probe:121) while `report.strength` echoes `--strength`, so a `--strength=subtle` report mislabels its CPU numbers. `__frames` (probe:57) still tilts at beta 40 after the neutral moved to beta 0. By reasoning (not measured), the moving leg therefore holds a 40-degree pitch step, so `--ly` is pinned near -1 and only `--lx` moves. The fixed port 9333 also collides between concurrent seats: my first main run timed out, exit 124.
