@@ -124,6 +124,8 @@ summary,
   --fs-4xl: 22px;
   --fs-5xl: 32px;
   --fs-6xl: 44px; /* v1.259: the Metro display size (Seattle's giant lowercase header) */
+  --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
+  --fs-jump-xl: 160px; /* ...and Seattle's giant lowercase jump letter */
 
   /* v1.152 master-detail menu: tile tones (colour encodes the group) + the
      era-reactive Appearance tile tints. Fixed, mode-invariant tints that read
@@ -11499,6 +11501,10 @@ html[data-modern="on"] .video-uploader {
      bright glassy upper band with a HARD cut near the middle, a deeper lower band
      re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
   --mms-zn-pink:#ec008c; --mms-zn-dim:#9a9a9a; --mms-zn-ink:#1a1a1a;
+  /* quick scroll (2026-09-24): the letter overlay's glass - the iPod classic's translucent dark
+     square; Seattle's picker/overlay scrim over its black Metro screen. */
+  --mms-ipod-jump-bg:rgba(20,22,26,.72); --mms-ipod-jump-line:rgba(0,0,0,.12);
+  --mms-zn-jump-bg:rgba(0,0,0,.82);
   /* v1.269: the scrubber fill, sampled from the REFERENCE IMAGE Dean picked - a
      product MOCKUP, not a photo of a real iPod (the gate proved it: no sensor
      noise anywhere, a blue Classic body Apple never shipped, a modern typeface,
@@ -11914,13 +11920,13 @@ html[data-modern="on"] .video-uploader {
      the 6th/7th-gen SPLIT SCREEN: the list on the left half, the highlighted item's art
      easing in on the right. Every color is the Classic palette this skin already carries
      (the blue selection bar, the status-bar greys, the screen white) - nothing guessed. */
-  .mms-ipod .ip-menuview{ display:none; flex:1; min-height:0; }
+  .mms-ipod .ip-menuview{ display:none; flex:1; min-height:0; position:relative; }
   .mms-ipod.mms-menumode .ip-npview, .mms-ipod.mms-menumode .ip-listview{ display:none; }
   .mms-ipod.mms-menumode .ip-menuview{ display:flex; flex-direction:column; }
   /* the scroller: no radius on it (the LCD clips - the overlay-containment split) */
   .mms-ipod .ipm-list{ flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod .ipm-split{ flex:1; min-height:0; display:flex; }
-  .mms-ipod .ipm-click .ipm-list{ flex:0 0 50%; max-width:50%; }
+  .mms-ipod .ipm-click .ipm-lpane{ flex:0 0 50%; max-width:50%; min-width:0; min-height:0; display:flex; flex-direction:column; }
   .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:34px; /* token-exempt: the menu row pitch (6-7 rows on a phone LCD, the device's density) */
     box-sizing:border-box; padding:0 var(--space-4); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer;
     font-family:inherit; font-size:var(--fs-md); font-weight:var(--fw-bold); }
@@ -11940,6 +11946,37 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ipm-art-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0; transform:scale(1.08);
     transition:opacity var(--dur-slow) var(--ease-ui), transform 1.6s var(--ease-ui); /* token-exempt: the slow Ken Burns settle */ }
   .mms-ipod .ipm-art-img.is-in{ opacity:1; transform:scale(1); }
+  /* Addendum E (Dean: "the art gently moves from right to left"): the menu levels' cover DRIFT.
+     Only these image layers animate, only transform + opacity (the ambient-mode lesson: no
+     filter/blur/mask/backdrop, nothing outside the pane - it clips them). Each cover pans right
+     to left with a slight zoom while it shows, then crossfades to the next. */
+  .mms-ipod .ipm-slide{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0;
+    transform:translate3d(4%,0,0) scale(1.08); transition:opacity 1.2s var(--ease-ui); /* token-exempt: the slow crossfade */ }
+  .mms-ipod .ipm-slide.is-on{ opacity:1; }
+  .mms-ipod .ipm-slide.is-drift{ transform:translate3d(-4%,0,0) scale(1.14);
+    transition:opacity 1.2s var(--ease-ui), transform 11s linear; /* token-exempt: the Ken Burns drift outlasts the 9 s slot */ }
+  /* QUICK SCROLL (Dean 2026-09-24): the letter overlay, the touch badge and the A-Z picker sit
+     over the menu screen (absolute inside .ip-menuview, which clips nothing it does not own).
+     A layer that is not showing is invisible AND untappable (visibility), faded by a class. */
+  .mms-ipod .ipm-letter, .mms-ipod .ipm-badge{ position:absolute; z-index:3; /* token-exempt: local stacking - over the menu rows and the art pane */ display:grid; place-items:center; border:0; padding:0;
+    font-family:inherit; cursor:pointer; opacity:0; visibility:hidden;
+    transition:opacity var(--dur-slow) var(--ease-ui), visibility 0s linear var(--dur-slow); /* token-exempt: visibility flips after the fade (0s = a switch, not a motion) */ }
+  .mms-ipod .ipm-letter.is-on, .mms-ipod .ipm-badge.is-on{ opacity:1; visibility:visible; transition:opacity var(--dur-fast) var(--ease-ui), visibility 0s; /* token-exempt: visibility turns on at once */ }
+  .mms-ipod .ipm-letter{ left:50%; top:50%; width:96px; height:96px; /* token-exempt: the iPod's letter square */ margin:-48px 0 0 -48px; /* token-exempt: centring the square */
+    border-radius:var(--radius-lg); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--fs-jump); font-weight:var(--fw-bold); line-height:1; /* token-exempt: a single glyph centred in its square */ }
+  .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:44px; height:44px; /* token-exempt: the 44 px touch target */
+    border-radius:var(--radius-full); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--fs-xl); font-weight:var(--fw-bold); }
+  .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:44px; /* token-exempt: every letter a 44 px target */
+    align-content:safe center; overflow-y:auto; background:var(--mms-white); border-top:1px solid var(--mms-ipod-jump-line); }
+  /* gate r1 Q3: `safe` - on an LCD shorter than the grid the rows start at the scroll origin (plain
+     centring pushed the first rows above it, unreachable: qa measured # and A-D lost at 667x375). */
+  .mms-ipod .ipm-gl{ border:0; padding:0; background:transparent; color:var(--mms-black); font-family:inherit; font-size:var(--fs-xl); font-weight:var(--fw-bold); cursor:pointer; }
+  .mms-ipod .ipm-gl:active{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); }
+  .mms-ipod .ipm-gl.is-off{ color:var(--mms-ipod-hair); cursor:default; }
+  /* About (addendum D): the device's About screen - the name large, read-only rows with values */
+  .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--fs-xl); font-weight:var(--fw-bold); color:var(--mms-black); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-ipod .ipm-row.ipm-info{ cursor:default; }
+  .mms-ipod .ipm-val{ flex:none; font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
   /* the tray (the pop-out's Nano strip) has no wheel to reach a menu with - Now Playing only */
   body.mms-tray .ip-menuview{ display:none; }
   body.mms-tray .music-nowplaying-panel.mms-menumode .ip-npview{ display:flex; }
@@ -12084,6 +12121,19 @@ html[data-modern="on"] .video-uploader {
   .mms-zune-classic .ipm-row.is-cursor .ipm-now svg{ fill:var(--mms-zn-pink); }
   .mms-zune-classic .ipm-root .ipm-row{ height:60px; /* token-exempt: the Zune main-menu pitch */ font-size:var(--fs-6xl); }
   .mms-zune-classic .ipm-note{ color:var(--mms-zn-dim); padding:var(--space-6) 0; }
+  /* quick scroll on Seattle: a huge lowercase Metro letter over a dark scrim, a round badge, and
+     a big-type picker (fewer, larger cells - the Zune's own jump look) */
+  .mms-zune-classic .ipm-letter{ left:0; top:0; right:0; bottom:0; width:auto; height:auto; margin:0; border-radius:0; background:var(--mms-zn-jump-bg);
+    color:var(--mms-white); font-size:var(--fs-jump-xl); font-weight:var(--fw-light); text-transform:lowercase; }
+  .mms-zune-classic .ipm-badge{ background:var(--mms-zn-ink); color:var(--mms-white); font-weight:var(--fw-light); text-transform:lowercase; }
+  /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
+  @media (max-width: 340px){ .mms-ipod:not(.mms-zune-classic) .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
+  .mms-zune-classic .ipm-grid{ grid-template-columns:repeat(5, minmax(0, 1fr)); grid-auto-rows:56px; /* token-exempt: big-type 44 px+ targets */ background:var(--mms-zn-jump-bg); border-top:0; }
+  .mms-zune-classic .ipm-gl{ color:var(--mms-white); font-size:var(--fs-5xl); font-weight:var(--fw-light); text-transform:lowercase; }
+  .mms-zune-classic .ipm-gl:active{ background:transparent; color:var(--mms-zn-pink); }
+  .mms-zune-classic .ipm-gl.is-off{ color:var(--mms-zn-ink); }
+  .mms-zune-classic .ipm-about-name{ padding:0 0 var(--space-4); font-size:var(--fs-5xl); font-weight:var(--fw-light); color:var(--mms-white); text-transform:lowercase; }
+  .mms-zune-classic .ipm-val{ font-size:var(--fs-md); color:var(--mms-zn-dim); text-transform:none; }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
@@ -12095,7 +12145,8 @@ html[data-modern="on"] .video-uploader {
 }
 /* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
-@media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; } }
+@media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; }
+  .mms-ipod .ipm-slide, .mms-ipod .ipm-slide.is-drift{ transition:none; transform:none; } }
 
 .music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }

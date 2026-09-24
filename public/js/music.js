@@ -1145,6 +1145,7 @@ if (typeof module !== 'undefined' && module.exports) {
           currentId: effectiveCurrentId,
           dataVersion: function () { return menuDataGen; },
           likedVersion: function () { return menuLikedGen; },
+          coverPool: menuCoverPool, // addendum E: the covers the Click menu levels drift through
         },
         fastScan: true,
         sticker: {
@@ -3383,24 +3384,56 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       return menuArtistCache[key];
     }
+    // Quick scroll: `letters` = the rows are in title order (the sort this view asked the server
+    // for), so the engine may jump them by letter - an album / release-date order never is.
     function menuSongLevel(tracks, play) {
-      return { items: SKINS.menuSongItems(tracks, musicArtUrl), tracks: tracks, play: play };
+      var sort = play && play.ctx && play.ctx.sort;
+      return { items: SKINS.menuSongItems(tracks, musicArtUrl), tracks: tracks, play: play, letters: SKINS.menuSortIsAlpha(sort) };
+    }
+    // Addendum E: one cover per album from the whole library (the Songs level's own cached list),
+    // only the ones the server says HAVE art, through the one art rule.
+    function menuCoverPool() {
+      return menuAllSongs().then(function (t) { return SKINS.menuCoverPool(t, musicArtUrl); });
+    }
+    // Addendum D: About's counts = the library routes' own totals for THIS user (the same
+    // visibility-gated routes the levels read; limit=1 - only `total` is wanted), and the running
+    // version from the account menu's own source (the server-stamped meta, appVersionString).
+    function menuTotal(url) { return fetchJson(url).then(function (d) { return Number(d && d.total) || 0; }); }
+    function menuAbout() {
+      var ver = '';
+      try { ver = (typeof window.appVersionString === 'function' && window.appVersionString()) || ''; } catch (_) { ver = ''; }
+      return Promise.all([
+        menuTotal('/api/music?limit=1'),
+        menuTotal('/api/music/albums?limit=1'),
+        menuTotal('/api/music/artists?limit=1'),
+      ]).then(function (n) { return { items: SKINS.menuAboutItems({ songs: n[0], albums: n[1], artists: n[2], version: ver }) }; });
     }
     function menuItemsOf(d) { return Array.isArray(d && d.items) ? d.items : []; }
+    // gate r1 Q6: the pocket menus' ONE "recent" source (Recent Artists AND the Recently Played
+    // playlist): the Recently Played route WITH the tracks played to their end (the opt-in
+    // `include=finished` - a finished play is a position-0 progress row with a fresh updatedAt).
+    // The browse view's Continue listening keeps the plain route (resume points only).
+    var MENU_RECENT_URL = '/api/music?filter=recent-listening&include=finished&limit=200';
     function menuLoad(node) {
       var n = node || {};
       if (!SKINS) return Promise.resolve({ items: [] });
       if (n.type === 'artists') {
-        return fetchJson('/api/music/artists?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl) }; });
+        return fetchJson('/api/music/artists?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
       if (n.type === 'albums') {
-        return fetchJson('/api/music/albums?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl) }; });
+        return fetchJson('/api/music/albums?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
+      if (n.type === 'recentArtists') {
+        // Recent Artists: the Recently Played source's own route (visibility-gated), its artists in
+        // recency order - a row is an Artists row (node type 'artist'), so it drills in the same way.
+        return fetchJson(MENU_RECENT_URL).then(function (d) { return { items: SKINS.menuRecentArtistItems(menuItemsOf(d), musicArtUrl) }; });
+      }
+      if (n.type === 'about') return menuAbout();
       if (n.type === 'songs') {
         return menuAllSongs().then(function (t) { return menuSongLevel(t, { ctx: { src: 'music', sort: 'title-asc' }, label: 'Songs' }); });
       }
       if (n.type === 'genres') {
-        return menuAllSongs().then(function (t) { return { items: SKINS.menuGenreItems(t) }; });
+        return menuAllSongs().then(function (t) { return { items: SKINS.menuGenreItems(t), letters: true }; });
       }
       if (n.type === 'genre') {
         // Genre has no list-context key: the queue rides a plain title-order ctx (disclosed).
@@ -3431,7 +3464,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var pl = n.key === 'liked'
           ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' } }
           : n.key === 'recent-played'
-            ? { url: '/api/music?filter=recent-listening&limit=200', ctx: { src: 'music', filter: 'recent-listening' } }
+            ? { url: MENU_RECENT_URL, ctx: { src: 'music', filter: 'recent-listening' } }
             : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' } };
         return fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
       }
