@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/desktop-theatre
 anchor: spec
 status: Building
-next: hand off to the Architect for the gate (adversary + qa); Dean's calls D1-D4 below are open, none blocks the build
+next: built @894b25bd (plan doc follows); Architect runs the gate (adversary + qa, attack surfaces: CSS / SPA client traps, the glow constraint, the reserve observer lifecycle); Dean decides D1-D4 (none blocks); device check owed
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
 gate: pending
 ---
@@ -76,8 +76,9 @@ and `wide=1` (theatre; `ytd-watch-flexy[theater][full-bleed-player]` confirmed o
 
 Method: `scripts/action-row-probe.js <out> <WxH> --theatre --viewport-shot`, one Chromium per
 viewport (session scratchpad `desktop-theatre-ft-run.sh`), the probe's seeded captioned item,
-light theme, sidebar shown. BEFORE = FT_ROOT on a `git archive ecb61e1d` sandbox (the first
-BEFORE run used this tree's probe on the untouched app, identical). "Fold gap" = viewport height
+light theme, sidebar shown. BEFORE = this worktree before any app edit (only the probe itself
+extended; the theatre flip was then the bare class add) for the five desktop viewports, and
+FT_ROOT on a `git archive ecb61e1d` sandbox for the 390 / 1024 and 4:3 runs. "Fold gap" = viewport height
 minus the bottom of the lowest action button; the bar's own bottom edge (its divider) is 12px
 lower.
 
@@ -234,9 +235,74 @@ synchronous re-measure in the click (and the probe now clicks the real button an
 settled reserve). A first scheduling shape (`raf = requestAnimationFrame(measure)` with measure
 resetting it) stuck under a synchronous rAF; replaced by a `queued` flag.
 
+## Confirmation at the committed sha (894b25bd)
+
+- Theatre probe re-run with FT_ROOT on a `git archive 894b25bd` sandbox (session scratchpad
+  `desktop-theatre/ft-final-894b25bd-theatre/`): every box identical to the AFTER table above
+  (1280x720 player 717x444, picture 715x402, reserve 173px, buttons y 652, fold gap 36; ...
+  1920x1200 column-bound 1642x965). Button diff vs BEFORE: 10 buttons at each of the five
+  viewports, 0 deformed, 0 wraps, rows 1 -> 1.
+- Toggle axes on a POPULATED theatre (dark, ambient on, playing, 1280x720, the real
+  `#theater-btn` clicked off then on): ON player = stage 787.8x484, glow .12/.22/1.24/1.44 lit;
+  OFF `theater-mode` gone, aria-pressed false, `ft-theater` "0", player = stage 598x377.3 (the
+  theatre-off geometry to the pixel), glow 741.5 wide (= 598 x 1.24), bar at 510.4; ON AGAIN
+  identical to ON (787.8x484, bar 617.2). No page errors (no ResizeObserver loop error).
+- Unchanged surfaces re-run at 894b25bd (`ft-final-894b25bd-{default,small-theatre,small-default}`
+  vs the BEFORE runs): theatre off at the five desktop viewports, and 390x844 / 1024x768 with
+  theatre on and off - every player, stage, title, bar, star and button box identical; button
+  diff 0 deformed, 0 wraps everywhere. The only differing numbers: the BEFORE probe had no
+  `#media-player` box yet, and at 390 theatre-off the related rail (below the fold) had loaded
+  in the later run (`.watch-sidebar` 497 vs 50 tall), a fetch-timing difference, not layout.
+- Pre-commit hook (the whole unit suite, Node 22.23.1): tests 7109, pass 7109, fail 0.
+
 ## Mutant table
 
-(filled after the commit; mutants run in a `git archive` sandbox of the committed sha)
+Unit mutants: session scratchpad `desktop-theatre-mutants.py` on a fresh copy of the
+`git archive 894b25bd` sandbox per mutant; a mutant is credited only with a non-empty diff and a
+red test. 23 of 23 killed.
+
+| # | Mutant | Killed by |
+|---|---|---|
+| C1 | dvh width drops the 23px fold margin | theatre-mode "STAGE carries the YouTube-matched width" + "PICTURE is capped at the SAME budget" |
+| C2 | the dvh width line deleted (vh only) | same two |
+| C3 | the vh width drops the measured reserve | same two |
+| C4 | the reserve fallback 98px -> 60px | same two |
+| C5 | a stage rule outside the 1025px block | "ONLY inside the 1025px+ block" |
+| C6 | the wrapper fill rule removed | "the wrapper FILLS the stage" (and probe P2 below) |
+| C7 | the picture cap's budget drifts (dvh loses the 23px) | "PICTURE is capped at the SAME budget" |
+| C8 | the picture cap removed | same |
+| C9 | no `margin-inline: auto` on the stage | "STAGE carries..." |
+| C10 | `-webkit-transform: translateZ(0)` on the new stage rule | ambient-glow-engine "v1.312 CSS LOCK" (the existing sweep reaches the new rule) |
+| C11 | `Isolation: isolate` (mixed case) on the new stage rule | same |
+| J1 | `Math.round` for `Math.ceil` | "theatreReservePx: ... rounded UP" |
+| J2 | an empty stage accepted | "no reading (null) ... EMPTY stage" + behavioral "?v= observes ... writes one frame later" |
+| J3 | a negative reading returned | "no reading (null) ..." |
+| J4 | `setupTheatreReserve` never called | all three behavioral tests (?v= x2, ?tv=) |
+| J5 | the click does not re-measure | behavioral "the theatre CLICK re-measures synchronously" |
+| J6 | the observer writes inside its own callback | behavioral "?v= observes..." + "CLICK..." |
+| J7 | no coalescing | behavioral "?v= observes..." (two notifications -> ONE frame) |
+| J8 | the title not observed | behavioral "?v= observes..." |
+| J9 | the bar not observed | behavioral "?v= observes..." |
+| J10 | no disconnect on abort | behavioral "CLICK ... destroy() disconnects" |
+| J11 | a frame queued before abort still writes | same |
+| J12 | the wrong custom property written | all three behavioral tests |
+
+Probe mutants (behavioural evidence for the glow claim; session scratchpad
+`desktop-theatre-probe-mutants.sh`, glow probe, dark, ambient on, playing):
+
+| # | Mutant | Committed | Mutant |
+|---|---|---|---|
+| P1 | the width on the WRAPPER, the stage left at column width (1920x1080) | player = stage 1488.2, glow dx .12 w 1.24 | stage 1642 vs player 1488.2, glow dx .184 w 1.368: the glow's inner edge off the player |
+| P2 | the wrapper fill rule removed (1280x400, the floor binds) | player = stage 480, glow .12 / 1.24 | player 451.5 inside a 480 stage (the v1.190 budget wins), glow dx .159 w 1.318 |
+
+### Instruments
+
+- Targeted suites while building (ambient*, watch*, theatre*, music-theater-toggle,
+  music-ambient, critter-mode, shell*, *parity*): tests 464, pass 464, fail 0 (before the
+  picture cap and its test; theatre-mode 14/14 and watch-init-behavioral 24/24 after).
+- `npm run lint:css`: TOTAL 0. `node scripts/overlay-containment-lint.js --enforce`: clean (0
+  violations). eslint on watch.js, the probe and both test files: exit 0.
+- No new script, no new shell markup (shell parity untouched), no registry entry.
 
 ## Disclosed gaps
 
