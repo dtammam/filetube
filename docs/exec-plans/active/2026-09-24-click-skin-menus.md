@@ -359,3 +359,119 @@ Censuses after both merges: `npm run lint:css` TOTAL 0; overlay-containment clea
 errors (the pre-existing common.js warnings: 6); tech-debt census, exec-plans census and
 check-markers clean; the hook's full unit suite 7187 / 7187 at 8bab3d9a and 7206 / 7206 at the
 v1.321.0 merge (994d28d7), where lint:css (0) and overlay (0) were re-run too.
+
+## Gate r2 - qa (@e76bc766)
+
+Delta review: the fixes 2bcfe9d5 / cbe5ce7b / 8bab3d9a / e76bc766, the three merges of main (b7309935, 96087c1b, 994d28d7), and the branch against main (`git diff main HEAD`, where main = 580e5f7f = the merge base: 15 files).
+
+Instruments (run by this seat, output verbatim):
+- Touched tests: pocket-menus unit + both integration files, menu-returns-to-origin, music-skins, music-skin-integration, swipe-back-owners, ambient-glow-engine, music-ambient, music-chapter-reflect, chapter-likes. Result: `# tests 339 # pass 339 # fail 0 # skipped 0`.
+- Census set (the same 15 files as r1): `# tests 155 # pass 155 # fail 0`. Shell parity: `# tests 48 # pass 48 # fail 0`.
+- `npm run test:unit`: `# tests 7206 # pass 7206 # fail 0 # cancelled 0 # skipped 0`.
+- `npm run lint:css`: `TOTAL 0`. Overlay lint `--enforce`: `clean (0 violations)`. eslint on the changed JS, tests and harness: `0 errors, 6 warnings`, all in common.js and all pre-existing. `.harness/lib/check-markers.sh`: `clean (docs/exec-plans)`.
+- Probes: a scratchpad `git archive e76bc766` sandbox and headless Chromium at 390x844 (details under each finding below).
+  - The full r1 level walk on Click + Seattle: 22 level lines `ok:true`, 0 `ok:false`, 31 of 31 state lines `errs:[]`.
+  - The Songs spin still goes 0 -> 180, and the mid-list scroll re-windows (first row 1496, 23 rows in the DOM).
+  - A chapter played from its album, then MENU, lands on Track A on both skins.
+  - A real CDP touch swipe moves Artists -> Albums, and a tap right after it drills in.
+
+r1 findings:
+1. **W1 - FIXED as prescribed, verified two ways.**
+   - (a) My r1 driver test, re-run on the r2 tree with the real drill `.music-drill-chapters` save dropping Track B: `album level after edit: Full Album Mix []` (the level is re-loading) and `Songs after edit has Track B: false`. The pick now plays `djmix1::c0`, which the server has. At r1 it played the dead `djmix1::c2`.
+   - (b) New, in a real browser: the POP-OUT (the plain-window fallback) sits open on the Full Album Mix level while the REAL `showChaptersEditor` in the MAIN window saves `0:00 Intro / 0:20 Track A`. Printed: `saved: onSaved`; the server returns `["djmix1::c0=Intro","djmix1::c1=Track A"]`. Tapping the stale "Track B" row in the pop-out re-loaded the level to `["Intro","Track A"]`, the menu stayed up, and nothing played (`currentId` stayed `nd1`).
+   - The seam is complete: common.js:12853 is the ONE chapter writer on this tree. The sibling feat/chapter-snap also writes only through that same editor fetch.
+   - Residual (SUGGESTION 1 below): until the user acts, the open level still SHOWS the dropped row.
+2. **W2 - FIXED.** Picking Songs row 1506 of 3008:
+   - CPU x1: tap `19 ms`, long tasks none, 620 rows after 3 s, final `3008` rows in 151 chunks, `badIndex 0`, and the playing row is index 1506.
+   - CPU x4: tap `178 ms`, final 3008 rows, `badIndex 0`.
+   - Shuffle Songs at x1: tap `1 ms`, `111 ms` to the new track, long tasks none.
+   - r1 was a tap of `1304 ms` and a `1393 ms` long task.
+   - Measurement disagreement (SUGGESTION 2): at x4 I see 33 long tasks of 50-184 ms across the whole fill, where the fix record says `[78]`.
+3. **W3 - FIXED.** Range boxes on the Seattle albums AND songs pivots: `own 5 / next 11` px on every row measured. The artists pivot has no sub-line and stays at 48 px (`list2l:false`). The PNG shows every artist line clearly under its own title.
+
+r1 suggestions:
+- **S4 - fixed, verified in a real browser** with the player paused. Holding pad-right for 1.2 s on the pivot level: `dt 0`, and the pivot moved to Albums. Control, the same hold on Now Playing: `dt 2` (it scanned).
+- **S5 - fixed.** The contract comment names `dataVersion` and `likedVersion`.
+- **S6 - fixed** (with `body.mms-tray` forced in the main page): `menuView:false`, `np:"Now Playing"`.
+- **S7 - fixed.** #255 is widened, and the tracker diff against main is exactly +255..258 (no row deleted, no duplicate ids).
+- **S8 - fixed, verified in a real browser.** Liked Songs was open with `["Overpass"]` and the browse heart was clicked. One wheel step later the level showed `["Songs you like show up here."]`, and the server's liked list is `[]`.
+
+Asked-for checks:
+- **content-visibility:auto** (style.css `.music-song-chunk`): these are the chunk blocks inside `#music-content`, a different element from the ambient stage. The v1.312 lock scans only the glow/stage rules, and it passes (ambient-glow-engine is in the 339 above). A chunk holds only song rows, which have no fixed or sticky descendants (grep in CSS and markup), and nothing scrolls a row into view. `contain-intrinsic-size` is lint-clean. No overlay violation.
+- **Merge resolution in music.js:** the append keeps main's `markAutoplayPicks(picks)` and puts the flat carry around the concat. v1.320's retract carries a flat queue (`flatQueue = kept`). The other `queue` writers either replace the whole queue (the flat mode ends correctly) or are the solo-exit station append, which a flat queue never reaches (`enforceFlatSegmentEnd` runs first).
+- **Comments:** the touched comments are accurate, except 3 and 4 below.
+
+New in the delta (all SUGGESTIONs, none blocking):
+1. The pop-out, or an in-tab level with no repaint, keeps SHOWING the dropped chapter row until the next wheel step, tap or Select. It can no longer play it: the action re-loads the level instead. Scenario: a chapter is saved in the main window while the pop-out sits on the album level; "Track B" stays visible until touched. Option: re-render the shown level when `dataVersion` moves (e.g. the view's event handler calling the engines' `reflect()`).
+2. The fix record's x4 row ("long tasks [78]") does not match my measurement over the whole fill: 33 long tasks of 50-184 ms, at roughly one chunk per frame, for about 10 s behind Now Playing. There is no freeze and the tap takes 178 ms, so it is shippable. But at phone-class CPU each 20-row chunk still costs more than 50 ms. Correct the record, or size the chunks by time (e.g. stop a chunk after about 8 ms).
+3. music-skins.js:445: the `has-sub` row class is INERT. No CSS reads it, because the packing is `.ipm-list.ipm-2l`. Yet its comment says it "packs its sub-line UNDER its own title", and unit music-pocket-menus.test.js:594 asserts its PRESENCE with that message (presence, not binding; N15 binds the real `.ipm-2l`). Drop the class and its assertion, or fix the comment.
+4. music.js:3334: "the first chunk waits for the next task". `later()` actually waits for the next animation frame, then a task.
+5. Merge note: feat/chapter-snap edits `showChaptersEditor` near the same lines as the new `notifyLibraryChanged` call (common.js ~12853-12865). Whichever lands second must keep the notify call in the success arm.
+
+Tree: this section is my only write. Before it, `git status` was clean at e76bc766. All probes and the driven tests ran in scratchpad sandboxes.
+
+Gate: APPROVED r2 @e76bc766 — qa
+
+## Gate r2 - adversary (@e76bc766)
+
+Instruments (this seat, verbatim; all runs in `/tmp/adv-csm2` from `git archive e76bc766`, never in this worktree):
+- The seven pocket-menu test files (the r0 suites, the locks, `music-pocket-menus-r1`): `# tests 235 # pass 235 # fail 0`.
+- `npx eslint .` (my scratch probes excluded): `0 errors, 6 warnings`. lint:css `TOTAL 0`. Overlay `clean (0 violations)`. tech-debt + exec-plans census `pass 4 fail 0`.
+- 26 mutants of my own (runner `/tmp/adv-csm2/mutants.js`, each anchor unique, each diff non-empty, the seven files): **24 RED, 2 SURVIVED** (R7 = the builder's N13, R12).
+- Headless Chromium, the 3,008-song fixture, 390x844.
+
+**r1 findings against the fix:**
+1. W1 (the yank): **fixed as prescribed.** My r1 repro now prints `after advance: cursor on Overpass` and `Select played nd2` (nd2 = Overpass). Mutant R1 (the yank restored) goes RED 2. The builder dropped my pending-follow half. The reason given is that the playing list is a leaf level, so it is off screen only while Now Playing is up. I accept that: MENU pops the leaf, so there is no path back to a list that followed while hidden.
+2. W2 (chapter save): **fixed, differently and better.** The fix is one common.js seam plus a `checkData` read before every render and every action. On my r1 re-time repro the open album level re-seeds a skeleton, the cached Songs level reads `["Intro","Renamed A","Track B","Track C"]`, and the stale row is gone. Mutants R2 (the editor never notifies), R3 (the view ignores the event) and R4 (`render` never checks) go RED 1 / 1 / 7. The listener is `{signal}`-scoped and dies with the view's `controller.abort()`. `player.js`'s own chapters editor goes through `showChaptersEditor`, so it fires the event too.
+   - Carry-forward for Chapter Snap: if its save does NOT go through `showChaptersEditor`, it must call `notifyLibraryChanged()`, or its saves bypass this seam.
+3. W3 (freeze): **fixed.** Pick row 1506 of 3,008:
+   - CPU x1: tap `16 ms`, long tasks `[53]`.
+   - CPU x4: tap `79 ms`, long tasks `[92]`.
+   - The build completes: `3008` rows in `151` chunks, `data-index` true for every row, JS heap `9 MB`.
+   - Shuffle Songs x1: no long task, `2460` rows filled 4 s after the tap.
+   - A 3-song album: `23` / `25 ms`.
+   - Mutant R5 (back to the full render) goes RED.
+   - In jsdom, an advance mid-build plus a tap on an already-built row played the tapped row (`nd1`).
+4. W4 (D5): **fixed per the Architect's ruling K4.** My r1 repro on the interleaved Songs list: the picked chapter handed on to the list's next row (`Loose Single`), then Next went to `nd1`. That is no longer the rest of the file, and no longer a jump past the list.
+   - Mutants R6 (never flat), R9 (a retract drops flat), R10 (an append drops flat) and R11 (the flat end ignores Autoplay off) all go RED.
+5. W5 (unbound guards): **all 13 now RED** (A1, A3, A4, A5, A6, A9, A10, A14, A15, A20, A22, A23, A24).
+   - A10 reddens its own test and A9's.
+   - A20/A22 are killed by both the unit test and the runtime probe.
+   - My r1 runtime escaping probe still counts 0 injected elements at every level on both skins.
+   - Listener balance after 20 cycles is still panel 0, document 0.
+6-7. **Fixed.** The stale "220 chars" comment is rewritten, and S7 is bound (R8 RED). Also fixed per QA: no hold-to-scan on a pivot level (R13 RED).
+
+**New findings in the fix:**
+
+1. **WARNING - a flat list's end-of-list pause re-fires on every resume for about a second.** music.js `enforceFlatSegmentEnd`, the `mp.pause()` arm, has no one-shot.
+   - The band `t >= end - 0.25 && t < end + 1` stays true after the pause, so each timeupdate after the user presses Play pauses again.
+   - Verified (sandbox integration test on the builder's r1 fixture): Autoplay OFF, Liked Songs = `Track A` (`djmix1::c1`, mid-file), picked. At `899.9` it pauses once (correct). Then the user presses Play and ticks run `900.1 ... 901.35`: `pauses 5`. Four re-pauses in the first second of playback.
+   - Scenario: Autoplay off (v1.320's setting), a flat list (Liked, a genre, Recently Played) whose last row is a chapter mid-file. The list ends; the user taps Play to keep listening. Each tap gives about 250 ms of audio and then pauses, up to four times. The same arm fires with Autoplay ON when the station comes back empty; the whole-library Songs queue excludes every candidate.
+   - This is new with K4. Base's solo exit degrades to a straight-through listen and never pauses.
+   - Prescription (verified): the list is done at that pause, so drop the flat mode before pausing:
+     ```js
+     flatQueue = null;
+     try { mp.pause(); } ...
+     ```
+     With that line P1 prints `pauses 1` at the boundary and `1` after the resume ticks. The two pocket-menu integration suites stay `pass 30 fail 0`, including all three K4 x v1.320 Autoplay-off tests. Bind it with the P1 shape: after the pause, resume ticks inside the band must not pause again.
+
+2. **SUGGESTION - the builder's N13 "reasoned equivalent" is refuted; the guard is correct but unbound.** R7 (drop the last-chapter guard `if (dur > 0 && end >= dur - 0.5) return true;`) leaves all 235 tests green, but it is not equivalent. With Liked = `Track B` (the file's LAST chapter), Autoplay OFF, and ticks `1500, 1799.5, 1799.8, 1799.95`: unmutated `pauses 0` (the file reaches its natural `ended`, so the ended cascade and completion save run). Mutated `pauses 2`: paused 0.2 s short of the end, so the file never ends. The builder's reasoning covers only the case where a next row exists. Bind it with that shape.
+
+3. SUGGESTION - R12 survives: dropping `if (checkData()) { render(); return true; }` in `onSelect` leaves every test green. This is W2's pop-out shape reached through the center button instead of a wheel step. The pop-out's Songs level is open, the main window saves chapters (no pop-out render), and the user presses Select, so `activate` runs on the stale rows. The guard is correct; only the wheel path (`moveCursor`) is bound. Add a Select-path variant of the "ONE seam" test.
+
+4. SUGGESTION - the `menuPickGen` stand-down is not on "every arm" as the fix record says. Both repros are cosmetic: the queue is never touched and no wrong track plays.
+   - (a) `renderHome` is unguarded. With a Home render in flight when a flat pick lands, the pick's `41` rows behind the skin are replaced by the Home shelves once Home lands (`rows 41 -> 0, home shelves 1`), while the Songs tab stays highlighted.
+   - (b) The `catch` arm (`content.innerHTML = ''`, empty note shown) is unguarded. A superseded Songs render whose fetch fails after a pick wipes the pick's list (`41 -> 0`, empty note visible) while `rm1` plays.
+   - Fix: guard `renderHome`'s write and the catch's clear with `stillMine()`.
+
+**Verified clean (the named surfaces):**
+- The chunked build is index-true, abandons on a newer pick, survives an autoplay append (N9) and completes.
+- The new document listener is signal-scoped.
+- The flat end asks `autoplayHoldsAt`, and a v1.320 retract keeps the queue flat.
+- `content-visibility:auto` chunks stay in the DOM (queryable).
+
+Verdict: CHANGES for new finding 1 only, a one-line fix verified above. Findings 2-4 are safe to ship as suggestions. A delta r3 needs only finding 1 plus its binding.
+
+Tree: this section is my only write. Before it, `git status` showed only QA's uncommitted r2 section in this file. No untracked files.
+
+Gate: CHANGES r2 @e76bc766 — adversary
