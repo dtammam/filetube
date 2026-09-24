@@ -3,10 +3,10 @@ plan: music-followups
 harness: v2 · lean
 branch: fix/music-followups
 anchor: spec
-status: Building
-next: gate r1 CHANGES @020bec0a fixed at 612cadd5 (see Gate r1 fix record); r2 - the FULL gate (adversary + qa + security-brief): item 2 touches how chapter likes are counted, the data class. Brief the adversary to DESTROY a chapter like through any chapter edit and to break the Autoplay-off retract.
+status: Gate closed
+next: release (gate CLOSED r2 @85ba5fd6, all three seats; the r2 SUGGESTIONs are tracker #248)
 design: Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)
-gate: pending
+gate: APPROVED r2 @85ba5fd6 — adversary, qa, security-brief
 ---
 
 # Music follow-ups (the wave's slim branch)
@@ -328,6 +328,20 @@ bound by the wall-time measurement above. Item 4e is a comment.
   that pick's album as the queue (reasoned; Dean's call on the intended behaviour); #246 the
   toolbar Autoplay button's pressed look lags a prefs-sync flip until the next repaint (measured
   by the adversary; behaviour already follows the pref).
+- **The gate r2 SUGGESTIONs are filed as tracker #248, not fixed** (the gate closed on them as
+  advisory; this branch's code is final at 85ba5fd6):
+  - qa 8: the F5 prewarm guard's retract also drops a station Autoplay ON has just lined up
+    (OFF then ON during an ALAC pick's prewarm). It self-heals (the last-index re-arm fetches a
+    third station); the cost is one redundant fetch and an up-next that changes twice. Retract
+    only when Autoplay is off.
+  - adversary S1: the guard's `isAutoplayPick(item) &&` discriminator is unbound (its mutant
+    survives 165 tests). The code is right: with Autoplay off your OWN transcoding track starts.
+    The binding test ("your own needsTranscode chapter starts with Autoplay off") is owed.
+  - adversary S2: after Music -> Watch the lock screen mixes the watch title with the music
+    album label and art (a cold watch load shows album "FileTube"). Not a regression (at
+    020bec0a the lock screen stayed wholly the music session). Watch declaring `album: ''` beside
+    its null stamps would fix it.
+  - qa nit: one line of the server.js `chapterLikeTrack` comment runs to 113 columns.
 - **qa S5 not taken** (memoize the Stats expansion per base file): the per-request memo needs
   either a second "chapter ids of a file" helper beside `chapterLikeTrack` (two rules again - the
   class #235 closed) or a cache keyed on db objects that outlive a request (stale after an edit).
@@ -658,3 +672,216 @@ music load in two (then correctly stopped): the probe clears storage and navigat
 prefs-sync's 1 s debounce, so the SYNCED key is restored from the server's last value (S2's
 '0'). A probe artifact of the synced key, not the view: in every run the behaviour matched the
 pref the page read.
+
+## Gate r2 - security-brief (@85ba5fd6)
+
+**Checks I could NOT complete:** still no Bash. No `git diff 020bec0a..85ba5fd6`, no `git
+status`, no test runs. The sha comes from `.git/refs/heads/fix/music-followups` (=
+85ba5fd6dbae70202239acb42142ddd460a8e2d5), and the worktree HEAD points at that branch. Without
+a diff I could NOT enumerate every file the merge of main (598f25f7 = v1.319.0) brought in. I
+re-read the surfaces named below at their current state and compared them with what I read at
+r1. A server/lib change the merge made OUTSIDE those regions is unreviewed by this seat.
+
+**r1 conclusions re-read at 85ba5fd6 (verified by reading, all hold):**
+
+- `chapterLikeTrack` (server.js:4127-4130): the body is unchanged (`type !== 'audio'` -> null; exact
+  `t.id === likeId` against the expansion). Only the comment changed (qa S4). I checked the new
+  claim that the per-row `liked` flags agree by construction: those flags look up ids the expansion
+  itself built, so it is accurate and not a stale security comment.
+- Like POST (lib/media/user-routes.js:187-206), Liked chapter arm (:369-377) and member Stats
+  `likeCounts` (lib/media/routes.js:1632-1672): the same code as r1. The access check runs on the
+  base id first, every rejection is the same 404, the stored key is the id the expansion built,
+  the Stats count can only get smaller, and every check uses the MEDIA gate (`mediaVisibleTo`).
+  The admin-only `likedStore.list()` (#243) is unchanged. The wiring (server.js:5279, :6192-6193)
+  is unchanged. `parseChapterTrackId` is unchanged.
+
+**The fix commit's client changes:**
+
+- `applyAdoptFlavor` (public/js/player.js:156-175) now carries the eight presentation strings
+  (title, channelName, folderName, album, albumKey, channelFolder, artUrl, subId). Each is copied
+  only if the caller supplied it, and anything that is not a string becomes `undefined`.
+  - **No cross-item data.** The adopt branch runs only when `isAdoptLoad` holds (`currentId ===
+    requestedId`, :116-118). The fields therefore always come from the caller's own load data for
+    the SAME item, in the same user's own tab. Nothing here crosses users or items.
+  - **Same values as a normal load.** These are the same values a fresh (non-adopt) load of that
+    item stores in `currentData`. The adopt adds no new source of untrusted input; it only lets
+    the current surface's values overwrite the previous surface's.
+  - **Where they end up.** `artUrl` reaches only `MediaMetadata.artwork[].src` (:2875) and the
+    poster on a fresh load, never HTML. `title`, `channelName` and `album` go to `MediaMetadata`
+    and to `getCurrentMeta`. `subId` is read by podcasts.js:1029 inside `encodeURIComponent`
+    for a same-origin GET. The music.js/podcasts.js re-seeds are the existing consumers of these
+    fields after a fresh load. I did not re-audit every downstream renderer, so "no new HTML
+    injection path" is SHOULD BE SAFE by the same-values argument, not a traced render.
+- watch.js :1131 and :1328 add `autoAdvanceViaTrackNav: false` next to the existing null stamps.
+  :1328 spreads the server's `mediaData` for the same id first and puts the claims after it.
+  This changes when the player auto-advances, not who can access what.
+- music.js F1 / F5 (the solo-exit station, the prewarm refusal): queue logic on the client only.
+  It adds no fetch target or HTML output (read in the fix record; the diff itself was not run).
+
+**The merge's lock-audio timing log** (player.js `bgTiming*` :418-452 and :4015-4300; setup.js
+:1042-1266):
+- Its only storage is localStorage (`filetube_bg_timing_log[_enabled]`).
+- Neither key is in prefs-sync's `SYNCED` allowlist (prefs-sync.js:23-30), so it never syncs to
+  the server.
+- The `bgTiming*` block has no `fetch`, beacon or XHR (no network call falls in its line range).
+- Setup renders it with `textContent` only (setup.js:1149-1192), and Copy is a user action.
+- The records hold timings and the local media id; this branch's code does not touch them.
+- No server or network surface, and no overlap with this branch.
+
+**Findings:** none at CRITICAL / HIGH / MEDIUM / LOW. No new INFO. The r1 INFO (the Stats
+expansion runs once per chapter like) stands unchanged.
+
+Gate: APPROVED r2 @85ba5fd6 — security-brief
+
+## Gate r2 - qa (@85ba5fd6)
+
+Delta round: my r1 findings against the fix 612cadd5, the fix record ca47d5be, and the merge of
+main 598f25f7 at 85ba5fd6. Node v22.23.1, run by this seat at 85ba5fd6:
+
+- Targeted (chapter-likes, liked*, stats-and-view, rbac-census, chapters-editor + player-adopt-flavor,
+  music*, watch*, player-bg-timing-log, player-background-audio, player-lifecycle-release,
+  mobile-input-zoom-fontsize, card-like, precommit-docs-fast-path, sub-row-chip-btn-family, every
+  *census* / *parity* unit): tests 1081, pass 1081, fail 0.
+- `npm run test:unit`: tests 7157, pass 7157, fail 0, cancelled 0, skipped 0.
+- `npm run lint:css`: TOTAL 0. Overlay lint `--enforce`: clean (0 violations). eslint (music, player,
+  watch, setup, server, lib/media/routes, lib/media/user-routes + every test file changed since
+  ecb61e1d): exit 0.
+- `check-markers.sh`: 2 issues. "stale approval @020bec0a" is the r1 security-brief line, which
+  this round's re-gate supersedes. The `design:` line with no sha was already disclosed.
+
+r1 findings, each re-verified by my own drive in a `git archive 85ba5fd6` sandbox in /tmp:
+
+1. **W1 (solo exit lost on OFF then ON): FIXED as prescribed.** The same drive that read
+   `film::c1` at 020bec0a now reads `station-track`. R1 binds it, and the OFF-only axis still
+   refuses (the F1 test covers both).
+2. **W2 (Listen -> Watch "harmless"): FIXED, the preferred way.** Both of watch.js's
+   adopt-capable loads now declare `autoAdvanceViaTrackNav: false`. My r1 real-player probe, with
+   the watch shape updated, now reads `['GET /api/settings']` and watch onNext fired 0 times with
+   autoplayNext off (it was `/api/queue` and 1). The player.js comment, the test pin and D-3 now
+   state what was measured, and D-3 records the correction. The seed pre-load at watch.js:1170 is
+   never an adopt (defer/reparent only), so it needs no stamp.
+3. **W3 (AC0(b) unbound): FIXED.** My r1 mutant (the retract's `updateNowPlayingPanel()`
+   deleted) now fails 2 of 159: the toolbar test and the sticker test.
+4. **S4: taken.** The server.js comment names the enumerating readers and says why the per-row
+   flags agree. Nit, not blocking: one line of it is now 113 columns (a missed reflow).
+5. **S5: declined, with reasoning I accept.** A memo needs a second "chapters of a file" rule
+   beside `chapterLikeTrack` (the #235 class), and the cost matches the listing's.
+6. **S6: taken.** The sticker test asserts `aria-checked="false"` and "Off", and it asserts the
+   rendered skin queue.
+7. **S7: taken.** The shim skips aborted listeners. The self-test binds it (R12 killed).
+
+New in the fix and the merge:
+
+8. **SUGGESTION - the F5 prewarm guard's retract also drops a station Autoplay ON has just lined
+   up** (music.js prewarm ready arm). Drive (sandbox, with the radio fixture cloned per fetch as a
+   real JSON parse would): the last chapter's station is appended, and Next starts an ALAC pick's
+   prewarm. Toolbar OFF then ON; the ON re-arm lines up a fresh station; then the prewarm
+   resolves. The held pick is refused (correct), but `retractAutoplayPicks()` drops every pick
+   past `navIndex`, the fresh ones too. It self-heals: the re-register at the last index with
+   Autoplay on fetches a third station, and the next Next played a pick. The cost is one
+   redundant fetch and an up-next that changes twice. Retracting only when `!autoplayEnabled()`
+   (a no-longer-queued pick needs no retract) would avoid it.
+9. **Merge interplay (player.js): clean.** Every branch file carries the same delta against
+   598f25f7 as it did against ecb61e1d (compared file by file). The bg-audio timing log reads
+   only `currentData.type` and `resumeMode`. The adopt does not carry `type`, and it already
+   carried `resumeMode` before this branch. The adopt's new `setupMediaSession` call and the
+   foreground re-assert both read `currentChannelName` / `currentData.title` as the adopt left
+   them, and `handleForegroundSwapBack` touches neither. No new interplay.
+10. **The widened adopt set (F4): correct on the loaders I enumerated.**
+    - The fields: `type`, `streamSrc`, `duration`, `progressEndpoint` and the chapter offsets
+      stay out.
+    - The loaders:
+      - watch's early adopt declares no presentation field.
+      - watch's step 4 declares the watch presentation, as a genuine watch load would.
+      - read.js, podcasts.js and the tv descriptor re-declare their own values on a same-id adopt.
+    - A declared null title clears the title, the same as a genuine load of that payload would.
+    - The poster / visualizer text is not re-painted; that is disclosed.
+11. **Tracker after the merge: no row lost.** The id set at 85ba5fd6 is exactly the union of the
+    branch's (219) and main's (220): 224 rows, no duplicates. Main added 238 and 251-254, this
+    branch 243-246, so there is no collision.
+    - #235 CLOSED: accurate (the fix is the counting reader, no sweep).
+    - #237 CLOSED: accurate after F4. It names the full presentation set, the lock-screen
+      re-assert, the reverse `false` and the disclosed poster gap.
+    - #243-#246: each is 6-column, OPEN, and names a source and a revisit trigger.
+
+Security (standing section): the r1 surface is unchanged. The fix adds no input path. The adopt
+copies only string-typed fields from the caller's own load data into player state, and nothing
+new reaches the DOM or a request.
+
+Gate: APPROVED r2 @85ba5fd6 — qa
+
+## Gate r2 - adversary (@85ba5fd6)
+
+Delta review: the fixes (`git diff 020bec0a..ca47d5be`) and the main merge's player.js
+(`ca47d5be..85ba5fd6`). Sandbox `git archive 85ba5fd6` in /tmp, Node v22.23.1.
+
+Instruments: 17 targeted files (the touched tests + music-playback-modes,
+player-bg-timing-log, player-background-audio, player-lifecycle-release): 470 tests, 470 passed,
+0 failed. eslint (4 source + 5 test files) exit 0; `lint:css` TOTAL 0; comment-debt +
+tech-debt censuses in the worktree: 9 passed, 0 failed.
+
+**r1 findings against the fix (each re-run with MY repro):**
+
+1. W1 (solo exit OFF then ON): **fixed as prescribed.** My jsdom repro: OFF then ON gives `sx1`
+   (stations on); OFF alone gives `film::c1`. Re-adding the nulling line (the r1 bug) is killed
+   by "gate r1 F1".
+2. W2 (up-next repaint unbound): **fixed.** My U2 mutant is now KILLED (2 fail, the toolbar
+   test's rendered-row assertion).
+3. W3 (Listen -> Watch "harmless"): **fixed as prescribed.** Chromium, server `autoplayNext` off:
+   a1, a2 and a3 all stop on /watch (at r1: a2 -> a1, a3 -> a2). Removing the flag at either
+   watch.js call site is killed.
+4. W4 (adopt kept watch title/channel): **fixed, and widened.** Divergent-fixture probe: after
+   the Watch -> Music adopt the meta reads `Alpha One` / `Band`, and so does the panel after the
+   dock-return re-init. Both match the cold-/music control exactly, and the natural end goes
+   a1 -> a2. My mutants all killed: dropping each of the 8 list fields, adding a media field
+   (`streamSrc`), and deleting the adopt's `setupMediaSession`.
+5. S5 (a transcoding pick started after OFF): **fixed.** My jsdom repro now stays on
+   `film::c0`. Removing the guard, or keeping only its pref half, is killed.
+6/7. **Filed accurately** as #244 (the immersive carry) and #245 (the station pick's album
+   restore), plus #246 (the stale toolbar after a prefs-sync flip; I measured it at C5). Each
+   row matches what I reported and is scoped as pre-existing or product.
+
+**Re-measured in Chromium at 85ba5fd6:**
+- Autoplay on the chaptered album, C1-C5: same results as r1. OFF retracts the up-next to the
+  3 chapters and the end stops. ON, and OFF then ON, both re-append the station and the end
+  plays it. A storage-only flip is refused at the end. 0 page errors.
+- Cog rows at 1600: same as r1 after the merge's CSS.
+
+**Hunting what the fix introduced:**
+- **F4, can an adopt now carry a WRONG value?** It runs only when `currentId === requestedId`.
+  Every same-id caller declares values for that same item: music `loadTrack`, watch's
+  early / seed / full loads, podcasts, read, tv. Each surface writes its own flavor, and a field
+  it does not declare is left alone.
+  - The lock-screen re-assert passes `currentData.channelName`, the same argument a genuine load
+    passes (`data.channelName`).
+  - No player consumer reads `folderName` or `subId` except the re-init seeds.
+- **F3, did any watch flow need the track-nav end?** Watch's genuine loads never declared the
+  flag, so `false` changes nothing for them. Only a Music/Podcasts -> Watch adopt changes, and
+  that is the fix. The tv descriptor load does not declare it, but no music or podcasts surface
+  ever loads a tv episode id, so it cannot inherit `true`.
+- **Merge interplay.** The v1.319 bg-timing / `handleForegroundSwapBack` code shares no lines
+  with the adopt branch; its `handleAutoplayNext` hand-off reads the same corrected flag.
+  `setupMediaSession` on an adopt goes through `activeMediaElement()`, so it is sidecar-correct.
+
+**New findings (none blocking):**
+
+S1. **SUGGESTION (verified) - the F5 guard's discriminator is unbound.**
+- Mutant: `isAutoplayPick(item) &&` dropped from the prewarm guard. It SURVIVES all 165 tests in
+  music-chapter-reflect, music-skin-integration and music-playback-modes.
+- Effect of that mutant: with Autoplay off, YOUR OWN `needsTranscode` track is refused at its
+  prewarm, so an ALAC album stops after each track. That breaks D-0's "your queue always plays
+  through".
+- The code today is right. My scratch test gives `film::c1` starting with Autoplay off: chapter
+  two marked `needsTranscode`, the prewarm fetch held then released. That test kills the mutant.
+  Add it beside "gate r1 F5".
+
+S2. **SUGGESTION (measured) - the lock screen after Music -> Watch is now mixed.**
+- It shows the watch title (`T a1`) with the music album label (`Record`) and music art.
+- A cold watch load shows album `FileTube`.
+- At 020bec0a it stayed the music session as a whole, so this is not a regression.
+- Fix: watch declares `album: ''` (or omits `artUrl` by stamping it) beside its null stamps.
+
+Verdict: every r1 CRITICAL/WARNING is closed at 85ba5fd6 and the fix adds none; S1 and S2 are
+advisory.
+
+Gate: APPROVED r2 @85ba5fd6 — adversary
