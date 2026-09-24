@@ -74,7 +74,14 @@ async function boot(run, opts) {
   const videoGets = [];
   const parked = [];
   let visibility = 'visible';
+  let playerState = 'docked';
   Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, get: () => visibility });
+  // Every return-listener registration, with its options (the teardown binding reads the signal).
+  const returnListeners = [];
+  for (const [target, type] of [[dom.window.document, 'visibilitychange'], [dom.window, 'pageshow']]) {
+    const orig = target.addEventListener.bind(target);
+    target.addEventListener = (t, fn, o) => { if (t === type) returnListeners.push({ type: t, options: o }); return orig(t, fn, o); };
+  }
   // The media element: a settable playhead and a play() counter. The player stub below models
   // the real load(): a SAME-id load is an ADOPT (player.js isAdoptLoad) and never touches it; a
   // genuine load seeks to chapterResumeSec, else chapterStartSec (player.js handleResumePlayback).
@@ -109,12 +116,17 @@ async function boot(run, opts) {
     registerView: (n, m) => { registered = m; },
     encodeListContext: (c) => JSON.stringify(c), decodeListContext: (s) => { try { return JSON.parse(s); } catch (_) { return null; } }, shimmerArt: () => {},
     player: {
-      currentId: null, getState: () => 'docked', expand: () => {}, dock: () => {}, getCurrentMeta: () => null,
+      currentId: null, getState: () => playerState, expand: () => {}, dock: () => {}, getCurrentMeta: () => null,
       load: (id, data) => {
         loads.push({ id, data });
-        if (id === dom.window.FileTube.player.currentId) return true; // ADOPT: the media is untouched
+        // ADOPT (player.js isAdoptLoad): the same id on a player that is not closed - the media is untouched.
+        if (id === dom.window.FileTube.player.currentId && playerState !== 'closed') return true;
         dom.window.FileTube.player.currentId = id;
-        media.t = typeof data.chapterResumeSec === 'number' ? data.chapterResumeSec : (Number(data.chapterStartSec) || 0);
+        playerState = 'docked';
+        // A genuine load: a NEW src (the element reads 0 at once); the player's own resume seek lands later.
+        media.t = 0;
+        const target = typeof data.chapterResumeSec === 'number' ? data.chapterResumeSec : (Number(data.chapterStartSec) || 0);
+        Promise.resolve().then(() => { media.t = target; });
         return true;
       },
       setTrackNav: () => {}, isLoopEnabled: () => false, setLoop: () => {}, close: () => {},
@@ -135,8 +147,9 @@ async function boot(run, opts) {
     registered.init(dom.window.document.getElementById('view-root'));
     await settleN(12);
     await run(dom, {
-      editor, loads, media, videoGets, server, registered,
+      editor, loads, media, videoGets, server, registered, returnListeners,
       setVisibility: (v) => { visibility = v; },
+      setPlayerState: (v) => { playerState = v; },
       release: () => { while (parked.length) parked.shift()(); },
     });
   } finally {
@@ -319,7 +332,11 @@ test('#269: the return listeners go with the view - after destroy a visibilitych
   await boot(async (dom, ctx) => {
     fire(dom, 'visibilitychange'); await settleN(4);
     assert.strictEqual(ctx.videoGets.length, 1, 'bound while the view lives (populated axis)');
+    const regs = ctx.returnListeners.filter((r) => r.type === 'visibilitychange' || r.type === 'pageshow');
+    assert.ok(regs.some((r) => r.type === 'visibilitychange') && regs.some((r) => r.type === 'pageshow'), 'both return listeners were registered');
+    assert.ok(regs.every((r) => r.options && r.options.signal && !r.options.signal.aborted), 'each rides a live view signal');
     ctx.registered.destroy();
+    assert.ok(regs.every((r) => r.options.signal.aborted), 'destroy aborts every one (the listener is REMOVED, not merely inert)');
     fire(dom, 'visibilitychange'); fire(dom, 'pageshow', { persisted: true }); await settleN(4);
     assert.strictEqual(ctx.videoGets.length, 1, 'removed on teardown - no leak');
   });
@@ -353,4 +370,18 @@ test('#269: the re-check follows the PLAYING chapter\'s file even when the list 
     click(dom, row(dom, 'f1::c1')); await settleN(6);
     assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c1').data.chapterStartSec, 75, 'and applied its new bounds');
   }, { extraRows: [g9] });
+});
+
+test('#268: a CLOSED player with the same id is a genuine load, never an adopt - music does not seek over the player\'s own resume', async () => {
+  await boot(async (dom, ctx) => {
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(ctx.media.t, 70, 'precondition: chapter 2 loaded and resumed');
+    ctx.setPlayerState('closed'); // the player was closed; its currentId still names f1::c1
+    const seeksBefore = ctx.media.seeks.length;
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(ctx.media.seeks.length, seeksBefore, 'no music-side seek on a genuine load (the element read 0 mid-load)');
+    assert.strictEqual(ctx.media.t, 70, 'the player\'s own resume stands');
+  });
 });
