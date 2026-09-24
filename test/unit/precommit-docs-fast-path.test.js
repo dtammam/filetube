@@ -19,16 +19,17 @@ const { isDocsOnly, docsReadingTests } = require(SCRIPT);
 // committed. A child git that inherits them operates on THAT repo, not the
 // sandbox: the first cut of this test committed its fixture onto the real
 // branch, staged fixture paths in the real index, and its `git init` flipped the
-// real repo's core.bare to true. The ONLY protection is the env: every child
-// gets CLEAN_ENV, with every GIT_* variable removed (and NODE_TEST_CONTEXT, so a
-// nested `node --test` inside the sandbox hook reports on its own). The check
-// below runs at load, BEFORE any child process exists, so a sanitizer that stops
-// sanitizing fails here instead of writing anywhere. (A post-init rev-parse
-// check only DETECTS damage: under a worktree hook's env, `git init` has already
-// written the shared config by then.)
-const CLEAN_ENV = Object.fromEntries(Object.entries(process.env)
-  .filter(([k]) => !k.startsWith('GIT_') && k !== 'NODE_TEST_CONTEXT'));
-assert.deepEqual(Object.keys(CLEAN_ENV).filter((k) => k.startsWith('GIT_')), [], 'no GIT_* variable may reach a sandbox child');
+// real repo's core.bare to true. So the GIT_* variables are deleted from THIS
+// PROCESS's env at load, before any child exists: every child inherits from it,
+// so no call site (even one that forgets `env:`) can hand them on. A post-init
+// rev-parse check only DETECTS damage (under a worktree hook's env `git init`
+// has already written the shared config), and an assert on a filtered COPY
+// proves nothing about what a child receives: the scrub is the protection.
+// CLEAN_ENV additionally drops NODE_TEST_CONTEXT (not scrubbed here - this
+// process's own runner reports through it) so the nested `node --test` inside
+// the sandbox hook reports on its own.
+for (const k of Object.keys(process.env)) if (k.startsWith('GIT_')) delete process.env[k];
+const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'NODE_TEST_CONTEXT'));
 
 test('isDocsOnly: only a non-empty set of docs/**/*.md paths qualifies', () => {
   assert.equal(isDocsOnly(['docs/exec-plans/active/2026-09-24-x.md']), true);
@@ -178,6 +179,18 @@ test('the real hook on a docs-only commit: a failing docs test refuses the commi
   assert.equal(good.status, 0, good.stdout + good.stderr);
   assert.match(good.stdout + good.stderr, /Pre-commit checks passed \(docs-only\)\./);
   assert.notEqual(head(), seed, 'the passing commit landed');
+
+  // A CODE commit must take the FULL checks (the sandbox has no package.json, so
+  // eslint fails and the commit is refused): an early exit after the fast-path
+  // block would let every code commit skip lint and the unit suite.
+  const landed = head();
+  s.write('lib/y.js', 'module.exports = 2;\n');
+  s.git('add', 'lib/y.js');
+  const code = hooked('code change');
+  assert.match(code.stdout + code.stderr, /→ eslint/, 'a code commit reaches the full checks');
+  assert.doesNotMatch(code.stdout + code.stderr, /docs-only commit/, 'a code commit never takes the fast path');
+  assert.notEqual(code.status, 0);
+  assert.equal(head(), landed, 'the refused code commit did not land');
 });
 
 test('the hook resolves the selector BESIDE ITSELF and keeps the full checks after the fast path', () => {
