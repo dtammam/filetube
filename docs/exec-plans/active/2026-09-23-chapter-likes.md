@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/chapter-likes
 anchor: spec
 status: Building
-next: built and mutant-tested (two commits); hand to the orchestrator for the FULL gate (adversary + qa + security-brief; D12 - the Adversary briefed to orphan, duplicate and leak likes across delete, move, rekey and restore; see the build record's disclosed limits for the re-chaptering index case and the video-chapter scope)
+next: gate r1 findings fixed (see the r1 fix record at the end; fixes at 92051516, every new binding mutation-proven); hand back to the SAME seats for the r2 delta (adversary + qa; security-brief APPROVED r1)
 design: Approved 2026-09-23 @6ea45237 (Dean's GO on D9-D12, recorded on feat/music-channel-chapters at 10c3be1e)
 gate: pending
 ---
@@ -266,7 +266,7 @@ for chapter-likes + music-chapter-likes-client), re-ran. Results (verbatim count
 | M5 | `rekeyLiked` exact-id only | KILLED 12/7/5 (AC6, AC7 + 3 carrier units) |
 | M6 | `trackIsLiked` reads the MUSIC set for every row | KILLED 7/5/2 (AC1/AC3, AC7) |
 | M7 | GET chapter arm: shaping gate AND filter arm removed | KILLED 7/6/1 (AC5) |
-| M7b | GET chapter arm: filter arm only (shaping gate kept) - TWO different mutants (gate r1 qa W1 corrected this row) | REPLACING the arm with `return true` is GREEN 7/7/0 (RBAC is held by the shaping gate); DELETING the arm is RED 7/2/5 (AC2, AC5/AC12, AC6, AC7, AC8): the entry falls through to `trackVisibleTo(req, ownTrack(...))` = false and every chapter entry vanishes from /api/liked and total. The filter arm is load-bearing for ROUTING past the ownTrack fallthrough; the shaping gate is load-bearing for RBAC. |
+| M7b | GET chapter arm: the FILTER arm only (shaping gate kept). Two different mutants, re-measured in the r1 fix round at 92051516 (8 tests in chapter-likes; gate r1 qa W1 caught the old "GREEN, belt and suspenders" row as wrong) | REPLACE the arm's body with `return true`: GREEN `tests 8 pass 8 fail 0` (RBAC is held by the shaping gate, which never shapes an invisible base). DELETE the arm: RED `tests 8 pass 2 fail 6` (AC2, AC5/AC12, AC6, AC7, AC8, W1; qa measured 7/2/5 at 3f6ce330 before the W1 test existed): the entry falls through to `trackVisibleTo(req, ownTrack(...))`, `ownTrack` of a `::c` id is null, and every chapter entry vanishes from /api/liked and its total. The filter arm is LOAD-BEARING for routing a chapter entry past the ownTrack fallthrough; the shaping gate is load-bearing for RBAC. Never delete the arm as redundant. |
 | M8 | row heart `r.ok` check removed | KILLED 8/7/1 |
 | M9 | `data-like-store` never stamped | KILLED 8/5/3 |
 | M10 | Extras chapter overlay removed | KILLED 8/5/3 |
@@ -608,3 +608,31 @@ append: only `M docs/exec-plans/active/2026-09-23-chapter-likes.md` (the qa and 
 sections); no untracked files; HEAD 3f6ce330. This section is my only write.
 
 Gate: CHANGES r1 @3f6ce330 — adversary (see findings)
+
+## r1 fix record
+
+Fixes committed at 92051516 (on top of the r1 verdicts at 9517baeb). Mutants ran in a
+`git archive 92051516` sandbox (`node_modules` symlinked from the main checkout), one at a time,
+each replacement asserted to occur exactly once and its diff against 92051516 shown non-empty
+before crediting, the file restored from `git show 92051516:<file>` and `cmp`-proven identical
+after each run. Sandbox baseline FIRST: chapter-likes + card-like + music-chapter-likes-client
+`tests 26 pass 26 fail 0` (Node 22.23.1). The worktree was never edited by a mutant.
+
+| Finding | Change | Binding test | Mutant (verbatim) |
+|---|---|---|---|
+| adversary W1 (the read arm's `if (!track) continue;` unbound) | NEW test "W1" in chapter-likes.test.js: like `::c4` (id from the REAL expansion), re-chapter to THREE through `POST /api/videos/:id/chapters`, prove reachability (the file still lists three chapter rows, so the drop is the index guard, not the base/audio/visibility gate), then GET /api/liked is 200 with `[]` and total 0 while `getLiked` still holds `::c4`; a restoring five-line edit revives it under the new title. The test mints its OWN session (AC8 clears and restores the users table, which made the first cut of this test 401). | chapter-likes W1 | guard deleted: `tests 8 pass 7 fail 1` (W1 red, `500 !== 200`). Storage half: `if (!track) { userStore.removeLiked(...); continue; }` (a read that SWEEPS the stranded row): `tests 8 pass 7 fail 1` (W1 red on "the row is NOT deleted from storage"). |
+| adversary W2 (AC11 comment-porous lock, no behavioural drive) | card-like.test.js strips block and full-line `//` comments ONCE at read before the chapter-arm lock; NEW test drives the REAL main.js Liked grid in jsdom (`index.html` at `/?liked=1`, the card-corners-fullchain harness shape): the `::c2` card's heart sends `DELETE /api/liked/<id>::c2`, the un-liked `::c3` card's heart sends `POST /api/liked/<id>::c3`, and a NATIVE track card beside them sends `DELETE /api/music/liked/n1` (the discriminating sibling). | card-like (the lock + the grid drive) | arm commented out (the C10 shape that survived r1): `tests 8 pass 6 fail 2` (lock + drive; the drive shows `DELETE /api/music/liked/f1::c2`). Arm deleted: `tests 8 pass 6 fail 2`. Every track to the media store (native arm rewritten to `/api/liked/`): `tests 8 pass 6 fail 2` (the drive shows `DELETE /api/liked/n1`). |
+| adversary W3 (re-chapter stranding half-disclosed) | The disclosed-limits entry now names the stats vs listing disagreement (inventory.liked 1, /api/liked total 0), the hidden sidebar Liked entry, that no UI removes a stranded row, and the reorder re-point; tracker row #235 opened with candidate fixes and a revisit trigger. | disclosure (the read half is bound by W1) | n/a (disclosure) |
+| adversary S4 (the Extras overlay failure arm unbound) | NEW tests (sticker Extras page AND desktop actions menu) in music-chapter-likes-client.test.js: `GET /api/music/<chapterId>` answers 404, the row reads "Like" (not on) and the tap is `POST /api/liked/<chapterId>`, never a DELETE. | music-chapter-likes-client (2 new) | C9 (`item.liked = track ? track.liked === true : true`): `tests 10 pass 8 fail 2` (both new tests red). |
+| adversary S5 (unreachable arms) | No change (the adversary closed it as unreachable). | n/a | n/a |
+| qa W1 (M7b row wrong) | The M7b row re-measured and rewritten above: two different mutants, measured at 92051516. | chapter-likes | replace-with-`return true`: GREEN `tests 8 pass 8 fail 0` (as expected: RBAC held by the shaping gate). Delete the arm: RED `tests 8 pass 2 fail 6` (AC2, AC5/AC12, AC6, AC7, AC8, W1). |
+| qa S2 (survey wording) | "no client READS it" plus the two WRITERS named (the music row heart and, at main, the Liked grid's `cardLikeEndpoint` track arm). | n/a (doc) | n/a |
+| qa S3 + security-brief I1 (store.js comment) | The comment beside the two statements now says: ids are opaque, never LIKE on an id; media ids are md5 hex (`getMediaId`), trash ids md5 of the trash path; the prefix arm ASSUMES a base id never contains `::c`, and names what a future `::c`-bearing id source would break. Comment-only (the two SQL statements are byte-identical to 3f6ce330). | n/a (comment) | n/a |
+| qa S4 (`/api/home`) | Follow-up note under the surface table: home reads the base-id like set and the native music set, so a liked chapter never surfaces there; a home row for chapter likes would be a new feature. | n/a (doc) | n/a |
+| qa S5 (client readers of GET /api/liked) | Added to the surface table: watch.js Prev/Next, player.js autoplay, common.js browse ctx - all filter to `kind:'media'`. | n/a (doc) | n/a |
+
+Targeted suites at 92051516 in the worktree (Node 22.23.1): chapter-likes `tests 8 pass 8 fail 0`;
+card-like + music-chapter-likes-client + chapter-like-carriers + auth-store + docs-link-census +
+docs-status-census + tech-debt-census + exec-plans-census `tests 48 pass 48 fail 0`; `npx eslint`
+over the four touched code/test files: no output. The commit's pre-commit hook ran the unit suite:
+`tests 6966 pass 6966 fail 0`.
