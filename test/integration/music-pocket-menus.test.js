@@ -433,12 +433,15 @@ test('Seattle: the Zune main menu, the Music PIVOTS moved by the pad and by a sw
     assert.strictEqual(pivots()[0], 'Albums');
     // swipe left across the list -> the next pivot; the lift-off click is swallowed
     const list = h.panel.querySelector('[data-skin-swipe]');
+    const loadsBeforeSwipe = h.spy.loads.length;
     list.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 100 }));
     list.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 150, clientY: 110 }));
     list.querySelector('.ipm-row').dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true })); // a mouse's lift-off click lands on the row under it: swallowed, it selects nothing
     await settleNet();
     assert.strictEqual(pivots()[0], 'Songs', 'a left swipe moved to the next pivot');
     assert.strictEqual(h.panel.querySelector('.ipm-title'), null, 'the swipe\'s click did not drill into a row');
+    assert.strictEqual(h.spy.loads.length, loadsBeforeSwipe, '...nor play the row under it');
+    assert.ok(inMenu(h), '...the menu stayed up');
     click(h.dom, h.panel.querySelector('[data-skin-prev]'));
     await settleNet();
     assert.strictEqual(pivots()[0], 'Albums', 'pad left moves back');

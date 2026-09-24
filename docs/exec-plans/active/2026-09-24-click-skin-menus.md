@@ -135,7 +135,49 @@ are upper bounds, not device numbers.
 
 ## Mutant table
 
-(filled in after the commit - mutants run in a /tmp sandbox from `git archive` of the commit)
+Runner: `click-skin-menus-mutants.js` (session scratchpad). Each mutant is applied to a sandbox
+extracted from `git archive 85e0d562` (never the live tree), its replaced text is asserted to
+occur exactly once and the file is compared before/after (every row: diff non-empty), the named
+test files run, the file is restored. Log: `click-skin-menus-mutants2.log`. Fails = failing
+tests across the named files.
+
+| # | Mutant | Result |
+|---|---|---|
+| M1 | `paint()` never calls `pocket.afterPaint` | RED (8) |
+| M2 | wheel mode line drops `menuMode` (a menu spin scrubs) | RED (5) |
+| M3 | the cursor branch never calls `pocket.moveCursor` | RED (5) |
+| M4 | `followCurrent` finds the id but never moves the cursor | RED (2) - unit follow + the integration chapter-roll/queue-next test |
+| M5 | MENU's `pocket.onMenu()` arm dropped (MENU from Now Playing docks) | RED (21) |
+| M6 | the Main Menu pops too (`> 1` -> `> 0`) | RED (2) |
+| M7 | Select never reaches `pocket.onSelect()` | RED (18) |
+| M8 | pad left/right move pivots on every level | RED (2) |
+| M9 | the load callback's `destroyed` guard dropped | survived - EQUIVALENT: `render()` carries its own `destroyed` guard; M9c drops both -> RED (1) |
+| M9c | both `destroyed` guards dropped | RED (1) |
+| M10 | the load callback's `isVisible(pane)` guard dropped | survived - EQUIVALENT: levels hold per-pane state objects (a late payload can only write into its own pane), so an unconditional `render()` re-draws the shown level from ITS state - an extra repaint, never wrong rows. Kept as an avoided repaint |
+| M11 | a failed art image is kept | RED (1) |
+| M12 | a decoded art image never eases in | RED (1) |
+| M13 | the swipe does not swallow its lift-off click | survived at 85e0d562 (the test's click landed on a SONG row, so a drill-in assert was vacuous); the test now also asserts no play and the menu stays up - re-run below |
+| M14 | the swipe never arms | RED (1) |
+| M15 | no list window (every row rendered) | RED (1) |
+| M16 | the no-layout window drops the cursor-centred span | RED (2) |
+| M17 | `menus` dropped from the Matte registry entry | RED (2) - the census + the real-data Liked test on Matte |
+| M18 | menu labels unescaped | RED (1) |
+| M19 | the Unknown Genre bucket dropped | RED (2) |
+| M20 | All Songs never offered | RED (2) |
+| M21 | the album/artist play does not re-draw the drill behind the skin | RED (1) |
+| M22 | the songs-list play does not re-draw the list behind the skin | RED (2) - incl. "a tapped browse row plays its own track" |
+| M23 | `loadSongsGen` bump dropped (an in-flight browse load lands over the pick) | RED (1) |
+| M24 | a menu pick plays through (not a v1.311 select) | RED (1) - the solo-exit station prime is absent |
+| M25 | Shuffle Songs never plays | RED (1) |
+| M26 | `[data-skin-swipe]` not a swipe-back owner | RED (1) |
+| M27 | the MENU handler's final `else { onDock(); }` deleted | RED (4) - the re-anchored source lock + behaviour |
+| M28 | the Main Menu keeps Now Playing with nothing loaded | RED (2) |
+| M29 | opens on Now Playing with nothing loaded | RED (2) |
+| M30 | the delete/move invalidation dropped | RED (1) - the real Extras delete drive |
+| M31 | the rescan invalidation dropped | RED (1) - the real Scan button drive |
+| M32 | the engine ignores a `dataVersion` bump | RED (2) |
+
+Survivors are M9 and M10 (equivalent, reasoned above) and M13 (test strengthened; re-run below).
 
 ## Disclosed gaps
 
