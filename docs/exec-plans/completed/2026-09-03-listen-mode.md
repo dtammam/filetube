@@ -1,7 +1,8 @@
+> Completed: shipped in v1.252.0 (moved 2026-09-23; see ROADMAP.md).
 # Listen-mode (videos play-as-audio) + the sticker-menu ergonomics fix (v1.252 wave)
 
 Status: ACTIVE. Dean 2026-09-03: "start immediately... I think you have the brief."
-Intake LOCKED 2026-09-02 (recorded in completed/player-extras-and-unify.md): (1) the itch is
+Intake LOCKED 2026-09-02 (recorded in completed/2026-09-02-player-extras-and-unify.md): (1) the itch is
 PRESENTATION (the skin experience while listening; bg-audio machinery reused untouched);
 (2) a "Listen" button on the watch page's action row; (3) PER-PLAY, no remembered flag, NO
 new db.metadata field; (4) NO Music-library membership - the video stays a video everywhere;

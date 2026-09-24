@@ -1,9 +1,10 @@
+> Completed: shipped in v1.251.0 (moved 2026-09-23; see ROADMAP.md).
 # Audio-routing consistency + the desktop podcast player (v1.251 wave)
 
 Status: SHIPPED as v1.251.0 (2026-09-03; full gate SERIALIZED seats, 3 rounds, both APPROVE;
 dual-Node 8194/8194; DEVICE-PENDING Dean's pass - the pinned-channel probe needs a scan to
 have run first). Move to completed/ on Dean's device pass; LISTEN-MODE (locked intake in
-completed/player-extras-and-unify.md) is next. Original intake below.
+completed/2026-09-02-player-extras-and-unify.md) is next. Original intake below.
 Intake LOCKED 2026-09-02, Dean "Agree" to both recommendations:
 1. THE RULE: anything PURELY AUDIO (YouTube-audio / library audio, chaptered albums), tapped
    from ANY surface on desktop, opens in MUSIC; podcast episodes always open the podcast
@@ -13,7 +14,7 @@ Intake LOCKED 2026-09-02, Dean "Agree" to both recommendations:
 2. DESKTOP PODCASTS get the full music-grade treatment: the shared expanded panel (metadata +
    up-next episode queue) + the THEATRE toggle + the desktop POP-OUT (the engine unification
    made it cheap). Mobile podcast skin already correct.
-Then LISTEN-MODE begins (its locked intake is in completed/player-extras-and-unify.md, which
+Then LISTEN-MODE begins (its locked intake is in completed/2026-09-02-player-extras-and-unify.md, which
 also carries the rest of the queue: chapter-rename + pop-out-Extras bundle, cross-device sync).
 
 player.js stays BYTE-UNCHANGED (0-line diff verified every commit).

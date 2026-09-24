@@ -380,7 +380,7 @@ test('a general re-pull-all (POST /api/subscriptions/repull) still skips a pause
 });
 
 // ---- v1.314: PATCH round-trips pushBell (the per-channel web push opt-in) ----
-// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (AC8).
+// Plan: docs/exec-plans/completed/2026-09-23-subscription-push-bell.md (AC8).
 
 test('v1.314 PATCH /api/subscriptions/:id round-trips pushBell: off by default, set true -> read back true (PATCH body AND GET list), set false -> false', async () => {
   const deps = makeFakeDeps();

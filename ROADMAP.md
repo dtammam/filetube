@@ -3680,7 +3680,7 @@ re-skin) can follow.
 ### v1.212.0 - Music redesign, Slice 1: artist circles + "Jump back in" (2026-08-30)
 
 Dean: "Love love love go go go" on the redesign mockup. First slice of the arc
-(spec = the mockup; plan `docs/exec-plans/active/music-redesign.md`, which stays
+(spec = the mockup; plan `docs/exec-plans/completed/2026-08-30-music-redesign.md`, which stays
 ACTIVE for slices 2-4).
 
 **What shipped.** (1) The Artists tab renders round CHANNEL-AVATAR circles
@@ -9059,7 +9059,7 @@ port the v1.104 music now-playing view to podcasts. Dean chose (AskUserQuestion)
 include the episode SHOW-NOTES; up-next = the rest of this show's episodes.
 Entirely client-side - episode `description` was ALREADY served (publicEpisode),
 so no server work and no persist-gate risk. Exec plan in
-`docs/exec-plans/completed/v1.105-podcast-nowplaying-view.md`.
+`docs/exec-plans/completed/2026-08-11-v1.105-podcast-nowplaying-view.md`.
 
 - **Next/prev keeps the expanded view (T1):** podcast `playAt` always loaded
   `{dock:true}`, collapsing the expanded view on episode change. Now it keeps the
@@ -9092,7 +9092,7 @@ Dean, on-device right after v1.103: "if I tap a song there's no detail about
 song name/album... if I press next track it goes straight to miniplayer." Two
 pre-existing gaps in the expanded now-playing view (`#player-slot`), surfaced by
 the overhaul. Design wave, exec plan in
-`docs/exec-plans/completed/v1.104-music-nowplaying-view.md`. Dean chose (of the
+`docs/exec-plans/completed/2026-08-11-v1.104-music-nowplaying-view.md`. Dean chose (of the
 options offered) the FULL now-playing view - metadata + up-next queue.
 
 - **Next/prev no longer collapses the view (T1):** every music track change
@@ -9133,7 +9133,7 @@ release runs were clean); a contention-sensitive jsdom timing test, same class a
 Dean: the Music page "feels bad on multiple fronts... not polished / not
 deterministic / not nice. It's not fun to use." Intake separated the gestalt
 into three nameable causes, each fixed here, plus one IA change. Design wave
-(exec plan in `docs/exec-plans/completed/v1.103-music-page-overhaul.md`).
+(exec plan in `docs/exec-plans/completed/2026-08-11-v1.103-music-page-overhaul.md`).
 
 - **Artist album-art mosaic (T1-T3):** artist cards were drab text-only boxes
   ("N albums . M tracks", no artwork) clashing with the art-forward album cards.
@@ -12028,7 +12028,7 @@ The wave the whole token effort existed for: ~130 declaration changes across eig
 
 **Discipline of record:** every edit was GENERATED from the 298-row expected-delta ledger (machine-bound by npm run ledger:check), each batch's differ enumeration matched its ledger rows exactly (the era-varying 3g batch verified PER CONTEXT against ruling B), and the full span is exactly 80 pairs x 9 contexts = the arithmetic sum of the batches. FULL two-reviewer gate, both seats unconditional APPROVE after one fix round. **What the gate caught:** the 3g commit message's burn-down claim was wrong by three (the per-site radius literals stay counted as R7 population) - corrected via an immutable-history correction record that BOTH seats then re-derived independently; a gate-killed premise (--radius-lg as a "new token") had resurrected in companion prose and is re-killed; three spelling locks and the mobile-toast lock followed the ledger with token-scale-lock as the byte-exact value authority.
 
-**Disclosed and pending:** Stop B - Dean's per-scene review of the visible deltas against before/after captures (packet at docs/exec-plans/completed/2026-07-31-tokens-tier3-step3-stopB.md; before-state frozen in the immutable v1.57.0 image; per-site rejection flips revert individually without reopening batches) - plus his three manual gate-blocker shots (13-toast, 04-resume, 10-audio-expanded). Timing deltas (3e) are invisible to frozen captures and are judged on-device. The remaining 110 burn-down residue is Tier 4 scope (ghost-red, mono-font, z re-ladder, R7 radii, --thumbnail-bg definition) plus deliberate exemptions. Dual-Node of record: 5320/5320 on v22.23.1 AND v24.14.0, run sequentially with reviewers idle.
+**Disclosed and pending:** Stop B - Dean's per-scene review of the visible deltas against before/after captures (packet at docs/exec-plans/completed/2026-07-31-tokens-tier3-step3-stopb.md; before-state frozen in the immutable v1.57.0 image; per-site rejection flips revert individually without reopening batches) - plus his three manual gate-blocker shots (13-toast, 04-resume, 10-audio-expanded). Timing deltas (3e) are invisible to frozen captures and are judged on-device. The remaining 110 burn-down residue is Tier 4 scope (ghost-red, mono-font, z re-ladder, R7 radii, --thumbnail-bg definition) plus deliberate exemptions. Dual-Node of record: 5320/5320 on v22.23.1 AND v24.14.0, run sequentially with reviewers idle.
 
 ### v1.57.0 - Capture-safety hardening: the harness can never mutate the library again (2026-07-30)
 

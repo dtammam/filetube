@@ -5,7 +5,7 @@
 // element (#fs-stage) with the host INSIDE it - navigation reparents the
 // HOST, and moving a fullscreen element force-exits fullscreen (the v1.130
 // disclosed desktop gap). Spec:
-// docs/exec-plans/active/desktop-fullscreen-stage.md.
+// docs/exec-plans/completed/2026-08-16-desktop-fullscreen-stage.md.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');

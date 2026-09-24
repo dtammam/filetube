@@ -137,6 +137,12 @@ blood more than once:
   tag → push main + tag (tag push auto-publishes Docker + the GitHub Release; the
   server pull is Dean's). Then delete the wave's branches (`-d`, never `-D`), remote
   + local. `git ls-remote --heads origin` is the authoritative remote list.
+- **Exec plans are date-led and close out by script** - every plan under
+  `docs/exec-plans/{active,completed}/` is named `YYYY-MM-DD-<slug>.md` (the date
+  the plan was MADE, i.e. its first commit), and a shipped/abandoned plan moves to
+  `completed/` via `node scripts/plan-complete.js <active-plan> "Shipped vX.Y.Z" --apply`
+  (git mv to the dated name + the terminal status/banner); `test/unit/exec-plans-census.test.js`
+  fails an undated or misplaced plan (`docs/RELEASING.md` step 1).
 - **Environment** — export the fnm Node PATH before EVERY npm/node/git-hook command:
   `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
   Dual-Node verification uses **v22.23.1 and v24.20.0**, sequential, never parallel

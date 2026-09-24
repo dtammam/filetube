@@ -396,7 +396,7 @@ Gate: CHANGES r1 @97d6f542 — adversary
 
 ### Gate r1 findings and the r2 fix (@97d6f542 -> the fix commit)
 - security-brief: APPROVED. INFO-1 stale "21-key" prose (fixed: prefs-sync.js comment,
-  cross-device-sync.md); INFO-2 pre-existing `ft-ambient-intensity` rows stay in
+  2026-09-04-cross-device-sync.md); INFO-2 pre-existing `ft-ambient-intensity` rows stay in
   `user_prefs` for existing users - served by GET /api/prefs, ignored by the client,
   rejected on POST, dropped on restore: harmless, DISCLOSED, no cleanup shipped.
 - adversary F1 CRITICAL (own goal - the INERT FEATURE class I named in blind-spot 2 and

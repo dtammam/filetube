@@ -602,7 +602,7 @@ test('v1.73/v1.246: a podcast row -> /podcasts?play=, an AUDIO row -> /music?pla
 });
 
 // ---- v1.314: the per-subscription push BELL (meta.pushMuted) ----------------
-// Plan: docs/exec-plans/active/2026-09-23-subscription-push-bell.md (D2, D6; AC4-6, AC10).
+// Plan: docs/exec-plans/completed/2026-09-23-subscription-push-bell.md (D2, D6; AC4-6, AC10).
 // resolveMeta (the server's resolvePushMeta) marks a row whose channel's
 // subscription has the bell OFF with `pushMuted: true`. The deliverer must skip
 // it SILENTLY but still pass the cursor over it, and the collapse must count

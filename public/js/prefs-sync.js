@@ -8,7 +8,7 @@
 // the shared helper" class, closed structurally). Readers are untouched:
 // localStorage stays the read path and the offline cache.
 //
-// Semantics (exec plan cross-device-sync.md, intake-settled with Dean):
+// Semantics (exec plan 2026-09-04-cross-device-sync.md, intake-settled with Dean):
 //  - LWW per key, stamps in ms; the server's upsert guard is the authority.
 //  - Boot + visibilitychange(visible) GET: server-newer values are raw-written
 //    into localStorage (stamps recorded); "applied by next render" is the v1

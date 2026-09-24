@@ -1,3 +1,4 @@
+> Completed: shipped in v1.257.0 (moved 2026-09-23; see ROADMAP.md).
 # Tray Player - the pop-out parks above the taskbar as a now-playing strip (v1.257)
 
 Status: ACTIVE. Dean 2026-09-03: an optional desktop mode - "when someone goes to PiP

@@ -1,3 +1,4 @@
+> Completed: shipped in v1.212.0 (Slice 1; slices 2-4 superseded by the v1.213 pivot, arc through v1.244.0. Moved 2026-09-23; see ROADMAP.md).
 # Music redesign - a Spotify-polished experience for a personal library
 
 **Status:** ACTIVE. Branch `feat/music-home-circles` (Slice 1).

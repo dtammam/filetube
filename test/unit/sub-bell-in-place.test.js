@@ -10,7 +10,7 @@
 // real subscriptions.html in jsdom (the subscriptions-panels-behavior.test.js
 // driver), routes `fetch` through a recording spy, and drives real clicks on the
 // real bell. The assertions are the acceptance rows of
-// docs/exec-plans/active/2026-09-23-sub-bell-polish.md (AC1, AC2):
+// docs/exec-plans/completed/2026-09-23-sub-bell-polish.md (AC1, AC2):
 //   - exactly one PATCH, and ZERO `/api/subscriptions` list fetches after load;
 //   - the row ELEMENT identity is unchanged across the toggle (no rebuild);
 //   - the glyph / -active class / aria follow the RESPONSE, not the request

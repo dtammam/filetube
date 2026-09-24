@@ -18,7 +18,7 @@
 // falls to the poster, hard-fails safely, and NEVER draws the video), (3) the
 // CSS / HTML / wiring locks that keep the two iOS suspects out of the tree.
 // Plans: docs/exec-plans/completed/2026-09-23-ambient-glow-rebuild.md,
-//        docs/exec-plans/active/2026-09-23-ambient-glow-polish.md
+//        docs/exec-plans/completed/2026-09-23-ambient-glow-polish.md
 
 const { test } = require('node:test');
 const assert = require('node:assert');
