@@ -383,6 +383,85 @@ function isFreshPrePauseCandidate(candidateAt, nowMs, windowMs) {
   return age >= 0 && age <= windowMs;
 }
 
+// ---- Lock-to-audio phase 1 (MEASURE): the background-audio timing log -------
+// Dean (2026-09-24): with "Background audio for video" ON, what still fails is
+// the audio GAP at lock. iOS pauses the video before any page code runs, so a
+// switch can shrink the gap but never remove it; the next build is chosen from
+// his iPhone's numbers. One RECORD per hide cycle (lock, app switch, tab
+// switch) of a playing mobile VIDEO: `t` is the wall clock (Date.now) at the
+// first hide event and every mark is a performance.now() offset in ms from it
+// (negative = before it, e.g. iOS's own pause of the video). Device-local, OFF
+// by default, collected only while the Setup toggle is on; the last
+// BG_TIMING_LOG_CAP records live in localStorage and Setup > Experimental
+// renders them. Both keys MUST match setup.js (BG_TIMING_ENABLED_KEY /
+// BG_TIMING_LOG_KEY), the cross-file string-literal convention.
+var BG_TIMING_ENABLED_STORAGE_KEY = 'filetube_bg_timing_log_enabled';
+var BG_TIMING_LOG_STORAGE_KEY = 'filetube_bg_timing_log';
+var BG_TIMING_LOG_CAP = 20;
+
+function bgTimingNum(v) {
+  return (typeof v === 'number' && isFinite(v)) ? v : null;
+}
+function bgTimingSpan(later, earlier) {
+  var a = bgTimingNum(later);
+  var b = bgTimingNum(earlier);
+  return (a === null || b === null) ? null : Math.round(a - b);
+}
+
+// Pure: the derived numbers the Setup readout shows, from one raw record.
+// Stored on the record (`m`) at every write, so the readout never re-derives.
+//   hideToAudioMs    first hide event -> the sidecar's first real currentTime
+//                    advance (the first-audible-progress proxy; timeupdate
+//                    granularity makes it an UPPER bound)
+//   hideToPlayingMs  first hide event -> the sidecar's 'playing' event
+//   pauseToPlayingMs the video stopping (its 'pause' event or our own pause()
+//                    call, whichever came first; iOS's system pause is usually
+//                    BEFORE the hide) -> the sidecar's 'playing'
+//   silenceMs        the video stopping -> the sidecar's first advance (the gap
+//                    Dean hears, as closely as a web page can see it)
+//   playCallToPlayingMs  our play() call -> 'playing' (the element's own start-up)
+//   driftSec         the sidecar's position at 'playing' minus the video
+//                    position handed over (+ = audio resumed AHEAD of the video)
+//   backMs           return: visible again -> the video moving again
+//   outcome          ok | playing | pending | failed:<error> | skipped:<reason> | no-handoff
+function bgTimingMetrics(rec) {
+  var r = rec || {};
+  var ret = r.ret || {};
+  var stops = [bgTimingNum(r.pause), bgTimingNum(r.pauseCall)].filter(function (v) { return v !== null; });
+  var stoppedAt = stops.length ? Math.min.apply(null, stops) : null;
+  var videoPos = bgTimingNum(r.resumeTime) !== null ? r.resumeTime : bgTimingNum(r.pausePos);
+  var startPos = bgTimingNum(r.startPos);
+  var outcome;
+  if (r.decision && r.decision.eligible === false) outcome = 'skipped:' + (r.decision.reason || 'unknown');
+  else if (r.err) outcome = 'failed:' + r.err;
+  else if (bgTimingNum(r.advance) !== null) outcome = 'ok';
+  else if (bgTimingNum(r.playing) !== null) outcome = 'playing';
+  else if (bgTimingNum(r.playCall) !== null) outcome = 'pending';
+  else outcome = 'no-handoff';
+  return {
+    hideToAudioMs: bgTimingSpan(r.advance, 0),
+    hideToPlayingMs: bgTimingSpan(r.playing, 0),
+    pauseToPlayingMs: bgTimingSpan(r.playing, stoppedAt),
+    silenceMs: bgTimingSpan(r.advance, stoppedAt),
+    playCallToPlayingMs: bgTimingSpan(r.playing, r.playCall),
+    driftSec: (startPos !== null && videoPos !== null) ? Math.round((startPos - videoPos) * 100) / 100 : null,
+    backMs: bgTimingSpan(bgTimingNum(ret.videoAdvance) !== null ? ret.videoAdvance : ret.videoPlaying, ret.visible),
+    outcome: outcome,
+  };
+}
+
+// Pure: the ring-buffer write. A record re-written as it gains marks (same
+// `id`) is replaced IN PLACE (the log stays in hide order); a new one is
+// appended; only the newest `cap` survive. Garbage entries are dropped.
+function appendBgTimingRecord(log, rec, cap) {
+  var out = Array.isArray(log) ? log.filter(function (r) { return r && typeof r === 'object'; }) : [];
+  var at = -1;
+  for (var i = 0; i < out.length; i++) { if (out[i].id === rec.id) { at = i; break; } }
+  if (at >= 0) out[at] = rec; else out.push(rec);
+  var n = (typeof cap === 'number' && cap > 0) ? Math.floor(cap) : BG_TIMING_LOG_CAP;
+  return out.length > n ? out.slice(out.length - n) : out;
+}
+
 // F3b (two-reviewer follow-up, v1.27.0): a tiny (52-byte), LOCAL, silent
 // mono 8-bit/8kHz PCM WAV clip (8 samples of silence), inlined as a `data:`
 // URI so `primeBackgroundAudioElement` (below) can "bless" `bgAudioEl` for a
@@ -1672,6 +1751,12 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldHandOffToBackgroundAudio,
     // v1.121: the position pre-sync gate (the lock-blip tuning).
     shouldPresyncBgAudio,
+    // Lock-to-audio phase 1: the background-audio timing log's pure halves.
+    BG_TIMING_ENABLED_STORAGE_KEY,
+    BG_TIMING_LOG_STORAGE_KEY,
+    BG_TIMING_LOG_CAP,
+    bgTimingMetrics,
+    appendBgTimingRecord,
     // v1.27.2 (pre-pause candidate bridge): pure freshness check for the
     // pause->visibilitychange bridge -- see its own comment.
     isFreshPrePauseCandidate,
@@ -2796,6 +2881,14 @@ if (typeof module !== 'undefined' && module.exports) {
   function handleForegroundSwapBack() {
     if (bgAudioState !== BG_AUDIO_STATES.BACKGROUND_AUDIO && bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
     var resumeTime = bgAudioEl ? (bgAudioEl.currentTime || 0) : 0;
+    // Lock-to-audio phase 1 (Dean's reopen rule, 2026-09-24): back to the VIDEO
+    // at the audio's position, PLAYING only if the audio was playing. Before,
+    // the video always played - so a lock-screen / AirPods pause, or a video
+    // that finished in the background (its cascade rewound the sidecar to 0),
+    // came back PLAYING (from 0:00 in the finished case). Read before the
+    // release below pauses the sidecar. HANDING_OFF counts as playing: play()
+    // is in flight and an element leaves `paused` the moment play() is called.
+    var audioWasPlaying = !!(bgAudioEl && !bgAudioEl.paused);
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'FOREGROUND', {});
     if (mediaPlayer) {
       mediaPlayer.currentTime = resumeTime;
@@ -2803,7 +2896,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // FOREGROUND at this point, which is normally enough gesture context),
       // leave it paused -- the position is already correct either way, so
       // the user just needs one more tap, never a lost/wrong position.
-      mediaPlayer.play().catch(function () {});
+      if (audioWasPlaying) bgTimingNoteReturnPlay(mediaPlayer.play()).catch(function () {});
     }
     recordLifecycleEvent('bgAudio:swapback', { detail: 'audio=' + resumeTime.toFixed(1) + 's->video=' + (mediaPlayer ? mediaPlayer.currentTime.toFixed(1) : '?') + 's' });
     releaseBackgroundAudioElement();
@@ -2843,6 +2936,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // ONCE, guarded on `currentData` so it's a no-op whenever nothing is loaded.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible' || !currentData || !mediaPlayer) return;
+    bgTimingOnVisible(); // lock-audio phase 1: the return's starting state, read BEFORE the swap-back changes it
     handleForegroundSwapBack(); // v1.27.0: SWAP_BACK before the re-assert below reads activeMediaElement()
     // v1.36.2 (Dean's PWA report): re-arm the native control layer on EVERY
     // foreground return -- iOS can strand it unresponsive after an
@@ -3315,6 +3409,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     var resumeTime = currentAbsTime();
+    var timing = bgTimingBeforeHandoff(trigger, resumeTime); // lock-audio phase 1: null unless a timing record is open
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'BACKGROUND', { eligible: true });
     // v1.35 T2: with the pre-arm in place this is a no-op (already armed +
     // buffered); armBackgroundAudioSrc remains the SINGLE site that ever
@@ -3340,6 +3435,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     var handoffId = currentId; // guards the async .then/.catch below against a load() racing in before play() settles
     var playAttempt;
+    if (timing) timing.playCall = bgTimingRel(timing);
     try {
       playAttempt = bgAudioEl.play();
     } catch (e) {
@@ -3357,9 +3453,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // it (also structurally moot here, since `bgAudioState` was already
     // moved off INLINE_VIDEO just above -- but explicit/consistent with the
     // other two lifecycle-driven pause sites).
+    if (timing) timing.pauseCall = bgTimingRel(timing);
     pauseSuppressingHandoff(mediaPlayer);
     saveProgressToServer(resumeTime, { keepalive: true });
+    if (timing) bgTimingPersistSoon(timing); // the FIRST timing write: a microtask, strictly after play() above
     Promise.resolve(playAttempt).then(function () {
+      if (timing && !timing.done) timing.playResolved = bgTimingRel(timing);
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return; // superseded by a newer load/foreground/teardown
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_SUCCEEDED', {});
       recordLifecycleEvent('bgAudio:ok', { detail: 't=' + (bgAudioEl.currentTime || 0).toFixed(1) + 's' });
@@ -3369,6 +3468,11 @@ if (typeof module !== 'undefined' && module.exports) {
       startBgKeepAlive(); // v1.161.3 (opt-in): keep the process awake THROUGH a background pause
 
     }, function (err) {
+      if (timing && !timing.done) {
+        timing.playRejected = bgTimingRel(timing);
+        timing.err = (err && err.name) || 'Error';
+        bgTimingPersistSoon(timing);
+      }
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_FAILED', {});
       // Video is already paused+saved above -- today's degrade-gracefully
@@ -3642,6 +3746,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function handleBackgroundLifecycle(eventType, extraCtx) {
     if (!mediaPlayer || !currentId) return; // nothing loaded -- no-op
+    bgTimingOnHidden(eventType); // lock-audio phase 1: opens a timing record (toggle on, playing mobile video); reads only
     var ctx = {
       isAudio: !!(currentData && currentData.type === 'audio'),
       isPlaying: !mediaPlayer.paused,
@@ -3802,6 +3907,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // summary -- attached by the 'bgAudio:*' call sites below; every
   // pre-existing caller omits it, recorded as `detail: null`.
   function recordLifecycleEvent(type, extraCtx) {
+    if (bgTimingCur) bgTimingTap(type, extraCtx); // lock-audio phase 1: an in-memory mark, only while a timing record is open
     if (!isDebugLifecycleEnabled()) return; // PART B is a complete no-op unless the flag is on
     try {
       var raw = localStorage.getItem(LIFECYCLE_LOG_STORAGE_KEY);
@@ -3869,6 +3975,264 @@ if (typeof module !== 'undefined' && module.exports) {
         state: bgAudioState,
       }),
     });
+  }
+
+  // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
+  // A PASSIVE observer of the v1.27 / v1.35 / v1.121 / v1.161 handoff (see the
+  // pure half, bgTimingMetrics, for the record's meaning). Every hook only READS
+  // element state into the in-memory open record (bgTimingCur) - none touches
+  // playback, none awaits - and each is a single null check while no record is
+  // open. Opening one costs one localStorage READ (the toggle) at a hide event
+  // or a video pause, the same read recordLifecycleEvent already pays there. No
+  // storage WRITE ever happens before the sidecar's play() call: the handoff
+  // queues its first write as a microtask AFTER play() (bgTimingPersistSoon) and
+  // the rest land in later events (play() settling, the first advance, the
+  // return), so an app iOS kills in the background keeps what was last written.
+  var bgTimingCur = null;          // the open record, or null
+  var bgTimingLastPause = null;    // the latest video pause while no record was open
+  var bgTimingWriteQueued = false;
+  var bgTimingReturnTimer = null;
+  var BG_TIMING_PAUSE_LOOKBACK_MS = 3000; // a video pause this recent belongs to the hide that follows (iOS pauses FIRST)
+  var BG_TIMING_RETURN_SETTLE_MS = 5000;  // stop waiting for the video to move after a return
+  var BG_TIMING_EVENT_CAP = 24;
+
+  function isBgTimingEnabled() {
+    try { return localStorage.getItem(BG_TIMING_ENABLED_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+  function bgTimingClock() {
+    try {
+      if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') return performance.now();
+    } catch (_) { /* fall through to the wall clock */ }
+    return Date.now();
+  }
+  function bgTimingRel(rec) { return Math.round((bgTimingClock() - rec.p0) * 10) / 10; }
+  function bgTimingPos(el) {
+    var t = el ? el.currentTime : NaN;
+    return (typeof t === 'number' && isFinite(t)) ? Math.round(t * 100) / 100 : null;
+  }
+  function bgTimingEvent(rec, label) {
+    if (rec.ev.length < BG_TIMING_EVENT_CAP) rec.ev.push([label, bgTimingRel(rec)]);
+  }
+  function bgTimingDisplayMode() {
+    try {
+      if (navigator.standalone === true) return 'pwa';
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return 'pwa';
+    } catch (_) { /* unknown -> browser */ }
+    return 'browser';
+  }
+  function bgTimingOs() {
+    var m = /OS (\d+(?:_\d+)*)/.exec((navigator && navigator.userAgent) || '');
+    return m ? 'iOS ' + m[1].replace(/_/g, '.') : String((navigator && navigator.platform) || '');
+  }
+  function bgTimingBuffered(el, t) {
+    try {
+      var b = el.buffered;
+      if (!b || typeof b.length !== 'number') return null;
+      for (var i = 0; i < b.length; i++) { if (t >= b.start(i) && t <= b.end(i)) return true; }
+      return false;
+    } catch (_) { return null; }
+  }
+  function bgTimingJson(key, value) { return key === 'p0' ? undefined : value; }
+
+  function bgTimingPersist(rec) {
+    if (!isBgTimingEnabled()) return; // switched off mid-cycle: collection stops with it
+    try {
+      if (rec.settings && rec.settings.keepAlive === undefined) rec.settings.keepAlive = isBgKeepAliveEnabled();
+      rec.m = bgTimingMetrics(rec);
+      var log;
+      try { log = JSON.parse(localStorage.getItem(BG_TIMING_LOG_STORAGE_KEY) || '[]'); } catch (_) { log = []; }
+      localStorage.setItem(BG_TIMING_LOG_STORAGE_KEY, JSON.stringify(appendBgTimingRecord(log, rec, BG_TIMING_LOG_CAP), bgTimingJson));
+    } catch (_) { /* storage full/disabled - measurement is best-effort */ }
+  }
+  function bgTimingPersistSoon(rec) {
+    if (bgTimingWriteQueued) return;
+    bgTimingWriteQueued = true;
+    Promise.resolve().then(function () { bgTimingWriteQueued = false; bgTimingPersist(rec); });
+  }
+  function bgTimingFinalize(rec) {
+    if (!rec || rec.done) return;
+    rec.done = true;
+    if (bgTimingReturnTimer) { clearTimeout(bgTimingReturnTimer); bgTimingReturnTimer = null; }
+    if (bgTimingCur === rec) bgTimingCur = null;
+    bgTimingPersist(rec);
+  }
+
+  // A hide event arrived (called first thing in handleBackgroundLifecycle).
+  // Opens a record for a playing - or just system-paused - mobile VIDEO; a
+  // later hide event of the same cycle (pagehide/freeze after the
+  // visibilitychange) is only noted.
+  function bgTimingOnHidden(eventType) {
+    var rec = bgTimingCur;
+    if (rec && (rec.ret || rec.media !== currentId)) { bgTimingFinalize(rec); rec = null; }
+    if (rec) { bgTimingEvent(rec, eventType); return; }
+    if (!mediaPlayer || !currentData || currentData.type === 'audio') return;
+    if (!isBgTimingEnabled() || !isMobileFormFactor()) return;
+    var now = bgTimingClock();
+    var lastPause = bgTimingLastPause;
+    bgTimingLastPause = null;
+    var recentPause = (lastPause && lastPause.media === currentId && now - lastPause.at <= BG_TIMING_PAUSE_LOOKBACK_MS) ? lastPause : null;
+    var playing = !mediaPlayer.paused;
+    if (!playing && !recentPause) return; // nothing was playing: nothing to measure
+    var wall = Date.now();
+    bgTimingCur = {
+      v: 1,
+      id: String(wall),
+      t: wall,
+      p0: now,
+      media: currentId,
+      type: currentData.type || null,
+      mode: currentData.resumeMode || null,
+      display: bgTimingDisplayMode(),
+      os: bgTimingOs(),
+      settings: {
+        bgAudio: bgAudioSettingCached,
+        instant: bgAudioSyncPositionCached,
+        preExtract: preExtractAudioCached,
+        status: bgAudioStatusKnown,
+      },
+      first: eventType,
+      ev: [[eventType, 0]],
+      playingAtHide: playing,
+      videoPos: bgTimingPos(mediaPlayer),
+      pause: recentPause ? Math.round((recentPause.at - now) * 10) / 10 : null,
+      pausePos: recentPause ? recentPause.pos : null,
+      decision: null,
+    };
+  }
+
+  // The video's own 'pause' event: a mark on the open record, or (none open)
+  // a stamp the NEXT hide can claim - iOS system-pauses before the page hides.
+  function bgTimingOnVideoPause() {
+    var rec = bgTimingCur;
+    if (rec && !rec.ret && rec.media === currentId) {
+      if (rec.pause === null) { rec.pause = bgTimingRel(rec); rec.pausePos = bgTimingPos(mediaPlayer); }
+      bgTimingEvent(rec, 'video:pause');
+      return;
+    }
+    if (!mediaPlayer || !currentData || currentData.type === 'audio') return;
+    if (!isBgTimingEnabled()) return;
+    bgTimingLastPause = { at: bgTimingClock(), pos: bgTimingPos(mediaPlayer), media: currentId };
+  }
+
+  // recordLifecycleEvent's tap: every 'bgAudio:*' / 'msAction:*' line during
+  // an open cycle becomes a timed event, and the FIRST 'bgAudio:skip' is the
+  // decision (every skip path already emits exactly one - the v1.27.2
+  // one-line-per-event invariant - so no skip site needs its own hook).
+  function bgTimingTap(type, extraCtx) {
+    var rec = bgTimingCur;
+    if (!rec || rec.done || typeof type !== 'string') return;
+    if (type.indexOf('bgAudio:') !== 0 && type.indexOf('msAction:') !== 0) return;
+    var detail = (extraCtx && typeof extraCtx.detail === 'string') ? extraCtx.detail : '';
+    bgTimingEvent(rec, detail ? type + ' ' + detail.slice(0, 60) : type);
+    if (type === 'bgAudio:skip' && !rec.decision && !rec.ret) {
+      rec.decision = { eligible: false, reason: detail || 'unknown', at: bgTimingRel(rec) };
+      bgTimingPersistSoon(rec);
+    }
+  }
+
+  // attemptBackgroundAudioHandoff, eligible branch, BEFORE it arms/seeks/plays:
+  // what the sidecar looked like at the decision. Returns the record (the
+  // handoff keeps it for its later marks) or null when none is open.
+  function bgTimingBeforeHandoff(trigger, resumeTime) {
+    var rec = bgTimingCur;
+    if (!rec || rec.ret || rec.done || rec.media !== currentId || !bgAudioEl) return null;
+    var src = bgAudioEl.getAttribute('src') || '';
+    rec.decision = { eligible: true, trigger: trigger || 'visibility', at: bgTimingRel(rec) };
+    rec.resumeTime = bgTimingNum(resumeTime) !== null ? Math.round(resumeTime * 100) / 100 : null;
+    rec.sidecar = {
+      armed: !!src && src !== SILENT_PRIME_SRC, // pre-armed with the real track before this handoff
+      buffered: bgTimingBuffered(bgAudioEl, resumeTime), // the handoff's seek target already buffered
+      readyState: bgAudioEl.readyState,
+      networkState: bgAudioEl.networkState,
+      preload: bgAudioEl.preload || null,
+      pos: bgTimingPos(bgAudioEl), // where the (pre-synced?) sidecar sat before the seek
+      primed: bgAudioGesturePrimed,
+    };
+    return rec;
+  }
+
+  function bgTimingSidecarRec() {
+    var rec = bgTimingCur;
+    return (rec && !rec.ret && !rec.done && rec.playCall != null && rec.media === currentId && activeMediaElement() === bgAudioEl) ? rec : null;
+  }
+  function bgTimingOnSidecarPlaying() {
+    var rec = bgTimingSidecarRec();
+    if (!rec || rec.playing != null) return;
+    rec.playing = bgTimingRel(rec);
+    rec.startPos = bgTimingPos(bgAudioEl);
+  }
+  function bgTimingOnSidecarTime() {
+    var rec = bgTimingSidecarRec();
+    if (!rec || rec.advance != null) return;
+    if (rec.playing == null && rec.playResolved == null) return; // the handoff's own seek fires timeupdate too
+    var now = bgTimingPos(bgAudioEl);
+    var base = rec.startPos != null ? rec.startPos : rec.resumeTime;
+    if (now === null || base == null || now <= base + 0.01) return;
+    rec.advance = bgTimingRel(rec);
+    rec.advancePos = now;
+    bgTimingPersist(rec);
+  }
+
+  // Visible again (the visibilitychange-visible listener, BEFORE the swap-back
+  // runs): the state the return starts from. 'resume' waits for the video to
+  // move (or BG_TIMING_RETURN_SETTLE_MS); 'stay-paused' / 'no-swap' close now.
+  function bgTimingOnVisible() {
+    var rec = bgTimingCur;
+    if (!rec || rec.ret || rec.done) return;
+    if (rec.media !== currentId) { bgTimingFinalize(rec); return; }
+    var swapping = bgAudioState === BG_AUDIO_STATES.BACKGROUND_AUDIO || bgAudioState === BG_AUDIO_STATES.HANDING_OFF;
+    var audioPaused = (swapping && bgAudioEl) ? !!bgAudioEl.paused : null;
+    rec.ret = {
+      visible: bgTimingRel(rec),
+      state: bgAudioState,
+      audioPos: swapping ? bgTimingPos(bgAudioEl) : null,
+      audioPaused: audioPaused,
+      mode: !swapping ? 'no-swap' : (audioPaused ? 'stay-paused' : 'resume'),
+    };
+    if (rec.ret.mode === 'resume') {
+      bgTimingReturnTimer = setTimeout(function () { bgTimingReturnTimer = null; bgTimingFinalize(rec); }, BG_TIMING_RETURN_SETTLE_MS);
+      return;
+    }
+    Promise.resolve().then(function () { rec.ret.videoPos = bgTimingPos(mediaPlayer); bgTimingFinalize(rec); });
+  }
+  // handleForegroundSwapBack's video play(): marked, and handed straight back.
+  function bgTimingNoteReturnPlay(playPromise) {
+    var p = (playPromise && typeof playPromise.then === 'function') ? playPromise : Promise.resolve();
+    var rec = bgTimingCur;
+    if (rec && rec.ret && !rec.done) {
+      rec.ret.videoPlayCall = bgTimingRel(rec);
+      p.then(function () {
+        if (!rec.done) rec.ret.videoPlayResolved = bgTimingRel(rec);
+      }, function (err) {
+        if (rec.done) return;
+        rec.ret.videoPlayRejected = bgTimingRel(rec);
+        rec.ret.err = (err && err.name) || 'Error';
+        bgTimingFinalize(rec);
+      });
+    }
+    return p;
+  }
+  function bgTimingReturnRec() {
+    var rec = bgTimingCur;
+    return (rec && rec.ret && !rec.done && rec.ret.mode === 'resume') ? rec : null;
+  }
+  function bgTimingOnVideoPlaying() {
+    var rec = bgTimingReturnRec();
+    if (!rec || rec.ret.videoPlaying != null) return;
+    rec.ret.videoPlaying = bgTimingRel(rec);
+    rec.ret.videoStartPos = bgTimingPos(mediaPlayer);
+  }
+  function bgTimingOnVideoTime() {
+    var rec = bgTimingReturnRec();
+    if (!rec) return;
+    if (rec.media !== currentId) { bgTimingFinalize(rec); return; }
+    if (rec.ret.videoPlaying == null && rec.ret.videoPlayResolved == null) return; // the swap-back's own seek fires timeupdate too
+    var now = bgTimingPos(mediaPlayer);
+    var base = rec.ret.videoStartPos != null ? rec.ret.videoStartPos : rec.ret.audioPos;
+    if (now === null || base == null || now <= base + 0.01) return;
+    rec.ret.videoAdvance = bgTimingRel(rec);
+    rec.ret.videoPos = now;
+    bgTimingFinalize(rec);
   }
 
   // v1.35 T1, extracted v1.136 (the PWA audio-coupling deep dive): declare a
@@ -6015,6 +6379,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // observers; registered AFTER the handoff trigger so the suppression flag
     // they record reflects the same synchronous dispatch it guards.
     mediaPlayer.addEventListener('pause', function () { recordDiagnosticPauseEvent('video'); });
+    // Lock-to-audio phase 1: the timing log's video marks (passive; one null
+    // check each while no timing record is open - see bgTimingCur).
+    mediaPlayer.addEventListener('pause', bgTimingOnVideoPause);
+    mediaPlayer.addEventListener('playing', bgTimingOnVideoPlaying);
+    mediaPlayer.addEventListener('timeupdate', bgTimingOnVideoTime);
     mediaPlayer.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=video' }); });
     // v1.27.2 (pre-pause candidate bridge): any resumed playback invalidates
     // a pending candidate -- the pause it described is no longer "the last
@@ -6075,6 +6444,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // arriving on the non-active element is itself diagnostic signal.
     bgAudioEl.addEventListener('pause', function () { recordDiagnosticPauseEvent('bgAudio'); });
     bgAudioEl.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=bgAudio' }); });
+    // Lock-to-audio phase 1: the sidecar's 'playing' and first real advance
+    // (passive marks; gated on a real handoff being the active surface).
+    bgAudioEl.addEventListener('playing', bgTimingOnSidecarPlaying);
+    bgAudioEl.addEventListener('timeupdate', bgTimingOnSidecarTime);
     // v1.27.0 (F2, two-reviewer gate): bgAudioEl's own 'ended' counterpart to
     // mediaPlayer's completion cascade below -- ONLY acts when this element
     // is the one actually BACKGROUND_AUDIO-playing for the current item

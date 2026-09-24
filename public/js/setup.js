@@ -1036,6 +1036,220 @@ const RESUME_COUNTDOWN_SECONDS_KEY = 'filetube_resume_countdown_seconds';
 const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';
 // v1.161.3 (Dean): MUST match BG_KEEPALIVE_STORAGE_KEY in player.js.
 const BG_KEEPALIVE_KEY = 'filetube_bg_keepalive';
+// Lock-to-audio phase 1 (Dean 2026-09-24): the background-audio timing log.
+// MUST match BG_TIMING_ENABLED_STORAGE_KEY / BG_TIMING_LOG_STORAGE_KEY in
+// player.js (which collects; this page only renders, copies and clears).
+const BG_TIMING_ENABLED_KEY = 'filetube_bg_timing_log_enabled';
+const BG_TIMING_LOG_KEY = 'filetube_bg_timing_log';
+
+// ---- Background audio timing log (Setup > Experimental) --------------------
+// Records are written by player.js (bgTimingOnHidden .. bgTimingFinalize); each
+// carries its derived numbers in `m` (player.js bgTimingMetrics), so this side
+// only formats. Newest first. Every value may be absent on a partial record
+// (an app iOS killed in the background keeps its last write) - shown as '-'.
+function readBgTimingLog() {
+  let log = [];
+  try {
+    const raw = localStorage.getItem(BG_TIMING_LOG_KEY);
+    log = raw ? JSON.parse(raw) : [];
+  } catch (_) { log = []; }
+  return Array.isArray(log) ? log.filter((r) => r && typeof r === 'object').reverse() : [];
+}
+
+function bgTimingCell(v, unit) {
+  return (typeof v === 'number' && Number.isFinite(v)) ? String(v) + (unit || '') : '-';
+}
+function bgTimingYesNo(v) {
+  if (v === true) return 'yes';
+  if (v === false) return 'no';
+  return '-';
+}
+function bgTimingClockLabel(t) {
+  if (typeof t !== 'number' || !Number.isFinite(t)) return '-';
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function bgTimingDriftLabel(v) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '-';
+  return (v > 0 ? '+' : '') + v.toFixed(2) + 's';
+}
+
+// Pure: one record -> the strings the table shows. `note` is the second,
+// full-width line (what happened, the silence, and the return).
+function bgTimingRowView(rec) {
+  const r = rec || {};
+  const m = r.m || {};
+  const sidecar = r.sidecar || {};
+  const settings = r.settings || {};
+  const ret = r.ret || null;
+  const trigger = r.decision && r.decision.trigger ? ' via ' + r.decision.trigger : '';
+  const parts = [(m.outcome || 'no-handoff') + trigger];
+  if (typeof m.silenceMs === 'number') parts.push('silence ' + m.silenceMs + ' ms');
+  if (ret) {
+    if (ret.mode === 'resume') parts.push('back: video ' + (typeof m.backMs === 'number' ? 'moving after ' + m.backMs + ' ms' : 'did not move') + (ret.err ? ' (' + ret.err + ')' : ''));
+    else if (ret.mode === 'stay-paused') parts.push('back: audio was paused, video stays paused');
+    else parts.push('back: no swap (video was left paused)');
+  }
+  parts.push(r.display === 'pwa' ? 'PWA' : 'browser tab');
+  return {
+    when: bgTimingClockLabel(r.t),
+    hideToAudio: bgTimingCell(m.hideToAudioMs),
+    pauseToPlaying: bgTimingCell(m.pauseToPlayingMs),
+    armed: bgTimingYesNo(sidecar.armed),
+    instant: settings.instant === true ? 'on' : (settings.instant === false ? 'off' : '-'),
+    drift: bgTimingDriftLabel(m.driftSec),
+    note: parts.join(' · '),
+  };
+}
+
+// Pure: the Copy text - one human line per record (newest first), then the raw
+// records as JSON so every mark survives the trip.
+function formatBgTimingCopyText(records) {
+  const list = Array.isArray(records) ? records : [];
+  const lines = [
+    'FileTube background audio timing log',
+    list.length + ' record(s), newest first. Times in ms from the first hide event.',
+  ];
+  list.forEach((rec, i) => {
+    const r = rec || {};
+    const m = r.m || {};
+    const s = r.sidecar || {};
+    const st = r.settings || {};
+    const ret = r.ret || {};
+    lines.push((i + 1) + '. ' + new Date(r.t || 0).toISOString() + ' ' + (r.display || '?') + ' ' + (r.os || '?')
+      + ' | ' + (m.outcome || 'no-handoff') + (r.decision && r.decision.trigger ? ' via ' + r.decision.trigger : '')
+      + ' | hide->audio ' + bgTimingCell(m.hideToAudioMs)
+      + ' | hide->playing ' + bgTimingCell(m.hideToPlayingMs)
+      + ' | pause->playing ' + bgTimingCell(m.pauseToPlayingMs)
+      + ' | silence ' + bgTimingCell(m.silenceMs)
+      + ' | play()->playing ' + bgTimingCell(m.playCallToPlayingMs)
+      + ' | armed ' + bgTimingYesNo(s.armed) + ', buffered ' + bgTimingYesNo(s.buffered) + ', readyState ' + bgTimingCell(s.readyState)
+      + ' | instant ' + bgTimingYesNo(st.instant) + ', pre-extract ' + bgTimingYesNo(st.preExtract) + ', keep-alive ' + bgTimingYesNo(st.keepAlive)
+      + ' | drift ' + bgTimingDriftLabel(m.driftSec)
+      + ' | back ' + (ret.mode || '-') + ' ' + bgTimingCell(m.backMs));
+  });
+  lines.push('raw: ' + JSON.stringify(list));
+  return lines.join('\n');
+}
+
+// Renders the records into `host` as a table: a numbers row + a note row per
+// record. textContent only - the records come from storage, never trusted as HTML.
+function renderBgTimingLog(host, records) {
+  if (!host) return;
+  host.textContent = '';
+  const list = Array.isArray(records) ? records : [];
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.className = 'bg-timing-log-empty';
+    empty.textContent = 'No handoffs recorded yet. Play a video, lock the screen or switch apps for a few seconds, then come back.';
+    host.appendChild(empty);
+    return;
+  }
+  const table = document.createElement('table');
+  const head = document.createElement('tr');
+  ['When', 'Hide to audio (ms)', 'Pause to playing (ms)', 'Pre-armed', 'Instant', 'Drift'].forEach((label) => {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = label;
+    head.appendChild(th);
+  });
+  const thead = document.createElement('thead');
+  thead.appendChild(head);
+  table.appendChild(thead);
+  const body = document.createElement('tbody');
+  list.forEach((rec) => {
+    const v = bgTimingRowView(rec);
+    const row = document.createElement('tr');
+    row.className = 'bg-timing-log-row';
+    [v.when, v.hideToAudio, v.pauseToPlaying, v.armed, v.instant, v.drift].forEach((text) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      row.appendChild(td);
+    });
+    const noteRow = document.createElement('tr');
+    noteRow.className = 'bg-timing-log-note';
+    const noteCell = document.createElement('td');
+    noteCell.colSpan = 6;
+    noteCell.textContent = v.note;
+    noteRow.appendChild(noteCell);
+    body.appendChild(row);
+    body.appendChild(noteRow);
+  });
+  table.appendChild(body);
+  host.appendChild(table);
+}
+
+// The toggle (device-local, '1' = on, absent = off - player.js reads it LIVE at
+// every hide), the panel (shown only while on), Copy and a two-tap Clear.
+function wireBgTimingLog(signal) {
+  const check = document.getElementById('bg-timing-log-check');
+  const panel = document.getElementById('bg-timing-log-panel');
+  const tableHost = document.getElementById('bg-timing-log-table');
+  const status = document.getElementById('bg-timing-log-status');
+  const copyBtn = document.getElementById('bg-timing-log-copy');
+  const clearBtn = document.getElementById('bg-timing-log-clear');
+  const textArea = document.getElementById('bg-timing-log-text');
+  if (!check || !panel) return;
+  const say = (text) => { if (status) status.textContent = text || ''; };
+  let clearArmed = false;
+  let clearTimer = null;
+  const disarmClear = () => {
+    clearArmed = false;
+    if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
+    if (clearBtn) clearBtn.textContent = 'Clear';
+  };
+  const refresh = () => {
+    panel.hidden = !check.checked;
+    if (!check.checked) { disarmClear(); return; }
+    renderBgTimingLog(tableHost, readBgTimingLog());
+  };
+  let raw = null;
+  try { raw = localStorage.getItem(BG_TIMING_ENABLED_KEY); } catch (_) { /* storage disabled -- show default (off) */ }
+  check.checked = raw === '1';
+  refresh();
+  check.addEventListener('change', (e) => {
+    try {
+      if (e.target.checked) localStorage.setItem(BG_TIMING_ENABLED_KEY, '1');
+      else localStorage.removeItem(BG_TIMING_ENABLED_KEY);
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+    say('');
+    refresh();
+  }, { signal });
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const text = formatBgTimingCopyText(readBgTimingLog());
+      const fallback = () => {
+        // No clipboard (a plain-http LAN install is not a secure context):
+        // show the text selected so it can be copied by hand.
+        if (textArea) { textArea.value = text; textArea.hidden = false; try { textArea.select(); } catch (_) { /* best-effort */ } }
+        say('Copy is blocked here - select the text below and copy it.');
+      };
+      const clip = typeof navigator !== 'undefined' && navigator.clipboard;
+      if (!clip || typeof clip.writeText !== 'function') { fallback(); return; }
+      Promise.resolve().then(() => clip.writeText(text)).then(() => {
+        if (textArea) textArea.hidden = true;
+        say('Copied.');
+      }, fallback);
+    }, { signal });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (!clearArmed) {
+        clearArmed = true;
+        clearBtn.textContent = 'Tap again to clear';
+        clearTimer = setTimeout(disarmClear, 4000);
+        return;
+      }
+      disarmClear();
+      try { localStorage.removeItem(BG_TIMING_LOG_KEY); } catch (_) { /* storage disabled -- nothing to clear */ }
+      if (textArea) { textArea.value = ''; textArea.hidden = true; }
+      say('Cleared.');
+      refresh();
+    }, { signal });
+    if (signal) signal.addEventListener('abort', disarmClear, { once: true });
+  }
+}
 
 // v1.161 (Dean): clamp a raw seconds input to the SAME contract as player.js's
 // resolveResumeCountdownSeconds - integer [0,30]. Returns null for absent/blank
@@ -4269,6 +4483,7 @@ function init(root) {
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
+  wireBgTimingLog(controller.signal); // lock-to-audio phase 1: the Experimental background-audio timing log
   wireWheelCalControl(controller.signal); // Click wheel test (Experimental)
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
@@ -4352,6 +4567,10 @@ if (typeof module !== 'undefined' && module.exports) {
     loadUsersList, buildUserRoleCell,
     // v1.171: the critter pool manager (jsdom-tested: two-tap deletes, uploads, reveal).
     wireCritterManager, wireVoiceCheck,
+    // Lock-to-audio phase 1: the background-audio timing log readout (jsdom-tested
+    // against records the REAL player.js wrote - player-bg-timing-log.test.js).
+    wireBgTimingLog, renderBgTimingLog, bgTimingRowView, formatBgTimingCopyText, readBgTimingLog,
+    BG_TIMING_ENABLED_KEY, BG_TIMING_LOG_KEY,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
     // v1.161 (Dean): the resume-countdown seconds clamp (mirrors player.js's read).

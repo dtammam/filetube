@@ -348,7 +348,11 @@ test('handleForegroundSwapBack() runs the video.currentTime = audio.currentTime;
   assert.ok(match, 'expected to find handleForegroundSwapBack()\'s source body');
   const body = match[1];
   assert.match(body, /mediaPlayer\.currentTime = resumeTime;/);
-  assert.match(body, /mediaPlayer\.play\(\)\.catch/);
+  // Lock-to-audio phase 1 (Dean's reopen rule): the video plays back ONLY if
+  // the audio was playing - bound behaviorally in player-bg-timing-log.test.js.
+  assert.match(body, /var audioWasPlaying = !!\(bgAudioEl && !bgAudioEl\.paused\);/);
+  assert.match(body, /if \(audioWasPlaying\) bgTimingNoteReturnPlay\(mediaPlayer\.play\(\)\)\.catch/);
+  assert.ok(body.indexOf('var audioWasPlaying') < body.indexOf('releaseBackgroundAudioElement();'), 'read before the release pauses the sidecar');
   assert.match(body, /releaseBackgroundAudioElement\(\);/);
 });
 
