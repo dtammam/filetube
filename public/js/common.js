@@ -12813,6 +12813,30 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc) {
   const actionsRow = d.createElement('div');
   actionsRow.className = 'modal-actions';
 
+  // v1.319 Chapter Snap (Dean): the text box stays for pasting a whole list; this
+  // opens the SAME time editor every other entry point opens (showChapterSnapEditor),
+  // seeded from storage. Offered once the item has at least two chapters; refused
+  // while the textarea holds unsaved typing (switching would silently drop it).
+  let snapBtn = null;
+  const initialLines = (typeof initialText === 'string' ? initialText : '').split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (initialLines.length >= 2 && typeof showChapterSnapEditor === 'function') {
+    snapBtn = d.createElement('button');
+    snapBtn.type = 'button';
+    snapBtn.className = 'btn chapters-editor-snap';
+    snapBtn.textContent = 'Fix times\u2026';
+    snapBtn.setAttribute('aria-label', 'Fix chapter start times in the visual editor');
+    snapBtn.addEventListener('click', () => {
+      if (busy) return;
+      if (textarea.value !== (typeof initialText === 'string' ? initialText : '')) {
+        statusEl.textContent = 'Save or undo your typed changes first, then fix the times.';
+        return;
+      }
+      teardown();
+      showChapterSnapEditor(mediaId, { onSaved, doc: doc || undefined });
+    });
+    actionsRow.appendChild(snapBtn);
+  }
+
   const cancelBtn = d.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'btn';
@@ -12860,6 +12884,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc) {
     busy = nextBusy;
     saveBtn.disabled = nextBusy;
     cancelBtn.disabled = nextBusy;
+    if (snapBtn) snapBtn.disabled = nextBusy;
   }
 
   function teardown() {
@@ -12870,7 +12895,588 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc) {
   d.body.appendChild(backdrop);
   openOverlay(backdrop, 'modal-open');
 
-  return { backdrop, modal, textarea, statusEl, cancelBtn, saveBtn, teardown };
+  return { backdrop, modal, textarea, statusEl, cancelBtn, saveBtn, snapBtn, teardown };
+}
+
+// ---- v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor ---------
+//
+// ONE component, opened from four places (the Music album drill, the now-playing
+// "This chapter starts wrong", the watch page's chapters list, and the text
+// chapters editor above) - never a per-surface copy. It fixes WHEN chapters
+// start, never what they are: no add, remove, reorder or rename (likes and
+// progress are keyed `<mediaId>::c<n>`).
+//
+// Seeded from STORAGE: every open fetches GET /api/videos/:id/chapter-snap (the
+// persisted record, not any list on screen), and every save/revert carries the
+// `version` it was seeded with - the server refuses a record that changed since.
+// Phone first: every control is a real button (>= 44px on phones, style.css
+// .chapter-snap-*), nothing is drag-only, and the list scrolls inside a
+// full-height sheet at phone widths.
+
+// m:ss.s (h:mm:ss.s past an hour) - tenths are what a nudge moves.
+function formatSnapTime(sec) {
+  let s = Number(sec);
+  if (!isFinite(s) || s < 0) s = 0;
+  const tenths = Math.round(s * 10);
+  const h = Math.floor(tenths / 36000);
+  const m = Math.floor((tenths % 36000) / 600);
+  const r = (tenths % 600) / 10;
+  const rs = (r < 10 ? '0' : '') + r.toFixed(1);
+  return h > 0 ? h + ':' + (m < 10 ? '0' : '') + m + ':' + rs : m + ':' + rs;
+}
+
+// Where a nudge of `delta` seconds lands for chapter `i`: rounded to the
+// millisecond and kept strictly between its neighbours (a MIN gap either side)
+// and before the end of the file. Chapter 1 never moves. Pure.
+function clampSnapNudge(times, i, delta, durationSec) {
+  if (!Array.isArray(times) || i <= 0 || i >= times.length) return null;
+  const GAP = 0.1;
+  let t = Math.round((Number(times[i]) + Number(delta)) * 1000) / 1000;
+  const lo = Number(times[i - 1]) + GAP;
+  let hi = i + 1 < times.length ? Number(times[i + 1]) - GAP : (Number(durationSec) > 0 ? Number(durationSec) - GAP : Infinity);
+  if (hi < lo) hi = lo;
+  if (t < lo) t = Math.round(lo * 1000) / 1000;
+  if (t > hi) t = Math.round(hi * 1000) / 1000;
+  return t;
+}
+
+// The one-line explanation under a chapter. Pure (the jsdom test and the
+// render share it). `row` = {time, sourceStart}, `sug` = the server suggestion.
+function snapChipText(i, row, sug, silenceState) {
+  if (i === 0) return { text: 'First chapter, always stays put', kind: 'fine' };
+  const moved = Math.abs(row.time - row.sourceStart) >= 0.05;
+  if (moved) {
+    const d = row.time - row.sourceStart;
+    return { text: (d > 0 ? '+' : '−') + Math.abs(d).toFixed(1) + 's from the source time', kind: 'moved' };
+  }
+  if (silenceState !== 'ready' || !sug) return { text: '', kind: '' };
+  if (sug.status === 'suggest') {
+    if (sug.reason === 'silence') return { text: 'Starts in ' + Math.max(0.1, (sug.silenceEnd - row.time)).toFixed(1) + 's of silence', kind: 'hint' };
+    if (sug.reason === 'tail') return { text: 'Starts in the end of the previous song', kind: 'hint' };
+    return { text: 'Starts after the music begins', kind: 'hint' };
+  }
+  if (sug.status === 'fine') return { text: 'Starts right where the music does', kind: 'fine' };
+  return { text: 'No gap found near this start. Nudge it if it sounds wrong.', kind: 'fine' };
+}
+
+/**
+ * Open the chapter time editor for `mediaId`. `opts`:
+ *   focusIndex - the chapter to scroll to and highlight (now playing's current)
+ *   onSaved(body) - after a save or revert, with the server's
+ *                   `{chapters, chaptersSource, chaptersEdited, version}`
+ *   doc, fetchImpl, audioFactory, pollMs - injectable for node:test
+ * Returns a handle ({ backdrop, modal, close, ready }) for tests.
+ */
+function showChapterSnapEditor(mediaId, opts) {
+  const o = opts || {};
+  const d = o.doc || document;
+  const doFetch = o.fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+  const pollMs = typeof o.pollMs === 'number' ? o.pollMs : 1500;
+  const base = '/api/videos/' + encodeURIComponent(mediaId) + '/chapter-snap';
+
+  let state = null; // the server's editor state (seed)
+  let rows = [];    // [{index, title, sourceStart, savedStart, time}]
+  let busy = false;
+  let closed = false;
+  let pollTimer = null;
+  let audio = null;
+  let auditionTimer = null;
+  let auditionIndex = -1;
+  let focusIndex = typeof o.focusIndex === 'number' ? o.focusIndex : -1;
+  let staleSeed = false;
+
+  function el(tag, cls, text) {
+    const n = d.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function btn(cls, text, label) {
+    const b = el('button', cls, text);
+    b.type = 'button';
+    if (label) b.setAttribute('aria-label', label);
+    return b;
+  }
+
+  const backdrop = el('div', 'modal-backdrop chapter-snap-backdrop');
+  const modal = el('div', 'modal-content chapter-snap-modal');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'chapter-snap-title');
+  backdrop.appendChild(modal);
+
+  const head = el('div', 'chapter-snap-head');
+  const titleRow = el('div', 'chapter-snap-titlerow');
+  const title = el('h2', 'modal-title chapter-snap-title', 'Fix chapter times');
+  title.id = 'chapter-snap-title';
+  const badge = el('span', 'chapter-snap-badge', 'Edited');
+  badge.hidden = true;
+  titleRow.appendChild(title);
+  titleRow.appendChild(badge);
+  head.appendChild(titleRow);
+  const sub = el('div', 'chapter-snap-sub', '');
+  head.appendChild(sub);
+  const statusEl = el('div', 'chapter-snap-status', 'Loading chapters…');
+  statusEl.setAttribute('role', 'status');
+  statusEl.setAttribute('aria-live', 'polite');
+  head.appendChild(statusEl);
+  const tools = el('div', 'chapter-snap-tools');
+  const snapAllBtn = btn('btn btn-primary chapter-snap-snapall', 'Snap all');
+  const undoBtn = btn('btn chapter-snap-undo', 'Undo changes');
+  const revertBtn = btn('btn chapter-snap-revert', 'Revert to source chapters');
+  const retryBtn = btn('btn chapter-snap-retry', 'Try again');
+  revertBtn.hidden = true;
+  retryBtn.hidden = true;
+  tools.appendChild(snapAllBtn);
+  tools.appendChild(undoBtn);
+  tools.appendChild(revertBtn);
+  tools.appendChild(retryBtn);
+  head.appendChild(tools);
+  // The in-page confirm (never window.confirm): revert, discard, reload.
+  const confirmBox = el('div', 'chapter-snap-confirm');
+  confirmBox.hidden = true;
+  const confirmText = el('p', 'chapter-snap-confirm-text', '');
+  const confirmActs = el('div', 'chapter-snap-confirm-actions');
+  const confirmYes = btn('btn btn-primary chapter-snap-confirm-yes', 'Revert');
+  const confirmNo = btn('btn chapter-snap-confirm-no', 'Keep my corrections');
+  confirmActs.appendChild(confirmYes);
+  confirmActs.appendChild(confirmNo);
+  confirmBox.appendChild(confirmText);
+  confirmBox.appendChild(confirmActs);
+  head.appendChild(confirmBox);
+  modal.appendChild(head);
+
+  const scroller = el('div', 'chapter-snap-scroll');
+  const list = el('ol', 'chapter-snap-list');
+  list.setAttribute('aria-label', 'Chapters');
+  scroller.appendChild(list);
+  modal.appendChild(scroller);
+
+  const actions = el('div', 'modal-actions chapter-snap-actions');
+  const cancelBtn = btn('btn chapter-snap-cancel', 'Cancel');
+  const saveBtn = btn('btn btn-primary chapter-snap-save', 'Save');
+  actions.appendChild(cancelBtn);
+  actions.appendChild(saveBtn);
+  modal.appendChild(actions);
+
+  function setStatus(msg) { statusEl.textContent = msg || ''; }
+  function dirty() { return rows.some((r) => Math.abs(r.time - r.savedStart) >= 0.0005); }
+  function times() { return rows.map((r) => r.time); }
+  function suggestionFor(i) { return state && Array.isArray(state.suggestions) ? state.suggestions[i] || null : null; }
+  function silenceState() { return state && state.silence ? state.silence.state : 'none'; }
+  function pendingSnaps() {
+    if (!state || !Array.isArray(state.snapAll)) return 0;
+    let n = 0;
+    for (let i = 1; i < rows.length; i += 1) if (Math.abs(state.snapAll[i] - rows[i].time) >= 0.0005) n += 1;
+    return n;
+  }
+
+  // ---- rendering ------------------------------------------------------------
+  function renderHead() {
+    const s = state;
+    badge.hidden = !(s && s.edited);
+    const srcLabel = s ? ({ embedded: 'chapters from the file', description: 'chapters from the description', manual: s.edited ? 'corrected chapters' : 'your typed chapters' }[s.chaptersSource] || 'chapters') : '';
+    sub.textContent = s ? [(s.title || ''), rows.length + ' chapters', srcLabel].filter(Boolean).join(' · ') : '';
+    const pending = pendingSnaps();
+    snapAllBtn.textContent = pending > 0 ? 'Snap all (' + pending + ')' : 'Snap all';
+    snapAllBtn.disabled = busy || staleSeed || pending === 0;
+    undoBtn.disabled = busy || !dirty();
+    revertBtn.hidden = !(s && s.edited);
+    revertBtn.disabled = busy || staleSeed;
+    saveBtn.disabled = busy || staleSeed || !dirty();
+    cancelBtn.disabled = busy;
+  }
+
+  function renderRow(li, i) {
+    const r = rows[i];
+    while (li.firstChild) li.removeChild(li.firstChild);
+    const sug = suggestionFor(i);
+    const moved = Math.abs(r.time - r.sourceStart) >= 0.05;
+    li.className = 'chapter-snap-row' + (moved ? ' is-moved' : '') + (i === focusIndex ? ' is-focus' : '') + (auditionIndex === i ? ' is-playing' : '');
+    li.setAttribute('data-index', String(i));
+    const top = el('div', 'chapter-snap-rowtop');
+    top.appendChild(el('span', 'chapter-snap-n', String(i + 1)));
+    top.appendChild(el('span', 'chapter-snap-name', r.title || ('Chapter ' + (i + 1))));
+    const tm = el('span', 'chapter-snap-times');
+    tm.appendChild(el('span', 'chapter-snap-now', formatSnapTime(r.time)));
+    if (moved) tm.appendChild(el('span', 'chapter-snap-was', 'was ' + formatSnapTime(r.sourceStart)));
+    top.appendChild(tm);
+    li.appendChild(top);
+    const chip = snapChipText(i, r, sug, silenceState());
+    if (chip.text) li.appendChild(el('div', 'chapter-snap-chip chapter-snap-chip-' + chip.kind, chip.text));
+    const ctl = el('div', 'chapter-snap-ctl');
+    if (i > 0) {
+      if (sug && sug.status === 'suggest' && Math.abs(sug.time - r.time) >= 0.0005) {
+        const sb = btn('btn btn-primary chapter-snap-snapone', 'Snap to ' + formatSnapTime(sug.time), 'Snap chapter ' + (i + 1) + ' to ' + formatSnapTime(sug.time));
+        sb.setAttribute('data-act', 'snap');
+        ctl.appendChild(sb);
+      }
+      const nudges = el('div', 'chapter-snap-nudges');
+      [[-1, '−1s', 'earlier by 1 second'], [-0.1, '−0.1', 'earlier by a tenth of a second'], [0.1, '+0.1', 'later by a tenth of a second'], [1, '+1s', 'later by 1 second']].forEach(function (n) {
+        const b = btn('btn chapter-snap-nudge', n[1], 'Move chapter ' + (i + 1) + ' ' + n[2]);
+        b.setAttribute('data-act', 'nudge');
+        b.setAttribute('data-delta', String(n[0]));
+        nudges.appendChild(b);
+      });
+      ctl.appendChild(nudges);
+    }
+    const playing = auditionIndex === i;
+    const pb = btn('btn chapter-snap-play', '', (playing ? 'Stop playing chapter ' : 'Play chapter ') + (i + 1) + ' from ' + formatSnapTime(r.time));
+    pb.setAttribute('data-act', 'play');
+    if (!playing) {
+      const icon = el('i', 'icon-play');
+      icon.setAttribute('aria-hidden', 'true');
+      pb.appendChild(icon);
+    }
+    pb.appendChild(d.createTextNode(playing ? 'Stop' : ' Play from here'));
+    pb.disabled = busy;
+    ctl.appendChild(pb);
+    li.appendChild(ctl);
+    Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { if (busy || (staleSeed && b.getAttribute('data-act') !== 'play')) b.disabled = true; });
+  }
+
+  function renderList() {
+    while (list.firstChild) list.removeChild(list.firstChild);
+    rows.forEach(function (_, i) {
+      const li = el('li', 'chapter-snap-row');
+      renderRow(li, i);
+      list.appendChild(li);
+    });
+    renderHead();
+  }
+  function rerenderRow(i) {
+    const li = list.children[i];
+    if (li) renderRow(li, i);
+    renderHead();
+  }
+
+  // ---- seed / silence ------------------------------------------------------
+  function describeSilence() {
+    const s = silenceState();
+    const err = state && state.silence && state.silence.error;
+    retryBtn.hidden = s !== 'failed';
+    if (s === 'running' || s === 'none' || s === 'stale') return 'Finding the silence between songs… You can nudge while this runs.';
+    if (s === 'failed') return 'Could not find the silence: ' + (err || 'the scan failed') + ' You can still nudge each start.';
+    if (s === 'unavailable') return 'The file is not available right now, so there is no silence to find. You can still nudge each start.';
+    if (s === 'ready') {
+      const gaps = state.silence.gaps || 0;
+      if (gaps === 0) return 'No gaps found in this file (a gapless album). Nudge a start if it sounds wrong.';
+      const pending = pendingSnaps();
+      return pending > 0 ? pending + (pending === 1 ? ' start looks off.' : ' starts look off.') + ' Snap them, or nudge one and play it to check.' : 'Every start sits where the music does.';
+    }
+    return '';
+  }
+
+  function applySeed(s, keepEdits) {
+    const prevTimes = keepEdits ? times() : null;
+    state = s;
+    rows = (s.chapters || []).map(function (c, i) {
+      return { index: c.index, title: c.title, sourceStart: Number(c.sourceStart), savedStart: Number(c.startTime), time: prevTimes && prevTimes.length === s.chapters.length ? prevTimes[i] : Number(c.startTime) };
+    });
+    if (focusIndex >= rows.length) focusIndex = -1;
+  }
+
+  function fetchState() {
+    return doFetch(base, { headers: { Accept: 'application/json' } }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+    });
+  }
+
+  function schedulePoll() {
+    if (closed || pollTimer) return;
+    pollTimer = setTimeout(function () {
+      pollTimer = null;
+      if (closed) return;
+      fetchState().then(function (res) {
+        if (closed || !res.ok) return;
+        // A poll only refreshes the SILENCE; a record that changed meanwhile
+        // (another tab, a text-editor save) makes this editor's seed stale.
+        if (res.body.version !== state.version) {
+          staleSeed = true;
+          setStatus('These chapters changed somewhere else while this was open. Close and reopen the editor to see them.');
+          renderList();
+          return;
+        }
+        state.silence = res.body.silence;
+        state.suggestions = res.body.suggestions;
+        state.snapAll = res.body.snapAll;
+        setStatus(describeSilence());
+        renderList();
+        if (silenceState() === 'running') schedulePoll();
+      }).catch(function () { if (!closed) schedulePoll(); });
+    }, pollMs);
+  }
+
+  function startScan() {
+    return doFetch(base + '/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (closed) return;
+        if (res.status === 202 || (res.ok && res.body.state === 'running')) {
+          state.silence = { state: 'running' };
+          setStatus(describeSilence());
+          schedulePoll();
+          return;
+        }
+        if (res.ok && res.body.state === 'ready') { schedulePoll(); return; }
+        state.silence = { state: res.status === 409 ? 'unavailable' : 'failed', error: (res.body && res.body.error) || '' };
+        setStatus(res.status === 409 ? describeSilence() : ((res.body && res.body.error) || 'Could not start finding the silence.') + ' You can still nudge each start.');
+        retryBtn.hidden = res.status === 409;
+        renderHead();
+      })
+      .catch(function () { if (!closed) { setStatus('Could not start finding the silence (network error). You can still nudge each start.'); retryBtn.hidden = false; } });
+  }
+
+  function load(keepEdits) {
+    setStatus('Loading chapters…');
+    return fetchState().then(function (res) {
+      if (closed) return;
+      if (!res.ok) {
+        setStatus((res.body && res.body.error) || (res.status === 403 ? 'You do not have permission to change chapters.' : 'Could not load the chapters.'));
+        snapAllBtn.disabled = true; undoBtn.disabled = true; saveBtn.disabled = true;
+        return;
+      }
+      if (!Array.isArray(res.body.chapters) || res.body.chapters.length < 2) {
+        setStatus('This item needs at least two chapters to fix their times.');
+        state = res.body; rows = [];
+        renderList();
+        saveBtn.disabled = true; snapAllBtn.disabled = true;
+        return;
+      }
+      staleSeed = false;
+      applySeed(res.body, keepEdits);
+      renderList();
+      setStatus(describeSilence());
+      const s = silenceState();
+      if (s === 'none' || s === 'stale') startScan();
+      else if (s === 'running') schedulePoll();
+      if (focusIndex >= 0 && list.children[focusIndex] && typeof list.children[focusIndex].scrollIntoView === 'function') {
+        try { list.children[focusIndex].scrollIntoView({ block: 'center' }); } catch (_) { /* old engines */ }
+      }
+    }).catch(function () { if (!closed) setStatus('Could not load the chapters (network error).'); });
+  }
+
+  // ---- audition --------------------------------------------------------------
+  function stopAudition() {
+    if (auditionTimer) { clearTimeout(auditionTimer); auditionTimer = null; }
+    if (audio) { try { audio.pause(); } catch (_) { /* gone */ } }
+    const was = auditionIndex;
+    auditionIndex = -1;
+    if (was >= 0 && !closed) rerenderRow(was);
+  }
+  function pauseOtherMedia() {
+    // The listener must hear the boundary, not the album playing underneath it.
+    Array.prototype.forEach.call(d.querySelectorAll('audio, video'), function (m) {
+      if (m !== audio && !m.paused) { try { m.pause(); } catch (_) { /* best-effort */ } }
+    });
+  }
+  function audition(i) {
+    if (auditionIndex === i) { stopAudition(); return; }
+    stopAudition();
+    if (!audio) {
+      audio = typeof o.audioFactory === 'function' ? o.audioFactory() : d.createElement('audio');
+      audio.className = 'chapter-snap-audio';
+      audio.hidden = true;
+      // Owned by the modal: it leaves the document with it (teardown pauses and unloads it first).
+      if (!audio.parentNode && typeof modal.appendChild === 'function') modal.appendChild(audio);
+      audio.preload = 'auto';
+      audio.src = '/video/' + encodeURIComponent(mediaId);
+      audio.addEventListener('error', function () {
+        if (closed) return;
+        setStatus('This file cannot be played here, so the start cannot be auditioned.');
+        stopAudition();
+      });
+    }
+    pauseOtherMedia();
+    auditionIndex = i;
+    rerenderRow(i);
+    const t = rows[i].time;
+    const seekAndPlay = function () {
+      try { audio.currentTime = t; } catch (_) { /* not seekable yet */ }
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(function () { if (!closed && auditionIndex === i) { setStatus('Playback was blocked. Tap Play from here again.'); stopAudition(); } });
+    };
+    if (audio.readyState >= 1) seekAndPlay();
+    else audio.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+    // Eight seconds is enough to hear whether a song starts on time.
+    auditionTimer = setTimeout(stopAudition, 8000);
+  }
+
+  // ---- edits -------------------------------------------------------------------
+  function setTime(i, t) {
+    if (i <= 0 || i >= rows.length || staleSeed) return;
+    rows[i].time = t;
+    if (auditionIndex === i) stopAudition();
+    // A neighbour's snap button is only valid relative to this row's time, so
+    // the whole (small) list re-renders.
+    renderList();
+    setStatus(describeSilence());
+  }
+
+  list.addEventListener('click', function (e) {
+    const b = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
+    if (!b || b.disabled || busy) return;
+    const li = b.closest('.chapter-snap-row');
+    const i = li ? Number(li.getAttribute('data-index')) : -1;
+    if (!(i >= 0 && i < rows.length)) return;
+    focusIndex = i;
+    const act = b.getAttribute('data-act');
+    if (act === 'play') { audition(i); return; }
+    if (act === 'nudge') {
+      const t = clampSnapNudge(times(), i, Number(b.getAttribute('data-delta')), state && state.duration);
+      if (t === null) return;
+      if (Math.abs(t - rows[i].time) < 0.0005) { setStatus('Chapter ' + (i + 1) + ' cannot move further that way without crossing its neighbour.'); return; }
+      setTime(i, t);
+      return;
+    }
+    if (act === 'snap') {
+      const sug = suggestionFor(i);
+      if (!sug || sug.status !== 'suggest') return;
+      const prev = rows[i - 1].time;
+      const next = i + 1 < rows.length ? rows[i + 1].time : Infinity;
+      if (!(sug.time > prev && sug.time < next)) { setStatus('Snapping chapter ' + (i + 1) + ' would cross its neighbour. Nudge the neighbour first.'); return; }
+      setTime(i, sug.time);
+    }
+  });
+
+  snapAllBtn.addEventListener('click', function () {
+    if (busy || !state || !Array.isArray(state.snapAll)) return;
+    const n = pendingSnaps();
+    for (let i = 1; i < rows.length; i += 1) rows[i].time = state.snapAll[i];
+    renderList();
+    setStatus(n > 0 ? 'Snapped ' + n + (n === 1 ? ' start' : ' starts') + '. Review them, then Save.' : describeSilence());
+  });
+  undoBtn.addEventListener('click', function () {
+    if (busy) return;
+    rows.forEach(function (r) { r.time = r.savedStart; });
+    stopAudition();
+    renderList();
+    setStatus(describeSilence());
+  });
+  retryBtn.addEventListener('click', function () {
+    if (busy || !state) return;
+    retryBtn.hidden = true;
+    startScan();
+  });
+
+  // ---- the in-page confirm ------------------------------------------------------
+  let confirmAction = null;
+  function askConfirm(text, yesLabel, noLabel, onYes) {
+    confirmText.textContent = text;
+    confirmYes.textContent = yesLabel;
+    confirmNo.textContent = noLabel;
+    confirmAction = onYes;
+    confirmBox.hidden = false;
+    try { confirmYes.focus(); } catch (_) { /* jsdom */ }
+  }
+  function hideConfirm() { confirmBox.hidden = true; confirmAction = null; }
+  confirmNo.addEventListener('click', hideConfirm);
+  confirmYes.addEventListener('click', function () {
+    const fn = confirmAction;
+    hideConfirm();
+    if (typeof fn === 'function') fn();
+  });
+
+  function setBusy(v) {
+    busy = v;
+    renderList();
+  }
+
+  function sourceWord(src) {
+    return src === 'description' ? 'the description' : src === 'manual' ? 'your typed list' : 'the file';
+  }
+
+  function doRevert(allowCountChange) {
+    if (busy || !state) return;
+    setBusy(true);
+    setStatus('Reverting…');
+    doFetch(base + '/revert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: state.version, allowCountChange: allowCountChange === true }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (closed) return;
+        setBusy(false);
+        if (res.ok) {
+          if (typeof o.onSaved === 'function') { try { o.onSaved(res.body); } catch (_) { /* the caller's refresh */ } }
+          if (typeof showToast === 'function') showToast('Back to the source chapters.');
+          teardown();
+          return;
+        }
+        if (res.status === 409 && res.body && res.body.countChange) {
+          askConfirm(res.body.error + ' Revert anyway?', 'Revert anyway', 'Keep my corrections', function () { doRevert(true); });
+          return;
+        }
+        if (res.status === 409 && res.body && res.body.stale) staleSeed = true;
+        setStatus((res.body && res.body.error) || 'Could not revert.');
+        renderHead();
+      })
+      .catch(function () { if (!closed) { setBusy(false); setStatus('Could not revert (network error).'); } });
+  }
+
+  revertBtn.addEventListener('click', function () {
+    if (busy || !state || !state.revert) return;
+    const src = sourceWord(state.revert.source);
+    let text = 'Go back to the chapter times from ' + src + '? Your corrected times are removed.';
+    text += state.revert.count === rows.length
+      ? ' Likes and progress stay on the same chapters, because the chapter count does not change.'
+      : ' The source now has ' + state.revert.count + ' chapters instead of ' + rows.length + ', so liked chapters can move to a different song.';
+    askConfirm(text, 'Revert', 'Keep my corrections', function () { doRevert(state.revert.count !== rows.length); });
+  });
+
+  saveBtn.addEventListener('click', function () {
+    if (busy || staleSeed || !dirty()) return;
+    stopAudition();
+    setBusy(true);
+    setStatus('Saving…');
+    doFetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: state.version, starts: times() }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (closed) return;
+        setBusy(false);
+        if (res.ok) {
+          if (typeof o.onSaved === 'function') { try { o.onSaved(res.body); } catch (_) { /* the caller's refresh */ } }
+          if (typeof showToast === 'function') showToast('Chapter times saved. A reheat keeps them.');
+          teardown();
+          return;
+        }
+        if (res.status === 409 && res.body && res.body.stale) {
+          staleSeed = true;
+          renderList();
+        }
+        setStatus((res.body && res.body.error) || 'Could not save the chapter times.');
+      })
+      .catch(function () { if (!closed) { setBusy(false); setStatus('Could not save the chapter times (network error).'); } });
+  });
+
+  // ---- close ---------------------------------------------------------------------
+  function requestClose() {
+    if (busy) return;
+    if (dirty() && !staleSeed) {
+      askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
+      return;
+    }
+    teardown();
+  }
+  cancelBtn.addEventListener('click', requestClose);
+  bindBackdropDismiss(backdrop, requestClose);
+  function onKey(e) { if (e.key === 'Escape') requestClose(); }
+  d.addEventListener('keydown', onKey);
+
+  function teardown() {
+    if (closed) return;
+    closed = true;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    if (auditionTimer) { clearTimeout(auditionTimer); auditionTimer = null; }
+    if (audio) { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) { /* gone */ } }
+    d.removeEventListener('keydown', onKey);
+    if (backdrop.classList) backdrop.classList.add('modal-closing');
+    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+  }
+
+  d.body.appendChild(backdrop);
+  openOverlay(backdrop, 'modal-open');
+  const ready = load(false);
+
+  return { backdrop, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, close: teardown, ready, isClosed: () => closed };
 }
 
 /**
@@ -15597,6 +16203,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested)
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).
     withShareStartTime,
+    // v1.319 Chapter Snap: the ONE chapter-time editor + its pure helpers (jsdom-tested).
+    showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,

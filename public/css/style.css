@@ -7266,6 +7266,254 @@ body.ft-audio-expanded {
   resize: vertical;
 }
 
+/* v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor
+   (common.js showChapterSnapEditor). PHONE IS A PRIMARY VIEWPORT: every control
+   is a real button of at least --size-touch on phones, nothing is drag-only,
+   the nudge row is a four-column grid of equal targets, and at phone widths the
+   dialog is a full-height sheet whose chapter list is the only scroller.
+   Containment: the rounded dialog CLIPS (overflow hidden) and the list scrolls
+   on an inner child with no radius - the split the overlay census asks for. */
+.modal-content.chapter-snap-modal {
+  max-width: 760px; /* token-exempt: layout geometry (modal width cap) */
+  width: 94%; /* token-exempt: layout geometry */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--space-8);
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
+}
+.chapter-snap-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-color);
+}
+.chapter-snap-titlerow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.chapter-snap-title {
+  margin: 0;
+}
+.chapter-snap-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--on-accent);
+  background: var(--yt-red);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-4);
+}
+.chapter-snap-badge[hidden] { display: none !important; }
+.chapter-snap-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.chapter-snap-status {
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  min-height: 1.4em; /* token-exempt: layout geometry (one line reserved so the head never jumps) */
+}
+.chapter-snap-tools,
+.chapter-snap-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.chapter-snap-tools [hidden],
+.chapter-snap-confirm[hidden] { display: none !important; }
+.chapter-snap-confirm {
+  border: 1px solid var(--border-dark);
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.chapter-snap-confirm-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.chapter-snap-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.chapter-snap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chapter-snap-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-2);
+  border-bottom: 1px solid var(--border-color);
+}
+.chapter-snap-row.is-focus {
+  background: var(--bg-secondary);
+  box-shadow: inset 3px 0 0 var(--yt-red); /* token-exempt: a focus rail, not an elevation shadow */
+}
+.chapter-snap-rowtop {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.chapter-snap-n {
+  flex: 0 0 auto;
+  font-family: var(--mono-font);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  min-width: 2ch; /* token-exempt: layout geometry */
+}
+.chapter-snap-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+.chapter-snap-times {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+}
+.chapter-snap-now {
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+}
+.chapter-snap-was {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.chapter-snap-chip {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.chapter-snap-chip-hint {
+  color: var(--text-primary);
+  font-weight: var(--fw-semibold);
+}
+.chapter-snap-row.is-moved .chapter-snap-chip-moved {
+  color: var(--yt-red);
+  font-weight: var(--fw-semibold);
+}
+.chapter-snap-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chapter-snap-nudges {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.chapter-snap-ctl .btn,
+.chapter-snap-tools .btn,
+.chapter-snap-confirm-actions .btn,
+.chapter-snap-actions .btn {
+  min-height: var(--size-control);
+  justify-content: center;
+}
+.chapter-snap-nudge {
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+  min-width: var(--size-control);
+}
+.chapter-snap-row.is-playing .chapter-snap-play {
+  color: var(--yt-red);
+  border-color: var(--yt-red);
+}
+.chapter-snap-actions {
+  flex: 0 0 auto;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-color);
+}
+/* The Music album drill's "Edited" badge (music.js buildDrillHeaderHtml). */
+.music-drill-edited {
+  display: inline-block;
+  margin-left: var(--space-3);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--on-accent);
+  background: var(--yt-red);
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-3);
+  vertical-align: middle;
+}
+/* The watch page chapters menu header's "Edited" badge (player.js). */
+.chapters-menu-edited {
+  margin-left: var(--space-3);
+  margin-right: auto;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--on-accent);
+  background: var(--yt-red);
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-3);
+}
+/* The text editor's "Fix times..." sits at the far left of its action row. */
+.chapters-editor-snap {
+  margin-right: auto;
+}
+/* Phones: a full-height sheet; every control a 44px target; the nudges span the
+   row as four equal buttons with the snap/play buttons on their own full-width
+   lines, so nothing is clipped or scrolls sideways at 390 wide. */
+@media (max-width: 600px) {
+  .modal-backdrop.chapter-snap-backdrop {
+    align-items: stretch;
+  }
+  .modal-content.chapter-snap-modal {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: var(--space-5);
+    padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+  }
+  .chapter-snap-ctl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chapter-snap-ctl .btn,
+  .chapter-snap-tools .btn,
+  .chapter-snap-confirm-actions .btn,
+  .chapter-snap-actions .btn {
+    min-height: var(--size-touch);
+  }
+  .chapter-snap-nudge {
+    min-width: 0;
+  }
+  .chapter-snap-now {
+    font-size: var(--fs-xl);
+  }
+  .chapter-snap-tools .btn,
+  .chapter-snap-confirm-actions .btn {
+    flex: 1 1 auto;
+  }
+  .chapter-snap-actions .btn {
+    flex: 1 1 0;
+  }
+}
+
 /* v1.41.11 (Dean: "compressed and small" on mobile): the base .chapters-menu
    above is sized for a WIDE desktop player (min-width 220px, capped at 80% of
    the bar) -- inside a ~390px phone player that renders as a narrow,

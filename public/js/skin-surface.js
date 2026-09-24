@@ -204,6 +204,14 @@
       // ALSO needs canModify to RENDER is cfg-driven (video/music: yes; podcasts:
       // deleteNeedsModify:false shows it to all like the list-row delete - the SERVER still
       // enforces requireModifyLibrary on the actual DELETE).
+      // v1.319 Chapter Snap (Dean): "This chapter starts wrong" - opens the chapter TIME
+      // editor on the chapter that is playing. Rendered only when the view supplies the
+      // hook, the open-time fetch stamped the playing chapter's index (chapterSnapIndex,
+      // captured at OPEN so a chapter roll cannot retarget the tap), and the viewer may
+      // modify the library (the server enforces regardless).
+      if (canModify && typeof cfg.onChapterSnap === 'function' && typeof item.chapterSnapIndex === 'number') {
+        acts.push('<button type="button" class="mms-sm-act" data-skin-x="chapter-snap"><i class="icon-list"></i>This chapter starts wrong</button>');
+      }
       if (extrasCap('move') && canModify) {
         acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
       }
@@ -480,6 +488,7 @@
       if (act === 'queue-next') { extrasClose(); extrasQueue(item, 'next'); return; }
       if (act === 'transcript') { extrasClose(); extrasTranscript(item, el); return; }
       if (act === 'reheat') { extrasClose(); extrasReheat(item); return; }
+      if (act === 'chapter-snap') { extrasClose(); if (typeof cfg.onChapterSnap === 'function') { try { cfg.onChapterSnap(item); } catch (_) { /* editor open best-effort */ } } return; }
       if (act === 'move') { extrasClose(); extrasMove(item); return; }
       if (act === 'delete') { extrasClose(); extrasDelete(item); }
     }
@@ -776,6 +785,7 @@
       onQueue: extrasCfg ? extrasCfg.onQueue : undefined,
       likeRequest: extrasCfg ? extrasCfg.likeRequest : undefined,
       watchedRequest: extrasCfg ? extrasCfg.watchedRequest : undefined,
+      onChapterSnap: extrasCfg ? extrasCfg.onChapterSnap : undefined, // v1.319 Chapter Snap: "This chapter starts wrong"
     });
     function openStickerExtras() {
       var menu = panel.querySelector('[data-skin-sticker-menu]');

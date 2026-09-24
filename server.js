@@ -533,7 +533,12 @@ const DEFAULT_SETTINGS = {
   // probes (they answer 404) and stops the perf-collector riding the shells,
   // so a normal install carries zero diagnostic script/timing cost until an
   // admin opts in. FT_DIAG=1 force-enables headlessly. See isDiagEnabled().
-  perfDiagnosticsEnabled: false
+  perfDiagnosticsEnabled: false,
+  // v1.319 Chapter Snap (Dean 2026-09-24): the LEAD-IN, in seconds - how far
+  // before the first sound after a silence a snapped chapter starts. One
+  // server-wide value (Setup > Scan > Chapter snap), 0-2 s, clamped again at
+  // read time (lib/media/chapterSnap.js clampLeadIn).
+  chapterSnapLeadInSec: 0.25
 };
 
 // Wave 4 of the relational-migration arc: the app settings live in
@@ -4097,6 +4102,8 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
     // v1.221: the seek offset for a virtual chapter-track (the client seeks the
     // one file here on play; absent on a plain track).
     ...(isChapter ? { chapterStartSec: track.chapterStartSec } : {}),
+    // v1.319 Chapter Snap: the file's chapter times were corrected (the drill's "Edited" badge).
+    ...(isChapter && track.chaptersEdited === true ? { chaptersEdited: true } : {}),
   };
 }
 
@@ -4112,8 +4119,16 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
 // /api/liked/:id) and the Liked page's chapter arm (GET /api/liked) all read the
 // SAME expansion, so "likeable" == "appears in Music" by construction (the
 // two-reader-seam class). A non-chaptered item yields its single base track.
+// v1.319 Chapter Snap: a chaptered file whose times were corrected in the snap
+// editor marks every chapter track `chaptersEdited` (the Music album drill's
+// "Edited" badge reads it off its rows - no extra request).
+const chapterSnap = require('./lib/media/chapterSnap');
 function itemChapterTracks(item) {
-  return libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
+  const tracks = libraryAudio.expandAudioToTracks(item, (it) => resolveItemChapters(it).chapters);
+  if (tracks.length > 1 && chapterSnap.isSnapEdited(item)) {
+    for (const t of tracks) if (t.source === 'library-chapter') t.chaptersEdited = true;
+  }
+  return tracks;
 }
 
 function projectedLibraryTracks(req, nativeTracks) {
@@ -4790,6 +4805,7 @@ configRoutes.registerSettingsRoutes(app, {
   TRASH_RETENTION_DAYS_VALID_VALUES,
   VALID_DEFAULT_SORTS,
   armScanTimer, // re-arms the periodic scan when the interval changes
+  chapterSnap, // v1.319: the chapter-snap lead-in validator + read clamp
   effectiveCacheCap, // settingsResponse's read-only effectiveCacheMaxBytes
   inSaveTransaction,
   requireAdmin,
@@ -4892,6 +4908,7 @@ mediaRoutes.registerBrowseRoutes(app, {
   bookVisibleTo,
   booksDb,
   buildWatchUrl, // lib/ytdlp/url - the search results' canonical watch links
+  chaptersSnapEdited: chapterSnap.isSnapEdited, // v1.319 Chapter Snap: the GET /api/videos/:id "Edited" flag
   effectiveProgress, // the stored position with any un-flushed ping overlaid
   folderDisplayNameStore,
   folderSettingsStore,
@@ -6222,6 +6239,24 @@ mediaRoutes.registerLibraryRoutes(app, {
   ytdlpDb,
 });
 
+// v1.319 Chapter Snap (Dean 2026-09-24): the chapter TIME editor's routes
+// (seed, silence scan, save, revert), registered beside the text chapter
+// editor above and behind the SAME gates. The silence scan's cache is a
+// feature-owned store under DATA_DIR/.chapter-silence (lib/media/chapterSilence.js).
+const chapterSilence = require('./lib/media/chapterSilence');
+const chapterSnapRoutes = require('./lib/media/chapterSnapRoutes');
+const chapterSilenceService = chapterSilence.createSilenceService({ dir: path.join(DATA_DIR, '.chapter-silence') });
+chapterSnapRoutes.registerChapterSnapRoutes(app, {
+  requireModifyLibrary,
+  restrictedVideoMutation,
+  mediaVisibleTo,
+  getCachedDatabase,
+  updateDatabase,
+  resolveItemChapters,
+  settingsStore,
+  silenceService: chapterSilenceService,
+});
+
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now
 // lives in lib/media/routes.js; the two count resolvers below stayed.
@@ -7003,6 +7038,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
+  chapterSilenceService, // v1.319 Chapter Snap: tests await a scan (whenIdle) and read its cache
   needsTranscode,
   transcodedPath,
   // v1.317 M4: the music list serializer, so a client unit test drives the REAL row

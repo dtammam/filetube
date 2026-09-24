@@ -425,7 +425,13 @@ test('v1.109 source-lock: the fill loop dispatches the current chapter, and buil
   assert.match(disp, /applyCurrentChapterToMenu\(\);/, 'dispatcher updates the menu highlight');
   // buildChaptersMenu tags each row with its index and re-applies the highlight
   // after every (re)build so an OPEN menu shows the playing row immediately.
-  const build = src.slice(src.indexOf('function buildChaptersMenu()'), src.indexOf('function buildChaptersMenu()') + 7600);
+  // v1.319: bounded by the SEMANTIC unit (the builder ends where the next statement,
+  // the applyCurrentChapterToMenu assignment, begins), not a character window that a
+  // longer builder silently outgrows (the #213 distance-lock lesson).
+  const buildStart = src.indexOf('function buildChaptersMenu()');
+  const buildEnd = src.indexOf('applyCurrentChapterToMenu = function', buildStart);
+  assert.ok(buildStart !== -1 && buildEnd > buildStart, 'the builder and its successor statement are both found');
+  const build = src.slice(buildStart, buildEnd);
   assert.match(build, /item\.setAttribute\('data-chapter-index', String\(index\)\);/, 'rows tagged with their chapter index');
   assert.match(build, /applyCurrentChapterToMenu\(\);/, 'highlight re-applied on (re)build');
   // The current-chapter idx is reset per load so the next item re-dispatches fresh.

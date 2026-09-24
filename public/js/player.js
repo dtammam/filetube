@@ -6861,11 +6861,59 @@ if (typeof module !== 'undefined' && module.exports) {
       window.showChaptersEditor(currentId, lines, function (resolved) {
         currentChapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
         if (currentData) currentData.chapters = currentChapters;
+        // v1.319: a typed save is plain manual chapters (not Edited); the text editor's
+        // "Fix times..." hands the time editor's result through this same callback.
+        if (currentData) currentData.chaptersEdited = !!(resolved && resolved.chaptersEdited);
         // v1.41.12: an edited chapter set invalidates any armed loop (same
         // rule as applyChaptersForMedia -- indexes/boundaries shifted).
         chapterLoop = null;
         updateChapterLoopIndicator();
         buildChaptersMenu();
+      });
+    }
+    // v1.319 Chapter Snap: the chapters menu's two additions, as helpers so the
+    // builder stays one readable unit. (a) The header's "Edited" badge when these
+    // times were corrected in the time editor (GET /api/videos/:id chaptersEdited,
+    // refreshed on save/revert). (b) "Fix chapter times…" beside the text editor's
+    // entry - the ONE time editor (common.js showChapterSnapEditor), opened on the
+    // chapter the playhead is in; called only inside the playerCanModifyLibrary arm.
+    function appendChaptersEditedBadge(header) {
+      if (!(currentData && currentData.chaptersEdited === true && currentChapters.length > 0)) return;
+      var editedBadge = document.createElement('span');
+      editedBadge.className = 'chapters-menu-edited';
+      editedBadge.textContent = 'Edited';
+      header.appendChild(editedBadge);
+    }
+    function appendChapterSnapEntry() {
+      if (currentChapters.length < 2 || typeof window.showChapterSnapEditor !== 'function') return;
+      var snapEntry = document.createElement('button');
+      snapEntry.type = 'button';
+      snapEntry.className = 'chapters-menu-item chapters-menu-edit chapters-menu-snap';
+      snapEntry.textContent = 'Fix chapter times…';
+      snapEntry.addEventListener('click', openChapterSnapFromMenu);
+      chaptersMenu.appendChild(snapEntry);
+    }
+    // v1.319 Chapter Snap: open the time editor for the loaded item at the current
+    // chapter. A save changes TIMES only (the count and order are invariant), so the
+    // menu, the loop and the current-chapter highlight re-derive from the new list.
+    function openChapterSnapFromMenu() {
+      closeChaptersMenu();
+      if (typeof window.showChapterSnapEditor !== 'function' || !currentId) return;
+      var editingId = currentId;
+      window.showChapterSnapEditor(currentId, {
+        focusIndex: typeof currentChapterIdx === 'number' && currentChapterIdx >= 0 ? currentChapterIdx : -1,
+        onSaved: function (resolved) {
+          if (currentId !== editingId) return; // the player moved on while the editor was open
+          currentChapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
+          if (currentData) {
+            currentData.chapters = currentChapters;
+            currentData.chaptersSource = resolved && resolved.chaptersSource;
+            currentData.chaptersEdited = !!(resolved && resolved.chaptersEdited);
+          }
+          chapterLoop = null; // boundaries moved: an armed loop's window is stale (applyChaptersForMedia's rule)
+          updateChapterLoopIndicator();
+          buildChaptersMenu();
+        },
       });
     }
     function buildChaptersMenu() {
@@ -6879,6 +6927,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var headerTitle = document.createElement('span');
       headerTitle.textContent = 'Chapters';
       header.appendChild(headerTitle);
+      appendChaptersEditedBadge(header); // v1.319 Chapter Snap
       var closeBtn = document.createElement('button');
       closeBtn.type = 'button';
       closeBtn.className = 'chapters-menu-close';
@@ -6985,6 +7034,7 @@ if (typeof module !== 'undefined' && module.exports) {
         edit.textContent = currentChapters.length > 0 ? 'Edit chapters…' : 'Add chapters…';
         edit.addEventListener('click', openChaptersEditorFromMenu);
         chaptersMenu.appendChild(edit);
+        appendChapterSnapEntry(); // v1.319 Chapter Snap: "Fix chapter times…" (same gate)
       }
       // v1.109: a fresh build starts with no row marked -- re-apply the live
       // current-chapter highlight so an OPEN menu (Loop arm/disarm rebuilds it,

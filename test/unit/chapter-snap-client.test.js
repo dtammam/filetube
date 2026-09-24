@@ -1,0 +1,279 @@
+'use strict';
+
+// [UNIT] v1.319 Chapter Snap - the MUSIC entry points, driven through REAL music.js
+// (+ skin-surface.js and music-skins.js, as music.html loads them) with a routed
+// fetch spy and a spy on the ONE editor (window.showChapterSnapEditor):
+//   (1) the album drill's "Fix times" - only on a chaptered album, only for a
+//       viewer who may modify the library, and it opens the editor on the backing
+//       FILE (never a row id, never a row list - the editor seeds from storage);
+//   (2) now playing's "This chapter starts wrong" - through BOTH writers of the
+//       Extras cfg (the mobile sticker page and the desktop actions menu), on the
+//       PLAYING chapter's index, hidden for a non-modifier and for a plain file;
+//   the RE-REGISTER seam: a save's new start times patch the live queue in place,
+//   so the drill repaints ("Edited" + the new spans) and the chapter watcher
+//   re-derives which chapter the playhead is in NOW (the display follows).
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { JSDOM } = require('jsdom');
+
+const musicPath = require.resolve('../../public/js/music.js');
+require('../../public/js/common.js');
+
+const AK = 'NESTALGIA␟The Mix';
+function tracksFixture() {
+  const base = { artist: 'NESTALGIA', album: 'The Mix', albumKey: AK, progressEndpoint: '/api/progress' };
+  return [
+    { ...base, id: 'f1::c0', title: 'Opening', durationSec: 60, source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', chapterStartSec: 0, liked: false },
+    { ...base, id: 'f1::c1', title: 'Second Song', durationSec: 60, source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', chapterStartSec: 60, liked: false },
+    { ...base, id: 'f1::c2', title: 'Closer', durationSec: 60, source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', chapterStartSec: 120, liked: false },
+    { ...base, id: 'lib1', title: 'Plain File', durationSec: 90, source: 'library', streamSrc: '/video/lib1', artUrl: '/thumbnail/lib1', liked: false },
+  ];
+}
+const FILE_CHAPTERS = [{ startTime: 0, title: 'Opening' }, { startTime: 60, title: 'Second Song' }, { startTime: 120, title: 'Closer' }];
+
+const VIEW_HTML = `<body><div id="view-root" data-view="music">
+  <select id="music-sort-select"></select>
+  <button id="music-view-toggle" hidden><i></i></button>
+  <button id="music-popout-btn" type="button" hidden aria-pressed="false"></button>
+  <div class="music-actions-wrap"><button type="button" id="music-actions-btn" aria-haspopup="true" aria-expanded="false" hidden></button>
+  <div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div></div>
+  <div id="player-slot"></div>
+  <video id="media-player"></video>
+  <div id="music-nowplaying-panel" class="music-nowplaying-panel"></div>
+  <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
+  <section id="music-jumpback" hidden></section>
+  <div class="music-tabs" id="music-tabs" role="tablist">
+    <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
+  </div>
+  <div id="music-crumb" hidden></div><div id="music-status" role="status" hidden></div>
+  <div id="music-content"></div><div id="music-empty" hidden></div>
+</div></body>`;
+
+const settle = () => new Promise((r) => setImmediate(r));
+const settleN = async (n) => { for (let i = 0; i < n; i++) await settle(); };
+
+// opts: playId, desktop, canModify (default true), state ('full' now playing | 'docked' drill)
+async function boot(run, opts) {
+  opts = opts || {};
+  const tracks = tracksFixture();
+  const playId = opts.playId || 'f1::c1';
+  const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent(playId) });
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  const mobile = !opts.desktop;
+  dom.window.matchMedia = () => ({ matches: mobile, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
+  global.window = dom.window; global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  const calls = [];
+  const editor = [];
+  global.fetch = (url, init) => {
+    const u = String(url);
+    const method = (init && init.method) || 'GET';
+    calls.push(method + ' ' + u);
+    const vm = u.match(/^\/api\/videos\/([^/?]+)$/);
+    if (vm && method === 'GET') {
+      const id = decodeURIComponent(vm[1]);
+      return Promise.resolve({ ok: true, json: async () => ({ id, type: 'audio', title: id === 'f1' ? 'The Mix' : 'Plain File', chapters: id === 'f1' ? FILE_CHAPTERS : [], liked: false, watchState: 'unwatched', channelName: 'NESTALGIA' }) });
+    }
+    if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
+    if (u.indexOf('filter=recent-listening') !== -1) {
+      const baseOf = (id) => String(id).replace(/::c\d+$/, '');
+      const items = /::c\d+$/.test(playId) ? tracks.filter((t) => t.source === 'library-chapter' && baseOf(t.id) === baseOf(playId)) : [tracks.find((t) => t.id === playId)];
+      return Promise.resolve({ ok: true, json: async () => ({ items }) });
+    }
+    if (u.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: opts.drillTracks || tracks.slice(0, 3) }) });
+    const idm = u.match(/^\/api\/music\/([^?]+)$/);
+    if (idm) {
+      const t = tracks.find((x) => x.id === decodeURIComponent(idm[1]));
+      return Promise.resolve(t ? { ok: true, json: async () => t } : { ok: false, status: 404, json: async () => ({}) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: opts.drillTracks || tracks.slice(0, 3) }) });
+  };
+  const metaById = (id) => { const t = tracks.find((x) => x.id === id); return t ? { isMusic: true, id: t.id, title: t.title, artist: t.artist, album: t.album, albumKey: t.albumKey } : null; };
+  let registered = null;
+  dom.window.FileTube = {
+    registerView: (n, m) => { registered = m; },
+    encodeListContext: (c) => JSON.stringify(c), decodeListContext: (s) => { try { return JSON.parse(s); } catch (_) { return null; } }, shimmerArt: () => {},
+    player: {
+      currentId: playId, getState: () => opts.state || 'full', expand: () => {}, dock: () => {},
+      getCurrentMeta: () => metaById(dom.window.FileTube.player.currentId),
+      load: (id) => { dom.window.FileTube.player.currentId = id; },
+      setTrackNav: () => {}, isLoopEnabled: () => false, setLoop: () => {},
+      close: () => { dom.window.FileTube.player.currentId = null; },
+    },
+  };
+  const canModify = opts.canModify !== false;
+  dom.window.fetchCurrentUser = () => Promise.resolve({ user: canModify ? { role: 'admin' } : { role: 'member', canModifyLibrary: false } });
+  dom.window.fetchLikedTotal = () => Promise.resolve(0);
+  dom.window.showToast = () => {};
+  dom.window.addToQueue = () => {};
+  dom.window.showChapterSnapEditor = (id, o) => { editor.push({ id, opts: o }); return { close() {} }; };
+  delete require.cache[require.resolve('../../public/js/music-skins.js')];
+  require('../../public/js/music-skins.js');
+  delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+  require('../../public/js/skin-surface.js');
+  try {
+    delete require.cache[musicPath];
+    require(musicPath);
+    registered.init(dom.window.document.getElementById('view-root'));
+    await settleN(12);
+    await run(dom, { calls, editor });
+  } finally {
+    try { if (registered) registered.destroy(); } catch (_) { /* best-effort */ }
+    delete require.cache[musicPath];
+    Object.assign(global, saved);
+  }
+}
+
+const doc = (dom) => dom.window.document;
+const click = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+const panel = (dom) => doc(dom).getElementById('music-nowplaying-panel');
+async function openStickerExtras(dom) {
+  const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+  const sticker = panel(dom).querySelector('.mms-sticker[data-skin-sticker]');
+  assert.ok(sticker, 'the skin sticker rendered (mobile)');
+  if (menu.hidden) click(dom, sticker);
+  const entry = menu.querySelector('[data-skin-extras]');
+  assert.ok(entry, 'the Extras entry is on page 1');
+  click(dom, entry);
+  await settleN(8);
+  return menu;
+}
+async function openDesktopActions(dom) {
+  const btn = doc(dom).getElementById('music-actions-btn');
+  assert.ok(btn && !btn.hidden, 'the desktop actions trigger shows');
+  click(dom, btn);
+  await settleN(8);
+  return doc(dom).getElementById('music-actions-menu');
+}
+const snapRow = (menu) => menu.querySelector('[data-skin-x="chapter-snap"]');
+
+for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras, false], ['desktop actions menu', openDesktopActions, true]]) {
+  test(`${label}: "This chapter starts wrong" opens the ONE editor on the backing file at the PLAYING chapter`, async () => {
+    await boot(async (dom, ctx) => {
+      const menu = await open(dom);
+      assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered (non-vacuous)');
+      const row = snapRow(menu);
+      assert.ok(row, 'the row is offered on a playing chapter');
+      assert.match(row.textContent, /This chapter starts wrong/);
+      click(dom, row);
+      await settleN(2);
+      assert.strictEqual(ctx.editor.length, 1, 'the editor opened once');
+      assert.strictEqual(ctx.editor[0].id, 'f1', 'on the backing FILE, never the `::c` id');
+      assert.strictEqual(ctx.editor[0].opts.focusIndex, 1, 'on the chapter that is playing');
+      assert.strictEqual(typeof ctx.editor[0].opts.onSaved, 'function');
+    }, { desktop });
+  });
+
+  test(`${label}: hidden for a viewer who may not modify the library, and for a plain (unchaptered) file`, async () => {
+    await boot(async (dom) => {
+      const menu = await open(dom);
+      assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered for the member (populated)');
+      assert.strictEqual(snapRow(menu), null, 'no entry without modify rights');
+    }, { desktop, canModify: false });
+    await boot(async (dom) => {
+      const menu = await open(dom);
+      assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered for the plain file (populated)');
+      assert.strictEqual(snapRow(menu), null, 'no entry on a plain file');
+    }, { desktop, playId: 'lib1' });
+  });
+}
+
+test('the RE-REGISTER seam: a save from now playing patches the live queue, so the chapter watcher re-derives the playing chapter from the NEW starts', async () => {
+  await boot(async (dom, ctx) => {
+    const mp = doc(dom).getElementById('media-player');
+    Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 62, set: () => {} });
+    Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
+    const menu = await openDesktopActions(dom);
+    click(dom, snapRow(menu));
+    await settleN(2);
+    const before = doc(dom).getElementById('music-nowplaying-panel').textContent;
+    assert.match(before, /^Second Song/, 'precondition: at 62s the playhead is in chapter 2 (starts 60) - the panel leads with it');
+    // The save moved chapter 2's start to 65: at 62s the playhead is now still in chapter 1.
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 65, title: 'Second Song' }, { startTime: 120, title: 'Closer' }], chaptersSource: 'manual', chaptersEdited: true });
+    await settleN(4);
+    const after = doc(dom).getElementById('music-nowplaying-panel').textContent;
+    assert.match(after, /^Opening/, 'the display follows the NEW boundary without a reload');
+    assert.match(after, /1:05Second Song/, 'and the Up next list shows the patched spans (chapter 1 now 65s)');
+  }, { desktop: true });
+});
+
+test('drill (1): "Fix times" on a chaptered album opens the editor on the FILE; the save repaints the drill with the new spans and the Edited badge', async () => {
+  await boot(async (dom, ctx) => {
+    const btn = doc(dom).querySelector('.music-drill-snap');
+    assert.ok(doc(dom).querySelector('.music-drill'), 'the drill rendered');
+    assert.ok(btn, 'the Fix times button is on the chaptered album');
+    assert.strictEqual(doc(dom).querySelector('.music-drill-edited'), null, 'no Edited badge before any correction (populated below)');
+    click(dom, btn);
+    await settleN(2);
+    assert.strictEqual(ctx.editor.length, 1);
+    assert.strictEqual(ctx.editor[0].id, 'f1', 'the backing file');
+    assert.strictEqual(ctx.editor[0].opts.focusIndex, undefined, 'the drill opens the whole list');
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 75, title: 'Second Song' }, { startTime: 120, title: 'Closer' }], chaptersSource: 'manual', chaptersEdited: true });
+    await settleN(4);
+    assert.ok(doc(dom).querySelector('.music-drill-edited'), 'the Edited badge appears');
+    const rowText = (id) => doc(dom).querySelector('.music-song-row[data-id="' + id + '"]').textContent;
+    assert.match(rowText('f1::c0'), /1:15/, 'chapter 1 now spans 75s');
+    assert.match(rowText('f1::c1'), /0:45/, 'chapter 2 now spans 45s');
+    // Revert (chaptersEdited false) clears the badge again - the clear axis on a POPULATED badge.
+    ctx.editor[0].opts.onSaved({ chapters: FILE_CHAPTERS, chaptersSource: 'embedded', chaptersEdited: false });
+    await settleN(4);
+    assert.strictEqual(doc(dom).querySelector('.music-drill-edited'), null, 'the badge clears on revert');
+  }, { state: 'docked', playId: 'f1::c0' });
+});
+
+test('drill (1): no Fix times for a viewer who may not modify the library, nor on a non-chapter album', async () => {
+  await boot(async (dom) => {
+    assert.ok(doc(dom).querySelector('.music-drill'), 'the drill rendered (populated)');
+    assert.strictEqual(doc(dom).querySelector('.music-drill-snap'), null);
+  }, { state: 'docked', playId: 'f1::c0', canModify: false });
+  await boot(async (dom) => {
+    assert.ok(doc(dom).querySelector('.music-drill'), 'the drill rendered (populated)');
+    assert.strictEqual(doc(dom).querySelector('.music-drill-snap'), null, 'a mixed/plain album is not one file\'s chapters');
+  }, { state: 'docked', playId: 'f1::c0', drillTracks: tracksFixture() });
+});
+
+// ---- (3) the watch page chapters menu ------------------------------------------------
+// This repo has no player-boot jsdom harness (CONTRIBUTING.md); the REAL-browser
+// reachability of "Fix chapter times..." is measured by scripts/chapter-snap-probe.js
+// (it opens the menu and clicks the entry in headless Chromium). What is bound here,
+// by the SEMANTIC unit (each function body, brace-matched, never a character window):
+// the entry is appended ONLY inside the playerCanModifyLibrary arm, it opens the ONE
+// editor on the loaded item at the playhead's chapter, and a save re-derives the menu
+// and drops the armed loop (the boundaries moved).
+test('watch (3): the menu entry sits inside the write-RBAC arm and opens the ONE editor; a save rebuilds the menu and drops the loop', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const blockFrom = (start) => {
+    const open = src.indexOf('{', start);
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start, i + 1); }
+    }
+    return assert.fail('unbalanced block at ' + start);
+  };
+  const bodyOf = (name) => {
+    const start = src.indexOf('function ' + name + '(');
+    assert.notStrictEqual(start, -1, name + ' exists');
+    return blockFrom(start);
+  };
+  const build = bodyOf('buildChaptersMenu');
+  const armAt = build.indexOf('if (playerCanModifyLibrary) {');
+  assert.notStrictEqual(armAt, -1, 'the write-RBAC arm exists');
+  const armStart = src.indexOf(build) + armAt;
+  const arm = blockFrom(armStart);
+  assert.match(arm, /appendChapterSnapEntry\(\);/, 'the entry is appended INSIDE the arm');
+  assert.strictEqual((build.match(/appendChapterSnapEntry\(\)/g) || []).length, 1, 'and nowhere else in the builder');
+  const entry = bodyOf('appendChapterSnapEntry');
+  assert.match(entry, /currentChapters\.length < 2/, 'only for a real chapter list');
+  assert.match(entry, /addEventListener\('click', openChapterSnapFromMenu\)/);
+  const open = bodyOf('openChapterSnapFromMenu');
+  assert.match(open, /window\.showChapterSnapEditor\(currentId, \{/, 'the ONE editor, on the loaded item');
+  assert.match(open, /focusIndex: .*currentChapterIdx/, 'at the playhead\'s chapter');
+  assert.match(open, /if \(currentId !== editingId\) return;/, 'a save for an item the player left is ignored (post-await guard)');
+  assert.match(open, /chapterLoop = null;/, 'an armed loop is dropped (its window moved)');
+  assert.match(open, /buildChaptersMenu\(\);/, 'the menu re-derives from the new list');
+  assert.match(bodyOf('appendChaptersEditedBadge'), /currentData\.chaptersEdited === true/, 'the badge reads the server flag');
+});

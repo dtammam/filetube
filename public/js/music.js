@@ -450,7 +450,11 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
     // v1.317 (M1): the album drill's artist line drills into that artist (the card delegation).
     (artist ? '<button type="button" class="music-drill-artist" data-artist="' + escapeMusicHtml(artist) + '" title="Go to artist">' + escapeMusicHtml(artist) + '</button>' : '') +
-    '<div class="music-drill-meta">' + escapeMusicHtml(meta) + '</div>' +
+    '<div class="music-drill-meta">' + escapeMusicHtml(meta) +
+    // v1.319 Chapter Snap: "Edited" when this chaptered album's times were corrected
+    // (the rows carry chaptersEdited from the server's projection).
+    (isChapterAlbum(tracks) && first.chaptersEdited === true ? ' <span class="music-drill-edited">Edited</span>' : '') +
+    '</div>' +
     '<div class="music-drill-actions">' +
     '<button type="button" class="music-drill-play btn btn-primary btn-sm"><i class="icon-play"></i> Play</button>' +
     '<button type="button" class="music-drill-shuffle btn btn-sm"><i class="icon-shuffle"></i> Shuffle</button>' +
@@ -460,7 +464,10 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // which the existing editor already writes. Only chapter albums get the button;
     // a real album's track titles are file tags and are not editable here.
     (isChapterAlbum(tracks) && !!(opts && opts.canEditChapters)
-      ? '<button type="button" class="music-drill-chapters btn btn-sm"><i class="icon-list"></i> Edit chapters</button>'
+      ? '<button type="button" class="music-drill-chapters btn btn-sm"><i class="icon-list"></i> Edit chapters</button>' +
+        // v1.319 Chapter Snap (Dean): fix WHEN the songs start (silence snap + nudges) -
+        // the ONE time editor (common.js showChapterSnapEditor), same write-RBAC gate.
+        '<button type="button" class="music-drill-snap btn btn-sm">Fix times</button>'
       : '') +
     '</div>' +
     '</div>' +
@@ -1142,6 +1149,7 @@ if (typeof module !== 'undefined' && module.exports) {
             // M3 chapter likes: the Like row targets the playing CHAPTER (see the helpers).
             fetchItem: extrasFetchItem,
             likeRequest: extrasLikeRequest,
+            onChapterSnap: extrasChapterSnap, // v1.319 Chapter Snap: "This chapter starts wrong"
           },
           // v1.254 (ENDLESS AUTOPLAY): the page-1 toggle. Lives HERE (not the Extras
           // page) deliberately: Extras exists only for library-backed items, and the
@@ -1559,6 +1567,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // writers of the Extras cfg - both must carry them or one surface likes the file).
         fetchItem: extrasFetchItem,
         likeRequest: extrasLikeRequest,
+        onChapterSnap: extrasChapterSnap, // v1.319 Chapter Snap: the SAME hook the sticker cfg passes (two writers)
         getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
         getSignal: function () { return signal; },
         close: hideActionsMenu,
@@ -1646,11 +1655,66 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!item || item.type !== 'audio') return null;
       return String(cur).replace(/::c\d+$/, '') === String(item.id) ? String(cur) : null;
     }
+    // v1.319 Chapter Snap: the index of the PLAYING chapter of `item` (audio album or a
+    // listen-mode video), captured at Extras OPEN time like likeTargetId, or null.
+    function extrasChapterSnapIndexFor(item) {
+      var cur = effectiveCurrentId();
+      var m = cur ? /^(.+)::c(\d+)$/.exec(String(cur)) : null;
+      if (!m || !item || m[1] !== String(item.id)) return null;
+      if (!Array.isArray(item.chapters) || item.chapters.length < 2) return null;
+      var n = Number(m[2]);
+      return n >= 0 && n < item.chapters.length ? n : null;
+    }
+    // "This chapter starts wrong": the ONE time editor, opened on the playing chapter.
+    function extrasChapterSnap(item) {
+      if (!item || typeof window.showChapterSnapEditor !== 'function') return;
+      var baseId = String(item.id);
+      window.showChapterSnapEditor(baseId, {
+        focusIndex: typeof item.chapterSnapIndex === 'number' ? item.chapterSnapIndex : -1,
+        onSaved: function (body) { applySnappedChapterTimes(baseId, body); },
+      });
+    }
+    // v1.319 Chapter Snap: a save moved chapter START TIMES of `baseId` (never the count or
+    // order - the ids `<baseId>::c<n>` are unchanged). This is the ONE re-register seam: every
+    // queue entry of that file takes its new start + span IN PLACE, so the chapter watcher
+    // (currentChapterId / currentChapterBounds / reflectChapter), the loop bounds and the
+    // registered nav all read the new boundaries on their next tick, then the display
+    // re-derives which chapter the playhead is in NOW and the drill (if showing) repaints.
+    function applySnappedChapterTimes(baseId, body) {
+      var chapters = body && Array.isArray(body.chapters) ? body.chapters : null;
+      if (!chapters) return;
+      var edited = !!(body && body.chaptersEdited);
+      var fileDur = 0;
+      queue.forEach(function (t) {
+        if (t && t.source === 'library-chapter' && String(t.id).replace(/::c\d+$/, '') === String(baseId)) {
+          fileDur = Math.max(fileDur, (Number(t.chapterStartSec) || 0) + (Number(t.durationSec) || 0));
+        }
+      });
+      queue.forEach(function (t) {
+        if (!t || t.source !== 'library-chapter') return;
+        var m = /^(.+)::c(\d+)$/.exec(String(t.id));
+        if (!m || m[1] !== String(baseId)) return;
+        var n = Number(m[2]);
+        var ch = chapters[n];
+        if (!ch || !isFinite(Number(ch.startTime))) return;
+        var start = Number(ch.startTime);
+        var next = chapters[n + 1];
+        var end = next && isFinite(Number(next.startTime)) ? Number(next.startTime) : fileDur;
+        t.chapterStartSec = start;
+        if (end > start) t.durationSec = end - start;
+        if (edited) t.chaptersEdited = true; else delete t.chaptersEdited;
+      });
+      reflectChapter();
+      reflectEngines();
+      if (drill && content && content.isConnected && !drillLoadInFlight && chapterAlbumBaseId(queue) === String(baseId)) renderDrillView();
+    }
     function extrasFetchItem(id) {
       return fetch('/api/videos/' + encodeURIComponent(id))
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (item) {
           if (!item) return null;
+          var snapIndex = extrasChapterSnapIndexFor(item);
+          if (snapIndex !== null) item.chapterSnapIndex = snapIndex;
           var chapterId = extrasChapterIdFor(item);
           if (!chapterId) return item;
           return fetch('/api/music/' + encodeURIComponent(chapterId))
@@ -2511,6 +2575,17 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.273 (Dean): rename a chaptered album's "songs". The chapters ARE the track
       // names here, and the editor that writes them already exists on the watch page -
       // this is the same dialog, reached from where the names are actually read.
+      if (e.target.closest('.music-drill-snap')) {
+        // v1.319 Chapter Snap: the editor seeds itself from STORAGE (GET
+        // /api/videos/:id/chapter-snap), never from this drill's rows - a searched
+        // drill shows a subset, and the editor must see every chapter.
+        var snapBaseId = chapterAlbumBaseId(queue);
+        if (!snapBaseId || typeof window.showChapterSnapEditor !== 'function') return;
+        window.showChapterSnapEditor(snapBaseId, {
+          onSaved: function (body) { applySnappedChapterTimes(snapBaseId, body); },
+        });
+        return;
+      }
       if (e.target.closest('.music-drill-chapters')) {
         var baseId = chapterAlbumBaseId(queue);
         if (!baseId || typeof window.showChaptersEditor !== 'function') return;

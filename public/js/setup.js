@@ -1636,6 +1636,18 @@ async function loadAutomationSettings() {
     // v1.65: trash retention (same select pattern).
     const trashRetentionSelect = document.getElementById('trash-retention-select');
     if (trashRetentionSelect) trashRetentionSelect.value = String(s.trashRetentionDays);
+    // v1.319 Chapter Snap: the lead-in (a stored value not on the list keeps its own option).
+    const leadInSelect = document.getElementById('chapter-snap-leadin-select');
+    if (leadInSelect && typeof s.chapterSnapLeadInSec === 'number') {
+      const v = String(s.chapterSnapLeadInSec);
+      if (!Array.prototype.some.call(leadInSelect.options, (o) => o.value === v)) {
+        const extra = document.createElement('option');
+        extra.value = v;
+        extra.textContent = v + ' seconds';
+        leadInSelect.appendChild(extra);
+      }
+      leadInSelect.value = v;
+    }
     const capInput = document.getElementById('cache-cap-input');
     if (capInput) {
       capInput.value = s.cacheMaxBytes != null ? bytesToGb(s.cacheMaxBytes) : '';
@@ -2405,6 +2417,15 @@ function wireStaticControls(signal) {
     cacheAgeSelect.addEventListener('change', (e) => {
       saveAutomationSetting('cacheMaxAgeDays', parseInt(e.target.value, 10),
         document.getElementById('cache-age-error'));
+    }, { signal });
+  }
+
+  // v1.319 Chapter Snap: the server-wide lead-in (seconds, 0-2).
+  const leadInSelect = document.getElementById('chapter-snap-leadin-select');
+  if (leadInSelect) {
+    leadInSelect.addEventListener('change', (e) => {
+      saveAutomationSetting('chapterSnapLeadInSec', Number(e.target.value),
+        document.getElementById('chapter-snap-leadin-error'));
     }, { signal });
   }
 
