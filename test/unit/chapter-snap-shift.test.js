@@ -4,7 +4,7 @@
 // (public/js/common.js formatSnapShift, snapShiftBlock, snapShiftSuggestion) and the phone
 // sizing of the new row. The editor itself is driven against the real server in
 // test/integration/chapter-snap-shift.test.js. Plan:
-// docs/exec-plans/active/2026-09-24-snap-offset-status-bar.md.
+// docs/exec-plans/completed/2026-09-24-snap-offset-status-bar.md.
 
 const { test } = require('node:test');
 const assert = require('node:assert');

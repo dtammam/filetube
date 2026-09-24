@@ -9,7 +9,7 @@
 //
 // jsdom has no layout, so the HEIGHT is measured in headless Chromium by
 // scripts/skin-status-bar-probe.js (numbers in the plan:
-// docs/exec-plans/active/2026-09-24-snap-offset-status-bar.md - 31.2 px with a 120-character
+// docs/exec-plans/completed/2026-09-24-snap-offset-status-bar.md - 31.2 px with a 120-character
 // album before AND after, where the old CSS grew it to 67.6 / 85.8 px). This file binds the CSS
 // that produces it (the crown-jewel CSS-lock class; gate r1 and r2, adversary W1):
 //   - a real parser: comments stripped once, strings skipped, at-rule blocks (@media, @supports,
