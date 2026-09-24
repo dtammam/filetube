@@ -25,7 +25,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-chapter-s
 const { test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
-const { app, getMediaId, loadDatabase, chapterSilenceService } = require('../../server');
+const { app, getMediaId, loadDatabase, updateDatabase, chapterSilenceService, recordRepulledItemMeta } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { SILENCE_PARAMS_KEY } = require('../../lib/media/chapterSilence');
@@ -55,7 +55,7 @@ const FIVE = [
   { startTime: 180, title: 'Fourth Song' }, { startTime: 240, title: 'Closer' },
 ];
 
-function seedMix() {
+function seedMix(opts) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-chapter-snap-ui-lib-'));
   fs.mkdirSync(path.join(root, 'Chan'));
   const filePath = path.join(root, 'Chan', 'mix.mp3');
@@ -64,7 +64,7 @@ function seedMix() {
   const mix = { id, name: 'mix.mp3', title: 'The Mix', filePath, folderName: 'Chan', rootFolder: root, type: 'audio', ext: '.mp3', duration: 300, size: 9, addedAt: 1, chapters: FIVE.map((c) => ({ ...c })) };
   seedState({ folders: [root], folderSettings: {}, settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 0 }, liked: [], metadata: { [id]: mix } });
   const st = fs.statSync(filePath);
-  chapterSilenceService.cache.write(id, { params: SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: [{ start: 58, end: 62 }, { start: 183, end: 185 }] });
+  if (!(opts && opts.noSilence)) chapterSilenceService.cache.write(id, { params: SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: [{ start: 58, end: 62 }, { start: 183, end: 185 }] });
   return mix;
 }
 
@@ -226,4 +226,126 @@ test('entry point 4: the text editor\'s "Fix times..." opens the SAME time edito
   } finally {
     global.fetch = realFetch;
   }
+});
+
+// ---- gate r1 fixes ---------------------------------------------------------------
+
+test('Snap all touches ONLY untouched rows with a suggestion (qa W1): a nudged no-gap row and a hand-tuned row keep their times, and the button counts the same set', async () => {
+  const mix = seedMix();
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  const nudge = (i, delta) => click(rowsOf(h)[i].querySelector('[data-act="nudge"][data-delta="' + delta + '"]'));
+  const now = (i) => rowsOf(h)[i].querySelector('.chapter-snap-now').textContent;
+  assert.match(h.snapAllBtn.textContent, /Snap all \(2\)/, 'precondition: two suggestions');
+  nudge(2, '1'); // chapter 3 has NO gap - the user moved it by ear
+  assert.strictEqual(now(2), '2:01.0');
+  assert.match(h.snapAllBtn.textContent, /Snap all \(2\)/, 'a nudged no-gap row is not "pending"');
+  nudge(1, '0.1'); // chapter 2 HAS a suggestion, but the user tuned it by hand
+  assert.match(h.snapAllBtn.textContent, /Snap all \(1\)/, 'a hand-tuned row leaves the plan');
+  click(h.snapAllBtn);
+  assert.strictEqual(now(1), '1:00.1', 'the hand-tuned chapter 2 kept its time');
+  assert.strictEqual(now(2), '2:01.0', 'the nudged chapter 3 kept its time');
+  assert.strictEqual(now(3), '3:04.8', 'the untouched suggested chapter 4 snapped');
+  assert.match(h.statusEl.textContent, /Snapped 1 start/, 'the status counts what was applied');
+  click(h.saveBtn);
+  await until(() => h.isClosed(), 'saved');
+  assert.deepStrictEqual(loadDatabase().metadata[mix.id].chaptersManual.map((c) => c.startTime), [0, 60.1, 121, 184.75, 240]);
+});
+
+test('the nudge clamps at the NEXT chapter and at the end of the file (adversary ME)', async () => {
+  const mix = seedMix();
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  const nudge = (i, delta) => click(rowsOf(h)[i].querySelector('[data-act="nudge"][data-delta="' + delta + '"]'));
+  const now = (i) => rowsOf(h)[i].querySelector('.chapter-snap-now').textContent;
+  for (let k = 0; k < 70; k++) nudge(1, '1');
+  assert.strictEqual(now(1), '1:59.9', 'never at or past chapter 3 (the server min gap)');
+  for (let k = 0; k < 70; k++) nudge(4, '1');
+  assert.strictEqual(now(4), '4:59.9', 'the last chapter stops before the end of the file');
+  h.close();
+});
+
+test('the poll refuses a STALE seed (adversary MG): a text save lands while the silence scan runs -> the editor says so and Save stays off', async () => {
+  const mix = seedMix({ noSilence: true });
+  const { common, fetchImpl } = bootEditor();
+  // Hold the scan "running" in the poll's eyes so the poll path (not the load) meets the change.
+  const held = (url, init) => fetchImpl(url, init).then((r) => {
+    if ((init && init.method) || url.indexOf('/scan') !== -1) return r;
+    return r.json().then((b) => { if (b && b.silence) b.silence = { state: 'running' }; return { ok: r.ok, status: r.status, json: async () => b }; });
+  });
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl: held, pollMs: 120, doc: dom.window.document });
+  await h.ready;
+  const text = '0:00 Opening\n1:05 Second Song\n2:00 Third Song\n3:00 Fourth Song\n4:00 Closer';
+  assert.strictEqual((await fetch(base + '/api/videos/' + encodeURIComponent(mix.id) + '/chapters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })).status, 200);
+  click(rowsOf(h)[2].querySelector('[data-act="nudge"][data-delta="1"]')); // a pending local edit
+  await until(() => /changed somewhere else/.test(h.statusEl.textContent), 'the poll noticed the change');
+  assert.strictEqual(h.saveBtn.disabled, true, 'Save is off for the stale seed');
+  h.close();
+});
+
+test('a poll that finds the scan GONE (a server restart: none/stale) says so and offers Try again (qa S5)', async () => {
+  const mix = seedMix({ noSilence: true });
+  const { common, fetchImpl } = bootEditor();
+  let polls = 0;
+  const shaped = (url, init) => fetchImpl(url, init).then((r) => {
+    if ((init && init.method) || url.indexOf('/scan') !== -1) return r;
+    return r.json().then((b) => {
+      polls += 1;
+      // load: "running" (a scan in flight); every later poll: "none" (the restart lost it)
+      if (b && b.silence) b.silence = { state: polls === 1 ? 'running' : 'none' };
+      return { ok: r.ok, status: r.status, json: async () => b };
+    });
+  });
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl: shaped, pollMs: 30, doc: dom.window.document });
+  await h.ready;
+  await until(() => polls >= 2 && /stopped before it finished/.test(h.statusEl.textContent), 'the stall is reported');
+  const retry = h.modal.querySelector('.chapter-snap-retry');
+  assert.strictEqual(retry.hidden, false, 'Try again is offered');
+  h.close();
+});
+
+test('Stop before the audio metadata arrives cancels the pending audition (qa S6)', async () => {
+  const mix = seedMix();
+  const { common, fetchImpl } = bootEditor();
+  let plays = 0;
+  // A REAL jsdom <audio> whose metadata has not arrived yet (readyState 0).
+  const fake = dom.window.document.createElement('audio');
+  Object.defineProperty(fake, 'readyState', { configurable: true, get: () => 0 });
+  fake.play = () => { plays += 1; return Promise.resolve(); };
+  fake.pause = () => {};
+  fake.load = () => {};
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document, audioFactory: () => fake });
+  await h.ready;
+  const playBtn = () => rowsOf(h)[1].querySelector('[data-act="play"]');
+  click(playBtn());
+  assert.match(playBtn().textContent, /Stop/, 'the row shows it is starting');
+  click(playBtn()); // Stop, before any metadata
+  fake.dispatchEvent(new dom.window.Event('loadedmetadata'));
+  assert.strictEqual(plays, 0, 'the late metadata never starts playback');
+  h.close();
+});
+
+test('Revert RE-PLANS when the source changed after the editor opened (adversary W2): the first Revert is refused and nothing moves; the confirm then names the NEW count', async () => {
+  const mix = seedMix();
+  const snapUrl = base + '/api/videos/' + encodeURIComponent(mix.id) + '/chapter-snap';
+  const s = await (await fetch(snapUrl)).json();
+  assert.strictEqual((await fetch(snapUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: s.version, starts: s.snapAll }) })).status, 200);
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  click(h.revertBtn);
+  assert.match(h.confirmBox.textContent, /count does not change/, 'the confirm names the plan it saw (5 chapters)');
+  // A reheat re-pulls the source as SIX chapters while the confirm is open.
+  const six = FIVE.map((c) => ({ ...c })).concat([{ startTime: 280, title: 'Bonus' }]);
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, mix.id, { filePath: mix.filePath, chapters: six, markComplete: false }, 1_900_000_000_000);
+  click(h.confirmBox.querySelector('.chapter-snap-confirm-yes'));
+  await until(() => /nothing was reverted/.test(h.statusEl.textContent), 'the stale revert is refused and re-planned');
+  assert.strictEqual(loadDatabase().metadata[mix.id].chaptersManual.length, 5, 'nothing reverted onto the unconfirmed source');
+  click(h.revertBtn);
+  assert.match(h.confirmBox.textContent, /6 chapters instead of 5/, 'the new confirm names the NEW target');
+  click(h.confirmBox.querySelector('.chapter-snap-confirm-yes'));
+  await until(() => h.isClosed(), 'the confirmed revert lands');
+  assert.strictEqual(loadDatabase().metadata[mix.id].chaptersManual, undefined);
 });

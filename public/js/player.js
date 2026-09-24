@@ -6855,21 +6855,31 @@ if (typeof module !== 'undefined' && module.exports) {
     function openChaptersEditorFromMenu() {
       closeChaptersMenu();
       if (typeof window.showChaptersEditor !== 'function' || !currentId) return;
+      // v1.319 (gate r1, adversary W1): the seed is LOSSLESS - formatChapterStamp keeps a
+      // sub-second start ("1:01.75"); formatDuration floored it, so a title-only fix
+      // rewrote every snapped time and could merge two starts into one chapter.
+      var stamp = typeof window.formatChapterStamp === 'function' ? window.formatChapterStamp : formatDuration;
       var lines = currentChapters.map(function (ch) {
-        return formatDuration(ch.startTime) + ' ' + (ch.title || '');
+        return stamp(ch.startTime) + ' ' + (ch.title || '');
       }).join('\n');
+      var editingId = currentId;
       window.showChaptersEditor(currentId, lines, function (resolved) {
-        currentChapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
-        if (currentData) currentData.chapters = currentChapters;
-        // v1.319: a typed save is plain manual chapters (not Edited); the text editor's
-        // "Fix times..." hands the time editor's result through this same callback.
-        if (currentData) currentData.chaptersEdited = !!(resolved && resolved.chaptersEdited);
-        // v1.41.12: an edited chapter set invalidates any armed loop (same
-        // rule as applyChaptersForMedia -- indexes/boundaries shifted).
-        chapterLoop = null;
-        updateChapterLoopIndicator();
-        buildChaptersMenu();
-      });
+        if (currentId !== editingId) return; // the player moved on while the editor was open
+        applySavedChapters(resolved);
+      }, undefined, { version: currentData && currentData.chaptersVersion });
+    }
+    // v1.319 (gate r1: adversary W4, qa W2): EVERY chapter save on this page (the text
+    // editor, the time editor, a revert) goes through applyChaptersForMedia - the one
+    // seam that re-segments the seek bar, resets and re-derives the current chapter
+    // (label + menu highlight, even while PAUSED) and drops an armed loop. Rebuilding
+    // only the menu left the notches and the label on the OLD boundaries.
+    function applySavedChapters(resolved) {
+      var data = currentData || {};
+      data.chapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
+      data.chaptersSource = resolved ? resolved.chaptersSource : null;
+      data.chaptersEdited = !!(resolved && resolved.chaptersEdited);
+      if (resolved && typeof resolved.version === 'string') data.chaptersVersion = resolved.version;
+      applyChaptersForMedia(data);
     }
     // v1.319 Chapter Snap: the chapters menu's two additions, as helpers so the
     // builder stays one readable unit. (a) The header's "Edited" badge when these
@@ -6894,8 +6904,7 @@ if (typeof module !== 'undefined' && module.exports) {
       chaptersMenu.appendChild(snapEntry);
     }
     // v1.319 Chapter Snap: open the time editor for the loaded item at the current
-    // chapter. A save changes TIMES only (the count and order are invariant), so the
-    // menu, the loop and the current-chapter highlight re-derive from the new list.
+    // chapter. A save (or revert) goes through applySavedChapters above.
     function openChapterSnapFromMenu() {
       closeChaptersMenu();
       if (typeof window.showChapterSnapEditor !== 'function' || !currentId) return;
@@ -6904,15 +6913,7 @@ if (typeof module !== 'undefined' && module.exports) {
         focusIndex: typeof currentChapterIdx === 'number' && currentChapterIdx >= 0 ? currentChapterIdx : -1,
         onSaved: function (resolved) {
           if (currentId !== editingId) return; // the player moved on while the editor was open
-          currentChapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
-          if (currentData) {
-            currentData.chapters = currentChapters;
-            currentData.chaptersSource = resolved && resolved.chaptersSource;
-            currentData.chaptersEdited = !!(resolved && resolved.chaptersEdited);
-          }
-          chapterLoop = null; // boundaries moved: an armed loop's window is stale (applyChaptersForMedia's rule)
-          updateChapterLoopIndicator();
-          buildChaptersMenu();
+          applySavedChapters(resolved);
         },
       });
     }
@@ -7058,6 +7059,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // Exposed to setupForMedia (which runs outside this wiring closure).
     applyChaptersForMedia = function (data) {
       currentChapters = data && Array.isArray(data.chapters) ? data.chapters : [];
+      // v1.319: the chapter set's companions ride with it into the LOADED item's data -
+      // the late-detail path (applyLateDetail) hands a fresh payload while currentData
+      // is the list seed, and the "Edited" badge + the text editor's version token read
+      // currentData.
+      if (currentData && data && data !== currentData) {
+        currentData.chaptersEdited = data.chaptersEdited === true;
+        if (typeof data.chaptersVersion === 'string') currentData.chaptersVersion = data.chaptersVersion;
+      }
       // v1.41.12: a new chapter set invalidates any armed loop (indexes and
       // boundaries both shift) -- belt-and-suspenders with teardownMediaState,
       // which already clears it on every load.

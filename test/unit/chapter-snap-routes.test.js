@@ -44,13 +44,14 @@ function harness({ freshItem, visibleInTick }) {
     resolveItemChapters,
     settingsStore: { getKey: () => 0.25 },
     silenceService: { stateFor: () => ({ state: 'none' }), start: () => 'running' },
+    maxChapters: 300,
   });
   const call = async (key, body) => {
     const res = { statusCode: 200, body: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
     await routes[key]({ params: { id: 'm1' }, body, user: { role: 'admin' } }, res);
     return res;
   };
-  const version = snap.chaptersVersion(cachedItem, resolveItemChapters(cachedItem));
+  const version = snap.chaptersVersion(cachedItem, resolveItemChapters);
   return { call, writes, version, cachedItem };
 }
 

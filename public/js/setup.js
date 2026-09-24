@@ -701,6 +701,17 @@ function setFieldError(el, message) {
 // body on success (200), or null on failure (400 validation error or a
 // network/fetch failure) — either way surfaces the message via errorEl
 // rather than throwing/crashing the page.
+// v1.319 Chapter Snap: the server-wide lead-in select (seconds, 0-2). Its own
+// function (exported) so the change -> POST wiring is jsdom-bound (gate r1 qa S8).
+function wireChapterSnapLeadIn(signal) {
+  const leadInSelect = document.getElementById('chapter-snap-leadin-select');
+  if (!leadInSelect) return;
+  leadInSelect.addEventListener('change', (e) => {
+    saveAutomationSetting('chapterSnapLeadInSec', Number(e.target.value),
+      document.getElementById('chapter-snap-leadin-error'));
+  }, signal ? { signal } : undefined);
+}
+
 async function saveAutomationSetting(key, value, errorEl) {
   try {
     const r = await fetch('/api/settings', {
@@ -2420,14 +2431,7 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
-  // v1.319 Chapter Snap: the server-wide lead-in (seconds, 0-2).
-  const leadInSelect = document.getElementById('chapter-snap-leadin-select');
-  if (leadInSelect) {
-    leadInSelect.addEventListener('change', (e) => {
-      saveAutomationSetting('chapterSnapLeadInSec', Number(e.target.value),
-        document.getElementById('chapter-snap-leadin-error'));
-    }, { signal });
-  }
+  wireChapterSnapLeadIn(signal); // v1.319 Chapter Snap: the server-wide lead-in
 
   // v1.65: trash retention -- save, then re-render the list (the days-left
   // labels depend on it).
@@ -4360,6 +4364,8 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.319 Chapter Snap (gate r1 qa S8): the lead-in select's wiring (jsdom-bound).
+    wireChapterSnapLeadIn,
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
     // shell is device-validated).

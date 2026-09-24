@@ -7472,8 +7472,10 @@ body.ft-audio-expanded {
 }
 /* Phones: a full-height sheet; every control a 44px target; the nudges span the
    row as four equal buttons with the snap/play buttons on their own full-width
-   lines, so nothing is clipped or scrolls sideways at 390 wide. */
-@media (max-width: 600px) {
+   lines, so nothing is clipped or scrolls sideways at 390 wide. A phone in
+   LANDSCAPE (844x390) is short, not narrow - the max-height arm gives it the same
+   sheet and touch targets (gate r1 qa S4). */
+@media (max-width: 600px), (max-height: 500px) {
   .modal-backdrop.chapter-snap-backdrop {
     align-items: stretch;
   }
@@ -7511,6 +7513,27 @@ body.ft-audio-expanded {
   }
   .chapter-snap-actions .btn {
     flex: 1 1 0;
+  }
+}
+/* Landscape phone (short, not narrow): the head + footer would leave the chapter
+   list about one row tall, so the WHOLE sheet scrolls and Save/Cancel stay pinned
+   to the bottom. The sheet has no radius here (the phone arm above sets 0), so a
+   scrolling sheet is not the corner-clip shape. */
+@media (max-height: 500px) {
+  .modal-content.chapter-snap-modal {
+    display: block;
+    overflow-y: auto;
+    padding-bottom: 0; /* the pinned actions row carries the bottom inset, so no row shows under it */
+  }
+  .chapter-snap-scroll {
+    overflow: visible;
+  }
+  .chapter-snap-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1; /* token-exempt: local stacking - the pinned Save/Cancel row paints over the rows that scroll under it */
+    background: var(--bg-color);
+    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   }
 }
 

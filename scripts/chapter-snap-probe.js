@@ -31,8 +31,15 @@ if (!OUT) {
   console.error('usage: node scripts/chapter-snap-probe.js <out-dir> [width ...]');
   process.exit(2);
 }
-const WIDTHS = process.argv.slice(3).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-if (WIDTHS.length === 0) WIDTHS.push(390, 1440);
+// Viewports as WxH (gate r1: 390x844 portrait phone, 844x390 LANDSCAPE phone, 1440x900
+// desktop). A bare width keeps the old default height (844 phone / 900 desktop).
+const VIEWPORTS = process.argv.slice(3).map((a) => {
+  const m = /^(\d+)(?:x(\d+))?$/.exec(a);
+  if (!m) return null;
+  const w = Number(m[1]);
+  return { w, h: m[2] ? Number(m[2]) : (w < 500 ? 844 : 900) };
+}).filter(Boolean);
+if (VIEWPORTS.length === 0) VIEWPORTS.push({ w: 390, h: 844 }, { w: 844, h: 390 }, { w: 1440, h: 900 });
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
 
@@ -116,24 +123,35 @@ async function main() {
   const lib = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-snap-probe-lib-'));
   const vidPath = path.join(lib, 'night-transit.mp4');
   const audPath = path.join(lib, 'night-transit-album.mp3');
-  fs.writeFileSync(vidPath, 'x');
-  // FT_PROBE_AUDIO=<a real audio file> makes the drill's album playable, so "Play from
-  // here" is measured for real (the editor's audio element reaches the boundary time).
-  if (process.env.FT_PROBE_AUDIO) fs.copyFileSync(process.env.FT_PROBE_AUDIO, audPath); else fs.writeFileSync(audPath, 'y');
-  const audId = getMediaId(audPath);
-  saveDatabase({
-    metadata: {
-      vid1: { id: 'vid1', title: 'Night Transit (Full Album)', type: 'video', ext: '.mp4', filePath: vidPath, folderName: 'Halden Arcs', size: 1, addedAt: Date.now(), duration: 2000, channelName: 'Halden Arcs', chapters: CHAPTERS },
-      [audId]: { id: audId, title: 'Night Transit (Full Album)', type: 'audio', ext: '.mp3', filePath: audPath, folderName: 'Halden Arcs', size: 1, addedAt: Date.now(), duration: 2000, channelName: 'Halden Arcs', artist: 'Halden Arcs', chapters: CHAPTERS },
-    },
-  });
-  if (server0.chapterSilenceService) {
-    const SILENCE_PARAMS_KEY = require(path.join(ROOT, 'lib', 'media', 'chapterSilence')).SILENCE_PARAMS_KEY;
-    for (const [id, p] of [['vid1', vidPath], [audId, audPath]]) {
-      const st = fs.statSync(p);
-      server0.chapterSilenceService.cache.write(id, { params: SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: SILENCES });
-    }
+  // FT_PROBE_AUDIO=<a real audio file, ideally 2000 s> makes both items playable, so "Play
+  // from here" is measured for real and the watch page's seek-bar notches exist (they need
+  // a known media duration) for the after-Save reading.
+  if (process.env.FT_PROBE_AUDIO) {
+    fs.copyFileSync(process.env.FT_PROBE_AUDIO, audPath);
+    fs.copyFileSync(process.env.FT_PROBE_AUDIO, vidPath);
+  } else {
+    fs.writeFileSync(vidPath, 'x');
+    fs.writeFileSync(audPath, 'y');
   }
+  const audId = getMediaId(audPath);
+  // Re-seeded at EVERY viewport, so each one starts from the source chapters (the watch
+  // pass SAVES) - otherwise the second viewport measured an already-snapped list.
+  const seed = () => {
+    saveDatabase({
+      metadata: {
+        vid1: { id: 'vid1', title: 'Night Transit (Full Album)', type: 'video', ext: '.mp4', filePath: vidPath, folderName: 'Halden Arcs', size: 1, addedAt: Date.now(), duration: 2000, channelName: 'Halden Arcs', chapters: CHAPTERS },
+        [audId]: { id: audId, title: 'Night Transit (Full Album)', type: 'audio', ext: '.mp3', filePath: audPath, folderName: 'Halden Arcs', size: 1, addedAt: Date.now(), duration: 2000, channelName: 'Halden Arcs', artist: 'Halden Arcs', chapters: CHAPTERS },
+      },
+    });
+    if (server0.chapterSilenceService) {
+      const SILENCE_PARAMS_KEY = require(path.join(ROOT, 'lib', 'media', 'chapterSilence')).SILENCE_PARAMS_KEY;
+      for (const [id, p] of [['vid1', vidPath], [audId, audPath]]) {
+        const st = fs.statSync(p);
+        server0.chapterSilenceService.cache.write(id, { params: SILENCE_PARAMS_KEY, size: st.size, mtimeMs: st.mtimeMs, silences: SILENCES });
+      }
+    }
+  };
+  seed();
   fs.mkdirSync(OUT, { recursive: true });
 
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -186,10 +204,13 @@ async function main() {
     await send('Page.enable');
     await send('Network.setCookie', { name, value, url: base });
 
-    for (const w of WIDTHS) {
-      const h = w < 500 ? 844 : 900;
-      const dpr = w < 500 ? 2 : 1;
-      await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: w < 500 });
+    for (const vp of VIEWPORTS) {
+      const h = vp.h;
+      const phone = Math.min(vp.w, vp.h) < 500;
+      const dpr = phone ? 2 : 1;
+      const w = `${vp.w}x${h}`; // the label every line and PNG carries
+      await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: h, deviceScaleFactor: dpr, mobile: phone });
+      seed();
 
       // ---- watch page: chapters menu -> "Fix chapter times..." ----
       await send('Page.navigate', { url: `${base}/watch.html?v=vid1` });
@@ -206,13 +227,21 @@ async function main() {
         return 'reached';
       })()`);
       await waitFor("document.querySelectorAll('.chapter-snap-row').length === 8 && document.querySelectorAll('[data-act=\"snap\"]').length > 0", 'the editor rows + suggestions');
-      await new Promise((r) => setTimeout(r, 500));
+      // Measure only once the open scale-in has FINISHED (qa r1: a fixed 500 ms caught it
+      // mid-animation at 320 wide) - a readiness condition, not a longer sleep.
+      await waitFor("(function(){var m=document.querySelector('.chapter-snap-modal'); if(!m) return false; var t=getComputedStyle(m).transform; return t==='none'||t==='matrix(1, 0, 0, 1, 0, 0)';})()", 'the open scale-in to finish');
       console.log(`watch ${w}: ${JSON.stringify({ entry: reached })} ${await evaluate(MEASURE_JS)}`);
       await shot(`chapter-snap-watch-${w}.png`);
       await evaluate("(function(){var b=document.querySelector('.chapter-snap-snapall'); if (b) b.click(); return true;})()");
       await new Promise((r) => setTimeout(r, 300));
       console.log(`watch ${w} after Snap all: ${await evaluate(MEASURE_JS)}`);
       await shot(`chapter-snap-watch-${w}-snapped.png`);
+      // gate r1 (adversary W4, qa W2): SAVE on the watch page and read the seek-bar notches
+      // and the stored starts back - the notch must sit on the NEW boundary.
+      await evaluate("(function(){var b=document.querySelector('.chapter-snap-save'); if (b) b.click(); return true;})()");
+      await waitFor("!document.querySelector('.chapter-snap-modal')", 'the editor closed after Save');
+      await new Promise((r) => setTimeout(r, 400));
+      console.log(`watch ${w} after Save: ${await evaluate("JSON.stringify({ notches: Array.prototype.map.call(document.querySelectorAll('.seek-chapters-gap'), function (n) { return parseFloat(n.style.left); }).slice(0, 3) })")} stored ${JSON.stringify(await (await fetch(`${base}/api/videos/vid1`, { headers: { Cookie: cookie.split(';')[0] } })).json().then((d) => d.chapters.slice(1, 4).map((c) => Math.round(c.startTime / 2000 * 100000) / 1000)))}`);
 
       // ---- music: album card -> drill "Fix times" ----
       await send('Page.navigate', { url: `${base}/music.html` });
@@ -226,7 +255,7 @@ async function main() {
       const opened = await evaluate("(function(){var b=document.querySelector('.music-drill-snap'); if (!b) return false; b.click(); return true;})()");
       if (opened) {
         await waitFor("document.querySelectorAll('.chapter-snap-row').length === 8", 'the drill editor rows');
-        await new Promise((r) => setTimeout(r, 500));
+        await waitFor("(function(){var m=document.querySelector('.chapter-snap-modal'); if(!m) return false; var t=getComputedStyle(m).transform; return t==='none'||t==='matrix(1, 0, 0, 1, 0, 0)';})()", 'the open scale-in to finish');
         console.log(`music-editor ${w}: ${await evaluate(MEASURE_JS)}`);
         await shot(`chapter-snap-music-${w}.png`);
         if (process.env.FT_PROBE_AUDIO) {

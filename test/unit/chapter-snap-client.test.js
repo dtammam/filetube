@@ -73,21 +73,24 @@ async function boot(run, opts) {
     const vm = u.match(/^\/api\/videos\/([^/?]+)$/);
     if (vm && method === 'GET') {
       const id = decodeURIComponent(vm[1]);
-      return Promise.resolve({ ok: true, json: async () => ({ id, type: 'audio', title: id === 'f1' ? 'The Mix' : 'Plain File', chapters: id === 'f1' ? FILE_CHAPTERS : [], liked: false, watchState: 'unwatched', channelName: 'NESTALGIA' }) });
+      return Promise.resolve({ ok: true, json: async () => ({ id, type: 'audio', title: id === 'f1' ? 'The Mix' : 'Plain File', chapters: id === 'f1' ? (opts.fileChapters || FILE_CHAPTERS) : [], chaptersVersion: opts.version, liked: false, watchState: 'unwatched', channelName: 'NESTALGIA' }) });
     }
     if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
     if (u.indexOf('filter=recent-listening') !== -1) {
       const baseOf = (id) => String(id).replace(/::c\d+$/, '');
       const items = /::c\d+$/.test(playId) ? tracks.filter((t) => t.source === 'library-chapter' && baseOf(t.id) === baseOf(playId)) : [tracks.find((t) => t.id === playId)];
+      return Promise.resolve({ ok: true, json: async () => ({ items: items.concat(opts.extraQueue || []) }) });
+    }
+    if (u.indexOf('album=') !== -1) {
+      const items = (opts.server && opts.server.drill) || opts.drillTracks || tracks.slice(0, 3);
       return Promise.resolve({ ok: true, json: async () => ({ items }) });
     }
-    if (u.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: opts.drillTracks || tracks.slice(0, 3) }) });
     const idm = u.match(/^\/api\/music\/([^?]+)$/);
     if (idm) {
       const t = tracks.find((x) => x.id === decodeURIComponent(idm[1]));
       return Promise.resolve(t ? { ok: true, json: async () => t } : { ok: false, status: 404, json: async () => ({}) });
     }
-    return Promise.resolve({ ok: true, json: async () => ({ items: opts.drillTracks || tracks.slice(0, 3) }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: (opts.server && opts.server.drill) || opts.drillTracks || tracks.slice(0, 3) }) });
   };
   const metaById = (id) => { const t = tracks.find((x) => x.id === id); return t ? { isMusic: true, id: t.id, title: t.title, artist: t.artist, album: t.album, albumKey: t.albumKey } : null; };
   let registered = null;
@@ -108,6 +111,7 @@ async function boot(run, opts) {
   dom.window.showToast = () => {};
   dom.window.addToQueue = () => {};
   dom.window.showChapterSnapEditor = (id, o) => { editor.push({ id, opts: o }); return { close() {} }; };
+  dom.window.showChaptersEditor = (id, lines, onSaved, d, o) => { editor.push({ id, text: true, lines, opts: Object.assign({ onSaved }, o || {}) }); };
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
   require('../../public/js/music-skins.js');
   delete require.cache[require.resolve('../../public/js/skin-surface.js')];
@@ -233,6 +237,97 @@ test('drill (1): no Fix times for a viewer who may not modify the library, nor o
   }, { state: 'docked', playId: 'f1::c0', drillTracks: tracksFixture() });
 });
 
+test('the seam touches ONLY the saved file: another chaptered file queued beside it keeps its spans (adversary MB)', async () => {
+  // The album list the ?play= path queues (music.js playTrackInAlbum) carries a SECOND
+  // chaptered file's chapters beside f1's.
+  const base = { artist: 'NESTALGIA', album: 'The Mix', albumKey: AK, progressEndpoint: '/api/progress', source: 'library-chapter', streamSrc: '/video/f2', artUrl: '/thumbnail/f2' };
+  const extraQueue = [
+    { ...base, id: 'f2::c0', title: 'Other One', durationSec: 30, chapterStartSec: 0 },
+    { ...base, id: 'f2::c1', title: 'Other Two', durationSec: 30, chapterStartSec: 30 },
+  ];
+  await boot(async (dom, ctx) => {
+    const menu = await openDesktopActions(dom);
+    click(dom, snapRow(menu));
+    await settleN(2);
+    const before = doc(dom).getElementById('music-nowplaying-panel').textContent;
+    assert.match(before, /Other One[^0-9]*0:30/, 'precondition: the second file is queued, 30 s spans');
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 65, title: 'Second Song' }, { startTime: 120, title: 'Closer' }], chaptersSource: 'manual', chaptersEdited: true });
+    await settleN(4);
+    const after = doc(dom).getElementById('music-nowplaying-panel').textContent;
+    assert.match(after, /1:05Second Song/, 'the saved file took its new spans (non-vacuous)');
+    assert.match(after, /Other One[^0-9]*0:30/, 'the OTHER file kept its own spans');
+    assert.match(after, /Other Two[^0-9]*0:30/);
+  }, { desktop: true, server: { drill: tracksFixture().slice(0, 3).concat(extraQueue) } });
+});
+
+test('a COUNT-changing save (a consented revert 3 -> 2) in the drill RE-FETCHES the rows: no ghost row, and each row\'s like targets the chapter its title names (adversary W5)', async () => {
+  const server = { drill: null };
+  await boot(async (dom, ctx) => {
+    click(dom, doc(dom).querySelector('.music-drill-snap'));
+    await settleN(2);
+    assert.ok(doc(dom).querySelector('.music-song-row[data-id="f1::c2"]'), 'precondition: three chapter rows');
+    const albumFetchesBefore = ctx.calls.filter((c) => c.indexOf('album=') !== -1).length;
+    // The server's truth after the revert: two chapters, `::c1` is now "Closer".
+    const base = { artist: 'NESTALGIA', album: 'The Mix', albumKey: 'NESTALGIA␟The Mix', progressEndpoint: '/api/progress', source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', liked: false };
+    server.drill = [
+      { ...base, id: 'f1::c0', title: 'Opening', durationSec: 90, chapterStartSec: 0 },
+      { ...base, id: 'f1::c1', title: 'Closer', durationSec: 90, chapterStartSec: 90 },
+    ];
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 90, title: 'Closer' }], chaptersSource: 'embedded', chaptersEdited: false });
+    await settleN(12);
+    assert.ok(ctx.calls.filter((c) => c.indexOf('album=') !== -1).length > albumFetchesBefore, 'the drill re-fetched from the server');
+    assert.strictEqual(doc(dom).querySelector('.music-song-row[data-id="f1::c2"]'), null, 'no ghost row for a chapter that no longer exists');
+    const c1 = doc(dom).querySelector('.music-song-row[data-id="f1::c1"]');
+    assert.ok(c1, 'the ::c1 row is there');
+    assert.match(c1.textContent, /Closer/, '...titled with the song ::c1 now IS');
+    assert.doesNotMatch(c1.textContent, /Second Song/);
+    // Liking that row likes `f1::c1`, which the server calls "Closer" - what the row says.
+    click(dom, c1.querySelector('button[data-like-id]'));
+    await settleN(4);
+    assert.ok(ctx.calls.indexOf('POST /api/liked/' + encodeURIComponent('f1::c1')) !== -1, 'the like targets f1::c1');
+  }, { state: 'docked', playId: 'f1::c0', server });
+});
+
+test('a count change from NOW PLAYING re-lists from the server: no ghost chapter, survivors re-titled (adversary W5)', async () => {
+  const server = { drill: null };
+  await boot(async (dom, ctx) => {
+    const menu = await openDesktopActions(dom);
+    click(dom, snapRow(menu));
+    await settleN(2);
+    assert.match(doc(dom).getElementById('music-nowplaying-panel').textContent, /Closer/, 'precondition: chapter 3 queued');
+    const b = { artist: 'NESTALGIA', album: 'The Mix', albumKey: AK, progressEndpoint: '/api/progress', source: 'library-chapter', streamSrc: '/video/f1', artUrl: '/thumbnail/f1', liked: false };
+    server.drill = [{ ...b, id: 'f1::c0', title: 'Opening', durationSec: 90, chapterStartSec: 0 }, { ...b, id: 'f1::c1', title: 'Finale', durationSec: 90, chapterStartSec: 90 }];
+    ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 90, title: 'Finale' }], chaptersSource: 'embedded', chaptersEdited: false });
+    await settleN(12);
+    const after = doc(dom).getElementById('music-nowplaying-panel').textContent;
+    assert.doesNotMatch(after, /Closer/, 'the ghost third chapter left the queue');
+    assert.doesNotMatch(after, /Second Song/, 'the old title of ::c1 is gone');
+    assert.match(after, /Finale/, '::c1 carries its new title');
+  }, { desktop: true, server });
+});
+
+test('entry 4 from the drill (qa S10): a text-editor save - the path the time editor\'s "Fix times..." also hands through - re-derives the PLAYING chapter while paused, and the seed is lossless with the version', async () => {
+  await boot(async (dom, ctx) => {
+    const mp = doc(dom).getElementById('media-player');
+    Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 55, set: () => {} });
+    Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
+    Object.defineProperty(mp, 'paused', { configurable: true, get: () => true });
+    click(dom, doc(dom).querySelector('.music-drill-chapters'));
+    await settleN(8);
+    const ed = ctx.editor.find((e) => e.text);
+    assert.ok(ed, 'the text editor opened');
+    assert.strictEqual(ed.lines, '0:00 Opening\n1:00.5 Second Song\n2:00 Closer', 'the seed keeps the fraction (never 1:00)');
+    assert.strictEqual(ed.opts.version, 'ver-f1', 'the seed carries the item\'s version token');
+    const row = (id) => doc(dom).querySelector('.music-song-row[data-id="' + id + '"]');
+    assert.ok(row('f1::c0').classList.contains('playing'), 'precondition: chapter 1 marked playing');
+    // The save moved chapter 2 to 50 s: at 55 s (paused) the playhead is now IN chapter 2.
+    ed.opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 50, title: 'Second Song' }, { startTime: 120, title: 'Closer' }], chaptersSource: 'manual', chaptersEdited: false });
+    await settleN(12);
+    assert.ok(row('f1::c1').classList.contains('playing'), 'the playing chapter re-derived from the NEW starts without a timeupdate');
+    assert.ok(!row('f1::c0').classList.contains('playing'), 'and the old row cleared');
+  }, { state: 'docked', playId: 'f1::c0', fileChapters: [{ startTime: 0, title: 'Opening' }, { startTime: 60.5, title: 'Second Song' }, { startTime: 120, title: 'Closer' }], version: 'ver-f1' });
+});
+
 // ---- (3) the watch page chapters menu ------------------------------------------------
 // This repo has no player-boot jsdom harness (CONTRIBUTING.md); the REAL-browser
 // reachability of "Fix chapter times..." is measured by scripts/chapter-snap-probe.js
@@ -241,10 +336,13 @@ test('drill (1): no Fix times for a viewer who may not modify the library, nor o
 // the entry is appended ONLY inside the playerCanModifyLibrary arm, it opens the ONE
 // editor on the loaded item at the playhead's chapter, and a save re-derives the menu
 // and drops the armed loop (the boundaries moved).
-test('watch (3): the menu entry sits inside the write-RBAC arm and opens the ONE editor; a save rebuilds the menu and drops the loop', () => {
+test('watch (3): the menu entry sits inside the write-RBAC arm and opens the ONE editor through the shared save seam', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  // Comments stripped ONCE at read (the comment-porous lock lesson: a commented-out call
+  // must not satisfy a lock) - block comments, then line comments.
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, pre) => pre);
   const blockFrom = (start) => {
     const open = src.indexOf('{', start);
     let depth = 0;
@@ -262,8 +360,7 @@ test('watch (3): the menu entry sits inside the write-RBAC arm and opens the ONE
   const build = bodyOf('buildChaptersMenu');
   const armAt = build.indexOf('if (playerCanModifyLibrary) {');
   assert.notStrictEqual(armAt, -1, 'the write-RBAC arm exists');
-  const armStart = src.indexOf(build) + armAt;
-  const arm = blockFrom(armStart);
+  const arm = blockFrom(src.indexOf(build) + armAt);
   assert.match(arm, /appendChapterSnapEntry\(\);/, 'the entry is appended INSIDE the arm');
   assert.strictEqual((build.match(/appendChapterSnapEntry\(\)/g) || []).length, 1, 'and nowhere else in the builder');
   const entry = bodyOf('appendChapterSnapEntry');
@@ -271,12 +368,7 @@ test('watch (3): the menu entry sits inside the write-RBAC arm and opens the ONE
   assert.match(entry, /addEventListener\('click', openChapterSnapFromMenu\)/);
   const open = bodyOf('openChapterSnapFromMenu');
   assert.match(open, /window\.showChapterSnapEditor\(currentId, \{/, 'the ONE editor, on the loaded item');
-  assert.match(open, /focusIndex: .*currentChapterIdx/, 'at the playhead\'s chapter');
-  assert.match(open, /if \(currentId !== editingId\) return;/, 'a save for an item the player left is ignored (post-await guard)');
-  assert.match(open, /chapterLoop = null;/, 'an armed loop is dropped (its window moved)');
-  assert.match(open, /buildChaptersMenu\(\);/, 'the menu re-derives from the new list');
+  assert.match(open, /applySavedChapters\(resolved\);/, 'a save goes through the shared seam (its EFFECT is bound behaviorally in chapter-snap-watch.test.js)');
+  assert.match(bodyOf('applySavedChapters'), /applyChaptersForMedia\(data\);/, 'which is applyChaptersForMedia');
   assert.match(bodyOf('appendChaptersEditedBadge'), /currentData\.chaptersEdited === true/, 'the badge reads the server flag');
-  // The text editor's callback is the time editor's too (its "Fix times..." hands the result
-  // through it): it must carry the flag both ways (a typed save clears it, a snap sets it).
-  assert.match(bodyOf('openChaptersEditorFromMenu'), /currentData\.chaptersEdited = !!\(resolved && resolved\.chaptersEdited\);/, 'the text editor path refreshes the badge flag');
 });

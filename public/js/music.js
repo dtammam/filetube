@@ -406,12 +406,20 @@ function buildListenChapterTracks(v) {
 function chapterStamp(seconds) {
   var s = Number(seconds);
   if (!s || !isFinite(s) || s <= 0) return '0:00';
-  var hrs = Math.floor(s / 3600);
-  var mins = Math.floor((s % 3600) / 60);
-  var secs = Math.floor(s % 60);
+  // v1.319 (gate r1, adversary W1): LOSSLESS - a sub-second start keeps its fraction to
+  // the millisecond ("1:01.75"), exactly as common.js formatChapterStamp writes it
+  // (parity-tested); whole seconds read as before. Flooring turned a title-only fix of
+  // a snap edit into a rewrite of every time, and could merge two starts into one.
+  s = Math.round(s * 1000) / 1000;
+  var whole = Math.floor(s);
+  var ms = Math.round((s - whole) * 1000);
+  var hrs = Math.floor(whole / 3600);
+  var mins = Math.floor((whole % 3600) / 60);
+  var secs = whole % 60;
   var out = '';
   if (hrs > 0) out += hrs + ':' + (mins < 10 ? '0' : '');
   out += mins + ':' + (secs < 10 ? '0' : '') + secs;
+  if (ms > 0) out += '.' + String(ms + 1000).slice(1).replace(/0+$/, '');
   return out;
 }
 
@@ -1674,39 +1682,67 @@ if (typeof module !== 'undefined' && module.exports) {
         onSaved: function (body) { applySnappedChapterTimes(baseId, body); },
       });
     }
-    // v1.319 Chapter Snap: a save moved chapter START TIMES of `baseId` (never the count or
-    // order - the ids `<baseId>::c<n>` are unchanged). This is the ONE re-register seam: every
-    // queue entry of that file takes its new start + span IN PLACE, so the chapter watcher
-    // (currentChapterId / currentChapterBounds / reflectChapter), the loop bounds and the
-    // registered nav all read the new boundaries on their next tick, then the display
-    // re-derives which chapter the playhead is in NOW and the drill (if showing) repaints.
-    function applySnappedChapterTimes(baseId, body) {
+    // v1.319 Chapter Snap: the ONE queue seam for a chapter save of `baseId` (the time
+    // editor's save or revert, or a text-editor save). It re-registers everything keyed
+    // to the chapter list IN PLACE: every queued `<baseId>::c<n>` takes chapter n's new
+    // start, span AND title, so the chapter watcher (currentChapterId /
+    // currentChapterBounds / reflectChapter), the loop bounds and the registered nav
+    // read the new list on their next tick; reflectChapter() then re-derives which
+    // chapter the playhead is in NOW (paused included).
+    // gate r1 (adversary W5): a COUNT change (a consented revert onto a source with a
+    // different count, a text save that added or removed chapters) re-points the ids -
+    // `::c1` is now a different song - so rows past the new count are DROPPED from the
+    // queue, every surviving row takes its new title, and a drill showing this file is
+    // RE-FETCHED (the server's list is the truth; a new chapter needs its own row).
+    function applySnappedChapterTimes(baseId, body, opts) {
       var chapters = body && Array.isArray(body.chapters) ? body.chapters : null;
       if (!chapters) return;
       var edited = !!(body && body.chaptersEdited);
+      var ownsDrill = !!(drill && chapterAlbumBaseId(queue) === String(baseId));
       var fileDur = 0;
-      queue.forEach(function (t) {
-        if (t && t.source === 'library-chapter' && String(t.id).replace(/::c\d+$/, '') === String(baseId)) {
-          fileDur = Math.max(fileDur, (Number(t.chapterStartSec) || 0) + (Number(t.durationSec) || 0));
-        }
-      });
+      var queuedCount = 0;
+      var chapterRe = /^(.+)::c(\d+)$/;
       queue.forEach(function (t) {
         if (!t || t.source !== 'library-chapter') return;
-        var m = /^(.+)::c(\d+)$/.exec(String(t.id));
+        var m = chapterRe.exec(String(t.id));
         if (!m || m[1] !== String(baseId)) return;
+        queuedCount = Math.max(queuedCount, Number(m[2]) + 1);
+        fileDur = Math.max(fileDur, (Number(t.chapterStartSec) || 0) + (Number(t.durationSec) || 0));
+      });
+      var countChanged = queuedCount > 0 && queuedCount !== chapters.length;
+      queue = queue.filter(function (t) {
+        if (!t || t.source !== 'library-chapter') return true;
+        var m = chapterRe.exec(String(t.id));
+        if (!m || m[1] !== String(baseId)) return true;
         var n = Number(m[2]);
         var ch = chapters[n];
-        if (!ch || !isFinite(Number(ch.startTime))) return;
+        if (!ch || !isFinite(Number(ch.startTime))) return false; // a chapter that no longer exists
         var start = Number(ch.startTime);
         var next = chapters[n + 1];
         var end = next && isFinite(Number(next.startTime)) ? Number(next.startTime) : fileDur;
         t.chapterStartSec = start;
         if (end > start) t.durationSec = end - start;
+        t.title = (typeof ch.title === 'string' && ch.title.trim()) ? ch.title.trim() : ('Track ' + (n + 1));
         if (edited) t.chaptersEdited = true; else delete t.chaptersEdited;
+        return true;
       });
       reflectChapter();
       reflectEngines();
-      if (drill && content && content.isConnected && !drillLoadInFlight && chapterAlbumBaseId(queue) === String(baseId)) renderDrillView();
+      if (countChanged) updateNowPlayingPanel(); // the Up next list reads the (filtered) queue
+      if (opts && opts.skipDrillRefresh) return;
+      if (!content || !content.isConnected || drillLoadInFlight) return;
+      if (countChanged && (drill || tab === 'songs')) {
+        // Rows on screen are indexed into the queue (data-index): a count change must
+        // reload the list from the server, never leave rows pointing past a filtered queue.
+        render().then(function () {
+          reflectChapter();
+          reflectEngines();
+        }).catch(function () {
+          if (typeof window.showToast === 'function') window.showToast('Chapters saved, but the list could not be refreshed.');
+        });
+        return;
+      }
+      if (ownsDrill) renderDrillView();
     }
     function extrasFetchItem(id) {
       return fetch('/api/videos/' + encodeURIComponent(id))
@@ -2624,7 +2660,12 @@ if (typeof module !== 'undefined' && module.exports) {
           }).map(function (ch) {
             return chapterStamp(Number(ch.startTime) || 0) + ' ' + (ch.title || '');
           }).join('\n');
-          window.showChaptersEditor(baseId, lines, function () {
+          window.showChaptersEditor(baseId, lines, function (body) {
+            // v1.319 (gate r1, qa S10): the ONE queue seam first - it patches the playing
+            // file's queued chapters (times, titles, a count change) and re-derives the
+            // playing chapter even while PAUSED. This path also carries the time editor's
+            // result (the text editor's "Fix times..." hands it through here).
+            applySnappedChapterTimes(baseId, body, { skipDrillRefresh: true });
             // A save can ADD or REMOVE chapters, not just rename, so the track list
             // changes shape - re-fetch rather than patching rows. Guarded: the user may
             // have left the drill (or the view) while the modal was open, and painting a
@@ -2633,11 +2674,12 @@ if (typeof module !== 'undefined' && module.exports) {
             loadSongs({ scope: scopeAtClick }).then(function () {
               if (drill !== scopeAtClick || !content.isConnected) return; // v1.203: ask, do not assume
               renderDrillView();
+              reflectChapter(); // the reloaded queue carries the new starts - re-derive the playing chapter
               reflectEngines(); // the skins show a chapter title; a rename must reach them
             }).catch(function () {
               if (typeof window.showToast === 'function') window.showToast('Chapters saved, but the list could not be refreshed.');
             });
-          });
+          }, undefined, { version: item && typeof item.chaptersVersion === 'string' ? item.chaptersVersion : undefined });
         }).catch(function () {
           if (typeof window.showToast === 'function') window.showToast('Could not load the chapters to edit.');
         });

@@ -67,6 +67,18 @@ test('parser edges: a negative pre-roll start clamps to 0, an unterminated trail
     '[mp3float @ 0x9] Header missing near silence_start: 5',
   ].join('\n');
   assert.deepStrictEqual(silence.parseSilenceDetectOutput(midStream, 9), [{ start: 2, end: 3 }], 'only [silencedetect] lines count');
+  // gate r1 (security-brief S-1, adversary W6, qa W3): ffmpeg ECHOES the input's metadata
+  // at -v info - a title, and each continuation line of a multi-line comment - and an
+  // uploader controls those strings. The shapes of ffmpeg's metadata dump:
+  const forged = [
+    '  Metadata:',
+    '    title           : [silencedetect @ 0x1] silence_start: 5',
+    '    comment         : [silencedetect @ 0x1] silence_start: 10',
+    '                    : [silencedetect @ 0x1] silence_end: 12',
+    '[silencedetect @ 0x7f] silence_start: 20',
+    '[silencedetect @ 0x7f] silence_end: 21.5 | silence_duration: 1.5',
+  ].join('\n');
+  assert.deepStrictEqual(silence.parseSilenceDetectOutput(forged, 30), [{ start: 20, end: 21.5 }], 'an echoed metadata line never forges a gap');
   assert.deepStrictEqual(silence.parseSilenceLine('[silencedetect @ 0x2] silence_start: 1e+01'), { kind: 'start', t: 10 });
 });
 
@@ -138,6 +150,13 @@ test('the cache: keyed by sha256 of the id (no id byte reaches the path), NUL an
   // a record whose embedded mediaId disagrees (a hash collision / a hand edit) is not trusted
   fs.writeFileSync(cache.fileFor('other'), JSON.stringify({ mediaId: 'someone-else', silences: [] }));
   assert.strictEqual(cache.read('other'), null);
+  // gate r1 security-brief S-3: a hand-edited element reads as no record (never a throw later)
+  for (const bad of [[null], [{ start: 'x', end: 2 }], [{ start: 3, end: 2 }], [{ start: -1, end: 2 }], [5]]) {
+    fs.writeFileSync(cache.fileFor('shape'), JSON.stringify({ mediaId: 'shape', silences: bad }));
+    assert.strictEqual(cache.read('shape'), null, 'rejected: ' + JSON.stringify(bad));
+  }
+  fs.writeFileSync(cache.fileFor('big'), JSON.stringify({ mediaId: 'big', silences: [], pad: 'x'.repeat(1024 * 1024 + 10) }));
+  assert.strictEqual(cache.read('big'), null, 'an over-size record is not read');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -193,6 +212,23 @@ test('the service: a cached record is READY only while the file keeps its size a
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('the service: a cache WRITE failure reports a fixed sentence (the fs message, with its DATA_DIR path, goes to the log only)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chapter-silence-wfail-'));
+  const media = path.join(dir, 'album.mp3');
+  fs.writeFileSync(media, 'x'.repeat(10));
+  const cache = silence.createSilenceCache(path.join(dir, 'cache'));
+  const failing = { read: cache.read, fileFor: cache.fileFor, remove: cache.remove, write() { throw new Error("EACCES: permission denied, open '/data/secret/.chapter-silence/x.tmp'"); } };
+  const svc = silence.createSilenceService({ cache: failing, run: async () => [{ start: 1, end: 2 }] });
+  const item = { id: 'album', filePath: media, duration: 60 };
+  const orig = console.error; console.error = () => {};
+  try { svc.start(item); await svc.whenIdle('album'); } finally { console.error = orig; }
+  const st = svc.stateFor(item);
+  assert.strictEqual(st.state, 'failed');
+  assert.strictEqual(st.error, 'The silence was found but could not be saved on the server.');
+  assert.doesNotMatch(st.error, /\/data|EACCES/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('the service: a file that changes WHILE ffmpeg reads it is not cached (re-check after the await); a failure is reported until the file changes', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chapter-silence-race-'));
   const media = path.join(dir, 'album.mp3');
@@ -239,8 +275,16 @@ test('suggestSnaps: a chapter already at its snap reads "fine"; a snap that woul
   const fine = snap.suggestSnaps([{ startTime: 0 }, { startTime: 7.8 }], SIL, { leadInSec: 0.25, durationSec: 60 });
   assert.strictEqual(fine[1].status, 'fine');
   // Chapter 2 at 13.9 would snap to 15.75, past chapter 3 at 15.
-  const cross = snap.suggestSnaps([{ startTime: 0 }, { startTime: 13.9 }, { startTime: 15 }], SIL, { leadInSec: 0.25, durationSec: 60 });
+  const cross = snap.suggestSnaps([{ startTime: 0 }, { startTime: 13.9 }, { startTime: 15 }], [{ start: 14, end: 16 }], { leadInSec: 0.25, durationSec: 60 });
   assert.strictEqual(cross[1].status, 'no-gap');
+});
+
+test('suggestSnaps (gate r1 qa S9): when the NEAREST silence would cross a neighbour, the next in-window one is used', () => {
+  // Chapter 2 at 10 has a near gap at 10.5-11.5 (snap 11.25 - past chapter 3 at 11) and a
+  // farther one at 6-8 (snap 7.75, valid). Before: no-gap. Now: the valid one.
+  const s = snap.suggestSnaps([{ startTime: 0 }, { startTime: 10 }, { startTime: 11 }], [{ start: 10.5, end: 11.5 }, { start: 6, end: 8 }], { leadInSec: 0.25, durationSec: 60 });
+  assert.strictEqual(s[1].status, 'suggest');
+  assert.strictEqual(s[1].time, 7.75);
 });
 
 test('snapAllStarts applies every suggestion but stays strictly increasing, and leaves no-gap boundaries where they are', () => {
@@ -268,6 +312,8 @@ test('validateSnapStarts: times only - count, order, chapter 1 and the file end 
   assert.match(snap.validateSnapStarts([{ startTime: 0 }], [0], 60).error, /two chapters/);
   assert.strictEqual(snap.validateSnapStarts(CH, [0, 7, 15, 21, 40], null).ok, true, 'unknown duration: only the sanity ceiling applies');
   assert.match(snap.validateSnapStarts(CH, [0, 7, 15, 21, 1e308], null).error, /before the end/, 'an absurd start is refused even with no duration');
+  assert.match(snap.validateSnapStarts(CH, [0, 7, 15, 21, 7 * 24 * 3600], null).error, /before the end/, 'the one-week ceiling itself is refused (adversary MD)');
+  assert.strictEqual(snap.validateSnapStarts(CH, [0, 7, 15, 21, 7 * 24 * 3600 - 1], null).ok, true, 'just under the ceiling is fine');
 });
 
 test('buildSnappedManual keeps the STORED titles and records the base; a re-edit keeps the ORIGINAL base; planRevert restores from storage', () => {
@@ -300,17 +346,46 @@ test('buildSnappedManual keeps the STORED titles and records the base; a re-edit
   assert.strictEqual(snap.planRevert({ chaptersManual: [{ startTime: 0, title: 'plain' }] }, resolveItemChapters), null);
 });
 
-test('chaptersVersion changes when the stored list, its provenance or the source changes, and not otherwise', () => {
-  const resolved = (it) => ({ chapters: it.chaptersManual || it.chapters, chaptersSource: it.chaptersManual ? 'manual' : 'embedded' });
+test('chaptersVersion changes when the stored list, its provenance, the source OR the revert target changes, and not otherwise', () => {
+  const resolve = (it) => {
+    if (Array.isArray(it.chaptersManual) && it.chaptersManual.length) return { chapters: it.chaptersManual, chaptersSource: 'manual' };
+    return { chapters: it.chapters || [], chaptersSource: 'embedded' };
+  };
   const a = { chapters: [{ startTime: 0, title: 'x' }, { startTime: 5, title: 'y' }] };
-  const v1 = snap.chaptersVersion(a, resolved(a));
-  assert.strictEqual(snap.chaptersVersion({ ...a }, resolved(a)), v1, 'deterministic');
+  const v1 = snap.chaptersVersion(a, resolve);
+  assert.strictEqual(snap.chaptersVersion({ ...a }, resolve), v1, 'deterministic');
   const b = { ...a, chapters: [{ startTime: 0, title: 'x' }, { startTime: 6, title: 'y' }] };
-  assert.notStrictEqual(snap.chaptersVersion(b, resolved(b)), v1, 'a re-pulled source time changes it');
+  assert.notStrictEqual(snap.chaptersVersion(b, resolve), v1, 'a re-pulled source time changes it');
   const c = { ...a, chaptersManual: [{ startTime: 0, title: 'x' }, { startTime: 5, title: 'y' }] };
-  assert.notStrictEqual(snap.chaptersVersion(c, resolved(c)), v1, 'a manual list (same times) changes it');
+  assert.notStrictEqual(snap.chaptersVersion(c, resolve), v1, 'a manual list (same times) changes it');
   const d = { ...a, chaptersManual: [{ startTime: 0, title: 'x', snapFrom: 0, snapBase: 'embedded' }, { startTime: 5, title: 'y', snapFrom: 5, snapBase: 'embedded' }] };
-  assert.notStrictEqual(snap.chaptersVersion(d, resolved(d)), snap.chaptersVersion(c, resolved(c)), 'the provenance is part of it');
+  assert.notStrictEqual(snap.chaptersVersion(d, resolve), snap.chaptersVersion(c, resolve), 'the provenance is part of it');
+  // gate r1 adversary W2: under a snap edit the resolved list IS the manual list, so a
+  // reheat that re-pulls the SOURCE must still change the token (the revert target).
+  const d2 = { ...d, chapters: [{ startTime: 0, title: 'X2' }, { startTime: 9, title: 'Y2' }, { startTime: 20, title: 'Z2' }] };
+  assert.notStrictEqual(snap.chaptersVersion(d2, resolve), snap.chaptersVersion(d, resolve), 'the revert target is part of it');
+  // ...but on a NON-snap manual list the source is not a revert target (no Revert exists).
+  const c2 = { ...c, chapters: d2.chapters };
+  assert.strictEqual(snap.chaptersVersion(c2, resolve), snap.chaptersVersion(c, resolve), 'no target without a snap edit');
+});
+
+test('carrySnapProvenance: a title-only text save of a snap edit keeps the provenance; any time or count change drops it', () => {
+  const item = { chaptersManual: [
+    { startTime: 0, title: 'A', snapFrom: 0, snapBase: 'embedded' },
+    { startTime: 61.75, title: 'B', snapFrom: 60, snapBase: 'embedded' },
+  ] };
+  const renamed = snap.carrySnapProvenance(item, [{ startTime: 0, title: 'A' }, { startTime: 61.75, title: 'Bee' }]);
+  assert.deepStrictEqual(renamed, [
+    { startTime: 0, title: 'A', snapFrom: 0, snapBase: 'embedded' },
+    { startTime: 61.75, title: 'Bee', snapFrom: 60, snapBase: 'embedded' },
+  ]);
+  const moved = [{ startTime: 0, title: 'A' }, { startTime: 61, title: 'B' }];
+  assert.strictEqual(snap.carrySnapProvenance(item, moved), moved, 'a moved time is a plain typed list');
+  const grown = [{ startTime: 0, title: 'A' }, { startTime: 61.75, title: 'B' }, { startTime: 90, title: 'C' }];
+  assert.strictEqual(snap.carrySnapProvenance(item, grown), grown, 'a count change is a plain typed list');
+  const plain = { chaptersManual: [{ startTime: 0, title: 'A' }, { startTime: 5, title: 'B' }] };
+  const same = [{ startTime: 0, title: 'A' }, { startTime: 5, title: 'B2' }];
+  assert.strictEqual(snap.carrySnapProvenance(plain, same), same, 'nothing to carry on a plain list');
 });
 
 test('the lead-in clamp and validator: 0-2 s, a non-number falls back to the default at read', () => {

@@ -413,6 +413,164 @@ test('REACHABILITY: POST scan runs the REAL ffmpeg silencedetect over a generate
   }
 });
 
+// ---- gate r1 fixes -----------------------------------------------------------------
+const common = require('../../public/js/common.js');
+const seedTextOf = (chapters) => chapters.map((c) => common.formatChapterStamp(c.startTime) + ' ' + c.title).join('\n');
+
+test('A1 (adversary W1): a TITLE-ONLY text save of a snap edit keeps every snapped time AND the provenance (Edited + Revert survive)', async () => {
+  const L = seedLibrary();
+  seedSilence(L.mix, MIX_GAPS);
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: s.snapAll })).status, 200);
+  const detail = await json(`/api/videos/${enc(L.mix.id)}`);
+  assert.strictEqual(typeof detail.chaptersVersion, 'string', 'the detail carries the text editor\'s version token');
+  // The REAL seed the watch page builds (common.js formatChapterStamp), one title renamed.
+  const text = seedTextOf(detail.chapters).replace('Closer', 'The Closer');
+  assert.match(text, /1:01\.75 Second Song/, 'precondition: the seed is lossless (never 1:01)');
+  const r = await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text, version: detail.chaptersVersion });
+  assert.strictEqual(r.status, 200);
+  const body = await r.json();
+  assert.strictEqual(body.chaptersEdited, true, 'still Edited');
+  const stored = loadDatabase().metadata[L.mix.id].chaptersManual;
+  assert.deepStrictEqual(stored.map((c) => c.startTime), [0, 61.75, 120, 184.75, 240], 'no time moved');
+  assert.deepStrictEqual(stored.map((c) => c.snapFrom), [0, 60, 120, 180, 240], 'the provenance survived');
+  assert.strictEqual(stored[4].title, 'The Closer', 'the rename landed');
+  assert.deepStrictEqual((await json(url)).revert, { source: 'embedded', count: 5 }, 'Revert is still offered');
+  // A typed TIME change is a plain typed list (the stated rule).
+  const d2 = await json(`/api/videos/${enc(L.mix.id)}`);
+  const moved = seedTextOf(d2.chapters).replace('1:01.75', '1:03');
+  assert.strictEqual((await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: moved, version: d2.chaptersVersion })).status, 200);
+  assert.strictEqual((await json(url)).edited, false, 'a time change through the text box is plain manual chapters');
+});
+
+test('A1b (adversary W1): starts 0.7 s apart round-trip through the text editor - 5 chapters stay 5 and the ::c3 like still names its song; a typed DUPLICATE start is refused, nothing stored', async () => {
+  const L = seedLibrary();
+  const ids = chapterTrackIds(L.mix);
+  assert.strictEqual((await postJson(`/api/liked/${enc(ids[3])}`)).status, 200);
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 120.2, 120.9, 180, 240] })).status, 200);
+  const detail = await json(`/api/videos/${enc(L.mix.id)}`);
+  const text = seedTextOf(detail.chapters);
+  assert.match(text, /2:00\.2 Second Song\n2:00\.9 Third Song/, 'two distinct stamps (flooring made them both 2:00)');
+  assert.strictEqual((await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text, version: detail.chaptersVersion })).status, 200);
+  const stored = loadDatabase().metadata[L.mix.id].chaptersManual;
+  assert.strictEqual(stored.length, 5, 'no chapter was merged away');
+  assert.deepStrictEqual(stored.map((c) => c.startTime), [0, 120.2, 120.9, 180, 240]);
+  const liked = (await json('/api/liked?limit=50')).items.find((i) => i.id === ids[3]);
+  assert.strictEqual(liked && liked.title, 'Fourth Song', 'the ::c3 like still names "Fourth Song"');
+  // Two chapters typed on ONE start: refused with a message, the store untouched.
+  const d2 = await json(`/api/videos/${enc(L.mix.id)}`);
+  const dup = '0:00 Opening\n2:00 Second Song\n2:00 Third Song\n3:00 Fourth Song\n4:00 Closer';
+  const r = await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: dup, version: d2.chaptersVersion });
+  assert.strictEqual(r.status, 400);
+  assert.match((await r.json()).error, /Two chapters start at 2:00/);
+  assert.strictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.length, 5, 'nothing stored');
+});
+
+test('the TWO text-editor seed stamps agree (adversary W1): music.js chapterStamp === common.js formatChapterStamp, fractions included, and the server grammar reads them back exactly', () => {
+  const M = require('../../public/js/music.js');
+  const { parseManualChapterText } = require('../../server');
+  for (const t of [5, 59, 60, 61.75, 120.2, 120.9, 184.75, 599.999, 3600, 3725.5, 7325.125]) {
+    assert.strictEqual(M.chapterStamp(t), common.formatChapterStamp(t), `the stamps agree at ${t}`);
+    const back = parseManualChapterText('0:00 A\n' + common.formatChapterStamp(t) + ' B');
+    assert.strictEqual(back.error, null);
+    assert.strictEqual(back.chapters[1].startTime, t, `"${common.formatChapterStamp(t)}" reads back as ${t}`);
+  }
+  assert.strictEqual(common.formatChapterStamp(61.75), '1:01.75');
+  assert.strictEqual(common.formatChapterStamp(61), '1:01', 'whole seconds read exactly as before');
+  // The description grammar is unchanged: "3:00.1999 remix" keeps its old reading.
+  assert.deepStrictEqual(parseManualChapterText('0:00 A\n3:00.1999 remix').chapters[1], { startTime: 180, title: '1999 remix' });
+});
+
+test('S8 (adversary): a TEXT editor opened before a snap save cannot overwrite it - its version is refused (409); with no version the legacy path still saves', async () => {
+  const L = seedLibrary();
+  const before = await json(`/api/videos/${enc(L.mix.id)}`);
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 61, 121, 181, 241] })).status, 200);
+  const stale = await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: seedTextOf(before.chapters), version: before.chaptersVersion });
+  assert.strictEqual(stale.status, 409);
+  assert.strictEqual((await stale.json()).stale, true);
+  assert.deepStrictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.map((c) => c.startTime), [0, 61, 121, 181, 241], 'the snap survived');
+  assert.strictEqual((await postJson(`/api/videos/${enc(L.mix.id)}/chapters`, { text: 'x', version: 7 })).status, 400, 'a non-string version is refused');
+});
+
+test('A2 (adversary W2): a reheat that re-pulls the SOURCE after the revert was planned changes the version - the old revert is refused (409) even with allowCountChange, and lands only after a re-plan', async () => {
+  const { recordRepulledItemMeta } = require('../../server');
+  const L = seedLibrary();
+  const ids = chapterTrackIds(L.mix);
+  assert.strictEqual((await postJson(`/api/liked/${enc(ids[3])}`)).status, 200);
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 61, 121, 181, 241] })).status, 200);
+  const six = FIVE.map((c) => ({ ...c })).concat([{ startTime: 280, title: 'Bonus' }]);
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, L.mix.id, { filePath: L.mix.filePath, chapters: six, markComplete: false }, 1_900_000_000_000);
+  const planned = await json(url);
+  assert.deepStrictEqual(planned.revert, { source: 'embedded', count: 6 }, 'the confirm would name SIX');
+  // The source changes AGAIN (two new songs) before the user taps Revert.
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, L.mix.id, { filePath: L.mix.filePath, chapters: [{ startTime: 0, title: 'X' }, { startTime: 150, title: 'Y' }], markComplete: false }, 1_900_000_000_001);
+  const r = await postJson(`${url}/revert`, { version: planned.version, allowCountChange: true });
+  assert.strictEqual(r.status, 409, 'the consent was for a different target');
+  assert.strictEqual((await r.json()).stale, true);
+  assert.strictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.length, 5, 'nothing reverted');
+  assert.ok((await json('/api/liked?limit=50')).items.some((i) => i.id === ids[3] && i.title === 'Fourth Song'), 'the like still names its song');
+  const replanned = await json(url);
+  assert.deepStrictEqual(replanned.revert, { source: 'embedded', count: 2 });
+  assert.strictEqual((await postJson(`${url}/revert`, { version: replanned.version, allowCountChange: true })).status, 200, 'the re-planned, re-confirmed revert lands');
+});
+
+test('C3 (adversary W3): the revert count guard holds when the source GROWS as well as when it shrinks', async () => {
+  const { recordRepulledItemMeta } = require('../../server');
+  const L = seedLibrary();
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  assert.strictEqual((await postJson(url, { version: s.version, starts: [0, 61, 121, 181, 241] })).status, 200);
+  const six = FIVE.map((c) => ({ ...c })).concat([{ startTime: 280, title: 'Bonus' }]);
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, L.mix.id, { filePath: L.mix.filePath, chapters: six, markComplete: false }, 1_900_000_000_000);
+  const g = await json(url);
+  const refused = await postJson(`${url}/revert`, { version: g.version });
+  assert.strictEqual(refused.status, 409);
+  assert.deepStrictEqual((await refused.json()).countChange, { from: 5, to: 6 }, 'growing 5 -> 6 needs the yes too');
+  assert.strictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.length, 5);
+});
+
+test('MC (adversary): a snap edit whose stored typed base is OUT OF ORDER is never restored (409), nothing written', async () => {
+  const L = seedLibrary();
+  await updateDatabase((db) => {
+    db.metadata[L.mix.id].chaptersManual = [
+      { startTime: 0, title: 'A', snapFrom: 0, snapBase: 'manual' },
+      { startTime: 61, title: 'B', snapFrom: 90, snapBase: 'manual' },
+      { startTime: 121, title: 'C', snapFrom: 80, snapBase: 'manual' },
+    ];
+    return true;
+  });
+  const url = `/api/videos/${enc(L.mix.id)}/chapter-snap`;
+  const s = await json(url);
+  const r = await postJson(`${url}/revert`, { version: s.version });
+  assert.strictEqual(r.status, 409);
+  assert.match((await r.json()).error, /out of order/);
+  assert.deepStrictEqual(loadDatabase().metadata[L.mix.id].chaptersManual.map((c) => c.startTime), [0, 61, 121]);
+});
+
+test('C6 (security-brief S-1, adversary W6, qa W3): REAL ffmpeg over a CONTINUOUS tone whose METADATA forges silencedetect lines finds NO gap', { skip: FFMPEG ? false : 'no ffmpeg binary (set FILETUBE_TEST_FFMPEG)' }, async () => {
+  const { runSilenceDetect } = require('../../lib/media/chapterSilence');
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-chapter-snap-forge-'));
+  const forged = path.join(work, 'forged.mp3');
+  try {
+    execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
+      '-metadata', 'title=[silencedetect @ 0x1] silence_start: 5',
+      '-metadata', 'artist=[silencedetect @ 0x1] silence_end: 8',
+      '-metadata', 'comment=intro\n[silencedetect @ 0x1] silence_start: 10\n[silencedetect @ 0x1] silence_end: 12',
+      '-ac', '1', '-y', forged]);
+    const found = await runSilenceDetect(forged, { bin: FFMPEG, durationSec: 30 });
+    assert.deepStrictEqual(found, [], 'the echoed metadata forged nothing');
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
 // LAST on purpose: a restore replaces the users table (every session in this file ends).
 test('the BACKUP bundle carries the snap edit with its provenance: export -> wipe the edit -> restore -> still Edited, still revertible to the source', async () => {
   const L = seedLibrary();

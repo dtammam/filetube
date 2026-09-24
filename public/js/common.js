@@ -12772,8 +12772,12 @@ function showMoveModal(item, folders, onMove, doc) {
  * `onSaved(resolvedBody)` receives the server's re-resolved
  * `{chapters, chaptersSource}` on success.
  */
-function showChaptersEditor(mediaId, initialText, onSaved, doc) {
+function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   const d = doc || document;
+  // v1.319 (gate r1, adversary S8): the `version` the list was seeded with (GET
+  // /api/videos/:id chaptersVersion) rides the save, so a list changed elsewhere since
+  // (a snap save, a reheat) is refused by the server instead of overwritten.
+  const seedVersion = opts && typeof opts.version === 'string' ? opts.version : undefined;
 
   const backdrop = d.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -12858,7 +12862,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc) {
     fetch('/api/videos/' + encodeURIComponent(mediaId) + '/chapters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: textarea.value }),
+      body: JSON.stringify(seedVersion ? { text: textarea.value, version: seedVersion } : { text: textarea.value }),
     })
       .then((res) => res.json().catch(() => ({})).then((bodyJson) => ({ ok: res.ok, bodyJson })))
       .then(({ ok, bodyJson }) => {
@@ -12913,6 +12917,23 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc) {
 // .chapter-snap-*), nothing is drag-only, and the list scrolls inside a
 // full-height sheet at phone widths.
 
+// v1.319 (gate r1, adversary W1): the text chapters editor's SEED stamp - LOSSLESS.
+// Whole seconds read exactly as formatDuration writes them ("1:05", "1:02:05");
+// a start with a fraction keeps it to the millisecond ("1:01.75"), which the
+// server's editor grammar (server.js parseManualChapterText) reads back. Flooring
+// here turned a title-only fix of a snap edit into a rewrite of every time, and
+// two starts 0.7 s apart into ONE chapter (a like re-pointed). music.js
+// chapterStamp mirrors this (parity-tested).
+function formatChapterStamp(seconds) {
+  let s = Number(seconds);
+  if (!isFinite(s) || s <= 0) return '0:00';
+  s = Math.round(s * 1000) / 1000;
+  const whole = Math.floor(s);
+  const ms = Math.round((s - whole) * 1000);
+  const base = formatDuration(whole);
+  return ms > 0 ? base + '.' + String(ms).padStart(3, '0').replace(/0+$/, '') : base;
+}
+
 // m:ss.s (h:mm:ss.s past an hour) - tenths are what a nudge moves.
 function formatSnapTime(sec) {
   let s = Number(sec);
@@ -12928,9 +12949,11 @@ function formatSnapTime(sec) {
 // Where a nudge of `delta` seconds lands for chapter `i`: rounded to the
 // millisecond and kept strictly between its neighbours (a MIN gap either side)
 // and before the end of the file. Chapter 1 never moves. Pure.
-function clampSnapNudge(times, i, delta, durationSec) {
+function clampSnapNudge(times, i, delta, durationSec, minGapSec) {
   if (!Array.isArray(times) || i <= 0 || i >= times.length) return null;
-  const GAP = 0.1;
+  // The gap is the SERVER's MIN_CHAPTER_GAP_SEC (the editor state carries it,
+  // gate r1 qa S7); 0.1 only when a caller has no state.
+  const GAP = typeof minGapSec === 'number' && isFinite(minGapSec) && minGapSec > 0 ? minGapSec : 0.1;
   let t = Math.round((Number(times[i]) + Number(delta)) * 1000) / 1000;
   const lo = Number(times[i - 1]) + GAP;
   let hi = i + 1 < times.length ? Number(times[i + 1]) - GAP : (Number(durationSec) > 0 ? Number(durationSec) - GAP : Infinity);
@@ -13064,12 +13087,29 @@ function showChapterSnapEditor(mediaId, opts) {
   function times() { return rows.map((r) => r.time); }
   function suggestionFor(i) { return state && Array.isArray(state.suggestions) ? state.suggestions[i] || null : null; }
   function silenceState() { return state && state.silence ? state.silence.state : 'none'; }
-  function pendingSnaps() {
-    if (!state || !Array.isArray(state.snapAll)) return 0;
-    let n = 0;
-    for (let i = 1; i < rows.length; i += 1) if (Math.abs(state.snapAll[i] - rows[i].time) >= 0.0005) n += 1;
-    return n;
+  // v1.319 (gate r1, qa W1): "Snap all" is ONE plan, counted and applied from the
+  // same function. It touches only rows that have a server suggestion AND are still
+  // at their saved time - a row the user nudged or snapped by hand is theirs - and
+  // each snapped time must stay strictly between the CURRENT neighbours (a nudged
+  // neighbour included), checked in order so the result is strictly increasing.
+  function snapAllPlan() {
+    const plan = [];
+    if (!state || !Array.isArray(state.snapAll) || !Array.isArray(state.suggestions)) return plan;
+    const t = times();
+    for (let i = 1; i < rows.length; i += 1) {
+      const sug = state.suggestions[i];
+      if (!sug || sug.status !== 'suggest') continue;
+      if (Math.abs(rows[i].time - rows[i].savedStart) >= 0.0005) continue; // hand-edited: leave it
+      const target = state.snapAll[i];
+      if (!(Math.abs(target - rows[i].time) >= 0.0005)) continue;
+      const next = i + 1 < rows.length ? t[i + 1] : Infinity;
+      if (!(target > t[i - 1] && target < next)) continue;
+      t[i] = target;
+      plan.push([i, target]);
+    }
+    return plan;
   }
+  function pendingSnaps() { return snapAllPlan().length; }
 
   // ---- rendering ------------------------------------------------------------
   function renderHead() {
@@ -13200,6 +13240,11 @@ function showChapterSnapEditor(mediaId, opts) {
         state.silence = res.body.silence;
         state.suggestions = res.body.suggestions;
         state.snapAll = res.body.snapAll;
+        // gate r1 qa S5: a scan that vanished (a server restart mid-run: nothing
+        // cached, nothing in flight) reads none/stale - say so and offer Try again,
+        // never a "Finding the silence..." that no longer polls.
+        const st = state.silence && state.silence.state;
+        if (st === 'none' || st === 'stale') state.silence = { state: 'failed', error: 'The scan stopped before it finished.' };
         setStatus(describeSilence());
         renderList();
         if (silenceState() === 'running') schedulePoll();
@@ -13278,7 +13323,7 @@ function showChapterSnapEditor(mediaId, opts) {
       audio.className = 'chapter-snap-audio';
       audio.hidden = true;
       // Owned by the modal: it leaves the document with it (teardown pauses and unloads it first).
-      if (!audio.parentNode && typeof modal.appendChild === 'function') modal.appendChild(audio);
+      try { if (!audio.parentNode) modal.appendChild(audio); } catch (_) { /* a detached element still plays */ }
       audio.preload = 'auto';
       audio.src = '/video/' + encodeURIComponent(mediaId);
       audio.addEventListener('error', function () {
@@ -13292,6 +13337,9 @@ function showChapterSnapEditor(mediaId, opts) {
     rerenderRow(i);
     const t = rows[i].time;
     const seekAndPlay = function () {
+      // gate r1 qa S6: a Stop (or another row's Play, or close) before the metadata
+      // arrived cancels this pending start - never a late, timer-less playback.
+      if (closed || auditionIndex !== i) return;
       try { audio.currentTime = t; } catch (_) { /* not seekable yet */ }
       const p = audio.play();
       if (p && typeof p.catch === 'function') p.catch(function () { if (!closed && auditionIndex === i) { setStatus('Playback was blocked. Tap Play from here again.'); stopAudition(); } });
@@ -13323,7 +13371,7 @@ function showChapterSnapEditor(mediaId, opts) {
     const act = b.getAttribute('data-act');
     if (act === 'play') { audition(i); return; }
     if (act === 'nudge') {
-      const t = clampSnapNudge(times(), i, Number(b.getAttribute('data-delta')), state && state.duration);
+      const t = clampSnapNudge(times(), i, Number(b.getAttribute('data-delta')), state && state.duration, state && state.minGapSec);
       if (t === null) return;
       if (Math.abs(t - rows[i].time) < 0.0005) { setStatus('Chapter ' + (i + 1) + ' cannot move further that way without crossing its neighbour.'); return; }
       setTime(i, t);
@@ -13341,8 +13389,9 @@ function showChapterSnapEditor(mediaId, opts) {
 
   snapAllBtn.addEventListener('click', function () {
     if (busy || !state || !Array.isArray(state.snapAll)) return;
-    const n = pendingSnaps();
-    for (let i = 1; i < rows.length; i += 1) rows[i].time = state.snapAll[i];
+    const plan = snapAllPlan();
+    const n = plan.length;
+    plan.forEach(function (p) { rows[p[0]].time = p[1]; });
     renderList();
     setStatus(n > 0 ? 'Snapped ' + n + (n === 1 ? ' start' : ' starts') + '. Review them, then Save.' : describeSilence());
   });
@@ -13405,7 +13454,17 @@ function showChapterSnapEditor(mediaId, opts) {
           askConfirm(res.body.error + ' Revert anyway?', 'Revert anyway', 'Keep my corrections', function () { doRevert(true); });
           return;
         }
-        if (res.status === 409 && res.body && res.body.stale) staleSeed = true;
+        if (res.status === 409 && res.body && res.body.stale) {
+          // gate r1 (adversary W2): the record - or the SOURCE a revert lands on -
+          // changed since this editor opened, so what the user confirmed is not what
+          // would happen. RE-PLAN: reload from storage (the new revert target and its
+          // count) and let them confirm again; never revert onto unconfirmed chapters.
+          load(false).then(function () {
+            if (closed) return;
+            setStatus('The chapters changed since you opened this, so nothing was reverted. Check the list, then Revert again.');
+          });
+          return;
+        }
         setStatus((res.body && res.body.error) || 'Could not revert.');
         renderHead();
       })
@@ -16204,7 +16263,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).
     withShareStartTime,
     // v1.319 Chapter Snap: the ONE chapter-time editor + its pure helpers (jsdom-tested).
-    showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor,
+    showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor, formatChapterStamp,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,

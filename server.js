@@ -2374,6 +2374,45 @@ function parseChapterLines(text) {
   return finalizeChapters(out);
 }
 
+// v1.319 Chapter Snap (gate r1, adversary W1): the MANUAL editor's grammar - the
+// line grammar above plus an optional millisecond fraction on the timestamp
+// ("1:01.75 Title", `(?!\d)` so "3:00.1999 remix" keeps its old reading), so a
+// snapped start round-trips through the text box without flooring. Descriptions
+// keep the whole-second grammar (parseChapterLines, unchanged). And a typed list
+// that would put two chapters on ONE start is REFUSED with a message rather than
+// deduplicated: a silent dedup drops a chapter and re-points every later
+// `<id>::c<n>` like. Returns { chapters, error }.
+const CHAPTER_LINE_FRACTION = /^\s*[([]?\s*((?:\d{1,3}:)?\d{1,2}:\d{2}(?:\.\d{1,3}(?!\d))?)\s*[)\]]?\s*[-–—:.]?\s*(.*)$/;
+function formatChapterStampServer(secs) {
+  const whole = Math.floor(secs);
+  const ms = Math.round((secs - whole) * 1000);
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const s = whole % 60;
+  const base = (h > 0 ? `${h}:${String(m).padStart(2, '0')}` : String(m)) + ':' + String(s).padStart(2, '0');
+  return ms ? `${base}.${String(ms).padStart(3, '0').replace(/0+$/, '')}` : base;
+}
+function parseManualChapterText(text) {
+  if (typeof text !== 'string' || text === '') return { chapters: [], error: null };
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = CHAPTER_LINE_FRACTION.exec(line);
+    if (!m) continue;
+    const secs = chapterTimestampToSeconds(m[1]);
+    if (!Number.isFinite(secs)) continue;
+    const ch = normalizeChapter(Math.round(secs * 1000) / 1000, m[2]);
+    if (ch) out.push(ch);
+  }
+  const sorted = out.slice().sort((a, b) => a.startTime - b.startTime);
+  for (let i = 1; i < sorted.length; i += 1) {
+    if (sorted[i].startTime === sorted[i - 1].startTime) {
+      return { chapters: [], error: `Two chapters start at ${formatChapterStampServer(sorted[i].startTime)} ("${sorted[i - 1].title}" and "${sorted[i].title}"). Give each chapter its own start time.` };
+    }
+  }
+  if (sorted.length > MAX_CHAPTERS) return { chapters: [], error: `Too many chapters (${sorted.length}; the most is ${MAX_CHAPTERS}).` };
+  return { chapters: sorted, error: null };
+}
+
 // The DESCRIPTION acceptance gate: a description only counts as carrying a
 // chapter list when it parses to at least TWO chapters and the first starts
 // at 0:00 -- YouTube's own convention, and the difference between "a chapter
@@ -4909,6 +4948,7 @@ mediaRoutes.registerBrowseRoutes(app, {
   booksDb,
   buildWatchUrl, // lib/ytdlp/url - the search results' canonical watch links
   chaptersSnapEdited: chapterSnap.isSnapEdited, // v1.319 Chapter Snap: the GET /api/videos/:id "Edited" flag
+  chaptersVersionOf: (item) => chapterSnap.chaptersVersion(item, resolveItemChapters), // v1.319 gate r1: the text editor's version token
   effectiveProgress, // the stored position with any un-flushed ping overlaid
   folderDisplayNameStore,
   folderSettingsStore,
@@ -6211,7 +6251,8 @@ mediaRoutes.registerLibraryRoutes(app, {
   mediaVisibleTo,
   moveItemToFolder, // lib/media/move.js's collision-safe file mover (slice S5)
   musicDb,
-  parseChapterLines,
+  chapterSnap, // v1.319: the text editor's version token + snap provenance carry
+  parseManualChapterText, // v1.319 gate r1: the editor grammar (fraction, no silent dedup)
   path,
   progressStore,
   refuseIfReadOnlyMedia,
@@ -6255,6 +6296,7 @@ chapterSnapRoutes.registerChapterSnapRoutes(app, {
   resolveItemChapters,
   settingsStore,
   silenceService: chapterSilenceService,
+  maxChapters: MAX_CHAPTERS,
 });
 
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
@@ -7307,6 +7349,7 @@ module.exports = {
   // v1.34 T3 (chapters): the pure parsers/resolver, re-exported under the
   // same testing contract.
   parseFfprobeChapters,
+  parseManualChapterText, // v1.319 gate r1: the text editor's grammar (tests)
   parseChapterLines,
   deriveDescriptionChapters,
   resolveItemChapters,
