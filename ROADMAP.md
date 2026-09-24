@@ -4,6 +4,12 @@
 
 _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
+- [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
+  the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
+  and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
+  AGENTS.md, the plans, ROADMAP, the tracker and git), dedupe the per-release shipped files against
+  ROADMAP, keep the index well under its size limit; show Dean before changing anything.
+
 - [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
   a PWA or a web app to query the device for battery and show that battery instead of just an
   arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
@@ -94,6 +100,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.325.0 - Chapter Snap "Shift all" for a whole-track offset, and a one-line pocket status bar (2026-09-24)
+
+- **Shift all** (Dean, 2026-09-24: "a top level option ... called a global offset ... some files ...
+  the whole track is offset by a somewhat equivalent amount ... in some cases the chapters are
+  straight up misaligned"). A row at the top of the Chapter Snap editor: -1 / -0.1 / +0.1 / +1 s moves
+  every chapter but the first (per-chapter nudges kept), with a live readout and Reset shift. From the
+  silence scan it already has, it SUGGESTS a shift when the chapters agree ("Suggested: shift all by
+  +1.75 s (7 of 7 agree)"), says "The chapters line up with the silence" when every boundary agrees,
+  and "No whole-track offset: n of m already line up. Fix the others one by one." when only some do -
+  so Dean can tell a whole-track offset from real misalignment. Every edit keeps the server's minimum
+  gap between chapters (an edit may never narrow a pair below it and below what the saved list already
+  has; Reset always gets back to the saved list). Saving uses the unchanged save path (times only,
+  version token, provenance kept, Revert still restores the source). Phone-first: every shift control
+  >= 44px at 390x844 and in landscape.
+- **The pocket skins' status bar stays one line** (Dean: "the song or album name might get too long
+  and make that whole thing ... expand it by a row"). The LCD title truncates with an ellipsis; the
+  play mark and battery never move. Measured with a 120-character name: Click 67.6 -> 31.2 px at
+  390x844 (85.8 -> 31.2 at 380x700), Seattle 66.6 -> 30.2, the desktop pop-out and the tray too, on
+  every menu level incl. v1.324's Extras / Settings / About / Recent.
+Full gate (data class): qa + security-brief r3 @0cc5d68f, adversary r4 @ac07adc3 (code identical);
+plan docs/exec-plans/completed/2026-09-24-snap-offset-status-bar.md. Disclosed: the status-bar CSS
+regression test still misses four unusual selector spellings (the shipped CSS is correct and
+measured; #272); the shift row scrolls out of view when the editor opens on a chapter ("This chapter
+starts wrong"); a close pair already in the source can save as close as it came; #259, #272.
+
+Device check owed (Dean): on a chaptered album whose chapters are all late or early, open Fix times:
+the suggestion, Shift all, Save, reload; on a misaligned album, the "No whole-track offset" note; a
+very long album or song name in the Click / Seattle status bar stays one line.
 
 ### v1.324.0 - The pocket skins: letter quick-scroll, Recent Artists, Brick in Extras, About, and drifting covers (2026-09-24)
 
