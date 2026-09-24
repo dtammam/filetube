@@ -3,10 +3,10 @@ plan: pocket-gyro-lighting
 harness: v2 · lean
 branch: feat/pocket-gyro-lighting
 anchor: spec
-status: In gate
-next: ONE gate (adversary + qa, max 2 rounds) at the sha below, then release v1.327.0
+status: Gate closed
+next: release v1.327.0
 design: this document (Dean's intake G1-G8 is in 2026-09-24-pwa-chrome-and-gyro-sheen.md, Item 2)
-gate: pending
+gate: APPROVED r3 @e891c661 (adversary + qa); r1 + r2 CHANGES fixed in f7f7af9d + e891c661; r3 suggestions filed as #274
 ---
 
 # Gyro-driven realistic lighting on the pocket skins
@@ -414,3 +414,41 @@ Tree: the only change to the live tree is this append. The file also holds the u
 Re-run: `pocket-lighting.test.js` 15/15; the touched suites 257/257; eslint clean; `lint:css` TOTAL 0;
 overlay clean. Probe: listeners Off 0 / On 1 / docked 0 / destroyed 0 / Seattle 0; moving 0.17 ms
 script + 1.02 ms style per frame, 0 layouts; still 0 writes, 0 recalcs.
+
+## Gate r3 - qa
+
+Gate: APPROVED r3 @e891c661 — qa
+
+Instruments (live tree, verbatim): `node --test test/unit/pocket-lighting.test.js` -> `# tests 15 # pass 15 # fail 0`; `npm run lint:css` -> `TOTAL 0  (the token census; ceiling ZERO since v1.61.0)`; `node scripts/overlay-containment-lint.js --enforce` -> `overlay-containment: clean (0 violations)`, exit 0; eslint on the three files -> no output, exit 0. The added lines in public/ and test/ carry 0 em dashes. Repros ran in a fresh `git archive e891c661` sandbox (`qa-r3.test.js`, the builder's boot() harness, plus the real pure functions).
+
+My r2 findings:
+- W4 relaunch after a deny: FIXED as prescribed (lit on the first sample). QA5 -> `relaunch after deny: lit false listening {"orient":1,...}`, then `first sample: lit true`. With a fine pointer plus the permission API the panel is lit at once (QA9 `lit at once true`), and desktop/Android behave as before.
+- W5 the seam: FIXED. Same sequence as r2: `-179.8 -> y goal -0.043` and `-179.5 -> -0.053` (were 1.000). The baseline stays at 179.00-179.01. A first sample at the seam (179) seeds correctly. 40 s of +-179.7 jitter leaves `by -180.00 goal y 0.011`: the fold lands on -180 == 180, which is the correct neutral.
+- Header comment: fixed ("two gradient layers (each painting one thin stripe)").
+- Continuity (the sensor angles converted from a sweep of real device rotations, 60->120 deg pitch at 8 deg roll, 0.5 deg steps): the largest mapTilt step is 0.498 deg, with no jump at vertical. roll and pitch are both built from rotation-matrix terms, so they do not depend on how the sensor represents the angle.
+
+SUGGESTION (fix-introduced, not blocking) - iPad + trackpad: the lit gate opens only on an ORIENTATION sample, but onMove writes --lx while the panel is still gated. The wheel and dome gradients read --lx whether or not .mms-lit is on. So a trackpad before any sensor sample moves the sheen without the band or the directional shadows (a partial look). QA8 (permission API, coarse primary pointer, a `mouse` pointermove) -> `--lx -0.745 lit false`. Fix: call applyLit() on the first pointer sample of a start too.
+SUGGESTION (comment) - the r1-fix comment says the projected roll "keeps its sign" through vertical. In the sweep it crosses 0 continuously and changes sign (th 89 -> x 0.14, th 91 -> x -0.14). That is physically right; "continuous through vertical" is the accurate claim.
+Tree: live tree untouched apart from this append.
+
+## Gate r3 - adversary
+
+Gate: APPROVED r3 @e891c661 — adversary
+
+Every check ran in a fresh `git archive e891c661` sandbox. `pocket-lighting.test.js # tests 15 # pass 15 # fail 0`.
+- r2 W3 / qa W4 (the relaunch after a deny): FIXED. ADV-R3 (coarse pointer, permission API present, a stored strength, a fresh boot):
+  `cold relaunch, no sample: lit false` / `repaint, still no sample: lit false` / `first sample: lit true` / `repaint after a sample: lit true` / `hide/return, no new sample yet: lit false` / `sample after return: lit true`.
+  A fine pointer is never gated: `lit true`, and the mouse drives it (`--lx -0.495`). Mutants on the gate, each `# fail 1`: G1 (always lit), G2 (sessionSamples not reset in start), G3 (the first sample never lights), G4 (the gate ignores the fine pointer).
+- r2 W5 (the y axis at vertical): FIXED in the code. My physical sweep through the real mapTilt: `roll 20 p-0.2: y 89.8 | p0.2: y 90.2` (it was 70 -> 110), and x holds at 20.0.
+  The seam (qa W5) is FIXED too: beta 179.5 / -179.8 / 179.6 / -179.5 gives y goals 0.000 / -0.025 / -0.004 / -0.036, and the baseline stays at 179.5. P2 (wrapDiff as a plain difference) and P3 (fold removed) each give `# fail 1`.
+- S5: J2 is bound now (`# fail 1`, via clock.live()). R8 is bound now (the cursor clamp, `# fail 1`). J3 survives, but J2 covers it (the cancelled frame never ticks), so the `!on` check is defense in depth.
+  - J7 still survives (`# pass 15 # fail 0`), and I refute my own r2 prescription: in tilt mode tick() ignores `goal` and `leaving`, so the mutant changes nothing (an equivalent mutant). The `mode !== 'pointer'` guard is redundant. No test can bind it.
+- Off = today: this diff changes no CSS and no shell (checked with the stat). Headless Chromium, base 71b5e6dd vs e891c661 with lighting Off: the PNGs are BYTE-EQUAL for ipod / black / matte / zune-classic (0 px).
+
+Remaining, safe to ship disclosed (the production behavior is measured correct; these are guard or feel gaps):
+SUGGESTION S6 - the r2 W5 test is a divergent fixture. Its `euler()` applies the roll BEFORE the pitch, so the physical roll is 0 at vertical, which never reaches the swap it claims to guard. Mutant P1 (pitch -> raw beta) -> `# pass 15 # fail 0`. Fix: build the pose as roll about the screen normal, then pitch. That gives up = (-sin r, cos r cos p, -cos r sin p), with beta = asin(uy) folded to 180 - beta when uz < 0, and gamma = asin(-ux / cos beta). That form reproduces 70 -> 110 on the old code.
+SUGGESTION S7 (new, inherent, not a regression by severity) - a phone on its SIDE with rotation lock (screen vertical, the device y-axis horizontal) has no defined pitch from gravity alone. The atan2 pitch there swings on sub-degree noise:
+  `uy 0.01 uz 0.01 -> y 45.0` / `uy 0.01 uz -0.01 -> y 135.0` / `uy 0.005 uz 0.02 -> y 14.0`
+  Raw beta also flipped 0.6 <-> 179.4 in that pose. Fading y by hypot(uy, uz) (that is, cos of the roll) would calm it. It is Dean's on-device call.
+SUGGESTION S8 - the landscape (angle 90) x still reads fine if reverted to raw beta (P4, `# pass 15 # fail 0`). It is effectively unreachable on the skin (the 768px gate).
+Tree: the only change to the live tree is this append. The other seats' uncommitted sections are untouched.
