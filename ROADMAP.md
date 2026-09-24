@@ -95,6 +95,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.324.0 - The pocket skins: letter quick-scroll, Recent Artists, Brick in Extras, About, and drifting covers (2026-09-24)
+
+- **Pocket quick-scroll and extras** (Dean, after v1.323.0: "there's a lot of scrolling ... I don't
+  want to go crazy. I like the feel" - he chose both options; then "an about or a settings ... also
+  an option for the brick game"; then "the art gently moves ... in the main views"). In the Click and
+  Seattle menus: (A) **letter quick-scroll** like the iPod Classic 5G: a genuinely fast spin (three
+  fast moves in one gesture, timed from the events' own timestamps, so a medium turn under CPU load
+  never triggers it) shows the iPod's dark letter square / the Zune's big lowercase letter, and each
+  click jumps to the next letter present (letters follow the server's own sort, NFKD-folded); a
+  finger scroll shows a letter badge that opens an A-Z picker (every cell >= 44px, reachable on short
+  landscape phones); (B) **Recent Artists** (the first Music row on Click, a "recent" pivot on
+  Seattle) from what you actually listened to, INCLUDING songs played to the end (an opt-in on the
+  existing recently-played route; every other caller unchanged; your own rows only, behind the same
+  visibility gate) - the pocket Recently Played playlist now includes finished songs too; (C)
+  **Extras > Games > Brick** on the Click Main Menu, launching the existing game (main tab only, as
+  before); (D) **Settings > About**: your Songs / Albums / Artists counts and the version; (E) on
+  the Click Main Menu and other menu levels the right pane **slowly pans and crossfades through
+  random covers** from your library (transform + opacity only, paused when hidden, docked, under
+  Brick, or with reduced motion). Lists keep their highlight by song/artist identity when they
+  reload. Gate r3 @cb25fa06 (adversary + qa + security-brief); plan
+  docs/exec-plans/completed/2026-09-24-pocket-quick-scroll.md.
+  Disclosed: Seattle's "games" entry is built but hidden (Brick runs on the Click wheel skins only,
+  #265 - Dean's call); the letter threshold and tick feel need Dean's device pass (#263); non-Latin
+  titles gather under '#' (#264); #266, #271.
+
+Device check owed (Dean): on your phone, spin fast through Songs/Artists (letter square, one click
+per letter) and a medium turn (should stay row by row); the A-Z picker; Recent Artists after
+finishing a song; Extras > Games > Brick; Settings > About; the drifting covers on the Main Menu.
+
 ### v1.323.0 - The Click and Seattle skins get the full iPod and Zune menus (2026-09-24)
 
 - **Pocket menus** (Dean: "I'd love classic pocket skin to truly emulate. Show artists, albums,
