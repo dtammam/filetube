@@ -156,7 +156,7 @@ tests across the named files.
 | M10 | the load callback's `isVisible(pane)` guard dropped | survived - EQUIVALENT: levels hold per-pane state objects (a late payload can only write into its own pane), so an unconditional `render()` re-draws the shown level from ITS state - an extra repaint, never wrong rows. Kept as an avoided repaint |
 | M11 | a failed art image is kept | RED (1) |
 | M12 | a decoded art image never eases in | RED (1) |
-| M13 | the swipe does not swallow its lift-off click | survived at 85e0d562 (the test's click landed on a SONG row, so a drill-in assert was vacuous); the test now also asserts no play and the menu stays up - re-run below |
+| M13 | the swipe does not swallow its lift-off click | survived at 85e0d562 AND 07d2d928 (the test clicked a row of the DETACHED pre-swipe list, which never reaches the panel - a vacuous driver); af0cc56a clicks the song row of the NEW pivot under the pointer -> RED (1), re-run on the af0cc56a test (M8 / M14 re-run there too: RED) |
 | M14 | the swipe never arms | RED (1) |
 | M15 | no list window (every row rendered) | RED (1) |
 | M16 | the no-layout window drops the cursor-centred span | RED (2) |
@@ -177,7 +177,7 @@ tests across the named files.
 | M31 | the rescan invalidation dropped | RED (1) - the real Scan button drive |
 | M32 | the engine ignores a `dataVersion` bump | RED (2) |
 
-Survivors are M9 and M10 (equivalent, reasoned above) and M13 (test strengthened; re-run below).
+Survivors: M9 and M10 only (equivalent, reasoned above). 31 RED.
 
 ## Disclosed gaps
 
