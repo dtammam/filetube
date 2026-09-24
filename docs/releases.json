@@ -3214,5 +3214,11 @@
     "date": "2026-09-24",
     "title": "The Click skins catch the light when you tilt your phone",
     "intent": "Open the Click, Click Black or Click Matte skin, go to Settings > Lighting in its menu and pick Subtle or Pronounced: the shine on the click wheel, the center button, the body and the screen glass now moves as you tilt the phone, like a real player under a lamp, with the shadows following. On a computer the mouse over the player moves the light instead. It stays off until you turn it on, and the phone asks once for motion access."
+  },
+  {
+    "version": "1.328.0",
+    "date": "2026-09-24",
+    "title": "Pocket lighting, turned up: Pronounced now looks like a real player under a lamp",
+    "intent": "In the Click skins' Settings > Lighting, Pronounced now gives you the full effect: a bright spot on the center button that shifts as you tilt, a glint along the lit edge of the click wheel with a shadow on the far side, a stronger reflection sweeping across the body (especially on Click Black) and a double streak on the screen glass. Subtle is what Pronounced was before, so nothing you liked is gone. Off is unchanged."
   }
 ]
