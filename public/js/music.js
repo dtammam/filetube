@@ -950,6 +950,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // (pause + emptied at readyState 0, then the new src plays) - hold the lit glow and
         // the root sidebar signal across that gap instead of blinking them off per track.
         loadHoldMs: A.AMBIENT_LOAD_HOLD_MS,
+        // gate r2 (Dean: fix the natural-end blink): a natural END waits for the queue
+        // advance (the /api/queue fetch, then the load) - hold through it too, bounded, so a
+        // finished queue still clears
+        endHoldMs: A.AMBIENT_END_HOLD_MS,
         signal: signal,
       });
     }

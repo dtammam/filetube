@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/music-desktop-ambient
 anchor: spec
 status: Building
-next: gate r2 (adversary + qa, delta on the r1 fix), then Dean's device check before the wave tag (D14)
+next: gate r3 delta (same seats)
 design: Approved 2026-09-23 @ef42a6d4 (Dean: "GO." on D13/D14 in the wave umbrella)
 gate: pending
 ---
@@ -124,10 +124,15 @@ Two findings that shaped the build:
    `ambient-glow-engine.test.js` "only the CURRENT source's image is kept". Gate r1: AC1c is a
    row TAP; the playhead ROLL (no reload) is bound by music-ambient "a real CHAPTER ROLL", and a
    track change never drops the glow across the player's load gap (music-ambient "a TRACK
-   CHANGE through the real row tap", ambient-host "the LOAD-GAP hold").
+   CHANGE through the real row tap", ambient-host "the LOAD-GAP hold"). Gate r2: nor across a
+   natural-end queue advance (music-ambient "a NATURAL-END queue advance in its real shape",
+   ambient-host "the END hold").
 3. **Every OFF axis paints nothing; the CLEAR axis on a populated glow:** pref off, light, paused,
    hidden tab, the view gate false; and pause / toggle off / flip to light / tab hidden / gate
    false each clear a LIT glow. `ambient-host.test.js` (two tests), music-ambient AC2, AC2b, AC2c.
+   Gate r2: every hold clears on the same axes, a finished queue clears at the end bound and a
+   failed load at its error (ambient-host "a hold never swallows a real clear", music-ambient
+   "a FINISHED queue", "a load that FAILS").
 4. **Desktop only; mounted here only; music only; same-origin only:** the phone breakpoint, a
    dock (and back), a podcast expanded into the music slot, a cross-origin art URL.
    music-ambient AC3, AC4, AC5, AC6; `ambientSameOriginUrl` table in ambient-host.
@@ -179,14 +184,20 @@ Two findings that shaped the build:
   follow-up (Dean's call).
 - **The desktop pop-out window carries no glow** (it renders a skin in its own window; not wired,
   not in the ask).
-- **A NATURAL-END advance still blinks** (gate r1 fix, by the brief: "ended still clears
-  immediately"). At a track's natural end the spec fires 'pause' with `ended` true at readyState
-  4, so the glow clears; the queue advance (an /api/queue fetch, then the load) re-lights it on
-  the next track's 'playing'. MEASURED in headless Chromium (localhost): dark from 1281 to 1325 ms
-  of the trace, 5 of 443 samples at 16 ms; in production the gap is the queue fetch plus the
-  media load. The row-tap / Next / chapter-select changes (the player's own load gap) hold. Whether
-  a natural end should hold too (bounded, so a finished queue still clears) is the Architect's
-  call.
+- **The natural-end blink: FIXED at gate r2** (Dean's ruling, 2026-09-24). At r1 a track's
+  natural end cleared the glow until the next track's 'playing' (MEASURED then: 5 of 443 samples
+  dark, 1281 to 1325 ms). Music now opts into a bounded END hold (`endHoldMs`, 1.5 s) that hands
+  over to the load hold when the next load begins. MEASURED in headless Chromium at the r2 fix
+  tree: a natural-end advance 0 of 444 samples dark; a FINISHED queue (nothing next) clears
+  1517 ms after 'ended' (the 1.5 s bound, armed at the end's 'pause'); a Songs-row tap 0 of 378
+  dark. Residual, by design: if the queue fetch takes longer than 1.5 s the glow clears and
+  re-lights on 'playing' (bounded, like any finished queue).
+- **A failed load clears at its error** (gate r2, adversary S1). At r2 a row tap on a corrupt
+  mp3 held the glow around the failed player for the whole 8 s load bound (the adversary measured
+  7975-7998 ms). Now a load with `media.error` set is not a load gap, and the host re-evaluates on
+  'error'. MEASURED in headless Chromium (a corrupt mp3, `media.error` 4): 'emptied' at 17 ms still
+  lit, 'error' at 50 ms dark, the first dark poll sample at 64 ms. A load that STALLS without an
+  error (a hung network) still holds for the 8 s bound, then clears.
 
 ## Build record
 
@@ -575,3 +586,224 @@ aud2's end and the natural-end advance polled the same way. Run on this tree and
   cancelled 0, skipped 0. The full unit suite runs in the pre-commit hook (it refuses red).
 - `npm run lint:css`: TOTAL 0. `node scripts/overlay-containment-lint.js --enforce`: clean (0
   violations). eslint on ambient.js, music.js and the four touched test files: exit 0.
+
+## Gate r2 - qa (@45284736)
+
+Delta reviewed: `git diff c285adcb 45284736 -- public test` (8 files; watch.js untouched).
+Node v22.23.1. Instruments, verbatim:
+
+- 229 unit files (the r1 set plus `ledger-check` and `release-ledger`): `# tests 3463 / # pass
+  3463 / # fail 0 / # cancelled 0 / # skipped 0`.
+- eslint on ambient.js, watch.js, music.js, the four touched unit tests and
+  chapter-likes.test.js: exit 0.
+- `npm run lint:css`: `TOTAL 0`. `overlay-containment-lint.js --enforce`: `clean (0 violations)`.
+- `check-markers.sh`: `6 issue(s) found`. The one in this doc is again the `design: ...
+  @ef42a6d4` line; the other five are in docs outside this delta.
+
+My r1 findings:
+
+- **W1: fixed differently (bounded, opt-in `loadHoldMs`).** I re-ran my r1 sequence verbatim
+  in a `git archive 45284736` sandbox: row tap, then `pause` + `emptied` at readyState 0, then
+  `playing`.
+  - r1 result: `{"glowHidden":true,"isOn":false,"sidebarSignal":false}`.
+  - Now, mid-gap: `{"glowHidden":false,"isOn":true,"sidebarSignal":true}`.
+  - After `playing` the old cover is still in front. One engine clock later the front layer is
+    the new cover (`loads: /albumart/n1, /albumart/n2`).
+- **The watch page is unchanged.** I ran the host without `loadHoldMs` on three axes: a pause at
+  readyState 4, pause + ended at readyState 4, and pause + emptied at readyState 0. Each one
+  cleared synchronously and armed 0 hold timers.
+- **Hold checked by reading:** it is bounded (one timer, armed once). start() and stop() cancel
+  it, so teardown, light mode and a hard fail do too. It needs a lit glow and every other axis
+  (pref, dark, visible, the view gate). A pause during the gap clears on `loadeddata`.
+  `close()` detaches the host, so the slot observer clears it.
+- **Spot mutants:**
+  - `AMBIENT_LOAD_HOLD_MS = 0`: KILLED (the track-change test).
+  - My r1 S2 mutant (the signal clear moved from stop() into teardown()): now KILLED by
+    watch-chrome-ambient alone (`# pass 11 / # fail 1`).
+- **S1: fixed** (style.css:9035 and 9131 now name ambient.js).
+- **S2: fixed** (start/stop each end at their own brace, with the anchors asserted).
+- **S3: fixed** (`if (signal.aborted) return;` is the first statement of `syncAmbient`, and
+  AC8 (a) asserts no row is written).
+- **Adversary items:** I read the adversary's items in the delta: the chapter-roll test, the
+  SOURCE LOCK widened to every ambient writer with anchors that must exist, and the no-glow /
+  no-toggle test. They are sound. I did not mutate them; I rely on the fix record's X1, X6 and
+  X15-X18.
+
+**Residual of W1, disclosed, safe to ship (not blocking).** A natural-end advance still
+blinks. At the end of a track, `pause` + `ended` arrive at readyState 4. That is correctly not
+treated as a load gap, so the glow clears and re-lights on the next `playing`. Re-checking my
+own r1 prescription: it had the same hole, so the hole was in the prescription, not the fix.
+It is disclosed in Known seams, with the Architect's headless Chromium measurement (about 44 ms
+on localhost; I did not re-measure it). In production the gap also includes the /api/queue
+fetch. It is safe to ship disclosed for three reasons:
+
+- The fix has a real tradeoff: holding after `ended` also holds the glow on a finished queue.
+- Dean's device check (D14) comes before the tag.
+- The blink is bounded to one advance gap.
+
+If Dean wants it closed, the shape is a short bounded hold on `ended` in the load-hold views
+only (for example 1.5 s), bound on both axes: a queue advance holds, and a finished queue clears
+at the bound.
+
+**S4 (SUGGESTION) - one stale test comment.** ambient-glow-engine.test.js:628 still says "(readyState below 2,
+not ended)". The `ended` check was removed (fix record), and the assertion message below it
+is right.
+
+Tree: unchanged except this section (before the append: clean, no untracked files).
+
+Gate: APPROVED r2 @45284736 — qa
+
+## Gate r2 - adversary (@45284736)
+
+This is a delta review of `git diff c285adcb 45284736 -- public test`, at HEAD 45284736 on Node
+v22.23.1. Everything ran in `git archive` sandboxes: 45284736 for the tests and mutants, and
+b71fcd32 as the baseline. The worktree was never edited.
+
+**Test and lint runs (verbatim)**
+
+- The six ambient files: `# tests 134 / # pass 134 / # fail 0 / # cancelled 0 / # skipped 0`.
+
+**My r1 findings against the fix**
+
+- **W1 is fixed as prescribed.** The new "real CHAPTER ROLL" test sets currentTime 250 and fires
+  `timeupdate` with no row tap. X1 is KILLED (1 fail, that test).
+- **W2 is fixed as prescribed.** The SOURCE LOCK now scans all of ambient.js, watch's
+  setupAmbientMode and music's ambient block. Each slice is anchored and asserted. X15, X16,
+  X17 and X18 are each KILLED by the SOURCE LOCK.
+- **W3 / qa W1 is fixed differently: an opt-in bounded hold. I evaluated it.**
+  - Watch passes no hold. Every host test for the hold runs on the fake element.
+  - Chromium, a Songs-row tap from a lit track: 0 of 152 samples dark (it was 4 of 377).
+- **S1 is fixed.** The v1.188 spans end at their own brace. qa's move-to-teardown mutant X3 is
+  KILLED (14 fail).
+- **S2 is fixed.** The two stale comments now name ambient.js.
+- **S3 is fixed.** X6 is KILLED by the new "no glow or no toggle: no host" test.
+- Also re-run, all KILLED: X4, X5, X9, X10, X11, X12, X13, X14.
+- X2 and X8 SURVIVED again. I judged both equivalent in production at r1, by reasoning, not
+  measurement.
+
+**Hunting what the hold introduced (real Chromium)**
+
+To force a long gap I blocked `*/video/*`, so the new source never loads. The glow was lit and
+the element was mid-gap (readyState 0, paused) before each action.
+
+| Action mid-gap | 120 ms after the action | Over the next 9.5 s |
+|---|---|---|
+| Ambient toggled off | cleared (glow and root signal) | 0 of 585 samples lit |
+| Flip to light | cleared | 0 of 571 samples lit |
+| Dock | cleared | 0 of 583 samples lit |
+| Soft-nav home (the nav took 19 ms) | cleared | nothing re-lit, even after a play |
+
+Watch non-regression: the r1 checkpoint probe (soft-nav in, play, pause, play again, light,
+dark, a cold load) is IDENTICAL on 45284736 and b71fcd32. The music checkpoints (paint,
+chapter roll, the resize crossing, home, the podcasts shell) all hold as they did at r1.
+
+**New mutants on the hold**
+
+- KILLED: N1 (the hold ignores the pref), N2 (ignores dark), N3 (ignores visible), N5 (the
+  bound re-lights without re-deciding), N6 (stop() keeps the timer), N8 (it holds at
+  readyState 2).
+- SURVIVED: N4 and N7. They are S1 and S2 below.
+
+**Findings (all SUGGESTION; none blocks)**
+
+- **S1 - a load ERROR holds the glow for the full bound.** Repro: a lit glow, then a Songs-row
+  tap on a corrupt mp3 (`media.error` 4). The glow and `data-ambient-on` stay lit around the
+  failed player until 7975-7998 ms, then clear. I measured this in three runs.
+  - It is bounded, cosmetic and rare on a local library. It is disclosed only in the ambient.js
+    comment, not in the plan's Known seams.
+  - Fix: return false from `inLoadGap` when `media.error` is set, and bind 'error' to
+    evaluate. Or disclose it in Known seams.
+  - Mutant N7 SURVIVED: raising the bound to 80000 turns nothing red, because the value 8000
+    itself is not tested.
+- **S2 - "watch passes nothing" is not tested.** Mutant N4 SURVIVED: adding `loadHoldMs: 8000`
+  to watch's setupAmbientMode call leaves all 134 green. Fix: add
+  `assert.doesNotMatch(wiring, /loadHoldMs/)` to the "no hand-copy" test.
+- **S3 - one clear axis has no behavioral test.** "Ambient toggled off mid-gap" is not in the
+  seven-axis list. N1 is killed only by the WIRING LOCK regex, and Chromium shows the real code
+  clears.
+- **Natural-end blink (disclosed Known seam).** Measured: aud2 to aud4 was dark for 2 samples,
+  about 32 ms, at 1305 ms. This matches the disclosure. It is not a regression, since music had
+  no glow at all before M4, and it is cosmetic. I argue it is safe to ship disclosed; Dean
+  decides.
+
+Tree: I made no change except this section. qa's r2 section was already present and
+uncommitted. My sandboxes are verified pristine (cmp) and removed.
+
+Gate: APPROVED r2 @45284736 — adversary
+
+## r2 fix record
+
+Fixed on `feat/music-desktop-ambient` from 45284736. Both r2 seats APPROVED with suggestions;
+Dean ruled (2026-09-24) to fix the natural-end blink before release. Node v22.23.1.
+
+| Finding | Change | Binding test | Mutant result |
+|---|---|---|---|
+| Dean's ruling (qa r2 residual, adversary r2 "natural-end blink"): a natural end blinks the glow off until the next track plays | `createAmbientHost` gains an opt-in `endHoldMs` (music passes `AMBIENT_END_HOLD_MS` = 1500; watch passes none). A lit glow whose media ENDED is held (every other axis must hold). The hold is LATCHED, because the player's ended cascade rewinds the element to 0 right after 'ended', so `ended` reads false again. It lasts while the element still has its media (readyState 1+). At readyState 0 (the next load's 'emptied') the load hold takes over with its own bound (one timer per hold kind: `hold(kind, ms)`). The end hold is asked BEFORE the load gap, see the probe finding below. A real user pause never sets `ended`, so it still clears at once. | ambient-host "the END hold" (the real shape: pause + ended at readyState 4, the player's rewind first, leaving readyState 1; a view seam during the wait; the emptied handover to the LOAD bound; playing; a MutationObserver sees no flicker); music-ambient "a NATURAL-END queue advance in its real shape" (the harness player now carries the ended cascade: rewind, then the /api/queue wait, then music's registered onNext; samples `pause:lit@rs4, ended:lit@rs1, emptied:lit@rs0, loadeddata:lit@rs4, playing:lit@rs4`; holds armed [1500, 8000]; a real pause then clears); music-ambient "a FINISHED queue" (held, then cleared at the 1.5 s bound in real time, at least 1400 ms after the end); ambient-host clear cases (the END bound, toggle off / light / the view gate during the end hold); watch: a natural end still clears at once | E1, E2, E3, E5, E9, E10, E11, E12, E13, E14 KILLED |
+| (found by the r2 probe, not by a seat) the first build asked the load gap first: in Chromium the ended rewind's seek leaves the element at readyState 1 at 'ended', so the LOAD hold (8 s) took over and a finished queue stayed lit for 8 s, not 1.5 s. The unit harness had rewound at readyState 4, a divergent fixture. | the harness rewinds at readyState 1 (then 'seeked' at 4), as MEASURED; with it, three tests went red on the first build; `evaluate()` now asks the end hold first | the same tests (red on the first build in the real shape, green after) | E13 KILLED |
+| adversary S1: a failed load holds for the whole 8 s bound | `inLoadGap` returns false when `media.error` is set; a holding view re-evaluates on 'error' | ambient-host clear case "the new src fails to load"; music-ambient "a load that FAILS clears at the error" | E6, E7 KILLED |
+| adversary S2 / N4: "watch passes no hold" was untested | the no-hand-copy test asserts watch's `setupAmbientMode` call names no `loadHoldMs` / `endHoldMs` / `*HOLD_MS` | ambient-glow-engine "watch.js keeps no hand-copy" | N4, E4 KILLED |
+| adversary S3 / N1: ambient toggled OFF mid-gap had only a text lock | behavioral clear cases: toggle off during the load gap and during the end hold | ambient-host "a hold never swallows a real clear" | N1 KILLED with the engine lock NOT run |
+| adversary N7: the bound values were untested (8000 -> 80000 stayed green) | the music harness wraps the global `setTimeout` (pass-through) and records every `holdExpired` delay; the plan's bounds are asserted as values | music-ambient "a TRACK CHANGE" ([8000]), "a NATURAL-END queue advance" ([1500, 8000]), "a FINISHED queue" ([1500] plus the real-time clear) | N7, E8 KILLED |
+| qa S4: a stale test comment ("readyState below 2, not ended") | the wiring-lock comment now describes both holds; the lock pins the new `evaluate` order, `inEndHold`, `holdAxes`, `hold()` and the 'error' binding | ambient-glow-engine WIRING LOCK | n/a |
+
+Two guards were written and then removed, because no real state reaches them (the unbound-guard
+rule). In `inEndHold` these were `!media.paused` and `media.error`. A playing element at
+readyState 2+ already runs through `shouldRun`. An errored load has emptied the element first
+(readyState 0), so the end hold refuses it before the error check.
+
+### Mutation results (r2 fix)
+
+Sandbox: `git archive` of the staged tree 10dd886b (the five code and test files), with
+node_modules symlinked. Each mutant was applied to one file, the named test files were run, and
+the file was restored. Afterwards ambient.js, music.js and watch.js compared byte-identical
+(cmp) to the tree. Runner: session scratchpad `m4r2-mutants.js`.
+
+| # | Mutant | Result | First red |
+|---|---|---|---|
+| E1 | music: no end hold passed (the natural-end blink returns) | KILLED 2 fail | gate r2: a NATURAL-END queue advance in its real shape |
+| E2 | host: the end hold swallows a real pause (no ended / latch check) | KILLED 4 fail | host: a hold never swallows a real clear |
+| E3 | host: the end hold is never bounded (no timer for the end kind) | KILLED 4 fail | host: a hold never swallows a real clear |
+| E4 | watch opts in to the end hold | KILLED 1 fail | engine: watch.js keeps no hand-copy |
+| N4 | watch opts in to the load hold (adversary N4) | KILLED 1 fail | engine: watch.js keeps no hand-copy |
+| E5 | host: the end hold is not latched (holds only while `ended` reads true) | KILLED 3 fail | host: a hold never swallows a real clear |
+| E6 | host: the load hold ignores media.error | KILLED 2 fail | host: a hold never swallows a real clear |
+| E7 | host: no 'error' re-evaluation | KILLED 2 fail | host: a hold never swallows a real clear |
+| E8 | AMBIENT_END_HOLD_MS 1500 -> 15000 | KILLED 2 fail | gate r2: a NATURAL-END queue advance in its real shape |
+| N7 | AMBIENT_LOAD_HOLD_MS 8000 -> 80000 (adversary N7) | KILLED 2 fail | gate r1 (qa W1): a TRACK CHANGE through the real row tap |
+| E9 | host: the end -> load handover keeps the end timer (no re-arm) | KILLED 2 fail | host (gate r2): the END hold |
+| N1 | host: the hold ignores the pref (behavioral: engine lock NOT run) | KILLED 1 fail | host: a hold never swallows a real clear |
+| E10 | host: an UNLIT glow arms an end hold | KILLED 1 fail | host (gate r2): the END hold |
+| E11 | host: the end hold ignores the other axes (view gate, light, toggle) | KILLED 1 fail | host: a hold never swallows a real clear |
+| E12 | host: the end-hold bound never re-decides | KILLED 3 fail | host: a hold never swallows a real clear |
+| E13 | host: the load gap asked BEFORE the end hold (the r2 probe finding) | KILLED 3 fail | host: a hold never swallows a real clear |
+| E14 | host: the end hold ignores readyState 0 (no handover to the load bound) | KILLED 2 fail | host (gate r2): the END hold |
+
+17 mutants, 17 killed.
+
+### Probe (headless Chromium chromium-1234, 1600x1000, dark, ambient ON)
+
+The r1 advance probe was extended (session scratchpad `m4r2-probe.js`, run against the 10dd886b
+sandbox). It adds two phases. FINISHED queue: seek the playing track to 1.2 s before its end,
+clear the registered next (`setTrackNav({})`) and time the clear against 'ended'. FAILED load
+(a separate run, `PHASE=err`): a corrupt mp3 in the library, then from a lit glow a real
+Songs-row tap on it.
+
+| Reading | r1 fix (45284736) | this fix |
+|---|---|---|
+| row tap: samples / not lit | 378 / 0 | 378 / 0 (emptied rs 0 lit, loadeddata + playing rs 4 lit) |
+| natural-end advance (aud2 to aud1::c2): samples / not lit | 443 / 5 (1281 to 1325 ms) | 444 / 0 (`pause` rs 4 ended lit, `ended` rs 1 lit, `emptied` rs 0 lit, `loadeddata` + `playing` rs 4 lit) |
+| finished queue: the clear after 'ended' | not measured (r1 cleared at 'pause', by construction) | 1517 ms (the 1.5 s bound armed at the end's 'pause'; 0 dark samples before the bound) |
+| failed load (corrupt mp3, `media.error` 4) | held to 7975-7998 ms (adversary r2) | `emptied` 17 ms lit, `error` 50 ms dark, first dark poll 64 ms |
+| page errors (main run) | none | none |
+
+The first build of this fix read differently on the finished queue: the glow was still lit 5 s
+after 'ended', with 'ended' at readyState 1. That run is the finding in the table above.
+
+### Instruments
+
+- Targeted suites (58 files: ambient*, watch*, music*, shell-*, theatre*, docs-*, exec-plans*,
+  release-ledger*, ledger-check*) at the fix tree plus this doc: tests 800, pass 800, fail 0,
+  cancelled 0, skipped 0. The four ambient files alone: 79 / 79. The full unit suite runs in
+  the pre-commit hook, which refuses red.
+- `npm run lint:css`: TOTAL 0. `node scripts/overlay-containment-lint.js --enforce`: clean (0
+  violations). eslint on ambient.js, music.js and the three touched test files: exit 0.

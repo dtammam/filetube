@@ -89,9 +89,18 @@ async function boot(opts) {
   const D = W.document;
   D.documentElement.setAttribute('data-mode', opts.mode || 'dark');
   D.body.setAttribute('data-view', 'music');
-  const savedKeys = ['window', 'document', 'localStorage', 'fetch', 'AbortController', 'MutationObserver', 'Image', 'location', 'requestAnimationFrame'];
+  const savedKeys = ['window', 'document', 'localStorage', 'fetch', 'AbortController', 'MutationObserver', 'Image', 'location', 'requestAnimationFrame', 'setTimeout'];
   const saved = {};
   for (const k of savedKeys) saved[k] = global[k];
+  // gate r2 (adversary N7): the hold BOUNDS are real timers the host arms through the global
+  // setTimeout (music passes no override) - a pass-through spy records each hold's delay.
+  const holds = [];
+  const realSetTimeout = saved.setTimeout;
+  global.setTimeout = function (fn, ms, ...rest) {
+    const handle = realSetTimeout(fn, ms, ...rest);
+    if (fn && fn.name === 'holdExpired') holds.push({ ms, at: Date.now() });
+    return handle;
+  };
   // Browser collaborators, each observable.
   const loads = [];
   class FakeImage {
@@ -154,13 +163,23 @@ async function boot(opts) {
   W.fetch = fetchImpl;
   // The player: clones the REAL template host once (player.js ensureHost) and reparents it
   // into the slot on a select / into the dock (load / dock / expand), like the real one.
-  const ps = { state: 'closed', host: null, media: null, meta: null, srcId: null, playing: { paused: true, ended: false, readyState: 4, currentTime: 0 } };
+  const ps = { state: 'closed', host: null, media: null, meta: null, srcId: null, nav: null, advanceAfterMs: null, playing: { paused: true, ended: false, readyState: 4, currentTime: 0, error: null } };
   function ensureHost() {
     if (ps.host) return ps.host;
     ps.host = D.getElementById('player-host-template').content.cloneNode(true).querySelector('#player-wrapper');
     const m = ps.host.querySelector('#media-player');
-    for (const k of ['paused', 'ended', 'readyState']) Object.defineProperty(m, k, { get: () => ps.playing[k], configurable: true });
+    for (const k of ['paused', 'ended', 'readyState', 'error']) Object.defineProperty(m, k, { get: () => ps.playing[k], configurable: true });
     Object.defineProperty(m, 'currentTime', { get: () => ps.playing.currentTime, set: (v) => { ps.playing.currentTime = v; }, configurable: true });
+    // gate r2: player.js runEndedCompletionCascade, registered with the host (so BEFORE any
+    // view's listener): rewind to 0 (so `ended` reads false again; the rewind's seek holds the
+    // element at readyState 1 until it lands - MEASURED in headless Chromium: 'ended' observed
+    // at readyState 1), then the queue advance - handleAutoplayNext's /api/queue fetch, then
+    // the registered onNext (music's playAt).
+    m.addEventListener('ended', () => {
+      ps.playing.currentTime = 0; ps.playing.ended = false; ps.playing.readyState = 1;
+      setImmediate(() => { if (ps.playing.readyState === 1) { ps.playing.readyState = 4; m.dispatchEvent(new W.Event('seeked')); } });
+      if (ps.advanceAfterMs != null) setTimeout(() => { if (ps.nav && typeof ps.nav.onNext === 'function') ps.nav.onNext(); }, ps.advanceAfterMs);
+    });
     ps.media = m;
     return ps.host;
   }
@@ -168,7 +187,7 @@ async function boot(opts) {
     currentId: null,
     getState: () => ps.state,
     getCurrentMeta: () => ps.meta,
-    setTrackNav() {},
+    setTrackNav(h) { ps.nav = h; },
     isLoopEnabled: () => false,
     expand: (slot) => { ensureHost(); slot.appendChild(ps.host); ps.state = 'full'; },
     dock: () => { D.getElementById('player-dock').appendChild(ps.host); ps.state = 'docked'; },
@@ -180,7 +199,7 @@ async function boot(opts) {
       // 'emptied' are QUEUED at readyState HAVE_NOTHING - they fire after this task, like the
       // browser's media-element tasks - and the new src reaches readyState 4 only at c.play().
       const wasPlaying = !ps.playing.paused;
-      ps.playing.paused = true; ps.playing.ended = false; ps.playing.readyState = 0; ps.playing.currentTime = 0;
+      ps.playing.paused = true; ps.playing.ended = false; ps.playing.readyState = 0; ps.playing.currentTime = 0; ps.playing.error = null;
       ps.srcId = id;
       if (hadSrc) {
         const m = ps.media;
@@ -213,7 +232,7 @@ async function boot(opts) {
   await settleN();
   const glow = () => D.getElementById('music-ambient-glow');
   const c = {
-    W, D, ps, player, mod, root, loads, observers, bound, deferred, mq,
+    W, D, ps, player, mod, root, loads, observers, bound, deferred, mq, holds,
     glow,
     check: () => D.getElementById('watch-ambient-check'),
     row: () => D.getElementById('ambient-toggle-row'),
@@ -233,6 +252,13 @@ async function boot(opts) {
       await settleN();
     },
     async pause() { ps.playing.paused = true; ps.media.dispatchEvent(new W.Event('pause')); await settleN(); },
+    // a track's NATURAL END (the spec: 'pause' then 'ended', readyState 4, `ended` true);
+    // the player's cascade listener above rewinds it and, when advanceAfterMs is set, advances
+    naturalEnd() {
+      ps.playing.ended = true; ps.playing.paused = true; ps.playing.readyState = 4;
+      ps.media.dispatchEvent(new W.Event('pause'));
+      ps.media.dispatchEvent(new W.Event('ended'));
+    },
     lit: () => glow().classList.contains('is-on') && !glow().hidden && D.documentElement.hasAttribute('data-ambient-on'),
     anyLit: () => !glow().hidden || glow().classList.contains('is-on') || D.documentElement.hasAttribute('data-ambient-on'),
     painted: () => [...glow().querySelectorAll('.ambient-glow-layer')].some((l) => /^url\("data:image\/png/.test(l.style.getPropertyValue('background-image'))),
@@ -319,7 +345,7 @@ async function watchLit(c, run) {
   mo.observe(c.D.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['data-ambient-on'] });
   const samples = [];
   const ctl = new c.W.AbortController();
-  for (const ev of ['pause', 'emptied', 'loadeddata', 'playing']) c.ps.media.addEventListener(ev, () => samples.push(ev + ':' + (c.lit() ? 'lit' : 'DARK') + '@rs' + c.ps.media.readyState), { signal: ctl.signal });
+  for (const ev of ['pause', 'ended', 'emptied', 'loadeddata', 'playing']) c.ps.media.addEventListener(ev, () => samples.push(ev + ':' + (c.lit() ? 'lit' : 'DARK') + '@rs' + c.ps.media.readyState), { signal: ctl.signal });
   try { await run(samples); } finally { await settle(); drops.push(...mo.takeRecords().filter((r) => r.attributeName === 'hidden' || r.attributeName === 'data-ambient-on').map((r) => 'late ' + r.attributeName)); mo.disconnect(); ctl.abort(); }
   return { drops, samples };
 }
@@ -341,6 +367,7 @@ test('v1.317 gate r1 (qa W1): a TRACK CHANGE through the real row tap - pause + 
     });
     assert.deepStrictEqual(samples, ['pause:lit@rs0', 'emptied:lit@rs0', 'loadeddata:lit@rs4', 'playing:lit@rs4'], 'the real event sequence was driven, and lit held at every step');
     assert.deepStrictEqual(drops, [], 'no hide, no is-on drop, no root-signal flicker across the change');
+    assert.deepStrictEqual(c.holds.map((h) => h.ms), [8000], 'gate r2 (adversary N7): ONE load hold, bounded at 8 s (the plan\'s bound)');
     assert.ok(await until(() => c.loads.includes('/albumart/n2'), 6000), 'the next cover was requested (loads: ' + c.loads.join(',') + ')');
     assert.ok(await until(() => {
       const f = c.glow().querySelector('.ambient-glow-layer.is-front');
@@ -352,7 +379,7 @@ test('v1.317 gate r1 (qa W1): a TRACK CHANGE through the real row tap - pause + 
   });
 });
 
-test('v1.317 gate r1: the load-gap hold is BOUNDED - a change whose new src never plays clears after the hold; a natural END clears at once', async () => {
+test('v1.317 gate r1: the load-gap hold is BOUNDED - a change whose new src never plays clears after the hold', async () => {
   await withMusic({ pref: '1', prep: ({ W }) => { W.FileTubeAmbient = Object.assign({}, AMBIENT, { AMBIENT_LOAD_HOLD_MS: 300 }); } }, async (c) => {
     await c.tapRow('n1');
     await c.play();
@@ -364,12 +391,69 @@ test('v1.317 gate r1: the load-gap hold is BOUNDED - a change whose new src neve
     assert.ok(await until(() => !c.anyLit(), 2000), 'cleared once the bound passed with nothing playing');
     await c.play();
     assert.ok(await until(() => c.lit()), 'the late play re-lights it');
-    // a natural end (the spec order: 'pause' then 'ended', both at readyState 4) is no gap
-    c.ps.playing.ended = true; c.ps.playing.paused = true;
-    c.ps.media.dispatchEvent(new c.W.Event('pause'));
-    c.ps.media.dispatchEvent(new c.W.Event('ended'));
+  });
+});
+
+// ---- gate r2 (Dean: fix the natural-end blink) ------------------------------------------
+
+test('v1.317 gate r2: a NATURAL-END queue advance in its real shape - pause + ended at readyState 4, the player\'s rewind, the /api/queue wait, then the next track\'s emptied -> loadeddata -> playing - never drops the glow or the root signal', async () => {
+  await withMusic({ pref: '1' }, async (c) => {
+    await c.tapRow('n1');
+    await c.play();
+    assert.ok(await until(() => c.painted() && c.lit()), 'precondition: lit on n1');
+    assert.ok(c.ps.nav && typeof c.ps.nav.onNext === 'function', 'precondition: music registered a next track (the advance the player asks for at ended)');
+    c.ps.advanceAfterMs = 60; // the /api/queue fetch before onNext
+    const { drops, samples } = await watchLit(c, async () => {
+      c.naturalEnd();
+      assert.strictEqual(c.ps.media.ended, false, 'the REAL shape: the player rewound the element before the ambient listener ran');
+      assert.ok(c.lit(), 'right after the end: held');
+      await settleN();
+      assert.ok(c.lit(), 'waiting for the queue advance: held');
+      assert.ok(await until(() => c.player.currentId !== 'n1', 3000), 'the queue advanced (onNext -> playAt -> player.load)');
+      await settleN();
+      assert.strictEqual(c.ps.media.readyState, 0, 'the next track\'s REAL load gap');
+      assert.ok(c.lit(), 'mid-load: held');
+      await c.play();
+      assert.ok(c.lit(), 'the next track plays: lit');
+    });
+    assert.deepStrictEqual(samples, ['pause:lit@rs4', 'ended:lit@rs1', 'emptied:lit@rs0', 'loadeddata:lit@rs4', 'playing:lit@rs4'], 'the real sequence ran (the Chromium readyStates), lit at every step');
+    assert.deepStrictEqual(drops, [], 'no hide, no is-on drop, no root-signal flicker from the end to the next track playing');
+    assert.deepStrictEqual(c.holds.map((h) => h.ms), [1500, 8000], 'the END hold (1.5 s) armed at the end, handed over to the LOAD hold (8 s) when the next load began');
+    // the other axis on the same glow: a real user pause (never ended) still clears at once
+    await c.pause();
+    assert.strictEqual(c.anyLit(), false, 'a user pause is not an end: cleared immediately');
+  });
+});
+
+test('v1.317 gate r2: a FINISHED queue (a natural end, nothing loads next) holds, then clears at the END bound', async () => {
+  await withMusic({ pref: '1' }, async (c) => {
+    await c.tapRow('n1');
+    await c.play();
+    assert.ok(await until(() => c.lit()), 'precondition: lit');
+    c.ps.advanceAfterMs = null; // nothing next: the player never loads another track
+    const t0 = Date.now();
+    c.naturalEnd();
     await settleN();
-    assert.strictEqual(c.anyLit(), false, 'ended: cleared immediately');
+    assert.ok(c.lit(), 'held right after the end');
+    assert.deepStrictEqual(c.holds.map((h) => h.ms), [1500], 'ONE END hold, bounded at 1.5 s (the plan\'s bound)');
+    assert.ok(await until(() => !c.anyLit(), 6000), 'cleared once the bound passed with nothing playing');
+    const held = Date.now() - t0;
+    assert.ok(held >= 1400, 'it held until the bound (' + held + ' ms), not a blink');
+    assert.strictEqual(c.player.currentId, 'n1', 'nothing advanced');
+  });
+});
+
+test('v1.317 gate r2 (adversary S1): a load that FAILS clears at the error, not at the 8 s bound', async () => {
+  await withMusic({ pref: '1' }, async (c) => {
+    await c.tapRow('n1');
+    await c.play();
+    assert.ok(await until(() => c.lit()), 'precondition: lit');
+    await c.tapRow('n2'); // the gap begins
+    assert.ok(c.lit(), 'held through the gap');
+    c.ps.playing.error = { code: 4 }; // MEDIA_ERR_SRC_NOT_SUPPORTED, as the corrupt-mp3 repro showed
+    c.ps.media.dispatchEvent(new c.W.Event('error'));
+    await settleN();
+    assert.strictEqual(c.anyLit(), false, 'cleared at the error (glow hidden, not is-on, root signal gone)');
   });
 });
 

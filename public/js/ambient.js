@@ -453,9 +453,16 @@ function ensureAmbientToggleRow(doc) {
 
 // v1.317 M4 gate r1: the longest a LIT glow is held across the player's own load gap
 // (createAmbientHost loadHoldMs, music only). A track change on a local library loads in
-// well under a second; the bound only matters when the next src never plays (a load
-// error, a stalled network), and then the glow clears this long after the gap began.
+// well under a second; the bound only matters when the next src never plays (a stalled
+// network), and then the glow clears this long after the gap began. A load that ERRORS
+// is no gap (gate r2): it clears at the 'error' event, not at the bound.
 var AMBIENT_LOAD_HOLD_MS = 8000;
+// v1.317 M4 gate r2 (Dean: fix the natural-end blink): the longest a LIT glow is held after
+// a track's natural END (createAmbientHost endHoldMs, music only) while the queue advance
+// fetches the next track and starts its load. Once that load begins (the element is
+// emptied) the load-gap hold above takes over; a FINISHED queue (nothing loads next)
+// clears this long after the end.
+var AMBIENT_END_HOLD_MS = 1500;
 
 // v1.317 M4: THE HOST - the v1.312 watch wiring (setupAmbientMode) factored out so a
 // second view drives the same engine through the same funnel. Paints ONLY when
@@ -481,6 +488,8 @@ var AMBIENT_LOAD_HOLD_MS = 8000;
 //   loadHoldMs   optional (music): HOLD a lit glow across the player's own load gap
 //                for up to this long (below); 0 / absent = no hold (watch: a new item
 //                is a new view, so its behavior is the v1.312 one, byte for byte)
+//   endHoldMs    optional (music): HOLD a lit glow after a natural END for up to this
+//                long, so a queue advance does not blink (below); 0 / absent = none
 //   loadImage, makeCanvas  optional overrides (unit tests); defaults below
 //   setTimeout, clearTimeout  optional overrides for the hold timer (unit tests)
 // Returns { evaluate, stop, engine } or null when the view has no glow / toggle (a
@@ -501,6 +510,7 @@ function createAmbientHost(opts) {
   var getMedia = typeof opts.getMedia === 'function' ? opts.getMedia : function () { return null; };
   var canRun = typeof opts.canRun === 'function' ? opts.canRun : function () { return true; };
   var loadHoldMs = opts.loadHoldMs > 0 ? opts.loadHoldMs : 0;
+  var endHoldMs = opts.endHoldMs > 0 ? opts.endHoldMs : 0;
   var setHoldT = typeof opts.setTimeout === 'function' ? opts.setTimeout : setTimeout;
   var clearHoldT = typeof opts.clearTimeout === 'function' ? opts.clearTimeout : clearTimeout;
 
@@ -533,23 +543,61 @@ function createAmbientHost(opts) {
   // So while the glow is lit, the element is in that gap (readyState below
   // HAVE_CURRENT_DATA) and every OTHER axis still holds (pref, dark, visible, the view's
   // own gate), the host keeps its lit state - the engine keeps its clock, so the new
-  // cover cross-fades in - for at most loadHoldMs, then re-decides. A real user pause and
-  // a natural end ('pause' then 'ended') happen at readyState 2+: not a gap, they clear
-  // at once.
+  // cover cross-fades in - for at most loadHoldMs, then re-decides. A real user pause
+  // happens at readyState 2+: not a gap, it clears at once. A load that FAILED (gate r2,
+  // adversary S1: media.error set, then 'error') is no gap either - nothing will play,
+  // so it clears at the error instead of holding for the whole bound.
+  function holdAxes() {
+    return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(doc), playing: true, docVisible: !doc.hidden }) && !!canRun();
+  }
   function inLoadGap() {
     if (!loadHoldMs || !glow.classList.contains('is-on')) return false;
     var media = getMedia();
-    if (!media || !(media.readyState < 2)) return false;
-    return ambientShouldRun({ prefOn: prefOn, dark: isDarkMode(doc), playing: true, docVisible: !doc.hidden }) && !!canRun();
+    if (!media || !(media.readyState < 2) || media.error) return false;
+    return holdAxes();
+  }
+  // v1.317 M4 gate r2 (Dean: fix the natural-end blink): at a track's natural end the
+  // element fires 'pause' then 'ended' at readyState 4, and the queue advance (an
+  // /api/queue fetch, then the load) starts the next track only after that. So a lit glow
+  // whose media ENDED is held too, for at most endHoldMs; the next load's gap (emptied at
+  // readyState 0) then hands over to the load hold, and a finished queue clears at the
+  // bound. The hold is LATCHED once armed: the player's own ended cascade rewinds the
+  // element to 0 right after 'ended' (player.js runEndedCompletionCascade), so `ended`
+  // reads false again while it still sits paused waiting for the advance - and that
+  // rewind's SEEK drops readyState to HAVE_METADATA (1) until it lands (MEASURED in headless
+  // Chromium: 'ended' observed at readyState 1). So the end hold is decided BEFORE the load
+  // gap (evaluate), and it lasts while the element still HAS its media (readyState 1+):
+  // HAVE_NOTHING (0) means the next track's load began ('emptied'), and the load hold takes
+  // over with its own bound. A real user pause never sets `ended`, so it never arms this and
+  // still clears at once. (No paused / error check here: a playing element at readyState
+  // 2+ already runs via shouldRun, and an errored load has emptied the element first.)
+  function inEndHold() {
+    if (!endHoldMs || !glow.classList.contains('is-on')) return false;
+    var media = getMedia();
+    if (!media || !(media.readyState >= 1)) return false;
+    if (!media.ended && holdKind !== 'end') return false;
+    return holdAxes();
   }
   var holdTimer = null;
+  var holdKind = null;
   function clearHold() {
     if (holdTimer != null) clearHoldT(holdTimer);
     holdTimer = null;
+    holdKind = null;
+  }
+  // ONE timer per hold KIND, armed at that hold's first event (a second event of the same
+  // hold never extends it); an end hold handing over to the next track's load gap re-arms
+  // with the load bound.
+  function hold(kind, ms) {
+    if (holdKind === kind) return;
+    clearHold();
+    holdKind = kind;
+    holdTimer = setHoldT(holdExpired, ms);
   }
   // (a torn host never gets here: teardown's stop() cancels the timer)
   function holdExpired() {
     holdTimer = null;
+    holdKind = null;
     if (shouldRun()) start(); else stop(); // the bound: nothing resumed -> the gap is over, clear
   }
 
@@ -625,6 +673,8 @@ function createAmbientHost(opts) {
     // the hold's other exit: data for the new src arrived - playing re-decides at 'playing',
     // and a user who paused DURING the gap is cleared here (readyState 2+ and paused)
     if (loadHoldMs) media.addEventListener('loadeddata', evaluate, { signal: mediaSignal });
+    // gate r2 (adversary S1): a load that fails ends any hold at once (media.error is set)
+    if (loadHoldMs || endHoldMs) media.addEventListener('error', evaluate, { signal: mediaSignal });
   }
   // The one gate everything funnels through: run iff eligible, else tear down. After
   // the view's teardown nothing may re-light it: a late async seam of the dead view (a
@@ -634,10 +684,13 @@ function createAmbientHost(opts) {
     if (torn) return;
     bindMedia();
     syncRowVisibility();
-    // run; else HOLD a lit glow across the player's own load gap (the timer is armed at the
-    // gap's FIRST event, so the bound never extends); else tear down
+    // run; else HOLD a lit glow after a natural end while the queue advances, or across the
+    // player's own load gap (each bounded, armed at its FIRST event); else tear down. The
+    // end hold is asked FIRST: the ended rewind's seek (readyState 1) must not read as a
+    // load gap, or a finished queue would wait out the LOAD bound.
     if (shouldRun()) start();
-    else if (inLoadGap()) { if (holdTimer == null) holdTimer = setHoldT(holdExpired, loadHoldMs); }
+    else if (inEndHold()) hold('end', endHoldMs);
+    else if (inLoadGap()) hold('load', loadHoldMs);
     else stop();
   }
 
@@ -679,6 +732,7 @@ function createAmbientHost(opts) {
 
 var FileTubeAmbientApi = {
   AMBIENT_LOAD_HOLD_MS: AMBIENT_LOAD_HOLD_MS,
+  AMBIENT_END_HOLD_MS: AMBIENT_END_HOLD_MS,
   isAmbientEnabled: isAmbientEnabled,
   ambientStorageValue: ambientStorageValue,
   ambientShouldRun: ambientShouldRun,

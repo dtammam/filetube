@@ -623,21 +623,33 @@ test('v1.312 WIRING LOCK (v1.317: the shared host): createAmbientHost builds the
   assert.match(startFn, /glow\.hidden = false;[\s\S]*glow\.classList\.add\('is-on'\)[\s\S]*doc\.documentElement\.setAttribute\('data-ambient-on', ''\)[\s\S]*engine\.start\(\)/, 'start: reveal, is-on, the sidebar signal, then the engine');
   assert.match(stopFn, /engine\.stop\(\)[\s\S]*classList\.remove\('is-on'\)[\s\S]*glow\.hidden = true;[\s\S]*doc\.documentElement\.removeAttribute\('data-ambient-on'\)/, 'stop: the engine, is-on, hide, the sidebar signal');
   const evaluateFn = fnBody(WIRING_SRC, 'function evaluate() {', '  ');
-  assert.match(evaluateFn, /if \(shouldRun\(\)\) start\(\);\s*else if \(inLoadGap\(\)\) \{ if \(holdTimer == null\) holdTimer = setHoldT\(holdExpired, loadHoldMs\); \}\s*else stop\(\);/, 'the one gate: run, else HOLD a lit glow across the player\'s own load gap (bounded, armed once), else tear down');
-  // gate r1 (qa W1 / adversary W3): the hold is opt-in, needs a LIT glow, a real load gap
-  // (readyState below 2, not ended) and every OTHER axis still true; start/stop end it.
+  assert.match(evaluateFn, /if \(shouldRun\(\)\) start\(\);\s*else if \(inEndHold\(\)\) hold\('end', endHoldMs\);\s*else if \(inLoadGap\(\)\) hold\('load', loadHoldMs\);\s*else stop\(\);/, 'the one gate: run, else HOLD a lit glow after a natural end (asked first: the ended rewind sits at readyState 1) or across the player\'s own load gap (each bounded), else tear down');
+  // gate r1 (qa W1 / adversary W3): the load hold is opt-in, needs a LIT glow, a real load
+  // gap (readyState below 2, no media error - gate r2) and every OTHER axis still true;
+  // start/stop end it. Gate r2 (Dean): the END hold is opt-in the same way, needs a lit
+  // glow, an element that ENDED (or an end hold already latched: the player rewinds to 0
+  // right after 'ended') and still holding its media (readyState 1+), and every other axis.
   const gapFn = fnBody(WIRING_SRC, 'function inLoadGap() {', '  ');
   assert.match(gapFn, /if \(!loadHoldMs \|\| !glow\.classList\.contains\('is-on'\)\) return false;/, 'no hold unless the view opted in AND the glow is lit');
-  assert.match(gapFn, /if \(!media \|\| !\(media\.readyState < 2\)\) return false;/, 'a real pause or a natural end (both at readyState 2+) is never a gap');
-  assert.match(gapFn, /ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: true, docVisible: !doc\.hidden \}\) && !!canRun\(\)/, 'every other axis must still hold');
+  assert.match(gapFn, /if \(!media \|\| !\(media\.readyState < 2\) \|\| media\.error\) return false;/, 'a real pause or a natural end (both at readyState 2+) is never a load gap; neither is a FAILED load');
+  assert.match(gapFn, /return holdAxes\(\);/, 'every other axis must still hold');
+  const endFn = fnBody(WIRING_SRC, 'function inEndHold() {', '  ');
+  assert.match(endFn, /if \(!endHoldMs \|\| !glow\.classList\.contains\('is-on'\)\) return false;/, 'no END hold unless the view opted in AND the glow is lit');
+  assert.match(endFn, /if \(!media \|\| !\(media\.readyState >= 1\)\) return false;/, 'only while the element still has its media: readyState 0 is the next load, the load hold\'s');
+  assert.match(endFn, /if \(!media\.ended && holdKind !== 'end'\) return false;/, 'a real user pause never ENDED: never an end hold');
+  assert.match(endFn, /return holdAxes\(\);/, 'every other axis must still hold');
+  assert.match(fnBody(WIRING_SRC, 'function holdAxes() {', '  '), /return ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: true, docVisible: !doc\.hidden \}\) && !!canRun\(\);/, 'the hold axes: pref, dark, visible and the view gate');
   assert.match(WIRING_SRC, /var loadHoldMs = opts\.loadHoldMs > 0 \? opts\.loadHoldMs : 0;/, 'opt-in: the watch view passes none (its v1.312 behavior)');
-  assert.match(fnBody(WIRING_SRC, 'function holdExpired() {', '  '), /holdTimer = null;\s*if \(shouldRun\(\)\) start\(\); else stop\(\);/, 'the bound re-decides');
+  assert.match(WIRING_SRC, /var endHoldMs = opts\.endHoldMs > 0 \? opts\.endHoldMs : 0;/, 'opt-in: the watch view passes none');
+  assert.match(fnBody(WIRING_SRC, 'function hold(kind, ms) {', '  '), /if \(holdKind === kind\) return;\s*clearHold\(\);\s*holdKind = kind;\s*holdTimer = setHoldT\(holdExpired, ms\);/, 'one timer per hold kind, never extended by a second event of the same hold');
+  assert.match(fnBody(WIRING_SRC, 'function holdExpired() {', '  '), /holdTimer = null;\s*holdKind = null;\s*if \(shouldRun\(\)\) start\(\); else stop\(\);/, 'the bound re-decides');
   assert.match(fnBody(WIRING_SRC, 'function start() {', '  '), /^function start\(\) \{\s*clearHold\(\);/, 'start ends a hold');
   assert.match(fnBody(WIRING_SRC, 'function stop() {', '  '), /^function stop\(\) \{\s*clearHold\(\);/, 'stop (so teardown, light, a hard fail) ends a hold');
   assert.match(WIRING_SRC, /ambientShouldRun\(\{ prefOn: prefOn, dark: isDarkMode\(doc\), playing: currentlyPlaying\(\), docVisible: !doc\.hidden \}\) && !!canRun\(\)/, 'the pure predicate, all four axes, AND the view\'s own gate');
   assert.match(WIRING_SRC, /var canRun = typeof opts\.canRun === 'function' \? opts\.canRun : function \(\) \{ return true; \};/, 'a view without its own gate (watch) runs on the four axes alone - exactly as before v1.317');
   for (const ev of ['play', 'playing', 'pause', 'ended', 'emptied']) assert.match(WIRING_SRC, new RegExp("media\\.addEventListener\\('" + ev + "', evaluate, \\{ signal: mediaSignal \\}\\)"), ev + ' re-evaluates');
   assert.match(WIRING_SRC, /if \(loadHoldMs\) media\.addEventListener\('loadeddata', evaluate, \{ signal: mediaSignal \}\);/, 'a holding view also re-decides when the new src\'s data lands');
+  assert.match(WIRING_SRC, /if \(loadHoldMs \|\| endHoldMs\) media\.addEventListener\('error', evaluate, \{ signal: mediaSignal \}\);/, 'gate r2: a holding view re-decides at a load error');
   assert.match(WIRING_SRC, /doc\.addEventListener\('visibilitychange', evaluate, \{ signal: signal \}\)/, 'tab hide/show re-evaluates');
   assert.match(WIRING_SRC, /attributeFilter: \['data-mode', 'data-theme'\]/, 'a theme flip re-evaluates');
   assert.match(WIRING_SRC, /signal\.addEventListener\('abort', teardown, \{ once: true \}\)/, 'the view abort runs the teardown');
@@ -676,6 +688,9 @@ test('v1.317 M4: watch.js keeps no hand-copy - setupAmbientMode is a thin call i
   assert.match(wiring, /storyboard: \(window\.FileTube && window\.FileTube\.storyboard\) \|\| null,/, 'the sprite geometry comes from the player module, guarded');
   assert.match(wiring, /signal: signal,/, 'the view\'s own abort signal');
   assert.doesNotMatch(wiring, /canRun|observe:/, 'watch adds no gate of its own: its behavior is the v1.312 one');
+  // gate r2 (adversary N4): a new item is a new watch view, so watch holds nothing across a
+  // load gap or after an end (its v1.312 behavior); the holds are music's opt-in
+  assert.doesNotMatch(wiring, /loadHoldMs|endHoldMs|HOLD_MS/, 'watch passes no hold');
   // the Node export path still answers the engine through watch.js (one import path for the suite)
   const WATCH = require('../../public/js/watch.js');
   assert.strictEqual(WATCH.createAmbientEngine, W.createAmbientEngine, 'watch.js re-exports the ONE engine');

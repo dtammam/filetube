@@ -93,7 +93,8 @@ function realm(opts) {
   if (opts.pref !== undefined) W.localStorage.setItem('ft-ambient', opts.pref);
   const media = D.createElement('video');
   media.id = 'media-player';
-  const state = { paused: true, ended: false, readyState: 4, currentTime: 0 };
+  const state = { paused: true, ended: false, readyState: 4, currentTime: 0, error: null };
+  Object.defineProperty(media, 'error', { get: () => state.error, configurable: true });
   Object.defineProperty(media, 'paused', { get: () => state.paused, configurable: true });
   Object.defineProperty(media, 'ended', { get: () => state.ended, configurable: true });
   Object.defineProperty(media, 'readyState', { get: () => state.readyState, configurable: true });
@@ -212,6 +213,38 @@ function newSrcPlays(r) {
   r.media.dispatchEvent(new r.W.Event('loadeddata'));
   r.media.dispatchEvent(new r.W.Event('playing'));
 }
+// gate r2 (Dean: fix the natural-end blink): a track's natural END in its real shape. The
+// spec fires 'pause' then 'ended' at readyState 4 with `ended` true; the player's OWN
+// 'ended' listener (player.js runEndedCompletionCascade, registered at host creation, so
+// BEFORE the ambient host's) rewinds the element to 0, so `ended` reads false again by the
+// time the ambient listener runs, and the rewind's SEEK drops readyState to HAVE_METADATA (1)
+// until it lands (MEASURED in headless Chromium: 'ended' observed at readyState 1).
+// installEndedCascade registers that rewind first.
+function installEndedCascade(r) {
+  r.media.addEventListener('ended', () => {
+    r.state.currentTime = 0; r.state.ended = false; r.state.readyState = 1;
+    setImmediate(() => { if (r.state.readyState === 1) { r.state.readyState = 4; r.media.dispatchEvent(new r.W.Event('seeked')); } });
+  });
+}
+function naturalEnd(r) {
+  r.state.ended = true; r.state.paused = true; r.state.readyState = 4;
+  r.media.dispatchEvent(new r.W.Event('pause'));
+  r.media.dispatchEvent(new r.W.Event('ended'));
+}
+// the queue advance's load: teardownMediaState on an ALREADY-paused element (no 'pause'
+// event), then emptied at readyState 0
+function advanceLoad(r) {
+  r.state.readyState = 0; r.state.currentTime = 0;
+  r.media.dispatchEvent(new r.W.Event('emptied'));
+}
+// Records every drop of the lit state (a hide-then-show inside one task still leaves records).
+function litDrops(r) {
+  const drops = [];
+  const mo = new r.W.MutationObserver((recs) => { for (const x of recs) drops.push(x.attributeName + ':' + x.oldValue); });
+  mo.observe(r.glow, { attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class'] });
+  mo.observe(r.D.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['data-ambient-on'] });
+  return () => { drops.push(...mo.takeRecords().map((x) => x.attributeName + ':' + x.oldValue)); mo.disconnect(); return drops; };
+}
 
 test('v1.317 gate r1 host: the LOAD-GAP hold - a lit glow survives pause + emptied at readyState 0 and the new src playing, with ONE bounded timer that the resume clears', async () => {
   const r = realm({ pref: '1' });
@@ -234,22 +267,31 @@ test('v1.317 gate r1 host: the LOAD-GAP hold - a lit glow survives pause + empti
   } finally { r.restore(); }
 });
 
-test('v1.317 gate r1 host: the hold never swallows a real clear - the bound, a pause DURING the gap, a user pause, a natural end, light, a hidden tab and the view gate each clear', async () => {
+test('v1.317 gate r1+r2 host: a hold never swallows a real clear - the load bound, a pause DURING the gap, a user pause, the END bound (a finished queue), light, a hidden tab, the view gate, the toggle OFF (gap and end) and a FAILED load each clear', async () => {
+  const toggleOff = (r) => { const c = r.row().check; c.checked = false; c.dispatchEvent(new r.W.Event('change')); };
   const cases = [
     ['the bound passes with nothing playing', (r, T) => { loadGap(r); assert.ok(r.lit(), 'held first'); T.fireLive(); }],
     ['a user pause during the gap (data arrives paused)', (r) => { loadGap(r); assert.ok(r.lit(), 'held first'); r.state.readyState = 4; r.media.dispatchEvent(new r.W.Event('loadeddata')); }],
-    ['a user pause at readyState 4', (r) => { r.pause(); }],
-    ['a natural end (pause then ended, readyState 4)', (r) => { r.state.ended = true; r.state.paused = true; r.media.dispatchEvent(new r.W.Event('pause')); r.media.dispatchEvent(new r.W.Event('ended')); }],
+    ['a user pause at readyState 4 (never ended: the END hold must not take it)', (r) => { r.pause(); }],
+    ['a natural end with NOTHING next (a finished queue): held, then the END bound clears', (r, T) => { naturalEnd(r); assert.ok(r.lit(), 'held first'); assert.strictEqual(T.live()[0].ms, 700, 'the END bound'); T.fireLive(); }],
     ['a flip to light during the gap', async (r) => { loadGap(r); r.D.documentElement.setAttribute('data-mode', 'light'); await settle(); }],
     ['a hidden tab during the gap', (r) => { loadGap(r); Object.defineProperty(r.D, 'hidden', { get: () => true, configurable: true }); r.D.dispatchEvent(new r.W.Event('visibilitychange')); }],
     ['the view gate false during the gap (a dock)', (r, T, gate, h) => { loadGap(r); gate.ok = false; h.evaluate(); }],
+    // gate r2 (adversary S3): the toggle had only a text lock on this axis
+    ['ambient toggled OFF during the gap', (r) => { loadGap(r); assert.ok(r.lit(), 'held first'); toggleOff(r); }],
+    ['ambient toggled OFF during the END hold', (r) => { naturalEnd(r); assert.ok(r.lit(), 'held first'); toggleOff(r); }],
+    ['a flip to light during the END hold', async (r) => { naturalEnd(r); assert.ok(r.lit(), 'held first'); r.D.documentElement.setAttribute('data-mode', 'light'); await settle(); }],
+    ['the view gate false during the END hold (a dock)', (r, T, gate, h) => { naturalEnd(r); assert.ok(r.lit(), 'held first'); gate.ok = false; h.evaluate(); }],
+    // gate r2 (adversary S1): a failed load is no gap - it clears at the error, not at the bound
+    ['the new src fails to load (media.error, then error)', (r) => { loadGap(r); assert.ok(r.lit(), 'held first'); r.state.error = { code: 4 }; r.media.dispatchEvent(new r.W.Event('error')); }],
   ];
   for (const [label, clear] of cases) {
     const r = realm({ pref: '1' });
     const T = fakeTimers();
     const gate = { ok: true };
     try {
-      const h = watchHost(r, { loadHoldMs: 5000, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout, canRun: () => gate.ok });
+      installEndedCascade(r);
+      const h = watchHost(r, { loadHoldMs: 5000, endHoldMs: 700, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout, canRun: () => gate.ok });
       r.state.readyState = 4; r.play(); await settleN();
       assert.ok(r.lit(), label + ': precondition lit');
       await clear(r, T, gate, h); await settleN();
@@ -267,8 +309,52 @@ test('v1.317 gate r1 host: WITHOUT loadHoldMs (the watch view) the gap clears ex
     r.state.readyState = 4; r.play(); await settleN();
     assert.ok(r.lit(), 'precondition: lit');
     assert.strictEqual(r.bound.some((b) => b.target === r.media && b.type === 'loadeddata'), false, 'watch binds no loadeddata');
+    assert.strictEqual(r.bound.some((b) => b.target === r.media && b.type === 'error'), false, 'gate r2: watch binds no error listener either');
     loadGap(r);
     assert.strictEqual(r.anyLit(), false, 'watch: not playing = cleared at once (unchanged)');
+  } finally { r.restore(); }
+  // gate r2: and a natural END (the real shape, the player's rewind first) clears at once on watch
+  const r2 = realm({ pref: '1' });
+  try {
+    installEndedCascade(r2);
+    watchHost(r2);
+    r2.state.readyState = 4; r2.play(); await settleN();
+    assert.ok(r2.lit(), 'precondition: lit');
+    naturalEnd(r2);
+    assert.strictEqual(r2.anyLit(), false, 'watch: a natural end clears at once (no END hold without endHoldMs)');
+  } finally { r2.restore(); }
+});
+
+test('v1.317 gate r2 host (Dean: fix the natural-end blink): the END hold - a natural end (pause + ended at readyState 4, the player rewinding to 0) holds a lit glow; the queue advance\'s load hands over to the LOAD bound; the next track playing ends it - never a flicker', async () => {
+  const r = realm({ pref: '1' });
+  const T = fakeTimers();
+  try {
+    installEndedCascade(r);
+    const h = watchHost(r, { loadHoldMs: 5000, endHoldMs: 700, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout });
+    naturalEnd(r); // an end BEFORE anything is lit holds nothing
+    assert.strictEqual(T.list.length, 0, 'an UNLIT glow arms no END hold');
+    r.state.readyState = 4; r.play(); await settleN();
+    assert.ok(r.lit() && r.painted(), 'precondition: lit and populated');
+    const done = litDrops(r);
+    naturalEnd(r);
+    assert.strictEqual(r.state.ended, false, 'the REAL shape: the player\'s cascade rewound the element before the ambient listener ran');
+    assert.strictEqual(r.state.currentTime, 0);
+    assert.strictEqual(r.state.readyState, 1, 'and the rewind\'s seek left it at readyState 1 (the Chromium shape)');
+    assert.ok(r.lit(), 'after the end: still lit (held)');
+    assert.strictEqual(h.engine.running(), true, 'the engine keeps its clock');
+    assert.strictEqual(T.live().length, 1, 'ONE hold timer (armed at pause, not re-armed at ended)');
+    assert.strictEqual(T.live()[0].ms, 700, 'bounded by endHoldMs');
+    h.evaluate(); // a view seam while waiting for the advance (music's updateNowPlayingPanel): the LATCH holds, ended reads false
+    assert.ok(r.lit(), 'a seam during the wait keeps it held (latched: the rewind made ended false)');
+    assert.strictEqual(T.live().length, 1, 'and does not re-arm');
+    advanceLoad(r); // the queue advance loads the next track: emptied at readyState 0
+    assert.ok(r.lit(), 'the next track\'s load gap: still lit');
+    assert.strictEqual(T.live().length, 1, 'still ONE live hold timer');
+    assert.strictEqual(T.live()[0].ms, 5000, 'handed over to the LOAD bound (the end timer cleared)');
+    newSrcPlays(r);
+    assert.ok(r.lit(), 'the next track plays: lit');
+    assert.strictEqual(T.live().length, 0, 'the resume cleared the hold');
+    assert.deepStrictEqual(done(), [], 'no hide, no is-on drop, no root-signal flicker across end -> emptied -> loadeddata -> playing');
   } finally { r.restore(); }
 });
 
