@@ -602,7 +602,7 @@
       var lver = readVer(cfg.likedVersion);
       var shown = curPane();
       var before = shown ? shown.state : null;
-      if (dataVer !== null && ver !== dataVer) { markStale(function () { return true; }); slide.pool = null; }
+      if (dataVer !== null && ver !== dataVer) markStale(function () { return true; }); // (the drift's pool re-fetches itself: poolFresh)
       else if (likedVer !== null && lver !== likedVer) markStale(function (p) { return p.node.type === 'playlist' && p.node.key === 'liked'; });
       dataVer = ver;
       likedVer = lver;
@@ -654,16 +654,18 @@
     }
 
     // ---- QUICK SCROLL (Dean 2026-09-24): letters on a long alphabetical list ----------------
-    // The WHEEL: the engine's own speed signal (its v1.233 step multiplier, passed in as `fast`)
-    // arms letter mode after LETTER_ENGAGE_STEPS fast detents in a row; from then on every detent
-    // jumps to the first row of the next/previous letter present, until the wheel has been still
-    // for LETTER_HOLD_MS (the overlay fades; the highlight stays where it landed). TOUCH: scrolling
+    // The WHEEL: the engine's own speed signal (its v1.233 step multiplier) is reported once per
+    // POINTERMOVE (noteMove); letter mode arms after LETTER_ENGAGE_MOVES fast moves in a row inside
+    // ONE gesture (gate r1 Q1: counting detents let one big move arm it, and the count latched
+    // across gestures - both seats measured it). From then on a detent jumps to the first row of
+    // the next/previous letter present - at most ONE letter per pointermove - until the wheel has
+    // been still for LETTER_HOLD_MS (the overlay fades; the highlight stays where it landed). TOUCH: scrolling
     // the list by finger shows a small letter badge at its edge; tapping it (or the big overlay)
     // opens the A-Z picker. Every arm that leaves the list (MENU, Select, a tap, a level change,
     // the screen flipping to Now Playing, a stale reload, destroy) clears all three.
     var LETTER_HOLD_MS = 1000;
-    var LETTER_ENGAGE_STEPS = 2;
-    var lm = { on: false, fastRun: 0, timer: null };
+    var LETTER_ENGAGE_MOVES = 3;
+    var lm = { on: false, fastRun: 0, timer: null, moveJumped: false };
     var badge = { on: false, timer: null };
     var shownLetter = '';
     var gridOpen = false;
@@ -685,18 +687,43 @@
       badge.on = false;
       gridOpen = false;
     }
-    // Re-draw ONLY the three layers (a letter step must not rebuild the list or the art pane).
+    // Update ONLY the three layers (a letter step must not rebuild the list or the art pane).
+    // gate r1 Q2 (qa W3): the overlay and the badge are PERSISTENT nodes - their `is-on` class and
+    // text are toggled in place, so the CSS fade actually runs (a class flip on a freshly parsed
+    // node has no before-style: it vanished in one frame). A new pair is born OFF and its style is
+    // read once before it can turn on. Only the picker is created / dropped.
+    function dropNode(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
+    function setLayer(el, on, letter) {
+      if (el.textContent !== letter && (on || !el.classList.contains('is-on'))) el.textContent = letter;
+      el.classList.toggle('is-on', !!on);
+      if (on) el.removeAttribute('tabindex'); else el.setAttribute('tabindex', '-1');
+    }
     function applyJump() {
       var mv = menuEl();
       var p = curPane();
       if (!mv || !p) return;
       var model = jumpModel(p);
-      var oldLayers = mv.querySelectorAll(':scope > .ipm-letter, :scope > .ipm-badge, :scope > .ipm-grid');
-      for (var i = 0; i < oldLayers.length; i++) oldLayers[i].parentNode.removeChild(oldLayers[i]);
-      if (!model) return;
-      var wrap = doc.createElement('div');
-      wrap.innerHTML = SK.renderMenuJump(model);
-      while (wrap.firstChild) mv.appendChild(wrap.firstChild);
+      var ov = mv.querySelector(':scope > .ipm-letter');
+      var bd = mv.querySelector(':scope > .ipm-badge');
+      var gr = mv.querySelector(':scope > .ipm-grid');
+      if (!model) { dropNode(ov); dropNode(bd); dropNode(gr); return; }
+      if (!ov || !bd) {
+        dropNode(ov); dropNode(bd);
+        var w0 = doc.createElement('div');
+        w0.innerHTML = SK.renderMenuJump({ letter: model.letter, overlay: false, badge: false, grid: null });
+        ov = w0.querySelector('.ipm-letter'); bd = w0.querySelector('.ipm-badge');
+        mv.appendChild(ov); mv.appendChild(bd);
+        void ov.offsetWidth; // commit the OFF style, so the first turn-on fades in
+      }
+      setLayer(ov, model.overlay, model.letter);
+      setLayer(bd, model.badge, model.letter);
+      if (model.grid && !gr) {
+        var w1 = doc.createElement('div');
+        w1.innerHTML = SK.renderMenuJump({ letter: '', overlay: false, badge: false, grid: model.grid });
+        mv.appendChild(w1.querySelector('.ipm-grid'));
+      } else if (!model.grid && gr) {
+        dropNode(gr);
+      }
     }
     function armLetterHold() {
       lm.timer = cancel(lm.timer);
@@ -805,7 +832,7 @@
       var v = Object.assign(listModel(pane, null), {
         title: pane.title, root: stack.length === 1, pivots: lvl.pivots, pivotIdx: lvl.pane,
         art: art && art === artShown ? art : '', artIn: !!art && art === artShown,
-        jump: jumpModel(pane),
+        jump: null, // the layers are applyJump()'s (persistent nodes, below)
         aboutName: pane.node.type === 'about' ? SK.menuTitle({ type: 'main' }, st) : '',
       });
       var wrap = doc.createElement('div');
@@ -819,7 +846,8 @@
         var nl = el.querySelector('.ipm-lpane');
         if (ol && nl) ol.parentNode.replaceChild(nl, ol);
         var kids = Array.prototype.slice.call(old.children);
-        kids.forEach(function (c) { if (!c.classList.contains('ipm-split')) old.removeChild(c); });
+        // the split (its art pane) and the two fade layers stay; everything else is redrawn
+        kids.forEach(function (c) { if (!c.classList.contains('ipm-split') && !c.classList.contains('ipm-letter') && !c.classList.contains('ipm-badge')) old.removeChild(c); });
         Array.prototype.slice.call(el.children).forEach(function (c) { if (!c.classList.contains('ipm-split')) old.appendChild(c); });
       } else if (old && old.parentNode) {
         old.parentNode.replaceChild(el, old);
@@ -836,6 +864,7 @@
         pane.center = false;
         renderList();
       }
+      applyJump();
       syncSlides();
     }
 
@@ -885,14 +914,34 @@
     var SLIDE_MS = 9000;   // one cover's time on screen (its drift runs a little longer in CSS)
     var FADE_MS = 1300;    // the crossfade, a little over the CSS opacity transition
     var slide = { on: false, box: null, cur: null, next: null, nextReady: false, due: false, timer: null, fadeTimer: null,
-      pool: null, poolReq: 0, gen: 0 };
+      pool: null, poolVer: null, poolReq: 0, gen: 0 };
+    // gate r1 (qa S6): the covers were fetched for the library version the view reports; a newer
+    // version re-fetches them (the drift keeps its current cover meanwhile - never freezes).
+    function poolFresh() { return slide.pool !== null && slide.poolVer === readVer(cfg.dataVersion); }
+    function fetchPool(then) {
+      if (typeof cfg.coverPool !== 'function') return;
+      var req = ++slide.poolReq;
+      var ver = readVer(cfg.dataVersion);
+      var pr;
+      try { pr = Promise.resolve(cfg.coverPool()); } catch (e) { pr = Promise.reject(e); }
+      pr.then(function (urls) {
+        if (destroyed || req !== slide.poolReq) return;
+        slide.pool = Array.isArray(urls) ? urls.slice() : [];
+        slide.poolVer = ver;
+        if (then) then();
+      }, function () { if (req === slide.poolReq && !slide.pool) slide.poolVer = null; });
+    }
     function reducedMotion() {
       try { return !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; }
     }
     function slidesWanted() {
       var p = curPane();
+      // gate r1 Q4 (adversary W3): a game holding the wheel (Brick from Extras) covers the LCD -
+      // the drift pauses under it and restarts when the takeover is released.
+      var held = false;
+      try { held = !!(typeof o.takeoverLive === 'function' && o.takeoverLive()); } catch (_) { held = false; }
       return !!(!destroyed && style() === 'click' && screen === 'menu' && !trayUp() && p && !SK.menuIsItemLevel(p.node) &&
-        panel.classList.contains('mms-full') && !panel.hidden && !doc.hidden);
+        panel.classList.contains('mms-full') && !panel.hidden && !doc.hidden && !held);
     }
     function stopSlides() {
       slide.timer = cancel(slide.timer);
@@ -932,6 +981,8 @@
         if (img.parentNode) img.parentNode.removeChild(img);
         slide.next = null; slide.nextReady = false;
         slide.pool = (slide.pool || []).filter(function (x) { return x !== u; }); // never retry a dead cover
+        // gate r1 (adversary S4): EVERY cover failed and none is showing -> today's pane, not a blank
+        if (!slide.cur && !slide.pool.length) { stopSlides(); scheduleArt(0); return; }
         preloadNext();
       }, { once: true });
       slide.next = img;
@@ -941,6 +992,7 @@
     }
     function swapSlide() {
       if (!slidesWanted() || !slide.box || !slide.box.isConnected) { stopSlides(); if (!destroyed) scheduleArt(0); return; }
+      if (!poolFresh()) fetchPool(null); // a library change: new covers for the NEXT swaps
       if (!slide.next || !slide.nextReady) { slide.due = true; if (!slide.next) preloadNext(); return; }
       slide.due = false;
       var gen = slide.gen;
@@ -950,9 +1002,12 @@
       slide.cur = incoming;
       var still = reducedMotion();
       var raf = win.requestAnimationFrame ? win.requestAnimationFrame.bind(win) : function (cb) { return later(cb, 16); };
-      // the incoming layer paints once at its start state, THEN turns on (so it fades + drifts)
+      // the incoming layer paints once at its start state, THEN turns on (so it fades + drifts).
+      // gate r1 Q2 (adversary W4): a cached cover can land before the node's first style
+      // resolution - read its style FIRST, or the class flip snaps to the end state.
       raf(function () {
         if (gen !== slide.gen) return;
+        void incoming.offsetWidth;
         incoming.classList.add('is-on');
         if (!still) incoming.classList.add('is-drift');
         if (outgoing) { outgoing.classList.remove('is-on'); outgoing.classList.remove('is-in'); }
@@ -985,17 +1040,10 @@
       if (!box) { stopSlides(); return; }
       if (slide.on && slide.box === box) return; // already drifting in this pane
       if (slide.on) stopSlides();
-      if (slide.pool && slide.pool.length) { startSlides(box); return; }
+      if (poolFresh() && slide.pool.length) { startSlides(box); return; }
       scheduleArt(0); // today's pane while the covers load (or when there are none)
-      if (slide.pool || typeof cfg.coverPool !== 'function') return;
-      var req = ++slide.poolReq;
-      var pr;
-      try { pr = Promise.resolve(cfg.coverPool()); } catch (e) { pr = Promise.reject(e); }
-      pr.then(function (urls) {
-        if (destroyed || req !== slide.poolReq) return;
-        slide.pool = Array.isArray(urls) ? urls.slice() : [];
-        if (slide.pool.length) syncSlides();
-      }, function () { if (req === slide.poolReq) slide.pool = null; });
+      if (poolFresh()) return;
+      fetchPool(function () { if (slide.pool.length) syncSlides(); });
     }
 
     // ---- navigation ----
@@ -1073,6 +1121,9 @@
       var cur = currentId();
       if (cur === lastCurrent) return;
       lastCurrent = cur;
+      // gate r1 (qa S8): a new track is a new listen - the "recent" lists NOT on screen re-load
+      // when next shown (the one on screen keeps its rows under your finger).
+      markStale(function (p) { return !isVisible(p) && (p.node.type === 'recentArtists' || (p.node.type === 'playlist' && p.node.key === 'recent-played')); });
       if (!cur) return;
       stack.forEach(function (l) {
         l.panes.forEach(function (p) {
@@ -1136,24 +1187,33 @@
       },
       // One wheel detent. `fast` = the engine's own speed band said this detent was fast. Returns
       // how many LETTERS the detent crossed (the engine ticks the haptic once per letter).
-      moveCursor: function (delta, fast) {
+      // A new wheel gesture: the fast-move count starts again (never latched across a lift).
+      onGestureStart: function () { lm.fastRun = 0; },
+      // ONE call per pointermove in cursor mode: was this move fast (the engine's own band)?
+      noteMove: function (fast) {
+        lm.moveJumped = false;
+        var p = curPane();
+        if (!letterable(p)) { lm.fastRun = 0; return; }
+        if (fast) lm.fastRun += 1; else if (!lm.on) lm.fastRun = 0;
+        if (!lm.on && lm.fastRun >= LETTER_ENGAGE_MOVES) { lm.on = true; badge.timer = cancel(badge.timer); badge.on = false; }
+      },
+      // One wheel detent. Returns how many LETTERS it crossed (the engine ticks the haptic).
+      moveCursor: function (delta) {
         if (checkData()) { render(); return 0; }
         var p = curPane();
         if (!p) return 0;
         if (gridOpen) closeGrid();
-        if (letterable(p)) {
-          if (fast) lm.fastRun += 1; else if (!lm.on) lm.fastRun = 0;
-          if (!lm.on && lm.fastRun >= LETTER_ENGAGE_STEPS) { lm.on = true; badge.timer = cancel(badge.timer); badge.on = false; }
-          if (lm.on) return letterStep(p, delta > 0 ? 1 : -1);
-        } else {
-          lm.fastRun = 0;
+        if (lm.on && letterable(p)) {
+          if (lm.moveJumped) return 0; // one letter per pointermove, however far the finger went
+          lm.moveJumped = true;
+          return letterStep(p, delta > 0 ? 1 : -1);
         }
         setCursor(p.cursor + delta);
         return 0;
       },
       onItemTap: function (i) { if (screen !== 'menu') return; if (checkData()) { render(); return; } activate(i); },
       // quick scroll's taps (the overlay/badge open the picker, a letter jumps, a tap outside
-      // closes it). True = consumed. MENU / Select while the picker is open only close it.
+      // closes it). True = consumed. ANY other tap while the picker is open only closes it.
       onPanelClick: function (e) {
         if (!style() || screen !== 'menu') return false;
         var t = e.target;
@@ -1162,8 +1222,10 @@
         if (t.closest('[data-skin-letters]')) { openGrid(); return true; }
         if (!gridOpen) return false;
         if (t.closest('[data-skin-lettergrid]')) return true; // the picker's own dead space
+        // gate r1 (adversary S2): the tap that closes the picker does nothing else - never a
+        // play/pause, a skip or a row under it.
         closeGrid();
-        return !!t.closest('.ip-menuview, [data-skin-menu], [data-skin-select]');
+        return true;
       },
       // gate r1 (qa S4): is the menu showing a PIVOT level? (the engine skips the pad's hold-to-scan there)
       isPivotLevel: function () { var l = top(); return !!(style() && screen === 'menu' && l && l.pivots); },
@@ -1171,6 +1233,8 @@
       onScroll: onScroll,
       // the document's visibility changed: the drift stops while hidden, restarts on return.
       onVisibility: function () { if (destroyed) return; if (doc.hidden) stopSlides(); else syncSlides(); },
+      // a wheel takeover (Brick) started or ended: the drift pauses under it / resumes after.
+      onTakeover: function () { if (destroyed || !style()) return; syncSlides(); },
       // test/diagnostic seam: the live state, read-only copies.
       state: function () {
         var p = curPane();
@@ -1224,6 +1288,7 @@
     var menuGames = (inMainDoc && stickerCfg && stickerCfg.brick) || null;
     var pocket = (config.menu && typeof config.menu.load === 'function')
       ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames,
+        takeoverLive: function () { return !!wheelTakeover; },
         onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
       : null;
     function stickerPlayer() {
@@ -1235,11 +1300,17 @@
     // v1.233's fast-flick acceleration: rows per cursor step by angular speed (deg/ms). The ONE
     // speed signal the wheel has - the pocket menus' letter mode reads the same band (below).
     function cursorStepMult(speed) { return speed > 2.4 ? 4 : (speed > 1.5 ? 3 : (speed > 0.8 ? 2 : 1)); }
-    // Quick scroll (2026-09-24): a detent counts as FAST for letter mode from the first band where
-    // the wheel already stops moving one row per detent (> 0.8 deg/ms, about 2.2 turns a second) -
-    // the engine's own "this is a flick" line, not a second velocity estimator. The pocket menu
-    // arms letter mode after two such detents in a row (one noisy pointermove cannot).
+    // Quick scroll (2026-09-24): a pointermove counts as FAST for letter mode from the first band
+    // where the wheel already stops moving one row per detent (> 0.8 deg/ms, about 2.2 turns a
+    // second) - the engine's own "this is a flick" line, not a second velocity estimator. The
+    // pocket menu arms letter mode after three such MOVES in a row inside one gesture.
     var LETTER_FAST_MULT = 2;
+    // gate r1 Q1 (adversary W1): the ONE speed signal's time base. A handler runs late under load,
+    // so the gap between two HANDLER runs can be far shorter than the gap between the two EVENTS
+    // (measured at CPU x4: 14.8 ms vs 22 ms, a 0.63 deg/ms turn read as 0.93). The engine takes
+    // the LONGER of the two gaps: never faster than either clock says (a batch of coalesced events
+    // shares one handler instant; an event clock can lag a handler that ran on time).
+    function evTime(ev) { var t = ev && Number(ev.timeStamp); return (isFinite(t) && t > 0) ? t : 0; }
     var wheelCursorRow = -1;           // current list position the cursor sits on (-1 = list closed)
     var wheelSuppressClick = false;    // swallow the synthetic click a spin-ending pointerup fires
     var wheelSpin = null;              // the live gesture handle (one at a time)
@@ -1646,6 +1717,7 @@
       var t = wheelTakeover;
       wheelTakeover = null;
       if (typeof t.onExit === 'function') { try { t.onExit(); } catch (_) { /* a dying takeover must not block the repaint */ } }
+      if (pocket) pocket.onTakeover(); // the cover drift resumes (gate r1 Q4)
     }
 
     // v1.271: a repaint that replaces the wheel MID-GESTURE used to leave the drag for
@@ -2170,7 +2242,7 @@
         // (Dean 2026-09-02 - the pop-out's old wheel-volume gave way to a consistent scrub).
         mode: (listMode || menuMode) ? 'cursor' : 'scrub', scrubRatio: null, menu: menuMode,
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
-        lastT: nowMs(), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
+        lastT: nowMs(), lastEvT: evTime(e), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
         win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
         onDocUp: null, ended: false,
       };
@@ -2189,6 +2261,7 @@
       // a scrub/cursor (cancels the hold-timer). Steps currentTime on the PANEL's own window
       // timer so a Document-PiP pop-out (which throttles the opener) still scans.
       hapticGestureStart(st, e); // v1.256: ghost rides under the finger from the first move
+      if (menuMode && pocket) pocket.onGestureStart(); // quick scroll: the fast-move count is per gesture (gate r1 Q1)
       if (fastScan) {
         // v1.256: the scaled ghost covers the zones - route the press to the REAL control.
         var downTgt = realTargetUnder(e);
@@ -2224,7 +2297,9 @@
         if (st.scanning) return;
         var ang = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
         var d = wheelShortAngle(ang - st.lastAngle); st.lastAngle = ang;
-        var now = nowMs(); var dt = Math.max(1, now - st.lastT); st.lastT = now;
+        var now = nowMs(); var evNow = evTime(ev);
+        var dt = Math.max(1, now - st.lastT, (evNow && st.lastEvT) ? evNow - st.lastEvT : 0);
+        st.lastT = now; st.lastEvT = evNow;
         st.accum += d;
         var lettered = !!(st.menu && pocket && !wheelTakeover && pocket.inLetterMode());
         hapticOnMove(st, ev, Math.abs(d), d, lettered); // v1.256: ticks in BOTH modes (cursor + scrub); v1.303 signed d for the sweep engine; quick scroll: per letter in letter mode
@@ -2262,13 +2337,14 @@
         // cursor mode: songs-per-step scales with angular speed (a slow turn = 1, a flick = several)
         var speed = Math.abs(d) / dt;
         var mult = cursorStepMult(speed);
+        if (st.menu && pocket) pocket.noteMove(mult >= LETTER_FAST_MULT); // the letter mode's per-move speed memory
         var letters = 0;
         while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
           var sign = st.accum > 0 ? 1 : -1;
           st.moved = true;
           // pocket menus: the SAME rotary step, onto the menu - with the step's speed band, which
           // arms the quick-scroll letter mode on a long alphabetical list (the return = letters crossed)
-          if (st.menu && pocket) letters += (pocket.moveCursor(sign * mult, mult >= LETTER_FAST_MULT) || 0);
+          if (st.menu && pocket) letters += (pocket.moveCursor(sign * mult) || 0);
           else setWheelCursor(wheelCursorRow + sign * mult, false);
           st.accum -= sign * WHEEL_STEP_DEG;
         }
@@ -2365,7 +2441,7 @@
       // v1.270: set (or clear, with null) the single wheel takeover -
       // {onRotate, onSelect, onExit}, all optional. Generic on purpose: the engine
       // never learns what is listening. The caller owns its own teardown.
-      setWheelTakeover: function (t) { wheelTakeover = (t && typeof t === 'object') ? t : null; },
+      setWheelTakeover: function (t) { wheelTakeover = (t && typeof t === 'object') ? t : null; if (pocket) pocket.onTakeover(); },
       // v1.270: the fallback MUST stay `|| null`, never `|| panel` - the geometry lock
       // derives its mount target from this selector, so a panel fallback would restore
       // the full-screen overlay at runtime while the test still measured the LCD (slim I).

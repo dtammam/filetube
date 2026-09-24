@@ -86,7 +86,7 @@ test('Click: MENU climbs Now Playing -> Main Menu, every Music level renders the
     assert.ok(rows(h).every((r) => r.querySelector('.ipm-chev')), 'drill-in rows carry the chevron');
     // the wheel: three detents down -> Albums, then the center drills in
     await stepDown(h); await stepDown(h); await stepDown(h);
-    assert.strictEqual(cursorLabel(h), 'Albums', 'rotation moved the highlight two rows (the shared cursor engine)');
+    assert.strictEqual(cursorLabel(h), 'Albums', 'rotation moved the highlight three rows (the shared cursor engine)');
     select(h);
     assert.strictEqual(title(h), 'Albums');
     await settleNet();

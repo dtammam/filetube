@@ -106,7 +106,7 @@ test('menuAboutItems: read-only rows with grouped counts, the version and the so
     { id: 'b1', albumKey: 'B', hasArt: false }, { id: 'c1', albumKey: 'C', hasArt: true, artUrl: '/thumbnail/c1' },
     { id: 'd1', albumKey: 'D', hasArt: true, artUrl: 'https://evil.example/x.jpg' }, { id: 'e1', albumKey: 'E', hasArt: true, artUrl: '//evil.example/y.jpg' },
   ], artFor);
-  assert.deepStrictEqual(pool, ['/albumart/a1', '/thumbnail/c1'], 'one per album, art only, same-origin only');
+  assert.deepStrictEqual(pool.slice().sort(), ['/albumart/a1', '/thumbnail/c1'], 'one per album, art only, same-origin only (a random order)');
   assert.deepStrictEqual(skins.menuCoverPool([{ id: 'x', hasArt: false }], artFor), [], 'no art in the library = an empty pool');
 });
 
@@ -896,4 +896,259 @@ test('E: a repaint while the document is HIDDEN (a background track change) neve
     assert.strictEqual(slides(b).length, 0);
     assert.strictEqual(b.engine.menuState().slideTimers, 0);
   } finally { b.restore(); }
+});
+
+// ================================================================ gate r1 fixes (@bd90e80e findings)
+// spinT: the REAL wheel gesture with the two clocks the engine reads driven separately - the
+// handler clock (performance.now, `handlerMs` apart) and each event's own timeStamp (`eventMs`
+// apart). A loaded phone runs handlers late: the handler gaps shrink while the event gaps stay true.
+function spinT(b, { from = 0, moves, step, handlerMs, eventMs, lift = true, steps }) {
+  const wheel = P(b).querySelector('.ip-wheel');
+  const at = (deg) => { const r = deg * Math.PI / 180; return { clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) }; };
+  const realNow = performance.now;
+  let t = realNow.call(performance); let te = 5000;
+  const mk = (type, q) => { const ev = new b.win.MouseEvent(type, { bubbles: true, clientX: q.clientX, clientY: q.clientY }); Object.defineProperty(ev, 'timeStamp', { value: te }); return ev; };
+  Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: () => t });
+  try {
+    wheel.dispatchEvent(mk('pointerdown', at(from)));
+    let deg = from;
+    const list = steps || Array.from({ length: moves }, () => step);
+    for (const st of list) { t += handlerMs; te += (eventMs == null ? handlerMs : eventMs); deg += st; wheel.dispatchEvent(mk('pointermove', at(deg))); }
+    if (lift) wheel.dispatchEvent(mk('pointerup', at(deg)));
+  } finally { Object.defineProperty(performance, 'now', { configurable: true, writable: true, value: realNow }); }
+}
+
+test('r1 Q1: ONE big pointermove (50 deg in 16 ms) never arms letter mode - it is one move, however many detents it spans', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    spinT(b, { steps: [50], handlerMs: 16 });
+    assert.strictEqual(b.engine.menuState().letterMode, false, 'one move is not a spin');
+    assert.ok(b.engine.menuState().cursor < firstRowOf(LIB, 'A'), 'it moved rows (the v1.233 accel), not a letter: ' + b.engine.menuState().cursor);
+  } finally { b.restore(); }
+});
+
+test('r1 Q1: in letter mode ONE 90-degree move (four detents) jumps ONE letter, never two', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    fastSpin(b, 3);
+    assert.ok(b.engine.menuState().letterMode, 'precondition: letter mode');
+    const before = b.engine.menuState().letter;
+    spinT(b, { steps: [90], handlerMs: 16 }); // a finger swept across the hub in one move
+    const L = skins.MENU_LETTERS;
+    const present = skins.menuLetterRuns(LIB.map((t) => ({ label: t.title }))).map((r) => r.letter);
+    assert.strictEqual(present.indexOf(b.engine.menuState().letter), present.indexOf(before) + 1, 'exactly one letter on (' + before + ' -> ' + b.engine.menuState().letter + ')');
+    assert.ok(L.length === 27);
+  } finally { b.restore(); }
+});
+
+test('r1 Q1 (adversary W1): a MEDIUM 0.6 deg/ms turn on a loaded phone (handler gaps halved, the events\' own timestamps true) never engages', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    // 6 degrees per move; the handlers ran 5 ms apart (reads as 1.2 deg/ms), the events were 10 ms apart (0.6)
+    spinT(b, { moves: 40, step: 6, handlerMs: 5, eventMs: 10 });
+    assert.strictEqual(b.engine.menuState().letterMode, false, 'the event clock says medium: no letter mode');
+    assert.strictEqual(b.engine.menuState().cursor, 10, 'one row per detent (240 deg = 10 detents at x1)');
+    // the control: the same turn on a phone that keeps up (both clocks 5 ms) IS fast and engages
+    spinT(b, { moves: 40, step: 6, handlerMs: 5, eventMs: 5 });
+    assert.strictEqual(b.engine.menuState().letterMode, true, 'control: a true 1.2 deg/ms spin engages');
+  } finally { b.restore(); }
+});
+
+test('r1 Q1 (adversary W2): the fast-move count never latches ACROSS gestures - two fast moves, a lift, 60 s, two more: no letter mode', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    spinT(b, { moves: 2, step: 11.5, handlerMs: 8 });
+    b.clock.advance(60000);
+    spinT(b, { moves: 2, step: 11.5, handlerMs: 8 });
+    assert.strictEqual(b.engine.menuState().letterMode, false, 'each gesture starts its count again');
+    spinT(b, { moves: 3, step: 11.5, handlerMs: 8 });
+    assert.strictEqual(b.engine.menuState().letterMode, true, 'control: three fast moves in ONE gesture engage');
+  } finally { b.restore(); }
+});
+
+test('r1 Q5 (X1): a SLOW move inside a gesture resets the fast count (fast, fast, slow, fast, fast: no letter mode)', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    spinT(b, { steps: [11.5, 11.5], handlerMs: 8, lift: false });
+    spinT(b, { steps: [3], handlerMs: 60, lift: false, from: 23 });
+    spinT(b, { steps: [11.5, 11.5], handlerMs: 8, from: 26 });
+    assert.strictEqual(b.engine.menuState().letterMode, false);
+  } finally { b.restore(); }
+});
+
+test('r1 Q5 (X36): the threshold is the 0.8 deg/ms band - a sustained 0.65 deg/ms turn moves one row per detent and never engages', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    spinT(b, { moves: 44, step: 6.5, handlerMs: 10, eventMs: 10 }); // 286 deg = 13 detents
+    assert.strictEqual(b.engine.menuState().letterMode, false);
+    assert.strictEqual(b.engine.menuState().cursor, 13, 'x1: one row per detent');
+  } finally { b.restore(); }
+});
+
+test('r1 Q5 (X27): a Seattle PIVOT switch ends letter mode (the overlay never rides onto a list you did not flick)', async () => {
+  const b = bootEngine({ skin: 'zune-classic', load: (n) => Promise.resolve(['artists', 'albums', 'songs'].includes(n.type)
+    ? { items: skins.menuSongItems(LIB, artFor), tracks: LIB, play: { ctx: { sort: 'title-asc' } }, letters: true } : { items: [] }) });
+  try {
+    b.engine.paint(); pressMenu(b); pressSelect(b); await flush();
+    fastSpin(b, 3);
+    assert.ok(b.engine.menuState().letterMode, 'precondition: letter mode on the artists pivot');
+    tap(b, P(b).querySelector('[data-skin-next]')); await flush();
+    assert.strictEqual(b.engine.menuState().pane, 1, 'moved to the albums pivot');
+    assert.strictEqual(b.engine.menuState().letterMode, false, 'the pivot switch ended letter mode');
+    assert.ok(!overlay(b).classList.contains('is-on'));
+  } finally { b.restore(); }
+});
+
+test('r1 Q2 (qa W3): the overlay and the badge are PERSISTENT nodes - letter steps and the hold\'s end toggle the SAME element (so the CSS fade runs)', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    const ov0 = overlay(b); const bd0 = badgeEl(b);
+    assert.ok(ov0 && bd0 && !ov0.classList.contains('is-on'), 'the layers exist, OFF, before any spin (born off)');
+    fastSpin(b, 5);
+    assert.strictEqual(overlay(b), ov0, 'letter steps reuse the overlay node');
+    assert.ok(ov0.classList.contains('is-on'));
+    b.clock.advance(1100);
+    assert.strictEqual(overlay(b), ov0, 'the hold\'s end toggles the SAME node (its fade can run)');
+    assert.ok(!ov0.classList.contains('is-on'));
+    assert.ok(ov0.textContent.length === 1, 'the fading letter keeps its glyph');
+    const list = P(b).querySelector('.ipm-list');
+    list.scrollTop = 900; list.dispatchEvent(new b.win.Event('scroll'));
+    assert.strictEqual(badgeEl(b), bd0, 'the badge reveal reuses its node');
+    b.clock.advance(1100);
+    assert.strictEqual(badgeEl(b), bd0); assert.ok(!bd0.classList.contains('is-on'));
+  } finally { b.restore(); }
+});
+
+test('r1 Q2 (adversary W4): the first cover reads its own style BEFORE its classes turn on (a cached cover otherwise snaps to the end state) - source lock on the ONE swap', () => {
+  const js = fs.readFileSync(surfacePath, 'utf8').replace(/\/\/[^\n]*/g, '');
+  const m = /function swapSlide\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.ok(m, 'swapSlide exists');
+  const body = m[1];
+  const read = body.search(/void incoming\.offsetWidth|getComputedStyle\(incoming\)/);
+  const on = body.indexOf("incoming.classList.add('is-on')");
+  assert.ok(read >= 0 && on > read, 'the style read precedes the class flip');
+  assert.ok(/raf\(function \(\) \{[\s\S]*void incoming\.offsetWidth[\s\S]*classList\.add\('is-on'\)/.test(body), '...inside the frame that turns it on');
+});
+
+test('r1 Q4 (adversary W3): the cover drift PAUSES while Brick (from Extras) holds the wheel, and resumes when the game ends', async () => {
+  const b = bootWithBrick({ coverPool: () => Promise.resolve(POOL.slice()) });
+  try {
+    await driftUp(b);
+    assert.strictEqual(b.engine.menuState().slides, true, 'precondition: drifting on the Main Menu');
+    tapLabel(b, 'Extras'); tapLabel(b, 'Games');
+    assert.strictEqual(b.engine.menuState().slides, true, 'Games is a menu level: still drifting');
+    pressSelect(b); // Brick
+    assert.ok(b.wiring.isRunning(), 'precondition: the game runs');
+    assert.strictEqual(b.engine.menuState().slides, false, 'paused under the game');
+    assert.strictEqual(b.engine.menuState().slideTimers, 0, 'no drift timer while the game runs');
+    assert.strictEqual(slides(b).length, 0);
+    b.clock.advance(20000);
+    assert.strictEqual(slides(b).length, 0, 'still nothing 20 s into the game');
+    pressMenu(b); await flush();
+    assert.ok(!b.wiring.isRunning());
+    assert.strictEqual(b.engine.menuState().slides, true, 'the game ended: the drift resumes');
+  } finally { b.restore(); }
+});
+
+test('r1 (adversary S2): with the picker open, a tap on Play or Next ONLY closes it - no play/pause, no skip', async () => {
+  const b = bootEngine({ load: songsLoad(LIB) });
+  try {
+    await openSongs(b);
+    let pp = 0, nx = 0;
+    b.sdom.window.document.getElementById('pp-btn').addEventListener('click', () => { pp += 1; });
+    b.sdom.window.document.getElementById('track-next-btn').addEventListener('click', () => { nx += 1; });
+    const open = () => { fastSpin(b, 3); tap(b, overlay(b)); assert.ok(gridEl(b)); };
+    open(); tap(b, P(b).querySelector('[data-skin-play]'));
+    assert.strictEqual(gridEl(b), null); assert.strictEqual(pp, 0, 'Play did not act');
+    open(); tap(b, P(b).querySelector('[data-skin-next]'));
+    assert.strictEqual(gridEl(b), null); assert.strictEqual(nx, 0, 'Next did not skip');
+    tap(b, P(b).querySelector('[data-skin-play]'));
+    assert.strictEqual(pp, 1, 'control: with the picker closed Play acts');
+  } finally { b.restore(); }
+});
+
+test('r1 cover pool: a RANDOM sample across the whole album list (not the first 60 by title), same-origin paths only (rejects // and /\\)', () => {
+  const tracks = Array.from({ length: 200 }, (_, i) => ({ id: 'a' + i, albumKey: 'k' + i, hasArt: true }));
+  let seed = 7; const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const pool = skins.menuCoverPool(tracks, artFor, rand);
+  assert.strictEqual(pool.length, 60);
+  assert.strictEqual(new Set(pool).size, 60, 'no duplicates');
+  assert.ok(pool.some((u) => Number(u.replace('/albumart/a', '')) >= 60), 'covers from beyond the first 60 albums');
+  assert.deepStrictEqual(skins.menuCoverPool([{ id: 'x', hasArt: true, artUrl: '/\\evil.example/a.jpg' }, { id: 'y', hasArt: true, artUrl: '//evil.example/b.jpg' }, { id: 'z', hasArt: true, artUrl: '/' }], artFor), [], 'off-site spellings and a bare "/" rejected');
+  assert.deepStrictEqual(skins.menuCoverPool([{ id: 'ok', hasArt: true, artUrl: '/thumbnail/ok' }], artFor), ['/thumbnail/ok']);
+});
+
+test('r1 (adversary S4): when EVERY cover fails, the pane falls back to today\'s art - never a blank pane', async () => {
+  const b = bootEngine({ coverPool: () => Promise.resolve(['/albumart/dead1', '/albumart/dead2']) });
+  try {
+    b.engine.paint(); pressMenu(b); await flush(); await flush();
+    for (let k = 0; k < 2; k++) { const s = slides(b)[0]; assert.ok(s, 'a cover is preloading'); fire(b, s, 'error'); }
+    b.clock.advance(200);
+    assert.strictEqual(b.engine.menuState().slides, false, 'the drift gave up');
+    assert.strictEqual(P(b).querySelector('.ipm-art .ipm-art-img').getAttribute('src'), '/albumart/now', 'today\'s pane');
+  } finally { b.restore(); }
+});
+
+test('r1 (qa S6): a library change while the drift runs re-fetches the covers at the next swap and the drift keeps going (never freezes)', async () => {
+  let n = 0;
+  const b = bootEngine({ coverPool: () => { n += 1; return Promise.resolve(n === 1 ? POOL.slice() : ['/albumart/new1', '/albumart/new2']); } });
+  try {
+    await driftUp(b);
+    b.state.ver += 1; // the view: the library changed
+    b.clock.advance(1400);
+    const next = slides(b).find((x) => !x.classList.contains('is-on'));
+    fire(b, next);
+    b.clock.advance(7700); await flush(); // the swap (9 s after the first cover) - its fade timer not yet due
+    assert.strictEqual(n, 2, 'the swap re-fetched the covers for the new library');
+    assert.ok(next.classList.contains('is-on'), 'and the drift moved on');
+    b.clock.advance(1400);
+    const after = slides(b).find((x) => !x.classList.contains('is-on'));
+    assert.ok(after && ['/albumart/new1', '/albumart/new2'].includes(after.getAttribute('src')), 'the next cover comes from the NEW pool');
+  } finally { b.restore(); }
+});
+
+test('r1 (qa S8): a "recent" list that is NOT on screen re-loads after the playing track changes; the one on screen keeps its rows', async () => {
+  const b = bootEngine({ skin: 'zune-classic', load: (n) => Promise.resolve({ items: [{ label: n.type + ' row', node: { type: 'artist', key: 'x' } }] }) });
+  try {
+    b.engine.paint(); pressMenu(b); pressSelect(b); await flush(); // the pivots (artists)
+    tap(b, P(b).querySelector('[data-skin-prev]')); await flush(); // the "recent" pivot (last, wraps)
+    const loads = () => b.spy.loads.filter((x) => x.type === 'recentArtists').length;
+    assert.strictEqual(loads(), 1);
+    b.state.current = 'b'; b.engine.paint(); await flush();
+    assert.strictEqual(loads(), 1, 'on screen: not re-loaded under the finger');
+    tap(b, P(b).querySelector('[data-skin-next]')); await flush(); // off it
+    b.state.current = 'c'; b.engine.paint(); await flush();
+    tap(b, P(b).querySelector('[data-skin-prev]')); await flush(); // back
+    assert.strictEqual(loads(), 2, 'off screen during a new listen: re-loaded when shown again');
+  } finally { b.restore(); }
+});
+
+test('r1 (adversary S1): the letter of EVERY Latin, fullwidth, circled and Roman letter matches the bucket the SERVER\'s cmpStr sorts it into', () => {
+  const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const expected = (ch) => {
+    const lab = ch + 'x';
+    if (cmpStr(lab, 'A') < 0) return '#';
+    for (let i = 0; i < 26; i++) {
+      const hi = i < 25 ? L[i + 1] : null;
+      if (cmpStr(lab, L[i]) >= 0 && (hi ? cmpStr(lab, hi) < 0 : cmpStr(lab, 'Zzzzzz') <= 0)) return L[i];
+    }
+    return '#';
+  };
+  const bad = [];
+  for (const [a, z] of [[0xA1, 0x24F], [0x1E00, 0x1EFF], [0xFF21, 0xFF3A], [0xFF41, 0xFF5A], [0x24B6, 0x24E9], [0x2160, 0x217F]]) {
+    for (let c = a; c <= z; c++) {
+      const ch = String.fromCodePoint(c);
+      if (!/\p{L}|\p{N}|\p{So}/u.test(ch)) continue;
+      if (expected(ch) !== skins.menuLetterOf(ch)) bad.push(ch + ' U+' + c.toString(16));
+    }
+  }
+  assert.deepStrictEqual(bad, [], 'filed under a different letter than the server sorts them');
+  assert.deepStrictEqual(['ＡＫＩＲＡ', 'ａｂｃ', 'Ⓐlpha', 'Ⅻ Suite', 'Ǽther', 'ǅivo', 'æther', 'ølstykke', 'łódź'].map(skins.menuLetterOf), ['A', 'A', 'A', 'X', 'A', 'D', 'A', 'O', 'L']);
 });

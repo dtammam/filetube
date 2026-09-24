@@ -3409,6 +3409,11 @@ if (typeof module !== 'undefined' && module.exports) {
       ]).then(function (n) { return { items: SKINS.menuAboutItems({ songs: n[0], albums: n[1], artists: n[2], version: ver }) }; });
     }
     function menuItemsOf(d) { return Array.isArray(d && d.items) ? d.items : []; }
+    // gate r1 Q6: the pocket menus' ONE "recent" source (Recent Artists AND the Recently Played
+    // playlist): the Recently Played route WITH the tracks played to their end (the opt-in
+    // `include=finished` - a finished play is a position-0 progress row with a fresh updatedAt).
+    // The browse view's Continue listening keeps the plain route (resume points only).
+    var MENU_RECENT_URL = '/api/music?filter=recent-listening&include=finished&limit=200';
     function menuLoad(node) {
       var n = node || {};
       if (!SKINS) return Promise.resolve({ items: [] });
@@ -3421,7 +3426,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (n.type === 'recentArtists') {
         // Recent Artists: the Recently Played source's own route (visibility-gated), its artists in
         // recency order - a row is an Artists row (node type 'artist'), so it drills in the same way.
-        return fetchJson('/api/music?filter=recent-listening&limit=200').then(function (d) { return { items: SKINS.menuRecentArtistItems(menuItemsOf(d), musicArtUrl) }; });
+        return fetchJson(MENU_RECENT_URL).then(function (d) { return { items: SKINS.menuRecentArtistItems(menuItemsOf(d), musicArtUrl) }; });
       }
       if (n.type === 'about') return menuAbout();
       if (n.type === 'songs') {
@@ -3459,7 +3464,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var pl = n.key === 'liked'
           ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' } }
           : n.key === 'recent-played'
-            ? { url: '/api/music?filter=recent-listening&limit=200', ctx: { src: 'music', filter: 'recent-listening' } }
+            ? { url: MENU_RECENT_URL, ctx: { src: 'music', filter: 'recent-listening' } }
             : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' } };
         return fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
       }

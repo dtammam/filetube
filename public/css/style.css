@@ -11967,7 +11967,9 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:44px; height:44px; /* token-exempt: the 44 px touch target */
     border-radius:var(--radius-full); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--fs-xl); font-weight:var(--fw-bold); }
   .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:44px; /* token-exempt: every letter a 44 px target */
-    align-content:center; overflow-y:auto; background:var(--mms-white); border-top:1px solid var(--mms-ipod-jump-line); }
+    align-content:safe center; overflow-y:auto; background:var(--mms-white); border-top:1px solid var(--mms-ipod-jump-line); }
+  /* gate r1 Q3: `safe` - on an LCD shorter than the grid the rows start at the scroll origin (plain
+     centring pushed the first rows above it, unreachable: qa measured # and A-D lost at 667x375). */
   .mms-ipod .ipm-gl{ border:0; padding:0; background:transparent; color:var(--mms-black); font-family:inherit; font-size:var(--fs-xl); font-weight:var(--fw-bold); cursor:pointer; }
   .mms-ipod .ipm-gl:active{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); }
   .mms-ipod .ipm-gl.is-off{ color:var(--mms-ipod-hair); cursor:default; }
@@ -12124,6 +12126,8 @@ html[data-modern="on"] .video-uploader {
   .mms-zune-classic .ipm-letter{ left:0; top:0; right:0; bottom:0; width:auto; height:auto; margin:0; border-radius:0; background:var(--mms-zn-jump-bg);
     color:var(--mms-white); font-size:var(--fs-jump-xl); font-weight:var(--fw-light); text-transform:lowercase; }
   .mms-zune-classic .ipm-badge{ background:var(--mms-zn-ink); color:var(--mms-white); font-weight:var(--fw-light); text-transform:lowercase; }
+  /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
+  @media (max-width: 340px){ .mms-ipod:not(.mms-zune-classic) .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
   .mms-zune-classic .ipm-grid{ grid-template-columns:repeat(5, minmax(0, 1fr)); grid-auto-rows:56px; /* token-exempt: big-type 44 px+ targets */ background:var(--mms-zn-jump-bg); border-top:0; }
   .mms-zune-classic .ipm-gl{ color:var(--mms-white); font-size:var(--fs-5xl); font-weight:var(--fw-light); text-transform:lowercase; }
   .mms-zune-classic .ipm-gl:active{ background:transparent; color:var(--mms-zn-pink); }
