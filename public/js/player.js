@@ -8684,6 +8684,9 @@ if (typeof module !== 'undefined' && module.exports) {
         artist: currentData.channelName || '',
         album: currentData.album || '',
         albumKey: currentData.albumKey || '',
+        // v1.317 (M1): the music view's channel folder for "Go to channel" - carried like
+        // albumKey so a dock-return re-init re-seeds it (loadTrack sets it; '' = no channel).
+        channelFolder: (typeof currentData.channelFolder === 'string') ? currentData.channelFolder : '',
         browseCtx: (typeof currentData.browseCtx === 'string') ? currentData.browseCtx : '',
         // v1.105: `resumeMode` + `subId` let the PODCASTS view re-seed its own
         // now-playing panel after a dock-tap re-init (mirrors music's isMusic path;

@@ -474,3 +474,37 @@ test('v1.311.3: a rotate across the 768px gate un-renders the podcast skin and a
     assert.ok(body.classList.contains('mms-on'), 'and mms-on returns');
   }, { meta, mm });
 });
+
+// ---- v1.317 (M1+M2, the seam): the shared panel builder stays BYTE-IDENTICAL for podcasts ----
+// Music gained an optional data-artist sub-line button (np.subArtist) and an optional per-row
+// length (row.durLabel) in skin-surface.js buildPanelHtml. The podcasts writer passes neither,
+// so its output must not move by one byte: EXPECTED is the builder's output captured at
+// v1.316.0 (main 6ea45237) for this exact fixture, before the change.
+
+test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no durLabel) is byte-identical to its v1.316.0 output', () => {
+  delete require.cache[require.resolve('../../public/js/skin-surface.js')];
+  const S = require('../../public/js/skin-surface.js');
+  const np = { title: 'Ep One', subline: 'The Show · 1h' };
+  const rows = [
+    { id: 'e1', artUrl: '/podcastart/s1', title: 'Ep One', artist: 'The Show', index: 0, state: 'current' },
+    { id: 'e2', artUrl: '/podcastart/s1', title: 'Ep Two', artist: 'The Show', index: 1, state: 'next' },
+  ];
+  const EXPECTED = '<div class="mnp-meta"><div class="mnp-title" title="Ep One">Ep One</div><div class="mnp-sub">The Show · 1h</div></div>'
+    + '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>'
+    + '<button type="button" class="mnp-queue-row is-current" aria-current="true" data-index="0"><img class="mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /><span class="mnp-queue-main"><span class="mnp-queue-title">Ep One</span><span class="mnp-queue-sub">The Show</span></span></button>'
+    + '<button type="button" class="mnp-queue-row" data-index="1"><img class="mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /><span class="mnp-queue-main"><span class="mnp-queue-title">Ep Two</span><span class="mnp-queue-sub">The Show</span></span></button>'
+    + '</div>';
+  assert.strictEqual(S.buildPanelHtml(np, rows), EXPECTED, 'byte-identical to the pre-v1.317 podcast panel');
+});
+
+test('v1.317 (seam): the DRIVEN podcast panel renders no length column and its sub-line stays a plain div (the podcasts writer passes neither new field)', async () => {
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
+    await playEp(dom, 0);
+    const el = panel(dom);
+    assert.ok(el.querySelectorAll('.mnp-queue-row').length >= 3, 'the queue rendered (non-vacuous)');
+    assert.strictEqual(el.querySelector('.mnp-queue-dur'), null, 'no per-row length on a podcast panel');
+    const sub = el.querySelector('.mnp-sub');
+    assert.strictEqual(sub.tagName, 'DIV', 'the show line is not a button');
+    assert.strictEqual(sub.hasAttribute('data-artist'), false, 'and carries no artist-drill hook');
+  });
+});

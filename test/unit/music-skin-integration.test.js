@@ -1957,3 +1957,202 @@ test('v1.311.3 Dean\'s stuck panel: a wide re-render outside a rotate never leav
     assert.ok(el.querySelector('[data-skin-play]'), 'with its transport - a way out');
   } });
 });
+
+// ---- v1.317 (M1, D6b): the now-playing ARTIST LINE is a real control on every skin SURFACE ----
+// Driven clicks (never a source grep): the in-tab skin per renderer family + the pop-out. The
+// tap opens the in-Music ARTIST drill (the "Playing from <Album>" line's model): the artist
+// scope loads and the drill header paints in the MAIN document.
+
+const ARTIST_TRACK = { id: 't1', title: 'Track A', artist: 'NESTALGIA', album: 'Retro Mix', albumKey: 'k', durationSec: 337 };
+function artistFetch(log) {
+  return (u) => {
+    const url = String(u);
+    log.push(url);
+    if (/\/api\/music\?/.test(url) && /[?&]artist=/.test(url)) return Promise.resolve({ ok: true, json: async () => ({ items: [ARTIST_TRACK], total: 1, offset: 0, limit: 1000 }) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+}
+const artistScopeLoaded = (log) => log.some((u) => /\/api\/music\?/.test(u) && /[?&]artist=NESTALGIA(&|$)/.test(u));
+
+for (const sk of ['apple', 'spotify', 'ipod', 'zune-classic']) {
+  test('v1.317 (M1) in-tab ' + sk + ': tapping the artist line opens the ARTIST drill (the artist-scope fetch + the drill header); no transport proxy fires', async () => {
+    const log = [];
+    await boot({ mobile: true, isMusic: true, skin: sk, fetchImpl: artistFetch(log), run: async (dom, spy) => {
+      const btn = panel(dom).querySelector('[data-skin-artist]');
+      assert.ok(btn, sk + ': the artist line rendered as the hook button');
+      assert.strictEqual(btn.textContent, 'NESTALGIA', sk + ': it shows the playing artist');
+      log.length = 0;
+      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await settle();
+      assert.ok(artistScopeLoaded(log), sk + ': the artist scope loaded - ' + log.join(' | '));
+      const head = dom.window.document.querySelector('.music-drill-header .music-drill-title');
+      assert.ok(head && head.textContent === 'NESTALGIA', sk + ': the artist drill header is up in the view');
+      assert.deepStrictEqual([spy.pp, spy.prev, spy.next, spy.seek, spy.dock, spy.shuffle], [0, 0, 0, 0, 0, 0], sk + ': no transport/dock/shuffle proxy fired');
+    } });
+  });
+}
+
+test('v1.317 (M1) pop-out: the artist line in the pop-out window drills the MAIN document\'s view (nothing window-bound; the pop-out stays open)', async () => {
+  const log = [];
+  await boot({ mobile: false, isMusic: true, skin: 'ipod', fetchImpl: artistFetch(log), run: async (dom) => {
+    const pip = makePipWindow();
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
+    clickPopout(dom); await settle(); await settle();
+    const btn = pipPanelOf(pip).querySelector('[data-skin-artist]');
+    assert.ok(btn, 'the pop-out skin carries the artist hook');
+    log.length = 0;
+    btn.dispatchEvent(new pip.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 6; i++) await settle();
+    assert.ok(artistScopeLoaded(log), 'the main view loaded the artist scope - ' + log.join(' | '));
+    const head = dom.window.document.querySelector('.music-drill-header .music-drill-title');
+    assert.ok(head && head.textContent === 'NESTALGIA', 'the drill opened in the MAIN document');
+    assert.ok(!pip.closed, 'the pop-out stays open');
+  } });
+});
+
+// ---- v1.317 (M1, D5/D6a/D7): "Go to channel" on the sticker's page 1 ----------------------
+// A LIBRARY-backed track (the Wave G projection / a listen track) with a folderName has a home
+// grid behind it (`/?folder=<folderName>`, with its "Showing in Music" mark); a native music-
+// store track never does. The tap LEAVES the view through the SPA router (only #view-root
+// swaps - the persistent player host keeps playing), so the player sees no load/dock/close.
+
+const CH_TRACK = { id: 'c1', title: 'From A Channel', artist: 'The Channel', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/c1', artUrl: '/thumbnail/c1', progressEndpoint: '/api/progress', folderName: 'The Channel Dir' };
+function continueFetch(track, log) {
+  return (u, init) => {
+    const url = String(u);
+    if (log) log.push({ url, method: (init && init.method) || 'GET' });
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
+    if (new RegExp('^/api/music/' + track.id + '$').test(url)) return Promise.resolve({ ok: true, json: async () => track });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+}
+// A player whose getCurrentMeta mirrors the REAL facade's carry (player.js: title/channelName/
+// album/albumKey/channelFolder from the load data) and counts every lifecycle call.
+function channelPlayer(calls) {
+  const p = {
+    currentId: null, _meta: null,
+    getState: () => 'full',
+    getCurrentMeta: () => p._meta,
+    expand() {}, dock() { calls.docks += 1; }, close() { calls.closes += 1; },
+    setTrackNav: (nav) => { calls.navs.push(nav || {}); },
+    load: (id, data, opts) => {
+      calls.loads.push({ id, data, opts: opts || {} });
+      p.currentId = id;
+      p._meta = { isMusic: true, id, title: data.title, artist: data.channelName, album: data.album, albumKey: data.albumKey, channelFolder: (typeof data.channelFolder === 'string') ? data.channelFolder : '' };
+    },
+  };
+  return p;
+}
+const openSticker = (dom) => {
+  panel(dom).querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  return panel(dom).querySelector('[data-skin-sticker-menu]');
+};
+
+test('v1.317 (M1): a LIBRARY-backed track with a channel folder gets "Go to channel" on page 1; the tap navigates via the SPA router to /?folder=<folder> and leaves the player alone', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=c1',
+    fetchImpl: continueFetch(CH_TRACK), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      assert.strictEqual(calls.loads.length, 1, 'the track loaded (populated first)');
+      assert.strictEqual(calls.loads[0].data.channelFolder, 'The Channel Dir', 'loadTrack carries the channel folder on the load data (the re-init seed, D7)');
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the "Go to channel" row renders on page 1');
+      assert.match(row.textContent, /Go to channel/, 'labeled Go to channel');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel%20Dir'], 'the SPA router navigates to the home grid filtered by THIS track\'s folder (D5)');
+      assert.strictEqual(menu.hidden, true, 'the menu closed on the way out');
+      assert.deepStrictEqual([calls.loads.length, calls.docks, calls.closes], [1, 0, 0], 'no load/dock/close: the persistent host keeps playing across the swap');
+      assert.ok(dom.window.document.getElementById('media-player'), 'the media element is untouched');
+    },
+  });
+});
+
+test('v1.317 (M1) negative axes: a NATIVE track (folderName, no library source) and a library track WITHOUT a folder get NO "Go to channel" row while the quick menu still renders', async () => {
+  const native = { id: 'n5', title: 'Ripped', artist: 'Band', album: '', albumKey: '', durationSec: 100, folderName: 'Music/Ripped' };
+  const calls1 = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=n5',
+    fetchImpl: continueFetch(native), playerOverride: channelPlayer(calls1),
+    run: async (dom) => {
+      const menu = openSticker(dom);
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'a native music-store track has no channel page');
+      assert.strictEqual(calls1.loads[0].data.channelFolder, '', 'and carries no channel folder on the load data');
+    },
+  });
+  const noFolder = { id: 'l7', title: 'Lib', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/l7' };
+  const calls2 = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=l7',
+    fetchImpl: continueFetch(noFolder), playerOverride: channelPlayer(calls2),
+    run: async (dom) => {
+      const menu = openSticker(dom);
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'a library track without a folderName has nowhere to go');
+    },
+  });
+});
+
+test('v1.317 (M1, D7): a LISTEN track carries its channel folder - page 1 shows Watch AND "Go to channel" (Watch first), and the tap targets the video\'s folder', async () => {
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch([], LISTEN_VIDEO), playerOverride: channelPlayer(calls),
+    run: async (dom) => {
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      const wb = menu.querySelector('[data-skin-watchback]');
+      const ch = menu.querySelector('[data-skin-channel]');
+      assert.ok(wb && ch, 'both rows render for a listen track');
+      assert.ok(wb.compareDocumentPosition(ch) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, '"Go to channel" sits beside (after) Watch');
+      ch.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel'], 'the listen video\'s folderName is the target');
+    },
+  });
+});
+
+test('v1.317 (M1, D7): "Go to channel" SURVIVES the dock-return re-init - the channel folder rides the player meta (channelFolder), not the rebuilt queue', async () => {
+  // The v1.252 W1 shape: dock -> tap the mini -> /music?nowplaying=1 re-inits the view on the
+  // SAME module instance; render() leaves `queue` empty on a grid tab, so a queue-only lookup
+  // would lose the row. nowPlaying re-seeds from getCurrentMeta().channelFolder (loadTrack put
+  // it on the load data). Drop the carry on either side and this goes red.
+  const calls = { loads: [], navs: [], docks: 0, closes: 0 };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=c1',
+    fetchImpl: continueFetch(CH_TRACK), playerOverride: channelPlayer(calls),
+    run: async (dom, spy, mod) => {
+      assert.strictEqual(calls.loads.length, 1, 'the track loaded (populated first)');
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      global.fetch = (u, init) => ((init && init.method) === 'POST' ? Promise.resolve({ ok: true, json: async () => ({}) }) : Promise.resolve({ ok: true, json: async () => ({ items: [] }) })); // the re-init rebuilds NOTHING the row could read from
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await settle();
+      const navs = [];
+      dom.window.FileTube.navigate = (u) => { navs.push(u); };
+      const menu = openSticker(dom);
+      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered after the re-init (non-vacuous)');
+      const row = menu.querySelector('[data-skin-channel]');
+      assert.ok(row, 'the "Go to channel" row SURVIVES the re-init (the queue lookup misses; the meta carry serves it)');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.deepStrictEqual(navs, ['/?folder=The%20Channel%20Dir'], 'and still targets the right folder');
+      assert.strictEqual(calls.loads.length, 1, 'the re-init adopted the live player - no reload');
+    },
+  });
+});
+
+test('v1.317 (M1, D7) source-lock: player.js getCurrentMeta carries channelFolder off the load data (the re-init seed above reads it) - no jsdom harness drives the real facade', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const PLAYER = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const m = /getCurrentMeta: function \(\) \{([\s\S]*?)\n {4}\},/.exec(PLAYER);
+  assert.ok(m, 'getCurrentMeta is found and isolated');
+  assert.match(m[1], /channelFolder: \(typeof currentData\.channelFolder === 'string'\) \? currentData\.channelFolder : ''/, 'the carry reads the load data\'s channelFolder (albumKey\'s precedent)');
+  const MUSIC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
+  assert.match(MUSIC, /channelFolder: channelFolderOf\(item\),/, 'loadTrack puts the gated channel folder on the load data');
+  assert.match(MUSIC, /folderName: \(typeof meta\.channelFolder === 'string'\) \? meta\.channelFolder : ''/, 'seedNowPlayingFromPlayer reads it back');
+});

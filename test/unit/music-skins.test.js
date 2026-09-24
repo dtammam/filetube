@@ -517,3 +517,42 @@ test('v1.262 Seattle Classic: the METRO screen rides the shared machinery (sourc
   assert.ok(aquaAt > -1 && metroAt > -1, 'both fill rules exist');
   assert.ok(metroAt > aquaAt, 'the Metro fill comes AFTER the aqua ribbing - equal specificity, later wins; reorder and the Zune screen shows a blue-striped bar');
 });
+
+// ---- v1.317 (M1+M2): the artist line is a control on EVERY skin; the thumb rows show a length ----
+
+test('v1.317 (M1): every skin renders the now-playing artist line as a data-skin-artist BUTTON (escaped); an empty artist keeps the plain line with no hook', () => {
+  const ctx = Object.assign({}, CTX, { track: Object.assign({}, CTX.track, { artist: 'A & "B"' }) });
+  const empty = Object.assign({}, CTX, { track: Object.assign({}, CTX.track, { artist: '' }) });
+  for (const id of skins.IDS) {
+    const cls = (id === 'apple' || id === 'spotify') ? 'mms-sub' : 'ip-artist';
+    const html = skins.renderFull(id, ctx);
+    assert.match(html, new RegExp('<button type="button" class="' + cls + '" data-skin-artist[^>]*>A &amp; &quot;B&quot;</button>'), id + ': the artist line is the hook button, escaped');
+    assert.strictEqual((html.match(/data-skin-artist/g) || []).length, 1, id + ': exactly one artist hook');
+    const bare = skins.renderFull(id, empty);
+    assert.doesNotMatch(bare, /data-skin-artist/, id + ': no hook without an artist (no focusable nothing)');
+    assert.match(bare, new RegExp('<div class="' + cls + '"></div>'), id + ': the plain line keeps its slot');
+  }
+});
+
+test('v1.317 (M2): the Nordic (thumb) queue rows carry each row\'s length (.mms-rd) like the iPod list rows already did, with a styling source', () => {
+  const html = skins.renderFull('spotify', CTX);
+  const rd = [...html.matchAll(/<span class="mms-rd">([^<]*)<\/span>/g)].map((m) => m[1]);
+  assert.deepStrictEqual(rd, ['0:42', '5:37', '4:51'], 'one length per row, in queue order');
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-spotify \.mms-rd\{[^}]*flex:none;[^}]*font-variant-numeric:tabular-nums;/, 'a className with no rule behind it is a defect');
+});
+
+test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) across every renderer, so each consumer\'s own line rules keep winning', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const m = /:where\(button\.mnp-sub, button\.mms-sub, button\.ip-artist, button\.music-drill-artist\) \{([^}]*)\}/.exec(css);
+  assert.ok(m, 'ONE :where() reset names the four block artist-line buttons (desktop panel, Cider/Nordic, the LCD skins, the album drill)');
+  for (const decl of ['display: block', 'width: 100%', 'appearance: none', 'border: 0', 'background: transparent', 'padding: 0', 'font: inherit', 'color: inherit', 'cursor: pointer']) {
+    assert.ok(m[1].indexOf(decl) !== -1, 'the reset carries ' + decl);
+  }
+  assert.match(css, /:where\(button\.music-song-artist\) \{[^}]*display: inline;/, 'the song-row artist name is the inline variant');
+  // the per-skin line rules still exist unchanged (they are what the zero-specificity reset defers to)
+  assert.match(css, /\.mms-apple \.mms-sub\{ font-size:var\(--fs-xl\);/, 'Cider keeps its artist-line rule');
+  assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--fs-md\);/, 'the LCD keeps its artist-line rule');
+});

@@ -750,6 +750,7 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
         // in-main-document gate can reject it here, so the assert below binds that gate
         // distinctly (a normal-track fixture would pass vacuously via visible() false).
         watchBack: { visible: () => true, onTap: () => {} },
+        channel: { visible: () => true, onTap: () => {} }, // v1.317 (M1): the same navigate-away posture as Watch
         extras: { getBaseId: () => 's1', isEligible: () => true, onMutated: () => {}, signal: new AbortController().signal },
       },
     });
@@ -762,6 +763,7 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
     assert.ok(m.querySelector('[data-skin-speed]'), 'quick controls render there (non-vacuous)');
     assert.strictEqual(m.querySelector('[data-skin-extras]'), null, 'but never the Extras entry (main-document only)');
     assert.strictEqual(m.querySelector('[data-skin-watchback]'), null, 'and never the Watch row either - a pop-out row must not navigate the window BEHIND it (v1.252 W1)');
+    assert.strictEqual(m.querySelector('[data-skin-channel]'), null, 'nor the "Go to channel" row (v1.317) - it navigates the window too');
     eng2.destroy();
   } finally { mainBoot.restoreAll(); }
 });

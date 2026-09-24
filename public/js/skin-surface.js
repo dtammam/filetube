@@ -38,6 +38,13 @@
 //     watchBack       OPTIONAL (v1.252 Listen-mode) - { visible(), onTap() }: page 1 gains a
 //                     "Watch" row when visible() (music: the playing item is a listen track);
 //                     onTap navigates back to the item's watch page.
+//     channel         OPTIONAL (v1.317 M1) - { visible(), onTap() }: page 1 gains a "Go to
+//                     channel" row beside Watch when visible() (music: the playing item is a
+//                     library-backed track with a channel folder); onTap navigates to the
+//                     home grid filtered by that folder. Main-document only, as Watch.
+//   onArtist()     OPTIONAL (v1.317 M1): the [data-skin-artist] artist line's action (music: the
+//                  in-Music artist drill). Without it the line's tap does nothing (podcasts
+//                  pass nothing).
 //     tray            OPTIONAL (v1.257, INJECTED BY THE POP-OUT SHELL only) - { enabled(),
 //                     onToggle() }: page 1 gains a "Tray" row on the pop-out surface;
 //                     toggling reopens the pip window as the taskbar strip. Views never
@@ -173,6 +180,10 @@
       // mobile skin keeps Watch on the sticker's page 1 (its cfg omits hasWatchBack), so
       // the skin path stays byte-identical.
       if (typeof cfg.hasWatchBack === 'function' && cfg.hasWatchBack()) acts.push('<button type="button" class="mms-sm-act" data-skin-x="watch"><i class="icon-tv"></i>Watch</button>');
+      // v1.317 (M1): "Go to channel" beside Watch - cfg-gated the same way (the desktop /music
+      // actions menu passes hasChannel/onChannel; the mobile skin keeps it on the sticker's
+      // page 1, so the skin Extras page stays byte-identical).
+      if (typeof cfg.hasChannel === 'function' && cfg.hasChannel()) acts.push('<button type="button" class="mms-sm-act" data-skin-x="channel"><i class="icon-folder"></i>Go to channel</button>');
       if (extrasCap('download')) acts.push('<a class="mms-sm-act" data-skin-x="download" href="' + extrasDownloadUrl(item) + '" download><i class="icon-download"></i>Download</a>');
       if (extrasCap('like')) acts.push('<button type="button" class="mms-sm-act' + (liked ? ' is-on' : '') + '" data-skin-x="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><i class="icon-heart"></i><span class="mms-sm-actlbl">' + (liked ? 'Liked' : 'Like') + '</span>' + '</button>');
       // v1.287: the "watched" row's LABEL is configurable (podcasts say "Played"); the action
@@ -457,6 +468,7 @@
       if (act === 'download') { extrasClose(); return; } // the anchor's own navigation does the work
       if (act === 'share') { extrasClose(); extrasShare(item); return; }
       if (act === 'watch') { extrasClose(); if (typeof cfg.onWatch === 'function') { try { cfg.onWatch(); } catch (_) { /* nav best-effort */ } } return; }
+      if (act === 'channel') { extrasClose(); if (typeof cfg.onChannel === 'function') { try { cfg.onChannel(); } catch (_) { /* nav best-effort */ } } return; }
       if (act === 'like') { extrasToggleFlag(el, item, 'like'); return; }
       if (act === 'watched') { extrasToggleFlag(el, item, 'watched'); return; }
       if (act === 'queue') { extrasClose(); extrasQueue(item, 'end'); return; }
@@ -492,6 +504,7 @@
     var onSelectIndex = config.onSelectIndex || function () {};
     var onDock = config.onDock || function () {};
     var onShuffle = typeof config.onShuffle === 'function' ? config.onShuffle : null;
+    var onArtist = typeof config.onArtist === 'function' ? config.onArtist : null; // v1.317 M1: the artist line's action
     var fastScan = !!config.fastScan;
     var marqueeOn = config.marquee !== false; // default ON (CSS-driven; inert without overflow)
     var stickerCfg = config.sticker || null;
@@ -626,6 +639,16 @@
         try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
         if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-lbl"><i class="icon-tv"></i>Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
       }
+      // v1.317 (M1, Dean: "a smooth way to access the channel"): the "Go to channel" row beside
+      // Watch - rendered ONLY when the view supplies the channel hook AND says the playing item
+      // has one (music: a library-backed track with a channel folder). Main-document only, the
+      // watchBack posture: the tap NAVIGATES the window (to the home grid filtered by folder).
+      var channelRow = '';
+      if (inMainDoc && stickerCfg.channel && typeof stickerCfg.channel.visible === 'function') {
+        var chOn = false;
+        try { chOn = !!stickerCfg.channel.visible(); } catch (_) { chOn = false; }
+        if (chOn) channelRow = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-channel><span class="mms-sm-lbl"><i class="icon-folder"></i>Go to channel</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+      }
       // v1.254 (ENDLESS AUTOPLAY): the toggle rides page 1 like Loop - rendered only when
       // the view supplies the autoplay hook (music does; podcasts deliberately not). On
       // BOTH surfaces (the setting is device-global localStorage, so the pop-out toggling
@@ -670,7 +693,7 @@
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
         '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins">' + chips + '</div></div>' +
-        watchBack + brickRow + extras;
+        watchBack + channelRow + brickRow + extras;
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
     // v1.240 marker keys off what stickerIconHtml ACTUALLY renders (a partial emoji pref
@@ -775,6 +798,11 @@
       if (e.target.closest('[data-skin-watchback]')) {
         closeStickerMenu();
         if (stickerCfg.watchBack && typeof stickerCfg.watchBack.onTap === 'function') { try { stickerCfg.watchBack.onTap(); } catch (_) { /* view nav best-effort */ } }
+        return true;
+      }
+      if (e.target.closest('[data-skin-channel]')) { // v1.317 M1: the same navigate-away shape as Watch
+        closeStickerMenu();
+        if (stickerCfg.channel && typeof stickerCfg.channel.onTap === 'function') { try { stickerCfg.channel.onTap(); } catch (_) { /* view nav best-effort */ } }
         return true;
       }
       if (e.target.closest('[data-skin-extras]')) { openStickerExtras(); return true; }
@@ -984,6 +1012,9 @@
       if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
       if (e.target.closest('[data-skin-collapse]')) { onDock(); return; }
       if (onShuffle && e.target.closest('[data-skin-shuffle]')) { onShuffle(); return; }
+      // v1.317 (M1): the artist line -> the view's artist drill. Both surfaces (the pop-out's
+      // engine runs this too; the drill opens in the MAIN document, nothing window-bound).
+      if (e.target.closest('[data-skin-artist]')) { if (onArtist) onArtist(); return; }
       // v1.270: while a takeover holds the wheel, MENU is its way OUT (the iPod rule
       // that MENU always backs out of wherever you are) and Select is its action
       // button. Both are folded INSIDE the existing single handler for their control
@@ -1528,7 +1559,7 @@
   // Music's v1.223 whole-queue panel (meta + windowed rows with played/current/next states,
   // played greyed but clickable for jump-back), extracted VERBATIM so podcasts renders the
   // SAME desktop treatment instead of its legacy forward-only fragment. `np` = { title,
-  // subline }; each row = { id, artUrl, title, artist, index, state } - the view precomputes
+  // subline, subArtist? }; each row = { id, artUrl, title, artist, index, state, durLabel? } - the view precomputes
   // its own subline/artUrl (music: artist·album + /albumart; podcasts: show·meta +
   // /podcastart). Escaped here - podcast titles/notes are FEED PROSE. Row taps are the
   // VIEW's delegated .mnp-queue-row listener (data-index), exactly music's contract.
@@ -1537,11 +1568,23 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
+  // v1.317 (M1+M2), both OPTIONAL so podcasts' panel stays BYTE-IDENTICAL: `np.subArtist` (a
+  // non-empty string) renders the sub-line as a `data-artist` button the view's delegated
+  // click opens the artist drill from (music passes its artist; podcasts pass nothing = the
+  // plain div); a row's `durLabel` (a non-empty string) renders `.mnp-queue-dur` after the
+  // title block - a chaptered album's row shows that chapter's own length; '' = no span.
   function buildPanelHtml(np, rows) {
     np = np || {};
+    var subArtist = (typeof np.subArtist === 'string') ? np.subArtist : '';
+    var sub = '';
+    if (np.subline) {
+      sub = subArtist
+        ? '<button type="button" class="mnp-sub" data-artist="' + panelEscape(subArtist) + '" title="Go to artist">' + panelEscape(np.subline) + '</button>'
+        : '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>';
+    }
     var meta = '<div class="mnp-meta">' +
       '<div class="mnp-title" title="' + panelEscape(np.title) + '">' + panelEscape(np.title || 'Unknown track') + '</div>' +
-      (np.subline ? '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>' : '') +
+      sub +
       '</div>';
     var queue = '';
     if (Array.isArray(rows) && rows.length) {
@@ -1557,7 +1600,9 @@
             '<span class="mnp-queue-main">' +
             '<span class="mnp-queue-title">' + panelEscape(it.title || 'Track') + '</span>' +
             (it.artist ? '<span class="mnp-queue-sub">' + panelEscape(it.artist) + '</span>' : '') +
-            '</span></button>';
+            '</span>' +
+            (typeof it.durLabel === 'string' && it.durLabel ? '<span class="mnp-queue-dur">' + panelEscape(it.durLabel) + '</span>' : '') +
+            '</button>';
         }).join('') +
         '</div>';
     }
