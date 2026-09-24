@@ -3,8 +3,8 @@ plan: snap-offset-status-bar
 harness: v2 · lean
 branch: fix/snap-offset-and-status-bar
 anchor: spec
-status: Built - r1 fixes in, awaiting gate r2
-next: gate r2 (adversary + qa delta re-confirmation on the r1 fixes; security-brief approved r1). Owed after merge: Dean's device pass (Shift all on a real offset download; a long album name in Click and Seattle on the phone).
+status: Built - r2 fixes in, awaiting gate r3
+next: gate r3 (adversary + qa delta re-confirmation on the r2 fixes and the v1.324.0 merge; security-brief approved r2). Owed after merge: Dean's device pass (Shift all on a real offset download; a long album name in Click and Seattle on the phone).
 design: "Approved 2026-09-24 (Dean's intake, recorded in memory wave-2026-09-24-intake)"
 gate: pending
 ---
@@ -175,9 +175,12 @@ Design notes (decisions the spec left open):
 - **One gap rule for every edit** (gate r1, adversary 4 / qa S3): the steps, the nudges, Reset
   shift, the per-row Snap and Snap all all keep the server's `MIN_CHAPTER_GAP_SEC` (from the
   editor state) from the neighbours an edit touches and from the end of the file
-  (`snapGapBreak`). A source list that already holds a closer pair is left alone unless the edit
-  moves one of that pair. The shift steps follow the spec's wording (a landing AT chapter 1 + the
-  gap is refused); the others allow exactly the gap, as the nudge clamp always did.
+  (`snapGapBreak`). The shift steps follow the spec's wording (a landing AT chapter 1 + the gap is
+  refused); the others allow exactly the gap, as the nudge clamp always did. **Refined at gate r2
+  (qa 1 = adversary 2):** an edit is refused only when it NARROWS a pair (or the last start's
+  distance to the end) into the gap AND closer than the SAVED list has it. A close pair that came
+  from the source is never an edit's to refuse, and a shift can always go back to what was saved
+  (`snapShiftBlock` takes the saved list too).
 - **The "No consistent offset" note carries no n-of-m.** With two clusters the median falls
   between them and "0 of 4 agree" would mislead; it says "the chapters are off by different
   amounts. Fix them one by one."
@@ -994,3 +997,68 @@ with a concrete breaker that brings back Dean's exact 85.8 px bar. Per Dean's no
 r3, which is the Architect's to raise with Dean.
 
 Gate: CHANGES r2 @4b46555d — adversary
+
+## r2 fix record (builder, after gate r2 @4b46555d)
+
+Commits (every one through the pre-commit hook, never --no-verify):
+- **b6a4c4de** the three r2 verdicts committed as the seats left them (docs-only hook, `tests 1304
+  pass 1304 fail 0`).
+- **119b4e39** merge of main 57ed7393 (v1.324.0, the pocket quick-scroll release). This was the
+  Architect's standing permission, used because a hook forced it: v1.324.0 was tagged after this
+  branch was cut, and `release-ledger.test.js` failed with "tags with no ledger entry: 1.324.0".
+  There was one conflict, in `docs/exec-plans/tech-debt-tracker.md`, resolved by keeping every
+  row in id order: main's edited #258 (this branch never edited it), this branch's #259, then
+  main's #263-#266 and #271. style.css, music-skins.js and skin-surface.js merged automatically.
+  Hook `tests 7325 pass 7325 fail 0`.
+- **8e4f81d2** the fixes and their bindings. Hook `tests 7325 pass 7325 fail 0`.
+- **this commit**: this section, the corrected design note, and one unit case (adversary r2 S3).
+
+### Finding -> fix -> test -> mutant
+
+| Finding | Fix (8e4f81d2) | Binding test | Mutants (RED) |
+|---|---|---|---|
+| **qa 1 = adversary 2** Reset refused, with a false reason, over a close pair or a near-the-end last chapter that came from the SOURCE | `snapGapBreak(next, before, stored, duration, minGap)` refuses a pair only when the edit NARROWS it (closer than `before`) into the gap AND closer than the SAVED list has that pair. The end of the file is handled the same way. `snapShiftBlock` also takes the saved list, so a shift can always go back to what was saved. Every caller passes `before` (the current times) and `stored` (the saved starts). The Reset reason now reads "... or within 0.1 s of it and closer than your saved chapters have them" and no longer claims that a chapter was moved | integration "qa 1 / adversary 2 (r2)": (1) source `[0, 60, 60.05, 120]`, +1 s, a nudge of the last row: Reset works and saves `[0, 60, 60.05, 120.1]`. (2) source `[0, 0.05, 60]`: −0.1 s is still refused at the source; after +1 s, both −1 s and Reset go back. (3) source `[0, 60, 299.95]`: after −1 s, both +1 s and Reset go back. Integration "adversary 2 (r2)": a pair that the nudge clamp squeezed does not block Reset, Snap all or the per-row Snap of a different chapter. The r1 W3 refusals still refuse (past the end, inside the end gap, an equal pair, inside the gap). Unit: the rewritten snapGapBreak case (20 asserts) and "snapShiftBlock with the SAVED list" | T1a, T1a2, T1b, T1g, T1h, T1i, T1j, T1k; the call-site masks **R13** (Reset), **R15** (Snap all) and R16 (per-row Snap), each passing `before = null` (every pair checked), and R17 (Reset with no saved list); A1, A2, A2b, S8-S11, G1, G2 and R3r re-run on the new code |
+| **adversary r2 S3** "the end is checked only when the last row moved" was unbound | (test only) | unit: the last chapter is already closer to the end than the saved list and the gap, and an edit to a middle chapter is not refused for it | T1f (RED at the second run; the first case also held under the saved-list rule) |
+| **adversary 1** (Architect ruling) the census missed an off-chain ancestor and CSS nesting | skin-status-bar.test.js is now TARGET-based: a rule counts when its FINAL compound can match the title, the bar or the cluster, whatever its ancestors. It uses a real parser (strings skipped; @media / @supports / @container read through; @keyframes / @font-face skipped; native nesting flattened, with `&` replaced by the parent or taken as a descendant of it) that FAILS on an unbalanced block. `all` is forbidden in the three tables. No rule in style.css may set `writing-mode` or `direction`: both are inherited, so a rule on the bar or on ANY ancestor would break it. Attribute selectors other than `[class]` cannot match (the renderer gives the three elements one attribute; the structure test binds it). There are two reviewed exceptions, `.theme-swatch span` (the Setup swatch) and `.section-actions.search-scoped-toolbar > *` (the Home toolbar). A test proves that each is still in style.css and that its ancestor class never appears in any file that builds the panel (music.html, podcasts.html, music.js, podcasts.js, music-skins.js, skin-surface.js, ipod-brick.js) | the 10 tests of skin-status-bar.test.js, including a parser self-test | **N1** `#view-root .ip-np`, **N2** `#view-root span`, **N3** `writing-mode` on `.ip-lcd-in`, N3b `direction:rtl` on `#view-root`, N3c `-webkit-writing-mode` on body, **N4** `all:revert`, **N5** nested `& .ip-np`, N5b nesting without `&`, N6-N9, N11 (`all:unset` on the cluster through an id), N12 (an unbalanced nested block fails the parser), X1 (an exception's ancestor class used on the music page), and C1-C4, C6-C17, B1-B3, B6 re-run |
+| **adversary instrument note** 3000 steps, then a Save, failed once in a shared scratch file | not reproduced | 3 runs × 3 drives in the SAME file as every other shift test (3000 seeded-random steps each, Reset, +1.2 s, Save, then compare the stored starts) came out `pass 22 fail 0` three times. A 400-step drive now runs in the file as a permanent guard (integration "adversary r2 (the unexplained failure)"). The one shared-state candidate I found is the adversary's own drive re-using an item another drive had already saved (its version token changes). The committed tests seed a fresh item per test, so they cannot hit that. Recorded, not fixed: no cause in the product code | (a guard, not a mutant) |
+
+### Mutant round @8e4f81d2
+
+Runner: `snap-offset-status-bar-mutants-r2.js` in the session scratchpad. The sandbox was built
+from `git archive 8e4f81d2` with `FILETUBE_TEST_FFMPEG` set. Each mutant can apply several edits,
+every anchor must match exactly once, and the bytes must change. The file is restored after
+each run. Logs: `snap-offset-status-bar-mutants-r2.out` and `-r2b.out`.
+
+- **58 of 58 RED. No survivors.**
+- T1f survived the first run: every unit case had the last chapter within the saved distance, so
+  the saved-list rule held it anyway. It is bound by this commit's unit case, and is RED at the
+  second run with that file copied into the sandbox.
+
+### Instruments (Node 22.23.1)
+- Targeted set on the merged tree with ffmpeg: `tests 1019 pass 1019 fail 0 cancelled 0 skipped 0`.
+  It covers unit chapter*, music*, skin*, pocket*, player-chapters*, exec-plans*, tech-debt*,
+  comment-debt*, release-ledger*, css*, token*, overlay*, shell* and mobile-input*, plus
+  integration chapter-snap* and chapters-editor.
+- The shift integration file: `pass 19 fail 0` (the REAL-ffmpeg test ran).
+- eslint on the touched js: `✖ 6 problems (0 errors, 6 warnings)`. These are the pre-existing six.
+
+### Probes on the merged tree
+- `scripts/skin-status-bar-probe.js` (every level reached, with main's new pocket features in):
+  every SUMMARY is `equal, battStill, playStill, longTruncated, noSpill` true. Click is 31.2 x4 and
+  Seattle 30.2 x4, at 390x844 and 380x700. The pop-out is Click 31.2 and Seattle 30.2 at every
+  level; the tray is 31.2. No spill anywhere. Log `snap-offset-status-bar-probe-r2.out`.
+- The headless proof for N1-N5 is the adversary's (`adv-r2-cssprobe.out`): N1, N2 and N5 give
+  85.8 px, N4 gives 66.6 px and N3 gives 258.5 px. The census now fails on each of them.
+- `scripts/chapter-snap-probe.js`: identical to r1. Shift buttons are 88x44 / 201x44 / 177x36 and
+  the suggestion 356x44 / 810x44 / 285x36. Nothing is under 44 px on either phone viewport, and
+  doc scrollWidth equals the viewport. Notches are 12.1125 % vs 12.113 %; the audition plays at
+  243.9 s. Log `snap-offset-status-bar-snap-probe-r2.out`.
+
+### Disclosed (r2 round)
+- **Two reviewed census exceptions** (listed above). A new bare-type or universal rule anywhere
+  else in style.css that sets a forbidden property on a span or div fails the census until it is
+  reviewed.
+- **The nudge clamp's squeeze** (pre-existing, `clampSnapNudge`): with less than two gaps of room
+  between its neighbours, a nudge lands the row at prev + gap, which can leave it within the gap
+  of the next one. It is the only reachable way an edit can leave a pair narrower than both the
+  gap and the saved list, and the r2 tests use it to bind the callers' `before`.

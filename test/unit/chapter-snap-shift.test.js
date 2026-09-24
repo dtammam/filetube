@@ -149,6 +149,8 @@ test('snapGapBreak: a pair breaks only when the edit NARROWS it into the gap AND
   assert.strictEqual(snapGapBreak(nearEnd, [0, 9, 28.95], nearEnd, 30, GAP), null, 'a SOURCE last chapter 50 ms from the end: going back to it is fine');
   assert.strictEqual(snapGapBreak([0, 12, 29.95], nearEnd, nearEnd, 30, GAP), null, 'the end is checked only when the last row moves (adversary r2 S3): a middle edit is not refused for a source-close end');
   assert.deepStrictEqual(snapGapBreak([0, 10, 29.97], [0, 10, 29.9], [0, 10, 29.8], 30, GAP), { index: 2, end: true }, 'narrowed past both the gap and the saved distance');
+  assert.strictEqual(snapGapBreak([0, 12, 29.97], [0, 10, 29.97], [0, 10, 29.9], 30, GAP), null,
+    'a last chapter ALREADY closer to the end than saved and the gap: a middle edit that does not move it is not refused for it (adversary r2 S3)');
 });
 
 // ---- phone sizing (the probe measures it; this lock keeps the rule from silently dropping) ----
