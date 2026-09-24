@@ -104,3 +104,100 @@ test('the desktop player cap is shell-agnostic (all views) but EXCLUDES the read
   assert.match(body, /- 40px - 2px\)\) \* 16 \/ 9/, 'the fallback budget subtracts the bar+border reserve');
   assert.match(body, /margin-inline:\s*auto/, 'centred when height-bound');
 });
+
+// ---- v1.319 (Dean: "YouTube's theatre view sizes the video so the title + channel +
+// action row still show at the bottom of the first screen"). Plan
+// 2026-09-24-desktop-theatre carries the side-by-side measurements; these bind the
+// mechanism: the pure reserve, and the desktop stage rule that spends it. -----------
+
+const { theatreReservePx } = require('../../public/js/watch.js');
+
+test('v1.319 theatreReservePx: the room below the stage = the action bar bottom minus the stage bottom, rounded UP', () => {
+  // the measured 1280x720 theatre shape: stage 80..564, three-line bar ending at 736.4
+  assert.strictEqual(theatreReservePx({ bottom: 564, height: 484 }, { bottom: 736.4 }), 173);
+  assert.strictEqual(theatreReservePx({ bottom: 959, height: 879 }, { bottom: 1057 }), 98);
+  assert.strictEqual(theatreReservePx({ bottom: 100, height: 20 }, { bottom: 100 }), 0, 'zero room is a real reading');
+});
+
+test('v1.319 theatreReservePx: no reading (null) for a missing rect, an EMPTY stage, a non-finite edge or a bar above the stage', () => {
+  assert.strictEqual(theatreReservePx(null, { bottom: 700 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, null), null);
+  // the player not mounted in the stage (docked / not yet loaded): the wrapper's own
+  // bottom margin is missing too, so the reading would be short - keep the last value
+  assert.strictEqual(theatreReservePx({ bottom: 80, height: 0 }, { bottom: 200 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: NaN, height: 400 }, { bottom: 700 }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, { bottom: Infinity }), null);
+  assert.strictEqual(theatreReservePx({ bottom: 500, height: 400 }, { bottom: 480 }), null, 'a bar above the stage is not a layout this rule knows');
+});
+
+// Comment-stripped once (comment-porous locks are a repo scar), then every
+// `@media (min-width: 1025px)` block, brace-balanced.
+const CSS_NC = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+function desktopBlocks() {
+  const out = [];
+  const re = /@media \(min-width:\s*1025px\)\s*\{/g;
+  let m;
+  while ((m = re.exec(CSS_NC))) {
+    let depth = 1; let i = m.index + m[0].length;
+    for (; i < CSS_NC.length && depth > 0; i++) { if (CSS_NC[i] === '{') depth++; else if (CSS_NC[i] === '}') depth--; }
+    out.push(CSS_NC.slice(m.index + m[0].length, i - 1));
+  }
+  return out;
+}
+const STAGE_SEL = '.watch-container.theater-mode .watch-player-stage';
+const WRAP_SEL = '.watch-container.theater-mode #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen)';
+function ruleBodies(css, selector) {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...css.matchAll(new RegExp('(?:^|[}\\s])' + esc + '\\s*\\{([^}]*)\\}', 'g'))].map((m) => m[1]);
+}
+
+test('v1.319 desktop theatre: the STAGE carries the YouTube-matched width (vh AND dvh), centred, and ONLY inside the 1025px+ block', () => {
+  const blocks = desktopBlocks().filter((b) => ruleBodies(b, STAGE_SEL).length);
+  assert.strictEqual(blocks.length, 1, 'exactly one desktop block carries the theatre stage rule');
+  const bodies = ruleBodies(blocks[0], STAGE_SEL);
+  assert.strictEqual(bodies.length, 1, 'one stage rule in it');
+  const body = bodies[0];
+  // Mobile / tablet untouched: the rule exists NOWHERE outside a 1025px+ block.
+  let outside = CSS_NC;
+  for (const b of desktopBlocks()) outside = outside.split(b).join('');
+  assert.strictEqual(ruleBodies(outside, STAGE_SEL).length, 0, 'no theatre stage rule outside the desktop block (phones/tablets keep the old rule)');
+  // One declaration per viewport unit, each carrying EVERY term of the budget, PER LINE
+  // (a whole-body match survives a one-line mutant - the vh/dvh divergent-twin class).
+  const decls = body.split(';').map((d) => d.trim()).filter((d) => /^width\s*:/i.test(d));
+  assert.strictEqual(decls.length, 2, 'two width declarations (vh fallback, then dvh): ' + JSON.stringify(decls));
+  const TERM = (unit) => new RegExp('^width:\\s*min\\(100%,\\s*max\\(480px,\\s*calc\\(\\(100' + unit + ' - var\\(--header-h\\) - var\\(--space-12\\) - 40px - 2px - var\\(--watch-theatre-reserve,\\s*98px\\) - 23px\\) \\* 16 \\/ 9 \\+ 2px\\)\\)\\)$');
+  assert.match(decls[0], TERM('vh'), 'vh: 16:9 of (viewport - header - top padding - bar/border - measured reserve - 23px fold margin), + the 2px border');
+  assert.match(decls[1], TERM('dvh'), 'dvh twin, LAST (the effective declaration on a modern desktop)');
+  assert.match(body, /margin-inline:\s*auto/, 'centred in the column');
+});
+
+test('v1.319 desktop theatre: the wrapper FILLS the stage there (so the stage box IS the player box the glow is sized from), fullscreen/audio-expanded excluded', () => {
+  const blocks = desktopBlocks().filter((b) => ruleBodies(b, STAGE_SEL).length);
+  const wrap = ruleBodies(blocks[0], WRAP_SEL);
+  assert.strictEqual(wrap.length, 1, 'the wrapper rule sits in the SAME desktop block, keeping the fullscreen + audio-expanded exclusions');
+  assert.match(wrap[0], /^\s*width:\s*100%;\s*$/, 'width 100% and nothing else');
+  // Cascade: equal specificity with the v1.190 rule, so the desktop override must come AFTER it.
+  const old = CSS_NC.indexOf(WRAP_SEL + ' {');
+  const blockAt = CSS_NC.indexOf(blocks[0]);
+  assert.ok(old !== -1 && blockAt > old, 'the desktop block follows the v1.190 rule (source order decides between them)');
+});
+
+test('v1.319 desktop theatre: the PICTURE is capped at the SAME budgeted height (a 4:3 item letterboxes instead of pushing the row under the fold)', () => {
+  const blocks = desktopBlocks().filter((b) => ruleBodies(b, STAGE_SEL).length);
+  const media = ruleBodies(blocks[0], WRAP_SEL + ' #media-player');
+  assert.strictEqual(media.length, 1, 'the picture cap sits in the same desktop block, with the fullscreen + audio-expanded exclusions');
+  const caps = media[0].split(';').map((d) => d.trim()).filter((d) => /^max-height\s*:/i.test(d));
+  assert.strictEqual(caps.length, 2, 'vh then dvh: ' + JSON.stringify(caps));
+  assert.match(caps[0], /^max-height:\s*max\(270px,\s*calc\(100vh - /, 'vh cap, floored at the 480px floor\'s 16:9 height');
+  assert.match(caps[1], /^max-height:\s*max\(270px,\s*calc\(100dvh - /, 'dvh cap LAST');
+  // ONE budget: the height the stage's width is derived from and the picture's cap are the
+  // same expression, term for term, per unit (a hand-copy that drifts re-opens the fold).
+  const stageDecls = ruleBodies(blocks[0], STAGE_SEL)[0].split(';').map((d) => d.trim()).filter((d) => /^width\s*:/i.test(d));
+  const budgetOf = (decl, unit) => { const m = new RegExp('calc\\(\\(?(100' + unit + ' - [^()]*\\([^)]*\\)[^()]*\\([^)]*\\)[^()]*\\([^)]*\\)[^()]*)').exec(decl); return m && m[1].replace(/\)\s*$/, '').trim(); };
+  for (const [i, unit] of [[0, 'vh'], [1, 'dvh']]) {
+    const w = budgetOf(stageDecls[i], unit);
+    const h = budgetOf(caps[i], unit);
+    assert.ok(w && h, unit + ': both budgets parsed (' + w + ' | ' + h + ')');
+    assert.strictEqual(h, w, unit + ': the picture cap spends exactly the budget the width is derived from');
+  }
+});

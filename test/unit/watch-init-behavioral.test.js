@@ -722,3 +722,97 @@ test('v1.317 gate S2: init() re-stamps #theater-btn aria-pressed from ft-theater
     }
   }
 });
+
+// ---- v1.319 (Dean: keep the title + action row on the first screen in theatre, like
+// YouTube). The theatre stage's width budget reads `--watch-theatre-reserve`, which
+// watch.js keeps equal to the room the title + action bar take below the stage. Bound by
+// EXECUTION of the real init() on BOTH paths (?v= and ?tv= - a named blind spot is driven
+// with the REAL path, never a hand-typed shape): a ResizeObserver fake records what is
+// observed, a queued requestAnimationFrame proves the observer write is deferred, and the
+// theatre click proves the synchronous re-measure. ---------------------------------------
+function makeReserveRealm(search, fetchImpl) {
+  const ros = [];
+  class FakeResizeObserver {
+    constructor(cb) { this.cb = cb; this.targets = []; this.disconnected = false; ros.push(this); }
+    observe(t) { this.targets.push(t); }
+    disconnect() { this.disconnected = true; }
+  }
+  const frames = [];
+  const realm = buildWatchRealm({
+    cacheEntry: WARM_SUBSCRIBED_CACHE, search, fetchImpl,
+    overrides: { applyLikedSidebarEntry: () => {}, ResizeObserver: FakeResizeObserver, requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; } },
+  });
+  const get = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  const writes = [];
+  get('.watch-container').style.setProperty = (k, v) => { writes.push([k, v]); };
+  const rects = { stage: { bottom: 564, height: 484 }, bar: { bottom: 736.4, height: 119 } };
+  get('.watch-player-stage').getBoundingClientRect = () => rects.stage;
+  get('.watch-action-bar').getBoundingClientRect = () => rects.bar;
+  const root = makeEl('div');
+  root.querySelector = get;
+  realm.init(root);
+  const flush = () => { const f = frames.splice(0); f.forEach((fn) => fn()); return f.length; };
+  const reserveRo = () => ros.find((o) => o.targets.includes(get('.watch-player-stage')));
+  return { realm, ros, reserveRo, frames, flush, writes, rects, get };
+}
+
+test('v1.319 theatre reserve (?v=): the real init observes the stage, the action bar AND the title, and writes the measured room one frame later', async () => {
+  const t = makeReserveRealm('?v=vid1', routeVideoHydration);
+  for (let i = 0; i < 40 && !t.reserveRo(); i++) await settle();
+  const ro = t.reserveRo();
+  assert.ok(ro, 'precondition: the hydrated video path reached setupTheatreReserve (ResizeObservers built: ' + t.ros.length + ')');
+  assert.ok(ro.targets.includes(t.get('.watch-action-bar')), 'the action bar is observed (its wrap follows the column)');
+  assert.ok(ro.targets.includes(t.get('.watch-title')), 'the title is observed (a two-line title moves the bar)');
+  t.flush();
+  const writesBefore = t.writes.length;
+  ro.cb([]); ro.cb([]); // two notifications in one frame
+  assert.strictEqual(t.writes.length, writesBefore, 'nothing is written inside the observer callback (a same-frame write loops the observer)');
+  assert.strictEqual(t.flush(), 1, 'the two notifications coalesce into ONE queued frame');
+  assert.deepStrictEqual(t.writes.slice(writesBefore), [['--watch-theatre-reserve', '173px']], 'the frame writes bar bottom - stage bottom, rounded up');
+  // an EMPTY stage (the player not mounted there) keeps the last value
+  t.rects.stage = { bottom: 80, height: 0 };
+  ro.cb([]); t.flush();
+  assert.strictEqual(t.writes.length, writesBefore + 1, 'no write while the stage is empty');
+  t.realm.destroy();
+});
+
+test('v1.319 theatre reserve (?v=): the theatre CLICK re-measures synchronously (the first theatre frame already fits), and destroy() disconnects', async () => {
+  const t = makeReserveRealm('?v=vid1', routeVideoHydration);
+  for (let i = 0; i < 40 && !(t.get('#theater-btn')._l && t.get('#theater-btn')._l.click); i++) await settle();
+  const tb = t.get('#theater-btn');
+  assert.ok(tb._l && typeof tb._l.click === 'function', 'precondition: the theatre click is bound');
+  t.flush();
+  const n = t.writes.length;
+  t.rects.bar = { bottom: 660, height: 45 }; // the wider theatre column: the bar is one line
+  tb._l.click();
+  assert.deepStrictEqual(t.writes.slice(n), [['--watch-theatre-reserve', '96px']], 'written in the click itself, no frame flushed');
+  const ro = t.reserveRo();
+  assert.strictEqual(ro.disconnected, false, 'live while the view is up');
+  ro.cb([]); // a frame queued, then the view dies before it runs
+  t.realm.destroy();
+  assert.strictEqual(ro.disconnected, true, 'destroy() disconnects the observer');
+  t.rects.bar = { bottom: 900, height: 45 };
+  t.flush();
+  assert.strictEqual(t.writes.length, n + 1, 'a frame queued before destroy() writes nothing after it');
+});
+
+test('v1.319 theatre reserve (?tv=): the episode path wires the SAME reserve (the theatre blind spot is driven, not assumed)', async () => {
+  const epDetail = { id: 'ep1', type: 'video', title: 'Pilot', showId: 'show1', showName: 'My Show', seasonNum: 1, episodeNum: 2, duration: 100, needsTranscode: false, transcodeStatus: 'ready', streamSrc: '/tvepisode/ep1', statusUrl: '/api/tv/episode/ep1', artUrl: '/tvposter/show1', progress: 0, sizeBytes: 1, addedAtMs: Date.now(), fileName: 'p.mp4', ext: '.mp4' };
+  const showDetail = { id: 'show1', name: 'My Show', seasons: [{ seasonNum: 1, label: 'Season 1', episodes: [{ id: 'ep1' }] }] };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/api/tv/episode/ep1') === 0) return Promise.resolve(jsonRes(200, epDetail));
+    if (u.indexOf('/api/tv/show1') === 0) return Promise.resolve(jsonRes(200, showDetail));
+    if (u.indexOf('/api/settings') === 0) return Promise.resolve(jsonRes(200, {}));
+    return new Promise(() => {});
+  };
+  const t = makeReserveRealm('?tv=ep1', fetchImpl);
+  for (let i = 0; i < 40 && !t.reserveRo(); i++) await settle();
+  const ro = t.reserveRo();
+  assert.ok(ro, 'initTvWatch reached setupTheatreReserve');
+  t.flush();
+  const n = t.writes.length;
+  ro.cb([]); t.flush();
+  assert.deepStrictEqual(t.writes.slice(n), [['--watch-theatre-reserve', '173px']]);
+  t.realm.destroy();
+});

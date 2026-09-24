@@ -53,6 +53,28 @@ function theaterModeStorageValue(isActive) {
   return isActive ? '1' : '0';
 }
 
+// v1.319 (Dean: "YouTube's theatre view sizes the video so the title + channel +
+// action row still show at the bottom of the first screen"). theatreReservePx: the
+// room the desktop theatre player must leave BELOW itself for the title and the
+// whole action bar, in px = the action bar's bottom edge minus the player stage's
+// bottom edge. MEASURED, not a fixed budget, because FileTube's bar wraps with the
+// column width (one line at 1920, three at 1280 - plan 2026-09-24-desktop-theatre)
+// and a title can take two lines. The distance does NOT depend on the player's own
+// height (the title and bar follow the stage, and their size follows the column,
+// never the player), so writing it back into the player's width cap cannot loop.
+// Returns null (keep the previous value / the CSS fallback) when a rect is missing,
+// the stage is empty (the player is not mounted in it: the wrapper's bottom margin
+// that sits between the two is then absent too, so the reading would be short),
+// or the reading is not a finite non-negative number.
+function theatreReservePx(stageRect, barRect) {
+  if (!stageRect || !barRect) return null;
+  const sb = Number(stageRect.bottom);
+  const bb = Number(barRect.bottom);
+  if (!(Number(stageRect.height) > 0) || !Number.isFinite(sb) || !Number.isFinite(bb)) return null;
+  const px = Math.ceil(bb - sb);
+  return px >= 0 ? px : null;
+}
+
 // v1.317 M4: the ambient helpers + engine (v1.186-v1.314) MOVED VERBATIM to
 // public/js/ambient.js (loaded on every shell before this file) so the music view
 // drives the SAME engine through the SAME host wiring (createAmbientHost). This view
@@ -611,6 +633,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextTheaterState,
     isTheaterModeActive,
     theaterModeStorageValue,
+    theatreReservePx,
     // v1.317 M4: the ambient helpers + engine moved VERBATIM to ambient.js; re-exported
     // here so every existing import of them through watch.js keeps one path.
     ...ambientExports,
@@ -2007,6 +2030,47 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // v1.319 (Dean: keep the title + action row on the first screen in theatre, like
+    // YouTube): keep `--watch-theatre-reserve` on `.watch-container` equal to the
+    // room below the player that the title + the whole action bar take (the pure
+    // theatreReservePx). style.css's desktop theatre rule subtracts it, plus
+    // YouTube's measured 23px fold margin, from the height the player may use. Re-
+    // measured whenever the stage (the player mounting), the title or the bar
+    // changes size - a theatre toggle and a window resize both change the column,
+    // hence the bar. The write is deferred to the next frame so the stage resize it
+    // causes is a fresh observation, never a same-frame ResizeObserver loop; the
+    // value it re-reads is the same (the reserve does not follow the player), so it
+    // settles in one extra frame. Written whatever the theatre state (the var is only
+    // read by the theatre rule). Torn down with the view's signal; no-op without
+    // ResizeObserver (the CSS fallback budget applies). Bound once per container:
+    // the synchronous measure is stored ON the element (the theatre click calls it),
+    // so there is no new init()-scope binding whose declaration order could matter
+    // (the v1.54 TDZ class).
+    function setupTheatreReserve(watchContainer) {
+      if (typeof watchContainer.__ftTheatreReserve === 'function' || typeof ResizeObserver !== 'function') return;
+      const stage = root.querySelector('.watch-player-stage');
+      const bar = root.querySelector('.watch-action-bar');
+      const title = root.querySelector('.watch-title');
+      if (!stage || !bar) return;
+      function measure() {
+        if (signal && signal.aborted) return; // a frame queued before the view died
+        const px = theatreReservePx(stage.getBoundingClientRect(), bar.getBoundingClientRect());
+        if (px === null) return;
+        watchContainer.style.setProperty('--watch-theatre-reserve', px + 'px');
+      }
+      watchContainer.__ftTheatreReserve = measure;
+      let queued = false;
+      const theatreReserveObs = new ResizeObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; measure(); });
+      });
+      theatreReserveObs.observe(stage);
+      theatreReserveObs.observe(bar);
+      if (title) theatreReserveObs.observe(title);
+      if (signal) signal.addEventListener('abort', () => theatreReserveObs.disconnect(), { once: true });
+    }
+
     // FR-9 (v1.21.0) / v1.186: the Theatre toggle. Widens the player by stacking
     // `.watch-sidebar` below `.watch-main` at desktop widths (the
     // ".watch-container.theater-mode" rules in style.css). v1.186 RELOCATED the
@@ -2023,6 +2087,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // applied synchronously in init() to avoid a widen-flash.
       const watchContainer = root.querySelector('.watch-container');
       const theaterBtn = root.querySelector('#theater-btn');
+      if (watchContainer) setupTheatreReserve(watchContainer);
       if (!watchContainer || !theaterBtn) return;
 
       let isActive = false;
@@ -2041,6 +2106,11 @@ if (typeof module !== 'undefined' && module.exports) {
       theaterBtn.addEventListener('click', () => {
         isActive = nextTheaterState(isActive);
         applyTheatreState(isActive);
+        // v1.319: re-measure the theatre reserve NOW, against the layout the class
+        // flip just produced, so the first painted theatre frame already leaves the
+        // title + action row on screen (the observer's deferred write would paint
+        // one frame at the old column's reserve first).
+        if (typeof watchContainer.__ftTheatreReserve === 'function') watchContainer.__ftTheatreReserve();
         try {
           localStorage.setItem('ft-theater', theaterModeStorageValue(isActive));
         } catch (_) {
