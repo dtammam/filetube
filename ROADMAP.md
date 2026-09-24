@@ -86,6 +86,40 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.320.0 - Music follow-ups: Autoplay off stops where your queue ends, and the right song details after a switch (2026-09-24)
+
+- **Autoplay off in Music now really stops** (verified first, as the M4 adversary saw: the station
+  is lined up when your queue's last track starts, so switching Autoplay off during that track left
+  the picks in place and the end played on into them). Music's Autoplay means the station: your own
+  queue (an album, a Songs / Recently played list, a listen video's chapters) always plays through,
+  and with Autoplay off playback stops where your queue ends. Turning it off takes the queued
+  station picks back out of the up-next at once; turning it on during the last track lines the
+  station up at once; every advance refuses a station pick while it is off (covers a setting synced
+  from another device); a station pick still being prepared for playback is not started after you
+  turn it off.
+- **The Autoplay and Loop cog rows are hidden outside the watch page** (they rode the persistent
+  player into Music checked but dead, the same class as M4's Ambient row). The cog's Autoplay is
+  the video "autoplay next" setting, not Music's; Music keeps its own Autoplay and Loop.
+- **#235 closed: chapter likes count the way they list.** One rule (`chapterLikeTrack`) now serves
+  the like, the Liked list and your Stats count, so a re-chapter never leaves a like counted but
+  unlisted; nothing deletes a like, and a like comes back if its chapter does.
+- **#237 closed, widened: switching between Music and Watch on the same song keeps the right
+  details.** The player's same-song hand-over now carries every display field (title, artist,
+  album, art, channel) and re-asserts the lock screen, so Music shows the song's tags after a
+  watch visit; and a song opened on the watch page from Music no longer advances to the next
+  video at its end when "Autoplay next video" is off (the v1.253 quirk).
+- Test-quality items from the v1.317 / v1.318 reviews (git-env scrub, fixtures, timer unref, the
+  watch-init harness keeps every listener, comments).
+Gate r2 @85ba5fd6 (adversary + qa + security-brief); plan
+docs/exec-plans/completed/2026-09-24-music-followups.md. Disclosed: a chapter reorder still moves a
+like to whatever chapter now sits at its index; the cog Loop is hidden in Music, not driven (Dean's
+call); an adopt does not repaint the audio-mode poster; tracker #243-#246 and #248.
+
+Device check owed (Dean): in Music turn Autoplay off during an album's last song - it stops at the
+album's end; on, it carries on into the station. Open a song on the watch page from Music with
+"Autoplay next video" off - it stops at the end. After a watch visit the cog has no Autoplay / Loop
+rows in Music.
+
 ### v1.319.0 - A timing log for the audio gap at lock, and the return plays only if the audio was (2026-09-24)
 
 - **Lock-to-audio, phase 1: measure** (Dean, intake 2026-09-24: with "Background audio for video"

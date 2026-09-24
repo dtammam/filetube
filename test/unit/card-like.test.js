@@ -214,7 +214,9 @@ function bootLikedGrid() {
     let settled = false;
     const finish = () => { if (!settled) { settled = true; resolve({ dom, calls }); } };
     dom.window.addEventListener('load', () => setTimeout(finish, 20));
-    setTimeout(finish, 5000);
+    // Music follow-ups item 4c (the chapter-likes r2 suggestion): the 5 s fallback is unref'd -
+    // it only matters if 'load' never fires, and a live timer held this file's process open ~5 s.
+    setTimeout(finish, 5000).unref();
   });
 }
 

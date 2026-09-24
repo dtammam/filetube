@@ -46,10 +46,20 @@ function makeEl(tag) {
     isConnected: true, value: '',
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
-    // v1.314 gate r1: listeners are RECORDED (last per type) so a test can drive a
-    // click; every earlier test ignores them. v1.317 gate r2: the OPTIONS too (_lo),
-    // so a test can bind a listener's `{ signal }` by execution.
-    addEventListener(t, fn, opts) { (el._l = el._l || {})[t] = fn; (el._lo = el._lo || {})[t] = opts; }, removeEventListener() {},
+    // v1.314 gate r1: listeners are RECORDED so a test can drive a click; every earlier
+    // test ignores them. v1.317 gate r2: the OPTIONS too (_lo), so a test can bind a
+    // listener's `{ signal }` by execution. Music follow-ups item 4d: EVERY listener is
+    // kept (the first cut kept only the LAST per type, so a second click listener
+    // silently replaced the first): `_l[type]()` fires them all in registration order,
+    // `_lo[type]` lists every registration's options, `_ls` is the raw record.
+    addEventListener(t, fn, opts) {
+      (el._ls = el._ls || []).push({ type: t, fn, opts });
+      const ofType = () => el._ls.filter((x) => x.type === t);
+      // gate r1 (qa S7): a listener whose { signal } was aborted is gone, as in the DOM
+      (el._l = el._l || {})[t] = function () { const a = arguments; ofType().filter((x) => !(x.opts && x.opts.signal && x.opts.signal.aborted)).forEach((x) => x.fn.apply(el, a)); };
+      (el._lo = el._lo || {})[t] = ofType().map((x) => x.opts);
+    },
+    removeEventListener() {},
     // v1.197: the tv path now runs the cog-injection + ambient setup, which use
     // insertAdjacentHTML (and, v1.312, an OFF-DOM sample canvas the engine creates
     // only on its first sample) - permissive stubs (the ambient engine never
@@ -93,6 +103,25 @@ const REAL_PLAYER_API = (() => {
   return names;
 })();
 
+test('harness (music follow-ups item 4d): the element shim keeps EVERY listener - a second registration of a type never replaces the first', () => {
+  const el = makeEl('button');
+  const ran = [];
+  const ac = new AbortController();
+  el.addEventListener('click', () => ran.push('first'), { signal: ac.signal });
+  el.addEventListener('click', () => ran.push('second'));
+  el.addEventListener('keydown', () => ran.push('key'));
+  el._l.click();
+  assert.deepEqual(ran, ['first', 'second'], 'both click listeners fire, in registration order; the keydown one does not');
+  assert.equal(el._lo.click.length, 2, 'both registrations\' options are recorded');
+  assert.strictEqual(el._lo.click[0].signal, ac.signal);
+  assert.equal(el._lo.click[1], undefined);
+  // gate r1 (qa S7): an aborted signal removes its listener, as the DOM does
+  ac.abort();
+  ran.length = 0;
+  el._l.click();
+  assert.deepEqual(ran, ['second'], 'the aborted listener no longer fires; the other still does');
+});
+
 test('harness: REAL_PLAYER_API is read from player.js (non-vacuous; a misspelling is NOT on it)', () => {
   for (const n of ['load', 'expand', 'dock', 'close', 'setTrackNav', 'getState', 'isLoopEnabled', 'currentId', 'ensureTheaterButton']) {
     assert.ok(REAL_PLAYER_API.has(n), `REAL_PLAYER_API carries ${n} (got ${[...REAL_PLAYER_API].join(', ')})`);
@@ -116,7 +145,7 @@ const FULL_SEED_ITEM = {
 
 // Builds a fresh sandbox, evaluates the REAL watch.js in it, and returns
 // {init, els} -- els is the shared selector->element map, pre-seedable.
-function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides } = {}) {
+function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides, playerCurrentId } = {}) {
   storage.clear();
   if (cacheEntry) storage.set('ft-cap-cache-v1', JSON.stringify(cacheEntry));
 
@@ -158,7 +187,9 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides 
   const windowShim = {
     FileTube: {
       player: new Proxy({
-        currentId: null, getState: () => ({ docked: false, loaded: false }),
+        // playerCurrentId (music follow-ups gate r1): the id the persistent player already holds, so
+        // a test can drive the ADOPT entry (a Listen -> Watch return re-opens the loaded id)
+        currentId: playerCurrentId || null, getState: () => ({ docked: false, loaded: false }),
         load: (id, data, opts) => { loadCalls.push({ id, data, opts }); return true; },
         setTrackNav: (h) => { trackNavCalls.push(h); },
         isLoopEnabled: () => false,
@@ -653,6 +684,35 @@ test('v1.317 gate W1: the video path CALLS the one theatre-button writer exactly
   assert.equal(realm.theaterCalls.length, 1, 'ensureCogControlsInjected called window.FileTube.player.ensureTheaterButton() exactly once (fetched: ' + realm.fetchUrls.join(', ') + ')');
 });
 
+// ---- Music follow-ups gate r1 (qa W2 = adversary W3): BOTH of watch's adopt-capable
+// player.load calls (the seeded early adopt in init() and step 4's load once the detail
+// resolves) declare autoAdvanceViaTrackNav:false beside their readerHref/resumeMode null
+// stamps - a Listen play left music's `true`, and the adopted video's natural end advanced
+// through this page's track nav even with Autoplay off (measured a2 -> a1, a3 -> a2). The
+// player side (the declared false clears it on the adopt) is bound in player-adopt-flavor.
+test('gate r1 F3: both watch player.load calls claim the plain-video end: autoAdvanceViaTrackNav false (with readerHref/resumeMode null)', async () => {
+  // the ADOPT entry: the player already holds vid1 (a Listen play of it), so init() mounts through
+  // the synchronous early adopt call and step 4 re-loads once the detail resolves
+  const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} }, playerCurrentId: 'vid1' });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  realm.els.set('#subscribe-btn-mock', btn);
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  realm.init(root);
+  assert.equal(realm.loadCalls.length, 1, 'precondition: the early adopt ran synchronously');
+  assert.deepStrictEqual(Object.keys(realm.loadCalls[0].data).sort(), ['autoAdvanceViaTrackNav', 'browseCtx', 'readerHref', 'resumeMode'], 'precondition: that is the mountedEarly call (flavor-only data)');
+  for (let i = 0; i < 40 && realm.theaterCalls.length === 0; i++) await settle();
+  for (let i = 0; i < 12; i++) await settle();
+  assert.equal(realm.loadCalls.length, 2, 'precondition: the early adopt + step 4 both ran');
+  for (const [n, c] of realm.loadCalls.entries()) {
+    assert.ok(Object.prototype.hasOwnProperty.call(c.data, 'autoAdvanceViaTrackNav'), 'load ' + n + ' DECLARES the flag');
+    assert.strictEqual(c.data.autoAdvanceViaTrackNav, false, 'load ' + n + ': false');
+    assert.strictEqual(c.data.readerHref, null, 'load ' + n + ': readerHref null');
+    assert.strictEqual(c.data.resumeMode, null, 'load ' + n + ': resumeMode null');
+  }
+  realm.destroy();
+});
+
 // ---- v1.317 gate r2 (qa W1 + adversary W1): watch's theatre click is bound on the VIEW
 // signal, by EXECUTION. After T1 music and watch share ONE button, so a watch listener
 // that outlives its view runs on every MUSIC theatre click and flips the persisted
@@ -666,12 +726,16 @@ test('v1.317 gate r2 W1: setupTheatreToggle binds the #theater-btn click on init
   const tb = realm.els.get('#theater-btn');
   assert.ok(tb && tb._l && typeof tb._l.click === 'function', 'precondition: setupTheatreToggle ran and bound a click on #theater-btn');
   assert.ok(realm.initController, 'precondition: init() created its view controller');
-  const opts = tb._lo.click;
-  assert.ok(opts && opts.signal, 'the theatre click is registered WITH a signal (got ' + JSON.stringify(opts) + ')');
-  assert.strictEqual(opts.signal, realm.initController.signal, 'it is init()\'s own view signal');
-  assert.equal(opts.signal.aborted, false, 'live while the view is up');
+  // item 4d: every click registration is recorded now - EACH must ride the view signal
+  const regs = tb._lo.click;
+  assert.ok(Array.isArray(regs) && regs.length >= 1, 'at least one click registration recorded');
+  for (const opts of regs) {
+    assert.ok(opts && opts.signal, 'the theatre click is registered WITH a signal (got ' + JSON.stringify(opts) + ')');
+    assert.strictEqual(opts.signal, realm.initController.signal, 'it is init()\'s own view signal');
+    assert.equal(opts.signal.aborted, false, 'live while the view is up');
+  }
   realm.destroy();
-  assert.equal(opts.signal.aborted, true, 'destroy() aborts it, so the listener dies with the view');
+  for (const opts of regs) assert.equal(opts.signal.aborted, true, 'destroy() aborts it, so the listener dies with the view');
 });
 
 test('v1.317 gate W1: the ?tv= episode path CALLS the one theatre-button writer exactly once (initTvWatch runs the same cog sequence)', async () => {
@@ -979,7 +1043,10 @@ test('v1.319 D2: a HAND toggle in theatre is the user\'s (it reopens and pushes;
   g.realm.init(g.mkRoot(g.wc1));
   const mt = g.realm.els.get('#menu-toggle');
   assert.ok(mt && mt._l && typeof mt._l.click === 'function', 'a click listener is bound on #menu-toggle');
-  assert.ok(mt._lo.click && mt._lo.click.signal && mt._lo.click.signal.aborted === false, 'bound on the live view signal');
+  // the harness keeps EVERY registration since music follow-ups item 4d (`_lo[type]` is a list)
+  const regs = mt._lo.click;
+  assert.ok(Array.isArray(regs) && regs.length === 1, 'exactly one #menu-toggle click listener from this view (got ' + (regs && regs.length) + ')');
+  assert.ok(regs[0] && regs[0].signal && regs[0].signal.aborted === false, 'bound on the live view signal');
   g.flipByHand(); mt._l.click(); // common.js flips first (registered at boot), then ours
   assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'reopened by hand, ownership released');
   g.flipByHand(); mt._l.click(); // closed again by hand
@@ -987,7 +1054,7 @@ test('v1.319 D2: a HAND toggle in theatre is the user\'s (it reopens and pushes;
   tb._l.click(); // theatre OFF
   assert.strictEqual(g.state().hidden, true, 'theatre OFF does not reopen what the user closed by hand');
   g.realm.destroy();
-  assert.strictEqual(mt._lo.click.signal.aborted, true, 'destroy() aborts the #menu-toggle listener');
+  assert.strictEqual(regs[0].signal.aborted, true, 'destroy() aborts the #menu-toggle listener');
 });
 
 test('v1.319 D2: crossing the desktop breakpoint re-syncs both ways; theatre ON below it never collapses', async () => {
