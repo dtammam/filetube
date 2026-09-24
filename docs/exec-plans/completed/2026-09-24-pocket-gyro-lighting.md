@@ -3,7 +3,7 @@ plan: pocket-gyro-lighting
 harness: v2 · lean
 branch: feat/pocket-gyro-lighting
 anchor: spec
-status: Gate closed
+status: Shipped v1.327.0
 next: release v1.327.0
 design: this document (Dean's intake G1-G8 is in 2026-09-24-pwa-chrome-and-gyro-sheen.md, Item 2)
 gate: APPROVED r3 @e891c661 (adversary + qa); r1 + r2 CHANGES fixed in f7f7af9d + e891c661; r3 suggestions filed as #274

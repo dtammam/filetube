@@ -1,6 +1,6 @@
 'use strict';
 // pocket-lighting-probe - the MEASUREMENT instrument for the pocket skins' gyro lighting
-// (plan docs/exec-plans/active/2026-09-24-pocket-gyro-lighting.md, AC8). Serves this tree's
+// (plan docs/exec-plans/completed/2026-09-24-pocket-gyro-lighting.md, AC8). Serves this tree's
 // public/ plus a fixture page that boots the REAL skin engine (music-skins.js + skin-surface.js +
 // pocket-lighting.js, the real style.css) on a phone viewport in the Playwright-cached headless
 // Chromium over raw CDP (the action-row-probe pattern), then:
