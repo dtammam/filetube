@@ -24,6 +24,21 @@ fi
 # (npm itself already puts every ancestor node_modules/.bin on its scripts'
 # PATH, so the walk is the whole fix - nothing else is needed for a worktree.)
 
+# DOCS-ONLY FAST PATH (Dean, 2026-09-24): a commit whose every staged path is
+# Markdown under docs/ (gate verdicts, fix records, plan close-outs) runs only
+# the unit tests that read docs/, not the whole suite. The selector lives
+# beside THIS hook (core.hooksPath is shared by every worktree, and an older
+# branch may not carry the script); if it is missing, or it finds no
+# docs-reading test, the full checks below run. pre-push still runs everything.
+fast_path="$(dirname "$0")/../scripts/precommit-docs-fast-path.js"
+if [ -f "$fast_path" ] && docs_tests="$(node "$fast_path")"; then
+  echo "→ docs-only commit: the docs-reading unit tests"
+  mapfile -t docs_test_files <<< "$docs_tests"
+  node --require ./test/helpers/tmp-cleanup.js --test "${docs_test_files[@]}"
+  echo "Pre-commit checks passed (docs-only)."
+  exit 0
+fi
+
 # Lint (fails on errors, not warnings)
 echo "→ eslint"
 npm run --silent lint
