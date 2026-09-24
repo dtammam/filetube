@@ -2298,7 +2298,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // click delegation. Fetches both shelves in parallel; a shelf is omitted when
     // empty, and an entirely empty library (no artists AND no albums) shows the
     // empty note.
-    async function renderHome() {
+    async function renderHome(stillMine) {
       var artists = [];
       var albums = [];
       var recent = [];
@@ -2327,6 +2327,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (recentArtists.length) html += buildMusicShelfHtml('Recently played', '', recentArtists.map(buildRecentArtistTileHtml).join(''));
       if (artists.length) html += buildMusicShelfHtml('Your artists', 'artists', artists.map(buildArtistCardHtml).join(''));
       if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
+      if (typeof stillMine === 'function' && !stillMine()) return; // gate r2 (adversary S4a): a menu pick owns the view now
       content.innerHTML = '<div class="music-home">' + html + '</div>';
       if (emptyNote) emptyNote.hidden = (artists.length + albums.length) > 0;
       revealMusicArt();
@@ -2430,7 +2431,7 @@ if (typeof module !== 'undefined' && module.exports) {
           try { await loadSongs({}); } finally { drillLoadInFlight -= 1; }
           if (stillMine()) renderDrillView();
         } else if (tab === 'home') {
-          await renderHome();
+          await renderHome(stillMine);
         } else if (tab === 'songs') {
           await loadSongs({});
           if (stillMine()) renderSongList();
@@ -2458,8 +2459,12 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       } catch (err) {
         console.error('Music: failed to load', err);
-        if (content) content.innerHTML = ''; // v1.98: never strand the seeded shimmer on error
-        if (emptyNote) emptyNote.hidden = false;
+        // gate r2 (adversary S4b): a superseded render's failed fetch must not wipe the list a menu
+        // pick drew (that pick's rows are real, and no shimmer of THIS render remains to clear).
+        if (stillMine()) {
+          if (content) content.innerHTML = ''; // v1.98: never strand the seeded shimmer on error
+          if (emptyNote) emptyNote.hidden = false;
+        }
       }
       // v1.102: reveal the album/artist art (songs/drill self-cover via their own
       // renderers above; a second pass here is an idempotent no-op).
@@ -3332,8 +3337,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows
     // behind the skin are built in SMALL CHUNKS after the tap: the list is cleared synchronously
     // (so no row of the old queue can be tapped against the new one), the first chunk waits for
-    // the next task, and every chunk re-checks it is still the live build (a newer pick or browse
-    // render abandons it). A short list (up to one chunk) renders at once, as before.
+    // the next animation frame (then a task), and every chunk re-checks it is still the live build
+    // (a newer pick or browse render abandons it). A short list (up to one chunk) renders at once, as before.
     var SONG_ROWS_PER_CHUNK = 20;
     var songChunkGen = 0;
     function renderSongListProgressive() {
@@ -3417,6 +3422,11 @@ if (typeof module !== 'undefined' && module.exports) {
         Math.abs((Number(nx.chapterStartSec) || 0) - end) < 0.5) return true;
       // Autoplay off never steps into a station pick (v1.320's advance-seam rule): the list ends here.
       if (ci + 1 < queue.length && !autoplayHoldsAt(ci + 1)) { playAt(ci + 1, { keepPosition: true }); return true; }
+      // Gate r2 (adversary W1, measured): the list is DONE here - drop the flat mode before pausing.
+      // The end band stays true for a second after the pause, so without this one-shot every
+      // timeupdate after the user pressed Play paused again (up to five times). Resuming now just
+      // plays on through the file, a plain listen.
+      flatQueue = null;
       try { mp.pause(); } catch (_) { /* the list is done - nothing follows (autoplay off / nothing appended) */ }
       return true;
     }

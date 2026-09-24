@@ -466,3 +466,83 @@ test('K4 x v1.320: switching Autoplay OFF through the real toggle RETRACTS the s
     });
   } finally { await authedFetch(base + '/api/liked/' + encodeURIComponent('djmix1::c1'), { method: 'DELETE' }); }
 });
+
+// ---------------------------------------------------------------- gate r2
+async function withLiked(id, fn) {
+  const r = await authedFetch(base + '/api/liked/' + encodeURIComponent(id), { method: 'POST' });
+  assert.ok(r.ok, 'liked ' + id);
+  try { await fn(); } finally { await authedFetch(base + '/api/liked/' + encodeURIComponent(id), { method: 'DELETE' }); }
+}
+const autoplayOff = (dom) => { dom.window.localStorage.setItem(AUTOPLAY_KEY, '0'); dom.window.showToast = () => {}; };
+
+test('r2 F1 (adversary W1): a flat list that ends at a mid-file chapter pauses ONCE - a resume plays on, never paused again', async () => {
+  await withLiked('djmix1::c1', async () => {
+    await boot({ skin: 'ipod', play: 'nd1', setup: autoplayOff, run: async (h) => {
+      menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
+      assert.deepStrictEqual(labels(h), ['Track A']);
+      tapRow(h, 'Track A'); await settleNet(40);
+      const loads = h.spy.loads.length;
+      const t = { v: 300 }; const el = mp(h, t, 1800);
+      let paused = 0; el.pause = () => { paused += 1; };
+      await tick(h, el, t, 600); await tick(h, el, t, 899.9);
+      assert.strictEqual(paused, 1, 'the list ended at the chapter\'s own segment');
+      // the user presses Play: the ticks run on through the old end band
+      for (const v of [900.1, 900.35, 900.6, 900.85, 901.1, 901.35]) await tick(h, el, t, v);
+      assert.strictEqual(paused, 1, 'no re-pause: the resume plays on');
+      assert.strictEqual(h.spy.loads.length, loads, 'and nothing reloaded');
+    } });
+  });
+});
+
+test('r2 S2 (adversary, refutes the old "equivalent"): a flat list ending at the file\'s LAST chapter lets the file end naturally - no pause short of the end', async () => {
+  await withLiked('djmix1::c2', async () => {
+    await boot({ skin: 'ipod', play: 'nd1', setup: autoplayOff, run: async (h) => {
+      menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
+      assert.deepStrictEqual(labels(h), ['Track B']);
+      tapRow(h, 'Track B'); await settleNet(40);
+      const t = { v: 900 }; const el = mp(h, t, 1800);
+      let paused = 0; el.pause = () => { paused += 1; };
+      for (const v of [1500, 1799.5, 1799.8, 1799.95]) await tick(h, el, t, v);
+      assert.strictEqual(paused, 0, 'the flat end stood aside: the file reaches its own ended (the completion save runs)');
+    } });
+  });
+});
+
+test('r2 S3 (adversary R12): Select on a level the library changed under RE-LOADS it - it never acts on the stale row (the pop-out shape: no repaint)', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    await openSongs(h);
+    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+    assert.strictEqual(h.log.filter(songsUrl).length, 1);
+    const loads = h.spy.loads.length;
+    notifyLibraryChanged({ kind: 'chapters', mediaId: 'djmix1' }, h.D); // a save in ANOTHER window
+    select(h); await settleNet();
+    assert.strictEqual(h.log.filter(songsUrl).length, 2, 'the level re-loaded from the server');
+    assert.strictEqual(h.spy.loads.length, loads, 'the press did not play the stale row');
+    assert.ok(inMenu(h) && title(h) === 'Songs', 'still on the (fresh) Songs level');
+  } });
+});
+
+test('r2 S4a (adversary): a Home render in flight when a flat pick lands never replaces the pick\'s list with the Home shelves', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    await openSongs(h);
+    click(h.dom, h.D.querySelector('.music-tab[data-tab="home"]')); // renderHome's fetches go out...
+    tapRow(h, 'Loose Single'); // ...and a flat pick lands first
+    await settleNet(120);
+    assert.strictEqual(h.player.currentId, 'za1');
+    assert.strictEqual(h.D.querySelector('#music-content .music-home'), null, 'no Home shelves over the pick\'s list');
+    assert.ok(h.D.querySelectorAll('#music-content .music-song-row').length > 0, 'the pick\'s list is behind the skin');
+  } });
+});
+
+test('r2 S4b (adversary): a superseded Songs render whose fetch FAILS after a flat pick never wipes the pick\'s list', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', failOnce: /^\/api\/music\?sort=[a-z-]+&limit=1000$/, run: async (h) => {
+    await openSongs(h);
+    click(h.dom, h.D.querySelector('.music-tab[data-tab="songs"]')); // a browse Songs load goes out (and will fail)...
+    tapRow(h, 'Loose Single'); // ...and a flat pick lands first
+    await settleNet(120);
+    assert.ok(h.log.some((u) => /^\/api\/music\?sort=[a-z-]+&limit=1000$/.test(u)), 'precondition: the browse Songs fetch ran (and failed)');
+    assert.strictEqual(h.player.currentId, 'za1');
+    assert.ok(h.D.querySelectorAll('#music-content .music-song-row').length > 0, 'the pick\'s list survived the failed render');
+    assert.strictEqual(h.D.getElementById('music-empty').hidden, true, 'no empty note over it');
+  } });
+});

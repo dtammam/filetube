@@ -583,7 +583,7 @@ test('gate r1 qa S6: inside the pop-out\'s Nano tray the menu is never drawn (no
   } finally { b.restore(); }
 });
 
-test('gate r1 A20/A22 + K5: Seattle escapes its drilled title, sub-line, pivots and list label; a two-line row carries has-sub', () => {
+test('gate r1 A20/A22 + K5: Seattle escapes its drilled title, sub-line, pivots and list label; a list with sub-lines is a two-line list', () => {
   const X = '<img src=x onerror=alert(1)>';
   const html = skins.renderMenuView('seattle', { title: X, root: false, pivots: null, items: [{ label: 'L', sub: X, song: true, id: 'a' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
   const d = new JSDOM('<div id="h">' + html + '</div>').window.document;
@@ -591,14 +591,13 @@ test('gate r1 A20/A22 + K5: Seattle escapes its drilled title, sub-line, pivots 
   assert.strictEqual(d.querySelector('.ipm-title').textContent, X, 'the title shows as text');
   assert.strictEqual(d.querySelector('.ipm-sub').textContent, X, 'the sub-line shows as text');
   assert.strictEqual(d.querySelector('.ipm-list').getAttribute('aria-label'), X, 'the listbox label is an attribute value, not markup');
-  assert.ok(d.querySelector('.ipm-row.has-sub'), 'K5: the two-line row packs its sub under its own title');
   assert.ok(d.querySelector('.ipm-list.ipm-2l'), 'K5: a list with sub-lines is a two-line list (one taller pitch)');
   const one = skins.renderMenuView('seattle', { title: 'T', items: [{ label: 'no sub' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
   assert.ok(!/ipm-2l/.test(one), 'a list with no sub-lines keeps the one-line pitch');
   const piv = skins.renderMenuView('seattle', { title: 'Music', pivots: [X, 'b'], pivotIdx: 0, items: [{ label: 'x' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
   assert.strictEqual(new JSDOM(piv).window.document.querySelectorAll('img').length, 0, 'pivot labels are escaped');
   const click = skins.renderMenuView('click', { title: X, items: [{ label: 'L', sub: X }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
-  assert.ok(!/has-sub/.test(click), 'Click rows are one line (no has-sub)');
+  assert.ok(!/ipm-2l/.test(click), 'Click lists are one line (no two-line pitch)');
 });
 
 test('gate r1 K2: the chapters editor raises the ONE library-changed event on a successful save (and not on a failed one)', async () => {

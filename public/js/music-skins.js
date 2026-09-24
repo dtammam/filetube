@@ -441,8 +441,7 @@
     for (var i = v.start; i < v.end; i++) {
       var it = items[i];
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
-        (v.currentId && it.id === v.currentId ? ' is-current' : '') +
-        (v.style === 'seattle' && it.sub ? ' has-sub' : ''); // gate r1 K5: a two-line Zune row packs its sub-line UNDER its own title
+        (v.currentId && it.id === v.currentId ? ' is-current' : '');
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
         '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
         (v.style === 'seattle' && it.sub ? '<span class="ipm-sub">' + esc(it.sub) + '</span>' : '') +
