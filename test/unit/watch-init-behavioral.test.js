@@ -744,16 +744,28 @@ function makeReserveRealm(search, fetchImpl) {
   });
   const get = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
   const writes = [];
+  const removed = [];
   get('.watch-container').style.setProperty = (k, v) => { writes.push([k, v]); };
-  const rects = { stage: { bottom: 564, height: 484 }, bar: { bottom: 736.4, height: 119 } };
-  get('.watch-player-stage').getBoundingClientRect = () => rects.stage;
-  get('.watch-action-bar').getBoundingClientRect = () => rects.bar;
+  get('.watch-container').style.removeProperty = (k) => { removed.push(k); };
+  const rects = { stage: { bottom: 564, height: 484 }, bar: { bottom: 736.4, height: 119 }, row: { bottom: 826, height: 74 }, title: { bottom: 605, height: 25 } };
+  // gate r1 (qa W1 = adversary W1): the rects honour an inline `display: none` exactly as a
+  // browser does (all zeros) - hideTvVideoChrome hides the bar that way on a TV episode, and
+  // the r0 test hand-typed a bar box the tv path can never produce.
+  const HIDDEN_RECT = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+  const rectFor = (sel, key) => { const el = get(sel); el.getBoundingClientRect = () => (el.style.display === 'none' ? HIDDEN_RECT : rects[key]); };
+  rectFor('.watch-player-stage', 'stage');
+  rectFor('.watch-action-bar', 'bar');
+  rectFor('.uploader-info-panel', 'row');
+  rectFor('.watch-title', 'title');
+  // gate r1 (adversary W3): the host the stage holds carries player.js's `--media-aspect`
+  const host = { aspect: '', style: { getPropertyValue: (k) => (k === '--media-aspect' ? host.aspect : '') } };
+  get('.watch-player-stage').querySelector = (sel) => (sel === '#player-wrapper' ? host : null);
   const root = makeEl('div');
   root.querySelector = get;
   realm.init(root);
   const flush = () => { const f = frames.splice(0); f.forEach((fn) => fn()); return f.length; };
   const reserveRo = () => ros.find((o) => o.targets.includes(get('.watch-player-stage')));
-  return { realm, ros, reserveRo, frames, flush, writes, rects, get };
+  return { realm, ros, reserveRo, frames, flush, writes, removed, rects, get, host };
 }
 
 test('v1.319 theatre reserve (?v=): the real init observes the stage, the action bar AND the title, and writes the measured room one frame later', async () => {
@@ -810,10 +822,34 @@ test('v1.319 theatre reserve (?tv=): the episode path wires the SAME reserve (th
   for (let i = 0; i < 40 && !t.reserveRo(); i++) await settle();
   const ro = t.reserveRo();
   assert.ok(ro, 'initTvWatch reached setupTheatreReserve');
+  // gate r1 (qa W1 = adversary W1): the REAL tv shape - hideTvVideoChrome hid the bar
+  assert.strictEqual(t.get('.watch-action-bar').style.display, 'none', 'precondition: the tv path hid the action bar (its rect now reads all zeros)');
+  assert.ok(ro.targets.includes(t.get('.uploader-info-panel')), 'the show row is observed');
+  assert.ok(ro.targets.includes(t.get('.watch-main')), 'the column is observed (the tv back link inserted above the title moves the row without resizing it)');
   t.flush();
   const n = t.writes.length;
   ro.cb([]); t.flush();
-  assert.deepStrictEqual(t.writes.slice(n), [['--watch-theatre-reserve', '173px']]);
+  assert.deepStrictEqual(t.writes.slice(n), [['--watch-theatre-reserve', '262px']], 'the reserve runs to the SHOW row (826 - 564), the episode\'s controls, never the hidden bar');
+  t.realm.destroy();
+});
+
+test('v1.319 r1 theatre aspect (?v=): a WIDER-than-16:9 item writes its width aspect; 16:9 / 4:3 / none remove it', async () => {
+  const t = makeReserveRealm('?v=vid1', routeVideoHydration);
+  for (let i = 0; i < 40 && !t.reserveRo(); i++) await settle();
+  const ro = t.reserveRo();
+  assert.ok(ro, 'precondition: setupTheatreReserve ran');
+  t.flush();
+  const n = t.writes.length;
+  t.host.aspect = '2560 / 1080';
+  ro.cb([]); t.flush();
+  assert.deepStrictEqual(t.writes.slice(n), [['--watch-theatre-aspect', '2.3704'], ['--watch-theatre-reserve', '173px']], '21:9: the stage takes the item\'s aspect');
+  const r = t.removed.length;
+  for (const a of ['1920 / 1080', '640 / 480', '']) {
+    t.host.aspect = a;
+    ro.cb([]); t.flush();
+  }
+  assert.deepStrictEqual(t.removed.slice(r), ['--watch-theatre-aspect', '--watch-theatre-aspect', '--watch-theatre-aspect'], '16:9, 4:3 and unknown fall back to the 16:9 box');
+  assert.strictEqual(t.writes.filter((w) => w[0] === '--watch-theatre-aspect').length, 1, 'written only for the wide item');
   t.realm.destroy();
 });
 
@@ -824,7 +860,7 @@ test('v1.319 theatre reserve (?tv=): the episode path wires the SAME reserve (th
 // OFF, on nav-away (destroy) and on a desktop -> narrow crossing; a watch -> watch hop keeps
 // it; a hand toggle is the user's; a sidebar the user closed is never opened; and no
 // storage key is written by any of it (the sidebar has no persisted preference). ----------
-function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false } = {}) {
+function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false, width } = {}) {
   const { JSDOM } = require('jsdom');
   const jd = new JSDOM('<body><aside class="sidebar" id="sidebar"></aside><main class="main-content" id="main-content"></main><div class="watch-container"></div><div class="watch-container" id="wc2"></div></body>').window.document;
   const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} } });
@@ -833,8 +869,23 @@ function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false 
   realm.els.set('#sidebar', sidebar);
   realm.els.set('#main-content', main);
   realm.doc.body = jd.body;
-  const mq = { matches: desktop, addEventListener(t, fn, o) { mq.type = t; mq.fn = fn; mq.opts = o; } };
-  realm.win.matchMedia = (q) => { mq.query = q; return mq; };
+  // gate r1 (adversary W2): the fake EVALUATES the query against a simulated viewport
+  // width (a shared object answering every query alike let a `(max-width: 1024px)`
+  // mutant pass). Every call is recorded; setWidth() fires each list's change listener.
+  const media = { width: width || (desktop ? 1280 : 1024), lists: [] };
+  const evalQuery = (q, w) => {
+    const m = /^\((min|max)-width:\s*(\d+)px\)$/.exec(String(q).trim());
+    if (!m) throw new Error('unexpected media query in the watch view: ' + q);
+    return m[1] === 'min' ? w >= Number(m[2]) : w <= Number(m[2]);
+  };
+  realm.win.matchMedia = (q) => {
+    const l = { query: q, addEventListener(t, fn, o) { l.type = t; l.fn = fn; l.opts = o; } };
+    Object.defineProperty(l, 'matches', { get: () => evalQuery(q, media.width) });
+    media.lists.push(l);
+    return l;
+  };
+  const setWidth = (w) => { media.width = w; media.lists.forEach((l) => { if (l.fn) l.fn({ matches: l.matches }); }); };
+  const mq = { get lists() { return media.lists; }, get listener() { return media.lists.find((l) => l.fn); } };
   const flipByHand = () => { sidebar.classList.toggle('hidden'); sidebar.classList.toggle('mobile-open'); main.classList.toggle('expanded'); }; // = common.js #menu-toggle
   if (userCollapsed) flipByHand();
   if (theatre) global.sessionStorage.setItem('ft-theater', '1');
@@ -851,7 +902,7 @@ function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false 
   const wc2 = jd.getElementById('wc2');
   const state = () => ({ hidden: sidebar.classList.contains('hidden'), mobileOpen: sidebar.classList.contains('mobile-open'), expanded: main.classList.contains('expanded'), owner: jd.body.getAttribute('data-theatre-guide') });
   const storageSnapshot = () => JSON.stringify([...storage.entries()].filter(([k]) => k !== 'ft-theater').sort());
-  return { realm, mq, flipByHand, mkRoot, wc1, wc2, state, storageSnapshot, sidebar, main };
+  return { realm, mq, setWidth, flipByHand, mkRoot, wc1, wc2, state, storageSnapshot, sidebar, main };
 }
 const GUIDE_OPEN = { hidden: false, mobileOpen: false, expanded: false, owner: null };
 const GUIDE_THEATRE = { hidden: true, mobileOpen: true, expanded: true, owner: 'OWNED' };
@@ -873,7 +924,7 @@ test('v1.319 D2: theatre ON (persisted, desktop) collapses an OPEN sidebar in in
   g.realm.init(g.mkRoot(g.wc1));
   assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'collapsed synchronously in init() (no open-then-slide on a cold theatre load)');
   assert.deepStrictEqual(written.filter((k) => !/^comments_/.test(k)), [], 'the init-time collapse wrote no storage key (init seeds the mock comments cache, nothing else)');
-  assert.strictEqual(g.mq.query, '(min-width: 1025px)', 'desktop-gated at the theatre button breakpoint');
+  assert.ok(g.mq.lists.length > 0 && g.mq.lists.every((l) => l.query === '(min-width: 1025px)'), 'every query is the theatre button breakpoint: ' + g.mq.lists.map((l) => l.query).join(', '));
   const tb = await hydrateTheatre(g);
   const store0 = g.storageSnapshot();
   written.length = 0;
@@ -940,19 +991,33 @@ test('v1.319 D2: a HAND toggle in theatre is the user\'s (it reopens and pushes;
 });
 
 test('v1.319 D2: crossing the desktop breakpoint re-syncs both ways; theatre ON below it never collapses', async () => {
-  const g = makeGuideRealm();
+  const g = makeGuideRealm({ width: 1280 });
   g.realm.init(g.mkRoot(g.wc1));
-  assert.strictEqual(g.mq.type, 'change', 'a change listener on the breakpoint query');
-  assert.ok(g.mq.opts && g.mq.opts.signal, 'bound on the view signal');
-  g.mq.matches = false; g.mq.fn();
-  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'narrowed below 1025px: restored');
-  g.mq.matches = true; g.mq.fn();
-  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'back on desktop: collapsed');
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'precondition: 1280 wide, collapsed');
+  const l = g.mq.listener;
+  assert.ok(l && l.type === 'change', 'a change listener on the breakpoint query');
+  assert.strictEqual(l.query, '(min-width: 1025px)');
+  assert.ok(l.opts && l.opts.signal, 'bound on the view signal');
+  g.setWidth(1024);
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'narrowed to 1024px: restored');
+  g.setWidth(1025);
+  assert.deepStrictEqual(norm(g.state()), GUIDE_THEATRE, 'back to 1025px: collapsed');
+  g.setWidth(700);
+  assert.deepStrictEqual(norm(g.state()), GUIDE_OPEN, 'a phone-width window: restored (never the mobile drawer opened by theatre)');
   g.realm.destroy();
   await Promise.resolve(); await Promise.resolve();
-  const n = makeGuideRealm({ desktop: false });
-  n.realm.init(n.mkRoot(n.wc1));
-  assert.strictEqual(n.wc1.classList.contains('theater-mode'), true, 'precondition: the persisted class is applied at any width');
-  assert.deepStrictEqual(norm(n.state()), GUIDE_OPEN, 'no collapse below the desktop breakpoint');
-  n.realm.destroy();
+  // theatre ON persisted, cold-loaded BELOW the breakpoint: a no-op at each narrow width
+  for (const w of [1024, 900, 700, 390]) {
+    const n = makeGuideRealm({ width: w });
+    n.realm.init(n.mkRoot(n.wc1));
+    assert.strictEqual(n.wc1.classList.contains('theater-mode'), true, 'precondition: the persisted class is applied at any width');
+    assert.deepStrictEqual(norm(n.state()), GUIDE_OPEN, 'no collapse at ' + w + 'px');
+    n.realm.destroy();
+    await Promise.resolve(); await Promise.resolve();
+  }
+  // ...and at the first desktop pixel it does collapse
+  const d = makeGuideRealm({ width: 1025 });
+  d.realm.init(d.mkRoot(d.wc1));
+  assert.deepStrictEqual(norm(d.state()), GUIDE_THEATRE, 'collapsed at 1025px');
+  d.realm.destroy();
 });

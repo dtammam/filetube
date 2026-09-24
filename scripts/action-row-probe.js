@@ -49,7 +49,7 @@ const { spawn } = require('node:child_process');
 
 const OUT = process.argv[2];
 if (!OUT) {
-  console.error('usage: node scripts/action-row-probe.js <out-dir> [width ...]');
+  console.error('usage: node scripts/action-row-probe.js <out-dir> [width | WxH ...] [--theatre] [--menu-toggle] [--viewport-shot]');
   process.exit(2);
 }
 const ARGS = process.argv.slice(3);
@@ -63,6 +63,8 @@ const VIEWPORT_SHOT = ARGS.includes('--viewport-shot');
 // so this REOPENS it by hand (the column narrows with no theatre click - the
 // theatre reserve must follow through its ResizeObserver alone).
 const MENU_TOGGLE = ARGS.includes('--menu-toggle');
+// It acts inside the theatre step only; without --theatre it would be a silent no-op.
+if (MENU_TOGGLE && !ARGS.includes('--theatre')) console.error('warning: --menu-toggle only acts with --theatre (ignored)');
 // Each viewport is [width, height]; a bare width keeps the historical height.
 const VIEWPORTS = ARGS.filter((a) => !a.startsWith('--')).map((a) => {
   const m = /^(\d+)(?:x(\d+))?$/.exec(a);
@@ -200,6 +202,7 @@ async function main() {
     });
 
     for (const [w, h] of VIEWPORTS) {
+      const tag = h === (w < 500 ? 844 : 900) ? `${w}` : `${w}x${h}`; // bare widths keep their historical tag
       // Geometry is DPR-independent. Phones render at DPR 2 for a crisp PNG;
       // desktop widths at DPR 1 - under software GL a 2560x1800 surface made
       // every CDP round-trip crawl and the readiness poll time out.
@@ -220,7 +223,7 @@ async function main() {
       const t0 = Date.now();
       for (let attempt = 0; attempt < 3 && !ready; attempt++) {
         if (attempt > 0) {
-          console.error(`${w}: row not mounted after ${Date.now() - t0}ms - reload ${attempt} of 2`);
+          console.error(`${tag}: row not mounted after ${Date.now() - t0}ms - reload ${attempt} of 2`);
           await send('Page.reload');
         }
         const deadline = Date.now() + ATTEMPT_MS;
@@ -231,13 +234,13 @@ async function main() {
         }
       }
       if (!ready) {
-        console.error(`${w}: WARNING - the action row never finished mounting; geometry below is of a partial row`);
+        console.error(`${tag}: WARNING - the action row never finished mounting; geometry below is of a partial row`);
         try {
           const diag = (await send('Runtime.evaluate', {
             expression: "JSON.stringify({ text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 160), errors: (window.__probeErrors || []).slice(0, 5) })",
             returnByValue: true,
           })).result.value;
-          console.error(`${w}: page state ${diag}`);
+          console.error(`${tag}: page state ${diag}`);
         } catch (_) { /* best effort */ }
       }
       if (THEATRE) {
@@ -247,7 +250,7 @@ async function main() {
         // from the persisted pref (init()'s path). The bare class flip is the
         // fallback for a tree without the button.
         const via = (await send('Runtime.evaluate', { expression: "(function(){var c=document.querySelector('.watch-container'); if (!c) return 'none'; if (c.classList.contains('theater-mode')) return 'persisted'; var b=document.getElementById('theater-btn'); if (b && b.getBoundingClientRect().width > 0) { b.click(); return 'click'; } c.classList.add('theater-mode'); return 'class'; })()", returnByValue: true })).result.value;
-        console.error(`${w}: theatre via ${via}`);
+        console.error(`${tag}: theatre via ${via}`);
         // Since v1.319 theatre also collapses the left bar: its slide and the
         // content's margin-left run on --dur-fast (0.15s); let them finish first.
         await new Promise((r) => setTimeout(r, 600));
@@ -275,7 +278,6 @@ async function main() {
         expression: `(function(){var el=document.querySelector('.watch-action-bar');if(!el)return null;var r=el.getBoundingClientRect();return JSON.stringify({x:r.x-8,y:r.y-8,width:Math.max(r.width,el.scrollWidth)+16,height:r.height+16,scale:${dpr}})})()`,
         returnByValue: true,
       })).result.value;
-      const tag = h === (w < 500 ? 844 : 900) ? `${w}` : `${w}x${h}`;
       console.error(`${tag}: ready in ${Date.now() - t0}ms`);
       console.log(`${tag}: ${geo}`);
       // The PNG is illustration; the JSON line above is the evidence. A
@@ -288,8 +290,8 @@ async function main() {
           fs.writeFileSync(path.join(OUT, `viewport-${w}x${h}${THEATRE ? '-theatre' : ''}${MENU_TOGGLE ? '-menutoggle' : ''}.png`), Buffer.from(full.data, 'base64'));
         }
       } catch (err) {
-        console.error(`${w}: screenshot skipped (${err.message})`);
-      if (process.env.PROBE_DEBUG) console.error(`${w}: clip was ${clipJson}`);
+        console.error(`${tag}: screenshot skipped (${err.message})`);
+        if (process.env.PROBE_DEBUG) console.error(`${tag}: clip was ${clipJson}`);
       }
     }
     ws.close();

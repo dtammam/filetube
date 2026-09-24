@@ -55,24 +55,51 @@ function theaterModeStorageValue(isActive) {
 
 // v1.319 (Dean: "YouTube's theatre view sizes the video so the title + channel +
 // action row still show at the bottom of the first screen"). theatreReservePx: the
-// room the desktop theatre player must leave BELOW itself for the title and the
-// whole action bar, in px = the action bar's bottom edge minus the player stage's
-// bottom edge. MEASURED, not a fixed budget, because FileTube's bar wraps with the
-// column width (one line at 1920, three at 1280 - plan 2026-09-24-desktop-theatre)
-// and a title can take two lines. The distance does NOT depend on the player's own
-// height (the title and bar follow the stage, and their size follows the column,
-// never the player), so writing it back into the player's width cap cannot loop.
-// Returns null (keep the previous value / the CSS fallback) when a rect is missing,
-// the stage is empty (the player is not mounted in it: the wrapper's bottom margin
-// that sits between the two is then absent too, so the reading would be short),
-// or the reading is not a finite non-negative number.
-function theatreReservePx(stageRect, barRect) {
-  if (!stageRect || !barRect) return null;
-  const sb = Number(stageRect.bottom);
-  const bb = Number(barRect.bottom);
-  if (!(Number(stageRect.height) > 0) || !Number.isFinite(sb) || !Number.isFinite(bb)) return null;
-  const px = Math.ceil(bb - sb);
-  return px >= 0 ? px : null;
+// room the desktop theatre player must leave BELOW itself for the info block's
+// CONTROLS row, in px = that row's bottom edge minus the player stage's bottom edge.
+// MEASURED, not a fixed budget: FileTube's action bar wraps with the column width
+// (one line in the sidebar-collapsed desktop theatre column, three at 1280 with the
+// sidebar hand-reopened - plan 2026-09-24-desktop-theatre), a title can take two
+// lines, and a TV episode's row is a different element (theatreReserveTargetRect).
+// The distance does NOT depend on the player's own height (everything below follows
+// the stage, and its size follows the column, never the player), so writing it back
+// into the player's width cap cannot loop. Returns null (keep the previous value /
+// the CSS fallback) when a rect is missing, the stage is empty (the player is not
+// mounted in it: the wrapper's bottom margin that sits between the two is then
+// absent too, so the reading would be short), or the reading is not a finite
+// non-negative number (NaN, +/-Infinity, a row above the stage).
+function theatreReservePx(stageRect, rowRect) {
+  if (!stageRect || !rowRect) return null;
+  if (!(Number(stageRect.height) > 0)) return null;
+  const px = Math.ceil(Number(rowRect.bottom) - Number(stageRect.bottom));
+  return Number.isFinite(px) && px >= 0 ? px : null;
+}
+// v1.319 gate r1 (qa W1 = adversary W1): WHICH row the reserve keeps on screen - the
+// lowest RENDERED controls row. A video: the action bar (Architect ruling D5: the
+// channel panel below it is NOT reserved). A TV episode: hideTvVideoChrome sets the
+// action bar `display: none` (its rect is all zeros), and the episode's controls are
+// the SHOW row (the uploader panel, repainted as the show: poster, name, link) - so
+// the bar when it has a box, else the show row, else the title. A zero-height rect
+// is "not rendered" (display:none reads 0x0 at 0,0).
+function theatreReserveTargetRect(barRect, rowRect, titleRect) {
+  for (const r of [barRect, rowRect, titleRect]) {
+    if (r && Number(r.height) > 0) return r;
+  }
+  return null;
+}
+// v1.319 gate r1 (adversary W3): the WIDTH aspect of the desktop theatre stage. The
+// stage is sized as (budget height) x aspect; a 16:9 box shrank a WIDER item (21:9 at
+// 1280x720: 846x357 instead of the base 1000x422), where YouTube's full-width band
+// keeps its width. So the stage takes the item's real aspect when it is wider than
+// 16:9 (player.js writes `--media-aspect` "w / h" on the host), and 16:9 otherwise:
+// a 4:3 item stays pillarboxed inside the 16:9 box (the picture cap), a portrait item
+// is pinned to 16:9 already (v1.34). Returns a number >= 16/9; unparseable -> 16/9.
+const THEATRE_BASE_ASPECT = 16 / 9;
+function theatreWidthAspect(rawMediaAspect) {
+  const m = /^\s*([0-9]*\.?[0-9]+)\s*\/\s*([0-9]*\.?[0-9]+)\s*$/.exec(String(rawMediaAspect == null ? '' : rawMediaAspect));
+  if (!m) return THEATRE_BASE_ASPECT;
+  const r = Number(m[1]) / Number(m[2]);
+  return Number.isFinite(r) && r > THEATRE_BASE_ASPECT ? r : THEATRE_BASE_ASPECT;
 }
 
 // v1.319 (Architect ruling D2 on Dean's "match YouTube's theatre geometry"): YouTube
@@ -687,6 +714,8 @@ if (typeof module !== 'undefined' && module.exports) {
     isTheaterModeActive,
     theaterModeStorageValue,
     theatreReservePx,
+    theatreReserveTargetRect,
+    theatreWidthAspect,
     theatreGuideCollapse,
     theatreGuideRestore,
     theatreGuideRelease,
@@ -2124,12 +2153,16 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // v1.319 (Dean: keep the title + action row on the first screen in theatre, like
     // YouTube): keep `--watch-theatre-reserve` on `.watch-container` equal to the
-    // room below the player that the title + the whole action bar take (the pure
-    // theatreReservePx). style.css's desktop theatre rule subtracts it, plus
-    // YouTube's measured 23px fold margin, from the height the player may use. Re-
-    // measured whenever the stage (the player mounting), the title or the bar
-    // changes size - a theatre toggle and a window resize both change the column,
-    // hence the bar. The write is deferred to the next frame so the stage resize it
+    // room below the player down to the controls row (the pure theatreReservePx over
+    // theatreReserveTargetRect: the action bar on a video, the SHOW row on a TV episode
+    // whose bar is hidden - gate r1 W1). style.css's desktop theatre rule subtracts it,
+    // plus YouTube's measured 23px fold margin, from the height the player may use.
+    // The same measure keeps `--watch-theatre-aspect` = the item's width aspect when it
+    // is WIDER than 16:9 (theatreWidthAspect, gate r1 W3), else unset (16:9). Re-
+    // measured whenever the stage (the player mounting, the picture's aspect), the
+    // title, the bar, the show row or the whole column changes size - a theatre toggle
+    // and a window resize both change the column, hence the bar; the column catches a
+    // block inserted above the row (the tv back link, the queue box). The write is deferred to the next frame so the stage resize it
     // causes is a fresh observation, never a same-frame ResizeObserver loop; the
     // value it re-reads is the same (the reserve does not follow the player), so it
     // settles in one extra frame. Written whatever the theatre state (the var is only
@@ -2143,10 +2176,20 @@ if (typeof module !== 'undefined' && module.exports) {
       const stage = root.querySelector('.watch-player-stage');
       const bar = root.querySelector('.watch-action-bar');
       const title = root.querySelector('.watch-title');
+      const showRow = root.querySelector('.uploader-info-panel');
+      const column = root.querySelector('.watch-main');
       if (!stage || !bar) return;
+      const rectOf = (el) => (el ? el.getBoundingClientRect() : null);
       function measure() {
         if (signal && signal.aborted) return; // a frame queued before the view died
-        const px = theatreReservePx(stage.getBoundingClientRect(), bar.getBoundingClientRect());
+        const host = typeof stage.querySelector === 'function' ? stage.querySelector('#player-wrapper') : null;
+        if (host && host.style && typeof host.style.getPropertyValue === 'function') {
+          const aspect = theatreWidthAspect(host.style.getPropertyValue('--media-aspect'));
+          if (aspect > THEATRE_BASE_ASPECT) watchContainer.style.setProperty('--watch-theatre-aspect', String(Math.round(aspect * 10000) / 10000));
+          else if (typeof watchContainer.style.removeProperty === 'function') watchContainer.style.removeProperty('--watch-theatre-aspect');
+        }
+        const row = theatreReserveTargetRect(rectOf(bar), rectOf(showRow), rectOf(title));
+        const px = theatreReservePx(rectOf(stage), row);
         if (px === null) return;
         watchContainer.style.setProperty('--watch-theatre-reserve', px + 'px');
       }
@@ -2160,6 +2203,8 @@ if (typeof module !== 'undefined' && module.exports) {
       theatreReserveObs.observe(stage);
       theatreReserveObs.observe(bar);
       if (title) theatreReserveObs.observe(title);
+      if (showRow) theatreReserveObs.observe(showRow);
+      if (column) theatreReserveObs.observe(column);
       if (signal) signal.addEventListener('abort', () => theatreReserveObs.disconnect(), { once: true });
     }
 

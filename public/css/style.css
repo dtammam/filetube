@@ -8993,24 +8993,29 @@ body.ft-audio-expanded {
    for the title and the channel / action row), centred; the action row's bottom
    edge sits 23px above the fold at every size. FileTube's equivalent budget:
    the header, the content's top padding, the player's own 40px control bar + 2px
-   border, the MEASURED room the title + the whole action bar take below the
-   player (`--watch-theatre-reserve`, written by watch.js setupTheatreReserve:
-   it wraps with the column, one line at 1920 and three at 1280; the fallback is
-   the measured one-line room, 98px) and YouTube's 23px fold margin. `+ 2px`: the
+   border, the MEASURED room below the player down to the controls row
+   (`--watch-theatre-reserve`, written by watch.js setupTheatreReserve: the action
+   bar on a video - one line in the sidebar-collapsed theatre column, three at 1280
+   with the sidebar hand-reopened - and the SHOW row on a TV episode, whose bar is
+   hidden; the channel panel under a video's bar is NOT reserved, ruling D5; the
+   fallback is the measured one-line room, 98px) and YouTube's 23px fold margin.
+   `* var(--watch-theatre-aspect, 16 / 9)`: the budget height times the width
+   aspect - 16:9, or the item's own aspect when it is WIDER (21:9 keeps its width,
+   as in YouTube's full-width band; watch.js theatreWidthAspect). `+ 2px`: the
    wrapper's width includes its 1px borders, so the video inside is exactly the
    budgeted height. `max(480px, ...)`: never narrower than 480px on a very short
    window (YouTube's own 480px-tall floor would push the action row under the fold
-   at 1280x720 and 1366x768, the exact complaint - measured, plan).
+   at 1280x720 and 1366x768 once the bar wraps - measured, plan, decision D4).
    The width sits on the STAGE (the wrapper fills it), so the stage IS the player
    box: `.ambient-glow`'s % insets are a % of the stage, and the glow's vignette
    must land on the player's edge - a stage wider than a centred player put it at
    the column's edge. Stage rules keep the ambient constraint: NO filter,
-   transform, mask, will-change, contain or isolation here. Desktop only: phones
+   transform, mask, will-change, contain, content-visibility or isolation here. Desktop only: phones
    and tablets keep the rule above. */
 @media (min-width: 1025px) {
   .watch-container.theater-mode .watch-player-stage {
-    width: min(100%, max(480px, calc((100vh - var(--header-h) - var(--space-12) - 40px - 2px - var(--watch-theatre-reserve, 98px) - 23px) * 16 / 9 + 2px)));
-    width: min(100%, max(480px, calc((100dvh - var(--header-h) - var(--space-12) - 40px - 2px - var(--watch-theatre-reserve, 98px) - 23px) * 16 / 9 + 2px)));
+    width: min(100%, max(480px, calc((100vh - var(--header-h) - var(--space-12) - 40px - 2px - var(--watch-theatre-reserve, 98px) - 23px) * var(--watch-theatre-aspect, 16 / 9) + 2px)));
+    width: min(100%, max(480px, calc((100dvh - var(--header-h) - var(--space-12) - 40px - 2px - var(--watch-theatre-reserve, 98px) - 23px) * var(--watch-theatre-aspect, 16 / 9) + 2px)));
     margin-inline: auto;
   }
   .watch-container.theater-mode #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
