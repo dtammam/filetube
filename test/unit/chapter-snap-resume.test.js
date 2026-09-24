@@ -53,7 +53,13 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 const settle = () => new Promise((r) => setImmediate(r));
 const settleN = async (n) => { for (let i = 0; i < n; i++) await settle(); };
 
-async function boot(run) {
+const FILE_CHAPTERS = [{ startTime: 0, title: 'Opening' }, { startTime: 60, title: 'Second Song' }, { startTime: 120, title: 'Closer' }];
+
+// opts.server: { chapters, chaptersEdited, hold } - GET /api/videos/f1 answers `chapters` (the
+// server's CURRENT resolved list); `hold` = true parks each answer until ctx.release() is called.
+async function boot(run, opts) {
+  opts = opts || {};
+  const server = Object.assign({ chapters: FILE_CHAPTERS, chaptersEdited: false, hold: false }, opts.server || {});
   const tracks = tracksFixture();
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent('f1::c0') });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
@@ -62,10 +68,30 @@ async function boot(run) {
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
   const editor = [];
   const loads = [];
+  const videoGets = [];
+  const parked = [];
+  let visibility = 'visible';
+  Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, get: () => visibility });
+  // The media element: a settable playhead and a play() counter. The player stub below models
+  // the real load(): a SAME-id load is an ADOPT (player.js isAdoptLoad) and never touches it; a
+  // genuine load seeks to chapterResumeSec, else chapterStartSec (player.js handleResumePlayback).
+  const mp = dom.window.document.getElementById('media-player');
+  const media = { t: 0, plays: 0, seeks: [] };
+  Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => media.t, set: (v) => { media.t = v; media.seeks.push(v); } });
+  Object.defineProperty(mp, 'duration', { configurable: true, get: () => 180 });
+  mp.play = () => { media.plays += 1; return Promise.resolve(); };
+  mp.pause = () => {};
   global.fetch = (url, init) => {
     const u = String(url);
     const method = (init && init.method) || 'GET';
     if (method !== 'GET') return Promise.resolve({ ok: true, json: async () => ({}) });
+    if (u === '/api/videos/f1') {
+      videoGets.push(u);
+      const body = { id: 'f1', type: 'audio', title: 'The Mix', chapters: server.chapters.map((c) => ({ ...c })), chaptersSource: server.chaptersEdited ? 'manual' : 'embedded', chaptersEdited: server.chaptersEdited, duration: 180 };
+      const res = { ok: true, json: async () => body };
+      if (server.hold) return new Promise((resolve) => parked.push(() => resolve(res)));
+      return Promise.resolve(res);
+    }
     if (u === '/api/subscriptions/status') return Promise.resolve({ ok: true, json: async () => ({ oneShots: {} }) });
     const idm = u.match(/^\/api\/music\/([^?]+)$/);
     if (idm) {
@@ -81,7 +107,13 @@ async function boot(run) {
     encodeListContext: (c) => JSON.stringify(c), decodeListContext: (s) => { try { return JSON.parse(s); } catch (_) { return null; } }, shimmerArt: () => {},
     player: {
       currentId: null, getState: () => 'docked', expand: () => {}, dock: () => {}, getCurrentMeta: () => null,
-      load: (id, data) => { dom.window.FileTube.player.currentId = id; loads.push({ id, data }); },
+      load: (id, data) => {
+        loads.push({ id, data });
+        if (id === dom.window.FileTube.player.currentId) return true; // ADOPT: the media is untouched
+        dom.window.FileTube.player.currentId = id;
+        media.t = typeof data.chapterResumeSec === 'number' ? data.chapterResumeSec : (Number(data.chapterStartSec) || 0);
+        return true;
+      },
       setTrackNav: () => {}, isLoopEnabled: () => false, setLoop: () => {}, close: () => {},
     },
   };
@@ -99,7 +131,11 @@ async function boot(run) {
     require(musicPath);
     registered.init(dom.window.document.getElementById('view-root'));
     await settleN(12);
-    await run(dom, { editor, loads });
+    await run(dom, {
+      editor, loads, media, videoGets, server, registered,
+      setVisibility: (v) => { visibility = v; },
+      release: () => { while (parked.length) parked.shift()(); },
+    });
   } finally {
     try { if (registered) registered.destroy(); } catch (_) { /* best-effort */ }
     delete require.cache[musicPath];
@@ -149,5 +185,154 @@ test('chapterResumeSecFor: a saved place BEFORE the chapter\'s start is not a re
   assert.strictEqual(chapterResumeSecFor({ chapterStartSec: 8, durationSec: 0, progress: { resumeSec: 5 } }), undefined,
     'an unknown span still refuses a place before the start');
   assert.strictEqual(chapterResumeSecFor({ durationSec: 8, progress: { resumeSec: 2 } }), 2, 'a missing start reads as 0 (the v1.222 default): 2 s is inside');
+  delete require.cache[musicPath];
+});
+
+// ---- Tracker #268: a tap on the LOADED chapter whose bounds moved away from the playhead ----------
+
+const snapSave = async (dom, ctx, chapters) => {
+  click(dom, dom.window.document.querySelector('.music-drill-snap'));
+  await settleN(2);
+  ctx.editor[ctx.editor.length - 1].opts.onSaved({ chapters, chaptersSource: 'manual', chaptersEdited: true });
+  await settleN(4);
+};
+const MOVED = [{ startTime: 0, title: 'Opening' }, { startTime: 75, title: 'Second Song' }, { startTime: 120, title: 'Closer' }];
+
+test('#268: re-tapping the LOADED chapter after a save moved its start past the playhead seeks to the NEW start and plays; inside its bounds the adopt still stands', async () => {
+  await boot(async (dom, ctx) => {
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c1', 'chapter 2 is the loaded id');
+    assert.strictEqual(ctx.media.t, 70, 'precondition: it resumed at the saved place 70 s');
+    // Control (both axes): the playhead is INSIDE chapter 2 - a re-tap is an adopt, no seek, no restart.
+    const seeksBefore = ctx.media.seeks.length;
+    const playsBefore = ctx.media.plays;
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(ctx.media.t, 70, 'inside the chapter the adopt keeps the playhead');
+    assert.strictEqual(ctx.media.seeks.length, seeksBefore, 'no seek');
+    assert.strictEqual(ctx.media.plays, playsBefore, 'no forced play');
+    // The save moves chapter 2 to 75 s: the playhead (70 s) is now in chapter 1.
+    await snapSave(dom, ctx, MOVED);
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c1').data.chapterStartSec, 75, 'the tap is an adopt of the moved chapter');
+    assert.strictEqual(ctx.media.t, 75, 'the playhead lands on the NEW start (not left in the previous song)');
+    assert.ok(ctx.media.plays > playsBefore, 'and it plays');
+  });
+});
+
+test('#268: a playthrough that rolled past the loaded chapter - a tap on that chapter goes back to it (its saved place when inside, else its head)', async () => {
+  await boot(async (dom, ctx) => {
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    ctx.media.t = 130; // the file rolled on into chapter 3 while f1::c1 stayed the loaded id
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    assert.strictEqual(ctx.media.t, 70, 'back inside chapter 2, at its saved place (70 s lies inside [60, 120))');
+  });
+});
+
+test('#268 chapterAdoptSeekFor: undefined inside the bounds (with the watcher\'s 0.25 s tolerance), the head or the in-bounds saved place outside', () => {
+  delete global.window; delete global.document;
+  delete require.cache[musicPath];
+  const { chapterAdoptSeekFor } = require(musicPath);
+  const ch = (extra) => Object.assign({ source: 'library-chapter', chapterStartSec: 60, durationSec: 60 }, extra || {}); // [60, 120)
+  assert.strictEqual(chapterAdoptSeekFor(ch(), 60), undefined, 'at the start: inside');
+  assert.strictEqual(chapterAdoptSeekFor(ch(), 59.8), undefined, 'within the 0.25 s tolerance: inside');
+  assert.strictEqual(chapterAdoptSeekFor(ch(), 119.9), undefined, 'just before the end: inside');
+  assert.strictEqual(chapterAdoptSeekFor(ch(), 59.7), 60, 'before the start (past the tolerance): the head');
+  assert.strictEqual(chapterAdoptSeekFor(ch(), 120), 60, 'at the end: the head');
+  assert.strictEqual(chapterAdoptSeekFor(ch({ progress: { resumeSec: 90 } }), 130), 90, 'outside, with a saved place inside: resume there');
+  assert.strictEqual(chapterAdoptSeekFor(ch({ progress: { resumeSec: 50 } }), 130), 60, 'a saved place outside the chapter is never used');
+  assert.strictEqual(chapterAdoptSeekFor(ch({ durationSec: 0 }), 500), undefined, 'an unknown span: anything past the start is inside');
+  assert.strictEqual(chapterAdoptSeekFor({ source: 'library', chapterStartSec: 60 }, 10), undefined, 'not a chapter track');
+  delete require.cache[musicPath];
+});
+
+// ---- Tracker #269: a page that comes back after the times were corrected elsewhere ---------------
+
+const fire = (dom, name, init) => {
+  const e = new dom.window.Event(name);
+  if (init) Object.assign(e, init);
+  (name === 'pageshow' ? dom.window : dom.window.document).dispatchEvent(e);
+};
+const rowText = (dom, id) => row(dom, id).textContent;
+
+test('#269: back to visible after ANOTHER device moved a start - the rows, the spans and the next tap follow the server; unchanged -> nothing applied', async () => {
+  await boot(async (dom, ctx) => {
+    assert.match(rowText(dom, 'f1::c0'), /1:00/, 'precondition: chapter 1 spans 60 s');
+    // Unchanged on the server: one request, nothing applied (the drill keeps its rows).
+    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); await settleN(4);
+    assert.strictEqual(ctx.videoGets.length, 0, 'hidden: no request');
+    ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(6);
+    assert.strictEqual(ctx.videoGets.length, 1, 'visible: ONE request for the file');
+    assert.match(rowText(dom, 'f1::c0'), /1:00/, 'unchanged -> the rows are untouched');
+    assert.strictEqual(dom.window.document.querySelector('.music-drill-edited'), null, 'no Edited badge (the populated clear axis follows below)');
+    // Another device saves chapter 2 at 75 s.
+    ctx.server.chapters = MOVED; ctx.server.chaptersEdited = true;
+    ctx.setVisibility('hidden'); fire(dom, 'visibilitychange');
+    ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(8);
+    assert.strictEqual(ctx.videoGets.length, 2);
+    assert.match(rowText(dom, 'f1::c0'), /1:15/, 'chapter 1 now spans 75 s');
+    assert.match(rowText(dom, 'f1::c1'), /0:45/, 'chapter 2 now spans 45 s');
+    assert.ok(dom.window.document.querySelector('.music-drill-edited'), 'the Edited badge follows');
+    click(dom, row(dom, 'f1::c1'));
+    await settleN(6);
+    const load = lastLoadOf(ctx.loads, 'f1::c1');
+    assert.strictEqual(load.data.chapterStartSec, 75, 'a tap plays the NEW start');
+    assert.strictEqual(load.data.chapterResumeSec, undefined, 'the stale saved place (70 s, now chapter 1) is not used');
+    assert.strictEqual(ctx.media.t, 75);
+    // And back again: a revert elsewhere clears the badge on the next return.
+    ctx.server.chapters = FILE_CHAPTERS; ctx.server.chaptersEdited = false;
+    fire(dom, 'pageshow', { persisted: false }); await settleN(4);
+    assert.strictEqual(ctx.videoGets.length, 2, 'a NON-bfcache pageshow asks nothing (the load itself fetched fresh)');
+    fire(dom, 'pageshow', { persisted: true }); await settleN(8);
+    assert.strictEqual(ctx.videoGets.length, 3, 'a bfcache restore asks once');
+    assert.match(rowText(dom, 'f1::c0'), /1:00/, 'the reverted spans');
+    assert.strictEqual(dom.window.document.querySelector('.music-drill-edited'), null, 'the badge clears');
+  });
+});
+
+test('#269: a local save that lands while the return re-check is in flight wins - the older server answer is not applied over it', async () => {
+  await boot(async (dom, ctx) => {
+    ctx.server.hold = true; // the server still answers the OLD list (60 s), and slowly
+    fire(dom, 'visibilitychange'); await settleN(2);
+    assert.strictEqual(ctx.videoGets.length, 1, 'the re-check is in flight');
+    fire(dom, 'visibilitychange'); await settleN(2);
+    assert.strictEqual(ctx.videoGets.length, 1, 'one re-check at a time');
+    await snapSave(dom, ctx, MOVED); // this tab saves 75 s meanwhile
+    assert.match(rowText(dom, 'f1::c0'), /1:15/, 'precondition: the local save applied');
+    ctx.release(); await settleN(8);
+    assert.match(rowText(dom, 'f1::c0'), /1:15/, 'the in-flight answer (60 s) did not undo the newer save');
+    click(dom, row(dom, 'f1::c1')); await settleN(6);
+    assert.strictEqual(lastLoadOf(ctx.loads, 'f1::c1').data.chapterStartSec, 75);
+  });
+});
+
+test('#269: the return listeners go with the view - after destroy a visibilitychange or a bfcache pageshow asks nothing', async () => {
+  await boot(async (dom, ctx) => {
+    fire(dom, 'visibilitychange'); await settleN(4);
+    assert.strictEqual(ctx.videoGets.length, 1, 'bound while the view lives (populated axis)');
+    ctx.registered.destroy();
+    fire(dom, 'visibilitychange'); fire(dom, 'pageshow', { persisted: true }); await settleN(4);
+    assert.strictEqual(ctx.videoGets.length, 1, 'removed on teardown - no leak');
+  });
+});
+
+test('#269 queuedChaptersDiffer: a moved start, title, span-to-next or a dropped chapter is a change; the same list, other files and a subset are not', () => {
+  delete global.window; delete global.document;
+  delete require.cache[musicPath];
+  const { queuedChaptersDiffer } = require(musicPath);
+  const rows = tracksFixture();
+  const other = { id: 'g9::c0', source: 'library-chapter', chapterStartSec: 5, durationSec: 1, title: 'Else' };
+  assert.strictEqual(queuedChaptersDiffer(rows.concat([other]), 'f1', FILE_CHAPTERS), false, 'the same list (another file ignored)');
+  assert.strictEqual(queuedChaptersDiffer([rows[1]], 'f1', FILE_CHAPTERS), false, 'a subset of rows (a search) is not a change');
+  assert.strictEqual(queuedChaptersDiffer(rows, 'f1', MOVED), true, 'a moved start');
+  assert.strictEqual(queuedChaptersDiffer(rows, 'f1', [FILE_CHAPTERS[0], { startTime: 60, title: 'Renamed' }, FILE_CHAPTERS[2]]), true, 'a new title');
+  assert.strictEqual(queuedChaptersDiffer(rows, 'f1', FILE_CHAPTERS.concat([{ startTime: 150, title: 'Bonus' }])), true, 'a chapter added after the last row (its span changed)');
+  assert.strictEqual(queuedChaptersDiffer(rows, 'f1', FILE_CHAPTERS.slice(0, 2)), true, 'a dropped chapter');
+  assert.strictEqual(queuedChaptersDiffer(rows, 'f1', [FILE_CHAPTERS[0], { startTime: 60, title: '' }, FILE_CHAPTERS[2]]), true, 'a blank title reads "Track 2", not "Second Song"');
+  assert.strictEqual(queuedChaptersDiffer(rows, 'f1', FILE_CHAPTERS.map((c, i) => (i === 1 ? { startTime: 60.0004, title: c.title } : c))), false, 'sub-millisecond noise is not a move');
   delete require.cache[musicPath];
 });

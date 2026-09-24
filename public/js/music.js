@@ -692,9 +692,53 @@ function chapterResumeSecFor(item) {
   return p.resumeSec;
 }
 
+// Tracker #268 (Chapter Snap persist, 2026-09-24): a tap on the chapter that is ALREADY loaded is
+// a same-id player.load, which the player ADOPTS (keeps the media, never re-seeks). That is right
+// while the playhead is inside the tapped chapter (tapping the playing song does not restart it),
+// but after a snap save moved the chapter's start past the playhead - or a playthrough rolled the
+// file on into the next chapter - the tap did nothing while the row said this chapter. Returns the
+// file second to seek to (the saved place when it lies inside the chapter, else the chapter head),
+// or undefined when the playhead is already inside the chapter (the adopt stands). `t` is the
+// element's currentTime; the 0.25 s tolerance is the chapter watcher's (currentChapterId).
+function chapterAdoptSeekFor(item, t) {
+  if (!item || item.source !== 'library-chapter') return undefined;
+  var start = Number(item.chapterStartSec) || 0;
+  var span = Number(item.durationSec) || 0;
+  var now = Number(t);
+  if (isFinite(now) && now >= start - 0.25 && (!(span > 0) || now < start + span)) return undefined;
+  var resume = chapterResumeSecFor(item);
+  return typeof resume === 'number' ? resume : start;
+}
+
+// Tracker #269 (Chapter Snap persist, 2026-09-24): do the queued `<baseId>::c<n>` rows still match
+// the server's resolved chapters of that file? A start, a title, or a span to the NEXT chapter that
+// moved (a chapter added after the last row shows up as that row's span) - or a row whose chapter
+// no longer exists - is a change. Titles follow the projection's rule (a blank title shows as
+// "Track n"). Pure; the visibility re-check applies a change through applySnappedChapterTimes.
+function queuedChaptersDiffer(rows, baseId, chapters) {
+  if (!Array.isArray(rows) || !Array.isArray(chapters)) return false;
+  var re = /^(.+)::c(\d+)$/;
+  for (var k = 0; k < rows.length; k++) {
+    var t = rows[k];
+    if (!t || t.source !== 'library-chapter') continue;
+    var m = re.exec(String(t.id));
+    if (!m || m[1] !== String(baseId)) continue;
+    var n = Number(m[2]);
+    var ch = chapters[n];
+    if (!ch || !isFinite(Number(ch.startTime))) return true;
+    var start = Number(ch.startTime);
+    if (Math.abs(start - (Number(t.chapterStartSec) || 0)) > 0.0005) return true;
+    var title = (typeof ch.title === 'string' && ch.title.trim()) ? ch.title.trim() : ('Track ' + (n + 1));
+    if (title !== t.title) return true;
+    var next = chapters[n + 1];
+    if (next && isFinite(Number(next.startTime)) && Math.abs((Number(next.startTime) - start) - (Number(t.durationSec) || 0)) > 0.001) return true;
+  }
+  return false;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC,
+    chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, chapterAdoptSeekFor, queuedChaptersDiffer,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -1720,6 +1764,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function applySnappedChapterTimes(baseId, body, opts) {
       var chapters = body && Array.isArray(body.chapters) ? body.chapters : null;
       if (!chapters) return;
+      chapterApplyGen += 1; // #269: a re-check whose fetch started before this apply stands down
       // pocket menus (2026-09-24, with Chapter Snap v1.322): every Music-side chapter write lands
       // here (the snap editor's save and revert, the text editor's result) - the pocket menus'
       // cached lists and open levels hold the OLD times/titles/count, so re-load them. (The
@@ -1796,6 +1841,47 @@ if (typeof module !== 'undefined' && module.exports) {
         if (queue[k] && queue[k].id === cur) { registerTrackNav(k); return; }
       }
     }
+    // Tracker #269 (Chapter Snap persist, 2026-09-24): a page left open on one device while the
+    // chapter times were corrected on ANOTHER kept its old bounds (queue rows, drill, pocket-menu
+    // caches, the resume guard's spans) until it reloaded. When the page comes BACK
+    // (visibilitychange -> visible, or a bfcache pageshow), ask the server once for the chapters
+    // of the file this view is about (the playing chapter's file, else the chapter album on screen)
+    // and, when they moved, apply them through the SAME seam a local save uses
+    // (applySnappedChapterTimes: queue patch, re-register, count-change re-list, menu invalidation).
+    // No polling; one request per return; a save that lands while it is in flight wins
+    // (chapterApplyGen), and the listeners ride the view signal (removed on every teardown).
+    var chapterApplyGen = 0;
+    var chapterRecheckInFlight = false;
+    function chapterRecheckBaseId() {
+      var cur = effectiveCurrentId();
+      var m = cur ? /^(.+)::c\d+$/.exec(String(cur)) : null;
+      if (m) {
+        for (var k = 0; k < queue.length; k++) {
+          if (queue[k] && queue[k].source === 'library-chapter' && String(queue[k].id).replace(/::c\d+$/, '') === m[1]) return m[1];
+        }
+      }
+      return chapterAlbumBaseId(queue) || null;
+    }
+    function recheckChaptersOnReturn() {
+      if (signal.aborted || chapterRecheckInFlight) return;
+      var baseId = chapterRecheckBaseId();
+      if (!baseId) return;
+      var gen = chapterApplyGen;
+      chapterRecheckInFlight = true;
+      fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (v) {
+        chapterRecheckInFlight = false;
+        if (signal.aborted || gen !== chapterApplyGen || !v) return; // gone, or a newer apply landed
+        var chapters = Array.isArray(v.chapters) ? v.chapters : null;
+        if (!chapters || !queuedChaptersDiffer(queue, baseId, chapters)) return;
+        applySnappedChapterTimes(baseId, { chapters: chapters, chaptersSource: v.chaptersSource, chaptersEdited: !!v.chaptersEdited });
+      }).catch(function () { chapterRecheckInFlight = false; });
+    }
+    try {
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') recheckChaptersOnReturn();
+      }, { signal: signal });
+      window.addEventListener('pageshow', function (e) { if (e && e.persisted) recheckChaptersOnReturn(); }, { signal: signal });
+    } catch (_) { /* no document/window (a test harness) */ }
     function extrasFetchItem(id) {
       return fetch('/api/videos/' + encodeURIComponent(id))
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -2949,7 +3035,13 @@ if (typeof module !== 'undefined' && module.exports) {
       var useSlot = opts.keepPosition
         ? (pl && typeof pl.getState === 'function' && pl.getState() === 'full')
         : true;
+      // Tracker #268: a same-id load is an ADOPT (the player keeps the media, never re-seeks - its
+      // shared contract, untouched here). Music decides AFTER the adopt whether this chapter tap must
+      // move the playhead: only when it lies OUTSIDE the tapped chapter's current bounds.
+      var adoptingChapter = isChapter && pl.currentId != null && pl.currentId === item.id &&
+        !(typeof pl.getState === 'function' && pl.getState() === 'closed');
       pl.load(item.id, data, (useSlot && slot) ? { slot: slot } : { dock: true });
+      if (adoptingChapter) seekAdoptedChapter(item);
       // Bring the freshly-expanded player into view (it mounts at the top of the
       // view, above the list). Only on a SELECT - a nav keeps you where you are.
       if (!opts.keepPosition && useSlot && slot) { try { window.scrollTo(0, 0); } catch (_) { /* no window scroll */ } }
@@ -2972,6 +3064,20 @@ if (typeof module !== 'undefined' && module.exports) {
           body: JSON.stringify({ lastTrackId: item.id, queueCtx: queueCtx, position: 0 }),
         }).catch(function () {});
       }
+    }
+
+    // Tracker #268: after an ADOPTED chapter tap, move the element to the tapped chapter when the
+    // playhead is outside its current bounds (chapterAdoptSeekFor), and play - a tap is a request
+    // to hear THIS chapter. Inside the bounds the adopt stands (no restart, as before).
+    function seekAdoptedChapter(item) {
+      var mp = hostCtl('media-player');
+      if (!mp) return;
+      var target = chapterAdoptSeekFor(item, mp.currentTime);
+      if (typeof target !== 'number') return;
+      try { mp.currentTime = target; } catch (_) { return; }
+      lastExitTime = -1; lastFlatTime = -1; // the jump is not a playthrough across a boundary (the exits' step tests)
+      reflectChapter();
+      try { var pr = mp.play(); if (pr && typeof pr.catch === 'function') pr.catch(function () {}); } catch (_) { /* autoplay refused */ }
     }
 
     // The lock-screen / expanded-view Prev/Next handlers for queue index `i`.
