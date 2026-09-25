@@ -539,6 +539,18 @@ const MUSIC_SKIN_BLURB = {
   'ipod-green': 'Anodized green with green lettering on the wheel.',
   'ipod-pink': 'Anodized rose pink with pink lettering on the wheel.',
   'ipod-gold': 'Warm anodized gold, a white wheel and a gold center.',
+  'ipod-frost': 'Cool brushed silver with grey lettering and a grey center.',
+  'ipod-sky': 'Pale anodized sky blue with grey lettering on the wheel.',
+  'ipod-olive': 'Anodized yellow-green with grey lettering on the wheel.',
+  'ipod-blush': 'Pale anodized blush pink with grey lettering on the wheel.',
+  'ipod-2004': 'Crisp cool white with a grey wheel and light lettering.',
+  'ipod-charcoal': 'Charcoal anodized metal, a near-black wheel, white lettering.',
+  'ipod-violet': 'Bright anodized violet, a white wheel and a violet center.',
+  'ipod-yellow': 'Sunny anodized yellow, a white wheel and a yellow center.',
+  'ipod-lime': 'Zesty anodized lime, a white wheel and a lime center.',
+  'ipod-cobalt': 'Vivid anodized cobalt blue, a white wheel and a blue center.',
+  'ipod-magenta': 'Hot anodized magenta, a white wheel and a magenta center.',
+  'ipod-raspberry': 'Deep anodized raspberry, a white wheel and a pink center.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

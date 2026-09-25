@@ -243,6 +243,22 @@
     { id: 'ipod-green', label: 'Click (Green)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-pink', label: 'Click (Pink)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-gold', label: 'Click (Gold)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.335 (Dean: "7 more click skins. Additional iconic ones" - he picked all 13 of the researched pool):
+    // the first minis (silver, blue, green, pink), the 2004 white, the 2007 black classic, and the Nano colors
+    // (re-decided D4: the second nano's green, blue and pink, the third's pink, the fourth's purple and yellow).
+    // Each is a registry entry + ONE role block + a blurb, like v1.332's.
+    { id: 'ipod-frost', label: 'Click (Frost)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-sky', label: 'Click (Sky)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-olive', label: 'Click (Olive)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blush', label: 'Click (Blush)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-2004', label: 'Click (2004)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-charcoal', label: 'Click (Charcoal)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-violet', label: 'Click (Violet)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-yellow', label: 'Click (Yellow)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-lime', label: 'Click (Lime)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-cobalt', label: 'Click (Cobalt)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-magenta', label: 'Click (Magenta)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-raspberry', label: 'Click (Raspberry)', base: 'ipod', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
   // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the
