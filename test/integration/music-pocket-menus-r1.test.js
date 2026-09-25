@@ -226,7 +226,7 @@ test('K4 (the Architect\'s ruling): a chapter picked from a FLAT list plays its 
   } });
 });
 
-test('K4: an artist\'s All Songs (a flat list whose chapters sit together) rolls the file on into the next chapter with no reload (the album-pick v1.311 rule stays bound in music-pocket-menus.test.js)', async () => {
+test('K4: an artist\'s All Songs (a flat list whose chapters sit together) rolls the file on into the next chapter with no reload (an album pick plays the album on, v1.331, bound in music-pocket-menus.test.js)', async () => {
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h); tapRow(h, 'Artists'); await settleNet();
     tapRow(h, 'NESTALGIA'); await settleNet();

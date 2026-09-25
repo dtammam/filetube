@@ -3714,14 +3714,21 @@ if (typeof module !== 'undefined' && module.exports) {
     // the level's name in the crumb - because its rows' data-index point INTO `queue`: a stale
     // list behind a replaced queue plays the wrong track on the next row tap (the v1.104/v1.207
     // wrong-track class).
-    // Two contexts (gate r1 K4, the Architect's ruling for Dean, device-true):
-    //  - a DRILL list (an album, an artist's album): the v1.311 rule - a picked chapter is a SELECT
-    //    that exits after its own segment (the solo exit); Shuffle Songs plays through.
+    // Two contexts (gate r1 K4, device-true), and a menu pick is NEVER a v1.311 solo select:
+    //  - a DRILL list (an album, an artist's album - from Albums, Artists or Recent Artists): the
+    //    ALBUM plays on from the pick, like the device and like the album's Play button. A chaptered
+    //    album (one file, its ::c chapters as songs) rolls from the picked chapter into the next
+    //    one; the station comes only where the album ends. v1.331 (Dean: "I pick something in an
+    //    album, it just plays that song and then goes to a completely other song from the artist,
+    //    almost like a shuffle ... I would imagine it would play through the rest of that album"):
+    //    the v1.323 ruling armed the solo exit here, which stationed off to the artist's songs at
+    //    the picked chapter's end. The solo rule stays on the browse view's chapter rows
+    //    (playRowAt), the up-next row tap and the skin's track list (onSelectIndex).
     //  - a FLAT list (Songs, Genres, the playlists - no drill - and an artist's All Songs, play.flat): the list
     //    plays through like the device - a chapter plays only ITS OWN segment and the list moves on
     //    to the next row (flatQueue / enforceFlatSegmentEnd), never on through the rest of the file
     //    and never off to a station mid-list.
-    function playFromMenu(req, opts) {
+    function playFromMenu(req) {
       var tracks = (req && Array.isArray(req.tracks)) ? req.tracks : [];
       var i = Number(req && req.index);
       if (!tracks.length || !(i >= 0 && i < tracks.length) || !content) return;
@@ -3749,7 +3756,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (crumb) { crumb.hidden = false; crumb.textContent = play.label || 'Songs'; }
         renderSongListProgressive();
       }
-      playAt(i, { soloChapter: !flat && !(opts && opts.playThrough), pick: true });
+      playAt(i, { soloChapter: false, pick: true }); // v1.331: never a solo select (see above)
     }
     // Gate r1 K3 (qa W2 + adversary W3, measured: a pick from a 3,008-song list blocked the main
     // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows
@@ -3855,7 +3862,7 @@ if (typeof module !== 'undefined' && module.exports) {
       fetchJson('/api/music?sort=random&seed=' + seed + '&limit=10000').then(function (d) {
         // post-await: the view is alive and no newer pick claimed the player meanwhile.
         if (signal.aborted || gen !== playSelectGen) return;
-        playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } }, { playThrough: true });
+        playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } });
       }).catch(function () {
         if (typeof window.showToast === 'function') window.showToast('Could not shuffle your songs.');
       });
