@@ -3,8 +3,8 @@ plan: pocket-open-ask-sticker-light
 harness: v2 · lean
 branch: feat/v1.334-open-ask-sticker-light
 anchor: spec
-status: Building
-next: build items 1-4 (failing test first), commit, mutants in a /tmp sandbox, the sticker side-by-side to Dean, then ONE gate (adversary + qa, fresh, max two rounds)
+status: Gating
+next: ONE gate (adversary + qa, fresh, max two rounds; at round 3 ask Dean), then the release steps (docs/RELEASING.md + AGENTS.md)
 design: "Approved 2026-09-25 (Dean's words below are the D-decisions; D9 = his tap-to-play ruling in this session)"
 gate: pending
 ---
@@ -43,7 +43,7 @@ Builder decisions (B, disclosed):
 | ID | Decision |
 |---|---|
 | B1 | Subtle gets the sticker's shadow and gloss too, at its own lower travel (the gain is 0.8) and a fainter gloss; Pronounced and Ambient share one sticker look (Ambient changes only the BODY's reflection, D2 of v1.333). |
-| B2 | Image stickers (the logo is a die-cut rounded triangle; custom uploads are any PNG/JPEG/WebP) need a SHAPE-TRUE shadow and gloss. A CSS box or circle overlay would paint over the transparent parts, and the shape-true CSS tools (drop-shadow, mask) are banned by D5. So the sticker's own alpha is baked on a canvas: the shadow once per image (a static soft silhouette the CSS moves by transform), the gloss redrawn only when the light moves a visible step. A canvas is neither a filter nor a mask. The emoji chip is a true circle: pure CSS pseudo-elements, no canvas. |
+| B2 | Image stickers (the logo is a die-cut rounded triangle; custom uploads are any PNG/JPEG/WebP) need a SHAPE-TRUE shadow and gloss. A CSS box or circle overlay would paint over the transparent parts, and the shape-true CSS tools (drop-shadow, mask) are banned by D5. So the sticker's own alpha is baked on a canvas: the shadow once per image (a static soft silhouette the CSS moves by transform), the gloss redrawn only when the light moves a visible step. A canvas is neither a filter nor a mask. The emoji chip is a true circle but TRANSLUCENT (a shade drawn under it would show through): its shadow is a CSS outer box-shadow on `::before` (never painted inside its box) and its gloss is the same canvas path with a circle for a silhouette - one gloss geometry, in JS only. |
 | B3 | The lit sticker parts exist only while the panel is lit (created on the first lit write, removed on every clear), so Off never has them. |
 
 ## Research
@@ -114,13 +114,15 @@ Builder decisions (B, disclosed):
 
 - Emoji chip (a circle): `.mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before` = the drop shadow
   (inset 0, radius inherit, an outer box-shadow offset AWAY from the light, the offset counter-rotated by
-  the tilt so it falls away in SCREEN space), `::after` = the gloss (a radial gradient whose centre sits
-  toward the light, same counter-rotation). The chip's own static shadow is replaced by the directional one
-  while lit. The chip's existing `backdrop-filter` stays on the BASE rule and never reads the light.
-- Image sticker: two canvases the engine adds while lit: `.mms-sticker-shade` (the alpha silhouette, soft,
-  dark, baked once per image; CSS moves it by a transform reading `--lx`/`--ly`) and `.mms-sticker-gloss`
-  (the silhouette filled with a soft highlight centred toward the light, redrawn only when the light moves
-  a visible step). The driver tells the engine each written light (`onLight`) and each clear.
+  the tilt so it falls away in SCREEN space); the gloss = the canvas path below with the circle as its
+  silhouette. The chip's own static shadow is replaced by the directional one while lit. The chip's
+  existing `backdrop-filter` stays on the BASE rule and never reads the light.
+- Image sticker: two canvases added while lit: `.mms-sticker-shade` (the alpha silhouette, soft, dark, baked
+  once per image; CSS moves it by a transform reading `--lx`/`--ly`) and `.mms-sticker-gloss` (the silhouette
+  filled with a soft highlight centred toward the light, redrawn only when the light moves a visible step).
+  The driver tells the engine each written light and each clear (`onLight`); the engine hands the sticker, the
+  light and the strength to `pocket-lighting.js paintSticker` (the painter lives in the driver module - see
+  Deviations: the engine must never draw). The emoji chip's gloss is the same canvas with a circle.
 - Subtle (B1): the same parts, fainter gloss.
 
 ### Item 3 - tap to play
@@ -164,7 +166,45 @@ Builder decisions (B, disclosed):
 
 ## Deviations
 
-(none yet)
+- The sticker painter moved from skin-surface.js to pocket-lighting.js (`paintSticker`, state per sticker in a
+  WeakMap). The pre-commit hook's unit run went red on the first commit attempt: `ipod-brick.test.js` locks
+  the engine to know nothing about drawing (no `canvas` in skin-surface.js, so the wheel takeover stays
+  generic). Complied rather than widened; the lighting CSS lock now also asserts the engine never draws.
+- The shade's blur margin is two pocket structure tokens (`--pk-stk-shade-inset`, `--pk-stk-shade-size` on
+  `.mms-ipod`): the same hook run's `pocket-design-system.test.js` AC5 refuses raw sizes in pocket rules.
+- The sticker menu's heading ids are static (`mms-sm-speed` / `-light` / `-skin`): a per-engine counter was
+  dead defence (one sticker menu per document) and its mutant survived.
+- A rejected motion ask (no gesture) is no longer a deny (research, item 1): it re-arms the first-tap ask.
+
+## Build record
+
+- Item 1 measured before the fix (scratch probe, the real music.js + engine + driver): the opening tap asked
+  0, the next tap (the sticker) 1. After: 1 inside the opening tap, 0 on the sticker (both open paths).
+- Failing test first: `pocket-lighting-open-ask.test.js` on the base tree (a `git archive` of 517bff13 +
+  the new file): 9/9 not ok.
+- The sticker side-by-sides (scripts/sticker-light-probe.js; Pronounced on White/Red/Black and Subtle on Red,
+  logo + emoji, both tilts, 1x/2x/3x; 108 + 36 shots, every lit shot glossed, every lit logo shaded, 0 Off
+  shots with a canvas, 0 page errors) went to Dean before the gate.
+- Commits: ee17dad5 (the build; hook `npm run test:unit` 7432/7432), ec8459b5 (mutant round 1; 7434/7434).
+- Mutants r1 on ee17dad5 (82, a `git archive` sandbox + a pristine copy, restored byte-identical): 74 killed,
+  8 survived. Bound in ec8459b5: gesture-ignores-session, stk-no-counterrotate, stk-no-forget, stk-lit-gate,
+  stk-no-layout-guard (was masked by the unloaded image), ttp-generic-swallowed (+ podcast / TV / book /
+  resume branch mutants); aria-id-collide removed with the dead counter. Masked, disclosed:
+  destroy-stays-registered (answer() / rearm() check `destroyed`; a dead driver stays in the window's list
+  until the page ends - memory only). Five router-path kills were by TIMEOUT (the router test hung when red);
+  the test now closes its windows in a finally, re-run in r2.
+- Mutants r2 on ec8459b5 (86: r1's set with the removed counter's mutant replaced by a shared-id one, plus the
+  podcast / TV / book / resume auto-start branches): 85 killed, every one by test name (no timeout), 1
+  survived (destroy-stays-registered, masked as above). The sandbox restored byte-identical.
+- Dean on the sticker side-by-sides (2026-09-25): "Seems good. Please go through to release."
+- Off byte-identical (scripts/pocket-render-probe.js, a frozen copy; LIGHTS=off,subtle,pronounced,ambient;
+  base = a `git archive` of 517bff13, branch = a `git archive` of ec8459b5; each shoot ~1765 s): `compare
+  base1 branch` -> "TOTAL: 1240 shots, 57 differing pixels, 900 differing element styles, 0 missing" (exit 1).
+  Classified by script: Off 340 shots, 0 px, 0 styles. Subtle 296 / Pronounced 294 / Ambient 294 shots, each
+  with exactly ONE differing element style, always `button.mms-sticker.mms-sticker--img` (it takes
+  `position:relative` while lit; the probe sets the lit classes by hand, so no driver and no canvas run there).
+  The 57 px are in 16 lit shots, max channel delta 1 each. Because the Off delta is zero, the second run of
+  one tree (the noise floor) was not needed and was skipped.
 
 ## Gate
 
