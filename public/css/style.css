@@ -11612,26 +11612,24 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
   --mms-ipod-wheel-shadow:0 1px 2px rgba(0,0,0,.25), inset 0 1px 1px rgba(255,255,255,.7), inset 0 -2px 4px rgba(0,0,0,.1);
   --mms-ipod-center-shadow:inset 0 1px 2px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.14);
-  /* pocket lighting (2026-09-24): the directional shadow parts (the wheel's rim / recess / drop and
-     the dome's highlight / drop - the SAME alphas as the two static tokens above, so a neutral light
-     is byte-identical), the body's reflection band per Click colorway (Black dimmer, Matte softer -
-     Dean's G1), and the LCD glass streak (a cool tint; black text stays > 7:1 on the white screen). */
-  --mms-lit-rim:rgba(255,255,255,.7); --mms-lit-recess:rgba(0,0,0,.1); --mms-lit-drop:rgba(0,0,0,.25);
-  --mms-lit-dome-hi:rgba(255,255,255,.9); --mms-lit-dome-drop:rgba(0,0,0,.14);
-  --mms-lit-band:rgba(255,255,255,.34); --mms-lit-band2:rgba(255,255,255,.2);
-  --mms-litk-band:rgba(255,255,255,.16); --mms-litk-band2:rgba(255,255,255,.09);
-  --mms-litm-band:rgba(255,255,255,.09); --mms-litm-band2:rgba(255,255,255,.05);
-  --mms-lit-glass:rgba(205,218,236,.16);
-  /* the STRONG profile (Pronounced; the second swing, Dean: "zhuzh it up"): the dome's specular hot
-     spot + its dark far side, the wheel's lit rim arc + dark arc, the body band's hot core + a broad
-     room light, the double glass streak, a heavier drop. Per Click colorway where the band differs. */
-  --mms-lit-hot:rgba(255,255,255,.85); --mms-lit-hot2:rgba(255,255,255,.35); --mms-lit-far:rgba(0,0,0,.16);
-  --mms-lit-arc:rgba(255,255,255,.38); --mms-lit-darc:rgba(0,0,0,.18); --mms-lit-room:rgba(255,255,255,.22);
-  --mms-lits-band:rgba(255,255,255,.42); --mms-lits-band2:rgba(255,255,255,.24); --mms-lits-core:rgba(255,255,255,.55);
-  --mms-litks-band:rgba(255,255,255,.26); --mms-litks-band2:rgba(255,255,255,.14); --mms-litks-core:rgba(255,255,255,.4);
-  --mms-litms-band:rgba(255,255,255,.14); --mms-litms-band2:rgba(255,255,255,.08); --mms-litms-core:rgba(255,255,255,.22);
-  --mms-lits-glass:rgba(215,226,240,.24); --mms-lits-glass2:rgba(215,226,240,.08); --mms-lits-glass-hot:rgba(255,255,255,.3);
-  --mms-lit-drop-s:rgba(0,0,0,.28);
+  /* pocket lighting (2026-09-25, the reflection swing - the research doc's environment map): two cool
+     window panes + their shoulder, a warm lamp, a room ramp, the material veils (a white gloss needs
+     headroom under a white reflection), the anodized metal's soft version, the wheel's lip ring and the
+     occlusion rings, the glass bezel. Layer alphas are baked for Pronounced at each layer's opacity
+     (see the rules); Subtle multiplies every reflection layer's opacity by --lk = .6. */
+  --mms-env-pane:rgba(244,247,255,.61); --mms-env-pane-sill:rgba(236,240,250,.42); --mms-env-pane-k:rgba(244,247,255,.56); --mms-env-pane-k-sill:rgba(236,240,250,.36); --mms-env-pane-0:rgba(244,247,255,0);
+  --mms-env-shoulder:rgba(215,228,255,.11); --mms-env-shoulder-0:rgba(215,228,255,0);
+  --mms-env-lamp:rgba(255,243,228,1); --mms-env-lamp-sh:rgba(255,196,140,.39); --mms-env-lamp-0:rgba(255,196,140,0);
+  --mms-env-ramp-ceil:rgba(255,255,255,.067); --mms-env-ramp-wall:rgba(255,255,255,.033); --mms-env-ramp-0:rgba(255,255,255,0);
+  --mms-env-veil-white:rgba(0,0,0,.09); --mms-env-veil-black:rgba(0,0,0,.45);
+  --mms-env-metal:rgba(150,154,162,.30); --mms-env-metal-0:rgba(150,154,162,0); --mms-env-metal-lamp:rgba(255,225,190,.12); --mms-env-metal-lamp-0:rgba(255,225,190,0);
+  --mms-env-lip-hi:rgba(255,255,255,.35); --mms-env-lip-lo:rgba(0,0,0,.12); --mms-env-lip-0:rgba(255,255,255,0); --mms-env-lip-lo-0:rgba(0,0,0,0);
+  --mms-env-gap:rgba(0,0,0,.30); --mms-env-gap-k:rgba(0,0,0,.50); --mms-env-gap-soft:rgba(0,0,0,.10);
+  --mms-env-btn-gap:rgba(0,0,0,.35); --mms-env-btn-soft:rgba(0,0,0,.08);
+  --mms-env-bezel:rgba(0,0,0,.6); --mms-env-bezel-soft:rgba(0,0,0,.25); --mms-env-bezel-move:rgba(0,0,0,.35);
+  --mms-env-fresnel:rgba(255,255,255,.18); --mms-env-band-white:rgba(255,255,255,.10);
+  --mms-env-dome-img:rgba(255,255,255,.4); --mms-env-dome-img-0:rgba(255,255,255,0); --mms-env-spark:rgba(255,255,255,.9); --mms-env-spark-0:rgba(255,255,255,0);
+  --mms-env-tone:rgba(255,255,255,.05);
   /* shared type/shape metrics (governed props) */
   --mms-r-art:16px; --mms-r-art-ipod:6px; --mms-r-queue:16px; --mms-r-th:6px; --mms-ipod-r-sm:2px;
   --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.1;
@@ -12067,7 +12065,7 @@ html[data-modern="on"] .video-uploader {
      unset (Off, Seattle, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
   .mms-ipod .ip-wheel{ width:min(70vw,288px); height:min(70vw,288px); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
     background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
+      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-ipod-wheel-shadow); }
   .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--mms-ipod-wheel-lbl); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
   .mms-ipod .ip-zone svg{ width:25px; height:25px; fill:currentColor; display:block; }
   .mms-ipod .ip-z-menu{ top:0; left:26%; width:48%; height:30%; align-content:start; padding-top:var(--space-3); font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); }
@@ -12075,7 +12073,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-z-right{ top:26%; right:0; width:30%; height:48%; justify-content:end; padding-right:var(--space-4); font-size:var(--fs-xl); }
   .mms-ipod .ip-z-down{ bottom:0; left:26%; width:48%; height:30%; align-content:end; padding-bottom:var(--space-3); font-size:var(--fs-base); }
   .mms-ipod .ip-center{ width:min(26vw,108px); height:min(26vw,108px); border-radius:var(--radius-full); border:0; cursor:pointer;
-    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-lit-dome-shadow, var(--mms-ipod-center-shadow)); }
+    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-ipod-center-shadow); }
 
   /* --- iPod BLACK (v1.232, Dean): shares all iPod structure via the base `mms-ipod`
      class; overrides ONLY the body + wheel palette to the space-black variant. The
@@ -12105,77 +12103,94 @@ html[data-modern="on"] .video-uploader {
       radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(42% + var(--ly,0) * 10%), var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
   .mms-ipod-matte .ip-zone{ color:var(--mms-ipodm-wheel-lbl); }
   .mms-ipod-matte .ip-center{ background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(38% + var(--ly,0) * 16%), var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
-  /* POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting): a fixed light in the
-     room, read from the phone's tilt (or the mouse on a desktop) by pocket-lighting.js and written
-     as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
-     dome shadows turn DIRECTIONAL (the rim catches the light, the drop falls away from it - G6),
-     the body carries a moving reflection band (a transform on one gradient layer under the LCD
-     and wheel; inset:-25% - the largest translate is 12% of that box, so the overhang is never
-     exposed, and the layer stays 2.25x the panel, not 3.24x - gate r1 S3), and the LCD glass a
-     faint streak (over the screen, never a tap target). Nothing
-     here is a filter, blur, mask or backdrop - the ambient-mode iPhone black-video lesson; a lock
-     test enforces it. Seattle is untouched (Dean's focus ruling): the driver never lights it. */
-  /* Inset offsets: an inset shadow with a POSITIVE x offset paints along the LEFT inner edge (the
-     lit plane slides right, the hole's left edge shows it), so the rim HIGHLIGHT takes the light's
-     offset NEGATED (light on the right -> the right edge glows) and the RECESS takes it as is (the
-     shadow side is the far side). The drop shadow falls away from the light (negated too). (The
-     second swing found v1.327.0 had the two inset signs swapped: a 2px slip, invisible at neutral.) */
-  .mms-ipod.mms-lit{
-    --mms-lit-wheel-shadow:calc(var(--lx,0) * -4px) calc(1px + var(--ly,0) * -4px) 2px var(--mms-lit-drop), inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 1px var(--mms-lit-rim), inset calc(var(--lx,0) * 2px) calc(-2px + var(--ly,0) * 2px) 4px var(--mms-lit-recess);
-    --mms-lit-dome-shadow:inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 2px var(--mms-lit-dome-hi), calc(var(--lx,0) * -3px) calc(1px + var(--ly,0) * -3px) 2px var(--mms-lit-dome-drop); }
-  .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-25%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
-    background:linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--mms-lit-band) 47%, var(--mms-lit-band2) 50%, var(--mms-ipod-sheen-0) 60%);
-    transform:translate3d(calc(var(--lx,0) * 12%), calc(var(--ly,0) * 10%), 0); will-change:transform; }
-  .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0 -50%; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none;
-    background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 50%, var(--mms-ipod-sheen-0) 56%);
-    transform:translate3d(calc(var(--lx,0) * 22%), 0, 0); will-change:transform; }
-  .mms-ipod-black.mms-lit{ --mms-lit-band:var(--mms-litk-band); --mms-lit-band2:var(--mms-litk-band2); }
-  .mms-ipod-matte.mms-lit{ --mms-lit-band:var(--mms-litm-band); --mms-lit-band2:var(--mms-litm-band2); }
-  /* PRONOUNCED = the STRONG profile (2026-09-24 second swing; Dean on the device: "a little subtle ...
-     zhuzh it up ... more realistic, more joyful"). Layered OVER the same skeleton, added with `.mms-lit`
-     by the driver only for the pronounced strength: a specular HOT SPOT on the dome (a pseudo-element
-     whose opacity dims as the light moves off-centre - `--lm`, the card-glare rule) and a dark far
-     side; a bright RIM ARC on the wheel's lit edge and a dark arc opposite (the Zune photo's chrome
-     rule - two soft inset crescents in the wheel shadow, offset away from / toward the light); the body band with a hot CORE and a broad ROOM light, travelling further (the layer is
-     inset:-35% so the overhang is never exposed); a double GLASS streak with a hot line; longer,
-     softer shadows. Subtle keeps the base profile byte-for-byte. Still only gradient positions and
-     translated gradient layers - no filter / blur / mask / backdrop (the whole-rule lock covers these). */
-  .mms-ipod.mms-lit-strong{
-    --mms-lit-wheel-shadow:calc(var(--lx,0) * -7px) calc(2px + var(--ly,0) * -7px) 5px var(--mms-lit-drop-s), inset calc(var(--lx,0) * -9px) calc(2px + var(--ly,0) * -9px) 12px -3px var(--mms-lit-arc), inset calc(var(--lx,0) * 9px) calc(-2px + var(--ly,0) * 9px) 14px -4px var(--mms-lit-darc), inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 1px var(--mms-lit-rim);
-    --mms-lit-dome-shadow:inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 2px var(--mms-lit-dome-hi), inset calc(var(--lx,0) * 4px) calc(-1px + var(--ly,0) * 4px) 6px -2px var(--mms-lit-far), calc(var(--lx,0) * -5px) calc(2px + var(--ly,0) * -5px) 4px var(--mms-lit-dome-drop);
-    --mms-lit-band:var(--mms-lits-band); --mms-lit-band2:var(--mms-lits-band2); --mms-lit-core:var(--mms-lits-core); --mms-lit-glass:var(--mms-lits-glass); }
-  .mms-ipod-black.mms-lit-strong{ --mms-lit-band:var(--mms-litks-band); --mms-lit-band2:var(--mms-litks-band2); --mms-lit-core:var(--mms-litks-core); }
-  .mms-ipod-matte.mms-lit-strong{ --mms-lit-band:var(--mms-litms-band); --mms-lit-band2:var(--mms-litms-band2); --mms-lit-core:var(--mms-litms-core); }
-  .mms-ipod.mms-lit-strong::before{ inset:-35%;
-    background:radial-gradient(120% 80% at calc(50% + var(--lx,0) * 35%) calc(10% + var(--ly,0) * 30%), var(--mms-lit-room) 0%, var(--mms-ipod-sheen-0) 60%),
-      linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--mms-lit-band) 46.5%, var(--mms-lit-core) 48.5%, var(--mms-lit-core) 49.5%, var(--mms-lit-band2) 51%, var(--mms-ipod-sheen-0) 60%);
-    transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0); }
-  .mms-ipod.mms-lit-strong .ip-lcd-in::after{ inset:0 -70%;
-    background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 49%, var(--mms-lits-glass-hot) 50%, var(--mms-lit-glass) 51%, var(--mms-ipod-sheen-0) 56%),
-      linear-gradient(100deg, var(--mms-ipod-sheen-0) 52%, var(--mms-lits-glass2) 58%, var(--mms-ipod-sheen-0) 64%);
-    transform:translate3d(calc(var(--lx,0) * 25%), 0, 0); }
-  .mms-ipod.mms-lit-strong .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(40% + var(--ly,0) * 14%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); }
-  .mms-ipod-black.mms-lit-strong .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(40% + var(--ly,0) * 14%), var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
-  .mms-ipod-matte.mms-lit-strong .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--mms-ipodm-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(42% + var(--ly,0) * 14%), var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
-  .mms-ipod.mms-lit-strong .ip-center{ position:relative; overflow:hidden; background:
-      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipodm-clear) 55%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(40% + var(--ly,0) * 20%), var(--mms-ipod-body1), var(--mms-ipod-body2)); }
-  .mms-ipod-black.mms-lit-strong .ip-center{ background:
-      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipodm-clear) 55%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(40% + var(--ly,0) * 20%), var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
-  .mms-ipod-matte.mms-lit-strong .ip-center{ background:
-      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipodm-clear) 55%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(38% + var(--ly,0) * 20%), var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
-  /* the dome's specular hot spot: its own layer so its OPACITY can follow --lm (brightest straight on) */
-  .mms-ipod.mms-lit-strong .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
-    background:radial-gradient(circle at calc(50% + var(--lx,0) * 34%) calc(32% + var(--ly,0) * 34%), var(--mms-lit-hot) 0%, var(--mms-lit-hot2) 18%, var(--mms-ipod-sheen-0) 40%);
-    opacity:calc(1 - var(--lm,0) * .45); }
+  /* POCKET LIGHTING (Dean 2026-09-24; the reflection swing 2026-09-25, plan
+     2026-09-25-pocket-lighting-reflection, from the research doc). pocket-lighting.js writes the light as
+     a REFLECTED ANGLE against a gravity-referenced key pose: `--fx/--fy` (px, the flat surfaces: k px per
+     degree, k = panel height / 24), `--dx/--dy` (px, the dome: ~15x slower), `--dom` (the dome image's
+     opacity - it clips off the rim, never dims with distance), `--la` (the light's azimuth, the wheel's
+     lip ring), `--wt` (the matte wheel's tone), `--lx/--ly` (-1..1, the bezel shadow and the perimeter),
+     the measured `--k`, `--dr`, `--lcx/--lcy` (the LCD's centre offset - the glass shows the SAME map at
+     the same panel position), and `--lk` (the alpha factor: Subtle .6, Pronounced 1).
+     ONE environment map, positioned in panel coordinates and shown per MATERIAL: Click and Black are the
+     5th-gen's glossy front (one sharp window reflection running unbroken across body and screen; a veil
+     under it for headroom); Matte is the Classic's anodized metal (the same window as a soft blob, the
+     glass sharp). The matte plastic WHEEL has no moving specular at all - a lit lip ring and a tone. Only
+     while `.mms-lit` is on; only gradient positions move (a per-frame repaint of the body, the glass and
+     the dome - never an oversized composited layer at 3x DPR); no filter / blur / mask / backdrop /
+     blend mode (the whole-rule lock). Seattle is untouched (Dean's ruling). */
+  .mms-ipod.mms-lit{ --lk:.6; }
+  .mms-ipod.mms-lit-strong{ --lk:1; }
+  /* the body: ::before = the material veil (opacity 1); ::after = the map (panes + shoulder + lamp [+ ramp
+     on black]), one layer per element, background-position = the panel's centre + the reflected offset */
+  .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel */ pointer-events:none;
+    background:linear-gradient(var(--mms-env-veil-white), var(--mms-env-veil-white)); }
+  .mms-ipod-black.mms-lit::before{ background:linear-gradient(var(--mms-env-veil-black), var(--mms-env-veil-black)); }
+  .mms-ipod-matte.mms-lit::before{ content:none; }
+  .mms-ipod.mms-lit::after{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - the map over the veil, under the LCD and wheel */ pointer-events:none; opacity:calc(var(--lk,1) * .9);
+    background-repeat:no-repeat;
+    background-image:
+      radial-gradient(closest-side, var(--mms-env-lamp) 0%, var(--mms-env-lamp) 14%, var(--mms-env-lamp-sh) 29%, var(--mms-env-lamp-0) 100%),
+      linear-gradient(180deg, var(--mms-env-pane) 0%, var(--mms-env-pane-sill) 100%),
+      linear-gradient(180deg, var(--mms-env-pane) 0%, var(--mms-env-pane-sill) 100%),
+      radial-gradient(closest-side, var(--mms-env-shoulder) 0%, var(--mms-env-shoulder-0) 100%);
+    background-size:calc(var(--k,35px) * 14) calc(var(--k,35px) * 14), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16), calc(var(--k,35px) * 30) calc(var(--k,35px) * 38);
+    background-position:calc(50% + var(--fx,0px) + var(--k,35px) * 22) calc(50% + var(--fy,0px) + var(--k,35px) * 4), calc(50% + var(--fx,0px) - var(--k,35px) * 3.05) calc(50% + var(--fy,0px)), calc(50% + var(--fx,0px) + var(--k,35px) * 3.05) calc(50% + var(--fy,0px)), calc(50% + var(--fx,0px)) calc(50% + var(--fy,0px)); }
+  .mms-ipod-black.mms-lit::after{
+    background-image:
+      radial-gradient(closest-side, var(--mms-env-lamp) 0%, var(--mms-env-lamp) 14%, var(--mms-env-lamp-sh) 29%, var(--mms-env-lamp-0) 100%),
+      linear-gradient(180deg, var(--mms-env-pane-k) 0%, var(--mms-env-pane-k-sill) 100%),
+      linear-gradient(180deg, var(--mms-env-pane-k) 0%, var(--mms-env-pane-k-sill) 100%),
+      radial-gradient(closest-side, var(--mms-env-shoulder) 0%, var(--mms-env-shoulder-0) 100%),
+      linear-gradient(180deg, var(--mms-env-ramp-ceil) 0%, var(--mms-env-ramp-ceil) 33%, var(--mms-env-ramp-wall) 33%, var(--mms-env-ramp-wall) 67%, var(--mms-env-ramp-0) 67%);
+    background-size:calc(var(--k,35px) * 14) calc(var(--k,35px) * 14), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16), calc(var(--k,35px) * 30) calc(var(--k,35px) * 38), 100% calc(var(--k,35px) * 60);
+    background-position:calc(50% + var(--fx,0px) + var(--k,35px) * 22) calc(50% + var(--fy,0px) + var(--k,35px) * 4), calc(50% + var(--fx,0px) - var(--k,35px) * 3.05) calc(50% + var(--fy,0px)), calc(50% + var(--fx,0px) + var(--k,35px) * 3.05) calc(50% + var(--fy,0px)), calc(50% + var(--fx,0px)) calc(50% + var(--fy,0px)), 0 calc(50% + var(--fy,0px) - var(--k,35px) * 20); }
+  /* Matte (anodized): the window as a soft ellipse tinted with the metal, the lamp as a blob; no panes */
+  .mms-ipod-matte.mms-lit::after{ opacity:var(--lk,1);
+    background-image:
+      radial-gradient(closest-side, var(--mms-env-metal-lamp) 0%, var(--mms-env-metal-lamp-0) 100%),
+      radial-gradient(closest-side, var(--mms-env-metal) 0%, var(--mms-env-metal-0) 100%);
+    background-size:calc(var(--k,35px) * 20) calc(var(--k,35px) * 20), calc(var(--k,35px) * 40) calc(var(--k,35px) * 46);
+    background-position:calc(50% + var(--fx,0px) + var(--k,35px) * 22) calc(50% + var(--fy,0px) + var(--k,35px) * 4), calc(50% + var(--fx,0px)) calc(50% + var(--fy,0px)); }
+  /* the perimeter: a faint band on the white gloss; a Fresnel edge toward the light on black */
+  .mms-ipod.mms-lit{ box-shadow:inset calc(var(--lx,0) * -2px) calc(var(--ly,0) * -2px) 4px var(--mms-env-band-white), inset 0 0 0 1px var(--mms-ipod-edge); }
+  .mms-ipod-black.mms-lit{ box-shadow:inset calc(var(--lx,0) * -1.5px) calc(var(--ly,0) * -1.5px) 3px var(--mms-env-fresnel), inset 0 0 0 1px var(--mms-ipodk-edge); }
+  .mms-ipod-matte.mms-lit{ box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
+  /* the screen glass: the SAME sharp map at the same panel position (the LCD's centre offset subtracted),
+     panes at .14 over content (BOTH panes, two layers - gate r1 C1 shipped one); the bezel's static
+     occlusion plus the one moving bezel shadow */
+  .mms-ipod.mms-lit .ip-lcd-in{ box-shadow:inset 0 0 0 1px var(--mms-env-bezel), inset 0 0 6px var(--mms-env-bezel-soft), inset calc(var(--lx,0) * -2px) calc(var(--ly,0) * -2px) 3px var(--mms-env-bezel-move); }
+  .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none; opacity:calc(var(--lk,1) * .23);
+    background-repeat:no-repeat;
+    background-image:
+      radial-gradient(closest-side, var(--mms-env-lamp) 0%, var(--mms-env-lamp) 14%, var(--mms-env-lamp-sh) 29%, var(--mms-env-lamp-0) 100%),
+      linear-gradient(180deg, var(--mms-env-pane) 0%, var(--mms-env-pane-sill) 100%),
+      linear-gradient(180deg, var(--mms-env-pane) 0%, var(--mms-env-pane-sill) 100%);
+    background-size:calc(var(--k,35px) * 14) calc(var(--k,35px) * 14), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16);
+    background-position:calc(50% + var(--fx,0px) + var(--lcx,0px) + var(--k,35px) * 22) calc(50% + var(--fy,0px) + var(--lcy,0px) + var(--k,35px) * 4), calc(50% + var(--fx,0px) + var(--lcx,0px) - var(--k,35px) * 3.05) calc(50% + var(--fy,0px) + var(--lcy,0px)), calc(50% + var(--fx,0px) + var(--lcx,0px) + var(--k,35px) * 3.05) calc(50% + var(--fy,0px) + var(--lcy,0px)); }
+  /* the matte plastic WHEEL: no moving specular. The wheel's background is the lip ring (a conic keyed to
+     the light's azimuth) plus the outer-gap occlusion; the flat matte face sits on ::before inset 1.5 px
+     (with the 5 px inner occlusion); ::after is the tone overlay (opacity --wt). isolation keeps the
+     pseudo-elements between the ring and the zone buttons (a control-sized context, never an ancestor). */
+  .mms-ipod.mms-lit .ip-wheel{ isolation:isolate; box-shadow:0 0 0 1px var(--mms-env-gap);
+    background:conic-gradient(from calc(var(--la,0) * 1deg - 40deg), var(--mms-env-lip-hi) 0deg, var(--mms-env-lip-0) 80deg, var(--mms-env-lip-lo) 180deg, var(--mms-env-lip-lo-0) 280deg, var(--mms-env-lip-hi) 360deg); }
+  .mms-ipod-black.mms-lit .ip-wheel, .mms-ipod-matte.mms-lit .ip-wheel{ box-shadow:0 0 0 1px var(--mms-env-gap-k); }
+  .mms-ipod.mms-lit .ip-wheel::before{ content:""; position:absolute; inset:1.5px; border-radius:var(--radius-full); z-index:-1; /* token-exempt: local stacking - the face over the ring, under the zones */ pointer-events:none;
+    background:radial-gradient(closest-side, var(--mms-ipodm-clear) calc(100% - 5px), var(--mms-env-gap-soft)), radial-gradient(circle at 50% 40%, var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); }
+  .mms-ipod-black.mms-lit .ip-wheel::before{ background:radial-gradient(closest-side, var(--mms-ipodm-clear) calc(100% - 5px), var(--mms-env-gap-soft)), radial-gradient(circle at 50% 40%, var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
+  .mms-ipod-matte.mms-lit .ip-wheel::before{ background:radial-gradient(closest-side, var(--mms-ipodm-clear) calc(100% - 5px), var(--mms-env-gap-soft)), radial-gradient(circle at 50% 42%, var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
+  .mms-ipod.mms-lit .ip-wheel::after{ content:""; position:absolute; inset:1.5px; border-radius:var(--radius-full); z-index:-1; /* token-exempt: local stacking - the tone over the face, under the zones */ pointer-events:none;
+    background:linear-gradient(var(--mms-env-tone), var(--mms-env-tone)); opacity:var(--wt,0); }
+  /* the glossy dome: the base gradient stays; the button-gap occlusion; ::after = the window IMAGE (a
+     soft ellipse 0.4 R x 0.55 R at --dx/--dy, opacity --dom - it clips off the rim) with the lamp's sparkle */
+  .mms-ipod.mms-lit .ip-center{ position:relative; overflow:hidden; box-shadow:0 0 0 1px var(--mms-env-btn-gap), 0 0 3px var(--mms-env-btn-soft);
+    background:radial-gradient(circle at 50% 40%, var(--mms-ipod-body1), var(--mms-ipod-body2)); } /* static under lit: only the window image moves (gate r1 adversary W2) */
+  .mms-ipod-black.mms-lit .ip-center{ background:radial-gradient(circle at 50% 40%, var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
+  .mms-ipod-matte.mms-lit .ip-center{ background:radial-gradient(circle at 50% 38%, var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
+  .mms-ipod.mms-lit .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; opacity:calc(var(--dom,0) * var(--lk,1));
+    background-repeat:no-repeat;
+    background-image:radial-gradient(closest-side, var(--mms-env-spark) 0%, var(--mms-env-spark) 40%, var(--mms-env-spark-0) 100%), radial-gradient(closest-side, var(--mms-env-dome-img) 0%, var(--mms-env-dome-img) 70%, var(--mms-env-dome-img-0) 100%);
+    background-size:6px 6px, 40% 55%;
+    background-position:calc(50% + var(--dx,0px) + var(--dr,54px) * .73) calc(50% + var(--dy,0px) + var(--dr,54px) * .13), calc(50% + var(--dx,0px)) calc(50% + var(--dy,0px)); }
   /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
   .mms-ipod .ipm-check{ flex:none; font-size:var(--fs-md); color:var(--mms-ipod-blue1); }
   .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--mms-white); }
