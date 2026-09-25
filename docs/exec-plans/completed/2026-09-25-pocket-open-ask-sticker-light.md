@@ -3,8 +3,8 @@ plan: pocket-open-ask-sticker-light
 harness: v2 · lean
 branch: feat/v1.334-open-ask-sticker-light
 anchor: spec
-status: Gating
-next: the release steps (docs/RELEASING.md + AGENTS.md): version, ROADMAP, ledger, LESSONS, tracker #282 (+ #281 c/d, #277 a closed), plan-complete, dual-Node suites, release branch, merge --no-ff, tag v1.334.0, PR, CI, merge.
+status: Shipped v1.334.0
+next: none - shipped. Dean's device checks are tech-debt #282 (a).
 design: "Approved 2026-09-25 (Dean's words below are the D-decisions; D9 = his tap-to-play ruling in this session)"
 gate: APPROVED r2 @ede46354 (adversary, qa)
 ---

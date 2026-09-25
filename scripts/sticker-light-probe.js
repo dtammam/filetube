@@ -1,6 +1,6 @@
 'use strict';
 // sticker-light-probe - the side-by-side instrument for v1.334's "the sticker catches the light" (plan
-// docs/exec-plans/active/2026-09-25-pocket-open-ask-sticker-light.md, item 2 / AC2). Serves this tree's public/
+// docs/exec-plans/completed/2026-09-25-pocket-open-ask-sticker-light.md, item 2 / AC2). Serves this tree's public/
 // plus a fixture page that boots the REAL skin engine (music-skins.js + skin-surface.js + pocket-lighting.js,
 // the real style.css) with a sticker, on a phone viewport in the Playwright-cached headless Chromium over raw
 // CDP (the pocket-lighting-probe pattern). The light is driven by REAL `deviceorientation` events (the path
