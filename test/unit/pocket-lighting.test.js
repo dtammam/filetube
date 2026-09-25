@@ -657,15 +657,16 @@ function rule(selector) {
   return CSS.slice(i, CSS.indexOf('}', i) + 1);
 }
 test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the old constants); the band and glass exist only when lit; no filter / blur / mask / backdrop anywhere in the lighting rules', () => {
-  const clickWheels = ['.mms-ipod .ip-wheel', '.mms-ipod-black .ip-wheel', '.mms-ipod-matte .ip-wheel'];
-  const clickDomes = ['.mms-ipod .ip-center', '.mms-ipod-black .ip-center', '.mms-ipod-matte .ip-center'];
-  for (const sel of clickWheels) {
+  // v1.332 (the pocket design system): ONE wheel and ONE dome rule serve every colorway - the colorway
+  // sets only its role tokens (the light origin --pk-c-wheel-oy / --pk-c-center-oy among them)
+  for (const sel of ['.mms-ipod .ip-wheel']) {
     const r = rule(sel);
     assert.match(r, /at calc\(50% \+ var\(--lx,0\) \* 30%\) calc\(-8% \+ var\(--ly,0\) \* 26%\)/, sel + ': the sheen sits where the light is (unset = 50% -8%, the old constant)');
-    assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 10%\) calc\(4[02]% \+ var\(--ly,0\) \* 10%\)/, sel + ': the base ramp follows');
+    assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 10%\) calc\(var\(--pk-c-wheel-oy\) \+ var\(--ly,0\) \* 10%\)/, sel + ': the base ramp follows');
   }
+  assert.ok(!/\n {2}\.mms-ipod-[a-z]+[^{]*\.ip-(wheel|center)/.test(CSS), 'no colorway-specific wheel or dome rule exists');
   assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the rim / recess / drop turn directional only when lit (the static token is the fallback)');
-  for (const sel of clickDomes) assert.match(rule(sel), /circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\((40|38)% \+ var\(--ly,0\) \* 16%\)/, sel);
+  assert.match(rule('.mms-ipod .ip-center'), /circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\(var\(--pk-c-center-oy\) \+ var\(--ly,0\) \* 16%\)/);
   assert.match(rule('.mms-ipod .ip-center'), /box-shadow:var\(--mms-lit-dome-shadow, var\(--mms-ipod-center-shadow\)\)/);
   // the lit-only tokens: defined ONCE, on the lit panel; the band + glass are pseudo-elements gated by .mms-lit
   assert.strictEqual((CSS.match(/--mms-lit-wheel-shadow\s*:/g) || []).length, 2, 'the base profile and the strong override, nowhere else');
@@ -695,12 +696,12 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
   // the STRONG profile (the second swing): exists for the three Click wheels and domes, the band and the
   // glass; only under .mms-lit-strong; its layers travel inside their overhang
-  for (const sel of ['.mms-ipod.mms-lit-strong .ip-wheel', '.mms-ipod-black.mms-lit-strong .ip-wheel', '.mms-ipod-matte.mms-lit-strong .ip-wheel']) {
+  for (const sel of ['.mms-ipod.mms-lit-strong .ip-wheel']) {
     const r = rule(sel);
     assert.match(r, /90% 55% at calc\(50% \+ var\(--lx,0\) \* 40%\) calc\(-8% \+ var\(--ly,0\) \* 30%\)/, sel + ': the sheen travels further');
     assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 14%\)/, sel + ': the base ramp follows further');
   }
-  for (const sel of ['.mms-ipod.mms-lit-strong .ip-center', '.mms-ipod-black.mms-lit-strong .ip-center', '.mms-ipod-matte.mms-lit-strong .ip-center']) assert.match(rule(sel), /var\(--mms-lit-far\)/, sel + ': the dark far side');
+  for (const sel of ['.mms-ipod.mms-lit-strong .ip-center']) assert.match(rule(sel), /var\(--mms-lit-far\)/, sel + ': the dark far side');
   const hot = rule('.mms-ipod.mms-lit-strong .ip-center::after');
   assert.match(hot, /pointer-events:none/); assert.match(hot, /opacity:calc\(1 - var\(--lm,0\) \* \.45\)/, 'the hot spot dims as the light moves off-centre');
   const sband = rule('.mms-ipod.mms-lit-strong::before');
@@ -709,10 +710,11 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   const sglass = rule('.mms-ipod.mms-lit-strong .ip-lcd-in::after');
   assert.match(sglass, /inset:0 -70%;/); assert.match(sglass, /translate3d\(calc\(var\(--lx,0\) \* 25%\), 0, 0\)/);
   // (the strong glass: 25% x 2.4 = 60% < 70% overhang: never exposed)
-  assert.strictEqual((CSS.match(/\.mms-lit-strong/g) || []).length >= 12, true, 'the strong profile is a class the driver adds (pronounced only)');
-  // Matte is softer, Black dimmer than Click (G1)
+  assert.strictEqual((CSS.match(/\.mms-lit-strong/g) || []).length >= 6, true, 'the strong profile is a class the driver adds (pronounced only)');
+  // Matte is softer, Black dimmer than Click (G1): the band roles in each colorway's block
   const alpha = (name) => Number((CSS.match(new RegExp(name + ':rgba\\(255,255,255,(\\.\\d+)\\)')) || [])[1]);
-  assert.ok(alpha('--mms-lit-band') > alpha('--mms-litk-band') && alpha('--mms-litk-band') > alpha('--mms-litm-band'), 'Click > Black > Matte band strength');
+  const blockBand = (cls) => Number((/--pk-c-lit-band:rgba\(255,255,255,(\.\d+)\)/.exec((new RegExp('\\n {2}\\.' + cls + '\\{([^}]*)\\}').exec(CSS) || [])[1] || '') || [])[1]);
+  assert.ok(alpha('--mms-lit-band') > blockBand('mms-ipod-black') && blockBand('mms-ipod-black') > blockBand('mms-ipod-matte'), 'Click > Black > Matte band strength');
 });
 
 // ---------------------------------------------------------------- shell parity (dynamic, never a list)

@@ -1906,9 +1906,11 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /body\.mms-tray\{ background:var\(--mms-black\); \}/, 'the dark pip body behind the rounded shell (adversarial W3: white corners without it)');
   assert.match(css, /body\.mms-tray \.ip-wheelwrap, body\.mms-tray \.ip-listview\{ display:none; \}/, 'the wheel and list are hidden - the tray is the LCD alone');
-  assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*margin:var\(--space-3\) var\(--space-4\)/, 'the LCD insets into the body frame (the v1.258 Nano feel)');
+  assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*margin:var\(--pk-tray-inset\)/, 'the LCD insets into the body frame (the v1.258 Nano feel)');
+  assert.match(css, /--pk-tray-inset:var\(--space-3\) var\(--space-4\);/, '...by the pocket system\'s tray inset (v1.332 structure token)');
   assert.match(css, /body\.mms-tray \.ip-npmain\{ display:flex; align-items:center/, 'art sits beside the meta (the Nano-5g row)');
-  assert.match(css, /body\.mms-tray \.ip-cover\{ width:88px; height:88px/, 'the Nano art box');
+  assert.match(css, /body\.mms-tray \.ip-cover\{ width:var\(--pk-tray-art\); height:var\(--pk-tray-art\)/, 'the Nano art box');
+  assert.match(css, /--pk-tray-art:88px;/, '...88 px (v1.332 structure token)');
   assert.match(css, /body\.mms-tray \.ip-ttl\{[^}]*text-overflow:ellipsis/, 'the title ellipsizes in the strip');
   assert.match(css, /body\.mms-tray \.mms-sticker\{ transform:scale\(\.55\)/, 'only the sticker BUTTON shrinks (the menu keeps thumb sizes - QA S4)');
   assert.match(css, /body\.mms-tray \.mms-sticker-menu\{ position:fixed; inset:var\(--space-3\)/, 'the tray menu is a FULL-WINDOW overlay (the upward-opening base menu clipped to a sliver at 190px - v1.258.1)');

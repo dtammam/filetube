@@ -44,24 +44,23 @@ test('registry exposes the skins with render funcs (incl. the Click (Matte) colo
   }
 });
 
-test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette CSS is source-locked (jsdom-invisible)', () => {
-  // Mirrors the ipod-black colorway: renderIpod structure + a .mms-ipod-matte palette-only
-  // override (the silver LCD screen is reused). Paint is jsdom-invisible, so the palette
-  // rules and their reused stops (--mms-ipod-sheen-0 chamfer, --mms-ipodk-edge rim) are
-  // locked in source; without this a dropped/retuned matte rule stays green.
+test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette is ONE role block (jsdom-invisible, source-locked)', () => {
+  // Mirrors the ipod-black colorway: renderIpod structure + a .mms-ipod-matte block of role tokens
+  // the chassis reads (v1.332 pocket design system). Paint is jsdom-invisible, so the block's values
+  // are locked in source (test/unit/pocket-design-system.test.js pins every colorway's roles).
   const matte = skins.renderFull('ipod-matte', CTX);
   assert.strictEqual(matte, skins.renderFull('ipod', CTX), 'matte renders byte-identical to silver iPod - the palette lives entirely in CSS, keyed off the .mms-ipod-matte panel class');
   assert.match(matte, /class="ip-wheel"/, 'the FULL click wheel');
   assert.match(matte, /data-skin-menu/, 'the wheel MENU/back zone (the wheel exit)');
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-ipod-matte\{ background:[\s\S]*?var\(--mms-ipodm-chamfer\)[\s\S]*?var\(--mms-ipod-sheen-0\)[\s\S]*?var\(--mms-ipodm-t1\)[\s\S]*?var\(--mms-ipodm-t7\) 100%\);\s*box-shadow:inset 0 0 0 1px var\(--mms-ipodk-edge\); \}/, 'the matte body: photo ramp t1..t7 + the reused white-transparent chamfer stop + the ipodk 1px inset rim');
-  assert.match(css, /\.mms-ipod-matte \.ip-wheel\{ background:[\s\S]*?var\(--mms-ipodm-wheel-sheen\)[\s\S]*?var\(--mms-ipodm-wheel1\), var\(--mms-ipodm-wheel2\) 100%\); \}/, 'the dark wheel with its top sheen');
-  assert.match(css, /\.mms-ipod-matte \.ip-zone\{ color:var\(--mms-ipodm-wheel-lbl\); \}/, 'the wheel labels tint');
-  assert.match(css, /\.mms-ipod-matte \.ip-center\{ background:radial-gradient\(circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\(38% \+ var\(--ly,0\) \* 16%\), var\(--mms-ipodm-center1\), var\(--mms-ipodm-center2\)\); \}/, 'the center button (its dome sits where the light is - pocket lighting 2026-09-24; unset = 50% 38%)');
-  // the palette override must sit AFTER the shared .mms-ipod base (and beside its ipod-black
-  // sibling) so it wins at equal specificity - reorder and the matte body silently vanishes.
-  assert.ok(css.indexOf('.mms-ipod-matte{') > css.indexOf('.mms-ipod-black{'), 'the matte override follows the ipod-black block (both after the .mms-ipod base)');
+  const block = /\n {2}\.mms-ipod-matte\{([^}]*)\}/.exec(css);
+  assert.ok(block, 'the matte role block exists');
+  assert.match(block[1], /--pk-c-body:linear-gradient\(180deg, rgba\(255,255,255,\.26\) 0, var\(--mms-ipod-sheen-0\) 2\.2%\)[\s\S]*#949497 0%[\s\S]*#1c1c21 100%\);/, 'the matte body: the chamfer, the side edges, the photo ramp top to bottom');
+  assert.match(block[1], /--pk-c-wheel-1:#343437; --pk-c-wheel-2:#242427; --pk-c-wheel-sheen:rgba\(255,255,255,\.42\); --pk-c-wheel-oy:42%;/, 'the dark wheel with its softer sheen');
+  assert.match(block[1], /--pk-c-center-1:#6e6e72; --pk-c-center-2:#55555a; --pk-c-center-oy:38%;/, 'the graphite center');
+  // the block must sit AFTER White's defaults on .mms-ipod so it wins at equal specificity
+  assert.ok(css.indexOf('\n  .mms-ipod-matte{') > css.indexOf('--pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi)'), 'the matte block follows White\'s role defaults');
 });
 
 test('v1.232.1: the iPod LCD is height-capped so a long song list scrolls INSIDE it (not out of bounds)', () => {
@@ -537,5 +536,5 @@ test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) acr
   assert.match(css, /:where\(button\.music-song-artist\) \{[^}]*display: inline;/, 'the song-row artist name is the inline variant');
   // the per-skin line rules still exist unchanged (they are what the zero-specificity reset defers to)
   assert.match(css, /\.mms-apple \.mms-sub\{ font-size:var\(--fs-xl\);/, 'Cider keeps its artist-line rule');
-  assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--fs-md\);/, 'the LCD keeps its artist-line rule');
+  assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--pk-fs-np-artist\);/, 'the LCD keeps its artist-line rule (its size is the pocket type role - v1.332)');
 });
