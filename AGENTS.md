@@ -74,7 +74,8 @@ Architecture in `docs/ARCHITECTURE.md`; stack + commands in `docs/CONTRIBUTING.m
 classes and their guards, cross-tool, one file. Read it before writing or
 reviewing; brief the gate seats with the sections the diff touches. A shipped
 wave adds or updates its lesson there in the release commit. A release's record
-is its ROADMAP.md entry, its completed plan and git - there are no per-release
+is its ROADMAP.md entry, its `docs/releases.json` ledger entry, its completed plan
+and git - there are no per-release
 memory files. Claude Code's auto-loaded memory holds only how Dean works, this
 box's quirks and live open threads, and points here.
 
@@ -96,7 +97,7 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
 - **Third-party flag/API interplay** (LESSONS 2, 11) — verify against SOURCE (yt-dlp, epub.js);
   plausible flag combinations can be silently inert. A green unit test of code that
   never RUNS in production is worthless — prove reachability.
-- **CSS / SPA client traps** (LESSONS 4, 6) — `[hidden]` loses to any author `display` rule (add
+- **CSS / SPA client traps** (LESSONS 4, 6, 11) — `[hidden]` loses to any author `display` rule (add
   `[hidden]{display:none!important}`); the SPA router swaps only `#view-root`
   (page-local `<head>` styles are lost on in-app nav), and a same-route SPA nav
   IGNORES the URL hash (a `#section` deep-link from the same page no-ops — set
@@ -149,7 +150,7 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
   with a reviewer working the tree. Node 24's reporter prints `ℹ`, not `#` — an empty
   grep is NOT green. The suite IS the npm scripts (`npm test`, `npm run test:unit`);
   a bare `node --test` is not equivalent.
-- **Git hygiene** — stage EXPLICIT paths (no `git add -A`/`.`/`commit -a`; a hook
+- **Git hygiene** (LESSONS 13) — stage EXPLICIT paths (no `git add -A`/`.`/`commit -a`; a hook
   blocks it); verify every commit landed with `git log` (the pre-commit hook runs
   the unit suite and refuses red — a piped commit can swallow that = "phantom
   commit"); never pipe a push (a pipe swallows its exit code = "phantom push") —

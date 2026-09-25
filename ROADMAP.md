@@ -157,7 +157,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🧪 Testing / infra
 
-- [x] **Rethink the auto-memory systematically** - ✅ RESOLVED 2026-09-25 (docs-only, after v1.333.0): the lessons moved to `docs/LESSONS.md` (cross-tool; AGENTS.md links to it), the 276 per-release memory files and stale handoffs were archived to a tarball beside the memory folder and removed (323 files / 1.68 MB -> 9 / ~32 KB), the per-release memory habit stopped (docs/RELEASING.md), and still-live ideas became Planned bullets. (Dean, 2026-09-24: "there's duplicative information in
+- [x] **Rethink the auto-memory systematically** - ✅ RESOLVED 2026-09-25 (docs-only, after v1.333.0): the lessons moved to `docs/LESSONS.md` (cross-tool; AGENTS.md links to it), the 276 per-release memory files and stale handoffs were archived to a tarball beside the memory folder and removed (324 files / 1.70 MB -> 9 / 25.6 KB; MEMORY.md 17.4 -> 5.6 KB), the per-release memory habit stopped (docs/RELEASING.md), and still-live ideas became Planned bullets. (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
   AGENTS.md, the plans, ROADMAP, the tracker and git), dedupe the per-release shipped files against
