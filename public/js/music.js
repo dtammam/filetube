@@ -1841,6 +1841,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (wasFlat) flatQueue = queue;
       if (activeListenChapters) activeListenChapters = listenAliased ? queue : activeListenChapters.filter(keepPatched);
       var countChanged = ownsDrill ? (queuedCount > 0 && queuedCount !== chapters.length) : droppedAny;
+      // v1.331: a menu-picked ALBUM level whose chapter COUNT changed holds the whole album, not
+      // SOME of it - it drops the list mode and re-lists like the browse album drill (as before
+      // v1.331), so a chapter added mid-play gets its row.
+      if (wasFlat && flatAlbum && countChanged) { flatQueue = null; wasFlat = false; }
       reflectChapter();
       // chapter snap gate r2 (adversary W2): a dropped row SHIFTS queue indices, but
       // reflectChapter re-registers nav only when the playing chapter's ID changes - so
@@ -3512,6 +3516,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
       var item = queue[i];
       playGen += 1;
+      // v1.331: a single-chapter SELECT (a browse chapter row, the up-next row, the skin's track
+      // list) inside a menu-picked ALBUM is Dean's v1.311 rule - play that bit, then station on -
+      // so it ends the album's list mode (a flat Songs/Genres/playlist list keeps K4's).
+      if (opts && opts.soloChapter && flatAlbum && flatQueue === queue) flatQueue = null;
       if (!(opts && opts.skipVerify) && verifyChapterFileThenPlay(item, opts)) return; // #269: a remote edit to a listed file
       if (item.needsTranscode) { prewarmThenLoad(item, i, playGen, opts); return; }
       setStatus('');
@@ -3714,14 +3722,26 @@ if (typeof module !== 'undefined' && module.exports) {
     // the level's name in the crumb - because its rows' data-index point INTO `queue`: a stale
     // list behind a replaced queue plays the wrong track on the next row tap (the v1.104/v1.207
     // wrong-track class).
-    // Two contexts (gate r1 K4, the Architect's ruling for Dean, device-true):
-    //  - a DRILL list (an album, an artist's album): the v1.311 rule - a picked chapter is a SELECT
-    //    that exits after its own segment (the solo exit); Shuffle Songs plays through.
-    //  - a FLAT list (Songs, Genres, the playlists - no drill - and an artist's All Songs, play.flat): the list
-    //    plays through like the device - a chapter plays only ITS OWN segment and the list moves on
-    //    to the next row (flatQueue / enforceFlatSegmentEnd), never on through the rest of the file
-    //    and never off to a station mid-list.
-    function playFromMenu(req, opts) {
+    // A menu pick is NEVER a v1.311 solo select, and EVERY menu list plays through in LIST order
+    // (gate r1 K4, device-true; v1.331 for the album levels): a chapter plays ITS OWN segment and
+    // the list moves on to its next row (flatQueue / enforceFlatSegmentEnd). When that next row is
+    // the same file's next segment (an album in file order), the file rolls on untouched - no
+    // reload; the file's last chapter leaves it to the ended advance; the station comes only after
+    // the list's last row.
+    //  - a FLAT list (Songs, Genres, the playlists, an artist's All Songs): never on through the
+    //    rest of the file and never off to a station mid-list.
+    //  - an ALBUM level (Albums > album, Artists or Recent Artists > artist > album): the album
+    //    plays on from the pick. v1.331 (Dean: "I pick something in an album, it just plays that
+    //    song and then goes to a completely other song from the artist, almost like a shuffle ...
+    //    I would imagine it would play through the rest of that album"): v1.323 armed the solo
+    //    exit here, which stationed off to the artist's songs at the picked chapter's end. List
+    //    order, not file order (v1.331 gate r1 W1, adversary + qa, measured): under a title or
+    //    duration drill sort a file-order roll re-armed Next at the file's last chapter onto an
+    //    EARLIER row, and the album looped Track A/Track B forever, never reaching the station.
+    //    A later single-chapter SELECT inside that album (a browse chapter row, the up-next row,
+    //    the skin's track list) is Dean's v1.311 rule again: playAt drops the album's list mode
+    //    (flatAlbum) for it.
+    function playFromMenu(req) {
       var tracks = (req && Array.isArray(req.tracks)) ? req.tracks : [];
       var i = Number(req && req.index);
       if (!tracks.length || !(i >= 0 && i < tracks.length) || !content) return;
@@ -3731,8 +3751,8 @@ if (typeof module !== 'undefined' && module.exports) {
       menuPickGen += 1;   // ...nor an in-flight browse render paint over the view drawn below
       search = '';
       queue = tracks.slice();
-      var flat = !play.drill || play.flat === true;
-      flatQueue = flat ? queue : null;
+      flatQueue = queue; // every menu list plays through in list order (see above)
+      flatAlbum = !!play.drill && play.flat !== true; // an album level: a later solo select ends the list mode
       lastFlatTime = -1;
       queueCtx = play.ctx || { src: 'music' };
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
@@ -3749,7 +3769,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (crumb) { crumb.hidden = false; crumb.textContent = play.label || 'Songs'; }
         renderSongListProgressive();
       }
-      playAt(i, { soloChapter: !flat && !(opts && opts.playThrough), pick: true });
+      playAt(i, { soloChapter: false, pick: true }); // v1.331: never a solo select (see above)
     }
     // Gate r1 K3 (qa W2 + adversary W3, measured: a pick from a 3,008-song list blocked the main
     // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows
@@ -3808,7 +3828,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // chapter ends with the file, where the ended advance (nav.onNext = the next row) already moves
     // on. A deliberate seek past the boundary is rejected by the same band + step test as the
     // loop and the solo exit.
-    var flatQueue = null;   // the queue array a flat menu pick built; flat while `queue` is still it
+    var flatQueue = null;   // the queue array a menu pick built; flat while `queue` is still it
+    var flatAlbum = false;  // v1.331: that list is an ALBUM level (a solo select in it ends the list mode)
     var lastFlatTime = -1;
     function enforceFlatSegmentEnd() {
       if (!flatQueue || flatQueue !== queue || !chapterViewId) return false;
@@ -3855,7 +3876,7 @@ if (typeof module !== 'undefined' && module.exports) {
       fetchJson('/api/music?sort=random&seed=' + seed + '&limit=10000').then(function (d) {
         // post-await: the view is alive and no newer pick claimed the player meanwhile.
         if (signal.aborted || gen !== playSelectGen) return;
-        playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } }, { playThrough: true });
+        playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } });
       }).catch(function () {
         if (typeof window.showToast === 'function') window.showToast('Could not shuffle your songs.');
       });

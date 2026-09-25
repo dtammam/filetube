@@ -226,7 +226,7 @@ test('K4 (the Architect\'s ruling): a chapter picked from a FLAT list plays its 
   } });
 });
 
-test('K4: an artist\'s All Songs (a flat list whose chapters sit together) rolls the file on into the next chapter with no reload (the album-pick v1.311 rule stays bound in music-pocket-menus.test.js)', async () => {
+test('K4: an artist\'s All Songs (a flat list whose chapters sit together) rolls the file on into the next chapter with no reload (an album pick plays the album on, v1.331, bound in music-pocket-menus.test.js)', async () => {
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h); tapRow(h, 'Artists'); await settleNet();
     tapRow(h, 'NESTALGIA'); await settleNet();
@@ -646,4 +646,56 @@ test('Chapter Snap x K4: a snap save through Music\'s "This chapter starts wrong
       assert.strictEqual(h.player.currentId, nextOfIntro.id, 'still flat: Intro handed on to the list\'s next row (' + nextOfIntro.title + ')');
     },
   });
+});
+
+test('v1.331 gate r1: a chapter ADDED while a menu-picked album level plays re-lists the album (its new chapter gets a row), as the browse album drill does', async () => {
+  let opened = null;
+  try {
+    await boot({
+      skin: 'ipod', play: 'nd1',
+      setup: (dom) => {
+        dom.window.showToast = () => {};
+        dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } });
+        dom.window.showChapterSnapEditor = (id, opts) => { opened = { id, opts }; };
+      },
+      run: async (h) => {
+        menu(h); select(h); tapRow(h, 'Albums'); await settleNet();
+        tapRow(h, 'Full Album Mix'); await settleNet();
+        tapRow(h, 'Intro'); await settleNet(); // an ALBUM-level pick (list mode)
+        click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
+        click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+        await settleNet();
+        const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
+        assert.ok(act, 'Extras offers "This chapter starts wrong" on the playing chapter');
+        click(h.dom, act); await settleNet();
+        assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');
+        // the server now holds FOUR chapters, and the editor reports them (a count change)
+        await setMixChapters(MIX_TEXT + '\n25:00 Track C');
+        opened.opts.onSaved({ chapters: MIX_CHAPTERS.concat([{ startTime: 1500, title: 'Track C' }]), chaptersEdited: true });
+        await settleNet(60);
+        const behind = [...h.D.querySelectorAll('#music-content .music-song-row')].map((r) => r.getAttribute('data-id'));
+        assert.deepStrictEqual(behind, ['djmix1::c0', 'djmix1::c1', 'djmix1::c2', 'djmix1::c3'], 'the album re-listed from the server: the new chapter has its row');
+      },
+    });
+  } finally { await setMixChapters(MIX_TEXT); }
+});
+
+test('v1.331 gate r1 (the other axis): a single-chapter select inside a FLAT list keeps K4 - the list mode is dropped only for an ALBUM level', async () => {
+  const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
+  const iIntro = songs.findIndex((t) => t.title === 'Intro');
+  assert.strictEqual(songs[iIntro + 1].id, 'za1', 'precondition: the Songs list reads Intro, then Loose Single');
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    await openSongs(h);
+    tapRow(h, 'Cartridge Blues'); await settleNet(); // a FLAT pick: the Songs list is the queue
+    // an up-next row tap (the desktop panel's .mnp-queue-row contract, delegated on the panel) on
+    // Intro: a v1.311 single-chapter select on the SAME queue
+    const upNext = h.D.createElement('div');
+    upNext.className = 'mnp-queue-row'; upNext.setAttribute('data-index', String(iIntro));
+    h.panel.appendChild(upNext);
+    click(h.dom, upNext); await settleNet();
+    assert.strictEqual(h.player.currentId, 'djmix1::c0', 'the up-next tap played Intro');
+    const t = { v: 0 }; const el = mp(h, t, 1800);
+    await tick(h, el, t, 150); await tick(h, el, t, 299.2); await tick(h, el, t, 299.9);
+    assert.strictEqual(h.player.currentId, 'za1', 'still the flat list: Intro handed on to the list\'s next row (K4), not a station');
+  } });
 });
