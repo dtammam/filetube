@@ -26,12 +26,6 @@
   captured. I'm not really asking for anything else"). Scope: a Share button on yt-dlp downloads from
   any site, sharing the source URL recorded at download time. Nothing else.
 
-- [ ] **Bug: tapping an iOS PWA notification opens Music but does not start the song** (Dean,
-  2026-09-25: "flakiness of me tapping an iOS PWA notification and having it launch the app, go to the
-  music page, but not actually launch the song. Unsure why that's happening. If that's a regression or
-  not"). Intermittent. First questions: regression or not (bisect the notification deep-link path), and
-  whether the play is lost on a cold launch vs a warm resume.
-
 - [ ] **Audit: TOCTOU / FOUC across the app** (Dean, 2026-09-25: "I'm noticing in um, the music player,
   like I'll see the thumbnails all kind of loading somewhat individually. It just feels like odd. And
   then there's like some slight page shifting. I just want an overall audit of all the potential places.
@@ -69,23 +63,6 @@
 - [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
   overlay-containment lint's scroll match, with a fixture.
 
-- [ ] **Ask for motion access when the Click player opens, not on the sticker tap** (Dean, 2026-09-25:
-  "if I open up the music player on mobile and I press the sticker, it pops me for the motion prompt. Is it
-  possible to just have it pop for that prompt on opening up the media player in that skin in general without
-  requiring the sticker button?"). iOS allows the ask only inside a user gesture and forgets a home-screen
-  app's grant at every launch, so the prompt itself stays; the question is WHICH tap. Lead: the first-tap ask
-  (pocket-lighting.js armFirstTapAsk) arms only once the Click panel is painted and the driver synced, so the
-  tap that OPENS the player comes too early and the next tap (often the sticker) asks. Candidate: ask from the
-  open-the-player gesture itself when a strength is stored and no grant exists this session.
-
-- [ ] **The sticker catches the light on the Click skins** (Dean, 2026-09-25: "I'd like the sticker in that
-  same skin to be affected by the lighting. Right now, it just looks kind of out of place ... It should have
-  like sheen on it ... as if it's literally a sticker, like lightly raised. The shadow would hit it. It's a
-  sticker, so there's some gloss. So I don't want us to go crazy on the lighting effects, but like it should
-  hit it"). A lightly raised, slightly glossy sticker: a small drop shadow falling away from the light and a
-  soft sheen that moves with --lx/--ly, under the same no-filter constraint as the rest of the lighting;
-  Off unchanged.
-
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.
@@ -93,12 +70,32 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🐞 Bugs
 
+- [x] **Bug: tapping an iOS PWA notification opens Music but does not start the song** - ✅ SHIPPED v1.334.0 (not a regression: iOS refuses to start audio in a page a notification opened; the player now shows Tap to play) (Dean,
+  2026-09-25: "flakiness of me tapping an iOS PWA notification and having it launch the app, go to the
+  music page, but not actually launch the song. Unsure why that's happening. If that's a regression or
+  not"). Intermittent. First questions: regression or not (bisect the notification deep-link path), and
+  whether the play is lost on a cold launch vs a warm resume.
 - [x] **Mobile video fullscreen button shifted slightly right** - ✅ RESOLVED per Dean (roadmap reconcile 2026-09-22): fixed (the mobile control bar was re-slotted since - v1.50.5 pinned `#fs-btn` to the corner and v1.112 put settings just before it). - on mobile, the video fullscreen `#fs-btn` sits a little to the right of where it should (still usable). Likely a knock-on from the v1.24.0 button polish and/or the mobile control-hiding (vol/mute hidden) altering the control-bar spacing. Small CSS positioning fix. _(Dean, noticed on v1.24.0)_
 - [x] **"Release date" sort + trust chain** — ✅ SHIPPED v1.33.0: `youtubeId` persisted per item (filename bracket / embedded purl-comment source URL), Reheat gained a LOCAL ffprobe tags pass (embedded date/purl/title, network fallback where an id exists, precedence network > embedded > mtime), bracket-less metube imports now reheat-eligible; sort verified with parity tests. Dean's on-device backfill run is the arbiter of coverage. Merged with the capture item below: verify the whole chain (yt-dlp upload_date capture correctness; local fallback sanity), add release-date capture to REHEAT so Dean's migrated metube-era library backfills (network re-pull and/or local embedded ffprobe tags — the files may already carry date/purl metadata), fix the sort with sensible missing-date fallback. — the Release-date sort option (shipped v1.24.0 as an available sort; local capture v1.24.0, yt-dlp `upload_date`/`release_date` capture v1.24.2) doesn't visibly order the library by release date on-device. Investigate what `db.metadata.releaseDate` actually holds: local files may only carry the weak mtime fallback (or nothing), and the yt-dlp `releaseDate` only lands on items downloaded/re-pulled AFTER v1.24.2 — so pre-existing items likely have no captured date at all. Check (a) the `sortItems` release-date case reads/compares the value correctly, (b) how many items actually have a populated `releaseDate`, and (c) whether an additive backfill from metadata the scan already has is warranted (no re-processing pass — thumbnail-backfill lesson). **Capture ACCURACY (Dean, v1.24.6):** beyond the sort not visibly working, Dean suspects the captured value itself may be wrong — "the source looks odd." So verify the whole chain end-to-end, not just the sort: is yt-dlp's `upload_date`/`release_date` actually landing as the correct epoch-ms on the right item (spot-check a known video against its real upload date), and is the local-file fallback (embedded ffprobe date → mtime) producing a sane value or a garbage/near-now timestamp? The real deliverable is a `releaseDate` you can trust, then the sort. _(Dean, noticed on v1.24.2; accuracy concern added v1.24.6)_
 - [x] **Video PWA experience on app-minimize** — ✅ RESOLVED per Dean (2026-07-12): "we worked through it, it's better now." Reopen with fresh on-device specifics if it degrades again. — on the installed iPhone PWA, backgrounding / app-switching away from a playing VIDEO and returning has degraded recently (Dean, on v1.24.7). "Flakier" needs on-device specifics when picked up (video not resuming, losing position, black frame / not repainting on return, not pausing/resuming cleanly, MediaSession state, or the player host not re-mounting). Because it's a regression, first bisect against the recent player-lifecycle changes: v1.24.4's T12 **synchronous host reparent** on SPA nav, v1.24.4 T13 resume/dock changes, and the v1.24.5/.6 mobile CSS (`html { overflow-x: clip }`, dock/overlay rules) — any of which could interact with iOS's inline-video suspend/`visibilitychange`/`pagehide` handling. Grounding: FileTube pauses video + saves position on background via `shouldPauseForLifecycleEvent` (audio keeps playing via MediaSession); the persistent single `<video>` host is reparented across FULL/DOCKED/close. Related to the parked "Background audio for video" item below (same lifecycle surface). **Concrete repro (Dean, v1.24.7):** (1) previously he could **exit/minimize the app and playback would CONTINUE** (background audio kept going); **now it STOPS** on exit — a real background-playback regression. (2) Pressing **Play from the iOS media controls / lock screen (MediaSession)** is now **hit-or-miss** (flaky). Both symptoms point at the player LIFECYCLE + MediaSession binding, and the strongest suspect is v1.24.4's **T12 synchronous persistent-`<video>`-host reparent** on SPA nav — reparenting the media element can drop/not-re-establish the `MediaSession` action handlers (`setActionHandler('play'/'pause')`) and can trip iOS's "user gesture / same element" rules that keep background audio alive, which would explain BOTH the stop-on-background and the flaky remote Play. Verify the MediaSession handlers are (re)bound to the live host after every reparent/load. **KEY clarification (Dean):** it DOES still work if he **full-screens the video (the NATIVE iOS video player) and locks while that native player is focused** — so the reliable background path is the native fullscreen/PiP video element (iOS grants native video players background audio), while the **INLINE custom player gets suspended by iOS on background** (the fundamental inline-web-`<video>` limitation). That reframes it: this is less a pure T12/MediaSession bug and more the inline-vs-native background-video reality. It ties DIRECTLY to two items below — **"Optional mobile control style — custom bar vs native iOS"** (native controls would give free fullscreen + background audio) and **"Background audio for video"** (the PiP / audio-context levers). Open question to settle first: is it a genuine regression (did the INLINE player used to keep audio alive on background and a recent change — audio-mode/MediaSession/lifecycle — broke it) or has inline always required fullscreen? If regression → bisect the audio-mode/MediaSession/`shouldPauseForLifecycleEvent` handling; if fundamental → the real fix is a design call (native mobile controls, or a PiP/hidden-`<audio>` background approach), NOT a quick patch. Daily-use degradation. _(Dean, noticed on v1.24.7; repro + native-fullscreen clarification added same day)_
 
 ### 🎬 Player / mobile UX
 
+- [x] **Ask for motion access when the Click player opens, not on the sticker tap** - ✅ SHIPPED v1.334.0 (the tap that opens the player asks) (Dean, 2026-09-25:
+  "if I open up the music player on mobile and I press the sticker, it pops me for the motion prompt. Is it
+  possible to just have it pop for that prompt on opening up the media player in that skin in general without
+  requiring the sticker button?"). iOS allows the ask only inside a user gesture and forgets a home-screen
+  app's grant at every launch, so the prompt itself stays; the question is WHICH tap. Lead: the first-tap ask
+  (pocket-lighting.js armFirstTapAsk) arms only once the Click panel is painted and the driver synced, so the
+  tap that OPENS the player comes too early and the next tap (often the sticker) asks. Candidate: ask from the
+  open-the-player gesture itself when a strength is stored and no grant exists this session.
+- [x] **The sticker catches the light on the Click skins** - ✅ SHIPPED v1.334.0 (a gloss toward the light, a shadow away from it) (Dean, 2026-09-25: "I'd like the sticker in that
+  same skin to be affected by the lighting. Right now, it just looks kind of out of place ... It should have
+  like sheen on it ... as if it's literally a sticker, like lightly raised. The shadow would hit it. It's a
+  sticker, so there's some gloss. So I don't want us to go crazy on the lighting effects, but like it should
+  hit it"). A lightly raised, slightly glossy sticker: a small drop shadow falling away from the light and a
+  soft sheen that moves with --lx/--ly, under the same no-filter constraint as the rest of the lighting;
+  Off unchanged.
 - [x] **Force-closing the PWA doesn't stop video background audio** — ✅ RESOLVED per Dean (2026-07-12): "no longer a problem." — after v1.25.2 made mobile VIDEO keep its audio playing in the background (native iOS fullscreen/PiP path), Dean found that **force-closing** the PWA (fully killing the app from the app switcher) leaves the video's audio **still playing** — it shouldn't. IMPORTANT distinction he made: this is about **force-close/kill**, NOT backgrounding/app-switching (backgrounding keeping audio alive is the intended v1.25.2 feature and is correct). So the bug is specifically: a hard app-kill should release the audio session / stop playback, but iOS is keeping the native media session alive past the kill. Likely needs an explicit teardown on `pagehide`/`unload`/`freeze` that stops+releases the media element / audio session (or an investigation into whether iOS surfaces a kill signal to the web app at all — it may only reliably fire `pagehide`). Tie this into the v1.25.2 background-audio lifecycle (`handleBackgroundLifecycle`/`inNativeFullscreen`) and the next-batch native-AUDIO switch below — Dean raised it in the same breath ("for next batch if we switch iOS audio"). _(Dean, on-device 2026-07-10)_
 - [x] **Rotating landscape→portrait pauses a playing video** — ✅ RESOLVED per Dean (2026-07-12): "playback better." — in STANDARD (non-fullscreen) mode, playing a video and rotating the phone to landscape keeps it playing (great) — but rotating BACK from landscape to portrait PAUSES it. Dean wants playback to continue through the rotation both ways. Root-cause the orientation/resize handling in `player.js` (there's orientation code ~`:2159/2168/2177` and the lifecycle/`applyControlsMode` path touched by v1.25.2's native-controls work) — something on the landscape→portrait transition issues a pause (possibly a spurious `shouldPauseForLifecycleEvent`/visibility/resize trigger, or a native-controls/fullscreen state flip on rotate). The fix: don't pause on an orientation change when the video is simply playing inline. Verify it doesn't regress the intended background-pause behavior (rotation ≠ backgrounding). Likely interacts with the v1.25.2 native-controls + lifecycle changes, so test alongside them. _(Dean, on-device 2026-07-10)_
 - [x] **Optional mobile control style — custom bar vs. native iOS** — ✅ CLOSED per Dean (2026-07-12): the player/mobile-UX cluster is "considered good" as it stands. — the whole v1.22.x mobile-player arc landed on ONE hardcoded answer: mobile uses our custom control bar everywhere (video + audio), because native inline iOS controls auto-hide / re-reveal unreliably under our gesture layer (see v1.22.1). It works well now — but Dean isn't sure he loves the custom bar on mobile and may prefer **native iOS controls** there, accepting the trade-offs. Rather than re-litigate one global default, make it **optional / device-aware**:
@@ -172,6 +169,47 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.334.0 - The motion prompt comes when the player opens, the sticker catches the light, and Tap to play (2026-09-25)
+
+- **The motion prompt on the tap that opens the Click player** (Dean: "if I open up the music player on
+  mobile and I press the sticker, it pops me for the motion prompt ... have it pop for that prompt on opening
+  up the media player in that skin in general"). Measured first (the real music view, engine and driver): the
+  opening tap asked 0 times, the next tap (the sticker) once. WebKit shows the prompt only while a FULL gesture
+  is live, and every open reads a response body before it paints (a body read leaves the gesture media-only),
+  so the ask now runs inside the opening tap at the seams every open passes through synchronously: the
+  router's navigate() into the player (the mini player, a card, a search result), the music view's play seams
+  and both Shuffle buttons, and the podcasts view's. Once per launch (now per window, whichever seam asks);
+  a deny shows the note; reduced motion, Off, a desktop, Android, the tray, the pop-out and a non-Click skin
+  never ask; a question iOS rejected for lack of a tap is no longer recorded as a deny (#277 a).
+- **The sticker catches the light** (Dean: "It should have like sheen on it ... as if it's literally a
+  sticker, like lightly raised ... I don't want us to go crazy"). On a lit Click panel: a soft gloss toward the
+  light and a small shadow away from it, following the sticker's own shape (the logo's triangle, a custom
+  image's pixels, the emoji chip's circle), counter-rotated for the tilt, scaled with the size; Subtle's gloss
+  is fainter. Still no filter / blur / mask / backdrop / blend / animation on anything lit: the shape comes
+  from a canvas drawn from the sticker itself. Dean judged the side-by-sides ("Seems good"). Off unchanged:
+  1240 render-probe shots per tree, the 340 Off shots identical (0 px, 0 styles); every lit shot differs in
+  exactly one element, the sticker.
+- **Tap to play** (Dean: "tapping an iOS PWA notification ... go to the music page, but not actually launch
+  the song. Unsure why ... If that's a regression or not"). Not a regression: both notification paths load a
+  fresh page no tap ever touched, iOS refuses to start audio there, and the player had swallowed that
+  refusal since v1.44. Dean's ruling: when the start is refused, the skin shows one clear Tap to play button
+  (it presses the player's own play, inside the tap), and the ?debugLifecycle=1 log records every auto-start's
+  outcome (the reason, whether the page ever had a tap, its age) so his iPhone can say why it sometimes works.
+- **The sticker menu (#281 c, d):** a Skin or Extras page opens on Back, Back returns to the row that opened
+  it, a rebuild keeps focus on the same control; chip groups are named by their headings; the LCD's Lighting
+  refresh after an answer and the whole mask family in the no-filter lock are now bound.
+- Gate: r1 CHANGES (both seats: a late-loading sticker image painted onto an unlit panel, the Extras
+  "not available" page dropped focus, the Tap to play button covered an open sticker menu; the adversary:
+  both Shuffle buttons still asked on the next tap, wrong statements about WebKit's gesture), fixed in one
+  round; APPROVED r2 @ede46354 (adversary, qa). Mutants: 97 of 99 killed by name, the two survivors masked
+  by the driver's destroyed check. Full suites on Node 22.23.1 and 24.20.0 (counts in the release PR). Plan
+  docs/exec-plans/completed/2026-09-25-pocket-open-ask-sticker-light.md.
+- Disclosed (#282): the device checks (the prompt's timing on the opening tap, the sticker on the iPhone,
+  whether a notification's Tap to play plays on one tap when that tap also raises the motion prompt); the Tap
+  to play button is silent to a screen reader; the desktop live-transcode restart still swallows a refused
+  start; three bindings are thin (a same-size gloss redraw's clear, the late-load test at Subtle only, the
+  not-available page's never-steal-focus step).
 
 ### v1.333.0 - Ambient lighting for the Click skins, and a sticker menu that fits (2026-09-25)
 

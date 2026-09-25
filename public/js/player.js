@@ -4883,8 +4883,46 @@ if (typeof module !== 'undefined' && module.exports) {
       startLiveStream(progress, true);
     } else {
       mediaPlayer.currentTime = progress;
-      mediaPlayer.play().catch(function () {});
+      autoStart();
     }
+  }
+
+  // v1.334 (Dean: "tapping an iOS PWA notification and having it launch the app, go to the music page,
+  // but not actually launch the song"; plan 2026-09-25-pocket-open-ask-sticker-light, item 3): the LOAD's
+  // auto-start. iOS refuses an audible play() with no user gesture behind it (WebKit
+  // MediaElementSession::playbackStateChangePermitted -> NotAllowedError), and a page a notification
+  // opened never had one - the refusal used to be swallowed here, leaving a paused player that looked
+  // broken. Both outcomes now land in the ?debugLifecycle=1 log (Dean's D9: why it sometimes works), and a
+  // refusal raises the flag the skin's "Tap to play" cue reads (skin-surface.js); the element's own
+  // 'play', the next load (teardownMediaState) and close() lower it.
+  var autoStartRefused = false;
+  function setAutoStartRefused(on) {
+    on = !!on;
+    if (autoStartRefused === on) return;
+    autoStartRefused = on;
+    try { document.dispatchEvent(new CustomEvent('filetube:autostart', { detail: { refused: on } })); } catch (_) { /* no CustomEvent: the next paint reads the flag */ }
+  }
+  function autoStartCtx() {
+    var ua = null;
+    try { ua = (typeof navigator !== 'undefined' && navigator.userActivation) || null; } catch (_) { ua = null; }
+    var since = 0;
+    try { since = Math.round(performance.now()); } catch (_) { since = 0; }
+    // a notification's page never had a tap ("never"); the page's age tells a cold launch from a warm one
+    return 'tap ' + (ua ? (ua.hasBeenActive ? 'had' : 'never') : 'n/a') + ' · page ' + since + 'ms';
+  }
+  function autoStart() {
+    var gen = loadGeneration;
+    var p;
+    try { p = mediaPlayer.play(); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).then(function () {
+      recordLifecycleEvent('autostart:ok', { detail: autoStartCtx() });
+    }, function (err) {
+      var name = (err && err.name) || 'Error';
+      recordLifecycleEvent('autostart:refused', { detail: name + ' · ' + autoStartCtx() });
+      // only iOS's no-gesture refusal, only for THIS load, only while still paused (an AbortError is a
+      // newer load replacing this one, not a refusal)
+      if (name === 'NotAllowedError' && gen === loadGeneration && mediaPlayer.paused) setAutoStartRefused(true);
+    });
   }
 
   function handleResumePlayback(gen, id) {
@@ -4907,7 +4945,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (currentData && currentData.suppressProgress) {
       savedProgress = 0;
       if (liveMode) startLiveStream(0, true);
-      else mediaPlayer.play().catch(function () {});
+      else autoStart();
       return;
     }
     // v1.221 chapter-albums: a VIRTUAL chapter-track streams the shared file and
@@ -4936,9 +4974,9 @@ if (typeof module !== 'undefined' && module.exports) {
           savedProgress = data.timestamp || data.position || 0;
           var resume = savedProgress > 0 && shouldResumeMidTrack({ durationSeconds: currentData.duration });
           if (resume) resumeDirectly(savedProgress);
-          else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
+          else { savedProgress = 0; autoStart(); }
         })
-        .catch(function () { mediaPlayer.play().catch(function () {}); });
+        .catch(function () { autoStart(); });
       return;
     }
     // v1.69 podcasts: ALWAYS resume, silently - an episode is long-form by
@@ -4952,9 +4990,9 @@ if (typeof module !== 'undefined' && module.exports) {
           if (gen !== loadGeneration) return;
           savedProgress = data.position || data.timestamp || 0;
           if (savedProgress > 5) resumeDirectly(savedProgress);
-          else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
+          else { savedProgress = 0; autoStart(); }
         })
-        .catch(function () { mediaPlayer.play().catch(function () {}); });
+        .catch(function () { autoStart(); });
       return;
     }
     // v1.196 TV: an episode's resume position rode the descriptor already (from
@@ -4964,7 +5002,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (currentData && currentData.resumeMode === 'tv') {
       savedProgress = Number(currentData.progress) || 0;
       if (savedProgress > 5) resumeDirectly(savedProgress);
-      else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
+      else { savedProgress = 0; autoStart(); }
       return;
     }
     fetch('/api/progress/' + id)
@@ -5020,13 +5058,15 @@ if (typeof module !== 'undefined' && module.exports) {
         } else {
           // v1.23.6 (Dean): auto-start on load for MOBILE too, not just
           // desktop -- picking a song/video just plays, no manual tap needed.
-          // On iOS the FIRST play of a session may be refused (no user gesture
-          // survives the async progress fetch) -> the .catch swallows it and
-          // the play button stays exactly as before; once the user has tapped
-          // play once, the persistent <video> is unlocked and every later pick
-          // auto-plays. The resume-overlay / saved-progress branches above are
-          // unchanged (they intentionally do NOT auto-play).
-          mediaPlayer.play().catch(function () {});
+          // On iOS a play may be refused: a page no tap ever touched (a
+          // notification's) has no gesture at all, and a tap's gesture is
+          // forwarded across its fetches only for a while (WebKit
+          // maximumIntervalForUserGestureForwardingForFetch) -> autoStart logs it and raises
+          // the refused flag (v1.334: the skin's "Tap to play" cue); once the
+          // user has tapped play once, the persistent <video> is unlocked and
+          // every later pick auto-plays. The resume-overlay / saved-progress
+          // branches above are unchanged (they intentionally do NOT auto-play).
+          autoStart();
         }
       })
       .catch(function (e) {
@@ -6438,6 +6478,7 @@ if (typeof module !== 'undefined' && module.exports) {
     initPlaybackRate(); // FR-4 (T1, v1.22.1): apply the persisted speed BEFORE any playback below
 
     mediaPlayer.addEventListener('play', startProgressSaver);
+    mediaPlayer.addEventListener('play', function () { setAutoStartRefused(false); }); // v1.334: it plays - the Tap to play cue goes
     mediaPlayer.addEventListener('pause', stopProgressSaver);
     // F-D (v1.27.1): the SECOND background-audio handoff trigger -- see
     // `handlePossibleIOSPrePauseHandoff`'s own comment for the full
@@ -8223,6 +8264,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function teardownMediaState(opts) {
     var preserveImmersive = !!(opts && opts.preserveImmersive);
     loadGeneration++; // invalidate any in-flight poll/resume-check tied to the previous media
+    setAutoStartRefused(false); // v1.334: a new load starts un-refused (its own autoStart decides)
     // v1.39.0: clear any lock-screen prev/next CHAPTER handlers from a prior
     // load (they close over a specific view). A book-audio load re-registers
     // them right after via read.js; a plain video/audio load leaves them cleared
@@ -8982,6 +9024,7 @@ if (typeof module !== 'undefined' && module.exports) {
       } catch (_) { /* best-effort only */ }
     }
     loadGeneration++; // invalidate any in-flight poll/resume-check
+    setAutoStartRefused(false); // v1.334: nothing left to tap-to-play
     setTrackNav(null); // v1.39.0: drop the lock-screen prev/next chapter handlers
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
@@ -9201,6 +9244,9 @@ if (typeof module !== 'undefined' && module.exports) {
     close: close,
     setTrackNav: setTrackNav, // v1.39.0: register/clear lock-screen prev/next (book chapters)
     getState: function () { return state; },
+    // v1.334: iOS refused this load's auto-start (no user gesture: a notification's page) and it has not
+    // played since - the skin shows its "Tap to play" cue while this is true (skin-surface.js)
+    autoStartRefused: function () { return autoStartRefused; },
     // v1.110 (Dean, share-at-current-time): the live playback position in seconds
     // for the loaded item, or null when there's nothing to share a timestamp for.
     // NON-live only -- a live-transcode offset is not a shareable VOD `?t=` (watch.js

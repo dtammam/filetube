@@ -3250,5 +3250,11 @@
     "date": "2026-09-25",
     "title": "Ambient lighting for the Click skins, and a corner menu that fits",
     "intent": "The Click skins have a fourth lighting choice, Ambient: the same tilt-driven shine as Pronounced, but the light now takes on the color of the body and softens like it does on real anodized metal, with a fine grain. The corner sticker's menu no longer runs off the top of the screen with a big sticker; Brick moved out of it (it is still under Extras, Games), the four lighting choices are in it, and skins open on their own page so the menu fits on most phones."
+  },
+  {
+    "version": "1.334.0",
+    "date": "2026-09-25",
+    "title": "The motion prompt comes when the player opens, the sticker catches the light, and a tap to play when a song cannot start",
+    "intent": "On the Click skins with lighting on, the iPhone's motion prompt now appears on the tap that opens the player, not on the next tap. The corner sticker picks up the lighting too: a soft gloss toward the light and a small shadow away from it, following the sticker's own shape. When a notification opens a song the iPhone will not start on its own, the player shows a Tap to play button that starts it."
   }
 ]

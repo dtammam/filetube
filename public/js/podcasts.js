@@ -1049,6 +1049,10 @@
       opts = opts || {};
       var ep = playable[i];
       if (!ep || !currentShow) return;
+      // v1.334 (Dean): the tap that starts an episode is the gesture iOS needs to ask for motion access -
+      // SYNCHRONOUSLY, before the load's fetches spend it (pocket-lighting.js askForOpen decides: once per
+      // session, only when the player it opens is a Click skin that would light).
+      try { if (window.FileTubePocketLighting && typeof window.FileTubePocketLighting.askForOpen === 'function') window.FileTubePocketLighting.askForOpen(window); } catch (_) { /* lighting is optional */ }
       // v1.71: derive show identity per-EPISODE where the payload carries it
       // (ep.subId/showName are authoritative wherever the payload sets them).
       // A plain show view falls back to currentShow. v1.75: the cross-show
