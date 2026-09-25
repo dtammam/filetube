@@ -185,10 +185,17 @@ function reaches(sel, el) {
 const rulesReaching = (el) => ALL.filter((r) => r.selectors.some((s) => reaches(s, el)));
 const exactly = (selector) => ALL.filter((r) => r.selectors.includes(selector));
 
+// v1.332 (the pocket design system, D3): the title's one-line behavior comes from the ONE text-line
+// rule every pocket text line shares (its selector list names .ip-np); its own rule carries its size
+// and its flex. Exactly those two rules are the title's base - any third rule is censused below.
+const titleBase = () => exactly('.mms-ipod .ip-np');
 test('the status title is the flex child that gives: nowrap, min-width 0, overflow hidden, ellipsis, shrinkable', () => {
-  const base = exactly('.mms-ipod .ip-np');
-  assert.strictEqual(base.length, 1, 'one base rule for the status title');
-  const d = base[0].decls;
+  const base = titleBase();
+  assert.strictEqual(base.length, 2, 'the text-line rule + the title\'s own rule');
+  const line = base.find((r) => r.selectors.length > 1);
+  assert.ok(line && line.selectors.includes('.mms-ipod .ipm-lbl'), 'the shared text-line rule (the menu rows\' label is on it too)');
+  const d = Object.assign({}, line.decls, base.find((r) => r !== line).decls);
+  assert.ok(!('white-space' in base.find((r) => r !== line).decls), 'the title\'s own rule does not re-declare the line (one rule, not per incident)');
   assert.strictEqual(d['white-space'], 'nowrap', 'never wraps onto a second line');
   assert.strictEqual(d['min-width'], '0', 'may shrink below its text (a flex item\'s default min-width is its content)');
   assert.strictEqual(d.overflow, 'hidden');
@@ -237,8 +244,8 @@ const PANEL_HOSTS = ['public/music.html', 'public/podcasts.html', 'public/js/mus
 function census(el, base, table) {
   // Only the ONE base rule object is exempt: a later rule repeating the base selector is
   // censused like any other (it would win the cascade).
-  const baseRule = exactly(base)[0];
-  const found = rulesReaching(el).filter((r) => r !== baseRule);
+  const baseRules = base === '.mms-ipod .ip-np' ? titleBase() : [exactly(base)[0]];
+  const found = rulesReaching(el).filter((r) => !baseRules.includes(r));
   const bad = [];
   for (const r of found) {
     if (r.selectors.every((s) => !reaches(s, el) || EXCEPTIONS.some((x) => x.selector === s))) continue;

@@ -18,7 +18,8 @@
 //     fixed time, so a shot depends on the CSS alone. Then the desktop pop-out (the plain-window
 //     fallback) and the Nano tray per colorway.
 //     Env: VIEWPORTS=390x844,380x700 (default), POPOUT=0 skips the pop-out and tray,
-//     LIGHTS=off,subtle,pronounced, CHROME=<binary>.
+//     LIGHTS=off,subtle,pronounced, CHROME=<binary>, CHROME_FLAGS=<extra flags>, STYLE_FULL=1 (store each
+//     element's full computed style instead of its hash - to see WHICH property differs).
 //
 //   node scripts/pocket-render-probe.js compare <before-dir> <after-dir>
 //     Decodes every PNG pair in Chromium (canvas getImageData) and counts differing pixels, and
@@ -63,6 +64,8 @@ function wav(seconds) {
 
 const LONG_ALBUM = 'The Complete Northbound Night Transit Sessions Recorded Live At The Harbor Lights Ballroom In The Winters Of Ninety Nine';
 const LONG_SONG = 'Sodium Lamp Over The Northbound Platform And Every Other Song We Played Until The Last Train Left The Station (Full Mix)';
+const LONG_CHAPTERED = 'Northbound Platform Choir Live From The Harbor Lights Ballroom The Whole Winter Set Recorded In One Take (Full Night)';
+const LONG_CHAPTER = 'Every Other Song We Played Until The Last Train Left The Station And The Lights Went Down Over The Northbound Platform';
 const LONG_ARTIST = 'Halden Arcs Featuring The Northbound Platform Choir And Every Other Voice We Recorded That Winter At The Ballroom';
 // enough albums for the Albums level to be letterable (quick scroll needs 20+ rows)
 const FILLER = ['Amber Coast', 'Blue Hour', 'Cold Signal', 'Dune Radio', 'Echo Park', 'Frost Line', 'Glass Tide', 'Harbor Fog',
@@ -79,7 +82,10 @@ const DRIVERS = `
   window.__row = function (label) { var rs = __P().querySelectorAll('.ip-menuview .ipm-row'); for (var i = 0; i < rs.length; i++) { var l = rs[i].querySelector('.ipm-lbl'); if (l && l.textContent === label) return __tap(rs[i]); } return false; };
   window.__title = function () { var n = __P() && __P().querySelector('.ip-np'); return n ? n.textContent : null; };
   window.__ready = function () { var v = __P() && __P().querySelector('.ip-menuview'); return !v || !v.querySelector('.ipm-skel'); };
-  window.__freeze = function (t) { var m = document.getElementById('media-player'); if (m) { try { m.pause(); m.currentTime = t; } catch (_) {} } return true; };
+  // the audio held at ONE position: paused, seeked, and every later play() is refused while frozen
+  window.__freeze = function (t) { var m = document.getElementById('media-player'); if (!m) return false;
+    if (!window.__frozen) { window.__frozen = true; m.play = function () { return Promise.resolve(); }; }
+    try { m.pause(); if (Math.abs(m.currentTime - t) > 0.01) m.currentTime = t; } catch (_) {} return true; };
   window.__light = function (s, lx, ly, lm) { var p = __P(); if (!p) return false;
     p.classList.toggle('mms-lit', s !== 'off'); p.classList.toggle('mms-lit-strong', s === 'pronounced');
     if (s === 'off') { p.style.removeProperty('--lx'); p.style.removeProperty('--ly'); p.style.removeProperty('--lm'); }
@@ -88,14 +94,35 @@ const DRIVERS = `
   window.__styles = function () {
     var p = __P(); if (!p) return {};
     var h = function (s) { var x = 2166136261; for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } return (x >>> 0).toString(16); };
-    var dump = function (cs) { var parts = []; for (var k = 0; k < cs.length; k++) { var n = cs[k]; if (n.slice(0, 2) === '--') continue; parts.push(n + ':' + cs.getPropertyValue(n)); } return parts.join(';'); };
+    // url()s are made origin-relative (the probe's server port is random per run)
+    var dump = function (cs) { var parts = []; for (var k = 0; k < cs.length; k++) { var n = cs[k]; if (n.slice(0, 2) === '--') continue; parts.push(n + ':' + cs.getPropertyValue(n).split(location.origin).join('')); } return parts.join(';'); };
     var pathOf = function (el) { var s = []; while (el && el !== p.parentNode) { var i = 0, q = el; while ((q = q.previousElementSibling)) i++; s.unshift(el.tagName.toLowerCase() + ':' + i); el = el.parentElement; } return s.join('>'); };
     var out = {}; var els = [p].concat(Array.prototype.slice.call(p.querySelectorAll('*')));
     els.forEach(function (el) {
       var parts = dump(getComputedStyle(el));
       ['::before', '::after'].forEach(function (ps) { var c = getComputedStyle(el, ps); if (c.content && c.content !== 'none' && c.content !== 'normal') parts += '|' + ps + dump(c); });
-      out[pathOf(el) + ' ' + (typeof el.className === 'string' ? el.className : '')] = h(parts);
+      out[pathOf(el) + ' ' + (typeof el.className === 'string' ? el.className : '')] = window.__FULL ? parts : h(parts);
     });
+    return out; };
+  // AC6: every text element on the LCD - how many lines it takes, and whether it reaches past the screen
+  window.__overflow = function () {
+    var p = __P(); var lcd = p && p.querySelector('.ip-lcd-in'); if (!lcd) return null;
+    var L = lcd.getBoundingClientRect(); var out = { lines: [], spills: [], statusH: 0, maxLines: 0 };
+    var st = p.querySelector('.ip-status'); if (st) out.statusH = Math.round(st.getBoundingClientRect().height * 10) / 10;
+    Array.prototype.forEach.call(lcd.querySelectorAll('*'), function (el) {
+      var own = Array.prototype.some.call(el.childNodes, function (n) { return n.nodeType === 3 && n.textContent.trim(); });
+      if (!own) return; var cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') return;
+      var r = el.getBoundingClientRect(); if (!r.width || !r.height) return;
+      var rg = document.createRange(); rg.selectNodeContents(el); var rects = rg.getClientRects();
+      var tops = {}; Array.prototype.forEach.call(rects, function (q) { if (q.width > 0) tops[Math.round(q.top)] = 1; });
+      var n = Object.keys(tops).length; var cls = (el.className && el.className.baseVal === undefined ? el.className : '') || el.tagName;
+      if (n > out.maxLines) out.maxLines = n;
+      if (n > 1) out.lines.push(cls + ' x' + n);
+      var clipped = cs.overflowX !== 'visible';
+      if (!clipped && (r.right > L.right + 0.5 || r.left < L.left - 0.5)) out.spills.push(cls);
+      if (clipped && el.scrollWidth > el.clientWidth && cs.textOverflow !== 'ellipsis' && !el.querySelector('.mms-mq')) out.spills.push(cls + ' (clipped, no ellipsis)');
+    });
+    out.docOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
     return out; };
   window.__lcdRect = function () { var l = __P() && __P().querySelector('.ip-lcd'); if (!l) return null; var r = l.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
 `;
@@ -117,7 +144,10 @@ async function cdp(wsUrl) {
 async function launch(chromeBin) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-render-probe-chrome-'));
   const chrome = spawn(chromeBin, ['--headless=new', `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`, '--no-sandbox', '--disable-dev-shm-usage',
-    '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars', '--autoplay-policy=no-user-gesture-required', '--font-render-hinting=none', 'about:blank'], { stdio: 'ignore' });
+    '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars', '--autoplay-policy=no-user-gesture-required', '--font-render-hinting=none',
+    // CPU raster on ONE thread: GPU / multi-thread raster dithers gradients differently run to run
+    // (measured: +-3 levels over the whole body between two runs of one tree); this is 0 px.
+    '--disable-gpu-rasterization', '--num-raster-threads=1', '--disable-partial-raster', '--disable-zero-copy'].concat((process.env.CHROME_FLAGS || '').split(' ').filter(Boolean), ['about:blank']), { stdio: 'ignore' });
   let list = null;
   for (let i = 0; i < 40 && !list; i++) { await new Promise((r) => setTimeout(r, 250)); try { list = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json(); } catch (_) { /* not up */ } }
   if (!list) throw new Error('Chromium never exposed its debug endpoint');
@@ -142,6 +172,8 @@ async function shoot(OUT, SKINS) {
   add('nd2', 'tonzak', 'Tonzak', { title: 'Overpass', album: 'Night Drive', track: '2', genre: 'Synthwave' });
   add('lg1', 'halden', LONG_ARTIST, { title: LONG_SONG, album: LONG_ALBUM, track: '1', genre: 'Ambient' });
   add('lg2', 'halden', LONG_ARTIST, { title: 'Terminus', album: LONG_ALBUM, track: '2', genre: 'Ambient' });
+  add('lgmix', 'halden', LONG_ARTIST, { title: LONG_CHAPTERED, genre: 'Ambient' },
+    { chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 10, title: LONG_CHAPTER }, { startTime: 20, title: 'Outro' }] }, 30);
   FILLER.forEach((a, i) => add('f' + i, 'filler', 'Various', { title: a + ' Theme', album: a, track: '1', genre: 'Pop' }));
   await updateDatabase((db) => { db.metadata = meta; return true; });
   fs.mkdirSync(OUT, { recursive: true });
@@ -157,13 +189,15 @@ async function shoot(OUT, SKINS) {
   await send('Network.enable'); await send('Page.enable');
   await send('Network.setCookie', { name: cname, value: cvalue, url: base });
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: DRIVERS });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: DRIVERS + (process.env.STYLE_FULL ? ';window.__FULL = true;' : '') });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitFor = async (expr, ms) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } return false; };
   const styles = {};
   const meta2 = {};
   const log = (o) => console.log(JSON.stringify(o));
   const snap = async (tag, extra) => {
+    await ev('__freeze(7)');
+    await ev('document.fonts.ready.then(function () { return true; })');
     for (const s of LIGHTS) {
       await ev(`__light(${JSON.stringify(s)}, ${JSON.stringify(TILT.lx)}, ${JSON.stringify(TILT.ly)}, ${JSON.stringify(TILT.lm)})`);
       await sleep(250);
@@ -171,10 +205,11 @@ async function shoot(OUT, SKINS) {
       const shot = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.data, 'base64'));
       styles[name] = await ev('__styles()');
-      meta2[name] = Object.assign({ title: await ev('__title()'), lcd: await ev('__lcdRect()'), scale: 2 }, extra || {});
+      meta2[name] = Object.assign({ title: await ev('__title()'), lcd: await ev('__lcdRect()'), scale: 2, overflow: await ev('__overflow()') }, extra || {});
     }
     await ev(`__light('off')`);
-    log({ tag, title: await ev('__title()'), errs: await ev('__errs.slice(0,3)') });
+    const of = meta2[`${tag}--${LIGHTS[LIGHTS.length - 1]}`].overflow;
+    log({ tag, title: await ev('__title()'), statusH: of && of.statusH, maxLines: of && of.maxLines, multiLine: of && of.lines, spills: of && of.spills, docOverflow: of && of.docOverflow, errs: await ev('__errs.slice(0,3)') });
   };
   const go = async (action, want) => {
     await ev(action);
@@ -215,6 +250,8 @@ async function shoot(OUT, SKINS) {
       await go(`__row('Artists')`, 'Artists');
       await go(`__row(${JSON.stringify(LONG_ARTIST)})`, LONG_ARTIST); await snap(pre + '-06-artist-long');
       await go(`__row(${JSON.stringify(LONG_ALBUM)})`, LONG_ALBUM); await snap(pre + '-07-album-long');
+      await go(`__tap('[data-skin-menu]')`, LONG_ARTIST);
+      await go(`__row(${JSON.stringify(LONG_CHAPTERED)})`, LONG_CHAPTERED); await snap(pre + '-07b-chapters-long');
       for (let i = 0; i < 6 && (await ev('__title()')) !== 'Click'; i++) { await ev(`__tap('[data-skin-menu]')`); await sleep(450); }
       await go(`__row('Settings')`, 'Settings'); await snap(pre + '-08-settings');
       await go(`__row('Lighting')`, 'Lighting'); await snap(pre + '-09-lighting');
@@ -227,6 +264,13 @@ async function shoot(OUT, SKINS) {
         await ev(`__row('Brick')`); await sleep(600);
         await snap(pre + '-11-brick', { brick: true });
       }
+      // Now Playing with every line 120 characters (the song, its artist, its album)
+      await send('Page.navigate', { url: base + '/music?play=lg1' });
+      await waitFor(`!!document.querySelector('#music-nowplaying-panel.mms-full .ip-status') && !!(window.FileTube && FileTube.player && FileTube.player.currentId === 'lg1')`, 20000);
+      await sleep(900);
+      await snap(pre + '-12-now-playing-long');
+      await ev(`__tap('[data-skin-select]')`); await sleep(500);
+      await snap(pre + '-13-song-list-long');
     }
   }
 

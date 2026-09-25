@@ -180,3 +180,75 @@ test('AC5: the structure + type tokens are defined ONCE, on the chassis (.mms-ip
   assert.strictEqual(new Set(names).size, names.length, 'no token defined twice');
   for (const n of names) assert.ok(new RegExp('var\\(' + n + '\\)').test(CSS), n + ' is read somewhere');
 });
+
+// ---- AC6: overflow is ONE rule, and every text element the renderers draw is classified ----
+// The text-line rule's selector list (parsed from the stylesheet - the list IS the classification),
+// the elements that deliberately WRAP, and the fixed GLYPHS (a mark, a count, a letter - text that
+// never grows with a user's name). A new text element fails this census until it joins a list.
+const { JSDOM } = require('jsdom');
+const WRAP = ['ipm-note', 'ipm-noterow ipm-lbl'];
+const GLYPH = ['mms-playind', 'ip-stars', 'mms-rn', 'mms-chev-r', 'ipm-chev', 'ipm-check', 'ipm-letter', 'ipm-badge', 'ipm-gl', 'ip-zone'];
+function textLineClasses() {
+  const r = ALL.filter((x) => /white-space:\s*nowrap/.test(x.body) && /text-overflow:\s*ellipsis/.test(x.body) && /\.mms-ipod \.ipm-lbl\b/.test(x.sel));
+  assert.strictEqual(r.length, 1, 'ONE text-line rule');
+  return r[0].sel.split(',').map((s) => s.trim().replace(/^\.mms-ipod \./, ''));
+}
+const LONG = 'The Complete Northbound Night Transit Sessions Recorded Live At The Harbor Lights Ballroom In The Winters Of Ninety Nine';
+function pocketLevels() {
+  const ctx = { track: { title: LONG, artist: LONG, album: LONG, artUrl: '' }, upNext: [], playing: true, posLabel: '1:02', remLabel: '-2:41', posSec: 62, durSec: 223, curNum: 3, total: 12,
+    fullList: [{ index: 0, title: LONG, durLabel: '4:51', state: 'played' }, { index: 1, title: LONG, durLabel: '10:04:51', state: 'current' }, { index: 2, title: LONG, durLabel: '', state: 'next' }], artistTap: true };
+  const out = [SK.renderFull('ipod', ctx), SK.renderFull('ipod', Object.assign({}, ctx, { artistTap: false }))];
+  const v = (items, extra) => SK.renderMenuView('click', Object.assign({ title: LONG, items, cursor: 0, start: 0, end: items.length, rowH: 0, state: 'ready', currentId: 's1' }, extra || {}));
+  out.push(v(SK.menuStaticItems({ type: 'main' }, { hasCurrent: true, hasGames: true })));
+  out.push(v([{ label: LONG, node: { type: 'album' } }, { label: LONG, id: 's1', song: true, sub: LONG }, { label: LONG, check: true, action: 'lighting' }]));
+  out.push(v(SK.menuAboutItems({ songs: 1234567, albums: 5, artists: 7, version: '1.332.0-' + LONG }), { aboutName: LONG }));
+  out.push(v(SK.menuLightingItems({ strength: 'subtle', note: LONG })));
+  out.push(v([], { state: 'loading' }), v([], { state: 'error' }), v([], { state: 'empty', emptyText: LONG }));
+  const runs = SK.menuLetterRuns(new Array(30).fill(0).map((_, i) => ({ label: String.fromCharCode(65 + (i % 26)) + ' ' + LONG })));
+  out.push(v([{ label: LONG }], { jump: { letter: 'A', overlay: true, badge: true, grid: SK.menuLetterTargets(runs) } }));
+  return out;
+}
+function classify(html) {
+  const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
+  const found = [];
+  for (const el of doc.querySelectorAll('#h *')) {
+    const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (own) found.push(el);
+  }
+  return found;
+}
+function key(el) {
+  const c = [...el.classList];
+  if (c.includes('ipm-lbl') && el.closest('.ipm-noterow')) return 'ipm-noterow ipm-lbl';
+  return c.find((x) => /^(ip|ipm|mms)-/.test(x)) || '(' + el.tagName.toLowerCase() + ' with no class)';
+}
+
+test('AC6: ONE text-line rule, and every text element on every pocket level is a text line, a wrap, or a glyph', () => {
+  const lines = textLineClasses();
+  for (const c of ['ip-np', 'ip-ttl', 'ip-artist', 'ip-album', 'mms-rt', 'ipm-lbl', 'ipm-about-name']) assert.ok(lines.includes(c), c + ' is a text line');
+  const unclassified = new Set();
+  let n = 0;
+  for (const html of pocketLevels()) {
+    for (const el of classify(html)) {
+      n += 1;
+      const k = key(el);
+      if (WRAP.includes(k) || GLYPH.includes(k)) continue;
+      if (!lines.includes(k)) unclassified.add(k + ': "' + el.textContent.slice(0, 30) + '"');
+    }
+  }
+  assert.ok(n > 40, 'precondition: the census read the rendered text (' + n + ' elements)');
+  assert.deepStrictEqual([...unclassified], [], 'a text element that is neither a text line, a wrap nor a glyph - classify it');
+  // not vacuous: a NEW text element the lists do not know fails
+  const extra = classify('<div class="ip-lcd"><span class="ip-newline">' + LONG + '</span></div>').map(key);
+  assert.ok(extra.includes('ip-newline') && !lines.includes('ip-newline') && !WRAP.includes('ip-newline') && !GLYPH.includes('ip-newline'));
+});
+
+test('AC6: no pocket rule re-declares the line by hand (ellipsis / nowrap live in the ONE rule; the wraps are the named exceptions)', () => {
+  const pocket = ALL.filter((r) => POCKET(r.sel));
+  const hand = pocket.filter((r) => /text-overflow\s*:\s*ellipsis/.test(r.body)).map((r) => r.sel);
+  assert.strictEqual(hand.length, 1, 'only the text-line rule ellipsizes: ' + hand.join(' || '));
+  const wraps = pocket.filter((r) => /white-space\s*:\s*(normal|pre-wrap|pre-line|break-spaces)/.test(r.body)).map((r) => r.sel);
+  assert.deepStrictEqual(wraps, ['.mms-ipod .ipm-noterow .ipm-lbl'], 'the one deliberate wrap');
+  // the wrap exception comes AFTER the text line (equal-or-higher specificity + later = it wins)
+  assert.ok(CSS.indexOf('.mms-ipod .ipm-noterow .ipm-lbl{') > CSS.indexOf('.mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap;'), 'the wrap follows the line');
+});

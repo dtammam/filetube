@@ -11730,8 +11730,8 @@ html[data-modern="on"] .video-uploader {
   body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--pk-tray-inset); border-radius:var(--pk-tray-radius); box-sizing:border-box; }
   body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
   body.mms-tray .ip-cover{ width:var(--pk-tray-art); height:var(--pk-tray-art); flex:none; }
-  body.mms-tray .ip-ttl{ font-size:var(--pk-fs-tray-title); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--pk-fs-tray-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.mms-tray .ip-ttl{ font-size:var(--pk-fs-tray-title); }
+  body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--pk-fs-tray-sub); }
   body.mms-tray .ip-stars{ display:none; }
   body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
   /* v1.258.1 (Dean: the tray menu "way too small when clicked, not really usable"): the
@@ -11924,6 +11924,16 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod{ background:var(--pk-c-body);
     color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
+  /* THE TEXT LINE (v1.332, D3: ONE overflow rule, not one per incident): every single-line text
+     element of the pocket screens - the status title, the Now Playing lines, the list and menu rows,
+     their values and times, About's name - may shrink below its text, never wraps, and truncates with
+     an ellipsis (the marquee, later in the file, swaps the ellipsis for a scroll where motion is
+     allowed). It sits BEFORE the rules that deliberately wrap (the Lighting note row) so they win.
+     test/unit/pocket-design-system.test.js censuses every text element the renderers draw against
+     this list, the wrap list and the glyph list: a new text element fails until it is classified. */
+  .mms-ipod .ip-np, .mms-ipod .ip-ttl, .mms-ipod .ip-artist, .mms-ipod .ip-album, .mms-ipod .ip-nof,
+  .mms-ipod .mms-pos, .mms-ipod .mms-rem, .mms-ipod .mms-rt, .mms-ipod .mms-rd,
+  .mms-ipod .ipm-lbl, .mms-ipod .ipm-val, .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
   /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
@@ -11944,7 +11954,7 @@ html[data-modern="on"] .video-uploader {
      Classic's status title does. The play mark + battery cluster never shrinks or moves.
      Covers every screen that draws this bar: every Click colorway, the desktop pop-out
      and the Nano tray (scripts/skin-status-bar-probe.js measures them). */
-  .mms-ipod .ip-np{ font-size:var(--pk-fs-status); font-weight:var(--fw-bold); flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-ipod .ip-np{ font-size:var(--pk-fs-status); font-weight:var(--fw-bold); flex:1 1 auto; }
   .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
   .mms-ipod .mms-playind{ font-size:var(--pk-fs-status-mark); color:var(--mms-ipod-scr-sub); }
   .mms-ipod .ip-batt{ width:var(--pk-batt-w); height:var(--pk-batt-h); flex:none; overflow:hidden; background:var(--mms-white); border:1px solid var(--mms-ipod-batt-line); border-radius:var(--mms-ipod-r-sm); }
@@ -11957,9 +11967,9 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-cover::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(18px) brightness(.72); transform:scale(1.35); }
   .mms-ipod .ip-cover img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
   .mms-ipod .ip-meta{ flex:1; min-width:0; }
-  .mms-ipod .ip-ttl{ font-size:var(--pk-fs-np-title); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .ip-artist{ font-size:var(--pk-fs-np-artist); margin-top:var(--space-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .ip-album{ font-size:var(--pk-fs-np-album); color:var(--mms-ipod-scr-sub); margin-top:var(--space-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-ipod .ip-ttl{ font-size:var(--pk-fs-np-title); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); }
+  .mms-ipod .ip-artist{ font-size:var(--pk-fs-np-artist); margin-top:var(--space-3); }
+  .mms-ipod .ip-album{ font-size:var(--pk-fs-np-album); color:var(--mms-ipod-scr-sub); margin-top:var(--space-1); }
   .mms-ipod .ip-stars{ font-size:var(--pk-fs-np-meta); color:var(--mms-ipod-scr-sub); letter-spacing:var(--mms-ls-caps2); margin-top:var(--space-3); }
   .mms-ipod .ip-nof{ font-size:var(--pk-fs-np-meta); font-weight:var(--fw-bold); margin-top:var(--space-3); font-variant-numeric:tabular-nums; }
   /* Aqua scrubber */
@@ -12002,7 +12012,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod.mms-listmode .ip-listview{ display:block; }
   .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-4); width:100%; padding:var(--pk-list-row-pad); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer; border-bottom:1px solid var(--mms-ipod-line); font-size:var(--pk-fs-row); font-weight:var(--fw-semibold); }
   .mms-ipod .mms-rn{ width:var(--pk-row-num-w); text-align:center; font-size:var(--pk-fs-row-meta); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
-  .mms-ipod .mms-rt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-ipod .mms-rt{ flex:1; }
   .mms-ipod .mms-rd{ font-size:var(--pk-fs-row-meta); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
   .mms-ipod .mms-chev-r{ color:var(--mms-ipod-scr-sub); flex:none; }
   .mms-ipod .mms-row.is-played{ opacity:.55; }
@@ -12031,7 +12041,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:var(--pk-row-h);
     box-sizing:border-box; padding:0 var(--space-4); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer;
     font-family:inherit; font-size:var(--pk-fs-menu); font-weight:var(--fw-bold); }
-  .mms-ipod .ipm-lbl{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mms-ipod .ipm-lbl{ flex:1; }
   .mms-ipod .ipm-chev{ flex:none; font-size:var(--pk-fs-chev); color:var(--mms-ipod-scr-sub); }
   .mms-ipod .ipm-now{ flex:none; display:grid; place-items:center; }
   .mms-ipod .ipm-now svg{ width:var(--pk-speaker); height:var(--pk-speaker); fill:var(--mms-ipod-blue1); display:block; }
@@ -12075,7 +12085,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ipm-gl:active{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); }
   .mms-ipod .ipm-gl.is-off{ color:var(--mms-ipod-hair); cursor:default; }
   /* About (addendum D): the device's About screen - the name large, read-only rows with values */
-  .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--pk-fs-about); font-weight:var(--fw-bold); color:var(--mms-black); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--pk-fs-about); font-weight:var(--fw-bold); color:var(--mms-black); }
   .mms-ipod .ipm-row.ipm-info{ cursor:default; }
   .mms-ipod .ipm-val{ flex:none; font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
   /* the tray (the pop-out's Nano strip) has no wheel to reach a menu with - Now Playing only */
