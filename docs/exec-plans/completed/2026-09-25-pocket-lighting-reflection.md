@@ -3,7 +3,7 @@ plan: pocket-lighting-reflection
 harness: v2 · lean
 branch: feat/pocket-lighting-reflection
 anchor: spec
-status: Shipped v1.329.0
+status: Shipped v1.329.0, REVERTED in v1.330.0 (Dean's device check: "a white dot with two rectangles that float around aggressively")
 next: release v1.329.0
 design: this document; the research is Dean's doc "FileTube Click skins: making the lighting look physically real" (2026-09-24)
 gate: APPROVED r2 @2869d88b (adversary + qa); r1 CHANGES (the glass's one pane) fixed in 2869d88b; the r2 suggestions filed as #276
@@ -241,3 +241,47 @@ SUGGESTION (non-blocking):
 - S-b scripts/pocket-lighting-probe.js:108 still has `const KX = -10` (not in the fix diff). The stock probe's "key" pose is now 7 deg off the key: ex -14, fx about -492 px. My r2 run patched KX to -3. Read L.KEY_X instead.
 - S-c Lock survivor on the C1 surface: dropping `+ var(--lcy,0px)` from the glass RIGHT pane's position passes 17/17. The lock binds only the left pane's position string.
 - Security: unchanged from r1. One window `resize` listener added, bound and unbound symmetrically; no route, network or dependency change.
+
+
+## Outcome: REVERTED in v1.330.0 (Dean, 2026-09-25, on the iPhone)
+
+"Something about 1.329 is just not good. It is literally just like a white dot with two rectangles
+that float around aggressively ... let's just go back to 1.328's look basically exactly as we had it."
+v1.330.0 restores the four lighting files byte-for-byte from v1.328.0 (`git checkout dd5470a1 --
+public/js/pocket-lighting.js public/css/style.css test/unit/pocket-lighting.test.js
+scripts/pocket-lighting-probe.js`; the diff against dd5470a1 is empty) and folds in the first-tap
+motion ask on top of that driver.
+
+### What the research got right, and where it went wrong on the device
+- The physics is sound and stays useful: a mirror turns a reflection by twice the tilt; a phone face
+  spans ~24 deg of view; k = height / 24 px per degree; a dome moves R / (2 beta) per degree; the
+  materials (5G gloss vs the Classic's anodized metal; a matte wheel with no specular); static
+  occlusion; a gravity-referenced light that never fades; 60 ms smoothing. All of it measured correct in
+  headless Chromium (the five poses landed at +-421 px; Off byte-identical; ~2.3 ms/frame).
+- What it produced on a phone: a window drawn as two flat gradient rectangles that sweep HALF THE FACE per
+  6 degrees of tilt, plus a 3 px "lamp sparkle" on the dome - physically correct amounts of motion that
+  read as two rectangles and a white dot flying around. The research's own verification step (photograph
+  a real glossy object at the same poses and compare) was skipped on Dean's call to build from the numbers
+  first; the headless screenshots showed exactly what Dean saw and the Architect judged them "physically
+  consistent" instead of "does this look like anything".
+
+### Learnings (the reusable ones)
+1. **Physically correct is not the same as convincing.** A real reflection is recognisable because it is a
+   rich, detailed image (a whole room) moving fast; two soft rectangles moving fast are just two
+   rectangles moving fast. Either reflect something detailed (a real environment image, which our
+   gradient-only constraint forbids) or keep the motion small and the shapes vague (v1.328's approach).
+   The middle ground is the worst of both.
+2. **Motion amplitude sells or kills the effect.** v1.328 moved highlights ~30 percent of a surface across
+   the whole tilt range; v1.329 moved them half the face per 6 degrees. On a hand-held phone the hand's
+   jitter alone (1-2 deg) swept the window 70-140 px every moment - "aggressively".
+3. **The Architect's screenshot review must ask "does it look like the thing", not "is it consistent with
+   the model".** The shots were reviewed three times and each review tuned sizes; none asked the only
+   question that mattered.
+4. **Verify against a photograph before the gate, not after the release** - the research put that step
+   in its plan and it was dropped for speed.
+5. **A revert must be byte-identical to a gated state** (here v1.328's files at dd5470a1), so it needs no
+   design re-gate; only the folded-in change (the first-tap ask) is new code.
+
+The research doc stays valuable for a future attempt with a real environment image if the gradient-only
+constraint is ever relaxed; the plan's numbers and the two tests of the geometry (the pure functions)
+are the record.
