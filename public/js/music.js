@@ -3514,8 +3514,16 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // `opts.keepPosition` = a NAV step (next/prev) - keep the player where it is.
     // Omitted (a fresh SELECT: a row tap, shuffle, drill Play, continue) - expand.
+    // v1.334 (Dean: "have it pop for that prompt on opening up the media player in that skin"): every play
+    // a tap starts runs through playAt / playTrackInAlbum / playTrackFromContinue SYNCHRONOUSLY, before
+    // any fetch spends the gesture - so the tap that opens the Click player asks iOS for motion access
+    // (pocket-lighting.js askForOpen: once per session, only for a Click skin that would light).
+    function askLightingForOpen() {
+      try { if (window.FileTubePocketLighting && typeof window.FileTubePocketLighting.askForOpen === 'function') window.FileTubePocketLighting.askForOpen(window); } catch (_) { /* lighting is optional */ }
+    }
     function playAt(i, opts) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
+      askLightingForOpen();
       var item = queue[i];
       playGen += 1;
       // v1.331: a single-chapter SELECT (a browse chapter row, the up-next row, the skin's track
@@ -3537,6 +3545,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.311: `opts.solo` = the user tapped ONE chapter row (exit after that segment). A
       // continue-listening / open-from-home resume (playTrackFromContinue) passes no opts and
       // plays the album straight through - it is NOT a single-chapter select.
+      askLightingForOpen(); // v1.334: before the album fetch spends the gesture
       var solo = !!(opts && opts.solo);
       var pick = !!(opts && opts.pick); // #268: only a user pick may re-seek an adopted chapter (never a continue)
       var myGen = ++playSelectGen; // claim this select BEFORE the async album load
@@ -4010,6 +4019,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // shows the list (a non-bounce MISS -> render()) tears the cover down first.
       // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
       // for both ?play= arms, so they genuinely cannot drift.
+      askLightingForOpen(); // v1.334: a Jump-back tile's tap, before the fetches spend it
       var coverEarly = mountEarlyCover();
       tab = 'songs';
       drill = null;

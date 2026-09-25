@@ -11615,6 +11615,8 @@ html[data-modern="on"] .video-uploader {
   --mms-lits-band:rgba(255,255,255,.42); --mms-lits-band2:rgba(255,255,255,.24); --mms-lits-core:rgba(255,255,255,.55);
   --mms-lits-glass:rgba(215,226,240,.24); --mms-lits-glass2:rgba(215,226,240,.08); --mms-lits-glass-hot:rgba(255,255,255,.3);
   --mms-lit-drop-s:rgba(0,0,0,.28);
+  /* v1.334 the STICKER catches the light: the soft drop it casts on the panel (a lightly raised sticker) */
+  --mms-lit-stk-drop:rgba(0,0,0,.3);
   /* AMBIENT's grain (v1.333): a 64 px luminance-neutral noise tile (+-2% light and dark specks), 3,661 bytes */
   --mms-lita-grain:url("data:image/png;base64,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");
   /* shared type/shape metrics (governed props) */
@@ -11802,6 +11804,13 @@ html[data-modern="on"] .video-uploader {
      viewport less both safe-area insets, the wrap's bottom offset, the sticker (the wrap carries its size
      class) and the gap - never more than the old 86vh. The tray's full-window menu keeps its own rule. */
   .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(86vh, calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
+  /* v1.334 TAP TO PLAY (Dean: a notification opens the song but iOS refuses to start it - "one tap plays"):
+     one clear pill over the upper half of the skin (the art / the LCD, never the wheel or the sticker),
+     shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
+     filter: a lit Click panel sits under it. */
+  .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:41; /* token-exempt: local stacking - over the skin chrome, beside the sticker (40) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-family); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
+  .mms-tapplay svg{ width:22px; height:22px; fill:currentColor; flex:none; }
+  .mms-tapplay:focus-visible{ outline:2px solid var(--on-accent); outline-offset:2px; }
 
   /* ============================ APPLE MUSIC ============================
      A blurred cover bleed fills the screen; a large framed cover, oversized
@@ -11898,6 +11907,7 @@ html[data-modern="on"] .video-uploader {
     --pk-cover-w:44%; --pk-track-h:12px; --pk-vol-glyph:16px;
     --pk-list-row-pad:var(--space-4) var(--space-6); --pk-row-num-w:18px;
     --pk-row-h:34px; /* the menu row pitch: 6-7 rows on a phone LCD, the device's density */
+    --pk-stk-shade-inset:-12%; --pk-stk-shade-size:124%; /* v1.334: the lit sticker's baked shadow + its blur margin (pocket-lighting.js STK_SHADE_PAD) */
     --pk-split:50%; --pk-speaker:14px; --pk-skel-w:70%; --pk-skel-h:10px;
     --pk-letter:96px; --pk-touch:var(--size-touch); --pk-grid-row:var(--size-touch);
     --pk-wheel-d:min(70vw,288px); --pk-center-d:min(26vw,108px); /* ~70% of the body, the real wheel's proportion (v1.239) */
@@ -12324,6 +12334,28 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod.mms-lit.mms-lit-ambient::after{ content:""; position:absolute; inset:-35%; z-index:-1; /* token-exempt: local stacking - with the streak, over the body, under the LCD and wheel */ pointer-events:none;
     /* token-exempt: the same alpha curve over the tint role */ background:radial-gradient(120% 80% at calc(50% + var(--lx,0) * 35%) calc(10% + var(--ly,0) * 30%), rgba(var(--pk-c-lita-glow), .26) 0%, rgba(var(--pk-c-lita-glow), .235) 10%, rgba(var(--pk-c-lita-glow), .17) 22%, rgba(var(--pk-c-lita-glow), .095) 35%, rgba(var(--pk-c-lita-glow), .04) 47%, rgba(var(--pk-c-lita-glow), 0) 60%);
     transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0); will-change:transform; }
+  /* v1.334 THE STICKER CATCHES THE LIGHT (Dean: "It should have like sheen on it ... as if it's literally a
+     sticker, like lightly raised. The shadow would hit it ... I don't want us to go crazy"; plan
+     2026-09-25-pocket-open-ask-sticker-light, item 2). On a LIT Click panel only: a small drop shadow falling
+     AWAY from the light and a soft gloss (pocket-lighting.js paintSticker draws it on a canvas from the sticker's own shape:
+     the image's alpha, or the emoji chip's circle) that sits toward it. The tilt classes rotate the button
+     +-14deg, so the light is counter-rotated into the button's frame (--mms-stk-s = sin, --mms-stk-c = cos of
+     the tilt): the shadow falls away from the light on the SCREEN whatever the tilt. Everything scales with
+     --mms-sticker-px (1x / 2x / 3x). Nothing here filters, blurs, masks, blends or animates (the lock scans these
+     rules); the emoji chip's own backdrop blur stays on its BASE rule and never reads the light. */
+  .mms-ipod.mms-lit .mms-sticker-tilt-left{ --mms-stk-s:-.2419; --mms-stk-c:.9703; }
+  .mms-ipod.mms-lit .mms-sticker-tilt-right{ --mms-stk-s:.2419; --mms-stk-c:.9703; }
+  .mms-ipod.mms-lit .mms-sticker{ position:relative;
+    --mms-stk-l1:calc(var(--lx,0) * var(--mms-stk-c,1) + var(--ly,0) * var(--mms-stk-s,0));
+    --mms-stk-l2:calc(var(--ly,0) * var(--mms-stk-c,1) - var(--lx,0) * var(--mms-stk-s,0));
+    --mms-stk-dx:calc(var(--mms-sticker-px,52px) * (var(--mms-stk-l1) * -.06 + var(--mms-stk-s,0) * .03));
+    --mms-stk-dy:calc(var(--mms-sticker-px,52px) * (var(--mms-stk-l2) * -.06 + var(--mms-stk-c,1) * .03)); }
+  .mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img){ box-shadow:none; }
+  .mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before{ content:""; position:absolute; inset:0; border-radius:inherit; z-index:-1; /* token-exempt: local stacking - under the chip's glyph and gloss */ pointer-events:none;
+    --mms-stk-shadow:var(--mms-stk-dx) var(--mms-stk-dy) calc(var(--mms-sticker-px,52px) * .09) var(--mms-lit-stk-drop); box-shadow:var(--mms-stk-shadow); }
+  .mms-ipod.mms-lit .mms-sticker-shade{ position:absolute; inset:var(--pk-stk-shade-inset); width:var(--pk-stk-shade-size); height:var(--pk-stk-shade-size); z-index:-1; /* token-exempt: local stacking - under the sticker image */ pointer-events:none;
+    transform:translate3d(var(--mms-stk-dx), var(--mms-stk-dy), 0); }
+  .mms-ipod.mms-lit .mms-sticker-gloss{ position:absolute; inset:0; width:100%; height:100%; border-radius:inherit; pointer-events:none; opacity:calc(1 - var(--lm,0) * .3); }
   /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
   .mms-ipod .ipm-check{ flex:none; font-size:var(--pk-fs-check); color:var(--mms-ipod-blue1); }
   .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--mms-white); }

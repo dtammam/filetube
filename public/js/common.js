@@ -10787,6 +10787,12 @@ if (typeof window !== 'undefined') {
     // later in-view play (or the next launch) starts clean and MENU docks in place. (This runs
     // AFTER the same-URL no-op above, so a genuine same-tab re-nav never spuriously clears it.)
     playerLaunchOrigin = nextPlayerLaunchOrigin(parsed.pathname, parsed.search, currentViewUrl, window.location.pathname + window.location.search);
+    // v1.334: a tap that opens the player (a card, a search result, the mini player) is the gesture iOS
+    // needs to ask for motion access - SYNCHRONOUSLY here, before the view fetch spends the gesture
+    // (pocket-lighting.js askForOpen decides whether that player is a Click skin that would light).
+    if (isPlayerOpenUrl(parsed.pathname, parsed.search)) {
+      try { if (window.FileTubePocketLighting && typeof window.FileTubePocketLighting.askForOpen === 'function') window.FileTubePocketLighting.askForOpen(window); } catch (_) { /* lighting is optional */ }
+    }
     recordScrollForCurrentState();
 
     // W2 remediation: this navigation attempt's own generation -- bumped
@@ -16117,6 +16123,12 @@ function isPlayerLaunchUrl(pathname, search) {
 function nextPlayerLaunchOrigin(pathname, search, currentViewUrl, fallbackUrl) {
   return isPlayerLaunchUrl(pathname, search) ? (currentViewUrl || fallbackUrl || null) : null;
 }
+// v1.334 (Dean: "have it pop for that prompt on opening up the media player in that skin"): a navigation
+// that OPENS the full player - a launch (?play=, above) or the mini player's return (?nowplaying=1, the
+// readerHref music.js and podcasts.js stamp). navigate() asks for motion access from inside that tap.
+function isPlayerOpenUrl(pathname, search) {
+  return isPlayerLaunchUrl(pathname, search) || ((pathname === '/music' || pathname === '/podcasts') && /[?&]nowplaying=1(?:&|$)/.test(search || ''));
+}
 
 // v1.161 (Dean): after a search that FINDS something, clear the box so the next
 // search needs no X-press first. On ZERO results, KEEP the text (the X still
@@ -16599,7 +16611,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.247 (F2): the pure MENU-returns-to-origin decision (launch nav -> FROM tab, else null).
-    isPlayerLaunchUrl, nextPlayerLaunchOrigin,
+    isPlayerLaunchUrl, nextPlayerLaunchOrigin, isPlayerOpenUrl,
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref, audioOpenHref,
     formatQueuePosition,

@@ -10,11 +10,13 @@
 //
 // Scope (Dean's ruling, plan 2026-09-24-pocket-gyro-lighting): the Click family only (every Click
 // colorway in the registry); the engine's `isPocket` is the registry's menus === 'click'. Strength Off / Subtle / Pronounced / Ambient is device-local (localStorage), default Off, chosen
-// from the pocket menu's Settings > Lighting or the sticker menu's Lighting chips (v1.333); the strength tap is what asks iOS for motion access.
+// from the pocket menu's Settings > Lighting or the sticker menu's Lighting chips (v1.333). What asks iOS for motion access, once per
+// launch: the strength tap, the tap that OPENS the Click player (askForOpen, v1.334) or, failing both, the first tap on the painted player.
 //
-// The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever
-// writes two numbers; the CSS it feeds moves gradient positions and translates two gradient
-// layers (each painting one thin stripe) - no filter, blur, mask or backdrop, ever. The frame loop runs only while a Click
+// The HARD constraint (the old ambient mode blacked out video on iPhone): the driver only ever
+// writes two numbers (and --lm); the CSS it feeds moves gradient positions and translates gradient
+// layers - no filter, blur, mask or backdrop, ever. (v1.334: the sticker's gloss and shade are
+// canvases painted from the sticker's own pixels - paintSticker, below - never a filter or mask.) The frame loop runs only while a Click
 // skin is painted, visible and lit, writes only when a value moved, and parks itself when the light
 // has settled; every teardown arm (skin switch, dock, hidden tab, pop-out close, reduced motion)
 // unbinds the listener and cancels the loop. The pure half (mapping, filter, strength) is
@@ -126,6 +128,187 @@
   }
   function newFilter() { return { seeded: false, bx: 0, by: 0, x: 0, y: 0, wx: 0, wy: 0 }; }
 
+  // The window questions every ask needs (the driver asks them of its own window; askForOpen of the tab's).
+  function reducedOf(win) { try { return !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; } }
+  function finePointerOf(win) { try { return !!(win.matchMedia && win.matchMedia('(pointer: fine)').matches); } catch (_) { return false; } }
+  function permissionApiOf(win) { try { var D = win.DeviceOrientationEvent; return !!(D && typeof D.requestPermission === 'function'); } catch (_) { return false; } }
+
+  // ---- the SESSION: one per window (v1.334) --------------------------------------------------
+  // iOS forgets a home-screen app's motion grant at every launch, and a page load IS a launch - so the
+  // ask is once per WINDOW, not once per driver: a view swap builds a new driver, and the ask that
+  // opened the player (askForOpen, below) runs before any driver exists. Every driver in the window
+  // reads this: `asked` (an ask ran, or is pending, this session), `permission` (its answer: '' |
+  // 'granted' | 'denied'), `drivers` (the live ones an answer flows to).
+  var SESSIONS = (typeof WeakMap === 'function') ? new WeakMap() : null;
+  function sessionOf(win) {
+    var s = null;
+    try { s = SESSIONS ? SESSIONS.get(win) : null; } catch (_) { s = null; }
+    if (!s) {
+      s = { asked: false, permission: '', drivers: [] };
+      try { if (SESSIONS) SESSIONS.set(win, s); } catch (_) { /* a window WeakMap refuses: this ask stands alone */ }
+    }
+    return s;
+  }
+  // Ask iOS from inside a gesture (the caller's job) and let the answer flow to every live driver, as a
+  // Settings > Lighting pick's does: a grant waits for its first sample to light, a deny shows the note.
+  // A REJECT is not an answer: WebKit rejects with NotAllowedError when no gesture is live and the
+  // state is still "prompt" (DeviceOrientationEvent::requestPermission) - nobody was asked, so the
+  // session is un-asked and the first-tap ask re-arms (the v1.330 adversary's S: a reject used to read
+  // as a deny the user never made).
+  function askSession(win, s) {
+    s.asked = true;
+    var DOE = null; try { DOE = win.DeviceOrientationEvent; } catch (_) { DOE = null; }
+    var p; try { p = DOE.requestPermission(); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).then(function (r) {
+      s.permission = r === 'granted' ? 'granted' : 'denied';
+      s.drivers.slice().forEach(function (d) { d.answer(s.permission); });
+    }, function () {
+      s.asked = false;
+      s.drivers.slice().forEach(function (d) { d.rearm(); });
+    });
+  }
+  // Dean (2026-09-25): "Is it possible to just have it pop for that prompt on opening up the media player
+  // in that skin in general without requiring the sticker button?" The first-tap ask (below) arms only
+  // once the Click panel is painted - after the async open (an album fetch, the router's view fetch) -
+  // so the tap that OPENED the player never asked and the next tap (the sticker) did. WebKit prompts only
+  // while a gesture token is live (DeviceOrientationAndMotionAccessController::shouldAllowAccess), which
+  // never survives a fetch - so the seams every open passes through SYNCHRONOUSLY call this from inside
+  // the opening tap: the router's navigate() into the player (common.js) and the views' play seams
+  // (music.js, podcasts.js). It asks only when that open will show a Click skin that would light: a
+  // strength stored, a Click colorway active for this viewport (never the tray), the permission API, no
+  // fine pointer, no reduced motion, no ask or answer yet this session, and - where the browser says - a
+  // live user activation (a notification's cold ?play= has none; a reject would re-arm anyway).
+  function clickSkinAhead(win) {
+    try { if (win.document && win.document.body && win.document.body.classList.contains('mms-tray')) return false; } catch (_) { return false; }
+    var S = null; try { S = win.FileTubeMusicSkins || null; } catch (_) { S = null; }
+    try { return !!(S && S.skinActiveFor({ isMusic: true }) && S.menuStyle(S.activeSkinId()) === 'click'); } catch (_) { return false; }
+  }
+  function askForOpen(win, store) {
+    var w = win || (typeof window !== 'undefined' ? window : null);
+    if (!w) return false;
+    var s = sessionOf(w);
+    if (s.asked || s.permission) return false;
+    var ls = store || null; if (!ls) { try { ls = w.localStorage; } catch (_) { ls = null; } }
+    if (!(GAIN[readStrength(ls)] > 0)) return false;
+    if (!permissionApiOf(w) || finePointerOf(w) || reducedOf(w)) return false;
+    if (!clickSkinAhead(w)) return false;
+    var ua = null; try { ua = w.navigator ? w.navigator.userActivation : null; } catch (_) { ua = null; }
+    if (ua && ua.isActive === false) return false;
+    askSession(w, s);
+    return true;
+  }
+
+  // ---- v1.334 THE STICKER CATCHES THE LIGHT (Dean 2026-09-25: "It should have like sheen on it ... as if
+  // it's literally a sticker, like lightly raised. The shadow would hit it ... I don't want us to go crazy on
+  // the lighting effects, but like it should hit it"; plan 2026-09-25-pocket-open-ask-sticker-light, item 2).
+  // The engine (skin-surface.js) hands over the sticker it painted, the light this driver last wrote (null =
+  // unlit) and the strength. On a LIT Click panel the sticker gets a soft GLOSS toward the light and a small
+  // drop shadow away from it (style.css, the .mms-lit sticker rules). A real sticker is die-cut, so both follow
+  // its own SHAPE - the logo is a rounded triangle, a custom upload any PNG/JPEG/WebP - and the shape-true CSS
+  // tools (drop-shadow, mask) are banned on anything lit (the HARD constraint above). So the shape comes from the
+  // pixels, drawn on a canvas: an image sticker's shadow is baked ONCE per image (a soft dark silhouette the CSS
+  // moves by transform), and the gloss is the silhouette filled with a soft highlight, redrawn only when the
+  // light moves a visible step. The emoji chip is a circle: its shadow is a CSS box-shadow, its gloss this same
+  // canvas with a circle for a silhouette. Unlit, the sticker carries nothing (Off byte-identical).
+  var STK_TILT_SIN = 0.2419;   // sin(14deg): the tilt classes rotate the button +-14deg (style.css --mms-stk-s)
+  var STK_TILT_COS = 0.9703;   // cos(14deg)
+  var STK_GLOSS_STEP = 0.02;   // redraw the gloss only when the light moved this much
+  var STK_GLOSS_TRAVEL = 0.32; // the gloss centre's travel toward the light (a fraction of the sticker)
+  var STK_GLOSS_LIFT = 0.2;    // its neutral seat: this far ABOVE the centre on the screen (a room light from above)
+  var STK_GLOSS_RADIUS = 0.58; // the soft highlight's radius (a fraction of the sticker)
+  var STK_GLOSS_ALPHA = { subtle: 0.3, strong: 0.5 }; // Subtle's gloss is fainter (plan B1)
+  var STK_SHADE_PAD = 0.12;    // the baked shadow's blur margin per side (style.css --pk-stk-shade-inset: -12%)
+  var STK_SHADE_BLUR = 0.1;    // the shadow's softness (a fraction of the sticker)
+  var STK_SHADE_ALPHA = 0.3;   // = style.css --mms-lit-stk-drop (the chip's CSS shadow)
+  var STK_DRAWN = (typeof WeakMap === 'function') ? new WeakMap() : null; // per sticker button: what is drawn on it
+  function stkContain(nw, nh, w, h) {
+    if (!(nw > 0) || !(nh > 0)) return { x: 0, y: 0, w: w, h: h };
+    var k = Math.min(w / nw, h / nh);
+    return { x: (w - nw * k) / 2, y: (h - nh * k) / 2, w: nw * k, h: nh * k }; // object-fit: contain
+  }
+  function stkCanvas(doc, cls) {
+    var c = doc.createElement('canvas');
+    var ctx = null;
+    try { ctx = c.getContext ? c.getContext('2d') : null; } catch (_) { ctx = null; }
+    if (!ctx) return null;
+    c.className = cls;
+    c.setAttribute('aria-hidden', 'true');
+    return c;
+  }
+  // the silhouette: the image (drawn as object-fit: contain draws it) or, for the emoji chip, its circle
+  function stkSilhouette(ctx, img, w, h, dpr, ox, oy) {
+    if (img) { var r = stkContain(img.naturalWidth, img.naturalHeight, w, h); ctx.drawImage(img, ox + r.x * dpr, oy + r.y * dpr, r.w * dpr, r.h * dpr); return; }
+    ctx.beginPath(); ctx.arc(ox + w * dpr / 2, oy + h * dpr / 2, Math.min(w, h) * dpr / 2, 0, Math.PI * 2); ctx.fillStyle = '#000'; ctx.fill();
+  }
+  function stkBakeShade(cv, img, w, h, dpr) {
+    var pad = STK_SHADE_PAD * w;
+    cv.width = Math.round((w + 2 * pad) * dpr); cv.height = Math.round((h + 2 * pad) * dpr);
+    var ctx = cv.getContext('2d');
+    var off = cv.width + 16; // draw the image OFF the canvas; only its shadow lands on it
+    ctx.shadowColor = 'rgba(0,0,0,' + STK_SHADE_ALPHA + ')';
+    ctx.shadowBlur = STK_SHADE_BLUR * w * dpr;
+    ctx.shadowOffsetX = off; ctx.shadowOffsetY = 0;
+    stkSilhouette(ctx, img, w, h, dpr, pad * dpr - off, pad * dpr);
+  }
+  function stkDrawGloss(cv, img, w, h, dpr, sin, strong, light) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); // (a resize clears it)
+    var ctx = cv.getContext('2d');
+    stkSilhouette(ctx, img, w, h, dpr, 0, 0);
+    ctx.globalCompositeOperation = 'source-in'; // the highlight lands only inside the sticker's own pixels
+    var cos = sin ? STK_TILT_COS : 1;
+    // the light (and the neutral seat above centre) counter-rotated into the tilted button's frame
+    var l1 = light.x * cos + light.y * sin, l2 = light.y * cos - light.x * sin;
+    var cx = (0.5 + l1 * STK_GLOSS_TRAVEL - STK_GLOSS_LIFT * sin) * cv.width;
+    var cy = (0.5 + l2 * STK_GLOSS_TRAVEL - STK_GLOSS_LIFT * cos) * cv.height;
+    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, STK_GLOSS_RADIUS * Math.max(cv.width, cv.height));
+    g.addColorStop(0, 'rgba(255,255,255,' + (strong ? STK_GLOSS_ALPHA.strong : STK_GLOSS_ALPHA.subtle) + ')');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  // btn = the sticker button; light = {x, y} or null (unlit); o = { strong, win, doc }
+  function paintSticker(btn, light, o) {
+    if (!btn) return;
+    o = o || {};
+    var doc = o.doc || btn.ownerDocument;
+    var win = o.win || (doc && doc.defaultView) || null;
+    var shade = btn.querySelector('.mms-sticker-shade');
+    var gloss = btn.querySelector('.mms-sticker-gloss');
+    var drawn = (STK_DRAWN && STK_DRAWN.get(btn)) || null;
+    if (!light) {
+      if (shade) shade.parentNode.removeChild(shade);
+      if (gloss) gloss.parentNode.removeChild(gloss);
+      if (STK_DRAWN) STK_DRAWN.delete(btn);
+      return;
+    }
+    var isImg = btn.classList.contains('mms-sticker--img');
+    var img = isImg ? btn.querySelector('img.mms-sticker-ic') : null;
+    var w = btn.clientWidth, h = btn.clientHeight;
+    if (!(w > 0) || !(h > 0) || (isImg && !img)) return; // no layout yet (a hidden panel, a test realm)
+    if (img && !(img.complete && img.naturalWidth > 0)) {
+      if (!img.getAttribute('data-stk-wait')) {
+        img.setAttribute('data-stk-wait', '1');
+        img.addEventListener('load', function () { var d = STK_DRAWN && STK_DRAWN.get(btn); paintSticker(btn, (d && d.want) || light, o); }, { once: true });
+      }
+      if (STK_DRAWN) STK_DRAWN.set(btn, { key: '', x: NaN, y: NaN, strong: null, want: light });
+      return;
+    }
+    var dpr = Math.min(3, Math.max(1, Number(win && win.devicePixelRatio) || 1));
+    if (isImg && !shade) { shade = stkCanvas(doc, 'mms-sticker-shade'); if (!shade) return; btn.insertBefore(shade, btn.firstChild); }
+    if (!gloss) { gloss = stkCanvas(doc, 'mms-sticker-gloss'); if (!gloss) return; btn.appendChild(gloss); }
+    var sin = btn.classList.contains('mms-sticker-tilt-left') ? -STK_TILT_SIN : (btn.classList.contains('mms-sticker-tilt-right') ? STK_TILT_SIN : 0);
+    var key = (img ? (img.currentSrc || img.src) : 'emoji') + '|' + w + 'x' + h + '@' + dpr + '|' + sin;
+    var strong = !!o.strong;
+    if (!drawn || drawn.key !== key) { if (shade) stkBakeShade(shade, img, w, h, dpr); drawn = { key: key, x: NaN, y: NaN, strong: null }; }
+    if (!(Math.abs(light.x - drawn.x) < STK_GLOSS_STEP && Math.abs(light.y - drawn.y) < STK_GLOSS_STEP) || strong !== drawn.strong) {
+      stkDrawGloss(gloss, img, w, h, dpr, sin, strong, light);
+      drawn.x = light.x; drawn.y = light.y; drawn.strong = strong;
+    }
+    drawn.want = light;
+    if (STK_DRAWN) STK_DRAWN.set(btn, drawn);
+  }
+
   // ---- the driver: one per engine surface -------------------------------------------------
   // o = { panel, win, doc?, isPocket() -> bool, store?, now?() }
   function create(o) {
@@ -134,6 +317,10 @@
     var doc = o.doc || panel.ownerDocument || document;
     var isPocket = typeof o.isPocket === 'function' ? o.isPocket : function () { return false; };
     var store = o.store || null;
+    // v1.334: the engine's sticker listens to every light it writes and every clear (it paints the sticker's
+    // gloss from the sticker's own shape on a canvas; null = unlit). Optional: the light itself never waits on it.
+    var onLight = typeof o.onLight === 'function' ? o.onLight : null;
+    function tellLight(on) { if (!onLight) return; try { if (on) onLight(st.x, st.y); else onLight(null, null); } catch (_) { /* the sticker is best-effort */ } }
     var nowFn = typeof o.now === 'function' ? o.now : function () { try { return win.performance.now(); } catch (_) { return Date.now(); } };
     var on = false, raf = null, lastTick = -1;
     var st = newFilter();
@@ -147,15 +334,15 @@
     var note = '', permission = '';
     var observer = null;           // the dock watcher (see start): the panel emptied or hidden with no destroy()
     var askArmed = false;          // the first-tap ask is bound (see armFirstTapAsk)
-    var askedThisSession = false;  // iOS forgets a home-screen app's motion grant at every launch: ask ONCE per session
+    var sess = sessionOf(win);     // v1.334: the window's session - ask ONCE per launch, whichever seam asks
     var destroyed = false;         // destroy() ran: nothing may re-bind (a late permission answer, gate r1 S2)
 
     function strength() { return readStrength(store); }
     function gain() { return GAIN[strength()] || 0; }
-    function reduced() { try { return !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; } }
-    function finePointer() { try { return !!(win.matchMedia && win.matchMedia('(pointer: fine)').matches); } catch (_) { return false; } }
+    function reduced() { return reducedOf(win); }
+    function finePointer() { return finePointerOf(win); }
     function painted() { return !!(panel && !panel.hidden && panel.firstChild && panel.isConnected); }
-    function permissionApi() { try { var D = win.DeviceOrientationEvent; return !!(D && typeof D.requestPermission === 'function'); } catch (_) { return false; } }
+    function permissionApi() { return permissionApiOf(win); }
     // Gate r2 (qa W4, + the adversary's r1 S4): where the sensor sits behind a permission API AND no
     // mouse can drive the light (an iPhone), the lit class waits for the FIRST sample of this start -
     // a relaunch after a remembered deny, or after a grant iOS did not keep, must never show a
@@ -169,6 +356,7 @@
         panel.classList.toggle('mms-lit-strong', lit && (s === 'pronounced' || s === 'ambient')); // the realism profile
         panel.classList.toggle('mms-lit-ambient', lit && s === 'ambient'); // v1.333: the satin body reflection over it
       } catch (_) { /* detached */ }
+      tellLight(lit); // v1.334: the sticker lights (or clears) with the panel, and follows a strength change
     }
     function trayUp() { try { return !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; } }
     // The one question every arm asks: should the light be live on this surface right now?
@@ -184,10 +372,12 @@
       // --lm = the light's distance from centre (0..1): the strong profile's hot spot dims as the
       // light moves off-centre (the card-glare rule: brightest straight on)
       try { panel.style.setProperty('--lx', st.x.toFixed(3)); panel.style.setProperty('--ly', st.y.toFixed(3)); panel.style.setProperty('--lm', Math.min(1, Math.hypot(st.x, st.y)).toFixed(3)); } catch (_) { /* detached */ }
+      tellLight(true);
     }
     function clearProps() {
       try { panel.style.removeProperty('--lx'); panel.style.removeProperty('--ly'); panel.style.removeProperty('--lm'); } catch (_) { /* detached */ }
       try { panel.classList.remove('mms-lit'); panel.classList.remove('mms-lit-strong'); panel.classList.remove('mms-lit-ambient'); } catch (_) { /* detached */ }
+      tellLight(false);
     }
     function arm() {
       if (!on || raf != null) return;
@@ -225,7 +415,7 @@
       var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win));
       if (!m) return;
       samples += 1; sessionSamples += 1;
-      if (permission !== 'granted') { permission = 'granted'; disarmFirstTapAsk(); } // a sample IS a grant
+      if (permission !== 'granted') { permission = 'granted'; sess.permission = 'granted'; disarmFirstTapAsk(); } // a sample IS a grant (the session's too)
       if (sessionSamples === 1) applyLit(); // the sensor streams: light the panel (see litGated)
       tilt = m; mode = 'tilt'; leaving = false;
       lastSampleAt = lastTiltAt = nowFn();
@@ -257,16 +447,12 @@
     // the only place that asks. Once per session; the answer flows exactly as a Lighting-row pick does.
     function askFromGesture() {
       disarmFirstTapAsk();
-      if (destroyed || askedThisSession || !permissionApi() || permission === 'granted') return;
-      askedThisSession = true;
-      var DOE = null; try { DOE = win.DeviceOrientationEvent; } catch (_) { DOE = null; }
-      var p; try { p = DOE.requestPermission(); } catch (e) { p = Promise.reject(e); }
-      Promise.resolve(p).then(function (r) { permission = r === 'granted' ? 'granted' : 'denied'; }, function () { permission = 'denied'; })
-        .then(function () { if (destroyed) return; if (permission !== 'granted') note = NOTE_DENIED; sync(); });
+      if (destroyed || sess.asked || !permissionApi() || permission === 'granted' || sess.permission === 'granted') return;
+      askSession(win, sess); // the answer flows back through answer() / rearm() below
     }
     function armFirstTapAsk() {
-      if (askArmed || askedThisSession || destroyed) return;
-      if (gain() <= 0 || !litGated() || permission === 'granted') return;
+      if (askArmed || sess.asked || destroyed) return;
+      if (gain() <= 0 || !litGated() || permission === 'granted' || sess.permission === 'granted') return;
       askArmed = true;
       try { doc.addEventListener('click', askFromGesture, true); doc.addEventListener('touchend', askFromGesture, true); } catch (_) { askArmed = false; }
     }
@@ -309,6 +495,7 @@
     try { doc.addEventListener('visibilitychange', onVisibility); } catch (_) { /* detached fixture */ }
     function destroy() {
       destroyed = true;
+      var at = sess.drivers.indexOf(self); if (at >= 0) sess.drivers.splice(at, 1); // a late answer finds nothing to re-bind
       stop();
       try { doc.removeEventListener('visibilitychange', onVisibility); } catch (_) { /* ignore */ }
     }
@@ -324,8 +511,8 @@
     // activation is live - ask iOS for motion access. Resolves with state() once the answer is in.
     function choose(v) {
       var n = setStrength(v, store);
-      note = ''; permission = ''; // a re-pick starts clean: a stale note or answer never survives it (gate r1 J15)
-      askedThisSession = true; disarmFirstTapAsk(); // the row asks itself (below); no second ask from a tap
+      note = ''; permission = ''; sess.permission = ''; // a re-pick starts clean: a stale note or answer never survives it (gate r1 J15), the session's either
+      sess.asked = true; disarmFirstTapAsk(); // the row asks itself (below); no second ask from a tap or an open this session
       if (n === 'off') { sync(); return Promise.resolve(state()); }
       if (reduced()) { note = NOTE_REDUCED; sync(); return Promise.resolve(state()); }
       var DOE = null;
@@ -336,6 +523,7 @@
         sync(); // bind now: a remembered grant streams at once; a pending prompt streams after it
         return Promise.resolve(p).then(function (r) { permission = r === 'granted' ? 'granted' : 'denied'; }, function () { permission = 'denied'; })
           .then(function () {
+            sess.permission = permission; // an open-the-player ask never re-asks after a row pick's answer
             if (destroyed) return state(); // gate r1 S2: a late answer after destroy() re-binds nothing
             if (permission !== 'granted') note = NOTE_DENIED;
             sync();
@@ -355,10 +543,23 @@
     }
     function state() {
       var isLit = false; try { isLit = panel.classList.contains('mms-lit'); } catch (_) { isLit = false; }
-      return { on: on, listening: on, lit: isLit, raf: raf != null, samples: samples, writes: writes, lx: st.x, ly: st.y, mode: mode, askArmed: askArmed, asked: askedThisSession,
+      return { on: on, listening: on, lit: isLit, raf: raf != null, samples: samples, writes: writes, lx: st.x, ly: st.y, mode: mode, askArmed: askArmed, asked: sess.asked,
         strength: strength(), gain: gain(), note: note, permission: permission };
     }
-    return { sync: sync, choose: choose, state: state, destroy: destroy };
+    // The session's answer (any seam's ask) arrives here exactly as a Settings > Lighting pick's does.
+    function answer(perm) {
+      if (destroyed) return;
+      permission = perm;
+      if (perm !== 'granted') note = NOTE_DENIED;
+      sync();
+    }
+    // A rejected ask (no gesture): the session is un-asked, so the first-tap ask arms again.
+    function rearm() { if (!destroyed) sync(); }
+    // A driver born after the session's answer (a view swap, the open-the-player ask) starts from it.
+    if (sess.permission) { permission = sess.permission; if (permission !== 'granted') note = NOTE_DENIED; }
+    var self = { sync: sync, choose: choose, state: state, destroy: destroy, answer: answer, rearm: rearm };
+    sess.drivers.push(self);
+    return self;
   }
 
   var api = {
@@ -367,7 +568,8 @@
     NOTE_DENIED: NOTE_DENIED, NOTE_NO_SENSOR: NOTE_NO_SENSOR, NOTE_REDUCED: NOTE_REDUCED,
     normalizeStrength: normalizeStrength, readStrength: readStrength, setStrength: setStrength,
     mapTilt: mapTilt, orientationAngle: orientationAngle, recentre: recentre, ease: ease, pointerLight: pointerLight, newFilter: newFilter, wrapDiff: wrapDiff,
-    create: create,
+    create: create, askForOpen: askForOpen, paintSticker: paintSticker,
+    STK_TILT_SIN: STK_TILT_SIN, STK_TILT_COS: STK_TILT_COS, STK_SHADE_PAD: STK_SHADE_PAD, STK_SHADE_ALPHA: STK_SHADE_ALPHA, STK_GLOSS_STEP: STK_GLOSS_STEP,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubePocketLighting = api;
