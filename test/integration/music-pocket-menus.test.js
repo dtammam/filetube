@@ -451,7 +451,7 @@ async function pickTrackAThenCrossItsEnd(h, albumTitle) {
   assert.strictEqual(h.spy.loads.length, loads, 'no reload at the boundary: the album rolled on (a station would load another song): ' + h.spy.loads.slice(loads).map((l) => l.id).join(','));
   assert.strictEqual(h.player.currentId, 'djmix1::c1', 'still the same file, playing on');
   menu(h);
-  assert.strictEqual(title(h), albumTitle, 'MENU climbs to the album the song came from');
+  if (albumTitle) assert.strictEqual(title(h), albumTitle, 'MENU climbs to the album the song came from');
   const cur = h.panel.querySelector('.ipm-row.is-current .ipm-lbl');
   assert.strictEqual(cur && cur.textContent, 'Track B', 'the album\'s playing mark followed the file into the next chapter');
   assert.strictEqual(cursorLabel(h), 'Track B', 'the list the song came from followed the chapter roll');
@@ -483,5 +483,26 @@ test('v1.331 (Dean): Albums > album > a chapter plays ON through the album at th
     tapRow(h, 'Albums'); await settleNet();
     tapRow(h, 'Full Album Mix'); await settleNet();
     await pickTrackAThenCrossItsEnd(h, 'Full Album Mix');
+  } });
+});
+
+test('v1.331 (Dean: "regular album play as well"): Artists > artist > album > a chapter plays ON through the album (the non-recent artist path)', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    menu(h); select(h);
+    tapRow(h, 'Artists'); await settleNet();
+    tapRow(h, 'NESTALGIA'); await settleNet();
+    tapRow(h, 'Full Album Mix'); await settleNet();
+    await pickTrackAThenCrossItsEnd(h, 'Full Album Mix');
+  } });
+});
+
+test('v1.331 (Dean: "regular album play as well"): Seattle\'s Albums pivot > album > a chapter plays ON through the album', async () => {
+  await boot({ skin: 'zune-classic', play: 'nd1', run: async (h) => {
+    menu(h); select(h); await settleNet();
+    click(h.dom, h.panel.querySelector('[data-skin-next]')); await settleNet(); // Artists -> the Albums pivot
+    assert.strictEqual(h.panel.querySelector('.ipm-pv').textContent, 'Albums', 'precondition: on the Albums pivot');
+    tapRow(h, 'Full Album Mix'); await settleNet();
+    await pickTrackAThenCrossItsEnd(h, null); // Seattle's status line is not the level name
+    assert.strictEqual(h.panel.querySelector('.ipm-title') && h.panel.querySelector('.ipm-title').textContent, 'Full Album Mix', 'Back climbs to the album the song came from');
   } });
 });

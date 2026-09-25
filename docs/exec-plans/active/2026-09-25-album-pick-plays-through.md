@@ -65,6 +65,11 @@ recommended answers, disclosed here for Dean to overturn:
   (`playRowAt`) still primes and exits to the station. Bound by the existing
   `test/unit/music-chapter-reflect.test.js` solo tests (unchanged, must stay green).
 - **AC4** Flat lists are unchanged (K4): the r1 K4 tests stay green unchanged.
+- **AC5** (Dean, mid-build: "Make sure that you're accounting for regular album play as well,
+  not just recent albums.") Every album entry point in the pocket menus plays on: Albums >
+  album, Artists > artist > album (the non-recent artist path) and Seattle's Albums pivot, each
+  driven through the chapter boundary. Bound by the v1.331 tests "Artists > artist > album" and
+  "Seattle's Albums pivot" beside AC1/AC2.
 - **Mutant M1:** restore `soloChapter: !flat && ...` on the pocket path; AC1 and AC2 go red.
 
 ## Build notes
@@ -84,12 +89,24 @@ recommended answers, disclosed here for Dean to overturn:
 - **Cursor follow:** skin-surface's follow of the playing row across a chapter roll is asserted
   in the new tests (the playing mark and the cursor land on Track B; Previous then loads Track A,
   so nav re-registered at the roll).
-- **Suites (Node 22.23.1):** music-pocket-menus 14/14, music-pocket-menus-r1 26/26,
+- **Mutants (a `git archive 88d58926` sandbox in /tmp, `git diff` checked non-empty before
+  crediting):** M1 `soloChapter: !flat` (the v1.323 rule) RED 5 (the flipped v1.323 test + all
+  four v1.331 tests); M2 `soloChapter: true` RED 3 at 88d58926 (before AC5's two tests existed).
+  Unmutated: 16/16.
+- **AC5 (Dean's mid-build message):** all album levels share the one `playFromMenu` call, so the
+  fix already covered them; the two added tests prove it for the plain Artists path and Seattle.
+- **Suites (Node 22.23.1):** music-pocket-menus 16/16 (after AC5), music-pocket-menus-r1 26/26,
   music-chapter-reflect 42/42, music-chapter-playback 8/8, unit music-pocket-menus 29/29.
 
 ## Deviations
 
-(none yet)
+- **Browse view chapter rows keep the solo rule (surfaced, not changed).** Dean's AC5 message
+  could also be read as the BROWSE view's album (Albums tab > album > tap a chapter row), which
+  still plays that chapter and stations on. That is Dean's own LOCKED v1.311 decision (2026-09-22,
+  via AskUserQuestion: "Tap ONE chapter row = play only that chapter's segment, then EXIT the
+  album"; the album Play button plays all). Reversing it is a user-visible change to an approved
+  decision, so it is surfaced for Dean's ruling instead of changed here. The browse album's Play
+  button already plays through (unit "the album PLAY button plays straight through").
 
 ## Disclosed gaps
 
