@@ -11615,6 +11615,8 @@ html[data-modern="on"] .video-uploader {
   --mms-lits-band:rgba(255,255,255,.42); --mms-lits-band2:rgba(255,255,255,.24); --mms-lits-core:rgba(255,255,255,.55);
   --mms-lits-glass:rgba(215,226,240,.24); --mms-lits-glass2:rgba(215,226,240,.08); --mms-lits-glass-hot:rgba(255,255,255,.3);
   --mms-lit-drop-s:rgba(0,0,0,.28);
+  /* AMBIENT's grain (v1.333): a 64 px luminance-neutral noise tile (+-2% light and dark specks), 3,661 bytes */
+  --mms-lita-grain:url("data:image/png;base64,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");
   /* shared type/shape metrics (governed props) */
   --mms-r-art:16px; --mms-r-art-ipod:6px; --mms-r-queue:16px; --mms-r-th:6px; --mms-ipod-r-sm:2px;
   --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.1;
@@ -11794,6 +11796,12 @@ html[data-modern="on"] .video-uploader {
   .mms-sticker--img{ background:transparent; border-radius:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:0; }
   .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
   .mms-sticker-menu{ position:absolute; left:0; bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */ }
+  /* v1.333 (Dean: "I can't scroll in the extras menu"; measured: with a 2x sticker the 86vh menu's TOP sat
+     ~44px above the screen, so Home and Speed were out of reach - no scroll brings back what sits above
+     scrollTop 0). The menu hangs above the sticker, so its cap is the space ABOVE the sticker: the
+     viewport less both safe-area insets, the wrap's bottom offset, the sticker (the wrap carries its size
+     class) and the gap - never more than the old 86vh. The tray's full-window menu keeps its own rule. */
+  .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(86vh, calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
 
   /* ============================ APPLE MUSIC ============================
      A blurred cover bleed fills the screen; a large framed cover, oversized
@@ -11919,7 +11927,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:var(--mms-ipod-wheel-lbl);
     --pk-c-center-1:var(--mms-ipod-body1); --pk-c-center-2:var(--mms-ipod-body2); --pk-c-center-oy:40%;
     --pk-c-lit-band:var(--mms-lit-band); --pk-c-lit-band2:var(--mms-lit-band2);
-    --pk-c-lits-band:var(--mms-lits-band); --pk-c-lits-band2:var(--mms-lits-band2); --pk-c-lits-core:var(--mms-lits-core); }
+    --pk-c-lits-band:var(--mms-lits-band); --pk-c-lits-band2:var(--mms-lits-band2); --pk-c-lits-core:var(--mms-lits-core);
+    --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
   /* the body: the colorway's stack, over its 1px edge */
   .mms-ipod{ background:var(--pk-c-body);
     color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
@@ -12122,7 +12131,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#b9babd;
     --pk-c-center-1:#343436; --pk-c-center-2:#161618; --pk-c-center-oy:40%;
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
-    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4); }
+    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4);
+    --pk-c-lita-glow:165,170,182; --pk-c-lita-core:226,230,237; }
   /* Click (Matte): matte graphite metal, top-lit, with a dark click wheel - photo-sampled from Dean's
      reference: the body ramp top to bottom, the top chamfer + side edges (the photo's directional
      light), a softer wheel sheen, a lighter graphite center. */
@@ -12135,7 +12145,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#b9babd;
     --pk-c-center-1:#6e6e72; --pk-c-center-2:#55555a; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.09); --pk-c-lit-band2:rgba(255,255,255,.05);
-    --pk-c-lits-band:rgba(255,255,255,.14); --pk-c-lits-band2:rgba(255,255,255,.08); --pk-c-lits-core:rgba(255,255,255,.22); }
+    --pk-c-lits-band:rgba(255,255,255,.14); --pk-c-lits-band2:rgba(255,255,255,.08); --pk-c-lits-core:rgba(255,255,255,.22);
+    --pk-c-lita-glow:130,133,140; --pk-c-lita-core:165,168,176; }
   /* Click (Red) (v1.332, Dean D2: red body, white wheel - the charity-red nano): satin anodized red,
      sampled from Wikimedia Commons "Product Red iPod nano.jpg" (CC BY 2.0). The photo's top is near
      clipped, so the ramp is its MID and LOW body values (#ea293a .. #c51323), the left edge darker and
@@ -12150,7 +12161,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#c4cfcf;
     --pk-c-center-1:#f6475d; --pk-c-center-2:#ea3348; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.2); --pk-c-lit-band2:rgba(255,255,255,.12);
-    --pk-c-lits-band:rgba(255,255,255,.3); --pk-c-lits-band2:rgba(255,255,255,.17); --pk-c-lits-core:rgba(255,255,255,.45); }
+    --pk-c-lits-band:rgba(255,255,255,.3); --pk-c-lits-band2:rgba(255,255,255,.17); --pk-c-lits-core:rgba(255,255,255,.45);
+    --pk-c-lita-glow:255,96,110; --pk-c-lita-core:255,200,204; }
   /* Click (Silver) (D8): the 2007 aluminum classic - Commons "IPod Classic 6th Generation 120 GB -
      front.jpg" (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
      Satin aluminum lit from the left (#dcdcdf at the lit edge .. #747477 across), darker at the top and
@@ -12163,7 +12175,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#7b7f82;
     --pk-c-center-1:#a2a0a4; --pk-c-center-2:#8a898c; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.26); --pk-c-lit-band2:rgba(255,255,255,.15);
-    --pk-c-lits-band:rgba(255,255,255,.36); --pk-c-lits-band2:rgba(255,255,255,.2); --pk-c-lits-core:rgba(255,255,255,.5); }
+    --pk-c-lits-band:rgba(255,255,255,.36); --pk-c-lits-band2:rgba(255,255,255,.2); --pk-c-lits-core:rgba(255,255,255,.5);
+    --pk-c-lita-glow:250,250,252; --pk-c-lita-core:255,255,255; }
   /* Click (Encore) (D8, the black-and-red special edition, under a cheeky name): Commons "IPod U2.jpeg"
      (CC BY 3.0; small and soft - hue only). Click (Black)'s body; the red wheel from the photo scaled
      so the black body matches Click (Black)'s (x0.8: #e85a70 -> #ba485a, ramped #c4505f .. #a63f4e around
@@ -12177,7 +12190,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#efe8eb;
     --pk-c-center-1:#2e2527; --pk-c-center-2:#161113; --pk-c-center-oy:40%;
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
-    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4); }
+    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4);
+    --pk-c-lita-glow:165,170,182; --pk-c-lita-core:226,230,237; }
   /* Click (Blue) (D8, the second mini): Commons "IPod mini blue front 2G.jpg" (CC BY-SA 3.0), white-
      balanced on its light grey wheel (gain 1.21 / 1.20 / 1.23). Anodized teal-blue lit from the top
      (#62c1df .. #1d4654), the tube's darker sides; labels the body's blue (#5ca3b1); the center is the
@@ -12191,7 +12205,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#5ca3b1;
     --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
-    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36); }
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
+    --pk-c-lita-glow:120,208,232; --pk-c-lita-core:200,238,248; }
   /* Click (Green) (D8, the second mini): Commons "Green ipodmini 2ndgen.jpg" (CC BY-SA 2.0), white-
      balanced on its wheel. Anodized green (p90 #5d8c4e .. p10 #3f703d); labels the body's green
      (#3e9557); the center is the wheel's grey. (The first mini's green, "Green ipodmini 1stgen.jpg",
@@ -12205,7 +12220,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#3e9557;
     --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.14); --pk-c-lit-band2:rgba(255,255,255,.08);
-    --pk-c-lits-band:rgba(255,255,255,.22); --pk-c-lits-band2:rgba(255,255,255,.12); --pk-c-lits-core:rgba(255,255,255,.34); }
+    --pk-c-lits-band:rgba(255,255,255,.22); --pk-c-lits-band2:rgba(255,255,255,.12); --pk-c-lits-core:rgba(255,255,255,.34);
+    --pk-c-lita-glow:140,190,120; --pk-c-lita-core:190,225,176; }
   /* Click (Pink) (D8, the second mini): the pink mini in Commons "Apple iPod 5G-nano 2G-mini 2G.jpg"
      (CC BY 2.0), under warm light, white-balanced on its wheel (gain 0.87 / 0.85 / 1.32). Anodized rose
      (p90 #9e5a73 .. p15 #652430); labels the body's pink (the glyph cores measure a muddier #997e6c
@@ -12219,7 +12235,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#9e5a73;
     --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
-    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36); }
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
+    --pk-c-lita-glow:220,138,168; --pk-c-lita-core:240,190,210; }
   /* Click (Gold) (D8): Dean's own photo (2026-09-25) - a gold classic with a white wheel and a GOLD
      center (so the center is the body's gold, as on the photo, not a mini's grey). White-balanced on the
      white wheel and exposed like Click (Red)'s white wheel. Anodized gold lit from the upper left
@@ -12232,7 +12249,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-wheel-label:#c0c7c0;
     --pk-c-center-1:#c8940f; --pk-c-center-2:#b07e07; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.22); --pk-c-lit-band2:rgba(255,255,255,.13);
-    --pk-c-lits-band:rgba(255,255,255,.32); --pk-c-lits-band2:rgba(255,255,255,.18); --pk-c-lits-core:rgba(255,255,255,.46); }
+    --pk-c-lits-band:rgba(255,255,255,.32); --pk-c-lits-band2:rgba(255,255,255,.18); --pk-c-lits-core:rgba(255,255,255,.46);
+    --pk-c-lita-glow:255,210,125; --pk-c-lita-core:255,238,196; }
   /* POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting): a fixed light in the
      room, read from the phone's tilt (or the mouse on a desktop) by pocket-lighting.js and written
      as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
@@ -12288,6 +12306,24 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod.mms-lit-strong .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
     background:radial-gradient(circle at calc(50% + var(--lx,0) * 34%) calc(32% + var(--ly,0) * 34%), var(--mms-lit-hot) 0%, var(--mms-lit-hot2) 18%, var(--mms-ipod-sheen-0) 40%);
     opacity:calc(1 - var(--lm,0) * .45); }
+  /* AMBIENT (v1.333, plan 2026-09-25-pocket-lighting-ambient; Dean: "a copy of the pronounced, but ... the
+     gradient, the texture ... it just ever so slightly feels too digital", then on the first renders: "it's a
+     perfect line"). Added by the driver WITH .mms-lit + .mms-lit-strong, so the wheel, dome, glass, shadows and
+     every travel stay Pronounced's; only the BODY's reflection changes, to how light sits on anodized metal
+     (measured on the reference photos): tinted by the colorway (a highlight on red metal stays red and whitens
+     only at its peak - the two --pk-c-lita-* roles), uneven along its length and fading toward its ends (soft
+     elliptical pieces on a layer turned to the band's own 112deg direction, never one ruled line), an eased
+     falloff instead of straight stops, and a fine static grain on the body (anodized metal carries ~2 levels of
+     it; a tile, decoded once). The streak's layer never reads the light (only its transform does), so it is
+     rasterised once and moved by the compositor; the room light keeps Pronounced's exact geometry on the
+     panel's ::after. Keyed on .mms-lit too (gate r1 W1): the CSS cannot light a panel the driver has not lit.
+     Still no filter / blur / mask / backdrop / blend / animation (the lock covers these). */
+  .mms-ipod.mms-lit.mms-lit-ambient{ background:var(--mms-lita-grain) 0 0 / 32px 32px repeat, var(--pk-c-body); }
+  .mms-ipod.mms-lit.mms-lit-ambient::before{ /* token-exempt: an alpha curve over the colorway's tint role, rgba(var(--pk-c-lita-*), a) - the color IS the token */ background:radial-gradient(1.7% 9% at 48.9% 41%, rgba(var(--pk-c-lita-core), .4) 0%, rgba(var(--pk-c-lita-core), .312) 18%, rgba(var(--pk-c-lita-core), .2) 36%, rgba(var(--pk-c-lita-core), .104) 54%, rgba(var(--pk-c-lita-core), .04) 72%, rgba(var(--pk-c-lita-core), .012) 88%, rgba(var(--pk-c-lita-core), 0) 100%), radial-gradient(1.3% 6% at 49.5% 60%, rgba(var(--pk-c-lita-core), .24) 0%, rgba(var(--pk-c-lita-core), .187) 18%, rgba(var(--pk-c-lita-core), .12) 36%, rgba(var(--pk-c-lita-core), .062) 54%, rgba(var(--pk-c-lita-core), .024) 72%, rgba(var(--pk-c-lita-core), .007) 88%, rgba(var(--pk-c-lita-core), 0) 100%), radial-gradient(3.4% 20% at 48.7% 40%, rgba(var(--pk-c-lita-glow), .4) 0%, rgba(var(--pk-c-lita-glow), .312) 18%, rgba(var(--pk-c-lita-glow), .2) 36%, rgba(var(--pk-c-lita-glow), .104) 54%, rgba(var(--pk-c-lita-glow), .04) 72%, rgba(var(--pk-c-lita-glow), .012) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(2.8% 15% at 49.6% 61%, rgba(var(--pk-c-lita-glow), .28) 0%, rgba(var(--pk-c-lita-glow), .218) 18%, rgba(var(--pk-c-lita-glow), .14) 36%, rgba(var(--pk-c-lita-glow), .073) 54%, rgba(var(--pk-c-lita-glow), .028) 72%, rgba(var(--pk-c-lita-glow), .008) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(6.5% 36% at 49.1% 47%, rgba(var(--pk-c-lita-glow), .3) 0%, rgba(var(--pk-c-lita-glow), .234) 18%, rgba(var(--pk-c-lita-glow), .15) 36%, rgba(var(--pk-c-lita-glow), .078) 54%, rgba(var(--pk-c-lita-glow), .03) 72%, rgba(var(--pk-c-lita-glow), .009) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(13% 46% at 49.6% 46%, rgba(var(--pk-c-lita-glow), .14) 0%, rgba(var(--pk-c-lita-glow), .109) 18%, rgba(var(--pk-c-lita-glow), .07) 36%, rgba(var(--pk-c-lita-glow), .036) 54%, rgba(var(--pk-c-lita-glow), .014) 72%, rgba(var(--pk-c-lita-glow), .004) 88%, rgba(var(--pk-c-lita-glow), 0) 100%);
+    transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0) rotate(22deg); }
+  .mms-ipod.mms-lit.mms-lit-ambient::after{ content:""; position:absolute; inset:-35%; z-index:-1; /* token-exempt: local stacking - with the streak, over the body, under the LCD and wheel */ pointer-events:none;
+    /* token-exempt: the same alpha curve over the tint role */ background:radial-gradient(120% 80% at calc(50% + var(--lx,0) * 35%) calc(10% + var(--ly,0) * 30%), rgba(var(--pk-c-lita-glow), .26) 0%, rgba(var(--pk-c-lita-glow), .235) 10%, rgba(var(--pk-c-lita-glow), .17) 22%, rgba(var(--pk-c-lita-glow), .095) 35%, rgba(var(--pk-c-lita-glow), .04) 47%, rgba(var(--pk-c-lita-glow), 0) 60%);
+    transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0); will-change:transform; }
   /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
   .mms-ipod .ipm-check{ flex:none; font-size:var(--pk-fs-check); color:var(--mms-ipod-blue1); }
   .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--mms-white); }

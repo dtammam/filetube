@@ -575,6 +575,7 @@ test('U2 sticker: absent without config (podcasts today); with config it paints,
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-loop]'));
     assert.deepStrictEqual(b.spy.setLoop, [true], 'loop toggle drove player.setLoop(true)');
     // skin pick: setActiveSkin persists + the view re-render hook fires
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-skins]')); // v1.333: Skin is its own page
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-pick="apple"]'));
     assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'apple', 'SKINS.setActiveSkin persisted the pick');
     assert.strictEqual(b.spy.skinChange, 1, 'onSkinChange fired (the view repaints its surfaces)');

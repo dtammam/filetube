@@ -195,6 +195,7 @@ test('T3 (anti-INERT): the loop toggle drives player.setLoop and reflects state'
 test('T3 (anti-INERT): picking a skin chip calls SKINS.setActiveSkin and re-renders that skin', async () => {
   await boot(async (dom) => {
     click(dom, sticker(dom));
+    click(dom, menu(dom).querySelector('[data-skin-skins]')); // v1.333: Skin is its own page
     const chip = menu(dom).querySelector('[data-skin-pick="ipod"]');
     assert.ok(chip, 'an iPod chip exists');
     click(dom, chip);
@@ -246,6 +247,7 @@ test('v1.241: injectSticker applies the SIZE and TILT classes (defaults, and an 
   await boot(async (dom) => {
     const cl = sticker(dom).classList;
     assert.ok(cl.contains('mms-sticker-sz-3x'), 'size 3x class applied');
+    assert.ok(sticker(dom).parentElement.classList.contains('mms-sticker-sz-3x'), 'v1.333: the WRAP carries the size too (the menu\'s cap reads it)');
     assert.ok(cl.contains('mms-sticker-tilt-right'), 'tilt right class applied');
   }, { sticker: { kind: 'logo', size: '3x', tilt: 'right' } });
   // an unknown size/tilt falls back to the defaults
@@ -263,6 +265,13 @@ test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt cl
   assert.match(css, /\.mms-sticker-sz-2x\{[^}]*--mms-sticker-px:104px/, '2x doubles the size var');
   assert.match(css, /\.mms-sticker-sz-3x\{[^}]*--mms-sticker-px:156px/, '3x = 3 x base');
   assert.doesNotMatch(css, /\.mms-sticker-sz-5x/, 'v1.243: 5x removed (overlapped the wheel)');
+  // v1.333 (Dean's 2x sticker pushed the menu's top ~44px off-screen; measured): the menu's cap is the space
+  // ABOVE the sticker - bound to the SAME bottom offset the wrap uses and the sticker's own size var
+  const wrapRule = (css.match(/\n {2}\.mms-sticker-wrap\{[^}]*\}/) || [''])[0];
+  assert.match(wrapRule, /bottom:calc\(env\(safe-area-inset-bottom,0px\) \+ var\(--space-6\)\)/, 'the wrap sits var(--space-6) over the bottom inset');
+  const cap = (css.match(/\n {2}\.mms-sticker-wrap > \.mms-sticker-menu\{[^}]*\}/) || [''])[0];
+  assert.match(cap, /max-height:min\(86vh, calc\(100dvh - env\(safe-area-inset-top,0px\) - env\(safe-area-inset-bottom,0px\) - var\(--space-6\) - var\(--mms-sticker-px,52px\) - var\(--space-3\) - var\(--space-3\)\)\);/, 'the cap subtracts both insets, the wrap offset, the sticker and the gap');
+  assert.match(css, /\n {2}\.mms-sticker-menu\{ position:absolute; left:0; bottom:calc\(100% \+ var\(--space-3\)\);/, 'the gap the cap subtracts is the menu\'s own');
   assert.match(css, /\.mms-sticker-tilt-straight\{[^}]*transform:rotate\(0deg\)/, 'straight = no rotation');
   assert.match(css, /\.mms-sticker-tilt-left\{[^}]*transform:rotate\(-14deg\)/, 'left tilt');
   assert.match(css, /\.mms-sticker-tilt-right\{[^}]*transform:rotate\(14deg\)/, 'right tilt');

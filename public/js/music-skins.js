@@ -371,10 +371,10 @@
     if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
     return null;
   }
-  // Settings > Lighting: the three strengths with a check on the active one, plus a read-only
+  // Settings > Lighting: the four strengths (v1.333: + Ambient) with a check on the active one, plus a read-only
   // note row (motion denied / no sensor / Reduce Motion) when the driver has one. Re-derived on
   // every draw from the driver's state (like the Main Menu) - the check moves as you pick.
-  var LIGHTING_STRENGTHS = [{ value: 'off', label: 'Off' }, { value: 'subtle', label: 'Subtle' }, { value: 'pronounced', label: 'Pronounced' }];
+  var LIGHTING_STRENGTHS = [{ value: 'off', label: 'Off' }, { value: 'subtle', label: 'Subtle' }, { value: 'pronounced', label: 'Pronounced' }, { value: 'ambient', label: 'Ambient' }]; // v1.333: Ambient
   function menuLightingItems(state) {
     var s = state || {};
     var cur = LIGHTING_STRENGTHS.some(function (r) { return r.value === s.strength; }) ? s.strength : 'off';

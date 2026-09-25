@@ -1119,7 +1119,7 @@
         return;
       }
       if (it.action === 'brick') {
-        // Addendum C: the SAME launch the sticker's Brick row makes (the view's hook: it mounts
+        // Addendum C: the SAME launch v1.270's sticker Brick row made (that row went in v1.333; the view's hook: it mounts
         // the game on this engine's LCD and hands it the wheel). MENU, a repaint, a dock, a skin
         // switch and the view dying all end it through the existing v1.270 release; the menu
         // underneath stays on this level, so MENU out of the game lands back on Games.
@@ -1184,6 +1184,13 @@
       isMenuMode: function () { return !!style() && screen === 'menu'; },
       // quick scroll: is the wheel in letter mode right now? (the engine's haptic path reads it)
       inLetterMode: function () { return !!(lm.on && letterable(curPane())); },
+      // v1.333 (gate r1 W2, both seats): a strength picked OUTSIDE the menu (the sticker's Lighting chips)
+      // re-draws Settings > Lighting if it is the level on the LCD, so its check follows the pick
+      refreshLighting: function () {
+        if (destroyed || !style()) return;
+        var p = curPane();
+        if (p && p.node.type === 'lighting' && screen === 'menu') render();
+      },
       // after every paint(): rebuild on a style change, follow the advance, re-draw.
       afterPaint: function (ctx) {
         if (style() !== builtFor) { clearJump(); stopSlides(); resetStack(); }
@@ -1312,8 +1319,8 @@
     // Dean wants pop-out Extras (2026-09-02) - that lifts WITH doc-aware shared dialogs, a
     // queued wave (see the plan doc's queue); until then this gate stays.
     var inMainDoc = (typeof document !== 'undefined') && doc === document;
-    // Addendum C: the menus' Extras > Games > Brick rides the SAME view hook as the sticker's
-    // Brick row, under the SAME gate (main document only - v1.270 slim W4: the game mounts on the
+    // Addendum C: the menus' Extras > Games > Brick rides the view's Brick hook (the sticker's own
+    // Brick row was removed in v1.333, so this is now its only entry), under the SAME gate (main document only - v1.270 slim W4: the game mounts on the
     // IN-TAB engine's LCD, and wire() is per-view, not per-surface). The pop-out gets no hook, so
     // its menus draw no Extras/Games entry at all.
     var menuGames = (inMainDoc && stickerCfg && stickerCfg.brick) || null;
@@ -1458,13 +1465,9 @@
       if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
         try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
       }
-      var chipSkins = trayActive ? skins.filter(function (s) { return s.menus === 'click'; }) : skins; // the registry's Click colorways (v1.332)
-      var chips = chipSkins.map(function (s) {
-        var on = s.id === active;
-        return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
-          '" data-skin-pick="' + escapeHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
-          escapeHtml(s.label) + '</button>';
-      }).join('');
+      var chips = skinChipsHtml(trayActive);
+      var activeLabel = '';
+      skins.forEach(function (s) { if (s.id === active) activeLabel = s.label; });
       // v1.252 (Listen-mode): the "Watch" way back - rendered ONLY when the view supplies
       // the watchBack hook AND says it applies to the playing item (music: a listen track).
       // Rides the Extras row chassis (44px full-width) with its own dispatch hook.
@@ -1507,20 +1510,34 @@
         trayRow = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (trOn ? ' is-on' : '') +
           '" data-skin-tray aria-checked="' + (trOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-download"></i>Tray</span><span class="mms-sm-state">' + (trOn ? 'On' : 'Off') + '</span></button></div>';
       }
-      // v1.270 BRICK (Dean's easter egg): rendered ONLY when the view supplies the hook
-      // AND says it applies. The engine deliberately does not check the skin itself -
-      // music.js owns "which skins have a wheel to play it with", so this stays a dumb
-      // row like every other. Its whole coupling to the game is one dispatch below.
-      var brickRow = '';
-      // slim W4: main-document ONLY, the watchBack posture. startBrick needs the IN-TAB
-      // engine, which only exists at mobile widths - so in the pop-out and the tray the
-      // row rendered and did nothing, and a narrow-then-widened session could mount the
-      // game into the hidden in-tab panel, taking that wheel over invisibly.
-      if (inMainDoc && stickerCfg.brick && typeof stickerCfg.brick.visible === 'function') {
-        var brOn = false;
-        try { brOn = !!stickerCfg.brick.visible(); } catch (_) { brOn = false; }
-        if (brOn) brickRow = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-brick><span class="mms-sm-lbl"><i class="icon-play"></i>Brick</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+      // v1.333 (Dean: "We have brick there. I don't think we need it to be there"): the sticker no
+      // longer offers Brick. The game lives on at the pocket menus' Extras > Games > Brick, which rides
+      // the SAME view hook (stickerCfg.brick -> menuGames, main document only - the v1.270 slim W4 gate).
+      // v1.333 (Dean: "we could add lighting there as well"): the four strengths as chips, only where
+      // the driver can light THIS skin (a Click colorway, pocket-lighting.js loaded), never in the tray
+      // (the tray is never lit). The tap is the Settings > Lighting call (see handleStickerClick).
+      var lightRow = '';
+      if (!trayActive && lightingHere()) {
+        var lst = null;
+        try { lst = lighting.state(); } catch (_) { lst = null; }
+        var cur = (lst && lst.strength) || 'off';
+        var lchips = (SKINS.LIGHTING_STRENGTHS || []).map(function (r) {
+          var on = r.value === cur;
+          return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
+            '" data-skin-lighting="' + escapeHtml(r.value) + '" aria-checked="' + (on ? 'true' : 'false') + '">' + escapeHtml(r.label) + '</button>';
+        }).join('');
+        var lnote = (lst && lst.note) ? '<div class="mms-sm-note">' + escapeHtml(lst.note) + '</div>' : '';
+        lightRow = '<div class="mms-sm-sec"><div class="mms-sm-h">Lighting</div><div class="mms-sm-skins" role="group" aria-label="Lighting">' + lchips + '</div>' + lnote + '</div>';
       }
+      // v1.333 (Dean: Skin on its own page, so page 1 fits a phone): the row names the active skin and
+      // opens the chips (the Extras pattern). The TRAY keeps its short inline Color chips.
+      // (gate r1 W3: the plain-window pop-out fallback shows the tray with NO tray hook, so trayActive is false
+      // there; it keeps its inline chips exactly as v1.332 drew them - the whole list, headed Skin)
+      var trayBody = false;
+      try { trayBody = !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { trayBody = false; }
+      var skinSec = (trayActive || trayBody)
+        ? '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins" role="group" aria-label="' + (trayActive ? 'Color' : 'Skin') + '">' + chips + '</div></div>'
+        : '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-skins><span class="mms-sm-lbl"><i class="icon-photos"></i>Skin</span><span class="mms-sm-state">' + escapeHtml(activeLabel) + ' &rsaquo;</span></button></div>';
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
@@ -1529,12 +1546,38 @@
       var homeRow = homeAvailable()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-home><span class="mms-sm-lbl"><i class="icon-home"></i>Home</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
         : '';
-      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
+      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed" role="group" aria-label="Speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
-        autoplay + trayRow +
-        '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins">' + chips + '</div></div>' +
-        watchBack + channelRow + brickRow + extras;
+        autoplay + trayRow + skinSec + lightRow +
+        watchBack + channelRow + extras;
+    }
+    // The skin chips (v1.332: the registry's list; inside the TRAY only the Click colorways - those picks
+    // genuinely restyle the tray, the rest would no-op there). Page 1 of the tray, the Skin page elsewhere.
+    function skinChipsHtml(trayActive) {
+      var skins = SKINS.SKINS || [];
+      var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
+      var chipSkins = trayActive ? skins.filter(function (s) { return s.menus === 'click'; }) : skins; // the registry's Click colorways (v1.332)
+      return chipSkins.map(function (s) {
+        var on = s.id === active;
+        return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
+          '" data-skin-pick="' + escapeHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
+          escapeHtml(s.label) + '</button>';
+      }).join('');
+    }
+    // v1.333: can the lighting driver light the skin this surface shows? (the driver's own isPocket)
+    function lightingHere() {
+      if (!lighting) return false;
+      // the driver's own answer: a Click colorway, and never the Nano tray (body.mms-tray - the tray is never
+      // lit, whatever the sticker's tray hook says: the plain-window pop-out fallback has none)
+      try { return SKINS.menuStyle(getSkinId()) === 'click' && !(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; }
+    }
+    function openStickerSkins() {
+      var menu = panel.querySelector('[data-skin-sticker-menu]');
+      if (!menu) return;
+      extrasMenu.cancelPending(); // (a stale Extras fetch never lands on this page)
+      menu.setAttribute('data-sm-page', 'skins');
+      menu.innerHTML = extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins" role="group" aria-label="Skin">' + skinChipsHtml(false) + '</div></div>';
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
     // v1.240 marker keys off what stickerIconHtml ACTUALLY renders (a partial emoji pref
@@ -1546,6 +1589,9 @@
       var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
       var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x
       var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
+      // v1.333: the WRAP carries the size too, so the menu (the button's sibling) reads --mms-sticker-px -
+      // its max-height is the space ABOVE the sticker (Dean's 2x sticker pushed the menu's top off-screen)
+      wrap.className += szCls;
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
         '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';
@@ -1667,11 +1713,24 @@
         refreshStickerMenu();
         return true;
       }
-      // v1.270: hand off to the view's Brick hook and close - the engine never learns
-      // what mounts. (music.js hands the game's onRotate to setWheelTakeover; nothing subscribes itself.)
-      if (e.target.closest('[data-skin-brick]')) {
-        closeStickerMenu();
-        if (stickerCfg.brick && typeof stickerCfg.brick.onTap === 'function') { try { stickerCfg.brick.onTap(); } catch (_) { /* view best-effort */ } }
+      // v1.333: the Skin row opens the chips on their own page (Back = the extras Back, page 1)
+      if (e.target.closest('[data-skin-skins]')) { openStickerSkins(); return true; }
+      // v1.333: a Lighting chip is the Settings > Lighting pick - lighting.choose() runs SYNCHRONOUSLY
+      // inside this click, so on iOS the motion ask has its user activation (the first-tap ask's
+      // capture listener, if armed, asked from the same gesture; choose() owns the answer from here).
+      var lopt = e.target.closest('[data-skin-lighting]');
+      if (lopt) {
+        var lpr = null;
+        if (lightingHere()) { try { lpr = lighting.choose(lopt.getAttribute('data-skin-lighting')); } catch (_) { lpr = null; } }
+        refreshStickerMenu();
+        if (pocket && typeof pocket.refreshLighting === 'function') pocket.refreshLighting(); // the LCD's check too (gate r1 W2)
+        // the answer (a denied / no-sensor note) re-draws page 1 if the menu is still open ON page 1 - never
+        // over the Skin or Extras page the user moved to meanwhile - and the LCD's Lighting level
+        Promise.resolve(lpr).then(function () {
+          var lm = panel.querySelector('[data-skin-sticker-menu]');
+          if (lm && !lm.hidden && !lm.getAttribute('data-sm-page')) refreshStickerMenu();
+          if (pocket && typeof pocket.refreshLighting === 'function') pocket.refreshLighting();
+        }, function () { /* the driver's promise never rejects */ });
         return true;
       }
       var pick = e.target.closest('[data-skin-pick]');

@@ -298,7 +298,8 @@
   }
 
   // wire({ getEngine }) -> { visible, onTap, stop, isRunning }
-  // `visible` and `onTap` are the sticker hook a view hands the engine; `stop` is the
+  // `visible` and `onTap` are the hook a view hands the engine (config.sticker.brick - since v1.333 read only
+  // by the pocket menus' Extras > Games > Brick; the sticker row is gone); `stop` is the
   // view's teardown arm (its own destroy path, which delivers no engine event).
   function wire(opts) {
     var o = opts || {};
@@ -310,7 +311,7 @@
       if (!game) return;
       // LOAD-BEARING (the v1.270 seat measured this): the engine releases the takeover
       // for paths that destroy the panel and for MENU, but the VIEW-initiated exits -
-      // the sticker row toggling Brick off, and Escape - never enter the engine. Without
+      // a second onTap (v1.270's sticker row, removed in v1.333) and Escape - never enter the engine. Without
       // this clear the next MENU press is eaten by a stale pointer.
       var eng = engineOf();
       try { if (eng && typeof eng.setWheelTakeover === 'function') eng.setWheelTakeover(null); } catch (_) { /* engine gone */ }

@@ -47,7 +47,8 @@ const decls = (body) => [...body.matchAll(/([\w-]+)\s*:\s*([^;]+)(?:;|$)/g)].map
 // The ONE role list a colorway sets (the plan's "colorway roles").
 const ROLES = ['--pk-c-body', '--pk-c-body-edge', '--pk-c-wheel-1', '--pk-c-wheel-2', '--pk-c-wheel-sheen', '--pk-c-wheel-oy',
   '--pk-c-wheel-label', '--pk-c-center-1', '--pk-c-center-2', '--pk-c-center-oy',
-  '--pk-c-lit-band', '--pk-c-lit-band2', '--pk-c-lits-band', '--pk-c-lits-band2', '--pk-c-lits-core'];
+  '--pk-c-lit-band', '--pk-c-lit-band2', '--pk-c-lits-band', '--pk-c-lits-band2', '--pk-c-lits-core',
+  '--pk-c-lita-glow', '--pk-c-lita-core']; // v1.333 Ambient: the reflection's tint (an r,g,b triple read as rgba(var(role), a))
 const clickIds = () => SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id);
 const classOf = (id) => 'mms-' + id;
 
@@ -103,6 +104,7 @@ const COLORWAYS = {
     '--pk-c-center-1': 'var(--mms-ipod-body1)', '--pk-c-center-2': 'var(--mms-ipod-body2)', '--pk-c-center-oy': '40%',
     '--pk-c-lit-band': 'var(--mms-lit-band)', '--pk-c-lit-band2': 'var(--mms-lit-band2)',
     '--pk-c-lits-band': 'var(--mms-lits-band)', '--pk-c-lits-band2': 'var(--mms-lits-band2)', '--pk-c-lits-core': 'var(--mms-lits-core)',
+    '--pk-c-lita-glow': '255,255,255', '--pk-c-lita-core': '255,255,255',
   },
   'ipod-black': {
     '--pk-c-body': SHEEN_BODY + ', linear-gradient(158deg, #343436, #161618)',
@@ -112,6 +114,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#343436', '--pk-c-center-2': '#161618', '--pk-c-center-oy': '40%',
     '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
     '--pk-c-lits-band': 'rgba(255,255,255,.26)', '--pk-c-lits-band2': 'rgba(255,255,255,.14)', '--pk-c-lits-core': 'rgba(255,255,255,.4)',
+    '--pk-c-lita-glow': '165,170,182', '--pk-c-lita-core': '226,230,237',
   },
   'ipod-matte': {
     '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 2.2%), linear-gradient(90deg, rgba(0,0,0,.30) 0%, rgba(0,0,0,.04) 15%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 70%, rgba(0,0,0,.04) 85%, rgba(0,0,0,.30) 100%), linear-gradient(180deg, #949497 0%, #86868a 7%, #7a7a7e 40%, #6a6a70 55%, #4a4a50 74%, #2d2d32 90%, #1c1c21 100%)',
@@ -121,6 +124,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#6e6e72', '--pk-c-center-2': '#55555a', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.09)', '--pk-c-lit-band2': 'rgba(255,255,255,.05)',
     '--pk-c-lits-band': 'rgba(255,255,255,.14)', '--pk-c-lits-band2': 'rgba(255,255,255,.08)', '--pk-c-lits-core': 'rgba(255,255,255,.22)',
+    '--pk-c-lita-glow': '130,133,140', '--pk-c-lita-core': '165,168,176',
   },
   // v1.332 (D2): sampled from Commons "Product Red iPod nano.jpg" - the side-by-side cites every value
   'ipod-red': {
@@ -131,6 +135,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#f6475d', '--pk-c-center-2': '#ea3348', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.2)', '--pk-c-lit-band2': 'rgba(255,255,255,.12)',
     '--pk-c-lits-band': 'rgba(255,255,255,.3)', '--pk-c-lits-band2': 'rgba(255,255,255,.17)', '--pk-c-lits-core': 'rgba(255,255,255,.45)',
+    '--pk-c-lita-glow': '255,96,110', '--pk-c-lita-core': '255,200,204',
   },
   // v1.332 (D8): each sampled from its reference photo - the side-by-sides cite every value
   'ipod-silver': {
@@ -141,6 +146,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#a2a0a4', '--pk-c-center-2': '#8a898c', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.26)', '--pk-c-lit-band2': 'rgba(255,255,255,.15)',
     '--pk-c-lits-band': 'rgba(255,255,255,.36)', '--pk-c-lits-band2': 'rgba(255,255,255,.2)', '--pk-c-lits-core': 'rgba(255,255,255,.5)',
+    '--pk-c-lita-glow': '250,250,252', '--pk-c-lita-core': '255,255,255',
   },
   'ipod-encore': {
     '--pk-c-body': 'linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%), linear-gradient(158deg, #343436, #161618)',
@@ -150,6 +156,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#2e2527', '--pk-c-center-2': '#161113', '--pk-c-center-oy': '40%',
     '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
     '--pk-c-lits-band': 'rgba(255,255,255,.26)', '--pk-c-lits-band2': 'rgba(255,255,255,.14)', '--pk-c-lits-core': 'rgba(255,255,255,.4)',
+    '--pk-c-lita-glow': '165,170,182', '--pk-c-lita-core': '226,230,237',
   },
   'ipod-blue': {
     '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%), linear-gradient(180deg, #62c1df 0%, #4fb0cb 18%, #45a7c0 40%, #3e96ab 50%, #2f7a90 68%, #245a6a 85%, #1d4654 100%)',
@@ -159,6 +166,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
     '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '120,208,232', '--pk-c-lita-core': '200,238,248',
   },
   'ipod-green': {
     '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%), linear-gradient(180deg, #5d8c4e 0%, #568649 25%, #4d7c44 50%, #467541 75%, #3f703d 100%)',
@@ -168,6 +176,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.14)', '--pk-c-lit-band2': 'rgba(255,255,255,.08)',
     '--pk-c-lits-band': 'rgba(255,255,255,.22)', '--pk-c-lits-band2': 'rgba(255,255,255,.12)', '--pk-c-lits-core': 'rgba(255,255,255,.34)',
+    '--pk-c-lita-glow': '140,190,120', '--pk-c-lita-core': '190,225,176',
   },
   'ipod-pink': {
     '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%), linear-gradient(180deg, #9e5a73 0%, #8f4c64 25%, #824153 50%, #763849 75%, #652430 100%)',
@@ -177,6 +186,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
     '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '220,138,168', '--pk-c-lita-core': '240,190,210',
   },
   'ipod-gold': {
     '--pk-c-body': 'linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%), linear-gradient(158deg, #b98629 0%, #a8761f 38%, #a17118 55%, #8c6112 80%, #7b540c 100%)',
@@ -186,6 +196,7 @@ const COLORWAYS = {
     '--pk-c-center-1': '#c8940f', '--pk-c-center-2': '#b07e07', '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.22)', '--pk-c-lit-band2': 'rgba(255,255,255,.13)',
     '--pk-c-lits-band': 'rgba(255,255,255,.32)', '--pk-c-lits-band2': 'rgba(255,255,255,.18)', '--pk-c-lits-core': 'rgba(255,255,255,.46)',
+    '--pk-c-lita-glow': '255,210,125', '--pk-c-lita-core': '255,238,196',
   },
 };
 

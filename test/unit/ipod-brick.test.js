@@ -727,7 +727,10 @@ test('the engine seam is GENERIC: setWheelTakeover names nothing about games', (
 
 test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it to skins that have a wheel', () => {
   const engine = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
-  assert.match(engine, /stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'/, 'the engine asks the view, it does not decide');
+  // v1.333: the sticker row is gone; the SAME view hook feeds the pocket menus' Extras > Games > Brick,
+  // main document only, and the menu asks the hook's visible() before it draws the entry
+  assert.match(engine, /var menuGames = \(inMainDoc && stickerCfg && stickerCfg\.brick\) \|\| null;/, 'the engine hands the view\'s hook to the menus, main document only');
+  assert.match(engine, /if \(!games \|\| typeof games\.visible !== 'function' \|\| typeof games\.onTap !== 'function'\) return false;\s*try \{ return !!games\.visible\(\); \} catch \(_\) \{ return false; \}/, 'the engine asks the view, it does not decide');
   // v1.273: the predicate moved out of music.js into the shared wiring, so bind it
   // BEHAVIOURALLY here rather than re-locking a string in whichever file holds it.
   const b = boot();
@@ -873,14 +876,16 @@ test('slim CRITICAL-2: the ENGINE releases its takeover before it destroys the p
   assert.match(music, /if \(activeBrickStop\)/, 'which its destroy() calls - destroy runs at module scope and cannot see the closure');
 });
 
-test('slim W3: the row is gated on the view\'s answer - source lock (the behaviour is measured in the gate\'s own probes)', () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
-  assert.match(html, /if \(inMainDoc && stickerCfg\.brick && typeof stickerCfg\.brick\.visible === 'function'\) \{[\s\S]{0,320}?if \(brOn\) brickRow =/,
-    'main-document only, and it renders only when the view answers true');
-  assert.match(html, /var brOn = false;\s*try \{ brOn = !!stickerCfg\.brick\.visible\(\); \} catch \(_\) \{ brOn = false; \}/,
-    'a THROWING visible() hides the row rather than breaking the menu');
+test('v1.333 (Dean: "We have brick there. I don\'t think we need it to be there"): the sticker menu never offers Brick; the game stays at Extras > Games > Brick', () => {
+  const engine = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+  assert.ok(!/data-skin-brick/.test(engine), 'no sticker Brick row and no dispatch for one (comments stripped)');
+  assert.ok(!/brickRow/.test(engine), 'the row variable is gone too');
+  // the Games entry is the one path left (behaviourally bound in test/unit/pocket-quick-scroll.test.js and
+  // test/integration/music-pocket-menus.test.js); the engine still gates it on the view's answer
+  assert.match(engine, /games: menuGames/, 'the menus receive the Brick hook');
 });
-
 
 test('v1.270 GEOMETRY LOCK: the overlay\'s containing block is the LCD inner box, and the WHEEL is outside it', () => {
   // THE bug this wave shipped: .ipod-brick{position:absolute; inset:0} resolved
