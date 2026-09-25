@@ -15,12 +15,11 @@
   Plus a fast way home from the player (Dean: "Right now I must press menu many times then the FileTube
   icon"): a Home row at the top of the sticker menu and press-and-hold MENU, both docking the player.
   Intake D1-D6 and the build plan: docs/exec-plans/active/2026-09-25-pocket-design-system.md.
-- [ ] **Future Click colorways, each one token block on the pocket design system** (Dean, 2026-09-25:
-  "What iconic color or version am I missing we can plan it to be w new ones with this design system").
-  Picked: **Silver** (the 2007 iPod classic in silver aluminum), **Black + red wheel** (the U2 Special
-  Edition look, under a cheeky name, never the band's), and the **Mini pastels** (the iPod mini's blue,
-  green, pink and gold). Each is built from a real reference photo, sampled and shown side by side (the
-  Matte / Red method). After v1.332.0 ships the system.
+- [ ] **Six more Click colorways, in v1.332.0 with the design system** (Dean, 2026-09-25: "What iconic
+  color or version am I missing ..." then "I want the other skins built now too not just roadmap").
+  **Silver** (the 2007 iPod classic), **Encore** (a black body with a red wheel, the U2 Special Edition look
+  under a cheeky name) and the iPod mini's **Blue, Green, Pink and Gold**, each one token block from a real
+  reference photo, shown side by side. Gold waits on a reference photo (none on Wikimedia Commons).
 - [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs

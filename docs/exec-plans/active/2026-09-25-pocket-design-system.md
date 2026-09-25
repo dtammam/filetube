@@ -9,7 +9,7 @@ design: "Approved 2026-09-25 (Dean's intake in the v1.331 session: D1-D6 below, 
 gate: pending
 ---
 
-# The pocket design system: Seattle out, one token system for the Click skins, and Click (Red)
+# The pocket design system: Seattle out, one token system for the Click skins, Click (Red) and six more colorways, and Home from the player
 
 ## The ask
 
@@ -30,8 +30,9 @@ design system" - planned below as future colorways (NOT built this swing).
 | D2 | The Red look | **Red body, white wheel** - the (PRODUCT)RED iPod. The real device (reference below) has a RED center button (body color), like White and Black whose centers match their bodies; build to the photo |
 | D3 | Design-system depth | **Full system**: every pocket surface reads shared tokens (status bar, rows, type scale, split screen, controls, colors), ONE overflow rule, a colorway is ONE token block, lock tests |
 | D4 | Release shape | **One release**, v1.332.0, one gate (adversary + qa) |
-| D5 | Future colorways (planned, not built) | **Silver** (the 2007 iPod classic aluminum), **Black + red wheel** (the U2 Special Edition look - a cheeky name, never the band's), **Mini pastels** (the iPod mini's blue, green, pink, gold). Nano rainbow declined |
+| D5 | More iconic colorways | **Silver** (the 2007 iPod classic aluminum), **Black + red wheel** (the U2 Special Edition look - a cheeky name, never the band's), **Mini pastels** (the iPod mini's blue, green, pink, gold). Nano rainbow declined. **D8 (Dean, same day): "I want the other skins built now too not just roadmap" - all of them ship in v1.332.0** |
 | D6 | Seattle's pocket-menu pieces | removed entirely with it (pivots, swipe, pad-moves-pivot, Games row, two-line lists, the Metro screen) |
+| D8 | The D5 colorways | **Built this swing**: `ipod-silver` "Click (Silver)", `ipod-encore` "Click (Encore)" (black body, red wheel; the cheeky name, never the band's), `ipod-blue` "Click (Blue)", `ipod-green` "Click (Green)", `ipod-pink` "Click (Pink)", `ipod-gold` "Click (Gold)" (ids and labels are the builder's to adjust if a clash appears; keep the Click (X) pattern). Each is ONE role-token block from a real photo (references below) |
 | D7 | A fast way from the player to FileTube's home page (Dean: "Right now I must press menu many times then the FileTube icon") | **BOTH: a Home row at the top of the corner sticker's menu** (every skin, two taps from any screen or menu depth) **and press-and-hold MENU** on the Click wheel. Either one docks the player (the song keeps playing in the mini-player) and navigates to the app's home page |
 
 Dean's standing run rules apply: ONE plan (this), ONE builder, ONE gate at the end (adversary is
@@ -113,6 +114,38 @@ runtime list from the registry (`menus === 'click'`), never a literal.
 - Other Commons photos for a cross-check: "File:Apple iPod nano 3G Product Red-2007-09-08.jpg"
   (CC BY-SA 2.0, an iPod classic-shaped 3G nano, its screen shows the 6G split menu),
   "File:Apple iPod nano 2G Product Red-2007-07-15.jpg" (CC BY 2.0).
+
+**The D8 references** (Wikimedia Commons; cite, never commit the images; fetch the 960 px thumbs
+through the API `action=query&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=960` with a User-Agent).
+READ THIS FIRST: most of these photos are underexposed and several are under warm light. Neutralize
+each photo against its WHEEL (plastic of a known near-neutral light grey) - per-channel gain to
+neutral, THEN scale exposure so the wheel reads like the White Click's wheel - and only then take the
+body / label values. The numbers below are white-balanced but NOT exposure-normalized (the builder's
+first job per colorway), medians of boxes, p15/p50/p85 for bodies:
+- **Silver** - "File:IPod Classic 6th Generation 120 GB - front.jpg" (CC BY 3.0; front-on, even light,
+  the best of the set). Body p15/p50/p85 `#585759` / `#8c8c92` / `#c3c2c7` (satin aluminum, a strong
+  left-bright gradient); wheel `#b8b8b8` (light grey); labels `#6c7276` (dark grey); center `#868989`
+  (body aluminum, not wheel). Cross-check: "File:IPod classic 80 GB (A1238, YMV)-9876.jpg" (CC BY-SA 4.0).
+- **Encore (black + red wheel)** - "File:IPod U2.jpeg" (CC BY 3.0; 640x420, SMALL and soft - hue only).
+  Body `#39393b` (glossy black, like Click (Black)); wheel `#e85a70` raw (a warm red; normalize - it is
+  the photo's brightest object); center `#2a1e20` (black); labels near-white. Reuse Click (Black)'s body
+  roles and change the wheel, center and labels; say so in the side-by-side notes.
+- **Blue (mini 2G)** - "File:IPod mini blue front 2G.jpg" (CC BY-SA 3.0; front-on). Body p15/p50/p85
+  `#123140` / `#1e5d6a` / `#37829b` (a teal-blue, underexposed: the top edge reads `#58aabf`); wheel
+  `#a9a9a9`; center = wheel color; labels `#4e91a6` (the BODY color - the 2G mini's labels match the body).
+- **Green (mini 2G)** - "File:Green ipodmini 2ndgen.jpg" (CC BY-SA 2.0; a close crop, labels green):
+  body `#355b30`, labels `#327547`. Cross-check body with "File:Green ipodmini 1stgen.jpg" (public
+  domain; 1G, grey labels): body p50 `#6b8336`, p85 `#778c40`. Center = wheel color.
+- **Pink (mini 2G)** - "File:Apple iPod 5G-nano 2G-mini 2G.jpg" (CC BY 2.0; the pink mini on the right,
+  warm light, strong correction): body p15/p50/p85 `#611e31` / `#89475c` / `#ab6582`; wheel neutralized
+  to `#cecece`; labels `#bb9394` (pink); center = wheel color.
+- **Gold (mini 1G only)** - NO photo found on Commons (searched: ipod mini gold / champagne / 1G /
+  family). Build it LAST: search a CC-licensed source (Flickr CC search) or ASK DEAN for a photo; never
+  guess a gold (the match-reference norm). 1G minis carry GREY wheel labels (see "File:Ipod mini 1G.jpg",
+  public domain, a silver 1G). If no reference arrives, ship the other five and disclose gold.
+- The mini's CENTER button is the wheel's light grey, not the body color (all three 2G photos).
+- With 12 skins, re-measure the Settings picker and the sticker menu's skin chips (they wrap, never
+  shrink - the button-measurement norm, scripts/action-row-probe.js) and the Nano tray chips.
 
 ## Design
 
@@ -204,6 +237,10 @@ active-skin read rewrites the stored value once when it was legacy (so the synce
 - **AC9 Everything else unchanged.** Full `npm test` green on Node 22.23.1 and 24.20.0; the pocket
   menu integration suites green on Click (their Seattle cases rewritten or removed as above).
 
+- **AC12 The D8 colorways (Silver, Encore, Blue, Green, Pink, Gold).** Each is a registry entry + ONE
+  role-token block + a Settings blurb and nothing else (AC4/AC8 enforce it); each has a side-by-side PNG
+  against its reference with the exposure-normalized samples cited; all six get menus, Brick, lighting,
+  the tray and pop-out chips. The picker and chips measured before/after (12 cards / chips wrap cleanly).
 - **AC10 Home from the sticker (D7).** The sticker menu's FIRST row is Home on every skin that
   draws the sticker (Click family, Red, Cider, Nordic; music and podcasts). Tapping it docks the
   player (playback continues, the mini-player shows) and lands on `/` through the SPA router (no
@@ -231,6 +268,8 @@ active-skin read rewrites the stored value once when it was legacy (so the synce
 5. **Click (Red)** (AC7): the registry entry, the one token block from the samples, the blurb,
    the side-by-side PNG (send it to Dean with SendUserFile if available, else list its path).
    Demo: pick Click (Red) in Settings; the menus, wheel, lighting and Brick all work on it.
+5b. **The D8 colorways** (AC12): Silver, Encore, Blue, Green, Pink, then Gold last (its reference first).
+   Demo: all of them in Settings; one side-by-side sheet for Dean.
 6. **Home (D7, AC10/AC11)**: the sticker's Home row, then hold MENU. Demo: from Now Playing or a
    deep menu level, sticker > Home lands on the home page with the song still playing; holding
    MENU does the same.
@@ -244,8 +283,8 @@ the refactor - re-take the screenshots yourselves, mutate a role token, confirm 
 catches it; (3) the controller after the pivot removal - every Click menu path, MENU/Select/wheel,
 the pop-out, dock/undock, destroy() unbinding every listener it still binds (the v1.271 unbind
 class); (4) the overflow census - add a new text element and prove the census fails; (5) the
-INERT SIBLING class - find any Click list still hand-kept; (6) Red's reference fidelity (the
-side-by-side) and its lighting on both strengths; (7) the token-lint and containment ceilings;
+INERT SIBLING class - find any Click list still hand-kept; (6) every colorway's reference fidelity (the
+side-by-sides) and its lighting on both strengths; (7) the token-lint and containment ceilings;
 (8) Home (D7): the hold's release firing MENU too, a hold across a dock / skin switch / destroy,
 the pop-out window's Home, and the router landing (same-route and cross-route) with playback intact.
 
