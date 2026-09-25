@@ -23,3 +23,15 @@ Kept as the graceful fallback in Modern's font stack (Geist -> Roboto -> system)
 - License: **Apache License 2.0** - https://www.apache.org/licenses/LICENSE-2.0
 - Source: Google Fonts (https://fonts.google.com/specimen/Roboto); subsetted to
   latin, otherwise unmodified. Apache-2.0 permits redistribution.
+
+## Jersey 10 (`jersey10.woff2`) - the Click (Original) screen face (v1.335)
+
+A chunky bitmap-style face for the Click (Original) music-player skin's monochrome
+screen (the first iPod's look; Apple's own screen font cannot ship). Only that skin's
+screen names it, so no other page or skin downloads it.
+
+- Font: **Jersey 10**, (c) 2023 The Soft Type Project Authors (https://github.com/scfried/soft-type-jersey)
+- License: **SIL Open Font License 1.1** - https://openfontlicense.org
+- Source: Google Fonts (https://fonts.google.com/specimen/Jersey+10); subsetted to
+  latin (fontTools pyftsubset, woff2), otherwise unmodified. OFL permits
+  subsetting/bundling/redistribution.

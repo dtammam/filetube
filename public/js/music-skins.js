@@ -259,6 +259,11 @@
     { id: 'ipod-cobalt', label: 'Click (Cobalt)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-magenta', label: 'Click (Magenta)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-raspberry', label: 'Click (Raspberry)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.335 (Dean: "one special Original skin which includes the entire vibe of the first"): the 2001
+    // original. Its colors are ONE role block like any colorway; `look` names the structural LOOK the
+    // engine adds as ONE panel class (mms-look-original) - the button ring, the monochrome screen, the
+    // bitmap face, the wheel that turns. The markup is renderIpod's; the look is CSS keyed on that class.
+    { id: 'ipod-original', label: 'Click (Original)', base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
   // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the

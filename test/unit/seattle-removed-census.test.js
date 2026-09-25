@@ -66,6 +66,6 @@ test('AC1: the legacy map is the retired id\'s ONLY home in the registry module,
 
 test('AC1: the Settings picker lists exactly the live skins (each blurb: setup-music-skin-picker.test.js)', () => {
   const skins = require('../../public/js/music-skins.js');
-  assert.deepStrictEqual(skins.SKINS.map((s) => s.label), ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)', 'Click (Silver)', 'Click (Encore)', 'Click (Blue)', 'Click (Green)', 'Click (Pink)', 'Click (Gold)', 'Click (Frost)', 'Click (Sky)', 'Click (Olive)', 'Click (Blush)', 'Click (2004)', 'Click (Charcoal)', 'Click (Violet)', 'Click (Yellow)', 'Click (Lime)', 'Click (Cobalt)', 'Click (Magenta)', 'Click (Raspberry)']);
+  assert.deepStrictEqual(skins.SKINS.map((s) => s.label), ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)', 'Click (Silver)', 'Click (Encore)', 'Click (Blue)', 'Click (Green)', 'Click (Pink)', 'Click (Gold)', 'Click (Frost)', 'Click (Sky)', 'Click (Olive)', 'Click (Blush)', 'Click (2004)', 'Click (Charcoal)', 'Click (Violet)', 'Click (Yellow)', 'Click (Lime)', 'Click (Cobalt)', 'Click (Magenta)', 'Click (Raspberry)', 'Click (Original)']);
   assert.ok(!skins.SKINS.some((s) => s.menus && s.menus !== 'click'), 'no second pocket-menu style survives');
 });

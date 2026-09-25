@@ -319,6 +319,26 @@ const COLORWAYS = {
     '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
     '--pk-c-lita-glow': '235,90,130', '--pk-c-lita-core': '250,180,200',
   },
+  // v1.335 (D9-D12): the Original's COLORS (its structure is the look section; pocket-original-look.test.js)
+  'ipod-original': {
+    '--pk-c-body': 'linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%), radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%), linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%), linear-gradient(158deg, #fafafa, #e4e4e4)',
+    '--pk-c-body-edge': '#c4c4c4',
+    '--pk-c-wheel-1': '#f6f6f6',
+    '--pk-c-wheel-2': '#e6e6e6',
+    '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)',
+    '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#a4a4a4',
+    '--pk-c-center-1': '#fdfdfd',
+    '--pk-c-center-2': '#ececec',
+    '--pk-c-center-oy': '40%',
+    '--pk-c-lit-band': 'var(--mms-lit-band)',
+    '--pk-c-lit-band2': 'var(--mms-lit-band2)',
+    '--pk-c-lits-band': 'var(--mms-lits-band)',
+    '--pk-c-lits-band2': 'var(--mms-lits-band2)',
+    '--pk-c-lits-core': 'var(--mms-lits-core)',
+    '--pk-c-lita-glow': '255,255,255',
+    '--pk-c-lita-core': '255,255,255',
+  },
 };
 
 test('the colorway VALUES: every role of every colorway, byte-exact (the palettes\' value authority)', () => {
@@ -381,8 +401,23 @@ test('AC5: every font-size in the pocket rules reads a pocket TYPE role (--pk-fs
 });
 
 test('AC5: the structure + type tokens are defined ONCE, on the chassis (.mms-ipod), and every one is read', () => {
-  const defs = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-(?!c-)/.test(p)));
+  // v1.335 (the Original look, plan 2026-09-25-click-colorways-seven D12): the look's OWN tokens (--pk-o-*: its
+  // LCD, ink, ring and disc) are a second family, defined once on the look block; it never redefines a chassis
+  // token (the intent of this lock - the structure + type sizes have ONE authority) and the chassis never
+  // holds a look token.
+  // The SCREEN roles (--pk-s-*) live on the chassis too, each exactly its palette token (so every skin paints
+  // the shared screen); the ONE place they are re-pointed is the Original's glass (below).
+  const defs = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-(?!c-|o-|s-)/.test(p)));
   assert.deepStrictEqual(defs.map((r) => r.sel), ['.mms-ipod'], 'one chassis rule holds the structure + type tokens');
+  const scr = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-s-/.test(p)));
+  assert.deepStrictEqual(scr.map((r) => r.sel), ['.mms-ipod', '.mms-look-original .ip-lcd-in'], 'the screen roles: defined on the chassis, re-pointed only in the Original\'s glass');
+  assert.strictEqual(scr[0], defs[0], 'the screen roles sit in the chassis structure block');
+  for (const [p, v] of decls(defs[0].body).filter(([q]) => /^--pk-s-/.test(q))) assert.match(v, /^var\(--mms-[a-z0-9-]+\)$/, p + ' is exactly a palette token on the chassis');
+  const lookDefs = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-o-/.test(p)));
+  assert.deepStrictEqual(lookDefs.map((r) => r.sel), ['.mms-look-original'], 'one look rule holds the look tokens');
+  assert.deepStrictEqual(decls(lookDefs[0].body).map(([p]) => p).filter((p) => /^--pk-(?!o-)/.test(p)), [], 'the look block redefines no chassis, screen or role token');
+  assert.deepStrictEqual(decls(scr[1].body).map(([p]) => p).filter((p) => /^--pk-(?!s-)/.test(p)), [], 'the glass re-points only screen roles');
+  assert.deepStrictEqual(decls(defs[0].body).map(([p]) => p).filter((p) => /^--pk-o-/.test(p)), [], 'the chassis holds no look token');
   const names = decls(defs[0].body).map(([p]) => p).filter((p) => p.startsWith('--pk-'));
   assert.strictEqual(new Set(names).size, names.length, 'no token defined twice');
   for (const n of names) assert.ok(new RegExp('var\\(' + n + '\\)').test(CSS), n + ' is read somewhere');
@@ -415,6 +450,33 @@ function pocketLevels() {
   out.push(v([{ label: LONG }], { jump: { letter: 'A', overlay: true, badge: true, grid: SK.menuLetterTargets(runs) } }));
   return out;
 }
+// v1.335 (plan 2026-09-25-click-colorways-seven, the Original's screen): every rule that styles an element
+// INSIDE the glass reads the SCREEN roles, never the palette tokens they wrap - else the Original's monochrome
+// glass would miss it (the inert-sibling class). The glass's classes are DERIVED from the renderers (every
+// level pocketLevels draws, plus Brick's layer), never a hand list.
+test('the screen census: no rule inside the LCD glass reads a palette token directly (it reads --pk-s-*)', () => {
+  const chassis = ALL.find((r) => r.sel === '.mms-ipod' && /--pk-s-/.test(r.body));
+  const wrapped = decls(chassis.body).filter(([p]) => /^--pk-s-/.test(p)).map(([, v]) => /^var\((--[a-z0-9-]+)\)$/.exec(v)[1]);
+  assert.ok(wrapped.length >= 10, 'the screen roles wrap the palette (' + wrapped.length + ')');
+  const inGlass = new Set(['ipod-brick']);
+  for (const html of pocketLevels()) {
+    const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
+    const glasses = doc.querySelectorAll('.ip-lcd-in');
+    const roots = glasses.length ? [...glasses] : [doc.getElementById('h')]; // a menu view renders INTO the glass
+    for (const g of roots) for (const el of g.querySelectorAll('[class]')) for (const c of el.classList) inGlass.add(c);
+  }
+  assert.ok(inGlass.has('ipm-row') && inGlass.has('mms-row') && inGlass.has('ip-status'), 'the derived glass classes (' + inGlass.size + ')');
+  const bad = [];
+  for (const r of ALL) {
+    const classes = (r.sel.match(/\.([a-z][a-z0-9-]*)/g) || []).map((c) => c.slice(1));
+    if (!classes.some((c) => inGlass.has(c))) continue;
+    if (!classes.some((c) => c === 'mms-ipod' || c === 'ipod-brick' || c === 'mms-tray')) continue; // the Click screen only (Cider/Nordic share a few class names)
+    for (const t of wrapped) if (new RegExp('var\\(' + t + '\\)').test(r.body)) bad.push(r.sel + ' reads ' + t);
+  }
+  assert.deepStrictEqual(bad, [], 'a glass rule that bypasses the screen roles');
+  // not vacuous: the spelling the census hunts is the one a regression would write
+  assert.ok(new RegExp('var\\(' + wrapped[0] + '\\)').test('color:var(' + wrapped[0] + ');'));
+});
 function classify(html) {
   const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
   const found = [];

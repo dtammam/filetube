@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.335-click-colorways
 anchor: spec
 status: Build
-next: Step 2 - read the engine (renderIpod, screen, menus, Brick, lighting, sticker, tray, pop-out), complete the Original's design + AC6, then build it.
+next: measure - pocket-render-probe on the branch (4 LIGHTS; the 12 existing skins vs the base run), skin-chips-probe after; mutants on the committed tree; the full suite on both Nodes; then the gate.
 design: "Approved 2026-09-25 (Dean's picks in this session: D2, D9-D12 are his answers)"
 gate: none yet
 ---
@@ -91,8 +91,47 @@ the wheel grey (minis), the body color (Nanos, 2004's white, Charcoal's grey). T
 (`lit`, `lits`, `lita`) follow each body's lightness, as in v1.332. Labels are tuned side by side
 against the photo during the build (the first renders were paler than the photos).
 
-**Step 2 - the Original (D9-D12).** Designed after reading the engine (renderIpod, the screen, the
-menus, Brick, lighting, the sticker, the tray); the design section is completed before Step 2's code.
+**Step 2 - the Original (D9-D12).** References: Commons "IPod1stWIKIPEDIA.png" (CC BY-SA 4.0, front-on)
+and "IPod 1Gen.jpg" (CC BY 4.0, a real lit LCD; the white body the neutral, exposed to 246).
+Measured on "IPod 1Gen.jpg": the LCD #c2c5b1 .. #cfd1b9 (a cool grey-green), the selection bar a taupe
+with light text (#dde4cf), the ink the photo's darkest (#716c61, a soft camera read of a near-black);
+the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
+
+- **The look axis.** A registry field `look: 'original'` on `{ id: 'ipod-original', label: 'Click (Original)',
+  base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod }`. The engine's ONE className
+  writer (`skin-surface.js` paint) adds `mms-look-<look>` when the entry has one - so the phone, the
+  desktop pop-out and the Nano tray (the same engine) all carry it. Every structural rule keys on
+  `.mms-look-original`; the colors stay ONE `.mms-ipod-original` role block (the census unchanged).
+  The markup is renderIpod's, unchanged: the ring, the disc and the gaps are CSS on the existing wheel.
+- **The screen.** (Revised in the build - see the status log: the palette tokens are contract-locked to
+  ONE value each, token-scale-lock.) Every rule inside the glass now reads SCREEN roles (`--pk-s-*`:
+  paper, ink, the selection pair, sub, the status-bar pair, hair, line, groove, art shadow, the battery
+  set, the jump backdrop), defined once on the chassis structure block as exactly their palette tokens,
+  so every other skin computes identically. Under `.mms-look-original .ip-lcd-in` the ROLES are
+  re-pointed to the look's LCD tokens (`--pk-o-*`), so every level - Now Playing, the queue list, every menu, Settings,
+  About, the A-Z picker, Brick's own backdrop - turns monochrome with no per-level rule; the token
+  scope stops at the LCD, so the sticker, the menus' chrome outside the glass and the body are
+  untouched. A few structural rules: no cover art (the cover and the menus' art pane hidden, the list
+  full width), the Now Playing text centered, no stars, the scrubber an outlined bar with an ink fill,
+  the battery ink.
+- **The font.** Jersey 10 (SIL OFL 1.1, (c) 2023 The Soft Type Project Authors), subset to latin, as
+  `public/fonts/jersey10.woff2` with an `@font-face` beside Geist / Roboto and a README entry (the Geist
+  precedent). Only the Original's LCD names it, so no other skin downloads it (no preload). Its sizes
+  come from overriding the pocket type tokens on the look (a condensed face reads small); the overflow
+  rule still holds (every line one line tall; `scripts/skin-status-bar-probe.js`).
+- **The ring.** On the Original the wheel's own background (the role gradient, lit as today) is the RING;
+  `::before` draws the four gaps (two thin diagonals, fixed); `::after` draws the inner scroll wheel (a
+  disc at ~70 %, a thin rim) BELOW the zones and the center button (`isolation:isolate` on the wheel
+  only - a small container, LESSONS 6 - and the two pseudo layers at z -1). "menu" is lowercase by
+  `text-transform`.
+- **The wheel turns.** The spin handler (`st.onMove`) accumulates its signed angle into one engine
+  variable and writes `--ip-turn` on the PANEL (so a repaint keeps it) - only for a skin with a look
+  (never for the other 24: their style attribute is unchanged). The disc layer rotates by it
+  (`transform` only; no filter, blur, mask). The real 1G wheel is smooth plastic, so a turning disc is
+  invisible without marks: the disc carries FAINT tick marks near its rim (disclosed; Dean judges).
+  Under `prefers-reduced-motion: reduce` the disc does not turn.
+- **Everything else derives**: menus, lighting, Brick, the sticker, the tray and pop-out chips (it is a
+  Click colorway by `menus`).
 
 ## Acceptance
 
@@ -109,7 +148,17 @@ menus, Brick, lighting, the sticker, the tray); the design section is completed 
   scroll reported per surface and viewport (disclosed under #280 (a) / #281 (b), no redesign).
 - **AC5 The hard-coded list tests** (`music-skins.test.js` IDS x2 + labels, `pocket-design-system.test.js`
   COLORWAYS, `music-pocket-menus.test.js` IDS -> menuStyle, `seattle-removed-census.test.js` AC1 labels) updated with intent preserved, never widened.
-- **AC6 The Original** (D9-D12): its criteria are written with Step 2's design.
+- **AC6 The Original** (D9-D12):
+  - (a) the registry entry has `look: 'original'`; the panel carries `mms-look-original` for it and for no
+    other skin (engine test through the real paint; mutant: drop the class write -> RED);
+  - (b) the ring, the gaps, the disc and lowercase "menu" render (side by side with the photo);
+  - (c) the monochrome LCD on every level (Now Playing, queue, each menu level, Settings, About, the
+    A-Z picker, Brick) and in the pop-out and tray: screenshots; no blue selection, no art;
+  - (d) the font is bundled (OFL cited), declared once, named only by the look;
+  - (e) a rotation writes `--ip-turn` on the panel for the Original (it grows with the turn) and never
+    for another skin; the disc's transform reads it; reduced motion drops it (bound; mutants RED);
+  - (f) the status-bar / overflow probe: every line one line tall on the Original at 390x844 and 380x700;
+  - (g) the census: every rule naming `mms-look-original` is in the look's section; AC4 still green.
 - **AC7** `npm run lint:css` 0, overlay containment 0, full `npm test` green on Node 22.23.1 and 24.20.0.
 
 ## Status log
@@ -126,3 +175,31 @@ menus, Brick, lighting, the sticker, the tray); the design section is completed 
   2443 px (max 47) = its labels re-measured light (#efeeee; the first pass took the darkest tenth, which on
   a label LIGHTER than its wheel is the wheel). All 12 lit under Pronounced. lint:css 0, overlay 0;
   targeted unit 210/210 + music-skins 40/40, integration music-skin-integration + music-pocket-menus 19/19.
+- 2026-09-25: Step 1 committed dfe24de6 (the pre-commit unit suite 7440/7440; it caught one more list
+  pin, seattle-removed-census AC1, updated with the rest).
+- 2026-09-25: Step 2 built - the Original: registry `look: 'original'`, the engine's class + `--ip-turn`
+  (skin-surface.js), ONE `.mms-ipod-original` role block, the look section (tokens, the glass re-points,
+  the ring / gaps / disc, lowercase menu), Jersey 10 (12 380 bytes, OFL) + README, the blurb.
+  Font choice: Jersey 10 over Pixelify Sans, Silkscreen and DotGothic16, side by side against the
+  "IPod 1Gen.jpg" LCD (closest to its condensed bold lettering). An old lock went red and was complied
+  with, not widened: pocket-design-system AC5 "tokens defined ONCE on the chassis" - the look first
+  redefined the --pk-fs-* sizes; now it leaves them and sets `font-size-adjust:.53` (Jersey's x-height is
+  .429 em, Geist's / Roboto's .53, measured from the fonts), and the lock gains the look family (--pk-o-*,
+  one block, never a chassis token; the chassis never a look token). New test file
+  pocket-original-look.test.js 8/8. Probe: pocket-render-probe ipod-original, 390x844 + 380x700, Off +
+  Pronounced: 66 files, every text line 1 line (30/30), no spills, no page errors; every level
+  monochrome incl. Brick, the pop-out and the tray. The turn: the disc at 0 vs 25 deg differs in 38 799
+  device px, all inside the wheel box. lint:css 0, overlay 0; related unit 253 + integration 19 green.
+- 2026-09-25: the first Step 2 commit attempt was REFUSED by the pre-commit suite (7447/7448):
+  token-scale-lock "every new-layer token is defined EXACTLY ONCE with its contract value" - the look
+  re-pointed contract palette tokens (--mms-white and 15 more) inside the glass. Complied, not widened:
+  a SCREEN-role layer (--pk-s-*, 16 roles on the chassis, each exactly its palette token); 57 reads in 38
+  glass rules moved onto the roles by script (comment-masked; Brick's backdrop caught on a second scan
+  after a comment with braces hid it); the look re-points the roles, not the tokens; the center rim is a
+  look rule (`var(--mms-lit-dome-shadow, var(--pk-o-center-rim))`) instead of a redefined token. Locks
+  updated in lockstep with intent kept: music-skins v1.233 cursor bar (reads --pk-s-sel1 AND the chassis
+  role is the blue token), pocket-design-system AC5 (the screen-role family: chassis + the glass only,
+  each chassis role exactly a palette token), pocket-original-look (b)/(c). NEW census (pocket-design-
+  system): no rule inside the glass reads a wrapped palette token, the glass classes DERIVED from the
+  renderers. Renders: the Original and Click White Now Playing 0 px vs before the refactor.
+

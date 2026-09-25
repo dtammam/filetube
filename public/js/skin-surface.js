@@ -1375,6 +1375,14 @@
     var wheelCursorRow = -1;           // current list position the cursor sits on (-1 = list closed)
     var wheelSuppressClick = false;    // swallow the synthetic click a spin-ending pointerup fires
     var wheelSpin = null;              // the live gesture handle (one at a time)
+    // v1.335 (the Original's "wheel that turns"): the wheel's accumulated turn in degrees, written as
+    // --ip-turn on the PANEL (a repaint keeps it) only while the skin has a LOOK - no other skin's style
+    // attribute ever carries it (paint() removes it on a skin without one).
+    var wheelTurn = 0;
+    function skinLook() {
+      var e = (typeof SKINS.skinById === 'function' && SKINS.skinById(getSkinId())) || {};
+      return (typeof e.look === 'string' && e.look) || '';
+    }
     var bound = false;
 
     function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
@@ -1952,7 +1960,11 @@
       releaseWheelTakeover();
       var id = getSkinId();
       var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
-      panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
+      // v1.335: a skin's LOOK (the Original) is ONE more class - the structure keys on it, never on
+      // the colorway class; a skin without one drops the wheel turn it may have left on the panel.
+      var look = skinLook();
+      panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '') + (look ? ' mms-look-' + look : '');
+      if (!look && wheelTurn) { wheelTurn = 0; try { panel.style.removeProperty('--ip-turn'); } catch (_) { /* detached */ } }
       // v1.271: no longer the normal heal (the guard at the top of paint() ends a stale spin
       // properly, with its timers). This is the BACKSTOP for an endWheel that throws inside
       // that try/catch - a repaint must never leave a live spin behind.
@@ -2491,6 +2503,11 @@
         st.accum += d;
         var lettered = !!(st.menu && pocket && !wheelTakeover && pocket.inLetterMode());
         hapticOnMove(st, ev, Math.abs(d), d, lettered); // v1.256: ticks in BOTH modes (cursor + scrub); v1.303 signed d for the sweep engine; quick scroll: per letter in letter mode
+        // v1.335: the Original's wheel turns under the thumb - every rotation, Brick's included
+        if (skinLook()) {
+          wheelTurn = (wheelTurn + d) % 360;
+          try { panel.style.setProperty('--ip-turn', wheelTurn.toFixed(1) + 'deg'); } catch (_) { /* detached */ }
+        }
         // v1.270: ONE generic WHEEL TAKEOVER, deliberately not game-aware. While set it
         // consumes rotation (the haptic above already fired, which is the point - a
         // takeover gets the wheel AND its ticks for free), and MENU/Select route to it

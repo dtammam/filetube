@@ -551,6 +551,7 @@ const MUSIC_SKIN_BLURB = {
   'ipod-cobalt': 'Vivid anodized cobalt blue, a white wheel and a blue center.',
   'ipod-magenta': 'Hot anodized magenta, a white wheel and a magenta center.',
   'ipod-raspberry': 'Deep anodized raspberry, a white wheel and a pink center.',
+  'ipod-original': 'The first one: a button ring, a grey screen, a wheel that turns.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');
