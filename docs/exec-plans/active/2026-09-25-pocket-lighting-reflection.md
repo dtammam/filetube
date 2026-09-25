@@ -3,10 +3,10 @@ plan: pocket-lighting-reflection
 harness: v2 · lean
 branch: feat/pocket-lighting-reflection
 anchor: spec
-status: Built, in gate
-next: ONE gate round (adversary + qa) at the sha below, release v1.329.0
+status: Gate closed
+next: release v1.329.0
 design: this document; the research is Dean's doc "FileTube Click skins: making the lighting look physically real" (2026-09-24)
-gate: pending
+gate: APPROVED r2 @2869d88b (adversary + qa); r1 CHANGES (the glass's one pane) fixed in 2869d88b; the r2 suggestions filed as #276
 ---
 
 # Pocket lighting, third swing: a reflection, not a sheen
@@ -197,3 +197,47 @@ SUGGESTION
   epsilon, glass ramp (not built) and AC6 miss are corrected in place.
 - Not changed, disclosed: Subtle does not scale the lip ring or the Fresnel edge (qa S2); the dome ratio
   reads 17-21x depending on R (the physics: R / (2 beta) against k).
+
+## Gate r2 - adversary
+
+Gate: APPROVED r2 @2869d88b — adversary
+
+Sandbox `git archive 2869d88b`: unit file 17 pass / 0 fail; lint:css TOTAL 0; overlay clean (0 violations); eslint exit 0.
+- C1 fixed as prescribed (verified). Diagnostic render (every reflection layer at opacity 1, LCD black), Black pronounced, the row 14 css px inside the LCD bottom vs 12 px below it. At the key pose: glass [22-173.5] [216-367.5], body [2-173.5] [216-387.5]; both pane edges are collinear (the LCD clips at 22/368). At roll+3: 212 vs 212. At roll-3: 177 vs 176.5. On c57bc769 the same probe gave glass [22-81] [94-173.5] (the false mullion, no right pane). Mutant: one glass pane layer -> red (the image-vs-size count lock).
+- W1 fixed (verified). These now go red: lcy sign, k by width, `--dr` unwritten, `--lcx/--lcy` unwritten, resize not measuring, resize listener not removed. An lcx sign flip survives, but it is equivalent here (measured `--lcx 0.0px`: the LCD is centred horizontally).
+- W2 fixed (verified). The lit dome base is static per skin; a mutant re-adding `--lx` to it goes red. KEY_X is -3.
+- W3 fixed, with one caveat. A mutant dropping the near-key `offSince` reset now goes red, and so does the glide without its end snap (S1 fixed). But `GLIDE_TAU_MS 1500 -> 150` still passes 17/17: the new tau test loops `GLIDE_TAU_MS / 16` ticks, so it is self-referential and binds the curve's shape, not the 1.5 s value. The value itself I measured end to end in r1.
+- S2 fixed; Off is byte-identical (verified). The wheel and dome box-shadow and dome background resolve to identical computed strings on main and the fix sha, for ipod / black / matte / zune. PNG sha1 matches main for each skin: ipod 967c1691, matte 168a7d39, zune 6df426d3, black 2b1f3aa4 (two runs).
+  - The box ran at load 11-14, which is unrelated to this diff. The renderer is noisy on BOTH trees: main-vs-main Black differs by 75522 px at max delta 2; one Black fix-vs-main pair differs by 3 px at max delta 5. Two ipod captures were torn (tiled) frames, an instrument failure, and a re-shot with a settle wait matched.
+- qa W3 snap, end to end in Chromium (Black pronounced):
+  - The first sample 5 deg off the key writes `--fy 351.7px` at once (writes 1 -> 2), and the loop is parked at 1 s and 2 s with no further writes.
+  - Hidden clears (fy '', not lit, off). On return, the next first sample snaps to -351.7px and parks within 1 s.
+  - Mutants: no snap -> red; snap without applyLit -> red (the relaunch/permission test); snap on every sample -> red. applyLit on every sample survives (equivalent: idempotent).
+
+Remaining (none block; ship disclosed):
+- WARNING (a lock gap; the shipped code is correct): the glass LAMP's `+ var(--lcx) / + var(--lcy)` is unbound. Removing both passes 17/17, and the glass lamp would then sit 275 px off the body's. I named this in r1 W1; the image count lock does not reach positions.
+- SUGGESTION: make the tau test literal (`GLIDE_TAU_MS === 1500`, or a fixed 94-tick loop).
+- SUGGESTION (reasoned, not run): `start()` re-creates the filter, so a key glided to a lying-down pose resets to 58 on every unlock, return or pick, and re-glides after 2 s + tau.
+- Perf was not re-measured this round (the fix adds one small glass layer; r1 measured 2.28-2.37 ms/frame).
+Tree: the live tree is clean apart from this append; no untracked files.
+
+## Gate r2 - qa
+
+Gate: APPROVED r2 @2869d88b — qa
+
+Instruments (live tree at 2869d88b, verbatim): `# tests 17 # pass 17 # fail 0`; lint:css `TOTAL 0`; `overlay-containment: clean (0 violations)` exit 0; eslint exit 0, no output. Probe (sandbox `git archive 2869d88b`, port 9348, load avg 11): moving `taskMsPerFrame 2.615` (script .206, style 1.478, 0 layouts); listeners off 0 / on 1 / docked 0 / destroyed 0 / seattle 0 (lit false); errors [].
+
+My r1 findings against 2869d88b:
+- C1 FIXED as prescribed. Key-pose glass row y460 (R channel; pane 253, clear 255) at x 100/176/300/390/500/700: r1 `253,255,253,255,255,255` (fake mullion at 176, no right pane), r2 `253,253,253,255,253,253` (left pane, mullion at 390, right pane). Same on ipod, black and matte; the body row is unchanged. Mutant "glass back to one pane layer": fail 1 (the layer-count lock kills it).
+- W1 FIXED. Resize probe 390x844 -> 600: `--k 25.00px` (real 25), `--lcy 152.8px` (real 152.75). Mutants all fail 1: onResize never bound, stop() keeps the resize listener, onResize without write().
+- W2 FIXED. Straight hold with KEY_X -3: hold-0-50 `fx 210.9px`, hold-0-58 `211.0px`. The near pane shows on the body (x 426-770) and continues on the glass. Mutant "lit dome back to --lx": fail 1.
+- W3 FIXED. Boot, then one hold-0-50 sample: `fx` per frame `211.0px` x14, no sweep. Mutant "no first-sample snap": fail 1. Residual: where the panel lights at sync (Android/desktop), the key-centred map shows until the first sample, then jumps 211 px once (atBoot `fx 0.0px lit true`). A jump, not a sweep; fine.
+- S1 FIXED. The four r1 survivors are now asserted.
+- S2 PARTLY FIXED; see S-a below.
+- New surfaces: the resize listener is bound and unbound on the driver's own `win` (the pop-out's window for the pop-out), and destroy() releases it (test count 0). The snap is sensor-only: sessionSamples counts only non-null sensor samples, so the mouse still eases, up to 12 deg, driven by the user. Removing the dead `--mms-lit-*-shadow` fallbacks from the base rules is Off-neutral: grep finds no definition anywhere.
+
+SUGGESTION (non-blocking):
+- S-a The new DOME_BETA comment (pocket-lighting.js:41-42) says "about 17x slower on an 844 px panel with a 54 px dome". The arithmetic gives 2*15*(844/24)/54 = 19.54x (20.81x at the probe's R 50.7). The "~15x" wording remains at pocket-lighting.js:153, style.css:12109 and test names 50/260/276, and Built (plan:112) still says 17.5x.
+- S-b scripts/pocket-lighting-probe.js:108 still has `const KX = -10` (not in the fix diff). The stock probe's "key" pose is now 7 deg off the key: ex -14, fx about -492 px. My r2 run patched KX to -3. Read L.KEY_X instead.
+- S-c Lock survivor on the C1 surface: dropping `+ var(--lcy,0px)` from the glass RIGHT pane's position passes 17/17. The lock binds only the left pane's position string.
+- Security: unchanged from r1. One window `resize` listener added, bound and unbound symmetrically; no route, network or dependency change.
