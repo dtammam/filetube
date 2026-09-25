@@ -3244,5 +3244,11 @@
     "date": "2026-09-25",
     "title": "Seven new Click colors, a Home button in the player, and the Seattle skin retired",
     "intent": "The Click skin comes in seven more colors: Red, Silver, Encore (black with a red wheel), Gold, and the mini's Blue, Green and Pink, each matched to a photo of the real thing. The Seattle skin is gone; if you had it picked, you are now on Click. The corner sticker's menu now starts with Home, and holding MENU on the wheel takes you home too, with your song still playing in the mini player. Long song, album and artist names always stay on one line in the Click screens."
+  },
+  {
+    "version": "1.333.0",
+    "date": "2026-09-25",
+    "title": "Ambient lighting for the Click skins, and a corner menu that fits",
+    "intent": "The Click skins have a fourth lighting choice, Ambient: the same tilt-driven shine as Pronounced, but the light now takes on the color of the body and softens like it does on real anodized metal, with a fine grain. The corner sticker's menu no longer runs off the top of the screen with a big sticker; Brick moved out of it (it is still under Extras, Games), the four lighting choices are in it, and skins open on their own page so the menu fits on most phones."
   }
 ]
