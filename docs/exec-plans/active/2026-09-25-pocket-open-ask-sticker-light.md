@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/v1.334-open-ask-sticker-light
 anchor: spec
 status: Gating
-next: ONE gate (adversary + qa, fresh, max two rounds; at round 3 ask Dean), then the release steps (docs/RELEASING.md + AGENTS.md)
+next: the release steps (docs/RELEASING.md + AGENTS.md): version, ROADMAP, ledger, LESSONS, tracker #282 (+ #281 c/d, #277 a closed), plan-complete, dual-Node suites, release branch, merge --no-ff, tag v1.334.0, PR, CI, merge.
 design: "Approved 2026-09-25 (Dean's words below are the D-decisions; D9 = his tap-to-play ruling in this session)"
-gate: pending
+gate: APPROVED r2 @ede46354 (adversary, qa)
 ---
 
 # v1.334.0: the motion ask on opening the Click player, the sticker catches the light, the notification tap that won't play, #281 cleanups
@@ -186,6 +186,12 @@ Builder decisions (B, disclosed):
 - A rejected motion ask (no gesture) is no longer a deny (research, item 1): it re-arms the first-tap ask.
 - AC2's "two runs of one tree first" was skipped: the Off delta measured ZERO (340/340 shots, 0 px, 0 styles),
   so no noise floor was needed to separate it (gate r1 qa S1 asked for this to be a Deviation).
+- Mutants r3 on ede46354 (99: the r2 set + one per r1 fix + the adversary's S1 guards): 97 killed by name,
+  2 survived, both masked by wanted()'s `!destroyed` check: destroy-stays-registered and the three-guard
+  dead-driver mutant (answer()'s and rearm()'s `destroyed` checks + destroy()'s splice). Removing all FOUR
+  (+ wanted()'s) is killed by "a late answer after the driver died re-binds nothing" - that test binds the
+  set through wanted(), not the three (the fix-round message's "all three guards" was wrong; both seats
+  measured the same at r2).
 - Gate r1 fix round (both seats CHANGES r1 @47d3fb81): the sticker image that loads late now paints the
   LATEST ask (nothing if unlit meanwhile); both Shuffle buttons ask inside their tap; the Extras
   "not available" page keeps focus on Back; the Tap to play cue stacks at z 39, under the sticker wrap (40);
@@ -287,3 +293,60 @@ Instruments (this seat, Node 22.23.1, a `git archive 47d3fb81` sandbox + pristin
 Suspicion (device only, concurs with qa's note b): the cue's tap is often the painted panel's FIRST tap of a launch, so the armed capture listener asks in touchend; whether iOS still delivers the click (the play) under the motion alert is unmeasured - "one tap plays" may take two on that launch.
 
 Verified clean: the dock (readerHref /music?nowplaying=1), cards / queue (/music?play=, /podcasts?play=) and Listen (/music?play=&listen=1) all reach navigate() -> isPlayerOpenUrl; the dock hides Prev/Next (style.css #player-dock rules), so no docked tap reaches playAt; auto-advance and lock-screen seams carry no gesture; every shell loading common.js with a view loads pocket-lighting.js + music-skins.js; WebKit's play() rejects NotAllowedError synchronously with no 'play' event, so the flag's paused check holds; the cue cannot pause a playing track (tapToPlay and togglePlayPause both branch on paused; the builder's two mutants re-killed). Off: the builder's delta re-classified by me (not re-shot): 340 Off shots, 0 px, 0 styles.
+
+### adversary r2
+
+Gate: APPROVED r2 @ede46354 - adversary
+
+Instruments (this seat, Node 22.23.1; a `git archive ede46354` sandbox + pristine copy at /tmp/v1334-adversary-{sb2,pristine2}, restored byte-identical after every mutant; a `git clone` at ede46354 for the suite; verbatim):
+- Touched tests: "# tests 48 # pass 48 # fail 0".
+- `npm run test:unit` in the git clone at ede46354: "# tests 7440 # pass 7440 # fail 0", exit 0. Node 24.20.0 not run (AC5 owes it at the release commit).
+- lint:css "TOTAL 0"; lint:overlay "clean (0 violations)"; eslint on the 7 touched JS/test files: no output (clean).
+- Mutants: 21 run on ede46354, 13 killed, 8 survived (classified below).
+
+r1 findings against ede46354:
+- **W1 (late sticker image) - fixed as prescribed.** Re-ran my headless Chromium repro (real engine, driver, style.css, DPR 3, /favicon.svg 2.5 s late): lit -> Off chip -> load: "canvases":[], strength "off" (r1: a 193x193 shade + a 156x156 gloss, unstyled). The kept-lit arm of the same probe: after the late load the shade is 64x64 and the gloss 52x52, both position:absolute (drawn and styled). My A1 (delete the listener) and A2 (the stale light) are now KILLED by "v1.334 a late-loading sticker image ...".
+- **W2 (the Shuffle buttons) - fixed as prescribed.** My probe (real music.js + engine + driver): `#music-shuffle-btn` tap -> asks DURING the tap 1 (r1: 0), and after the sticker tap the total is still 1. The drill Shuffle is bound by the new test through a real album-card tap; removing either ask is KILLED.
+- **W3 (Extras not-available focus) - fixed as prescribed.** Removing the new onRendered call is KILLED by the #281 (c) test.
+- **W4 (cue over the menu) - fixed as prescribed.** z-index 39: no Click/skin layer in the pocket rules sits between z 6 and z 38 (the chrome tops out at z 5), so the cue stays over the chrome and under the wrap (z 40); the z 41 mutant is KILLED.
+- **S1** - A10, A10b, A12, A21, A22, A25 are now KILLED. **S2** - the three texts are corrected; no other copy of "never survives a fetch" / "survives the async progress fetch" / "beside the sticker (40)" is left in public/ at ede46354.
+
+Checked what the fixes changed:
+- The gloss clearRect branch: the context is taken before the resize, a resize resets its state, and the previous draw ends back on source-over, so clearRect clears the whole canvas. My N6 (drop clearRect) and N6b (always resize) survive. N6 is visually equivalent for opaque stickers: source-in replaces everything inside the silhouette. This is a cost-only change with no test, which is acceptable.
+- Both Shuffle asks run before loadSongs. playAt's own ask then finds the session already asked (the total count stays 1).
+
+New, SUGGESTION only (the shipped code is right; the tests do not pin it):
+- **S1 - a late load is only tested at Subtle.** Mutant N5b drops `wantO` from the waiting entry, so the load paints with `o = {}` (strong false). It survives because the lit arm of the late-load test waits at Subtle, where strong is false anyway. At Pronounced it would paint the 0.3 gloss instead of 0.5 until the light next moves a step. Fix: assert the late load at Pronounced too.
+- **S2 - the "never steal focus" check is only tested on the loaded Extras page.** Mutant N3b forces `onRendered(true)` in the not-available arm and survives. Only the loaded arm's hadBack check is bound (A25 is killed).
+- **S3 - the dead-driver test does not bind the three guards the fix note names.** Removing all three together (the splice in destroy(), answer()'s check, rearm()'s check) still passes 41/41. Removing the fourth guard as well (`!destroyed` in wanted()) turns "a late answer after the driver died ..." red. So the test binds the four-guard set, and the three are redundant. The code is correct. I'd reword the claim rather than add another test.
+- N5c (drawn.wantO) is a dead write. destroy-stays-registered, A6 and A7 individually are masked as disclosed. None of these is a finding.
+
+Standing suspicion (device only, unchanged): on a launch where the cue's tap is the panel's first tap, the motion prompt fires in touchend. Whether iOS still delivers the click that starts playback is unmeasured.
+
+### qa r2
+
+Gate: APPROVED r2 @ede46354 - qa
+
+Delta re-review of ede46354 against my r1 findings (`git diff 47d3fb81..ede46354`; e59e1203 is the r1 verdicts only). Instruments (Node 22.23.1, a `git archive ede46354` sandbox, git-initialised; outputs verbatim):
+- `npm run lint:css`: "TOTAL 0  (the token census; ceiling ZERO since v1.61.0)", exit 0.
+- `node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)", exit 0.
+- eslint on the 10 touched JS files: "✖ 6 problems (0 errors, 6 warnings)" (the same 6 pre-existing common.js `no-unused-vars`).
+- Touched tests: pocket-lighting "# tests 28 # pass 28 # fail 0"; pocket-lighting-open-ask "# tests 13 # pass 13 # fail 0"; player-tap-to-play "# tests 7 # pass 7 # fail 0".
+- `npm run test:unit`: "# tests 7440 # pass 7440 # fail 0", exit 0 (duration_ms 272962). Node 24.20.0 not run by this seat (AC5, at the release commit).
+- Mutants on the fix (12, targeted tests, restored byte-identical to a pristine copy): 10 killed by test name, 2 survived (W1 below, S1 below).
+
+r1 findings:
+- **W1 (cue over the sticker menu): fixed as prescribed.** style.css `.mms-tapplay` z-index:39 with a true comment (the skin block's other z-indexes are -1..5, 40, 50). My r1 probe re-run on ede46354 (headless Chromium, the real CSS + engine, the music view's real menu rows, refused + paused, menu open): cueZ 39, wrapZ 40, covered menu buttons [] in all 6 cells (Click / Cider x 390x844, 375x667, 430x932; at r1 the same probe found Home, 1.75x, 2x covered). The new lock ("the cue sits UNDER the sticker wrap") kills a z-index:41 mutant by name.
+- **W2 (late image on an unlit panel): fixed, differently and better** - the listener paints the LATEST ask with its own opts (`wantO`), nothing after a clear. My r1 repro re-run: after Off then the load, parts `{"shade":false,"gloss":false}`, lit false (was true/true at r1); my lit-axis repro draws. The builder's test kills three mutants by name: the guard removed, the whole listener removed (the r1 survivor), and the stale-opts `o` instead of `d.wantO`.
+- **W3 (Extras not-available drops focus): fixed as prescribed.** My r1 repro re-run: activeElement = the new `data-skin-extras-back` button (was BODY). The extended #281 (c) test kills both "no onRendered in the not-available arm" and "focus Back even when the user moved away" (the new never-steals-focus step) by name.
+- S1 (plan): Design item 4 marked SUPERSEDED; the AC2 noise-run skip is a Deviation; the Research gesture paragraph is corrected. S2: disclosed in Design item 3. S3: disclosed (tech-debt #282 at release). S4: the backing store is reused - see W1 new.
+
+New in the fix round:
+- **W1 new (WARNING, safe to ship disclosed) - the S4 `clearRect` is unbound.** pocket-lighting.js stkDrawGloss `else ctx.clearRect(0, 0, cw, ch); // gate r1 (qa S4): a redraw reuses the backing store` - deleting it SURVIVED pocket-lighting.test.js (the stub records clearRect but no test asserts it). Not an equivalent mutant: without the clear, the old gloss adds alpha under the next silhouette draw before `source-in`, so on a translucent silhouette pixel (alpha s, gloss alpha g) the gloss converges from g*s toward g*s/(1-g(1-s)) and keeps a faint ghost of the previous highlight position (derived, not measured on pixels: at most ~0.06 alpha at a half-transparent edge; opaque pixels unaffected). Safe to ship disclosed because the correct code is in place and the effect of its loss is a near-invisible edge on translucent uploads; bind it at the next touch (assert a same-size redraw calls clearRect before its drawImage/arc).
+- **S1 new (SUGGESTION) - the new late-answer test binds a mutually masked TRIPLE, not the guard it names.** "a late answer after the driver died re-binds nothing" stays green with answer()'s `if (destroyed) return;` removed, with destroy()'s splice removed (the r1 masked mutant), and with BOTH removed (13/13), because wanted()'s `!destroyed` also refuses; removing all three turns it red by name. Legitimate binding of the set; disclose it in the Build record's masked list beside destroy-stays-registered.
+- Shuffle asks (the adversary's W2): both handlers call askLightingForOpen before loadSongs; mutants removing either are killed by the new Shuffle test by name; the follow-up playAt(0) finds the session asked (the test asserts no second ask).
+- Comments the round touched: the pocket-lighting.js / music.js / player.js / plan Research gesture statements now agree with each other (a fetch forwards the token for a while, a body read leaves it media-only). I have no WebKit checkout here, so the cited file:line references are the builder's reading, not verified by this seat. Older wording ("before the view fetch spends the gesture", common.js; "before the load's fetches spend it", podcasts.js) stays true under the corrected model (every such open reads a body). No new lie found.
+
+Security (standing section): the fix round adds no sink, route, input or dependency - no security surface.
+
+Main tree: only this subsection (and the adversary's uncommitted r2 above) differ from ede46354.
