@@ -116,6 +116,38 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.329.0 - Pocket lighting, third swing: a reflection, not a sheen (2026-09-25)
+
+- **Pocket lighting, the reflection swing** (Dean on v1.328.0: "It's really good. It's just not
+  'realistic'. What are we missing?"; his research doc "making the lighting look physically real" and his
+  rulings on it: Click + Black imitate the 5th-gen's glossy front, Matte the Classic's anodized metal; a
+  gravity-referenced light; build from the researched numbers, photos later). The Click skins now REFLECT
+  a room instead of sliding a sheen: one environment map (two cool window panes with a sky-to-sill
+  gradient, their soft shoulder, a warm lamp, a faint ceiling-to-wall ramp) positioned in degrees of
+  reflected angle against a fixed key pose relative to gravity. The geometry is physics, not taste: a
+  mirror turns a reflection by twice the tilt, the face spans about 24 degrees of view, so a 6-degree
+  tilt sweeps the window half the face; the center dome's image moves about 15 times slower and clips off
+  the rim instead of dimming. Per material: Click and Black show the sharp window unbroken across body
+  AND screen glass (the LCD's offset subtracted so the pane edge never jogs), with a slight veil under it
+  for headroom; Black adds the room ramp and a Fresnel edge; Matte shows the same window as a soft
+  metal-tinted blob on the body and sharp on the glass; the click wheel is matte plastic again, no moving
+  specular at all, only a lit lip ring, a faint tone and its recess occlusion; the button gap and the
+  bezel's shadow on the glass are static, with one moving bezel shadow. The light never fades: a held
+  tilt stays lit; only a pose held over 35 degrees off for two seconds (lying in bed) glides the key to
+  it. Smoothing 60 ms. Subtle is the same map at 0.6x alpha. Still only gradient positions (the body,
+  glass and dome repaint per frame; never an oversized composited layer); no filter, blur, mask,
+  backdrop, blend mode or CSS trig (the lock bans them all); Off is byte-identical. Tuned from the first
+  screenshots: narrower panes so their edges are seen, the lamp closer in, a soft dome image. Measured
+  (headless Chromium): the five researched poses land exactly (+-421 px at +-6 degrees on an 844 px
+  panel); 0.18 ms script + 1.5 ms style per frame moving, 0 layouts, 2.5-2.9 ms total on this
+  software-rendered box (was 1.9); still 0 writes. Gate r1 CHANGES @c57bc769 (both seats: the screen glass showed one window pane) -> fixed in 2869d88b with the key pose moved in, a first-sample snap, re-measure on resize; gate r2 APPROVED @2869d88b (adversary + qa; the suggestions are #276); plan
+  docs/exec-plans/completed/2026-09-25-pocket-lighting-reflection.md.
+  Disclosed: the feel and the phone's paint cost are Dean's check (the body repaints its map every frame;
+  the knobs are the key pose, the pane/lamp sizes and the map alphas, all in one CSS block); at a 6-degree
+  roll the window leaves the face entirely and only the shoulder, ramp and lamp remain (a richer room is
+  the obvious next step if the face reads empty at normal jitter); the perimeter Fresnel band and any
+  brushed-metal streaks wait for reference photos; Subtle does not scale the wheel's lip ring or Black's Fresnel edge; the glass carries no room ramp; the dome moves about 20x slower than the face at this dome size (the plan said 15x); where a panel lights before any sensor sample (Android, desktop) the map jumps once to the first sample; a key that glided to a lying-down pose resets on every unlock and glides again; the probe's key pose now reads the driver's (a dev-script change after the gate, disclosed) and two comment ratios were corrected after the gate (#276).
+
 ### v1.328.0 - Pocket lighting, turned up: Pronounced is now the realistic one (2026-09-24)
 
 - **Pocket lighting, second swing** (Dean on the device, v1.327.0: "I like it a lot. I think it's a little

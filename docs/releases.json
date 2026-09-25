@@ -3220,5 +3220,11 @@
     "date": "2026-09-24",
     "title": "Pocket lighting, turned up: Pronounced now looks like a real player under a lamp",
     "intent": "In the Click skins' Settings > Lighting, Pronounced now gives you the full effect: a bright spot on the center button that shifts as you tilt, a glint along the lit edge of the click wheel with a shadow on the far side, a stronger reflection sweeping across the body (especially on Click Black) and a double streak on the screen glass. Subtle is what Pronounced was before, so nothing you liked is gone. Off is unchanged."
+  },
+  {
+    "version": "1.329.0",
+    "date": "2026-09-25",
+    "title": "Pocket lighting now reflects a room",
+    "intent": "With Lighting on, the Click skins now show a real reflection instead of a soft shine: a window with two panes and a warm lamp slide across the body and the screen glass as you tilt, moving the way a mirror would, with the center button carrying its own small image of the window. Click Black reflects the most, Click Matte softens it like brushed metal, and the click wheel stays matte like the real one. A held tilt keeps its reflection instead of fading away. Off is unchanged."
   }
 ]
