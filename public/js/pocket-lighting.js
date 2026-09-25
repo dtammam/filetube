@@ -39,7 +39,7 @@
   var KEY_Y = 58;             // screen y (deg): a typical 50 deg hold puts the window's lower edge across the upper third
   var FACE_DEG = 24;          // the face's angular span at a phone's viewing distance
   var DOME_BETA = 15;         // the dome's edge slope (deg): its image moves R / (2 beta) px per degree against the
-                              // flat face's k - about 17x slower on an 844 px panel with a 54 px dome
+                              // flat face's k px per degree - 2 beta k / R = about 20x slower on an 844 px panel with a 54 px dome
   var DOME_CLAMP = 1.3;       // the dome image may sit this far past the rim (it clips)
   var DOME_FADE_DEG = [28, 34]; // the dome image fades between these reflected angles (off the rim)
   var MOUSE_DEG = 12;         // the pointer at the panel's edge = this reflected angle
@@ -150,7 +150,7 @@
   }
   function smoothstep(a, b, v) { var t = (v - a) / (b - a); t = t < 0 ? 0 : (t > 1 ? 1 : t); return t * t * (3 - 2 * t); }
   // The per-surface properties from one reflected angle (ex, ey in degrees; k px/deg; R the dome radius):
-  // the flat face moves `k` px per degree, the dome `R / (2 beta)` px per degree (about 15x slower), the
+  // the flat face moves `k` px per degree, the dome `R / (2 beta)` px per degree (2 beta k / R = about 20x slower), the
   // dome image fades once the reflected angle passes the rim, the lip ring follows the light's azimuth.
   function surfaces(ex, ey, kpx, R) {
     var m = Math.max(Math.abs(ex), Math.abs(ey));

@@ -12106,7 +12106,7 @@ html[data-modern="on"] .video-uploader {
   /* POCKET LIGHTING (Dean 2026-09-24; the reflection swing 2026-09-25, plan
      2026-09-25-pocket-lighting-reflection, from the research doc). pocket-lighting.js writes the light as
      a REFLECTED ANGLE against a gravity-referenced key pose: `--fx/--fy` (px, the flat surfaces: k px per
-     degree, k = panel height / 24), `--dx/--dy` (px, the dome: ~15x slower), `--dom` (the dome image's
+     degree, k = panel height / 24), `--dx/--dy` (px, the dome: 2 beta k / R, about 20x slower), `--dom` (the dome image's
      opacity - it clips off the rim, never dims with distance), `--la` (the light's azimuth, the wheel's
      lip ring), `--wt` (the matte wheel's tone), `--lx/--ly` (-1..1, the bezel shadow and the perimeter),
      the measured `--k`, `--dr`, `--lcx/--lcy` (the LCD's centre offset - the glass shows the SAME map at

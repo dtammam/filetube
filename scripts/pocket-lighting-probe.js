@@ -101,11 +101,11 @@ async function main() {
       return (l.listeners || []).filter((x) => x.type === 'deviceorientation').length;
     };
     // 1. per-skin screenshots at three light positions (a REAL deviceorientation event path)
-    // the research's five poses: the KEY pose (screen roll -10 / pitch 58: the map centred), +-6 deg roll,
+    // the research's five poses: the KEY pose (the driver's KEY_X / KEY_Y: the map centred), +-6 deg roll,
     // +-6 deg pitch - as beta/gamma (the roll is gravity-projected: gamma = asin(sin(x) / cos(y)))
     const D = Math.PI / 180;
     const bg = (x, y) => [Math.asin(Math.cos(x * D) * Math.sin(y * D)) / D, Math.atan2(Math.sin(x * D), Math.cos(x * D) * Math.cos(y * D)) / D];
-    const KX = -10, KY = 58;
+    const KX = await evalJs('window.FileTubePocketLighting.KEY_X'), KY = await evalJs('window.FileTubePocketLighting.KEY_Y'); // the driver's key pose, never a copy
     const POS = { key: bg(KX, KY), 'roll-minus6': bg(KX - 6, KY), 'roll-plus6': bg(KX + 6, KY), 'pitch-minus6': bg(KX, KY - 6), 'pitch-plus6': bg(KX, KY + 6) };
     for (const skin of ['ipod', 'ipod-black', 'ipod-matte']) {
       const st = await evalJs(`window.__boot(${JSON.stringify(skin)}, ${JSON.stringify(STRENGTH)})`);

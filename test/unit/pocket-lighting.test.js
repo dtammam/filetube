@@ -47,7 +47,7 @@ test('mapTilt: device axes to screen axes by the screen rotation; the roll is gr
   assert.strictEqual(L.mapTilt(1, undefined, 0), null);
 });
 
-test('the reflected angle: twice the tilt away from the KEY pose; a 6 deg tilt moves the flat reflection half the face (12 k px); the dome about 15x slower; the dome image fades off the rim; the pitch difference takes the short way round', () => {
+test('the reflected angle: twice the tilt away from the KEY pose; a 6 deg tilt moves the flat reflection half the face (12 k px); the dome 2 beta k / R (about 20x) slower; the dome image fades off the rim; the pitch difference takes the short way round', () => {
   assert.deepStrictEqual({ x: L.KEY_X, y: L.KEY_Y }, { x: -3, y: 58 }, 'the key pose: the research\'s pitch, x a touch off-axis (at -10 a straight hold showed no window - gate r1 qa W2)');
   // at a straight hold (roll 0) the window's near pane still overlaps the face: |ex| k minus the window's
   // half-width (5.6 deg k) is inside the half-face (195 px at 390 wide)
@@ -61,7 +61,7 @@ test('the reflected angle: twice the tilt away from the KEY pose; a 6 deg tilt m
   assert.ok(Math.abs(s.fy - 12 * k) < 1e-9 && Math.abs(s.fy - 422) < 1, `the flat face moves 12 k px = half the face (${s.fy})`);
   assert.ok(Math.abs(s.dy - R * 12 / 30) < 1e-9, 'the dome: R x e / (2 beta), beta = 15 deg');
   const ratio = s.fy / s.dy;
-  assert.ok(ratio > 12 && ratio < 22, `the dome moves about 15x slower than the flat face (${ratio.toFixed(1)}x)`);
+  assert.ok(ratio > 12 && ratio < 22, `the dome moves 2 beta k / R = about 20x slower than the flat face (${ratio.toFixed(1)}x)`);
   assert.strictEqual(L.surfaces(0, 28, k, R).dom, 1, 'the dome image is full up to 28 deg');
   assert.strictEqual(L.surfaces(0, 34, k, R).dom, 0, '...and gone past 34 deg (off the rim)');
   assert.ok(Math.abs(L.surfaces(0, 60, k, R).dy - R * 1.3) < 1e-9, 'the dome offset clamps at 1.3 R');
@@ -257,7 +257,7 @@ const listening = (b) => ({ orient: b.count('win:deviceorientation'), move: b.co
 const vis = (b) => b.count('doc:visibilitychange');
 const K = 844 / L.FACE_DEG; // jsdom has no layout: the driver's default panel height (844 px)
 
-test('AC1/AC2 reachability + geometry: a REAL deviceorientation event at the key pose centres the map; a 6 deg pitch tilt writes --fy = 12 k px; the dome moves ~15x slower; --dom / --la / --wt / --lx follow; a held tilt never drifts; Pronounced adds the strong class, Subtle only scales --lk', () => {
+test('AC1/AC2 reachability + geometry: a REAL deviceorientation event at the key pose centres the map; a 6 deg pitch tilt writes --fy = 12 k px; the dome moves about 20x slower; --dom / --la / --wt / --lx follow; a held tilt never drifts; Pronounced adds the strong class, Subtle only scales --lk', () => {
   const b = boot({ strength: 'pronounced' });
   try {
     b.engine.paint();
@@ -273,7 +273,7 @@ test('AC1/AC2 reachability + geometry: a REAL deviceorientation event at the key
     assert.ok(Math.abs(px(b, '--fy') - 12 * K) < 3, `a 6 deg tilt: the flat reflection moves 12 k px = half the face (${prop(b, '--fy')} vs ${(12 * K).toFixed(1)})`);
     assert.ok(Math.abs(px(b, '--fx')) < 2, 'no roll: --fx stays ~0');
     const dy = px(b, '--dy');
-    assert.ok(dy > 0 && px(b, '--fy') / dy > 12 && px(b, '--fy') / dy < 22, `the dome moves ~15x slower (${(px(b, '--fy') / dy).toFixed(1)}x)`);
+    assert.ok(dy > 0 && px(b, '--fy') / dy > 12 && px(b, '--fy') / dy < 22, `the dome moves about 20x slower (${(px(b, '--fy') / dy).toFixed(1)}x)`);
     assert.ok(Math.abs(Number(prop(b, '--la')) - 90) < 1, 'the light azimuth: straight down (+y)');
     assert.ok(Number(prop(b, '--wt')) > 0.6 && Number(prop(b, '--wt')) < 0.7, `the wheel tone at 12 deg (${prop(b, '--wt')})`);
     assert.ok(Math.abs(Number(prop(b, '--ly')) - 1) < 0.02 && Math.abs(Number(prop(b, '--lx'))) < 0.02, '--ly clamps at 12 deg');

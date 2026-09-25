@@ -3,7 +3,7 @@ plan: pocket-lighting-reflection
 harness: v2 · lean
 branch: feat/pocket-lighting-reflection
 anchor: spec
-status: Gate closed
+status: Shipped v1.329.0
 next: release v1.329.0
 design: this document; the research is Dean's doc "FileTube Click skins: making the lighting look physically real" (2026-09-24)
 gate: APPROVED r2 @2869d88b (adversary + qa); r1 CHANGES (the glass's one pane) fixed in 2869d88b; the r2 suggestions filed as #276
@@ -109,7 +109,7 @@ re-centre; hand-tuned per-surface rates; face-wide Fresnel.
   deg (cost); the dome image a soft ellipse 0.4 R x 0.55 R at .4 (the hard 0.53 x 0.73 R rectangle read as
   a sticker). Everything else is the research's numbers.
 - `pocket-lighting.test.js` 16/16 (the geometry: a 6 deg tilt = 12 k px = 421 px on an 844 px panel, the
-  dome 17.5x slower, the glide, the seam, every gating and teardown arm re-asserted); touched suites green;
+  dome 19.5x slower (2 beta k / R at R 54), the glide, the seam, every gating and teardown arm re-asserted); touched suites green;
   eslint clean; `lint:css` TOTAL 0; overlay clean.
 - Probe (`--strength=pronounced`, 390x844 DPR 2, software GL): the five poses land exactly (+-6 deg = +-421
   px); moving 0.18 ms script + 1.5 ms style per frame, 0 layouts, total main-thread 2.5-2.9 ms/frame
