@@ -118,7 +118,12 @@ test('AC10: no Home row without the view\'s hook, and none in the desktop pop-ou
 test('AC11: a short MENU press is unchanged (climbs to the Main Menu), and never goes home', async () => {
   const b = boot();
   try {
-    down(b, menuZone(b)); await wait(120); up(b, menuZone(b)); clickOnly(b, menuZone(b));
+    const t0 = b.timers.size;
+    down(b, menuZone(b));
+    assert.strictEqual(b.timers.size, t0 + 1, 'precondition: the press armed the hold');
+    await wait(120); up(b, menuZone(b));
+    assert.strictEqual(b.timers.size, t0, 'the release (an end arm) dropped the hold AT ONCE, not when it would have fired');
+    clickOnly(b, menuZone(b));
     assert.strictEqual(b.engine.menuState().screen, 'menu', 'the short press climbed Now Playing -> Main Menu');
     await wait(HOLD_MS);
     assert.strictEqual(b.spy.home, 0, 'no home after a short press');
@@ -152,13 +157,13 @@ test('AC11: a HELD MENU goes home exactly once, and the release fires no MENU (n
 test('AC11: every cancel arm - moving off the zone, pointercancel, a takeover, an un-rendered panel, destroy - never goes home and leaves no timer', async () => {
   // moving off the zone (the wheel's 8px rotation threshold)
   let b = boot();
-  try { const z = menuZone(b); down(b, z, 90, 0); move(b, z, 90, 20); await wait(HOLD_MS + 100); assert.strictEqual(b.spy.home, 0, 'moved: a spin, not a hold'); up(b, z); assert.strictEqual(b.timers.size, 0); } finally { b.restore(); }
+  try { const z = menuZone(b); const t0 = b.timers.size; down(b, z, 90, 0); assert.strictEqual(b.timers.size, t0 + 1, 'armed'); move(b, z, 90, 20); assert.strictEqual(b.timers.size, t0, 'the move dropped the hold at once'); await wait(HOLD_MS + 100); assert.strictEqual(b.spy.home, 0, 'moved: a spin, not a hold'); up(b, z); assert.strictEqual(b.timers.size, 0); } finally { b.restore(); }
   // pointercancel
   b = boot();
-  try { const z = menuZone(b); down(b, z); await wait(100); up(b, z, 'pointercancel'); await wait(HOLD_MS); assert.strictEqual(b.spy.home, 0, 'cancelled'); assert.strictEqual(b.timers.size, 0); } finally { b.restore(); }
+  try { const z = menuZone(b); down(b, z); await wait(100); const t1 = b.timers.size; up(b, z, 'pointercancel'); assert.strictEqual(b.timers.size, t1 - 1, 'pointercancel dropped the hold at once'); await wait(HOLD_MS); assert.strictEqual(b.spy.home, 0, 'cancelled'); assert.strictEqual(b.timers.size, 0); } finally { b.restore(); }
   // a wheel takeover (Brick) owns MENU
   b = boot();
-  try { b.engine.setWheelTakeover({ onRotate() {}, onMenu() { return true; }, onSelect() {} }); const z = menuZone(b); down(b, z); await wait(HOLD_MS + 100); assert.strictEqual(b.spy.home, 0, 'a takeover: no hold-home'); up(b, z); } finally { b.restore(); }
+  try { b.engine.setWheelTakeover({ onRotate() {}, onMenu() { return true; }, onSelect() {} }); const z = menuZone(b); const t0 = b.timers.size; down(b, z); assert.strictEqual(b.timers.size, t0, 'no hold is armed under a takeover'); await wait(HOLD_MS + 100); assert.strictEqual(b.spy.home, 0, 'a takeover: no hold-home'); up(b, z); } finally { b.restore(); }
   // the view un-rendered the panel mid-hold (a dock from elsewhere)
   b = boot();
   try { const z = menuZone(b); down(b, z); await wait(100); b.panel.className = 'music-nowplaying-panel'; b.panel.innerHTML = ''; await wait(HOLD_MS); assert.strictEqual(b.spy.home, 0, 'an un-rendered panel never goes home'); } finally { b.restore(); }
