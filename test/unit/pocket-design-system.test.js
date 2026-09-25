@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] The pocket design system (v1.332, plan docs/exec-plans/active/2026-09-25-pocket-design-system.md).
+// [UNIT] The pocket design system (v1.332, plan docs/exec-plans/completed/2026-09-25-pocket-design-system.md).
 // Every Click colorway draws ONE chassis that reads three token layers (--pk-<part> structure,
 // --pk-fs-<role> type, --pk-c-<role> colorway roles). This file binds the system's rules in source
 // (paint is jsdom-invisible; the rendered proof is scripts/pocket-render-probe.js):

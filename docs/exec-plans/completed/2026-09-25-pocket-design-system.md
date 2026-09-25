@@ -3,7 +3,7 @@ plan: pocket-design-system
 harness: v2 · lean
 branch: feat/pocket-design-system
 anchor: spec
-status: Gate:APPROVED r2 @bbb40ab9
+status: Shipped v1.332.0
 next: the release steps (docs/RELEASING.md + AGENTS.md): plan-complete, release branch, merge --no-ff, tag v1.332.0, PR, CI, merge.
 design: "Approved 2026-09-25 (Dean's intake in the v1.331 session: D1-D6 below, every answer his)"
 gate: APPROVED r2 @bbb40ab9 (adversary, qa)

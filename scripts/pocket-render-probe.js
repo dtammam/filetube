@@ -1,7 +1,7 @@
 'use strict';
 
 // pocket-render-probe - the ZERO-DELTA instrument for the pocket design system (plan
-// docs/exec-plans/active/2026-09-25-pocket-design-system.md, AC3) and the colorway renderer for
+// docs/exec-plans/completed/2026-09-25-pocket-design-system.md, AC3) and the colorway renderer for
 // the side-by-sides (AC7/AC12). Two modes:
 //
 //   node scripts/pocket-render-probe.js shoot <out-dir> [skin ...]
