@@ -123,9 +123,7 @@ summary,
   --fs-3xl: 20px;
   --fs-4xl: 22px;
   --fs-5xl: 32px;
-  --fs-6xl: 44px; /* v1.259: the Metro display size (Seattle's giant lowercase header) */
   --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
-  --fs-jump-xl: 160px; /* ...and Seattle's giant lowercase jump letter */
 
   /* v1.152 master-detail menu: tile tones (colour encodes the group) + the
      era-reactive Appearance tile tints. Fixed, mode-invariant tints that read
@@ -11417,7 +11415,7 @@ html[data-modern="on"] .video-uploader {
   white-space: nowrap;
 }
 /* v1.317 (M1): the now-playing ARTIST LINE is a real <button> on every renderer (the desktop
-   panel .mnp-sub, the Apple/Spotify skins' .mms-sub, the iPod/Zune LCD .ip-artist, the album
+   panel .mnp-sub, the Apple/Spotify skins' .mms-sub, the Click LCD .ip-artist, the album
    drill's .music-drill-artist) and the song row's artist name (.music-song-artist, inline).
    ONE reset at ZERO specificity (:where) strips the UA button chrome, so every existing
    consumer rule (font-size, color, margin, the per-skin palettes) keeps winning at any
@@ -11551,11 +11549,9 @@ html[data-modern="on"] .video-uploader {
   /* v1.255 (Dean): old-school macOS AQUA progress fill - the real Aqua recipe is a
      bright glassy upper band with a HARD cut near the middle, a deeper lower band
      re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
-  --mms-zn-pink:#ec008c; --mms-zn-dim:#9a9a9a; --mms-zn-ink:#1a1a1a;
   /* quick scroll (2026-09-24): the letter overlay's glass - the iPod classic's translucent dark
-     square; Seattle's picker/overlay scrim over its black Metro screen. */
+     square. */
   --mms-ipod-jump-bg:rgba(20,22,26,.72); --mms-ipod-jump-line:rgba(0,0,0,.12);
-  --mms-zn-jump-bg:rgba(0,0,0,.82);
   /* v1.269: the scrubber fill, sampled from the REFERENCE IMAGE Dean picked - a
      product MOCKUP, not a photo of a real iPod (the gate proved it: no sensor
      noise anywhere, a blue Classic body Apple never shipped, a modern typeface,
@@ -11594,19 +11590,10 @@ html[data-modern="on"] .video-uploader {
   /* v1.232.2 silver Click gloss (reads on the WHITE body): a crisp top
      highlight + a soft bottom-edge shadow for the domed, reflective look. */
   --mms-ipod-gloss-hi:rgba(255,255,255,.9); --mms-ipod-gloss-shadow:rgba(0,0,0,.08);
-  /* v1.232 iPod BLACK variant - body + wheel palette only (screen unchanged). */
-  --mms-ipodk-body1:#343436; --mms-ipodk-body2:#161618; --mms-ipodk-edge:#0a0a0b;
-  --mms-ipodk-wheel1:#3d3d3f; --mms-ipodk-wheel2:#232325; --mms-ipodk-wheel-lbl:#b9babd;
-  /* Click (Matte) variant - matte graphite metal, top-lit, dark click wheel. Photo-sampled
-     from Dean's reference; body ramp (t1..t7 top-to-bottom) + wheel + edge/chamfer. */
-  --mms-ipodm-t1:#949497; --mms-ipodm-t2:#86868a; --mms-ipodm-t3:#7a7a7e; --mms-ipodm-t4:#6a6a70; --mms-ipodm-t5:#4a4a50; --mms-ipodm-t6:#2d2d32; --mms-ipodm-t7:#1c1c21;
-  --mms-ipodm-wheel1:#343437; --mms-ipodm-wheel2:#242427; --mms-ipodm-center1:#6e6e72; --mms-ipodm-center2:#55555a; --mms-ipodm-wheel-lbl:#b9babd;
-  --mms-ipodm-chamfer:rgba(255,255,255,.26); --mms-ipodm-edge:rgba(0,0,0,.30); --mms-ipodm-edge2:rgba(0,0,0,.04); --mms-ipodm-clear:rgba(0,0,0,0); --mms-ipodm-wheel-sheen:rgba(255,255,255,.42);
-  /* v1.260 Seattle Classic (the brown Zune 30) - body + pad palette, the ipodk pattern;
-     the edge carries the original's green translucent rim. */
-  --mms-znc-body1:#5a4a3a; --mms-znc-body2:#2e2620;
-  --mms-znc-wheel1:#6b5844; --mms-znc-wheel2:#41352a; --mms-znc-wheel-lbl:#d8cfc2;
-  --mms-znc-chrome1:#e8e8ea; --mms-znc-chrome2:#a9abb0; --mms-znc-ring:#c9cbd0;
+  /* v1.332 (the pocket design system): every Click colorway but White is ONE role-token block
+     (.mms-ipod-<colorway>, after the Click chassis below) - its palette lives THERE, not here.
+     The one transparent stop the chassis shares: */
+  --mms-ipod-clear:rgba(0,0,0,0);
   --mms-ipod-art-shadow:0 2px 5px rgba(0,0,0,.3);
   --mms-ipod-lcd-shadow:0 2px 6px rgba(0,0,0,.35);
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
@@ -11614,22 +11601,18 @@ html[data-modern="on"] .video-uploader {
   --mms-ipod-center-shadow:inset 0 1px 2px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.14);
   /* pocket lighting (2026-09-24): the directional shadow parts (the wheel's rim / recess / drop and
      the dome's highlight / drop - the SAME alphas as the two static tokens above, so a neutral light
-     is byte-identical), the body's reflection band per Click colorway (Black dimmer, Matte softer -
-     Dean's G1), and the LCD glass streak (a cool tint; black text stays > 7:1 on the white screen). */
+     is byte-identical), Click (White)'s reflection band (every other colorway's band is a role in its
+     own block - Black dimmer, Matte softer, Dean's G1), and the LCD glass streak (a cool tint; black text stays > 7:1 on the white screen). */
   --mms-lit-rim:rgba(255,255,255,.7); --mms-lit-recess:rgba(0,0,0,.1); --mms-lit-drop:rgba(0,0,0,.25);
   --mms-lit-dome-hi:rgba(255,255,255,.9); --mms-lit-dome-drop:rgba(0,0,0,.14);
   --mms-lit-band:rgba(255,255,255,.34); --mms-lit-band2:rgba(255,255,255,.2);
-  --mms-litk-band:rgba(255,255,255,.16); --mms-litk-band2:rgba(255,255,255,.09);
-  --mms-litm-band:rgba(255,255,255,.09); --mms-litm-band2:rgba(255,255,255,.05);
   --mms-lit-glass:rgba(205,218,236,.16);
   /* the STRONG profile (Pronounced; the second swing, Dean: "zhuzh it up"): the dome's specular hot
      spot + its dark far side, the wheel's lit rim arc + dark arc, the body band's hot core + a broad
-     room light, the double glass streak, a heavier drop. Per Click colorway where the band differs. */
+     room light, the double glass streak, a heavier drop. (The band per colorway: its role block.) */
   --mms-lit-hot:rgba(255,255,255,.85); --mms-lit-hot2:rgba(255,255,255,.35); --mms-lit-far:rgba(0,0,0,.16);
   --mms-lit-arc:rgba(255,255,255,.38); --mms-lit-darc:rgba(0,0,0,.18); --mms-lit-room:rgba(255,255,255,.22);
   --mms-lits-band:rgba(255,255,255,.42); --mms-lits-band2:rgba(255,255,255,.24); --mms-lits-core:rgba(255,255,255,.55);
-  --mms-litks-band:rgba(255,255,255,.26); --mms-litks-band2:rgba(255,255,255,.14); --mms-litks-core:rgba(255,255,255,.4);
-  --mms-litms-band:rgba(255,255,255,.14); --mms-litms-band2:rgba(255,255,255,.08); --mms-litms-core:rgba(255,255,255,.22);
   --mms-lits-glass:rgba(215,226,240,.24); --mms-lits-glass2:rgba(215,226,240,.08); --mms-lits-glass-hot:rgba(255,255,255,.3);
   --mms-lit-drop-s:rgba(0,0,0,.28);
   /* shared type/shape metrics (governed props) */
@@ -11744,11 +11727,11 @@ html[data-modern="on"] .video-uploader {
   body.mms-tray{ background:var(--mms-black); }
   body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; border-radius:var(--radius-lg); overflow:hidden; }
   body.mms-tray .ip-wheelwrap, body.mms-tray .ip-listview{ display:none; }
-  body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--space-3) var(--space-4); border-radius:8px; /* token-exempt: Nano screen inset */ box-sizing:border-box; }
+  body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--pk-tray-inset); border-radius:var(--pk-tray-radius); box-sizing:border-box; }
   body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
-  body.mms-tray .ip-cover{ width:88px; height:88px; /* token-exempt: Nano art box */ flex:none; }
-  body.mms-tray .ip-ttl{ font-size:var(--fs-lg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--fs-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.mms-tray .ip-cover{ width:var(--pk-tray-art); height:var(--pk-tray-art); flex:none; }
+  body.mms-tray .ip-ttl{ font-size:var(--pk-fs-tray-title); }
+  body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--pk-fs-tray-sub); }
   body.mms-tray .ip-stars{ display:none; }
   body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
   /* v1.258.1 (Dean: the tray menu "way too small when clicked, not really usable"): the
@@ -11886,20 +11869,71 @@ html[data-modern="on"] .video-uploader {
      right, Aqua scrubber) OR the song list (Select flips, tap a row to play);
      below, the flat gray CLICK WHEEL - tap zones (MENU/prev/next/play) + a Select
      center. The play STATE reflects in the status bar (▶/❚❚). */
-  /* the warm-white body carries the glossy SHEEN (in the background so it needs no
-     z-index). v1.232.2 (Dean: give the silver Click gloss like the black one):
-     on a WHITE body a white-on-white sheen is invisible, so the gloss reads from a
-     crisp top HIGHLIGHT band + a soft bottom-edge SHADOW (the domed, reflective look),
-     over the soft diagonal sheen + body gradient. (The black variant overrides this
-     whole background in .mms-ipod-black, so this tuning is silver-only.) */
-  .mms-ipod{ background:
-      linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
+  /* ============ THE POCKET DESIGN SYSTEM (v1.332, plan 2026-09-25-pocket-design-system) ============
+     Every Click colorway draws this ONE chassis. Three token layers, ONE naming scheme (--pk-*):
+       1. STRUCTURE (--pk-<part>): every size the pocket screens and the wheel use, set once below.
+       2. TYPE (--pk-fs-<role>): the pocket's type scale - each ROLE mapped onto the global --fs-*
+          scale, so a rule names what the text IS (the status title, a menu row), never a size.
+       3. COLORWAY ROLES (--pk-c-<role>): the ONLY thing a colorway sets - the body background
+          stack + its edge, the wheel ramp (two stops) + its sheen + its light origin, the wheel
+          labels, the center ramp + its origin, and the lighting band for Subtle / Pronounced.
+          .mms-ipod carries Click (White)'s roles; every other colorway is ONE rule of role tokens
+          after the chassis (.mms-ipod-<colorway>). A lock test enforces it: one block per registry
+          colorway, every role set, and no other rule names a colorway class.
+     Geometry that reads the light (--lx / --ly / --lm, written on the panel by pocket-lighting.js)
+     stays IN the rules; the roles hold only colors, stops and origins. The SCREEN palette (the LCD
+     white, the blue selection bar, the Aqua scrubber, the greys) is shared - no colorway touches it. */
+  .mms-ipod{
+    /* 1. structure */
+    --pk-lcd-ratio:4/3; --pk-status-pad:var(--space-3) var(--space-4);
+    --pk-batt-w:22px; --pk-batt-h:11px; --pk-batt-level:82%;
+    --pk-cover-w:44%; --pk-track-h:12px; --pk-vol-glyph:16px;
+    --pk-list-row-pad:var(--space-4) var(--space-6); --pk-row-num-w:18px;
+    --pk-row-h:34px; /* the menu row pitch: 6-7 rows on a phone LCD, the device's density */
+    --pk-split:50%; --pk-speaker:14px; --pk-skel-w:70%; --pk-skel-h:10px;
+    --pk-letter:96px; --pk-touch:var(--size-touch); --pk-grid-row:var(--size-touch);
+    --pk-wheel-d:min(70vw,288px); --pk-center-d:min(26vw,108px); /* ~70% of the body, the real wheel's proportion (v1.239) */
+    --pk-zone-glyph:25px; --pk-zone-inset:26%; --pk-zone-long:48%; --pk-zone-short:30%;
+    --pk-tray-art:88px; --pk-tray-inset:var(--space-3) var(--space-4); --pk-tray-radius:8px;
+    /* 2. type */
+    --pk-fs-status:var(--fs-base); --pk-fs-status-mark:var(--fs-sm);
+    --pk-fs-np-title:var(--fs-2xl); --pk-fs-np-artist:var(--fs-md); --pk-fs-np-album:var(--fs-md); --pk-fs-np-meta:var(--fs-base); --pk-fs-time:var(--fs-sm);
+    --pk-fs-row:var(--fs-md); --pk-fs-row-meta:var(--fs-sm);
+    --pk-fs-menu:var(--fs-md); --pk-fs-chev:var(--fs-xl); --pk-fs-check:var(--fs-md); --pk-fs-note:var(--fs-sm); --pk-fs-about:var(--fs-xl);
+    --pk-fs-jump:var(--fs-jump); --pk-fs-badge:var(--fs-xl); --pk-fs-picker:var(--fs-xl);
+    --pk-fs-zone-menu:var(--fs-sm); --pk-fs-zone-skip:var(--fs-xl); --pk-fs-zone-play:var(--fs-base);
+    --pk-fs-tray-title:var(--fs-lg); --pk-fs-tray-sub:var(--fs-sm); }
+  /* 3. Click (White)'s roles - the default every colorway overrides. The warm-white body carries the
+     glossy SHEEN (in the background so it needs no z-index). v1.232.2 (Dean: give the silver Click
+     gloss like the black one): on a WHITE body a white-on-white sheen is invisible, so the gloss
+     reads from a crisp top HIGHLIGHT band + a soft bottom-edge SHADOW (the domed, reflective look),
+     over the soft diagonal sheen + body gradient. The center is the body's own white. */
+  .mms-ipod{
+    --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       radial-gradient(120% 60% at 85% 108%, var(--mms-ipod-sheen-c) 0%, var(--mms-ipod-sheen-0) 55%),
       linear-gradient(158deg, var(--mms-ipod-body1), var(--mms-ipod-body2));
-    color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--mms-ipod-edge);
+    --pk-c-body-edge:var(--mms-ipod-edge);
+    --pk-c-wheel-1:var(--mms-ipod-wheel1); --pk-c-wheel-2:var(--mms-ipod-wheel2); --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:var(--mms-ipod-wheel-lbl);
+    --pk-c-center-1:var(--mms-ipod-body1); --pk-c-center-2:var(--mms-ipod-body2); --pk-c-center-oy:40%;
+    --pk-c-lit-band:var(--mms-lit-band); --pk-c-lit-band2:var(--mms-lit-band2);
+    --pk-c-lits-band:var(--mms-lits-band); --pk-c-lits-band2:var(--mms-lits-band2); --pk-c-lits-core:var(--mms-lits-core); }
+  /* the body: the colorway's stack, over its 1px edge */
+  .mms-ipod{ background:var(--pk-c-body);
+    color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
+  /* THE TEXT LINE (v1.332, D3: ONE overflow rule, not one per incident): every single-line text
+     element of the pocket screens - the status title, the Now Playing lines, the list and menu rows,
+     their values and times, About's name - may shrink below its text, never wraps, and truncates with
+     an ellipsis (the marquee, later in the file, swaps the ellipsis for a scroll where motion is
+     allowed). It sits BEFORE the rules that deliberately wrap (the Lighting note row) so they win.
+     test/unit/pocket-design-system.test.js censuses every text element the renderers draw against
+     this list, the wrap list and the glyph list: a new text element fails until it is classified. */
+  .mms-ipod .ip-np, .mms-ipod .ip-ttl, .mms-ipod .ip-artist, .mms-ipod .ip-album, .mms-ipod .ip-nof,
+  .mms-ipod .mms-pos, .mms-ipod .mms-rem, .mms-ipod .mms-rt, .mms-ipod .mms-rd,
+  .mms-ipod .ipm-lbl, .mms-ipod .ipm-val, .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
   /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
@@ -11910,40 +11944,40 @@ html[data-modern="on"] .video-uploader {
          cause of the growth) even if contain were unsupported;
        - overflow:hidden -> anything larger is clipped, and the list scrolls in .ip-listview.
      The only thing that changes the LCD size is the viewport width (correct + responsive). */
-  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:4/3; min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
+  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:var(--pk-lcd-ratio); min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
   .mms-ipod .ip-lcd-in{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-white); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
-  .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--space-3) var(--space-4);
+  .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--pk-status-pad);
     background:linear-gradient(var(--mms-ipod-bar1), var(--mms-ipod-bar2)); border-bottom:1px solid var(--mms-ipod-hair); }
   /* The status bar is ONE line, whatever the title (Dean 2026-09-24: a long album or song
      name grew the bar by a row). The title is the flex child that gives: it may shrink below
      its text (min-width:0), never wraps, and truncates with an ellipsis the way a real iPod
      Classic's status title does. The play mark + battery cluster never shrinks or moves.
-     Covers every screen that draws this bar: the Click trio, Seattle, the desktop pop-out
+     Covers every screen that draws this bar: every Click colorway, the desktop pop-out
      and the Nano tray (scripts/skin-status-bar-probe.js measures them). */
-  .mms-ipod .ip-np{ font-size:var(--fs-base); font-weight:var(--fw-bold); flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-ipod .ip-np{ font-size:var(--pk-fs-status); font-weight:var(--fw-bold); flex:1 1 auto; }
   .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
-  .mms-ipod .mms-playind{ font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); }
-  .mms-ipod .ip-batt{ width:22px; height:11px; flex:none; overflow:hidden; background:var(--mms-white); border:1px solid var(--mms-ipod-batt-line); border-radius:var(--mms-ipod-r-sm); }
-  .mms-ipod .ip-batt i{ display:block; height:100%; width:82%; background:linear-gradient(var(--mms-ipod-batt1), var(--mms-ipod-batt2)); }
+  .mms-ipod .mms-playind{ font-size:var(--pk-fs-status-mark); color:var(--mms-ipod-scr-sub); }
+  .mms-ipod .ip-batt{ width:var(--pk-batt-w); height:var(--pk-batt-h); flex:none; overflow:hidden; background:var(--mms-white); border:1px solid var(--mms-ipod-batt-line); border-radius:var(--mms-ipod-r-sm); }
+  .mms-ipod .ip-batt i{ display:block; height:100%; width:var(--pk-batt-level); background:linear-gradient(var(--mms-ipod-batt1), var(--mms-ipod-batt2)); }
   /* Now Playing view */
   .mms-ipod .ip-npview{ flex:1; min-height:0; display:flex; flex-direction:column; padding:var(--space-6) var(--space-6) var(--space-4); }
   .mms-ipod .ip-npmain{ display:flex; gap:var(--space-6); flex:1; min-height:0; }
-  .mms-ipod .ip-cover{ position:relative; width:44%; align-self:flex-start; aspect-ratio:1; overflow:hidden; border-radius:var(--mms-ipod-r-sm); background:var(--mms-ipod-groove); box-shadow:var(--mms-ipod-art-shadow); }
+  .mms-ipod .ip-cover{ position:relative; width:var(--pk-cover-w); align-self:flex-start; aspect-ratio:1; overflow:hidden; border-radius:var(--mms-ipod-r-sm); background:var(--mms-ipod-groove); box-shadow:var(--mms-ipod-art-shadow); }
   /* v1.244: same whole-art + blurred self-bleed as the other skins (the --art var is set by the render). */
   .mms-ipod .ip-cover::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(18px) brightness(.72); transform:scale(1.35); }
   .mms-ipod .ip-cover img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
   .mms-ipod .ip-meta{ flex:1; min-width:0; }
-  .mms-ipod .ip-ttl{ font-size:var(--fs-2xl); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .ip-artist{ font-size:var(--fs-md); margin-top:var(--space-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .ip-album{ font-size:var(--fs-md); color:var(--mms-ipod-scr-sub); margin-top:var(--space-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .ip-stars{ font-size:var(--fs-base); color:var(--mms-ipod-scr-sub); letter-spacing:var(--mms-ls-caps2); margin-top:var(--space-3); }
-  .mms-ipod .ip-nof{ font-size:var(--fs-base); font-weight:var(--fw-bold); margin-top:var(--space-3); font-variant-numeric:tabular-nums; }
+  .mms-ipod .ip-ttl{ font-size:var(--pk-fs-np-title); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); }
+  .mms-ipod .ip-artist{ font-size:var(--pk-fs-np-artist); margin-top:var(--space-3); }
+  .mms-ipod .ip-album{ font-size:var(--pk-fs-np-album); color:var(--mms-ipod-scr-sub); margin-top:var(--space-1); }
+  .mms-ipod .ip-stars{ font-size:var(--pk-fs-np-meta); color:var(--mms-ipod-scr-sub); letter-spacing:var(--mms-ls-caps2); margin-top:var(--space-3); }
+  .mms-ipod .ip-nof{ font-size:var(--pk-fs-np-meta); font-weight:var(--fw-bold); margin-top:var(--space-3); font-variant-numeric:tabular-nums; }
   /* Aqua scrubber */
   .mms-ipod .ip-scrub{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
-  .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--fs-sm); font-weight:var(--fw-bold); flex:none; }
+  .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--pk-fs-time); font-weight:var(--fw-bold); flex:none; }
   /* v1.255 (Dean): the AQUA scrubber. The groove gets a real inner shadow so the fill
      sits IN it; the fill is the v1.269 MEASURED tube - see the token block above. */
-  .mms-ipod .ip-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
+  .mms-ipod .ip-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
   /* v1.269 (Dean, from the reference image he picked): a fine VERTICAL striation
      (7px period) over the glass-tube ramp. Replaced v1.260's 135deg candy stripe -
      which was Aqua's INDETERMINATE barber pole, the wrong control's costume. */
@@ -11953,8 +11987,8 @@ html[data-modern="on"] .video-uploader {
      unchurned this wave; removable with the markup whenever the skins are next edited. */
   .mms-ipod .ip-vol{ display:none; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
   .mms-ipod .ip-vol-ico{ flex:none; display:grid; place-items:center; }
-  .mms-ipod .ip-vol-ico svg{ width:16px; height:16px; fill:var(--mms-ipod-scr-sub); }
-  .mms-ipod .ip-vol-track{ flex:1; height:12px; border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:inset 0 0 0 1px var(--mms-ipod-hair); }
+  .mms-ipod .ip-vol-ico svg{ width:var(--pk-vol-glyph); height:var(--pk-vol-glyph); fill:var(--mms-ipod-scr-sub); }
+  .mms-ipod .ip-vol-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--mms-ipod-groove), var(--mms-white)); box-shadow:inset 0 0 0 1px var(--mms-ipod-hair); }
   .mms-ipod .ip-vol-fill{ position:absolute; left:0; top:0; bottom:0; width:100%; background:linear-gradient(var(--mms-ipod-blue-hi), var(--mms-ipod-blue1) 45%, var(--mms-ipod-blue2)); box-shadow:var(--mms-ipod-fill-shadow); }
   .mms-ipod.mms-voladj .ip-scrub{ display:none; }
   .mms-ipod.mms-voladj .ip-vol{ display:flex; }
@@ -11976,10 +12010,10 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod.mms-listmode .ip-npview{ display:none; }
   .mms-ipod.mms-listmode .ip-listview{ display:block; }
-  .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-4); width:100%; padding:var(--space-4) var(--space-6); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer; border-bottom:1px solid var(--mms-ipod-line); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
-  .mms-ipod .mms-rn{ width:18px; text-align:center; font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
-  .mms-ipod .mms-rt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .mms-rd{ font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
+  .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-4); width:100%; padding:var(--pk-list-row-pad); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer; border-bottom:1px solid var(--mms-ipod-line); font-size:var(--pk-fs-row); font-weight:var(--fw-semibold); }
+  .mms-ipod .mms-rn{ width:var(--pk-row-num-w); text-align:center; font-size:var(--pk-fs-row-meta); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
+  .mms-ipod .mms-rt{ flex:1; }
+  .mms-ipod .mms-rd{ font-size:var(--pk-fs-row-meta); color:var(--mms-ipod-scr-sub); flex:none; font-variant-numeric:tabular-nums; }
   .mms-ipod .mms-chev-r{ color:var(--mms-ipod-scr-sub); flex:none; }
   .mms-ipod .mms-row.is-played{ opacity:.55; }
   /* v1.233: authentic iPod - the blue selection BAR follows the wheel CURSOR (the row
@@ -12003,21 +12037,21 @@ html[data-modern="on"] .video-uploader {
   /* the scroller: no radius on it (the LCD clips - the overlay-containment split) */
   .mms-ipod .ipm-list{ flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
   .mms-ipod .ipm-split{ flex:1; min-height:0; display:flex; }
-  .mms-ipod .ipm-click .ipm-lpane{ flex:0 0 50%; max-width:50%; min-width:0; min-height:0; display:flex; flex-direction:column; }
-  .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:34px; /* token-exempt: the menu row pitch (6-7 rows on a phone LCD, the device's density) */
+  .mms-ipod .ipm-click .ipm-lpane{ flex:0 0 var(--pk-split); max-width:var(--pk-split); min-width:0; min-height:0; display:flex; flex-direction:column; }
+  .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:var(--pk-row-h);
     box-sizing:border-box; padding:0 var(--space-4); border:0; background:transparent; color:var(--mms-black); text-align:left; cursor:pointer;
-    font-family:inherit; font-size:var(--fs-md); font-weight:var(--fw-bold); }
-  .mms-ipod .ipm-lbl{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-ipod .ipm-chev{ flex:none; font-size:var(--fs-xl); color:var(--mms-ipod-scr-sub); }
+    font-family:inherit; font-size:var(--pk-fs-menu); font-weight:var(--fw-bold); }
+  .mms-ipod .ipm-lbl{ flex:1; }
+  .mms-ipod .ipm-chev{ flex:none; font-size:var(--pk-fs-chev); color:var(--mms-ipod-scr-sub); }
   .mms-ipod .ipm-now{ flex:none; display:grid; place-items:center; }
-  .mms-ipod .ipm-now svg{ width:14px; height:14px; /* token-exempt: speaker glyph box */ fill:var(--mms-ipod-blue1); display:block; }
+  .mms-ipod .ipm-now svg{ width:var(--pk-speaker); height:var(--pk-speaker); fill:var(--mms-ipod-blue1); display:block; }
   /* the selection BAR: the v1.233 list cursor's own gradient + white text */
   .mms-ipod .ipm-row.is-cursor{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); }
   .mms-ipod .ipm-row.is-cursor .ipm-chev{ color:var(--mms-white); }
   .mms-ipod .ipm-row.is-cursor .ipm-now svg{ fill:var(--mms-white); }
   .mms-ipod .ipm-skel{ cursor:default; }
-  .mms-ipod .ipm-skel-bar{ display:block; width:70%; height:10px; /* token-exempt: skeleton text bar */ border-radius:var(--radius-full); }
-  .mms-ipod .ipm-note{ padding:var(--space-6); font-size:var(--fs-sm); color:var(--mms-ipod-scr-sub); }
+  .mms-ipod .ipm-skel-bar{ display:block; width:var(--pk-skel-w); height:var(--pk-skel-h); border-radius:var(--radius-full); }
+  .mms-ipod .ipm-note{ padding:var(--space-6); font-size:var(--pk-fs-note); color:var(--mms-ipod-scr-sub); }
   /* the right half: the art pane, a soft inner edge where it meets the list (the 6G seam) */
   .mms-ipod .ipm-art{ position:relative; flex:1; min-width:0; overflow:hidden; background:var(--mms-ipod-groove); box-shadow:var(--mms-ipod-art-shadow); }
   .mms-ipod .ipm-art-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0; transform:scale(1.08);
@@ -12039,19 +12073,19 @@ html[data-modern="on"] .video-uploader {
     font-family:inherit; cursor:pointer; opacity:0; visibility:hidden;
     transition:opacity var(--dur-slow) var(--ease-ui), visibility 0s linear var(--dur-slow); /* token-exempt: visibility flips after the fade (0s = a switch, not a motion) */ }
   .mms-ipod .ipm-letter.is-on, .mms-ipod .ipm-badge.is-on{ opacity:1; visibility:visible; transition:opacity var(--dur-fast) var(--ease-ui), visibility 0s; /* token-exempt: visibility turns on at once */ }
-  .mms-ipod .ipm-letter{ left:50%; top:50%; width:96px; height:96px; /* token-exempt: the iPod's letter square */ margin:-48px 0 0 -48px; /* token-exempt: centring the square */
-    border-radius:var(--radius-lg); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--fs-jump); font-weight:var(--fw-bold); line-height:1; /* token-exempt: a single glyph centred in its square */ }
-  .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:44px; height:44px; /* token-exempt: the 44 px touch target */
-    border-radius:var(--radius-full); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--fs-xl); font-weight:var(--fw-bold); }
-  .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:44px; /* token-exempt: every letter a 44 px target */
+  .mms-ipod .ipm-letter{ left:50%; top:50%; width:var(--pk-letter); height:var(--pk-letter); margin:calc(var(--pk-letter) / -2) 0 0 calc(var(--pk-letter) / -2);
+    border-radius:var(--radius-lg); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--pk-fs-jump); font-weight:var(--fw-bold); line-height:1; /* token-exempt: a single glyph centred in its square */ }
+  .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:var(--pk-touch); height:var(--pk-touch);
+    border-radius:var(--radius-full); background:var(--mms-ipod-jump-bg); color:var(--mms-white); font-size:var(--pk-fs-badge); font-weight:var(--fw-bold); }
+  .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:var(--pk-grid-row);
     align-content:safe center; overflow-y:auto; background:var(--mms-white); border-top:1px solid var(--mms-ipod-jump-line); }
   /* gate r1 Q3: `safe` - on an LCD shorter than the grid the rows start at the scroll origin (plain
      centring pushed the first rows above it, unreachable: qa measured # and A-D lost at 667x375). */
-  .mms-ipod .ipm-gl{ border:0; padding:0; background:transparent; color:var(--mms-black); font-family:inherit; font-size:var(--fs-xl); font-weight:var(--fw-bold); cursor:pointer; }
+  .mms-ipod .ipm-gl{ border:0; padding:0; background:transparent; color:var(--mms-black); font-family:inherit; font-size:var(--pk-fs-picker); font-weight:var(--fw-bold); cursor:pointer; }
   .mms-ipod .ipm-gl:active{ background:linear-gradient(var(--mms-ipod-blue1), var(--mms-ipod-blue2)); color:var(--mms-white); }
   .mms-ipod .ipm-gl.is-off{ color:var(--mms-ipod-hair); cursor:default; }
   /* About (addendum D): the device's About screen - the name large, read-only rows with values */
-  .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--fs-xl); font-weight:var(--fw-bold); color:var(--mms-black); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--pk-fs-about); font-weight:var(--fw-bold); color:var(--mms-black); }
   .mms-ipod .ipm-row.ipm-info{ cursor:default; }
   .mms-ipod .ipm-val{ flex:none; font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
   /* the tray (the pop-out's Nano strip) has no wheel to reach a menu with - Now Playing only */
@@ -12064,47 +12098,141 @@ html[data-modern="on"] .video-uploader {
      The zone buttons are all %-based so they scale with this automatically. */
   /* pocket lighting (2026-09-24): the sheen and the base ramp sit where the LIGHT is - `--lx` /
      `--ly` (each -1..1) are written on the panel by pocket-lighting.js while a Click skin is lit;
-     unset (Off, Seattle, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
-  .mms-ipod .ip-wheel{ width:min(70vw,288px); height:min(70vw,288px); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
-    background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
-  .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--mms-ipod-wheel-lbl); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
-  .mms-ipod .ip-zone svg{ width:25px; height:25px; fill:currentColor; display:block; }
-  .mms-ipod .ip-z-menu{ top:0; left:26%; width:48%; height:30%; align-content:start; padding-top:var(--space-3); font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); }
-  .mms-ipod .ip-z-left{ top:26%; left:0; width:30%; height:48%; justify-content:start; padding-left:var(--space-4); font-size:var(--fs-xl); }
-  .mms-ipod .ip-z-right{ top:26%; right:0; width:30%; height:48%; justify-content:end; padding-right:var(--space-4); font-size:var(--fs-xl); }
-  .mms-ipod .ip-z-down{ bottom:0; left:26%; width:48%; height:30%; align-content:end; padding-bottom:var(--space-3); font-size:var(--fs-base); }
-  .mms-ipod .ip-center{ width:min(26vw,108px); height:min(26vw,108px); border-radius:var(--radius-full); border:0; cursor:pointer;
-    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-lit-dome-shadow, var(--mms-ipod-center-shadow)); }
+     unset (Off, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
+  .mms-ipod .ip-wheel{ width:var(--pk-wheel-d); height:var(--pk-wheel-d); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
+    background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 10%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
+  .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--pk-c-wheel-label); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
+  .mms-ipod .ip-zone svg{ width:var(--pk-zone-glyph); height:var(--pk-zone-glyph); fill:currentColor; display:block; }
+  .mms-ipod .ip-z-menu{ top:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:start; padding-top:var(--space-3); font-size:var(--pk-fs-zone-menu); letter-spacing:var(--mms-ls-caps2); }
+  .mms-ipod .ip-z-left{ top:var(--pk-zone-inset); left:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:start; padding-left:var(--space-4); font-size:var(--pk-fs-zone-skip); }
+  .mms-ipod .ip-z-right{ top:var(--pk-zone-inset); right:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:end; padding-right:var(--space-4); font-size:var(--pk-fs-zone-skip); }
+  .mms-ipod .ip-z-down{ bottom:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:end; padding-bottom:var(--space-3); font-size:var(--pk-fs-zone-play); }
+  .mms-ipod .ip-center{ width:var(--pk-center-d); height:var(--pk-center-d); border-radius:var(--radius-full); border:0; cursor:pointer;
+    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(var(--pk-c-center-oy) + var(--ly,0) * 16%), var(--pk-c-center-1), var(--pk-c-center-2)); box-shadow:var(--mms-lit-dome-shadow, var(--mms-ipod-center-shadow)); }
 
-  /* --- iPod BLACK (v1.232, Dean): shares all iPod structure via the base `mms-ipod`
-     class; overrides ONLY the body + wheel palette to the space-black variant. The
-     white LCD screen (status/meta/Aqua/list) is unchanged. Rules sit AFTER the silver
-     iPod block so they win at equal specificity. --- */
-  /* v1.232.3 (Dean): the black body's sheen was too aggressive - dropped the
-     bottom-right radial sweep, keeping just the soft top-left highlight. */
-  .mms-ipod-black{ background:
-      linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
-      linear-gradient(158deg, var(--mms-ipodk-body1), var(--mms-ipodk-body2));
-    box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
-  .mms-ipod-black .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
-  .mms-ipod-black .ip-zone{ color:var(--mms-ipodk-wheel-lbl); }
-  .mms-ipod-black .ip-center{ background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
-  /* CLICK (MATTE) - matte graphite metal, top-lit, with a dark click wheel. Same silver
-     iPod screen; only the body/wheel palette overrides (the ipod-black pattern). The top
-     chamfer + side edges are the reference photo's directional lighting. */
-  .mms-ipod-matte{ background:
-      linear-gradient(180deg, var(--mms-ipodm-chamfer) 0, var(--mms-ipod-sheen-0) 2.2%),
-      linear-gradient(90deg, var(--mms-ipodm-edge) 0%, var(--mms-ipodm-edge2) 15%, var(--mms-ipodm-clear) 30%, var(--mms-ipodm-clear) 70%, var(--mms-ipodm-edge2) 85%, var(--mms-ipodm-edge) 100%),
-      linear-gradient(180deg, var(--mms-ipodm-t1) 0%, var(--mms-ipodm-t2) 7%, var(--mms-ipodm-t3) 40%, var(--mms-ipodm-t4) 55%, var(--mms-ipodm-t5) 74%, var(--mms-ipodm-t6) 90%, var(--mms-ipodm-t7) 100%);
-    box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
-  .mms-ipod-matte .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipodm-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(42% + var(--ly,0) * 10%), var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
-  .mms-ipod-matte .ip-zone{ color:var(--mms-ipodm-wheel-lbl); }
-  .mms-ipod-matte .ip-center{ background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(38% + var(--ly,0) * 16%), var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
+  /* ---------------- the colorways: each is ONE block of role tokens (the chassis above reads them) ----------------
+     Click (Black) (v1.232, Dean): the space-black body + dark wheel; v1.232.3 dropped the white body's
+     bottom-right sweep, keeping just the soft top-left highlight. The center is the body's black. */
+  .mms-ipod-black{
+    --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      linear-gradient(158deg, #343436, #161618);
+    --pk-c-body-edge:#0a0a0b;
+    --pk-c-wheel-1:#3d3d3f; --pk-c-wheel-2:#232325; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#b9babd;
+    --pk-c-center-1:#343436; --pk-c-center-2:#161618; --pk-c-center-oy:40%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4); }
+  /* Click (Matte): matte graphite metal, top-lit, with a dark click wheel - photo-sampled from Dean's
+     reference: the body ramp top to bottom, the top chamfer + side edges (the photo's directional
+     light), a softer wheel sheen, a lighter graphite center. */
+  .mms-ipod-matte{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 2.2%),
+      linear-gradient(90deg, rgba(0,0,0,.30) 0%, rgba(0,0,0,.04) 15%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 70%, rgba(0,0,0,.04) 85%, rgba(0,0,0,.30) 100%),
+      linear-gradient(180deg, #949497 0%, #86868a 7%, #7a7a7e 40%, #6a6a70 55%, #4a4a50 74%, #2d2d32 90%, #1c1c21 100%);
+    --pk-c-body-edge:#0a0a0b;
+    --pk-c-wheel-1:#343437; --pk-c-wheel-2:#242427; --pk-c-wheel-sheen:rgba(255,255,255,.42); --pk-c-wheel-oy:42%;
+    --pk-c-wheel-label:#b9babd;
+    --pk-c-center-1:#6e6e72; --pk-c-center-2:#55555a; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.09); --pk-c-lit-band2:rgba(255,255,255,.05);
+    --pk-c-lits-band:rgba(255,255,255,.14); --pk-c-lits-band2:rgba(255,255,255,.08); --pk-c-lits-core:rgba(255,255,255,.22); }
+  /* Click (Red) (v1.332, Dean D2: red body, white wheel - the charity-red nano): satin anodized red,
+     sampled from Wikimedia Commons "Product Red iPod nano.jpg" (CC BY 2.0). The photo's top is near
+     clipped, so the ramp is its MID and LOW body values (#ea293a .. #c51323), the left edge darker and
+     a soft band right of centre where the photo's sheen sits; a cool white wheel with its light grey
+     labels (#c4cfcf, the glyphs' darkest tenth); the center is the body red, domed (#fc4d64 .. #fd3c56). */
+  .mms-ipod-red{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.22) 0, var(--mms-ipod-sheen-0) 1.8%),
+      linear-gradient(90deg, rgba(0,0,0,.24) 0%, rgba(0,0,0,.06) 14%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 58%, rgba(255,255,255,.1) 78%, var(--mms-ipod-clear) 90%, rgba(0,0,0,.16) 100%),
+      linear-gradient(180deg, #ee2b3e 0%, #e82639 30%, #e02031 60%, #d4192b 82%, #c41424 100%);
+    --pk-c-body-edge:#8e0e18;
+    --pk-c-wheel-1:#f7f9f8; --pk-c-wheel-2:#e5e9e7; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#c4cfcf;
+    --pk-c-center-1:#f6475d; --pk-c-center-2:#ea3348; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.2); --pk-c-lit-band2:rgba(255,255,255,.12);
+    --pk-c-lits-band:rgba(255,255,255,.3); --pk-c-lits-band2:rgba(255,255,255,.17); --pk-c-lits-core:rgba(255,255,255,.45); }
+  /* Click (Silver) (D8): the 2007 aluminum classic - Commons "IPod Classic 6th Generation 120 GB -
+     front.jpg" (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
+     Satin aluminum lit from the left (#dcdcdf at the lit edge .. #747477 across), darker at the top and
+     bottom; the light grey wheel, dark grey labels (#7b7f82); an aluminum center, not the wheel's grey. */
+  .mms-ipod-silver{
+    --pk-c-body:linear-gradient(180deg, rgba(0,0,0,.2) 0%, var(--mms-ipod-clear) 10%, var(--mms-ipod-clear) 88%, rgba(0,0,0,.2) 100%),
+      linear-gradient(98deg, #dcdcdf 0%, #c4c5c7 17%, #9d9da0 44%, #838386 66%, #747477 86%, #8a8a8d 100%);
+    --pk-c-body-edge:#5a5a5d;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#7b7f82;
+    --pk-c-center-1:#a2a0a4; --pk-c-center-2:#8a898c; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.26); --pk-c-lit-band2:rgba(255,255,255,.15);
+    --pk-c-lits-band:rgba(255,255,255,.36); --pk-c-lits-band2:rgba(255,255,255,.2); --pk-c-lits-core:rgba(255,255,255,.5); }
+  /* Click (Encore) (D8, the black-and-red special edition, under a cheeky name): Commons "IPod U2.jpeg"
+     (CC BY 3.0; small and soft - hue only). Click (Black)'s body; the red wheel from the photo scaled
+     so the black body matches Click (Black)'s (x0.8: #e85a70 -> #ba485a, ramped #c4505f .. #a63f4e around
+     it for the wheel's top light); near-white labels;
+     a black center. */
+  .mms-ipod-encore{
+    --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      linear-gradient(158deg, #343436, #161618);
+    --pk-c-body-edge:#0a0a0b;
+    --pk-c-wheel-1:#c4505f; --pk-c-wheel-2:#a63f4e; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#efe8eb;
+    --pk-c-center-1:#2e2527; --pk-c-center-2:#161113; --pk-c-center-oy:40%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4); }
+  /* Click (Blue) (D8, the second mini): Commons "IPod mini blue front 2G.jpg" (CC BY-SA 3.0), white-
+     balanced on its light grey wheel (gain 1.21 / 1.20 / 1.23). Anodized teal-blue lit from the top
+     (#62c1df .. #1d4654), the tube's darker sides; labels the body's blue (#5ca3b1); the center is the
+     wheel's grey. */
+  .mms-ipod-blue{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%),
+      linear-gradient(180deg, #62c1df 0%, #4fb0cb 18%, #45a7c0 40%, #3e96ab 50%, #2f7a90 68%, #245a6a 85%, #1d4654 100%);
+    --pk-c-body-edge:#123140;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#5ca3b1;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36); }
+  /* Click (Green) (D8, the second mini): Commons "Green ipodmini 2ndgen.jpg" (CC BY-SA 2.0), white-
+     balanced on its wheel. Anodized green (p90 #5d8c4e .. p10 #3f703d); labels the body's green
+     (#3e9557); the center is the wheel's grey. (The first mini's green, "Green ipodmini 1stgen.jpg",
+     reads yellower - #72872f - the second one's is the reference.) */
+  .mms-ipod-green{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
+      linear-gradient(180deg, #5d8c4e 0%, #568649 25%, #4d7c44 50%, #467541 75%, #3f703d 100%);
+    --pk-c-body-edge:#2b4f29;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#3e9557;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.14); --pk-c-lit-band2:rgba(255,255,255,.08);
+    --pk-c-lits-band:rgba(255,255,255,.22); --pk-c-lits-band2:rgba(255,255,255,.12); --pk-c-lits-core:rgba(255,255,255,.34); }
+  /* Click (Pink) (D8, the second mini): the pink mini in Commons "Apple iPod 5G-nano 2G-mini 2G.jpg"
+     (CC BY 2.0), under warm light, white-balanced on its wheel (gain 0.87 / 0.85 / 1.32). Anodized rose
+     (p90 #9e5a73 .. p15 #652430); labels the body's pink (the glyph cores measure a muddier #997e6c
+     under that light); the center is the wheel's grey. */
+  .mms-ipod-pink{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
+      linear-gradient(180deg, #9e5a73 0%, #8f4c64 25%, #824153 50%, #763849 75%, #652430 100%);
+    --pk-c-body-edge:#4a1522;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#9e5a73;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36); }
+  /* Click (Gold) (D8): Dean's own photo (2026-09-25) - a gold classic with a white wheel and a GOLD
+     center (so the center is the body's gold, as on the photo, not a mini's grey). White-balanced on the
+     white wheel and exposed like Click (Red)'s white wheel. Anodized gold lit from the upper left
+     (#b98629 .. #7b540c), light grey labels (#c0c7c0), the center a brighter gold (#c08d09 .. #c28b06). */
+  .mms-ipod-gold{
+    --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      linear-gradient(158deg, #b98629 0%, #a8761f 38%, #a17118 55%, #8c6112 80%, #7b540c 100%);
+    --pk-c-body-edge:#5a3a06;
+    --pk-c-wheel-1:#f1f2f0; --pk-c-wheel-2:#e1e3e0; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#c0c7c0;
+    --pk-c-center-1:#c8940f; --pk-c-center-2:#b07e07; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.22); --pk-c-lit-band2:rgba(255,255,255,.13);
+    --pk-c-lits-band:rgba(255,255,255,.32); --pk-c-lits-band2:rgba(255,255,255,.18); --pk-c-lits-core:rgba(255,255,255,.46); }
   /* POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting): a fixed light in the
      room, read from the phone's tilt (or the mouse on a desktop) by pocket-lighting.js and written
      as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
@@ -12114,7 +12242,7 @@ html[data-modern="on"] .video-uploader {
      exposed, and the layer stays 2.25x the panel, not 3.24x - gate r1 S3), and the LCD glass a
      faint streak (over the screen, never a tap target). Nothing
      here is a filter, blur, mask or backdrop - the ambient-mode iPhone black-video lesson; a lock
-     test enforces it. Seattle is untouched (Dean's focus ruling): the driver never lights it. */
+     test enforces it. */
   /* Inset offsets: an inset shadow with a POSITIVE x offset paints along the LEFT inner edge (the
      lit plane slides right, the hole's left edge shows it), so the rim HIGHLIGHT takes the light's
      offset NEGATED (light on the right -> the right edge glows) and the RECESS takes it as is (the
@@ -12124,13 +12252,11 @@ html[data-modern="on"] .video-uploader {
     --mms-lit-wheel-shadow:calc(var(--lx,0) * -4px) calc(1px + var(--ly,0) * -4px) 2px var(--mms-lit-drop), inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 1px var(--mms-lit-rim), inset calc(var(--lx,0) * 2px) calc(-2px + var(--ly,0) * 2px) 4px var(--mms-lit-recess);
     --mms-lit-dome-shadow:inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 2px var(--mms-lit-dome-hi), calc(var(--lx,0) * -3px) calc(1px + var(--ly,0) * -3px) 2px var(--mms-lit-dome-drop); }
   .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-25%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
-    background:linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--mms-lit-band) 47%, var(--mms-lit-band2) 50%, var(--mms-ipod-sheen-0) 60%);
+    background:linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--pk-c-lit-band) 47%, var(--pk-c-lit-band2) 50%, var(--mms-ipod-sheen-0) 60%);
     transform:translate3d(calc(var(--lx,0) * 12%), calc(var(--ly,0) * 10%), 0); will-change:transform; }
   .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0 -50%; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none;
     background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 50%, var(--mms-ipod-sheen-0) 56%);
     transform:translate3d(calc(var(--lx,0) * 22%), 0, 0); will-change:transform; }
-  .mms-ipod-black.mms-lit{ --mms-lit-band:var(--mms-litk-band); --mms-lit-band2:var(--mms-litk-band2); }
-  .mms-ipod-matte.mms-lit{ --mms-lit-band:var(--mms-litm-band); --mms-lit-band2:var(--mms-litm-band2); }
   /* PRONOUNCED = the STRONG profile (2026-09-24 second swing; Dean on the device: "a little subtle ...
      zhuzh it up ... more realistic, more joyful"). Layered OVER the same skeleton, added with `.mms-lit`
      by the driver only for the pronounced strength: a specular HOT SPOT on the dome (a pseudo-element
@@ -12143,153 +12269,32 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod.mms-lit-strong{
     --mms-lit-wheel-shadow:calc(var(--lx,0) * -7px) calc(2px + var(--ly,0) * -7px) 5px var(--mms-lit-drop-s), inset calc(var(--lx,0) * -9px) calc(2px + var(--ly,0) * -9px) 12px -3px var(--mms-lit-arc), inset calc(var(--lx,0) * 9px) calc(-2px + var(--ly,0) * 9px) 14px -4px var(--mms-lit-darc), inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 1px var(--mms-lit-rim);
     --mms-lit-dome-shadow:inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 2px var(--mms-lit-dome-hi), inset calc(var(--lx,0) * 4px) calc(-1px + var(--ly,0) * 4px) 6px -2px var(--mms-lit-far), calc(var(--lx,0) * -5px) calc(2px + var(--ly,0) * -5px) 4px var(--mms-lit-dome-drop);
-    --mms-lit-band:var(--mms-lits-band); --mms-lit-band2:var(--mms-lits-band2); --mms-lit-core:var(--mms-lits-core); --mms-lit-glass:var(--mms-lits-glass); }
-  .mms-ipod-black.mms-lit-strong{ --mms-lit-band:var(--mms-litks-band); --mms-lit-band2:var(--mms-litks-band2); --mms-lit-core:var(--mms-litks-core); }
-  .mms-ipod-matte.mms-lit-strong{ --mms-lit-band:var(--mms-litms-band); --mms-lit-band2:var(--mms-litms-band2); --mms-lit-core:var(--mms-litms-core); }
+    --mms-lit-glass:var(--mms-lits-glass); }
   .mms-ipod.mms-lit-strong::before{ inset:-35%;
     background:radial-gradient(120% 80% at calc(50% + var(--lx,0) * 35%) calc(10% + var(--ly,0) * 30%), var(--mms-lit-room) 0%, var(--mms-ipod-sheen-0) 60%),
-      linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--mms-lit-band) 46.5%, var(--mms-lit-core) 48.5%, var(--mms-lit-core) 49.5%, var(--mms-lit-band2) 51%, var(--mms-ipod-sheen-0) 60%);
+      linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--pk-c-lits-band) 46.5%, var(--pk-c-lits-core) 48.5%, var(--pk-c-lits-core) 49.5%, var(--pk-c-lits-band2) 51%, var(--mms-ipod-sheen-0) 60%);
     transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0); }
   .mms-ipod.mms-lit-strong .ip-lcd-in::after{ inset:0 -70%;
     background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 49%, var(--mms-lits-glass-hot) 50%, var(--mms-lit-glass) 51%, var(--mms-ipod-sheen-0) 56%),
       linear-gradient(100deg, var(--mms-ipod-sheen-0) 52%, var(--mms-lits-glass2) 58%, var(--mms-ipod-sheen-0) 64%);
     transform:translate3d(calc(var(--lx,0) * 25%), 0, 0); }
   .mms-ipod.mms-lit-strong .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(40% + var(--ly,0) * 14%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); }
-  .mms-ipod-black.mms-lit-strong .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(40% + var(--ly,0) * 14%), var(--mms-ipodk-wheel1), var(--mms-ipodk-wheel2) 100%); }
-  .mms-ipod-matte.mms-lit-strong .ip-wheel{ background:
-      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--mms-ipodm-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(42% + var(--ly,0) * 14%), var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
+      radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
+      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 14%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%); }
   .mms-ipod.mms-lit-strong .ip-center{ position:relative; overflow:hidden; background:
-      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipodm-clear) 55%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(40% + var(--ly,0) * 20%), var(--mms-ipod-body1), var(--mms-ipod-body2)); }
-  .mms-ipod-black.mms-lit-strong .ip-center{ background:
-      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipodm-clear) 55%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(40% + var(--ly,0) * 20%), var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
-  .mms-ipod-matte.mms-lit-strong .ip-center{ background:
-      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipodm-clear) 55%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(38% + var(--ly,0) * 20%), var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
+      radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipod-clear) 55%),
+      radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(var(--pk-c-center-oy) + var(--ly,0) * 20%), var(--pk-c-center-1), var(--pk-c-center-2)); }
   /* the dome's specular hot spot: its own layer so its OPACITY can follow --lm (brightest straight on) */
   .mms-ipod.mms-lit-strong .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
     background:radial-gradient(circle at calc(50% + var(--lx,0) * 34%) calc(32% + var(--ly,0) * 34%), var(--mms-lit-hot) 0%, var(--mms-lit-hot2) 18%, var(--mms-ipod-sheen-0) 40%);
     opacity:calc(1 - var(--lm,0) * .45); }
   /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
-  .mms-ipod .ipm-check{ flex:none; font-size:var(--fs-md); color:var(--mms-ipod-blue1); }
+  .mms-ipod .ipm-check{ flex:none; font-size:var(--pk-fs-check); color:var(--mms-ipod-blue1); }
   .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--mms-white); }
-  .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:34px; /* token-exempt: the menu row pitch */ padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--fs-sm); font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
+  .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:var(--pk-row-h); padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--pk-fs-note); font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
   .mms-ipod .ipm-noterow .ipm-lbl{ white-space:normal; }
-  /* v1.260: SEATTLE CLASSIC - the brown Zune 30 on the same wheel chassis (Dean: "the
-     original zune with the circle wheel"). Palette-only, the ipod-black pattern. */
-  /* v1.261 (Dean's reference photo): the REAL Zune 30, not a brown iPod. Brown body +
-     body (the green rim retired at v1.264, Dean); a big chrome-bezel screen; and the
-     signature - a clean chrome PAD flanked
-     by a Back and a Play/Pause button (no printed wheel labels). The screen reuses the
-     shared iPod LCD machinery (list/scrub/reflect) but reads flat + bold + chrome. */
-  .mms-zune-classic{ background:
-      linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
-      linear-gradient(158deg, var(--mms-znc-body1), var(--mms-znc-body2)); }
-  /* the chrome-framed screen (the photo's silver bezel): BIG - it fills above the pad,
-     the defining Zune-vs-iPod proportion (the iPod LCD is a fixed 4:3 strip). */
-  .mms-zune-classic .ip-lcd{ flex:1; aspect-ratio:auto; border:3px solid var(--mms-znc-chrome2); /* token-exempt: Zune chrome bezel width */ border-radius:var(--radius); box-shadow:0 0 0 1px var(--mms-znc-chrome1), var(--mms-ipod-lcd-shadow); }
-  .mms-zune-classic .ip-stars{ display:none; }
-  /* the control row: Back flank | chrome pad | Play flank. */
-  .mms-zune-classic .znc-controls{ display:flex; align-items:center; justify-content:center; gap:var(--space-6); flex:none; padding:var(--space-5) 0 var(--space-4); }
-  .mms-zune-classic .znc-flank{ width:52px; height:52px; /* token-exempt: Zune flank button */ border-radius:var(--radius-full); border:0; cursor:pointer; display:grid; place-items:center;
-    color:var(--mms-znc-body2); background:radial-gradient(circle at 50% 35%, var(--mms-znc-chrome1), var(--mms-znc-chrome2)); box-shadow:var(--mms-ipod-wheel-shadow); }
-  .mms-zune-classic .znc-flank svg{ width:22px; height:22px; /* token-exempt: flank glyph */ fill:currentColor; }
-  .mms-zune-classic .znc-flank.mms-play svg{ width:24px; height:24px; /* token-exempt: flank glyph */ }
-  /* the pad: a chrome ring (not the labeled iPod wheel) - smaller, clean, brown center. */
-  .mms-zune-classic .ip-wheel.znc-pad{ width:min(38vw,132px); height:min(38vw,132px); /* token-exempt: Zune pad diameter */
-    background:radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%), radial-gradient(circle at 50% 40%, var(--mms-znc-ring), var(--mms-znc-chrome2) 100%); }
-  .mms-zune-classic .ip-zone{ color:transparent; }
-  .mms-zune-classic .ip-center.znc-center{ width:min(20vw,64px); height:min(20vw,64px); /* token-exempt: Zune pad center */
-    background:radial-gradient(circle at 50% 40%, var(--mms-znc-wheel1), var(--mms-znc-wheel2) 100%); }
-  /* v1.262 (Dean: "move the rest style and overall menu of the original Seattle into
-     the new brown Seattle Classic... maintaining the wheel and buttons"): the METRO
-     SCREEN - Seattle's type language inside the chrome bezel, on the shared screen
-     machinery (scrub/list/marquee bindings untouched; this layer is presentation).
-     Order matters vs the shared fill rules: equal specificity, later wins. */
-  .mms-zune-classic .ip-lcd-in{ background:var(--mms-black); color:var(--mms-white); }
-  .mms-zune-classic .ip-status{ text-transform:lowercase; background:var(--mms-black); border-bottom:0; }
-  .mms-zune-classic .ip-np{ font-weight:var(--fw-light); color:var(--mms-zn-dim); }
-  .mms-zune-classic .mms-playind{ color:var(--mms-zn-pink); }
-  .mms-zune-classic .ip-batt{ display:none; }
-  .mms-zune-classic .ip-cover{ border-radius:0; box-shadow:none; background:var(--mms-zn-ink); }
-  .mms-zune-classic .ip-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ip-artist{ font-size:var(--fs-xl); font-weight:var(--fw-light); color:var(--mms-zn-pink); text-transform:lowercase; }
-  .mms-zune-classic .ip-album{ font-weight:var(--fw-light); color:var(--mms-zn-dim); text-transform:lowercase; }
-  .mms-zune-classic .ip-nof{ font-weight:var(--fw-light); color:var(--mms-zn-dim); }
-  .mms-zune-classic .ip-track{ height:3px; border-radius:0; background:var(--mms-zn-ink); box-shadow:none; }
-  .mms-zune-classic .mms-fill{ background:var(--mms-zn-pink); border-radius:0; box-shadow:none; }
-  .mms-zune-classic .ip-scrub .mms-pos, .mms-zune-classic .ip-scrub .mms-rem{ color:var(--mms-zn-dim); }
-  .mms-zune-classic .ip-listview{ background:var(--mms-black); }
-  .mms-zune-classic .mms-row{ color:var(--mms-white); }
-  .mms-zune-classic .mms-row .mms-rt{ text-transform:lowercase; font-weight:var(--fw-light); }
-  .mms-zune-classic .mms-row .mms-rn, .mms-zune-classic .mms-row .mms-rd, .mms-zune-classic .mms-chev-r{ color:var(--mms-zn-dim); }
-  /* v1.263 (Dean: "should we fill in more of the screen?"): the ART-FORWARD Now
-     Playing - the Zune 30's actual view: album art dominating the top, nearly
-     edge-to-edge, meta in the thin type beneath, the progress line at the bottom.
-     The iPod's 44%-cover-beside-meta row becomes a column with the art filling. */
-  .mms-zune-classic .ip-npview{ padding:0; }
-  .mms-zune-classic .ip-npmain{ flex-direction:column; gap:var(--space-4); }
-  .mms-zune-classic .ip-cover{ width:100%; align-self:stretch; aspect-ratio:auto; flex:1; min-height:0; border-radius:0; box-shadow:none; }
-  /* v1.264 (Dean): NO img override here - the base keeps object-fit:contain, so the
-     full picture shows and the v1.244 blurred self-bleed fills the letterbox. (The
-     real Zune 30 letterboxed on plain black; the bleed is the modern upgrade, chosen.) */
-  .mms-zune-classic .ip-meta{ flex:none; padding:0 var(--space-6); }
-  .mms-zune-classic .ip-scrub{ padding:0 var(--space-6) var(--space-4); }
-  .mms-zune-classic .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }
-  .mms-zune-classic .mms-row.is-current .mms-rn{ color:var(--mms-zn-pink); }
-  /* the Metro cursor (slim W2): the magenta bar replaces the iPod blue; listed AFTER
-     is-current so coincide keeps the v1.233 cursor-wins invariant at equal specificity. */
-  .mms-zune-classic .mms-row.is-cursor{ background:var(--mms-zn-pink); color:var(--mms-black); border-bottom-color:transparent; }
-  .mms-zune-classic .mms-row.is-cursor .mms-rt, .mms-zune-classic .mms-row.is-cursor .mms-rn, .mms-zune-classic .mms-row.is-cursor .mms-rd, .mms-zune-classic .mms-row.is-cursor .mms-chev-r{ color:var(--mms-black); }
-  /* POCKET MENUS on Seattle: ZUNE style - big lowercase hairline type on the black
-     Metro screen, the Music level a PIVOT strip (the active pivot leads, the rest trail off
-     the edge; pad left/right or a swipe moves across), the selected row lit white while the
-     rest sit dim (the Zune marks selection by light, not a bar). Palette = the Seattle
-     tokens this skin already carries. */
-  .mms-zune-classic .ip-menuview{ background:var(--mms-black); color:var(--mms-white); padding:var(--space-2) var(--space-6) 0; }
-  .mms-zune-classic .ipm-pivots{ display:flex; gap:var(--space-8); flex:none; overflow:hidden; white-space:nowrap; padding:var(--space-2) 0 var(--space-4); }
-  .mms-zune-classic .ipm-pv{ flex:none; border:0; padding:0; background:transparent; cursor:pointer; font-family:inherit; font-size:var(--fs-5xl); font-weight:var(--fw-light); line-height:var(--mms-lh-ttl); text-transform:lowercase; color:var(--mms-zn-dim); }
-  .mms-zune-classic .ipm-pv.is-on{ color:var(--mms-white); }
-  .mms-zune-classic .ipm-title{ flex:none; padding:var(--space-2) 0 var(--space-4); font-size:var(--fs-5xl); font-weight:var(--fw-light); line-height:var(--mms-lh-ttl); text-transform:lowercase; color:var(--mms-zn-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .mms-zune-classic .ipm-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-content:center; height:48px; /* token-exempt: the Zune list pitch (big type) */
-    padding:0; background:transparent; color:var(--mms-zn-dim); font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ipm-lbl{ grid-column:1; }
-  .mms-zune-classic .ipm-sub{ grid-column:1; font-size:var(--fs-sm); color:var(--mms-zn-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  /* gate r1 K5 (qa W3, measured): a centred two-line row left its sub-line nearer the NEXT title
-     than its own (14 px vs 7 px). A list with sub-lines (.ipm-2l) is a two-line list: taller
-     rows (uniform - the window math needs one pitch) with title + sub packed at the TOP in tight
-     line boxes, so the space left over sits BELOW the pair - between rows, never inside one. */
-  .mms-zune-classic .ipm-list.ipm-2l .ipm-row{ height:60px; /* token-exempt: the Zune two-line pitch */ align-content:start; padding-top:var(--space-3); }
-  .mms-zune-classic .ipm-list.ipm-2l .ipm-lbl{ line-height:var(--mms-lh-ttl); }
-  .mms-zune-classic .ipm-list.ipm-2l .ipm-sub{ line-height:var(--mms-lh-ttl); padding-top:var(--space-1); }
-  .mms-zune-classic .ipm-now{ grid-column:2; grid-row:1 / span 2; padding-left:var(--space-4); }
-  .mms-zune-classic .ipm-now svg{ fill:var(--mms-zn-pink); }
-  .mms-zune-classic .ipm-row.is-current{ color:var(--mms-zn-pink); }
-  /* listed AFTER is-current: the lit cursor wins when they coincide (the v1.233 invariant) */
-  .mms-zune-classic .ipm-row.is-cursor{ background:transparent; color:var(--mms-white); }
-  .mms-zune-classic .ipm-row.is-cursor .ipm-sub{ color:var(--mms-white); }
-  .mms-zune-classic .ipm-row.is-cursor .ipm-now svg{ fill:var(--mms-zn-pink); }
-  .mms-zune-classic .ipm-root .ipm-row{ height:60px; /* token-exempt: the Zune main-menu pitch */ font-size:var(--fs-6xl); }
-  .mms-zune-classic .ipm-note{ color:var(--mms-zn-dim); padding:var(--space-6) 0; }
-  /* quick scroll on Seattle: a huge lowercase Metro letter over a dark scrim, a round badge, and
-     a big-type picker (fewer, larger cells - the Zune's own jump look) */
-  .mms-zune-classic .ipm-letter{ left:0; top:0; right:0; bottom:0; width:auto; height:auto; margin:0; border-radius:0; background:var(--mms-zn-jump-bg);
-    color:var(--mms-white); font-size:var(--fs-jump-xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ipm-badge{ background:var(--mms-zn-ink); color:var(--mms-white); font-weight:var(--fw-light); text-transform:lowercase; }
   /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
-  @media (max-width: 340px){ .mms-ipod:not(.mms-zune-classic) .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
-  .mms-zune-classic .ipm-grid{ grid-template-columns:repeat(5, minmax(0, 1fr)); grid-auto-rows:56px; /* token-exempt: big-type 44 px+ targets */ background:var(--mms-zn-jump-bg); border-top:0; }
-  .mms-zune-classic .ipm-gl{ color:var(--mms-white); font-size:var(--fs-5xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ipm-gl:active{ background:transparent; color:var(--mms-zn-pink); }
-  .mms-zune-classic .ipm-gl.is-off{ color:var(--mms-zn-ink); }
-  .mms-zune-classic .ipm-about-name{ padding:0 0 var(--space-4); font-size:var(--fs-5xl); font-weight:var(--fw-light); color:var(--mms-white); text-transform:lowercase; }
-  .mms-zune-classic .ipm-val{ font-size:var(--fs-md); color:var(--mms-zn-dim); text-transform:none; }
+  @media (max-width: 340px){ .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and

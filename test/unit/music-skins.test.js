@@ -19,8 +19,8 @@ const CTX = {
   playing: true, posSec: 96, durSec: 337, posLabel: '1:36', remLabel: '-4:01',
 };
 
-test('registry exposes the six skins with render funcs (incl. the Click (Matte) colorway on the wheel chassis)', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'zune-classic']);
+test('registry exposes the skins with render funcs (incl. the Click (Matte) colorway on the wheel chassis)', () => {
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red', 'ipod-silver', 'ipod-encore', 'ipod-blue', 'ipod-green', 'ipod-pink', 'ipod-gold']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
@@ -34,36 +34,33 @@ test('registry exposes the six skins with render funcs (incl. the Click (Matte) 
   // + renderIpod (identical structure), only the .mms-ipod-matte palette differs.
   assert.strictEqual(skins.skinById('ipod-matte').base, 'ipod', 'matte Click bases on the silver iPod CSS too');
   assert.strictEqual(skins.skinById('ipod-matte').renderFull, skins.skinById('ipod').renderFull, 'matte is the same render as silver/black - only the palette differs');
-  assert.strictEqual(skins.skinById('zune-classic').base, 'ipod', 'Seattle rides the wheel chassis the same way (v1.260)');
-  assert.notStrictEqual(skins.skinById('zune-classic').renderFull, skins.skinById('ipod').renderFull, 'v1.261: Seattle is now its OWN renderer (the Zune pad + flanks), no longer the iPod wheel verbatim');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
   const labels = skins.IDS.map((id) => skins.skinById(id).label);
-  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Seattle']);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)', 'Click (Silver)', 'Click (Encore)', 'Click (Blue)', 'Click (Green)', 'Click (Pink)', 'Click (Gold)']);
   for (const l of labels) {
     assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(l), 'label "' + l + '" avoids the real product/company names');
   }
 });
 
-test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette CSS is source-locked (jsdom-invisible)', () => {
-  // Mirrors the ipod-black colorway: renderIpod structure + a .mms-ipod-matte palette-only
-  // override (the silver LCD screen is reused). Paint is jsdom-invisible, so the palette
-  // rules and their reused stops (--mms-ipod-sheen-0 chamfer, --mms-ipodk-edge rim) are
-  // locked in source; without this a dropped/retuned matte rule stays green.
+test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette is ONE role block (jsdom-invisible, source-locked)', () => {
+  // Mirrors the ipod-black colorway: renderIpod structure + a .mms-ipod-matte block of role tokens
+  // the chassis reads (v1.332 pocket design system). Paint is jsdom-invisible, so the block's values
+  // are locked in source (test/unit/pocket-design-system.test.js pins every colorway's roles).
   const matte = skins.renderFull('ipod-matte', CTX);
   assert.strictEqual(matte, skins.renderFull('ipod', CTX), 'matte renders byte-identical to silver iPod - the palette lives entirely in CSS, keyed off the .mms-ipod-matte panel class');
-  assert.match(matte, /class="ip-wheel"/, 'the FULL click wheel (not the Zune pad)');
+  assert.match(matte, /class="ip-wheel"/, 'the FULL click wheel');
   assert.match(matte, /data-skin-menu/, 'the wheel MENU/back zone (the wheel exit)');
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-ipod-matte\{ background:[\s\S]*?var\(--mms-ipodm-chamfer\)[\s\S]*?var\(--mms-ipod-sheen-0\)[\s\S]*?var\(--mms-ipodm-t1\)[\s\S]*?var\(--mms-ipodm-t7\) 100%\);\s*box-shadow:inset 0 0 0 1px var\(--mms-ipodk-edge\); \}/, 'the matte body: photo ramp t1..t7 + the reused white-transparent chamfer stop + the ipodk 1px inset rim');
-  assert.match(css, /\.mms-ipod-matte \.ip-wheel\{ background:[\s\S]*?var\(--mms-ipodm-wheel-sheen\)[\s\S]*?var\(--mms-ipodm-wheel1\), var\(--mms-ipodm-wheel2\) 100%\); \}/, 'the dark wheel with its top sheen');
-  assert.match(css, /\.mms-ipod-matte \.ip-zone\{ color:var\(--mms-ipodm-wheel-lbl\); \}/, 'the wheel labels tint');
-  assert.match(css, /\.mms-ipod-matte \.ip-center\{ background:radial-gradient\(circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\(38% \+ var\(--ly,0\) \* 16%\), var\(--mms-ipodm-center1\), var\(--mms-ipodm-center2\)\); \}/, 'the center button (its dome sits where the light is - pocket lighting 2026-09-24; unset = 50% 38%)');
-  // the palette override must sit AFTER the shared .mms-ipod base (and beside its ipod-black
-  // sibling) so it wins at equal specificity - reorder and the matte body silently vanishes.
-  assert.ok(css.indexOf('.mms-ipod-matte{') > css.indexOf('.mms-ipod-black{'), 'the matte override follows the ipod-black block (both after the .mms-ipod base)');
+  const block = /\n {2}\.mms-ipod-matte\{([^}]*)\}/.exec(css);
+  assert.ok(block, 'the matte role block exists');
+  assert.match(block[1], /--pk-c-body:linear-gradient\(180deg, rgba\(255,255,255,\.26\) 0, var\(--mms-ipod-sheen-0\) 2\.2%\)[\s\S]*#949497 0%[\s\S]*#1c1c21 100%\);/, 'the matte body: the chamfer, the side edges, the photo ramp top to bottom');
+  assert.match(block[1], /--pk-c-wheel-1:#343437; --pk-c-wheel-2:#242427; --pk-c-wheel-sheen:rgba\(255,255,255,\.42\); --pk-c-wheel-oy:42%;/, 'the dark wheel with its softer sheen');
+  assert.match(block[1], /--pk-c-center-1:#6e6e72; --pk-c-center-2:#55555a; --pk-c-center-oy:38%;/, 'the graphite center');
+  // the block must sit AFTER White's defaults on .mms-ipod so it wins at equal specificity
+  assert.ok(css.indexOf('\n  .mms-ipod-matte{') > css.indexOf('--pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi)'), 'the matte block follows White\'s role defaults');
 });
 
 test('v1.232.1: the iPod LCD is height-capped so a long song list scrolls INSIDE it (not out of bounds)', () => {
@@ -108,6 +105,28 @@ test('the per-device setting round-trips and normalizes junk to the default', ()
   assert.strictEqual(skins.activeSkinId(store), 'apple', 'a stored (now-removed) zune pref reads back as the default');
   // the matte Click id is a REAL skin - it must round-trip, not fall back
   assert.strictEqual(skins.normalizeSkinId('ipod-matte'), 'ipod-matte', 'the new matte id is valid and round-trips');
+});
+
+test('v1.332 (D1): a device saved on the removed Seattle skin lands on CLICK (not the default Cider), and the stored value is rewritten once', () => {
+  // The legacy map is the only place the retired id survives: normalize maps it to Click, and
+  // the active-skin read writes Click back so the server-synced pref converges on every device.
+  assert.strictEqual(skins.normalizeSkinId('zune-classic'), 'ipod', 'the retired Seattle id maps to Click');
+  assert.ok(!skins.IDS.includes('zune-classic'), 'the retired id is not a live skin');
+  assert.strictEqual(skins.skinById('zune-classic').id, 'ipod', 'a legacy id resolves to the Click registry entry (its pocket menus with it)');
+  assert.strictEqual(skins.menuStyle('zune-classic'), 'click', 'so a legacy device opens on the Click pocket menus');
+  const bag = { [skins.SKIN_KEY]: 'zune-classic' };
+  const writes = [];
+  const store = { getItem: (k) => (k in bag ? bag[k] : null), setItem: (k, v) => { writes.push([k, v]); bag[k] = v; } };
+  assert.strictEqual(skins.activeSkinId(store), 'ipod', 'the stored legacy id reads back as Click');
+  assert.deepStrictEqual(writes, [[skins.SKIN_KEY, 'ipod']], 'the read rewrote the stored value to Click exactly once');
+  assert.strictEqual(skins.activeSkinId(store), 'ipod');
+  assert.strictEqual(writes.length, 1, 'a second read of a converged value writes nothing (a live id is never rewritten)');
+  // a store that throws on write (private mode) still maps the read
+  const ro = { getItem: () => 'zune-classic', setItem: () => { throw new Error('quota'); } };
+  assert.strictEqual(skins.activeSkinId(ro), 'ipod', 'a read-only store still reads Click');
+  // an unknown id is still the default, and a prototype name is not a legacy id
+  assert.strictEqual(skins.normalizeSkinId('toString'), 'apple', 'Object.prototype keys never pass as legacy ids');
+  assert.strictEqual(skins.normalizeSkinId('__proto__'), 'apple');
 });
 
 test('the GATE is true for mobile + a music item (desktop / non-audio are default chrome)', () => {
@@ -255,7 +274,7 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
   // The registry the Settings picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'zune-classic']);
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red', 'ipod-silver', 'ipod-encore', 'ipod-blue', 'ipod-green', 'ipod-pink', 'ipod-gold']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
   assert.strictEqual(skins.skinById('ipod').label, 'Click', 'cheeky label (not the real product name) for the picker');
 });
@@ -441,89 +460,6 @@ test('v1.235.x: the pop-out runs its OWN reflect clock (fixes the true-PiP freez
   assert.match(js, /clearInterval\(pipClock\)/, 'teardown clears the pop-out clock');
 });
 
-test('v1.261 Seattle Classic: the REAL Zune control - a clean pad flanked by Back + Play, on the shared screen (not a brown iPod)', () => {
-  const html = skins.renderFull('zune-classic', CTX);
-  // it reuses the iPod SCREEN machinery (list/scrub/reflect all bind)
-  assert.match(html, /class="ip-lcd"/, 'the shared iPod screen (list-view + scrub keep working)');
-  assert.match(html, /class="ip-listview"/, 'Select still flips to the list');
-  assert.match(html, /data-skin-seek/, 'the scrub bar seeks');
-  // but the CONTROL is the Zune pad + flanks, NOT the labeled iPod wheel
-  assert.match(html, /class="ip-wheel znc-pad"/, 'the circular Zune pad (the .ip-wheel gesture + haptics bind by class)');
-  assert.ok(!/ip-wheelwrap/.test(html), 'NOT the iPod wheel wrapper');
-  assert.ok(!/>MENU</.test(html), 'no printed MENU label on the pad (that read as brown iPod)');
-  assert.match(html, /class="znc-flank znc-back" data-skin-menu/, 'the Back flank (left) is the exit');
-  assert.match(html, /class="znc-flank znc-pp mms-play" data-skin-play/, 'the Play/Pause flank (right) reflects via .mms-play');
-  // every engine hook present: menu(back)/prev/next/play/select
-  for (const hook of ['data-skin-menu', 'data-skin-prev', 'data-skin-next', 'data-skin-play', 'data-skin-select']) {
-    assert.match(html, new RegExp(hook), 'the ' + hook + ' hook exists (the wheel engine + tap fallbacks all bind)');
-  }
-  // slim W2: the render-time glyph axis (reflect self-heals live, but the paint IS what
-  // a paused repaint shows) - both states, the glyph-invert mutant reds here.
-  const paused = skins.renderFull('zune-classic', { ...CTX, playing: false });
-  const playing = skins.renderFull('zune-classic', { ...CTX, playing: true });
-  assert.match(paused, /M8 5v14l11-7z/, 'paused paints the PLAY triangle on the flank');
-  assert.ok(!/M8 5v14l11-7z/.test(playing.split('znc-controls')[1] || ''), 'playing does NOT paint the play triangle in the control row');
-});
-
-
-test('v1.261 Seattle Classic: the Zune layout CSS is real (layout is jsdom-invisible - source-locked)', () => {
-  const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-zune-classic \.ip-lcd\{ flex:1; aspect-ratio:auto;/, 'the screen FILLS (the Zune proportion, not the iPod 4:3 strip)');
-  assert.match(css, /\.mms-zune-classic \.znc-controls\{ display:flex; align-items:center; justify-content:center;/, 'the flank|pad|flank row lays out');
-  assert.match(css, /\.mms-zune-classic \.ip-wheel\.znc-pad\{ width:min\(38vw,132px\);/, 'the pad is the small clean circle, not the full iPod wheel');
-  assert.match(css, /\.mms-zune-classic \.ip-zone\{ color:transparent; \}/, 'no printed labels on the pad');
-  assert.match(css, /\.mms-zune-classic \.znc-flank\{/, 'the round flank buttons are styled');
-  assert.match(css, /\.mms-zune-classic \.ip-stars\{ display:none; \}/, 'the skeuomorphic star row is gone on the Zune screen');
-});
-
-
-test('v1.262 Seattle Classic: the METRO screen rides the shared machinery (source-locked; the fill override is ORDER-bound vs the aqua ribbing)', () => {
-  const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.mms-zune-classic \.ip-lcd-in\{ background:var\(--mms-black\); color:var\(--mms-white\); \}/, 'the screen goes Metro black');
-  assert.match(css, /\.mms-zune-classic \.ip-ttl\{ font-size:var\(--fs-4xl\); font-weight:var\(--fw-light\);[^}]*text-transform:lowercase; \}/, 'the hairline lowercase title');
-  assert.match(css, /--fw-light: 200;/, 'the hairline weight is a REAL token (slim S2 - a phantom fallback restyles 10 sites silently if ever defined elsewhere)');
-  assert.match(css, /\.mms-zune-classic \.ip-status\{ text-transform:lowercase; background:var\(--mms-black\); border-bottom:0; \}/, 'the status bar goes Metro black (slim W1 - the iPod gloss strip)');
-  assert.match(css, /\.mms-zune-classic \.ip-track\{ height:3px; border-radius:0;/, 'the flat Metro groove (slim S1 coverage)');
-  assert.match(css, /\.mms-zune-classic \.mms-row\.is-cursor\{ background:var\(--mms-zn-pink\); color:var\(--mms-black\);/, 'the magenta Metro cursor (slim W2 - the iPod blue leaked)');
-  // the v1.233 coincide invariant on THIS skin: cursor treatment beats is-current pink
-  // v1.263 art-forward Now Playing (the Zune 30's actual view - layout jsdom-invisible)
-  assert.match(css, /\.mms-zune-classic \.ip-npmain\{ flex-direction:column;/, 'cover-over-meta column, not the iPod side-by-side row');
-  assert.match(css, /\.mms-zune-classic \.ip-cover\{ width:100%; align-self:stretch; aspect-ratio:auto; flex:1; min-height:0;/, 'the art FILLS the screen top (min-height:0 pinned - without it a large image overflows npmain and pushes meta/scrub out of the clipped LCD)');
-  assert.match(css, /\.mms-zune-classic \.ip-meta\{ flex:none; padding:0 var\(--space-6\); \}/, 'meta re-pads itself under the bleed (slim W1 - drop this and the title sits flush on the bezel)');
-  assert.match(css, /\.mms-zune-classic \.ip-scrub\{ padding:0 var\(--space-6\) var\(--space-4\); \}/, 'the scrub row re-pads itself under the bleed (slim W1)');
-  // slim S1: the six rules win by LATER-IN-FILE at equal specificity - pin the
-  // load-bearing cover pair's order.
-  const baseCoverAt = css.indexOf('.mms-ipod .ip-cover{');
-  const zuneCoverAt = css.indexOf('.mms-zune-classic .ip-cover{ width:100%');
-  assert.ok(baseCoverAt > -1 && zuneCoverAt > baseCoverAt, 'the zune-classic cover override sits AFTER the iPod base rule - reorder and the 44% row silently returns');
-  assert.match(css, /\.mms-zune-classic \.ip-npview\{ padding:0; \}/, 'the art bleeds to the bezel (meta/scrub re-pad themselves)');
-  // v1.264: the FULL picture + the blurred self-bleed filling the letterbox (Dean's
-  // gradient ask). The binding is an ABSENCE plus its two load-bearing partners.
-  assert.ok(!/\.mms-zune-classic \.ip-cover img\s*[,{]/.test(css), 'NO zune-classic img override - the base object-fit:contain governs (re-add a crop and this reds; slim S1 spelling-tolerant)');
-  assert.match(css, /\.mms-ipod \.ip-cover img\{ position:relative; width:100%; height:100%; object-fit:contain;/, 'the base shows the WHOLE art');
-  assert.match(css, /\.mms-ipod \.ip-cover::before\{ content:""; position:absolute; inset:0; background-image:var\(--art, none\);[^}]*filter:blur\(18px\)[^}]*transform:scale\(1\.35\)/, 'the v1.244 blurred self-bleed fills the letterbox behind it (blur + overscan both pinned)');
-  // slim W: the bleed's CONTAINMENT - without overflow:hidden the scaled blur paints
-  // ~17.5% past every cover edge; without position:relative the inset:0 resolves
-  // against the player shell. Both survived the full suite unpinned.
-  assert.match(css, /\.mms-ipod \.ip-cover\{ position:relative;[^}]*overflow:hidden;/, 'the cover CLIPS and CONTAINS its bleed');
-  const isCurrentAt = css.indexOf('.mms-zune-classic .mms-row.is-current .mms-rt{');
-  const coincideAt = css.indexOf('.mms-zune-classic .mms-row.is-cursor .mms-rt,');
-  assert.ok(isCurrentAt > -1 && coincideAt > isCurrentAt, 'the cursor .mms-rt rule sits AFTER is-current - equal specificity, later wins; reorder and list-open paints pink-on-magenta');
-  assert.match(css, /\.mms-zune-classic \.ip-artist\{[^}]*color:var\(--mms-zn-pink\); text-transform:lowercase; \}/, 'the pink lowercase artist (the zn-sub treatment)');
-  assert.match(css, /\.mms-zune-classic \.ip-batt\{ display:none; \}/, 'the skeuomorphic battery is gone');
-  assert.match(css, /\.mms-zune-classic \.mms-row\.is-current \.mms-rt\{ color:var\(--mms-zn-pink\); \}/, 'the magenta current row in the queue');
-  // ORDER binding: the flat magenta fill and the aqua ribbing share specificity - the
-  // cascade is decided by file order alone, so presence is not enough.
-  const aquaAt = css.indexOf('.mms-ipod .mms-fill{ background:repeating-linear-gradient');
-  const metroAt = css.indexOf('.mms-zune-classic .mms-fill{ background:var(--mms-zn-pink)');
-  assert.ok(aquaAt > -1 && metroAt > -1, 'both fill rules exist');
-  assert.ok(metroAt > aquaAt, 'the Metro fill comes AFTER the aqua ribbing - equal specificity, later wins; reorder and the Zune screen shows a blue-striped bar');
-});
-
-// ---- v1.317 (M1+M2): the artist line is a control on EVERY skin; the thumb rows show a length ----
-
 test('v1.317 (M1): every skin renders the now-playing artist line as a data-skin-artist BUTTON (escaped) when the engine says a handler exists (artistTap); an empty artist keeps the plain line with no hook', () => {
   // gate r1 W1: `artistTap` is what the ENGINE sets from its onArtist presence - the control
   // exists only with it. Music's engine passes onArtist, so its ctx carries artistTap: true.
@@ -600,5 +536,29 @@ test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) acr
   assert.match(css, /:where\(button\.music-song-artist\) \{[^}]*display: inline;/, 'the song-row artist name is the inline variant');
   // the per-skin line rules still exist unchanged (they are what the zero-specificity reset defers to)
   assert.match(css, /\.mms-apple \.mms-sub\{ font-size:var\(--fs-xl\);/, 'Cider keeps its artist-line rule');
-  assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--fs-md\);/, 'the LCD keeps its artist-line rule');
+  assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--pk-fs-np-artist\);/, 'the LCD keeps its artist-line rule (its size is the pocket type role - v1.332)');
+});
+
+test('v1.332 gate r1 W1: on the page\'s own storage the Seattle rewrite WAITS for the sync\'s boot GET, then rewrites only a value that is still retired (one wait at a time)', () => {
+  const bag = { [skins.SKIN_KEY]: 'zune-classic' };
+  const writes = [];
+  const ls = { getItem: (k) => (k in bag ? bag[k] : null), setItem: (k, v) => { writes.push(v); bag[k] = v; } };
+  const waiters = [];
+  const saved = global.window;
+  global.window = { localStorage: ls, __ftPrefsSync: { whenBooted: (fn) => waiters.push(fn) } };
+  try {
+    assert.strictEqual(skins.activeSkinId(), 'ipod', 'the read maps at once');
+    assert.strictEqual(skins.activeSkinId(), 'ipod');
+    assert.deepStrictEqual(writes, [], 'no write before the boot GET settles (it would out-stamp the server)');
+    assert.strictEqual(waiters.length, 1, 'one wait, however many reads');
+    bag[skins.SKIN_KEY] = 'ipod-red'; // the boot GET raw-applied another device's NEWER pick
+    waiters.shift()();
+    assert.deepStrictEqual(writes, [], 'a newer value from the server is left alone');
+    // a retired value that is STILL stored after the GET is rewritten (the convergence arm)
+    bag[skins.SKIN_KEY] = 'zune-classic';
+    skins.activeSkinId();
+    assert.strictEqual(waiters.length, 1);
+    waiters.shift()();
+    assert.deepStrictEqual(writes, ['ipod'], 'the still-retired value converges on Click');
+  } finally { global.window = saved; }
 });

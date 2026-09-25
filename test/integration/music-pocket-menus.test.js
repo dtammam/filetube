@@ -1,8 +1,8 @@
 'use strict';
 
 // [INTEGRATION] POCKET MENUS (Dean 2026-09-24: "I'd love classic pocket skin to truly
-// emulate. Show artists, albums, songs, etc. fully interactive"). The Click family + Seattle
-// carry the device's menu tree over the WHOLE music library. This suite drives the REAL data
+// emulate. Show artists, albums, songs, etc. fully interactive"). The Click family
+// carries the device's menu tree over the WHOLE music library. This suite drives the REAL data
 // shape end to end: a real server (isolated DATA_DIR) seeded with projected library audio -
 // albums, artists, genres and a CHAPTERED file whose chapters are `<id>::c<n>` songs - and the
 // REAL music.js view + skin engine in jsdom, whose every fetch goes to that server. No hand-typed
@@ -284,60 +284,48 @@ test('reveal-once, both axes: a level seeds a skeleton before its fetch, a FAILE
   } });
 });
 
-test('Seattle: the Zune main menu, the Music PIVOTS moved by the pad and by a swipe, and a song played from a pivot', async () => {
-  const artists = (await realApi('/api/music/artists?limit=10000&sort=title-asc')).items;
-  await boot({ skin: 'zune-classic', play: 'nd1', run: async (h) => {
-    assert.ok(!inMenu(h), 'opens on Now Playing');
-    click(h.dom, h.panel.querySelector('[data-skin-next]'));
-    assert.strictEqual(h.spy.next, 1, 'on Now Playing the pad right still skips a track');
+test('v1.332 (D1) AC2: a device saved on the removed Seattle skin - localStorage AND the server-synced pref, through the REAL prefs sync - opens on Click with its pocket menus, and both converge on Click', async () => {
+  const prefsSyncSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
+  const serverSkin = async () => ((await (await authedFetch(base + '/api/prefs')).json()).prefs['ft-music-skin'] || {}).value;
+  // the synced pref another device wrote before v1.332 (an older stamp than this boot)
+  const seeded = await authedFetch(base + '/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key: 'ft-music-skin', value: 'zune-classic', updatedAt: Date.now() - 60000 }] }) });
+  assert.ok(seeded.ok, 'precondition: the real prefs route stored the legacy value');
+  assert.strictEqual(await serverSkin(), 'zune-classic', 'precondition: the server holds the retired id');
+  await boot({ skin: 'zune-classic', play: 'nd1', setup: (dom) => {
+    dom.window.fetch = (u, o) => global.fetch(u, o); // the harness's cookie-carrying fetch, for the sync agent
+    dom.window.eval(prefsSyncSrc); // the real one-seam sync agent (boot GET + the localStorage mirror)
+  }, run: async (h) => {
+    await settleNet();
+    assert.ok(h.panel.classList.contains('mms-ipod') && !/zune/.test(h.panel.className), 'the panel is the Click skin: ' + h.panel.className);
+    assert.ok(h.panel.querySelector('.ip-wheel [data-skin-menu]'), 'the Click wheel');
     menu(h);
-    assert.ok(h.panel.querySelector('.ipm-seattle.ipm-root'), 'the Zune main menu (big type, no header)');
-    assert.deepStrictEqual(labels(h), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
-    select(h);
-    const pivots = () => [...h.panel.querySelectorAll('.ipm-pv')].map((b) => b.textContent);
-    assert.deepStrictEqual(pivots(), ['Artists', 'Albums', 'Songs', 'Playlists', 'Genres', 'Recent'], 'the pivot strip leads with the active pivot');
+    assert.strictEqual(title(h), 'Click', 'the Click pocket menus (never Cider, the old unknown-id fallback)');
+    assert.deepStrictEqual(labels(h).filter((l) => l !== 'Extras'), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
+    assert.strictEqual(h.dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'the stored value was rewritten to Click');
+    h.dom.window.__ftPrefsSync.flush(); // the debounced mirror, now (the boot GET has settled)
+    for (let i = 0; i < 50 && (await serverSkin()) !== 'ipod'; i++) await settleNet(5);
+    assert.strictEqual(await serverSkin(), 'ipod', 'the server-synced pref converged on Click (every device follows)');
+  } });
+});
+
+test('v1.332 gate r1 W1 (adversary + qa, measured): a device still saved on Seattle never out-stamps a NEWER pick another device synced - the rewrite waits for the sync\'s first server read', async () => {
+  const prefsSyncSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
+  const serverSkin = async () => ((await (await authedFetch(base + '/api/prefs')).json()).prefs['ft-music-skin'] || {}).value;
+  // another device just picked Click (Red); THIS device still holds the retired id, unstamped
+  const seeded = await authedFetch(base + '/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key: 'ft-music-skin', value: 'ipod-red', updatedAt: Date.now() }] }) });
+  assert.ok(seeded.ok);
+  assert.strictEqual(await serverSkin(), 'ipod-red', 'precondition: the newer pick is on the server');
+  await boot({ skin: 'zune-classic', play: 'nd1', setup: (dom) => {
+    dom.window.fetch = (u, o) => global.fetch(u, o);
+    dom.window.eval(prefsSyncSrc);
+  }, run: async (h) => {
     await settleNet();
-    assert.deepStrictEqual(labels(h), artists.map((a) => a.artist), 'the artists pivot lists the real artists');
-    click(h.dom, h.panel.querySelector('[data-skin-next]'));
-    await settleNet();
-    assert.strictEqual(h.spy.next, 1, 'on a pivot level the pad right moved the pivot - it did NOT skip a track');
-    assert.strictEqual(pivots()[0], 'Albums');
-    // visit Songs once (it loads), then back to Albums with the pad - the pad left moves back
-    click(h.dom, h.panel.querySelector('[data-skin-next]'));
-    await settleNet();
-    assert.strictEqual(pivots()[0], 'Songs');
-    click(h.dom, h.panel.querySelector('[data-skin-prev]'));
-    await settleNet();
-    assert.strictEqual(pivots()[0], 'Albums', 'pad left moves back');
-    assert.strictEqual(h.spy.prev, 0, '...without skipping back a track');
-    // swipe left across the list -> the next pivot (Songs, already loaded: it renders at once)
-    const loadsBeforeSwipe = h.spy.loads.length;
-    const list = h.panel.querySelector('[data-skin-swipe]');
-    list.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 100 }));
-    list.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 150, clientY: 110 }));
-    assert.strictEqual(pivots()[0], 'Songs', 'a left swipe moved to the next pivot');
-    // a mouse's lift-off click lands on the (new) song row under the pointer: swallowed
-    const under = h.panel.querySelector('[data-skin-swipe] .ipm-row[data-skin-mi]');
-    assert.ok(under, 'precondition: a real song row sits under the pointer');
-    under.dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true }));
-    await settleNet();
-    assert.strictEqual(h.spy.loads.length, loadsBeforeSwipe, 'the swipe\'s click did not play the row under it');
-    assert.ok(inMenu(h), '...the menu stayed up');
-    assert.strictEqual(pivots()[0], 'Songs');
-    // a swipe RIGHT goes back a pivot
-    const list2 = h.panel.querySelector('[data-skin-swipe]');
-    list2.dispatchEvent(new h.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }));
-    list2.dispatchEvent(new h.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 260, clientY: 95 }));
-    await settleNet();
-    assert.strictEqual(pivots()[0], 'Albums', 'a right swipe moved back');
-    tapRow(h, 'Night Drive'); await settleNet();
-    assert.ok(h.panel.querySelector('.ipm-title'), 'a drilled level carries the big dim title');
-    tapRow(h, 'Tail Lights'); await settleNet();
-    assert.strictEqual(h.player.currentId, 'nd3');
-    menu(h);
-    assert.strictEqual(cursorLabel(h), 'Tail Lights', 'MENU (Back) returns to the list on the song');
-    menu(h);
-    assert.strictEqual(pivots()[0], 'Albums', 'Back again lands on the pivot you drilled from');
+    h.dom.window.__ftPrefsSync.flush();
+    for (let i = 0; i < 20; i++) await settleNet(5);
+    assert.strictEqual(h.dom.window.localStorage.getItem('ft-music-skin'), 'ipod-red', 'this device took the newer pick (the server won the race)');
+    assert.strictEqual(await serverSkin(), 'ipod-red', 'the other device\'s Click (Red) survived on the server');
   } });
 });
 
@@ -500,17 +488,6 @@ test('v1.331 (Dean: "regular album play as well"): Artists > artist > album > a 
     tapRow(h, 'NESTALGIA'); await settleNet();
     tapRow(h, 'Full Album Mix'); await settleNet();
     await pickTrackAThenCrossItsEnd(h, 'Full Album Mix');
-  } });
-});
-
-test('v1.331 (Dean: "regular album play as well"): Seattle\'s Albums pivot > album > a chapter plays ON through the album', async () => {
-  await boot({ skin: 'zune-classic', play: 'nd1', run: async (h) => {
-    menu(h); select(h); await settleNet();
-    click(h.dom, h.panel.querySelector('[data-skin-next]')); await settleNet(); // Artists -> the Albums pivot
-    assert.strictEqual(h.panel.querySelector('.ipm-pv').textContent, 'Albums', 'precondition: on the Albums pivot');
-    tapRow(h, 'Full Album Mix'); await settleNet();
-    await pickTrackAThenCrossItsEnd(h, null); // Seattle's status line is not the level name
-    assert.strictEqual(h.panel.querySelector('.ipm-title') && h.panel.querySelector('.ipm-title').textContent, 'Full Album Mix', 'Back climbs to the album the song came from');
   } });
 });
 

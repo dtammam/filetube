@@ -1308,7 +1308,7 @@ test('v1.258.1 (slim W1): a tap on the menu\'s DEAD SPACE closes it; a control t
 });
 
 
-test('v1.261 haptics (slim W1): the arming cover DERIVES from the wheel rect - a 132px Zune pad gets scale(4.125), never the iPod 7.5 spilling onto the scrub bar', () => {
+test('v1.261 haptics (slim W1): the arming cover DERIVES from the wheel rect - a small 132px wheel gets scale(4.125), never a fixed 7.5 spilling onto the scrub bar', () => {
   const b = bootHaptic({});
   try {
     // real-rect stub BEFORE paint (mount measures during paint; zero-rect jsdom would
@@ -1321,7 +1321,7 @@ test('v1.261 haptics (slim W1): the arming cover DERIVES from the wheel rect - a
     b.engine.paint();
     const g = ghostOf(b.dom);
     assert.ok(g, 'the ghost mounted');
-    assert.strictEqual(g.style.transform, 'scale(4.125)', 'the cover fits the 132px pad (132/32) - a fixed 7.5 here covered the seek bar and routed taps to 0:00');
+    assert.strictEqual(g.style.transform, 'scale(4.125)', 'the cover fits the 132px wheel (132/32) - a fixed 7.5 here covered the seek bar and routed taps to 0:00');
     // round-2 W3: the RESTORE call site must derive too - a bare ghostRestTransform()
     // at gesture-end resurrects the spill after the user's FIRST spin (per-call-site
     // kill, the v1.254 per-conjunct class).

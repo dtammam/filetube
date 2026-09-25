@@ -507,7 +507,7 @@
   }
 
   // ==== POCKET MENUS: the controller (Dean 2026-09-24) =======================================
-  // The Click family and Seattle drive a real menu tree with the wheel/pad: rotation moves the
+  // The Click family drives a real menu tree with the wheel: rotation moves the
   // highlight (the SAME onMove cursor branch and haptic path the song list uses - no second
   // rotary engine), the center selects/drills in, MENU/Back climbs one level, and a row TAP
   // selects too (phone users). The tree + rows + screens are music-skins.js's pure half; the
@@ -563,12 +563,7 @@
         cursor: 0, scrollTop: 0, token: 0, playing: false, center: false, letters: false, runs: null };
     }
     function makeLevel(node) {
-      var pv = (node && node.type === 'music') ? SK.menuPivots(style()) : [];
-      if (pv.length) {
-        return { node: node, pivots: pv.map(function (p) { return p.label; }), pane: 0,
-          panes: pv.map(function (p) { return makePane({ type: p.type }); }) };
-      }
-      return { node: node, pivots: null, pane: 0, panes: [makePane(node)] };
+      return { node: node, pane: 0, panes: [makePane(node)] };
     }
     function resetStack() { builtFor = style(); stack = [makeLevel({ type: 'main' })]; }
     resetStack();
@@ -638,8 +633,7 @@
         return;
       }
       if (pane.state !== 'idle') return;
-      // gate r1 (adversary W2): the row only where the driver can light THIS skin - Click; Seattle's
-      // Settings stays [About] (Dean's ruling), whatever driver the engine holds.
+      // gate r1 (adversary W2): the row only where the driver can light THIS skin - Click.
       var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting && style() === 'click', style: style() });
       if (st) { pane.items = st; pane.state = 'ready'; return; }
       pane.state = 'loading';
@@ -851,12 +845,11 @@
         if (np && !panel.classList.contains('mms-listmode')) np.textContent = 'Now Playing';
         return;
       }
-      var lvl = top();
       var pane = curPane();
       ensureLoaded(pane);
       var art = st === 'click' ? artFor(pane) : '';
       var v = Object.assign(listModel(pane, null), {
-        title: pane.title, root: stack.length === 1, pivots: lvl.pivots, pivotIdx: lvl.pane,
+        title: pane.title, root: stack.length === 1,
         art: art && art === artShown ? art : '', artIn: !!art && art === artShown,
         jump: null, // the layers are applyJump()'s (persistent nodes, below)
         aboutName: pane.node.type === 'about' ? SK.menuTitle({ type: 'main' }, st) : '',
@@ -881,7 +874,7 @@
         host.appendChild(el);
       }
       panel.classList.add('mms-menumode');
-      if (np) np.textContent = lvl.pivots ? SK.menuTitle(lvl.node, st) : pane.title;
+      if (np) np.textContent = pane.title;
       var list = listEl();
       if (list) { list.scrollTop = pane.scrollTop; expectTop = list.scrollTop; }
       // The first frame knows no geometry: measure, then re-window against the real rows.
@@ -1144,14 +1137,6 @@
         showNowPlaying();
       }
     }
-    function switchPivot(k) {
-      var lvl = top();
-      if (!lvl || !lvl.pivots) return;
-      var n = lvl.panes.length;
-      clearJump();
-      lvl.pane = ((k % n) + n) % n;
-      render();
-    }
     // The v1.311 "re-register at EVERY advance" rule for a display that advances without a
     // reload: a chaptered album rolls its chapter (and a queue advances its track) through
     // paint(), so this runs at each advance and moves the playing list's cursor onto what now
@@ -1224,14 +1209,6 @@
         activate(p ? p.cursor : 0);
         return true;
       },
-      // Seattle's pad left/right moves across the pivots (a Click's |<< >>| still skip tracks).
-      onLeftRight: function (dir) {
-        if (!style() || screen !== 'menu') return false;
-        var lvl = top();
-        if (!lvl || !lvl.pivots) return false;
-        switchPivot(lvl.pane + dir);
-        return true;
-      },
       // A new wheel gesture: the fast-move count starts again (never latched across a lift).
       onGestureStart: function () { lm.fastRun = 0; },
       // ONE call per pointermove in cursor mode: was this move fast (the engine's own band)?
@@ -1272,9 +1249,6 @@
         closeGrid();
         return true;
       },
-      // gate r1 (qa S4): is the menu showing a PIVOT level? (the engine skips the pad's hold-to-scan there)
-      isPivotLevel: function () { var l = top(); return !!(style() && screen === 'menu' && l && l.pivots); },
-      onPivotTap: function (k) { if (screen === 'menu') switchPivot(k); },
       onScroll: onScroll,
       // the document's visibility changed: the drift stops while hidden, restarts on return.
       onVisibility: function () { if (destroyed) return; if (doc.hidden) stopSlides(); else syncSlides(); },
@@ -1312,6 +1286,18 @@
     var getSkinId = config.getSkinId || function () { return SKINS.activeSkinId(); };
     var onSelectIndex = config.onSelectIndex || function () {};
     var onDock = config.onDock || function () {};
+    // D7 (v1.332, Dean: "Right now I must press menu many times then the FileTube icon"): HOME from
+    // the player - the sticker's first row, and press-and-hold MENU on the Click wheel. The VIEW owns
+    // what home means (music.js / podcasts.js: dock quietly - the song keeps playing in the mini -
+    // then the SPA router to /); the engine only offers the two gestures, and only in the main
+    // document (the watch-back posture: the pop-out's router is the main window's).
+    var onHome = (typeof config.onHome === 'function') ? config.onHome : null;
+    var HOME_HOLD_MS = 600; // longer than the rewind/ffwd hold-to-scan (400 ms): a hold, never a slow tap
+    function homeAvailable() { return !!onHome && (typeof document !== 'undefined') && doc === document; }
+    function goHome() {
+      closeStickerMenu();
+      try { onHome(); } catch (_) { /* view nav best-effort */ }
+    }
     var onShuffle = typeof config.onShuffle === 'function' ? config.onShuffle : null;
     var onArtist = typeof config.onArtist === 'function' ? config.onArtist : null; // v1.317 M1: the artist line's action
     var fastScan = !!config.fastScan;
@@ -1319,7 +1305,7 @@
     var stickerCfg = config.sticker || null;
     var extrasCfg = (stickerCfg && stickerCfg.extras) || null;
     // The pocket menus (2026-09-24) - only where the VIEW supplies a menu data source (music does;
-    // podcasts pass none, so their Click/Seattle screens keep today's behaviour byte-for-byte),
+    // podcasts pass none, so their Click screens keep today's behaviour byte-for-byte),
     // and even then only on a skin whose registry entry carries `menus`.
     // Extras only on a MAIN-document surface: the shared modals/toasts render in the main
     // window, so a pop-out offering Extras would open UI behind itself (v1.249 scope rule).
@@ -1334,7 +1320,7 @@
     // Pocket lighting (2026-09-24, plan pocket-gyro-lighting): one driver per surface, optional
     // like SKINS (a shell without pocket-lighting.js just has no lighting and no Settings row).
     // The scope question the driver must not answer itself: WHICH skins are lit - the registry's
-    // menus === 'click' (Click, Click Black, Click Matte; Seattle is out by Dean's ruling).
+    // menus === 'click' (every Click colorway).
     var LIT = (typeof window !== 'undefined' && window.FileTubePocketLighting) || null;
     var lighting = (LIT && typeof LIT.create === 'function')
       ? LIT.create({ panel: panel, win: win, doc: doc, store: config.lightingStore || null, now: config.lightingNow || null,
@@ -1464,15 +1450,15 @@
       var skins = SKINS.SKINS || [];
       var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
       // v1.257 (QA S3) -> v1.258 (Dean's colorway round): inside the TRAY the chips are
-      // FILTERED to the ipod family - those picks genuinely restyle the tray (the
-      // silver/black body palettes are the colorways); non-family picks would visibly
+      // FILTERED to the Click colorways - those picks genuinely restyle the tray (each
+      // colorway's body roles); non-family picks would visibly
       // no-op there and stay hidden. NOTE the pick still writes the GLOBAL skin pref
       // (the tray colorway IS the skin choice - disclosed).
       var trayActive = false;
       if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
         try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
       }
-      var chipSkins = trayActive ? skins.filter(function (s) { return s.id === 'ipod' || s.id === 'ipod-black' || s.id === 'ipod-matte'; }) : skins;
+      var chipSkins = trayActive ? skins.filter(function (s) { return s.menus === 'click'; }) : skins; // the registry's Click colorways (v1.332)
       var chips = chipSkins.map(function (s) {
         var on = s.id === active;
         return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
@@ -1539,7 +1525,11 @@
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
         : '';
-      return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
+      // D7: Home leads the menu - two taps from any screen or menu depth
+      var homeRow = homeAvailable()
+        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-home><span class="mms-sm-lbl"><i class="icon-home"></i>Home</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
+        : '';
+      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
@@ -1647,6 +1637,7 @@
         e.stopPropagation();
         return true;
       }
+      if (e.target.closest('[data-skin-home]')) { if (homeAvailable()) goHome(); return true; } // D7
       if (e.target.closest('[data-skin-watchback]')) {
         closeStickerMenu();
         if (stickerCfg.watchBack && typeof stickerCfg.watchBack.onTap === 'function') { try { stickerCfg.watchBack.onTap(); } catch (_) { /* view nav best-effort */ } }
@@ -1849,12 +1840,8 @@
       panel.addEventListener('click', onClick);
       panel.addEventListener('pointerdown', onDown);
       if (pocket) {
-        // pocket menus: the menu list's scroll re-windows its rows (scroll does not bubble - capture),
-        // and Seattle's pivot swipe rides the panel's own pointer stream (bound once, here).
+        // pocket menus: the menu list's scroll re-windows its rows (scroll does not bubble - capture).
         panel.addEventListener('scroll', onMenuScroll, true);
-        panel.addEventListener('pointerdown', onSwipeDown);
-        panel.addEventListener('pointerup', onSwipeUp);
-        panel.addEventListener('pointercancel', onSwipeCancel);
         // Addendum E: the cover drift stops while the document is hidden and restarts on return.
         try { doc.addEventListener('visibilitychange', onDocVisibility); } catch (_) { /* a detached fixture */ }
       }
@@ -1863,29 +1850,8 @@
         win.addEventListener('orientationchange', onViewportChange);
       } catch (_) { /* a detached fixture window */ }
     }
-    // pocket menus: Seattle's pivots move with a horizontal SWIPE across the list too (the Zune's own
-    // gesture). One swipe at a time; both end arms clear it; a swipe swallows its lift-off click
-    // (the wheel's suppress flag - onDown resets it on the next press).
-    var menuSwipe = null;
-    var MENU_SWIPE_PX = 40;
     function onMenuScroll(e) { if (pocket) pocket.onScroll(e); }
     function onDocVisibility() { if (pocket) pocket.onVisibility(); }
-    function onSwipeDown(e) {
-      menuSwipe = null;
-      var zone = e.target && e.target.closest ? e.target.closest('[data-skin-swipe]') : null;
-      if (!zone || !pocket || !pocket.isMenuMode()) return;
-      menuSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    }
-    function onSwipeUp(e) {
-      var s = menuSwipe;
-      menuSwipe = null;
-      if (!s || !pocket || (e.pointerId !== undefined && e.pointerId !== s.id)) return;
-      var dx = (Number(e.clientX) || 0) - s.x;
-      var dy = (Number(e.clientY) || 0) - s.y;
-      if (Math.abs(dx) < MENU_SWIPE_PX || Math.abs(dx) <= Math.abs(dy) * 1.5) return;
-      if (pocket.onLeftRight(dx < 0 ? 1 : -1)) wheelSuppressClick = true;
-    }
-    function onSwipeCancel() { menuSwipe = null; }
     function onClick(e) {
       if (wheelSuppressClick) { wheelSuppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
       healGhostLock(); // v1.256: any tap self-heals a lock whose ghost the view tore down
@@ -1904,15 +1870,10 @@
         // quick scroll: the letter overlay/badge open the A-Z picker, a letter jumps, a tap
         // outside closes it (MENU/Select there only close it).
         if (pocket.onPanelClick(e)) return;
-        // pocket menus: a menu ROW tap selects it (phone users), a pivot tap moves to it; on
-        // Seattle's pivot levels the pad's left/right move across the pivots instead of
-        // skipping a track (the Click's |<< >>| keep skipping, as the device's did).
+        // pocket menus: a menu ROW tap selects it (phone users); the |<< >>| keep skipping
+        // tracks, as the device's did.
         var mi = e.target.closest('[data-skin-mi]');
         if (mi) { pocket.onItemTap(parseInt(mi.getAttribute('data-skin-mi'), 10)); return; }
-        var pvt = e.target.closest('[data-skin-pivot]');
-        if (pvt) { pocket.onPivotTap(parseInt(pvt.getAttribute('data-skin-pivot'), 10)); return; }
-        var lr = e.target.closest('[data-skin-prev], [data-skin-next]');
-        if (lr && pocket.onLeftRight(lr.hasAttribute('data-skin-next') ? 1 : -1)) return;
       }
       if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
       if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
@@ -2027,7 +1988,7 @@
       } catch (_) { return false; }
     }
     // The arming cover scales to the WHEEL IT COVERS (slim W1, v1.261): a fixed 7.5
-    // spilled over the Zune pad's scrub bar - a routed seek click carries clientX=0,
+    // spilled over the (since removed) Zune pad's scrub bar - a routed seek click carries clientX=0,
     // so covered taps sought 0:00.
     //
     // v1.267 (Dean, device-confirmed): the 7.5 CAP is gone. The 52x32 ghost scaled
@@ -2039,8 +2000,7 @@
     // Scaling to h/32 makes the cover exactly the wheel's height, so the WHOLE
     // wheel arms and the cover cannot extend above it into the LCD - which is the
     // job the cap was accidentally doing (v1.261 W1: a routed seek click carries
-    // clientX=0 and sought 0:00). The Zune pad is UNCHANGED by this: 132/32 =
-    // 4.125 was already below the old cap, at every viewport width.
+    // clientX=0 and sought 0:00).
     //
     // The h===0 fallback is the ONE case where cover height != wheel height, so
     // the "cover cannot reach the LCD" property is derived-not-absolute (slim W2).
@@ -2258,6 +2218,7 @@
       // dual-arm teardown discipline) so a pointerup OR pointercancel stops the scan clean.
       if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
       if (st.scanInterval) { try { st.win.clearInterval(st.scanInterval); } catch (_) { /* ignore */ } st.scanInterval = null; }
+      if (st.homeTimer) { try { st.win.clearTimeout(st.homeTimer); } catch (_) { /* ignore */ } st.homeTimer = null; } // D7: every end arm drops the hold
       try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
       w.removeEventListener('pointermove', st.onMove);
       w.removeEventListener('pointerup', st.onUp);
@@ -2304,7 +2265,7 @@
         mode: (listMode || menuMode) ? 'cursor' : 'scrub', scrubRatio: null, menu: menuMode,
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
         lastT: nowMs(), lastEvT: evTime(e), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
-        win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
+        win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0, homeTimer: null,
         onDocUp: null, ended: false,
       };
       // v1.303: read the wheel config ONCE for THIS gesture (engine/detent/dither/capture/buzz),
@@ -2327,9 +2288,6 @@
         // v1.256: the scaled ghost covers the zones - route the press to the REAL control.
         var downTgt = realTargetUnder(e);
         st.scanDir = (downTgt.closest && downTgt.closest('[data-skin-next]')) ? 1 : ((downTgt.closest && downTgt.closest('[data-skin-prev]')) ? -1 : 0);
-        // gate r1 (qa S4): on Seattle's pivot level the pad's left/right MOVE the pivot - a hold
-        // there must not fast-scan the playing song.
-        if (st.scanDir && pocket && pocket.isPivotLevel()) st.scanDir = 0;
         var startScan = function () {
           var mp0 = hostCtl('media-player');
           var d0 = (mp0 && isFinite(mp0.duration) && mp0.duration > 0) ? mp0.duration : 0;
@@ -2349,6 +2307,25 @@
           st.scanInterval = st.win.setInterval(step, 200);
         };
         if (st.scanDir) st.scanTimer = st.win.setTimeout(function () { st.scanTimer = null; if (!st.moved) startScan(); }, 400);
+      }
+      // D7: press-and-HOLD MENU goes home - the hold-to-scan's own machinery (this ONE pointerdown,
+      // a timer on the panel's window, cancelled by the 8px rotation below and by every end arm in
+      // endWheel). On fire the gesture ENDS first with the click-suppress flag, so the release's
+      // MENU click never also climbs or docks, and every listener the press added is released. A
+      // takeover (Brick) owns MENU, so no hold arms under it; an un-rendered panel (a dock from
+      // elsewhere mid-hold) never goes home.
+      if (homeAvailable() && !wheelTakeover) {
+        var homeTgt = realTargetUnder(e);
+        if (homeTgt && homeTgt.closest && homeTgt.closest('[data-skin-menu]')) {
+          st.homeTimer = st.win.setTimeout(function () {
+            st.homeTimer = null;
+            if (st.ended || st.moved || wheelSpin !== st || wheelTakeover) return;
+            if (!st.wheel.isConnected || !panel.classList.contains('mms-full')) { endWheel(st, false); return; }
+            hapticLetterTick(st, { clientX: st.x0, clientY: st.y0 }); // the wheel's own tick, where it ticks
+            endWheel(st, true);
+            goHome();
+          }, HOME_HOLD_MS);
+        }
       }
       st.onMove = function (ev) {
         if (ev.pointerId !== st.id) return; // ignore a SECOND finger (jump guard)
@@ -2378,6 +2355,7 @@
           st.moved = true;
           // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
           if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
+          if (st.homeTimer) { try { st.win.clearTimeout(st.homeTimer); } catch (_) { /* ignore */ } st.homeTimer = null; } // D7: moved off - a spin, not a hold
           // v1.303: capture mode. '8px' (default == today) grabs the pointer HERE, once a real
           // rotation is confirmed; 'press' already grabbed on down; 'off' never grabs.
           if (st.capture !== 'press' && st.capture !== 'off') { try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ } }
@@ -2471,9 +2449,6 @@
         panel.removeEventListener('pointerdown', onDown);
         if (pocket) {
           panel.removeEventListener('scroll', onMenuScroll, true);
-          panel.removeEventListener('pointerdown', onSwipeDown);
-          panel.removeEventListener('pointerup', onSwipeUp);
-          panel.removeEventListener('pointercancel', onSwipeCancel);
           try { doc.removeEventListener('visibilitychange', onDocVisibility); } catch (_) { /* ignore */ }
         }
         try {
@@ -2485,7 +2460,6 @@
       extrasMenu.destroy();   // stop the reheat poll + invalidate a late extras fetch (shared factory)
       if (pocket) pocket.destroy(); // pocket menus: drop the art timer + invalidate a late menu load
       if (lighting) lighting.destroy(); // pocket lighting: unbind the sensor / pointer / visibility listeners, cancel the frame loop
-      menuSwipe = null;
       unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
       unwatchGhost();
       wheelGhost = null;
@@ -2652,10 +2626,10 @@
         ec.getSkinId = function () {
           var id = null;
           try { id = origGetSkin ? origGetSkin() : null; } catch (_) { id = null; }
-          // v1.260: the tray is the Click Nano - the colorway family is the Click trio
-          // (ipod / ipod-black / ipod-matte). Seattle (base 'ipod') shares the wheel CSS
-          // but is deliberately NOT a Nano colorway.
-          if (id === 'ipod' || id === 'ipod-black' || id === 'ipod-matte') return id;
+          // v1.260: the tray is the Click Nano - its colorways are the registry's Click
+          // colorways (v1.332: derived, never a hand-kept trio).
+          var reg = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+          if (reg && typeof reg.isClickColorway === 'function' && reg.isClickColorway(id)) return id;
           return 'ipod';
         };
       }

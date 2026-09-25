@@ -281,9 +281,14 @@
   //
   // The engine stays generic: it never learns what a takeover is talking to. What
   // this adds is only what a VIEW would otherwise have to repeat.
-  var WHEEL_SKINS = ['ipod', 'ipod-black', 'ipod-matte']; // the Click wheel trio. Seattle
-  // shares the chassis but its pad is half the usable rotation ring (tech-debt #207),
-  // and Dean scoped this to the Click skins; flat skins have no wheel.
+  // The wheel skins are the registry's Click colorways (Dean scoped Brick to the Click skins; flat
+  // skins have no wheel) - asked of the registry at every check, never a hand-kept copy (v1.332).
+  function isWheelSkin(id) {
+    try {
+      var sk = window.FileTubeMusicSkins;
+      return !!(sk && typeof sk.isClickColorway === 'function' && sk.isClickColorway(id));
+    } catch (_) { return false; }
+  }
 
   function activeSkinId() {
     try {
@@ -339,7 +344,7 @@
     }
     return {
       visible: function () {
-        if (WHEEL_SKINS.indexOf(activeSkinId()) < 0) return false;
+        if (!isWheelSkin(activeSkinId())) return false;
         // ...and the surface must actually have a wheel to play it WITH.
         //
         // READ THIS BEFORE TRUSTING THE TWO CHECKS BELOW. They do NOT currently protect

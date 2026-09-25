@@ -48,6 +48,14 @@
   var dormant = false;   // set on 401; signed-out sessions stay local-only
   var pending = Object.create(null); // key -> {value, updatedAt} awaiting the debounced POST
   var flushTimer = null;
+  var bootWaiters = [];   // v1.332: callers waiting on the boot GET (whenBooted)
+  // The boot GET settled (answered, refused, or failed): flushes may go, and anyone who asked to
+  // act only AFTER the server's values landed runs now (once; a later refresh finds none waiting).
+  function settleBoot() {
+    bootSynced = true;
+    var w = bootWaiters.splice(0);
+    for (var i = 0; i < w.length; i++) { try { w[i](); } catch (_) { /* a waiter must never break the sync */ } }
+  }
   var bootSynced = false; // flushes HOLD until the boot GET settles (QA W2: a fresh
                           // device's legacy seeds must not out-stamp the server's
                           // genuinely newer rows; applyServer drops the losers)
@@ -185,15 +193,15 @@
     if (dormant) return;
     try {
       fetch('/api/prefs', { credentials: 'same-origin' }).then(function (res) {
-        if (!res) { bootSynced = true; return; }
-        if (res.status === 401) { dormant = true; bootSynced = true; return; }
-        if (!res.ok) { bootSynced = true; return; }
+        if (!res) { settleBoot(); return; }
+        if (res.status === 401) { dormant = true; settleBoot(); return; }
+        if (!res.ok) { settleBoot(); return; }
         return res.json().then(function (json) {
           if (json && json.prefs) applyServer(json.prefs);
-          bootSynced = true;
+          settleBoot();
         });
-      }).catch(function () { bootSynced = true; /* offline - cache serves; held flushes release */ });
-    } catch (_) { bootSynced = true; /* fetch unavailable - local-only */ }
+      }).catch(function () { settleBoot(); /* offline - cache serves; held flushes release */ });
+    } catch (_) { settleBoot(); /* fetch unavailable - local-only */ }
   }
 
   refresh(); // boot leg
@@ -204,5 +212,9 @@
   } catch (_) { /* no document events - boot leg only */ }
 
   // Test hooks (jsdom drives the seams directly; production ignores them).
-  window.__ftPrefsSync = { refresh: refresh, flush: flush, applyServer: applyServer, SYNCED: SYNCED.slice() };
+  // v1.332 (gate r1 W1): whenBooted(fn) runs fn once the boot GET has settled (at once if it has) - a
+  // writer that must not out-stamp the server's newer value (music-skins.js's retired-id rewrite)
+  // waits on it.
+  function whenBooted(fn) { if (typeof fn !== 'function') return; if (bootSynced) { try { fn(); } catch (_) { /* ignore */ } } else bootWaiters.push(fn); }
+  window.__ftPrefsSync = { refresh: refresh, flush: flush, applyServer: applyServer, whenBooted: whenBooted, SYNCED: SYNCED.slice() };
 })();

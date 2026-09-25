@@ -61,11 +61,35 @@ test('style.css defines a type-scale token block in :root, including --fs-input-
   assert.strictEqual(tokens['--fs-input-min'], 16, 'expected --fs-input-min to be defined as 16px in :root (the v1.26.2 floor, AC7.2)');
 });
 
+// v1.332 (the pocket design system): the pocket skins read a TYPE ROLE (`--pk-fs-<role>`, e.g. the
+// status title, a menu row) that is itself defined as a `var(--fs-*)` scale token - so every size still
+// comes from the one global scale, one hop away. A role is defined EXACTLY ONCE, as a bare
+// var(--fs-*) (never a literal), and the two scans below follow that hop.
+function pocketTypeRoles(source) {
+  const roles = {};
+  for (const m of source.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(--pk-fs-[a-z0-9-]+)\s*:\s*([^;}]+)[;}]/g)) {
+    assert.ok(!(m[1] in roles), m[1] + ' is defined once');
+    roles[m[1]] = m[2].trim();
+  }
+  return roles;
+}
+function resolveFs(value, roles) {
+  const r = /^var\((--pk-fs-[a-z0-9-]+)\)$/.exec(value);
+  return r && roles[r[1]] ? roles[r[1]] : value;
+}
+
+test('every pocket type role is a bare var(--fs-*) scale token', () => {
+  const roles = pocketTypeRoles(css);
+  assert.ok(Object.keys(roles).length >= 10, 'the pocket type roles exist (' + Object.keys(roles).length + ')');
+  for (const [name, v] of Object.entries(roles)) assert.match(v, /^var\(--fs-[a-z0-9-]+\)$/, name + ' maps onto the global scale');
+});
+
 test('every font-size: declaration in style.css uses a var(--fs-*) token (AC7.1) -- no undocumented hardcoded literal', () => {
   const declarations = findAllFontSizeDeclarations(css);
   assert.ok(declarations.length > 0, 'expected to find font-size declarations to scan');
+  const roles = pocketTypeRoles(css);
 
-  const offenders = declarations.filter((d) => !/^var\(--fs-[a-z0-9-]+\)$/.test(d.value));
+  const offenders = declarations.filter((d) => !/^var\(--fs-[a-z0-9-]+\)$/.test(resolveFs(d.value, roles)));
   assert.deepStrictEqual(
     offenders,
     [],
@@ -76,8 +100,9 @@ test('every font-size: declaration in style.css uses a var(--fs-*) token (AC7.1)
 test('every font-size: var(--fs-*) reference in style.css points at a token actually defined in :root (no stray/typo\'d token name)', () => {
   const tokens = parseRootFsTokens(css);
   const declarations = findAllFontSizeDeclarations(css);
+  const roles = pocketTypeRoles(css);
   const undefinedRefs = declarations.filter((d) => {
-    const m = /^var\((--fs-[a-z0-9-]+)\)$/.exec(d.value);
+    const m = /^var\((--fs-[a-z0-9-]+)\)$/.exec(resolveFs(d.value, roles));
     return !m || tokens[m[1]] === undefined;
   });
   assert.deepStrictEqual(

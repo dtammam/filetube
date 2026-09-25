@@ -103,7 +103,8 @@ async function main() {
     // 1. per-skin screenshots at three light positions (a REAL deviceorientation event path)
     const R = 20; // TILT_RANGE_DEG (pocket-lighting.js)
     const POS = { neutral: [0, 3], 'upper-left': [0 + 0.5 * R, 3 + 0.8 * R], 'lower-right': [0 - 0.5 * R, 3 - 0.8 * R] };
-    for (const skin of ['ipod', 'ipod-black', 'ipod-matte']) {
+    const SKR = require(path.join(ROOT, 'public', 'js', 'music-skins.js'));
+    for (const skin of (typeof SKR.clickColorways === 'function' ? SKR.clickColorways() : SKR.SKINS.filter((s) => s.menus === 'click').map((s) => s.id))) { // every Click colorway (the registry)
       const st = await evalJs(`window.__boot(${JSON.stringify(skin)}, ${JSON.stringify(STRENGTH)})`);
       await sleep(300);
       await evalJs('window.__tilt(0, 3)'); await sleep(120); // the opening pose = neutral
@@ -137,7 +138,7 @@ async function main() {
     report.listeners.on = await (async () => { await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(200); return { deviceorientation: await orientListeners(), lit: (await evalJs('window.__props()')).lit }; })();
     report.listeners.docked = await (async () => { await evalJs('window.__dock()'); await sleep(300); return { deviceorientation: await orientListeners(), state: (await evalJs('window.__props()')).state }; })();
     report.listeners.destroyed = await (async () => { await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(200); await evalJs('window.__engine.destroy()'); await sleep(100); return { deviceorientation: await orientListeners() }; })();
-    report.listeners.seattle = await (async () => { await evalJs("window.__boot('zune-classic', 'pronounced')"); await sleep(200); return { deviceorientation: await orientListeners(), lit: (await evalJs('window.__props()')).lit, state: (await evalJs('window.__props()')).state }; })();
+    report.listeners.nonPocket = await (async () => { await evalJs("window.__boot('apple', 'pronounced')"); await sleep(200); return { deviceorientation: await orientListeners(), lit: (await evalJs('window.__props()')).lit, state: (await evalJs('window.__props()')).state }; })();
     report.errors = await evalJs('window.__errors');
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));

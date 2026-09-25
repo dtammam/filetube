@@ -532,7 +532,13 @@ const MUSIC_SKIN_BLURB = {
   ipod: 'Retro brushed-metal, framed cover, classic track list.',
   'ipod-black': 'Space-black brushed metal, same classic click wheel.',
   'ipod-matte': 'Matte graphite metal, top-lit, with a dark click wheel.',
-  'zune-classic': 'The brown original with the circle pad and the big magenta screen.',
+  'ipod-red': 'Satin red metal, a white click wheel and a red center.',
+  'ipod-silver': 'Brushed aluminum lit from the side, a light grey wheel.',
+  'ipod-encore': 'Glossy black with a red click wheel, a black center.',
+  'ipod-blue': 'Anodized teal-blue with blue lettering on the wheel.',
+  'ipod-green': 'Anodized green with green lettering on the wheel.',
+  'ipod-pink': 'Anodized rose pink with pink lettering on the wheel.',
+  'ipod-gold': 'Warm anodized gold, a white wheel and a gold center.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

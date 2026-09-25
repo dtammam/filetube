@@ -99,3 +99,27 @@ test('the PODCAST skin docks to the origin on its onDock hook', () => {
   assert.match(src, /onDock: function \(\)[\s\S]{0,220}pp\.dock\(\)[\s\S]{0,120}updateNowPlayingPanel\(\); if \(window\.FileTube && window\.FileTube\.returnToPlayerOrigin\) window\.FileTube\.returnToPlayerOrigin\(\);/,
     'the podcast skin dock returns to origin');
 });
+
+// v1.332 (Dean D7): HOME from the player. goHomeFromPlayer is run from its OWN source with the router
+// stubbed (the router is not boot-testable in jsdom - the posture above): it docks the player, lets
+// the view re-render, then routes to / through navigate() (the SPA router, never a reload) - in that
+// order, so the skin is down before the swap and the song keeps playing in the mini.
+test('v1.332 D7: goHomeFromPlayer docks, re-renders the view, then navigate(\'/\') - in that order; exposed on FileTube', () => {
+  const src = readSrc('public/js/common.js');
+  const at = src.indexOf('function goHomeFromPlayer(');
+  assert.ok(at > 0, 'the helper exists');
+  const body = src.slice(at, src.indexOf('\n  }\n', at) + 4);
+  const log = [];
+  const win = { FileTube: { player: { dock: () => log.push('dock') } } };
+  const fn = new Function('window', 'navigate', body + '\nreturn goHomeFromPlayer;')(win, (u) => log.push('navigate ' + u));
+  fn(() => log.push('afterDock'));
+  assert.deepStrictEqual(log, ['dock', 'afterDock', 'navigate /']);
+  // a player with no dock (never a throw) still routes home
+  const log2 = [];
+  new Function('window', 'navigate', body + '\nreturn goHomeFromPlayer;')({ FileTube: {} }, (u) => log2.push(u))(null);
+  assert.deepStrictEqual(log2, ['/']);
+  assert.match(src, /window\.FileTube\.goHomeFromPlayer = goHomeFromPlayer;/, 'exposed for the views');
+  for (const v of ['public/js/music.js', 'public/js/podcasts.js']) {
+    assert.match(readSrc(v), /onHome: function \(\) \{ if \(window\.FileTube && typeof window\.FileTube\.goHomeFromPlayer === 'function'\) window\.FileTube\.goHomeFromPlayer\(updateNowPlayingPanel\); \}/, v + ' hands the engine its onHome');
+  }
+});
