@@ -3,13 +3,10 @@
 // POCKET LIGHTING (Dean 2026-09-24: "Does PWA have any access to gyroscopic info ... I'd like the
 // color/shadow on the theme to reflect. The sheen from the click wheel etc. I'd like that to be
 // somewhat 'realistic' based on gyro data.") - a fixed light in the room, read through the phone's
-// orientation sensor (or the mouse on a desktop). Since the third swing (2026-09-25, the research
-// doc) it is a REFLECTION: one environment map (window panes, a lamp, a room ramp) positioned in
-// degrees of reflected angle against a gravity-referenced key pose, written as CSS custom properties
-// on the skin panel (`--fx/--fy` px for the flat surfaces, `--dx/--dy` for the dome, `--dom`, `--la`,
-// `--wt`, `--lx/--ly`, plus the measured geometry `--k`, `--dr`, `--lcx/--lcy`, and `--lk` the alpha
-// factor). The Click skins' CSS shows that map per material; with the classes off none of it exists,
-// so Off is byte-for-byte today's look.
+// orientation sensor (or the mouse on a desktop), written as TWO CSS custom properties on the
+// skin panel (`--lx`, `--ly`, each in [-1, 1]: where the light sits relative to the device). The
+// Click skins' CSS moves every highlight toward the light and every shadow away from it; with the
+// properties unset the calcs resolve to today's constants, so Off is byte-for-byte today's look.
 //
 // Scope (Dean's ruling, plan 2026-09-24-pocket-gyro-lighting): the Click family only (Click, Click
 // Black, Click Matte); the engine's `isPocket` is the registry's menus === 'click'. Seattle keeps
@@ -17,8 +14,8 @@
 // from the pocket menu's Settings > Lighting; the strength tap is what asks iOS for motion access.
 //
 // The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever
-// writes numbers; the CSS it feeds moves gradient positions (a per-frame repaint of the body, the
-// glass and the dome) - no filter, blur, mask, backdrop or blend mode, ever. The frame loop runs only while a Click
+// writes two numbers; the CSS it feeds moves gradient positions and translates two gradient
+// layers (each painting one thin stripe) - no filter, blur, mask or backdrop, ever. The frame loop runs only while a Click
 // skin is painted, visible and lit, writes only when a value moved, and parks itself when the light
 // has settled; every teardown arm (skin switch, dock, hidden tab, pop-out close, reduced motion)
 // unbinds the listener and cancels the loop. The pure half (mapping, filter, strength) is
@@ -26,27 +23,17 @@
 (function () {
   var KEY = 'ft-pocket-lighting';
   var STRENGTHS = ['off', 'subtle', 'pronounced'];
-  // Third swing (2026-09-25, the research doc "making the lighting look physically real", Dean's rulings):
-  // a REFLECTION, not a sheen. The light is GRAVITY-REFERENCED: a fixed KEY POSE in screen-axis degrees;
-  // the reflected angle is twice the tilt away from it (a mirror rotates a reflection by 2 x delta); the
-  // face spans ~24 deg of view at 350 mm, so `k = panelHeight / 24` px per degree. GAIN is now the ALPHA
-  // factor of every reflection layer (Subtle = 0.6 x Pronounced), not a travel scale. No opening-pose
-  // neutral and no slow re-centre (a real lamp never fades); only a pose held > OFF_DEG from the key for
-  // > OFF_MS (lying in bed) glides the key to it.
-  var GAIN = { off: 0, subtle: 0.6, pronounced: 1 };
-  var KEY_X = -3;             // the key light's pose, screen x (deg): a touch off-axis (gate r1 qa W2: the research's
-                              // -10 put the window 700 px off a 390 px face at a straight hold - nothing showed)
-  var KEY_Y = 58;             // screen y (deg): a typical 50 deg hold puts the window's lower edge across the upper third
-  var FACE_DEG = 24;          // the face's angular span at a phone's viewing distance
-  var DOME_BETA = 15;         // the dome's edge slope (deg): its image moves R / (2 beta) px per degree against the
-                              // flat face's k px per degree - 2 beta k / R = about 20x slower on an 844 px panel with a 54 px dome
-  var DOME_CLAMP = 1.3;       // the dome image may sit this far past the rim (it clips)
-  var DOME_FADE_DEG = [28, 34]; // the dome image fades between these reflected angles (off the rim)
-  var MOUSE_DEG = 12;         // the pointer at the panel's edge = this reflected angle
-  var TAU_MS = 60;            // sensor smoothing (above ~120 ms the reflection lags the hand: floaty)
-  var TAU_MOUSE_MS = 100;     // pointer smoothing
-  var OFF_DEG = 35, OFF_MS = 2000, GLIDE_TAU_MS = 1500; // the only re-centre: a far-off pose held for 2 s
-  var WRITE_EPS_DEG = 0.02;   // a smaller move than this is not written (0.7 px at k = 35: no style work while still)
+  // Second swing (Dean on the device, v1.327.0: "a little subtle ... zhuzh it up ... subtle can stay near
+  // pronounced and pronounced will be the new one"): Subtle = v1.327's Pronounced travel (within 10%),
+  // Pronounced = the same travel plus the STRONG CSS profile (`.mms-lit-strong`: the specular hot spot,
+  // the rim arcs, the brighter band, the double glass streak); a wrist tilt of 20 deg reaches the edge.
+  var GAIN = { off: 0, subtle: 0.8, pronounced: 1 };
+  var TILT_RANGE_DEG = 20;    // this much tilt from the neutral pose = the light at the edge (|l| = 1)
+  var TILT_SIGN = -1;         // G3: tilt right -> the highlights slide LEFT (the light is fixed in the room)
+  var SMOOTH_TAU_MS = 90;     // the light's easing toward its goal (sensor noise never jitters a highlight)
+  var LEAVE_TAU_MS = 360;     // G7: the mouse leaving the player eases the light back to neutral
+  var RECENTER_TAU_MS = 8000; // G5: the neutral pose drifts to wherever you settle (a table, lying down)
+  var WRITE_EPS = 0.003;      // a smaller move than this is not written (no style work while still)
   var PARK_MS = 300;          // settled + no sample for this long = the frame loop parks (no rAF at all)
   var SENSOR_FRESH_MS = 1500; // a sensor sample this recent outranks the mouse
   var SENSOR_WAIT_MS = 2000;  // no fine pointer and no sample this long after a pick = "no motion sensor here"
@@ -112,60 +99,30 @@
   // round, and the baseline stays folded into [-180, 180).
   function wrapDiff(a, b) { return ((a - b + 540) % 360 + 360) % 360 - 180; }
   function fold(a) { return ((a + 180) % 360 + 360) % 360 - 180; }
-  // The reflected angle from a tilt sample (screen-axis degrees) against the key pose: a mirror turns a
-  // reflection by TWICE the tilt. The pitch difference takes the short way round (beta wraps at +-180).
-  function reflected(st, tx, ty) {
-    return { ex: 2 * wrapDiff(tx, st.kx), ey: 2 * wrapDiff(ty, st.ky) };
+  // The neutral pose (G5): the FIRST sample after a start is neutral; from then on the baseline
+  // drifts toward the live sample with RECENTER_TAU_MS, so a held tilt slowly reads as level again.
+  // Returns the light's GOAL for this sample (opposite the tilt, TILT_RANGE_DEG = the edge).
+  function recentre(st, tx, ty, dt) {
+    if (!st.seeded) { st.bx = tx; st.by = ty; st.seeded = true; }
+    else { var kb = k(dt, RECENTER_TAU_MS); st.bx = fold(st.bx + wrapDiff(tx, st.bx) * kb); st.by = fold(st.by + wrapDiff(ty, st.by) * kb); }
+    // (`|| 0` folds a -0 to 0: a neutral pose is exactly 0)
+    return { x: clamp1(TILT_SIGN * wrapDiff(tx, st.bx) / TILT_RANGE_DEG) || 0, y: clamp1(TILT_SIGN * wrapDiff(ty, st.by) / TILT_RANGE_DEG) || 0 };
   }
-  // The key glide - the only re-centre: a pose held more than OFF_DEG from the key's pitch for OFF_MS
-  // (lying in bed) glides the key to it with GLIDE_TAU_MS; anything closer leaves the key alone.
-  function glideKey(st, ty, dt, now) {
-    var d = wrapDiff(ty, st.ky);
-    if (st.gliding) {
-      // once started, a glide runs until the key sits on the pose (never parks 35 deg short)
-      st.ky = fold(st.ky + d * k(dt, GLIDE_TAU_MS));
-      if (Math.abs(d) < 0.5) { st.ky = fold(ty); st.gliding = false; st.offSince = -1; } // snap the last half degree (a 0.9 deg reflected offset otherwise)
-      return true;
-    }
-    if (Math.abs(d) <= OFF_DEG) { st.offSince = -1; return false; }
-    if (st.offSince < 0) { st.offSince = now; return false; }
-    if (now - st.offSince < OFF_MS) return false;
-    st.gliding = true;
-    return true;
+  // Ease the light toward its goal; true when the eased value differs from the last WRITTEN one
+  // by more than WRITE_EPS (the caller writes then).
+  function ease(st, gx, gy, dt, tau) {
+    var ks = k(dt, tau || SMOOTH_TAU_MS);
+    st.x += (gx - st.x) * ks;
+    st.y += (gy - st.y) * ks;
+    return Math.abs(st.x - st.wx) > WRITE_EPS || Math.abs(st.y - st.wy) > WRITE_EPS;
   }
-  // Ease the reflected angle toward its target; true when the eased value differs from the last
-  // WRITTEN one by more than the write epsilon (the caller writes then).
-  function ease(st, tex, tey, dt, tau) {
-    var ks = k(dt, tau);
-    st.ex += (tex - st.ex) * ks;
-    st.ey += (tey - st.ey) * ks;
-    return Math.abs(st.ex - st.wex) > WRITE_EPS_DEG || Math.abs(st.ey - st.wey) > WRITE_EPS_DEG;
-  }
-  // G7 (desktop): the pointer over the panel IS the light - its offset from the panel's centre, as a
-  // reflected angle of +-MOUSE_DEG at the edges.
+  // G7 (desktop): the pointer over the panel IS the light - its offset from the panel's centre.
   function pointerLight(x, y, rect) {
     var w = rect && Number(rect.width); var h = rect && Number(rect.height);
     if (!(w > 0) || !(h > 0)) return null;
-    return { ex: clamp1((x - (rect.left + w / 2)) / (w / 2)) * MOUSE_DEG, ey: clamp1((y - (rect.top + h / 2)) / (h / 2)) * MOUSE_DEG };
+    return { x: clamp1((x - (rect.left + w / 2)) / (w / 2)), y: clamp1((y - (rect.top + h / 2)) / (h / 2)) };
   }
-  function smoothstep(a, b, v) { var t = (v - a) / (b - a); t = t < 0 ? 0 : (t > 1 ? 1 : t); return t * t * (3 - 2 * t); }
-  // The per-surface properties from one reflected angle (ex, ey in degrees; k px/deg; R the dome radius):
-  // the flat face moves `k` px per degree, the dome `R / (2 beta)` px per degree (2 beta k / R = about 20x slower), the
-  // dome image fades once the reflected angle passes the rim, the lip ring follows the light's azimuth.
-  function surfaces(ex, ey, kpx, R) {
-    var m = Math.max(Math.abs(ex), Math.abs(ey));
-    var dr = 1 / (2 * DOME_BETA);
-    var cl = function (v) { return v > DOME_CLAMP ? DOME_CLAMP : (v < -DOME_CLAMP ? -DOME_CLAMP : v); };
-    return {
-      fx: ex * kpx, fy: ey * kpx,
-      dx: R * cl(ex * dr), dy: R * cl(ey * dr),
-      dom: 1 - smoothstep(DOME_FADE_DEG[0], DOME_FADE_DEG[1], m),
-      la: (ex === 0 && ey === 0) ? 0 : Math.atan2(ey, ex) / RAD,
-      wt: 1 - Math.min(1, m / DOME_FADE_DEG[1]),
-      lx: clamp1(ex / MOUSE_DEG), ly: clamp1(ey / MOUSE_DEG),
-    };
-  }
-  function newFilter() { return { kx: KEY_X, ky: KEY_Y, offSince: -1, gliding: false, ex: 0, ey: 0, wex: 0, wey: 0 }; }
+  function newFilter() { return { seeded: false, bx: 0, by: 0, x: 0, y: 0, wx: 0, wy: 0 }; }
 
   // ---- the driver: one per engine surface -------------------------------------------------
   // o = { panel, win, doc?, isPocket() -> bool, store?, now?() }
@@ -179,14 +136,16 @@
     var on = false, raf = null, lastTick = -1;
     var st = newFilter();
     var tilt = null;               // the latest sensor sample (screen axes, degrees)
-    var goal = { ex: 0, ey: 0 };   // the pointer's goal (mouse mode; a reflected angle)
-    var geom = { k: 844 / FACE_DEG, R: 54, lcx: 0, lcy: 0 }; // px per degree, the dome radius, the LCD's centre offset
+    var goal = { x: 0, y: 0 };     // the pointer's goal (mouse mode)
     var mode = 'none';             // 'tilt' | 'pointer' | 'none'
+    var leaving = false;           // the mouse left: ease home slowly
     var lastSampleAt = -Infinity, lastTiltAt = -Infinity;
     var samples = 0, writes = 0;
-    var sessionSamples = 0;        // samples since the last start() (the lit gate below; the first sample snaps)
+    var sessionSamples = 0;        // samples since the last start() (the lit gate below)
     var note = '', permission = '';
     var observer = null;           // the dock watcher (see start): the panel emptied or hidden with no destroy()
+    var askArmed = false;          // the first-tap ask is bound (see armFirstTapAsk)
+    var askedThisSession = false;  // iOS forgets a home-screen app's motion grant at every launch: ask ONCE per session
     var destroyed = false;         // destroy() ran: nothing may re-bind (a late permission answer, gate r1 S2)
 
     function strength() { return readStrength(store); }
@@ -216,35 +175,14 @@
       try { ok = !destroyed && gain() > 0 && !!isPocket() && painted() && !doc.hidden && !trayUp() && !reduced() && (permission !== 'denied' || finePointer()); } catch (_) { ok = false; }
       return ok;
     }
-    var PROPS = ['--fx', '--fy', '--dx', '--dy', '--dom', '--la', '--wt', '--lx', '--ly', '--k', '--dr', '--lcx', '--lcy', '--lk'];
-    function setP(name, v) { try { panel.style.setProperty(name, v); } catch (_) { /* detached */ } }
     function write() {
-      st.wex = st.ex; st.wey = st.ey; writes += 1;
-      var sf = surfaces(st.ex, st.ey, geom.k, geom.R);
-      setP('--fx', sf.fx.toFixed(1) + 'px'); setP('--fy', sf.fy.toFixed(1) + 'px');
-      setP('--dx', sf.dx.toFixed(2) + 'px'); setP('--dy', sf.dy.toFixed(2) + 'px');
-      setP('--dom', sf.dom.toFixed(3)); setP('--la', sf.la.toFixed(1)); setP('--wt', sf.wt.toFixed(3));
-      setP('--lx', sf.lx.toFixed(3)); setP('--ly', sf.ly.toFixed(3));
-    }
-    // The geometry the CSS needs, measured at every sync (a paint) and on every resize of the window
-    // (gate r1 qa W1: the pop-out can be resized and a rotate changes the panel; nothing repaints then):
-    // px per degree, the dome's radius, and where the LCD's centre sits against the panel's (so the glass
-    // shows the SAME map at the same panel position - the research's "keep surfaces aligned").
-    function measure() {
-      try {
-        var pr = panel.getBoundingClientRect();
-        if (pr.height > 0) geom.k = pr.height / FACE_DEG;
-        var dome = panel.querySelector('.ip-center');
-        if (dome) { var dr = dome.getBoundingClientRect(); if (dr.width > 0) geom.R = dr.width / 2; }
-        var lcd = panel.querySelector('.ip-lcd-in');
-        if (lcd && pr.width > 0) { var lr = lcd.getBoundingClientRect(); geom.lcx = (pr.left + pr.width / 2) - (lr.left + lr.width / 2); geom.lcy = (pr.top + pr.height / 2) - (lr.top + lr.height / 2); }
-      } catch (_) { /* jsdom: keep the defaults */ }
-      setP('--k', geom.k.toFixed(2) + 'px'); setP('--dr', geom.R.toFixed(1) + 'px');
-      setP('--lcx', geom.lcx.toFixed(1) + 'px'); setP('--lcy', geom.lcy.toFixed(1) + 'px');
-      setP('--lk', String(gain()));
+      st.wx = st.x; st.wy = st.y; writes += 1;
+      // --lm = the light's distance from centre (0..1): the strong profile's hot spot dims as the
+      // light moves off-centre (the card-glare rule: brightest straight on)
+      try { panel.style.setProperty('--lx', st.x.toFixed(3)); panel.style.setProperty('--ly', st.y.toFixed(3)); panel.style.setProperty('--lm', Math.min(1, Math.hypot(st.x, st.y)).toFixed(3)); } catch (_) { /* detached */ }
     }
     function clearProps() {
-      try { for (var i = 0; i < PROPS.length; i++) panel.style.removeProperty(PROPS[i]); } catch (_) { /* detached */ }
+      try { panel.style.removeProperty('--lx'); panel.style.removeProperty('--ly'); panel.style.removeProperty('--lm'); } catch (_) { /* detached */ }
       try { panel.classList.remove('mms-lit'); panel.classList.remove('mms-lit-strong'); } catch (_) { /* detached */ }
     }
     function arm() {
@@ -263,12 +201,17 @@
       var now = nowFn();
       var dt = lastTick < 0 ? 16 : Math.max(0, Math.min(100, now - lastTick));
       lastTick = now;
-      var target, gliding = false;
-      if (mode === 'tilt' && tilt) { gliding = glideKey(st, tilt.y, dt, now); target = reflected(st, tilt.x, tilt.y); }
+      var g = gain();
+      var target;
+      if (mode === 'tilt' && tilt) target = recentre(st, tilt.x, tilt.y, dt);
       else target = goal;
-      var moved = ease(st, target.ex, target.ey, dt, mode === 'pointer' ? TAU_MOUSE_MS : TAU_MS);
+      var moved = ease(st, target.x * g, target.y * g, dt, (mode === 'pointer' && leaving) ? LEAVE_TAU_MS : SMOOTH_TAU_MS);
       if (moved) write();
-      var settled = !gliding && Math.abs(st.ex - target.ex) < WRITE_EPS_DEG && Math.abs(st.ey - target.ey) < WRITE_EPS_DEG;
+      var tx = target.x * g, ty = target.y * g;
+      var settled = Math.abs(st.x - tx) < WRITE_EPS && Math.abs(st.y - ty) < WRITE_EPS &&
+        // in tilt mode the goal itself is still moving until the neutral pose has drifted onto the
+        // held tilt (G5) - parking early would freeze the light off-centre
+        (mode !== 'tilt' || (Math.abs(tx) < WRITE_EPS && Math.abs(ty) < WRITE_EPS));
       // park when the light has settled and no sample has arrived for a while (nothing to animate);
       // the next sample re-arms the loop. (A live sensor streams samples, so it never parks mid-use.)
       if (settled && now - lastSampleAt > PARK_MS) { lastTick = -1; return; }
@@ -278,13 +221,9 @@
       var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win));
       if (!m) return;
       samples += 1; sessionSamples += 1;
-      tilt = m; mode = 'tilt';
-      if (sessionSamples === 1) {
-        // the FIRST sample of a start snaps the reflection to where it is (gate r1 qa W3: easing from the
-        // key-centred map swept the window across the face at every unlock, return or pick), then lights
-        var r0 = reflected(st, m.x, m.y); st.ex = r0.ex; st.ey = r0.ey; write();
-        applyLit();
-      }
+      if (permission !== 'granted') { permission = 'granted'; disarmFirstTapAsk(); } // a sample IS a grant
+      if (sessionSamples === 1) applyLit(); // the sensor streams: light the panel (see litGated)
+      tilt = m; mode = 'tilt'; leaving = false;
       lastSampleAt = lastTiltAt = nowFn();
       arm();
     }
@@ -296,24 +235,48 @@
       try { r = panel.getBoundingClientRect(); } catch (_) { r = null; }
       var p = pointerLight(e.clientX, e.clientY, r);
       if (!p) return;
-      goal = p; mode = 'pointer';
+      goal = p; mode = 'pointer'; leaving = false;
       lastSampleAt = nowFn();
       arm();
     }
     function onLeave(e) {
       if (!mouseOnly(e) || mode !== 'pointer') return;
-      goal = { ex: 0, ey: 0 };
+      goal = { x: 0, y: 0 }; leaving = true;
       lastSampleAt = nowFn();
       arm();
     }
     function onVisibility() { sync(); }
-    function onResize() { if (!on) return; measure(); write(); }
+    // Dean (2026-09-25, on the installed app): "every time I close and reopen, I'm prompted ... How can it
+    // just be on?" iOS does not persist a home-screen web app's motion grant across launches, and only a
+    // user gesture may ask - so with a strength stored and no grant this session, the FIRST tap anywhere
+    // in the app (a click or a touch lifting) asks from inside that gesture; the Lighting row is no longer
+    // the only place that asks. Once per session; the answer flows exactly as a Lighting-row pick does.
+    function askFromGesture() {
+      disarmFirstTapAsk();
+      if (destroyed || askedThisSession || !permissionApi() || permission === 'granted') return;
+      askedThisSession = true;
+      var DOE = null; try { DOE = win.DeviceOrientationEvent; } catch (_) { DOE = null; }
+      var p; try { p = DOE.requestPermission(); } catch (e) { p = Promise.reject(e); }
+      Promise.resolve(p).then(function (r) { permission = r === 'granted' ? 'granted' : 'denied'; }, function () { permission = 'denied'; })
+        .then(function () { if (destroyed) return; if (permission !== 'granted') note = NOTE_DENIED; sync(); });
+    }
+    function armFirstTapAsk() {
+      if (askArmed || askedThisSession || destroyed) return;
+      if (gain() <= 0 || !litGated() || permission === 'granted') return;
+      askArmed = true;
+      try { doc.addEventListener('click', askFromGesture, true); doc.addEventListener('touchend', askFromGesture, true); } catch (_) { askArmed = false; }
+    }
+    function disarmFirstTapAsk() {
+      if (!askArmed) return;
+      askArmed = false;
+      try { doc.removeEventListener('click', askFromGesture, true); doc.removeEventListener('touchend', askFromGesture, true); } catch (_) { /* ignore */ }
+    }
     function start() {
       if (on) return;
       on = true;
-      st = newFilter(); tilt = null; goal = { ex: 0, ey: 0 }; mode = 'none'; lastTick = -1; sessionSamples = 0;
+      st = newFilter(); tilt = null; goal = { x: 0, y: 0 }; mode = 'none'; leaving = false; lastTick = -1; sessionSamples = 0;
       lastSampleAt = lastTiltAt = -Infinity;
-      try { win.addEventListener('deviceorientation', onOrient); win.addEventListener('resize', onResize); } catch (_) { /* no window */ }
+      try { win.addEventListener('deviceorientation', onOrient); } catch (_) { /* no window */ }
       try { panel.addEventListener('pointermove', onMove); panel.addEventListener('pointerleave', onLeave); } catch (_) { /* detached */ }
       // The DOCK: the view clears the panel (hidden + innerHTML = '') WITHOUT destroy() (the v1.256
       // class). The frame loop notices on its next tick - but a PARKED loop (a still device, a
@@ -328,11 +291,12 @@
     }
     function stop() {
       disarm();
+      disarmFirstTapAsk();
       clearProps();
       if (!on) return;
       on = false;
       if (observer) { try { observer.disconnect(); } catch (_) { /* gone */ } observer = null; }
-      try { win.removeEventListener('deviceorientation', onOrient); win.removeEventListener('resize', onResize); } catch (_) { /* ignore */ }
+      try { win.removeEventListener('deviceorientation', onOrient); } catch (_) { /* ignore */ }
       try { panel.removeEventListener('pointermove', onMove); panel.removeEventListener('pointerleave', onLeave); } catch (_) { /* ignore */ }
     }
     // Gate r1 (adversary W1): the visibility listener is NOT one of start()'s - it lives from
@@ -349,15 +313,15 @@
     function sync() {
       if (!wanted()) { stop(); return; }
       start();
-      measure();
-      write(); // the map exists at its centred pose from the first paint (a pose AT the key moves nothing)
       applyLit();
+      armFirstTapAsk();
     }
     // Settings > Lighting (G4): store the pick, and - from the TAP that chose it, so the user
     // activation is live - ask iOS for motion access. Resolves with state() once the answer is in.
     function choose(v) {
       var n = setStrength(v, store);
       note = ''; permission = ''; // a re-pick starts clean: a stale note or answer never survives it (gate r1 J15)
+      askedThisSession = true; disarmFirstTapAsk(); // the row asks itself (below); no second ask from a tap
       if (n === 'off') { sync(); return Promise.resolve(state()); }
       if (reduced()) { note = NOTE_REDUCED; sync(); return Promise.resolve(state()); }
       var DOE = null;
@@ -387,18 +351,18 @@
     }
     function state() {
       var isLit = false; try { isLit = panel.classList.contains('mms-lit'); } catch (_) { isLit = false; }
-      return { on: on, listening: on, lit: isLit, raf: raf != null, samples: samples, writes: writes, ex: st.ex, ey: st.ey, key: { x: st.kx, y: st.ky },
-        geom: { k: geom.k, R: geom.R, lcx: geom.lcx, lcy: geom.lcy }, mode: mode, strength: strength(), gain: gain(), note: note, permission: permission };
+      return { on: on, listening: on, lit: isLit, raf: raf != null, samples: samples, writes: writes, lx: st.x, ly: st.y, mode: mode, askArmed: askArmed, asked: askedThisSession,
+        strength: strength(), gain: gain(), note: note, permission: permission };
     }
     return { sync: sync, choose: choose, state: state, destroy: destroy };
   }
 
   var api = {
-    KEY: KEY, STRENGTHS: STRENGTHS, GAIN: GAIN, KEY_X: KEY_X, KEY_Y: KEY_Y, FACE_DEG: FACE_DEG, DOME_BETA: DOME_BETA, MOUSE_DEG: MOUSE_DEG,
-    TAU_MS: TAU_MS, TAU_MOUSE_MS: TAU_MOUSE_MS, OFF_DEG: OFF_DEG, OFF_MS: OFF_MS, GLIDE_TAU_MS: GLIDE_TAU_MS, PARK_MS: PARK_MS, SENSOR_WAIT_MS: SENSOR_WAIT_MS,
+    KEY: KEY, STRENGTHS: STRENGTHS, GAIN: GAIN, TILT_RANGE_DEG: TILT_RANGE_DEG, TILT_SIGN: TILT_SIGN,
+    SMOOTH_TAU_MS: SMOOTH_TAU_MS, RECENTER_TAU_MS: RECENTER_TAU_MS, WRITE_EPS: WRITE_EPS, PARK_MS: PARK_MS, SENSOR_WAIT_MS: SENSOR_WAIT_MS,
     NOTE_DENIED: NOTE_DENIED, NOTE_NO_SENSOR: NOTE_NO_SENSOR, NOTE_REDUCED: NOTE_REDUCED,
     normalizeStrength: normalizeStrength, readStrength: readStrength, setStrength: setStrength,
-    mapTilt: mapTilt, orientationAngle: orientationAngle, reflected: reflected, glideKey: glideKey, ease: ease, surfaces: surfaces, pointerLight: pointerLight, newFilter: newFilter, wrapDiff: wrapDiff,
+    mapTilt: mapTilt, orientationAngle: orientationAngle, recentre: recentre, ease: ease, pointerLight: pointerLight, newFilter: newFilter, wrapDiff: wrapDiff,
     create: create,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
