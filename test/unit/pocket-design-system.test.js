@@ -114,6 +114,16 @@ const COLORWAYS = {
     '--pk-c-lit-band': 'rgba(255,255,255,.09)', '--pk-c-lit-band2': 'rgba(255,255,255,.05)',
     '--pk-c-lits-band': 'rgba(255,255,255,.14)', '--pk-c-lits-band2': 'rgba(255,255,255,.08)', '--pk-c-lits-core': 'rgba(255,255,255,.22)',
   },
+  // v1.332 (D2): sampled from Commons "Product Red iPod nano.jpg" - the side-by-side cites every value
+  'ipod-red': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.22) 0, var(--mms-ipod-sheen-0) 1.8%), linear-gradient(90deg, rgba(0,0,0,.24) 0%, rgba(0,0,0,.06) 14%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 58%, rgba(255,255,255,.1) 78%, var(--mms-ipod-clear) 90%, rgba(0,0,0,.16) 100%), linear-gradient(180deg, #ee2b3e 0%, #e82639 30%, #e02031 60%, #d4192b 82%, #c41424 100%)',
+    '--pk-c-body-edge': '#8e0e18',
+    '--pk-c-wheel-1': '#f7f9f8', '--pk-c-wheel-2': '#e5e9e7', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#c4cfcf',
+    '--pk-c-center-1': '#f6475d', '--pk-c-center-2': '#ea3348', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.2)', '--pk-c-lit-band2': 'rgba(255,255,255,.12)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.3)', '--pk-c-lits-band2': 'rgba(255,255,255,.17)', '--pk-c-lits-core': 'rgba(255,255,255,.45)',
+  },
 };
 
 test('the colorway VALUES: every role of every colorway, byte-exact (the palettes\' value authority)', () => {

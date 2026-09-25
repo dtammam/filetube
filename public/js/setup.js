@@ -532,6 +532,7 @@ const MUSIC_SKIN_BLURB = {
   ipod: 'Retro brushed-metal, framed cover, classic track list.',
   'ipod-black': 'Space-black brushed metal, same classic click wheel.',
   'ipod-matte': 'Matte graphite metal, top-lit, with a dark click wheel.',
+  'ipod-red': 'Satin red metal, a white click wheel and a red center.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

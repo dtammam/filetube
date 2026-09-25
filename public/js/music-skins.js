@@ -231,6 +231,9 @@
     // pattern exactly: one render (renderIpod), a `base` for the shared .mms-ipod CSS,
     // and the .mms-ipod-matte palette-only override.
     { id: 'ipod-matte', label: 'Click (Matte)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.332 (Dean D2): the charity-red colorway - a registry entry, ONE role block in style.css and a
+    // Settings blurb; every Click list (menus, Brick, lighting, the tray and its chips) derives from here.
+    { id: 'ipod-red', label: 'Click (Red)', base: 'ipod', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
   // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the
