@@ -563,3 +563,24 @@ test('v1.317 gate r2 qa W3: the podcast Nordic skin rows show an episode\'s leng
     assert.strictEqual(byTitle['Ep Three'], null, 'a 0 duration -> no length span');
   }, { meta, mm: { narrow: true }, episodes });
 });
+
+// v1.332 (Dean D7, AC10): Home from the PODCAST player - the sticker's first row, through the REAL
+// podcasts view and engine: the view hands common.js its re-render, and after the quiet dock that
+// re-render takes the full-screen skin down (the song plays on in the mini).
+test('v1.332 D7: the podcast skin\'s sticker leads with Home; one tap docks (the skin comes down) and routes home', async () => {
+  const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
+  await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
+    const calls = [];
+    dom.window.FileTube.goHomeFromPlayer = (afterDock) => { calls.push(typeof afterDock); mock.setState('docked'); afterDock(); };
+    dom.window.localStorage.setItem('ft-music-skin', 'ipod-gold');
+    await playEp(dom, 0);
+    const el = panel(dom);
+    assert.match(el.className, /\bmms-full\b/, 'precondition: the full-screen skin painted');
+    el.querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const first = el.querySelector('[data-skin-sticker-menu] .mms-sm-sec');
+    assert.ok(first && first.querySelector('[data-skin-home]'), 'Home is the first row');
+    first.querySelector('[data-skin-home]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.deepStrictEqual(calls, ['function'], 'ONE go-home, carrying the view\'s re-render');
+    assert.ok(!/\bmms-full\b/.test(el.className), 'after the quiet dock the view took the full-screen skin down');
+  }, { meta, mm: { narrow: true } });
+});

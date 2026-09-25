@@ -1990,6 +1990,30 @@ test('v1.332 AC8: ...and in the tab the fake colorway gets the pocket menus and 
   } });
 });
 
+// v1.332 (Dean D7, AC10/AC11) through the REAL music view: the sticker's first row is Home and a HELD
+// MENU goes home too - both hand common.js the view's re-render (goHomeFromPlayer docks quietly, then
+// routes to /), and neither fires the view's origin-returning dock.
+test('v1.332 D7: the music skin\'s sticker leads with Home, and a held MENU goes home - each exactly once, never the MENU dock', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod-red', run: async (dom, spy) => {
+    const calls = [];
+    dom.window.FileTube.goHomeFromPlayer = (afterDock) => { calls.push(typeof afterDock); };
+    const P = panel(dom);
+    P.querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const home = P.querySelector('[data-skin-sticker-menu] .mms-sm-sec [data-skin-home]');
+    assert.ok(home, 'Home leads the sticker menu');
+    home.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.deepStrictEqual(calls, ['function'], 'the row went home once, with the view\'s re-render');
+    const docks = spy.dock;
+    const z = P.querySelector('.ip-z-menu');
+    z.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 0 }));
+    await new Promise((r) => setTimeout(r, 700));
+    z.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 90, clientY: 0 }));
+    z.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.deepStrictEqual(calls, ['function', 'function'], 'the held MENU went home once');
+    assert.strictEqual(spy.dock, docks, 'the release fired no MENU dock');
+  } });
+});
+
 test('v1.260 (v1.332 onto Nordic): a non-Click pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
   // the tray colorway family is the Click colorways only - a flat skin's pick falls to base silver.
   await boot({ mobile: false, isMusic: true, skin: 'spotify', run: async (dom) => {

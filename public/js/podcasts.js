@@ -215,6 +215,7 @@
         hostCtl: function (id) { return document.getElementById(id); }, // MAIN-document controls - a pop-out click still drives the real player
         onSelectIndex: function (i) { playAt(i); },
         onDock: function () { var pp = window.FileTube && window.FileTube.player; if (pp && typeof pp.dock === 'function') pp.dock(); updateNowPlayingPanel(); if (window.FileTube && window.FileTube.returnToPlayerOrigin) window.FileTube.returnToPlayerOrigin(); }, // v1.247 (F2): dock to the mini on the ORIGIN tab
+        onHome: function () { if (window.FileTube && typeof window.FileTube.goHomeFromPlayer === 'function') window.FileTube.goHomeFromPlayer(updateNowPlayingPanel); }, // v1.332 (D7): Home from the player
         // v1.250 (F-UNIFY ride-along): hold-to-fast-scan + the sticker quick-menu (speed/loop/
         // skin). v1.287 (Dean, parity wave 2): podcasts NOW get the shared Extras menu in the
         // player - the createExtrasMenu factory was generalized to be endpoint-driven, so the

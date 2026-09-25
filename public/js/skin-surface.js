@@ -1286,6 +1286,18 @@
     var getSkinId = config.getSkinId || function () { return SKINS.activeSkinId(); };
     var onSelectIndex = config.onSelectIndex || function () {};
     var onDock = config.onDock || function () {};
+    // D7 (v1.332, Dean: "Right now I must press menu many times then the FileTube icon"): HOME from
+    // the player - the sticker's first row, and press-and-hold MENU on the Click wheel. The VIEW owns
+    // what home means (music.js / podcasts.js: dock quietly - the song keeps playing in the mini -
+    // then the SPA router to /); the engine only offers the two gestures, and only in the main
+    // document (the watch-back posture: the pop-out's router is the main window's).
+    var onHome = (typeof config.onHome === 'function') ? config.onHome : null;
+    var HOME_HOLD_MS = 600; // longer than the rewind/ffwd hold-to-scan (400 ms): a hold, never a slow tap
+    function homeAvailable() { return !!onHome && (typeof document !== 'undefined') && doc === document; }
+    function goHome() {
+      closeStickerMenu();
+      try { onHome(); } catch (_) { /* view nav best-effort */ }
+    }
     var onShuffle = typeof config.onShuffle === 'function' ? config.onShuffle : null;
     var onArtist = typeof config.onArtist === 'function' ? config.onArtist : null; // v1.317 M1: the artist line's action
     var fastScan = !!config.fastScan;
@@ -1513,7 +1525,11 @@
       var extras = extrasEligible()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
         : '';
-      return '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
+      // D7: Home leads the menu - two taps from any screen or menu depth
+      var homeRow = homeAvailable()
+        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-home><span class="mms-sm-lbl"><i class="icon-home"></i>Home</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
+        : '';
+      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow +
@@ -1621,6 +1637,7 @@
         e.stopPropagation();
         return true;
       }
+      if (e.target.closest('[data-skin-home]')) { if (homeAvailable()) goHome(); return true; } // D7
       if (e.target.closest('[data-skin-watchback]')) {
         closeStickerMenu();
         if (stickerCfg.watchBack && typeof stickerCfg.watchBack.onTap === 'function') { try { stickerCfg.watchBack.onTap(); } catch (_) { /* view nav best-effort */ } }
@@ -2201,6 +2218,7 @@
       // dual-arm teardown discipline) so a pointerup OR pointercancel stops the scan clean.
       if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
       if (st.scanInterval) { try { st.win.clearInterval(st.scanInterval); } catch (_) { /* ignore */ } st.scanInterval = null; }
+      if (st.homeTimer) { try { st.win.clearTimeout(st.homeTimer); } catch (_) { /* ignore */ } st.homeTimer = null; } // D7: every end arm drops the hold
       try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
       w.removeEventListener('pointermove', st.onMove);
       w.removeEventListener('pointerup', st.onUp);
@@ -2247,7 +2265,7 @@
         mode: (listMode || menuMode) ? 'cursor' : 'scrub', scrubRatio: null, menu: menuMode,
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
         lastT: nowMs(), lastEvT: evTime(e), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
-        win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0,
+        win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0, homeTimer: null,
         onDocUp: null, ended: false,
       };
       // v1.303: read the wheel config ONCE for THIS gesture (engine/detent/dither/capture/buzz),
@@ -2290,6 +2308,25 @@
         };
         if (st.scanDir) st.scanTimer = st.win.setTimeout(function () { st.scanTimer = null; if (!st.moved) startScan(); }, 400);
       }
+      // D7: press-and-HOLD MENU goes home - the hold-to-scan's own machinery (this ONE pointerdown,
+      // a timer on the panel's window, cancelled by the 8px rotation below and by every end arm in
+      // endWheel). On fire the gesture ENDS first with the click-suppress flag, so the release's
+      // MENU click never also climbs or docks, and every listener the press added is released. A
+      // takeover (Brick) owns MENU, so no hold arms under it; an un-rendered panel (a dock from
+      // elsewhere mid-hold) never goes home.
+      if (homeAvailable() && !wheelTakeover) {
+        var homeTgt = realTargetUnder(e);
+        if (homeTgt && homeTgt.closest && homeTgt.closest('[data-skin-menu]')) {
+          st.homeTimer = st.win.setTimeout(function () {
+            st.homeTimer = null;
+            if (st.ended || st.moved || wheelSpin !== st || wheelTakeover) return;
+            if (!st.wheel.isConnected || !panel.classList.contains('mms-full')) { endWheel(st, false); return; }
+            hapticLetterTick(st, { clientX: st.x0, clientY: st.y0 }); // the wheel's own tick, where it ticks
+            endWheel(st, true);
+            goHome();
+          }, HOME_HOLD_MS);
+        }
+      }
       st.onMove = function (ev) {
         if (ev.pointerId !== st.id) return; // ignore a SECOND finger (jump guard)
         // v1.242 (gate WARNING): once a HOLD has engaged the fast-scan, the scan OWNS the
@@ -2318,6 +2355,7 @@
           st.moved = true;
           // a ROTATE is a scrub/cursor, not a scan: cancel the pending hold so it never scans.
           if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
+          if (st.homeTimer) { try { st.win.clearTimeout(st.homeTimer); } catch (_) { /* ignore */ } st.homeTimer = null; } // D7: moved off - a spin, not a hold
           // v1.303: capture mode. '8px' (default == today) grabs the pointer HERE, once a real
           // rotation is confirmed; 'press' already grabbed on down; 'off' never grabs.
           if (st.capture !== 'press' && st.capture !== 'off') { try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ } }

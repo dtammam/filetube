@@ -1205,6 +1205,9 @@ if (typeof module !== 'undefined' && module.exports) {
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
         onSelectIndex: function (i) { playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
+        // v1.332 (D7): Home from the player - the sticker's Home row and a held MENU (the engine
+        // offers both in the main document only); common.js docks quietly and routes to /.
+        onHome: function () { if (window.FileTube && typeof window.FileTube.goHomeFromPlayer === 'function') window.FileTube.goHomeFromPlayer(updateNowPlayingPanel); },
         onShuffle: function () { var sh = hostCtl('music-shuffle-btn'); if (sh) sh.click(); },
         onArtist: function () { artistTap(undefined, popout); }, // v1.317 (M1): the skin's artist line -> the artist drill, or (in-tab only) the channel grid for a listen video
         // Pocket menus (Dean 2026-09-24): the POCKET MENUS on the Click skins - the whole library as

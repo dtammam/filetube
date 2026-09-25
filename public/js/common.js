@@ -10293,6 +10293,18 @@ if (typeof window !== 'undefined') {
     } catch (_) { /* unparseable -> fall through to navigate */ }
     navigate(playerLaunchOrigin);
   }
+  // v1.332 (Dean D7): HOME from the full-screen player - the sticker's Home row and a held MENU on
+  // the Click wheel (skin-surface.js offers both; music.js and podcasts.js hand it here). Dock the
+  // player (the song keeps playing in the mini, which the dock reparents into the persistent
+  // #player-dock so it survives the #view-root swap), let the view re-render (afterDock - its
+  // un-render clears the full-screen classes), then the SPA router to / (no reload; navigate()
+  // itself resets the launch origin, so a later MENU docks in place).
+  function goHomeFromPlayer(afterDock) {
+    const pl = window.FileTube && window.FileTube.player;
+    try { if (pl && typeof pl.dock === 'function') pl.dock(); } catch (_) { /* the dock is best-effort */ }
+    try { if (typeof afterDock === 'function') afterDock(); } catch (_) { /* the view re-render is best-effort */ }
+    navigate('/');
+  }
   // FR-4 (T4) -- single-entry cache of the last home #view-root NODE (not a
   // re-render) retained across an in-app round trip, so returning to the
   // EXACT SAME home URL reattaches it instantly instead of re-fetching and
@@ -11085,6 +11097,7 @@ if (typeof window !== 'undefined') {
   window.FileTube.playerLaunchOrigin = getPlayerLaunchOrigin;
   window.FileTube.clearPlayerLaunchOrigin = clearPlayerLaunchOrigin;
   window.FileTube.returnToPlayerOrigin = returnToPlayerOrigin;
+  window.FileTube.goHomeFromPlayer = goHomeFromPlayer; // v1.332 D7
   window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
