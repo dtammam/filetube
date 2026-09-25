@@ -29,8 +29,9 @@ const { spawn } = require('node:child_process');
 
 const OUT = process.argv[2];
 if (!OUT) { console.error('usage: node scripts/skin-status-bar-probe.js <out-dir> [skin ...]'); process.exit(2); }
-const SKINS = process.argv.slice(3).length ? process.argv.slice(3) : ['ipod', 'ipod-black', 'ipod-matte'];
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
+// default: every Click colorway in the registry of the tree under test (never a hand-kept list)
+const SKINS = process.argv.slice(3).length ? process.argv.slice(3) : require(path.join(ROOT, 'public', 'js', 'music-skins.js')).clickColorways();
 const VIEWPORTS = (process.env.VIEWPORTS || '390x844,380x700').split(',').map((s) => { const [w, h] = s.split('x').map(Number); return { w, h }; });
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
 

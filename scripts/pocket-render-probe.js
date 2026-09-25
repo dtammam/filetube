@@ -377,7 +377,7 @@ if (MODE === 'shoot') {
   let skins = process.argv.slice(4);
   if (!skins.length) {
     const SK = require(path.join(ROOT, 'public', 'js', 'music-skins.js'));
-    skins = SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id);
+    skins = typeof SK.clickColorways === 'function' ? SK.clickColorways() : SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id);
   }
   shoot(OUT, skins).then(() => process.exit(0), (e) => { console.error(e && e.stack ? e.stack : e); process.exit(1); });
 } else if (MODE === 'compare') {

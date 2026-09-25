@@ -30,7 +30,6 @@
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
-  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte'];
   var DEFAULT_ID = 'apple';
   // v1.332 (Dean, D1): a RETIRED id maps to the skin that replaced it, never to the default. The
   // removed Zune skin's users land on Click (a device with it saved, or the synced pref), and the
@@ -234,6 +233,13 @@
     { id: 'ipod-matte', label: 'Click (Matte)', base: 'ipod', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
+  // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the
+  // ids, and the Click colorways (the entries with the Click pocket menus: the wheel skins Brick
+  // plays on, the Nano tray's colorways, the pop-out tray's chips, the probes' default lists). A new
+  // colorway is its registry entry, its CSS role block and its Settings blurb - nothing else.
+  var IDS = SKINS.map(function (s) { return s.id; });
+  function clickColorways() { return SKINS.filter(function (s) { return s.menus === 'click'; }).map(function (s) { return s.id; }); }
+  function isClickColorway(id) { return typeof id === 'string' && !!BY_ID[id] && BY_ID[id].menus === 'click'; }
 
   function isLegacyId(id) { return typeof id === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_IDS, id); }
   function normalizeSkinId(id) {
@@ -662,7 +668,7 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById,
+    skinById: skinById, clickColorways: clickColorways, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
     // the pocket menus (the pure half - see the block above).

@@ -45,7 +45,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -85,6 +85,13 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
   dom.window.FileTubeMusicSkins = require(skinsPath);
+  if (skinsSrc) {
+    // v1.332 (AC8): a PATCHED registry source (e.g. one extra colorway entry), evaluated as the
+    // module itself - no other file changes, which is the point of the test that uses it
+    const m = { exports: {} };
+    new Function('module', 'window', skinsSrc)(m, dom.window); // eslint-disable-line no-new-func
+    dom.window.FileTubeMusicSkins = m.exports;
+  }
   // v1.250 (F-UNIFY): music.js renders through the shared engine now - load it into this
   // window exactly as music.html does (after music-skins.js, before music.js).
   delete require.cache[surfacePath];
@@ -1860,7 +1867,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'ipod-matte', 'spotify'], 'the FULL pop-out keeps ALL skin chips incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
+    assert.deepStrictEqual(fullChips, require('../../public/js/music-skins.js').IDS.slice().sort(), 'the FULL pop-out keeps ALL skin chips incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
@@ -1873,7 +1880,8 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.300: the
     // Click trio incl. the new Matte colorway.
     const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
-    assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black', 'ipod-matte'], 'exactly the three colorway chips inside the tray');
+    assert.deepStrictEqual(trayChips.sort(), require('../../public/js/music-skins.js').clickColorways().sort(), 'exactly the Click colorway chips inside the tray (the registry\'s own list)');
+    assert.ok(trayChips.length >= 3 && !trayChips.includes('apple') && !trayChips.includes('spotify'), 'non-vacuous: the colorways, never the flat skins');
     assert.match(pipPanelOf(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
     // the HEADLINE interaction: tapping a colorway restyles the LIVE tray (kills the
     // memoized-donor mutant - the wrap must consult the pick on every paint)
@@ -1939,6 +1947,46 @@ test('v1.300 colorways: a Click (Matte) pick keeps its MATTE body in the tray (t
     const pip = holder.pip;
     assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
     assert.match(pipPanelOf(pip).className, /mms-ipod-matte/, 'the MATTE colorway rides the family pick (drop ipod-matte from the tray getSkinId donor and this reds)');
+  } });
+});
+
+// v1.332 AC8 (the INERT SIBLING class, Dean: "Derive every Click list from the skin registry"): ONE
+// extra registry entry - nothing else changed - must reach every Click list: the Nano tray keeps it as
+// its colorway, the tray's chips offer it, and in the tab it gets the pocket menus with Brick's Extras
+// (Brick's wheel-skin rule). Restore any hand-kept literal and one of these goes red.
+const FAKE_ENTRY = "    { id: 'ipod-fake', label: 'Click (Fake)', base: 'ipod', menus: 'click', renderFull: renderIpod },\n";
+function fakeRegistrySrc() {
+  const src = require('node:fs').readFileSync(skinsPath, 'utf8');
+  const anchor = src.indexOf("    { id: 'ipod-matte',");
+  assert.ok(anchor > 0, 'precondition: the registry entry to add after');
+  const eol = src.indexOf('\n', anchor) + 1;
+  return src.slice(0, eol) + FAKE_ENTRY + src.slice(eol);
+}
+test('v1.332 AC8: a fake Click colorway added to the REGISTRY alone reaches the Nano tray (kept as its colorway) and the tray chips', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod-fake', skinsSrc: fakeRegistrySrc(), run: async (dom) => {
+    assert.ok(dom.window.FileTubeMusicSkins.isClickColorway('ipod-fake'), 'precondition: the patched registry is the live one');
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const pip = holder.pip;
+    assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray');
+    assert.match(pipPanelOf(pip).className, /\bmms-ipod-fake\b/, 'the Nano tray kept the new colorway (a hand-kept trio would fall to base silver)');
+    pipPanelOf(pip).querySelector('[data-skin-sticker]').dispatchEvent(new pip.MouseEvent('click', { bubbles: true }));
+    const chips = [...pipPanelOf(pip).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
+    assert.ok(chips.includes('ipod-fake'), 'the tray chips offer it: ' + chips.join(','));
+  } });
+});
+test('v1.332 AC8: ...and in the tab the fake colorway gets the pocket menus and Brick\'s Extras (the wheel-skin rule is the registry\'s)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod-fake', skinsSrc: fakeRegistrySrc(), run: async (dom) => {
+    const P = panel(dom);
+    assert.match(P.className, /\bmms-ipod-fake\b/, 'the panel carries the colorway class');
+    assert.match(P.className, /\bmms-ipod\b/, '...on the shared chassis');
+    dom.window.eval(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'ipod-brick.js'), 'utf8'));
+    const brick = dom.window.FileTubeBrick;
+    assert.ok(brick, 'precondition: the Brick wiring is loaded');
+    const w = brick.wire({ getEngine: () => ({ lcdHost: () => P.querySelector('.ip-lcd-in'), setWheelTakeover() {} }) });
+    assert.strictEqual(w.visible(), true, 'Brick offers itself on the new colorway');
   } });
 });
 

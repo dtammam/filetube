@@ -1446,7 +1446,7 @@
       if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
         try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
       }
-      var chipSkins = trayActive ? skins.filter(function (s) { return s.id === 'ipod' || s.id === 'ipod-black' || s.id === 'ipod-matte'; }) : skins;
+      var chipSkins = trayActive ? skins.filter(function (s) { return s.menus === 'click'; }) : skins; // the registry's Click colorways (v1.332)
       var chips = chipSkins.map(function (s) {
         var on = s.id === active;
         return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
@@ -2588,9 +2588,10 @@
         ec.getSkinId = function () {
           var id = null;
           try { id = origGetSkin ? origGetSkin() : null; } catch (_) { id = null; }
-          // v1.260: the tray is the Click Nano - the colorway family is the Click trio
-          // (ipod / ipod-black / ipod-matte).
-          if (id === 'ipod' || id === 'ipod-black' || id === 'ipod-matte') return id;
+          // v1.260: the tray is the Click Nano - its colorways are the registry's Click
+          // colorways (v1.332: derived, never a hand-kept trio).
+          var reg = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+          if (reg && typeof reg.isClickColorway === 'function' && reg.isClickColorway(id)) return id;
           return 'ipod';
         };
       }

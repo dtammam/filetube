@@ -734,7 +734,8 @@ test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it
   b.dom.window.eval(BRICK_SRC);
   const W = b.dom.window;
   const mk = (skinId, html, bodyClass) => {
-    W.FileTubeMusicSkins = { activeSkinId: () => skinId };
+    // the REAL registry (v1.332: the wheel skins are its Click colorways), only the pick stubbed
+    W.FileTubeMusicSkins = Object.assign({}, require('../../public/js/music-skins.js'), { activeSkinId: () => skinId });
     W.document.body.className = bodyClass || '';
     const panel = W.document.createElement('div');
     panel.className = 'music-nowplaying-panel';
@@ -751,7 +752,7 @@ test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it
   const WHEEL = '<div class="ip-lcd-in"></div><div class="ip-wheelwrap"><div class="ip-wheel"></div></div>';
   assert.strictEqual(mk('ipod', WHEEL).visible(), true, 'Click (silver) offers it');
   assert.strictEqual(mk('ipod-black', WHEEL).visible(), true, '...and black');
-  assert.strictEqual(mk('ipod-matte', WHEEL).visible(), true, '...and Click (Matte) (drop ipod-matte from WHEEL_SKINS and this reds)');
+  assert.strictEqual(mk('ipod-matte', WHEEL).visible(), true, '...and Click (Matte) (every registry Click colorway - drop its menus and this reds)');
   assert.strictEqual(mk('spotify', WHEEL).visible(), false, 'a non-Click skin never offers it, even over wheel markup');
   assert.strictEqual(mk('apple', WHEEL).visible(), false, 'a flat skin never offers it');
   // NOTE (adversarial W3): this case is honest about the FUNCTION but does not describe

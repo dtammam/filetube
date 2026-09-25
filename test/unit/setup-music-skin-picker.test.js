@@ -54,6 +54,10 @@ test('v1.232.1: the skin blurbs avoid the real product names (Dean: cheeky, not 
   // the VALUES (quoted descriptions), not the id keys (which are literally apple/spotify/ipod).
   const values = [...m[1].matchAll(/:\s*'([^']*)'/g)].map((x) => x[1]);
   assert.strictEqual(values.length, require('../../public/js/music-skins.js').IDS.length, 'one blurb per skin');
+  // v1.332: the blurb map stays a map, but every registry id must have its blurb (a new colorway
+  // without one would show an empty card) - the keys are the registry's ids, no more, no fewer
+  const keys = [...m[1].matchAll(/^\s*'?([\w-]+)'?\s*:/gm)].map((x) => x[1]);
+  assert.deepStrictEqual(keys.slice().sort(), require('../../public/js/music-skins.js').IDS.slice().sort(), 'a blurb for every registry skin');
   for (const v of values) assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(v), 'blurb avoids the real product name: "' + v + '"');
 });
 
