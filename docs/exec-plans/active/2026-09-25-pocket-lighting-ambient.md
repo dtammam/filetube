@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/pocket-lighting-ambient
 anchor: spec
 status: Building
-next: build Step 1 (Ambient strength, failing tests first), then Step 2 (sticker menu), then the probes, then the gate.
+next: the gate (adversary + qa, fresh) at the plan-commit sha; then the release.
 design: "Approved 2026-09-25 (Dean in this session: the candidate pick, the menu-fit ruling and the two device answers below)"
 gate: pending
 ---
@@ -162,6 +162,19 @@ and make it scrollable."
   at 380x700 1 of 6, at 375x667 0 of 6; every case that scrolls pans to its max with a real finger
   pan (Input.dispatchTouchEvent). The Skin page (395 px) fits everywhere. Chips: 12 skin chips keep
   6 rows on the Skin page; page 1 = 8 Speed + 4 Lighting chips.
+
+- AC4 measured (scripts/pocket-render-probe.js, the v1.332 copy frozen for both sides; 940 shots per
+  tree: 10 colorways x 2 phones x the levels x Off / Subtle / Pronounced + the pop-out and tray):
+  NOISE FLOOR, two runs of bc889907: 10 shots differ, 11,405 px, max channel delta 2 (one shot,
+  ipod-green-380x700-07b-chapters-long--subtle, 11,373 px; the rest 1-15 px), 0 element-style diffs.
+  BRANCH a4fc6061 vs run A: 30,080 element-style diffs, ALL classified by script: 29,840 inside the
+  sticker wrap subtree (the menu is in every shot's DOM, hidden: Job 2's rows, the wrap's size class,
+  the cap) and 240 in the Settings > Lighting list (ipm-row / ipm-lbl / ipm-pad: the Ambient row) on
+  the 09-lighting level; 0 anywhere else. Pixels: the 09-lighting shots differ by 1,274 px (the new
+  row, expected); outside that level 13 shots differ, 1-8 px at max delta 1, plus the same
+  green-07b-chapters shot at 11,373 px / delta 2 that wobbles on one tree. Off / Subtle / Pronounced
+  are unchanged.
+- Full suites on ad375ce3: Node 22.23.1 9,596 / 9,596, Node 24.20.0 9,596 / 9,596 (0 fail, 0 skipped).
 
 ## Deviations
 - B2 refined: the Lighting chips also hide on a tray BODY (`body.mms-tray`) with no tray hook - the
