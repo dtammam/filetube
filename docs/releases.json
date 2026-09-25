@@ -3232,5 +3232,11 @@
     "date": "2026-09-25",
     "title": "Lighting is back to its earlier look, and turns on from your first tap",
     "intent": "The lighting change in the previous version did not look right on the phone, so the Click skins are back to exactly how they lit in v1.328: the shine, the rim glint, the body reflection and the glass streak. And if you force-close the app and open it again, iOS forgets that you allowed motion access; now your first tap anywhere in the app asks again, and the lighting comes on with your saved strength as soon as you allow it. iOS still shows its Allow prompt once per launch; that part cannot be avoided for a home-screen app."
+  },
+  {
+    "version": "1.331.0",
+    "date": "2026-09-25",
+    "title": "Picking a song inside an album plays the rest of the album",
+    "intent": "In the Click and Seattle menus, choosing a song inside an album, whether you got there from Albums, Artists or Recent Artists, now plays the rest of that album in order instead of jumping to a random song by the same artist after it. When the album finishes, related songs pick up as before. On the main music page, tapping one chapter of an album that is a single long file still plays just that chapter, then moves on."
   }
 ]
