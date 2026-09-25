@@ -52,9 +52,9 @@ window.__boot = function (skin, strength) {
   return window.__engine.lightingState();
 };
 window.__tilt = function (beta, gamma) { window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: beta, gamma: gamma })); };
-window.__props = function () { var p = document.getElementById('music-nowplaying-panel'); return { lx: p.style.getPropertyValue('--lx'), ly: p.style.getPropertyValue('--ly'), lit: p.classList.contains('mms-lit'), state: window.__engine && window.__engine.lightingState() }; };
+window.__props = function () { var p = document.getElementById('music-nowplaying-panel'); return { fx: p.style.getPropertyValue('--fx'), fy: p.style.getPropertyValue('--fy'), dom: p.style.getPropertyValue('--dom'), lit: p.classList.contains('mms-lit'), state: window.__engine && window.__engine.lightingState() }; };
 window.__dock = function () { var p = document.getElementById('music-nowplaying-panel'); p.hidden = true; p.innerHTML = ''; };
-window.__frames = function (n, amp) { return new Promise(function (res) { var i = 0; (function step() { if (i >= n) return res(i); if (amp) window.__tilt(40, 3 + amp * Math.sin(i / 25)); i++; requestAnimationFrame(step); })(); }); };
+window.__frames = function (n, amp) { return new Promise(function (res) { var i = 0; (function step() { if (i >= n) return res(i); if (amp) window.__tilt(58 + amp * 0.3 * Math.cos(i / 25), -10 + amp * Math.sin(i / 25)); i++; requestAnimationFrame(step); })(); }); };
 </script></body></html>`;
 async function main() {
   const chromeBin = findChrome();
@@ -101,33 +101,37 @@ async function main() {
       return (l.listeners || []).filter((x) => x.type === 'deviceorientation').length;
     };
     // 1. per-skin screenshots at three light positions (a REAL deviceorientation event path)
-    const R = 20; // TILT_RANGE_DEG (pocket-lighting.js)
-    const POS = { neutral: [0, 3], 'upper-left': [0 + 0.5 * R, 3 + 0.8 * R], 'lower-right': [0 - 0.5 * R, 3 - 0.8 * R] };
+    // the research's five poses: the KEY pose (the driver's KEY_X / KEY_Y: the map centred), +-6 deg roll,
+    // +-6 deg pitch - as beta/gamma (the roll is gravity-projected: gamma = asin(sin(x) / cos(y)))
+    const D = Math.PI / 180;
+    const bg = (x, y) => [Math.asin(Math.cos(x * D) * Math.sin(y * D)) / D, Math.atan2(Math.sin(x * D), Math.cos(x * D) * Math.cos(y * D)) / D];
+    const KX = await evalJs('window.FileTubePocketLighting.KEY_X'), KY = await evalJs('window.FileTubePocketLighting.KEY_Y'); // the driver's key pose, never a copy
+    const POS = { key: bg(KX, KY), 'roll-minus6': bg(KX - 6, KY), 'roll-plus6': bg(KX + 6, KY), 'pitch-minus6': bg(KX, KY - 6), 'pitch-plus6': bg(KX, KY + 6) };
     for (const skin of ['ipod', 'ipod-black', 'ipod-matte']) {
       const st = await evalJs(`window.__boot(${JSON.stringify(skin)}, ${JSON.stringify(STRENGTH)})`);
       await sleep(300);
-      await evalJs('window.__tilt(0, 3)'); await sleep(120); // the opening pose = neutral
+      await evalJs(`window.__tilt(${POS.key[0]}, ${POS.key[1]})`); await sleep(120); // start at the key pose
       const shots = {};
       for (const [name, [beta, gamma]] of Object.entries(POS)) {
         await evalJs(`window.__tilt(${beta}, ${gamma})`); await sleep(700);
         const props = await evalJs('window.__props()');
         const shot = await send('Page.captureScreenshot', { format: 'png' });
         const file = path.join(OUT, `${skin}-${STRENGTH}-${name}.png`); fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
-        shots[name] = { lx: props.lx, ly: props.ly, lit: props.lit, file };
+        shots[name] = { fx: props.fx, fy: props.fy, dom: props.dom, lit: props.lit, file };
       }
       report.skins[skin] = { booted: st, shots };
     }
     // 2. CPU: moving vs still, the same skin, the same frame count
-    await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(300); await evalJs('window.__tilt(0, 3)'); await sleep(100);
+    await evalJs(`window.__boot('ipod', ${JSON.stringify(STRENGTH)})`); await sleep(300); await evalJs(`window.__tilt(${POS.key[0]}, ${POS.key[1]})`); await sleep(100);
     const metrics = async () => { const m = await send('Performance.getMetrics'); const o = {}; for (const x of m.metrics) o[x.name] = x.value; return o; };
-    const run = async (amp) => {
+    const run = async (amp) => { // amp = degrees of sweep around the key pose (6 = the research's tilt)
       const w0 = (await evalJs('window.__props()')).state.writes;
       const m0 = await metrics(); const n = await evalJs(`window.__frames(${FRAMES}, ${amp})`); const m1 = await metrics();
       const w1 = (await evalJs('window.__props()')).state.writes;
       const per = (k) => Math.round(((m1[k] - m0[k]) * 1000 / n) * 1000) / 1000; // ms per frame
       return { frames: n, writes: w1 - w0, scriptMsPerFrame: per('ScriptDuration'), styleMsPerFrame: per('RecalcStyleDuration'), layoutMsPerFrame: per('LayoutDuration'), taskMsPerFrame: per('TaskDuration'), styleRecalcs: m1.RecalcStyleCount - m0.RecalcStyleCount, layouts: m1.LayoutCount - m0.LayoutCount };
     };
-    report.cpu.moving = await run(20);
+    report.cpu.moving = await run(6);
     // "still" = the sensor went quiet AND the light finished drifting home (the loop parked)
     for (let i = 0; i < 120; i++) { if ((await evalJs('window.__props()')).state.raf === false) break; await sleep(500); }
     report.cpu.still = await run(0);
