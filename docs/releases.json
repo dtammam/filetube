@@ -3226,5 +3226,11 @@
     "date": "2026-09-25",
     "title": "Pocket lighting now reflects a room",
     "intent": "With Lighting on, the Click skins now show a real reflection instead of a soft shine: a window with two panes and a warm lamp slide across the body and the screen glass as you tilt, moving the way a mirror would, with the center button carrying its own small image of the window. Click Black reflects the most, Click Matte softens it like brushed metal, and the click wheel stays matte like the real one. A held tilt keeps its reflection instead of fading away. Off is unchanged."
+  },
+  {
+    "version": "1.330.0",
+    "date": "2026-09-25",
+    "title": "Lighting is back to its earlier look, and turns on from your first tap",
+    "intent": "The lighting change in the previous version did not look right on the phone, so the Click skins are back to exactly how they lit in v1.328: the shine, the rim glint, the body reflection and the glass streak. And if you force-close the app and open it again, iOS forgets that you allowed motion access; now your first tap anywhere in the app asks again, and the lighting comes on with your saved strength as soon as you allow it. iOS still shows its Allow prompt once per launch; that part cannot be avoided for a home-screen app."
   }
 ]

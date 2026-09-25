@@ -116,6 +116,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.330.0 - Pocket lighting back to the v1.328 look, and it asks for motion access from your first tap (2026-09-25)
+
+- **The v1.329.0 reflection model is reverted** (Dean on the iPhone: "Something about 1.329 is just not
+  good. It is literally just like a white dot with two rectangles that float around aggressively ... let's
+  just go back to 1.328's look basically exactly as we had it"). The four lighting files (the driver, the
+  CSS, the unit test, the probe) are restored byte-for-byte from v1.328.0, so Subtle and Pronounced look
+  exactly as they did there (the specular hot spot, the rim crescents, the body band, the double glass
+  streak). Why it failed on the device, in one line: physically correct amounts of motion drawn as two
+  flat rectangles and a dot read as two rectangles and a dot flying around; the research, the numbers, the
+  outcome and the learnings are recorded in
+  docs/exec-plans/completed/2026-09-25-pocket-lighting-reflection.md (the plan is marked REVERTED; tracker
+  #276 kept as the record).
+- **The first-tap ask** (Dean, on the installed app: "if I force close my app and reopen it ... I have to
+  go to settings to re-enable the pronounced or subtle option ... every time I close and reopen, I'm
+  prompted ... How can it just be on?"). Diagnosed: iOS does not persist a home-screen web app's motion
+  grant across launches and only a user gesture may ask; iOS Settings exposes no motion toggle for a PWA
+  (only Notifications; the global Safari switch went with iOS 13); a Safari tab remembers the grant, the
+  installed app does not. Since v1.327 the panel does not light until the sensor streams, and the only tap
+  that asked was the Settings > Lighting row, hence the trip to Settings on every launch. Now, with a
+  strength stored and no grant this session, the first tap anywhere in the app (Play, the wheel's buttons,
+  a menu row, the browse view) asks from inside that gesture; allow it and the lighting comes on with your
+  strength at the first sensor sample; deny and the Lighting row shows the note. Once per session; the
+  Lighting row still asks itself; Off, a dock, a hidden tab and a skin switch all unbind the listener.
+  Gate r1 APPROVED @256a4539 (the adversary seat alone, Dean's call for speed: the revert half is byte-identical to files gated at v1.328; the seat read WebKit's source for the gesture rule); plan
+  docs/exec-plans/completed/2026-09-25-pocket-lighting-first-tap-ask.md.
+  Disclosed: the iOS prompt itself still appears once per launch (no way around it for a home-screen web
+  app); what goes away is the trip into Settings; on iOS the gesture rule is read from WebKit's source, not verified on a device; a wheel drag that ends in touchcancel does not ask (the next tap does); a script-issued click with no gesture would record a deny the user never made (#277).
+
 ### v1.329.0 - Pocket lighting, third swing: a reflection, not a sheen (2026-09-25)
 
 - **Pocket lighting, the reflection swing** (Dean on v1.328.0: "It's really good. It's just not
