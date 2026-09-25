@@ -12,6 +12,8 @@
   **Planned for v1.332.0 with two more asks from Dean (2026-09-25):** remove Seattle entirely ("I don't
   use it, don't want the headaches"; a device saved on Seattle becomes Click) and add a Click (Red) skin,
   the (PRODUCT)RED look (red body, white wheel), as the design system's first one-token-block colorway.
+  Plus a fast way home from the player (Dean: "Right now I must press menu many times then the FileTube
+  icon"): a Home row at the top of the sticker menu and press-and-hold MENU, both docking the player.
   Intake D1-D6 and the build plan: docs/exec-plans/active/2026-09-25-pocket-design-system.md.
 - [ ] **Future Click colorways, each one token block on the pocket design system** (Dean, 2026-09-25:
   "What iconic color or version am I missing we can plan it to be w new ones with this design system").

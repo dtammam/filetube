@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/pocket-design-system
 anchor: spec
 status: Building
-next: build Step 1 (remove Seattle), then Steps 2-5 in order; one gate (adversary + qa) at the end, max two rounds; release v1.332.0.
+next: build Step 1 (remove Seattle), then Steps 2-6 in order; one gate (adversary + qa) at the end, max two rounds; release v1.332.0.
 design: "Approved 2026-09-25 (Dean's intake in the v1.331 session: D1-D6 below, every answer his)"
 gate: pending
 ---
@@ -32,6 +32,7 @@ design system" - planned below as future colorways (NOT built this swing).
 | D4 | Release shape | **One release**, v1.332.0, one gate (adversary + qa) |
 | D5 | Future colorways (planned, not built) | **Silver** (the 2007 iPod classic aluminum), **Black + red wheel** (the U2 Special Edition look - a cheeky name, never the band's), **Mini pastels** (the iPod mini's blue, green, pink, gold). Nano rainbow declined |
 | D6 | Seattle's pocket-menu pieces | removed entirely with it (pivots, swipe, pad-moves-pivot, Games row, two-line lists, the Metro screen) |
+| D7 | A fast way from the player to FileTube's home page (Dean: "Right now I must press menu many times then the FileTube icon") | **BOTH: a Home row at the top of the corner sticker's menu** (every skin, two taps from any screen or menu depth) **and press-and-hold MENU** on the Click wheel. Either one docks the player (the song keeps playing in the mini-player) and navigates to the app's home page |
 
 Dean's standing run rules apply: ONE plan (this), ONE builder, ONE gate at the end (adversary is
 the floor; add qa - this touches the player engine and a synced pref), max two rounds, one
@@ -203,6 +204,21 @@ active-skin read rewrites the stored value once when it was legacy (so the synce
 - **AC9 Everything else unchanged.** Full `npm test` green on Node 22.23.1 and 24.20.0; the pocket
   menu integration suites green on Click (their Seattle cases rewritten or removed as above).
 
+- **AC10 Home from the sticker (D7).** The sticker menu's FIRST row is Home on every skin that
+  draws the sticker (Click family, Red, Cider, Nordic; music and podcasts). Tapping it docks the
+  player (playback continues, the mini-player shows) and lands on `/` through the SPA router (no
+  full reload), in ONE tap after opening the sticker. Integration-bound through the real sticker
+  click; the menu's other rows unchanged. In the desktop pop-out (document picture-in-picture) the
+  row must act on the MAIN window (its router) or be left out there - decide, bind it, disclose it.
+- **AC11 Hold MENU = Home (D7).** On the Click wheel, a press held past a threshold (propose ~600 ms;
+  check it against the existing hold-to-scan timing on the left/right zones and reuse that
+  machinery, one down event, not pointerdown + touchstart both) goes home exactly like AC10, and
+  the release does NOT also fire MENU's tap (no climb, no dock-twice). A short press is unchanged.
+  Moving off the zone, pointercancel, a dock or a destroy mid-hold cancels it, and every listener
+  or timer it adds is released on every arm (the v1.271 unbind class). A haptic tick on trigger
+  where the wheel already ticks. Bound: short press still climbs; a held press goes home once;
+  cancel arms; mutants on the threshold, the click-suppression and each cancel arm go RED.
+
 ## Steps (each ends in a commit; a Demo is what can be seen once it lands)
 
 1. **Remove Seattle** (+ the legacy map, AC1/AC2). Demo: Settings shows five skins; a device
@@ -215,7 +231,10 @@ active-skin read rewrites the stored value once when it was legacy (so the synce
 5. **Click (Red)** (AC7): the registry entry, the one token block from the samples, the blurb,
    the side-by-side PNG (send it to Dean with SendUserFile if available, else list its path).
    Demo: pick Click (Red) in Settings; the menus, wheel, lighting and Brick all work on it.
-6. **Gate** (adversary + qa, fresh seats, brief below), fix loop max two rounds, then release.
+6. **Home (D7, AC10/AC11)**: the sticker's Home row, then hold MENU. Demo: from Now Playing or a
+   deep menu level, sticker > Home lands on the home page with the song still playing; holding
+   MENU does the same.
+7. **Gate** (adversary + qa, fresh seats, brief below), fix loop max two rounds, then release.
 
 ## Gate brief (for the seats)
 
@@ -226,7 +245,9 @@ catches it; (3) the controller after the pivot removal - every Click menu path, 
 the pop-out, dock/undock, destroy() unbinding every listener it still binds (the v1.271 unbind
 class); (4) the overflow census - add a new text element and prove the census fails; (5) the
 INERT SIBLING class - find any Click list still hand-kept; (6) Red's reference fidelity (the
-side-by-side) and its lighting on both strengths; (7) the token-lint and containment ceilings.
+side-by-side) and its lighting on both strengths; (7) the token-lint and containment ceilings;
+(8) Home (D7): the hold's release firing MENU too, a hold across a dock / skin switch / destroy,
+the pop-out window's Home, and the router landing (same-route and cross-route) with playback intact.
 
 ## Release (v1.332.0, docs/RELEASING.md + AGENTS.md)
 
