@@ -66,8 +66,15 @@ Builder decisions (B, disclosed):
   `mayPrompt = UserGestureIndicator::processingUserGesture(&document)`, and `DeviceOrientationEvent::
   requestPermission` REJECTS with `NotAllowedError` ("requires a user gesture to prompt") when the state
   is still Prompt (WebKit main: Source/WebCore/dom/DeviceOrientationAndMotionAccessController.cpp:90,
-  Source/WebCore/dom/DeviceOrientationEvent.cpp requestPermission). The token is forwarded only through
-  a short `setTimeout` (Source/WebCore/page/DOMTimer.cpp:177, :329-335), never across a fetch.
+  Source/WebCore/dom/DeviceOrientationEvent.cpp requestPermission). CORRECTED at gate r1 (adversary S2,
+  re-read at source by the builder): the token IS forwarded across a short `setTimeout`
+  (Source/WebCore/page/DOMTimer.cpp:177, :329-335) AND across a `fetch` resolution for a while
+  (Source/WebCore/Modules/fetch/WindowOrWorkerGlobalScopeFetch.cpp:66-72,
+  `maximumIntervalForUserGestureForwardingForFetch`), but a response BODY read re-forwards it
+  `GestureScope::MediaOnly` (Source/WebCore/Modules/fetch/FetchBodyConsumer.cpp:577-581), and
+  `processingUserGesture()` requires scope `All` (Source/WebCore/dom/UserGestureIndicator.h:82) while
+  `processingUserGestureForMedia()` does not (:83). So after the open's JSON read, `play()` may still start but
+  the motion prompt may not - every open path reads a body before it paints.
 - So the ask must run synchronously INSIDE the opening tap, at the seams every open passes through
   synchronously: the SPA router's `navigate()` for a player-open URL (the dock tap -> `/music?nowplaying=1`,
   a home or search card -> `/music?play=` / `/podcasts?play=`), and the views' play seams (music.js
@@ -128,7 +135,8 @@ Builder decisions (B, disclosed):
 ### Item 3 - tap to play
 
 - player.js: ONE auto-start helper replaces the swallowed `play().catch(function () {})` sites of the
-  load/resume path; it records `autostart:ok` / `autostart:refused` (the error name, whether the page ever
+  load/resume path (not the desktop live-transcode restart, `startLiveStream`, which also serves seeks - it
+  keeps its swallowed catch; desktop only, disclosed at gate r1 qa S2); it records `autostart:ok` / `autostart:refused` (the error name, whether the page ever
   had a tap: `navigator.userActivation.hasBeenActive`, the visibility) in the lifecycle log, and on a
   `NotAllowedError` raises a per-load refused flag (`player.autoStartRefused()`) + a document event; a
   `play` of the element, a new load and `close()` clear it.
@@ -139,7 +147,8 @@ Builder decisions (B, disclosed):
 ### Item 4 - #281 (c), (d)
 
 - (c) Opening the Skin or Extras page focuses its Back; Back focuses the row that opened the page; each
-  chip group's `aria-label` becomes `aria-labelledby` on its `.mms-sm-h` (unique ids per engine).
+  chip group's `aria-label` becomes `aria-labelledby` on its `.mms-sm-h` (SUPERSEDED in the build: static
+  ids, one sticker menu per document - see Deviations).
 - (d) A test that removes the second `refreshLighting()` in the answer's `.then` goes red; the no-filter
   lock takes the adversary's `(?:-webkit-)?(?:mask(?:-[\w-]+)?|box-reflect)\s*:`.
 
@@ -175,6 +184,15 @@ Builder decisions (B, disclosed):
 - The sticker menu's heading ids are static (`mms-sm-speed` / `-light` / `-skin`): a per-engine counter was
   dead defence (one sticker menu per document) and its mutant survived.
 - A rejected motion ask (no gesture) is no longer a deny (research, item 1): it re-arms the first-tap ask.
+- AC2's "two runs of one tree first" was skipped: the Off delta measured ZERO (340/340 shots, 0 px, 0 styles),
+  so no noise floor was needed to separate it (gate r1 qa S1 asked for this to be a Deviation).
+- Gate r1 fix round (both seats CHANGES r1 @47d3fb81): the sticker image that loads late now paints the
+  LATEST ask (nothing if unlit meanwhile); both Shuffle buttons ask inside their tap; the Extras
+  "not available" page keeps focus on Back; the Tap to play cue stacks at z 39, under the sticker wrap (40);
+  a redraw reuses the gloss canvas's backing store (qa S4); the WebKit gesture statements corrected at source
+  (adversary S2); tests for the late load, Shuffle, the not-available focus, the cue's stacking, the cue's
+  hidden / not-full-skin arms, a refusal on a playing element, the dead driver's late answer and a row pick's
+  session answer (adversary S1). Disclosed, not fixed: the cue is silent to a screen reader (qa S3).
 
 ## Build record
 

@@ -169,6 +169,44 @@ test('the open-ask\'s answer flows like a Settings pick: a deny = the note on th
   } finally { g.restore(); }
 });
 
+test('a late answer after the driver died re-binds nothing: the open-ask pending, the engine destroyed (a view swap), the grant lands - no sensor listener, no lit panel', async () => {
+  const w = engineWorld();
+  let orient = 0;
+  const a0 = w.W.addEventListener.bind(w.W); const r0 = w.W.removeEventListener.bind(w.W);
+  w.W.addEventListener = (t, f, o) => { if (t === 'deviceorientation') orient += 1; return a0(t, f, o); };
+  w.W.removeEventListener = (t, f, o) => { if (t === 'deviceorientation') orient -= 1; return r0(t, f, o); };
+  try {
+    w.L.askForOpen(w.W);
+    const e = engineBoot(w.W); e.paint();
+    assert.strictEqual(orient, 1, 'populated: the painted driver listens');
+    e.destroy();
+    assert.strictEqual(orient, 0);
+    w.asks.answer('granted'); await settleAll(4);
+    assert.strictEqual(orient, 0, 'the late grant found no live driver to re-bind');
+    assert.ok(!w.panel.classList.contains('mms-lit'));
+  } finally { w.restore(); }
+});
+
+test('a Lighting pick\'s answer is the SESSION\'s: a driver born after a deny adopts the note; a re-pick clears the session\'s old answer, so a driver born while it is pending adopts nothing stale', async () => {
+  const w = engineWorld();
+  try {
+    const d = w.L.create({ panel: w.panel, win: w.W, isPocket: () => true, store: w.W.localStorage });
+    d.choose('subtle');
+    w.asks.answer('denied'); await settleAll(4);
+    d.destroy();
+    const e = engineBoot(w.W); e.paint();
+    assert.strictEqual(e.lightingState().note, w.L.NOTE_DENIED, 'the deny a row pick got is the session\'s answer');
+    e.destroy();
+    const d2 = w.L.create({ panel: w.panel, win: w.W, isPocket: () => true, store: w.W.localStorage });
+    d2.choose('pronounced'); // a re-pick after the deny: asks again, the old answer is gone
+    assert.strictEqual(w.asks.n, 2);
+    const e2 = engineBoot(w.W); e2.paint();
+    assert.strictEqual(e2.lightingState().note, '', 'born while the re-pick is pending: no stale deny adopted');
+    assert.strictEqual(e2.lightingState().permission, '');
+    e2.destroy(); d2.destroy();
+  } finally { w.restore(); }
+});
+
 test('a REJECTED ask (no gesture: WebKit\'s NotAllowedError) is not a deny: no note, the session stays un-asked, the first-tap ask re-arms and the next tap asks', async () => {
   const w = engineWorld();
   try {
@@ -262,7 +300,7 @@ const MUSIC_VIEW = `<body><div id="view-root" data-view="music">
   <div id="music-content"></div><div id="music-empty" hidden></div>
 </div></body>`;
 
-async function bootMusic({ album = false, skin = 'ipod', win = {}, query = '', userActivation } = {}) {
+async function bootMusic({ album = false, skin = 'ipod', win = {}, query = '', userActivation, tab = 'songs' } = {}) {
   const dom = new JSDOM(MUSIC_VIEW, { url: 'http://localhost/music' + query, pretendToBeVisual: true });
   const W = dom.window;
   const restore = withGlobals(W);
@@ -281,7 +319,7 @@ async function bootMusic({ album = false, skin = 'ipod', win = {}, query = '', u
       ensureTheaterButton: () => null,
     },
   };
-  W.localStorage.setItem('filetube_music_tab', 'songs');
+  W.localStorage.setItem('filetube_music_tab', tab);
   loadModules(W, { skin });
   delete require.cache[musicPath];
   require(musicPath);
@@ -331,6 +369,29 @@ test('music: the Jump-back tile tap asks inside the tap; a non-Click skin, a des
     tapEl(n.W, panel.querySelector('.ip-lcd') || panel);
     assert.strictEqual(n.asks.n, 1, 'the first tap on the player asks (the v1.330 first-tap ask stands)');
   } finally { n.restore(); }
+});
+
+// gate r1 (adversary W2): both Shuffle buttons play only after loadSongs' fetch AND its JSON read - WebKit keeps
+// a tap's gesture across the fetch but the body read leaves it media-only, so the ask must run in the handler
+test('music: both Shuffle buttons (the toolbar\'s and an album page\'s) ask INSIDE their tap, before the fetch', async () => {
+  const t = await bootMusic();
+  try {
+    tapEl(t.W, t.W.document.getElementById('music-shuffle-btn'));
+    assert.strictEqual(t.asks.n, 1, 'the toolbar Shuffle asked in the same turn as its tap');
+    await settleAll(); // its play lands after the fetch (and must not leak into the next realm)
+    assert.strictEqual(t.asks.n, 1, 'and the play that follows the fetch does not ask again');
+  } finally { t.restore(); }
+  const d = await bootMusic({ album: true, tab: 'albums' });
+  try {
+    const card = d.W.document.querySelector('.music-album-card');
+    assert.ok(card, 'the Albums grid rendered');
+    tapEl(d.W, card); await settleAll();
+    assert.strictEqual(d.asks.n, 0, 'opening an album is browsing, not the player');
+    const sh = d.W.document.querySelector('.music-drill-shuffle');
+    assert.ok(sh, 'the album page has its Shuffle');
+    tapEl(d.W, sh);
+    assert.strictEqual(d.asks.n, 1, 'the album page\'s Shuffle asked in the same turn as its tap');
+  } finally { d.restore(); }
 });
 
 // ---------------------------------------------------------------- the REAL podcasts.js open path

@@ -5058,8 +5058,10 @@ if (typeof module !== 'undefined' && module.exports) {
         } else {
           // v1.23.6 (Dean): auto-start on load for MOBILE too, not just
           // desktop -- picking a song/video just plays, no manual tap needed.
-          // On iOS the FIRST play of a session may be refused (no user gesture
-          // survives the async progress fetch) -> autoStart logs it and raises
+          // On iOS a play may be refused: a page no tap ever touched (a
+          // notification's) has no gesture at all, and a tap's gesture is
+          // forwarded across its fetches only for a while (WebKit
+          // maximumIntervalForUserGestureForwardingForFetch) -> autoStart logs it and raises
           // the refused flag (v1.334: the skin's "Tap to play" cue); once the
           // user has tapped play once, the persistent <video> is unlocked and
           // every later pick auto-plays. The resume-overlay / saved-progress

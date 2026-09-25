@@ -207,6 +207,13 @@ test('the engine\'s cue: shown while refused + paused, on every skin; survives a
     assert.strictEqual(x.cue().length, 0, 'a playing element never shows it (reflect settles it)');
     x.st.paused = true; x.e.reflect();
     assert.strictEqual(x.cue().length, 1);
+    // gate r1 (adversary S1): the cue needs the FULL skin, shown
+    x.panel.hidden = true; x.e.reflect();
+    assert.strictEqual(x.cue().length, 0, 'a hidden panel never carries the cue');
+    x.panel.hidden = false; x.e.reflect(); assert.strictEqual(x.cue().length, 1);
+    x.panel.classList.remove('mms-full'); x.flip(true);
+    assert.strictEqual(x.cue().length, 0, 'nor a panel that is not the full-screen skin');
+    x.panel.classList.add('mms-full'); x.flip(true); assert.strictEqual(x.cue().length, 1);
     x.st.paused = false;
     x.cue()[0].dispatchEvent(new x.win.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(x.st.pp, 1, 'already playing: the tap never presses play/pause (it would PAUSE)');
@@ -242,4 +249,24 @@ test('every auto-start branch of the load reports a refusal (music, podcast, TV,
       assert.ok(r.log().some((e) => e.type === 'autostart:refused'), kind + ': and was logged');
     } finally { r.close(); }
   }
+});
+
+test('the cue sits UNDER the sticker wrap (an open sticker menu stays on top and keeps its taps - gate r1 qa W1), over the skin chrome', () => {
+  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
+  const z = (sel) => Number((new RegExp('\\n {2}' + sel.replace(/[.]/g, '\\.') + '\\{[^}]*?z-index:(\\d+)').exec(css) || [])[1]);
+  const cue = z('.mms-tapplay'), wrap = z('.mms-sticker-wrap');
+  assert.ok(cue > 0 && wrap > 0, 'both z-indexes found');
+  assert.ok(cue < wrap, `the cue (${cue}) stacks under the sticker wrap (${wrap})`);
+  assert.ok(cue > 5, 'and over the skin chrome (z 5 at most)');
+});
+
+test('a refusal on an element that is already PLAYING (a tap got there first) raises nothing', async () => {
+  const r = realm({ url: 'http://localhost/music' });
+  try {
+    Object.defineProperty(r.w.HTMLMediaElement.prototype, 'paused', { configurable: true, get: () => false }); // (the element is cloned in at the first load)
+    r.player.load('t1', { ...MUSIC_DATA }, { slot: r.slot });
+    await settle();
+    assert.ok(r.log().some((e) => e.type === 'autostart:refused'), 'precondition: the auto-start was refused');
+    assert.strictEqual(r.player.autoStartRefused(), false, 'playing anyway: no Tap to play');
+  } finally { r.close(); }
 });

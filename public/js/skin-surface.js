@@ -239,10 +239,14 @@
         if (!menu.isConnected || menu.hidden || !extrasStillOnPage()) return;
         if (extrasBaseId() !== baseId) return;
         var item = rs[0];
-        if (!item || item.id !== baseId) { menu.innerHTML = buildExtrasNoteHtml('Extras aren’t available for this track.'); return; }
-        extrasItem = item;
-        var hadBack = false; // #281 (c): the loaded page replaces the loading page's Back - keep focus there
+        var hadBack = false; // #281 (c): the page that replaces the loading page gets a NEW Back - keep focus there
         try { var ae = menu.ownerDocument.activeElement; hadBack = !!(ae && menu.contains(ae) && ae.hasAttribute('data-skin-extras-back')); } catch (_) { hadBack = false; }
+        if (!item || item.id !== baseId) {
+          menu.innerHTML = buildExtrasNoteHtml('Extras aren’t available for this track.');
+          if (typeof cfg.onRendered === 'function') { try { cfg.onRendered(hadBack); } catch (_) { /* best-effort */ } } // gate r1 (qa W3)
+          return;
+        }
+        extrasItem = item;
         menu.innerHTML = buildExtrasHtml(item, rs[1]);
         if (typeof cfg.onRendered === 'function') { try { cfg.onRendered(hadBack); } catch (_) { /* best-effort */ } }
       });

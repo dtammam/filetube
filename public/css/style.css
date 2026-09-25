@@ -11808,7 +11808,7 @@ html[data-modern="on"] .video-uploader {
      one clear pill over the upper half of the skin (the art / the LCD, never the wheel or the sticker),
      shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
      filter: a lit Click panel sits under it. */
-  .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:41; /* token-exempt: local stacking - over the skin chrome, beside the sticker (40) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-family); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
+  .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:39; /* token-exempt: local stacking - over the skin chrome (z 5 at most), UNDER the sticker wrap (40) so an open sticker menu stays on top (gate r1 qa W1) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-family); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
   .mms-tapplay svg{ width:22px; height:22px; fill:currentColor; flex:none; }
   .mms-tapplay:focus-visible{ outline:2px solid var(--on-accent); outline-offset:2px; }
 

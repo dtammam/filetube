@@ -558,6 +558,18 @@ test('#281 (c) sticker focus: the Skin and Extras pages open on Back, Back retur
     keyTap(chip);
     assert.ok(!chip.isConnected, 'the chip tap rebuilt page 1');
     assert.strictEqual(act() && act().getAttribute('data-skin-lighting'), 'subtle', 'focus stayed on the Subtle chip');
+    // gate r1 (qa W3 = adversary W3): the "not available" arm replaces the loading page too - Back keeps focus
+    keyTap(menuEl().querySelector('[data-skin-extras]'));
+    resolveItem(null); await flush(); await flush(); await flush();
+    assert.match(menuEl().textContent, /available/, 'populated: the not-available page landed');
+    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'focus followed to its Back, not BODY');
+    // and a load never STEALS focus: moved off the loading Back first, the loaded page leaves it where it is
+    keyTap(act());
+    keyTap(menuEl().querySelector('[data-skin-extras]'));
+    const stk = P(b).querySelector('[data-skin-sticker]'); stk.focus();
+    resolveItem({ id: 'v1', title: 'T' }); await flush(); await flush(); await flush();
+    assert.strictEqual(act(), stk, 'focus stayed on the sticker the user moved to');
+    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
     const sp = menuEl().querySelector('[data-skin-speed="1.5"]');
     keyTap(sp);
     assert.strictEqual(act() && act().getAttribute('data-skin-speed'), '1.5', 'and on the Speed chip');
@@ -1076,7 +1088,7 @@ function stickerRig(b, { w = 52 } = {}) {
       shadowColor: '', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, fillStyle: '',
       drawImage(...a) { calls.push(['drawImage', c.className, ...a.slice(1)]); },
       beginPath() {}, arc(...a) { calls.push(['arc', c.className, ...a]); }, fill() { calls.push(['fill', c.className]); },
-      fillRect() { calls.push(['fillRect', c.className]); },
+      fillRect() { calls.push(['fillRect', c.className]); }, clearRect() { calls.push(['clearRect', c.className]); },
       createRadialGradient(...a) { const g = { stops: [] }; calls.push(['gradient', c.className, a, g]); g.addColorStop = (o, col) => g.stops.push([o, col]); return g; },
     };
   };
@@ -1190,4 +1202,40 @@ test('v1.334 the sticker never lights on an UNLIT panel: a mouse moving the ligh
     assert.ok(!lit(b), 'precondition: the panel is not lit (no sensor sample yet)');
     assert.ok(!P(b).querySelector('canvas'), 'and the sticker carries nothing');
   } finally { r.restore(); b.restore(); }
+});
+
+// gate r1 (qa W2 = adversary W1): a sticker image that loads LATE paints the LATEST ask - nothing if the panel went
+// unlit meanwhile (Off byte-identical), the current strength if it changed
+test('v1.334 a late-loading sticker image: unlit meanwhile = nothing drawn; lit = drawn at the latest strength', () => {
+  const b = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const r = stickerRig(b);
+  let loaded = false;
+  Object.defineProperty(b.win.HTMLImageElement.prototype, 'complete', { configurable: true, get() { return loaded; } });
+  Object.defineProperty(b.win.HTMLImageElement.prototype, 'naturalWidth', { configurable: true, get() { return loaded ? 512 : 0; } });
+  try {
+    b.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', tilt: 'straight' }));
+    b.engine.paint();
+    assert.ok(lit(b), 'lit');
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the image is not loaded yet: nothing drawn');
+    const img = r.btn().querySelector('img');
+    tap(b, r.btn()); tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    assert.ok(!lit(b), 'the Off chip unlit the panel while the image was loading');
+    loaded = true; img.dispatchEvent(new b.win.Event('load'));
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the late load draws NOTHING on the unlit panel');
+  } finally { r.restore(); b.restore(); }
+  const c = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const q = stickerRig(c);
+  let loaded2 = false;
+  Object.defineProperty(c.win.HTMLImageElement.prototype, 'complete', { configurable: true, get() { return loaded2; } });
+  Object.defineProperty(c.win.HTMLImageElement.prototype, 'naturalWidth', { configurable: true, get() { return loaded2 ? 512 : 0; } });
+  try {
+    c.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', tilt: 'straight' }));
+    c.engine.paint();
+    const img = q.btn().querySelector('img');
+    tap(c, q.btn()); tap(c, P(c).querySelector('[data-skin-lighting="subtle"]'));
+    assert.ok(lit(c));
+    loaded2 = true; img.dispatchEvent(new c.win.Event('load'));
+    assert.deepStrictEqual(q.parts(), { shade: true, gloss: true }, 'lit: the late load draws');
+    assert.strictEqual(q.grads().at(-1)[3].stops[0][1], 'rgba(255,255,255,0.3)', 'at the LATEST strength (Subtle), not the one it waited under');
+  } finally { q.restore(); c.restore(); }
 });

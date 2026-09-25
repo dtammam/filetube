@@ -171,8 +171,11 @@
   // in that skin in general without requiring the sticker button?" The first-tap ask (below) arms only
   // once the Click panel is painted - after the async open (an album fetch, the router's view fetch) -
   // so the tap that OPENED the player never asked and the next tap (the sticker) did. WebKit prompts only
-  // while a gesture token is live (DeviceOrientationAndMotionAccessController::shouldAllowAccess), which
-  // never survives a fetch - so the seams every open passes through SYNCHRONOUSLY call this from inside
+  // while a FULL gesture token is live (DeviceOrientationAndMotionAccessController::shouldAllowAccess ->
+  // processingUserGesture). A fetch forwards the tap's token for a while (WindowOrWorkerGlobalScopeFetch.cpp),
+  // but reading a response BODY re-forwards it media-only (FetchBodyConsumer.cpp, GestureScope::MediaOnly):
+  // play() may still start, the motion prompt may not (gate r1 adversary S2) - and every open reads a body
+  // before it paints. So the seams every open passes through SYNCHRONOUSLY call this from inside
   // the opening tap: the router's navigate() into the player (common.js) and the views' play seams
   // (music.js, podcasts.js). It asks only when that open will show a Click skin that would light: a
   // strength stored, a Click colorway active for this viewport (never the tray), the permission API, no
@@ -251,8 +254,10 @@
     stkSilhouette(ctx, img, w, h, dpr, pad * dpr - off, pad * dpr);
   }
   function stkDrawGloss(cv, img, w, h, dpr, sin, strong, light) {
-    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); // (a resize clears it)
+    var cw = Math.round(w * dpr), ch = Math.round(h * dpr);
     var ctx = cv.getContext('2d');
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; } // (a resize clears it)
+    else ctx.clearRect(0, 0, cw, ch); // gate r1 (qa S4): a redraw reuses the backing store
     stkSilhouette(ctx, img, w, h, dpr, 0, 0);
     ctx.globalCompositeOperation = 'source-in'; // the highlight lands only inside the sticker's own pixels
     var cos = sin ? STK_TILT_COS : 1;
@@ -289,9 +294,10 @@
     if (img && !(img.complete && img.naturalWidth > 0)) {
       if (!img.getAttribute('data-stk-wait')) {
         img.setAttribute('data-stk-wait', '1');
-        img.addEventListener('load', function () { var d = STK_DRAWN && STK_DRAWN.get(btn); paintSticker(btn, (d && d.want) || light, o); }, { once: true });
+        // gate r1 (both seats): on load, paint the LATEST ask - and nothing if a clear (unlit) came meanwhile
+        img.addEventListener('load', function () { var d = STK_DRAWN && STK_DRAWN.get(btn); if (!d || !d.want) return; paintSticker(btn, d.want, d.wantO); }, { once: true });
       }
-      if (STK_DRAWN) STK_DRAWN.set(btn, { key: '', x: NaN, y: NaN, strong: null, want: light });
+      if (STK_DRAWN) STK_DRAWN.set(btn, { key: '', x: NaN, y: NaN, strong: null, want: light, wantO: o });
       return;
     }
     var dpr = Math.min(3, Math.max(1, Number(win && win.devicePixelRatio) || 1));
@@ -305,7 +311,7 @@
       stkDrawGloss(gloss, img, w, h, dpr, sin, strong, light);
       drawn.x = light.x; drawn.y = light.y; drawn.strong = strong;
     }
-    drawn.want = light;
+    drawn.want = light; drawn.wantO = o;
     if (STK_DRAWN) STK_DRAWN.set(btn, drawn);
   }
 
