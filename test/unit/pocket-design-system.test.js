@@ -70,17 +70,25 @@ test('AC4: every registry colorway has EXACTLY ONE block that sets every role, a
   for (const r of ROLES) assert.ok(read.has(r), r + ' is set but never read (a dead role)');
 });
 
-test('AC4: no rule but its own block names a colorway class - the structural rules exist ONCE', () => {
+// Gate r1 W2 (adversary, measured): the lock counted only rules that SET a role, so a second,
+// role-free `.mms-ipod-red{ background:... }` and an attribute spelling `[class~="mms-ipod-red"]`
+// both slipped past it. Now ANY mention of a colorway class in ANY selector (a class selector or an
+// attribute selector naming it) other than its ONE block fails - and the block itself is one rule.
+test('AC4: no rule but its own block names a colorway class, in any spelling - the structural rules exist ONCE', () => {
   const others = clickIds().filter((id) => id !== 'ipod').map(classOf);
   assert.ok(others.length >= 2, 'precondition: the non-default colorways');
+  const names = (sel, cls) => new RegExp('(^|[^\\w-])' + cls + '(?![\\w-])').test(sel);
   const bad = [];
-  for (const r of ALL) {
-    for (const cls of others) {
-      const re = new RegExp('\\.' + cls + '(?![\\w-])');
-      if (re.test(r.sel) && r.sel !== '.' + cls) bad.push(r.sel);
-    }
+  for (const cls of others) {
+    const hits = ALL.filter((r) => names(r.sel, cls));
+    const blocks = hits.filter((r) => r.sel === '.' + cls);
+    if (blocks.length !== 1) bad.push(cls + ': ' + blocks.length + ' rules with the bare selector (one block, no second rule)');
+    for (const r of hits) if (r.sel !== '.' + cls) bad.push(r.sel);
   }
-  assert.deepStrictEqual(bad, [], 'a colorway-specific structural rule');
+  assert.deepStrictEqual(bad, [], 'a colorway-specific rule outside its one block');
+  // not vacuous: the two shapes the gate measured are caught
+  assert.ok(names('[class~="mms-ipod-red"] .ip-wheel', 'mms-ipod-red') && names('.mms-ipod-red.mms-lit', 'mms-ipod-red'));
+  assert.ok(!names('.mms-ipod-redder', 'mms-ipod-red'), 'a longer class is another class');
 });
 
 // The value authority for the colorways (the palettes that used to be --mms-ipodk-* / --mms-ipodm-*
@@ -198,7 +206,9 @@ test('the colorway VALUES: every role of every colorway, byte-exact (the palette
 // (0, 100% fills, the 50% centring of a positioned layer), a 1px hairline, and the lighting layers'
 // overhangs (the band's -25% / -35% and the glass streak's -50% / -70% - locked with their travel in
 // test/unit/pocket-lighting.test.js AC6: a layer's overhang is its translate budget, not a size).
-const POCKET = (sel) => /\.mms-ipod\b/.test(sel) || /body\.mms-tray \.(ip-|ipm-)/.test(sel);
+// Gate r1 S1 (adversary): an UNSCOPED `.ip-wheel .ip-center{ width:61px }` wins over the chassis, so
+// any rule that names a pocket element class (ip-* / ipm-*) is a pocket rule too, scoped or not.
+const POCKET = (sel) => /\.mms-ipod\b/.test(sel) || /(^|[\s>+~,(])\.(ip|ipm)-[\w-]/.test(sel);
 const SIZE_PROPS = /^(width|height|min-width|min-height|max-width|max-height|aspect-ratio|grid-auto-rows|flex|flex-basis|padding(-[a-z]+)?|margin(-[a-z]+)?|gap|top|left|right|bottom|inset)$/;
 const ALLOWED = new Set(['0', '100%', '50%', '1px', '-25%', '-35%', '-50%', '-70%']);
 function rawLengths(v) {

@@ -1450,8 +1450,8 @@
       var skins = SKINS.SKINS || [];
       var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
       // v1.257 (QA S3) -> v1.258 (Dean's colorway round): inside the TRAY the chips are
-      // FILTERED to the ipod family - those picks genuinely restyle the tray (the
-      // silver/black body palettes are the colorways); non-family picks would visibly
+      // FILTERED to the Click colorways - those picks genuinely restyle the tray (each
+      // colorway's body roles); non-family picks would visibly
       // no-op there and stay hidden. NOTE the pick still writes the GLOBAL skin pref
       // (the tray colorway IS the skin choice - disclosed).
       var trayActive = false;

@@ -309,6 +309,26 @@ test('v1.332 (D1) AC2: a device saved on the removed Seattle skin - localStorage
   } });
 });
 
+test('v1.332 gate r1 W1 (adversary + qa, measured): a device still saved on Seattle never out-stamps a NEWER pick another device synced - the rewrite waits for the sync\'s first server read', async () => {
+  const prefsSyncSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
+  const serverSkin = async () => ((await (await authedFetch(base + '/api/prefs')).json()).prefs['ft-music-skin'] || {}).value;
+  // another device just picked Click (Red); THIS device still holds the retired id, unstamped
+  const seeded = await authedFetch(base + '/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key: 'ft-music-skin', value: 'ipod-red', updatedAt: Date.now() }] }) });
+  assert.ok(seeded.ok);
+  assert.strictEqual(await serverSkin(), 'ipod-red', 'precondition: the newer pick is on the server');
+  await boot({ skin: 'zune-classic', play: 'nd1', setup: (dom) => {
+    dom.window.fetch = (u, o) => global.fetch(u, o);
+    dom.window.eval(prefsSyncSrc);
+  }, run: async (h) => {
+    await settleNet();
+    h.dom.window.__ftPrefsSync.flush();
+    for (let i = 0; i < 20; i++) await settleNet(5);
+    assert.strictEqual(h.dom.window.localStorage.getItem('ft-music-skin'), 'ipod-red', 'this device took the newer pick (the server won the race)');
+    assert.strictEqual(await serverSkin(), 'ipod-red', 'the other device\'s Click (Red) survived on the server');
+  } });
+});
+
 test('Click: in a menu the |<< >>| zones still skip tracks (the device\'s own); a browse load in flight cannot land over a menu pick', async () => {
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h);

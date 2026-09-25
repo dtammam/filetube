@@ -86,7 +86,11 @@ async function main() {
     await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 2, mobile });
     await send('Page.navigate', { url: base + '/setup.html' });
     await waitFor(`document.querySelectorAll('#music-skin-picker .theme-card').length > 0`, 15000);
-    await sleep(400);
+    // on a phone the sections are a menu: open Appearance (the picker's section) before measuring
+    await ev(`(function(){ var d = document.querySelector('details[data-collapse-key="appearance"]'); if (!d) return false;
+      var row = Array.prototype.slice.call(document.querySelectorAll('button, a, [role="button"]')).find(function (x) { return (x.textContent || '').trim().indexOf('Appearance') === 0 || x.getAttribute('data-md-key') === 'appearance'; });
+      if (row && !d.getBoundingClientRect().height) row.click(); d.open = true; return true; })()`);
+    await sleep(900);
     out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .theme-card'))));
     if (!mobile) continue;
     await ev(`localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); true`);

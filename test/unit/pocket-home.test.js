@@ -138,9 +138,9 @@ test('AC11: a HELD MENU goes home exactly once, and the release fires no MENU (n
     const net0 = b.bal.add - b.bal.remove;
     down(b, z);
     assert.ok(b.bal.add - b.bal.remove > net0, 'precondition: the press bound the gesture\'s listeners');
-    await wait(HOLD_MS - 200);
-    assert.strictEqual(b.spy.home, 0, 'not before the threshold');
-    await wait(300);
+    await wait(HOLD_MS - 50);
+    assert.strictEqual(b.spy.home, 0, 'not before the threshold (550 ms: a timer never fires EARLY, so this is exact)');
+    for (let i = 0; i < 40 && b.spy.home === 0; i++) await wait(25); // a loaded box fires late, never early
     assert.strictEqual(b.spy.home, 1, 'the hold went home');
     up(b, z); clickOnly(b, z);
     assert.strictEqual(b.spy.home, 1, 'once');
@@ -164,6 +164,10 @@ test('AC11: every cancel arm - moving off the zone, pointercancel, a takeover, a
   // a wheel takeover (Brick) owns MENU
   b = boot();
   try { b.engine.setWheelTakeover({ onRotate() {}, onMenu() { return true; }, onSelect() {} }); const z = menuZone(b); const t0 = b.timers.size; down(b, z); assert.strictEqual(b.timers.size, t0, 'no hold is armed under a takeover'); await wait(HOLD_MS + 100); assert.strictEqual(b.spy.home, 0, 'a takeover: no hold-home'); up(b, z); } finally { b.restore(); }
+  // gate r1 W3 (adversary): a takeover that STARTS mid-hold (Brick opened while MENU is held) - the
+  // fire-time check is the only guard against it, so it is bound here
+  b = boot();
+  try { const z = menuZone(b); down(b, z); await wait(100); b.engine.setWheelTakeover({ onRotate() {}, onMenu() { return true; }, onSelect() {} }); await wait(HOLD_MS); assert.strictEqual(b.spy.home, 0, 'a takeover begun mid-hold never goes home'); up(b, z); } finally { b.restore(); }
   // the view un-rendered the panel mid-hold (a dock from elsewhere)
   b = boot();
   try { const z = menuZone(b); down(b, z); await wait(100); b.panel.className = 'music-nowplaying-panel'; b.panel.innerHTML = ''; await wait(HOLD_MS); assert.strictEqual(b.spy.home, 0, 'an un-rendered panel never goes home'); } finally { b.restore(); }

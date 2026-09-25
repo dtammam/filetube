@@ -266,9 +266,27 @@
       var id = normalizeSkinId(raw);
       // D1: a retired id is rewritten ONCE to its replacement - localStorage, which the prefs
       // sync mirrors to the server - so every device converges on the new value.
-      if (isLegacyId(raw)) { try { ls.setItem(SKIN_KEY, id); } catch (_) { /* private mode: the read still maps */ } }
+      if (isLegacyId(raw)) rewriteLegacy(ls, raw, id, !store);
       return id;
     } catch (_) { return DEFAULT_ID; }
+  }
+  // Gate r1 W1 (adversary + qa, measured): the rewrite is a synced WRITE with a fresh stamp, so run
+  // before the sync's boot GET it out-stamped a NEWER pick another device had synced (a cold load
+  // reads the skin before that GET returns) and reverted it on every device. On the page's own
+  // storage it therefore waits for the boot GET, then rewrites only if the retired id is STILL what
+  // is stored (the server's newer value, raw-applied by the sync, is left alone). Without the sync
+  // agent (or on a caller's own store) there is no race: it rewrites at once. One wait at a time.
+  var rewriteWaiting = false;
+  function rewriteLegacy(ls, raw, id, pageStore) {
+    var go = function () { try { if (ls.getItem(SKIN_KEY) === raw) ls.setItem(SKIN_KEY, id); } catch (_) { /* private mode: the read still maps */ } };
+    var sync = pageStore && typeof window !== 'undefined' && window.__ftPrefsSync;
+    if (sync && typeof sync.whenBooted === 'function') {
+      if (rewriteWaiting) return;
+      rewriteWaiting = true;
+      sync.whenBooted(function () { rewriteWaiting = false; go(); });
+      return;
+    }
+    go();
   }
   function setActiveSkin(id, store) {
     var ls = store || (typeof window !== 'undefined' && window.localStorage);

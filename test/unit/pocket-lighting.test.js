@@ -656,7 +656,7 @@ function rule(selector) {
   assert.ok(i >= 0, 'rule present: ' + selector);
   return CSS.slice(i, CSS.indexOf('}', i) + 1);
 }
-test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the old constants); the band and glass exist only when lit; no filter / blur / mask / backdrop anywhere in the lighting rules', () => {
+test('AC6 CSS lock: the ONE Click wheel and dome rule reads the light (unset = the old constants); the band and glass exist only when lit; no filter / blur / mask / backdrop anywhere in the lighting rules', () => {
   // v1.332 (the pocket design system): ONE wheel and ONE dome rule serve every colorway - the colorway
   // sets only its role tokens (the light origin --pk-c-wheel-oy / --pk-c-center-oy among them)
   for (const sel of ['.mms-ipod .ip-wheel']) {
@@ -694,7 +694,7 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   const litRules = litRuleList.map((r) => r.sel + '{' + r.body + '}').join('\n');
   assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-image)?)\s*:/i.test(litRules), 'no filter / backdrop / mask in any lighting rule: ' + litRules.match(/[^\n]*(?:filter|mask)[^\n]*/i));
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
-  // the STRONG profile (the second swing): exists for the three Click wheels and domes, the band and the
+  // the STRONG profile (the second swing): exists for the Click wheel and dome (one rule each), the band and the
   // glass; only under .mms-lit-strong; its layers travel inside their overhang
   for (const sel of ['.mms-ipod.mms-lit-strong .ip-wheel']) {
     const r = rule(sel);

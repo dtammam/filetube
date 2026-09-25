@@ -538,3 +538,27 @@ test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) acr
   assert.match(css, /\.mms-apple \.mms-sub\{ font-size:var\(--fs-xl\);/, 'Cider keeps its artist-line rule');
   assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--pk-fs-np-artist\);/, 'the LCD keeps its artist-line rule (its size is the pocket type role - v1.332)');
 });
+
+test('v1.332 gate r1 W1: on the page\'s own storage the Seattle rewrite WAITS for the sync\'s boot GET, then rewrites only a value that is still retired (one wait at a time)', () => {
+  const bag = { [skins.SKIN_KEY]: 'zune-classic' };
+  const writes = [];
+  const ls = { getItem: (k) => (k in bag ? bag[k] : null), setItem: (k, v) => { writes.push(v); bag[k] = v; } };
+  const waiters = [];
+  const saved = global.window;
+  global.window = { localStorage: ls, __ftPrefsSync: { whenBooted: (fn) => waiters.push(fn) } };
+  try {
+    assert.strictEqual(skins.activeSkinId(), 'ipod', 'the read maps at once');
+    assert.strictEqual(skins.activeSkinId(), 'ipod');
+    assert.deepStrictEqual(writes, [], 'no write before the boot GET settles (it would out-stamp the server)');
+    assert.strictEqual(waiters.length, 1, 'one wait, however many reads');
+    bag[skins.SKIN_KEY] = 'ipod-red'; // the boot GET raw-applied another device's NEWER pick
+    waiters.shift()();
+    assert.deepStrictEqual(writes, [], 'a newer value from the server is left alone');
+    // a retired value that is STILL stored after the GET is rewritten (the convergence arm)
+    bag[skins.SKIN_KEY] = 'zune-classic';
+    skins.activeSkinId();
+    assert.strictEqual(waiters.length, 1);
+    waiters.shift()();
+    assert.deepStrictEqual(writes, ['ipod'], 'the still-retired value converges on Click');
+  } finally { global.window = saved; }
+});

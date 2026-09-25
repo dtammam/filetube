@@ -358,6 +358,32 @@ final run.
 **Side-by-sides (sent to Dean 2026-09-25, not committed):** each reference photo beside the rendered skin
 with the sampled vs used values, plus a lighting sheet (Off / Subtle / Pronounced, every new colorway).
 
+### Gate r1 fix round (both seats CHANGES @ba10139c)
+
+- **W1 (adversary + qa, both measured - the blocker):** the retired-id rewrite was a synced write with a
+  fresh stamp made BEFORE the sync's boot GET, so a stale Seattle device out-stamped another device's newer
+  pick and reverted it everywhere. Fix: prefs-sync.js gains `whenBooted(fn)`; on the page's own storage the
+  rewrite waits for it and rewrites only a value that is STILL the retired id (one wait at a time; no sync
+  agent or a caller's store = at once). Bound red-first by the seats' race through the real prefs sync and
+  server (integration music-pocket-menus 'gate r1 W1': local ipod, server ipod before; now both ipod-red),
+  plus a unit binding of the wait / leave-newer / converge arms; AC2's convergence still green.
+- **W2 (adversary):** the AC4 lock now fails ANY mention of a colorway class (class or attribute spelling)
+  outside its one block, and a second bare rule for the block's selector.
+- **W3 + S8 (adversary):** a takeover begun mid-hold is bound (the fire-time guard); the threshold is pinned
+  at 550 ms (a timer never fires early) and 600-1600 ms.
+- **S1 (adversary):** AC5's raw-size lock covers any rule naming a pocket element class, scoped or not.
+- **S3 (adversary):** the Encore comment's x0.8 arithmetic corrected (#ba485a, the ramp around it).
+- **S5 (adversary):** the status-bar and lighting probes fall back on trees without `clickColorways()`.
+- **qa S1:** skin-chips-probe opens Settings > Appearance on a phone (it measured 0x0 there). Measured, Step 3
+  tree (5 skins) vs now (12): no sticker or tray chip changed size on any viewport; the Settings picker
+  wraps 3 -> 6 rows (390x844, 380x700), 5 -> 12 (375x667, one column), 2 -> 3 (1280x800); Click (Matte)'s
+  card grows 71 -> 83 px at 390x844 and 1280x800 - it sat ALONE on the last grid row before and now shares
+  a row with Click (Red) (a grid row takes its tallest card's height; every other card was already 83 / 85).
+  New blurbs were shortened to the old ones' length (their 1280 cards stay three lines like the old ones).
+- **qa S2 / S3 / S4:** stale comments and test names updated (lighting scope, the tray filter, "the three
+  wheels", the tray chips, the census title, tracker #257); the ledger no longer calls Gold "the mini's";
+  the three unused eslint directives removed. Settings' copy no longer names the real products.
+
 ## Deviations
 
 1. **Gold's reference is Dean's own photo** (he attached it with the build directive): a gold classic with a
@@ -387,7 +413,17 @@ with the sampled vs used values, plus a lighting sheet (Off / Subtle / Pronounce
   scroll). A compact colorway picker would be a design change for Dean.
 - Pink is judged from the weakest photo (warm light); every colorway's final say is Dean's on the device.
 - The hold-MENU haptic on a still finger (deviation 8).
-- The render probe's rare single-shot wobble (max delta 2) on identical trees.
+- The render probe's wobble on identical trees (adversary S6, measured): over 282 shots, 0 element-style
+  differences always, but up to 4 shots per run differ (one of ~8,500 px, three of 1-6 px, max channel
+  delta 2); the builder's "two runs of one tree: 0 px" held for a 36-shot run only. A one-level token change
+  reddens every shot, so the instrument still separates CSS from noise.
+- Click (Red)'s reference carries an embedded colour profile: the plan's samples are the raw decode; a
+  browser shows the photo ~7 degrees warmer (adversary S2). Dean's call on the device.
+- Wheel-label contrast is low on Red (1.51 / 1.30), Gold (1.54 / 1.34) and Blue (1.91 / 1.64) against
+  Click (White)'s 2.75 / 2.36 - faithful to the photos, but they are control labels (adversary S4). Dean's call.
+- The 600 ms MENU hold is longer than Android Chrome's ~500 ms long-press: whether that shows a context menu
+  or cancels the pointer on a real Android phone is unmeasured (qa S5; headless touch did not cancel).
+- Click (Matte)'s Settings card grows 71 -> 83 px by sharing a grid row (measured above).
 
 
 ## Gate

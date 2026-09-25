@@ -103,7 +103,8 @@ async function main() {
     // 1. per-skin screenshots at three light positions (a REAL deviceorientation event path)
     const R = 20; // TILT_RANGE_DEG (pocket-lighting.js)
     const POS = { neutral: [0, 3], 'upper-left': [0 + 0.5 * R, 3 + 0.8 * R], 'lower-right': [0 - 0.5 * R, 3 - 0.8 * R] };
-    for (const skin of require(path.join(ROOT, 'public', 'js', 'music-skins.js')).clickColorways()) { // every Click colorway (the registry)
+    const SKR = require(path.join(ROOT, 'public', 'js', 'music-skins.js'));
+    for (const skin of (typeof SKR.clickColorways === 'function' ? SKR.clickColorways() : SKR.SKINS.filter((s) => s.menus === 'click').map((s) => s.id))) { // every Click colorway (the registry)
       const st = await evalJs(`window.__boot(${JSON.stringify(skin)}, ${JSON.stringify(STRENGTH)})`);
       await sleep(300);
       await evalJs('window.__tilt(0, 3)'); await sleep(120); // the opening pose = neutral

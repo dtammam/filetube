@@ -89,7 +89,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     // v1.332 (AC8): a PATCHED registry source (e.g. one extra colorway entry), evaluated as the
     // module itself - no other file changes, which is the point of the test that uses it
     const m = { exports: {} };
-    new Function('module', 'window', skinsSrc)(m, dom.window); // eslint-disable-line no-new-func
+    new Function('module', 'window', skinsSrc)(m, dom.window);
     dom.window.FileTubeMusicSkins = m.exports;
   }
   // v1.250 (F-UNIFY): music.js renders through the shared engine now - load it into this
@@ -1877,8 +1877,8 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
     // v1.258: the chips are the COLORWAYS in tray - the Click family only (those picks
-    // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.300: the
-    // Click trio incl. the new Matte colorway.
+    // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.332: every
+    // Click colorway in the registry.
     const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
     assert.deepStrictEqual(trayChips.sort(), require('../../public/js/music-skins.js').clickColorways().sort(), 'exactly the Click colorway chips inside the tray (the registry\'s own list)');
     assert.ok(trayChips.length >= 3 && !trayChips.includes('apple') && !trayChips.includes('spotify'), 'non-vacuous: the colorways, never the flat skins');

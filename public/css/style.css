@@ -12166,7 +12166,8 @@ html[data-modern="on"] .video-uploader {
     --pk-c-lits-band:rgba(255,255,255,.36); --pk-c-lits-band2:rgba(255,255,255,.2); --pk-c-lits-core:rgba(255,255,255,.5); }
   /* Click (Encore) (D8, the black-and-red special edition, under a cheeky name): Commons "IPod U2.jpeg"
      (CC BY 3.0; small and soft - hue only). Click (Black)'s body; the red wheel from the photo scaled
-     so the black body matches Click (Black)'s (x0.8: #e85a70 -> #c4505f .. #a63f4e); near-white labels;
+     so the black body matches Click (Black)'s (x0.8: #e85a70 -> #ba485a, ramped #c4505f .. #a63f4e around
+     it for the wheel's top light); near-white labels;
      a black center. */
   .mms-ipod-encore{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),

@@ -111,13 +111,12 @@ test('v1.332 D7: goHomeFromPlayer docks, re-renders the view, then navigate(\'/\
   const body = src.slice(at, src.indexOf('\n  }\n', at) + 4);
   const log = [];
   const win = { FileTube: { player: { dock: () => log.push('dock') } } };
-  // eslint-disable-next-line no-new-func
   const fn = new Function('window', 'navigate', body + '\nreturn goHomeFromPlayer;')(win, (u) => log.push('navigate ' + u));
   fn(() => log.push('afterDock'));
   assert.deepStrictEqual(log, ['dock', 'afterDock', 'navigate /']);
   // a player with no dock (never a throw) still routes home
   const log2 = [];
-  new Function('window', 'navigate', body + '\nreturn goHomeFromPlayer;')({ FileTube: {} }, (u) => log2.push(u))(null); // eslint-disable-line no-new-func
+  new Function('window', 'navigate', body + '\nreturn goHomeFromPlayer;')({ FileTube: {} }, (u) => log2.push(u))(null);
   assert.deepStrictEqual(log2, ['/']);
   assert.match(src, /window\.FileTube\.goHomeFromPlayer = goHomeFromPlayer;/, 'exposed for the views');
   for (const v of ['public/js/music.js', 'public/js/podcasts.js']) {
