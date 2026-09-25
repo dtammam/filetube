@@ -2,8 +2,6 @@
 
 ## Planned
 
-_Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
-
 - [ ] **A design system for the pocket skins** (Dean, 2026-09-24, with an iPhone screenshot: a long
   album title, "Ocarina of Time House Club Remix (Electronic House Remix)", wrapped the Click Black
   LCD status bar to two lines on v1.324.0; v1.325.0 fixed that bar). Dean's read is broader: "not
@@ -11,6 +9,16 @@ _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap
   pretty advanced and is being pretty heavily relied upon". Scope a pocket-skin token set (the LCD
   bar, row pitch, the type scale, the split pane, Seattle's large type, the controls) so every level
   and skin reads from one source and overflow is handled systematically, not per incident.
+  **Planned for v1.332.0 with two more asks from Dean (2026-09-25):** remove Seattle entirely ("I don't
+  use it, don't want the headaches"; a device saved on Seattle becomes Click) and add a Click (Red) skin,
+  the (PRODUCT)RED look (red body, white wheel), as the design system's first one-token-block colorway.
+  Intake D1-D6 and the build plan: docs/exec-plans/active/2026-09-25-pocket-design-system.md.
+- [ ] **Future Click colorways, each one token block on the pocket design system** (Dean, 2026-09-25:
+  "What iconic color or version am I missing we can plan it to be w new ones with this design system").
+  Picked: **Silver** (the 2007 iPod classic in silver aluminum), **Black + red wheel** (the U2 Special
+  Edition look, under a cheeky name, never the band's), and the **Mini pastels** (the iPod mini's blue,
+  green, pink and gold). Each is built from a real reference photo, sampled and shown side by side (the
+  Matte / Red method). After v1.332.0 ships the system.
 - [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
