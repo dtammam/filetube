@@ -647,3 +647,35 @@ test('Chapter Snap x K4: a snap save through Music\'s "This chapter starts wrong
     },
   });
 });
+
+test('v1.331 gate r1: a chapter ADDED while a menu-picked album level plays re-lists the album (its new chapter gets a row), as the browse album drill does', async () => {
+  let opened = null;
+  try {
+    await boot({
+      skin: 'ipod', play: 'nd1',
+      setup: (dom) => {
+        dom.window.showToast = () => {};
+        dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } });
+        dom.window.showChapterSnapEditor = (id, opts) => { opened = { id, opts }; };
+      },
+      run: async (h) => {
+        menu(h); select(h); tapRow(h, 'Albums'); await settleNet();
+        tapRow(h, 'Full Album Mix'); await settleNet();
+        tapRow(h, 'Intro'); await settleNet(); // an ALBUM-level pick (list mode)
+        click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
+        click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+        await settleNet();
+        const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
+        assert.ok(act, 'Extras offers "This chapter starts wrong" on the playing chapter');
+        click(h.dom, act); await settleNet();
+        assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');
+        // the server now holds FOUR chapters, and the editor reports them (a count change)
+        await setMixChapters(MIX_TEXT + '\n25:00 Track C');
+        opened.opts.onSaved({ chapters: MIX_CHAPTERS.concat([{ startTime: 1500, title: 'Track C' }]), chaptersEdited: true });
+        await settleNet(60);
+        const behind = [...h.D.querySelectorAll('#music-content .music-song-row')].map((r) => r.getAttribute('data-id'));
+        assert.deepStrictEqual(behind, ['djmix1::c0', 'djmix1::c1', 'djmix1::c2', 'djmix1::c3'], 'the album re-listed from the server: the new chapter has its row');
+      },
+    });
+  } finally { await setMixChapters(MIX_TEXT); }
+});

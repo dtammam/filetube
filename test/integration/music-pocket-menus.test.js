@@ -446,7 +446,7 @@ async function pickTrackAThenCrossItsEnd(h, albumTitle) {
     'an album pick primes NO exit station (it plays the album on): ' + h.log.slice(logBefore).join(' | '));
   const loads = h.spy.loads.length;
   const t = { v: 300 }; const el = mixClock(h, t);
-  // normal playback through Track A's end (900 s): the solo band [899.75, 901) and the sparse cross
+  // normal playback through Track A's end (900 s): 899.9 and 900.4 land in the end band [899.75, 901)
   await mixTick(h, el, t, 600); await mixTick(h, el, t, 899.2); await mixTick(h, el, t, 899.9); await mixTick(h, el, t, 900.4); await mixTick(h, el, t, 903);
   assert.strictEqual(h.spy.loads.length, loads, 'no reload at the boundary: the album rolled on (a station would load another song): ' + h.spy.loads.slice(loads).map((l) => l.id).join(','));
   assert.strictEqual(h.player.currentId, 'djmix1::c1', 'still the same file, playing on');
@@ -457,8 +457,15 @@ async function pickTrackAThenCrossItsEnd(h, albumTitle) {
   assert.strictEqual(cursorLabel(h), 'Track B', 'the list the song came from followed the chapter roll');
   // the registered nav re-armed around the LIVE chapter (the v1.311 re-register): Previous from
   // Track B early in its segment steps back to the album's Track A, never a station row.
-  assert.ok(h.spy.nav && typeof h.spy.nav.onPrev === 'function', 'nav registered around Track B');
-  h.spy.nav.onPrev(); await settleNet();
+  // the album's END (gate r1 qa S1): Track B is the album's last row, so the station was appended
+  // past it at the roll; Next (the ended advance) goes there, and Previous is the album's Track A.
+  await settleNet();
+  const nav = h.spy.nav;
+  assert.ok(nav && typeof nav.onPrev === 'function' && typeof nav.onNext === 'function', 'nav registered around Track B, with the station after it');
+  nav.onNext(); await settleNet();
+  const after = h.spy.loads[h.spy.loads.length - 1].id;
+  assert.ok(!/^djmix1::/.test(after), 'after the album\'s last song the station plays (never the album again): ' + after);
+  nav.onPrev(); await settleNet();
   assert.strictEqual(h.spy.loads[h.spy.loads.length - 1].id, 'djmix1::c1', 'Previous from Track B = the album\'s Track A (nav followed the roll)');
 }
 
@@ -504,5 +511,65 @@ test('v1.331 (Dean: "regular album play as well"): Seattle\'s Albums pivot > alb
     tapRow(h, 'Full Album Mix'); await settleNet();
     await pickTrackAThenCrossItsEnd(h, null); // Seattle's status line is not the level name
     assert.strictEqual(h.panel.querySelector('.ipm-title') && h.panel.querySelector('.ipm-title').textContent, 'Full Album Mix', 'Back climbs to the album the song came from');
+  } });
+});
+
+// v1.331 gate r1 W1 (adversary + qa, measured): an album level under a sort that is NOT file order
+// played the FILE on, and at the file's last chapter Next re-armed onto an EARLIER row - the album
+// looped Track A/Track B forever and never reached the station. Every menu list now plays in LIST
+// order: the picked chapter's segment, then the list's next row, then the station after the last.
+const SORT_KEY = 'filetube_music_sort'; // music.js SORT_KEY
+async function pickTrackAInReversedAlbum(h) {
+  assert.deepStrictEqual(labels(h), ['Track B', 'Track A', 'Intro'], 'precondition: the album level is NOT in file order');
+  tapRow(h, 'Track A'); await settleNet();
+  assert.strictEqual(h.player.currentId, 'djmix1::c1');
+  const from = h.spy.loads.length;
+  const t = { v: 300 }; const el = mixClock(h, t);
+  await mixTick(h, el, t, 600); await mixTick(h, el, t, 899.2); await mixTick(h, el, t, 899.9);
+  assert.strictEqual(h.player.currentId, 'djmix1::c0', 'Track A\'s segment end moved to the LIST\'s next row (Intro), not on into the file\'s Track B');
+  assert.strictEqual(h.spy.loads[h.spy.loads.length - 1].data.chapterStartSec, 0, 'Intro plays from its own start');
+  // the player seeks to Intro's start; play Intro to its end - the list's LAST row
+  t.v = 0;
+  await mixTick(h, el, t, 150); await mixTick(h, el, t, 299.2); await mixTick(h, el, t, 299.9);
+  const ids = h.spy.loads.slice(from).map((l) => l.id);
+  assert.ok(ids.length === 2 && !/^djmix1::/.test(ids[1]), 'after the album\'s last row the station plays - no loop back into the album: ' + ids.join(','));
+}
+
+test('v1.331 gate r1 W1: Albums > album sorted Title Z-A - a pick plays the rest of the album in LIST order, then the station (never a loop)', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => dom.window.localStorage.setItem(SORT_KEY, JSON.stringify({ 'drill-album': 'title-desc' })), run: async (h) => {
+    menu(h); select(h);
+    tapRow(h, 'Albums'); await settleNet();
+    tapRow(h, 'Full Album Mix'); await settleNet();
+    await pickTrackAInReversedAlbum(h);
+  } });
+});
+
+test('v1.331 gate r1 W1: Artists > artist > album sorted Longest first (Dean\'s artist path) - the same list-order play-through', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => dom.window.localStorage.setItem(SORT_KEY, JSON.stringify({ 'drill-artist': 'duration-desc' })), run: async (h) => {
+    menu(h); select(h);
+    tapRow(h, 'Artists'); await settleNet();
+    tapRow(h, 'NESTALGIA'); await settleNet();
+    tapRow(h, 'Full Album Mix'); await settleNet();
+    await pickTrackAInReversedAlbum(h);
+  } });
+});
+
+test('v1.331 gate r1 (qa caveat): after a menu album pick, tapping ONE chapter row of that album behind the skin is Dean\'s v1.311 select again - that bit, then the station', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
+    menu(h); select(h);
+    tapRow(h, 'Albums'); await settleNet();
+    tapRow(h, 'Full Album Mix'); await settleNet();
+    tapRow(h, 'Intro'); await settleNet(); // the album plays on in list mode
+    const logBefore = h.log.length;
+    const row = h.D.querySelector('#music-content .music-song-row[data-id="djmix1::c1"]');
+    assert.ok(row, 'precondition: the album drill behind the skin lists Track A');
+    click(h.dom, row.querySelector('.music-song-main') || row); await settleNet();
+    assert.strictEqual(h.player.currentId, 'djmix1::c1', 'the browse row played Track A');
+    assert.ok(h.log.slice(logBefore).some((u) => /^\/api\/music\?artist=NESTALGIA&sort=random/.test(u)), 'the single-chapter select primed its exit station: ' + h.log.slice(logBefore).join(' | '));
+    const from = h.spy.loads.length;
+    const t = { v: 300 }; const el = mixClock(h, t);
+    await mixTick(h, el, t, 600); await mixTick(h, el, t, 899.2); await mixTick(h, el, t, 899.9);
+    const next = h.spy.loads.slice(from).map((l) => l.id);
+    assert.ok(next.length === 1 && !/^djmix1::/.test(next[0]), 'the v1.311 select exited to the station at Track A\'s end (never the album\'s next row): ' + next.join(','));
   } });
 });
