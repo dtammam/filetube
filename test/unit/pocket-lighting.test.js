@@ -1,14 +1,14 @@
 'use strict';
 
-// [UNIT] POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting). The pure half
-// (public/js/pocket-lighting.js: the tilt mapping, the neutral-pose filter, the strength setting)
-// and the driver, driven through the REAL engine (skin-surface.js create()/paint()/click) with REAL
-// event shapes: a `deviceorientation` event on the window carrying beta/gamma, a `pointermove` with
-// pointerType, the dock (innerHTML cleared with NO destroy), a hidden document, a skin switch, the
-// tray, reduced motion, destroy. Every arm is asserted by LISTENER COUNT and rAF presence, never by
-// prose. Plus the CSS lock (the Click wheel / dome read the light; no filter / blur / mask /
-// backdrop in any lighting rule) and the dynamic shell parity (every shell that loads
-// skin-surface.js loads pocket-lighting.js).
+// [UNIT] POCKET LIGHTING (Dean 2026-09-24; the reflection swing 2026-09-25, plan
+// 2026-09-25-pocket-lighting-reflection). The pure half (public/js/pocket-lighting.js: the tilt mapping,
+// the reflected angle against a gravity-referenced key pose, the key glide, the per-surface geometry,
+// the strength setting) and the driver, driven through the REAL engine (skin-surface.js
+// create()/paint()/click) with REAL event shapes: a `deviceorientation` event on the window carrying
+// beta/gamma, a `pointermove` with pointerType, the dock (innerHTML cleared with NO destroy), a hidden
+// document, a skin switch, the tray, reduced motion, destroy. Every arm is asserted by LISTENER COUNT and
+// rAF presence, never by prose. Plus the CSS lock (the environment map per material; no filter / blur /
+// mask / backdrop / blend mode / CSS trig in any lighting rule) and the dynamic shell parity.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -22,71 +22,73 @@ const surfacePath = require.resolve('../../public/js/skin-surface.js');
 const lightPath = require.resolve('../../public/js/pocket-lighting.js');
 const skins = require(skinsPath);
 const L = require(lightPath);
+const RAD = Math.PI / 180;
+// beta/gamma that land on a given SCREEN pose (x = the projected roll, y = the pitch), portrait: the
+// driver's roll is asin(Gx) and its pitch atan2(Gy, Gz) of the up-vector G = (cos b sin g, sin b, cos b cos g),
+// so G = (sin x, cos x sin y, cos x cos y) and beta = asin(Gy), gamma = atan2(Gx, Gz)
+const bgFor = (x, y) => [Math.asin(Math.cos(x * RAD) * Math.sin(y * RAD)) / RAD, Math.atan2(Math.sin(x * RAD), Math.cos(x * RAD) * Math.cos(y * RAD)) / RAD];
 
 // ---------------------------------------------------------------- the pure half
-test('mapTilt: device axes to screen axes by the screen rotation; the roll is gravity-projected (no gimbal flip upright); a null component is no sample', () => {
+test('mapTilt: device axes to screen axes by the screen rotation; the roll is gravity-projected and the pitch an atan2 (no gimbal flip upright); a null component is no sample', () => {
   const near = (a, b, m) => assert.ok(Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9, m + ` got ${JSON.stringify(a)} want ${JSON.stringify(b)}`);
   near(L.mapTilt(0, 5, 0), { x: 5, y: 0 }, 'flat (beta 0): x = gamma (left/right), y = beta (front/back)');
   near(L.mapTilt(0, 5, 90), { x: 0, y: -5 }, 'landscape 90');
   near(L.mapTilt(0, 5, 180), { x: -5, y: 0 }, 'upside down');
   near(L.mapTilt(0, 5, 270), { x: 0, y: 5 }, 'landscape 270');
   near(L.mapTilt(0, 5, -90), { x: 0, y: 5 }, 'the legacy window.orientation -90 is 270');
-  // gate r1 (qa S3): held UPRIGHT the raw gamma is unstable and flips sign past vertical; the
-  // projected roll shrinks smoothly toward 0 at vertical and keeps its sign through it
   const r40 = L.mapTilt(40, 30, 0).x, r80 = L.mapTilt(80, 30, 0).x, r90 = L.mapTilt(90, 30, 0).x, r100 = L.mapTilt(100, -30, 0).x;
   assert.ok(r40 > 20 && r40 < 30 && r80 > 0 && r80 < r40 && Math.abs(r90) < 1e-9, `the same physical roll reads smaller the more upright the phone (${r40}, ${r80}, ${r90})`);
   assert.ok(r100 > 0 && r100 < 10, `past vertical gamma flips sign (W3C) but the projected roll keeps its sign (${r100})`);
   assert.ok(Math.abs(L.mapTilt(40, 0, 0).y - 40) < 1e-9, 'flat-rolled: the pitch is beta');
-  // gate r2 (adversary W5): a physical pose swept THROUGH vertical (W3C Euler angles built from the
-  // up-vector, roll 20 deg): raw beta jumps 70 -> 110 at the crossing; the atan2 pitch is continuous
-  const euler = (pitchDeg, rollDeg) => { // the device's up-vector in its own frame -> W3C beta/gamma
-    const p = pitchDeg * Math.PI / 180, r = rollDeg * Math.PI / 180;
-    const gx = -Math.cos(p) * Math.sin(r), gy = Math.sin(p), gz = Math.cos(p) * Math.cos(r);
-    const beta = Math.atan2(gy, gz) * 180 / Math.PI;
-    const gamma = Math.atan2(-gx, Math.hypot(gy, gz)) * 180 / Math.PI * (Math.cos(beta * Math.PI / 180) < 0 ? -1 : 1);
-    return [beta, gamma];
-  };
-  const ys = [-0.4, -0.2, 0.2, 0.4].map((d) => L.mapTilt(...euler(90 + d, 20), 0).y);
-  for (let i = 1; i < ys.length; i++) assert.ok(Math.abs(ys[i] - ys[i - 1]) < 1.5, `continuous through vertical: ${ys.map((v) => v.toFixed(1))}`);
-  const xs = [-0.4, 0.4].map((d) => L.mapTilt(...euler(90 + d, 20), 0).x);
-  assert.ok(Math.abs(xs[0] - xs[1]) < 1.5, `the roll stays continuous too: ${xs.map((v) => v.toFixed(1))}`);
+  const [b6, g6] = bgFor(-10, 64);
+  const m = L.mapTilt(b6, g6, 0);
+  assert.ok(Math.abs(m.x + 10) < 0.05 && Math.abs(m.y - 64) < 0.05, `the test's pose helper round-trips through mapTilt (${m.x}, ${m.y})`);
   assert.strictEqual(L.mapTilt(null, 5, 0), null, 'desktop Chrome fires the event with nulls: no sample');
   assert.strictEqual(L.mapTilt(1, undefined, 0), null);
-  assert.strictEqual(L.mapTilt('x', 1, 0), null);
 });
 
-test('the filter: the FIRST sample is neutral; a tilt to the right moves the light LEFT (opposite); a held tilt re-centres; the edge is TILT_RANGE_DEG', () => {
+test('the reflected angle: twice the tilt away from the KEY pose; a 6 deg tilt moves the flat reflection half the face (12 k px); the dome about 15x slower; the dome image fades off the rim; the pitch difference takes the short way round', () => {
+  assert.deepStrictEqual({ x: L.KEY_X, y: L.KEY_Y }, { x: -10, y: 58 }, 'the researched key pose');
   const st = L.newFilter();
-  let g = L.recentre(st, 3, 40, 16);
-  assert.deepStrictEqual(g, { x: 0, y: 0 }, 'the pose the skin opened in is neutral, whatever it is');
-  g = L.recentre(st, 3 + L.TILT_RANGE_DEG / 2, 40, 16);
-  assert.ok(g.x < -0.45 && g.x > -0.5, `half the range right -> the light about half way LEFT (got ${g.x})`);
-  g = L.recentre(st, 3 + 100, 40, 16);
-  assert.strictEqual(g.x, -1, 'clamped at the edge (a 100-degree roll is past the range; the wrap-safe difference keeps its sign below 180)');
-  // hold that tilt: the baseline drifts to it and the goal returns to 0 (G5)
-  for (let i = 0; i < 5 * L.RECENTER_TAU_MS / 16; i++) g = L.recentre(st, 3 + 20, 40, 16);
-  assert.ok(Math.abs(g.x) < 0.01, `a held tilt reads as level again within ~5 tau (got ${g.x})`);
-  // gate r2 (qa W5): the pitch wraps at +-180 (lying on your back, the phone overhead): the goal never
-  // jumps across the seam, and the baseline follows the short way round
-  const w = L.newFilter();
-  L.recentre(w, 2, 179.5, 16);
-  const seam = [[2, -179.8], [2, 179.6], [2, -179.5], [2, 179.9]].map(([x, y]) => L.recentre(w, x, y, 16).y);
-  assert.ok(seam.every((v) => Math.abs(v) < 0.05), `jitter across the +-180 seam reads as a tiny tilt, never edge to edge: ${seam.map((v) => v.toFixed(3))}`);
-  for (let i = 0; i < 3000; i++) L.recentre(w, 2, -179.6, 16);
-  assert.ok(Math.abs(Math.abs(w.by) - 179.6) < 0.5, `the baseline settled on the held pose the short way round (by ${w.by})`);
+  assert.deepStrictEqual(L.reflected(st, L.KEY_X, L.KEY_Y), { ex: 0, ey: 0 }, 'at the key pose the map sits centred');
+  const r = L.reflected(st, L.KEY_X, L.KEY_Y + 6);
+  assert.deepStrictEqual(r, { ex: 0, ey: 12 }, 'a mirror turns a reflection by twice the tilt');
+  const k = 844 / L.FACE_DEG, R = 54;
+  const s = L.surfaces(0, 12, k, R);
+  assert.ok(Math.abs(s.fy - 12 * k) < 1e-9 && Math.abs(s.fy - 422) < 1, `the flat face moves 12 k px = half the face (${s.fy})`);
+  assert.ok(Math.abs(s.dy - R * 12 / 30) < 1e-9, 'the dome: R x e / (2 beta), beta = 15 deg');
+  const ratio = s.fy / s.dy;
+  assert.ok(ratio > 12 && ratio < 22, `the dome moves about 15x slower than the flat face (${ratio.toFixed(1)}x)`);
+  assert.strictEqual(L.surfaces(0, 28, k, R).dom, 1, 'the dome image is full up to 28 deg');
+  assert.strictEqual(L.surfaces(0, 34, k, R).dom, 0, '...and gone past 34 deg (off the rim)');
+  assert.ok(Math.abs(L.surfaces(0, 60, k, R).dy - R * 1.3) < 1e-9, 'the dome offset clamps at 1.3 R');
+  assert.ok(Math.abs(L.surfaces(10, 10, k, R).la - 45) < 1e-9 && L.surfaces(0, 0, k, R).la === 0, 'the light azimuth for the lip ring');
+  assert.ok(Math.abs(L.surfaces(0, 17, k, R).wt - 0.5) < 1e-9, 'the wheel tone fades to 0 at 34 deg');
+  assert.deepStrictEqual([L.surfaces(24, 0, k, R).lx, L.surfaces(-6, 0, k, R).lx], [1, -0.5], '--lx: the reflected angle over 12 deg, clamped');
+  // the seam (lying on your back, phone overhead): the pitch difference never jumps 360 deg
+  const w = L.newFilter(); w.ky = 179;
+  assert.ok(Math.abs(L.reflected(w, 0, -179.5).ey - 3) < 1e-9, 'the short way round');
   assert.strictEqual(L.wrapDiff(-179, 179), 2); assert.strictEqual(L.wrapDiff(179, -179), -2); assert.strictEqual(L.wrapDiff(10, 4), 6);
-  // ease: moves toward the goal, reports a write only past WRITE_EPS
-  const e = L.newFilter();
-  assert.strictEqual(L.ease(e, 0, 0, 16, L.SMOOTH_TAU_MS), false, 'at the goal: nothing to write');
-  assert.strictEqual(L.ease(e, 1, 0, 16, L.SMOOTH_TAU_MS), true);
-  assert.ok(e.x > 0.1 && e.x < 1, 'eased, not snapped');
-  for (let i = 0; i < 100; i++) L.ease(e, 1, 0, 16, L.SMOOTH_TAU_MS);
-  assert.ok(e.x > 0.999, 'converges');
-  assert.deepStrictEqual(L.pointerLight(150, 50, { left: 100, top: 0, width: 100, height: 200 }), { x: 0, y: -0.5 });
-  assert.strictEqual(L.pointerLight(1, 1, { left: 0, top: 0, width: 0, height: 0 }), null, 'no layout yet (jsdom / first frame): no light');
 });
 
-test('strength: device-local, default Off, garbage normalizes to Off; music-skins and the driver agree on the three values', () => {
+test('the key glide - the ONLY re-centre: a held tilt stays lit; a pose over 35 deg off for over 2 s glides the key to it with tau 1.5 s', () => {
+  const st = L.newFilter();
+  let now = 0;
+  for (let i = 0; i < 600; i++) { now += 16; assert.strictEqual(L.glideKey(st, L.KEY_Y + 20, 16, now), false); }
+  assert.strictEqual(st.ky, L.KEY_Y, 'a 20 deg tilt held for 10 s: the key never moves (the reflection stays where it is)');
+  const far = L.newFilter(); now = 0;
+  for (let i = 0; i < 120; i++) { now += 16; L.glideKey(far, L.KEY_Y + 50, 16, now); }
+  assert.strictEqual(far.ky, L.KEY_Y, 'within the first 2 s nothing glides');
+  for (let i = 0; i < 60 * 8; i++) { now += 16; L.glideKey(far, L.KEY_Y + 50, 16, now); }
+  assert.ok(Math.abs(far.ky - (L.KEY_Y + 50)) < 1, `after ~8 s the key sits on the held pose (${far.ky})`);
+  assert.strictEqual(far.gliding, false, 'and the glide has ended');
+  assert.ok(Math.abs(L.reflected(far, L.KEY_X, L.KEY_Y + 50).ey) < 2, 'so the reflection is centred again');
+  const back = L.newFilter(); back.ky = L.KEY_Y + 50; now = 0;
+  for (let i = 0; i < 60; i++) { now += 16; L.glideKey(back, L.KEY_Y + 50 + 10, 16, now); }
+  assert.strictEqual(back.offSince, -1, 'near the (glided) key: not counting');
+});
+
+test('strength: device-local, default Off, garbage normalizes to Off; GAIN is the alpha factor (Subtle .6); music-skins and the driver agree on the three values', () => {
   const store = new Map();
   const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
   assert.strictEqual(L.readStrength(ls), 'off');
@@ -94,8 +96,7 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   assert.strictEqual(L.readStrength(ls), 'pronounced');
   assert.strictEqual(L.setStrength('loud', ls), 'off');
   assert.deepStrictEqual(L.STRENGTHS, skins.LIGHTING_STRENGTHS.map((r) => r.value), 'one list of strengths, two modules: a census');
-  assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.8, pronounced: 1 }, 'second swing: Subtle = the old Pronounced travel, Pronounced = the same + the strong profile');
-  assert.strictEqual(L.TILT_RANGE_DEG, 20, 'a wrist tilt reaches the edge');
+  assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.6, pronounced: 1 }, 'the research: Subtle = 0.6 x alpha');
   const rows = skins.menuLightingItems({ strength: 'subtle', note: '' });
   assert.deepStrictEqual(rows.map((r) => [r.label, r.action, r.value, r.check]), [['Off', 'lighting', 'off', false], ['Subtle', 'lighting', 'subtle', true], ['Pronounced', 'lighting', 'pronounced', false]]);
   assert.deepStrictEqual(skins.menuLightingItems(null).map((r) => r.check), [true, false, false], 'no driver state: Off is checked');
@@ -161,7 +162,6 @@ function boot({ skin = 'ipod', strength = 'pronounced', reduced = false, finePoi
   require(surfacePath);
   const state = { skin };
   const panelEl = sdom.window.document.getElementById('panel');
-  // listener balance per target and type (the unbind-BALANCE discipline)
   const bal = { types: {} };
   const wrapT = (target, key) => {
     const a0 = target.addEventListener.bind(target); const r0 = target.removeEventListener.bind(target);
@@ -201,8 +201,6 @@ const tapLabel = (b, label) => {
   tap(b, r);
 };
 const flush = () => new Promise((r) => setImmediate(r));
-// The REAL wheel gesture (pocket-quick-scroll.test.js's spin): pointerdown on the ring, `moves`
-// pointermoves of `step` degrees each, `ms` apart on a fake performance clock, then release.
 function spin(b, { from = 0, moves, step, ms }) {
   const wheel = P(b).querySelector('.ip-wheel');
   const at = (deg) => { const r = deg * Math.PI / 180; return { clientX: 100 * Math.cos(r), clientY: 100 * Math.sin(r) }; };
@@ -225,182 +223,168 @@ function tiltTo(b, beta, gamma) {
   Object.defineProperty(e, 'beta', { value: beta }); Object.defineProperty(e, 'gamma', { value: gamma });
   b.win.dispatchEvent(e);
 }
+// a SCREEN pose (x = the projected roll, y = the pitch) through the real event
+const pose = (b, x, y) => { const [beta, gamma] = bgFor(x, y); tiltTo(b, beta, gamma); };
+const atKey = (b) => pose(b, L.KEY_X, L.KEY_Y);
 function mouseAt(b, x, y, type = 'mouse') {
   const e = new b.win.MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y });
   Object.defineProperty(e, 'pointerType', { value: type });
   P(b).dispatchEvent(e);
 }
-const lx = (b) => Number(P(b).style.getPropertyValue('--lx'));
-const ly = (b) => Number(P(b).style.getPropertyValue('--ly'));
+const px = (b, name) => Number(String(P(b).style.getPropertyValue(name)).replace('px', ''));
+const prop = (b, name) => P(b).style.getPropertyValue(name);
 const lit = (b) => P(b).classList.contains('mms-lit');
+const strong = (b) => P(b).classList.contains('mms-lit-strong');
 const S = (b) => b.engine.lightingState();
-// (visibilitychange is counted apart: the engine binds its own on the document while bound, and the
-// driver binds ONE from create() to destroy() - gate r1 W1: the RETURN from a hidden tab is what
-// re-lights the panel, so that listener never goes with a stop(); 2 = engine + driver, 0 = destroyed)
 const listening = (b) => ({ orient: b.count('win:deviceorientation'), move: b.count('panel:pointermove'), leave: b.count('panel:pointerleave') });
 const vis = (b) => b.count('doc:visibilitychange');
+const K = 844 / L.FACE_DEG; // jsdom has no layout: the driver's default panel height (844 px)
 
-test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the panel through the real engine; opposite the tilt; scaled by the strength', () => {
+test('AC1/AC2 reachability + geometry: a REAL deviceorientation event at the key pose centres the map; a 6 deg pitch tilt writes --fy = 12 k px; the dome moves ~15x slower; --dom / --la / --wt / --lx follow; a held tilt never drifts; Pronounced adds the strong class, Subtle only scales --lk', () => {
   const b = boot({ strength: 'pronounced' });
   try {
     b.engine.paint();
-    assert.ok(lit(b) && S(b).listening, 'a painted Click skin with the strength on is lit and listening');
+    assert.ok(lit(b) && strong(b) && S(b).listening, 'a painted Click skin with Pronounced is lit, strong and listening');
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'exactly one listener each');
     assert.strictEqual(vis(b), 2, 'the engine\'s visibilitychange + the driver\'s');
-    tiltTo(b, 0, 3);              // the neutral pose (whatever you hold it at)
-    b.clock.advance(200);
-    assert.strictEqual(lx(b), 0, 'the opening pose is neutral: no offset');
-    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG);         // tilt RIGHT by the full range
-    b.clock.advance(100);
-    assert.ok(S(b).raf, 'the frame loop is live while samples stream');
-    b.clock.advance(600);
-    assert.ok(lx(b) < -0.9, `the light slides LEFT (opposite the tilt): --lx = ${lx(b)}`);
-    assert.ok(Math.abs(ly(b)) < 0.05, 'no front/back tilt: --ly stays ~0');
-    // Subtle halves it
-    b.ls.setItem(L.KEY, 'subtle'); b.engine.paint(); // (in production a pick goes through choose() -> sync(); a paint re-syncs the same way)
-    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700); // a fresh start: a fresh neutral, then the tilt
-    assert.ok(lx(b) < -0.62 && lx(b) > -0.85, `subtle = 0.8 of the amplitude, less ~1 s of re-centring (got ${lx(b)})`);
-    assert.ok(!P(b).classList.contains('mms-lit-strong') && lit(b), 'Subtle: lit, but never the strong profile');
-    b.ls.setItem(L.KEY, 'pronounced'); b.engine.paint();
-    assert.ok(P(b).classList.contains('mms-lit-strong'), 'Pronounced: the strong profile class (AC1)');
-    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700);
-    assert.ok(Number(P(b).style.getPropertyValue('--lm')) > 0.6, `--lm = the light's distance from centre (AC2; less ~0.7 s of re-centring): ${P(b).style.getPropertyValue('--lm')}`);
-    // gate r2 (adversary S5, J2): a hide while the loop is LIVE cancels the pending frame (the clock,
-    // not the driver's own flag); no menu is open here, so nothing else may pend
-    tiltTo(b, 0, 3 + 20);
-    assert.ok(S(b).raf && b.clock.live() >= 1, 'a frame is pending');
-    Object.defineProperty(b.doc, 'hidden', { configurable: true, value: true }); b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
-    assert.strictEqual(b.clock.live(), 0, 'stop() cancelled the frame (cancelAnimationFrame is bound)');
-    Object.defineProperty(b.doc, 'hidden', { configurable: true, value: false }); b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
-    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700);
-    // a HELD tilt (G5): the neutral pose drifts onto it, the light eases home, and only then
-    // does the loop park (no rAF, no timer, no writes) until the next sample
-    b.clock.advance(7 * L.RECENTER_TAU_MS);
-    assert.ok(Math.abs(lx(b)) < 0.02, `a held tilt re-centres through the real engine (got ${lx(b)})`);
-    assert.strictEqual(S(b).raf, false, 'settled and no new sample: the loop parked');
-    const w0 = S(b).writes;
+    assert.strictEqual(prop(b, '--lk'), '1', 'Pronounced: the alpha factor 1');
+    assert.ok(Math.abs(px(b, '--k') - K) < 0.1, `--k = the panel height / 24 (${prop(b, '--k')})`);
+    atKey(b); b.clock.advance(400);
+    assert.ok(Math.abs(px(b, '--fx')) < 1 && Math.abs(px(b, '--fy')) < 1, `at the key pose the map is centred (${prop(b, '--fx')}, ${prop(b, '--fy')})`);
+    assert.strictEqual(prop(b, '--dom'), '1.000', 'the dome image full');
+    pose(b, L.KEY_X, L.KEY_Y + 6); b.clock.advance(600);
+    assert.ok(Math.abs(px(b, '--fy') - 12 * K) < 3, `a 6 deg tilt: the flat reflection moves 12 k px = half the face (${prop(b, '--fy')} vs ${(12 * K).toFixed(1)})`);
+    assert.ok(Math.abs(px(b, '--fx')) < 2, 'no roll: --fx stays ~0');
+    const dy = px(b, '--dy');
+    assert.ok(dy > 0 && px(b, '--fy') / dy > 12 && px(b, '--fy') / dy < 22, `the dome moves ~15x slower (${(px(b, '--fy') / dy).toFixed(1)}x)`);
+    assert.ok(Math.abs(Number(prop(b, '--la')) - 90) < 1, 'the light azimuth: straight down (+y)');
+    assert.ok(Number(prop(b, '--wt')) > 0.6 && Number(prop(b, '--wt')) < 0.7, `the wheel tone at 12 deg (${prop(b, '--wt')})`);
+    assert.ok(Math.abs(Number(prop(b, '--ly')) - 1) < 0.02 && Math.abs(Number(prop(b, '--lx'))) < 0.02, '--ly clamps at 12 deg');
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(600);
+    assert.ok(Math.abs(px(b, '--fx') - 12 * K) < 3 && Math.abs(px(b, '--fy')) < 2, `a 6 deg roll moves --fx by 12 k (${prop(b, '--fx')})`);
+    pose(b, L.KEY_X, L.KEY_Y + 20); b.clock.advance(100);
+    assert.ok(S(b).raf, 'the loop is live while samples stream');
+    b.clock.advance(700);
+    assert.strictEqual(prop(b, '--dom'), '0.000', 'a 40 deg reflected angle: the dome image is off the rim');
+    assert.ok(px(b, '--fy') > 35 * K, 'the flat reflection is well past the face');
+    const held = px(b, '--fy');
+    for (let i = 0; i < 400; i++) { pose(b, L.KEY_X, L.KEY_Y + 20); b.clock.advance(16); }
+    assert.ok(Math.abs(px(b, '--fy') - held) < 1, `held for 6 s: the reflection has not drifted (${held} -> ${prop(b, '--fy')})`);
+    assert.deepStrictEqual(S(b).key, { x: L.KEY_X, y: L.KEY_Y }, 'the key never moved');
     b.clock.advance(2000);
+    assert.strictEqual(S(b).raf, false, 'settled and no new sample: parked');
+    const w0 = S(b).writes; b.clock.advance(2000);
     assert.strictEqual(S(b).writes, w0, 'no writes while parked');
-    assert.strictEqual(b.clock.live(), 0, 'no timer of any kind pending');
-    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG);
-    assert.ok(S(b).raf, 'the next sample re-arms the loop');
+    b.ls.setItem(L.KEY, 'subtle'); b.engine.paint();
+    assert.ok(lit(b) && !strong(b), 'Subtle: lit, never strong');
+    assert.strictEqual(prop(b, '--lk'), '0.6');
+    pose(b, L.KEY_X, L.KEY_Y + 6); b.clock.advance(600);
+    assert.ok(Math.abs(px(b, '--fy') - 12 * K) < 3, 'Subtle moves exactly as far (alpha, not travel, is what differs)');
   } finally { b.restore(); }
 });
 
-test('AC1 desktop: a MOUSE pointermove over the panel drives the light when no sensor sample is live; a touch never does; leaving eases home', () => {
+test('AC1 desktop: a MOUSE pointermove over the panel drives the reflection (+-12 deg at the edges) when no sensor sample is live; a touch never does; leaving eases home', () => {
   const b = boot({ strength: 'pronounced' });
   try {
     b.engine.paint();
     P(b).getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 800 });
     mouseAt(b, 100, 400, 'touch');
     b.clock.advance(300);
-    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', 'a finger never moves the light');
-    mouseAt(b, 100, 400, 'mouse');    // left quarter -> the light at x = -0.5
+    assert.ok(Math.abs(px(b, '--fx')) < 0.5, 'a finger never moves the light (the map stays centred at the key)');
+    mouseAt(b, 100, 400, 'mouse');
     b.clock.advance(1000);
-    assert.ok(Math.abs(lx(b) + 0.5) < 0.02, `the pointer IS the light (got ${lx(b)})`);
+    assert.ok(Math.abs(px(b, '--fx') + 6 * K) < 3, `the pointer IS the light (got ${prop(b, '--fx')} want ${(-6 * K).toFixed(1)})`);
     const leave = new b.win.MouseEvent('pointerleave', { bubbles: false });
     Object.defineProperty(leave, 'pointerType', { value: 'mouse' });
     P(b).dispatchEvent(leave);
     b.clock.advance(3000);
-    assert.ok(Math.abs(lx(b)) < 0.01, 'eases back to neutral after the pointer leaves');
-    // a live sensor outranks the mouse
-    tiltTo(b, 0, 3); b.clock.advance(100); tiltTo(b, 0, 3 + 14); b.clock.advance(500);
-    const sensorX = lx(b);
-    assert.ok(sensorX < -0.4, 'the sensor drives');
+    assert.ok(Math.abs(px(b, '--fx')) < 1, 'eases back to the key after the pointer leaves');
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(500);
+    assert.ok(px(b, '--fx') > 10 * K, 'the sensor drives');
     mouseAt(b, 380, 400, 'mouse'); b.clock.advance(500);
-    assert.ok(lx(b) < -0.4, `a mouse move while the sensor is fresh is ignored (got ${lx(b)})`);
+    assert.ok(px(b, '--fx') > 10 * K, `a mouse move while the sensor is fresh is ignored (got ${prop(b, '--fx')})`);
   } finally { b.restore(); }
 });
 
-test('AC2 both axes on a POPULATED panel: Off clears the properties, the class and every listener; Subtle then Pronounced binds ONE listener, never two', async () => {
+test('AC4 both axes on a POPULATED panel: Off clears every property, both classes and every listener; Subtle then Pronounced binds ONE listener, never two', async () => {
   const b = boot({ strength: 'pronounced' });
   try {
     b.engine.paint();
-    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(500);
-    assert.ok(lx(b) < -0.5 && lit(b), 'populated AND lit before the clear axis is driven');
-    // through the REAL Settings > Lighting path
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(500);
+    assert.ok(px(b, '--fx') > 10 * K && lit(b) && strong(b), 'populated AND lit before the clear axis is driven');
     pressMenu(b); tapLabel(b, 'Settings');
     assert.deepStrictEqual(lbls(b), ['Lighting', 'About']);
     tapLabel(b, 'Lighting');
     assert.deepStrictEqual(lbls(b), ['Off', 'Subtle', 'Pronounced']);
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
     tapLabel(b, 'Off'); await flush();
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Off', 'the check moved');
-    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', '--lx cleared');
-    assert.strictEqual(P(b).style.getPropertyValue('--ly'), '', '--ly cleared');
-    assert.strictEqual(P(b).style.getPropertyValue('--lm'), '', '--lm cleared');
-    assert.ok(!lit(b) && !P(b).classList.contains('mms-lit-strong'), 'both lit classes dropped');
+    for (const name of ['--fx', '--fy', '--dx', '--dy', '--dom', '--la', '--wt', '--lx', '--ly', '--k', '--dr', '--lcx', '--lcy', '--lk']) assert.strictEqual(prop(b, name), '', name + ' cleared');
+    assert.ok(!lit(b) && !strong(b), 'both lit classes dropped');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'every listener unbound');
     assert.strictEqual(vis(b), 2, 'the driver keeps its visibilitychange (it re-lights on a return), the engine its own');
-    assert.strictEqual(S(b).raf, false, 'the frame loop was live (samples streamed): Off cancelled its rAF (gate r1 J2/J3)');
-    assert.strictEqual(S(b).raf, false);
+    assert.strictEqual(S(b).raf, false, 'Off cancelled its rAF');
     assert.strictEqual(b.ls.getItem(L.KEY), 'off', 'stored');
     tapLabel(b, 'Subtle'); await flush();
     tapLabel(b, 'Pronounced'); await flush();
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'two picks: still exactly one listener each');
     assert.strictEqual(vis(b), 2);
-    assert.ok(lit(b));
-    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(500);
-    assert.ok(lx(b) < -0.5, 'lit again through the real path');
+    assert.ok(lit(b) && strong(b));
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(500);
+    assert.ok(px(b, '--fx') > 10 * K, 'lit again through the real path');
   } finally { b.restore(); }
 });
 
-test('AC3 every teardown arm unbinds: the dock (no destroy), a hidden document, a repaint as Cider, the tray, reduced motion, destroy - measured over repeated mounts', async () => {
+test('AC4 every teardown arm unbinds: the dock (no destroy), a hidden document (the RETURN re-lights with no paint), a repaint as Cider, Seattle (no row, never lit), the tray, destroy (terminal) - measured over repeated mounts', async () => {
   const b = boot({ strength: 'pronounced' });
   try {
     const zero = { orient: 0, move: 0, leave: 0 };
     const one = { orient: 1, move: 1, leave: 1 };
-    const light = () => { b.engine.paint(); tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300); assert.deepStrictEqual(listening(b), one); assert.ok(lit(b) && lx(b) < 0); };
+    const light = () => { b.engine.paint(); pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(300); assert.deepStrictEqual(listening(b), one); assert.ok(lit(b) && px(b, '--fx') > 5 * K); };
     for (let n = 0; n < 3; n++) {
-      // (a) the DOCK: the view clears the panel synchronously WITHOUT destroy() (v1.256 class)
       light();
       P(b).hidden = true; P(b).innerHTML = '';
-      b.clock.advance(40); // one frame: the LIVE loop notices and stops itself (the observer would too)
+      b.clock.advance(40);
       assert.deepStrictEqual(listening(b), zero, `dock #${n}: unbound within a frame`);
-      assert.strictEqual(vis(b), 2, 'the driver\'s visibilitychange stays (it re-lights on a return); the engine\'s too');
+      assert.strictEqual(vis(b), 2, 'the standing visibility listeners stay');
       assert.strictEqual(S(b).raf, false);
       assert.strictEqual(b.clock.live(), 0, 'nothing pending');
       P(b).hidden = false;
-      // (b) a hidden document (the tab in the background)
       light();
       Object.defineProperty(b.doc, 'hidden', { configurable: true, value: true });
       b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
       assert.deepStrictEqual(listening(b), zero, `hidden #${n}: unbound on visibilitychange`);
       Object.defineProperty(b.doc, 'hidden', { configurable: true, value: false });
       b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
-      assert.deepStrictEqual(listening(b), one, `return #${n}: re-bound by the visibility listener alone, NO paint (gate r1 W1: an iPhone unlock)`);
+      assert.deepStrictEqual(listening(b), one, `return #${n}: re-bound by the visibility listener alone, NO paint (an iPhone unlock)`);
       assert.ok(lit(b));
-      tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300);
-      assert.ok(lx(b) < 0, 'and it moves again after the return');
-      // (c) a repaint as a non-Click skin
+      pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(300);
+      assert.ok(px(b, '--fx') > 5 * K, 'and it moves again after the return');
       b.state.skin = 'apple'; b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `Cider #${n}: no lighting`);
       assert.ok(!lit(b));
       b.state.skin = 'zune-classic'; b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `Seattle #${n}: out of scope (Dean), never lit`);
-      assert.ok(!lit(b) && P(b).style.getPropertyValue('--lx') === '');
+      assert.ok(!lit(b) && prop(b, '--fx') === '');
       pressMenu(b); tapLabel(b, 'Settings');
-      assert.deepStrictEqual(lbls(b), ['About'], `Seattle #${n}: Settings shows no Lighting row (gate r1 W2)`);
+      assert.deepStrictEqual(lbls(b), ['About'], `Seattle #${n}: Settings shows no Lighting row`);
       pressMenu(b); pressMenu(b);
       b.state.skin = 'ipod-matte';
-      // (d) the tray (the pop-out's Nano strip)
       b.doc.body.classList.add('mms-tray'); b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `tray #${n}: no lighting`);
       b.doc.body.classList.remove('mms-tray');
     }
-    // (e) destroy - terminal (the view / pop-out shell never paints a destroyed engine again)
     light();
     b.engine.destroy();
     assert.deepStrictEqual(listening(b), zero, 'destroy');
     assert.strictEqual(vis(b), 0, 'destroy: engine and driver both unbound');
     assert.strictEqual(S(b).raf, false);
-    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '');
+    assert.strictEqual(prop(b, '--fx'), '');
     b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
     assert.deepStrictEqual(listening(b), zero, 'a visibility flip after destroy re-binds nothing');
   } finally { b.restore(); }
 });
 
-test('AC3 the PARKED dock (the probe\'s finding): with no sample in flight the frame loop is parked, so the release must be STRUCTURAL - the panel emptying or hiding unbinds within a microtask', async () => {
+test('AC4 the PARKED dock: with no sample in flight the frame loop is parked, so the release is STRUCTURAL - the panel emptying or hiding unbinds within a microtask', async () => {
   const b = boot({ strength: 'pronounced' });
   try {
     b.engine.paint();
@@ -409,31 +393,30 @@ test('AC3 the PARKED dock (the probe\'s finding): with no sample in flight the f
     P(b).hidden = true; P(b).innerHTML = '';
     await flush();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'the observer released it');
-    assert.strictEqual(vis(b), 2, 'the standing visibility listeners stay (engine + driver)');
     P(b).hidden = false; b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'a repaint re-binds');
-    P(b).hidden = true; // hidden alone (the attribute arm), the DOM still populated
+    P(b).hidden = true;
     await flush();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'hidden alone releases too');
   } finally { b.restore(); }
 });
 
-test('AC3 reduced motion: nothing binds, nothing is written; the Lighting level says why', async () => {
+test('AC4 reduced motion: nothing binds, nothing is written; the Lighting level says why', async () => {
   const b = boot({ strength: 'pronounced', reduced: true });
   try {
     b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 });
     assert.strictEqual(vis(b), 2, 'the driver\'s standing visibility listener + the engine\'s; nothing else');
     assert.ok(!lit(b));
-    tiltTo(b, 0, 30); b.clock.advance(500);
-    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '');
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(500);
+    assert.strictEqual(prop(b, '--fx'), '');
     pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting'); tapLabel(b, 'Subtle'); await flush();
     assert.ok(lbls(b).includes(L.NOTE_REDUCED), 'the note row');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'a pick under reduced motion binds nothing');
   } finally { b.restore(); }
 });
 
-test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + the note and binds nothing that streams; granted binds', async () => {
+test('AC4 iOS permission: asked ONCE from the tap; a deny on a device with no mouse = not lit, nothing bound, the note (kept strength); the wheel never parks on the note row; granted binds; a relaunch waits for the first sample; a late answer after destroy re-binds nothing', async () => {
   let asks = 0;
   const b = boot({ strength: 'off', finePointer: false, permission: () => { asks += 1; return Promise.resolve('denied'); } });
   try {
@@ -444,22 +427,18 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.strictEqual(asks, 1, 'requestPermission ran inside the tap (user activation)');
     await flush(); await flush();
     assert.ok(lbls(b).includes(L.NOTE_DENIED), 'denied: the note row');
-    // gate r1 qa S2 / r2 adversary R8: the wheel never parks the highlight on the note row
-    slowSpin(b, 4, 1);
-    assert.strictEqual(b.engine.menuState().cursor, 2, 'clamped to the last option (Pronounced), not the note');
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Pronounced');
-    slowSpin(b, 1, -1);
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Subtle', 'the wheel still moves among the options');
     assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'the pick is kept (Dean: keep the strength + a note)');
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
-    // gate r1 (adversary W3): a deny on a device with no mouse = the look stays TODAY's - not lit,
-    // not listening (a lit band waiting for samples that never come is not "as today")
+    slowSpin(b, 4, 1);
+    assert.strictEqual(b.engine.menuState().cursor, 2, 'clamped to the last option (Pronounced), not the note');
+    slowSpin(b, 1, -1);
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Subtle', 'the wheel still moves among the options');
     assert.ok(!lit(b), 'not lit after a deny');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'nothing bound after a deny');
-    tiltTo(b, 0, 30); b.clock.advance(500);
-    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', 'no offset ever written after a deny');
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(500);
+    assert.strictEqual(prop(b, '--fx'), '', 'no offset ever written after a deny');
     tapLabel(b, 'Off'); await flush();
-    assert.ok(!lbls(b).includes(L.NOTE_DENIED), 'a re-pick clears the stale note (gate r1 J15)');
+    assert.ok(!lbls(b).includes(L.NOTE_DENIED), 'a re-pick clears the stale note');
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 });
   } finally { b.restore(); }
   let asks2 = 0;
@@ -469,12 +448,11 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     pressMenu(g); tapLabel(g, 'Settings'); tapLabel(g, 'Lighting'); tapLabel(g, 'Subtle');
     await flush(); await flush();
     assert.strictEqual(asks2, 1);
-    assert.ok(!lbls(g).includes(L.NOTE_DENIED) && lit(g), 'granted: lit, no note');
+    assert.ok(!lbls(g).includes(L.NOTE_DENIED) && lit(g) && !strong(g), 'granted: lit (Subtle, not strong), no note');
     assert.deepStrictEqual(listening(g), { orient: 1, move: 1, leave: 1 });
-    tiltTo(g, 0, 3); g.clock.advance(50); tiltTo(g, 0, 30); g.clock.advance(500);
-    assert.ok(lx(g) < -0.6 && lx(g) > -0.9, `subtle after a grant (got ${lx(g)})`);
+    pose(g, L.KEY_X + 6, L.KEY_Y); g.clock.advance(500);
+    assert.ok(px(g, '--fx') > 10 * K, 'Subtle after a grant moves the full distance');
   } finally { g.restore(); }
-  // no permission API (Android / desktop): binds directly; no sensor AND no fine pointer: the note
   const n = boot({ strength: 'off', finePointer: false });
   try {
     n.engine.paint(); pressMenu(n); tapLabel(n, 'Settings'); tapLabel(n, 'Lighting'); tapLabel(n, 'Pronounced'); await flush();
@@ -483,36 +461,28 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.ok(lbls(n).includes(L.NOTE_NO_SENSOR), 'a coarse pointer and no sample within the wait: says so');
     assert.deepStrictEqual(listening(n), { orient: 1, move: 1, leave: 1 }, 'still bound: a sensor that appears later streams');
   } finally { n.restore(); }
-  // a FINE pointer (a desktop) never gets the no-sensor note: the mouse is the light (gate r1 J12)
   const f = boot({ strength: 'off', finePointer: true });
   try {
     f.engine.paint(); pressMenu(f); tapLabel(f, 'Settings'); tapLabel(f, 'Lighting'); tapLabel(f, 'Pronounced'); await flush();
     f.clock.advance(L.SENSOR_WAIT_MS + 10); await flush(); await flush();
     assert.ok(!lbls(f).includes(L.NOTE_NO_SENSOR), 'no note on a desktop');
   } finally { f.restore(); }
-  // gate r2 (qa W4): a RELAUNCH with the strength stored, behind a permission API, on a device with no
-  // mouse - a remembered deny or a forgotten grant streams nothing: the panel must not be lit until the
-  // first sample proves the sensor streams (never a lit-but-still band on every launch)
   const rl = boot({ strength: 'pronounced', finePointer: false, permission: () => Promise.resolve('granted') });
   try {
     rl.engine.paint();
     assert.deepStrictEqual(listening(rl), { orient: 1, move: 1, leave: 1 }, 'bound (a remembered grant streams at once on iOS)');
-    assert.ok(!lit(rl), 'NOT lit before a sample');
+    assert.ok(!lit(rl) && !strong(rl), 'NOT lit before a sample');
     rl.clock.advance(5000);
-    assert.ok(!lit(rl) && P(rl).style.getPropertyValue('--lx') === '', 'still today\'s look: nothing streamed');
-    assert.ok(!P(rl).classList.contains('mms-lit-strong'), 'nor the strong profile before a sample');
-    tiltTo(rl, 0, 3);
-    assert.ok(lit(rl) && P(rl).classList.contains('mms-lit-strong'), 'lit (and strong: pronounced) the moment the sensor streams');
-    // a stop/start cycle re-gates
+    assert.ok(!lit(rl) && Math.abs(px(rl, '--fx')) < 0.5, 'still today\'s look: nothing streamed (no lit class = no layers; the centred properties are inert)');
+    atKey(rl);
+    assert.ok(lit(rl) && strong(rl), 'lit (and strong: pronounced) the moment the sensor streams');
     P(rl).hidden = true; P(rl).innerHTML = ''; await flush(); P(rl).hidden = false; rl.engine.paint();
     assert.ok(!lit(rl), 'a fresh start waits for its own first sample');
   } finally { rl.restore(); }
-  // ...and a desktop (a fine pointer) or Android (no permission API) is lit at once
   const dk = boot({ strength: 'pronounced', finePointer: true, permission: () => Promise.resolve('granted') });
   try { dk.engine.paint(); assert.ok(lit(dk), 'a fine pointer drives: lit at once'); } finally { dk.restore(); }
   const an = boot({ strength: 'pronounced', finePointer: false });
   try { an.engine.paint(); assert.ok(lit(an), 'no permission API: lit at once'); } finally { an.restore(); }
-  // a LATE answer after destroy() re-binds nothing (gate r1 S2)
   let late = null;
   const d = boot({ strength: 'off', permission: () => new Promise((r) => { late = r; }) });
   try {
@@ -530,53 +500,53 @@ test('the pop-out surface (another document): the driver listens on THAT window 
   try {
     b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'bound on the pop-out window/document');
-    tiltTo(b, 10, 0); b.clock.advance(50); tiltTo(b, 10, 20); b.clock.advance(400);
-    assert.ok(lx(b) < -0.3);
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(400);
+    assert.ok(px(b, '--fx') > 5 * K);
     b.engine.destroy();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 });
     assert.strictEqual(vis(b), 0, 'destroy drops the driver\'s standing visibility listener with the engine\'s');
   } finally { b.restore(); }
 });
 
-test('gate r1 hardening: a fresh open is a fresh neutral pose (J9); the observer never leaks (J1); pointerLight clamps (J8); a still stream writes nothing (J4); pointerleave never eases a SENSOR-driven light (J7); screen.orientation maps the axes (J11)', async () => {
+test('hardening: the observer never leaks; a still device at its pose writes nothing; a pointerleave never eases a SENSOR-driven light; the seam holds through the engine; landscape maps the axes; pointerLight clamps', async () => {
   const b = boot({ strength: 'pronounced' });
   try {
-    // J1: observers balance over start/stop cycles
     let observing = 0;
     const MO = b.win.MutationObserver;
     b.win.MutationObserver = class extends MO { observe(...a) { observing += 1; return super.observe(...a); } disconnect() { observing -= 1; return super.disconnect(); } };
     for (let i = 0; i < 4; i++) { b.engine.paint(); assert.strictEqual(observing, 1, 'one observer while lit'); P(b).hidden = true; P(b).innerHTML = ''; await flush(); assert.strictEqual(observing, 0, 'none after the dock'); P(b).hidden = false; }
-    // J9: the neutral pose is the pose of THIS open, not the last one
     b.engine.paint();
-    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(400);
-    assert.ok(lx(b) < -0.5, 'lit and offset');
-    P(b).hidden = true; P(b).innerHTML = ''; await flush(); P(b).hidden = false;
-    b.engine.paint();
-    tiltTo(b, 0, 30); b.clock.advance(400); // the SAME pose the last open ended in is neutral now
-    assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', 'the first sample of a fresh open is neutral (nothing written)');
-    // J4: a still device at its neutral pose (the same sample every frame) writes NOTHING
+    pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(1000);
     const w0 = S(b).writes;
-    for (let i = 0; i < 60; i++) { tiltTo(b, 0, 30); b.clock.advance(16); }
-    assert.strictEqual(S(b).writes - w0, 0, 'a still device streams samples but writes nothing (gate r1 J4)');
-    // J7: a pointerleave while the SENSOR drives does not ease the light home
-    tiltTo(b, 0, 30 + 14); b.clock.advance(1000);
-    const before = lx(b);
-    assert.ok(before < -0.3, 'offset');
+    for (let i = 0; i < 60; i++) { pose(b, L.KEY_X + 6, L.KEY_Y); b.clock.advance(16); }
+    assert.strictEqual(S(b).writes - w0, 0, 'a still device streams samples but writes nothing');
+    const before = px(b, '--fx');
     const leave = new b.win.MouseEvent('pointerleave', { bubbles: false }); Object.defineProperty(leave, 'pointerType', { value: 'mouse' });
-    P(b).dispatchEvent(leave); b.clock.advance(300); // frames run BEFORE the next sample
-    assert.ok(Math.abs(lx(b) - before) < 0.05, `sensor-driven: the mouse leaving changes nothing (${before} -> ${lx(b)})`);
-    tiltTo(b, 0, 30 + 14); b.clock.advance(300);
-    assert.ok(Math.abs(lx(b) - before) < 0.05, 'and the next sample continues from there');
+    P(b).dispatchEvent(leave); b.clock.advance(300);
+    assert.ok(Math.abs(px(b, '--fx') - before) < 1, `sensor-driven: the mouse leaving changes nothing (${before} -> ${prop(b, '--fx')})`);
   } finally { b.restore(); }
-  // J8: the pointer far outside the panel (a captured drag) clamps to the edge
-  assert.deepStrictEqual(L.pointerLight(5000, -5000, { left: 0, top: 0, width: 100, height: 100 }), { x: 1, y: -1 });
-  // J11: screen.orientation.angle 90 swaps the axes through the real listener
+  // the +-180 seam through the real engine: the key glided onto an overhead pose (lying on your back);
+  // jitter across the seam never throws the reflection across the face
+  const seam = boot({ strength: 'pronounced' });
+  try {
+    seam.engine.paint();
+    for (let i = 0; i < 60 * 12; i++) { tiltTo(seam, 179.5, 2); seam.clock.advance(16); }
+    assert.ok(Math.abs(L.wrapDiff(S(seam).key.y, 179.5)) < 2, `12 s overhead: the key glided there (${S(seam).key.y})`);
+    const fy0 = px(seam, '--fy');
+    for (const beta of [-179.8, 179.6, -179.5, 179.9]) { tiltTo(seam, beta, 2); seam.clock.advance(100); assert.ok(Math.abs(px(seam, '--fy') - fy0) < 2.2 * K, `seam jitter (0.7 deg = 1.4 deg reflected) reads as a small tilt, never edge to edge (${prop(seam, '--fy')} vs ${fy0})`); }
+  } finally { seam.restore(); }
+  assert.deepStrictEqual(L.pointerLight(5000, -5000, { left: 0, top: 0, width: 100, height: 100 }), { ex: L.MOUSE_DEG, ey: -L.MOUSE_DEG });
+  assert.strictEqual(L.pointerLight(1, 1, { left: 0, top: 0, width: 0, height: 0 }), null, 'no layout yet: no light');
   const r = boot({ strength: 'pronounced' });
   try {
     Object.defineProperty(r.win, 'screen', { configurable: true, value: { orientation: { angle: 90 } } });
     r.engine.paint();
-    tiltTo(r, 0, 3); r.clock.advance(50); tiltTo(r, 0, 30); r.clock.advance(500); // a gamma tilt...
-    assert.ok(Math.abs(lx(r)) < 0.05 && ly(r) > 0.5, `...lands on --ly in landscape (lx ${lx(r)}, ly ${ly(r)})`);
+    // landscape (angle 90): screen x = the device pitch (beta), screen y = -roll; the key pose is in
+    // screen terms, so beta = KEY_X sits on the key's x and a 6 deg beta change lands on --fx
+    tiltTo(r, L.KEY_X, 0); r.clock.advance(300);
+    const fx0 = px(r, '--fx');
+    tiltTo(r, L.KEY_X + 6, 0); r.clock.advance(500);
+    assert.ok(Math.abs((px(r, '--fx') - fx0) - 12 * K) < 3, `landscape: a pitch change lands on --fx (${fx0} -> ${prop(r, '--fx')})`);
   } finally { r.restore(); }
 });
 
@@ -596,10 +566,9 @@ test('a shell without pocket-lighting.js: the engine paints, Settings shows Abou
     engine.paint();
     assert.strictEqual(engine.lightingState(), null);
     tap({ win: dom.window }, panel.querySelector('[data-skin-menu]'));
-    const rows = [...panel.querySelectorAll('.ipm-row .ipm-lbl')].map((x) => x.textContent);
     const settings = [...panel.querySelectorAll('.ipm-row')].find((r) => r.querySelector('.ipm-lbl').textContent === 'Settings');
     tap({ win: dom.window }, settings);
-    assert.deepStrictEqual([...panel.querySelectorAll('.ipm-row .ipm-lbl')].map((x) => x.textContent), ['About'], 'no driver: no Lighting row; rows were ' + rows.join('|'));
+    assert.deepStrictEqual([...panel.querySelectorAll('.ipm-row .ipm-lbl')].map((x) => x.textContent), ['About'], 'no driver: no Lighting row');
   } finally { Object.assign(global, saved); }
 });
 
@@ -610,68 +579,47 @@ function rule(selector) {
   assert.ok(i >= 0, 'rule present: ' + selector);
   return CSS.slice(i, CSS.indexOf('}', i) + 1);
 }
-test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the old constants); Seattle does not; the band and glass exist only when lit; no filter / blur / mask / backdrop anywhere in the lighting rules', () => {
-  const clickWheels = ['.mms-ipod .ip-wheel', '.mms-ipod-black .ip-wheel', '.mms-ipod-matte .ip-wheel'];
-  const clickDomes = ['.mms-ipod .ip-center', '.mms-ipod-black .ip-center', '.mms-ipod-matte .ip-center'];
-  for (const sel of clickWheels) {
-    const r = rule(sel);
-    assert.match(r, /at calc\(50% \+ var\(--lx,0\) \* 30%\) calc\(-8% \+ var\(--ly,0\) \* 26%\)/, sel + ': the sheen sits where the light is (unset = 50% -8%, the old constant)');
-    assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 10%\) calc\(4[02]% \+ var\(--ly,0\) \* 10%\)/, sel + ': the base ramp follows');
-  }
-  assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the rim / recess / drop turn directional only when lit (the static token is the fallback)');
-  for (const sel of clickDomes) assert.match(rule(sel), /circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\((40|38)% \+ var\(--ly,0\) \* 16%\)/, sel);
-  assert.match(rule('.mms-ipod .ip-center'), /box-shadow:var\(--mms-lit-dome-shadow, var\(--mms-ipod-center-shadow\)\)/);
-  // Seattle untouched (Dean's ruling): its pad, center and flanks keep literal positions and the static shadow
-  assert.match(rule('.mms-zune-classic .ip-wheel.znc-pad'), /at 50% -8%/);
-  assert.match(rule('.mms-zune-classic .ip-center.znc-center'), /circle at 50% 40%/);
-  assert.match(rule('.mms-zune-classic .znc-flank'), /box-shadow:var\(--mms-ipod-wheel-shadow\)/);
-  assert.ok(!/\.mms-zune-classic[^{]*\{[^}]*--l[xy]/.test(CSS), 'no Seattle rule reads --lx/--ly');
-  // the lit-only tokens: defined ONCE, on the lit panel; the band + glass are pseudo-elements gated by .mms-lit
-  assert.strictEqual((CSS.match(/--mms-lit-wheel-shadow\s*:/g) || []).length, 2, 'the base profile and the strong override, nowhere else');
-  assert.strictEqual((CSS.match(/--mms-lit-dome-shadow\s*:/g) || []).length, 2);
-  const strong = rule('.mms-ipod.mms-lit-strong');
-  assert.match(strong, /--mms-lit-wheel-shadow:calc\(var\(--lx,0\) \* -7px\)/, 'the strong drop is longer (7px) and softer (5px blur)');
-  assert.match(strong, /inset calc\(var\(--lx,0\) \* -9px\) calc\(2px \+ var\(--ly,0\) \* -9px\) 12px -3px var\(--mms-lit-arc\)/, 'the lit rim arc: an inset crescent offset AWAY from the light (so it paints on the lit edge)');
-  assert.match(strong, /inset calc\(var\(--lx,0\) \* 9px\) calc\(-2px \+ var\(--ly,0\) \* 9px\) 14px -4px var\(--mms-lit-darc\)/, 'the dark arc opposite');
-  const litRoot = rule('.mms-ipod.mms-lit');
-  assert.match(litRoot, /--mms-lit-wheel-shadow:calc\(var\(--lx,0\) \* -4px\) calc\(1px \+ var\(--ly,0\) \* -4px\) 2px var\(--mms-lit-drop\), inset calc\(var\(--lx,0\) \* -2px\) calc\(1px \+ var\(--ly,0\) \* -2px\) 1px var\(--mms-lit-rim\), inset calc\(var\(--lx,0\) \* 2px\) calc\(-2px \+ var\(--ly,0\) \* 2px\) 4px var\(--mms-lit-recess\)/, 'at --lx/--ly = 0 this is byte-identical to the static wheel shadow (0 1px 2px, inset 0 1px 1px, inset 0 -2px 4px); the inset rim takes the light NEGATED (a +x inset offset paints the LEFT edge), the recess as is');
-  const band = rule('.mms-ipod.mms-lit::before');
-  assert.match(band, /position:absolute; inset:-25%; z-index:-1;/, 'the band sits over the body ramp, under the LCD and wheel; 2.25x the panel, not more (gate r1 S3)');
-  assert.match(band, /pointer-events:none/);
-  assert.match(band, /transform:translate3d\(calc\(var\(--lx,0\) \* 12%\), calc\(var\(--ly,0\) \* 10%\), 0\)/, 'a transform on one gradient layer (compositor-only)');
+test('AC3/AC5 CSS lock: ONE environment map per material (sharp panes on Click + Black body AND glass; the soft metal blob on Matte; the wheel reads --la only; the dome --dx/--dy/--dom; no --lm anywhere); Off = no base rule changed; Seattle untouched; no filter / blur / mask / backdrop / blend mode / CSS trig in any lighting rule', () => {
+  for (const sel of ['.mms-ipod .ip-wheel', '.mms-ipod-black .ip-wheel', '.mms-ipod-matte .ip-wheel']) assert.match(rule(sel), /at calc\(50% \+ var\(--lx,0\) \* 30%\) calc\(-8% \+ var\(--ly,0\) \* 26%\)/, sel + ': the base rule is the v1.327 one');
+  assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/);
+  assert.match(rule('.mms-zune-classic .ip-wheel.znc-pad'), /at 50% -8%/, 'Seattle untouched');
+  assert.ok(!/\.mms-zune-classic[^{]*\{[^}]*--(?:fx|fy|lx|ly|la|dx)/.test(CSS), 'no Seattle rule reads the light');
+  assert.ok(!/--lm\b/.test(CSS), 'the dome no longer dims with distance (--lm is gone)');
+  assert.match(rule('.mms-ipod.mms-lit::before'), /var\(--mms-env-veil-white\)/, 'white gloss: a veil for headroom');
+  assert.match(rule('.mms-ipod-black.mms-lit::before'), /var\(--mms-env-veil-black\)/);
+  assert.match(rule('.mms-ipod-matte.mms-lit::before'), /content:none/, 'anodized: no veil');
+  const map = rule('.mms-ipod.mms-lit::after');
+  assert.match(map, /var\(--mms-env-pane\)/, 'the sharp panes'); assert.match(map, /var\(--mms-env-lamp\)/, 'the lamp'); assert.match(map, /var\(--mms-env-shoulder\)/, 'the shoulder');
+  assert.match(map, /background-position:calc\(50% \+ var\(--fx,0px\) \+ var\(--k,35px\) \* 22\) calc\(50% \+ var\(--fy,0px\) \+ var\(--k,35px\) \* 4\), calc\(50% \+ var\(--fx,0px\) - var\(--k,35px\) \* 3\.05\) calc\(50% \+ var\(--fy,0px\)\), calc\(50% \+ var\(--fx,0px\) \+ var\(--k,35px\) \* 3\.05\) calc\(50% \+ var\(--fy,0px\)\)/, 'the lamp sits +22/+4 deg from the window, the two panes +-3.05 deg from its centre; all ride --fx/--fy');
+  assert.match(map, /background-size:calc\(var\(--k,35px\) \* 14\) calc\(var\(--k,35px\) \* 14\), calc\(var\(--k,35px\) \* 4\.9\) calc\(var\(--k,35px\) \* 16\)/, 'sizes in degrees x k: each pane 4.9 x 16 deg');
+  assert.match(map, /var\(--mms-env-pane-sill\)/, 'a pane is brighter at the sky than at the sill');
+  assert.match(map, /opacity:calc\(var\(--lk,1\) \* \.9\)/, 'Subtle scales the map by --lk');
+  assert.match(rule('.mms-ipod-black.mms-lit::after'), /var\(--mms-env-ramp-ceil\)/, 'black gloss: the room ramp');
+  const matte = rule('.mms-ipod-matte.mms-lit::after');
+  assert.match(matte, /var\(--mms-env-metal\)/, 'anodized: the soft metal-tinted blob'); assert.ok(!/--mms-env-pane\b/.test(matte), 'anodized: no sharp panes on the body');
   const glass = rule('.mms-ipod.mms-lit .ip-lcd-in::after');
-  assert.match(glass, /pointer-events:none/, 'the glass streak never takes a tap');
-  assert.match(glass, /var\(--mms-lit-glass\)/);
-  assert.ok(!/\n {2}\.mms-ipod::before\{/.test(CSS) && !/\n {2}\.mms-ipod \.ip-lcd-in::after\{/.test(CSS), 'no band or glass layer exists when NOT lit');
-  // the HARD constraint: nothing animated is a filter, blur, mask or backdrop - vendor + case + sibling
-  // spellings (v1.313 lesson), over WHOLE RULES (gate r1 W4: a line filter let a filter on its own line
-  // inside the band rule through): every rule whose selector names mms-lit or whose body reads --lx/--ly.
+  assert.match(glass, /var\(--mms-env-pane\)/); assert.match(glass, /calc\(50% \+ var\(--fx,0px\) \+ var\(--lcx,0px\) - var\(--k,35px\) \* 3\.05\) calc\(50% \+ var\(--fy,0px\) \+ var\(--lcy,0px\)\)/, 'panel coordinates (the same pane offsets, the LCD centre subtracted)');
+  assert.match(glass, /pointer-events:none/); assert.match(glass, /opacity:calc\(var\(--lk,1\) \* \.23\)/, 'panes at .14 over content');
+  assert.match(rule('.mms-ipod.mms-lit .ip-lcd-in'), /inset calc\(var\(--lx,0\) \* -2px\) calc\(var\(--ly,0\) \* -2px\) 3px var\(--mms-env-bezel-move\)/, 'the one moving bezel shadow');
+  const wheel = rule('.mms-ipod.mms-lit .ip-wheel');
+  assert.match(wheel, /conic-gradient\(from calc\(var\(--la,0\) \* 1deg - 40deg\)/, 'the lip ring keyed to the azimuth');
+  assert.ok(!/--(?:fx|fy|lx|ly)\b/.test(wheel), 'no moving specular on matte plastic');
+  assert.match(wheel, /isolation:isolate/);
+  assert.match(rule('.mms-ipod.mms-lit .ip-wheel::before'), /inset:1\.5px/, 'the flat face inset 1.5 px');
+  assert.match(rule('.mms-ipod.mms-lit .ip-wheel::after'), /opacity:var\(--wt,0\)/, 'the tone overlay');
+  const dome = rule('.mms-ipod.mms-lit .ip-center::after');
+  assert.match(dome, /opacity:calc\(var\(--dom,0\) \* var\(--lk,1\)\)/); assert.match(dome, /calc\(50% \+ var\(--dx,0px\)\) calc\(50% \+ var\(--dy,0px\)\)/); assert.match(dome, /background-size:6px 6px, 40% 55%/, 'the window image 0.4R x 0.55R, soft-edged');
+  assert.match(rule('.mms-ipod.mms-lit .ip-center'), /position:relative; overflow:hidden/, 'the image clips at the rim');
+  assert.match(rule('.mms-ipod.mms-lit .ip-center'), /0 0 0 1px var\(--mms-env-btn-gap\)/); assert.match(wheel, /0 0 0 1px var\(--mms-env-gap\)/);
   const allRules = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
-  const litRuleList = allRules.filter((r) => /mms-lit/.test(r.sel) || /--l[xy]\b/.test(r.body));
-  assert.ok(litRuleList.length >= 8, 'the lighting rules were found (' + litRuleList.length + ')');
+  const litRuleList = allRules.filter((r) => /mms-lit/.test(r.sel) || /--(?:fx|fy|dx|dy|dom|la|wt|lx|ly)\b/.test(r.body));
+  assert.ok(litRuleList.length >= 20, 'the lighting rules were found (' + litRuleList.length + ')');
   const litRules = litRuleList.map((r) => r.sel + '{' + r.body + '}').join('\n');
-  assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-image)?)\s*:/i.test(litRules), 'no filter / backdrop / mask in any lighting rule: ' + litRules.match(/[^\n]*(?:filter|mask)[^\n]*/i));
+  assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-image)?)\s*:/i.test(litRules), 'no filter / backdrop / mask in any lighting rule');
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
-  // the STRONG profile (the second swing): exists for the three Click wheels and domes, the band and the
-  // glass; only under .mms-lit-strong; its layers travel inside their overhang
-  for (const sel of ['.mms-ipod.mms-lit-strong .ip-wheel', '.mms-ipod-black.mms-lit-strong .ip-wheel', '.mms-ipod-matte.mms-lit-strong .ip-wheel']) {
-    const r = rule(sel);
-    assert.match(r, /90% 55% at calc\(50% \+ var\(--lx,0\) \* 40%\) calc\(-8% \+ var\(--ly,0\) \* 30%\)/, sel + ': the sheen travels further');
-    assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 14%\)/, sel + ': the base ramp follows further');
-  }
-  for (const sel of ['.mms-ipod.mms-lit-strong .ip-center', '.mms-ipod-black.mms-lit-strong .ip-center', '.mms-ipod-matte.mms-lit-strong .ip-center']) assert.match(rule(sel), /var\(--mms-lit-far\)/, sel + ': the dark far side');
-  const hot = rule('.mms-ipod.mms-lit-strong .ip-center::after');
-  assert.match(hot, /pointer-events:none/); assert.match(hot, /opacity:calc\(1 - var\(--lm,0\) \* \.45\)/, 'the hot spot dims as the light moves off-centre');
-  const sband = rule('.mms-ipod.mms-lit-strong::before');
-  assert.match(sband, /inset:-35%;/, 'the strong band layer: 1.7x'); assert.match(sband, /translate3d\(calc\(var\(--lx,0\) \* 20%\), calc\(var\(--ly,0\) \* 16%\), 0\)/);
-  // (the strong band: 20% x 1.7 = 34% < 35% overhang; 16% x 1.7 = 27%: never exposed)
-  const sglass = rule('.mms-ipod.mms-lit-strong .ip-lcd-in::after');
-  assert.match(sglass, /inset:0 -70%;/); assert.match(sglass, /translate3d\(calc\(var\(--lx,0\) \* 25%\), 0, 0\)/);
-  // (the strong glass: 25% x 2.4 = 60% < 70% overhang: never exposed)
-  assert.strictEqual((CSS.match(/\.mms-lit-strong/g) || []).length >= 12, true, 'the strong profile is a class the driver adds (pronounced only)');
-  // Matte is softer, Black dimmer than Click (G1)
-  const alpha = (name) => Number((CSS.match(new RegExp(name + ':rgba\\(255,255,255,(\\.\\d+)\\)')) || [])[1]);
-  assert.ok(alpha('--mms-lit-band') > alpha('--mms-litk-band') && alpha('--mms-litk-band') > alpha('--mms-litm-band'), 'Click > Black > Matte band strength');
+  assert.ok(!/(?:mix|background)-blend-mode\s*:/i.test(litRules), 'no blend modes (the research source uses them; we do not)');
+  assert.ok(!/(?:^|[^-\w])(?:a?sin|a?cos|a?tan2?|hypot)\(/i.test(litRules), 'no CSS trig functions (the math lives in JS)');
+  assert.ok(!/\n {2}\.mms-ipod::after\{/.test(CSS) && !/\n {2}\.mms-ipod \.ip-lcd-in::after\{/.test(CSS) && !/\n {2}\.mms-ipod \.ip-wheel::before\{/.test(CSS), 'no map / glass / face layer exists when NOT lit');
 });
 
 // ---------------------------------------------------------------- shell parity (dynamic, never a list)
