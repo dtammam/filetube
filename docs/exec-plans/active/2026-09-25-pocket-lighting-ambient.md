@@ -3,10 +3,10 @@ plan: pocket-lighting-ambient
 harness: v2 · lean
 branch: feat/pocket-lighting-ambient
 anchor: spec
-status: Gate:CHANGES r1 @7bcfdc23
-next: r2 delta re-review by the same seats at the fix commit; then the release.
+status: Gate:APPROVED r2 @03bf1e9d
+next: the release steps (docs/RELEASING.md + AGENTS.md): version, ROADMAP, ledger, tracker #281, plan-complete, release branch, merge --no-ff, tag v1.333.0, PR, CI, merge.
 design: "Approved 2026-09-25 (Dean in this session: the candidate pick, the menu-fit ruling and the two device answers below)"
-gate: pending
+gate: APPROVED r2 @03bf1e9d (adversary, qa)
 ---
 
 # Pocket lighting "Ambient", and a sticker menu that fits
@@ -383,3 +383,139 @@ Gate: CHANGES r1 @7bcfdc23 - adversary
 - adversary S3: the no-filter lock also refuses mask-border / mask-box-image / box-reflect (vendor + case).
 - adversary S4 (surviving redundant guards) kept as defence in depth; the unmeasured suspicions (two 1.7x
   composited layers under Ambient; the rotated layer never run on WebKit/iOS) go to #281 and Dean's device check.
+
+### Gate r2 - qa
+
+Delta re-review of 03bf1e9d against my r1 findings (b01e1a9f..03bf1e9d: skin-surface.js, style.css,
+music-skins.js, pocket-lighting.js, the lighting probe, pocket-lighting.test.js). Instruments, run by this seat
+on 03bf1e9d (Node 22.23.1):
+- `npm run lint:css`: `TOTAL 0`. Overlay lint `--enforce`: `clean (0 violations)`. `npx eslint` on the 5 changed
+  js files: exit 0.
+- The same 18 sticker / pocket / lighting test files as r1: 560 / 560 pass (r1's 557 + the 3 new tests).
+- Full `npm test` in a fresh /tmp `git archive 03bf1e9d` sandbox: 9,599 tests, 9,585 pass, 8 fail, 6 skipped.
+  These are the same 8 as r1, and all come from the sandbox (no .git for `git ls-files`). Their seven files, re-run
+  in the real repo at 03bf1e9d: 69 / 69 pass.
+
+Per finding:
+- **r1 W1 (the LCD check): fixed as prescribed.** `refreshLighting()` re-renders only when the pocket menu is
+  alive, has a style, and shows the lighting pane on the menu screen. It calls the same `render()` the Settings
+  path's own pick calls, so it has no new side effects. Mutant: dropping the synchronous call turns "a Lighting
+  chip moves the LCD's Settings > Lighting check" red. Checked in sandbox experiments:
+  - An iOS deny from the sticker adds the LCD's note row once the answer is in.
+  - In the pop-out (another document), the pop-out's own LCD check follows the pick.
+  - With the LCD on Now Playing, or on the Settings level (not Lighting), a sticker pick draws no menu. The
+    screen stays `np`, `mms-menumode` stays off, and the Settings rows and cursor are unchanged.
+- **r1 W2 (the page guard): fixed as prescribed.** The new test covers the showing axis first (the no-sensor
+  note lands on page 1), then the Skin page and the Extras page. The r1 mutant `if (lm) refreshStickerMenu();` now
+  turns that test red.
+- **r1 S1: fixed.** The dead rule is gone, and the remaining `.mms-sm-note` rule is the older fs-md one.
+- **r1 S2: fixed.** All four comments now match the code.
+- **r1 S3: partly fixed, the rest filed.** Speed, Lighting, Skin and Color are each a `role="group"` with an
+  aria-label. That is valid ARIA 1.2: `group` is an allowed owned element of `menu`, and the recommended way to
+  hold separate `menuitemradio` sets, so each set now has its own checked item. The focus hand-off is deferred;
+  the Extras page behaves the same today.
+- **The adversary's items that touch my surfaces:**
+  - The body.mms-tray fallback now draws v1.332's inline chips again (every skin, headed Skin, no Skin row).
+    Mutant: reverting `trayActive || trayBody` turns the fallback test red.
+  - Keying the Ambient rules on `.mms-lit.mms-lit-ambient` raises their specificity to (0,3,0) / (0,3,1). They
+    still beat Pronounced's (0,2,1) layers, and nothing that must win over them is at that level. The class never
+    appears without `.mms-lit`, so Off / Subtle / Pronounced are untouched.
+
+New, none blocking:
+- **N1 (SUGGESTION): the `.then` half of the LCD refresh is unbound.** Mutant: removing
+  `pocket.refreshLighting()` from the answer's `.then` (skin-surface.js:1732) leaves all 302 tests in the 7 sticker
+  / lighting files green. Measured effect: on an iOS deny, the LCD shows the check but not the "Motion access was
+  denied" note row until its next draw (the sticker menu's own note does show). The code is correct today; the
+  experiment that proves it is qa2-exp.test.js QA2-E1 in this seat's scratchpad, ready to become the test.
+- **N2 (SUGGESTION): #281 is cited but not filed.** The plan says the focus hand-off and the unmeasured layer
+  cost are "filed (#281)", but docs/exec-plans/tech-debt-tracker.md at 03bf1e9d stops at row 280, and there is no
+  GitHub issue 281. Add the row with the release (row 280's pattern) so the deferral is real.
+- **N3 (SUGGESTION): each group's aria-label repeats the visible heading beside it** ("Lighting" twice in a
+  screen reader). `aria-labelledby` pointing at the `.mms-sm-h` would name it once.
+
+**Security:** no change from r1. The only new markup is constant strings (the role and aria-label values), and
+there is no new input or network path.
+
+**Verdict:** all r1 findings are fixed or honestly deferred. N1 to N3 are small and safe to ship disclosed: the
+code behaves correctly and only a test binding and two bookkeeping items remain. Tree: `git status` was clean
+before this section; this section is the only change.
+
+Gate: APPROVED r2 @03bf1e9d - qa
+
+### Gate r2 - adversary
+
+Delta re-review of 03bf1e9d against my r1 findings. Every number below was produced by this seat.
+
+Instruments on 03bf1e9d:
+- **Full `npm test`** in a scratch git clone checked out at 03bf1e9d (a real repo, so no sandbox failures):
+  - Node 22.23.1: 9,599 tests, 9,593 pass, 0 fail, 6 skipped.
+  - Node 24.20.0: 9,599 tests, 9,593 pass, 0 fail, 6 skipped.
+  - The skips are the same environmental 6 as r1 (no capture Playwright, no ffmpeg).
+- **Lint:** eslint 0 errors, 6 warnings (the same 6 as base). css-token-lint `TOTAL 0`. Overlay `clean (0 violations)`.
+- **Targeted:** the six r1 files, 265 / 265.
+- **Ambient in the real app** (my r1 CDP script, the real driver, all 10 colorways): the panel carries
+  `mms-lit mms-lit-strong mms-lit-ambient` and the grain on every colorway, and the `::after` is `""` under Ambient.
+  Under Pronounced and Off there is no grain and `::after` is `none`. The re-keying did not unhook anything.
+- **Chips probe tray line** (plain-window pop-out tray, 310x133): `n 12, rows 6`, and the item boxes are
+  identical to bc889907's (the apple chip at 19,277.8,60.4,44, and so on). r1 measured `n 0` there.
+
+Mutants (sandbox from `git archive 03bf1e9d`, each diff checked non-empty against a pristine copy, each
+restored):
+- Red (bound):
+  - drop `lit &&` from applyLit;
+  - un-key the Ambient CSS from `.mms-lit`;
+  - remove both refreshLighting calls;
+  - remove only the synchronous refreshLighting call;
+  - change the page guard to `if (lm)`;
+  - change skinSec back to `(trayActive)`;
+  - force the fallback heading to "Color";
+  - put `-webkit-mask-box-image`, `mask-border`, `MASK-BORDER` or `-webkit-box-reflect` on the streak.
+- Green (survivors): discussed below.
+
+Per finding:
+- **r1 W1: fixed as prescribed, plus the optional CSS keying.** The new test fails on the `lit &&` mutant.
+  With the three rules keyed on `.mms-lit.mms-lit-ambient`, the CSS cannot light a panel on its own. The
+  specificity is now (0,3,0) / (0,3,1): it still beats Pronounced's (0,2,1) layers, and no other rule competes.
+- **r1 W2: fixed.** The sticker pick moves the LCD's check at once (bound). I checked the new path
+  arm by arm:
+  - **Destroyed engine** (destroy with the answer pending, then resolve): no throw, no error event, panel HTML unchanged.
+  - **iOS deny with the LCD on Lighting:** the note row appears once the answer is in.
+  - **Not on the Lighting pane, or not on the menu screen:** the guard only narrows. `afterPaint` already
+    calls the same `render()` unconditionally on every paint, and render has its own `destroyed`, style and
+    screen checks. So refreshLighting cannot produce a cursor, scroll or letter-mode effect that an ordinary
+    paint does not already produce. This also explains why deleting the `destroyed` check or the
+    lighting-and-menu check survives: both are redundant, the S4 kind, not findings.
+  - **Pop-out:** each engine refreshes its own LCD. A pop-out pick does not redraw the MAIN tab's
+    Lighting level. That is pre-existing: the pop-out's Settings > Lighting row behaves the same.
+- **r1 W3: fixed (B3 made true).** Measured with the probe (above) and bound by the mutants. A `body.mms-tray`
+  only exists where the pop-out shell adds it (skin-surface.js:2674), so the phone page is unaffected.
+- **r1 S1: fixed and bound.** The test drives page 1 first, then the Skin and Extras pages.
+- **r1 S2: fixed.** The dead line is gone. r1 measured 14px through the surviving rule, so nothing renders differently.
+- **r1 S3: fixed differently, still partial.** The three named shorthands are caught, but the LONGHANDS slip.
+  `mask-border-source:url(m.png)` and `-webkit-mask-box-image-source:url(m.png)` on the streak leave the lock
+  green (21 / 21 each), and on its own that source is what makes WebKit build a mask. My prescription,
+  `(?:-webkit-)?(?:mask(?:-[\w-]+)?|box-reflect)\s*:`, has no false positive on HEAD: 0 hits across the 84 lit
+  rules. It also catches both longhands, plus `mask-size` and `-webkit-mask`. It stays a SUGGESTION: this is a
+  pre-existing lock, and nothing ships a mask.
+- **r1 S4: kept.** Agreed.
+
+New:
+- **N1 (SUGGESTION; independently the same as qa's N1): the `.then` half of the LCD refresh is unbound.**
+  - The mutant: remove `pocket.refreshLighting()` from the answer's `.then` and all 265 tests stay green. The
+    new test's "and after the answer" assertion is already satisfied by the synchronous call, so it is
+    vacuous on that axis.
+  - Measured effect (jsdom, real engine, iPhone shape, LCD on Lighting, sticker Pronounced, deny): on HEAD the
+    LCD rows end with "Motion access was denied. The look stays as today."; under the mutant, the four
+    strengths without the note.
+  - This is cosmetic and self-heals on the next paint, and the code is correct today. A binding test is to
+    drive that deny and assert the note row on the LCD; I ran exactly that, and it fails under the mutant and
+    passes on HEAD.
+
+No new CRITICAL or WARNING. The two SUGGESTIONs (N1, the S3 longhands) are safe to ship as disclosed or to
+fold into the release commit.
+
+Tree: `/home/coder/projects/filetube` untouched by this seat apart from this section. It was appended after
+the builder's and qa's r2 sections, which were already present and uncommitted. All mutation and scratch
+work ran in the scratchpad.
+
+Gate: APPROVED r2 @03bf1e9d - adversary
