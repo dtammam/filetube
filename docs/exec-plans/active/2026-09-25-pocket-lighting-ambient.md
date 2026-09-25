@@ -82,7 +82,7 @@ and make it scrollable."
   geometry (so it still repaints per frame, as today).
 - The grain is a 64 x 64 luminance-neutral PNG (3,661 bytes, a data URI in one token), tiled at
   32 px as the top layer of the panel's own background: decoded once, static, never re-rasterised
-  by the light. Measured cost: the lighting probe's per-frame numbers, Ambient vs Pronounced (Step 3).
+  by the light. (Its per-frame cost was not measured: Dean skipped AC5.)
 
 ## Design
 
@@ -125,7 +125,10 @@ and make it scrollable."
 - AC4 Off / Subtle / Pronounced unchanged: `scripts/pocket-render-probe.js` 0 element-style
   differences and pixels within the probe's measured wobble (two runs of ONE tree first); Ambient
   renders on every colorway (the lighting probe's `--strength=ambient` sheet).
-- AC5 Performance: the lighting probe's per-frame task/style/layout time, Ambient vs Pronounced.
+- AC5 Performance: ~~the lighting probe's per-frame task/style/layout time, Ambient vs Pronounced~~ -
+  SKIPPED by Dean (2026-09-25: "Skip"); disclosed as unmeasured, his iPhone is the judge. The design
+  argument stands unmeasured: Ambient's streak layer reads no --lx/--ly (rasterised once, moved by the
+  compositor), where Pronounced's ::before repaints per frame.
 - AC6 Sticker: no Brick row; Brick still reachable at Extras > Games > Brick; the Lighting chips
   render only where the driver can light the skin, check the stored strength, and a tap calls
   `choose` with that value inside the click (the motion ask); Skin opens its own page and a chip

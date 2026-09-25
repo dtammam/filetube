@@ -18,7 +18,7 @@
 //     fixed time, so a shot depends on the CSS alone. Then the desktop pop-out (the plain-window
 //     fallback) and the Nano tray per colorway.
 //     Env: VIEWPORTS=390x844,380x700 (default), POPOUT=0 skips the pop-out and tray, ONLY_POPOUT=1 shoots only them,
-//     LIGHTS=off,subtle,pronounced, CHROME=<binary>, CHROME_FLAGS=<extra flags>, STYLE_FULL=1 (store each
+//     LIGHTS=off,subtle,pronounced (or ambient - v1.333: the classes mirror pocket-lighting.js applyLit), CHROME=<binary>, CHROME_FLAGS=<extra flags>, STYLE_FULL=1 (store each
 //     element's full computed style instead of its hash - to see WHICH property differs).
 //
 //   node scripts/pocket-render-probe.js compare <before-dir> <after-dir>
@@ -87,7 +87,7 @@ const DRIVERS = `
     if (!window.__frozen) { window.__frozen = true; m.play = function () { return Promise.resolve(); }; }
     try { m.pause(); if (Math.abs(m.currentTime - t) > 0.01) m.currentTime = t; } catch (_) {} return true; };
   window.__light = function (s, lx, ly, lm) { var p = __P(); if (!p) return false;
-    p.classList.toggle('mms-lit', s !== 'off'); p.classList.toggle('mms-lit-strong', s === 'pronounced');
+    p.classList.toggle('mms-lit', s !== 'off'); p.classList.toggle('mms-lit-strong', s === 'pronounced' || s === 'ambient'); p.classList.toggle('mms-lit-ambient', s === 'ambient');
     if (s === 'off') { p.style.removeProperty('--lx'); p.style.removeProperty('--ly'); p.style.removeProperty('--lm'); }
     else { p.style.setProperty('--lx', lx); p.style.setProperty('--ly', ly); p.style.setProperty('--lm', lm); }
     return true; };
