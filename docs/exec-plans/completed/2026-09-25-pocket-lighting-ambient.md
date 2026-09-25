@@ -3,7 +3,7 @@ plan: pocket-lighting-ambient
 harness: v2 · lean
 branch: feat/pocket-lighting-ambient
 anchor: spec
-status: Gate:APPROVED r2 @03bf1e9d
+status: Shipped v1.333.0
 next: the release steps (docs/RELEASING.md + AGENTS.md): version, ROADMAP, ledger, tracker #281, plan-complete, release branch, merge --no-ff, tag v1.333.0, PR, CI, merge.
 design: "Approved 2026-09-25 (Dean in this session: the candidate pick, the menu-fit ruling and the two device answers below)"
 gate: APPROVED r2 @03bf1e9d (adversary, qa)
