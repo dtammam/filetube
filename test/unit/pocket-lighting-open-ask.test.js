@@ -198,6 +198,16 @@ test('one gesture never asks twice: the painted panel\'s capture listener and a 
     assert.strictEqual(w.asks.n, 1, 'the capture listener asked first; the seam found the session asked');
     e.destroy();
   } finally { w.restore(); }
+  const q = engineWorld();
+  try {
+    const e = engineBoot(q.W); e.paint();
+    assert.ok(e.lightingState().askArmed, 'armed');
+    q.L.askForOpen(q.W); // an open seam asked (its own gesture, or none) while the painted panel's listener stayed bound
+    assert.strictEqual(q.asks.n, 1);
+    tapEl(q.W, q.W.document.body);
+    assert.strictEqual(q.asks.n, 1, 'the next tap finds the session asked: no second ask while the first is pending');
+    e.destroy();
+  } finally { q.restore(); }
   const r = engineWorld();
   try {
     const e = engineBoot(r.W); e.paint();
@@ -374,7 +384,10 @@ function routerWorld({ skin = 'ipod', strength = 'pronounced', url = 'http://loc
   return { W, asks };
 }
 test('the router: a navigation INTO the player (the mini player\'s return, a card\'s ?play=) asks synchronously inside navigate(), before the view fetch; browsing, a video and a same-URL no-op never do', () => {
-  const r = routerWorld();
+  const worlds = [];
+  const world = (o) => { const w = routerWorld(o); worlds.push(w); return w; };
+  try {
+  const r = world();
   assert.strictEqual(typeof r.W.FileTube.navigate, 'function', 'the live router booted');
   r.W.FileTube.navigate('/music');
   assert.strictEqual(r.asks.n, 0, 'the music tab is browsing');
@@ -384,16 +397,16 @@ test('the router: a navigation INTO the player (the mini player\'s return, a car
   assert.strictEqual(r.asks.n, 1, 'the dock tap into the player asked in the same turn');
   r.W.FileTube.navigate('/podcasts?play=e1');
   assert.strictEqual(r.asks.n, 1, 'once per session');
-  const c = routerWorld({ url: 'http://localhost/music?play=t1' });
+  const c = world({ url: 'http://localhost/music?play=t1' });
   c.W.FileTube.navigate('/music?play=t1');
   assert.strictEqual(c.asks.n, 0, 'a same-URL no-op opens nothing');
   c.W.FileTube.navigate('/podcasts?play=e1');
   assert.strictEqual(c.asks.n, 1, 'a card into the podcast player');
-  const o = routerWorld({ strength: 'off' });
+  const o = world({ strength: 'off' });
   o.W.FileTube.navigate('/music?nowplaying=1');
   assert.strictEqual(o.asks.n, 0, 'Off');
-  const k = routerWorld({ skin: 'spotify' });
+  const k = world({ skin: 'spotify' });
   k.W.FileTube.navigate('/music?nowplaying=1');
   assert.strictEqual(k.asks.n, 0, 'a non-Click skin');
-  for (const w of [r, c, o, k]) w.W.close(); // the live router's timers die with its window
+  } finally { for (const w of worlds) w.W.close(); } // the live router's timers die with its window, red or green
 });

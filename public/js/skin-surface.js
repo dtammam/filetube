@@ -113,7 +113,6 @@
   // instead of a divergent copy. Each surface constructs one via cfg: getMenuEl/getBaseId/
   // getPlayer/getSignal/close/backHtml/stillOnPage/onMutated. Returns { open, handleAction,
   // cancelPending, destroy }. The skin path's markup + dispatch are byte-identical.
-  var SM_SEQ = 0; // #281 (c): the sticker menus' heading-id counter (one document can host two engines' menus)
   function createExtrasMenu(cfg) {
     cfg = cfg || {};
     function extrasPlayer() { try { return (typeof cfg.getPlayer === 'function' ? cfg.getPlayer() : null) || null; } catch (_) { return null; } }
@@ -1642,8 +1641,7 @@
     // BODY (qa v1.333 r1 S3). The Skin / Extras page opens on its Back; Back returns to the row that opened
     // the page; a rebuild (a Speed / Loop / Lighting tap, a late Lighting answer) refocuses the SAME control.
     var stickerReturnSel = null; // the page-1 row that opened the Skin or Extras page
-    var smSeq = 0;               // unique heading ids per engine (aria-labelledby), minted on first use
-    function smId(name) { if (!smSeq) smSeq = ++SM_SEQ; return 'mms-sm-' + smSeq + '-' + name; }
+    function smId(name) { return 'mms-sm-' + name; } // the headings' ids (aria-labelledby): one sticker menu per document
     function focusInMenu(sel) {
       var menu = sel ? panel.querySelector('[data-skin-sticker-menu]') : null;
       var el = menu ? menu.querySelector(sel) : null;

@@ -1117,6 +1117,13 @@ test('v1.334 the sticker catches the light through the REAL driver: an image sti
     tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
     assert.strictEqual(r.btn(), sb, 'still the same sticker');
     assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the Off chip clears it with no repaint');
+    const gOff = r.grads().length, shOff = r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length;
+    tap(b, P(b).querySelector('[data-skin-lighting="pronounced"]'));
+    assert.strictEqual(r.btn(), sb, 'the same sticker, lit again');
+    assert.deepStrictEqual(r.parts(), { shade: true, gloss: true });
+    assert.ok(r.grads().length > gOff, 'its NEW gloss canvas is drawn (the old drawing was forgotten with the canvases)');
+    assert.ok(r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length > shOff, 'and its new shade re-baked');
+    tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
     // Off by a repaint: nothing drawn
     b.ls.setItem(L.KEY, 'off'); b.engine.paint();
     assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'Off: no canvas at all (byte-identical)');
@@ -1147,14 +1154,40 @@ test('v1.334 the sticker\'s gloss on a TILTED sticker and on the emoji chip: the
     const s = -0.2419, c = 0.9703;
     assert.ok(Math.abs(g[2][0] - (0.5 - 0.2 * s) * 52) < 1e-6 && Math.abs(g[2][1] - (0.5 - 0.2 * c) * 52) < 1e-6, `counter-rotated seat (${g[2]})`);
     assert.notStrictEqual(g[2][0], 0.5 * 52, 'not the straight sticker\'s seat');
+    // a MOVED light on the tilted chip: the light itself is counter-rotated, not just the seat
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 23); b.clock.advance(800);
+    const x = lx(b), y = ly(b);
+    assert.ok(x < -0.5, 'the light moved left');
+    const gm = r.grads().at(-1);
+    const l1 = x * c + y * s, l2 = y * c - x * s;
+    const tol = 0.02 * 0.32 * 52 * 2; // the redraw step, both axes
+    assert.ok(Math.abs(gm[2][0] - (0.5 + l1 * 0.32 - 0.2 * s) * 52) < tol && Math.abs(gm[2][1] - (0.5 + l2 * 0.32 - 0.2 * c) * 52) < tol, `the moved light, counter-rotated (${gm[2]} for light ${x}, ${y})`);
+    assert.ok(Math.abs(gm[2][1] - (0.5 + y * 0.32 - 0.2 * c) * 52) > tol, 'which differs from the un-rotated light on the screen\'s vertical');
   } finally { r.restore(); b.restore(); }
   const n = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
   let ctxAsked = 0;
   try {
     n.win.HTMLCanvasElement.prototype.getContext = function () { ctxAsked += 1; return null; };
+    n.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'emoji', value: 'x' })); // (no image load to wait on)
     n.engine.paint();
     assert.ok(lit(n));
     assert.ok(!P(n).querySelector('canvas'), 'no layout: no canvas');
     assert.strictEqual(ctxAsked, 0, 'and no context asked for (a hidden panel, a test realm)');
   } finally { n.restore(); }
+});
+
+// the engine lights the sticker only when the PANEL is lit: behind the iOS permission API with no fine pointer the panel
+// waits for a sensor sample (the lit gate), but a mouse (an iPad trackpad) still moves the light and the driver writes it
+test('v1.334 the sticker never lights on an UNLIT panel: a mouse moving the light before the first sensor sample (the lit gate) draws nothing on the sticker', () => {
+  const b = boot({ strength: 'pronounced', finePointer: false, permission: () => new Promise(() => {}), sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const r = stickerRig(b);
+  try {
+    b.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'emoji', value: 'x' }));
+    b.engine.paint();
+    P(b).getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400 });
+    mouseAt(b, 20, 40); b.clock.advance(400);
+    assert.ok(S(b).writes > 0, 'precondition: the driver wrote the light');
+    assert.ok(!lit(b), 'precondition: the panel is not lit (no sensor sample yet)');
+    assert.ok(!P(b).querySelector('canvas'), 'and the sticker carries nothing');
+  } finally { r.restore(); b.restore(); }
 });

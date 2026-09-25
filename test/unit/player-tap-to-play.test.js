@@ -223,3 +223,23 @@ test('the engine\'s cue: shown while refused + paused, on every skin; survives a
   const p = engine({ otherDoc: true });
   try { p.e.paint(); assert.strictEqual(p.cue().length, 0, 'the pop-out never shows it (the flag lives on the main window)'); } finally { p.restore(); }
 });
+
+test('every auto-start branch of the load reports a refusal (music, podcast, TV, a book\'s narration, a chapter track\'s seek, a plain video): none swallows it any more', async () => {
+  const shapes = {
+    music: { ...MUSIC_DATA },
+    podcast: { type: 'audio', title: 'Ep', duration: 100, resumeMode: 'podcast', readerHref: '/podcasts?nowplaying=1' },
+    tv: { type: 'video', title: 'S1E1', duration: 100, resumeMode: 'tv', progress: 0 },
+    book: { type: 'audio', title: 'Chapter 1', duration: 100, suppressProgress: true },
+    chapter: { ...MUSIC_DATA, chapterStartSec: 30 },
+    video: { type: 'video', title: 'A video', duration: 100 },
+  };
+  for (const [kind, data] of Object.entries(shapes)) {
+    const r = realm({ url: 'http://localhost/music', mobile: false });
+    try {
+      r.player.load('x-' + kind, data, { slot: r.slot });
+      await settle(60);
+      assert.strictEqual(r.player.autoStartRefused(), true, kind + ': the refusal raised the flag');
+      assert.ok(r.log().some((e) => e.type === 'autostart:refused'), kind + ': and was logged');
+    } finally { r.close(); }
+  }
+});
