@@ -2,12 +2,6 @@
 
 ## Planned
 
-- [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
-  the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
-  and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
-  AGENTS.md, the plans, ROADMAP, the tracker and git), dedupe the per-release shipped files against
-  ROADMAP, keep the index well under its size limit; show Dean before changing anything.
-
 - [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
   a PWA or a web app to query the device for battery and show that battery instead of just an
   arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
@@ -44,6 +38,53 @@
   In some places we've solved it and it's pretty good. And here, maybe not"). An overall audit: every
   surface where images pop in one by one, content shifts the layout, or a check-then-act races an await;
   list where it is already solved and where it is not, then fix per surface.
+
+- [ ] **Lock-to-audio, phase 2** (found in the retired memory, idea-lock-to-audio-handoff.md): the PWA hands
+  a playing VIDEO over to audio / listen mode on screen lock or an app switch, and resumes the video position
+  on reopen. Phase 1 (the timing log) shipped in v1.319.0; tracker #251 waits on Dean's iPhone numbers.
+
+- [ ] **ntfy.sh notifications for the agent** (retired memory, followup-desktop-theatre-ambient-wave.md): when
+  Claude hits a core question mid-run, notify Dean through ntfy.sh; also on releases. Deferred by Dean;
+  tooling, not product.
+
+- [ ] **Up-next and discovery sequel** (retired memory, v1.79 record): a channel-aware up-next engine, search
+  autocomplete, SponsorBlock.
+
+- [ ] **Streaming tiers 1b / 2 / 3** (retired memory, v1.111 record): Tier 1b faststart for the EXISTING
+  library (v1.111 did new downloads only), Tier 2 a data-saver downscale, Tier 3 adaptive HLS.
+
+- [ ] **Critter rotation persistence, redesigned** (retired memory, v1.194 record): against visualViewport /
+  orientationchange.
+
+- [ ] **A mobile theatre behaviour for all media** (retired memory, v1.198 record; "theatre-on-mobile = Dean").
+
+- [ ] **Bug (unverified): a search on /music may also navigate away** (retired memory, v1.44.2 record).
+  public/js/music.js binds click/keydown on the shell's #search-btn / #search-input with preventDefault, and
+  common.js binds performGlobalSearch on the same elements at boot (navigates to /?search=); preventDefault
+  does not stop the other listener. Needs a real repro before a fix.
+
+- [ ] **Bug (unverified): the music row queue passes kind 'track' for projected ids and may 404** (retired
+  memory, v1.249 record). Never investigated.
+
+- [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
+  overlay-containment lint's scroll match, with a fixture.
+
+- [ ] **Ask for motion access when the Click player opens, not on the sticker tap** (Dean, 2026-09-25:
+  "if I open up the music player on mobile and I press the sticker, it pops me for the motion prompt. Is it
+  possible to just have it pop for that prompt on opening up the media player in that skin in general without
+  requiring the sticker button?"). iOS allows the ask only inside a user gesture and forgets a home-screen
+  app's grant at every launch, so the prompt itself stays; the question is WHICH tap. Lead: the first-tap ask
+  (pocket-lighting.js armFirstTapAsk) arms only once the Click panel is painted and the driver synced, so the
+  tap that OPENS the player comes too early and the next tap (often the sticker) asks. Candidate: ask from the
+  open-the-player gesture itself when a strength is stored and no grant exists this session.
+
+- [ ] **The sticker catches the light on the Click skins** (Dean, 2026-09-25: "I'd like the sticker in that
+  same skin to be affected by the lighting. Right now, it just looks kind of out of place ... It should have
+  like sheen on it ... as if it's literally a sticker, like lightly raised. The shadow would hit it. It's a
+  sticker, so there's some gloss. So I don't want us to go crazy on the lighting effects, but like it should
+  hit it"). A lightly raised, slightly glossy sticker: a small drop shadow falling away from the light and a
+  soft sheen that moves with --lx/--ly, under the same no-filter constraint as the rest of the lighting;
+  Off unchanged.
 
 ## Resolved
 
@@ -116,6 +157,11 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🧪 Testing / infra
 
+- [x] **Rethink the auto-memory systematically** - ✅ RESOLVED 2026-09-25 (docs-only, after v1.333.0): the lessons moved to `docs/LESSONS.md` (cross-tool; AGENTS.md links to it), the 276 per-release memory files and stale handoffs were archived to a tarball beside the memory folder and removed (324 files / 1.70 MB -> 9 / 25.6 KB; MEMORY.md 17.4 -> 5.6 KB), the per-release memory habit stopped (docs/RELEASING.md), and still-live ideas became Planned bullets. (Dean, 2026-09-24: "there's duplicative information in
+  the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
+  and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
+  AGENTS.md, the plans, ROADMAP, the tracker and git), dedupe the per-release shipped files against
+  ROADMAP, keep the index well under its size limit; show Dean before changing anything.
 - [x] **Broaden core test coverage** — ✅ MAJOR PASS SHIPPED v1.33.0 ("eat our vegetables"): the transcode EXECUTION path finally tested (stub-ffmpeg-on-PATH harness — CI has no ffmpeg, which is why it was never covered): lazy 503 → queue drain → atomic finalize → Range, corrupt-source failure, live pipe, download bypass, reconcileTranscode healing; plus config validation, thumbnail fallback/escaping, cache-clear in-flight protection. Remaining thin spots (settings side-effect matrix, subtitles endpoint wiring) tracked as ordinary follow-ups. — the core app's scan/config/transcode logic + HTTP endpoints have thinner coverage than the yt-dlp module. Backfill unit + smoke tests. _(partially progressed)_
 
 ### 🧹 Tech-debt (see [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md))

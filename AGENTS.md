@@ -70,40 +70,41 @@ thumbnails via FFmpeg, and streams video/audio to a retro YouTube-style web UI,
 with on-demand transcoding of browser-incompatible containers (e.g. AVI) to MP4.
 Architecture in `docs/ARCHITECTURE.md`; stack + commands in `docs/CONTRIBUTING.md`.
 
-For Claude Code specifically, **persistent memory is auto-loaded every session**
-and carries the full, current detail behind everything below (the recurring
-bug-class "crown jewels", per-release shipped records, dated norms). Treat the
-memory index as the live source; this region is the cross-tool distillation.
-The pre-harness `CLAUDE.md` (its lean-mode contract, "Working with Dean", and the
-full lessons list) is recoverable at `git show HEAD:CLAUDE.md` if fuller prose
-is wanted here.
+**The lessons live in [`docs/LESSONS.md`](docs/LESSONS.md)** - the recurring bug
+classes and their guards, cross-tool, one file. Read it before writing or
+reviewing; brief the gate seats with the sections the diff touches. A shipped
+wave adds or updates its lesson there in the release commit. A release's record
+is its ROADMAP.md entry, its `docs/releases.json` ledger entry, its completed plan
+and git - there are no per-release
+memory files. Claude Code's auto-loaded memory holds only how Dean works, this
+box's quirks and live open threads, and points here.
 
 ### Project attack surfaces
 A reviewer (the Adversary/QA seats) should go after these first — each has drawn
-blood more than once:
+blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
 
-- **Persist-gate / stale-snapshot** — any new per-item `db.metadata` field needs
+- **Persist-gate / stale-snapshot** (LESSONS 9) — any new per-item `db.metadata` field needs
   terminal-write coverage, scan re-init carry-forward, Phase-2 merge guard,
   persist-gate OR-chain, and final-merge gap-fill. Prefer feature-OWNED namespaces.
-- **Data-loss surfaces (force the FULL gate, never dial down)** — a destructive
+- **Data-loss surfaces (force the FULL gate, never dial down)** (LESSONS 9) — a destructive
   editor must seed from STORAGE, not the on-screen (lossy) projection; migrations
   are APPEND-ONLY once executed; refuse NUL ids at every write (`node:sqlite`
   truncates NUL-bearing TEXT on Node ≤24.14). Brief the Adversary to DESTROY the data.
-- **Access-control completeness** — enumerate EVERY mutating route (bulk/-all/
+- **Access-control completeness** (LESSONS 10) — enumerate EVERY mutating route (bulk/-all/
   -cancel/reorder siblings) AND every read/list/aggregation surface (leaks titles/
   counts) AND the backup bundle. One route is never the completeness net. Bind the
   gate KIND, not just its presence.
-- **Third-party flag/API interplay** — verify against SOURCE (yt-dlp, epub.js);
+- **Third-party flag/API interplay** (LESSONS 2, 11) — verify against SOURCE (yt-dlp, epub.js);
   plausible flag combinations can be silently inert. A green unit test of code that
   never RUNS in production is worthless — prove reachability.
-- **CSS / SPA client traps** — `[hidden]` loses to any author `display` rule (add
+- **CSS / SPA client traps** (LESSONS 4, 6, 11) — `[hidden]` loses to any author `display` rule (add
   `[hidden]{display:none!important}`); the SPA router swaps only `#view-root`
   (page-local `<head>` styles are lost on in-app nav), and a same-route SPA nav
   IGNORES the URL hash (a `#section` deep-link from the same page no-ops — set
   `location.hash` directly); Express static-segment routes before `/:id`.
-- **Design-token census** — `npm run lint:css` ceiling is ZERO; new raw literals
+- **Design-token census** (LESSONS 3) — `npm run lint:css` ceiling is ZERO; new raw literals
   in governed properties must be tokenized or `token-exempt`-annotated.
-- **Overlay containment census (anti-bleed)** — `node scripts/overlay-containment-lint.js
+- **Overlay containment census (anti-bleed)** (LESSONS 3, 6) — `node scripts/overlay-containment-lint.js
   --enforce` ceiling is ZERO. A rounded overlay that scrolls SPLITS clip from
   scroll (`overflow:hidden` + `border-radius` on the outer element; `overflow:auto`
   on an inner child with no radius) — combining them on one rule is the iOS
@@ -129,7 +130,7 @@ blood more than once:
   Docker auto-publish, branch delete) are the authority; the harness `/release`
   command is a generic skeleton to adapt, never the source of truth. Kept in docs
   because the command files are harness-owned and regenerate on `--update`.
-- **Ruthless honesty** — failures reported verbatim with counts before any framing;
+- **Ruthless honesty** (LESSONS 1) — failures reported verbatim with counts before any framing;
   a regression is a regression; known gaps ship DISCLOSED (ROADMAP + report).
 - **Release ceremony** — `npm version X.Y.Z --no-git-tag-version` → ROADMAP.md
   "Shipped" entry → the `docs/releases.json` LEDGER entry in PURE USER LANGUAGE
@@ -149,12 +150,12 @@ blood more than once:
   with a reviewer working the tree. Node 24's reporter prints `ℹ`, not `#` — an empty
   grep is NOT green. The suite IS the npm scripts (`npm test`, `npm run test:unit`);
   a bare `node --test` is not equivalent.
-- **Git hygiene** — stage EXPLICIT paths (no `git add -A`/`.`/`commit -a`; a hook
+- **Git hygiene** (LESSONS 13) — stage EXPLICIT paths (no `git add -A`/`.`/`commit -a`; a hook
   blocks it); verify every commit landed with `git log` (the pre-commit hook runs
   the unit suite and refuses red — a piped commit can swallow that = "phantom
   commit"); never pipe a push (a pipe swallows its exit code = "phantom push") —
   verify with `git ls-remote`.
-- **Diagnosis discipline (device/platform bugs)** — state the hypothesis, name the
+- **Diagnosis discipline (device/platform bugs)** (LESSONS 1) — state the hypothesis, name the
   observation that would FALSIFY it, gather that evidence before editing. A shipped
   fix that fails on-device means the diagnosis was WRONG; re-root-cause, never patch
   the theory.

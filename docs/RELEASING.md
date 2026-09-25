@@ -111,6 +111,13 @@ app's account-menu version row links straight to them.
 Use [semver](https://semver.org/): bump **patch** for fixes, **minor** for
 backward-compatible features, **major** for breaking changes.
 
+**A release's record** is its ROADMAP.md "Shipped" entry, its `docs/releases.json`
+ledger entry, its completed plan and git - nothing else. If the wave taught a
+reusable lesson (a bug class and its guard), add or update it in
+[`docs/LESSONS.md`](LESSONS.md) in the release commit, deduplicating against the
+existing entry. Never write a per-release file into an agent's memory (retired
+2026-09-25: 276 such files had become a duplicate of the ROADMAP).
+
 ## Schema versions and the rollback floor
 
 FileTube's SQLite schema is versioned by `PRAGMA user_version`
