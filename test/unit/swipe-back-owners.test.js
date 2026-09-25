@@ -222,22 +222,16 @@ test('census: every JS-built slider in public/js is a range input or role=slider
     'the owner list covers every range input and ARIA slider generically');
 });
 
-test('pocket menus: Seattle\'s pivot list ([data-skin-swipe]) owns its sideways swipe - a right swipe moves a pivot, never goes back', () => {
-  const view = skins.renderMenuView('seattle', {
-    title: 'Music', root: false, pivots: ['Artists', 'Albums', 'Songs'], pivotIdx: 0,
-    items: [{ label: 'Tonzak', node: { type: 'artist', key: 'Tonzak' } }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready',
+test('pocket menus (v1.332): no menu list claims the sideways drag - a right swipe on a Click menu row still goes back', () => {
+  // The removed Seattle skin's list owned the swipe; the Click list is a pan-y list like the song list.
+  const view = skins.renderMenuView('click', {
+    title: 'Music', root: false, items: [{ label: 'Tonzak', node: { type: 'artist', key: 'Tonzak' } }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready',
   });
   const { doc, win, backs } = boot('<body><div id="panel" class="mms-full">' + view + '</div><p id="plain">x</p></body>');
-  const list = doc.querySelector('[data-skin-swipe]');
-  assert.ok(list, 'the pivot level renders a swipe-owning list');
-  const row = list.querySelector('.ipm-row');
-  assert.strictEqual(swipeBackStandDownReason(row, doc, win), 'owner', 'a drag starting on a pivot row is the list\'s');
+  const row = doc.querySelector('.ipm-row');
+  assert.ok(row, 'precondition: a menu row rendered');
+  assert.strictEqual(swipeBackStandDownReason(row, doc, win), null, 'a menu row is not a horizontal owner');
   dragRight(win, row);
-  assert.strictEqual(backs.n, 0, 'a right swipe on the pivot list did not go back');
-  // control: the same page still goes back from plain content (the assertion above is not vacuous)
-  dragRight(win, doc.getElementById('plain'));
-  assert.strictEqual(backs.n, 1, 'a right swipe on plain content still goes back');
-  // and a NON-pivot level (a drilled list) carries no swipe owner: its rows stay back-able
-  const drilled = skins.renderMenuView('seattle', { title: 'Tonzak', root: false, pivots: null, items: [{ label: 'Night Drive' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
-  assert.ok(!/data-skin-swipe/.test(drilled), 'only a pivot level claims the swipe');
+  assert.strictEqual(backs.n, 1, 'a right swipe on a menu row goes back');
+  assert.ok(!SWIPE_BACK_OWNER_SELECTORS.some((s) => /skin-swipe/.test(s)), 'the retired swipe-owner selector is gone');
 });

@@ -2,15 +2,6 @@
 
 ## Planned
 
-_Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
-
-- [ ] **A design system for the pocket skins** (Dean, 2026-09-24, with an iPhone screenshot: a long
-  album title, "Ocarina of Time House Club Remix (Electronic House Remix)", wrapped the Click Black
-  LCD status bar to two lines on v1.324.0; v1.325.0 fixed that bar). Dean's read is broader: "not
-  having a proper token or just design system for the pocket skin, which at this point is getting
-  pretty advanced and is being pretty heavily relied upon". Scope a pocket-skin token set (the LCD
-  bar, row pitch, the type scale, the split pane, Seattle's large type, the controls) so every level
-  and skin reads from one source and overflow is handled systematically, not per incident.
 - [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
@@ -107,6 +98,41 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.332.0 - The pocket design system: Seattle retired, seven new Click colors, and Home from the player (2026-09-25)
+
+- **Seattle is gone** (Dean: "Let's remove Seattle entirely. I don't use it, don't want the headaches"):
+  the Zune skin, its pivots, swipe, Games row, two-line lists and Metro screen. A device saved on Seattle
+  (the synced pref included) opens on **Click**, not the app default, and converges on Click everywhere -
+  the one-time rewrite waits for the prefs sync's first server read, so it never out-stamps a newer pick
+  another device made (gate r1 W1, both seats measured the race).
+- **One design system for the Click family** (Dean: "not having a proper token or just design system for
+  the pocket skin"): every Click colorway draws ONE chassis that reads structure tokens (sizes), a type
+  scale (roles on the global --fs-* scale) and colorway ROLES; a colorway is one block of role tokens.
+  White, Black and Matte moved on with **zero rendered change**: 282 shots per tree (3 colorways x 2
+  phones x 15 levels x lighting Off / Subtle / Pronounced + the pop-out and tray), 0 element-style
+  differences, the pixels identical but for a renderer wobble also seen between two runs of one tree.
+  ONE overflow rule covers every pocket text line, with a census that fails any unclassified text;
+  120-character names measure one line on every level, the status bar 31.2 px throughout. Every list of
+  Click skins (Brick, the tray and its chips, the Nano colorway, the probes) now derives from the registry.
+- **Seven new colorways, each one role block from a real photo, side by side for Dean:** Click (Red) (red
+  body, white wheel, red center), Click (Silver), Click (Encore) (black with a red wheel), Click (Gold)
+  (Dean's own photo: gold body, white wheel, gold center) and the mini's Click (Blue), (Green) and
+  (Pink). Each gets the menus, Brick, both lighting strengths, the tray and the chips with no per-feature
+  edit.
+- **Home from the player** (Dean: "Right now I must press menu many times then the FileTube icon"): the
+  corner sticker's menu now LEADS with Home on every skin (music and podcasts), and press-and-hold MENU
+  (600 ms) on the Click wheel goes home too - the player docks, the song keeps playing in the mini, and
+  the SPA router lands on the home page. A short press is unchanged; the hold's release never also fires
+  MENU; a move, pointercancel, a takeover, an un-rendered panel or destroy cancels it.
+- Gate: r1 CHANGES (adversary + qa, the Seattle-rewrite race, plus a looser AC4 lock and an unbound
+  mid-hold takeover), fixed in one round; APPROVED r2 @bbb40ab9 (adversary, qa). Full suites 9,594 / 9,594
+  on Node 22.23.1 and 24.20.0. Plan docs/exec-plans/completed/2026-09-25-pocket-design-system.md.
+- Disclosed (#280): the sticker menu now scrolls on phones (12 skin chips in 6 rows; Home leads it); Click
+  (Matte)'s Settings card grows 71 -> 83 px by sharing a grid row; colorway fidelity is Dean's device call
+  (Pink's warm photo, Red's colour-profiled photo, low wheel-label contrast on Red / Gold / Blue); the
+  hold-MENU haptic on a still finger and Android's long-press are device checks; the Home row and the hold
+  are left out of the desktop pop-out (its router is the main window's); the render probe's wobble.
 
 ### v1.331.0 - A song picked inside an album plays on through that album (2026-09-25)
 

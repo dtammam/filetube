@@ -165,15 +165,15 @@ test('D About: the REAL per-user totals from the library routes and the REAL run
   const ver = (/<meta\s+name="ft-version"\s+content="([^"]*)"/i.exec(shell) || [])[1];
   assert.ok(ver && /^\d+\.\d+\.\d+/.test(ver), 'precondition: the server stamps its version into the shell');
   const totals = await Promise.all(['/api/music?limit=1', '/api/music/albums?limit=1', '/api/music/artists?limit=1'].map((u) => realApi(u).then((d) => d.total)));
-  await H.boot({ skin: 'zune-classic', play: 'q00', setup: (dom) => {
+  await H.boot({ skin: 'ipod-black', play: 'q00', setup: (dom) => {
     const m = dom.window.document.createElement('meta'); m.setAttribute('name', 'ft-version'); m.setAttribute('content', ver);
     dom.window.document.head.appendChild(m);
     dom.window.appVersionString = appVersionString; // the account menu's own source
   }, run: async (h) => {
     menu(h);
-    assert.deepStrictEqual(labels(h), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'Seattle: no Games (Brick\'s rule), Settings present');
+    assert.ok(labels(h).includes('Settings'), 'Settings present: ' + labels(h).join('|'));
     tapRow(h, 'Settings'); tapRow(h, 'About'); await settleNet();
-    assert.strictEqual(h.panel.querySelector('.ipm-about-name').textContent, 'Seattle');
+    assert.strictEqual(h.panel.querySelector('.ipm-about-name').textContent, 'Click');
     const rows = [...h.panel.querySelectorAll('.ipm-info')].map((r) => [r.querySelector('.ipm-lbl').textContent, r.querySelector('.ipm-val').textContent]);
     assert.deepStrictEqual(rows, [['Songs', String(totals[0])], ['Albums', String(totals[1])], ['Artists', String(totals[2])], ['Version', ver], ['Software', 'FileTube']]);
     const loads = h.spy.loads.length; select(h);

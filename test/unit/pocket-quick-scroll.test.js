@@ -65,10 +65,9 @@ test('runs, jumps and picker targets: next/previous letter PRESENT (absent ones 
 });
 
 // ---------------------------------------------------------------- the new levels + builders
-test('Main Menu: the device order with Extras (Click) / Games (Seattle) ONLY when the game can run; Extras > Games > Brick; Settings > About', () => {
+test('Main Menu: the device order with Extras ONLY when the game can run; Extras > Games > Brick; Settings > About', () => {
   const lbl = (rows) => rows.map((r) => r.label);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true, hasGames: true, style: 'click' })), ['Music', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing']);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true, hasGames: true, style: 'seattle' })), ['Music', 'Games', 'Settings', 'Shuffle Songs', 'Now Playing']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false, hasGames: false, style: 'click' })), ['Music', 'Settings', 'Shuffle Songs']);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'extras' }), [{ label: 'Games', node: { type: 'games' } }]);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'games' }), [{ label: 'Brick', action: 'brick' }]);
@@ -626,7 +625,7 @@ test('C teardown on EVERY arm: a repaint (track change / skin switch), a dock, t
   }
 });
 
-test('C availability, BOTH axes: shown in the main document with the hook on a Click skin; hidden (not inert) in the pop-out, without the hook, and where Brick\'s own rule says no (Seattle, #207)', async () => {
+test('C availability, BOTH axes: shown in the main document with the hook on a Click skin; hidden (not inert) in the pop-out, without the hook, and where Brick\'s own rule says no', async () => {
   const main = bootWithBrick({});
   try { main.engine.paint(); pressMenu(main); assert.ok(lbls(main).includes('Extras'), 'main document + hook + Click: shown'); } finally { main.restore(); }
   const noHook = bootEngine({});
@@ -634,17 +633,14 @@ test('C availability, BOTH axes: shown in the main document with the hook on a C
   // the pop-out: the panel lives in ANOTHER document; the view still hands a hook that says yes
   const pop = bootEngine({ otherDoc: true, games: { visible: () => true, onTap: () => { throw new Error('never launched from a pop-out'); } } });
   try { pop.engine.paint(); pressMenu(pop); assert.deepStrictEqual(lbls(pop), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the pop-out: no Extras entry at all'); } finally { pop.restore(); }
-  // Seattle: Brick's own rule (the Click wheel trio only) says no -> no Games entry
-  const sea = bootWithBrick({ skin: 'zune-classic' });
-  try { sea.engine.paint(); pressMenu(sea); assert.deepStrictEqual(lbls(sea), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'Seattle: hidden by Brick\'s own availability rule'); } finally { sea.restore(); }
-  // ...and were the rule to say yes on Seattle, the entry is the Zune's word
-  const seaYes = bootEngine({ skin: 'zune-classic', games: { visible: () => true, onTap: () => {} } });
-  try { seaYes.engine.paint(); pressMenu(seaYes); assert.ok(lbls(seaYes).includes('Games') && !lbls(seaYes).includes('Extras')); } finally { seaYes.restore(); }
+  // Brick's own rule says no (the hook's visible() is false) -> no Extras entry
+  const no = bootEngine({ games: { visible: () => false, onTap: () => { throw new Error('never launched'); } } });
+  try { no.engine.paint(); pressMenu(no); assert.deepStrictEqual(lbls(no), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'hidden by Brick\'s own availability rule'); } finally { no.restore(); }
 });
 
 // ---------------------------------------------------------------- addendum D: Settings > About
 test('D: Settings > About shows the skin\'s cheeky name and the read-only facts; the wheel and Select never act on them', async () => {
-  for (const [skin, name] of [['ipod', 'Click'], ['zune-classic', 'Seattle']]) {
+  for (const [skin, name] of [['ipod', 'Click'], ['ipod-matte', 'Click']]) {
     const b = bootEngine({ skin, load: (n) => Promise.resolve(n.type === 'about' ? { items: skins.menuAboutItems({ songs: 3008, albums: 600, artists: 150, version: '1.323.0' }) } : { items: [] }) });
     try {
       b.engine.paint();
@@ -757,15 +753,15 @@ test('E reduced motion: one still cover, no drift class, no swap timer', async (
   } finally { b.restore(); }
 });
 
-test('E: no covers in the library = today\'s pane (the playing track\'s art); Seattle has no pane and never asks', async () => {
+test('E: no covers in the library = today\'s pane (the playing track\'s art)', async () => {
   const b = bootEngine({ coverPool: () => Promise.resolve([]) });
   try {
     b.engine.paint(); pressMenu(b); await flush(); b.clock.advance(200);
     assert.strictEqual(slides(b).length, 0);
     assert.strictEqual(P(b).querySelector('.ipm-art .ipm-art-img').getAttribute('src'), '/albumart/now', 'today\'s fallback art');
   } finally { b.restore(); }
-  const s = bootEngine({ skin: 'zune-classic', coverPool: () => Promise.resolve(POOL.slice()) });
-  try { s.engine.paint(); pressMenu(s); await flush(); assert.strictEqual(s.spy.pools, 0, 'Seattle never fetches covers'); } finally { s.restore(); }
+  const s = bootEngine({ skin: 'apple', coverPool: () => Promise.resolve(POOL.slice()) });
+  try { s.engine.paint(); await flush(); assert.strictEqual(s.spy.pools, 0, 'a skin with no menus never fetches covers'); } finally { s.restore(); }
 });
 
 test('E timers over N mounts: every teardown arm (destroy, skin switch, the tray) leaves ZERO live timers on the surface clock', async () => {
@@ -776,7 +772,7 @@ test('E timers over N mounts: every teardown arm (destroy, skin switch, the tray
       b.clock.advance(1400);
       const arm = n % 3;
       if (arm === 0) b.engine.destroy();
-      else if (arm === 1) { b.state.skin = 'zune-classic'; b.engine.paint(); }
+      else if (arm === 1) { b.state.skin = 'apple'; b.engine.paint(); }
       else { b.sdom.window.document.body.classList.add('mms-tray'); b.engine.paint(); }
       b.clock.advance(5); // let the marquee/ghost frames the repaint scheduled run out
       assert.strictEqual(b.engine.menuState() ? b.engine.menuState().slideTimers : 0, 0, 'arm ' + arm + ': no drift timer');
@@ -994,20 +990,6 @@ test('r1 Q5 (X36): the threshold is the 0.8 deg/ms band - a sustained 0.65 deg/m
   } finally { b.restore(); }
 });
 
-test('r1 Q5 (X27): a Seattle PIVOT switch ends letter mode (the overlay never rides onto a list you did not flick)', async () => {
-  const b = bootEngine({ skin: 'zune-classic', load: (n) => Promise.resolve(['artists', 'albums', 'songs'].includes(n.type)
-    ? { items: skins.menuSongItems(LIB, artFor), tracks: LIB, play: { ctx: { sort: 'title-asc' } }, letters: true } : { items: [] }) });
-  try {
-    b.engine.paint(); pressMenu(b); pressSelect(b); await flush();
-    fastSpin(b, 3);
-    assert.ok(b.engine.menuState().letterMode, 'precondition: letter mode on the artists pivot');
-    tap(b, P(b).querySelector('[data-skin-next]')); await flush();
-    assert.strictEqual(b.engine.menuState().pane, 1, 'moved to the albums pivot');
-    assert.strictEqual(b.engine.menuState().letterMode, false, 'the pivot switch ended letter mode');
-    assert.ok(!overlay(b).classList.contains('is-on'));
-  } finally { b.restore(); }
-});
-
 test('r1 Q2 (qa W3): the overlay and the badge are PERSISTENT nodes - letter steps and the hold\'s end toggle the SAME element (so the CSS fade runs)', async () => {
   const b = bootEngine({ load: songsLoad(LIB) });
   try {
@@ -1118,17 +1100,18 @@ test('r1 (qa S6): a library change while the drift runs re-fetches the covers at
 });
 
 test('r1 (qa S8): a "recent" list that is NOT on screen re-loads after the playing track changes; the one on screen keeps its rows', async () => {
-  const b = bootEngine({ skin: 'zune-classic', load: (n) => Promise.resolve({ items: [{ label: n.type + ' row', node: { type: 'artist', key: 'x' } }] }) });
+  const b = bootEngine({ load: (n) => Promise.resolve({ items: [{ label: n.type + ' row', node: { type: 'artist', key: 'x' } }] }) });
   try {
-    b.engine.paint(); pressMenu(b); pressSelect(b); await flush(); // the pivots (artists)
-    tap(b, P(b).querySelector('[data-skin-prev]')); await flush(); // the "recent" pivot (last, wraps)
+    b.engine.paint(); pressMenu(b); pressSelect(b); await flush(); // Music
+    tapLabel(b, 'Recent Artists'); await flush();
     const loads = () => b.spy.loads.filter((x) => x.type === 'recentArtists').length;
     assert.strictEqual(loads(), 1);
     b.state.current = 'b'; b.engine.paint(); await flush();
     assert.strictEqual(loads(), 1, 'on screen: not re-loaded under the finger');
-    tap(b, P(b).querySelector('[data-skin-next]')); await flush(); // off it
+    tapLabel(b, 'recentArtists row'); await flush(); // drill in: the recent list is off screen, below on the stack
     b.state.current = 'c'; b.engine.paint(); await flush();
-    tap(b, P(b).querySelector('[data-skin-prev]')); await flush(); // back
+    pressMenu(b); await flush(); // back to it
+    assert.strictEqual(b.engine.menuState().title, 'Recent Artists');
     assert.strictEqual(loads(), 2, 'off screen during a new listen: re-loaded when shown again');
   } finally { b.restore(); }
 });
@@ -1161,8 +1144,8 @@ test('r1 Q3 (qa W4 + S5) CSS lock: the A-Z picker centres SAFELY (a short LCD ke
   const base = /\.mms-ipod \.ipm-grid\{([^}]*)\}/.exec(css);
   assert.ok(base, 'the picker rule');
   assert.match(base[1], /align-content:\s*safe center/i, 'safe centring (plain `center` puts overflowing first rows above the scroll origin)');
-  assert.ok(!/\.mms-zune-classic \.ipm-grid\{[^}]*align-content/i.test(css), 'Seattle inherits it (no plain-centre override)');
-  assert.match(css, /@media \(max-width: 340px\)\{ \.mms-ipod:not\(\.mms-zune-classic\) \.ipm-grid\{ grid-template-columns:repeat\(6, minmax\(0, 1fr\)\); \} \}/, 'six Click columns under 340 px');
+  assert.ok(!/\.mms-ipod-[a-z]+ \.ipm-grid\{[^}]*align-content/i.test(css), 'no colorway overrides it (no plain-centre override)');
+  assert.match(css, /@media \(max-width: 340px\)\{ \.mms-ipod \.ipm-grid\{ grid-template-columns:repeat\(6, minmax\(0, 1fr\)\); \} \}/, 'six Click columns under 340 px');
 });
 
 test('r1 Q4: the engine\'s own release resumes the drift - a GENERIC takeover whose onExit clears nothing (the engine never learns what it is talking to)', async () => {

@@ -45,7 +45,7 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -85,6 +85,13 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
   dom.window.FileTubeMusicSkins = require(skinsPath);
+  if (skinsSrc) {
+    // v1.332 (AC8): a PATCHED registry source (e.g. one extra colorway entry), evaluated as the
+    // module itself - no other file changes, which is the point of the test that uses it
+    const m = { exports: {} };
+    new Function('module', 'window', skinsSrc)(m, dom.window);
+    dom.window.FileTubeMusicSkins = m.exports;
+  }
   // v1.250 (F-UNIFY): music.js renders through the shared engine now - load it into this
   // window exactly as music.html does (after music-skins.js, before music.js).
   delete require.cache[surfacePath];
@@ -1860,7 +1867,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'ipod-matte', 'spotify', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. every Click colorway and Seattle (adversarial W1: in-pip must not mean in-tray)');
+    assert.deepStrictEqual(fullChips, require('../../public/js/music-skins.js').IDS.slice().sort(), 'the FULL pop-out keeps ALL skin chips incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
@@ -1870,10 +1877,11 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
     // v1.258: the chips are the COLORWAYS in tray - the Click family only (those picks
-    // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.300: the
-    // Click trio incl. the new Matte colorway.
+    // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.332: every
+    // Click colorway in the registry.
     const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
-    assert.deepStrictEqual(trayChips.sort(), ['ipod', 'ipod-black', 'ipod-matte'], 'exactly the three colorway chips inside the tray');
+    assert.deepStrictEqual(trayChips.sort(), require('../../public/js/music-skins.js').clickColorways().sort(), 'exactly the Click colorway chips inside the tray (the registry\'s own list)');
+    assert.ok(trayChips.length >= 3 && !trayChips.includes('apple') && !trayChips.includes('spotify'), 'non-vacuous: the colorways, never the flat skins');
     assert.match(pipPanelOf(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
     // the HEADLINE interaction: tapping a colorway restyles the LIVE tray (kills the
     // memoized-donor mutant - the wrap must consult the pick on every paint)
@@ -1899,17 +1907,19 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
 
 test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - without them the tray is the full iPod crammed into the tray window', () => {
   // Measured gap: deleting the whole tray CSS block left the suite green (jsdom has no
-  // layout), and the plan CLAIMED a lock that was never written after the Nano pivot.
+  // layout), and the plan CLAIMED a lock that was never written after the Nano change.
   // Lock the load-bearing reshapes; the selectors deliberately omit the skin-base class
   // (the v1.232 first-occurrence locks - see the block's own comment).
   const fs = require('node:fs'); const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /body\.mms-tray\{ background:var\(--mms-black\); \}/, 'the dark pip body behind the rounded shell (adversarial W3: white corners without it)');
   assert.match(css, /body\.mms-tray \.ip-wheelwrap, body\.mms-tray \.ip-listview\{ display:none; \}/, 'the wheel and list are hidden - the tray is the LCD alone');
-  assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*margin:var\(--space-3\) var\(--space-4\)/, 'the LCD insets into the body frame (the v1.258 Nano feel)');
+  assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*margin:var\(--pk-tray-inset\)/, 'the LCD insets into the body frame (the v1.258 Nano feel)');
+  assert.match(css, /--pk-tray-inset:var\(--space-3\) var\(--space-4\);/, '...by the pocket system\'s tray inset (v1.332 structure token)');
   assert.match(css, /body\.mms-tray \.ip-npmain\{ display:flex; align-items:center/, 'art sits beside the meta (the Nano-5g row)');
-  assert.match(css, /body\.mms-tray \.ip-cover\{ width:88px; height:88px/, 'the Nano art box');
-  assert.match(css, /body\.mms-tray \.ip-ttl\{[^}]*text-overflow:ellipsis/, 'the title ellipsizes in the strip');
+  assert.match(css, /body\.mms-tray \.ip-cover\{ width:var\(--pk-tray-art\); height:var\(--pk-tray-art\)/, 'the Nano art box');
+  assert.match(css, /--pk-tray-art:88px;/, '...88 px (v1.332 structure token)');
+  assert.match(css, /\.mms-ipod \.ip-ttl,[^{]*\{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; \}/, 'the title ellipsizes in the strip (the one pocket text-line rule - the tray panel carries .mms-ipod, v1.332)');
   assert.match(css, /body\.mms-tray \.mms-sticker\{ transform:scale\(\.55\)/, 'only the sticker BUTTON shrinks (the menu keeps thumb sizes - QA S4)');
   assert.match(css, /body\.mms-tray \.mms-sticker-menu\{ position:fixed; inset:var\(--space-3\)/, 'the tray menu is a FULL-WINDOW overlay (the upward-opening base menu clipped to a sliver at 190px - v1.258.1)');
   assert.match(css, /body\.mms-tray \.music-nowplaying-panel\{ position:fixed; inset:0; border-radius:var\(--radius-lg\)/, 'the panel fills the pip viewport, rounded like the shell');
@@ -1940,10 +1950,73 @@ test('v1.300 colorways: a Click (Matte) pick keeps its MATTE body in the tray (t
   } });
 });
 
-test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
-  // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
-  // the explicit iPod pair (ipod + ipod-black) - loosen the donor back to base-family and this reds.
-  await boot({ mobile: false, isMusic: true, skin: 'zune-classic', run: async (dom) => {
+// v1.332 AC8 (the INERT SIBLING class, Dean: "Derive every Click list from the skin registry"): ONE
+// extra registry entry - nothing else changed - must reach every Click list: the Nano tray keeps it as
+// its colorway, the tray's chips offer it, and in the tab it gets the pocket menus with Brick's Extras
+// (Brick's wheel-skin rule). Restore any hand-kept literal and one of these goes red.
+const FAKE_ENTRY = "    { id: 'ipod-fake', label: 'Click (Fake)', base: 'ipod', menus: 'click', renderFull: renderIpod },\n";
+function fakeRegistrySrc() {
+  const src = require('node:fs').readFileSync(skinsPath, 'utf8');
+  const anchor = src.indexOf("    { id: 'ipod-matte',");
+  assert.ok(anchor > 0, 'precondition: the registry entry to add after');
+  const eol = src.indexOf('\n', anchor) + 1;
+  return src.slice(0, eol) + FAKE_ENTRY + src.slice(eol);
+}
+test('v1.332 AC8: a fake Click colorway added to the REGISTRY alone reaches the Nano tray (kept as its colorway) and the tray chips', async () => {
+  await boot({ mobile: false, isMusic: true, skin: 'ipod-fake', skinsSrc: fakeRegistrySrc(), run: async (dom) => {
+    assert.ok(dom.window.FileTubeMusicSkins.isClickColorway('ipod-fake'), 'precondition: the patched registry is the live one');
+    dom.window.localStorage.setItem('ft-tray-mode', '1');
+    const holder = { pip: makePipWindow() };
+    dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
+    clickPopout(dom); await settle(); await settle();
+    const pip = holder.pip;
+    assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray');
+    assert.match(pipPanelOf(pip).className, /\bmms-ipod-fake\b/, 'the Nano tray kept the new colorway (a hand-kept trio would fall to base silver)');
+    pipPanelOf(pip).querySelector('[data-skin-sticker]').dispatchEvent(new pip.MouseEvent('click', { bubbles: true }));
+    const chips = [...pipPanelOf(pip).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
+    assert.ok(chips.includes('ipod-fake'), 'the tray chips offer it: ' + chips.join(','));
+  } });
+});
+test('v1.332 AC8: ...and in the tab the fake colorway gets the pocket menus and Brick\'s Extras (the wheel-skin rule is the registry\'s)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod-fake', skinsSrc: fakeRegistrySrc(), run: async (dom) => {
+    const P = panel(dom);
+    assert.match(P.className, /\bmms-ipod-fake\b/, 'the panel carries the colorway class');
+    assert.match(P.className, /\bmms-ipod\b/, '...on the shared chassis');
+    dom.window.eval(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'ipod-brick.js'), 'utf8'));
+    const brick = dom.window.FileTubeBrick;
+    assert.ok(brick, 'precondition: the Brick wiring is loaded');
+    const w = brick.wire({ getEngine: () => ({ lcdHost: () => P.querySelector('.ip-lcd-in'), setWheelTakeover() {} }) });
+    assert.strictEqual(w.visible(), true, 'Brick offers itself on the new colorway');
+  } });
+});
+
+// v1.332 (Dean D7, AC10/AC11) through the REAL music view: the sticker's first row is Home and a HELD
+// MENU goes home too - both hand common.js the view's re-render (goHomeFromPlayer docks quietly, then
+// routes to /), and neither fires the view's origin-returning dock.
+test('v1.332 D7: the music skin\'s sticker leads with Home, and a held MENU goes home - each exactly once, never the MENU dock', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod-red', run: async (dom, spy) => {
+    const calls = [];
+    dom.window.FileTube.goHomeFromPlayer = (afterDock) => { calls.push(typeof afterDock); };
+    const P = panel(dom);
+    P.querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const home = P.querySelector('[data-skin-sticker-menu] .mms-sm-sec [data-skin-home]');
+    assert.ok(home, 'Home leads the sticker menu');
+    home.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.deepStrictEqual(calls, ['function'], 'the row went home once, with the view\'s re-render');
+    const docks = spy.dock;
+    const z = P.querySelector('.ip-z-menu');
+    z.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 0 }));
+    await new Promise((r) => setTimeout(r, 700));
+    z.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 90, clientY: 0 }));
+    z.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.deepStrictEqual(calls, ['function', 'function'], 'the held MENU went home once');
+    assert.strictEqual(spy.dock, docks, 'the release fired no MENU dock');
+  } });
+});
+
+test('v1.260 (v1.332 onto Nordic): a non-Click pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
+  // the tray colorway family is the Click colorways only - a flat skin's pick falls to base silver.
+  await boot({ mobile: false, isMusic: true, skin: 'spotify', run: async (dom) => {
     dom.window.localStorage.setItem('ft-tray-mode', '1');
     const holder = { pip: makePipWindow() };
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
@@ -1951,7 +2024,7 @@ test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a C
     const pip = holder.pip;
     assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
     assert.match(pipPanelOf(pip).className, /mms-ipod\b/, 'the donor fell to base silver');
-    assert.ok(!/mms-zune-classic/.test(pipPanelOf(pip).className), 'the brown Zune body never leaks into the Nano tray');
+    assert.ok(!/mms-spotify/.test(pipPanelOf(pip).className), 'the Nordic body never leaks into the Nano tray');
   } });
 });
 
@@ -2025,7 +2098,7 @@ function artistFetch(log) {
 }
 const artistScopeLoaded = (log) => log.some((u) => /\/api\/music\?/.test(u) && /[?&]artist=NESTALGIA(&|$)/.test(u));
 
-for (const sk of ['apple', 'spotify', 'ipod', 'zune-classic']) {
+for (const sk of ['apple', 'spotify', 'ipod', 'ipod-matte']) {
   test('v1.317 (M1) in-tab ' + sk + ': tapping the artist line opens the ARTIST drill (the artist-scope fetch + the drill header); no transport proxy fires', async () => {
     const log = [];
     await boot({ mobile: true, isMusic: true, skin: sk, fetchImpl: artistFetch(log), run: async (dom, spy) => {

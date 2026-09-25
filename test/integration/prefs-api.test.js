@@ -90,11 +90,11 @@ test('route-level LWW: a stale updatedAt is reported skipped and changes nothing
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ entries: [{ key: 'ft-music-skin', value, updatedAt }] }),
   });
-  await post(2000, 'zune-classic');
+  await post(2000, 'ipod-matte');
   const json = await (await post(1000, 'apple')).json();
   assert.deepEqual(json, { applied: [], skipped: ['ft-music-skin'], rejected: [] });
   const got = await (await fetch(`${base}/api/prefs`)).json();
-  assert.equal(got.prefs['ft-music-skin'].value, 'zune-classic');
+  assert.equal(got.prefs['ft-music-skin'].value, 'ipod-matte');
 });
 
 test('unauthenticated GET and POST are refused (the auth wall, not a silent empty)', async () => {

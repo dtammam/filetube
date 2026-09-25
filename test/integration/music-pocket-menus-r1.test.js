@@ -314,30 +314,23 @@ test('K6 A24: an untagged NATIVE track lives under "Unknown Artist" alone (never
   } });
 });
 
-test('K6 A20/A22: crafted markup in a title, artist, album or genre never becomes markup on ANY level of either skin', async () => {
-  for (const skin of ['ipod', 'zune-classic']) {
+test('K6 A20/A22: crafted markup in a title, artist, album or genre never becomes markup on ANY level', async () => {
+  for (const skin of ['ipod']) {
     await boot({ skin, play: 'nd1', run: async (h) => {
       const injected = () => h.panel.querySelectorAll('.ip-menuview img:not(.ipm-art-img), .ip-menuview .pwn, .ip-np img, .ip-np .pwn').length;
       const seen = [];
       const check = (where) => { seen.push(where); assert.strictEqual(injected(), 0, skin + ' ' + where + ': injected markup'); };
       menu(h); check('main');
       select(h); await settleNet(); check('music');
-      if (skin === 'zune-classic') {
-        // every pivot once round (six since Recent Artists joined, 2026-09-24), back on artists
-        for (let k = 0; k < 6; k++) { await settleNet(); check('pivot ' + k); click(h.dom, h.panel.querySelector('[data-skin-next]')); }
-        tapRow(h, XSS); await settleNet(); check('artist');
-        tapRow(h, '<b class=pwn>alb</b>'); await settleNet(); check('album');
-        assert.ok(h.panel.querySelector('.ipm-title').textContent.indexOf('<b class=pwn>') >= 0, 'the drilled title shows the crafted text as TEXT');
-      } else {
-        tapRow(h, 'Artists'); await settleNet(); check('artists');
-        tapRow(h, XSS); await settleNet(); check('artist');
-        tapRow(h, '<b class=pwn>alb</b>'); await settleNet(); check('artist album');
-        menu(h); menu(h); menu(h); tapRow(h, 'Albums'); await settleNet(); check('albums');
-        tapRow(h, '<b class=pwn>alb</b>'); await settleNet(); check('album');
-        menu(h); menu(h); tapRow(h, 'Songs'); await settleNet(); check('songs');
-        menu(h); tapRow(h, 'Genres'); await settleNet(); check('genres');
-        tapRow(h, '<i class=pwn>g</i>'); await settleNet(); check('genre');
-      }
+      tapRow(h, 'Artists'); await settleNet(); check('artists');
+      tapRow(h, XSS); await settleNet(); check('artist');
+      tapRow(h, '<b class=pwn>alb</b>'); await settleNet(); check('artist album');
+      menu(h); menu(h); menu(h); tapRow(h, 'Albums'); await settleNet(); check('albums');
+      tapRow(h, '<b class=pwn>alb</b>'); await settleNet(); check('album');
+      assert.ok(h.panel.querySelector('.ip-np').textContent.indexOf('<b class=pwn>') >= 0, 'the drilled title shows the crafted text as TEXT');
+      menu(h); menu(h); tapRow(h, 'Songs'); await settleNet(); check('songs');
+      menu(h); tapRow(h, 'Genres'); await settleNet(); check('genres');
+      tapRow(h, '<i class=pwn>g</i>'); await settleNet(); check('genre');
       assert.strictEqual(h.dom.window.__pwn, undefined);
       assert.ok(seen.length >= 6);
     } });

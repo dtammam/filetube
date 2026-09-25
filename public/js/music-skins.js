@@ -30,8 +30,11 @@
 
 (function () {
   var SKIN_KEY = 'ft-music-skin';
-  var IDS = ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'zune-classic'];
   var DEFAULT_ID = 'apple';
+  // v1.332 (Dean, D1): a RETIRED id maps to the skin that replaced it, never to the default. The
+  // removed Zune skin's users land on Click (a device with it saved, or the synced pref), and the
+  // active-skin read rewrites the stored value once so the synced pref converges.
+  var LEGACY_IDS = { 'zune-classic': 'ipod' };
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -77,7 +80,7 @@
   // now-playing ARTIST LINE is a real control on EVERY skin - a `data-skin-artist` button the
   // engine's delegated click proxies to the view's onArtist hook (the in-Music artist drill,
   // the "Playing from <Album>" line's model; for a listen video, the channel grid). ONE writer for all skins (Apple/Spotify .mms-sub,
-  // the iPod/Zune LCD .ip-artist) so a skin can never ship the line inert (the INERT SIBLING
+  // the Click LCD .ip-artist) so a skin can never ship the line inert (the INERT SIBLING
   // class). An EMPTY artist keeps the plain line - no focusable nothing. Gate r1 W1 (both
   // seats): the control exists ONLY where a handler does - `on` is ctx.artistTap, which the
   // ENGINE sets from the presence of its onArtist hook (podcasts pass none: their show line
@@ -164,9 +167,8 @@
   // sets VOLUME in the desktop pop-out (v1.235, where media.volume is settable - a volume
   // bar swaps in for the scrubber); on iPhone (the in-tab skin) it does nothing, since iOS
   // makes media.volume read-only. Play STATE shows in the status bar.
-  // The shared iPod SCREEN (LCD + list) - both the Click skins and Seattle render it,
-  // so the list-view flip, scrub, reflect and marquee machinery is identical; only the
-  // CONTROL below it differs (click wheel vs the Zune pad + flanks).
+  // The shared iPod SCREEN (LCD + list) - every Click colorway renders it, so the list-view
+  // flip, scrub, reflect and marquee machinery is identical.
   function ipScreen(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
@@ -208,31 +210,12 @@
       '</div></div>';
   }
 
-  // ZUNE 30 control (Dean's reference photo): a clean chrome circle PAD - center Select
-  // + invisible prev/next tap zones + the rotation gesture (the whole .ip-wheel engine
-  // and its haptics bind by the class) - FLANKED by two round buttons: Back (left,
-  // data-skin-menu = the exit, as the iPod's MENU) and Play/Pause (right, the shared
-  // reflecting .mms-play). No printed wheel labels - that's what read as "brown iPod".
-  function zncBackGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7z"/></svg>'; }
-  function renderZuneClassic(ctx) {
-    return ipScreen(ctx) +
-      '<div class="znc-controls">' +
-      '<button type="button" class="znc-flank znc-back" data-skin-menu aria-label="Back">' + zncBackGlyph() + '</button>' +
-      '<div class="ip-wheel znc-pad">' +
-      '<button type="button" class="ip-zone ip-z-left" data-skin-prev aria-label="Previous"></button>' +
-      '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next"></button>' +
-      '<button type="button" class="ip-center znc-center" data-skin-select aria-label="Select"></button>' +
-      '</div>' +
-      '<button type="button" class="znc-flank znc-pp mms-play" data-skin-play aria-label="' + (ctx.playing ? 'Pause' : 'Play') + '">' + playGlyph(ctx.playing) + '</button>' +
-      '</div>';
-  }
-
   // Labels are CHEEKY riffs, deliberately NOT the real product/company names (Dean):
   // Cider (Apple Music - apple->cider), Nordic (Spotify - its Swedish roots),
-  // Click (iPod - the click wheel; Black + Matte are the body colorways) and Seattle
-  // (the Zune's home). The ids stay literal for CSS/storage.
+  // Click (iPod - the click wheel; the parenthesized names are its body colorways). The ids
+  // stay literal for CSS/storage.
   // Pocket menus (2026-09-24): `menus` names the POCKET MENU style a skin carries ('click' =
-  // the 6G split screen, 'seattle' = the Zune pivots). It lives ON the registry entry - the
+  // the 6G split screen). It lives ON the registry entry - the
   // one list a new skin is added to - so a new Click colorway that copies an entry carries its
   // menus with it (never a second hand-kept id list; the INERT SIBLING class). Absent = no
   // menus (Cider, Nordic): those skins have no LCD to draw a menu on.
@@ -248,18 +231,62 @@
     // pattern exactly: one render (renderIpod), a `base` for the shared .mms-ipod CSS,
     // and the .mms-ipod-matte palette-only override.
     { id: 'ipod-matte', label: 'Click (Matte)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    // v1.260 (Dean: "the original zune with the circle wheel"): the brown Zune 30 -
-    // the ipod-black pattern exactly: one render (the wheel engine, haptics and all),
-    // a base for the shared .mms-ipod CSS, and a palette-only override block.
-    { id: 'zune-classic', label: 'Seattle', base: 'ipod', menus: 'seattle', renderFull: renderZuneClassic },
+    // v1.332 (Dean D2): the charity-red colorway - a registry entry, ONE role block in style.css and a
+    // Settings blurb; every Click list (menus, Brick, lighting, the tray and its chips) derives from here.
+    { id: 'ipod-red', label: 'Click (Red)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.332 (Dean D8): the iconic colorways, each a registry entry + ONE role block + a blurb - the
+    // aluminum classic, the black special edition with the red wheel (a cheeky name, never the band's),
+    // the second mini's blue, green and pink, and the gold (Dean's own photo).
+    { id: 'ipod-silver', label: 'Click (Silver)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-encore', label: 'Click (Encore)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blue', label: 'Click (Blue)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-green', label: 'Click (Green)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-pink', label: 'Click (Pink)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-gold', label: 'Click (Gold)', base: 'ipod', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
+  // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the
+  // ids, and the Click colorways (the entries with the Click pocket menus: the wheel skins Brick
+  // plays on, the Nano tray's colorways, the pop-out tray's chips, the probes' default lists). A new
+  // colorway is its registry entry, its CSS role block and its Settings blurb - nothing else.
+  var IDS = SKINS.map(function (s) { return s.id; });
+  function clickColorways() { return SKINS.filter(function (s) { return s.menus === 'click'; }).map(function (s) { return s.id; }); }
+  function isClickColorway(id) { return typeof id === 'string' && !!BY_ID[id] && BY_ID[id].menus === 'click'; }
 
-  function normalizeSkinId(id) { return IDS.indexOf(id) >= 0 ? id : DEFAULT_ID; }
+  function isLegacyId(id) { return typeof id === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_IDS, id); }
+  function normalizeSkinId(id) {
+    if (IDS.indexOf(id) >= 0) return id;
+    return isLegacyId(id) ? LEGACY_IDS[id] : DEFAULT_ID;
+  }
   function activeSkinId(store) {
     // store = a localStorage-like {getItem}; defaults to window.localStorage.
     var ls = store || (typeof window !== 'undefined' && window.localStorage);
-    try { return normalizeSkinId(ls && ls.getItem(SKIN_KEY)); } catch (_) { return DEFAULT_ID; }
+    try {
+      var raw = ls && ls.getItem(SKIN_KEY);
+      var id = normalizeSkinId(raw);
+      // D1: a retired id is rewritten ONCE to its replacement - localStorage, which the prefs
+      // sync mirrors to the server - so every device converges on the new value.
+      if (isLegacyId(raw)) rewriteLegacy(ls, raw, id, !store);
+      return id;
+    } catch (_) { return DEFAULT_ID; }
+  }
+  // Gate r1 W1 (adversary + qa, measured): the rewrite is a synced WRITE with a fresh stamp, so run
+  // before the sync's boot GET it out-stamped a NEWER pick another device had synced (a cold load
+  // reads the skin before that GET returns) and reverted it on every device. On the page's own
+  // storage it therefore waits for the boot GET, then rewrites only if the retired id is STILL what
+  // is stored (the server's newer value, raw-applied by the sync, is left alone). Without the sync
+  // agent (or on a caller's own store) there is no race: it rewrites at once. One wait at a time.
+  var rewriteWaiting = false;
+  function rewriteLegacy(ls, raw, id, pageStore) {
+    var go = function () { try { if (ls.getItem(SKIN_KEY) === raw) ls.setItem(SKIN_KEY, id); } catch (_) { /* private mode: the read still maps */ } };
+    var sync = pageStore && typeof window !== 'undefined' && window.__ftPrefsSync;
+    if (sync && typeof sync.whenBooted === 'function') {
+      if (rewriteWaiting) return;
+      rewriteWaiting = true;
+      sync.whenBooted(function () { rewriteWaiting = false; go(); });
+      return;
+    }
+    go();
   }
   function setActiveSkin(id, store) {
     var ls = store || (typeof window !== 'undefined' && window.localStorage);
@@ -284,30 +311,22 @@
 
   // ==== POCKET MENUS (Dean 2026-09-24: "I'd love classic pocket skin to truly emulate.
   // Show artists, albums, songs, etc. fully interactive") ======================================
-  // The Click family and Seattle carry the device's real menu tree over the WHOLE music library.
+  // The Click family carries the device's real menu tree over the WHOLE music library.
   // This module owns the PURE half: the static levels, the builders that turn the Music view's
-  // own API payloads into menu rows, the list window math and the two screen renderers (Click's
-  // 6G split screen, Seattle's Zune pivots). The controller (stack, cursor, MENU/Select, loads)
+  // own API payloads into menu rows, the list window math and the screen renderer (Click's
+  // 6G split screen). The controller (stack, cursor, MENU/Select, loads)
   // lives in skin-surface.js; the data fetches + the play seam live in music.js.
   //
   // A menu ROW (every builder returns these):
   //   { label, sub?, art?, node?: {type, key?, label?, artist?} (drills in, shows a chevron),
   //     action?: 'shuffle' | 'nowplaying', song?: true, id?, trackIndex? (into the level's tracks) }
   function menuStyle(id) { var s = BY_ID[normalizeSkinId(id)]; return (s && s.menus) || ''; }
-  // Click's Music menu (the iPod order, Dean's tree) and Seattle's pivots (the Zune's own
-  // lead-with-artists order). One list per style; the controller reads them, never a copy.
-  // Quick scroll (Dean 2026-09-24): Recent Artists leads Click's Music menu; on Seattle it is its
-  // own pivot, placed LAST so the pivots still lead with artists and, as they wrap, "recent" sits
-  // one pad-press to the left of artists.
+  // Click's Music menu (the iPod order, Dean's tree). The controller reads it, never a copy.
+  // Quick scroll (Dean 2026-09-24): Recent Artists leads it.
   var MUSIC_MENU = [
     { type: 'recentArtists', label: 'Recent Artists' },
     { type: 'playlists', label: 'Playlists' }, { type: 'artists', label: 'Artists' },
     { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' }, { type: 'genres', label: 'Genres' },
-  ];
-  var SEATTLE_PIVOTS = [
-    { type: 'artists', label: 'Artists' }, { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' },
-    { type: 'playlists', label: 'Playlists' }, { type: 'genres', label: 'Genres' },
-    { type: 'recentArtists', label: 'Recent' },
   ];
   // Playlists = Liked (the one real playlist, Dean: "including Liked") + the device's smart
   // playlists this library can honestly fill (no play counts exist, so no "Top 25").
@@ -316,8 +335,7 @@
     { key: 'recent-added', label: 'Recently Added' },
     { key: 'recent-played', label: 'Recently Played' },
   ];
-  function menuPivots(style) { return style === 'seattle' ? SEATTLE_PIVOTS.slice() : []; }
-  var ROOT_TITLE = { click: 'Click', seattle: 'Seattle' }; // the cheeky name, never the product's (Dean)
+  var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
   var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
     recentArtists: 'Recent Artists', extras: 'Extras', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
   function menuTitle(node, style) {
@@ -328,7 +346,7 @@
   }
   // The STATIC levels (null for a level whose rows come from the library).
   // The Main Menu is the device's own order (the iPod classic: Music, Extras, Settings, Shuffle
-  // Songs, Now Playing). Extras (Click) / Games (Seattle, the Zune's own word) exists only while the
+  // Songs, Now Playing). Extras exists only while the
   // game can run here (opts.hasGames = the Brick hook's own availability rule, read by the
   // controller) - never an entry that leads to nothing. Settings holds About only (Dean's scope:
   // Shuffle / Repeat / Autoplay stay where they already live).
@@ -337,7 +355,7 @@
     var o = opts || {};
     if (t === 'main') {
       var rows = [{ label: 'Music', node: { type: 'music' } }];
-      if (o.hasGames) rows.push(o.style === 'seattle' ? { label: 'Games', node: { type: 'games' } } : { label: 'Extras', node: { type: 'extras' } });
+      if (o.hasGames) rows.push({ label: 'Extras', node: { type: 'extras' } });
       rows.push({ label: 'Settings', node: { type: 'settings' } });
       rows.push({ label: 'Shuffle Songs', action: 'shuffle' });
       if (o.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
@@ -348,8 +366,8 @@
     if (t === 'extras') return [{ label: 'Games', node: { type: 'games' } }];
     if (t === 'games') return [{ label: 'Brick', action: 'brick' }];
     // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the controller says the driver
-    // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded; the
-    // controller passes false on Seattle - gate r1 W2) - never a row that leads to nothing.
+    // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded) - never
+    // a row that leads to nothing.
     if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
     return null;
   }
@@ -524,7 +542,7 @@
   }
 
   // ---- QUICK SCROLL (Dean 2026-09-24: "there's a lot of scrolling ... I don't want to go crazy")
-  // The iPod classic 5G+ and the Zune jumped a long list by LETTER. A row's letter comes from its
+  // The iPod classic 5G+ jumped a long list by LETTER. A row's letter comes from its
   // label - the value the level is sorted by (the server's cmpStr: trimmed, localeCompare at base
   // sensitivity; no "The " rule, so none here either). Digits and symbols are '#', which that sort
   // places first; accents fold to their base letter (É under E) and the few Latin letters the
@@ -612,7 +630,7 @@
   }
   var MENU_SKELETON_ROWS = 6;
   // The list body: two spacer pads + the windowed rows (each carrying its absolute index).
-  // v = { style, items, cursor, currentId, start, end, rowH, state, emptyText }
+  // v = { items, cursor, currentId, start, end, rowH, state, emptyText }
   function renderMenuList(v) {
     var items = v.items || [];
     if (v.state === 'loading') {
@@ -638,9 +656,8 @@
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
         '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
         (it.check ? '<span class="ipm-check" aria-label="Selected">✓</span>' : '') +
-        (v.style === 'seattle' && it.sub ? '<span class="ipm-sub">' + esc(it.sub) + '</span>' : '') +
         (v.currentId && it.id === v.currentId ? '<span class="ipm-now" aria-label="Now playing">' + ipVolGlyph() + '</span>' : '') +
-        (it.node && v.style !== 'seattle' ? '<span class="ipm-chev" aria-hidden="true">›</span>' : '') +
+        (it.node ? '<span class="ipm-chev" aria-hidden="true">›</span>' : '') +
         '</button>';
     }
     html += '<div class="ipm-pad" style="height:' + (Math.max(0, items.length - v.end) * rowH) + 'px"></div>';
@@ -648,12 +665,10 @@
   }
   // The whole menu screen for the LCD. Click: the 6th/7th-gen SPLIT SCREEN - the list on the
   // left half, the highlighted item's art easing in on the right (`art`, applied by the
-  // controller so a fast wheel does not thrash the image). Seattle: big lowercase type, a
-  // pivot strip on the Music level (the active pivot leads, the rest trail off - the Zune
-  // wraps), a dim title over a drilled list, and nothing at all over the Main Menu.
+  // controller so a fast wheel does not thrash the image).
   // Quick scroll's three layers over the menu screen (all inside .ip-menuview, drawn from the
   // controller's state so a repaint keeps them): the big LETTER overlay (the wheel's letter mode:
-  // Click = the iPod's translucent dark square, Seattle = a huge lowercase Zune letter), the small
+  // the iPod's translucent dark square), the small
   // edge BADGE (a touch scroll's letter), and the A-Z PICKER (opened by tapping either). Both the
   // overlay and the badge are 44 px+ buttons, faded by a class so a hidden one never takes a tap.
   // jump = { letter, overlay, badge, grid: [{letter, index}] | null }
@@ -670,29 +685,10 @@
     }
     return html;
   }
-  // v = renderMenuList's v + { title, root, pivots?: [labels], pivotIdx, art, artIn, jump?, aboutName? }
+  // v = renderMenuList's v + { title, root, art, artIn, jump?, aboutName? }
   function renderMenuView(style, v) {
-    // gate r1 K5: a Seattle list whose rows carry a sub-line (albums, songs) is a TWO-LINE list -
-    // taller rows with title + sub packed at the top, so each sub-line reads with ITS title.
-    var twoLine = style === 'seattle' && (v.items || []).some(function (it) { return it && it.sub; });
-    var list = '<div class="ipm-list' + (twoLine ? ' ipm-2l' : '') + '" data-skin-menulist role="listbox" aria-label="' + esc(v.title || 'Menu') + '"' +
-      (style === 'seattle' && v.pivots ? ' data-skin-swipe' : '') + '>' + renderMenuList(Object.assign({}, v, { style: style })) + '</div>';
-    if (style === 'seattle') {
-      var head = '';
-      if (v.pivots && v.pivots.length) {
-        var n = v.pivots.length;
-        var strip = '';
-        for (var j = 0; j < n; j++) {
-          var k = (v.pivotIdx + j) % n;
-          strip += '<button type="button" class="ipm-pv' + (j === 0 ? ' is-on' : '') + '" data-skin-pivot="' + k + '"' + (j === 0 ? ' aria-current="true"' : '') + '>' + esc(v.pivots[k]) + '</button>';
-        }
-        head = '<div class="ipm-pivots">' + strip + '</div>';
-      } else if (!v.root) {
-        head = '<div class="ipm-title">' + esc(v.title || '') + '</div>';
-      }
-      var about = v.aboutName ? '<div class="ipm-about-name">' + esc(v.aboutName) + '</div>' : '';
-      return '<div class="ip-menuview ipm-seattle' + (v.root ? ' ipm-root' : '') + '">' + head + about + list + renderJumpLayers(v.jump) + '</div>';
-    }
+    var list = '<div class="ipm-list" data-skin-menulist role="listbox" aria-label="' + esc(v.title || 'Menu') + '">' +
+      renderMenuList(v) + '</div>';
     var art = v.art ? '<img class="ipm-art-img' + (v.artIn ? ' is-in' : '') + '" src="' + esc(v.art) + '" alt="" />' : '';
     var aboutC = v.aboutName ? '<div class="ipm-about-name">' + esc(v.aboutName) + '</div>' : '';
     return '<div class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-lpane">' + aboutC + list + '</div>' +
@@ -702,11 +698,11 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById,
+    skinById: skinById, clickColorways: clickColorways, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
     // the pocket menus (the pure half - see the block above).
-    menuStyle: menuStyle, menuPivots: menuPivots, menuTitle: menuTitle, menuStaticItems: menuStaticItems,
+    menuStyle: menuStyle, menuTitle: menuTitle, menuStaticItems: menuStaticItems,
     menuArtistItems: menuArtistItems, menuAlbumItems: menuAlbumItems, menuSongItems: menuSongItems,
     menuArtistAlbumItems: menuArtistAlbumItems, menuGenreItems: menuGenreItems,
     tracksOfGenre: tracksOfGenre, tracksOfAlbum: tracksOfAlbum,

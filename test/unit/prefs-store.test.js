@@ -86,13 +86,13 @@ test('FOURTEENTH-strike carrier: prefs ride the bundle, restore round-trips byte
   const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
   store.setPrefsLWW(a.id, [
     { key: 'ft-era', value: '2009', updatedAt: 111 },
-    { key: 'ft-music-skin', value: 'zune-classic', updatedAt: 222 },
+    { key: 'ft-music-skin', value: 'ipod-matte', updatedAt: 222 },
   ]);
 
   const bundle = store.exportUsersForBackup();
   assert.deepEqual(bundle[0].prefs, [
     { key: 'ft-era', value: '2009', updatedAt: 111 },
-    { key: 'ft-music-skin', value: 'zune-classic', updatedAt: 222 },
+    { key: 'ft-music-skin', value: 'ipod-matte', updatedAt: 222 },
   ], 'the export carries every pref, ordered by key');
 
   // Mutate live state AFTER the export: one changed, one new.
@@ -109,7 +109,7 @@ test('FOURTEENTH-strike carrier: prefs ride the bundle, restore round-trips byte
   const after = store.getPrefs(bundle[0].id);
   assert.deepEqual(after, {
     'ft-era': { value: '2009', updatedAt: 111 },
-    'ft-music-skin': { value: 'zune-classic', updatedAt: 222 },
+    'ft-music-skin': { value: 'ipod-matte', updatedAt: 222 },
   }, 'bundle prefs restored byte-equal; the post-export ft-star-ratings is GONE (wipe-and-replace honesty) and ft-era reverted');
 });
 

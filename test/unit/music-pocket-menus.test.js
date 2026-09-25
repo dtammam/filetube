@@ -17,13 +17,13 @@ const skins = require(skinsPath);
 const artFor = (id, explicit) => explicit || ('/albumart/' + encodeURIComponent(id));
 
 // ---------------------------------------------------------------- the registry
-test('registry census: a skin carries `menus` exactly when its screen is an LCD (Click x3 + Seattle), never Cider/Nordic', () => {
+test('registry census: a skin carries `menus` exactly when its screen is an LCD (every Click colorway), never Cider/Nordic', () => {
   const CTX = { track: { title: 'T', artist: 'A' }, upNext: [], fullList: [], playing: true };
   for (const s of skins.SKINS) {
     const lcd = /class="ip-lcd"/.test(skins.renderFull(s.id, CTX));
     assert.strictEqual(!!s.menus, lcd, `${s.id}: menus present <=> it draws an LCD`);
   }
-  assert.deepStrictEqual(skins.IDS.map((id) => skins.menuStyle(id)), ['', '', 'click', 'click', 'click', 'seattle']);
+  assert.deepStrictEqual(skins.IDS.map((id) => skins.menuStyle(id)), ['', '', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click']);
   assert.strictEqual(skins.menuStyle('bogus'), '', 'an unknown id normalizes to the default (Cider): no menus');
 });
 
@@ -35,10 +35,7 @@ test('static levels: Main Menu (Now Playing only while a track exists), Music in
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'music' })), ['Recent Artists', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'playlists' })), ['Liked Songs', 'Recently Added', 'Recently Played']);
   assert.strictEqual(skins.menuStaticItems({ type: 'artists' }), null, 'a library level is not static');
-  assert.deepStrictEqual(skins.menuPivots('seattle').map((p) => p.type), ['artists', 'albums', 'songs', 'playlists', 'genres', 'recentArtists']);
-  assert.deepStrictEqual(skins.menuPivots('click'), [], 'Click has no pivots');
   assert.strictEqual(skins.menuTitle({ type: 'main' }, 'click'), 'Click');
-  assert.strictEqual(skins.menuTitle({ type: 'main' }, 'seattle'), 'Seattle');
   assert.strictEqual(skins.menuTitle({ type: 'album', label: 'Night Drive' }, 'click'), 'Night Drive');
 });
 
@@ -91,7 +88,7 @@ test('menuWindow: only the rows near the viewport render; with no layout, a fixe
 });
 
 // ---------------------------------------------------------------- the renderers
-test('renderMenuList: escaped labels, chevrons on drill rows (Click only), the playing mark, pads that hold the scroll height', () => {
+test('renderMenuList: escaped labels, chevrons on drill rows, the playing mark, pads that hold the scroll height', () => {
   const items = [{ label: '<img src=x onerror=alert(1)>', node: { type: 'album' } }, { label: 'Song', id: 's1', song: true, sub: 'Artist' }];
   const html = skins.renderMenuList({ style: 'click', items, cursor: 1, currentId: 's1', start: 0, end: 2, rowH: 34, state: 'ready' });
   const dom = new JSDOM('<div id="h">' + html + '</div>');
@@ -108,29 +105,17 @@ test('renderMenuList: escaped labels, chevrons on drill rows (Click only), the p
   assert.strictEqual(pads[0].style.height, (40 * 34) + 'px');
   assert.strictEqual(pads[1].style.height, (40 * 34) + 'px');
   assert.strictEqual(d2.querySelectorAll('.ipm-row').length, 20, 'only the window is in the DOM');
-  const sea = skins.renderMenuList({ style: 'seattle', items, cursor: 0, start: 0, end: 2, rowH: 0, state: 'ready' });
-  assert.ok(!/ipm-chev/.test(sea), 'Seattle draws no chevrons (Zune lists never did)');
-  assert.match(sea, /class="ipm-sub">Artist</, 'Seattle shows the sub-line');
+  assert.ok(!/ipm-sub/.test(html), 'a row\'s sub-line is never drawn (the Click list is one line)');
   assert.strictEqual((skins.renderMenuList({ state: 'loading', items: [] }).match(/class="ipm-row ipm-skel"/g) || []).length, 6, 'loading = six skeleton rows');
   assert.match(skins.renderMenuList({ state: 'error', items: [] }), /Couldn.t load/);
   assert.match(skins.renderMenuList({ state: 'empty', items: [], emptyText: 'No artists yet.' }), /No artists yet\./);
 });
 
-test('renderMenuView: Click = the split screen (list + art pane); Seattle = pivots leading with the active one (wrapping), a big title when drilled, nothing on the root', () => {
+test('renderMenuView: Click = the split screen (list + art pane)', () => {
   const base = { items: [{ label: 'A' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' };
   const click = skins.renderMenuView('click', Object.assign({ title: 'Music', art: '/albumart/x', artIn: true }, base));
   assert.match(click, /class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-lpane"><div class="ipm-list"/);
   assert.match(click, /<div class="ipm-art" aria-hidden="true"><img class="ipm-art-img is-in" src="\/albumart\/x"/);
-  const piv = skins.renderMenuView('seattle', Object.assign({ title: 'Music', pivots: ['artists', 'albums', 'songs'], pivotIdx: 2 }, base));
-  const d = new JSDOM(piv).window.document;
-  assert.deepStrictEqual([...d.querySelectorAll('.ipm-pv')].map((b) => [b.textContent, b.getAttribute('data-skin-pivot')]), [['songs', '2'], ['artists', '0'], ['albums', '1']]);
-  assert.ok(d.querySelector('.ipm-pv.is-on').textContent === 'songs');
-  assert.ok(d.querySelector('[data-skin-swipe]'), 'a pivot level owns the swipe');
-  const drilled = skins.renderMenuView('seattle', Object.assign({ title: 'Tonzak', pivots: null }, base));
-  assert.match(drilled, /<div class="ipm-title">Tonzak<\/div>/);
-  const root = skins.renderMenuView('seattle', Object.assign({ title: 'Seattle', root: true, pivots: null }, base));
-  assert.match(root, /ip-menuview ipm-seattle ipm-root/);
-  assert.ok(!/ipm-title|ipm-pivots/.test(root), 'the Zune main menu has no header');
 });
 
 // ---------------------------------------------------------------- the controller (through the REAL engine)
@@ -150,7 +135,7 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
   global.module = undefined;
   dom.window.FileTubeMusicSkins = require(skinsPath);
   require(surfacePath);
-  const spy = { dock: 0, loads: [], plays: [], shuffles: 0, next: 0 };
+  const spy = { dock: 0, loads: [], plays: [], shuffles: 0, next: 0, prev: 0 };
   const state = { skin: skin || 'ipod', current: currentId || null };
   const menuCfg = {
     load: (node) => { spy.loads.push(node); return load ? load(node) : Promise.resolve({ items: [] }); },
@@ -172,6 +157,7 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
   }
   if (beforeCreate) beforeCreate(dom);
   dom.window.document.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
+  dom.window.document.getElementById('track-prev-btn').addEventListener('click', () => { spy.prev += 1; });
   const engine = dom.window.FileTubeSkinSurface.create(Object.assign({
     panel: dom.window.document.getElementById('panel'),
     getSkinId: () => state.skin,
@@ -407,31 +393,23 @@ test('the split screen\'s art eases in on the settled row (a decoded image turns
   } finally { b.restore(); }
 });
 
-test('Seattle: pad left/right move the pivots only on a pivot level (elsewhere they still skip tracks); a style change rebuilds the tree', async () => {
-  const b = bootEngine({ skin: 'zune-classic', load: (n) => Promise.resolve({ items: [{ label: n.type + '-row', node: { type: 'album', key: n.type } }] }) });
+test('v1.332: on a Click menu level the |<< >>| zones still skip tracks (the device did), and a style change rebuilds the tree', async () => {
+  const b = bootEngine({ load: (n) => Promise.resolve({ items: [{ label: n.type + '-row', node: { type: 'album', key: n.type } }] }) });
   try {
     b.engine.paint();
     tap(b, P(b).querySelector('[data-skin-next]'));
     assert.strictEqual(b.spy.next, 1, 'Now Playing: a skip');
     pressMenu(b); pressSelect(b); await tick();
-    assert.strictEqual(b.engine.menuState().pane, 0);
-    assert.deepStrictEqual(lbls(b), ['artists-row']);
+    assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Music', 'precondition: the Music level is on screen');
     tap(b, P(b).querySelector('[data-skin-next]')); await tick();
-    assert.strictEqual(b.spy.next, 1, 'a pivot level: no skip');
-    assert.deepStrictEqual(lbls(b), ['albums-row']);
-    tap(b, P(b).querySelector('[data-skin-pivot="4"]')); await tick();
-    assert.deepStrictEqual(lbls(b), ['genres-row'], 'a pivot tap moves to it');
-    tap(b, P(b).querySelector('[data-skin-next]')); await tick();
-    assert.deepStrictEqual(lbls(b), ['recentArtists-row'], 'Recent Artists is the last pivot (2026-09-24)');
-    tap(b, P(b).querySelector('[data-skin-next]')); await tick();
-    assert.deepStrictEqual(lbls(b), ['artists-row'], 'the pivots wrap (the Zune\'s own)');
-    tap(b, P(b).querySelector('[data-skin-mi="0"]')); await tick(); // drill in
-    tap(b, P(b).querySelector('[data-skin-next]'));
-    assert.strictEqual(b.spy.next, 2, 'a drilled (non-pivot) level: the pad skips again');
-    // the sticker's skin pick: Seattle -> Click rebuilds the tree for the new style
-    b.state.skin = 'ipod'; b.engine.paint();
+    assert.strictEqual(b.spy.next, 2, 'a menu level: >>| skips a track');
+    tap(b, P(b).querySelector('[data-skin-prev]')); await tick();
+    assert.strictEqual(b.spy.prev, 1, 'a menu level: |<< goes back a track');
+    assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Music', 'and the menu level is unchanged');
+    // the sticker's skin pick: a non-pocket skin drops the menus; back on Click the tree restarts
+    b.state.skin = 'apple'; b.engine.paint();
+    b.state.skin = 'ipod-black'; b.engine.paint();
     assert.strictEqual(b.engine.menuState().depth, 1, 'the stack restarted at the Click Main Menu');
-    assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Click');
   } finally { b.restore(); }
 });
 
@@ -462,43 +440,24 @@ test('a library change under the menus (the view bumps dataVersion) re-loads eve
 });
 
 // ---------------------------------------------------------------- gate r1 bindings (K5 / K6 / qa S4, S6)
-const pe = (b, type, el, x, y, id) => el.dispatchEvent(new b.dom.window.PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: id == null ? 1 : id }));
-async function seattlePivots(b) {
+async function openMusic(b) {
   b.engine.paint();
   pressMenu(b); pressSelect(b); await tick();
-  return () => b.engine.menuState().pane;
 }
-const pivotLoad = (n) => Promise.resolve({ items: [{ label: n.type + '-row', sub: 'by ' + n.type, id: n.type, song: true, trackIndex: 0 }], tracks: [{ id: n.type }], play: {} });
+const songLoad = (n) => Promise.resolve({ items: [{ label: n.type + '-row', sub: 'by ' + n.type, id: n.type, song: true, trackIndex: 0 }], tracks: [{ id: n.type }], play: {} });
 
-test('gate r1 A3/A4/A6: a pivot swipe needs ONE pointer (id match), a horizontal axis, and is dropped by pointercancel', async () => {
-  const b = bootEngine({ skin: 'zune-classic', load: pivotLoad });
+test('gate r1 A5: destroy() unbinds every panel listener the engine added; a tap after destroy does nothing', async () => {
+  const b = bootEngine({ load: songLoad, trackListeners: true });
   try {
-    const pane = await seattlePivots(b);
-    const list = () => P(b).querySelector('[data-skin-swipe]');
-    // A3: the lift of a DIFFERENT pointer never completes the swipe
-    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointerup', list(), 150, 100, 2);
-    assert.strictEqual(pane(), 0, 'another pointer\'s lift is not a swipe');
-    // A6: a mostly-vertical drag (dx 45, dy 120) is a scroll, never a pivot move
-    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointerup', list(), 255, 220, 1);
-    assert.strictEqual(pane(), 0, 'a vertical drag is not a swipe');
-    // A4: a pointercancel (the browser took the gesture) drops the swipe; a later lift does nothing
-    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointercancel', list(), 300, 100, 1); pe(b, 'pointerup', list(), 150, 100, 1);
-    assert.strictEqual(pane(), 0, 'a cancelled swipe never completes');
-    // the control: a clean horizontal swipe moves the pivot (so the three asserts above are not vacuous)
-    pe(b, 'pointerdown', list(), 300, 100, 1); pe(b, 'pointerup', list(), 150, 105, 1);
-    assert.strictEqual(pane(), 1, 'a clean left swipe moves to the next pivot');
-  } finally { b.restore(); }
-});
-
-test('gate r1 A5: destroy() unbinds every panel listener the engine added (the swipe arms included); a swipe after destroy does nothing', async () => {
-  const b = bootEngine({ skin: 'zune-classic', load: pivotLoad, trackListeners: true });
-  try {
-    const pane = await seattlePivots(b);
-    const list = P(b).querySelector('[data-skin-swipe]');
+    await openMusic(b);
+    tapLabel(b, 'Albums'); await tick();
+    const row = P(b).querySelector('[data-skin-mi="0"]');
+    assert.ok(row, 'precondition: a library level is on screen');
     b.engine.destroy();
+    assert.ok(b.bal.add > 0, 'precondition: the engine bound panel listeners (the balance is not vacuous)');
     assert.strictEqual(b.bal.add - b.bal.remove, 0, 'every add was removed (net ' + (b.bal.add - b.bal.remove) + ')');
-    pe(b, 'pointerdown', list, 300, 100, 1); pe(b, 'pointerup', list, 150, 105, 1);
-    assert.strictEqual(pane(), 0, 'a swipe on a destroyed surface moves nothing');
+    tap(b, row);
+    assert.strictEqual(b.spy.plays.length, 0, 'a tap on a destroyed surface plays nothing');
   } finally { b.restore(); }
 });
 
@@ -558,10 +517,10 @@ test('gate r1 A1: a list the queue advanced off screen comes back RE-CENTRED on 
   } finally { b.restore(); }
 });
 
-test('gate r1 qa S4: on Seattle\'s pivot level a HOLD on the pad\'s left/right never fast-scans the playing song', async () => {
-  const b = bootEngine({ skin: 'zune-classic', load: pivotLoad, fastScan: true });
+test('gate r1 qa S4 (v1.332, onto Click): on a Click menu level a HOLD on >>| fast-scans the playing song, as on Now Playing', async () => {
+  const b = bootEngine({ load: songLoad, fastScan: true });
   try {
-    await seattlePivots(b);
+    await openMusic(b);
     const mpEl = b.dom.window.document.getElementById('media-player');
     let ct = 100;
     Object.defineProperty(mpEl, 'duration', { configurable: true, get: () => 300 });
@@ -572,12 +531,9 @@ test('gate r1 qa S4: on Seattle\'s pivot level a HOLD on the pad\'s left/right n
       await new Promise((r) => setTimeout(r, 700));
       z.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 90, clientY: 0 }));
     };
+    assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Music', 'precondition: a menu level is on screen');
     await hold();
-    assert.strictEqual(ct, 100, 'the hold did not scan the song');
-    // the control: on Now Playing the same hold scans, as it always did
-    tap(b, P(b).querySelector('[data-skin-mi="0"]')); // plays -> Now Playing
-    await hold();
-    assert.ok(ct > 100, 'on Now Playing the hold fast-scans (the control)');
+    assert.ok(ct > 100, 'the hold scanned the song');
   } finally { b.restore(); }
 });
 
@@ -592,21 +548,15 @@ test('gate r1 qa S6: inside the pop-out\'s Nano tray the menu is never drawn (no
   } finally { b.restore(); }
 });
 
-test('gate r1 A20/A22 + K5: Seattle escapes its drilled title, sub-line, pivots and list label; a list with sub-lines is a two-line list', () => {
+test('gate r1 A20/A22 (v1.332, onto Click): the menu screen escapes its title, list label and About name; a sub-line is never drawn', () => {
   const X = '<img src=x onerror=alert(1)>';
-  const html = skins.renderMenuView('seattle', { title: X, root: false, pivots: null, items: [{ label: 'L', sub: X, song: true, id: 'a' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
+  const html = skins.renderMenuView('click', { title: X, root: false, aboutName: X, items: [{ label: X, sub: X, song: true, id: 'a' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
   const d = new JSDOM('<div id="h">' + html + '</div>').window.document;
   assert.strictEqual(d.querySelectorAll('img').length, 0, 'no injected element');
-  assert.strictEqual(d.querySelector('.ipm-title').textContent, X, 'the title shows as text');
-  assert.strictEqual(d.querySelector('.ipm-sub').textContent, X, 'the sub-line shows as text');
+  assert.strictEqual(d.querySelector('.ipm-lbl').textContent, X, 'the row label shows as text');
+  assert.strictEqual(d.querySelector('.ipm-about-name').textContent, X, 'the About name shows as text');
   assert.strictEqual(d.querySelector('.ipm-list').getAttribute('aria-label'), X, 'the listbox label is an attribute value, not markup');
-  assert.ok(d.querySelector('.ipm-list.ipm-2l'), 'K5: a list with sub-lines is a two-line list (one taller pitch)');
-  const one = skins.renderMenuView('seattle', { title: 'T', items: [{ label: 'no sub' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
-  assert.ok(!/ipm-2l/.test(one), 'a list with no sub-lines keeps the one-line pitch');
-  const piv = skins.renderMenuView('seattle', { title: 'Music', pivots: [X, 'b'], pivotIdx: 0, items: [{ label: 'x' }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
-  assert.strictEqual(new JSDOM(piv).window.document.querySelectorAll('img').length, 0, 'pivot labels are escaped');
-  const click = skins.renderMenuView('click', { title: X, items: [{ label: 'L', sub: X }], cursor: 0, start: 0, end: 1, rowH: 0, state: 'ready' });
-  assert.ok(!/ipm-2l/.test(click), 'Click lists are one line (no two-line pitch)');
+  assert.ok(!d.querySelector('.ipm-sub'), 'no sub-line element');
 });
 
 test('gate r1 K2: the chapters editor raises the ONE library-changed event on a successful save (and not on a failed one)', async () => {
