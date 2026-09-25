@@ -2506,6 +2506,7 @@ if (typeof module !== 'undefined' && module.exports) {
       shuffleBtn.addEventListener('click', function () {
         // Shuffle ALL songs (or the current drill scope): a fresh seed + random
         // sort, then play from the top of the shuffled queue.
+        askLightingForOpen(); // v1.334 gate r1 (adversary W2): the play waits on a fetch + a JSON read, which spends the gesture
         var seed = String(Math.floor(Math.random() * 1e9));
         loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function () {
           if (queue.length) playAt(0);
@@ -2968,6 +2969,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (e.target.closest('.music-drill-shuffle')) {
         // Shuffle within the drill scope, re-render the (now reordered) list,
         // and play from the top — the seed makes next/prev walk it verbatim.
+        askLightingForOpen(); // v1.334 gate r1 (adversary W2): before the fetch + JSON read spend the gesture
         var seed = String(Math.floor(Math.random() * 1e9));
         loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function () {
           renderDrillView();
@@ -3514,8 +3516,18 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // `opts.keepPosition` = a NAV step (next/prev) - keep the player where it is.
     // Omitted (a fresh SELECT: a row tap, shuffle, drill Play, continue) - expand.
+    // v1.334 (Dean: "have it pop for that prompt on opening up the media player in that skin"): the tap that
+    // opens the Click player asks iOS for motion access (pocket-lighting.js askForOpen: once per session, only
+    // for a Click skin that would light), SYNCHRONOUSLY, before any response body is read (WebKit keeps a
+    // tap's gesture across a fetch, but reading the body leaves it media-only, and the motion prompt needs the
+    // full gesture). playAt / playTrackInAlbum / playTrackFromContinue call it at their tops; a tap whose play
+    // waits on a fetch first (the two Shuffle buttons) calls it in its own handler.
+    function askLightingForOpen() {
+      try { if (window.FileTubePocketLighting && typeof window.FileTubePocketLighting.askForOpen === 'function') window.FileTubePocketLighting.askForOpen(window); } catch (_) { /* lighting is optional */ }
+    }
     function playAt(i, opts) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
+      askLightingForOpen();
       var item = queue[i];
       playGen += 1;
       // v1.331: a single-chapter SELECT (a browse chapter row, the up-next row, the skin's track
@@ -3537,6 +3549,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.311: `opts.solo` = the user tapped ONE chapter row (exit after that segment). A
       // continue-listening / open-from-home resume (playTrackFromContinue) passes no opts and
       // plays the album straight through - it is NOT a single-chapter select.
+      askLightingForOpen(); // v1.334: before the album fetch spends the gesture
       var solo = !!(opts && opts.solo);
       var pick = !!(opts && opts.pick); // #268: only a user pick may re-seek an adopted chapter (never a continue)
       var myGen = ++playSelectGen; // claim this select BEFORE the async album load
@@ -4010,6 +4023,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // shows the list (a non-bounce MISS -> render()) tears the cover down first.
       // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
       // for both ?play= arms, so they genuinely cannot drift.
+      askLightingForOpen(); // v1.334: a Jump-back tile's tap, before the fetches spend it
       var coverEarly = mountEarlyCover();
       tab = 'songs';
       drill = null;

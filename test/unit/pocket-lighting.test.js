@@ -510,6 +510,94 @@ test('AC6 sticker: the late answer re-draws page 1 (the no-sensor note) but neve
   } finally { b.restore(); }
 });
 
+// #281 (c) (v1.334; qa v1.333 r1 S3 + r2 N3): a page switch or a page-1 rebuild replaced the focused control and
+// focus fell to BODY; each chip group's aria-label repeated its visible heading.
+test('#281 (c) sticker focus: the Skin and Extras pages open on Back, Back returns to the row that opened them (the Extras page keeps Back focused across its async load), a chip rebuild refocuses the same chip; chip groups are named by their headings', async () => {
+  let resolveItem = null;
+  const extras = { isEligible: () => true, getBaseId: () => 'v1', fetchItem: () => new Promise((r) => { resolveItem = r; }) };
+  const b = boot({ strength: 'off', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {}, extras } });
+  const menuEl = () => P(b).querySelector('[data-skin-sticker-menu]');
+  const act = () => b.doc.activeElement;
+  const keyTap = (el) => { el.focus(); tap(b, el); }; // a keyboard user: the control has focus when it is activated
+  try {
+    b.dom.window.localStorage.setItem('ft-music-skin', 'ipod');
+    b.engine.paint();
+    tap(b, P(b).querySelector('[data-skin-sticker]'));
+    // the names: every chip group is labelled BY its visible heading, never a repeated aria-label
+    const groups = [...menuEl().querySelectorAll('[role="group"]')];
+    assert.ok(groups.length >= 2, 'Speed and Lighting groups on page 1');
+    for (const g of groups) {
+      assert.ok(!g.hasAttribute('aria-label'), 'no aria-label repeating the heading');
+      const h = b.doc.getElementById(g.getAttribute('aria-labelledby'));
+      assert.ok(h && h.classList.contains('mms-sm-h') && h.parentNode === g.parentNode, 'aria-labelledby names the section\'s own heading');
+    }
+    assert.deepStrictEqual(groups.map((g) => b.doc.getElementById(g.getAttribute('aria-labelledby')).textContent), ['Speed', 'Lighting']);
+    const ids = [...b.doc.querySelectorAll('[id]')].map((e) => e.id);
+    assert.strictEqual(new Set(ids).size, ids.length, 'every id is unique in the document');
+    // the Skin page opens on Back; Back returns to the Skin row (a NEW node: the rebuild replaced it)
+    const skinRow = menuEl().querySelector('[data-skin-skins]');
+    keyTap(skinRow);
+    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins');
+    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'the Skin page opened on its Back');
+    const sg = menuEl().querySelector('[role="group"]');
+    assert.strictEqual(b.doc.getElementById(sg.getAttribute('aria-labelledby')).textContent, 'Skin', 'the Skin page\'s chips are named by its heading');
+    keyTap(act());
+    assert.ok(act() && act().hasAttribute('data-skin-skins') && act().isConnected && act() !== skinRow, 'Back returned to the (rebuilt) Skin row, not BODY');
+    // the Extras page: Back while loading, Back again once the page lands, Back returns to Extras
+    keyTap(menuEl().querySelector('[data-skin-extras]'));
+    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'extras');
+    const loadingBack = act();
+    assert.ok(loadingBack && loadingBack.hasAttribute('data-skin-extras-back'), 'the loading Extras page opened on Back');
+    resolveItem({ id: 'v1', title: 'T' }); await flush(); await flush(); await flush();
+    assert.ok(!loadingBack.isConnected, 'populated: the loaded page replaced the loading page (its Back is a new node)');
+    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'focus followed to the loaded page\'s Back');
+    keyTap(act());
+    assert.ok(act() && act().hasAttribute('data-skin-extras') && act().isConnected, 'Back returned to the Extras row');
+    // a page-1 rebuild (a Lighting chip, a Speed chip) refocuses the SAME control's new node
+    const chip = menuEl().querySelector('[data-skin-lighting="subtle"]');
+    keyTap(chip);
+    assert.ok(!chip.isConnected, 'the chip tap rebuilt page 1');
+    assert.strictEqual(act() && act().getAttribute('data-skin-lighting'), 'subtle', 'focus stayed on the Subtle chip');
+    // gate r1 (qa W3 = adversary W3): the "not available" arm replaces the loading page too - Back keeps focus
+    keyTap(menuEl().querySelector('[data-skin-extras]'));
+    resolveItem(null); await flush(); await flush(); await flush();
+    assert.match(menuEl().textContent, /available/, 'populated: the not-available page landed');
+    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'focus followed to its Back, not BODY');
+    // and a load never STEALS focus: moved off the loading Back first, the loaded page leaves it where it is
+    keyTap(act());
+    keyTap(menuEl().querySelector('[data-skin-extras]'));
+    const stk = P(b).querySelector('[data-skin-sticker]'); stk.focus();
+    resolveItem({ id: 'v1', title: 'T' }); await flush(); await flush(); await flush();
+    assert.strictEqual(act(), stk, 'focus stayed on the sticker the user moved to');
+    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
+    const sp = menuEl().querySelector('[data-skin-speed="1.5"]');
+    keyTap(sp);
+    assert.strictEqual(act() && act().getAttribute('data-skin-speed'), '1.5', 'and on the Speed chip');
+    // the late answer's re-draw (no sensor after the wait) keeps focus where the user is
+    menuEl().querySelector('[data-skin-loop]').focus();
+    b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
+    assert.strictEqual((menuEl().querySelector('.mms-sm-note') || {}).textContent, L.NOTE_NO_SENSOR, 'the late answer re-drew page 1');
+    assert.ok(act() && act().hasAttribute('data-skin-loop') && act().isConnected, 'and focus stayed on Loop');
+  } finally { b.restore(); }
+});
+
+// #281 (d) (v1.334; qa v1.333 r2 N1 = adversary r2 N1): the LCD's Lighting level re-draws when the answer lands -
+// the SECOND refreshLighting() (in the answer's .then) - so a deny shows its note on the LCD at once.
+test('#281 (d) sticker: a Lighting chip\'s DENY re-draws the LCD\'s open Lighting level with the note when the answer lands (the second refreshLighting)', async () => {
+  let answer = null;
+  const b = boot({ strength: 'off', finePointer: false, permission: () => new Promise((r) => { answer = r; }), sticker: { getPlayer: () => null, onSkinChange() {} } });
+  try {
+    b.engine.paint();
+    pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
+    tap(b, P(b).querySelector('[data-skin-sticker]'));
+    tap(b, P(b).querySelector('[data-skin-lighting="pronounced"]'));
+    assert.ok(!lbls(b).includes(L.NOTE_DENIED), 'the answer is pending: no note yet');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced', 'the first refresh moved the check');
+    answer('denied'); await flush(); await flush(); await flush();
+    assert.ok(lbls(b).includes(L.NOTE_DENIED), 'the LCD re-drew with the deny note when the answer landed');
+  } finally { b.restore(); }
+});
+
 test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from INSIDE the tap and light the pick; never on a non-Click skin or in the tray; no Brick row; Skin is its own page', async () => {
   let asks = 0; let answer = 'granted';
   const permission = () => { asks += 1; return Promise.resolve(answer); };
@@ -886,7 +974,9 @@ test('AC6 CSS lock: the ONE Click wheel and dome rule reads the light (unset = t
   // v1.333: no blend mode and no animation on a lit layer either (a blend mode composites against
   // everything beneath it every frame - the same iPhone video-layer class), vendor + case spellings
   // (gate r1 adversary S3: the mask family's other members and box-reflect too)
-  assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:mask-box-image|mask-border|box-reflect)\s*:/i.test(litRules), 'no mask-border / mask-box-image / box-reflect in any lighting rule');
+  // #281 (d) (v1.334, the adversary's v1.333 r2 prescription): the WHOLE mask family, longhands included
+  // (mask-border-source, -webkit-mask-box-image-source, mask-position ...), and box-reflect
+  assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:mask(?:-[\w-]+)?|box-reflect)\s*:/i.test(litRules), 'no mask (any longhand) / box-reflect in any lighting rule: ' + litRules.match(/[^\n]*(?:mask|reflect)[^\n]*/i));
   assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:mix-blend-mode|background-blend-mode|animation(?:-name)?)\s*:/i.test(litRules), 'no blend mode / animation in any lighting rule: ' + litRules.match(/[^\n]*(?:blend|animation)[^\n]*/i));
   // v1.333 AMBIENT (plan 2026-09-25-pocket-lighting-ambient; Dean's pick 4, the satin sheen): three rules,
   // all under .mms-lit-ambient, and nothing else names the class - the wheel, dome, glass and shadows stay
@@ -942,4 +1032,210 @@ test('AC7 every shell that loads skin-surface.js loads pocket-lighting.js right 
     assert.strictEqual(srcs.filter((s) => s === '/js/pocket-lighting.js').length, 1, f + ': once');
   }
   assert.ok(checked >= 10, 'the engine shells were enumerated (' + checked + ')');
+});
+
+// ---------------------------------------------------------------- v1.334: the sticker catches the light
+// (Dean 2026-09-25: "It should have like sheen on it ... as if it's literally a sticker, like lightly raised. The
+// shadow would hit it ... I don't want us to go crazy"; plan 2026-09-25-pocket-open-ask-sticker-light, item 2)
+test('v1.334 sticker CSS lock: every lit sticker rule is keyed on .mms-lit (Off byte-identical) and scanned by the no-filter lock; the blurred chip\'s base rule never reads the light; the CSS and the engine agree on the tilt, the shade margin and the drop', () => {
+  const all = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].replace(/\/\*[\s\S]*?\*\//g, '').trim(), body: m[2] }));
+  const stk = all.filter((r) => /mms-sticker/.test(r.sel) && (/mms-lit/.test(r.sel) || /--l[xym]\b|--mms-stk-|mms-sticker-(shade|gloss)/.test(r.sel + r.body)));
+  assert.deepStrictEqual(stk.map((r) => r.sel), [
+    '.mms-ipod.mms-lit .mms-sticker-tilt-left', '.mms-ipod.mms-lit .mms-sticker-tilt-right', '.mms-ipod.mms-lit .mms-sticker',
+    '.mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)', '.mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before',
+    '.mms-ipod.mms-lit .mms-sticker-shade', '.mms-ipod.mms-lit .mms-sticker-gloss',
+  ], 'the sticker\'s lit rules, and every one of them is keyed on .mms-ipod.mms-lit');
+  for (const r of stk) assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-[\w-]+)?|box-reflect|mix-blend-mode|background-blend-mode|animation(?:-name)?)\s*:/i.test(r.body) && !/blur\(/.test(r.body), r.sel + ': no filter / backdrop / mask / blend / animation');
+  // the chip's backdrop blur (v1.240) lives on the BASE rule, which never reads the light
+  const base = rule('.mms-sticker');
+  assert.match(base, /backdrop-filter:blur\(6px\)/, 'the chip keeps its own blur (unlit, unchanged)');
+  assert.ok(!/--l[xym]|--mms-stk-/.test(base), 'the blurred button never reads the light (only its pseudo and canvases do)');
+  assert.ok(!/--l[xym]|--mms-stk-/.test(rule('.mms-sticker--img')), 'nor the image sticker\'s base');
+  // the moving parts read the light: the shade's transform and the chip's shadow, counter-rotated by the tilt
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker'), /--mms-stk-l1:calc\(var\(--lx,0\) \* var\(--mms-stk-c,1\) \+ var\(--ly,0\) \* var\(--mms-stk-s,0\)\);/);
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker'), /--mms-stk-dx:calc\(var\(--mms-sticker-px,52px\) \* \(var\(--mms-stk-l1\) \* -\.06/, 'the shadow falls AWAY from the light, scaled by the sticker size');
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker-shade'), /transform:translate3d\(var\(--mms-stk-dx\), var\(--mms-stk-dy\), 0\)/);
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before'), /box-shadow:var\(--mms-stk-shadow\)/);
+  // one geometry, two files: the tilt the CSS rotates by = the tilt the counter-rotation and the engine use
+  const rot = Number((/\.mms-sticker-tilt-right\{ transform:rotate\((\d+)deg\); \}/.exec(CSS) || [])[1]);
+  assert.strictEqual(rot, 14);
+  const sin = Math.sin(rot * Math.PI / 180), cos = Math.cos(rot * Math.PI / 180);
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker-tilt-right'), new RegExp('--mms-stk-s:' + sin.toFixed(4).slice(1).replace('.', '\\.') + '; --mms-stk-c:' + cos.toFixed(4).slice(1).replace('.', '\\.') + ';'));
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker-tilt-left'), new RegExp('--mms-stk-s:-' + sin.toFixed(4).slice(1).replace('.', '\\.') + ';'));
+  assert.strictEqual(L.STK_TILT_SIN, Number(sin.toFixed(4)), 'the painter\'s sin(14deg)');
+  assert.strictEqual(L.STK_TILT_COS, Number(cos.toFixed(4)), 'and cos(14deg)');
+  assert.match(rule('.mms-ipod.mms-lit .mms-sticker-shade'), /inset:var\(--pk-stk-shade-inset\); width:var\(--pk-stk-shade-size\); height:var\(--pk-stk-shade-size\);/);
+  const pad = -Number((/--pk-stk-shade-inset:(-\d+)%;/.exec(CSS) || [])[1]) / 100, size = Number((/--pk-stk-shade-size:(\d+)%;/.exec(CSS) || [])[1]) / 100;
+  assert.strictEqual(L.STK_SHADE_PAD, pad, 'the baked margin = the CSS inset'); assert.strictEqual(size, 1 + 2 * pad, 'and the size covers it on both sides');
+  assert.strictEqual(L.STK_SHADE_ALPHA, 0.3); assert.match(CSS, /--mms-lit-stk-drop:rgba\(0,0,0,\.3\);/, 'the image\'s baked drop = the chip\'s CSS drop');
+  assert.ok(!/canvas/i.test(fs.readFileSync(surfacePath, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')), 'the engine never draws (the ipod-brick seam lock): the painter lives in pocket-lighting.js');
+});
+
+// The canvas wiring through the REAL driver: jsdom has no layout and no 2D canvas, so the sticker's box and a
+// RECORDING 2D context are stubbed; the light is the REAL deviceorientation path (no permission API: lit at once).
+function stickerRig(b, { w = 52 } = {}) {
+  const calls = [];
+  const W = b.win;
+  Object.defineProperty(W.HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return this.hasAttribute && this.hasAttribute('data-skin-sticker') ? w : 0; } });
+  Object.defineProperty(W.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.hasAttribute && this.hasAttribute('data-skin-sticker') ? w : 0; } });
+  Object.defineProperty(W.HTMLImageElement.prototype, 'complete', { configurable: true, get() { return true; } });
+  Object.defineProperty(W.HTMLImageElement.prototype, 'naturalWidth', { configurable: true, get() { return 512; } });
+  Object.defineProperty(W.HTMLImageElement.prototype, 'naturalHeight', { configurable: true, get() { return 512; } });
+  W.HTMLCanvasElement.prototype.getContext = function () {
+    const c = this;
+    return {
+      set globalCompositeOperation(v) { calls.push(['gco', c.className, v]); }, get globalCompositeOperation() { return 'source-over'; },
+      shadowColor: '', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, fillStyle: '',
+      drawImage(...a) { calls.push(['drawImage', c.className, ...a.slice(1)]); },
+      beginPath() {}, arc(...a) { calls.push(['arc', c.className, ...a]); }, fill() { calls.push(['fill', c.className]); },
+      fillRect() { calls.push(['fillRect', c.className]); }, clearRect() { calls.push(['clearRect', c.className]); },
+      createRadialGradient(...a) { const g = { stops: [] }; calls.push(['gradient', c.className, a, g]); g.addColorStop = (o, col) => g.stops.push([o, col]); return g; },
+    };
+  };
+  const btn = () => P(b).querySelector('[data-skin-sticker]');
+  const parts = () => ({ shade: !!btn().querySelector('.mms-sticker-shade'), gloss: !!btn().querySelector('.mms-sticker-gloss') });
+  const grads = () => calls.filter((c) => c[0] === 'gradient');
+  return { calls, btn, parts, grads, restore() { for (const k of ['clientWidth', 'clientHeight']) delete W.HTMLElement.prototype[k]; for (const k of ['complete', 'naturalWidth', 'naturalHeight']) delete W.HTMLImageElement.prototype[k]; } };
+}
+
+test('v1.334 the sticker catches the light through the REAL driver: an image sticker gets a baked shade + a shape-true gloss (source-in over its own pixels) toward the light, redrawn only on a visible step; Subtle is fainter; the tilt counter-rotates it; Off, a skin switch and the dock take it all away', async () => {
+  const b = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const r = stickerRig(b);
+  try {
+    b.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', tilt: 'straight' }));
+    b.engine.paint();
+    assert.ok(lit(b), 'no permission API: lit at once');
+    assert.deepStrictEqual(r.parts(), { shade: true, gloss: true }, 'lit: the image sticker has its shade and its gloss');
+    assert.ok(r.calls.some((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade'), 'the shade is the image\'s own silhouette');
+    assert.ok(r.calls.some((c) => c[0] === 'gco' && c[1] === 'mms-sticker-gloss' && c[2] === 'source-in'), 'the gloss lands only inside the sticker\'s pixels');
+    const g0 = r.grads().pop();
+    assert.strictEqual(g0[3].stops[0][1], 'rgba(255,255,255,0.5)', 'Pronounced: the strong gloss');
+    const W2 = 52 * 1; // dpr 1 in jsdom
+    assert.ok(Math.abs(g0[2][0] - 0.5 * W2) < 1e-9 && Math.abs(g0[2][1] - (0.5 - 0.2) * W2) < 1e-9, `neutral: the gloss sits above the centre (${g0[2]})`);
+    const n0 = r.grads().length; const w0 = S(b).writes;
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 3 + 20); b.clock.advance(800); // tilt right: the light slides LEFT
+    const g1 = r.grads().at(-1);
+    assert.ok(lx(b) < -0.5, 'the light moved left');
+    assert.ok(g1[2][0] < 0.5 * W2 - 5, `the gloss followed the light (cx ${g1[2][0]})`);
+    const draws = r.grads().length - n0; const writes = S(b).writes - w0;
+    assert.ok(draws >= 2 && draws < writes, `redrawn in visible steps, not on every written frame (${draws} draws for ${writes} writes)`);
+    // the shade is baked ONCE per image, not per light
+    assert.strictEqual(r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length, 1);
+    // the sticker's own Lighting chips change the strength with NO repaint (the sticker button survives)
+    const sb = r.btn();
+    tap(b, sb); tap(b, P(b).querySelector('[data-skin-lighting="subtle"]'));
+    assert.strictEqual(r.btn(), sb, 'precondition: the same sticker (no repaint)');
+    assert.strictEqual(r.grads().at(-1)[3].stops[0][1], 'rgba(255,255,255,0.3)', 'a Subtle chip re-glosses fainter at once (B1)');
+    tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    assert.strictEqual(r.btn(), sb, 'still the same sticker');
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the Off chip clears it with no repaint');
+    const gOff = r.grads().length, shOff = r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length;
+    tap(b, P(b).querySelector('[data-skin-lighting="pronounced"]'));
+    assert.strictEqual(r.btn(), sb, 'the same sticker, lit again');
+    assert.deepStrictEqual(r.parts(), { shade: true, gloss: true });
+    assert.ok(r.grads().length > gOff, 'its NEW gloss canvas is drawn (the old drawing was forgotten with the canvases)');
+    assert.ok(r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length > shOff, 'and its new shade re-baked');
+    tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    // Off by a repaint: nothing drawn
+    b.ls.setItem(L.KEY, 'off'); b.engine.paint();
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'Off: no canvas at all (byte-identical)');
+    // Subtle by a repaint: the FRESH sticker is drawn, not just given empty canvases
+    b.ls.setItem(L.KEY, 'subtle'); const gBefore = r.grads().length; b.engine.paint();
+    assert.deepStrictEqual(r.parts(), { shade: true, gloss: true }, 'a repaint re-lights the FRESH sticker');
+    assert.ok(r.grads().length > gBefore, 'and draws its gloss');
+    assert.strictEqual(r.grads().at(-1)[3].stops[0][1], 'rgba(255,255,255,0.3)', 'Subtle: the fainter gloss (B1)');
+    // a non-Click skin, then the dock
+    b.state.skin = 'apple'; b.engine.paint();
+    assert.ok(!P(b).querySelector('.mms-sticker-shade, .mms-sticker-gloss'), 'Cider: never');
+    b.state.skin = 'ipod'; b.engine.paint(); assert.ok(r.parts().gloss);
+    P(b).hidden = true; P(b).innerHTML = ''; await flush();
+    assert.ok(!P(b).querySelector('canvas'), 'the dock');
+  } finally { r.restore(); b.restore(); }
+});
+
+test('v1.334 the sticker\'s gloss on a TILTED sticker and on the emoji chip: the light is counter-rotated into the button (the gloss reads right on the screen); the chip\'s silhouette is its circle and its shadow stays CSS (no shade canvas); no layout = no canvas, no context', async () => {
+  const b = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const r = stickerRig(b);
+  try {
+    b.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'emoji', value: 'x', tilt: 'left' }));
+    b.engine.paint();
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: true }, 'the chip: a gloss canvas, its shadow is the CSS ::before');
+    assert.ok(r.calls.some((c) => c[0] === 'arc' && c[1] === 'mms-sticker-gloss'), 'the chip\'s silhouette is its circle');
+    const g = r.grads().pop();
+    // neutral on a LEFT-tilted (-14deg) chip: the seat "above centre on the screen" is (0,-0.2) rotated into the button
+    const s = -0.2419, c = 0.9703;
+    assert.ok(Math.abs(g[2][0] - (0.5 - 0.2 * s) * 52) < 1e-6 && Math.abs(g[2][1] - (0.5 - 0.2 * c) * 52) < 1e-6, `counter-rotated seat (${g[2]})`);
+    assert.notStrictEqual(g[2][0], 0.5 * 52, 'not the straight sticker\'s seat');
+    // a MOVED light on the tilted chip: the light itself is counter-rotated, not just the seat
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 23); b.clock.advance(800);
+    const x = lx(b), y = ly(b);
+    assert.ok(x < -0.5, 'the light moved left');
+    const gm = r.grads().at(-1);
+    const l1 = x * c + y * s, l2 = y * c - x * s;
+    const tol = 0.02 * 0.32 * 52 * 2; // the redraw step, both axes
+    assert.ok(Math.abs(gm[2][0] - (0.5 + l1 * 0.32 - 0.2 * s) * 52) < tol && Math.abs(gm[2][1] - (0.5 + l2 * 0.32 - 0.2 * c) * 52) < tol, `the moved light, counter-rotated (${gm[2]} for light ${x}, ${y})`);
+    assert.ok(Math.abs(gm[2][1] - (0.5 + y * 0.32 - 0.2 * c) * 52) > tol, 'which differs from the un-rotated light on the screen\'s vertical');
+  } finally { r.restore(); b.restore(); }
+  const n = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  let ctxAsked = 0;
+  try {
+    n.win.HTMLCanvasElement.prototype.getContext = function () { ctxAsked += 1; return null; };
+    n.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'emoji', value: 'x' })); // (no image load to wait on)
+    n.engine.paint();
+    assert.ok(lit(n));
+    assert.ok(!P(n).querySelector('canvas'), 'no layout: no canvas');
+    assert.strictEqual(ctxAsked, 0, 'and no context asked for (a hidden panel, a test realm)');
+  } finally { n.restore(); }
+});
+
+// the engine lights the sticker only when the PANEL is lit: behind the iOS permission API with no fine pointer the panel
+// waits for a sensor sample (the lit gate), but a mouse (an iPad trackpad) still moves the light and the driver writes it
+test('v1.334 the sticker never lights on an UNLIT panel: a mouse moving the light before the first sensor sample (the lit gate) draws nothing on the sticker', () => {
+  const b = boot({ strength: 'pronounced', finePointer: false, permission: () => new Promise(() => {}), sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const r = stickerRig(b);
+  try {
+    b.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'emoji', value: 'x' }));
+    b.engine.paint();
+    P(b).getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400 });
+    mouseAt(b, 20, 40); b.clock.advance(400);
+    assert.ok(S(b).writes > 0, 'precondition: the driver wrote the light');
+    assert.ok(!lit(b), 'precondition: the panel is not lit (no sensor sample yet)');
+    assert.ok(!P(b).querySelector('canvas'), 'and the sticker carries nothing');
+  } finally { r.restore(); b.restore(); }
+});
+
+// gate r1 (qa W2 = adversary W1): a sticker image that loads LATE paints the LATEST ask - nothing if the panel went
+// unlit meanwhile (Off byte-identical), the current strength if it changed
+test('v1.334 a late-loading sticker image: unlit meanwhile = nothing drawn; lit = drawn at the latest strength', () => {
+  const b = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const r = stickerRig(b);
+  let loaded = false;
+  Object.defineProperty(b.win.HTMLImageElement.prototype, 'complete', { configurable: true, get() { return loaded; } });
+  Object.defineProperty(b.win.HTMLImageElement.prototype, 'naturalWidth', { configurable: true, get() { return loaded ? 512 : 0; } });
+  try {
+    b.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', tilt: 'straight' }));
+    b.engine.paint();
+    assert.ok(lit(b), 'lit');
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the image is not loaded yet: nothing drawn');
+    const img = r.btn().querySelector('img');
+    tap(b, r.btn()); tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    assert.ok(!lit(b), 'the Off chip unlit the panel while the image was loading');
+    loaded = true; img.dispatchEvent(new b.win.Event('load'));
+    assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the late load draws NOTHING on the unlit panel');
+  } finally { r.restore(); b.restore(); }
+  const c = boot({ strength: 'pronounced', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const q = stickerRig(c);
+  let loaded2 = false;
+  Object.defineProperty(c.win.HTMLImageElement.prototype, 'complete', { configurable: true, get() { return loaded2; } });
+  Object.defineProperty(c.win.HTMLImageElement.prototype, 'naturalWidth', { configurable: true, get() { return loaded2 ? 512 : 0; } });
+  try {
+    c.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', tilt: 'straight' }));
+    c.engine.paint();
+    const img = q.btn().querySelector('img');
+    tap(c, q.btn()); tap(c, P(c).querySelector('[data-skin-lighting="subtle"]'));
+    assert.ok(lit(c));
+    loaded2 = true; img.dispatchEvent(new c.win.Event('load'));
+    assert.deepStrictEqual(q.parts(), { shade: true, gloss: true }, 'lit: the late load draws');
+    assert.strictEqual(q.grads().at(-1)[3].stops[0][1], 'rgba(255,255,255,0.3)', 'at the LATEST strength (Subtle), not the one it waited under');
+  } finally { q.restore(); c.restore(); }
 });
