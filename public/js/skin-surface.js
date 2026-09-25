@@ -1184,6 +1184,13 @@
       isMenuMode: function () { return !!style() && screen === 'menu'; },
       // quick scroll: is the wheel in letter mode right now? (the engine's haptic path reads it)
       inLetterMode: function () { return !!(lm.on && letterable(curPane())); },
+      // v1.333 (gate r1 W2, both seats): a strength picked OUTSIDE the menu (the sticker's Lighting chips)
+      // re-draws Settings > Lighting if it is the level on the LCD, so its check follows the pick
+      refreshLighting: function () {
+        if (destroyed || !style()) return;
+        var p = curPane();
+        if (p && p.node.type === 'lighting' && screen === 'menu') render();
+      },
       // after every paint(): rebuild on a style change, follow the advance, re-draw.
       afterPaint: function (ctx) {
         if (style() !== builtFor) { clearJump(); stopSlides(); resetStack(); }
@@ -1520,12 +1527,16 @@
             '" data-skin-lighting="' + escapeHtml(r.value) + '" aria-checked="' + (on ? 'true' : 'false') + '">' + escapeHtml(r.label) + '</button>';
         }).join('');
         var lnote = (lst && lst.note) ? '<div class="mms-sm-note">' + escapeHtml(lst.note) + '</div>' : '';
-        lightRow = '<div class="mms-sm-sec"><div class="mms-sm-h">Lighting</div><div class="mms-sm-skins">' + lchips + '</div>' + lnote + '</div>';
+        lightRow = '<div class="mms-sm-sec"><div class="mms-sm-h">Lighting</div><div class="mms-sm-skins" role="group" aria-label="Lighting">' + lchips + '</div>' + lnote + '</div>';
       }
       // v1.333 (Dean: Skin on its own page, so page 1 fits a phone): the row names the active skin and
       // opens the chips (the Extras pattern). The TRAY keeps its short inline Color chips.
-      var skinSec = trayActive
-        ? '<div class="mms-sm-sec"><div class="mms-sm-h">Color</div><div class="mms-sm-skins">' + chips + '</div></div>'
+      // (gate r1 W3: the plain-window pop-out fallback shows the tray with NO tray hook, so trayActive is false
+      // there; it keeps its inline chips exactly as v1.332 drew them - the whole list, headed Skin)
+      var trayBody = false;
+      try { trayBody = !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { trayBody = false; }
+      var skinSec = (trayActive || trayBody)
+        ? '<div class="mms-sm-sec"><div class="mms-sm-h">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins" role="group" aria-label="' + (trayActive ? 'Color' : 'Skin') + '">' + chips + '</div></div>'
         : '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-skins><span class="mms-sm-lbl"><i class="icon-photos"></i>Skin</span><span class="mms-sm-state">' + escapeHtml(activeLabel) + ' &rsaquo;</span></button></div>';
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
@@ -1535,7 +1546,7 @@
       var homeRow = homeAvailable()
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-home><span class="mms-sm-lbl"><i class="icon-home"></i>Home</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
         : '';
-      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed">' + speed + '</div></div>' +
+      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h">Speed</div><div class="mms-sm-speed" role="group" aria-label="Speed">' + speed + '</div></div>' +
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow + skinSec + lightRow +
@@ -1566,7 +1577,7 @@
       if (!menu) return;
       extrasMenu.cancelPending(); // (a stale Extras fetch never lands on this page)
       menu.setAttribute('data-sm-page', 'skins');
-      menu.innerHTML = extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins">' + skinChipsHtml(false) + '</div></div>';
+      menu.innerHTML = extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-h">Skin</div><div class="mms-sm-skins" role="group" aria-label="Skin">' + skinChipsHtml(false) + '</div></div>';
     }
     // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
     // v1.240 marker keys off what stickerIconHtml ACTUALLY renders (a partial emoji pref
@@ -1712,10 +1723,13 @@
         var lpr = null;
         if (lightingHere()) { try { lpr = lighting.choose(lopt.getAttribute('data-skin-lighting')); } catch (_) { lpr = null; } }
         refreshStickerMenu();
-        // the answer (a denied / no-sensor note) re-draws page 1 if the menu is still open on it
+        if (pocket && typeof pocket.refreshLighting === 'function') pocket.refreshLighting(); // the LCD's check too (gate r1 W2)
+        // the answer (a denied / no-sensor note) re-draws page 1 if the menu is still open ON page 1 - never
+        // over the Skin or Extras page the user moved to meanwhile - and the LCD's Lighting level
         Promise.resolve(lpr).then(function () {
           var lm = panel.querySelector('[data-skin-sticker-menu]');
           if (lm && !lm.hidden && !lm.getAttribute('data-sm-page')) refreshStickerMenu();
+          if (pocket && typeof pocket.refreshLighting === 'function') pocket.refreshLighting();
         }, function () { /* the driver's promise never rejects */ });
         return true;
       }

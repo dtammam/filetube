@@ -450,6 +450,66 @@ test('AC1 Ambient: lit = mms-lit + mms-lit-strong + mms-lit-ambient; Pronounced 
 
 // v1.333 (plan 2026-09-25-pocket-lighting-ambient, AC6; Dean: "I think we could add lighting there as well"):
 // the sticker menu's Lighting chips ARE the Settings > Lighting pick - the same driver call, inside the tap.
+// gate r1 adversary W1: on an iPhone (a permission API, no fine pointer) the panel stays UNLIT until the session's first
+// sample - the Ambient class included (its room light and grain would otherwise show a still, lit-looking body after a
+// relaunch whose grant iOS forgot). Both axes: absent before the sample, present after it.
+test('AC1 the lit gate holds for Ambient: no mms-lit-ambient before the first sample behind a permission gate; all three after it', async () => {
+  const b = boot({ strength: 'ambient', finePointer: false, permission: () => Promise.resolve('granted') });
+  try {
+    b.engine.paint();
+    assert.ok(S(b).on, 'precondition: the driver is listening (the question is only the class)');
+    for (const c of ['mms-lit', 'mms-lit-strong', 'mms-lit-ambient']) assert.ok(!P(b).classList.contains(c), c + ': not before the first sample');
+    tiltTo(b, 0, 3); b.clock.advance(50);
+    for (const c of ['mms-lit', 'mms-lit-strong', 'mms-lit-ambient']) assert.ok(P(b).classList.contains(c), c + ': after the first sample');
+  } finally { b.restore(); }
+});
+
+// gate r1 W2 (both seats, measured): a pick from the STICKER moves Settings > Lighting's check on the LCD too
+test('AC6 sticker: a Lighting chip moves the LCD\'s Settings > Lighting check (the level open underneath)', async () => {
+  const b = boot({ strength: 'off', sticker: { getPlayer: () => null, onSkinChange() {} } });
+  try {
+    b.engine.paint();
+    pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
+    const checked = () => P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent;
+    assert.strictEqual(checked(), 'Off', 'populated: the LCD shows Off checked');
+    tap(b, P(b).querySelector('[data-skin-sticker]'));
+    tap(b, P(b).querySelector('[data-skin-lighting="ambient"]'));
+    assert.strictEqual(checked(), 'Ambient', 'the LCD check followed the sticker pick at once');
+    await flush(); await flush();
+    assert.strictEqual(checked(), 'Ambient', 'and after the answer');
+    assert.strictEqual(b.ls.getItem(L.KEY), 'ambient');
+  } finally { b.restore(); }
+});
+
+// gate r1 qa W2 / adversary S1: the delayed answer re-draws page 1 ONLY if the menu is still on page 1 - never over the
+// Skin or Extras page the user moved to (a device with no permission API and no fine pointer answers after SENSOR_WAIT_MS)
+test('AC6 sticker: the late answer re-draws page 1 (the no-sensor note) but never pulls the user off the Skin or Extras page', async () => {
+  const b = boot({ strength: 'off', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
+  const menuEl = () => P(b).querySelector('[data-skin-sticker-menu]');
+  try {
+    b.engine.paint();
+    tap(b, P(b).querySelector('[data-skin-sticker]'));
+    // the SHOWING axis first: stay on page 1 and the answer lands there
+    tap(b, menuEl().querySelector('[data-skin-lighting="subtle"]'));
+    b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
+    assert.strictEqual((menuEl().querySelector('.mms-sm-note') || {}).textContent, L.NOTE_NO_SENSOR, 'populated: the late answer re-drew page 1 with its note');
+    // the Skin page: a pick, then the Skin row before the answer
+    tap(b, menuEl().querySelector('[data-skin-lighting="pronounced"]'));
+    tap(b, menuEl().querySelector('[data-skin-skins]'));
+    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins');
+    b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
+    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins', 'the answer left the Skin page alone');
+    assert.ok(menuEl().querySelector('[data-skin-pick]'), 'its chips still there');
+    // the Extras page (the same page marker the Extras menu sets)
+    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
+    tap(b, menuEl().querySelector('[data-skin-lighting="ambient"]'));
+    menuEl().setAttribute('data-sm-page', 'extras'); menuEl().innerHTML = '<div class="mms-sm-sec">extras</div>';
+    b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
+    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'extras', 'the answer left the Extras page alone');
+    assert.strictEqual(menuEl().textContent, 'extras');
+  } finally { b.restore(); }
+});
+
 test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from INSIDE the tap and light the pick; never on a non-Click skin or in the tray; no Brick row; Skin is its own page', async () => {
   let asks = 0; let answer = 'granted';
   const permission = () => { asks += 1; return Promise.resolve(answer); };
@@ -515,7 +575,12 @@ test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from
   try {
     q.doc.body.classList.add('mms-tray'); q.engine.paint();
     tap(q, P(q).querySelector('[data-skin-sticker]'));
-    assert.strictEqual(P(q).querySelector('[data-skin-sticker-menu]').querySelectorAll('[data-skin-lighting]').length, 0, 'a tray body with no tray hook: no Lighting chips');
+    const qm = P(q).querySelector('[data-skin-sticker-menu]');
+    assert.strictEqual(qm.querySelectorAll('[data-skin-lighting]').length, 0, 'a tray body with no tray hook: no Lighting chips');
+    // gate r1 adversary W3: ...and its inline chips exactly as v1.332 drew them (the whole list, headed Skin), no Skin row
+    assert.strictEqual(qm.querySelectorAll('[data-skin-pick]').length, skins.SKINS.length, 'every skin inline, as before');
+    assert.ok(!qm.querySelector('[data-skin-skins]'), 'no Skin page there');
+    assert.match(qm.textContent, /Skin/);
   } finally { q.restore(); }
 });
 
@@ -820,20 +885,22 @@ test('AC6 CSS lock: the ONE Click wheel and dome rule reads the light (unset = t
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
   // v1.333: no blend mode and no animation on a lit layer either (a blend mode composites against
   // everything beneath it every frame - the same iPhone video-layer class), vendor + case spellings
+  // (gate r1 adversary S3: the mask family's other members and box-reflect too)
+  assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:mask-box-image|mask-border|box-reflect)\s*:/i.test(litRules), 'no mask-border / mask-box-image / box-reflect in any lighting rule');
   assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:mix-blend-mode|background-blend-mode|animation(?:-name)?)\s*:/i.test(litRules), 'no blend mode / animation in any lighting rule: ' + litRules.match(/[^\n]*(?:blend|animation)[^\n]*/i));
   // v1.333 AMBIENT (plan 2026-09-25-pocket-lighting-ambient; Dean's pick 4, the satin sheen): three rules,
   // all under .mms-lit-ambient, and nothing else names the class - the wheel, dome, glass and shadows stay
   // Pronounced's (the class rides on top of .mms-lit-strong)
   const ambSel = allRules.filter((r) => /mms-lit-ambient/.test(r.sel.replace(/\/\*[\s\S]*?\*\//g, ''))).map((r) => r.sel.replace(/\/\*[\s\S]*?\*\//g, '').trim()).sort();
-  assert.deepStrictEqual(ambSel, ['.mms-ipod.mms-lit-ambient', '.mms-ipod.mms-lit-ambient::after', '.mms-ipod.mms-lit-ambient::before'], 'Ambient swaps only the body\'s reflection layers');
-  assert.match(rule('.mms-ipod.mms-lit-ambient'), /background:var\(--mms-lita-grain\) 0 0 \/ 32px 32px repeat, var\(--pk-c-body\);/, 'the grain: a static tile over the colorway\'s own body');
-  const astreak = rule('.mms-ipod.mms-lit-ambient::before');
+  assert.deepStrictEqual(ambSel, ['.mms-ipod.mms-lit.mms-lit-ambient', '.mms-ipod.mms-lit.mms-lit-ambient::after', '.mms-ipod.mms-lit.mms-lit-ambient::before'], 'Ambient swaps only the body\'s reflection layers, and only on a LIT panel (gate r1 W1: keyed on .mms-lit too)');
+  assert.match(rule('.mms-ipod.mms-lit.mms-lit-ambient'), /background:var\(--mms-lita-grain\) 0 0 \/ 32px 32px repeat, var\(--pk-c-body\);/, 'the grain: a static tile over the colorway\'s own body');
+  const astreak = rule('.mms-ipod.mms-lit.mms-lit-ambient::before');
   assert.match(astreak, /transform:translate3d\(calc\(var\(--lx,0\) \* 20%\), calc\(var\(--ly,0\) \* 16%\), 0\) rotate\(22deg\);/, 'Pronounced\'s travel; the rotation is the band\'s own 112deg direction');
   assert.ok(!/var\(--l[xym]/.test(astreak.replace(/transform:[^;]*;/, '')), 'the streak itself never reads the light: its layer rasterises once and only moves');
   assert.match(astreak, /rgba\(var\(--pk-c-lita-glow\), \.\d+\)/); assert.match(astreak, /rgba\(var\(--pk-c-lita-core\), \.\d+\)/);
   assert.ok((astreak.match(/radial-gradient\(/g) || []).length >= 4, 'an uneven streak of several soft pieces, not one ruled line');
   assert.ok(!/linear-gradient|255,\s*255,\s*255/.test(astreak), 'no straight band and no pure white: the colorway tints it');
-  const aroom = rule('.mms-ipod.mms-lit-ambient::after');
+  const aroom = rule('.mms-ipod.mms-lit.mms-lit-ambient::after');
   assert.match(aroom, /content:""; position:absolute; inset:-35%; z-index:-1;/); assert.match(aroom, /pointer-events:none/);
   assert.match(aroom, /radial-gradient\(120% 80% at calc\(50% \+ var\(--lx,0\) \* 35%\) calc\(10% \+ var\(--ly,0\) \* 30%\), rgba\(var\(--pk-c-lita-glow\), /, 'Pronounced\'s room light geometry, tinted');
   assert.match(aroom, /transform:translate3d\(calc\(var\(--lx,0\) \* 20%\), calc\(var\(--ly,0\) \* 16%\), 0\);/, 'and its travel');

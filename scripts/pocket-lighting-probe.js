@@ -18,9 +18,9 @@ const path = require('node:path');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const OUT = process.argv[2];
-if (!OUT) { console.error('usage: node scripts/pocket-lighting-probe.js <out-dir> [--frames N]'); process.exit(2); }
+if (!OUT) { console.error('usage: node scripts/pocket-lighting-probe.js <out-dir> [--frames=N] [--strength=S]'); process.exit(2); }
 const FRAMES = Number((process.argv.find((a) => a.startsWith('--frames=')) || '').split('=')[1]) || 240;
-const STRENGTH = (process.argv.find((a) => a.startsWith('--strength=')) || '').split('=')[1] || 'pronounced'; // the profile to screenshot
+const STRENGTH = (process.argv.find((a) => a.startsWith('--strength=')) || '').split('=')[1] || 'pronounced'; // the profile to screenshot AND to measure (the CPU run)
 const ROOT = path.join(__dirname, '..');
 const DEBUG_PORT = 9333;
 function findChrome() {

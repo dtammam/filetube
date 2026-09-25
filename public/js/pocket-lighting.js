@@ -10,7 +10,7 @@
 //
 // Scope (Dean's ruling, plan 2026-09-24-pocket-gyro-lighting): the Click family only (every Click
 // colorway in the registry); the engine's `isPocket` is the registry's menus === 'click'. Strength Off / Subtle / Pronounced / Ambient is device-local (localStorage), default Off, chosen
-// from the pocket menu's Settings > Lighting; the strength tap is what asks iOS for motion access.
+// from the pocket menu's Settings > Lighting or the sticker menu's Lighting chips (v1.333); the strength tap is what asks iOS for motion access.
 //
 // The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever
 // writes two numbers; the CSS it feeds moves gradient positions and translates two gradient

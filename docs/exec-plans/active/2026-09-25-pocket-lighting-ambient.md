@@ -3,8 +3,8 @@ plan: pocket-lighting-ambient
 harness: v2 · lean
 branch: feat/pocket-lighting-ambient
 anchor: spec
-status: Building
-next: the gate (adversary + qa, fresh) at the plan-commit sha; then the release.
+status: Gate:CHANGES r1 @7bcfdc23
+next: r2 delta re-review by the same seats at the fix commit; then the release.
 design: "Approved 2026-09-25 (Dean in this session: the candidate pick, the menu-fit ruling and the two device answers below)"
 gate: pending
 ---
@@ -365,3 +365,21 @@ Tree: `/home/coder/projects/filetube` untouched by this seat apart from this sec
 which was already present and uncommitted); all mutation and scratch work ran in the scratchpad.
 
 Gate: CHANGES r1 @7bcfdc23 - adversary
+
+### Round 1 fixes (builder)
+- W2 (qa W1 / adversary W2): the pocket menu gains `refreshLighting()` (re-draws Settings > Lighting when it is
+  the level on the LCD); the sticker chip calls it after choose() and again when the answer is in. Test:
+  "a Lighting chip moves the LCD's Settings > Lighting check".
+- adversary W1: bound - "the lit gate holds for Ambient" (no mms-lit-ambient before the first sample behind a
+  permission gate, all three after it); and the three Ambient rules are keyed on `.mms-lit.mms-lit-ambient`.
+- adversary W3: B3 is made TRUE rather than re-worded - a `body.mms-tray` surface with no tray hook (the
+  plain-window pop-out fallback) keeps its inline chips exactly as v1.332 drew them (the whole list, headed
+  Skin), no Skin row; the fallback test asserts it.
+- qa W2 / adversary S1: bound - "the late answer re-draws page 1 but never pulls the user off the Skin or
+  Extras page" (the showing axis first: the no-sensor note lands on page 1).
+- qa S1 / adversary S2: the dead `.mms-sm-note` line deleted (the older rule stands). qa S2: the four comments.
+  qa S3 (part): Speed / Lighting / Skin / Color chip sets are each a `role="group"` with an aria-label; the
+  focus hand-off on page switches is filed (#281, the Extras page behaves the same today).
+- adversary S3: the no-filter lock also refuses mask-border / mask-box-image / box-reflect (vendor + case).
+- adversary S4 (surviving redundant guards) kept as defence in depth; the unmeasured suspicions (two 1.7x
+  composited layers under Ambient; the rotated layer never run on WebKit/iOS) go to #281 and Dean's device check.
