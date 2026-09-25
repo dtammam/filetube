@@ -99,6 +99,41 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.332.0 - The pocket design system: Seattle retired, seven new Click colors, and Home from the player (2026-09-25)
+
+- **Seattle is gone** (Dean: "Let's remove Seattle entirely. I don't use it, don't want the headaches"):
+  the Zune skin, its pivots, swipe, Games row, two-line lists and Metro screen. A device saved on Seattle
+  (the synced pref included) opens on **Click**, not the app default, and converges on Click everywhere -
+  the one-time rewrite waits for the prefs sync's first server read, so it never out-stamps a newer pick
+  another device made (gate r1 W1, both seats measured the race).
+- **One design system for the Click family** (Dean: "not having a proper token or just design system for
+  the pocket skin"): every Click colorway draws ONE chassis that reads structure tokens (sizes), a type
+  scale (roles on the global --fs-* scale) and colorway ROLES; a colorway is one block of role tokens.
+  White, Black and Matte moved on with **zero rendered change**: 282 shots per tree (3 colorways x 2
+  phones x 15 levels x lighting Off / Subtle / Pronounced + the pop-out and tray), 0 element-style
+  differences, the pixels identical but for a renderer wobble also seen between two runs of one tree.
+  ONE overflow rule covers every pocket text line, with a census that fails any unclassified text;
+  120-character names measure one line on every level, the status bar 31.2 px throughout. Every list of
+  Click skins (Brick, the tray and its chips, the Nano colorway, the probes) now derives from the registry.
+- **Seven new colorways, each one role block from a real photo, side by side for Dean:** Click (Red) (red
+  body, white wheel, red center), Click (Silver), Click (Encore) (black with a red wheel), Click (Gold)
+  (Dean's own photo: gold body, white wheel, gold center) and the mini's Click (Blue), (Green) and
+  (Pink). Each gets the menus, Brick, both lighting strengths, the tray and the chips with no per-feature
+  edit.
+- **Home from the player** (Dean: "Right now I must press menu many times then the FileTube icon"): the
+  corner sticker's menu now LEADS with Home on every skin (music and podcasts), and press-and-hold MENU
+  (600 ms) on the Click wheel goes home too - the player docks, the song keeps playing in the mini, and
+  the SPA router lands on the home page. A short press is unchanged; the hold's release never also fires
+  MENU; a move, pointercancel, a takeover, an un-rendered panel or destroy cancels it.
+- Gate: r1 CHANGES (adversary + qa, the Seattle-rewrite race, plus a looser AC4 lock and an unbound
+  mid-hold takeover), fixed in one round; APPROVED r2 @bbb40ab9 (adversary, qa). Full suites 9,594 / 9,594
+  on Node 22.23.1 and 24.20.0. Plan docs/exec-plans/completed/2026-09-25-pocket-design-system.md.
+- Disclosed (#280): the sticker menu now scrolls on phones (12 skin chips in 6 rows; Home leads it); Click
+  (Matte)'s Settings card grows 71 -> 83 px by sharing a grid row; colorway fidelity is Dean's device call
+  (Pink's warm photo, Red's colour-profiled photo, low wheel-label contrast on Red / Gold / Blue); the
+  hold-MENU haptic on a still finger and Android's long-press are device checks; the Home row and the hold
+  are left out of the desktop pop-out (its router is the main window's); the render probe's wobble.
+
 ### v1.331.0 - A song picked inside an album plays on through that album (2026-09-25)
 
 - **Pocket menus: an album level now plays the album** (Dean, 2026-09-24: "when I go to a recent artist

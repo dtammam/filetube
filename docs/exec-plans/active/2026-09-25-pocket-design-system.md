@@ -3,10 +3,10 @@ plan: pocket-design-system
 harness: v2 · lean
 branch: feat/pocket-design-system
 anchor: spec
-status: Building
-next: gate r1 (adversary + qa, fresh seats, the brief below) at the sha the Build record names; then the release steps.
+status: Gate:APPROVED r2 @bbb40ab9
+next: the release steps (docs/RELEASING.md + AGENTS.md): plan-complete, release branch, merge --no-ff, tag v1.332.0, PR, CI, merge.
 design: "Approved 2026-09-25 (Dean's intake in the v1.331 session: D1-D6 below, every answer his)"
-gate: pending
+gate: APPROVED r2 @bbb40ab9 (adversary, qa)
 ---
 
 # The pocket design system: Seattle out, one token system for the Click skins, Click (Red) and six more colorways, and Home from the player
@@ -202,7 +202,8 @@ active-skin read rewrites the stored value once when it was legacy (so the synce
 - **AC1 Seattle is gone.** No `zune-classic`, `seattle`, `Seattle`, `znc-`, `mms-zn-`, pivot or
   `data-skin-swipe` remains in public/, scripts/ or test/ except the legacy-map entry and its
   test (a grep census test, comment-stripped). The Settings picker lists Cider, Nordic, Click,
-  Click (Black), Click (Matte), Click (Red).
+  Click (Black), Click (Matte), Click (Red) - and, with D8, Click (Silver), (Encore), (Blue), (Green),
+  (Pink) and (Gold): twelve skins.
 - **AC2 Seattle users land on Click.** A device with `ft-music-skin = zune-classic` (localStorage
   AND the server-synced pref, driven through the real prefs path) opens on Click with its pocket
   menus, and the stored value becomes `ipod`. Mutant: drop the legacy map -> RED (it would be Cider).
@@ -408,7 +409,7 @@ with the sampled vs used values, plus a lighting sheet (Off / Subtle / Pronounce
 
 ## Disclosed gaps
 
-(filled at close; pre-drafted for the seats)
+(shipped disclosed in ROADMAP v1.332.0 and tracker #280)
 - The sticker menu scrolls on phones with 12 skin chips (Home leads it, so going home never needs the
   scroll). A compact colorway picker would be a design change for Dean.
 - Pink is judged from the weakest photo (warm light); every colorway's final say is Dean's on the device.
@@ -458,3 +459,25 @@ Instruments (run by this seat at ba10139c in a /tmp `git archive` sandbox, node_
 - SUGGESTION S8: the hold threshold is bound only inside (400, 700) ms: HOME_HOLD_MS 450 survives.
 
 Verified (ran it): Home end to end in headless Chromium with real CDP touch input at 390x844 - hold MENU 900 ms on Now Playing (Click, Click (Red)), from a drilled menu level (Click (Black)), and the sticker's first row "Home" (Click (Gold)): each lands on / with view=home, no reload (a window marker survives), the same track still playing (currentTime advancing, not paused), the mini docked and visible, mms-on and the full classes cleared, 0 page errors, still on / 1.5 s later; a short MENU still climbs to the Click menu; after Home and reopening the player, a programmatic (assistive) click on MENU climbs and on Select flips the list - no stale click-suppress flag. The post-boot legacy path: a synced zune-classic applied by the visibility refresh is read as ipod and rewritten; a throwing store reads the default. Mutants that went RED as claimed: drop the one-time rewrite; the chip filter and Brick restored to literal trios; closeStickerMenu dropped from goHome; a new `ip-genre` text element in ipScreen (the AC6 census); `.mms-rd` dropped from the text line; nowrap dropped from the text line (3 red). Black/Matte values: every former --mms-ipodk-* / --mms-ipodm-* / litk / litm / lits value matches its role (read against e45906fb; the pixel compare agrees). Lighting renders on Subtle and Pronounced for all seven new colorways (my own sheet). Every hand-kept Click list in public/ now derives from the registry (grep sweep). Tree: restored, see the seat's report.
+
+Gate: APPROVED r2 @bbb40ab9 - qa
+
+Delta re-verification of the qa r1 findings against bbb40ab9 (the seat's own runs; /tmp sandboxes from `git archive bbb40ab9`, tree untouched):
+- W1 FIXED as prescribed (the defer-until-boot-settled shape). The seat's r1 race repro re-pointed at bbb40ab9: server `ipod-red` (10 s old), local `zune-classic`, cold boot of /music?play=nd1, flush -> local=ipod-red, server=ipod-red (was ipod/ipod at ba10139c); the same with an older local stamp -> ipod-red/ipod-red; control local `ipod-black` -> ipod-red/ipod-red. AC2 convergence (the server holding the OLDER retired id) still converges on `ipod`. Mutants in a sandbox, each with a non-empty diff: the wait disabled (`if (false && sync ...)`) -> RED 2 (integration "gate r1 W1" + unit "gate r1 W1"); the still-retired re-check dropped (`ls.setItem` unconditional) -> RED 2. Script order puts prefs-sync.js after music-skins.js on every shell but nothing reads the skin at script-eval time, so the waiter is always reachable; a hung boot GET only leaves the value mapped-on-read (safe).
+- S1 FIXED: the committed probe now opens Appearance on phones and prints real geometry. Seat run, base e45906fb vs bbb40ab9 at 390x844 / 375x667 / 380x700: no pre-existing card changed w/h; 6 -> 12 cards, 3 -> 6 rows (2-col) and 6 -> 12 (1-col); the shortened blurbs keep every new card at its row's height (59 px at 375x667, where Silver/Gold were 71 at r1).
+- S2 FIXED except two leftovers (below); S3 FIXED (Gold no longer "the mini's"); S4 FIXED (eslint on every changed .js: 0 errors, 6 warnings, all pre-existing no-unused-vars); S5 DISCLOSED in the plan's gaps.
+- Instruments at bbb40ab9: `npm run lint:css` TOTAL 0; overlay containment clean (0 violations); the fix round's 8 changed test files + prefs-store / prefs-api / prefs-sync-client: Node 22.23.1 250 pass 0 fail, Node 24.20.0 250 pass 0 fail. The full suites at bbb40ab9 are the builder's run (not re-run by this seat).
+- New, SUGGESTION only (non-blocking): public/js/prefs-sync.js:214 still says the hooks object is test-only ("production ignores them"), but production now calls `whenBooted` on it; and the plan's AC1 text (:204-205) still lists six skins. Neither changes behavior.
+
+Gate: APPROVED r2 @bbb40ab9 - adversary
+
+Delta re-review of my r1 findings against bbb40ab9 (/tmp sandbox from `git archive bbb40ab9`, node_modules symlinked; every mutant applied to that committed tree, `diff` non-empty before crediting, restored after). Instruments: full `npm test` Node 22.23.1: 9594 tests, 9583 pass, 8 fail, 3 skipped; Node 24.20.0: 9594 tests, 9583 pass, 8 fail, 3 skipped. The 8 are the same sandbox artifacts as r1 (7 files that need a .git / walk the symlinked node_modules); those 7 files in the real repo at bbb40ab9: 69/69 pass on Node 22 and on Node 24. lint:css TOTAL 0; overlay containment 0 violations; eslint on the fix round's changed js/tests exit 0.
+
+- W1 FIXED as prescribed (defer until the boot GET settles, rewrite only a value still retired). My r1 cold-boot race re-driven through the real prefs-sync.js + music-skins.js (jsdom, the boot GET held open while the first render reads): server ipod-red (60 s old) vs a stamped stale local zune-classic -> first read ipod, after boot local ipod-red and server ipod-red after the flush (was: server ipod). The convergence arms hold: server also zune-classic -> both ipod; older non-legacy server + newer local legacy -> ipod; boot fetch failing -> ipod; a zune-classic re-applied later by the visibility refresh is still rewritten. Every shell loads music-skins.js before prefs-sync.js, but nothing reads the skin in between, so the wait always sees the sync agent. Mutants, each RED: the wait disabled (2 red); the still-retired check dropped (2 red - the one that would clobber the server's newer pick after the GET); whenBooted run at once regardless of boot (1 red); the success path settling without draining the waiters (AC2 convergence red); the one-wait flag never reset (1 red).
+- W2 FIXED: my two r1 mutants (a role-free `.mms-ipod-red{ background:#f00; }`, `[class~="mms-ipod-red"] .ip-wheel{...}`) and a compound `.mms-lit.mms-ipod-red .ip-center{...}` are each RED. Residual, SUGGESTION only: a substring attribute spelling `[class*="ipod-red"] .ip-wheel{ background:#f00; }` survives (64/64); nothing in the tree uses one.
+- W3 FIXED: dropping the fire-time `|| wheelTakeover` guard is RED in pocket-home (the new mid-hold takeover arm).
+- S8 FIXED: HOME_HOLD_MS 450 RED; 1800 RED (3). The lower-bound assertion at 550 ms is ordering-safe (both are Node timers, the earlier-due wait resolves and its microtasks run before the later timer's callback).
+- S1 FIXED: the unscoped `.ip-wheel .ip-center{ width:61px; height:61px; }` is RED in AC5.
+- S3 FIXED (the Encore comment). S5 FIXED: both probes' default-list expression evaluated against e45906fb's registry returns ipod, ipod-black, ipod-matte (was a TypeError). S2 / S4 / S6 disclosed in the plan with my numbers.
+- qa S1's probe fix executed by this seat: scripts/skin-chips-probe.js now measures the Settings picker on phones (12 cards; 6 rows at 390x844 and 380x700, 12 at 375x667, 3 at 1280x800), matching the fix round's record.
+- Nothing new found in the fix round beyond qa's r2 SUGGESTION (the prefs-sync hooks comment still says production ignores them).
