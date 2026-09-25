@@ -206,6 +206,16 @@ Both seats found the same WARNING (W1) independently. Fixed as follows, one comm
 | **adversary S1** (two same-titled chaptered files fold into one album) | not changed; with list mode the album now plays in list order across both files (reasoned, not driven). Disclosed. | n/a |
 | **adversary S2** (onSelectIndex and up-next solo callers held only by a source lock; pre-existing) | not changed; tracked as #278 | n/a |
 
+Builder mutants on the r1 fix (a `git archive 13ca027c` sandbox; `diff` non-empty before each):
+
+| Mutant | Result |
+|---|---|
+| N1 album levels not in list mode (the r1 shape) | RED 2 (both non-file-order sort tests) |
+| N2 no solo clear in `playAt` | RED 1 (the qa-caveat test) |
+| N3 `flatAlbum` never set | RED 2 (the qa-caveat test, the chapter-added test) |
+| N4 no count-change re-list | RED 1 (the chapter-added test) |
+| N5 `flatAlbum` true for every list | SURVIVED at 13ca027c; bound by the r1 test "(the other axis): a single-chapter select inside a FLAT list keeps K4" (an up-next tap in the flat Songs list), RED 1 |
+
 Correction to Build notes: `opts.playThrough` was already dead at base (Shuffle Songs has no drill, so it was always flat); its removal is zero-delta, as the adversary measured at fa462238.
 
 Also disclosed (pre-existing, measured by both seats at fa462238, not introduced here): the BROWSE album's Play button loops the same way under a non-file-order drill sort (`c2 -> c1 -> c1 -> ...`). The browse view is outside this run's scope (I3 and Dean's locked v1.311 decision); tracked as #279 for Dean.
