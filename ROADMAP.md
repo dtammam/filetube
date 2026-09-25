@@ -4,14 +4,6 @@
 
 _Nothing planned - every item was resolved or accepted at the 2026-09-22 roadmap reconcile. New asks land here._
 
-- [ ] **Pocket menus: a song picked inside an artist's album should play through that album** (Dean,
-  2026-09-24, after the gyro work: "when I go to a recent artist and I pick the artist and I go into
-  the album and I pick something in an album, it just plays that song and then goes to a completely
-  other song from the artist, almost like a shuffle when I didn't expect or intend it. I would imagine
-  it would play through the rest of that album. Maybe there's a way to set that"). Diagnose which queue
-  the Recent Artists > artist > album > song path builds (the artist's all-songs flat list vs the
-  album) against the v1.323 rule (album and artist-album picks keep the album queue; only flat lists
-  play through the list); intake with Dean before building (a setting, or the album as the default).
 - [ ] **A design system for the pocket skins** (Dean, 2026-09-24, with an iPhone screenshot: a long
   album title, "Ocarina of Time House Club Remix (Electronic House Remix)", wrapped the Click Black
   LCD status bar to two lines on v1.324.0; v1.325.0 fixed that bar). Dean's read is broader: "not
@@ -115,6 +107,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.331.0 - A song picked inside an album plays on through that album (2026-09-25)
+
+- **Pocket menus: an album level now plays the album** (Dean, 2026-09-24: "when I go to a recent artist
+  and I pick the artist and I go into the album and I pick something in an album, it just plays that song
+  and then goes to a completely other song from the artist, almost like a shuffle when I didn't expect or
+  intend it. I would imagine it would play through the rest of that album"; and mid-build: "Make sure that
+  you're accounting for regular album play as well, not just recent albums"). Diagnosed: on a CHAPTERED
+  album (one file whose chapters are the songs, most of Dean's library) a pick from an album level armed the
+  v1.311 single-chapter select, which pre-fetched a station of the artist's songs and jumped to one at the
+  chapter's end. Now every menu list plays through in LIST order: a pick from Albums, Artists > artist >
+  album, Recent Artists > artist > album or Seattle's Albums pivot plays the rest of the album from that
+  song (a chaptered album in file order rolls on with no reload), and the station comes only after the
+  album's last song. Flat lists (Songs, Genres, the playlists, an artist's All Songs) keep the v1.323 rule.
+  No setting: the album is the default. A single chapter tapped in the album afterwards (a browse row, the
+  up-next row, the skin's list) is the v1.311 "just that bit" select again.
+- Red first on Dean's exact path (a real recent-listening row seeds Recent Artists): the old build loaded
+  another NESTALGIA song at the chapter's end. Gate r1 (adversary + qa, both measured independently): the
+  first fix played the FILE on, and under a title or duration sort the album looped two chapters forever;
+  r1 moved album levels to list order and added the solo-select and chapter-count seams. Gate APPROVED r2
+  @d9355437 (adversary, qa); plan docs/exec-plans/completed/2026-09-25-album-pick-plays-through.md.
+- Disclosed: the intake questions were answered on the dispatch's recommendations (the session ran
+  unattended). The BROWSE view's album still plays just the tapped chapter and then the station (Dean's
+  locked v1.311 decision, left for his ruling). #279 (pre-existing): the browse album's Play button loops a
+  chaptered album under a non-file-order sort, and the same loop reaches the menu path three narrow ways
+  (an admin chapter-count edit on the playing file mid-play, a browse tap on the last-listed chapter after a
+  Title Z-A pick, a resume after Autoplay-off paused a Title Z-A album). #278 (pre-existing): the skin-list
+  and up-next solo taps are held by a source lock only. A stale comment above the flat segment end is
+  noted in the plan.
 
 ### v1.330.0 - Pocket lighting back to the v1.328 look, and it asks for motion access from your first tap (2026-09-25)
 
