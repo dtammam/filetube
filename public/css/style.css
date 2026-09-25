@@ -12065,7 +12065,7 @@ html[data-modern="on"] .video-uploader {
      unset (Off, Seattle, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
   .mms-ipod .ip-wheel{ width:min(70vw,288px); height:min(70vw,288px); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
     background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
+      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-ipod-wheel-shadow); }
   .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--mms-ipod-wheel-lbl); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
   .mms-ipod .ip-zone svg{ width:25px; height:25px; fill:currentColor; display:block; }
   .mms-ipod .ip-z-menu{ top:0; left:26%; width:48%; height:30%; align-content:start; padding-top:var(--space-3); font-size:var(--fs-sm); letter-spacing:var(--mms-ls-caps2); }
@@ -12073,7 +12073,7 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ip-z-right{ top:26%; right:0; width:30%; height:48%; justify-content:end; padding-right:var(--space-4); font-size:var(--fs-xl); }
   .mms-ipod .ip-z-down{ bottom:0; left:26%; width:48%; height:30%; align-content:end; padding-bottom:var(--space-3); font-size:var(--fs-base); }
   .mms-ipod .ip-center{ width:min(26vw,108px); height:min(26vw,108px); border-radius:var(--radius-full); border:0; cursor:pointer;
-    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-lit-dome-shadow, var(--mms-ipod-center-shadow)); }
+    background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(40% + var(--ly,0) * 16%), var(--mms-ipod-body1), var(--mms-ipod-body2)); box-shadow:var(--mms-ipod-center-shadow); }
 
   /* --- iPod BLACK (v1.232, Dean): shares all iPod structure via the base `mms-ipod`
      class; overrides ONLY the body + wheel palette to the space-black variant. The
@@ -12156,13 +12156,15 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod-black.mms-lit{ box-shadow:inset calc(var(--lx,0) * -1.5px) calc(var(--ly,0) * -1.5px) 3px var(--mms-env-fresnel), inset 0 0 0 1px var(--mms-ipodk-edge); }
   .mms-ipod-matte.mms-lit{ box-shadow:inset 0 0 0 1px var(--mms-ipodk-edge); }
   /* the screen glass: the SAME sharp map at the same panel position (the LCD's centre offset subtracted),
-     panes at .14 over content; the bezel's static occlusion plus the one moving bezel shadow */
+     panes at .14 over content (BOTH panes, two layers - gate r1 C1 shipped one); the bezel's static
+     occlusion plus the one moving bezel shadow */
   .mms-ipod.mms-lit .ip-lcd-in{ box-shadow:inset 0 0 0 1px var(--mms-env-bezel), inset 0 0 6px var(--mms-env-bezel-soft), inset calc(var(--lx,0) * -2px) calc(var(--ly,0) * -2px) 3px var(--mms-env-bezel-move); }
   .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none; opacity:calc(var(--lk,1) * .23);
     background-repeat:no-repeat;
     background-image:
       radial-gradient(closest-side, var(--mms-env-lamp) 0%, var(--mms-env-lamp) 14%, var(--mms-env-lamp-sh) 29%, var(--mms-env-lamp-0) 100%),
-      linear-gradient(90deg, var(--mms-env-pane) 0%, var(--mms-env-pane) 46.25%, var(--mms-env-pane-0) 46.25%, var(--mms-env-pane-0) 53.75%, var(--mms-env-pane) 53.75%, var(--mms-env-pane) 100%);
+      linear-gradient(180deg, var(--mms-env-pane) 0%, var(--mms-env-pane-sill) 100%),
+      linear-gradient(180deg, var(--mms-env-pane) 0%, var(--mms-env-pane-sill) 100%);
     background-size:calc(var(--k,35px) * 14) calc(var(--k,35px) * 14), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16), calc(var(--k,35px) * 4.9) calc(var(--k,35px) * 16);
     background-position:calc(50% + var(--fx,0px) + var(--lcx,0px) + var(--k,35px) * 22) calc(50% + var(--fy,0px) + var(--lcy,0px) + var(--k,35px) * 4), calc(50% + var(--fx,0px) + var(--lcx,0px) - var(--k,35px) * 3.05) calc(50% + var(--fy,0px) + var(--lcy,0px)), calc(50% + var(--fx,0px) + var(--lcx,0px) + var(--k,35px) * 3.05) calc(50% + var(--fy,0px) + var(--lcy,0px)); }
   /* the matte plastic WHEEL: no moving specular. The wheel's background is the lip ring (a conic keyed to
@@ -12178,9 +12180,12 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod-matte.mms-lit .ip-wheel::before{ background:radial-gradient(closest-side, var(--mms-ipodm-clear) calc(100% - 5px), var(--mms-env-gap-soft)), radial-gradient(circle at 50% 42%, var(--mms-ipodm-wheel1), var(--mms-ipodm-wheel2) 100%); }
   .mms-ipod.mms-lit .ip-wheel::after{ content:""; position:absolute; inset:1.5px; border-radius:var(--radius-full); z-index:-1; /* token-exempt: local stacking - the tone over the face, under the zones */ pointer-events:none;
     background:linear-gradient(var(--mms-env-tone), var(--mms-env-tone)); opacity:var(--wt,0); }
-  /* the glossy dome: the base gradient stays; the button-gap occlusion; ::after = the window IMAGE
-     (0.53R x 0.73R at --dx/--dy, opacity --dom - it clips off the rim) with the lamp's sparkle */
-  .mms-ipod.mms-lit .ip-center{ position:relative; overflow:hidden; box-shadow:0 0 0 1px var(--mms-env-btn-gap), 0 0 3px var(--mms-env-btn-soft); }
+  /* the glossy dome: the base gradient stays; the button-gap occlusion; ::after = the window IMAGE (a
+     soft ellipse 0.4 R x 0.55 R at --dx/--dy, opacity --dom - it clips off the rim) with the lamp's sparkle */
+  .mms-ipod.mms-lit .ip-center{ position:relative; overflow:hidden; box-shadow:0 0 0 1px var(--mms-env-btn-gap), 0 0 3px var(--mms-env-btn-soft);
+    background:radial-gradient(circle at 50% 40%, var(--mms-ipod-body1), var(--mms-ipod-body2)); } /* static under lit: only the window image moves (gate r1 adversary W2) */
+  .mms-ipod-black.mms-lit .ip-center{ background:radial-gradient(circle at 50% 40%, var(--mms-ipodk-body1), var(--mms-ipodk-body2)); }
+  .mms-ipod-matte.mms-lit .ip-center{ background:radial-gradient(circle at 50% 38%, var(--mms-ipodm-center1), var(--mms-ipodm-center2)); }
   .mms-ipod.mms-lit .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; opacity:calc(var(--dom,0) * var(--lk,1));
     background-repeat:no-repeat;
     background-image:radial-gradient(closest-side, var(--mms-env-spark) 0%, var(--mms-env-spark) 40%, var(--mms-env-spark-0) 100%), radial-gradient(closest-side, var(--mms-env-dome-img) 0%, var(--mms-env-dome-img) 70%, var(--mms-env-dome-img-0) 100%);

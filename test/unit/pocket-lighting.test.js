@@ -48,7 +48,10 @@ test('mapTilt: device axes to screen axes by the screen rotation; the roll is gr
 });
 
 test('the reflected angle: twice the tilt away from the KEY pose; a 6 deg tilt moves the flat reflection half the face (12 k px); the dome about 15x slower; the dome image fades off the rim; the pitch difference takes the short way round', () => {
-  assert.deepStrictEqual({ x: L.KEY_X, y: L.KEY_Y }, { x: -10, y: 58 }, 'the researched key pose');
+  assert.deepStrictEqual({ x: L.KEY_X, y: L.KEY_Y }, { x: -3, y: 58 }, 'the key pose: the research\'s pitch, x a touch off-axis (at -10 a straight hold showed no window - gate r1 qa W2)');
+  // at a straight hold (roll 0) the window's near pane still overlaps the face: |ex| k minus the window's
+  // half-width (5.6 deg k) is inside the half-face (195 px at 390 wide)
+  assert.ok((Math.abs(L.reflected(L.newFilter(), 0, L.KEY_Y).ex) - 5.6) * (844 / L.FACE_DEG) < 195, 'at a straight hold (roll 0) the window is still on the face');
   const st = L.newFilter();
   assert.deepStrictEqual(L.reflected(st, L.KEY_X, L.KEY_Y), { ex: 0, ey: 0 }, 'at the key pose the map sits centred');
   const r = L.reflected(st, L.KEY_X, L.KEY_Y + 6);
@@ -83,9 +86,23 @@ test('the key glide - the ONLY re-centre: a held tilt stays lit; a pose over 35 
   assert.ok(Math.abs(far.ky - (L.KEY_Y + 50)) < 1, `after ~8 s the key sits on the held pose (${far.ky})`);
   assert.strictEqual(far.gliding, false, 'and the glide has ended');
   assert.ok(Math.abs(L.reflected(far, L.KEY_X, L.KEY_Y + 50).ey) < 2, 'so the reflection is centred again');
+  assert.strictEqual(far.ky, L.KEY_Y + 50, 'the glide ends ON the pose (the last half degree snaps)');
   const back = L.newFilter(); back.ky = L.KEY_Y + 50; now = 0;
   for (let i = 0; i < 60; i++) { now += 16; L.glideKey(back, L.KEY_Y + 50 + 10, 16, now); }
   assert.strictEqual(back.offSince, -1, 'near the (glided) key: not counting');
+  // the 2 s count is per excursion, never cumulative (gate r1 adversary W3): two 1.5 s excursions with a
+  // near-key sample between them never glide
+  const ex = L.newFilter(); now = 0;
+  for (let i = 0; i < 94; i++) { now += 16; L.glideKey(ex, L.KEY_Y + 50, 16, now); }
+  now += 16; L.glideKey(ex, L.KEY_Y, 16, now);
+  for (let i = 0; i < 94; i++) { now += 16; L.glideKey(ex, L.KEY_Y + 50, 16, now); }
+  assert.strictEqual(ex.ky, L.KEY_Y, 'two brief excursions do not add up to a glide');
+  // the glide's time constant: one tau after it starts, about 63% of the gap is closed
+  const tau = L.newFilter(); now = 0;
+  for (let i = 0; i < 126; i++) { now += 16; L.glideKey(tau, L.KEY_Y + 50, 16, now); }
+  for (let i = 0; i < Math.round(L.GLIDE_TAU_MS / 16); i++) { now += 16; L.glideKey(tau, L.KEY_Y + 50, 16, now); }
+  const closed = (tau.ky - L.KEY_Y) / 50;
+  assert.ok(closed > 0.55 && closed < 0.72, `one tau (${L.GLIDE_TAU_MS} ms) closes ~63% of the gap (${closed.toFixed(2)})`);
 });
 
 test('strength: device-local, default Off, garbage normalizes to Off; GAIN is the alpha factor (Subtle .6); music-skins and the driver agree on the three values', () => {
@@ -280,6 +297,30 @@ test('AC1/AC2 reachability + geometry: a REAL deviceorientation event at the key
     assert.strictEqual(prop(b, '--lk'), '0.6');
     pose(b, L.KEY_X, L.KEY_Y + 6); b.clock.advance(600);
     assert.ok(Math.abs(px(b, '--fy') - 12 * K) < 3, 'Subtle moves exactly as far (alpha, not travel, is what differs)');
+  } finally { b.restore(); }
+});
+
+test('gate r1 qa W3 + W1: the FIRST sample of a start snaps the reflection into place (no sweep across the face at an unlock); a resize re-measures the geometry', () => {
+  const b = boot({ strength: 'pronounced' });
+  try {
+    b.engine.paint();
+    pose(b, L.KEY_X + 6, L.KEY_Y); // the first sample, far from the key
+    assert.ok(Math.abs(px(b, '--fx') - 12 * K) < 1, `snapped to the pose on the first sample, before any frame (${prop(b, '--fx')})`);
+    b.clock.advance(16);
+    assert.ok(Math.abs(px(b, '--fx') - 12 * K) < 1, 'and the first frame does not ease it back');
+    // a resize: the geometry is re-measured (the panel reports a new height) and the map re-written
+    P(b).getBoundingClientRect = () => ({ left: 0, top: 0, width: 390, height: 600 });
+    P(b).querySelector('.ip-lcd-in').getBoundingClientRect = () => ({ left: 20, top: 30, width: 350, height: 240 });
+    P(b).querySelector('.ip-center').getBoundingClientRect = () => ({ left: 145, top: 400, width: 100, height: 100 });
+    b.win.dispatchEvent(new b.win.Event('resize'));
+    assert.ok(Math.abs(px(b, '--k') - 600 / L.FACE_DEG) < 0.1, `--k follows the new height (${prop(b, '--k')})`);
+    assert.ok(Math.abs(px(b, '--fx') - 12 * (600 / L.FACE_DEG)) < 1, 'the map is re-written at the new scale');
+    // the seam (gate r1 adversary W1): the glass map is offset by the panel centre MINUS the LCD centre
+    assert.strictEqual(prop(b, '--lcx'), '0.0px', 'LCD centred horizontally: --lcx 0');
+    assert.strictEqual(prop(b, '--lcy'), '150.0px', 'panel centre 300, LCD centre 150: --lcy = +150 (the sign that keeps the panes collinear)');
+    assert.strictEqual(prop(b, '--dr'), '50.0px', 'the dome radius');
+    b.engine.destroy();
+    assert.strictEqual(b.count('win:resize'), 0, 'the resize listener goes with the rest');
   } finally { b.restore(); }
 });
 
@@ -581,7 +622,9 @@ function rule(selector) {
 }
 test('AC3/AC5 CSS lock: ONE environment map per material (sharp panes on Click + Black body AND glass; the soft metal blob on Matte; the wheel reads --la only; the dome --dx/--dy/--dom; no --lm anywhere); Off = no base rule changed; Seattle untouched; no filter / blur / mask / backdrop / blend mode / CSS trig in any lighting rule', () => {
   for (const sel of ['.mms-ipod .ip-wheel', '.mms-ipod-black .ip-wheel', '.mms-ipod-matte .ip-wheel']) assert.match(rule(sel), /at calc\(50% \+ var\(--lx,0\) \* 30%\) calc\(-8% \+ var\(--ly,0\) \* 26%\)/, sel + ': the base rule is the v1.327 one');
-  assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/);
+  assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-ipod-wheel-shadow\); \}/, 'the base wheel shadow is the static token again (no dead fallback)');
+  assert.match(rule('.mms-ipod .ip-center'), /box-shadow:var\(--mms-ipod-center-shadow\); \}/);
+  for (const [sel, pos] of [['.mms-ipod.mms-lit .ip-center', '50% 40%'], ['.mms-ipod-black.mms-lit .ip-center', '50% 40%'], ['.mms-ipod-matte.mms-lit .ip-center', '50% 38%']]) assert.match(rule(sel), new RegExp('background:radial-gradient\\(circle at ' + pos + ','), sel + ': the base dome is STATIC under lit; only its window image moves (the base --lx calc would saturate at 6 deg)');
   assert.match(rule('.mms-zune-classic .ip-wheel.znc-pad'), /at 50% -8%/, 'Seattle untouched');
   assert.ok(!/\.mms-zune-classic[^{]*\{[^}]*--(?:fx|fy|lx|ly|la|dx)/.test(CSS), 'no Seattle rule reads the light');
   assert.ok(!/--lm\b/.test(CSS), 'the dome no longer dims with distance (--lm is gone)');
@@ -600,6 +643,19 @@ test('AC3/AC5 CSS lock: ONE environment map per material (sharp panes on Click +
   const glass = rule('.mms-ipod.mms-lit .ip-lcd-in::after');
   assert.match(glass, /var\(--mms-env-pane\)/); assert.match(glass, /calc\(50% \+ var\(--fx,0px\) \+ var\(--lcx,0px\) - var\(--k,35px\) \* 3\.05\) calc\(50% \+ var\(--fy,0px\) \+ var\(--lcy,0px\)\)/, 'panel coordinates (the same pane offsets, the LCD centre subtracted)');
   assert.match(glass, /pointer-events:none/); assert.match(glass, /opacity:calc\(var\(--lk,1\) \* \.23\)/, 'panes at .14 over content');
+  assert.strictEqual((glass.match(/linear-gradient\(180deg, var\(--mms-env-pane\) 0%, var\(--mms-env-pane-sill\) 100%\)/g) || []).length, 2, 'the glass carries BOTH panes (gate r1 qa C1: it had one 90deg pane with three positions)');
+  assert.ok(!/90deg/.test(glass), 'no single-pane image on the glass');
+  const topLevel = (v) => { let d = 0, n = 1; for (const ch of v) { if (ch === '(') d += 1; else if (ch === ')') d -= 1; else if (ch === ',' && d === 0) n += 1; } return n; };
+  const layersOf = (r) => ({ img: topLevel(r.match(/background-image:([^;]*);/)[1]), size: topLevel(r.match(/background-size:([^;]*);/)[1]), pos: topLevel(r.match(/background-position:([^;]*)[;}]/)[1]) });
+  for (const sel of ['.mms-ipod.mms-lit::after', '.mms-ipod-black.mms-lit::after', '.mms-ipod-matte.mms-lit::after', '.mms-ipod.mms-lit .ip-lcd-in::after', '.mms-ipod.mms-lit .ip-center::after']) {
+    const l = layersOf(rule(sel));
+    assert.ok(l.img === l.size && l.img === l.pos, sel + ': every background image has exactly one size and one position (' + JSON.stringify(l) + ')');
+  }
+  // gate r1 qa S1: the signs and axes the lock did not bind
+  assert.match(rule('.mms-ipod-black.mms-lit::after'), /calc\(50% \+ var\(--fx,0px\) - var\(--k,35px\) \* 3\.05\) calc\(50% \+ var\(--fy,0px\)\), calc\(50% \+ var\(--fx,0px\) \+ var\(--k,35px\) \* 3\.05\) calc\(50% \+ var\(--fy,0px\)\)/, 'black: the panes ride +--fx');
+  assert.match(matte, /calc\(50% \+ var\(--fx,0px\)\) calc\(50% \+ var\(--fy,0px\)\); \}/, 'matte: the blob rides +--fx/+--fy');
+  assert.match(rule('.mms-ipod.mms-lit .ip-center::after'), /calc\(50% \+ var\(--dx,0px\) \+ var\(--dr,54px\) \* \.73\)/, 'the sparkle rides +--dx');
+  for (const sel of ['.mms-ipod.mms-lit .ip-wheel::before', '.mms-ipod.mms-lit .ip-wheel::after', '.mms-ipod-black.mms-lit .ip-wheel::before', '.mms-ipod-matte.mms-lit .ip-wheel::before']) assert.ok(!/--(?:fx|fy|lx|ly|dx|dy)\b/.test(rule(sel)), sel + ': no moving specular on the wheel\'s layers either');
   assert.match(rule('.mms-ipod.mms-lit .ip-lcd-in'), /inset calc\(var\(--lx,0\) \* -2px\) calc\(var\(--ly,0\) \* -2px\) 3px var\(--mms-env-bezel-move\)/, 'the one moving bezel shadow');
   const wheel = rule('.mms-ipod.mms-lit .ip-wheel');
   assert.match(wheel, /conic-gradient\(from calc\(var\(--la,0\) \* 1deg - 40deg\)/, 'the lip ring keyed to the azimuth');

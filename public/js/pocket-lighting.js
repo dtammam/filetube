@@ -34,10 +34,12 @@
   // neutral and no slow re-centre (a real lamp never fades); only a pose held > OFF_DEG from the key for
   // > OFF_MS (lying in bed) glides the key to it.
   var GAIN = { off: 0, subtle: 0.6, pronounced: 1 };
-  var KEY_X = -10;            // the key light's pose, screen x (deg): off-axis reads natural
+  var KEY_X = -3;             // the key light's pose, screen x (deg): a touch off-axis (gate r1 qa W2: the research's
+                              // -10 put the window 700 px off a 390 px face at a straight hold - nothing showed)
   var KEY_Y = 58;             // screen y (deg): a typical 50 deg hold puts the window's lower edge across the upper third
   var FACE_DEG = 24;          // the face's angular span at a phone's viewing distance
-  var DOME_BETA = 15;         // the dome's edge slope (deg): its highlight moves ~15x slower than the flat face
+  var DOME_BETA = 15;         // the dome's edge slope (deg): its image moves R / (2 beta) px per degree against the
+                              // flat face's k - about 17x slower on an 844 px panel with a 54 px dome
   var DOME_CLAMP = 1.3;       // the dome image may sit this far past the rim (it clips)
   var DOME_FADE_DEG = [28, 34]; // the dome image fades between these reflected angles (off the rim)
   var MOUSE_DEG = 12;         // the pointer at the panel's edge = this reflected angle
@@ -122,7 +124,7 @@
     if (st.gliding) {
       // once started, a glide runs until the key sits on the pose (never parks 35 deg short)
       st.ky = fold(st.ky + d * k(dt, GLIDE_TAU_MS));
-      if (Math.abs(d) < 0.5) { st.gliding = false; st.offSince = -1; }
+      if (Math.abs(d) < 0.5) { st.ky = fold(ty); st.gliding = false; st.offSince = -1; } // snap the last half degree (a 0.9 deg reflected offset otherwise)
       return true;
     }
     if (Math.abs(d) <= OFF_DEG) { st.offSince = -1; return false; }
@@ -182,7 +184,7 @@
     var mode = 'none';             // 'tilt' | 'pointer' | 'none'
     var lastSampleAt = -Infinity, lastTiltAt = -Infinity;
     var samples = 0, writes = 0;
-    var sessionSamples = 0;        // samples since the last start() (the lit gate below)
+    var sessionSamples = 0;        // samples since the last start() (the lit gate below; the first sample snaps)
     var note = '', permission = '';
     var observer = null;           // the dock watcher (see start): the panel emptied or hidden with no destroy()
     var destroyed = false;         // destroy() ran: nothing may re-bind (a late permission answer, gate r1 S2)
@@ -224,9 +226,10 @@
       setP('--dom', sf.dom.toFixed(3)); setP('--la', sf.la.toFixed(1)); setP('--wt', sf.wt.toFixed(3));
       setP('--lx', sf.lx.toFixed(3)); setP('--ly', sf.ly.toFixed(3));
     }
-    // The geometry the CSS needs, measured at every sync (a paint or a resize can change it): px per
-    // degree, the dome's radius, and where the LCD's centre sits against the panel's (so the glass shows
-    // the SAME map at the same panel position - the research's "keep surfaces aligned").
+    // The geometry the CSS needs, measured at every sync (a paint) and on every resize of the window
+    // (gate r1 qa W1: the pop-out can be resized and a rotate changes the panel; nothing repaints then):
+    // px per degree, the dome's radius, and where the LCD's centre sits against the panel's (so the glass
+    // shows the SAME map at the same panel position - the research's "keep surfaces aligned").
     function measure() {
       try {
         var pr = panel.getBoundingClientRect();
@@ -275,8 +278,13 @@
       var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win));
       if (!m) return;
       samples += 1; sessionSamples += 1;
-      if (sessionSamples === 1) applyLit(); // the sensor streams: light the panel (see litGated)
       tilt = m; mode = 'tilt';
+      if (sessionSamples === 1) {
+        // the FIRST sample of a start snaps the reflection to where it is (gate r1 qa W3: easing from the
+        // key-centred map swept the window across the face at every unlock, return or pick), then lights
+        var r0 = reflected(st, m.x, m.y); st.ex = r0.ex; st.ey = r0.ey; write();
+        applyLit();
+      }
       lastSampleAt = lastTiltAt = nowFn();
       arm();
     }
@@ -299,12 +307,13 @@
       arm();
     }
     function onVisibility() { sync(); }
+    function onResize() { if (!on) return; measure(); write(); }
     function start() {
       if (on) return;
       on = true;
       st = newFilter(); tilt = null; goal = { ex: 0, ey: 0 }; mode = 'none'; lastTick = -1; sessionSamples = 0;
       lastSampleAt = lastTiltAt = -Infinity;
-      try { win.addEventListener('deviceorientation', onOrient); } catch (_) { /* no window */ }
+      try { win.addEventListener('deviceorientation', onOrient); win.addEventListener('resize', onResize); } catch (_) { /* no window */ }
       try { panel.addEventListener('pointermove', onMove); panel.addEventListener('pointerleave', onLeave); } catch (_) { /* detached */ }
       // The DOCK: the view clears the panel (hidden + innerHTML = '') WITHOUT destroy() (the v1.256
       // class). The frame loop notices on its next tick - but a PARKED loop (a still device, a
@@ -323,7 +332,7 @@
       if (!on) return;
       on = false;
       if (observer) { try { observer.disconnect(); } catch (_) { /* gone */ } observer = null; }
-      try { win.removeEventListener('deviceorientation', onOrient); } catch (_) { /* ignore */ }
+      try { win.removeEventListener('deviceorientation', onOrient); win.removeEventListener('resize', onResize); } catch (_) { /* ignore */ }
       try { panel.removeEventListener('pointermove', onMove); panel.removeEventListener('pointerleave', onLeave); } catch (_) { /* ignore */ }
     }
     // Gate r1 (adversary W1): the visibility listener is NOT one of start()'s - it lives from
