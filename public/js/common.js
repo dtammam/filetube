@@ -9942,14 +9942,12 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
 // back down on the WHOLE player, the WHOLE full-screen skin and any view holding the
 // body lock - which took away the one escape from a skin stuck behind a pinned body.
 // Now only the things you actually drag sideways own the gesture: the pc-range
-// seek/volume on every shell, the skin seeks, the click wheel (and the Zune pad,
-// also .ip-wheel), the Brick paddle, the wheel-calibration stage, any other
+// seek/volume on every shell, the skin seeks, the click wheel, the Brick paddle, the wheel-calibration stage, any other
 // range/slider. Everywhere else - the video, a skin's art, faux fullscreen - a
 // clear rightward swipe goes back again.
 const SWIPE_BACK_OWNER_SELECTORS = [
   '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
   '.whcal-stage', // the wheel-calibration tool's spin area (Settings > Experimental) - v1.311.2 gate W2
-  '[data-skin-swipe]', // pocket menus: Seattle's pivot list - a sideways swipe there moves across the pivots
   'input[type="range"]', '[role="slider"]',
 ];
 // ...plus the NET for scrubbers nobody listed yet: an element that took the

@@ -281,9 +281,8 @@
   //
   // The engine stays generic: it never learns what a takeover is talking to. What
   // this adds is only what a VIEW would otherwise have to repeat.
-  var WHEEL_SKINS = ['ipod', 'ipod-black', 'ipod-matte']; // the Click wheel trio. Seattle
-  // shares the chassis but its pad is half the usable rotation ring (tech-debt #207),
-  // and Dean scoped this to the Click skins; flat skins have no wheel.
+  var WHEEL_SKINS = ['ipod', 'ipod-black', 'ipod-matte']; // the Click wheel trio (Dean scoped
+  // this to the Click skins); flat skins have no wheel.
 
   function activeSkinId() {
     try {

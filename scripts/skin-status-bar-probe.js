@@ -3,7 +3,7 @@
 // skin-status-bar-probe - the MEASUREMENT instrument for the pocket skins' LCD status bar
 // (Dean 2026-09-24: "the song or album name might get too long and make that whole thing
 // just a little bit too big. It'll expand it by a row."). The status bar (.ip-status) is
-// shared by the Click trio and Seattle (music-skins.js ipScreen), by the desktop pop-out
+// shared by every Click colorway (music-skins.js ipScreen), by the desktop pop-out
 // (the same panel in its own window) and by the Nano tray (the pop-out's tray body). Its
 // title (.ip-np) reads "Now Playing", "Songs", the menu's name, or on a drilled level the
 // artist / album / chaptered file's own NAME - the one that can be long.
@@ -15,8 +15,8 @@
 // Chromium over raw CDP (the action-row-probe.js pattern), REACHES each level through
 // the real menus (MENU / Select / row taps), and prints ONE JSON line per (skin, viewport,
 // level): the status bar's height, the title's rect and whether it is truncated, the
-// play indicator and battery rects (they must never move or shrink), Seattle's drilled
-// title line, and the document's scrollWidth. PNGs go to <out-dir>.
+// play indicator and battery rects (they must never move or shrink), and the document's
+// scrollWidth. PNGs go to <out-dir>.
 //
 //   node scripts/skin-status-bar-probe.js <out-dir> [skin ...]
 // Env: VIEWPORTS=390x844,380x700 (default), POPOUT=0 skips the desktop pop-out and the
@@ -29,7 +29,7 @@ const { spawn } = require('node:child_process');
 
 const OUT = process.argv[2];
 if (!OUT) { console.error('usage: node scripts/skin-status-bar-probe.js <out-dir> [skin ...]'); process.exit(2); }
-const SKINS = process.argv.slice(3).length ? process.argv.slice(3) : ['ipod', 'ipod-black', 'ipod-matte', 'zune-classic'];
+const SKINS = process.argv.slice(3).length ? process.argv.slice(3) : ['ipod', 'ipod-black', 'ipod-matte'];
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
 const VIEWPORTS = (process.env.VIEWPORTS || '390x844,380x700').split(',').map((s) => { const [w, h] = s.split('x').map(Number); return { w, h }; });
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
@@ -69,7 +69,6 @@ const STATE_JS = `(function () {
   var np = p && p.querySelector('.ip-np');
   var cs = np ? getComputedStyle(np) : null;
   var batt = p && p.querySelector('.ip-batt');
-  var t = p && p.querySelector('.ipm-title');
   return {
     title: np ? np.textContent : null, titleLen: np ? np.textContent.length : 0,
     statusH: st ? Math.round(st.getBoundingClientRect().height * 10) / 10 : null,
@@ -84,7 +83,6 @@ const STATE_JS = `(function () {
     })(),
     npWhiteSpace: cs ? cs.whiteSpace : null, npTextOverflow: cs ? cs.textOverflow : null,
     playind: r(p && p.querySelector('.mms-playind')), batt: batt ? Object.assign(r(batt), { display: getComputedStyle(batt).display }) : null,
-    seattleTitle: t ? Object.assign(r(t), { text: t.textContent.length + ' chars', truncated: t.scrollWidth > t.clientWidth }) : null,
     menu: !!(p && p.classList.contains('mms-menumode')), docW: document.documentElement.scrollWidth, vw: document.documentElement.clientWidth,
     errs: (window.__errs || []).slice(0, 3),
   };
@@ -174,31 +172,18 @@ async function main() {
       await waitFor(`!!document.querySelector('#music-nowplaying-panel.mms-full .ip-status') && !!(window.FileTube && FileTube.player && FileTube.player.currentId)`, 20000);
       await sleep(800);
       const pre = `${skin}-${vpTag}`;
-      const seattle = skin === 'zune-classic';
       const rows = [];
       rows.push(await measure(pre + ' now-playing', `${pre}-0-now-playing.png`, null, null));
-      await measure(pre + ' main', `${pre}-1-main.png`, `__tap('[data-skin-menu]')`, seattle ? 'Seattle' : 'Click');
-      if (!seattle) {
-        await measure(pre + ' music', `${pre}-2-music.png`, `__tap('[data-skin-select]')`, 'Music');
-        await measure(pre + ' albums', `${pre}-3-albums.png`, `__row('Albums')`, 'Albums');
-        rows.push(await measure(pre + ' album short', `${pre}-4-album-short.png`, `__row('Night Drive')`, 'Night Drive'));
-        await ev(`__tap('[data-skin-menu]'); true`);
-        rows.push(await measure(pre + ' album LONG (120)', `${pre}-5-album-long.png`, `__row(${JSON.stringify(LONG_ALBUM)})`, LONG_ALBUM));
-        await ev(`__tap('[data-skin-menu]'); __tap('[data-skin-menu]'); true`);
-        await measure(pre + ' artists', `${pre}-6-artists.png`, `__row('Artists')`, 'Artists');
-        await measure(pre + ' artist', `${pre}-7-artist.png`, `__row(${JSON.stringify(LONG_ARTIST)})`, LONG_ARTIST);
-        rows.push(await measure(pre + ' song-titled file LONG (120)', `${pre}-8-file-long.png`, `__row(${JSON.stringify(LONG_SONG)})`, LONG_SONG));
-      } else {
-        await measure(pre + ' pivot artists', `${pre}-2-pivot-artists.png`, `__tap('[data-skin-select]')`, null);
-        await measure(pre + ' pivot albums', `${pre}-3-pivot-albums.png`, `__tap('[data-skin-next]')`, null);
-        rows.push(await measure(pre + ' album short', `${pre}-4-album-short.png`, `__row('Night Drive')`, 'Night Drive'));
-        await ev(`__tap('[data-skin-menu]'); true`);
-        rows.push(await measure(pre + ' album LONG (120)', `${pre}-5-album-long.png`, `__row(${JSON.stringify(LONG_ALBUM)})`, LONG_ALBUM));
-        await ev(`__tap('[data-skin-menu]'); __tap('[data-skin-menu]'); true`);
-        await measure(pre + ' pivot artists again', `${pre}-6-pivot-artists.png`, `__tap('[data-skin-select]')`, null);
-        await measure(pre + ' artist', `${pre}-7-artist.png`, `__row(${JSON.stringify(LONG_ARTIST)})`, LONG_ARTIST);
-        rows.push(await measure(pre + ' song-titled file LONG (120)', `${pre}-8-file-long.png`, `__row(${JSON.stringify(LONG_SONG)})`, LONG_SONG));
-      }
+      await measure(pre + ' main', `${pre}-1-main.png`, `__tap('[data-skin-menu]')`, 'Click');
+      await measure(pre + ' music', `${pre}-2-music.png`, `__tap('[data-skin-select]')`, 'Music');
+      await measure(pre + ' albums', `${pre}-3-albums.png`, `__row('Albums')`, 'Albums');
+      rows.push(await measure(pre + ' album short', `${pre}-4-album-short.png`, `__row('Night Drive')`, 'Night Drive'));
+      await ev(`__tap('[data-skin-menu]'); true`);
+      rows.push(await measure(pre + ' album LONG (120)', `${pre}-5-album-long.png`, `__row(${JSON.stringify(LONG_ALBUM)})`, LONG_ALBUM));
+      await ev(`__tap('[data-skin-menu]'); __tap('[data-skin-menu]'); true`);
+      await measure(pre + ' artists', `${pre}-6-artists.png`, `__row('Artists')`, 'Artists');
+      await measure(pre + ' artist', `${pre}-7-artist.png`, `__row(${JSON.stringify(LONG_ARTIST)})`, LONG_ARTIST);
+      rows.push(await measure(pre + ' song-titled file LONG (120)', `${pre}-8-file-long.png`, `__row(${JSON.stringify(LONG_SONG)})`, LONG_SONG));
       const hs = rows.map((r) => r.statusH);
       // The right cluster must never move or shrink: the battery's and the play mark's x,y,w,h.
       const batts = rows.map((r) => r.batt && r.batt.display !== 'none' ? [r.batt.x, r.batt.y, r.batt.w, r.batt.h].join(',') : 'hidden');
@@ -213,7 +198,7 @@ async function main() {
   // Document PiP) and the Nano TRAY (the same pop-out with the tray body). A real CDP mouse
   // click on the pop-out button is the user gesture.
   if (process.env.POPOUT !== '0') {
-    const runs = [['ipod', false], ['zune-classic', false], ['ipod', true]];
+    const runs = [['ipod', false], ['ipod', true]];
     for (const [skin, tray] of runs) {
       await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
       await send('Page.navigate', { url: base + '/music' });
@@ -250,8 +235,7 @@ async function main() {
       if (!tray) {
         await step('main', `${f}-1-main.png`, `T('[data-skin-menu]')`);
         await step('music', `${f}-2-music.png`, `T('[data-skin-select]')`);
-        if (skin === 'zune-classic') await step('albums pivot', `${f}-3-albums.png`, `T('[data-skin-next]')`);
-        else await step('albums', `${f}-3-albums.png`, `R('Albums')`);
+        await step('albums', `${f}-3-albums.png`, `R('Albums')`);
         await step('album short', `${f}-4-album-short.png`, `R('Night Drive')`);
         await step('album LONG (120)', `${f}-5-album-long.png`, `T('[data-skin-menu]'); setTimeout(function(){ R(${JSON.stringify(LONG_ALBUM)}); }, 400)`);
       } else {

@@ -752,8 +752,7 @@ test('the row is gated on the VIEW\'s answer, and the SHARED wiring restricts it
   assert.strictEqual(mk('ipod', WHEEL).visible(), true, 'Click (silver) offers it');
   assert.strictEqual(mk('ipod-black', WHEEL).visible(), true, '...and black');
   assert.strictEqual(mk('ipod-matte', WHEEL).visible(), true, '...and Click (Matte) (drop ipod-matte from WHEEL_SKINS and this reds)');
-  assert.strictEqual(mk('seattle-classic', WHEEL).visible(), false,
-    'Seattle does NOT - it shares the wheel chassis but its pad is half the usable rotation ring (#207)');
+  assert.strictEqual(mk('spotify', WHEEL).visible(), false, 'a non-Click skin never offers it, even over wheel markup');
   assert.strictEqual(mk('apple', WHEEL).visible(), false, 'a flat skin never offers it');
   // NOTE (adversarial W3): this case is honest about the FUNCTION but does not describe
   // production. A view's wiring closes over its OWN in-tab engine, so the tray's sticker

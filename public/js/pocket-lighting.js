@@ -9,8 +9,7 @@
 // properties unset the calcs resolve to today's constants, so Off is byte-for-byte today's look.
 //
 // Scope (Dean's ruling, plan 2026-09-24-pocket-gyro-lighting): the Click family only (Click, Click
-// Black, Click Matte); the engine's `isPocket` is the registry's menus === 'click'. Seattle keeps
-// its look. Strength Off / Subtle / Pronounced is device-local (localStorage), default Off, chosen
+// Black, Click Matte); the engine's `isPocket` is the registry's menus === 'click'. Strength Off / Subtle / Pronounced is device-local (localStorage), default Off, chosen
 // from the pocket menu's Settings > Lighting; the strength tap is what asks iOS for motion access.
 //
 // The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever

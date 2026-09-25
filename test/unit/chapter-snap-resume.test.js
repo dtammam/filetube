@@ -901,7 +901,7 @@ test('r2 N1: a LOCAL save verifies its file - after a failed return re-check, a 
   });
 });
 
-// ---- Gate r3 fix (Dean's pivot: an advance never waits or pauses; a pick waits, bounded) --------
+// ---- Gate r3 fix (Dean's change of course: an advance never waits or pauses; a pick waits, bounded) --------
 
 const flip = async (dom, ctx) => { ctx.setVisibility('hidden'); fire(dom, 'visibilitychange'); ctx.setVisibility('visible'); fire(dom, 'visibilitychange'); await settleN(20); };
 const holdMp = (dom) => {
@@ -922,7 +922,7 @@ async function flatIntoG9(dom, ctx, rows) {
   await flip(dom, ctx);
 }
 
-test('pivot (Dean, gate r3): an ADVANCE into an unverified file plays the LISTED row at once - no pause, exactly one background GET - and the answer corrects the listed rows and verifies the file for the next pick', async () => {
+test('change of course (Dean, gate r3): an ADVANCE into an unverified file plays the LISTED row at once - no pause, exactly one background GET - and the answer corrects the listed rows and verifies the file for the next pick', async () => {
   await boot(async (dom, ctx) => {
     ctx.server.files = { g9: { chapters: G3_MOVED } }; // another device moved g9::c1 30 -> 40
     await flatIntoG9(dom, ctx, [g3()[1], g3()[2]]);
@@ -946,7 +946,7 @@ test('pivot (Dean, gate r3): an ADVANCE into an unverified file plays the LISTED
   }, { extraRows: g3() });
 });
 
-test('pivot: a HUNG check on a PICK plays the listed row after the deadline; the old audio is never paused while it waits', async () => {
+test('change of course: a HUNG check on a PICK plays the listed row after the deadline; the old audio is never paused while it waits', async () => {
   await boot(async (dom, ctx) => {
     const T = verifyTunable(); // the instance THIS boot required (each boot re-requires music.js)
     assert.strictEqual(T.timeoutMs, 4000, 'the production deadline');
@@ -963,7 +963,7 @@ test('pivot: a HUNG check on a PICK plays the listed row after the deadline; the
   }, { extraRows: g3() });
 });
 
-test('pivot: ONE check per file - two picks of the same file while its check runs make one GET, and the LATEST pick plays', async () => {
+test('change of course: ONE check per file - two picks of the same file while its check runs make one GET, and the LATEST pick plays', async () => {
   await boot(async (dom, ctx) => {
     await flatIntoG9(dom, ctx, [g3()[1], g3()[2]]);
     ctx.server.holdFiles = true;
@@ -976,7 +976,7 @@ test('pivot: ONE check per file - two picks of the same file while its check run
   }, { extraRows: g3() });
 });
 
-test('pivot: the view is torn down while a pick waits - nothing loads or plays (answer OR failure)', async () => {
+test('change of course: the view is torn down while a pick waits - nothing loads or plays (answer OR failure)', async () => {
   for (const fail of [false, true]) {
     await boot(async (dom, ctx) => {
       await flatIntoG9(dom, ctx, [g3()[1]]);

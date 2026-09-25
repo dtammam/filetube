@@ -500,7 +500,7 @@ test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no du
 // Gate r1 W1 (both seats): the podcast MOBILE SKIN shares the music renderers, and the show line
 // (track.artist = showName) had become an inert "Go to artist" button on every skin. The engine
 // now sets ctx.artistTap from its onArtist presence; podcasts pass none, so the line is a DIV.
-for (const sk of ['apple', 'spotify', 'ipod', 'zune-classic']) {
+for (const sk of ['apple', 'spotify', 'ipod', 'ipod-matte']) {
   test('v1.317 gate r1 W1 (' + sk + '): the podcast skin\'s show line is a plain DIV (no data-skin-artist, no "Go to artist"); a click changes nothing', async () => {
     const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
     const mm = { narrow: true };

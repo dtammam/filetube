@@ -3,7 +3,7 @@
 // [UNIT] The pocket skins' LCD status bar stays ONE line (Dean 2026-09-24: "the song or album
 // name might get too long and make that whole thing just a little bit too big. It'll expand
 // it by a row."). The bar (div.ip-status: the title span.ip-np, then span.ip-status-rt holding
-// the play mark + battery) is drawn by music-skins.js ipScreen for the Click trio AND Seattle,
+// the play mark + battery) is drawn by music-skins.js ipScreen for every Click colorway,
 // and the same panel renders in the desktop pop-out and the Nano tray. Its title is the menu's
 // name, which on a drilled level is the artist / album / chaptered file's own name.
 //
@@ -252,13 +252,13 @@ function census(el, base, table) {
 
 test('NO other rule whose final selector can match the TITLE (any ancestor, any skin, the tray, a vendor spelling, nesting) undoes the one-line title', () => {
   const { found, bad } = census(TITLE, '.mms-ipod .ip-np', TITLE_RULES);
-  assert.ok(found.some((r) => r.selectors.includes('.mms-zune-classic .ip-np')), 'precondition: the Seattle palette rule is found (the census is not vacuous)');
+  assert.ok(found.some((r) => r.selectors.includes('.theme-swatch span')), 'precondition: a bare-type rule is found (the census is not vacuous)');
   assert.deepStrictEqual(bad, [], 'rules that break the title');
 });
 
 test('NO other rule that can match the BAR stacks, wraps or re-lays it out', () => {
   const { found, bad } = census(BAR, '.mms-ipod .ip-status', BAR_RULES);
-  assert.ok(found.some((r) => r.selectors.includes('.mms-zune-classic .ip-status')), 'precondition: the Seattle bar rule is found');
+  assert.ok(found.some((r) => r.selectors.includes('.section-actions.search-scoped-toolbar > *')), 'precondition: a universal rule is found (the census is not vacuous)');
   assert.deepStrictEqual(bad, [], 'rules that break the bar');
 });
 
@@ -323,9 +323,9 @@ test('the parser: nesting flattens, vendor prefixes and case normalize, strings 
 
 test('the rules land on the element every pocket skin renders: .ip-status > .ip-np + .ip-status-rt(play mark, battery)', () => {
   const SK = require('../../public/js/music-skins.js');
-  for (const id of ['ipod', 'ipod-black', 'ipod-matte', 'zune-classic']) {
+  for (const id of SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id)) {
     const html = SK.renderFull(id, { track: { title: 'x', artist: 'y', album: 'z' } });
     assert.match(html, /<div class="ip-status"><span class="ip-np">Now Playing<\/span><span class="ip-status-rt"><span class="mms-playind"[^>]*>[^<]*<\/span><span class="ip-batt"[^>]*><i><\/i><\/span><\/span><\/div>/, id + ' renders the status bar the lock covers');
   }
-  for (const id of ['ipod-black', 'ipod-matte', 'zune-classic']) assert.strictEqual(SK.skinById(id).base, 'ipod', id + ' carries the shared .mms-ipod CSS');
+  for (const id of SK.SKINS.filter((s) => s.menus === 'click' && s.id !== 'ipod').map((s) => s.id)) assert.strictEqual(SK.skinById(id).base, 'ipod', id + ' carries the shared .mms-ipod CSS');
 });

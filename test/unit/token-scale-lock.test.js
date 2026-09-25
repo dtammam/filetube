@@ -88,16 +88,7 @@ const CONTRACT = {
   '--mms-ipod-batt-line': '#4a4b4d', '--mms-ipod-batt1': '#8fe06a', '--mms-ipod-batt2': '#4fb62e',
   '--mms-ipod-groove': '#eceef2',
   '--mms-ipod-blue-hi': '#7fc0ff', '--mms-ipod-blue1': '#3d97f2', '--mms-ipod-blue2': '#1667d6',
-  // Zune magenta/neutral palette - registered per THE VALUE AUTHORITY's own rule
-  // (slim W5; the wave-caught gap: the v1.255 aqua tokens + --mms-sticker-px predate
-  // this and remain unregistered - tech-debt #201). The v1.259 Metro .mms-zune skin
-  // that first introduced these was removed, but zn-pink/zn-dim/zn-ink all remain LIVE:
-  // .mms-zune-classic (Seattle) consumes all three, so none were orphaned by the cut.
-  '--mms-zn-pink': '#ec008c', '--mms-zn-dim': '#9a9a9a', '--mms-zn-ink': '#1a1a1a',
-  // v1.260: Seattle Classic (brown Zune) body/pad + the Aqua ribbing pair.
-  '--mms-znc-body1': '#5a4a3a', '--mms-znc-body2': '#2e2620',
-  '--mms-znc-wheel1': '#6b5844', '--mms-znc-wheel2': '#41352a', '--mms-znc-wheel-lbl': '#d8cfc2',
-  '--mms-znc-chrome1': '#e8e8ea', '--mms-znc-chrome2': '#a9abb0', '--mms-znc-ring': '#c9cbd0',
+  // (v1.332: the Zune palettes left with the Seattle skin - every token it alone consumed is gone.)
   // v1.269: the MEASURED scrubber palette (sampled from Dean's iPod photo).
   '--mms-aqua-t0': '#d3effa', '--mms-aqua-t1': '#a8d2f7', '--mms-aqua-t2': '#90c1f4', '--mms-aqua-t3': '#4999d0',
   '--mms-aqua-t4': '#3797cd', '--mms-aqua-t5': '#44a0d3', '--mms-aqua-t6': '#51a9d8', '--mms-aqua-t7': '#60b2df',
@@ -141,7 +132,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 171, 'the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern; the removed .mms-zune Metro skin left the zn trio (--mms-zn-pink/-dim/-ink) DEFINED because .mms-zune-classic still consumes them) (v1.260 +6 zune-classic +2 aqua-rib; v1.261 +3 znc-chrome; v1.264 -1 znc-edge, Dean retired the green rim) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 160, 'the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

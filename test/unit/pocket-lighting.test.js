@@ -104,7 +104,7 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   assert.deepStrictEqual(noted[3], { label: L.NOTE_DENIED, note: true, info: true }, 'a read-only note row');
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: true }).map((r) => r.label), ['Lighting', 'About']);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, {}).map((r) => r.label), ['About'], 'no driver: no row that leads nowhere');
-  assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: false, style: 'seattle' }).map((r) => r.label), ['About'], 'Seattle: the engine passes hasLighting false (Dean\'s ruling)');
+  assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: false }).map((r) => r.label), ['About'], 'hasLighting false: no row');
   assert.strictEqual(skins.menuTitle({ type: 'lighting' }, 'click'), 'Lighting');
   assert.ok(!skins.menuIsItemLevel({ type: 'lighting' }), 'a menu level (Click keeps the cover drift there)');
   const html = skins.renderMenuList({ style: 'click', items: noted, cursor: 1, start: 0, end: 4, rowH: 0, state: 'ready' });
@@ -376,12 +376,7 @@ test('AC3 every teardown arm unbinds: the dock (no destroy), a hidden document, 
       b.state.skin = 'apple'; b.engine.paint();
       assert.deepStrictEqual(listening(b), zero, `Cider #${n}: no lighting`);
       assert.ok(!lit(b));
-      b.state.skin = 'zune-classic'; b.engine.paint();
-      assert.deepStrictEqual(listening(b), zero, `Seattle #${n}: out of scope (Dean), never lit`);
-      assert.ok(!lit(b) && P(b).style.getPropertyValue('--lx') === '');
-      pressMenu(b); tapLabel(b, 'Settings');
-      assert.deepStrictEqual(lbls(b), ['About'], `Seattle #${n}: Settings shows no Lighting row (gate r1 W2)`);
-      pressMenu(b); pressMenu(b);
+      assert.ok(P(b).style.getPropertyValue('--lx') === '', `Cider #${n}: the light is cleared`);
       b.state.skin = 'ipod-matte';
       // (d) the tray (the pop-out's Nano strip)
       b.doc.body.classList.add('mms-tray'); b.engine.paint();
@@ -661,7 +656,7 @@ function rule(selector) {
   assert.ok(i >= 0, 'rule present: ' + selector);
   return CSS.slice(i, CSS.indexOf('}', i) + 1);
 }
-test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the old constants); Seattle does not; the band and glass exist only when lit; no filter / blur / mask / backdrop anywhere in the lighting rules', () => {
+test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the old constants); the band and glass exist only when lit; no filter / blur / mask / backdrop anywhere in the lighting rules', () => {
   const clickWheels = ['.mms-ipod .ip-wheel', '.mms-ipod-black .ip-wheel', '.mms-ipod-matte .ip-wheel'];
   const clickDomes = ['.mms-ipod .ip-center', '.mms-ipod-black .ip-center', '.mms-ipod-matte .ip-center'];
   for (const sel of clickWheels) {
@@ -672,11 +667,6 @@ test('AC6 CSS lock: the three Click wheels and domes read the light (unset = the
   assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the rim / recess / drop turn directional only when lit (the static token is the fallback)');
   for (const sel of clickDomes) assert.match(rule(sel), /circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\((40|38)% \+ var\(--ly,0\) \* 16%\)/, sel);
   assert.match(rule('.mms-ipod .ip-center'), /box-shadow:var\(--mms-lit-dome-shadow, var\(--mms-ipod-center-shadow\)\)/);
-  // Seattle untouched (Dean's ruling): its pad, center and flanks keep literal positions and the static shadow
-  assert.match(rule('.mms-zune-classic .ip-wheel.znc-pad'), /at 50% -8%/);
-  assert.match(rule('.mms-zune-classic .ip-center.znc-center'), /circle at 50% 40%/);
-  assert.match(rule('.mms-zune-classic .znc-flank'), /box-shadow:var\(--mms-ipod-wheel-shadow\)/);
-  assert.ok(!/\.mms-zune-classic[^{]*\{[^}]*--l[xy]/.test(CSS), 'no Seattle rule reads --lx/--ly');
   // the lit-only tokens: defined ONCE, on the lit panel; the band + glass are pseudo-elements gated by .mms-lit
   assert.strictEqual((CSS.match(/--mms-lit-wheel-shadow\s*:/g) || []).length, 2, 'the base profile and the strong override, nowhere else');
   assert.strictEqual((CSS.match(/--mms-lit-dome-shadow\s*:/g) || []).length, 2);

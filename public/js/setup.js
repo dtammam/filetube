@@ -532,7 +532,6 @@ const MUSIC_SKIN_BLURB = {
   ipod: 'Retro brushed-metal, framed cover, classic track list.',
   'ipod-black': 'Space-black brushed metal, same classic click wheel.',
   'ipod-matte': 'Matte graphite metal, top-lit, with a dark click wheel.',
-  'zune-classic': 'The brown original with the circle pad and the big magenta screen.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

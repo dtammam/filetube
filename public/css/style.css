@@ -123,9 +123,7 @@ summary,
   --fs-3xl: 20px;
   --fs-4xl: 22px;
   --fs-5xl: 32px;
-  --fs-6xl: 44px; /* v1.259: the Metro display size (Seattle's giant lowercase header) */
   --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
-  --fs-jump-xl: 160px; /* ...and Seattle's giant lowercase jump letter */
 
   /* v1.152 master-detail menu: tile tones (colour encodes the group) + the
      era-reactive Appearance tile tints. Fixed, mode-invariant tints that read
@@ -11417,7 +11415,7 @@ html[data-modern="on"] .video-uploader {
   white-space: nowrap;
 }
 /* v1.317 (M1): the now-playing ARTIST LINE is a real <button> on every renderer (the desktop
-   panel .mnp-sub, the Apple/Spotify skins' .mms-sub, the iPod/Zune LCD .ip-artist, the album
+   panel .mnp-sub, the Apple/Spotify skins' .mms-sub, the Click LCD .ip-artist, the album
    drill's .music-drill-artist) and the song row's artist name (.music-song-artist, inline).
    ONE reset at ZERO specificity (:where) strips the UA button chrome, so every existing
    consumer rule (font-size, color, margin, the per-skin palettes) keeps winning at any
@@ -11551,11 +11549,9 @@ html[data-modern="on"] .video-uploader {
   /* v1.255 (Dean): old-school macOS AQUA progress fill - the real Aqua recipe is a
      bright glassy upper band with a HARD cut near the middle, a deeper lower band
      re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
-  --mms-zn-pink:#ec008c; --mms-zn-dim:#9a9a9a; --mms-zn-ink:#1a1a1a;
   /* quick scroll (2026-09-24): the letter overlay's glass - the iPod classic's translucent dark
-     square; Seattle's picker/overlay scrim over its black Metro screen. */
+     square. */
   --mms-ipod-jump-bg:rgba(20,22,26,.72); --mms-ipod-jump-line:rgba(0,0,0,.12);
-  --mms-zn-jump-bg:rgba(0,0,0,.82);
   /* v1.269: the scrubber fill, sampled from the REFERENCE IMAGE Dean picked - a
      product MOCKUP, not a photo of a real iPod (the gate proved it: no sensor
      noise anywhere, a blue Classic body Apple never shipped, a modern typeface,
@@ -11602,11 +11598,6 @@ html[data-modern="on"] .video-uploader {
   --mms-ipodm-t1:#949497; --mms-ipodm-t2:#86868a; --mms-ipodm-t3:#7a7a7e; --mms-ipodm-t4:#6a6a70; --mms-ipodm-t5:#4a4a50; --mms-ipodm-t6:#2d2d32; --mms-ipodm-t7:#1c1c21;
   --mms-ipodm-wheel1:#343437; --mms-ipodm-wheel2:#242427; --mms-ipodm-center1:#6e6e72; --mms-ipodm-center2:#55555a; --mms-ipodm-wheel-lbl:#b9babd;
   --mms-ipodm-chamfer:rgba(255,255,255,.26); --mms-ipodm-edge:rgba(0,0,0,.30); --mms-ipodm-edge2:rgba(0,0,0,.04); --mms-ipodm-clear:rgba(0,0,0,0); --mms-ipodm-wheel-sheen:rgba(255,255,255,.42);
-  /* v1.260 Seattle Classic (the brown Zune 30) - body + pad palette, the ipodk pattern;
-     the edge carries the original's green translucent rim. */
-  --mms-znc-body1:#5a4a3a; --mms-znc-body2:#2e2620;
-  --mms-znc-wheel1:#6b5844; --mms-znc-wheel2:#41352a; --mms-znc-wheel-lbl:#d8cfc2;
-  --mms-znc-chrome1:#e8e8ea; --mms-znc-chrome2:#a9abb0; --mms-znc-ring:#c9cbd0;
   --mms-ipod-art-shadow:0 2px 5px rgba(0,0,0,.3);
   --mms-ipod-lcd-shadow:0 2px 6px rgba(0,0,0,.35);
   --mms-ipod-fill-shadow:inset 0 1px 0 rgba(255,255,255,.6);
@@ -11918,7 +11909,7 @@ html[data-modern="on"] .video-uploader {
      name grew the bar by a row). The title is the flex child that gives: it may shrink below
      its text (min-width:0), never wraps, and truncates with an ellipsis the way a real iPod
      Classic's status title does. The play mark + battery cluster never shrinks or moves.
-     Covers every screen that draws this bar: the Click trio, Seattle, the desktop pop-out
+     Covers every screen that draws this bar: every Click colorway, the desktop pop-out
      and the Nano tray (scripts/skin-status-bar-probe.js measures them). */
   .mms-ipod .ip-np{ font-size:var(--fs-base); font-weight:var(--fw-bold); flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
@@ -12064,7 +12055,7 @@ html[data-modern="on"] .video-uploader {
      The zone buttons are all %-based so they scale with this automatically. */
   /* pocket lighting (2026-09-24): the sheen and the base ramp sit where the LIGHT is - `--lx` /
      `--ly` (each -1..1) are written on the panel by pocket-lighting.js while a Click skin is lit;
-     unset (Off, Seattle, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
+     unset (Off, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
   .mms-ipod .ip-wheel{ width:min(70vw,288px); height:min(70vw,288px); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
     background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%),
       radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(40% + var(--ly,0) * 10%), var(--mms-ipod-wheel1), var(--mms-ipod-wheel2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
@@ -12114,7 +12105,7 @@ html[data-modern="on"] .video-uploader {
      exposed, and the layer stays 2.25x the panel, not 3.24x - gate r1 S3), and the LCD glass a
      faint streak (over the screen, never a tap target). Nothing
      here is a filter, blur, mask or backdrop - the ambient-mode iPhone black-video lesson; a lock
-     test enforces it. Seattle is untouched (Dean's focus ruling): the driver never lights it. */
+     test enforces it. */
   /* Inset offsets: an inset shadow with a POSITIVE x offset paints along the LEFT inner edge (the
      lit plane slides right, the hole's left edge shows it), so the rim HIGHLIGHT takes the light's
      offset NEGATED (light on the right -> the right edge glows) and the RECESS takes it as is (the
@@ -12181,115 +12172,8 @@ html[data-modern="on"] .video-uploader {
   .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--mms-white); }
   .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:34px; /* token-exempt: the menu row pitch */ padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--fs-sm); font-weight:var(--fw-normal); color:var(--mms-ipod-scr-sub); }
   .mms-ipod .ipm-noterow .ipm-lbl{ white-space:normal; }
-  /* v1.260: SEATTLE CLASSIC - the brown Zune 30 on the same wheel chassis (Dean: "the
-     original zune with the circle wheel"). Palette-only, the ipod-black pattern. */
-  /* v1.261 (Dean's reference photo): the REAL Zune 30, not a brown iPod. Brown body +
-     body (the green rim retired at v1.264, Dean); a big chrome-bezel screen; and the
-     signature - a clean chrome PAD flanked
-     by a Back and a Play/Pause button (no printed wheel labels). The screen reuses the
-     shared iPod LCD machinery (list/scrub/reflect) but reads flat + bold + chrome. */
-  .mms-zune-classic{ background:
-      linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
-      linear-gradient(158deg, var(--mms-znc-body1), var(--mms-znc-body2)); }
-  /* the chrome-framed screen (the photo's silver bezel): BIG - it fills above the pad,
-     the defining Zune-vs-iPod proportion (the iPod LCD is a fixed 4:3 strip). */
-  .mms-zune-classic .ip-lcd{ flex:1; aspect-ratio:auto; border:3px solid var(--mms-znc-chrome2); /* token-exempt: Zune chrome bezel width */ border-radius:var(--radius); box-shadow:0 0 0 1px var(--mms-znc-chrome1), var(--mms-ipod-lcd-shadow); }
-  .mms-zune-classic .ip-stars{ display:none; }
-  /* the control row: Back flank | chrome pad | Play flank. */
-  .mms-zune-classic .znc-controls{ display:flex; align-items:center; justify-content:center; gap:var(--space-6); flex:none; padding:var(--space-5) 0 var(--space-4); }
-  .mms-zune-classic .znc-flank{ width:52px; height:52px; /* token-exempt: Zune flank button */ border-radius:var(--radius-full); border:0; cursor:pointer; display:grid; place-items:center;
-    color:var(--mms-znc-body2); background:radial-gradient(circle at 50% 35%, var(--mms-znc-chrome1), var(--mms-znc-chrome2)); box-shadow:var(--mms-ipod-wheel-shadow); }
-  .mms-zune-classic .znc-flank svg{ width:22px; height:22px; /* token-exempt: flank glyph */ fill:currentColor; }
-  .mms-zune-classic .znc-flank.mms-play svg{ width:24px; height:24px; /* token-exempt: flank glyph */ }
-  /* the pad: a chrome ring (not the labeled iPod wheel) - smaller, clean, brown center. */
-  .mms-zune-classic .ip-wheel.znc-pad{ width:min(38vw,132px); height:min(38vw,132px); /* token-exempt: Zune pad diameter */
-    background:radial-gradient(90% 55% at 50% -8%, var(--mms-ipod-sheen-d) 0%, var(--mms-ipod-sheen-0) 60%), radial-gradient(circle at 50% 40%, var(--mms-znc-ring), var(--mms-znc-chrome2) 100%); }
-  .mms-zune-classic .ip-zone{ color:transparent; }
-  .mms-zune-classic .ip-center.znc-center{ width:min(20vw,64px); height:min(20vw,64px); /* token-exempt: Zune pad center */
-    background:radial-gradient(circle at 50% 40%, var(--mms-znc-wheel1), var(--mms-znc-wheel2) 100%); }
-  /* v1.262 (Dean: "move the rest style and overall menu of the original Seattle into
-     the new brown Seattle Classic... maintaining the wheel and buttons"): the METRO
-     SCREEN - Seattle's type language inside the chrome bezel, on the shared screen
-     machinery (scrub/list/marquee bindings untouched; this layer is presentation).
-     Order matters vs the shared fill rules: equal specificity, later wins. */
-  .mms-zune-classic .ip-lcd-in{ background:var(--mms-black); color:var(--mms-white); }
-  .mms-zune-classic .ip-status{ text-transform:lowercase; background:var(--mms-black); border-bottom:0; }
-  .mms-zune-classic .ip-np{ font-weight:var(--fw-light); color:var(--mms-zn-dim); }
-  .mms-zune-classic .mms-playind{ color:var(--mms-zn-pink); }
-  .mms-zune-classic .ip-batt{ display:none; }
-  .mms-zune-classic .ip-cover{ border-radius:0; box-shadow:none; background:var(--mms-zn-ink); }
-  .mms-zune-classic .ip-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ip-artist{ font-size:var(--fs-xl); font-weight:var(--fw-light); color:var(--mms-zn-pink); text-transform:lowercase; }
-  .mms-zune-classic .ip-album{ font-weight:var(--fw-light); color:var(--mms-zn-dim); text-transform:lowercase; }
-  .mms-zune-classic .ip-nof{ font-weight:var(--fw-light); color:var(--mms-zn-dim); }
-  .mms-zune-classic .ip-track{ height:3px; border-radius:0; background:var(--mms-zn-ink); box-shadow:none; }
-  .mms-zune-classic .mms-fill{ background:var(--mms-zn-pink); border-radius:0; box-shadow:none; }
-  .mms-zune-classic .ip-scrub .mms-pos, .mms-zune-classic .ip-scrub .mms-rem{ color:var(--mms-zn-dim); }
-  .mms-zune-classic .ip-listview{ background:var(--mms-black); }
-  .mms-zune-classic .mms-row{ color:var(--mms-white); }
-  .mms-zune-classic .mms-row .mms-rt{ text-transform:lowercase; font-weight:var(--fw-light); }
-  .mms-zune-classic .mms-row .mms-rn, .mms-zune-classic .mms-row .mms-rd, .mms-zune-classic .mms-chev-r{ color:var(--mms-zn-dim); }
-  /* v1.263 (Dean: "should we fill in more of the screen?"): the ART-FORWARD Now
-     Playing - the Zune 30's actual view: album art dominating the top, nearly
-     edge-to-edge, meta in the thin type beneath, the progress line at the bottom.
-     The iPod's 44%-cover-beside-meta row becomes a column with the art filling. */
-  .mms-zune-classic .ip-npview{ padding:0; }
-  .mms-zune-classic .ip-npmain{ flex-direction:column; gap:var(--space-4); }
-  .mms-zune-classic .ip-cover{ width:100%; align-self:stretch; aspect-ratio:auto; flex:1; min-height:0; border-radius:0; box-shadow:none; }
-  /* v1.264 (Dean): NO img override here - the base keeps object-fit:contain, so the
-     full picture shows and the v1.244 blurred self-bleed fills the letterbox. (The
-     real Zune 30 letterboxed on plain black; the bleed is the modern upgrade, chosen.) */
-  .mms-zune-classic .ip-meta{ flex:none; padding:0 var(--space-6); }
-  .mms-zune-classic .ip-scrub{ padding:0 var(--space-6) var(--space-4); }
-  .mms-zune-classic .mms-row.is-current .mms-rt{ color:var(--mms-zn-pink); }
-  .mms-zune-classic .mms-row.is-current .mms-rn{ color:var(--mms-zn-pink); }
-  /* the Metro cursor (slim W2): the magenta bar replaces the iPod blue; listed AFTER
-     is-current so coincide keeps the v1.233 cursor-wins invariant at equal specificity. */
-  .mms-zune-classic .mms-row.is-cursor{ background:var(--mms-zn-pink); color:var(--mms-black); border-bottom-color:transparent; }
-  .mms-zune-classic .mms-row.is-cursor .mms-rt, .mms-zune-classic .mms-row.is-cursor .mms-rn, .mms-zune-classic .mms-row.is-cursor .mms-rd, .mms-zune-classic .mms-row.is-cursor .mms-chev-r{ color:var(--mms-black); }
-  /* POCKET MENUS on Seattle: ZUNE style - big lowercase hairline type on the black
-     Metro screen, the Music level a PIVOT strip (the active pivot leads, the rest trail off
-     the edge; pad left/right or a swipe moves across), the selected row lit white while the
-     rest sit dim (the Zune marks selection by light, not a bar). Palette = the Seattle
-     tokens this skin already carries. */
-  .mms-zune-classic .ip-menuview{ background:var(--mms-black); color:var(--mms-white); padding:var(--space-2) var(--space-6) 0; }
-  .mms-zune-classic .ipm-pivots{ display:flex; gap:var(--space-8); flex:none; overflow:hidden; white-space:nowrap; padding:var(--space-2) 0 var(--space-4); }
-  .mms-zune-classic .ipm-pv{ flex:none; border:0; padding:0; background:transparent; cursor:pointer; font-family:inherit; font-size:var(--fs-5xl); font-weight:var(--fw-light); line-height:var(--mms-lh-ttl); text-transform:lowercase; color:var(--mms-zn-dim); }
-  .mms-zune-classic .ipm-pv.is-on{ color:var(--mms-white); }
-  .mms-zune-classic .ipm-title{ flex:none; padding:var(--space-2) 0 var(--space-4); font-size:var(--fs-5xl); font-weight:var(--fw-light); line-height:var(--mms-lh-ttl); text-transform:lowercase; color:var(--mms-zn-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .mms-zune-classic .ipm-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-content:center; height:48px; /* token-exempt: the Zune list pitch (big type) */
-    padding:0; background:transparent; color:var(--mms-zn-dim); font-size:var(--fs-4xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ipm-lbl{ grid-column:1; }
-  .mms-zune-classic .ipm-sub{ grid-column:1; font-size:var(--fs-sm); color:var(--mms-zn-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  /* gate r1 K5 (qa W3, measured): a centred two-line row left its sub-line nearer the NEXT title
-     than its own (14 px vs 7 px). A list with sub-lines (.ipm-2l) is a two-line list: taller
-     rows (uniform - the window math needs one pitch) with title + sub packed at the TOP in tight
-     line boxes, so the space left over sits BELOW the pair - between rows, never inside one. */
-  .mms-zune-classic .ipm-list.ipm-2l .ipm-row{ height:60px; /* token-exempt: the Zune two-line pitch */ align-content:start; padding-top:var(--space-3); }
-  .mms-zune-classic .ipm-list.ipm-2l .ipm-lbl{ line-height:var(--mms-lh-ttl); }
-  .mms-zune-classic .ipm-list.ipm-2l .ipm-sub{ line-height:var(--mms-lh-ttl); padding-top:var(--space-1); }
-  .mms-zune-classic .ipm-now{ grid-column:2; grid-row:1 / span 2; padding-left:var(--space-4); }
-  .mms-zune-classic .ipm-now svg{ fill:var(--mms-zn-pink); }
-  .mms-zune-classic .ipm-row.is-current{ color:var(--mms-zn-pink); }
-  /* listed AFTER is-current: the lit cursor wins when they coincide (the v1.233 invariant) */
-  .mms-zune-classic .ipm-row.is-cursor{ background:transparent; color:var(--mms-white); }
-  .mms-zune-classic .ipm-row.is-cursor .ipm-sub{ color:var(--mms-white); }
-  .mms-zune-classic .ipm-row.is-cursor .ipm-now svg{ fill:var(--mms-zn-pink); }
-  .mms-zune-classic .ipm-root .ipm-row{ height:60px; /* token-exempt: the Zune main-menu pitch */ font-size:var(--fs-6xl); }
-  .mms-zune-classic .ipm-note{ color:var(--mms-zn-dim); padding:var(--space-6) 0; }
-  /* quick scroll on Seattle: a huge lowercase Metro letter over a dark scrim, a round badge, and
-     a big-type picker (fewer, larger cells - the Zune's own jump look) */
-  .mms-zune-classic .ipm-letter{ left:0; top:0; right:0; bottom:0; width:auto; height:auto; margin:0; border-radius:0; background:var(--mms-zn-jump-bg);
-    color:var(--mms-white); font-size:var(--fs-jump-xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ipm-badge{ background:var(--mms-zn-ink); color:var(--mms-white); font-weight:var(--fw-light); text-transform:lowercase; }
   /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
-  @media (max-width: 340px){ .mms-ipod:not(.mms-zune-classic) .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
-  .mms-zune-classic .ipm-grid{ grid-template-columns:repeat(5, minmax(0, 1fr)); grid-auto-rows:56px; /* token-exempt: big-type 44 px+ targets */ background:var(--mms-zn-jump-bg); border-top:0; }
-  .mms-zune-classic .ipm-gl{ color:var(--mms-white); font-size:var(--fs-5xl); font-weight:var(--fw-light); text-transform:lowercase; }
-  .mms-zune-classic .ipm-gl:active{ background:transparent; color:var(--mms-zn-pink); }
-  .mms-zune-classic .ipm-gl.is-off{ color:var(--mms-zn-ink); }
-  .mms-zune-classic .ipm-about-name{ padding:0 0 var(--space-4); font-size:var(--fs-5xl); font-weight:var(--fw-light); color:var(--mms-white); text-transform:lowercase; }
-  .mms-zune-classic .ipm-val{ font-size:var(--fs-md); color:var(--mms-zn-dim); text-transform:none; }
+  @media (max-width: 340px){ .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and

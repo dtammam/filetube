@@ -137,7 +137,7 @@ async function main() {
     report.listeners.on = await (async () => { await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(200); return { deviceorientation: await orientListeners(), lit: (await evalJs('window.__props()')).lit }; })();
     report.listeners.docked = await (async () => { await evalJs('window.__dock()'); await sleep(300); return { deviceorientation: await orientListeners(), state: (await evalJs('window.__props()')).state }; })();
     report.listeners.destroyed = await (async () => { await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(200); await evalJs('window.__engine.destroy()'); await sleep(100); return { deviceorientation: await orientListeners() }; })();
-    report.listeners.seattle = await (async () => { await evalJs("window.__boot('zune-classic', 'pronounced')"); await sleep(200); return { deviceorientation: await orientListeners(), lit: (await evalJs('window.__props()')).lit, state: (await evalJs('window.__props()')).state }; })();
+    report.listeners.nonPocket = await (async () => { await evalJs("window.__boot('apple', 'pronounced')"); await sleep(200); return { deviceorientation: await orientListeners(), lit: (await evalJs('window.__props()')).lit, state: (await evalJs('window.__props()')).state }; })();
     report.errors = await evalJs('window.__errors');
     fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));

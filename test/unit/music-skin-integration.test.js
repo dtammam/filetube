@@ -1860,7 +1860,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'ipod-matte', 'spotify', 'zune-classic'], 'the FULL pop-out keeps ALL skin chips incl. every Click colorway and Seattle (adversarial W1: in-pip must not mean in-tray)');
+    assert.deepStrictEqual(fullChips, ['apple', 'ipod', 'ipod-black', 'ipod-matte', 'spotify'], 'the FULL pop-out keeps ALL skin chips incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
@@ -1899,7 +1899,7 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
 
 test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - without them the tray is the full iPod crammed into the tray window', () => {
   // Measured gap: deleting the whole tray CSS block left the suite green (jsdom has no
-  // layout), and the plan CLAIMED a lock that was never written after the Nano pivot.
+  // layout), and the plan CLAIMED a lock that was never written after the Nano change.
   // Lock the load-bearing reshapes; the selectors deliberately omit the skin-base class
   // (the v1.232 first-occurrence locks - see the block's own comment).
   const fs = require('node:fs'); const path = require('node:path');
@@ -1940,10 +1940,9 @@ test('v1.300 colorways: a Click (Matte) pick keeps its MATTE body in the tray (t
   } });
 });
 
-test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
-  // zune-classic shares base 'ipod' for the wheel CSS, but the tray colorway family is
-  // the explicit iPod pair (ipod + ipod-black) - loosen the donor back to base-family and this reds.
-  await boot({ mobile: false, isMusic: true, skin: 'zune-classic', run: async (dom) => {
+test('v1.260 (v1.332 onto Nordic): a non-Click pick does NOT become the tray donor - the Nano stays a Click (base silver fallback)', async () => {
+  // the tray colorway family is the Click colorways only - a flat skin's pick falls to base silver.
+  await boot({ mobile: false, isMusic: true, skin: 'spotify', run: async (dom) => {
     dom.window.localStorage.setItem('ft-tray-mode', '1');
     const holder = { pip: makePipWindow() };
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(holder.pip) };
@@ -1951,7 +1950,7 @@ test('v1.260: a Seattle pick does NOT become the tray donor - the Nano stays a C
     const pip = holder.pip;
     assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray (populated first)');
     assert.match(pipPanelOf(pip).className, /mms-ipod\b/, 'the donor fell to base silver');
-    assert.ok(!/mms-zune-classic/.test(pipPanelOf(pip).className), 'the brown Zune body never leaks into the Nano tray');
+    assert.ok(!/mms-spotify/.test(pipPanelOf(pip).className), 'the Nordic body never leaks into the Nano tray');
   } });
 });
 
@@ -2025,7 +2024,7 @@ function artistFetch(log) {
 }
 const artistScopeLoaded = (log) => log.some((u) => /\/api\/music\?/.test(u) && /[?&]artist=NESTALGIA(&|$)/.test(u));
 
-for (const sk of ['apple', 'spotify', 'ipod', 'zune-classic']) {
+for (const sk of ['apple', 'spotify', 'ipod', 'ipod-matte']) {
   test('v1.317 (M1) in-tab ' + sk + ': tapping the artist line opens the ARTIST drill (the artist-scope fetch + the drill header); no transport proxy fires', async () => {
     const log = [];
     await boot({ mobile: true, isMusic: true, skin: sk, fetchImpl: artistFetch(log), run: async (dom, spy) => {
