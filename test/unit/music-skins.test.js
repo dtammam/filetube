@@ -20,7 +20,7 @@ const CTX = {
 };
 
 test('registry exposes the skins with render funcs (incl. the Click (Matte) colorway on the wheel chassis)', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red']);
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red', 'ipod-silver', 'ipod-encore', 'ipod-blue', 'ipod-green', 'ipod-pink', 'ipod-gold']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
@@ -38,7 +38,7 @@ test('registry exposes the skins with render funcs (incl. the Click (Matte) colo
   // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
   // company names (the IDS stay literal for CSS/storage).
   const labels = skins.IDS.map((id) => skins.skinById(id).label);
-  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)']);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)', 'Click (Silver)', 'Click (Encore)', 'Click (Blue)', 'Click (Green)', 'Click (Pink)', 'Click (Gold)']);
   for (const l of labels) {
     assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(l), 'label "' + l + '" avoids the real product/company names');
   }
@@ -274,7 +274,7 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
   // The registry the Settings picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red']);
+  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red', 'ipod-silver', 'ipod-encore', 'ipod-blue', 'ipod-green', 'ipod-pink', 'ipod-gold']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
   assert.strictEqual(skins.skinById('ipod').label, 'Click', 'cheeky label (not the real product name) for the picker');
 });

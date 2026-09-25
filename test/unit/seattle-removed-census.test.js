@@ -66,6 +66,6 @@ test('AC1: the legacy map is the retired id\'s ONLY home in the registry module,
 
 test('AC1: the Settings picker lists exactly the live skins, each with a blurb', () => {
   const skins = require('../../public/js/music-skins.js');
-  assert.deepStrictEqual(skins.SKINS.map((s) => s.label).slice(0, 6), ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)']);
+  assert.deepStrictEqual(skins.SKINS.map((s) => s.label), ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)', 'Click (Silver)', 'Click (Encore)', 'Click (Blue)', 'Click (Green)', 'Click (Pink)', 'Click (Gold)']);
   assert.ok(!skins.SKINS.some((s) => s.menus && s.menus !== 'click'), 'no second pocket-menu style survives');
 });

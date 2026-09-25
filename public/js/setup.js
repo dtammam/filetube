@@ -533,6 +533,12 @@ const MUSIC_SKIN_BLURB = {
   'ipod-black': 'Space-black brushed metal, same classic click wheel.',
   'ipod-matte': 'Matte graphite metal, top-lit, with a dark click wheel.',
   'ipod-red': 'Satin red metal, a white click wheel and a red center.',
+  'ipod-silver': 'Brushed aluminum lit from the side, with a light grey click wheel.',
+  'ipod-encore': 'Glossy black with a red click wheel and a black center.',
+  'ipod-blue': 'Anodized teal-blue, with blue lettering on the click wheel.',
+  'ipod-green': 'Anodized green, with green lettering on the click wheel.',
+  'ipod-pink': 'Anodized rose pink, with pink lettering on the click wheel.',
+  'ipod-gold': 'Warm anodized gold, a white click wheel and a gold center.',
 };
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');

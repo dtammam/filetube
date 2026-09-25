@@ -17,7 +17,7 @@
 //     byte-identical inputs). Motion is frozen (prefers-reduced-motion) and the audio paused at a
 //     fixed time, so a shot depends on the CSS alone. Then the desktop pop-out (the plain-window
 //     fallback) and the Nano tray per colorway.
-//     Env: VIEWPORTS=390x844,380x700 (default), POPOUT=0 skips the pop-out and tray,
+//     Env: VIEWPORTS=390x844,380x700 (default), POPOUT=0 skips the pop-out and tray, ONLY_POPOUT=1 shoots only them,
 //     LIGHTS=off,subtle,pronounced, CHROME=<binary>, CHROME_FLAGS=<extra flags>, STYLE_FULL=1 (store each
 //     element's full computed style instead of its hash - to see WHICH property differs).
 //
@@ -94,8 +94,9 @@ const DRIVERS = `
   window.__styles = function () {
     var p = __P(); if (!p) return {};
     var h = function (s) { var x = 2166136261; for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } return (x >>> 0).toString(16); };
-    // url()s are made origin-relative (the probe's server port is random per run)
-    var dump = function (cs) { var parts = []; for (var k = 0; k < cs.length; k++) { var n = cs[k]; if (n.slice(0, 2) === '--') continue; parts.push(n + ':' + cs.getPropertyValue(n).split(location.origin).join('')); } return parts.join(';'); };
+    // url()s are made origin-relative (the probe's server port is random per run; the pop-out
+    // window's own location is not the server's, so the loopback origin is stripped by pattern)
+    var dump = function (cs) { var parts = []; for (var k = 0; k < cs.length; k++) { var n = cs[k]; if (n.slice(0, 2) === '--') continue; parts.push(n + ':' + cs.getPropertyValue(n).replace(new RegExp('https?:/' + '/(127[.]0[.]0[.]1|localhost):[0-9]+', 'g'), '')); } return parts.join(';'); };
     var pathOf = function (el) { var s = []; while (el && el !== p.parentNode) { var i = 0, q = el; while ((q = q.previousElementSibling)) i++; s.unshift(el.tagName.toLowerCase() + ':' + i); el = el.parentElement; } return s.join('>'); };
     var out = {}; var els = [p].concat(Array.prototype.slice.call(p.querySelectorAll('*')));
     els.forEach(function (el) {
@@ -219,7 +220,7 @@ async function shoot(OUT, SKINS) {
     return ok;
   };
 
-  for (const vp of VIEWPORTS) {
+  for (const vp of (process.env.ONLY_POPOUT === '1' ? [] : VIEWPORTS)) {
     const vpTag = vp.w + 'x' + vp.h;
     await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 2, mobile: true });
     for (const skin of SKINS) {
@@ -350,19 +351,20 @@ async function compare(A, B) {
       if (a.width !== b.width || a.height !== b.height) return { size: [a.width, a.height, b.width, b.height] };
       const c = (img) => { const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height; const x = cv.getContext('2d'); x.drawImage(img, 0, 0); return x.getImageData(0, 0, img.width, img.height).data; };
       const pa = c(a); const pb = c(b); const mask = ${JSON.stringify(mask)};
-      let n = 0; let masked = 0; const k = ${JSON.stringify(m.scale || 1)};
+      let n = 0; let masked = 0; let maxd = 0; const k = ${JSON.stringify(m.scale || 1)};
       for (let i = 0; i < pa.length; i += 4) {
         if (pa[i] === pb[i] && pa[i + 1] === pb[i + 1] && pa[i + 2] === pb[i + 2] && pa[i + 3] === pb[i + 3]) continue;
+        maxd = Math.max(maxd, Math.abs(pa[i] - pb[i]), Math.abs(pa[i + 1] - pb[i + 1]), Math.abs(pa[i + 2] - pb[i + 2]));
         if (mask) { const p = i / 4; const x = p % a.width; const y = Math.floor(p / a.width);
           if (x >= mask.x * k && x < (mask.x + mask.w) * k && y >= mask.y * k && y < (mask.y + mask.h) * k) { masked++; continue; } }
         n++;
       }
-      return { n, masked };
+      return { n, masked, maxd };
     })()`);
     const ka = sa[name] || {}; const kb = sb[name] || {};
     const diffs = Object.keys(Object.assign({}, ka, kb)).filter((k) => ka[k] !== kb[k]);
     totalPx += px.n || 0; totalStyle += diffs.length;
-    console.log(`${name}: ${px.size ? 'SIZE ' + px.size.join('x') : px.n + ' px'}${px.masked ? ' (+' + px.masked + ' in the masked Brick LCD)' : ''}, ${diffs.length} style diffs${diffs.length ? ' e.g. ' + diffs.slice(0, 3).join(' | ') : ''}`);
+    console.log(`${name}: ${px.size ? 'SIZE ' + px.size.join('x') : px.n + ' px' + (px.n ? ' (max channel delta ' + px.maxd + ')' : '')}${px.masked ? ' (+' + px.masked + ' in the masked Brick LCD)' : ''}, ${diffs.length} style diffs${diffs.length ? ' e.g. ' + diffs.slice(0, 3).join(' | ') : ''}`);
     if (px.size) totalPx += 1;
   }
   for (const f of onlyB) console.log(`${f}: ONLY in after`);

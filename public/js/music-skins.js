@@ -234,6 +234,15 @@
     // v1.332 (Dean D2): the charity-red colorway - a registry entry, ONE role block in style.css and a
     // Settings blurb; every Click list (menus, Brick, lighting, the tray and its chips) derives from here.
     { id: 'ipod-red', label: 'Click (Red)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.332 (Dean D8): the iconic colorways, each a registry entry + ONE role block + a blurb - the
+    // aluminum classic, the black special edition with the red wheel (a cheeky name, never the band's),
+    // the second mini's blue, green and pink, and the gold (Dean's own photo).
+    { id: 'ipod-silver', label: 'Click (Silver)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-encore', label: 'Click (Encore)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blue', label: 'Click (Blue)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-green', label: 'Click (Green)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-pink', label: 'Click (Pink)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-gold', label: 'Click (Gold)', base: 'ipod', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
   // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the

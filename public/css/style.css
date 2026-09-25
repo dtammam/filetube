@@ -12151,6 +12151,87 @@ html[data-modern="on"] .video-uploader {
     --pk-c-center-1:#f6475d; --pk-c-center-2:#ea3348; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.2); --pk-c-lit-band2:rgba(255,255,255,.12);
     --pk-c-lits-band:rgba(255,255,255,.3); --pk-c-lits-band2:rgba(255,255,255,.17); --pk-c-lits-core:rgba(255,255,255,.45); }
+  /* Click (Silver) (D8): the 2007 aluminum classic - Commons "IPod Classic 6th Generation 120 GB -
+     front.jpg" (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
+     Satin aluminum lit from the left (#dcdcdf at the lit edge .. #747477 across), darker at the top and
+     bottom; the light grey wheel, dark grey labels (#7b7f82); an aluminum center, not the wheel's grey. */
+  .mms-ipod-silver{
+    --pk-c-body:linear-gradient(180deg, rgba(0,0,0,.2) 0%, var(--mms-ipod-clear) 10%, var(--mms-ipod-clear) 88%, rgba(0,0,0,.2) 100%),
+      linear-gradient(98deg, #dcdcdf 0%, #c4c5c7 17%, #9d9da0 44%, #838386 66%, #747477 86%, #8a8a8d 100%);
+    --pk-c-body-edge:#5a5a5d;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#7b7f82;
+    --pk-c-center-1:#a2a0a4; --pk-c-center-2:#8a898c; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.26); --pk-c-lit-band2:rgba(255,255,255,.15);
+    --pk-c-lits-band:rgba(255,255,255,.36); --pk-c-lits-band2:rgba(255,255,255,.2); --pk-c-lits-core:rgba(255,255,255,.5); }
+  /* Click (Encore) (D8, the black-and-red special edition, under a cheeky name): Commons "IPod U2.jpeg"
+     (CC BY 3.0; small and soft - hue only). Click (Black)'s body; the red wheel from the photo scaled
+     so the black body matches Click (Black)'s (x0.8: #e85a70 -> #c4505f .. #a63f4e); near-white labels;
+     a black center. */
+  .mms-ipod-encore{
+    --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      linear-gradient(158deg, #343436, #161618);
+    --pk-c-body-edge:#0a0a0b;
+    --pk-c-wheel-1:#c4505f; --pk-c-wheel-2:#a63f4e; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#efe8eb;
+    --pk-c-center-1:#2e2527; --pk-c-center-2:#161113; --pk-c-center-oy:40%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4); }
+  /* Click (Blue) (D8, the second mini): Commons "IPod mini blue front 2G.jpg" (CC BY-SA 3.0), white-
+     balanced on its light grey wheel (gain 1.21 / 1.20 / 1.23). Anodized teal-blue lit from the top
+     (#62c1df .. #1d4654), the tube's darker sides; labels the body's blue (#5ca3b1); the center is the
+     wheel's grey. */
+  .mms-ipod-blue{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%),
+      linear-gradient(180deg, #62c1df 0%, #4fb0cb 18%, #45a7c0 40%, #3e96ab 50%, #2f7a90 68%, #245a6a 85%, #1d4654 100%);
+    --pk-c-body-edge:#123140;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#5ca3b1;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36); }
+  /* Click (Green) (D8, the second mini): Commons "Green ipodmini 2ndgen.jpg" (CC BY-SA 2.0), white-
+     balanced on its wheel. Anodized green (p90 #5d8c4e .. p10 #3f703d); labels the body's green
+     (#3e9557); the center is the wheel's grey. (The first mini's green, "Green ipodmini 1stgen.jpg",
+     reads yellower - #72872f - the second one's is the reference.) */
+  .mms-ipod-green{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
+      linear-gradient(180deg, #5d8c4e 0%, #568649 25%, #4d7c44 50%, #467541 75%, #3f703d 100%);
+    --pk-c-body-edge:#2b4f29;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#3e9557;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.14); --pk-c-lit-band2:rgba(255,255,255,.08);
+    --pk-c-lits-band:rgba(255,255,255,.22); --pk-c-lits-band2:rgba(255,255,255,.12); --pk-c-lits-core:rgba(255,255,255,.34); }
+  /* Click (Pink) (D8, the second mini): the pink mini in Commons "Apple iPod 5G-nano 2G-mini 2G.jpg"
+     (CC BY 2.0), under warm light, white-balanced on its wheel (gain 0.87 / 0.85 / 1.32). Anodized rose
+     (p90 #9e5a73 .. p15 #652430); labels the body's pink (the glyph cores measure a muddier #997e6c
+     under that light); the center is the wheel's grey. */
+  .mms-ipod-pink{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
+      linear-gradient(180deg, #9e5a73 0%, #8f4c64 25%, #824153 50%, #763849 75%, #652430 100%);
+    --pk-c-body-edge:#4a1522;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#9e5a73;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36); }
+  /* Click (Gold) (D8): Dean's own photo (2026-09-25) - a gold classic with a white wheel and a GOLD
+     center (so the center is the body's gold, as on the photo, not a mini's grey). White-balanced on the
+     white wheel and exposed like Click (Red)'s white wheel. Anodized gold lit from the upper left
+     (#b98629 .. #7b540c), light grey labels (#c0c7c0), the center a brighter gold (#c08d09 .. #c28b06). */
+  .mms-ipod-gold{
+    --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
+      linear-gradient(158deg, #b98629 0%, #a8761f 38%, #a17118 55%, #8c6112 80%, #7b540c 100%);
+    --pk-c-body-edge:#5a3a06;
+    --pk-c-wheel-1:#f1f2f0; --pk-c-wheel-2:#e1e3e0; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#c0c7c0;
+    --pk-c-center-1:#c8940f; --pk-c-center-2:#b07e07; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.22); --pk-c-lit-band2:rgba(255,255,255,.13);
+    --pk-c-lits-band:rgba(255,255,255,.32); --pk-c-lits-band2:rgba(255,255,255,.18); --pk-c-lits-core:rgba(255,255,255,.46); }
   /* POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting): a fixed light in the
      room, read from the phone's tilt (or the mouse on a desktop) by pocket-lighting.js and written
      as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
