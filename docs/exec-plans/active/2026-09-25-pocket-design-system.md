@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/pocket-design-system
 anchor: spec
 status: Building
-next: build Step 1 (remove Seattle), then Steps 2-6 in order; one gate (adversary + qa) at the end, max two rounds; release v1.332.0.
+next: gate r1 (adversary + qa, fresh seats, the brief below) at the sha the Build record names; then the release steps.
 design: "Approved 2026-09-25 (Dean's intake in the v1.331 session: D1-D6 below, every answer his)"
 gate: pending
 ---
@@ -301,10 +301,91 @@ into main, tag the merge, push the tag + the release branch at the merge commit 
 CI green; `gh pr merge --merge`; `git pull --ff-only`; delete branches with `-d` (GitHub
 auto-deletes the merged head).
 
+## Build record (the builder's claims - the seats measure, never trust)
+
+One commit per step, base e45906fb (v1.331.0), branch feat/pocket-design-system:
+
+| Step | Commit | What | Bound by |
+|---|---|---|---|
+| 1 | 76c6f65b | Seattle removed; legacy map `zune-classic -> ipod` + one-time rewrite | test/unit/seattle-removed-census.test.js (AC1, comment-stripped); music-skins.test.js + integration music-pocket-menus.test.js AC2 (real prefs-sync.js against the real /api/prefs: localStorage AND the server pref converge on `ipod`) |
+| 2 | 7c3cc755 | the token system (`--pk-*` structure, `--pk-fs-*` type, `--pk-c-*` colorway roles); White/Black/Matte on one chassis | test/unit/pocket-design-system.test.js AC4/AC5 + the colorway value authority; type-scale-tokens follows the one `--pk-fs-*` hop |
+| 3 | da74fdd1 | ONE text-line rule + the census; the render probe's AC6 measurements | pocket-design-system.test.js AC6 (census + no hand re-declaration) |
+| 4 | d56f16bb | registry-derived lists (IDS, clickColorways, Brick, tray chips, Nano getter, probes) | music-skin-integration AC8 (a patched registry source with ONE fake entry reaches the tray, its chips and Brick) + the blurb census |
+| 5 | 6a00c3db | Click (Red) | the value pin + every registry-derived test |
+| 5b | 7f628969 | Silver, Encore, Blue, Green, Pink, Gold; scripts/skin-chips-probe.js | the value pins |
+| 6 | 3df9560d, 915a7f3a | Home: the sticker's first row + hold MENU (600 ms); common.js goHomeFromPlayer | test/unit/pocket-home.test.js (written red first), the real music + podcasts views, goHomeFromPlayer run from source |
+
+**Mutants (all on committed trees, /tmp sandboxes from `git archive`, `git diff --stat` non-empty):**
+AC2 drop the legacy map -> RED (2 tests); drop the one-time rewrite -> RED (2). AC8 restore the literal
+trio in the Nano getter / the chip filter / Brick -> RED each. AC4 add `.mms-ipod-black .ip-wheel{...}` ->
+RED; change one role value -> RED. AC6 drop `.ipm-val` from the text line -> RED; hand-add an ellipsis
+to `.ipm-lbl` -> RED. AC5 a raw `min(70vw,288px)` back in the wheel -> RED. AC11 (at 915a7f3a): threshold
+600 -> 50, the click suppression, the move clear, the end-arm clear, the takeover guard, the
+un-rendered-panel guard, the main-document guard, the Home row dropped -> RED each (8/8; the first
+round at 3df9560d left the move / end-arm / takeover clears unbound behind the fire-time guards -
+915a7f3a binds each arm at the arm).
+
+**AC3 (zero rendered change, Step 1 vs Step 2) - scripts/pocket-render-probe.js**, worktrees at
+76c6f65b and 7c3cc755, ONE frozen copy of the probe for both: 282 shots per tree (White / Black / Matte x
+390x844 + 380x700 x 15 levels x lighting Off / Subtle / Pronounced at one tilt, + the pop-out and the
+Nano tray per colorway). Element styles (every element's full computed style incl. ::before/::after,
+hashed): **0 differences on all 282**. Pixels: **281 of 282 shots 0 px**; one (Matte 380x700 artist level,
+Subtle) 8,469 px at a max channel delta of 2, where Step 1 vs Step 3 (a superset of Step 2's CSS) is 0 px
+on the same shot and a re-run moved a 5 px wobble to a different shot - rasterizer noise, not CSS.
+The instrument first measured 9.36 M px between two runs of ONE tree (GPU/multi-thread gradient dither,
+fonts not yet loaded, playback resuming, the random server port inside url()s); it now rasterizes on one
+CPU thread, waits for fonts, pins play(), and strips the loopback origin - two runs of one tree: 0 px /
+0 styles. Sensitivity: a ONE-level change to Click (Black)'s wheel stop (#3d3d3f -> #3d3d40) shows on every
+shot (~100 k px) with the `.ip-wheel` style diff. `scripts/css-equivalence-diff.js` was NOT usable: it
+resolves only :root / theme-scoped definitions (class-scoped roles read UNRESOLVED) and keys on selectors,
+so a refactor that deletes the colorway rules can never read EQUIVALENT - the computed-style hashes in a
+real browser are the stronger prover.
+
+**AC6 (overflow) - the same probe:** 120-character artist, album, song and chapter names, every level (Now
+Playing long, the long song list, the artist, the album, the chaptered file's chapters, the picker,
+Settings, Lighting, About, Brick) x 3 colorways x 2 viewports: **0 text elements on more than one line, 0
+spills past the LCD, no page overflow, the status bar 31.2 px on every level** - before Step 3 AND after
+(the v1.325 fixes already held these fixtures; Step 3 is the systematic guard and its census). Step 2 vs
+Step 3: 0 px beyond the same wobble shot; the style diffs are exactly the newly guarded elements
+(`.ip-nof`, `.mms-pos`, `.mms-rem`, `.mms-rd`, `.ipm-val`).
+
+**AC12 measurements - scripts/skin-chips-probe.js** (Step 3 tree, 5 skins, vs 12 skins): no existing chip
+or card changed size on any viewport (390x844, 375x667, 380x700, the 310x133 tray); the sticker's Skin
+chips go 2 -> 6 rows and the sticker menu now SCROLLS on every phone size (it did not at 390x844 before);
+the tray's Color chips go 2 -> 6 rows inside its full-window overlay (scrolls). Settings picker: see the
+final run.
+
+**Side-by-sides (sent to Dean 2026-09-25, not committed):** each reference photo beside the rendered skin
+with the sampled vs used values, plus a lighting sheet (Off / Subtle / Pronounced, every new colorway).
+
 ## Deviations
 
-(none yet)
+1. **Gold's reference is Dean's own photo** (he attached it with the build directive): a gold classic with a
+   white wheel and a GOLD center, not a first-generation mini - so the center is the body gold as on the
+   photo (the plan's "mini center = wheel grey" rule does not apply), labels light grey.
+2. **White-wheel exposure anchor.** The plan normalizes exposure so the wheel reads like Click (White)'s
+   GREY wheel. Red's and Gold's wheels are WHITE plastic, so they anchor on a near-white wheel (Red's
+   plan-given values; Gold to #eef1ef) - the grey anchor would have darkened both bodies ~12%.
+3. **Pink's labels** use the body's p90 (#9e5a73): under the photo's warm light the glyph cores measure a
+   muddy #997e6c, and the second mini prints its labels in the body color.
+4. **AC1's `pivot` census is literal**: two test names that used "pivot" in its English sense (Dean's change
+   of course in chapter-snap-resume, a comment in music-skin-integration) were reworded.
+5. **AC3's instrument** is the render probe's computed-style hashes + pixels, not css-equivalence-diff.js
+   (reason above). **Step 3's "one intended visual delta" measured 0 px** at these fixtures.
+6. **AC10 in the pop-out: left out** (decided): no Home row and no hold there - its router is the main
+   window's and a pop-out Home would move a tab you are not looking at (the Watch row's posture).
+7. **AC10's binding**: the router is not bootable in jsdom (menu-returns-to-origin's precedent), so the real
+   music and podcasts views are driven through the real sticker click with `goHomeFromPlayer` observed, and
+   `goHomeFromPlayer` itself is run from its own source (dock, re-render, navigate('/') in order).
+8. **AC11's haptic tick** reuses the wheel's own ghost tick at the press point; whether iOS ticks for a
+   finger that is not moving is a device check.
 
 ## Disclosed gaps
 
-(filled at close)
+(filled at close; pre-drafted for the seats)
+- The sticker menu scrolls on phones with 12 skin chips (Home leads it, so going home never needs the
+  scroll). A compact colorway picker would be a design change for Dean.
+- Pink is judged from the weakest photo (warm light); every colorway's final say is Dean's on the device.
+- The hold-MENU haptic on a still finger (deviation 8).
+- The render probe's rare single-shot wobble (max delta 2) on identical trees.
+

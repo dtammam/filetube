@@ -2,24 +2,6 @@
 
 ## Planned
 
-- [ ] **A design system for the pocket skins** (Dean, 2026-09-24, with an iPhone screenshot: a long
-  album title, "Ocarina of Time House Club Remix (Electronic House Remix)", wrapped the Click Black
-  LCD status bar to two lines on v1.324.0; v1.325.0 fixed that bar). Dean's read is broader: "not
-  having a proper token or just design system for the pocket skin, which at this point is getting
-  pretty advanced and is being pretty heavily relied upon". Scope a pocket-skin token set (the LCD
-  bar, row pitch, the type scale, the split pane, Seattle's large type, the controls) so every level
-  and skin reads from one source and overflow is handled systematically, not per incident.
-  **Planned for v1.332.0 with two more asks from Dean (2026-09-25):** remove Seattle entirely ("I don't
-  use it, don't want the headaches"; a device saved on Seattle becomes Click) and add a Click (Red) skin,
-  the (PRODUCT)RED look (red body, white wheel), as the design system's first one-token-block colorway.
-  Plus a fast way home from the player (Dean: "Right now I must press menu many times then the FileTube
-  icon"): a Home row at the top of the sticker menu and press-and-hold MENU, both docking the player.
-  Intake D1-D6 and the build plan: docs/exec-plans/active/2026-09-25-pocket-design-system.md.
-- [ ] **Six more Click colorways, in v1.332.0 with the design system** (Dean, 2026-09-25: "What iconic
-  color or version am I missing ..." then "I want the other skins built now too not just roadmap").
-  **Silver** (the 2007 iPod classic), **Encore** (a black body with a red wheel, the U2 Special Edition look
-  under a cheeky name) and the iPod mini's **Blue, Green, Pink and Gold**, each one token block from a real
-  reference photo, shown side by side. Gold waits on a reference photo (none on Wikimedia Commons).
 - [ ] **Rethink the auto-memory systematically** (Dean, 2026-09-24: "there's duplicative information in
   the memory file ... we're already capturing a lot of the learning somewhere else ... tired of the song
   and dance"). After the gyro lighting ships: propose a slimmer design first (what belongs in memory vs
