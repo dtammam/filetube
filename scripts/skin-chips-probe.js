@@ -7,6 +7,12 @@
 //   - the sticker menu's Skin chips on the phone skin: every .mms-sm-chip, the rows, and the menu's
 //     own fit (its height against the viewport and its scroll height - a menu that must scroll);
 //   - the desktop pop-out's Nano tray Color chips (the plain-window fallback, a real CDP click).
+// v1.333 (plan 2026-09-25-pocket-lighting-ambient, AC7): the sticker menu per sticker size (default / 2x /
+// 3x) and per inset set (none, and an iPhone's 47 top / 34 bottom via Emulation.setSafeAreaInsetsOverride):
+// page 1's chips (Speed, and Lighting where offered), whether page 1 FITS (no scroll), where its TOP lands
+// against the top inset (below 0 = rows out of reach, Dean's "can't scroll"), a REAL finger pan
+// (Input.dispatchTouchEvent) when it does scroll, and the Skin page's chips (on a tree with one). A tree
+// without the Skin page (a BEFORE run) reports its inline chips on page 1.
 // Prints ONE JSON line per (surface, viewport). Diff two runs: a pre-existing button whose w/h
 // changed is a deformation; a y change is a wrap.
 //   node scripts/skin-chips-probe.js [WxH ...]      (default 390x844 375x667 380x700 1280x800)
@@ -43,7 +49,7 @@ const GEOM = (sel, menuSel) => `(function () {
   var els = Array.prototype.slice.call(document.querySelectorAll(${JSON.stringify(sel)}));
   var rows = {}; els.forEach(function (e) { rows[Math.round(e.getBoundingClientRect().y)] = 1; });
   var m = ${menuSel ? `document.querySelector(${JSON.stringify(menuSel)})` : 'null'};
-  return { n: els.length, rows: Object.keys(rows).length, items: els.map(function (e) { return { id: e.getAttribute('data-skin-pref') || e.getAttribute('data-skin-pick'), xywh: r(e) }; }),
+  return { n: els.length, rows: Object.keys(rows).length, items: els.map(function (e) { return { id: e.getAttribute('data-skin-pref') || e.getAttribute('data-skin-pick') || e.getAttribute('data-skin-lighting') || e.getAttribute('data-skin-speed'), xywh: r(e) }; }),
     menu: m ? { xywh: r(m), scrollH: m.scrollHeight, clientH: m.clientHeight, scrolls: m.scrollHeight > m.clientHeight + 1 } : null,
     vw: innerWidth, vh: innerHeight, docOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
 })()`;
@@ -93,13 +99,45 @@ async function main() {
     await sleep(900);
     out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .theme-card'))));
     if (!mobile) continue;
-    await ev(`localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); true`);
-    await send('Page.navigate', { url: base + '/music?play=nd1' });
-    await waitFor(`!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')`, 20000);
-    await sleep(600);
-    await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
-    await sleep(400);
-    out(Object.assign({ surface: 'sticker-chips', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-nowplaying-panel .mms-sm-chip', '#music-nowplaying-panel [data-skin-sticker-menu]'))));
+    const MENU = '#music-nowplaying-panel [data-skin-sticker-menu]';
+    for (const size of ['default', '2x', '3x']) {
+      for (const insets of [{ top: 0, bottom: 0 }, { top: 47, bottom: 34 }]) {
+        let insetOk = true;
+        try { await send('Emulation.setSafeAreaInsetsOverride', { insets: Object.assign({ left: 0, right: 0 }, insets) }); } catch (_) { insetOk = !insets.top; }
+        if (!insetOk) continue; // this Chromium has no inset override: the zero-inset run stands alone
+        await ev(`localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', size: ${JSON.stringify(size)}, tilt: 'left' })); true`);
+        await send('Page.navigate', { url: base + '/music?play=nd1' });
+        await waitFor(`!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')`, 20000);
+        await sleep(600);
+        await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
+        await sleep(400);
+        const tag = { vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
+        const g1 = await ev(GEOM(MENU + ' .mms-sm-chip, ' + MENU + ' .mms-sm-opt', MENU));
+        g1.menu.top = g1.menu.xywh[1];
+        g1.menu.topInReach = g1.menu.top >= insets.top - 0.5;   // the first row is on screen, below the notch
+        g1.menu.fits = !g1.menu.scrolls;
+        g1.sections = await ev(`Array.prototype.map.call(document.querySelectorAll(${JSON.stringify(MENU + ' > .mms-sm-sec')}), function (x) { return [(x.textContent || '').trim().slice(0, 14), Math.round(x.getBoundingClientRect().height)]; })`);
+        if (g1.menu.scrolls) {
+          // a REAL finger pan up inside the menu (the lower third to the upper third): the menu must scroll
+          const b = g1.menu.xywh; const x = b[0] + b[2] / 2; const y0 = b[1] + b[3] * 0.75; const y1 = b[1] + b[3] * 0.25;
+          await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0, id: 1 }] });
+          for (let i = 1; i <= 12; i++) { await sleep(16); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + (y1 - y0) * i / 12, id: 1 }] }); }
+          await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await sleep(500);
+          g1.menu.panScrollTop = await ev(`Math.round(document.querySelector(${JSON.stringify(MENU)}).scrollTop)`);
+          g1.menu.maxScrollTop = g1.menu.scrollH - g1.menu.clientH;
+        }
+        out(Object.assign({ surface: 'sticker-page1' }, tag, g1));
+        if (await ev(`!!document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')})`)) {
+          await ev(`document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')}).click(); true`);
+          await sleep(300);
+          const g2 = await ev(GEOM(MENU + ' .mms-sm-chip', MENU));
+          g2.menu.top = g2.menu.xywh[1]; g2.menu.topInReach = g2.menu.top >= insets.top - 0.5; g2.menu.fits = !g2.menu.scrolls;
+          out(Object.assign({ surface: 'sticker-skin-page' }, tag, g2));
+        }
+      }
+    }
+    try { await send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }); } catch (_) { /* none to clear */ }
   }
   // the Nano tray's Color chips (desktop pop-out, plain-window fallback)
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });

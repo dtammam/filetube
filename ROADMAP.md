@@ -17,6 +17,34 @@
   else the static battery stays exactly as today. Limit: iPhone (every iOS browser is WebKit) and
   Firefox do not implement the Battery Status API, so Dean's iPhone would keep the static look.
 
+- [ ] **Bug: a video opened from a subscription notification seems to loop with Loop off** (Dean,
+  2026-09-25, captured mid-v1.333 and deferred: "if I tap a notification of a video for someone I'm
+  subscribed to, it appears to loop even when I'm not looped ... I wonder if there's something to some
+  start position or something odd"). Not yet reproduced. First questions: does it loop or restart only
+  on the notification entry (vs the same video opened from the grid), is a start position (`?t=` / a
+  saved resume point / the notification's deep link) replayed on `ended` or on a re-load, and is the
+  element's `loop` or the player's loop state actually on at that moment.
+
+- [ ] **Share for non-YouTube downloads** (Dean, 2026-09-25: "I want us to make it so that we can share
+  content that is not YouTube downloads. So for example, I'm downloading some things supported by YTDLP,
+  like Facebook and Reddit ... it's watching them as like a 95% first class experience ... There's no
+  share button ... a share button that basically just shares the logged URL of whatever it is that we
+  captured. I'm not really asking for anything else"). Scope: a Share button on yt-dlp downloads from
+  any site, sharing the source URL recorded at download time. Nothing else.
+
+- [ ] **Bug: tapping an iOS PWA notification opens Music but does not start the song** (Dean,
+  2026-09-25: "flakiness of me tapping an iOS PWA notification and having it launch the app, go to the
+  music page, but not actually launch the song. Unsure why that's happening. If that's a regression or
+  not"). Intermittent. First questions: regression or not (bisect the notification deep-link path), and
+  whether the play is lost on a cold launch vs a warm resume.
+
+- [ ] **Audit: TOCTOU / FOUC across the app** (Dean, 2026-09-25: "I'm noticing in um, the music player,
+  like I'll see the thumbnails all kind of loading somewhat individually. It just feels like odd. And
+  then there's like some slight page shifting. I just want an overall audit of all the potential places.
+  In some places we've solved it and it's pretty good. And here, maybe not"). An overall audit: every
+  surface where images pop in one by one, content shifts the layout, or a check-then-act races an await;
+  list where it is already solved and where it is not, then fix per surface.
+
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.
@@ -98,6 +126,42 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.333.0 - Ambient lighting for the Click skins, and a sticker menu that fits (2026-09-25)
+
+- **Ambient, a fourth lighting strength** (Dean: "a copy of the pronounced, but I just want us to work on
+  the gradient, the texture ... it just ever so slightly feels too digital"; on the first renders: "it's a
+  perfect line"). Off / Subtle / Pronounced / Ambient; Off stays the default. Ambient is Pronounced's
+  mechanics, travel, wheel, dome and glass, with only the BODY's reflection redone to how light sits on
+  anodized metal, measured on the reference photos (a (PRODUCT)RED nano keeps its hue, 353-358, from its
+  darkest to its brightest body; the anodized bodies carry ~2 levels of grain, the plastic wheels under 1):
+  the streak and room light are tinted by the colorway (two new roles in every colorway block), the streak
+  is uneven and fades toward its ends instead of a ruled line, the falloffs are eased, and a fine static
+  grain sits on the body. Dean picked it from four candidates side by side (the "satin sheen"). No filter /
+  blur / mask / backdrop / blend mode / animation; the lock now also refuses blend modes, animation,
+  mask-border / mask-box-image and box-reflect. Off / Subtle / Pronounced unchanged: 940 render-probe shots
+  per tree, every element-style difference classified (the hidden sticker menu or the new Settings >
+  Lighting row), the pixels within the probe's two-runs-of-one-tree wobble.
+- **The sticker menu fits and scrolls** (Dean: "I can't scroll in the extras menu. We have brick there ...
+  we could add lighting there as well"). Diagnosed first: the 86vh menu hangs from the sticker, so with
+  Dean's 2x sticker its TOP sat 38 px above an iPhone's screen (Home and Speed out of reach - nothing
+  scrolls above scrollTop 0; confirmed by Dean). The cap is now the space above the sticker; the Brick row
+  is gone (Brick stays at Extras > Games > Brick); four Lighting chips pick the strength through the same
+  driver call as Settings > Lighting (the tap asks iOS for motion access) and move its check on the LCD;
+  Skin opens its own page (Dean's ruling). Page 1: 793 -> 593 px; the top is on screen in all 24 measured
+  cases (390x844 / 390x797 / 380x700 / 375x667 x sticker default / 2x / 3x x no insets / iPhone insets);
+  it fits without scrolling at 390x844 (5 of 6), 390x797 (4 of 6) and 380x700 (1 of 6); every case that
+  still scrolls pans to its end with a real finger pan.
+- Gate: r1 CHANGES (adversary + qa: the sticker pick left the LCD's Lighting check behind; the Ambient
+  lit gate and the page guard unbound; the plain-window tray fallback lost its inline chips), fixed in one
+  round; APPROVED r2 @03bf1e9d (adversary, qa). Full suites on Node 22.23.1 and 24.20.0 (counts in the
+  release PR). The per-frame CPU comparison was skipped by Dean. Plan
+  docs/exec-plans/completed/2026-09-25-pocket-lighting-ambient.md.
+- Disclosed (#281): Ambient's look and cost on the iPhone are Dean's check (the rotated streak layer has
+  not run on WebKit or iOS; Ambient keeps two composited layers at 1.7x the panel where Pronounced keeps
+  one; the per-frame cost is unmeasured by Dean's call); the menu still scrolls on an iPhone SE and with a
+  3x sticker; focus after a sticker page switch; two unbound halves (the LCD refresh after the answer, the
+  mask longhands in the lock).
 
 ### v1.332.0 - The pocket design system: Seattle retired, seven new Click colors, and Home from the player (2026-09-25)
 

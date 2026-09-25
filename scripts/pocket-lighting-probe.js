@@ -11,16 +11,16 @@
 //   3. DOMDebugger.getEventListeners on `window`: `deviceorientation` listeners when Off, On, after
 //      a dock (the panel cleared with no destroy), after destroy.
 // Prints one JSON report and writes it + the PNGs to <out-dir>. Exits non-zero on a CDP failure.
-//   node scripts/pocket-lighting-probe.js <out-dir> [--frames N]
+//   node scripts/pocket-lighting-probe.js <out-dir> [--frames=N] [--strength=subtle|pronounced|ambient]
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const OUT = process.argv[2];
-if (!OUT) { console.error('usage: node scripts/pocket-lighting-probe.js <out-dir> [--frames N]'); process.exit(2); }
+if (!OUT) { console.error('usage: node scripts/pocket-lighting-probe.js <out-dir> [--frames=N] [--strength=S]'); process.exit(2); }
 const FRAMES = Number((process.argv.find((a) => a.startsWith('--frames=')) || '').split('=')[1]) || 240;
-const STRENGTH = (process.argv.find((a) => a.startsWith('--strength=')) || '').split('=')[1] || 'pronounced'; // the profile to screenshot
+const STRENGTH = (process.argv.find((a) => a.startsWith('--strength=')) || '').split('=')[1] || 'pronounced'; // the profile to screenshot AND to measure (the CPU run)
 const ROOT = path.join(__dirname, '..');
 const DEBUG_PORT = 9333;
 function findChrome() {
@@ -119,7 +119,8 @@ async function main() {
       report.skins[skin] = { booted: st, shots };
     }
     // 2. CPU: moving vs still, the same skin, the same frame count
-    await evalJs("window.__boot('ipod', 'pronounced')"); await sleep(300); await evalJs('window.__tilt(0, 3)'); await sleep(100);
+    // (v1.333: the CPU run uses --strength too, so Ambient's cost is measured against Pronounced's)
+    await evalJs(`window.__boot('ipod', ${JSON.stringify(STRENGTH)})`); await sleep(300); await evalJs('window.__tilt(0, 3)'); await sleep(100);
     const metrics = async () => { const m = await send('Performance.getMetrics'); const o = {}; for (const x of m.metrics) o[x.name] = x.value; return o; };
     const run = async (amp) => {
       const w0 = (await evalJs('window.__props()')).state.writes;
