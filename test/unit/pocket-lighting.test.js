@@ -86,7 +86,7 @@ test('the filter: the FIRST sample is neutral; a tilt to the right moves the lig
   assert.strictEqual(L.pointerLight(1, 1, { left: 0, top: 0, width: 0, height: 0 }), null, 'no layout yet (jsdom / first frame): no light');
 });
 
-test('strength: device-local, default Off, garbage normalizes to Off; music-skins and the driver agree on the three values', () => {
+test('strength: device-local, default Off, garbage normalizes to Off; music-skins and the driver agree on the four values', () => {
   const store = new Map();
   const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
   assert.strictEqual(L.readStrength(ls), 'off');
@@ -94,20 +94,23 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   assert.strictEqual(L.readStrength(ls), 'pronounced');
   assert.strictEqual(L.setStrength('loud', ls), 'off');
   assert.deepStrictEqual(L.STRENGTHS, skins.LIGHTING_STRENGTHS.map((r) => r.value), 'one list of strengths, two modules: a census');
-  assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.8, pronounced: 1 }, 'second swing: Subtle = the old Pronounced travel, Pronounced = the same + the strong profile');
+  assert.deepStrictEqual(L.STRENGTHS, ['off', 'subtle', 'pronounced', 'ambient'], 'v1.333: Ambient is the 4th strength, Off still first (the default)');
+  assert.strictEqual(L.setStrength('ambient', ls), 'ambient'); assert.strictEqual(L.readStrength(ls), 'ambient');
+  assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.8, pronounced: 1, ambient: 1 }, 'second swing: Subtle = the old Pronounced travel, Pronounced = the same + the strong profile; v1.333: Ambient = Pronounced\'s travel (D2: the mechanics unchanged)');
   assert.strictEqual(L.TILT_RANGE_DEG, 20, 'a wrist tilt reaches the edge');
   const rows = skins.menuLightingItems({ strength: 'subtle', note: '' });
-  assert.deepStrictEqual(rows.map((r) => [r.label, r.action, r.value, r.check]), [['Off', 'lighting', 'off', false], ['Subtle', 'lighting', 'subtle', true], ['Pronounced', 'lighting', 'pronounced', false]]);
-  assert.deepStrictEqual(skins.menuLightingItems(null).map((r) => r.check), [true, false, false], 'no driver state: Off is checked');
+  assert.deepStrictEqual(rows.map((r) => [r.label, r.action, r.value, r.check]), [['Off', 'lighting', 'off', false], ['Subtle', 'lighting', 'subtle', true], ['Pronounced', 'lighting', 'pronounced', false], ['Ambient', 'lighting', 'ambient', false]]);
+  assert.deepStrictEqual(skins.menuLightingItems(null).map((r) => r.check), [true, false, false, false], 'no driver state: Off is checked');
+  assert.deepStrictEqual(skins.menuLightingItems({ strength: 'ambient', note: '' }).map((r) => r.check), [false, false, false, true], 'Ambient checks Ambient');
   const noted = skins.menuLightingItems({ strength: 'pronounced', note: L.NOTE_DENIED });
-  assert.strictEqual(noted.length, 4);
-  assert.deepStrictEqual(noted[3], { label: L.NOTE_DENIED, note: true, info: true }, 'a read-only note row');
+  assert.strictEqual(noted.length, 5);
+  assert.deepStrictEqual(noted[4], { label: L.NOTE_DENIED, note: true, info: true }, 'a read-only note row');
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: true }).map((r) => r.label), ['Lighting', 'About']);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, {}).map((r) => r.label), ['About'], 'no driver: no row that leads nowhere');
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }, { hasLighting: false }).map((r) => r.label), ['About'], 'hasLighting false: no row');
   assert.strictEqual(skins.menuTitle({ type: 'lighting' }, 'click'), 'Lighting');
   assert.ok(!skins.menuIsItemLevel({ type: 'lighting' }), 'a menu level (Click keeps the cover drift there)');
-  const html = skins.renderMenuList({ style: 'click', items: noted, cursor: 1, start: 0, end: 4, rowH: 0, state: 'ready' });
+  const html = skins.renderMenuList({ style: 'click', items: noted, cursor: 1, start: 0, end: 5, rowH: 0, state: 'ready' });
   const d = new JSDOM('<div>' + html + '</div>').window.document;
   assert.strictEqual(d.querySelectorAll('.ipm-check').length, 1, 'one check');
   assert.ok(d.querySelector('.ipm-row.is-checked .ipm-lbl').textContent === 'Pronounced');
@@ -142,7 +145,7 @@ function fakeClock(win) {
   return { advance, live: () => q.size, now: () => now };
 }
 
-function boot({ skin = 'ipod', strength = 'pronounced', reduced = false, finePointer = true, permission, otherDoc = false, menu = true } = {}) {
+function boot({ skin = 'ipod', strength = 'pronounced', reduced = false, finePointer = true, permission, otherDoc = false, menu = true, sticker } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/music', pretendToBeVisual: true, runScripts: 'outside-only' });
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
@@ -179,6 +182,7 @@ function boot({ skin = 'ipod', strength = 'pronounced', reduced = false, finePoi
     onDock: () => {},
     lightingStore: ls,
     lightingNow: clock.now,
+    sticker,
     menu: menu ? {
       load: () => Promise.resolve({ items: [] }),
       onPlay: () => {}, onShuffleAll: () => {}, hasCurrent: () => true, currentId: () => 'now', dataVersion: () => 0,
@@ -322,7 +326,7 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
     pressMenu(b); tapLabel(b, 'Settings');
     assert.deepStrictEqual(lbls(b), ['Lighting', 'About']);
     tapLabel(b, 'Lighting');
-    assert.deepStrictEqual(lbls(b), ['Off', 'Subtle', 'Pronounced']);
+    assert.deepStrictEqual(lbls(b), ['Off', 'Subtle', 'Pronounced', 'Ambient']);
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
     tapLabel(b, 'Off'); await flush();
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Off', 'the check moved');
@@ -395,6 +399,126 @@ test('AC3 every teardown arm unbinds: the dock (no destroy), a hidden document, 
   } finally { b.restore(); }
 });
 
+// v1.333 (plan 2026-09-25-pocket-lighting-ambient, AC1): Ambient = Pronounced's classes plus ONE more that
+// swaps only the body's reflection layers. Both axes on a POPULATED panel: every arm that clears the light
+// clears all three classes (the v1.271 unbind class), and Pronounced never carries the Ambient class.
+test('AC1 Ambient: lit = mms-lit + mms-lit-strong + mms-lit-ambient; Pronounced never carries mms-lit-ambient; Off, a pick, the dock, a hidden document, a skin switch, the tray and destroy clear all three', async () => {
+  const b = boot({ strength: 'ambient' });
+  const cls = () => ['mms-lit', 'mms-lit-strong', 'mms-lit-ambient'].filter((c) => P(b).classList.contains(c));
+  const ALL3 = ['mms-lit', 'mms-lit-strong', 'mms-lit-ambient'];
+  try {
+    const light = () => { b.engine.paint(); tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300); assert.deepStrictEqual(cls(), ALL3, 'Ambient lights with all three classes'); assert.ok(lx(b) < -0.5, 'Pronounced\'s travel (gain 1)'); };
+    light();
+    assert.strictEqual(S(b).strength, 'ambient');
+    // through the REAL Settings > Lighting path: Pronounced drops ONLY the Ambient class, Ambient restores it
+    pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Ambient');
+    tapLabel(b, 'Pronounced'); await flush();
+    assert.deepStrictEqual(cls(), ['mms-lit', 'mms-lit-strong'], 'Pronounced: never the Ambient class');
+    tapLabel(b, 'Subtle'); await flush();
+    assert.deepStrictEqual(cls(), ['mms-lit'], 'Subtle: the base profile only');
+    tapLabel(b, 'Ambient'); await flush();
+    assert.deepStrictEqual(cls(), ALL3, 'Ambient again');
+    tapLabel(b, 'Off'); await flush();
+    assert.deepStrictEqual(cls(), [], 'Off clears all three');
+    tapLabel(b, 'Ambient'); await flush();
+    // (a) the dock, (b) a hidden document, (c) a non-Click repaint, (d) the tray - each from a LIT Ambient panel
+    light();
+    P(b).hidden = true; P(b).innerHTML = ''; b.clock.advance(40);
+    assert.deepStrictEqual(cls(), [], 'the dock clears all three');
+    P(b).hidden = false;
+    light();
+    Object.defineProperty(b.doc, 'hidden', { configurable: true, value: true });
+    b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
+    assert.deepStrictEqual(cls(), [], 'a hidden document clears all three');
+    Object.defineProperty(b.doc, 'hidden', { configurable: true, value: false });
+    b.doc.dispatchEvent(new b.win.Event('visibilitychange'));
+    assert.deepStrictEqual(cls(), ALL3, 'the return re-lights Ambient (no paint)');
+    b.state.skin = 'apple'; b.engine.paint();
+    assert.deepStrictEqual(cls(), [], 'a non-Click skin: none of the three');
+    b.state.skin = 'ipod-red';
+    light();
+    b.doc.body.classList.add('mms-tray'); b.engine.paint();
+    assert.deepStrictEqual(cls(), [], 'the tray: none of the three');
+    b.doc.body.classList.remove('mms-tray');
+    light();
+    b.engine.destroy();
+    assert.deepStrictEqual(cls(), [], 'destroy clears all three');
+    assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'and unbinds');
+  } finally { b.restore(); }
+});
+
+// v1.333 (plan 2026-09-25-pocket-lighting-ambient, AC6; Dean: "I think we could add lighting there as well"):
+// the sticker menu's Lighting chips ARE the Settings > Lighting pick - the same driver call, inside the tap.
+test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from INSIDE the tap and light the pick; never on a non-Click skin or in the tray; no Brick row; Skin is its own page', async () => {
+  let asks = 0; let answer = 'granted';
+  const permission = () => { asks += 1; return Promise.resolve(answer); };
+  const stickerCfg = () => ({ getPlayer: () => null, onSkinChange() {}, brick: { visible: () => true, onTap() {} } });
+  const b = boot({ strength: 'off', finePointer: false, permission, sticker: stickerCfg() });
+  const menuEl = () => P(b).querySelector('[data-skin-sticker-menu]');
+  const openSticker = () => { if (menuEl().hidden) tap(b, P(b).querySelector('[data-skin-sticker]')); assert.ok(!menuEl().hidden, 'the sticker menu is open'); return menuEl(); };
+  const chips = () => [...menuEl().querySelectorAll('[data-skin-lighting]')];
+  try {
+    b.dom.window.localStorage.setItem('ft-music-skin', 'ipod'); // the chips + the Skin row read the GLOBAL pick (SKINS.activeSkinId)
+    b.engine.paint();
+    let m = openSticker();
+    assert.deepStrictEqual(chips().map((c) => [c.getAttribute('data-skin-lighting'), c.textContent]), [['off', 'Off'], ['subtle', 'Subtle'], ['pronounced', 'Pronounced'], ['ambient', 'Ambient']], 'the registry\'s four strengths, in order');
+    assert.deepStrictEqual(chips().filter((c) => c.getAttribute('aria-checked') === 'true').map((c) => c.getAttribute('data-skin-lighting')), ['off'], 'the stored strength is checked');
+    assert.ok(!m.querySelector('[data-skin-brick]') && !/Brick/.test(m.textContent), 'no Brick row, even with the view\'s hook saying yes (D4)');
+    assert.strictEqual(m.querySelectorAll('[data-skin-pick]').length, 0, 'no skin chips on page 1 (D6)');
+    assert.match(m.querySelector('[data-skin-skins]').textContent, /Skin.*Click/, 'the Skin row names the active skin');
+    // the pick: the motion ask runs INSIDE the tap (user activation), the pick is stored and checked
+    tap(b, chips().find((c) => c.getAttribute('data-skin-lighting') === 'ambient'));
+    assert.strictEqual(asks, 1, 'requestPermission ran synchronously inside the chip tap');
+    assert.strictEqual(b.ls.getItem(L.KEY), 'ambient', 'stored');
+    assert.ok(!menuEl().hidden, 'the menu stays open on the pick');
+    assert.deepStrictEqual(chips().filter((c) => c.classList.contains('is-on')).map((c) => c.getAttribute('data-skin-lighting')), ['ambient'], 'the check moved');
+    await flush(); await flush();
+    tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300);
+    assert.ok(['mms-lit', 'mms-lit-strong', 'mms-lit-ambient'].every((c) => P(b).classList.contains(c)), 'the chip lit Ambient through the driver');
+    assert.ok(lx(b) < -0.5, 'and the light moves');
+    // a DENY shows the driver's note under the chips once the answer is in (the menu still on page 1)
+    answer = 'denied';
+    tap(b, chips().find((c) => c.getAttribute('data-skin-lighting') === 'pronounced'));
+    assert.strictEqual(asks, 2);
+    await flush(); await flush();
+    assert.strictEqual((menuEl().querySelector('.mms-sm-note') || {}).textContent, L.NOTE_DENIED, 'the note, as Settings > Lighting shows it');
+    // Skin page: the chips, Back to page 1; a chip there still switches skins
+    tap(b, menuEl().querySelector('[data-skin-skins]'));
+    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins');
+    assert.strictEqual(menuEl().querySelectorAll('[data-skin-pick]').length, skins.SKINS.length, 'every skin on the Skin page');
+    assert.strictEqual(chips().length, 0, 'the Skin page is only the skins');
+    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
+    assert.ok(!menuEl().getAttribute('data-sm-page') && chips().length === 4, 'Back lands on page 1');
+    // a non-Click skin: no Lighting chips (the driver cannot light it)
+    b.state.skin = 'apple'; b.engine.paint();
+    m = openSticker();
+    assert.strictEqual(chips().length, 0, 'a non-Click skin offers no Lighting chips');
+    assert.ok(m.querySelector('[data-skin-skins]'), 'but still its Skin row');
+  } finally { b.restore(); }
+  // the pop-out: offered (its Settings > Lighting row exists there, the pick is device-local) - but never in the tray
+  for (const tray of [false, true]) {
+    const cfg = Object.assign(stickerCfg(), { tray: { enabled: () => tray, onToggle() {} } });
+    const p = boot({ strength: 'subtle', otherDoc: true, sticker: cfg });
+    try {
+      if (tray) p.doc.body.classList.add('mms-tray');
+      p.engine.paint();
+      tap(p, P(p).querySelector('[data-skin-sticker]'));
+      const mm = P(p).querySelector('[data-skin-sticker-menu]');
+      assert.strictEqual(mm.querySelectorAll('[data-skin-lighting]').length, tray ? 0 : 4, (tray ? 'the tray: no' : 'the pop-out: four') + ' Lighting chips');
+      assert.strictEqual(!!mm.querySelector('[data-skin-skins]'), !tray, tray ? 'the tray keeps its inline Color chips' : 'the pop-out gets the Skin row');
+      if (tray) assert.ok(mm.querySelectorAll('[data-skin-pick]').length >= 3, 'the tray\'s Color chips');
+    } finally { p.restore(); }
+  }
+  // the plain-window pop-out fallback: body.mms-tray with NO tray hook - the tray is never lit, so no chips there either
+  const q = boot({ strength: 'subtle', otherDoc: true, sticker: stickerCfg() });
+  try {
+    q.doc.body.classList.add('mms-tray'); q.engine.paint();
+    tap(q, P(q).querySelector('[data-skin-sticker]'));
+    assert.strictEqual(P(q).querySelector('[data-skin-sticker-menu]').querySelectorAll('[data-skin-lighting]').length, 0, 'a tray body with no tray hook: no Lighting chips');
+  } finally { q.restore(); }
+});
+
 test('AC3 the PARKED dock (the probe\'s finding): with no sample in flight the frame loop is parked, so the release must be STRUCTURAL - the panel emptying or hiding unbinds within a microtask', async () => {
   const b = boot({ strength: 'pronounced' });
   try {
@@ -441,10 +565,10 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.ok(lbls(b).includes(L.NOTE_DENIED), 'denied: the note row');
     // gate r1 qa S2 / r2 adversary R8: the wheel never parks the highlight on the note row
     slowSpin(b, 4, 1);
-    assert.strictEqual(b.engine.menuState().cursor, 2, 'clamped to the last option (Pronounced), not the note');
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Pronounced');
+    assert.strictEqual(b.engine.menuState().cursor, 3, 'clamped to the last option (Ambient since v1.333), not the note');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Ambient');
     slowSpin(b, 1, -1);
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Subtle', 'the wheel still moves among the options');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Pronounced', 'the wheel still moves among the options');
     assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'the pick is kept (Dean: keep the strength + a note)');
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
     // gate r1 (adversary W3): a deny on a device with no mouse = the look stays TODAY's - not lit,
@@ -694,6 +818,26 @@ test('AC6 CSS lock: the ONE Click wheel and dome rule reads the light (unset = t
   const litRules = litRuleList.map((r) => r.sel + '{' + r.body + '}').join('\n');
   assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:filter|backdrop-filter|mask(?:-image)?)\s*:/i.test(litRules), 'no filter / backdrop / mask in any lighting rule: ' + litRules.match(/[^\n]*(?:filter|mask)[^\n]*/i));
   assert.ok(!/blur\(/i.test(litRules), 'no blur()');
+  // v1.333: no blend mode and no animation on a lit layer either (a blend mode composites against
+  // everything beneath it every frame - the same iPhone video-layer class), vendor + case spellings
+  assert.ok(!/(?:^|[^-\w])(?:-webkit-)?(?:mix-blend-mode|background-blend-mode|animation(?:-name)?)\s*:/i.test(litRules), 'no blend mode / animation in any lighting rule: ' + litRules.match(/[^\n]*(?:blend|animation)[^\n]*/i));
+  // v1.333 AMBIENT (plan 2026-09-25-pocket-lighting-ambient; Dean's pick 4, the satin sheen): three rules,
+  // all under .mms-lit-ambient, and nothing else names the class - the wheel, dome, glass and shadows stay
+  // Pronounced's (the class rides on top of .mms-lit-strong)
+  const ambSel = allRules.filter((r) => /mms-lit-ambient/.test(r.sel.replace(/\/\*[\s\S]*?\*\//g, ''))).map((r) => r.sel.replace(/\/\*[\s\S]*?\*\//g, '').trim()).sort();
+  assert.deepStrictEqual(ambSel, ['.mms-ipod.mms-lit-ambient', '.mms-ipod.mms-lit-ambient::after', '.mms-ipod.mms-lit-ambient::before'], 'Ambient swaps only the body\'s reflection layers');
+  assert.match(rule('.mms-ipod.mms-lit-ambient'), /background:var\(--mms-lita-grain\) 0 0 \/ 32px 32px repeat, var\(--pk-c-body\);/, 'the grain: a static tile over the colorway\'s own body');
+  const astreak = rule('.mms-ipod.mms-lit-ambient::before');
+  assert.match(astreak, /transform:translate3d\(calc\(var\(--lx,0\) \* 20%\), calc\(var\(--ly,0\) \* 16%\), 0\) rotate\(22deg\);/, 'Pronounced\'s travel; the rotation is the band\'s own 112deg direction');
+  assert.ok(!/var\(--l[xym]/.test(astreak.replace(/transform:[^;]*;/, '')), 'the streak itself never reads the light: its layer rasterises once and only moves');
+  assert.match(astreak, /rgba\(var\(--pk-c-lita-glow\), \.\d+\)/); assert.match(astreak, /rgba\(var\(--pk-c-lita-core\), \.\d+\)/);
+  assert.ok((astreak.match(/radial-gradient\(/g) || []).length >= 4, 'an uneven streak of several soft pieces, not one ruled line');
+  assert.ok(!/linear-gradient|255,\s*255,\s*255/.test(astreak), 'no straight band and no pure white: the colorway tints it');
+  const aroom = rule('.mms-ipod.mms-lit-ambient::after');
+  assert.match(aroom, /content:""; position:absolute; inset:-35%; z-index:-1;/); assert.match(aroom, /pointer-events:none/);
+  assert.match(aroom, /radial-gradient\(120% 80% at calc\(50% \+ var\(--lx,0\) \* 35%\) calc\(10% \+ var\(--ly,0\) \* 30%\), rgba\(var\(--pk-c-lita-glow\), /, 'Pronounced\'s room light geometry, tinted');
+  assert.match(aroom, /transform:translate3d\(calc\(var\(--lx,0\) \* 20%\), calc\(var\(--ly,0\) \* 16%\), 0\);/, 'and its travel');
+  assert.match(CSS, /\n {2}--mms-lita-grain:url\("data:image\/png;base64,[A-Za-z0-9+/=]+"\);/, 'the grain is ONE token (a data URI: no extra request, no service-worker list to join)');
   // the STRONG profile (the second swing): exists for the Click wheel and dome (one rule each), the band and the
   // glass; only under .mms-lit-strong; its layers travel inside their overhang
   for (const sel of ['.mms-ipod.mms-lit-strong .ip-wheel']) {

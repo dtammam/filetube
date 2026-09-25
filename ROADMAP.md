@@ -17,6 +17,14 @@
   else the static battery stays exactly as today. Limit: iPhone (every iOS browser is WebKit) and
   Firefox do not implement the Battery Status API, so Dean's iPhone would keep the static look.
 
+- [ ] **Bug: a video opened from a subscription notification seems to loop with Loop off** (Dean,
+  2026-09-25, captured mid-v1.333 and deferred: "if I tap a notification of a video for someone I'm
+  subscribed to, it appears to loop even when I'm not looped ... I wonder if there's something to some
+  start position or something odd"). Not yet reproduced. First questions: does it loop or restart only
+  on the notification entry (vs the same video opened from the grid), is a start position (`?t=` / a
+  saved resume point / the notification's deep link) replayed on `ended` or on a re-load, and is the
+  element's `loop` or the player's loop state actually on at that moment.
+
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.

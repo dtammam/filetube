@@ -1866,9 +1866,12 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     clickPopout(dom); await settle(); await settle();
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(pipPanelOf(full).querySelectorAll('[data-skin-pick]').length, 0, 'v1.333: page 1 carries no skin chips (Skin is its own page)');
+    pipPanelOf(full).querySelector('[data-skin-skins]').dispatchEvent(new full.MouseEvent('click', { bubbles: true })); // v1.333: the Skin page
     const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
     assert.deepStrictEqual(fullChips, require('../../public/js/music-skins.js').IDS.slice().sort(), 'the FULL pop-out keeps ALL skin chips incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
     assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
+    pipPanelOf(full).querySelector('[data-skin-extras-back]').dispatchEvent(new full.MouseEvent('click', { bubbles: true })); // back to page 1 (the Tray row)
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
     pipPanelOf(full).querySelector('[data-skin-tray]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
@@ -2598,6 +2601,7 @@ test('v1.317 gate r2 qa W1: a CHAPTERED listen video rolled into chapter two, th
       // a REPAINT while the browsed queue lacks the chapter (a skin pick from the same menu):
       // the cover's listen-marker fallback is the sibling reader of the same marker - it must
       // match the crossed chapter and serve the BASE video's thumbnail (a `::c` id is no media id).
+      menu.querySelector('[data-skin-skins]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // v1.333: the Skin page
       const pick = menu.querySelector('[data-skin-pick="spotify"]');
       assert.ok(pick, 'the skin picker row rendered');
       pick.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));

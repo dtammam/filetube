@@ -9,7 +9,7 @@
 // properties unset the calcs resolve to today's constants, so Off is byte-for-byte today's look.
 //
 // Scope (Dean's ruling, plan 2026-09-24-pocket-gyro-lighting): the Click family only (every Click
-// colorway in the registry); the engine's `isPocket` is the registry's menus === 'click'. Strength Off / Subtle / Pronounced is device-local (localStorage), default Off, chosen
+// colorway in the registry); the engine's `isPocket` is the registry's menus === 'click'. Strength Off / Subtle / Pronounced / Ambient is device-local (localStorage), default Off, chosen
 // from the pocket menu's Settings > Lighting; the strength tap is what asks iOS for motion access.
 //
 // The HARD constraint (the old ambient mode blacked out video on iPhone): this module only ever
@@ -21,12 +21,15 @@
 // dual-exported so it unit-tests via require without jsdom (the wheel-config.js pattern).
 (function () {
   var KEY = 'ft-pocket-lighting';
-  var STRENGTHS = ['off', 'subtle', 'pronounced'];
+  var STRENGTHS = ['off', 'subtle', 'pronounced', 'ambient'];
   // Second swing (Dean on the device, v1.327.0: "a little subtle ... zhuzh it up ... subtle can stay near
   // pronounced and pronounced will be the new one"): Subtle = v1.327's Pronounced travel (within 10%),
   // Pronounced = the same travel plus the STRONG CSS profile (`.mms-lit-strong`: the specular hot spot,
   // the rim arcs, the brighter band, the double glass streak); a wrist tilt of 20 deg reaches the edge.
-  var GAIN = { off: 0, subtle: 0.8, pronounced: 1 };
+  // Ambient (v1.333, Dean: "a copy of the pronounced, but ... the gradient, the texture ... more realistic"):
+  // Pronounced's travel and classes plus `.mms-lit-ambient`, which swaps ONLY the body's reflection layers
+  // (a satin sheen tinted by the colorway, and a fine grain) - the mechanics here are unchanged.
+  var GAIN = { off: 0, subtle: 0.8, pronounced: 1, ambient: 1 };
   var TILT_RANGE_DEG = 20;    // this much tilt from the neutral pose = the light at the edge (|l| = 1)
   var TILT_SIGN = -1;         // G3: tilt right -> the highlights slide LEFT (the light is fixed in the room)
   var SMOOTH_TAU_MS = 90;     // the light's easing toward its goal (sensor noise never jitters a highlight)
@@ -160,9 +163,11 @@
     function litGated() { return permissionApi() && !finePointer(); }
     function applyLit() {
       var lit = !litGated() || sessionSamples > 0;
+      var s = strength();
       try {
         panel.classList.toggle('mms-lit', lit);
-        panel.classList.toggle('mms-lit-strong', lit && strength() === 'pronounced'); // the realism profile
+        panel.classList.toggle('mms-lit-strong', lit && (s === 'pronounced' || s === 'ambient')); // the realism profile
+        panel.classList.toggle('mms-lit-ambient', lit && s === 'ambient'); // v1.333: the satin body reflection over it
       } catch (_) { /* detached */ }
     }
     function trayUp() { try { return !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; } }
@@ -182,7 +187,7 @@
     }
     function clearProps() {
       try { panel.style.removeProperty('--lx'); panel.style.removeProperty('--ly'); panel.style.removeProperty('--lm'); } catch (_) { /* detached */ }
-      try { panel.classList.remove('mms-lit'); panel.classList.remove('mms-lit-strong'); } catch (_) { /* detached */ }
+      try { panel.classList.remove('mms-lit'); panel.classList.remove('mms-lit-strong'); panel.classList.remove('mms-lit-ambient'); } catch (_) { /* detached */ }
     }
     function arm() {
       if (!on || raf != null) return;
