@@ -130,3 +130,60 @@ download / progress / trash / access rules, the browser extension.
 | D9 | **Reheat for any site.** The reheat's network pass runs for a universal item from its saved link, through the universal download lane's own guards (`isPlausibleMediaUrl`, which refuses private hosts, and `--use-extractors default,-generic`), refreshing title, date and counts (and captions where offered). The security-brief seat joins the gate (a server-side fetch of a stored URL). |
 | D10 | **Out of scope, disclosed:** real uploader photos for other sites (none offered by Reddit / Facebook; a per-site effort), Subscribe for other sites (a product call), counts: placeholders stay (Dean). One plan; the gate is adversary + qa + security-brief. |
 
+## D8 build notes
+
+Branch `feat/v1.338-d8-small-fixes` (from 46427eb0). A "download from another site" below = an item with
+`sourceExtractor` and no YouTube channel identity.
+
+- **(a) Pin without Subscribe** - public/js/watch.js:2638-2658 (`applySubscribeAndPinState`): a `pinOnly`
+  arm (no YouTube identity AND module enabled AND a non-blank `sourceExtractor`) removes / hides Subscribe
+  and the bell as before but keeps the SAME Pin element (never removed, never hidden) and falls through to
+  the existing Pin block (channelDir = the file's folder, label = the uploader). Pin, unpin and the pinned
+  sidebar are unchanged: POST `{channelDir, label}` / DELETE `/api/subscriptions/pins/:id` (id =
+  getMediaId(channelDir)), re-validated server-side by `validatePinInput` (confined under the download
+  dir, where the universal lane lands). A plain local file and a disabled module still get no Pin.
+- **(b) Stats By channel** - lib/stats.js:113 (`universalChannelGroup`), :128 (`computeBreakdownByChannel`):
+  a second groupBy pass keyed `${sourceExtractor}:${uploader}` (uploader = `channelName`, else the folder);
+  rows `{ sourceExtractor, channelName, count, ... }`, merged into the YouTube rows with groupBy's own
+  order. An item with a `channelUrl` stays YouTube-only. public/js/stats.js:129 (`channelBreakdownLabel`):
+  "uploader (Site)"; the empty message is now "No downloaded channel content yet." (it was "subscribed").
+- **(c) Duplicates** - lib/stats.js:374 (`universalSourceKey`), :400: when no YouTube id resolves, the key is
+  `${sourceExtractor}:${sourceId}`; it always holds a ':' that no YouTube id can, so it never collides.
+- **(d) Delete confirm** - public/js/common.js:12506: `isYtdlpManagedItem` counts a non-blank
+  `sourceExtractor`. Read first: both confirms end in the SAME `DELETE /api/videos/:id` (watch.js
+  `performMediaDelete`; skin-surface.js `doDelete`), and the server keys the archive + tombstone on the
+  item's own fields, not on which modal ran. The only difference is the checkbox friction. The card has
+  had no modal since v1.86.2, so the gap was the watch page and the skins' extras delete
+  (skin-surface.js:474 reads the same predicate, fixed with it).
+
+Tests (Node 22.23.1, `node --test <file>`, final lines verbatim):
+
+- test/unit/watch-init-behavioral.test.js (6 new, the REAL watch.js init; the harness gained `seedItem`):
+  `# tests 38` `# pass 38` `# fail 0`
+- test/unit/stats-aggregation.test.js (3 new): `# tests 29` `# pass 29` `# fail 0`
+- test/unit/stats-duplicates.test.js (2 new): `# tests 11` `# pass 11` `# fail 0`
+- test/unit/stats-page-formatters.test.js (1 new): `# tests 22` `# pass 22` `# fail 0`
+- test/unit/hard-delete-local-files.test.js (2 new): `# tests 28` `# pass 28` `# fail 0`
+- test/integration/stats-any-site.test.js (new; GET /api/stats, GET /api/duplicates, the RBAC axis for a
+  member restricted on one uploader's folder, and GET /api/videos/:id's shape): `# tests 4` `# pass 4` `# fail 0`
+- `npm run lint`: 0 errors (6 pre-existing common.js unused-var warnings); `npm run lint:css`: `TOTAL 0`.
+
+Mutants (each applied alone, the named test watched red, restored): watch.js `pinOnly` forced false,
+the `moduleEnabled === true` conjunct dropped, the `sourceExtractor` conjunct dropped, the confirmed-remove
+`!pinOnly` dropped (a rebuilt Pin, caught by element identity), the cached-hide `!pinOnly` dropped,
+`if (!pinOnly) return` made unconditional; lib/stats.js universal group nulled, its `channelUrl` exclusion
+dropped, the folder fallback dropped, the site dropped from the key, the universal rows dropped, the merged
+sort dropped, `universalSourceKey` unprefixed / unwired / its sourceId or sourceExtractor half-check
+dropped; public/js/stats.js label's channelUrl-first dropped, site dropped from the label; common.js signal dropped
+(red in both the pure table and the driven watch delete), made `Boolean()`, widened to `sourceId`.
+
+What the plan got wrong or left out:
+
+- The audit's "stats.js ~797" is public/js/stats.js (the renderer); the grouping is lib/stats.js:111.
+- (d) is UI friction only: no server behaviour depends on which confirm ran (above), so no data-loss path
+  changes; the scan sets `sourceExtractor` only under the yt-dlp download roots (lib/scan/orchestrator.js,
+  the `ytdlpDownloadRoots` gate), so a plain library file never gains the signal from a scan.
+- (a) Pin stays behind the yt-dlp module gate (the pins routes register only when it is enabled), as it
+  always was for YouTube items.
+- (c) residual, disclosed: two copies whose `sourceId` came from different writers (the raw captured id vs
+  the sanitized filename-bracket fallback, e.g. an id holding `/`) do not match each other.

@@ -102,6 +102,56 @@ test('computeBreakdownByChannel: groups by channelUrl, excludes items with no ch
   assert.deepEqual(result, [{ channelUrl: 'https://www.youtube.com/@a', count: 2, totalDurationSeconds: 200, totalSizeBytes: 2000 }]);
 });
 
+// v1.338 D8b (Dean: "non-YouTube things supported by YT DLP should have generally
+// first-class experiences"): a download from another site (sourceExtractor, no
+// channelUrl) joins By channel as its own site + uploader row. Fixture: two
+// uploaders on one site, one uploader name shared across two sites, a no-uploader
+// item that falls back to its folder, and a YouTube channel whose numbers must not move.
+test('v1.338 D8b computeBreakdownByChannel: downloads from other sites group by site + uploader; YouTube rows unchanged', () => {
+  const youtubeOnly = [
+    item({ id: 'y1', channelUrl: 'https://www.youtube.com/@a', duration: 10, size: 100 }),
+    item({ id: 'y2', channelUrl: 'https://www.youtube.com/@a', duration: 20, size: 200 }),
+    item({ id: 'y3', channelUrl: 'https://www.youtube.com/@a', duration: 30, size: 300 }),
+    item({ id: 'y4', channelUrl: 'https://www.youtube.com/@b', duration: 40, size: 400 }), // sorts AMONG the other sites' rows
+    item({ id: 'p1' }), // a plain library file: in no row
+  ];
+  const universal = [
+    item({ id: 'r1', sourceExtractor: 'Reddit', sourceId: 'r1', channelName: 'alice', duration: 5, size: 50 }),
+    item({ id: 'r2', sourceExtractor: 'Reddit', sourceId: 'r2', channelName: 'alice', duration: 6, size: 60 }),
+    item({ id: 'r3', sourceExtractor: 'Reddit', sourceId: 'r3', channelName: 'bob', duration: 7, size: 70 }),
+    item({ id: 'f1', sourceExtractor: 'Facebook', sourceId: 'f1', channelName: 'alice', duration: 8, size: 80 }),
+    item({ id: 't1', sourceExtractor: 'TikTok', sourceId: 't1', folderName: 'TikTok', duration: 9, size: 90 }), // no uploader captured: the folder it landed in
+  ];
+  const before = computeBreakdownByChannel(youtubeOnly);
+  const result = computeBreakdownByChannel([...youtubeOnly, ...universal]);
+  assert.deepEqual(result.filter((r) => r.channelUrl), before, 'every YouTube row is byte-identical with the other sites present');
+  assert.deepEqual(result, [
+    { channelUrl: 'https://www.youtube.com/@a', count: 3, totalDurationSeconds: 60, totalSizeBytes: 600 },
+    { sourceExtractor: 'Reddit', channelName: 'alice', count: 2, totalDurationSeconds: 11, totalSizeBytes: 110 },
+    { sourceExtractor: 'Facebook', channelName: 'alice', count: 1, totalDurationSeconds: 8, totalSizeBytes: 80 },
+    { channelUrl: 'https://www.youtube.com/@b', count: 1, totalDurationSeconds: 40, totalSizeBytes: 400 },
+    { sourceExtractor: 'Reddit', channelName: 'bob', count: 1, totalDurationSeconds: 7, totalSizeBytes: 70 },
+    { sourceExtractor: 'TikTok', channelName: 'TikTok', count: 1, totalDurationSeconds: 9, totalSizeBytes: 90 },
+  ]);
+});
+
+test('v1.338 D8b computeBreakdownByChannel: a YouTube item that also carries sourceExtractor (a proxy-host download) stays in its YouTube row only', () => {
+  const result = computeBreakdownByChannel([
+    item({ id: 'y1', channelUrl: 'https://www.youtube.com/@a', sourceExtractor: 'Youtube', sourceId: 'AAAAAAAAAAA', channelName: 'A' }),
+    item({ id: 'y2', channelUrl: 'https://www.youtube.com/@a' }),
+  ]);
+  assert.deepEqual(result, [{ channelUrl: 'https://www.youtube.com/@a', count: 2, totalDurationSeconds: 200, totalSizeBytes: 2000 }]);
+});
+
+test('v1.338 D8b computeBreakdownByChannel: a site with no uploader AND no folder, or a blank site, forms no row', () => {
+  const result = computeBreakdownByChannel([
+    item({ id: 'x1', sourceExtractor: 'Reddit', folderName: '' }),
+    item({ id: 'x2', sourceExtractor: '   ', channelName: 'alice' }),
+    item({ id: 'x3', sourceExtractor: 42, channelName: 'alice' }),
+  ]);
+  assert.deepEqual(result, []);
+});
+
 // ---- computeBreakdownByType -------------------------------------------------
 
 test('computeBreakdownByType: separate video/audio buckets with independent duration/size totals', () => {

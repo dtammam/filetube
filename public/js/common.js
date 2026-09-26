@@ -12478,10 +12478,11 @@ function showTranscriptModal(opts) {
 
 // Pure, fail-safe (AC45/AC50/AC51 -- destructive-action two-reviewer gate).
 // Reuses the v1.20 FR-2 signal (never a new, divergent detection mechanism):
-// `true` ONLY when `item.channelUrl`/`channelId`/`channelName` is a
-// non-empty, non-whitespace string -- server.js only ever sets these three
-// fields for a yt-dlp-managed download (see `db.metadata[id]`, spread via
-// `...item` on both `GET /api/videos` and `GET /api/videos/:id`). ANY
+// `true` ONLY when `item.channelUrl`/`channelId`/`channelName` (v1.338: or
+// `sourceExtractor`, below) is a non-empty, non-whitespace string -- the
+// server only ever sets these fields for a yt-dlp-managed download (see
+// `db.metadata[id]`, spread via `...item` on both `GET /api/videos` and
+// `GET /api/videos/:id`). ANY
 // absence/ambiguity -- a plain local file (every pre-v1.20 download has
 // none of these fields), a malformed/missing `item`, `null`/`undefined`
 // fields, or empty/whitespace-only strings -- resolves to `false`, meaning
@@ -12490,10 +12491,19 @@ function showTranscriptModal(opts) {
 // can turn a `false` into a `true` on ambiguous input, so it can only ever
 // ADD friction relative to today, never remove it. Never throws. Exported
 // for node:test.
+// v1.338 D8d (Dean: "non-YouTube things supported by YT DLP should have
+// generally first-class experiences"): `sourceExtractor` is a fourth signal. A
+// download from another site carries no channelUrl/channelId, and when the
+// site reported no uploader it had no channelName either, so it got the
+// local-file modal. The scan sets `sourceExtractor` only on a file under the
+// yt-dlp download root (lib/scan/orchestrator.js, the `ytdlpDownloadRoots`
+// gate), and the delete archives + tombstones it by (site, id). Both flows
+// still send the same DELETE /api/videos/:id.
 function isYtdlpManagedItem(item) {
   if (!item || typeof item !== 'object') return false;
   const hasSignal = (v) => typeof v === 'string' && v.trim() !== '';
-  return hasSignal(item.channelUrl) || hasSignal(item.channelId) || hasSignal(item.channelName);
+  return hasSignal(item.channelUrl) || hasSignal(item.channelId) || hasSignal(item.channelName)
+    || hasSignal(item.sourceExtractor);
 }
 
 // Pure decision helper mirroring the predicate above into the two-word
