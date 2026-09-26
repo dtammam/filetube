@@ -243,6 +243,27 @@
     { id: 'ipod-green', label: 'Click (Green)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-pink', label: 'Click (Pink)', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-gold', label: 'Click (Gold)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.335 (Dean: "7 more click skins. Additional iconic ones" - he picked all 13 of the researched pool):
+    // the first minis (silver, blue, green, pink), the 2004 white, the 2007 black classic, and the Nano colors
+    // (re-decided D4: the second nano's green, blue and pink, the third's pink, the fourth's purple and yellow).
+    // Each is a registry entry + ONE role block + a blurb, like v1.332's.
+    { id: 'ipod-frost', label: 'Click (Frost)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-sky', label: 'Click (Sky)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-olive', label: 'Click (Olive)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blush', label: 'Click (Blush)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-2004', label: 'Click (2004)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-charcoal', label: 'Click (Charcoal)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-violet', label: 'Click (Violet)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-yellow', label: 'Click (Yellow)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-lime', label: 'Click (Lime)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-cobalt', label: 'Click (Cobalt)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-magenta', label: 'Click (Magenta)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-raspberry', label: 'Click (Raspberry)', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    // v1.335 (Dean: "one special Original skin which includes the entire vibe of the first"): the 2001
+    // original. Its colors are ONE role block like any colorway; `look` names the structural LOOK the
+    // engine adds as ONE panel class (mms-look-original) - the button ring, the monochrome screen, the
+    // bitmap face, the wheel that turns. The markup is renderIpod's; the look is CSS keyed on that class.
+    { id: 'ipod-original', label: 'Click (Original)', base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
   // v1.332 (the INERT SIBLING class): every list of skins is DERIVED from the registry above - the
@@ -294,6 +315,13 @@
     return normalizeSkinId(id);
   }
   function skinById(id) { return BY_ID[normalizeSkinId(id)]; }
+  // v1.335 gate r1 W1 (qa + adversary): the ONE builder of the full-screen skin panel's classes - the
+  // engine's paint AND music.js's launch cover (a ?play= open) call it, so a skin's base and LOOK (the
+  // Original's structure class) can never be on one writer and missing from the other.
+  function panelClass(id) {
+    var s = skinById(id) || {};
+    return 'music-nowplaying-panel mms mms-full mms-' + id + (s.base ? ' mms-' + s.base : '') + (s.look ? ' mms-look-' + s.look : '');
+  }
 
   // The GATE: the mobile-music skin is active on a mobile viewport AND an audio item
   // the skin can drive - a MUSIC item (meta.isMusic) or, since v1.246, a PODCAST episode
@@ -698,7 +726,7 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, clickColorways: clickColorways, isClickColorway: isClickColorway,
+    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
     // the pocket menus (the pure half - see the block above).

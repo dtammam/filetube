@@ -3256,5 +3256,11 @@
     "date": "2026-09-25",
     "title": "The motion prompt comes when the player opens, the sticker catches the light, and a tap to play when a song cannot start",
     "intent": "On the Click skins with lighting on, the iPhone's motion prompt now appears on the tap that opens the player, not on the next tap. The corner sticker picks up the lighting too: a soft gloss toward the light and a small shadow away from it, following the sticker's own shape. When a notification opens a song the iPhone will not start on its own, the player shows a Tap to play button that starts it."
+  },
+  {
+    "version": "1.335.0",
+    "date": "2026-09-26",
+    "title": "Twelve more Click colorways, and the Original",
+    "intent": "Twelve new Click colors, each matched to a photo of the real thing: the first minis in silver, sky, olive and blush, the 2004 white, the 2007 charcoal classic, and six vivid colors from the nano years (violet, yellow, lime, cobalt, magenta and raspberry). Click (Original) brings back the very first one: the ring of four buttons around a wheel that turns under your thumb, and a grey-green screen with chunky pixel lettering on every menu."
   }
 ]

@@ -413,7 +413,7 @@ test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediate
   const h = /function mountEarlyCover\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(h, 'mountEarlyCover exists');
   assert.match(h[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
-  assert.match(h[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = 'music-nowplaying-panel mms mms-full mms-'[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately');
+  assert.match(h[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = SKINS\.panelClass\(_sid\);[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately (v1.335 gate r1 W1: the registry\'s ONE class builder)');
   // v1.301 (Dean): the cover paints the skin's DEVICE CHROME (renderFull with the no-current
   // ctx) as the launch frame, not a bare empty body that read as a jarring grey slab.
   assert.match(h[1], /SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)/, 'the cover paints the skin device chrome, not an empty slab');
@@ -449,6 +449,20 @@ test('v1.244 (adversarial CRITICAL): the ?play cover SURVIVES init\'s synchronou
       // these and reds the test.
       assert.ok(p.querySelector('.ip-wheel'), 'the launch cover shows the click wheel (device chrome), not an empty slab');
       assert.ok(p.querySelector('[data-skin-play]'), 'the launch cover shows the transport while the track loads');
+    },
+  });
+});
+
+test('v1.335 gate r1 W1: a ?play launch into the Original shows the ORIGINAL at once (its look class on the cover), not Click (White)', async () => {
+  const pending = new Promise(() => {}); // the track never loads - inspect the launch frame itself
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod-original', query: '?play=t1',
+    playerOverride: { currentId: null, getState: () => 'docked', getCurrentMeta: () => null, expand() {}, setTrackNav() {}, load() {}, dock() {} },
+    fetchImpl: () => Promise.resolve({ ok: true, json: () => pending }),
+    runSync: async (dom) => {
+      const p = dom.window.document.getElementById('music-nowplaying-panel');
+      assert.strictEqual(p.className, 'music-nowplaying-panel mms mms-full mms-ipod-original mms-ipod mms-look-original', 'the launch cover wears the Original look from the first frame');
+      assert.ok(p.querySelector('.ip-wheel'), 'with its device chrome');
     },
   });
 });

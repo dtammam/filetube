@@ -3983,8 +3983,9 @@ if (typeof module !== 'undefined' && module.exports) {
         straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
         document.body.classList.add('mms-on');
         var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
-        var _base = (SKINS.skinById && (SKINS.skinById(_sid) || {}).base) || '';
-        nowPlayingPanel.className = 'music-nowplaying-panel mms mms-full mms-' + _sid + (_base ? ' mms-' + _base : '');
+        // v1.335 gate r1 W1: the registry's ONE class builder (the skin's base and its look - the
+        // Original's launch frame is the Original, not Click (White)'s screen)
+        nowPlayingPanel.className = SKINS.panelClass(_sid);
         // v1.301 (Dean, "the screen that launches before it loads"): paint the skin's DEVICE
         // CHROME (the wheel + an empty LCD / the player transport) as the launch frame rather
         // than leaving the cover empty. The bare .mms-<skin> body alone read as a jarring grey

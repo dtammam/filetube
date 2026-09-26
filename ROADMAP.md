@@ -170,6 +170,36 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.335.0 - Twelve more Click colorways, and the Original (2026-09-26)
+
+- **Twelve more Click colorways** (Dean: "Can we do 7 more click skins. Additional iconic ones."). Researched
+  first: 61 Wikimedia Commons references screened, 13 candidates sampled (balanced on each wheel, exposure-
+  normalized) and rendered by the real engine beside their photos; outside the Nano only four were clearly new
+  (body dE 16-27 against the nearest built skin; the rest 2.6-4.6), so the v1.332 "Nano rainbow declined" was
+  re-asked with that finding - Dean picked all 13 and confirmed all 13. Built: Frost (the silver mini), Sky,
+  Olive, Blush (the first minis), 2004 (the fourth-generation white), Charcoal (the 2007 black classic), Violet,
+  Yellow (the fourth nano), Lime, Cobalt, Magenta (the second nano), Raspberry (the third nano). Each is a
+  registry entry, ONE role block and a Settings blurb; menus, Brick, lighting, the sticker and tray chips derive
+  from the registry. Orange left out (its only photo reads as the yellow); no gold mini photo exists.
+- **Click (Original)** (Dean: "one special Original skin which includes the entire vibe of the first"; his picks:
+  all four parts, replacing the plain 2001 recolor, same release). A registry LOOK makes ONE panel class the
+  structure keys on: the ring of four buttons around a separate scroll wheel ("menu" in lowercase); a grey-green
+  monochrome screen on every level (Now Playing, the queue, each menu, Settings, About, the A-Z picker, Brick's
+  backdrop, the pop-out, the tray), measured from a lit 1G screen; Jersey 10 (SIL OFL 1.1, 12.5 KB, bundled, only
+  the Original downloads it) scaled by `font-size-adjust`; the wheel turns under the thumb (faint rim ticks show
+  it; the real wheel is smooth - disclosed; still under reduced motion). To keep the palette tokens at one value
+  each, every rule inside the LCD glass now reads a SCREEN role (`--pk-s-*`, each exactly its token), which the
+  Original re-points inside its glass. Dean judged the side-by-side: "Ship it."
+- **Unchanged for the existing skins, measured:** pocket-render-probe base vs branch, the 10 Click skins x 4
+  lights x every level + pop-out + tray: 1240 shots, 0 px on every Off shot; 130 style diffs = the 13 new tray
+  Color chips x 10; 11 lit shots at max delta 1-2 reproduce base-vs-base (noise). skin-chips-probe: no existing
+  chip or card changed size (41 surfaces).
+- **Gate** adversary + qa, APPROVED r2 @a787bc27. r1 (both seats): the `?play=` launch cover built the panel
+  classes itself and missed the look (1.8 s of Click White) - now ONE builder, `panelClass`; the screen census had
+  blind spots (the glass itself, a var() fallback, other ancestors) - closed, plus a derived check that every
+  button in the glass inherits the face (it found the artist line). Disclosed: #283 (the pickers grow to 25 and
+  the Skin page scrolls on 16 of 18 phones; Brick's ink; the ticks; older WebKit without size-adjust).
+
 ### v1.334.0 - The motion prompt comes when the player opens, the sticker catches the light, and Tap to play (2026-09-25)
 
 - **The motion prompt on the tap that opens the Click player** (Dean: "if I open up the music player on

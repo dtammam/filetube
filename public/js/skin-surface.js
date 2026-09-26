@@ -1375,6 +1375,15 @@
     var wheelCursorRow = -1;           // current list position the cursor sits on (-1 = list closed)
     var wheelSuppressClick = false;    // swallow the synthetic click a spin-ending pointerup fires
     var wheelSpin = null;              // the live gesture handle (one at a time)
+    // v1.335 (the Original's "wheel that turns"): the wheel's accumulated turn in degrees, written as
+    // --ip-turn on the WHEEL element only while the skin has a LOOK (gate r1 qa S3: on the wheel, not the
+    // panel, so a turn restyles the wheel, not a 200-row queue). Every paint renders a fresh wheel, so no
+    // other skin can ever carry it (qa S1); paint re-applies it to the Original's new wheel.
+    var wheelTurn = 0;
+    function skinLook() {
+      var e = (typeof SKINS.skinById === 'function' && SKINS.skinById(getSkinId())) || {};
+      return (typeof e.look === 'string' && e.look) || '';
+    }
     var bound = false;
 
     function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
@@ -1951,8 +1960,11 @@
       paintPending = false;
       releaseWheelTakeover();
       var id = getSkinId();
-      var base = (typeof SKINS.skinById === 'function' && (SKINS.skinById(id) || {}).base) || '';
-      panel.className = 'music-nowplaying-panel mms mms-full mms-' + id + (base ? ' mms-' + base : '');
+      // v1.335: the classes come from the registry's ONE builder (a skin's base, and its LOOK - the
+      // Original's structure class; music.js's launch cover calls the same builder, gate r1 W1).
+      panel.className = SKINS.panelClass(id);
+      // a skin without a look starts the wheel at rest (the turn itself lives on the wheel, below)
+      if (!skinLook()) wheelTurn = 0;
       // v1.271: no longer the normal heal (the guard at the top of paint() ends a stale spin
       // properly, with its timers). This is the BACKSTOP for an endWheel that throws inside
       // that try/catch - a repaint must never leave a live spin behind.
@@ -1964,6 +1976,7 @@
       var ctx = getCtx() || {};
       panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false }));
       panel.hidden = false;
+      if (wheelTurn) { var tw = panel.querySelector('.ip-wheel'); if (tw) tw.style.setProperty('--ip-turn', wheelTurn.toFixed(1) + 'deg'); } // the Original keeps its turn across a repaint
       // Adversarial gate W1 (v1.250): shimmerArt lives on the MAIN window - a pop-out is a
       // blank scriptless window, so win.FileTube is undefined there and the art-shimmer would
       // never clear (a permanent sweep on a slow/404 cover). shimmerArt works cross-document
@@ -2491,6 +2504,11 @@
         st.accum += d;
         var lettered = !!(st.menu && pocket && !wheelTakeover && pocket.inLetterMode());
         hapticOnMove(st, ev, Math.abs(d), d, lettered); // v1.256: ticks in BOTH modes (cursor + scrub); v1.303 signed d for the sweep engine; quick scroll: per letter in letter mode
+        // v1.335: the Original's wheel turns under the thumb - every rotation, Brick's included
+        if (skinLook()) {
+          wheelTurn = (wheelTurn + d) % 360;
+          try { st.wheel.style.setProperty('--ip-turn', wheelTurn.toFixed(1) + 'deg'); } catch (_) { /* detached */ }
+        }
         // v1.270: ONE generic WHEEL TAKEOVER, deliberately not game-aware. While set it
         // consumes rotation (the haptic above already fired, which is the point - a
         // takeover gets the wheel AND its ticks for free), and MENU/Select route to it

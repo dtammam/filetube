@@ -198,6 +198,147 @@ const COLORWAYS = {
     '--pk-c-lits-band': 'rgba(255,255,255,.32)', '--pk-c-lits-band2': 'rgba(255,255,255,.18)', '--pk-c-lits-core': 'rgba(255,255,255,.46)',
     '--pk-c-lita-glow': '255,210,125', '--pk-c-lita-core': '255,238,196',
   },
+  // v1.335: the twelve more colorways, each sampled from its reference photo (the plan's Research table cites every value)
+  'ipod-frost': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.22) 100%), linear-gradient(180deg, #cfd0d4 0%, #c3c5c9 20%, #b2b4b9 45%, #9fa2a8 70%, #8a8b90 100%)',
+    '--pk-c-body-edge': '#6c6d72',
+    '--pk-c-wheel-1': '#d3d3d2', '--pk-c-wheel-2': '#c4c4c2', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#9b9ba2',
+    '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.24)', '--pk-c-lit-band2': 'rgba(255,255,255,.14)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.34)', '--pk-c-lits-band2': 'rgba(255,255,255,.19)', '--pk-c-lits-core': 'rgba(255,255,255,.48)',
+    '--pk-c-lita-glow': '240,242,246', '--pk-c-lita-core': '255,255,255',
+  },
+  'ipod-sky': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%), linear-gradient(180deg, #a6dbea 0%, #98cfe0 25%, #88bfd0 50%, #77aebf 75%, #6397a8 100%)',
+    '--pk-c-body-edge': '#3f6e7c',
+    '--pk-c-wheel-1': '#d3d3d2', '--pk-c-wheel-2': '#c4c4c2', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#86898c',
+    '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '170,225,240', '--pk-c-lita-core': '215,242,250',
+  },
+  'ipod-olive': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%), linear-gradient(180deg, #8ca24a 0%, #81963f 25%, #768a36 50%, #65782a 75%, #4d5c16 100%)',
+    '--pk-c-body-edge': '#36420b',
+    '--pk-c-wheel-1': '#d3d3d2', '--pk-c-wheel-2': '#c4c4c2', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#8b938d',
+    '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '175,200,110', '--pk-c-lita-core': '215,230,170',
+  },
+  'ipod-blush': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%), linear-gradient(180deg, #d6a2ab 0%, #c5909b 25%, #b0808b 50%, #a27280 75%, #8a5d6c 100%)',
+    '--pk-c-body-edge': '#6a4251',
+    '--pk-c-wheel-1': '#d3d3d2', '--pk-c-wheel-2': '#c4c4c2', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#969493',
+    '--pk-c-center-1': '#d3d3d2', '--pk-c-center-2': '#c4c4c2', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '235,170,185', '--pk-c-lita-core': '248,210,220',
+  },
+  'ipod-2004': {
+    '--pk-c-body': 'linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%), radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%), linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%), linear-gradient(158deg, #ffffff, #eeeef0)',
+    '--pk-c-body-edge': '#c8c8cc',
+    '--pk-c-wheel-1': '#cfd0d6', '--pk-c-wheel-2': '#bdbec4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#efeeee',
+    '--pk-c-center-1': '#ffffff', '--pk-c-center-2': '#eeeef0', '--pk-c-center-oy': '40%',
+    '--pk-c-lit-band': 'var(--mms-lit-band)', '--pk-c-lit-band2': 'var(--mms-lit-band2)',
+    '--pk-c-lits-band': 'var(--mms-lits-band)', '--pk-c-lits-band2': 'var(--mms-lits-band2)', '--pk-c-lits-core': 'var(--mms-lits-core)',
+    '--pk-c-lita-glow': '255,255,255', '--pk-c-lita-core': '255,255,255',
+  },
+  'ipod-charcoal': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.2) 0, var(--mms-ipod-sheen-0) 2%), linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%), linear-gradient(180deg, #666668 0%, #5a5a5c 25%, #505052 50%, #414143 75%, #2e2e2f 100%)',
+    '--pk-c-body-edge': '#161617',
+    '--pk-c-wheel-1': '#343434', '--pk-c-wheel-2': '#262626', '--pk-c-wheel-sheen': 'rgba(255,255,255,.3)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#e4e4e6',
+    '--pk-c-center-1': '#525254', '--pk-c-center-2': '#404042', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.1)', '--pk-c-lit-band2': 'rgba(255,255,255,.06)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.16)', '--pk-c-lits-band2': 'rgba(255,255,255,.09)', '--pk-c-lits-core': 'rgba(255,255,255,.24)',
+    '--pk-c-lita-glow': '140,142,148', '--pk-c-lita-core': '180,182,188',
+  },
+  'ipod-violet': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%), linear-gradient(180deg, #8c70ea 0%, #7e63e0 30%, #7057d2 60%, #6049bc 85%, #503ca4 100%)',
+    '--pk-c-body-edge': '#33256e',
+    '--pk-c-wheel-1': '#f3f4f3', '--pk-c-wheel-2': '#e3e5e4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#b0b3b8',
+    '--pk-c-center-1': '#7a60dc', '--pk-c-center-2': '#6049bc', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '150,120,240', '--pk-c-lita-core': '210,195,250',
+  },
+  'ipod-yellow': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.2) 100%), linear-gradient(180deg, #f2e852 0%, #ece23c 30%, #e2d632 60%, #d2c42a 85%, #bcad22 100%)',
+    '--pk-c-body-edge': '#7a6e10',
+    '--pk-c-wheel-1': '#f3f4f3', '--pk-c-wheel-2': '#e3e5e4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#a9acae',
+    '--pk-c-center-1': '#eadf3a', '--pk-c-center-2': '#d4c62c', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '245,230,90', '--pk-c-lita-core': '252,245,180',
+  },
+  'ipod-lime': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.22) 100%), linear-gradient(180deg, #c6e878 0%, #bddf70 30%, #b2d467 60%, #a2c35a 85%, #8fae4b 100%)',
+    '--pk-c-body-edge': '#5f7a2a',
+    '--pk-c-wheel-1': '#f3f4f3', '--pk-c-wheel-2': '#e3e5e4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#a9b2b8',
+    '--pk-c-center-1': '#b4d468', '--pk-c-center-2': '#a2c25a', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '190,230,110', '--pk-c-lita-core': '225,245,185',
+  },
+  'ipod-cobalt': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%), linear-gradient(180deg, #1a86dc 0%, #0e70c6 25%, #0862b4 50%, #0556a4 75%, #034890 100%)',
+    '--pk-c-body-edge': '#02325f',
+    '--pk-c-wheel-1': '#f3f4f3', '--pk-c-wheel-2': '#e3e5e4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#9a9fa0',
+    '--pk-c-center-1': '#1266bc', '--pk-c-center-2': '#044e9f', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '60,150,240', '--pk-c-lita-core': '170,210,250',
+  },
+  'ipod-magenta': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%), linear-gradient(180deg, #d8309a 0%, #cc1f8a 30%, #c21780 60%, #b01272 85%, #980d62 100%)',
+    '--pk-c-body-edge': '#650842',
+    '--pk-c-wheel-1': '#f3f4f3', '--pk-c-wheel-2': '#e3e5e4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#b0b3b3',
+    '--pk-c-center-1': '#cc1d88', '--pk-c-center-2': '#b21274', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '235,90,175', '--pk-c-lita-core': '250,185,225',
+  },
+  'ipod-raspberry': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%), linear-gradient(180deg, #d8416f 0%, #c93563 25%, #b82a55 50%, #a02246 75%, #861b39 100%)',
+    '--pk-c-body-edge': '#5a1024',
+    '--pk-c-wheel-1': '#f3f4f3', '--pk-c-wheel-2': '#e3e5e4', '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)', '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#b6b5b7',
+    '--pk-c-center-1': '#d23870', '--pk-c-center-2': '#b82a5a', '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)', '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)', '--pk-c-lits-band2': 'rgba(255,255,255,.13)', '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '235,90,130', '--pk-c-lita-core': '250,180,200',
+  },
+  // v1.335 (D9-D12): the Original's COLORS (its structure is the look section; pocket-original-look.test.js)
+  'ipod-original': {
+    '--pk-c-body': 'linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%), radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%), linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%), linear-gradient(158deg, #fafafa, #e4e4e4)',
+    '--pk-c-body-edge': '#c4c4c4',
+    '--pk-c-wheel-1': '#f6f6f6',
+    '--pk-c-wheel-2': '#e6e6e6',
+    '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)',
+    '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#a4a4a4',
+    '--pk-c-center-1': '#fdfdfd',
+    '--pk-c-center-2': '#ececec',
+    '--pk-c-center-oy': '40%',
+    '--pk-c-lit-band': 'var(--mms-lit-band)',
+    '--pk-c-lit-band2': 'var(--mms-lit-band2)',
+    '--pk-c-lits-band': 'var(--mms-lits-band)',
+    '--pk-c-lits-band2': 'var(--mms-lits-band2)',
+    '--pk-c-lits-core': 'var(--mms-lits-core)',
+    '--pk-c-lita-glow': '255,255,255',
+    '--pk-c-lita-core': '255,255,255',
+  },
 };
 
 test('the colorway VALUES: every role of every colorway, byte-exact (the palettes\' value authority)', () => {
@@ -260,8 +401,23 @@ test('AC5: every font-size in the pocket rules reads a pocket TYPE role (--pk-fs
 });
 
 test('AC5: the structure + type tokens are defined ONCE, on the chassis (.mms-ipod), and every one is read', () => {
-  const defs = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-(?!c-)/.test(p)));
+  // v1.335 (the Original look, plan 2026-09-25-click-colorways-seven D12): the look's OWN tokens (--pk-o-*: its
+  // LCD, ink, ring and disc) are a second family, defined once on the look block; it never redefines a chassis
+  // token (the intent of this lock - the structure + type sizes have ONE authority) and the chassis never
+  // holds a look token.
+  // The SCREEN roles (--pk-s-*) live on the chassis too, each exactly its palette token (so every skin paints
+  // the shared screen); the ONE place they are re-pointed is the Original's glass (below).
+  const defs = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-(?!c-|o-|s-)/.test(p)));
   assert.deepStrictEqual(defs.map((r) => r.sel), ['.mms-ipod'], 'one chassis rule holds the structure + type tokens');
+  const scr = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-s-/.test(p)));
+  assert.deepStrictEqual(scr.map((r) => r.sel), ['.mms-ipod', '.mms-look-original .ip-lcd-in'], 'the screen roles: defined on the chassis, re-pointed only in the Original\'s glass');
+  assert.strictEqual(scr[0], defs[0], 'the screen roles sit in the chassis structure block');
+  for (const [p, v] of decls(defs[0].body).filter(([q]) => /^--pk-s-/.test(q))) assert.match(v, /^var\(--mms-[a-z0-9-]+\)$/, p + ' is exactly a palette token on the chassis');
+  const lookDefs = ALL.filter((r) => decls(r.body).some(([p]) => /^--pk-o-/.test(p)));
+  assert.deepStrictEqual(lookDefs.map((r) => r.sel), ['.mms-look-original'], 'one look rule holds the look tokens');
+  assert.deepStrictEqual(decls(lookDefs[0].body).map(([p]) => p).filter((p) => /^--pk-(?!o-)/.test(p)), [], 'the look block redefines no chassis, screen or role token');
+  assert.deepStrictEqual(decls(scr[1].body).map(([p]) => p).filter((p) => /^--pk-(?!s-)/.test(p)), [], 'the glass re-points only screen roles');
+  assert.deepStrictEqual(decls(defs[0].body).map(([p]) => p).filter((p) => /^--pk-o-/.test(p)), [], 'the chassis holds no look token');
   const names = decls(defs[0].body).map(([p]) => p).filter((p) => p.startsWith('--pk-'));
   assert.strictEqual(new Set(names).size, names.length, 'no token defined twice');
   for (const n of names) assert.ok(new RegExp('var\\(' + n + '\\)').test(CSS), n + ' is read somewhere');
@@ -294,6 +450,63 @@ function pocketLevels() {
   out.push(v([{ label: LONG }], { jump: { letter: 'A', overlay: true, badge: true, grid: SK.menuLetterTargets(runs) } }));
   return out;
 }
+// v1.335 (plan 2026-09-25-click-colorways-seven, the Original's screen): every rule that styles the glass or an
+// element INSIDE it reads the SCREEN roles, never the 16 palette tokens they wrap - else the Original's monochrome
+// glass would miss it (the inert-sibling class). The glass's classes are DERIVED from the renderers (every level
+// pocketLevels draws, the glass itself, plus Brick's layer), never a hand list. Gate r1 W2 (qa + adversary): the
+// glass element itself, a var() WITH a fallback, and a rule under ANY ancestor (only the other skins' own screens,
+// Cider's and Nordic's, are out of scope) are all in.
+function glassClasses() {
+  const inGlass = new Set(['ipod-brick']);
+  for (const html of pocketLevels()) {
+    const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
+    const glasses = doc.querySelectorAll('.ip-lcd-in');
+    const roots = glasses.length ? [...glasses] : [doc.getElementById('h')]; // a menu view renders INTO the glass
+    for (const g of roots) { for (const c of g.classList) inGlass.add(c); for (const el of g.querySelectorAll('[class]')) for (const c of el.classList) inGlass.add(c); }
+  }
+  return inGlass;
+}
+function glassButtons() {
+  const out = new Set();
+  for (const html of pocketLevels()) {
+    const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
+    const glasses = doc.querySelectorAll('.ip-lcd-in');
+    const roots = glasses.length ? [...glasses] : [doc.getElementById('h')];
+    for (const g of roots) for (const b of g.querySelectorAll('button[class]')) out.add(b.classList[0]);
+  }
+  return out;
+}
+const OTHER_SKIN = /\.mms-(apple|spotify)\b/;
+test('the screen census: no rule on or inside the LCD glass reads a WRAPPED palette token (it reads --pk-s-*)', () => {
+  const chassis = ALL.find((r) => r.sel === '.mms-ipod' && /--pk-s-/.test(r.body));
+  const wrapped = decls(chassis.body).filter(([p]) => /^--pk-s-/.test(p)).map(([, v]) => /^var\((--[a-z0-9-]+)\)$/.exec(v)[1]);
+  assert.ok(wrapped.length >= 16, 'the screen roles wrap the palette (' + wrapped.length + ')');
+  const inGlass = glassClasses();
+  assert.ok(inGlass.has('ip-lcd-in') && inGlass.has('ipm-row') && inGlass.has('mms-row') && inGlass.has('ip-status'), 'the derived glass classes, the glass itself included (' + inGlass.size + ')');
+  const reads = (body, t) => new RegExp('var\\(\\s*' + t + '\\s*[,)]').test(body);
+  const bad = [];
+  for (const r of ALL) {
+    if (OTHER_SKIN.test(r.sel)) continue; // Cider's and Nordic's own screens share a few class names
+    const classes = (r.sel.match(/\.([a-z][a-z0-9-]*)/g) || []).map((c) => c.slice(1));
+    if (!classes.some((c) => inGlass.has(c))) continue;
+    for (const t of wrapped) if (reads(r.body, t)) bad.push(r.sel + ' reads ' + t);
+  }
+  assert.deepStrictEqual(bad, [], 'a glass rule that bypasses the screen roles');
+  // not vacuous: each spelling the census hunts - bare, with a fallback, spaced - is caught
+  for (const probe of ['color:var(' + wrapped[0] + ');', 'color:var(' + wrapped[0] + ', #fff);', 'color:var( ' + wrapped[0] + ' );']) assert.ok(reads(probe, wrapped[0]), probe);
+  assert.ok(!reads('color:var(' + wrapped[0] + '-x);', wrapped[0]), 'a longer token name is not a read');
+});
+
+test('the Original: every button the renderers put in the glass inherits the bitmap face AND its size adjust', () => {
+  // a button's UA font shorthand resets both (48ef515f; gate r1 adversary S1: the quick-scroll letter and badge)
+  const buttons = [...glassButtons()].sort();
+  assert.ok(buttons.includes('ipm-row') && buttons.includes('mms-row'), 'the derived glass buttons (' + buttons.join(' ') + ')');
+  const rule = ALL.filter((r) => /font-size-adjust:\s*inherit/.test(r.body) && /font-family:\s*inherit/.test(r.body) && /mms-look-original/.test(r.sel));
+  assert.strictEqual(rule.length, 1, 'ONE inherit rule on the look');
+  const covered = rule[0].sel.split(',').map((x) => x.trim());
+  for (const b of buttons) assert.ok(covered.includes('.mms-look-original .' + b), 'the glass button .' + b + ' inherits the face and the adjust');
+});
+
 function classify(html) {
   const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
   const found = [];

@@ -23,7 +23,7 @@ test('registry census: a skin carries `menus` exactly when its screen is an LCD 
     const lcd = /class="ip-lcd"/.test(skins.renderFull(s.id, CTX));
     assert.strictEqual(!!s.menus, lcd, `${s.id}: menus present <=> it draws an LCD`);
   }
-  assert.deepStrictEqual(skins.IDS.map((id) => skins.menuStyle(id)), ['', '', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click']);
+  assert.deepStrictEqual(skins.IDS.map((id) => skins.menuStyle(id)), ['', '', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click', 'click']);
   assert.strictEqual(skins.menuStyle('bogus'), '', 'an unknown id normalizes to the default (Cider): no menus');
 });
 
