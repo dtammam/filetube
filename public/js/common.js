@@ -2304,6 +2304,104 @@ function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder, syntheti
   return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));
 }
 
+// ---- v1.339 S2: sidebar drops persist BY PATH onto the FRESH config ---------
+//
+// T-C1 (plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, D2): the
+// two sidebar drags used to POST the folder list the page loaded at init back
+// to POST /api/config, which replaces both folder tables wholesale - so a
+// folder another device added after this page loaded was DROPPED by a drag
+// here (and its items pruned by the scan the save fires). A drop now records
+// only WHAT the user did - "this path moved to before/after that path" - and
+// replays it onto the config as the server holds it at drop time, sending the
+// fresh folderSettings and the fresh `configVersion` as `baseVersion`, so the
+// server refuses (409) a write whose base moved in the meantime.
+
+// Pure: turns a visible-subset move (the dragged index and where it landed in
+// the reordered visible list) into a path-anchored move: the dragged path goes
+// AFTER the path now above it, or BEFORE the path now below it when it landed
+// first. Returns null for a no-op (nothing moved, or no neighbour to anchor to).
+// Exported for node:test.
+function sidebarMoveAnchor(visibleFolders, fromIndex, toIndex) {
+  const list = Array.isArray(visibleFolders) ? visibleFolders : [];
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= list.length) return null;
+  const moved = moveArrayItem(list, fromIndex, toIndex);
+  const draggedPath = list[fromIndex];
+  const at = moved.indexOf(draggedPath);
+  if (at === fromIndex || moved.length < 2) return null;
+  if (at > 0) return { draggedPath, anchorPath: moved[at - 1], insertBefore: false };
+  return { draggedPath, anchorPath: moved[1], insertBefore: true };
+}
+
+// Pure: applies a path-anchored move onto a (fresh) full folder config. The
+// visible subset is re-derived from the FRESH folders/settings/synthetic list,
+// the dragged path is placed before/after its anchor there, and
+// rebuildFullFolderOrder writes it back into the full array (hidden and
+// synthetic folders keep their absolute positions). Returns null when either
+// path is no longer a visible sidebar row in the fresh config (removed, hidden,
+// or renamed away on another device) - the caller then re-renders and writes
+// nothing, rather than guessing. Never adds or removes a folder: the result is
+// always a permutation of `folders`. Exported for node:test.
+function applySidebarMoveByPath(folders, settings, syntheticFolders, draggedPath, anchorPath, insertBefore) {
+  const full = Array.isArray(folders) ? folders : [];
+  const visible = visibleSidebarFolders(full, settings, syntheticFolders);
+  if (draggedPath === anchorPath || !visible.includes(draggedPath) || !visible.includes(anchorPath)) return null;
+  const without = visible.filter((f) => f !== draggedPath);
+  const anchorAt = without.indexOf(anchorPath);
+  without.splice(insertBefore ? anchorAt : anchorAt + 1, 0, draggedPath);
+  return rebuildFullFolderOrder(full, settings, without, syntheticFolders);
+}
+
+// Persists one path-anchored sidebar move against the server's CURRENT config:
+// GET /api/config, apply the move by path onto that fresh list, POST it with the
+// fresh folderSettings and `baseVersion`; a 409 (the config moved between the
+// GET and the POST) retries ONCE from a new GET. Never POSTs a caller's stale
+// arrays - the caller hands in only the move. Resolves
+//   { status: 'saved' | 'conflict' | 'gone' | 'error', config }
+// where `config` is the freshest GET /api/config body it could read (null if
+// none), for the caller to re-render from on EVERY outcome. `fetchImpl`
+// defaults to the global fetch (a test seam).
+async function persistSidebarMoveByPath(move, fetchImpl) {
+  const doFetch = fetchImpl || ((...a) => fetch(...a));
+  const readConfig = async () => {
+    const r = await doFetch('/api/config');
+    if (!r || !r.ok) throw new Error('GET /api/config failed' + (r ? ' (' + r.status + ')' : ''));
+    return r.json();
+  };
+  // A re-read for the re-render after a failure; never throws.
+  const freshest = async (fallback) => { try { return await readConfig(); } catch (_) { return fallback; } };
+  let cfg = null;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      cfg = await readConfig();
+      const folders = Array.isArray(cfg.folders) ? cfg.folders : [];
+      const settings = cfg.folderSettings || {};
+      const synthetic = Array.isArray(cfg.syntheticFolders) ? cfg.syntheticFolders : [];
+      const next = applySidebarMoveByPath(folders, settings, synthetic, move.draggedPath, move.anchorPath, move.insertBefore);
+      if (!next) return { status: 'gone', config: cfg };
+      const body = { folders: next, folderSettings: settings };
+      if (typeof cfg.configVersion === 'string') body.baseVersion = cfg.configVersion;
+      const res = await doFetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res && res.status === 409) continue; // the base moved: once more from a fresh GET
+      let data = null;
+      try { data = await res.json(); } catch (_) { data = null; }
+      if (!res || !res.ok || !data || !data.success) {
+        console.error('Failed to persist sidebar folder reorder:', data && data.error);
+        return { status: 'error', config: await freshest(cfg) };
+      }
+      // Re-read so the synthetic Downloads folder's GET-time splice shows.
+      return { status: 'saved', config: await freshest(cfg) };
+    }
+    return { status: 'conflict', config: await freshest(cfg) };
+  } catch (err) {
+    console.error('Failed to persist sidebar folder reorder:', err);
+    return { status: 'error', config: await freshest(cfg) };
+  }
+}
+
 // ---- v1.76: the ONE drag-to-reorder gesture layer --------------------------
 //
 // Replaces five hand-copied native-HTML5-DnD wirings (main.js's sidebar
@@ -16740,6 +16838,8 @@ if (typeof module !== 'undefined' && module.exports) {
     releaseNotesUrl,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
+    // v1.339 S2: sidebar drops persist by path onto the fresh config (T-C1).
+    sidebarMoveAnchor, applySidebarMoveByPath, persistSidebarMoveByPath,
     // v1.76: the one drag-to-reorder gesture layer -- the two pure decisions
     // plus the wiring itself, which jsdom tests drive end-to-end through
     // injected rects (jsdom does no layout).
