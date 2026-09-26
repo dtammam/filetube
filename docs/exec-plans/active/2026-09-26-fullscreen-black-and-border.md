@@ -3,8 +3,8 @@ plan: fullscreen-black-and-border
 harness: v2 · lean
 branch: feat/v1.336-fullscreen-black-border
 anchor: outcome
-status: Building
-next: commit the build, then the gate (adversary + qa, fresh, max two rounds).
+status: Gate:CHANGES r1 @5996fbc2
+next: commit the r1 fix round, then re-engage the SAME adversary and qa seats for r2 (the last round before asking Dean).
 gate: pending
 ---
 
@@ -35,6 +35,12 @@ Priority: D1 first, then D2. One plan, one gate, one release.
   unmarked; this one is the discriminating read and it wins.)
 - Since when: **not sure**.
 
+### Dean's third answers (after gate r1 questioned the screenshot claim)
+
+- The line's color in dark mode: **grey-ish**. It shows on a **paused** video and while playing.
+  That matches the measured border (rgb 45-56 in the dark modes, rgb 204-226 in the light ones,
+  painted in every state).
+
 ## Acceptance (outcome anchor)
 
 1. D1: the four hypotheses are named with their falsifiers, and an instrument ships that separates them
@@ -50,10 +56,10 @@ Priority: D1 first, then D2. One plan, one gate, one release.
 
 | ID | Decision |
 |---|---|
-| D1 | NOT fixed this wave. Headless Chromium cannot show an iPhone video layer going black, and no device A/B exists yet, so a fix would be a theory-fix (LESSONS 1). This wave ships the INSTRUMENT: the video's own state in the `?debugLifecycle=1` log at every event that can start, stop or starve its picture, plus a check 2s after each `playing` with what moved. Dean captures one failing run; v1.337 fixes the mechanism it names. |
+| D1 | NOT fixed this wave. Headless Chromium cannot show an iPhone video layer going black, and no device A/B exists yet, so a fix would be a theory-fix (LESSONS 1). This wave ships the INSTRUMENT: the video's own state in the `?debugLifecycle=1` log at every event that can start, stop or starve its picture, plus a check after each `playing` (one reading a second for six seconds, logged as one line with the frame series). The on-screen panel shows those lines in full and, in faux fullscreen, sits at the top and lets taps through. Dean captures one failing run; v1.337 fixes the mechanism it names. |
 | D2 | Fixed: every fullscreen (the iPhone faux overlay, the Fullscreen API host, the staged desktop twin) drops the inline player's 1px `--border-color` border and its era radius. The inline player is unchanged. |
 | B1 | (builder, disclosed) D2 covers DESKTOP fullscreen too: the probe measured the same border there in 8 of 8 themes, plus a 2px (2009/2014) or 12px (2021) rounded corner on the black stage. Dean's "in full screen, in all modes" does not exclude it; the rule is the same bug. |
-| B2 | (builder) The instrument never calls `requestVideoFrameCallback` and never reads the video into a canvas: in WebKit both attach a video output to the player (the v1.312 ambient blackout's shape), so the instrument could cause the black it measures. Plain property reads only; a test bans both calls in player.js. |
+| B2 | (builder) The instrument never calls `requestVideoFrameCallback` and never reads the video into a canvas: in WebKit both attach a video output to the player (the v1.312 ambient blackout's shape), so the instrument could cause the black it measures. It reads properties and calls `getVideoPlaybackQuality()`, which on iOS starts the GPU process polling the video LAYER's metrics on a background queue (what any page calling the API gets; no video output). A test bans both calls in player.js. |
 
 ## Research
 
@@ -76,45 +82,55 @@ Priority: D1 first, then D2. One plan, one gate, one release.
   - branch: `SUMMARY combos=24 edge-painted=0`; the video fills (0,0) to the full viewport in every
     combo. INLINE (before fullscreen) identical on both trees: `1px solid rgb(226, 226, 226)`, radius
     12px, video 17,73 356x200.25 (portrait) and 255,81 564x317.25 (landscape).
-- Why Dean's screenshots miss it: our headless screenshot DOES contain it (above), so the edge is
-  painted, not compositor-only. On his phone it is 3 device pixels of near-white at the very edge of
-  the image; a screenshot viewed on a white or light background (Photos, a chat) shows no visible
-  edge. Not a contradiction of his report: it changes no decision (the border goes either way).
-  His device check confirms it.
+- Dean's line matches this border by every property he could report: grey-ish in dark mode (the
+  measured ring is rgb 45-56 there), present paused and playing, every mode, on the faux overlay.
+- OPEN: why his screenshots miss it. Our headless screenshot contains it (above), and an iOS
+  screenshot captures a painted CSS border pixel for pixel, so the earlier "a light edge blends into
+  a light viewer" explanation does not hold in his dark mode and is withdrawn (gate r1, both seats).
+  His D2 device check is the falsifier: an edge still there after v1.336 means his edge has another
+  cause, and it is re-root-caused, not re-patched.
 
 ### D1 - hypotheses and what would falsify each
 
-The bisect (a read-only subagent over v1.311.2..v1.335.0, every player/CSS/shell change): player.js
-changed in v1.322 (Chapter Snap) and v1.334 (the autostart flag, whose cue renders only on a music
-skin panel) only; no release in the window adds a `play()` retry, a `load()`, a `src` reset or a
-poster toggle on a user pause/resume, and nothing adds a filter/mask/transform on or over the video.
+The bisect over v1.311.2..v1.335.0 (corrected at gate r1; the first summary said player.js changed
+only in v1.322 and v1.334, which was false): `git log --oneline v1.311.2..v1.335.0 --
+public/js/player.js | wc -l` = 18 commits, released in v1.311.3, v1.317, v1.319, v1.320, v1.322 and
+v1.334. The two that touch the suspects: v1.319 (77a3f5bc, "resume the video only if the audio was
+playing", the background-audio swap-back; background audio is ON for Dean) and v1.318 (the Ambient
+engine moved out of watch.js into ambient.js; Ambient is ON for Dean). No release in the window adds
+a filter/mask/transform on or over the video, and none adds a `load()` or `src` reset on a user
+pause/resume in the foreground.
 
 | Hypothesis | Where | Falsified by |
 |---|---|---|
-| H1 Ambient (ON on Dean's phone). It re-evaluates on every play/pause (ambient.js:668-672), keeps running in faux fullscreen (no fullscreen exclusion), and repaints/cross-fades its two layers. v1.312's blackout had this exact signature (picture black, audio and glow continuing). | ambient.js, style.css `.ambient-glow` | It still goes black with Ambient OFF in the cog. |
-| H2 The background-audio sidecar (ON on his phone): the sound after the black comes from the hidden audio element, not the video. | player.js handoff / priming | The log's `act=video` with `bg=inline_video` at the black resume. |
+| H1 Ambient (ON on Dean's phone; engine moved to ambient.js in v1.318). It re-evaluates on every play/pause (ambient.js:668-672), keeps running in faux fullscreen (no fullscreen exclusion), and repaints/cross-fades its two layers. v1.312's blackout had this exact signature (picture black, audio and glow continuing). | ambient.js, style.css `.ambient-glow` | It still goes black with Ambient OFF in the cog. |
+| H2 The background-audio sidecar (ON on his phone; its swap-back changed in v1.319): the sound after the black comes from the hidden audio element, not the video. | player.js handoff / priming / swap-back | At the black resume the log reads `act=video`, `bgp=1` (the sidecar is paused) and `mu=0`: the sound can only be the video's. (`act` alone cannot rule it out: it is derived from the same state as `bg`, gate r1.) |
 | H3 The tap glyph: every tap on the picture flashes `.art-play-glyph` (a `filter: drop-shadow` + an opacity/scale animation) over the video. Old (2026-08-16), so "recent" fits only an iOS change. | style.css `.art-play-glyph` | It still goes black using only the bar's play button. |
 | H4 v1.311.2 (2026-09-23): faux fullscreen pins `<body>` with `position:fixed` (a stacking context around the fixed overlay). | body-scroll-lock.js | Weakened already: the picture stays black INLINE after leaving fullscreen (the lock is released there). |
 
-The instrument's `video:check` line separates the layer from the frames: `+f` climbing while black =
-frames reach a layer that is not shown (H1/H3); `f` back to 0 or restarting = the video layer was
-rebuilt; `+f=0` with `+t` running = frames stopped; `act=bgAudio` = H2; `pm` other than `inline` = iOS moved the video to a native presentation.
+The instrument's `video:check` line separates the layer from the frames by its SERIES `fser` (the
+layer frame count at each of six seconds after the resume): climbing while black = frames reach a
+layer that is not shown (H1/H3); flat while `+t` runs = no frames reach the layer, or there is no
+layer (the series cannot tell those two apart; `wh`, `rs` and the A/B tries narrow it); `act=bgAudio` = H2; `pm` other than `inline` = iOS moved the video to a native presentation.
 What the counters mean ON THE IPHONE (WebKit main, primary source, fetched 2026-09-26):
 `HTMLMediaElement::getVideoPlaybackQuality` (Source/WebCore/html/HTMLMediaElement.cpp) adds
 `player->videoPlaybackQualityMetrics()`, which for the AVFoundation player
 (Source/WebCore/platform/graphics/avfoundation/objc/MediaPlayerPrivateAVFoundationObjC.mm) is
 `[m_videoLayer videoPerformanceMetrics]`: the AVPlayerLayer's own `totalNumberOfVideoFrames` /
-`numberOfDroppedVideoFrames`, and `std::nullopt` with no layer. So `f` is the LAYER's count: climbing
-while black = frames reach a layer that is not shown; dropping to 0 or restarting = the layer was torn
-down and rebuilt. `webkitDecodedFrameCount` (HTMLVideoElement.cpp) calls `player->decodedFrameCount()`,
-which the AVFoundation player does not implement: `dec` reads 0 on the iPhone (disclosed; Chromium
-fills it). `displayCompositedVideoFrames` is exposed only behind
+`numberOfDroppedVideoFrames`, and `std::nullopt` with no layer. On the iPhone media runs in the GPU
+process, so the page reads `MediaPlayerPrivateRemote::videoPlaybackQualityMetrics`, a CACHED copy
+that `RemoteMediaPlayerProxy` refreshes about every 2s while the page keeps asking, never while
+paused, and that keeps its last value with no layer (gate r1 adversary, WebKit main). So one reading
+2s after a resume can read `+f=0` on a healthy video: the check is therefore a six-second SERIES, one
+read a second, spanning at least two refreshes. `webkitDecodedFrameCount` is
+`[Conditional=MEDIA_STATISTICS]` in HTMLVideoElement.idl and MEDIA_STATISTICS is off on Cocoa: `dec`
+reads `-` on the iPhone (Chromium fills it). `displayCompositedVideoFrames` is exposed only behind
 `videoQualityIncludesDisplayCompositingEnabled` (VideoPlaybackQuality.idl), so `dc` is printed only
 when present.
 
 Reachability (the probe, real Chromium media events, `?debugLifecycle=1`, faux fullscreen, pause /
-resume x2 by `#pp-btn`): `INSTRUMENT pause=2 playing=2 check=1 fs-at-pause=2`; base: all 0. A
-healthy check reads `+f=50 +dec=50 +t=2.0`.
+resume x2 by `#pp-btn`): r1 `INSTRUMENT pause=2 playing=2 check=1 fs-at-pause=2`; base: all 0. The r2
+numbers (panel text, real touch tap) are in the fix round below.
 
 ## What ships (v1.336.0)
 
@@ -132,11 +148,50 @@ healthy check reads `+f=50 +dec=50 +t=2.0`.
   ("otherwise ship an instrument and have Dean capture one run") and LESSONS 1, D1 ships as an
   instrument. The ROADMAP D1 item stays open, marked instrumented.
 
+## Fix round r1 -> r2
+
+Both seats CHANGES r1 @5996fbc2 (findings in the Gate section). What changed:
+
+| Finding | Fix |
+|---|---|
+| QA 1 / adv 1 (CRITICAL): the panel cut every line at 60 chars | `video:` lines render in full (cap 400, bound by a test that the longest possible line fits); other types keep 60. The probe now reads the PANEL's rendered text, not the store. |
+| QA 2 (CRITICAL): the panel covered the fullscreen bar and a tap cleared the log | In faux fullscreen the panel moves to the top (safe-area padded) with `pointer-events:none` (style.css, `!important` over its inline style). The probe taps `#pp-btn` with a REAL touch event. |
+| adv 2: `f` is a ~2s cached copy on the iPhone | The check is a six-reading series (`fser`), 1s apart. |
+| QA 4: `act` cannot falsify H2 | `bgp` (the sidecar's own paused), `mu`, `vol` added; H2's falsifier rewritten. |
+| QA 3 / adv 6: comments on `dec` | Corrected in player.js and the probe: `dec` reads `-` on the iPhone. |
+| adv 3: the bisect summary was false | Rewritten with the measured count and the two relevant commits. |
+| QA 5 / adv 4: the screenshot claim | Withdrawn; Dean's third answers recorded; left OPEN with his check as the falsifier. |
+| adv 5: 7 surviving mutants | Delta and series are pure, exported and tested; locks for the 'playing' trigger, the cadence constants, the reader's `act`/`bgp`/`amb` sources (plus ambient.js writing `data-ambient-on`), the unconditional wiring, and a CSS scan that no fullscreen host rule re-adds an edge. The probe exits 1 on any failure. |
+| adv 7: B2 overstated | B2 rewritten. |
+| QA 6: skins byte-identity unrecorded | Recorded below. |
+| QA 7 (log crowding) | Not changed: the adversary measured 6 entries per pause/resume cycle, so the 30-entry ring holds 5 cycles; the check stays ONE line. |
+
+### r2 measurements (copied from the runs)
+
+- Skins zero-delta (`scripts/pocket-render-probe.js`, LIGHTS=off, base 9946a335 vs the branch at
+  5996fbc2): `TOTAL: 782 shots, 0 differing pixels, 0 differing element styles, 0 missing`. The r2
+  CSS adds only `body.ft-css-fullscreen #ft-lifecycle-overlay`, which matches no pocket element.
+- `node scripts/faux-fullscreen-probe.js` on the r2 tree, exit 0:
+  - `TAP pp-btn hit=(none) paused true->false log 3->5 ok` (the tap reached the button's inner icon
+    and played; the log kept its entries)
+  - `INSTRUMENT pause=3 playing=3 check=1 fs-at-pause=3`
+  - `PANEL ok video:check (rs=4 ns=1 p=0 wh=640x360 t=8.1 f=206/0 dec=206 pm=- act=video
+    bg=inline_video bgp=1 mu=1 vol=1.00 fs=1 ah=1 amb=0 lock=1 ld=1 +f=150 +dec=150 +t=6.0
+    fser=25,50,75,100,125,150) ...` (the healthy series: it climbs every second)
+  - `SUMMARY combos=24 edge-painted=0`; INLINE identical to base.
+- The same probe with FT_ROOT = base 9946a335, exit 1: `TAP pp-btn hit=ft-lifecycle-overlay paused
+  true->true log 2->0 FAIL` (QA r1 finding 2 reproduced), `PANEL FAIL`, `SUMMARY combos=24
+  edge-painted=24`.
+- `node --test test/unit/fullscreen-edge-and-video-state.test.js`: `# tests 17`, `# pass 17`,
+  `# fail 0`. The pre-existing panel lock (test/unit/player-lifecycle-release.test.js, the 60-char
+  cut) was updated to bind the new cap: 39/39. `npm run lint:css`: `TOTAL 0`. `npm run lint:overlay`: `clean (0 violations)`.
+
 ## Dean's device check (after v1.336)
 
 - D2: fullscreen, any theme: no light edge.
 - D1: open `<app>/?debugLifecycle=1` once; play a video, fullscreen, pause/resume until it goes black;
-  wait 3 seconds; leave fullscreen and screenshot the log panel at the bottom. Also, if he can: the same
+  wait 8 seconds; screenshot the log panel (at the TOP while in fullscreen, newest line first; scroll
+  it for more). Also, if he can: the same
   with Ambient OFF, and once using only the bar's play button.
 
 ## Gate

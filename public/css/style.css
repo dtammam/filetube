@@ -7021,6 +7021,18 @@ body.ft-css-fullscreen header,
 body.ft-css-fullscreen .bottom-nav {
   visibility: hidden;
 }
+/* v1.336 (gate r1, measured): the ?debugLifecycle=1 panel is fixed to the BOTTOM
+   (player.js ensureLifecycleOverlayEl, inline style, z-index 999999) and clears the
+   log on a tap, so in faux fullscreen it sat over the control bar: a tap on
+   #pp-btn landed on the panel and erased the capture instead of pausing. While the
+   overlay is up the panel moves to the TOP and lets every tap through (read it, or
+   tap to clear it, after leaving fullscreen). !important: beats its inline style. */
+body.ft-css-fullscreen #ft-lifecycle-overlay {
+  top: 0 !important;
+  bottom: auto !important;
+  padding-top: calc(var(--space-1) + env(safe-area-inset-top, 0px)) !important; /* clear the notch / status bar */
+  pointer-events: none !important;
+}
 /* v1.120 (Dean, audio parity): the same freeze + black-body belt for the audio
    EXPANDED overlay (position:fixed z-index:--z-player-max already covers the app
    chrome, so no visibility rule is needed -- just no scroll + no bleed). */

@@ -16,9 +16,12 @@
 //     Prints one JSON line per combination and a final summary line:
 //       SUMMARY combos=<n> edge-painted=<n>   (edge-painted = a border, outline or shadow on the overlay;
 //       on desktop also a corner radius, since the stage is black and a rounded host shows its corners)
-//     and, for the D1 instrument, LOG lines (the ?debugLifecycle=1 video:* entries after a
-//     pause / resume / pause / resume in faux fullscreen) and one line:
+//     and, for the D1 instrument: TAP (a real touch tap on #pp-btn in faux fullscreen plays the
+//     video and leaves the log intact - the debug panel must not take it), LOG lines (the
+//     ?debugLifecycle=1 video:* entries after a pause / resume / pause / resume), and
 //       INSTRUMENT pause=<n> playing=<n> check=<n> fs-at-pause=<n>
+//       PANEL ok|FAIL <the video:check line as the on-screen panel renders it>
+//     Exits 1 on any painted edge, a failed tap, too few instrument lines or a cut panel line.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -152,23 +155,44 @@ async function main() {
     }
   }
   // D1 instrument reachability: ?debugLifecycle=1 on, faux fullscreen, pause / resume / pause / resume
-  // with the REAL element events, then the video:* lines the instrument wrote (Chromium has no
-  // webkitDecodedFrameCount / webkitPresentationMode, so those read '-' here; the iPhone fills them).
+  // with the REAL element events, then the video:* lines the instrument wrote. Chromium fills
+  // webkitDecodedFrameCount (dec) and lacks webkitPresentationMode (pm reads '-'); on the iPhone it is
+  // the other way round (dec is compiled out of iOS WebKit and reads '-', pm is filled).
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await send('Page.navigate', { url: base + '/watch.html?v=v1&debugLifecycle=1' });
   await waitFor('document.readyState === "complete"');
   await waitFor('(function(){var h=document.getElementById("player-wrapper"); var v=document.getElementById("media-player"); return !!(h && v && v.readyState >= 2 && !h.classList.contains("native-controls"));})()', 20000);
   await ev('(function(){localStorage.removeItem("ft-lifecycle-log"); var v=document.getElementById("media-player"); v.muted = true; return v.play().then(function(){ return true; }, function(){ return false; });})()');
   await ev('document.getElementById("fs-btn").click()');
+  // a REAL touch tap on #pp-btn (hit-tested, unlike .click()): the panel must not take it. Paused
+  // first, so the bar is up (it never auto-hides while paused) and the tap is a play.
+  await ev('document.getElementById("media-player").pause()');
+  await sleep(300);
+  const before = await ev('(function(){var b=document.getElementById("pp-btn").getBoundingClientRect(); var n=JSON.parse(localStorage.getItem("ft-lifecycle-log")||"[]").length; return { x: b.left + b.width / 2, y: b.top + b.height / 2, n: n, paused: document.getElementById("media-player").paused, hit: (document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) || {}).id || "" };})()');
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: before.x, y: before.y }] });
+  await sleep(60);
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(700);
+  const after = await ev('({ n: JSON.parse(localStorage.getItem("ft-lifecycle-log")||"[]").length, paused: document.getElementById("media-player").paused })');
+  const tapOk = before.paused === true && after.paused === false && after.n >= before.n && before.n > 0;
+  console.log(`TAP pp-btn hit=${before.hit || '(none)'} paused ${before.paused}->${after.paused} log ${before.n}->${after.n} ${tapOk ? 'ok' : 'FAIL'}`);
+  if (!tapOk) process.exitCode = 1;
   for (let i = 0; i < 2; i++) {
     await sleep(600); await ev('document.getElementById("pp-btn").click()'); // pause
     await sleep(600); await ev('document.getElementById("pp-btn").click()'); // resume
   }
-  await sleep(2600); // the 2s check after the last 'playing'
+  await sleep(7500); // the six 1s samples after the last 'playing'
   const lines = await ev('(function(){try{return JSON.parse(localStorage.getItem("ft-lifecycle-log")||"[]").filter(function(e){return /^video:/.test(e.type);}).map(function(e){return e.type+" "+e.detail;});}catch(_){return [];}})()');
   lines.forEach((l) => console.log('LOG ' + l));
   const count = (re) => lines.filter((l) => re.test(l)).length;
-  console.log(`INSTRUMENT pause=${count(/^video:pause /)} playing=${count(/^video:playing /)} check=${count(/^video:check /)} fs-at-pause=${count(/^video:pause .* fs=1 /)}`);
+  const inst = { pause: count(/^video:pause /), playing: count(/^video:playing /), check: count(/^video:check /), fsAtPause: count(/^video:pause .* fs=1 /) };
+  console.log(`INSTRUMENT pause=${inst.pause} playing=${inst.playing} check=${inst.check} fs-at-pause=${inst.fsAtPause}`);
+  // what Dean actually SEES: the panel's rendered text must carry the check's whole line
+  const panel = await ev('(function(){var p=document.getElementById("ft-lifecycle-overlay"); return p ? p.textContent : "";})()');
+  const panelCheck = (panel.split('\n').find((l) => /^video:check /.test(l)) || '');
+  const panelOk = / act=\S+ bg=\S+ bgp=\S+ /.test(panelCheck) && / \+f=\S+ \+dec=\S+ \+t=\S+ fser=\S+\)/.test(panelCheck);
+  console.log(`PANEL ${panelOk ? 'ok' : 'FAIL'} ${panelCheck}`);
+  if (inst.pause < 2 || inst.playing < 3 || inst.check < 1 || inst.fsAtPause < 2 || !panelOk) process.exitCode = 1;
 
   // desktop: the staged Fullscreen API path (#fs-stage), the same host border in the other fullscreen
   await send('Emulation.setTouchEmulationEnabled', { enabled: false });
@@ -198,6 +222,7 @@ async function main() {
     }
   }
   console.log(`SUMMARY combos=${combos} edge-painted=${edge}`);
+  if (edge > 0) process.exitCode = 1;
   cleanup();
   process.exit(process.exitCode || 0);
 }
