@@ -373,11 +373,13 @@ test('recordLifecycleEvent() records an optional `detail` string from extraCtx.d
   assert.match(body, /detail: extraCtx && 'detail' in extraCtx \? extraCtx\.detail : null,/);
 });
 
-test('renderLifecycleOverlay() renders `detail` right after the type, truncated to 60 chars, and omits it entirely when absent', () => {
+test('renderLifecycleOverlay() renders `detail` right after the type, truncated to 60 chars (v1.336: a `video:` instrument line in full, up to 400), and omits it entirely when absent', () => {
   const match = /function renderLifecycleOverlay\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find renderLifecycleOverlay()\'s source body');
   const body = match[1];
-  assert.match(body, /var detailStr = entry && entry\.detail \? ' \(' \+ String\(entry\.detail\)\.slice\(0, 60\) \+ '\)' : '';/);
+  assert.match(body, /var detailCap = \(entry && typeof entry\.type === 'string' && entry\.type\.indexOf\('video:'\) === 0\) \? 400 : 60;/,
+    'every type but the video: instrument keeps the 60-char cut');
+  assert.match(body, /var detailStr = entry && entry\.detail \? ' \(' \+ String\(entry\.detail\)\.slice\(0, detailCap\) \+ '\)' : '';/);
   const lineTemplateIdx = body.indexOf("(entry.type || '?') + detailStr + ' · persisted='");
   assert.ok(lineTemplateIdx !== -1, 'expected detailStr to be concatenated directly after the type');
 });

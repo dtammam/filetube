@@ -5,7 +5,12 @@
 - [ ] **HIGHEST PRIORITY (1 of 2). Bug: the fullscreen video goes BLACK after a pause / resume, pause /
   resume** (Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's
   some way in which after I pause or resume, pause and resume again, the screen of the video goes black.
-  Unsure why."). A regression (worked before). Not yet reproduced. First questions (LESSONS 1: name the
+  Unsure why."). **INSTRUMENTED in v1.336.0, not fixed**: the faux overlay on the iPhone PWA, audio
+  keeps playing, the controls show, STILL black after leaving fullscreen (the video element itself), on
+  every video; Dark mode + Ambient + background audio for video are on. Four hypotheses with falsifiers
+  (Ambient, the background-audio sidecar, the tap glyph's filter, the v1.311.2 body pin) in plan
+  2026-09-26-fullscreen-black-and-border; NEXT = Dean's one `?debugLifecycle=1` capture (the
+  `video:check` series), then the fix on the mechanism it names. A regression (worked before). Not yet reproduced. First questions (LESSONS 1: name the
   falsifying observation before editing): which fullscreen (the native iOS player, the faux overlay, or
   the desktop Fullscreen API), which device / browser, does the audio keep playing while the picture is
   black, and does the black clear on a seek, a rotation or leaving fullscreen. Bisect the recent player
@@ -13,7 +18,7 @@
   and the ambient-mode lesson (a filter / blur / mask / backdrop over or around a playing video blacks it
   out on the iPhone).
 
-- [ ] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
+- [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
   entire screen. It doesn't appear in the screenshots, but it totally appears for our faux overlay.").
   Visible on the device, absent from screenshots, and it shows on the FAUX fullscreen overlay. First
@@ -189,6 +194,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.336.0 - No border around fullscreen video, and a log for the black picture (2026-09-26)
+
+- **The thin border in fullscreen is gone** (Dean: "in full screen, in all modes, I see a very thin white
+  border around the entire screen"). Cause, measured: the inline player's 1px `--border-color` border (and
+  its era radius) survived into every fullscreen - the iPhone faux overlay reset only the radius, the
+  desktop Fullscreen API host and its staged twin reset neither; the audio-expanded view never had it.
+  `scripts/faux-fullscreen-probe.js` (new; real app, real clip, the real `#fs-btn`; 4 eras x light/dark x
+  portrait, landscape and desktop): 24 of 24 painted an edge before (rgb 204-226 light, 45-56 dark - Dean:
+  "grey-ish in dark mode"), 0 after; the video now fills the screen from (0,0). The inline player and the
+  skins are unchanged (782 skin shots, 0 differing pixels). Open, disclosed: why Dean's screenshots missed
+  it (a painted border shows in an iOS screenshot); his device check is the falsifier.
+- **The black picture after pause / resume x2 is INSTRUMENTED, not fixed** (Dean: "the screen of the video
+  goes black"). No headless repro exists, so no theory-fix (LESSONS 1). The `?debugLifecycle=1` log now
+  records the video's own state at every event that can start, stop or starve its picture (ready state,
+  size, time, the layer frame count, presentation mode, which element is sounding and the sidecar's own
+  paused, mute and volume, fullscreen, Ambient, the body pin, the load) and, after each resume, a six-second
+  frame SERIES (iOS relays the frame count as a ~2s cached copy - WebKit source). The panel shows those
+  lines in full and, in faux fullscreen, sits at the top and lets taps through (it used to clear the log
+  when the play button was tapped). Passive: no requestVideoFrameCallback, no canvas read of the video.
+- Gate: adversary + qa, CHANGES r1 (both: the panel cut the lines at 60 characters; qa: a tap on the bar
+  cleared the log; adversary: the cached iOS counter, a false bisect summary), APPROVED r2 @c712521c.
+  Carried, disclosed: tech-debt #284.
 
 ### v1.335.0 - Twelve more Click colorways, and the Original (2026-09-26)
 

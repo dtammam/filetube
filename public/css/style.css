@@ -6636,6 +6636,12 @@ a.sub-row-channel-link:focus-visible {
 .player-container:-webkit-full-screen {
   width: 100%;
   height: 100%;
+  /* v1.336 (Dean: "a very thin white border around the entire screen"): the base
+     `.player-container` 1px `--border-color` border and its era radius are inline
+     chrome; fullscreen is edge to edge, so both go (the audio-expanded and docked
+     twins already drop them). Measured by scripts/faux-fullscreen-probe.js. */
+  border: none;
+  border-radius: 0;
 }
 
 /* v1.138: the desktop fullscreen STAGE (#fs-stage, one per shell, outside
@@ -6654,6 +6660,8 @@ a.sub-row-channel-link:focus-visible {
 #fs-stage:fullscreen .player-container {
   width: 100%;
   height: 100%;
+  border: none; /* v1.336: the staged twin of the rule above */
+  border-radius: 0;
 }
 
 @media (max-width: 768px) {
@@ -6897,6 +6905,12 @@ a.sub-row-channel-link:focus-visible {
   inset: 0;
   z-index: var(--z-sheet); /* above header (--z-header) + .bottom-nav (--z-nav), below modals (--z-modal) so the chapters editor still opens over it */
   background: #000; /* token-exempt: letterbox black */
+  /* v1.336 (Dean: "in full screen, in all modes, I see a very thin white border
+     around the entire screen"): the base `.player-container` rule paints a 1px
+     `--border-color` border (rgb 204-226 in the light modes, 45-56 in dark) and
+     this overlay reset only its radius, so the border ringed the whole screen in
+     every era and mode. The audio-expanded overlay has always dropped it. */
+  border: none;
   border-radius: 0;
   /* v1.34.3: the mobile-portrait height clamps (45vh/78vh, further down)
      would squash the fixed overlay into a band -- release every sizing
@@ -7006,6 +7020,18 @@ body.ft-css-fullscreen {
 body.ft-css-fullscreen header,
 body.ft-css-fullscreen .bottom-nav {
   visibility: hidden;
+}
+/* v1.336 (gate r1, measured): the ?debugLifecycle=1 panel is fixed to the BOTTOM
+   (player.js ensureLifecycleOverlayEl, inline style, z-index 999999) and clears the
+   log on a tap, so in faux fullscreen it sat over the control bar: a tap on
+   #pp-btn landed on the panel and erased the capture instead of pausing. While the
+   overlay is up the panel moves to the TOP and lets every tap through (read it, or
+   tap to clear it, after leaving fullscreen). !important: beats its inline style. */
+body.ft-css-fullscreen #ft-lifecycle-overlay {
+  top: 0 !important;
+  bottom: auto !important;
+  padding-top: calc(var(--space-1) + env(safe-area-inset-top, 0px)) !important; /* clear the notch / status bar */
+  pointer-events: none !important;
 }
 /* v1.120 (Dean, audio parity): the same freeze + black-body belt for the audio
    EXPANDED overlay (position:fixed z-index:--z-player-max already covers the app
