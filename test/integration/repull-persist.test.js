@@ -376,6 +376,28 @@ test('enumerateRepullableItems: an id-suffixed item under the download root is e
   assert.equal(entry.alreadyRepulled, false);
 });
 
+// v1.338 D9 (plan docs/exec-plans/active/2026-09-26-first-class-any-site.md): a download from another site
+// is flagged `universal` and carries its saved page link (raw; the reheat re-checks it); a YouTube item,
+// even a proxy-host one, is not universal.
+test('enumerateRepullableItems (v1.338): a download from another site is universal with its saved link; YouTube and plain files are not', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  const reddit = path.join(downloadDir, 'A clip [Reddit=abc123].mp4');
+  const proxy = path.join(downloadDir, 'Proxy [Youtube=dQw4w9WgXcQ].mp4');
+  const plain = path.join(downloadDir, 'Plain Home Video.mp4');
+  const db = { metadata: {
+    [getMediaId(reddit)]: { id: getMediaId(reddit), filePath: reddit, name: path.basename(reddit), ext: '.mp4', sourceExtractor: 'Reddit', sourceId: 'abc123', sourceUrl: page },
+    [getMediaId(proxy)]: { id: getMediaId(proxy), filePath: proxy, name: path.basename(proxy), ext: '.mp4', sourceExtractor: 'Youtube', youtubeId: 'dQw4w9WgXcQ' },
+    [getMediaId(plain)]: { id: getMediaId(plain), filePath: plain, name: path.basename(plain), ext: '.mp4', sourceUrl: page },
+  } };
+  const byPath = Object.fromEntries(enumerateRepullableItems(db, config).items.map((e) => [e.filePath, e]));
+  assert.equal(byPath[reddit].universal, true);
+  assert.equal(byPath[reddit].sourceUrl, page);
+  assert.equal(byPath[reddit].watchUrl, null);
+  assert.equal(byPath[proxy].universal, false, 'a proxy-host YouTube download keeps its YouTube re-pull');
+  assert.equal(byPath[plain].universal, false, 'a plain file is not a download from another site');
+});
+
 // v1.33 T1: a bracket-less (MeTube-style) import is now ELIGIBLE -- it flows
 // through with null videoId/watchUrl so the batch worker's LOCAL ffprobe
 // tags pass still runs on it (the only shot such a file gets at an embedded

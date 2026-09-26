@@ -1,0 +1,102 @@
+'use strict';
+
+// [INTEGRATION] v1.338 D9 (Dean: "Reheat is fine" for downloads from any site; plan
+// docs/exec-plans/active/2026-09-26-first-class-any-site.md): the re-pull's UNIVERSAL mode re-pulls a
+// download from another site from its STORED page link, behind the download lane's own guards. The
+// spawn boundary is the real one (`child_process.spawn` monkey-patched, the ytdlp-repull.test.js
+// harness); the DNS resolve-then-check takes an injected lookup.
+
+const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const cp = require('node:child_process');
+const { test, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert');
+const run = require('../../lib/ytdlp/run');
+
+const originalSpawn = cp.spawn;
+const originalConsoleError = console.error;
+let calls;
+
+beforeEach(() => { calls = []; console.error = () => {}; });
+afterEach(() => { cp.spawn = originalSpawn; console.error = originalConsoleError; });
+
+function stubSpawn() {
+  cp.spawn = (cmd, argv, opts) => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+    child.kill = () => setImmediate(() => child.emit('close', null, 'SIGKILL'));
+    calls.push({ cmd, argv, opts, child });
+    return child;
+  };
+}
+const flush = () => new Promise((r) => setImmediate(r));
+async function waitForCall(n) { for (let i = 0; i < 50 && calls.length <= n; i++) await flush(); return calls[n]; }
+const PUBLIC = (host, o, cb) => cb(null, [{ address: '151.101.1.140', family: 4 }]);
+const PRIVATE = (host, o, cb) => cb(null, [{ address: '10.0.0.5', family: 4 }]);
+const PAGE = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+
+function mediaFile() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-uni-'));
+  const f = path.join(root, 'someone', 'A clip [Reddit=abc123].mp4');
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, 'not a real video');
+  return { root, f };
+}
+
+test('universal re-pull: BOTH passes carry the named-extractor gate and the one-item bound, the guarded URL last', async () => {
+  const { root, f } = mediaFile();
+  stubSpawn();
+  const p = run.repullItemMetaAndSubs(PAGE, f, { downloadDir: root, cookiesFile: null }, { universal: true, lookup: PUBLIC });
+  const a = await waitForCall(0);
+  for (const argv of [a.argv]) {
+    const g = argv.indexOf('--use-extractors');
+    assert.ok(g >= 0 && argv[g + 1] === 'default,-generic', 'no generic scrape-any-page fallback');
+    assert.ok(argv.includes('--no-playlist') && argv[argv.indexOf('--playlist-items') + 1] === '1', 'one item');
+    assert.strictEqual(argv[argv.length - 1], PAGE);
+    assert.strictEqual(argv[argv.length - 2], '--');
+  }
+  a.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'abc123', title: 'A clip, refreshed', view_count: 42, upload_date: '20260101' })));
+  a.child.emit('close', 0, null);
+  const b = await waitForCall(1);
+  const g = b.argv.indexOf('--use-extractors');
+  assert.ok(g >= 0 && b.argv[g + 1] === 'default,-generic', 'the subtitle pass is gated too');
+  assert.strictEqual(b.argv[b.argv.length - 1], PAGE);
+  b.child.emit('close', 0, null);
+  const result = await p;
+  assert.strictEqual(result.sourceTitle, 'A clip, refreshed');
+  assert.strictEqual(result.sourceViewCount, 42);
+  assert.strictEqual(result.channel, undefined, 'the YouTube-only channel capture is skipped');
+});
+
+test('universal re-pull: a private / local / credentialed / non-http link is refused with NO spawn', async () => {
+  const { root, f } = mediaFile();
+  stubSpawn();
+  for (const bad of ['http://127.0.0.1/x', 'http://10.1.2.3/v', 'http://169.254.169.254/latest/meta-data/', 'http://localhost:8080/', 'https://user:pw@www.reddit.com/x', 'file:///etc/passwd', 'javascript:alert(1)', '-oProxy=x']) {
+    assert.strictEqual(await run.repullItemMetaAndSubs(bad, f, { downloadDir: root }, { universal: true, lookup: PUBLIC }), null, bad);
+  }
+  assert.strictEqual(calls.length, 0, 'yt-dlp never ran');
+});
+
+test('universal re-pull: a public NAME that resolves to a private address is refused (DNS resolve-then-check), no spawn', async () => {
+  const { root, f } = mediaFile();
+  stubSpawn();
+  assert.strictEqual(await run.repullItemMetaAndSubs('https://sneaky.example/v/1', f, { downloadDir: root }, { universal: true, lookup: PRIVATE }), null);
+  const unresolvable = (h, o, cb) => cb(new Error('ENOTFOUND'));
+  assert.strictEqual(await run.repullItemMetaAndSubs('https://nowhere.example/v/1', f, { downloadDir: root }, { universal: true, lookup: unresolvable }), null, 'fail closed');
+  assert.strictEqual(calls.length, 0);
+});
+
+test('UNCHANGED: a YouTube re-pull carries no extractor gate and no DNS step (spawns at once)', async () => {
+  const { root, f } = mediaFile();
+  stubSpawn();
+  const p = run.repullItemMetaAndSubs('https://www.youtube.com/watch?v=dQw4w9WgXcQ', f, { downloadDir: root, cookiesFile: null });
+  assert.strictEqual(calls.length, 1, 'spawned synchronously - no await before the first pass');
+  assert.ok(!calls[0].argv.includes('--use-extractors'));
+  assert.ok(!calls[0].argv.includes('--playlist-items'));
+  calls[0].child.emit('close', 1, null);
+  const b = await waitForCall(1);
+  b.child.emit('close', 1, null);
+  await p;
+});

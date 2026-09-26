@@ -336,6 +336,57 @@ test('a video with no derivable YouTube identity never touches the network and i
   }
 });
 
+// ---- v1.338 D9: Reheat for a download from another site ------------------------
+// (Dean: "Reheat is fine"; plan docs/exec-plans/active/2026-09-26-first-class-any-site.md) The item
+// re-pulls from its SAVED page link (else the page link in its own tags) in the re-pull's UNIVERSAL
+// mode; the guards themselves are bound in test/integration/ytdlp-repull-universal.test.js.
+
+const D9_PAGE = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+async function d9Run(itemFields, localTags) {
+  const deps = makeFakeDeps();
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields })],
+    eligible: 1, ineligible: 0, withSourceId: 0,
+  });
+  deps.probeEmbeddedTags = async () => (localTags || {});
+  const calls = [];
+  run.repullItemMetaAndSubs = async (...a) => { calls.push(a); return { sourceTitle: 'Refreshed' }; };
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(itemUrl(base), { method: 'POST' });
+    await flush();
+    return { calls, entry: itemEntry() };
+  } finally {
+    await close();
+  }
+}
+
+test('v1.338 D9: a download from another site re-pulls from its SAVED link, in universal mode', async () => {
+  const { calls, entry } = await d9Run({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], D9_PAGE);
+  assert.deepEqual(calls[0][3], { universal: true }, 'the guarded universal mode');
+  assert.equal(entry.networkRan, true);
+});
+
+test('v1.338 D9: no saved link -> the page link in its own tags; neither -> no network (honest "nothing to refresh")', async () => {
+  const fromTags = await d9Run({ universal: true, sourceUrl: null, inDownloadRoot: true }, { sourceUrl: D9_PAGE });
+  assert.equal(fromTags.calls.length, 1);
+  assert.equal(fromTags.calls[0][0], D9_PAGE);
+  const none = await d9Run({ universal: true, sourceUrl: null, inDownloadRoot: true }, {});
+  assert.equal(none.calls.length, 0);
+  assert.equal(none.entry.networkRan, false);
+});
+
+test('v1.338 D9: a HOSTILE saved link, or an item outside the download root, never reaches the re-pull', async () => {
+  const hostile = await d9Run({ universal: true, sourceUrl: 'javascript:alert(1)', inDownloadRoot: true }, {});
+  assert.equal(hostile.calls.length, 0, 'the saved link is re-checked before use');
+  const outside = await d9Run({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: false }, {});
+  assert.equal(outside.calls.length, 0, 'only a file the download lane put there');
+  const notUniversal = await d9Run({ universal: false, sourceUrl: D9_PAGE, inDownloadRoot: true }, {});
+  assert.equal(notUniversal.calls.length, 0, 'a plain file with a stray key is not a download from another site');
+});
+
 // ---- Eligibility + the shared latch ----------------------------------------
 
 test('404 when the id is not among the enumerated (reheatable) items -- never a 202 that resolves to a silent no-op', async () => {

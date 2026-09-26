@@ -3680,7 +3680,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (entry.outcome === 'failed') {
         return 'Reheat did not complete. Some metadata may have been saved; try again.';
       }
-      if (entry.networkRan === false) return 'No YouTube source found for this video, so there was nothing to refresh.';
+      if (entry.networkRan === false) return 'No source link found for this video, so there was nothing to refresh.';
       const before = entry.before || {};
       const after = entry.after || {};
       const parts = [];

@@ -350,7 +350,7 @@
     // that may not have happened).
     function extrasReheatToastFor(entry) {
       if (entry.outcome === 'failed') return 'Reheat did not complete. Some metadata may have been saved; try again.';
-      if (entry.networkRan === false) return 'No YouTube source found for this track, so there was nothing to refresh.';
+      if (entry.networkRan === false) return 'No source link found for this track, so there was nothing to refresh.';
       return 'Reheat finished.';
     }
     function extrasReheat(item) {
