@@ -35,7 +35,7 @@ const { test, before, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, updateDatabase, scanDirectories, trashItem, restoreTrashItem,
-  userStore, viewCountStore, activeMediaStreams, __resetDatabaseForTests,
+  userStore, viewCountStore, progressStore, activeMediaStreams, __resetDatabaseForTests,
 } = require('../../server');
 const { seedState, trashStore } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -106,6 +106,7 @@ function seedUserState(id, seconds) {
   userStore.setProgress(uid, id, { timestamp: seconds, duration: 60, updatedAt: ISO });
   userStore.addLiked(uid, id, ISO);
   viewCountStore.set(id, 7);
+  progressStore.set(id, { timestamp: seconds, duration: 60 }); // the frozen pre-auth position
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.jpg`), `thumb-${id}`);
 }
 
@@ -114,15 +115,17 @@ function assertStateSurvived(id, seconds, label) {
   assert.ok(p && p.timestamp === seconds, `${label}: the per-user progress survived (got ${JSON.stringify(p)})`);
   assert.ok(userStore.getLiked(uid).includes(id), `${label}: the Like survived`);
   assert.equal(viewCountStore.get(id), 7, `${label}: the view count survived`);
+  const frozen = progressStore.get(id);
+  assert.ok(frozen && frozen.timestamp === seconds, `${label}: the frozen pre-auth position survived (got ${JSON.stringify(frozen)})`);
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), `${label}: the thumbnail survived`);
 }
 
 const trashDeps = () => ({ loadDatabase, updateDatabase, getMediaId });
 
-// Hold the walk at its readdir of `dir`. `onHold(realListing)` runs while the
-// scan is parked: `mode: 'before'` hands it nothing and lists AFTER it
-// returns; `mode: 'twoStage'` runs `beforeList`, lists, then `afterList`,
-// and hands the scan that (by then stale) listing.
+// Hold the walk at its (first) readdir of `dir`: `beforeList` runs while the
+// scan is parked BEFORE the real listing is taken, `afterList` runs after it,
+// and the scan is handed that listing (by then stale). Resolves once the
+// held call has returned.
 function holdReaddir(dir, { beforeList, afterList }) {
   let armed = true;
   const done = deferred();
@@ -182,6 +185,7 @@ test('T-S2: an item trashed then RESTORED while the walk runs keeps its metadata
   assert.equal(userStore.getOneProgress(uid, lib.goneId), null, 'control: its per-user progress pruned');
   assert.ok(!userStore.getLiked(uid).includes(lib.goneId), 'control: its Like pruned');
   assert.equal(viewCountStore.get(lib.goneId), 0, 'control: its view count pruned');
+  assert.equal(progressStore.get(lib.goneId), null, 'control: its frozen pre-auth position pruned');
   assert.equal(fs.existsSync(path.join(THUMBNAIL_DIR, `${lib.goneId}.jpg`)), false, 'control: its thumbnail pruned');
   assert.ok(db.metadata[lib.keepId], 'the bystander stays');
 });
@@ -310,4 +314,58 @@ test('T-S4 control: a genuine crash leftover (live record, same inode, no live i
   assert.ok(fs.existsSync(tr.trashPath), 'the bytes are intact in the trash');
   assert.ok(trashStore().get(tr.trashId), 'the record is untouched');
   assert.equal(loadDatabase().metadata[lib.clipId], undefined, 'no resurrection');
+});
+
+// The re-check's other conjuncts, each isolated: the record is still PRESENT
+// (so the record-retired conjunct passes) but something else about the live
+// state no longer matches the snapshot the branch decided from. Each keeps
+// the bytes; a scan never unlinks a dirent the live state does not prove is
+// a leftover.
+async function reconcileWithLiveChange(change) {
+  const lib = seedLibrary();
+  const tr = await trashItem(trashDeps(), lib.clipId);
+  assert.equal(tr.ok, true);
+  fs.linkSync(tr.trashPath, lib.clip); // the crash-leftover shape: record + same inode
+  const rec = trashStore().get(tr.trashId);
+  const stand = new EventEmitter();
+  stand.closed = false;
+  stand.destroyed = false;
+  let changed = false;
+  stand.destroy = () => {
+    // Inside the reconcile's await: the live state moves under the snapshot.
+    Promise.resolve(change({ lib, tr, rec })).then(() => {
+      changed = true;
+      stand.closed = true;
+      stand.emit('close');
+    });
+  };
+  activeMediaStreams.set(lib.clip, new Set([stand]));
+
+  await scanDirectories();
+
+  assert.equal(changed, true, 'precondition: the scan reached the reconcile branch and awaited destroyMediaStreams');
+  assert.ok(trashStore().get(tr.trashId), 'precondition: the record is still present (only the isolated conjunct differs)');
+  assert.ok(fs.existsSync(lib.clip), 'THE binding: the dirent was NOT unlinked');
+  assert.equal(fs.readFileSync(lib.clip, 'utf8'), 'clip-bytes');
+  return { lib, tr };
+}
+
+test('T-S4 conjunct: a live library item claiming the path (record still present) - the dirent is kept', async () => {
+  const { lib } = await reconcileWithLiveChange(({ lib, rec }) => updateDatabase((db) => {
+    db.metadata[lib.clipId] = { ...rec.item, id: lib.clipId, filePath: lib.clip };
+    return true;
+  }));
+  assert.ok(loadDatabase().metadata[lib.clipId], 'the claiming item stays in the library');
+});
+
+test('T-S4 conjunct: the live record now names a DIFFERENT originalPath - the dirent is kept', async () => {
+  await reconcileWithLiveChange(({ lib, tr, rec }) => {
+    trashStore().set(tr.trashId, { ...rec, originalPath: path.join(lib.chan, 'elsewhere.mp4') });
+  });
+});
+
+test('T-S4 conjunct: the live record now names a DIFFERENT trashPath - the dirent is kept', async () => {
+  await reconcileWithLiveChange(({ tr, rec }) => {
+    trashStore().set(tr.trashId, { ...rec, trashPath: `${rec.trashPath}.moved` });
+  });
 });
