@@ -72,7 +72,8 @@
 //       fetchItem(id) -> Promise<item|null> (default: GET /api/videos/:id). Item shape:
 //                        {id,title,liked,watchState:'watched'|'unwatched',hasSubtitles,watchUrl}.
 //       downloadUrl(item) -> the file's ?download=1 URL (default: /video/:id?download=1)
-//       shareLinkUrl(item) -> the external SOURCE link, '' if none (default: item.watchUrl).
+//       shareLinkUrl(item) -> the external SOURCE link, '' if none (default: item.watchUrl, else - v1.338 -
+//                                a download from another site's item.sourceShareUrl).
 //                        Its presence decides the "both when a source exists" Share fork.
 //       capabilities  -> array of action rows to render (default: the full video set). Podcasts
 //                        pass the applicable subset; move/reheat/transcript are omitted for them.
@@ -151,9 +152,12 @@
     }
     // v1.287: the shareable SOURCE link (default = item.watchUrl). Its presence decides the
     // "both when a source exists" Share fork below; a file-only type (podcasts) returns ''.
+    // v1.338 (Dean: "anything that can and is grabbed should be kind of treated and formed the same
+    // way"): a download from another site shares its saved page link (`sourceShareUrl`, server-checked).
     function extrasShareLink(item) {
       try { if (typeof cfg.shareLinkUrl === 'function') return cfg.shareLinkUrl(item) || ''; } catch (_) { /* fall through */ }
-      return (typeof item.watchUrl === 'string' && item.watchUrl !== '') ? item.watchUrl : '';
+      if (typeof item.watchUrl === 'string' && item.watchUrl !== '') return item.watchUrl;
+      return (typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') ? item.sourceShareUrl : '';
     }
     // v1.287: the item-detail source. Default = the /api/videos/:id payload (video/music);
     // podcasts inject a fetch of the episode payload (normalized to {id,title,liked,watchState,...}).

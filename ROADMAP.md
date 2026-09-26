@@ -88,6 +88,14 @@
 - [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
   overlay-containment lint's scroll match, with a fixture.
 
+- [ ] **Bug: the Notify button shifts the row when it toggles** (Dean, 2026-09-26: "notify button shifts
+  unreasonably - should be stable", with two iPhone screenshots of a watch page's channel card). The
+  label flips between "Notify" (bell struck through) and "Notifying" (bell), so the button changes width
+  and "Pin channel" beside it jumps sideways on every tap. First questions when picked up: reserve the
+  wider label's width (the button sized to "Notifying" in both states) or a fixed-width button; check
+  every era/theme and the phone and desktop rows (rows wrap, buttons never shrink - the measure-UI norm),
+  and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
+
 - [ ] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
   like a hold to speed up lock option by dragging down. No need to do now please just add to roadmap").
   Today a press-and-hold on the picture plays at 2x until the finger lifts (player.js hold-to-2x:

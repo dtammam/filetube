@@ -5105,6 +5105,9 @@ function resolveModernGridItem(db, rec, ytView) {
   // download/delete - which need only id - showed. Match the /api/videos
   // projection: derive watchUrl the same way, include ext.
   const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
+  // v1.338 (plan first-class-any-site D5): a download from another site's saved page link, the same
+  // field-COMPLETE rule (a corner needing a field the projection drops renders EMPTY - the v1.85 class).
+  const sourceShareUrl = sourceShare.saved(item, watchUrl);
   return {
     id: rec.id, kind: 'media', title: item.title || item.name || 'Video',
     folderName: item.folderName || '', channelName: item.channelName || '',
@@ -5118,6 +5121,7 @@ function resolveModernGridItem(db, rec, ytView) {
     ...(rec.type === 'audio' ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
     ext: typeof item.ext === 'string' ? item.ext : '',
     ...(watchUrl ? { watchUrl } : {}),
+    ...(sourceShareUrl ? { sourceShareUrl } : {}),
     // v1.93.2: DERIVED storyboard descriptor for the modern-grid card's
     // hover/in-view preview (eligible videos only; omitted otherwise). The card
     // preloads /storyboard/:id and reveals the overlay only on a successful load
@@ -5357,6 +5361,7 @@ mediaUserRoutes.registerLikedRoutes(app, {
   albumArtExists, // the liked-track arm's cover-art presence probe
   bookVisibleTo,
   booksDb,
+  buildWatchUrl, // v1.338: the Liked cards' YouTube Share link
   effectiveBookProgress,
   effectiveMusicProgress,
   effectiveProgress,
@@ -5371,6 +5376,7 @@ mediaUserRoutes.registerLikedRoutes(app, {
   podcastsDb,
   previewClipEligible,
   restrictedVideoMutation, // v1.80 RBAC (S-b): no restricted-id oracle, no persist
+  sourceShare, // v1.338: the Liked cards' saved page link (other sites)
   storyboardDescriptor,
   trackVisibleTo,
   userStore,

@@ -140,6 +140,23 @@ test('share: renders only when the item carries the server-derived watchUrl', ()
   assert.strictEqual(without.trim(), '', 'no watchUrl -> an EMPTY corner, no fallback control');
 });
 
+function buildCorners(item, br) { return buildCardCorners(item, { cornerTL: 'none', cornerTR: 'none', cornerBL: 'none', cornerBR: br }, {}); }
+
+test('v1.338 share: a download from another site renders Share from its sourceShareUrl, named for what it shares; YouTube wins', () => {
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  const other = buildCardCornerButtonsHtml({ ...ITEM, sourceShareUrl: page }, { cornerTL: 'share', cornerTR: 'none', cornerBL: 'none' }, {});
+  assert.match(other, /card-share-btn card-corner-tl/);
+  assert.match(other, /data-share-url="https:\/\/www\.reddit\.com\/r\/videos\/comments\/abc123\/a_clip\/"/);
+  assert.match(other, /aria-label="Share the original link"/);
+  const yt = buildCardCornerButtonsHtml({ ...ITEM, watchUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', sourceShareUrl: page }, { cornerTL: 'share', cornerTR: 'none', cornerBL: 'none' }, {});
+  assert.match(yt, /data-share-url="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/, 'the YouTube link wins');
+  assert.match(yt, /aria-label="Share the original YouTube link"/);
+  // the link is escaped into the attribute (a server-checked link never has a quote, but the renderer escapes anyway)
+  const quoted = buildCardCornerButtonsHtml({ ...ITEM, sourceShareUrl: 'https://a.example/x"onmouseover="y' }, { cornerTL: 'share', cornerTR: 'none', cornerBL: 'none' }, {});
+  assert.doesNotMatch(quoted, /"onmouseover="/);
+  assert.strictEqual(buildCorners({ ...ITEM, sourceShareUrl: page }, 'share').brOccupied, true, 'a BR share with a saved link occupies BR');
+});
+
 test('reheat: renders only when the module capability is affirmatively enabled', () => {
   const enabled = buildCardCornerButtonsHtml(ITEM, { cornerTL: 'reheat', cornerTR: 'none', cornerBL: 'none' }, { reheatEnabled: true });
   assert.match(enabled, /card-reheat-btn card-corner-tl/);
