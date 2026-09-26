@@ -2,6 +2,26 @@
 
 ## Planned
 
+- [ ] **HIGHEST PRIORITY (1 of 2). Bug: the fullscreen video goes BLACK after a pause / resume, pause /
+  resume** (Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's
+  some way in which after I pause or resume, pause and resume again, the screen of the video goes black.
+  Unsure why."). A regression (worked before). Not yet reproduced. First questions (LESSONS 1: name the
+  falsifying observation before editing): which fullscreen (the native iOS player, the faux overlay, or
+  the desktop Fullscreen API), which device / browser, does the audio keep playing while the picture is
+  black, and does the black clear on a seek, a rotation or leaving fullscreen. Bisect the recent player
+  releases (v1.330-v1.335: the lighting and ambient layers, the Tap to play cue, the early launch cover)
+  and the ambient-mode lesson (a filter / blur / mask / backdrop over or around a playing video blacks it
+  out on the iPhone).
+
+- [ ] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
+  every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
+  entire screen. It doesn't appear in the screenshots, but it totally appears for our faux overlay.").
+  Visible on the device, absent from screenshots, and it shows on the FAUX fullscreen overlay. First
+  questions: a 1 px edge the overlay does not cover (a sub-pixel inset, a rounding of 100vw / 100dvh vs
+  the visual viewport, the safe-area insets), the body or html background painting through at the edge,
+  or an outline / box-shadow on the overlay; why a screenshot misses it (a compositor-only edge, or the
+  screenshot's own crop). Measure the overlay's rect against the viewport on the device first.
+
 - [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
   a PWA or a web app to query the device for battery and show that battery instead of just an
   arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
