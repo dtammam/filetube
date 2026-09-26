@@ -226,3 +226,63 @@ the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
   turn, a new colorway losing its block, a missing blurb, a chassis role not its token, Brick's backdrop
   bypassing the roles. The pristine sandbox 136/136; the sandbox left identical to the pristine copy.
 
+Gate: CHANGES r1 @48ef515f - qa
+  Instruments (Node 22.23.1, run by qa on 48ef515f): full `npm test` 9635/9635 pass, 0 fail (exit 0); targeted
+  unit (pocket-*, music-skins, music-pocket-menus, skin-surface, setup-music-skin-picker, seattle-removed-census,
+  token-scale-lock) 316/316; music-skin-integration + integration music-pocket-menus(-r1) 167/167; lint:css TOTAL 0;
+  overlay-containment clean (0); eslint on the changed JS/tests exit 0. The 57 reads / 38 rules re-derived from the diff.
+  - WARNING W1 (public/js/music.js:3987, mountEarlyCover): a SECOND skin className writer, missed. The ?play= launch
+    cover (Continue listening) writes `mms mms-full mms-<id> mms-<base>` with no look class, so on the Original the
+    launch frame paints Click White's screen (white paper, uppercase MENU, no ring or disc) until the engine's
+    paint lands after the track loads, then snaps to the monochrome ring. The plan's "the engine's ONE className
+    writer" is false (LESSONS 12, the forgotten writer). Fix: one shared class builder (registry or engine) used by
+    both writers, plus a census that every `mms-full mms-` writer carries the look.
+  - WARNING W2 (test/unit/pocket-design-system.test.js, the screen census): the glass ROOT is outside its derived
+    set (it collects descendants of .ip-lcd-in only). Sandbox mutant `.mms-ipod .ip-lcd-in{ background:var(--mms-white) }`:
+    pocket-design-system + pocket-original-look + music-skins + token-scale-lock 59/59 GREEN, yet the Original's whole
+    screen turns white. Add .ip-lcd-in to the census set (or pin that rule's paper read) and watch the mutant red.
+  - SUGGESTION S1 (public/js/skin-surface.js:1967): the clear keys on the VALUE (`wheelTurn` truthy), not on whether
+    the property was written. Sandbox probe: Original, spin +10 then -10, switch to ipod-red -> the panel keeps
+    `--ip-turn: 0.0deg`. Invisible, but it breaks AC6 (e) "never for another skin" and the comment at :1378. Track a
+    written flag or clear unconditionally on a look-less paint.
+  - SUGGESTION S2 (public/fonts/jersey10.woff2 + README): the subset dropped name IDs 13/14 (only the copyright, ID 0,
+    survives; geist.woff2 keeps ID 14), and OFL 1.1 asks that the license accompany each copy. Ship an OFL.txt beside
+    it or subset with --name-IDs='*'. README otherwise complete (copyright, license, source, subset note).
+  - SUGGESTION S3 (skin-surface.js:2509, suspicion, unmeasured): writing an inherited custom property on the PANEL each
+    pointermove restyles the whole panel subtree (a 200-row queue); writing it on .ip-wheel (re-applied in paint) scopes it.
+  - SUGGESTION S4 (public/css/style.css:12063): "Every color is the Classic palette this skin already carries" is no
+    longer true on the Original; name the screen roles. Also Brick paints a fixed #2b3a4a in system-ui on the Original's LCD.
+  Security: no new surface. The font is served by the existing express.static under the /fonts/ prefix (no new route);
+  --ip-turn is toFixed(1) of a number via setProperty; the blurbs and look class are static registry strings; no network.
+  Labels and blurbs: no brand names, no em dashes (0 in added lines).
+Gate: CHANGES r1 @48ef515f - adversary
+  Instruments (Node 22.23.1, /tmp git-archive sandbox of 48ef515f): targeted unit 186/186; FULL test:unit on the pristine
+  sandbox 7441 pass / 8 fail (all 8 are git-dependent source locks failing because the sandbox is not a repo; the same 8
+  on every mutant run); lint:css TOTAL 0; overlay clean. Fresh tip shoot, ipod + ipod-black + ipod-gold x 4 LIGHTS x 2
+  viewports + pop-out + tray vs the builder's base set: 372 shots, 0 px on every Off shot, 39 style diffs = the 13 new
+  tray chips x 3, 14 px at max delta 1 on 6 lit shots (the noise class). Verified: a real CDP touch drag of 60 deg writes
+  --ip-turn 60.0deg and the disc computes matrix(0.5, 0.866, ...); under reduced motion it computes none; a sticker pick
+  to Cider then Click clears the style. The Original's computed colors inside the glass, 15 phone levels: only the four
+  --pk-o-* values plus rgba(0,0,0,.12) (the picker's top line); every line 1 line tall.
+  - WARNING W1 (public/js/music.js:3987, mountEarlyCover; same as qa W1, measured): with ft-music-skin=ipod-original,
+    /music?play=nd1 at 300 ms RTT shows the panel for 1.8 s (1247 -> 3081 ms) as `mms-ipod-original mms-ipod` with no
+    look: LCD rgb(255,255,255), Geist, no ring, uppercase MENU, green battery, blue-grey scrubber (screenshot taken).
+    Fix: one class builder both writers call, bound by a test that drives mountEarlyCover.
+  - WARNING W2 (the screen census + pocket-original-look; widens qa W2): FOUR sandbox mutants survive the FULL unit
+    suite (7441/8, identical to pristine), each visible on the Original (rendered: white glass, blue selection bar):
+    (1) `.mms-ipod .ip-lcd-in` paper back to var(--mms-white) - the census collects descendants only;
+    (2) respelling with a fallback, `.ipm-row.is-cursor` reading var(--mms-ipod-blue1, var(--pk-s-sel1)) - the regex
+        needs `var(--token)` closed;
+    (3) relocation, a new `.mms-full .ipm-row.is-cursor{ background:linear-gradient(var(--mms-ipod-blue1), ...) }` - the
+        census skips any selector without mms-ipod / ipod-brick / mms-tray;
+    (4) 48ef515f's `font-size-adjust:inherit` dropped from the three button rules - nothing pins it (rows shrink 1.49x).
+    The census title ("no rule inside the LCD glass reads a palette token directly") also overclaims: .mms-ipod .ipm-grid
+    reads --mms-ipod-jump-line directly; only the 16 wrapped tokens are hunted. Fix: include the glass root, match
+    `var(--token` with or without a fallback, scope by the derived glass classes rather than the ancestor class, pin
+    the inherit; re-run these four and watch them red.
+  - SUGGESTION S1 (style.css, the look's button rule): the same UA font reset hits two more screen buttons - measured
+    .ipm-letter and .ipm-badge compute font-size-adjust none (Jersey unscaled while the rows are at .64).
+  - SUGGESTION S2 (public/js/ipod-brick.js:213/221): Brick paints #2b3a4a in system-ui on the grey-green glass; the
+    status log's "every level monochrome incl. Brick" holds for the backdrop only. Dean judges.
+  Not measured by me: the other 7 pre-existing Click skins on the tip (the tip's delta over 9c571d49 is look-scoped
+  only); Cider / Nordic (untouched by construction); Node 24.
