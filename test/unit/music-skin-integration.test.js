@@ -1388,7 +1388,7 @@ test('v1.253 (adversarial W2): the DESKTOP now-playing panel rows carry the trac
       for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
       const thumb2 = panel(dom).querySelector('.mnp-queue-thumb');
       assert.ok(thumb2, 'the normal track\'s panel row rendered (non-vacuous)');
-      assert.strictEqual(thumb2.getAttribute('src'), '/albumart/t9', 'an artUrl-less row keeps the /albumart route (no over-reach)');
+      assert.strictEqual(thumb2.getAttribute('src'), '/albumart/t9?s=128', 'an artUrl-less row keeps the /albumart route (no over-reach; v1.339: the row-sized rendition)');
     },
   });
 });

@@ -196,9 +196,26 @@
         <div id="music-status" class="music-status" role="status" hidden></div>
 
         <!-- Redesign S1: "Jump back in" - a horizontal strip of what you were last
-             playing, above the tabs. Hidden until populated (public/js/music.js
-             renderJumpBackIn from filter=recent-listening); tap a tile to resume. -->
-        <section id="music-jumpback" class="music-jumpback" aria-label="Jump back in" hidden></section>
+             playing, above the tabs. Ships hidden around a static exact-shape skeleton;
+             v1.339: the inline script below un-hides it before first paint when the
+             last visit had items, public/js/music.js renderJumpBackIn re-reserves it at
+             init (an SPA swap runs no inline script) and fills it from
+             filter=recent-listening, or collapses it when there are none; tap a tile
+             to resume. -->
+        <section id="music-jumpback" class="music-jumpback" aria-label="Jump back in" hidden><h2 class="music-jump-head">Jump back in</h2><div class="music-jump-row"><button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true"><span class="music-jump-art skeleton-shimmer"></span><span class="music-jump-title">&nbsp;</span><span class="music-jump-sub">&nbsp;</span></button><button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true"><span class="music-jump-art skeleton-shimmer"></span><span class="music-jump-title">&nbsp;</span><span class="music-jump-sub">&nbsp;</span></button><button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true"><span class="music-jump-art skeleton-shimmer"></span><span class="music-jump-title">&nbsp;</span><span class="music-jump-sub">&nbsp;</span></button><button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true"><span class="music-jump-art skeleton-shimmer"></span><span class="music-jump-title">&nbsp;</span><span class="music-jump-sub">&nbsp;</span></button><button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true"><span class="music-jump-art skeleton-shimmer"></span><span class="music-jump-title">&nbsp;</span><span class="music-jump-sub">&nbsp;</span></button><button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true"><span class="music-jump-art skeleton-shimmer"></span><span class="music-jump-title">&nbsp;</span><span class="music-jump-sub">&nbsp;</span></button></div></section>
+        <script>
+          /* v1.339 (L1, M1): PRE-PAINT reserve for "Jump back in". This runs during parse, before
+             the tabs below exist, so a cold load paints the strip's exact-shape skeleton (the
+             static markup above - music.js buildJumpBackSkeletonHtml(6), byte-locked by
+             music-jumpback-reserve.test.js) instead of shoving the tabs down 181px when
+             music.js fills it. Key = MUSIC_JUMPBACK_COUNT_KEY. An SPA swap never runs this
+             (inserted scripts are inert); music.js reserves synchronously at init there. */
+          (function () {
+            try {
+              if (parseInt(localStorage.getItem('ft-music-jumpback-count'), 10) > 0) document.getElementById('music-jumpback').hidden = false;
+            } catch (_) { /* storage blocked: stays hidden (a one-time shift at most) */ }
+          })();
+        </script>
 
         <div class="music-tabs" id="music-tabs" role="tablist">
           <button type="button" class="music-tab active" data-tab="home" role="tab">Home</button>

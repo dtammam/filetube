@@ -112,6 +112,93 @@ function shimmerArt(root) {
   });
 }
 
+// v1.339 (L1, plan D4): REVEAL-TOGETHER. shimmerArt reveals each image the moment it
+// decodes, so a screen of tiles pops in one by one. This reveals the `art-shimmer` images
+// currently INTERSECTING the viewport as ONE batch: each gets `art-together` (CSS holds its
+// decoded pixels out of view, `object-position`, so only the shimmer shows) and all clear
+// in the same task once EVERY one has settled - loaded AND decoded (`img.decode()` after
+// `load`, so iOS never paints a half-decoded frame), or errored (a broken image counts as
+// settled; its broken-image affordance then shows, never a perpetual shimmer) - or when
+// REVEAL_TOGETHER_CAP_MS elapses, whichever is first. At the cap the settled ones reveal
+// together and the rest fall back to their own per-image reveal. An image already
+// `complete` counts as settled immediately, so a warm screen reveals in the same tick.
+// Off-screen images keep the per-image reveal (their decode is not what the eye waits
+// on). Every exit is bound: all-settled, the cap, `opts.signal` abort and handle.abort()
+// (view teardown) - an abort stops the batch and hands each image back to its own reveal
+// (settled ones now, pending ones on their own load/error), so nothing can stay held.
+// An image a pending batch already holds is skipped, so a re-run over the same host never
+// re-owns (or early-reveals) it. `opts.capMs` overrides the cap. Returns `{ abort }`.
+// Exposed on window.FileTube (general: any view's `art-shimmer` images).
+// The cap: 600ms is long enough to absorb the per-image network/decode stagger of a
+// screen of right-sized covers (the probe measured 0.12-0.25s at 20Mbps for 240px art)
+// and short enough that one stalled cover never holds a whole screen of loaded art.
+const REVEAL_TOGETHER_CAP_MS = 600;
+function revealArtTogether(root, opts) {
+  const o = opts || {};
+  const handle = { abort() {} };
+  if (typeof document === 'undefined') return handle;
+  const scope = (root && typeof root.querySelectorAll === 'function') ? root : document;
+  const win = typeof window !== 'undefined' ? window : null;
+  const vw = (win && win.innerWidth) || document.documentElement.clientWidth || 0;
+  const vh = (win && win.innerHeight) || document.documentElement.clientHeight || 0;
+  const capMs = (typeof o.capMs === 'number' && o.capMs >= 0) ? o.capMs : REVEAL_TOGETHER_CAP_MS;
+  const clear = (img) => { img.classList.remove('art-shimmer'); img.classList.remove('art-together'); };
+  const perImage = (img) => {
+    if (img.complete) { clear(img); return; }
+    img.addEventListener('load', () => clear(img), { once: true });
+    img.addEventListener('error', () => clear(img), { once: true });
+  };
+  const dead = !!(o.signal && o.signal.aborted); // a torn-down view batches nothing
+  const inView = [];
+  scope.querySelectorAll('img.art-shimmer').forEach((img) => {
+    if (img.classList.contains('art-together')) return; // owned by a still-pending batch (a re-run over the same host)
+    const r = (!dead && typeof img.getBoundingClientRect === 'function') ? img.getBoundingClientRect() : null;
+    const visible = !!r && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+    if (visible) inView.push(img); else perImage(img);
+  });
+  if (inView.length === 0) return handle;
+  const settled = new Set(inView.filter((img) => img.complete));
+  if (settled.size === inView.length) { inView.forEach(clear); return handle; }
+  let done = false;
+  let timer = null;
+  const unbinders = [];
+  const stop = () => {
+    done = true;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    unbinders.forEach((fn) => fn());
+    unbinders.length = 0;
+    if (o.signal && typeof o.signal.removeEventListener === 'function') o.signal.removeEventListener('abort', onAbort);
+  };
+  // All settled, or the cap: the settled ones reveal TOGETHER, the rest per image.
+  const finish = () => {
+    if (done) return;
+    stop();
+    inView.forEach((img) => { if (settled.has(img)) clear(img); else perImage(img); });
+  };
+  function onAbort() { finish(); }
+  const settle = (img) => {
+    if (done || settled.has(img)) return;
+    settled.add(img);
+    if (settled.size === inView.length) finish();
+  };
+  inView.forEach((img) => {
+    img.classList.add('art-together');
+    if (settled.has(img)) return;
+    const onLoad = () => {
+      if (typeof img.decode === 'function') img.decode().then(() => settle(img), () => settle(img));
+      else settle(img);
+    };
+    const onError = () => settle(img);
+    img.addEventListener('load', onLoad, { once: true });
+    img.addEventListener('error', onError, { once: true });
+    unbinders.push(() => { img.removeEventListener('load', onLoad); img.removeEventListener('error', onError); });
+  });
+  timer = setTimeout(finish, capMs);
+  if (o.signal && typeof o.signal.addEventListener === 'function') o.signal.addEventListener('abort', onAbort, { once: true });
+  handle.abort = onAbort;
+  return handle;
+}
+
 // Single source of truth for both the setup-page Appearance picker and the
 // switching logic. Adding a 5th era = one entry here + one CSS block pair.
 const THEME_REGISTRY = [
@@ -11155,6 +11242,8 @@ if (typeof window !== 'undefined') {
   // v1.102 (tranche 4 shimmer): the art-decode reveal helper, called by every
   // view file after it renders a batch of card images.
   window.FileTube.shimmerArt = shimmerArt;
+  // v1.339 (L1): the batched in-viewport reveal (music first; a general helper for any view).
+  window.FileTube.revealArtTogether = revealArtTogether;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -16631,6 +16720,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
+    // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).
+    revealArtTogether, REVEAL_TOGETHER_CAP_MS,
     // v1.247 (F2): the pure MENU-returns-to-origin decision (launch nav -> FROM tab, else null).
     isPlayerLaunchUrl, nextPlayerLaunchOrigin, isPlayerOpenUrl,
     // v1.63 playback queue: the chrome's pure decisions.
