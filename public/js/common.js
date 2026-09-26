@@ -9975,7 +9975,9 @@ function swipeBackStandDownReason(startEl, doc, win) {
   // back left the watch page (or popped to a previous watch page), which drops fullscreen. Fullscreen
   // has its own ways out (the fullscreen button, a rotate), so while the faux overlay
   // (body.ft-css-fullscreen, player.js setCssFullscreen) or a Fullscreen API element is up, the swipe
-  // is not a back. The expanded audio view and the full-screen skins keep their swipe-back (v1.311.3).
+  // is not a back. The expanded audio view and the full-screen skins keep their swipe-back (v1.311.3)
+  // - except where the audio view itself is in real Fullscreen API fullscreen (a desktop-class touch
+  // device, player.js enterFullscreen): a fullscreen is a fullscreen.
   if (doc && doc.body && doc.body.classList && doc.body.classList.contains('ft-css-fullscreen')) return 'fullscreen';
   if (doc && (doc.fullscreenElement || doc.webkitFullscreenElement)) return 'fullscreen';
   const ownerSel = SWIPE_BACK_OWNER_SELECTORS.join(',');

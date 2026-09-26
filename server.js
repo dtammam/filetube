@@ -4956,9 +4956,30 @@ configRoutes.registerCacheRoutes(app, {
 // unchanged.
 const mediaRoutes = require('./lib/media/routes'); // Wave 7b S10a: the require sits at its call site so parallel slices never touch the same hunk
 // v1.337: the watch page's Share for a non-YouTube download - the page URL yt-dlp wrote into the
-// file's own tags, read by the reheat's probeEmbeddedTags (cached per file, time-limited).
-const sourceShare = require('./lib/media/source-share').createSourceShareResolver({
-  probe: probeEmbeddedTags,
+// file's own tags (lib/media/source-share.js: validated, cached per file, one probe per file at a
+// time, time-limited for the page).
+const sourceShareLib = require('./lib/media/source-share');
+// ONE ffprobe of the file's tags at BOTH levels - the file's (MP4 `comment`, MKV / WebM / MP3 / M4A
+// `purl` + `comment`) and each stream's (Ogg keeps an Opus download's tags per stream, where
+// buildFfprobeArgs' format-only read never looks). Its own probe, not probeEmbeddedTags, so the
+// reheat's reads stay exactly as they were. Hard-killed at SOURCE_SHARE_PROBE_KILL_MS: a hung file
+// (a stalled network mount) must not leave an ffprobe behind per page load. Resolves
+// `{ sourceUrl }` (null when the file carries none) or null when the probe itself failed; never rejects.
+const SOURCE_SHARE_PROBE_KILL_MS = 15000;
+function probeSourceShareUrl(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    execFile('ffprobe', ['-v', 'error', '-show_entries', 'format_tags:stream_tags', '-of', 'json', filePath],
+      { maxBuffer: 4 * 1024 * 1024, timeout: SOURCE_SHARE_PROBE_KILL_MS, killSignal: 'SIGKILL' }, (err, stdout) => {
+        if (err || !stdout) { resolve(null); return; }
+        let j;
+        try { j = JSON.parse(stdout); } catch (_) { resolve(null); return; }
+        resolve({ sourceUrl: sourceShareLib.sourceUrlFromProbeJson(j) });
+      });
+  });
+}
+const sourceShare = sourceShareLib.createSourceShareResolver({
+  probe: probeSourceShareUrl,
   stat: (p) => fs.promises.stat(p),
 });
 mediaRoutes.registerBrowseRoutes(app, {

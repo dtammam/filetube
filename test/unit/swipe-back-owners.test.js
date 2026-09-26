@@ -219,6 +219,14 @@ test('v1.337: a Fullscreen API element (desktop, iPad) stands the swipe-back dow
   fsEl = null;
   dragRight(win, doc.getElementById('media-player'));
   assert.strictEqual(backs.n, 1, 'after it exits, the swipe goes back again');
+  // older WebKit names it webkitFullscreenElement (gate r1 qa S4 / adversary 3a: this half was unbound)
+  let wkEl = doc.body;
+  Object.defineProperty(doc, 'webkitFullscreenElement', { configurable: true, get: () => wkEl });
+  dragRight(win, doc.getElementById('media-player'));
+  assert.strictEqual(backs.n, 1, 'no back while webkitFullscreenElement holds an element');
+  wkEl = null;
+  dragRight(win, doc.getElementById('media-player'));
+  assert.strictEqual(backs.n, 2, 'and back again after it exits');
 });
 
 test('the touch-action NET: an unlisted element that took horizontal panning stands down', () => {

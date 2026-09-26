@@ -23,6 +23,7 @@
 //       PANEL ok|FAIL <the video:check line as the on-screen panel renders it>
 //       SWIPE depth=<n> fullscreen <before>-><after> url <before>-><after> ok|FAIL  (v1.337: a right
 //       swipe across the picture in faux fullscreen, after an in-app navigation, changes nothing)
+//       SWIPE-left|up|down fullscreen <true|false> url <url> ok|FAIL  (the other three directions too)
 //     Exits 1 on any painted edge, a failed tap, too few instrument lines, a cut panel line or a swipe
 //     that leaves fullscreen or the page.
 
@@ -221,6 +222,22 @@ async function main() {
   const swipeOk = swipeBefore.fs === true && swipeBefore.depth > 0 && swipeAfter.fs === true && swipeAfter.url === swipeBefore.url;
   console.log(`SWIPE depth=${swipeBefore.depth} fullscreen ${swipeBefore.fs}->${swipeAfter.fs} url ${swipeBefore.url}->${swipeAfter.url} ${swipeOk ? 'ok' : 'FAIL'}`);
   if (!swipeOk) process.exitCode = 1;
+  // Dean asked whether any OTHER direction glitches: a left, an up and a down swipe across the picture
+  // must leave fullscreen and the page as they were too (measured, not read off the code).
+  const drags = { left: [[300, 422], [250, 425], [200, 425], [150, 425], [100, 425], [60, 425]],
+    up: [[195, 600], [195, 540], [195, 480], [195, 400], [195, 320], [195, 260]],
+    down: [[195, 260], [195, 320], [195, 400], [195, 480], [195, 540], [195, 600]] };
+  for (const dir of Object.keys(drags)) {
+    const pts = drags[dir];
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: pts[0][0], y: pts[0][1] }] });
+    for (const [x, yy] of pts.slice(1)) { await sleep(16); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: yy }] }); }
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(1200);
+    const after = await ev('({ url: location.pathname + location.search, fs: document.getElementById("player-wrapper") ? document.getElementById("player-wrapper").classList.contains("css-fullscreen") : false, scrollY: window.scrollY })');
+    const ok = after.fs === true && after.url === swipeBefore.url;
+    console.log(`SWIPE-${dir} fullscreen ${after.fs} url ${after.url} ${ok ? 'ok' : 'FAIL'}`);
+    if (!ok) process.exitCode = 1;
+  }
 
   // desktop: the staged Fullscreen API path (#fs-stage), the same host border in the other fullscreen
   await send('Emulation.setTouchEmulationEnabled', { enabled: false });

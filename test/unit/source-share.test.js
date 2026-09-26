@@ -8,6 +8,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   sanitizeSourceShareUrl,
+  sourceUrlFromProbeJson,
   wantsSourceShareUrl,
   createSourceShareResolver,
   SOURCE_SHARE_URL_MAX,
@@ -22,6 +23,9 @@ test('sanitizeSourceShareUrl: a real page URL from another site passes through u
     'http://example.org/v/1?x=1&y=%20z#frag',
   ]) assert.strictEqual(sanitizeSourceShareUrl(u), u);
   assert.strictEqual(sanitizeSourceShareUrl('  https://vimeo.com/1  '), 'https://vimeo.com/1', 'trimmed');
+  // the PARSED form is returned: a non-ASCII host becomes its punycode (what a browser would open)
+  assert.strictEqual(sanitizeSourceShareUrl('https://b\u00fccher.example/x'), 'https://xn--bcher-kva.example/x');
+  assert.strictEqual(sanitizeSourceShareUrl('https://vimeo.com'), 'https://vimeo.com/');
 });
 
 test('sanitizeSourceShareUrl: anything that is not a plain http(s) page link is refused (null)', () => {
@@ -32,9 +36,36 @@ test('sanitizeSourceShareUrl: anything that is not a plain http(s) page link is 
     'https://host.example/a b', 'https://host.example/a\tb', 'https://host.example/a\u0000b', 'https://host.example/\u007f',
     'https://',
     'https://host.example/' + 'a'.repeat(SOURCE_SHARE_URL_MAX), // over the length cap
+    // gate r1 (qa 1, adversary 3 + 7): hidden characters, userinfo in any form, an empty authority,
+    // a scheme without its slashes, a backslash
+    'https://www.reddit.com/r/\u202egpj.exe', // RLO: displays as ".../exe.jpg"
+    'https://www.reddit.com/r/\u2066x\u2069', 'https://www.reddit.com/\u200bx', 'https://www.reddit.com/\ufeffx',
+    'https://www.reddit.com/\u0085x', 'https://www.reddit.com/\u009bx', // C1 controls
+    'https://www.reddit.com/\u2028x', 'https://www.reddit.com/\u00a0x',
+    'https://www.reddit.com\\@evil.example/', 'https://evil.example\\@good.example/', 'https://h.example\\x',
+    'https://:secret@host.example/x', 'https://@a.example/', 'https://a@b@c.example/',
+    'https:///x', 'http:///nohost', 'https:www.reddit.com/x', 'https:/www.reddit.com/x',
   ];
   for (const b of bad) assert.strictEqual(sanitizeSourceShareUrl(b), null, JSON.stringify(b));
   assert.strictEqual(sanitizeSourceShareUrl('https://h.example/' + 'a'.repeat(SOURCE_SHARE_URL_MAX - 'https://h.example/'.length)).length, SOURCE_SHARE_URL_MAX, 'exactly the cap passes');
+});
+
+// ---- sourceUrlFromProbeJson (pure): where each container keeps the tags ---------
+
+test('sourceUrlFromProbeJson: file-level purl, then comment (MP4 keeps only comment), case-insensitive', () => {
+  assert.strictEqual(sourceUrlFromProbeJson({ format: { tags: { comment: 'https://a.example/mp4' } } }), 'https://a.example/mp4');
+  assert.strictEqual(sourceUrlFromProbeJson({ format: { tags: { PURL: 'https://a.example/p', COMMENT: 'https://a.example/c' } } }), 'https://a.example/p', 'MKV upper-case; purl first');
+  assert.strictEqual(sourceUrlFromProbeJson({ format: { tags: { purl: 'not a url', comment: 'https://a.example/c' } } }), 'https://a.example/c');
+  assert.strictEqual(sourceUrlFromProbeJson({ format: { tags: { comment: 'A description, no link' } } }), null);
+});
+
+test('sourceUrlFromProbeJson: Ogg (an Opus download) keeps the tags per STREAM (gate r1 adversary 1)', () => {
+  // the shape the box's ffprobe prints for an Opus file written with yt-dlp's metadata arguments
+  const opus = { format: {}, streams: [{ tags: { title: 'x', purl: 'https://www.reddit.com/r/v/comments/1/', comment: 'https://www.reddit.com/r/v/comments/1/' } }] };
+  assert.strictEqual(sourceUrlFromProbeJson(opus), 'https://www.reddit.com/r/v/comments/1/');
+  assert.strictEqual(sourceUrlFromProbeJson({ format: { tags: { comment: 'https://a.example/file' } }, streams: [{ tags: { purl: 'https://a.example/stream' } }] }), 'https://a.example/file', 'the file level wins');
+  assert.strictEqual(sourceUrlFromProbeJson({ streams: [{}, null, { tags: { comment: 'https://a.example/2nd' } }] }), 'https://a.example/2nd');
+  for (const junk of [null, undefined, 'x', {}, { format: null, streams: 'no' }]) assert.strictEqual(sourceUrlFromProbeJson(junk), null);
 });
 
 // ---- wantsSourceShareUrl (pure) -----------------------------------------------
@@ -60,7 +91,7 @@ function harness(opts) {
   const deps = {
     stat: async (p) => { if (!stats.has(p)) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); return stats.get(p); },
     probe: o.probe || (async (p) => { probes.push(p); return Object.prototype.hasOwnProperty.call(tags, p) ? tags[p] : null; }),
-    timeoutMs: o.timeoutMs,
+    waitMs: o.waitMs,
     cacheMax: o.cacheMax,
   };
   return { r: createSourceShareResolver(deps), probes, stats, tags };
@@ -104,12 +135,43 @@ test('resolver: a FAILED probe (null) is not cached - the next load retries', as
   assert.strictEqual(calls, 2);
 });
 
-test('resolver: a slow probe is cut at the time limit (null, not cached) and a throwing one never rejects', async () => {
-  const slow = harness({ timeoutMs: 20, probe: () => { return new Promise((res) => setTimeout(() => res({ sourceUrl: 'https://vimeo.com/4' }), 200)); } });
+test('resolver: a slow probe answers the page at the limit, and its LATE answer still fills the cache (gate r1 qa 2)', async () => {
+  let calls = 0;
+  const slow = harness({ waitMs: 20, probe: () => { calls += 1; return new Promise((res) => setTimeout(() => res({ sourceUrl: 'https://vimeo.com/4' }), 120)); } });
   const t0 = Date.now();
   assert.strictEqual(await slow.r.resolve({ filePath: '/m/a.mp4' }), null);
-  assert.ok(Date.now() - t0 < 150, 'returned at the limit, not after the probe');
-  assert.strictEqual(slow.r._cacheSize(), 0, 'a timeout is not an answer');
+  assert.ok(Date.now() - t0 < 100, 'returned at the limit, not after the probe');
+  assert.strictEqual(slow.r._inFlight(), 1, 'the probe keeps running');
+  await new Promise((r) => setTimeout(r, 160));
+  assert.strictEqual(slow.r._inFlight(), 0);
+  assert.strictEqual(await slow.r.resolve({ filePath: '/m/a.mp4' }), 'https://vimeo.com/4', 'the next load is served from the late answer');
+  assert.strictEqual(calls, 1, 'one probe in all');
+});
+
+test('resolver: concurrent loads of one file share ONE probe (gate r1 qa 2 / adversary 2)', async () => {
+  let calls = 0;
+  const { r } = harness({ waitMs: 1000, probe: () => { calls += 1; return new Promise((res) => setTimeout(() => res({ sourceUrl: 'https://vimeo.com/5' }), 40)); } });
+  const answers = await Promise.all(Array.from({ length: 20 }, () => r.resolve({ filePath: '/m/a.mp4' })));
+  assert.deepStrictEqual(new Set(answers), new Set(['https://vimeo.com/5']));
+  assert.strictEqual(calls, 1, '20 simultaneous first loads, one probe');
+  const slowCalls = { n: 0 };
+  const slow = harness({ waitMs: 10, probe: () => { slowCalls.n += 1; return new Promise((res) => setTimeout(() => res({ sourceUrl: 'https://vimeo.com/6' }), 80)); } });
+  await Promise.all(Array.from({ length: 20 }, () => slow.r.resolve({ filePath: '/m/a.mp4' })));
+  await slow.r.resolve({ filePath: '/m/a.mp4' });
+  assert.strictEqual(slowCalls.n, 1, 'a probe that outlives every wait is still the only one');
+});
+
+test('resolver: a hung stat answers the page at the limit too (gate r1 adversary S5), one stat in flight per file', async () => {
+  let stats = 0;
+  const r = createSourceShareResolver({ waitMs: 20, stat: () => { stats += 1; return new Promise(() => {}); }, probe: async () => ({ sourceUrl: 'https://a.example/' }) });
+  const t0 = Date.now();
+  const answers = await Promise.all([r.resolve({ filePath: '/m/a.mp4' }), r.resolve({ filePath: '/m/a.mp4' })]);
+  assert.deepStrictEqual(answers, [null, null]);
+  assert.ok(Date.now() - t0 < 150);
+  assert.strictEqual(stats, 1, 'the second load joined the hung stat instead of starting another');
+});
+
+test('resolver: a throwing or rejecting probe never rejects', async () => {
   const thrower = harness({ probe: () => { throw new Error('spawn EACCES'); } });
   assert.strictEqual(await thrower.r.resolve({ filePath: '/m/a.mp4' }), null);
   const rejecter = harness({ probe: () => Promise.reject(new Error('boom')) });
@@ -157,11 +219,17 @@ test('GET /api/videos/:id: the visibility gate runs BEFORE the probe; only a wan
   assert.ok(gate < branch && branch < probe, 'RBAC 404 first; the synchronous send for every other item before the probe');
   assert.match(route, /if \(!sourceShare \|\| !sourceShare\.wants\(item, watchUrl\)\) \{\s*res\.json\(body\);\s*return;\s*\}/);
   assert.match(route, /res\.json\(sourceShareUrl \? \{ \.\.\.body, sourceShareUrl \} : body\);/, 'a SEPARATE field, never watchUrl');
-  assert.match(route, /\}, \(\) => \{\s*if \(!res\.headersSent\) res\.json\(body\);/, 'a rejected resolve still answers');
+  assert.match(route, /\.then\(\(\) => sourceShare\.resolve\(item\)\)\s*\.catch\(\(\) => null\)/, 'a rejected resolve still answers (no link)');
+  assert.match(route, /\.catch\(\(\) => \{[^}]*\n\s*if \(!res\.headersSent\) res\.status\(500\)/, 'a throwing send is a 500, never a hung request');
 });
 
-test('server.js hands the browse routes a resolver built on the reheat probe', () => {
-  assert.match(SERVER, /createSourceShareResolver\(\{\s*probe: probeEmbeddedTags,\s*stat: \(p\) => fs\.promises\.stat\(p\),\s*\}\);/);
+test('server.js hands the browse routes a resolver on its OWN hard-killed probe of both tag levels', () => {
+  assert.match(SERVER, /createSourceShareResolver\(\{\s*probe: probeSourceShareUrl,\s*stat: \(p\) => fs\.promises\.stat\(p\),\s*\}\);/);
+  const fn = SERVER.slice(SERVER.indexOf('function probeSourceShareUrl('), SERVER.indexOf('const sourceShare = sourceShareLib'));
+  assert.match(fn, /'-show_entries', 'format_tags:stream_tags'/, 'reads the file AND stream tags (Ogg)');
+  assert.match(fn, /timeout: SOURCE_SHARE_PROBE_KILL_MS, killSignal: 'SIGKILL'/, 'a hung ffprobe is killed, never left behind');
+  assert.match(SERVER, /const SOURCE_SHARE_PROBE_KILL_MS = 15000;/);
+  assert.match(fn, /resolve\(\{ sourceUrl: sourceShareLib\.sourceUrlFromProbeJson\(j\) \}\)/);
   const reg = SERVER.slice(SERVER.indexOf('mediaRoutes.registerBrowseRoutes(app, {'));
   assert.match(reg.slice(0, reg.indexOf('});')), /\n {2}sourceShare, /);
 });

@@ -3,8 +3,8 @@ plan: share-any-download
 harness: v2 · lean
 branch: feat/v1.337-share-any-download
 anchor: outcome
-status: Building
-next: the gate (adversary + qa, fresh, max two rounds).
+status: Gate:CHANGES r1 @4a039ff4
+next: commit the r1 fix round, then re-engage the SAME adversary and qa seats for r2 (the last before asking Dean).
 gate: pending
 ---
 
@@ -25,13 +25,16 @@ the logged URL of whatever it is that we captured. I'm not really asking for any
 
 ## Acceptance (outcome anchor)
 
-1. A yt-dlp download from any non-YouTube site (an item carrying `sourceExtractor`) shows the Share
-   button on its watch page, and it shares the page URL yt-dlp recorded for that download.
+1. A yt-dlp download from any non-YouTube site (an item the scan gave a `sourceExtractor` and that has
+   no YouTube link) shows the Share button on its watch page, and it shares the page URL yt-dlp
+   recorded for that download - in every container yt-dlp writes (MP4, MKV, WebM, MP3, M4A, Opus).
 2. It works for downloads made BEFORE this release (the URL comes from the file's own tags).
 3. Everything else is unchanged: YouTube items share exactly as before (incl. "Share at current time"
    and the chapter share icons); a plain local file (not a yt-dlp download) gets no Share; card
    corners, search and the music skins are untouched; the watch route's response is byte-identical
    for every item that is not a non-YouTube yt-dlp download.
+4. (Item 2) In fullscreen video a swipe in any direction leaves fullscreen and the page as they were;
+   outside fullscreen the swipe-back behaves as before.
 
 ## Research
 
@@ -244,3 +247,37 @@ YouTube/proxy item never gets it; the time choice is YouTube-only (mutants WJ1/W
 re-read per touchstart (not latched: the control drag after removing the class goes back), and the probe's base FAIL
 -> branch ok binds the fix end to end; cache size+mtime key, LRU, eviction, failed/timed-out-not-cached all bind
 (mutants R1-R11 red).
+
+## Fix round r1 -> r2
+
+Both seats CHANGES r1 @4a039ff4 (findings in the Gate section). What changed:
+
+| Finding | Fix |
+|---|---|
+| qa 1 / adv 7 (WARNING): hidden characters and parser-confusing URLs passed unchanged | `sanitizeSourceShareUrl` rejects `\p{Cc}` (C0 + C1), `\p{Cf}` (bidi overrides / isolates, zero-width, BOM), any whitespace and a backslash; the authority must be non-empty with NO `@`; it returns `URL.href` (punycode host). Every input either seat named is in the refusal list. |
+| qa 2 / adv 2 (WARNING): a probe past the wait was thrown away, and every timed-out ffprobe kept running (5 left alive per 5 loads) | One stat and one probe per file in flight (a second load joins it); a probe that outlives the wait still fills the cache; the server's probe is its OWN `probeSourceShareUrl`, hard-killed (SIGKILL) at 15s. |
+| adv 1 (WARNING): Opus downloads never got Share (Ogg keeps tags per stream; the reheat probe read only file-level tags) | `probeSourceShareUrl` reads `format_tags:stream_tags`; `sourceUrlFromProbeJson` checks the file level, then each stream. The reheat's `probeEmbeddedTags` is untouched. A real Opus file through the real app is now a test. |
+| adv 3 / qa S4 (WARNING): three unbound guards | Tests for `webkitFullscreenElement`, `https://:secret@host/x` (and every userinfo form), `https:www.reddit.com/x`. |
+| adv S5: the stat sat outside the time limit | The stat is inside the wait too (and single-flight). |
+| adv S6: dead guards, a throw inside the success branch could hang the request | `!u.hostname`, the credential check and the success-branch `headersSent` removed (the authority rule covers them); the route chains `.catch(() => null)` then a final `.catch` that answers 500. |
+| adv S4: on a desktop-class device the Fullscreen API check also stands down the audio view in real fullscreen | Kept (a fullscreen is a fullscreen); the comment and this plan now say so. |
+| qa S3: stale comments | source-share.js (a proxy-host YouTube download has a sourceExtractor too), watch.js (the button is named once per view; the share code shares either link). |
+| qa S5: byte-identity unmeasured, no Item 2 acceptance | Acceptance 4 added; byte-identity is the seats' measurement (below). |
+| qa S6: the ROADMAP entry mixed our unlock ideas into Dean's ask | Moved under "First questions (ours, not his words)". |
+| Dean's question (any other swipe direction?) | The probe now swipes left, up and down too. |
+
+### r2 measurements (copied from the runs)
+
+- Byte identity (both seats, r1, base cbe0d880 vs 4a039ff4, the real app, raw GET /api/videos/:id
+  bodies): identical for a plain file, a plain file carrying the tag, YouTube, proxy-host YouTube, a
+  missing file and a 404; the tagged non-YouTube items differ ONLY by a trailing `sourceShareUrl`.
+- `node --test test/unit/source-share.test.js test/unit/swipe-back-owners.test.js`: `# tests 31`,
+  `# pass 31`, `# fail 0`.
+- `FILETUBE_TEST_FFMPEG=... node --test test/integration/watch-source-share.test.js
+  test/integration/watch-share-button.test.js`: `# tests 15`, `# pass 15`, `# fail 0`, `# skipped 0`
+  (incl. the real Opus file).
+- `node scripts/faux-fullscreen-probe.js` on the r2 tree, exit 0: `SWIPE depth=1 fullscreen
+  true->true url /watch.html?v=v1->/watch.html?v=v1 ok`, `SWIPE-left fullscreen true url
+  /watch.html?v=v1 ok`, `SWIPE-up ... ok`, `SWIPE-down ... ok`, `SUMMARY combos=24 edge-painted=0`.
+  Base cbe0d880: `SWIPE depth=1 fullscreen true->false url /watch.html?v=v1->/ FAIL` (its later
+  direction lines start already out of fullscreen).

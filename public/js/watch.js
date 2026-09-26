@@ -3260,8 +3260,9 @@ if (typeof module !== 'undefined' && module.exports) {
       applyWatchedButtonLabel(currentWatchedState.watched);
     }
 
-    // v1.33 T2: share the item's ORIGINAL YouTube link (`mediaData.watchUrl`,
-    // a server-side buildWatchUrl product -- never assembled client-side).
+    // v1.33 T2: share the item's ORIGINAL link - its YouTube `mediaData.watchUrl`
+    // (a server-side buildWatchUrl product -- never assembled client-side) or,
+    // v1.337, a non-YouTube download's `sourceShareUrl` (server-read from the file).
     // Native share sheet when the browser has one (iOS/Android
     // `navigator.share` -- exactly Dean's "share sheet with the real YouTube
     // link" ask); clipboard copy with a transient "Copied!" label as the
@@ -3364,7 +3365,7 @@ if (typeof module !== 'undefined' && module.exports) {
         (btnGroup || watchActions).appendChild(shareBtn);
         shareBtn.addEventListener('click', handleShareClick, { signal });
       }
-      // v1.337: named for what it shares, set on EVERY item (the button survives an SPA item change).
+      // v1.337: named for what it shares (setupShareButton runs once per watch view).
       const shareName = link === mediaData.watchUrl ? 'Share the original YouTube link' : 'Share the original link';
       shareBtn.title = shareName;
       shareBtn.setAttribute('aria-label', shareName);

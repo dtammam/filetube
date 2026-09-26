@@ -38,6 +38,8 @@ const PAGE_URL = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
 const LIB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-source-share-lib-'));
 const TAGGED = path.join(LIB, 'A clip [Reddit=abc123].mp4');
 const UNTAGGED = path.join(LIB, 'Home video.mp4');
+// gate r1 (adversary 1): an Opus audio download is an Ogg file, which keeps its tags per STREAM
+const OPUS = path.join(LIB, 'A song [Reddit=opus1].opus');
 
 let server;
 let base;
@@ -48,6 +50,8 @@ before(async () => {
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest'];
     execFileSync(FFMPEG, [...gen, '-metadata', `purl=${PAGE_URL}`, '-metadata', `comment=${PAGE_URL}`, TAGGED]);
     execFileSync(FFMPEG, [...gen, UNTAGGED]);
+    execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=d=1', '-c:a', 'libopus',
+      '-metadata', `purl=${PAGE_URL}`, '-metadata', `comment=${PAGE_URL}`, OPUS]);
   }
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
@@ -123,4 +127,12 @@ test('UNCHANGED: a YouTube item keeps its watchUrl and gets no sourceShareUrl', 
   const body = await getItem('y1');
   assert.strictEqual(body.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
   assert.ok(!('sourceShareUrl' in body));
+});
+
+test('an Opus audio download (tags per stream in Ogg) gets its sourceShareUrl too (gate r1 adversary 1)', { skip: SKIP }, async () => {
+  seedState({ folders: [], folderSettings: {}, metadata: {
+    o1: { ...item('o1', OPUS, { sourceExtractor: 'Reddit', sourceId: 'opus1' }), type: 'audio', ext: '.opus' },
+  } });
+  const body = await getItem('o1', { until: (b) => typeof b.sourceShareUrl === 'string' });
+  assert.strictEqual(body.sourceShareUrl, PAGE_URL);
 });
