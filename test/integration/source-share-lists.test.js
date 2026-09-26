@@ -94,3 +94,29 @@ test('the watch route answers from the SAVED link at once (no probe needed)', as
   const h = await json('/api/videos/h');
   assert.ok(!('sourceShareUrl' in h), 'a planted link is never served (and its file does not exist to probe)');
 });
+
+// ---- v1.338 D7: the site badge as the uploader avatar ----------------------------------
+
+test('D7: a download from another site shows its site badge as the avatar on the lists; YouTube / plain unchanged', async () => {
+  for (const [p, key] of [['/api/videos?limit=50', 'items'], ['/api/home?view=grid&filter=all&limit=50', 'items']]) {
+    const items = (await json(p))[key];
+    const by = (id) => items.find((i) => i.id === id);
+    assert.strictEqual(by('r').channelAvatarUrl, '/assets/sites/reddit.svg', `${p}: Reddit badge`);
+    assert.strictEqual(by('n').channelAvatarUrl, '/assets/sites/facebook.svg', `${p}: Facebook badge`);
+    assert.strictEqual(by('p').channelAvatarUrl, '', `${p}: a plain file keeps the letter avatar`);
+    assert.strictEqual(by('y').channelAvatarUrl, '', `${p}: a YouTube item with no known channel keeps the letter avatar`);
+  }
+});
+
+test('D7: the watch route shows the badge (the yt-dlp module on), and the badge file is served to a signed-in user', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  try {
+    assert.strictEqual((await json('/api/videos/r')).channelAvatarUrl, '/assets/sites/reddit.svg');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+  }
+  const res = await fetch(`${base}/assets/sites/reddit.svg`);
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/);
+  assert.match(await res.text(), /aria-label="Reddit"/);
+});
