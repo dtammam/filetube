@@ -362,18 +362,18 @@ async function d9Run(itemFields, localTags) {
 }
 
 test('v1.338 D9: a download from another site re-pulls from its SAVED link, in universal mode', async () => {
-  const { calls, entry } = await d9Run({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true });
+  const { calls, entry } = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true });
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], D9_PAGE);
-  assert.deepEqual(calls[0][3], { universal: true }, 'the guarded universal mode');
+  assert.deepEqual(calls[0][3], { universal: true, expectSourceId: 'abc123' }, 'the guarded universal mode, checked against the item\'s own id');
   assert.equal(entry.networkRan, true);
 });
 
 test('v1.338 D9: no saved link -> the page link in its own tags; neither -> no network (honest "nothing to refresh")', async () => {
-  const fromTags = await d9Run({ universal: true, sourceUrl: null, inDownloadRoot: true }, { sourceUrl: D9_PAGE });
+  const fromTags = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: null, inDownloadRoot: true }, { sourceUrl: D9_PAGE });
   assert.equal(fromTags.calls.length, 1);
   assert.equal(fromTags.calls[0][0], D9_PAGE);
-  const none = await d9Run({ universal: true, sourceUrl: null, inDownloadRoot: true }, {});
+  const none = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: null, inDownloadRoot: true }, {});
   assert.equal(none.calls.length, 0);
   assert.equal(none.entry.networkRan, false);
 });
@@ -383,7 +383,7 @@ test('v1.338 D9 (gate r1 qa 9): a saved link whose fetch FAILED reports "failed"
   // branches on outcome 'failed' before networkRan.
   const deps = makeFakeDeps();
   deps.enumerateRepullableItems = () => ({
-    items: [makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true })],
+    items: [makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true })],
     eligible: 1, ineligible: 0, withSourceId: 1,
   });
   deps.probeEmbeddedTags = async () => ({});
@@ -401,9 +401,9 @@ test('v1.338 D9 (gate r1 qa 9): a saved link whose fetch FAILED reports "failed"
 });
 
 test('v1.338 D9: a HOSTILE saved link, or an item outside the download root, never reaches the re-pull', async () => {
-  const hostile = await d9Run({ universal: true, sourceUrl: 'javascript:alert(1)', inDownloadRoot: true }, {});
+  const hostile = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: 'javascript:alert(1)', inDownloadRoot: true }, {});
   assert.equal(hostile.calls.length, 0, 'the saved link is re-checked before use');
-  const outside = await d9Run({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: false }, {});
+  const outside = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: false }, {});
   assert.equal(outside.calls.length, 0, 'only a file the download lane put there');
   const notUniversal = await d9Run({ universal: false, sourceUrl: D9_PAGE, inDownloadRoot: true }, {});
   assert.equal(notUniversal.calls.length, 0, 'a plain file with a stray key is not a download from another site');
@@ -420,16 +420,33 @@ test('v1.338 D9 (gate r1 qa 4): a download from another site whose network pass 
     await ytdlp.reheatOneItem(deps, enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields }), {});
     return metas;
   }
-  const failed = await once({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true }, null);
+  const failed = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, null);
   assert.equal(failed.length, 0, 'a failed pass with nothing new persists nothing - no marker, retried by the next batch');
-  const noSubs = await once({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: false });
+  const noSubs = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: false });
   assert.equal(noSubs.length, 1);
   assert.equal(noSubs[0].markComplete, false, 'Pass A only: not complete, like a YouTube item');
-  const done = await once({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: true });
+  const done = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: true });
   assert.equal(done[0].markComplete, true, 'Pass B done: complete');
-  const noLink = await once({ universal: true, sourceUrl: null, inDownloadRoot: true }, null);
+  const noLink = await once({ universal: true, sourceId: 'abc123', sourceUrl: null, inDownloadRoot: true }, null);
   assert.equal(noLink.length, 1);
   assert.equal(noLink[0].markComplete, true, 'no link from anywhere: exhausted, as before');
+  // gate adversary r1 W1 / S3: a REFUSED link (implausible, or now a different video) keeps nothing and
+  // is exhausted - never retried forever, never "try again".
+  for (const why of ['different-video', 'implausible-link']) {
+    const refused = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, { refused: why, wroteSubs: false });
+    assert.equal(refused.length, 1, why);
+    assert.equal(refused[0].markComplete, true, `${why}: exhausted`);
+    assert.equal(refused[0].sourceTitle, undefined, `${why}: nothing from the other page is kept`);
+    assert.equal(refused[0].sourceViewCount, undefined);
+  }
+  // An item with no id to check against is never fetched.
+  let fetched = false;
+  const metas = [];
+  run.repullItemMetaAndSubs = async () => { fetched = true; return { sourceTitle: 'X', wroteSubs: true }; };
+  await ytdlp.reheatOneItem({ probeEmbeddedTags: async () => ({}), recordRepulledItemMeta: async (_d, _id, m) => { metas.push(m); return true; } },
+    enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, universal: true, sourceId: null, sourceUrl: D9_PAGE, inDownloadRoot: true }), {});
+  assert.equal(fetched, false, 'no sourceId: unverifiable, never fetched');
+  assert.equal(metas[0].markComplete, true, 'and exhausted');
 });
 
 // ---- Eligibility + the shared latch ----------------------------------------

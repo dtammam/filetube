@@ -41,7 +41,7 @@ const PAGE = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
 // awaits a fake child that never closes) into a clean failure instead of a cancelled test.
 async function refused(url, f, root, lookup) {
   return Promise.race([
-    run.repullItemMetaAndSubs(url, f, { downloadDir: root }, { universal: true, lookup }),
+    run.repullItemMetaAndSubs(url, f, { downloadDir: root }, { universal: true, lookup, expectSourceId: 'abc123' }),
     new Promise((res) => setTimeout(() => res('HUNG: it spawned'), 300)),
   ]);
 }
@@ -57,7 +57,7 @@ function mediaFile() {
 test('universal re-pull: BOTH passes carry the named-extractor gate and the one-item bound, the guarded URL last', async () => {
   const { root, f } = mediaFile();
   stubSpawn();
-  const p = run.repullItemMetaAndSubs(PAGE, f, { downloadDir: root, cookiesFile: null }, { universal: true, lookup: PUBLIC });
+  const p = run.repullItemMetaAndSubs(PAGE, f, { downloadDir: root, cookiesFile: null }, { universal: true, lookup: PUBLIC, expectSourceId: 'abc123' });
   const a = await waitForCall(0);
   for (const argv of [a.argv]) {
     const g = argv.indexOf('--use-extractors');
@@ -66,7 +66,10 @@ test('universal re-pull: BOTH passes carry the named-extractor gate and the one-
     assert.strictEqual(argv[argv.length - 1], PAGE);
     assert.strictEqual(argv[argv.length - 2], '--');
   }
-  a.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'abc123', title: 'A clip, refreshed', view_count: 42, upload_date: '20260101' })));
+  // A YouTube-shaped channel identity rides the dump (gate adversary r1 S4) so "the capture is skipped"
+  // below can fail: the universal mode must not turn it into a channel.
+  a.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'abc123', title: 'A clip, refreshed', view_count: 42, upload_date: '20260101',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw', channel: 'Someone' })));
   a.child.emit('close', 0, null);
   const b = await waitForCall(1);
   const g = b.argv.indexOf('--use-extractors');
@@ -82,13 +85,15 @@ test('universal re-pull: BOTH passes carry the named-extractor gate and the one-
 test('universal re-pull: a private / local / credentialed / non-http link is refused with NO spawn', async () => {
   const { root, f } = mediaFile();
   stubSpawn();
+  // The lane's intake check refuses the link ITSELF: a structural `refused` (gate adversary r1 S3), so
+  // the reheat stops retrying it.
   for (const bad of ['http://127.0.0.1/x', 'http://10.1.2.3/v', 'http://169.254.169.254/latest/meta-data/', 'http://localhost:8080/', 'https://user:pw@www.reddit.com/x', 'file:///etc/passwd', 'javascript:alert(1)', '-oProxy=x']) {
-    assert.strictEqual(await refused(bad, f, root, PUBLIC), null, bad);
+    assert.deepStrictEqual(await refused(bad, f, root, PUBLIC), { refused: 'implausible-link', wroteSubs: false }, bad);
   }
   // only the download lane's intake check refuses these (the DNS guard alone would pass them): its
   // forbidden-character set and its length cap
   for (const bad of ['https://www.reddit.com/r/v/$(id)', 'https://www.reddit.com/r/v;x', 'https://www.reddit.com/r/v/' + 'a'.repeat(2100)]) {
-    assert.strictEqual(await refused(bad, f, root, PUBLIC), null, bad.slice(0, 60));
+    assert.deepStrictEqual(await refused(bad, f, root, PUBLIC), { refused: 'implausible-link', wroteSubs: false }, bad.slice(0, 60));
   }
   assert.strictEqual(calls.length, 0, 'yt-dlp never ran');
 });
@@ -100,6 +105,39 @@ test('universal re-pull: a public NAME that resolves to a private address is ref
   const unresolvable = (h, o, cb) => cb(new Error('ENOTFOUND'));
   assert.strictEqual(await refused('https://nowhere.example/v/1', f, root, unresolvable), null, 'fail closed');
   assert.strictEqual(calls.length, 0);
+});
+
+test('gate adversary r1 W1: a saved link that now shows a DIFFERENT video is refused - nothing kept, Pass B never runs', async () => {
+  // A Twitch live recording saves the channel url; an Instagram stories download the stories feed. Today
+  // that page is another video: its title / date / counts must not overwrite this item's.
+  const { root, f } = mediaFile();
+  stubSpawn();
+  const p = run.repullItemMetaAndSubs(PAGE, f, { downloadDir: root, cookiesFile: null }, { universal: true, lookup: PUBLIC, expectSourceId: 'abc123' });
+  const a = await waitForCall(0);
+  a.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'zzz999', title: 'A DIFFERENT video', view_count: 99, upload_date: '20260901' })));
+  a.child.emit('close', 0, null);
+  assert.deepStrictEqual(await p, { refused: 'different-video', wroteSubs: false });
+  assert.strictEqual(calls.length, 1, 'no subtitle pass: another video\'s captions never become this file\'s sidecar');
+});
+
+test('gate adversary r1 W1: an unverified Pass A (a timeout, a 429) keeps nothing and skips Pass B, retryable (null)', async () => {
+  const { root, f } = mediaFile();
+  stubSpawn();
+  const p = run.repullItemMetaAndSubs(PAGE, f, { downloadDir: root, cookiesFile: null }, { universal: true, lookup: PUBLIC, expectSourceId: 'abc123' });
+  const a = await waitForCall(0);
+  a.child.emit('close', 1, null);
+  assert.strictEqual(await p, null);
+  assert.strictEqual(calls.length, 1, 'no subtitle pass from an unverified page');
+});
+
+test('sameSourceId: exact, or equal as letters and digits (the filename bracket\'s sanitized id); never on empty', () => {
+  assert.strictEqual(run.sameSourceId('abc123', 'abc123'), true);
+  assert.strictEqual(run.sameSourceId('austrian/page=1', 'austrian\u29f8page=1'), true, 'the bracket rendering of a slash');
+  assert.strictEqual(run.sameSourceId('zzz999', 'abc123'), false);
+  assert.strictEqual(run.sameSourceId('', ''), false);
+  assert.strictEqual(run.sameSourceId('///', '\u29f8\u29f8'), false, 'nothing left to compare');
+  assert.strictEqual(run.sameSourceId(undefined, 'abc123'), false);
+  assert.strictEqual(run.sameSourceId('abc123', null), false);
 });
 
 test('UNCHANGED: a YouTube re-pull carries no extractor gate and no DNS step (spawns at once)', async () => {

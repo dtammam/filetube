@@ -13,7 +13,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-share-lis
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, __resetDatabaseForTests } = require('../../server');
+const { app, __resetDatabaseForTests, updateDatabase } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -130,4 +130,21 @@ test('D7: the watch route shows the badge (the yt-dlp module on), and the badge 
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type') || '', /image\/svg\+xml/);
   assert.match(await res.text(), /aria-label="Reddit"/);
+});
+
+test('D7 (gate adversary r1 W2): GET /api/channels keeps a YouTube channel\'s REAL photo when a download from another site shares its folder; a site-only folder gets the badge', async () => {
+  const photo = 'https://yt3.ggpht.com/real-photo=s88';
+  await updateDatabase((db) => {
+    // The Reddit clip comes FIRST (rowid order), so a first-wins pick would take its badge.
+    db.metadata.mx1 = { id: 'mx1', title: 'clip', filePath: '/media/Mixed/mx1.mp4', folderName: 'Mixed', type: 'video', ext: '.mp4', addedAt: 1, sourceExtractor: 'Reddit', sourceId: 'mx1' };
+    db.metadata.mx2 = { id: 'mx2', title: 'v', filePath: '/media/Mixed/mx2.mp4', folderName: 'Mixed', type: 'video', ext: '.mp4', addedAt: 2, youtubeId: 'dQw4w9WgXcQ', channelName: 'Mixed', channelAvatarUrl: photo };
+    return true;
+  });
+  try {
+    const channels = (await json('/api/channels')).channels;
+    assert.strictEqual(channels.find((c) => c.folder === 'Mixed').avatarUrl, photo, 'the real photo wins over the badge');
+    assert.strictEqual(channels.find((c) => c.folder === 'Chan').avatarUrl, '/assets/sites/reddit.svg', 'no real photo anywhere in the folder: the badge');
+  } finally {
+    await updateDatabase((db) => { delete db.metadata.mx1; delete db.metadata.mx2; return true; });
+  }
 });

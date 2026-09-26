@@ -411,9 +411,15 @@ test('enumerateRepullableItems (v1.338): withSourceId counts a download from ano
     mk('Hostile [Reddit=h1].mp4', { sourceId: 'h1', sourceUrl: 'javascript:alert(1)' }),
     mk('Unlinked [Reddit=n1].mp4', { sourceId: 'n1' }),
     [getMediaId(outside), { id: getMediaId(outside), filePath: outside, name: 'x.mp4', ext: '.mp4', sourceExtractor: 'Reddit', sourceUrl: page }],
+    // gate r2 (qa S2): a plain in-root file with a stray link is not a download from another site.
+    mk('Plain.mp4', { sourceExtractor: undefined, sourceUrl: page }),
+    // gate r2 (adversary S3, qa S1): a link the re-pull would refuse, or could not verify, is not counted.
+    mk('Private [Reddit=p1].mp4', { sourceId: 'p1', sourceUrl: 'http://10.1.2.3/v' }),
+    mk('Parens [Reddit=q1].mp4', { sourceId: 'q1', sourceUrl: 'https://www.reddit.com/r/v/a_(b)' }),
+    mk('NoId [Reddit=].mp4', { sourceUrl: page }),
   ]) };
   const result = enumerateRepullableItems(db, config);
-  assert.equal(result.eligible, 4);
+  assert.equal(result.eligible, 8);
   assert.equal(result.withSourceId, 1, 'only the in-root download with a usable saved link goes to the network');
 });
 
