@@ -417,7 +417,7 @@ test('v1.338 D9 (gate r1 qa 4): a download from another site whose network pass 
     const metas = [];
     const deps = { probeEmbeddedTags: async () => ({}), recordRepulledItemMeta: async (_d, _id, meta) => { metas.push(meta); return true; } };
     run.repullItemMetaAndSubs = async () => pass;
-    await ytdlp.reheatOneItem(deps, enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields }), {});
+    metas.outcome = await ytdlp.reheatOneItem(deps, enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields }), {});
     return metas;
   }
   const failed = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, null);
@@ -438,6 +438,7 @@ test('v1.338 D9 (gate r1 qa 4): a download from another site whose network pass 
     assert.equal(refused[0].markComplete, true, `${why}: exhausted`);
     assert.equal(refused[0].sourceTitle, undefined, `${why}: nothing from the other page is kept`);
     assert.equal(refused[0].sourceViewCount, undefined);
+    assert.equal(refused.outcome.networkRan, false, `${why}: the refused answer is dropped, not treated as a network result`);
   }
   // An item with no id to check against is never fetched.
   let fetched = false;

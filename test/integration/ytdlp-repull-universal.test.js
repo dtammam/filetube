@@ -116,7 +116,9 @@ test('gate adversary r1 W1: a saved link that now shows a DIFFERENT video is ref
   const a = await waitForCall(0);
   a.child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'zzz999', title: 'A DIFFERENT video', view_count: 99, upload_date: '20260901' })));
   a.child.emit('close', 0, null);
-  assert.deepStrictEqual(await p, { refused: 'different-video', wroteSubs: false });
+  // Raced: a mutant that spawns Pass B awaits a child that never closes - a clean failure, not a hang.
+  const got = await Promise.race([p, new Promise((res) => setTimeout(() => res('HUNG: Pass B spawned'), 300))]);
+  assert.deepStrictEqual(got, { refused: 'different-video', wroteSubs: false });
   assert.strictEqual(calls.length, 1, 'no subtitle pass: another video\'s captions never become this file\'s sidecar');
 });
 
@@ -126,7 +128,8 @@ test('gate adversary r1 W1: an unverified Pass A (a timeout, a 429) keeps nothin
   const p = run.repullItemMetaAndSubs(PAGE, f, { downloadDir: root, cookiesFile: null }, { universal: true, lookup: PUBLIC, expectSourceId: 'abc123' });
   const a = await waitForCall(0);
   a.child.emit('close', 1, null);
-  assert.strictEqual(await p, null);
+  const got = await Promise.race([p, new Promise((res) => setTimeout(() => res('HUNG: Pass B spawned'), 300))]);
+  assert.strictEqual(got, null);
   assert.strictEqual(calls.length, 1, 'no subtitle pass from an unverified page');
 });
 

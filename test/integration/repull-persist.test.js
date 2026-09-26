@@ -394,6 +394,8 @@ test('enumerateRepullableItems (v1.338): a download from another site is univers
   assert.equal(byPath[reddit].universal, true);
   assert.equal(byPath[reddit].sourceUrl, page);
   assert.equal(byPath[reddit].watchUrl, null);
+  assert.equal(byPath[reddit].sourceId, 'abc123', 'the id the re-pull must see come back (gate adversary r1 W1)');
+  assert.equal(byPath[proxy].sourceId, null, 'never for a YouTube item');
   assert.equal(byPath[proxy].universal, false, 'a proxy-host YouTube download keeps its YouTube re-pull');
   assert.equal(byPath[plain].universal, false, 'a plain file is not a download from another site');
 });
@@ -412,7 +414,7 @@ test('enumerateRepullableItems (v1.338): withSourceId counts a download from ano
     mk('Unlinked [Reddit=n1].mp4', { sourceId: 'n1' }),
     [getMediaId(outside), { id: getMediaId(outside), filePath: outside, name: 'x.mp4', ext: '.mp4', sourceExtractor: 'Reddit', sourceUrl: page }],
     // gate r2 (qa S2): a plain in-root file with a stray link is not a download from another site.
-    mk('Plain.mp4', { sourceExtractor: undefined, sourceUrl: page }),
+    mk('Plain.mp4', { sourceExtractor: undefined, sourceId: 'x1', sourceUrl: page }),
     // gate r2 (adversary S3, qa S1): a link the re-pull would refuse, or could not verify, is not counted.
     mk('Private [Reddit=p1].mp4', { sourceId: 'p1', sourceUrl: 'http://10.1.2.3/v' }),
     mk('Parens [Reddit=q1].mp4', { sourceId: 'q1', sourceUrl: 'https://www.reddit.com/r/v/a_(b)' }),
