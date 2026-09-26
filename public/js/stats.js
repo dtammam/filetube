@@ -121,6 +121,20 @@ function shortenChannelLabel(channelUrl) {
   }
 }
 
+// v1.338 D8b (Dean: "non-YouTube things supported by YT DLP should have
+// generally first-class experiences"): a By channel row is either a YouTube
+// channel (`channelUrl`, shortened as above) or a download from another site
+// (`sourceExtractor` + `channelName`, lib/stats.js computeBreakdownByChannel),
+// labelled with the uploader and the site, e.g. "someuser (Reddit)".
+function channelBreakdownLabel(group) {
+  const g = group || {};
+  if (typeof g.channelUrl === 'string' && g.channelUrl.trim() !== '') return shortenChannelLabel(g.channelUrl);
+  if (typeof g.sourceExtractor === 'string' && g.sourceExtractor !== '' && typeof g.channelName === 'string' && g.channelName !== '') {
+    return `${g.channelName} (${g.sourceExtractor})`;
+  }
+  return shortenChannelLabel(g.channelUrl);
+}
+
 // ---- DOM rendering (untested-by-necessity, mirrors the rest of the app) ---
 
 function clearChildren(el) {
@@ -794,7 +808,7 @@ function renderStatsDashboard(statsData, canModify) {
     byTypeRoot.appendChild(buildStatTile(`${formatCount(statsData.byType.audio.count)} · ${formatTotalDuration(statsData.byType.audio.totalDurationSeconds)} · ${formatByteSize(statsData.byType.audio.totalSizeBytes)}`, 'Audio'));
   }
   if (folderRoot) renderBreakdownList(folderRoot, statsData.byFolder, (g) => g.folderName, 'No folders yet.', 'ft-stable:stats-folder');
-  if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.', 'ft-stable:stats-channel');
+  if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, channelBreakdownLabel, 'No downloaded channel content yet.', 'ft-stable:stats-channel');
   if (recordsRoot) renderRecordTiles(recordsRoot, statsData);
   if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched, canModify);
   if (booksRoot) renderBookTiles(booksRoot, statsData.books);
@@ -952,5 +966,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched, buildStatsDeleteAction, resolveStatsCanModify };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, channelBreakdownLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched, buildStatsDeleteAction, resolveStatsCanModify };
 }

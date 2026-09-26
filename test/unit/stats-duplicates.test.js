@@ -84,6 +84,44 @@ test('persisted youtubeId is the fallback when the filename has no bracket (MeTu
   assert.equal(report.idGroups[0].items.length, 2, 'bracket + youtubeId-field copies matched');
 });
 
+// v1.338 D8c (Dean: "non-YouTube things supported by YT DLP should have generally
+// first-class experiences"): a download from another site matches by its (site, id)
+// pair. The collision fixture is load-bearing: a Reddit id spelled exactly like a
+// YouTube id must never group with it, and the same id on two sites is two videos.
+test('v1.338 D8c: downloads from another site group by (sourceExtractor, sourceId), never with a YouTube id spelled the same', () => {
+  const report = computeDuplicateReport(meta([
+    { id: 'r1', filePath: '/dl/alice/First Title [Reddit=AAAAAAAAAAA].mp4', size: 500, sourceExtractor: 'Reddit', sourceId: 'AAAAAAAAAAA' },
+    { id: 'r2', filePath: '/dl/other/Retitled [Reddit=AAAAAAAAAAA].mp4', size: 300, sourceExtractor: 'Reddit', sourceId: 'AAAAAAAAAAA' },
+    { id: 'f1', filePath: '/dl/alice/Same id other site [Facebook=AAAAAAAAAAA].mp4', size: 200, sourceExtractor: 'Facebook', sourceId: 'AAAAAAAAAAA' },
+    { id: 'y1', filePath: '/dl/chan/A YouTube one [AAAAAAAAAAA].mp4', size: 100 },
+    { id: 'y2', filePath: '/dl/imports/An import.mp4', size: 90, youtubeId: 'AAAAAAAAAAA' },
+  ]), OPTS);
+  const byKey = Object.fromEntries(report.idGroups.map((g) => [g.key, g.items.map((i) => i.id).sort()]));
+  assert.deepEqual(byKey, {
+    'Reddit:AAAAAAAAAAA': ['r1', 'r2'],
+    AAAAAAAAAAA: ['y1', 'y2'],
+  }, 'the two Reddit copies pair up; the YouTube pair stays its own; the lone Facebook item forms nothing');
+  assert.equal(report.totals.idGroupCount, 2);
+  assert.equal(report.idGroups.find((g) => g.key === 'Reddit:AAAAAAAAAAA').wastedBytes, 300);
+});
+
+test('v1.338 D8c: a YouTube id still wins for a proxy-host download (sourceExtractor Youtube + youtubeId), and a half-identity forms no key', () => {
+  const report = computeDuplicateReport(meta([
+    { id: 'p1', filePath: '/dl/chan/Via proxy [Youtube=BBBBBBBBBBB].mp4', size: 400, youtubeId: 'BBBBBBBBBBB', sourceExtractor: 'Youtube', sourceId: 'BBBBBBBBBBB' },
+    { id: 'p2', filePath: '/dl/chan/Direct [BBBBBBBBBBB].mp4', size: 100 },
+    // each half-identity comes in a PAIR, so a dropped half-check would form a group
+    { id: 'h1', filePath: '/dl/x/No id one.mp4', size: 10, sourceExtractor: 'Reddit' },
+    { id: 'h2', filePath: '/dl/y/No id two.mp4', size: 10, sourceExtractor: 'Reddit' },
+    { id: 'h3', filePath: '/dl/x/Blank id one.mp4', size: 10, sourceExtractor: 'Reddit', sourceId: '  ' },
+    { id: 'h4', filePath: '/dl/y/Blank id two.mp4', size: 10, sourceExtractor: 'Reddit', sourceId: '  ' },
+    { id: 'h5', filePath: '/dl/z/No site.mp4', size: 10, sourceId: 'zzz' },
+    { id: 'h6', filePath: '/dl/w/No site two.mp4', size: 10, sourceId: 'zzz' },
+    { id: 'h7', filePath: '/dl/z/Blank site.mp4', size: 10, sourceExtractor: ' ', sourceId: 'yyy' },
+    { id: 'h8', filePath: '/dl/w/Blank site two.mp4', size: 10, sourceExtractor: ' ', sourceId: 'yyy' },
+  ]), OPTS);
+  assert.deepEqual(report.idGroups.map((g) => [g.key, g.items.map((i) => i.id).sort()]), [['BBBBBBBBBBB', ['p1', 'p2']]]);
+});
+
 test('no injected extractor -> idGroups is empty (name groups unaffected); malformed items are tolerated', () => {
   const report = computeDuplicateReport({
     a: { id: 'a', filePath: '/x/v [DDDDDDDDDDD].mp4', size: 10 },

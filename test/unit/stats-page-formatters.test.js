@@ -10,7 +10,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel,
+  formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, channelBreakdownLabel,
 } = require('../../public/js/stats.js');
 
 // ---- formatCount ------------------------------------------------------------
@@ -113,6 +113,17 @@ test('shortenChannelLabel: extracts an @handle from a channel URL', () => {
 
 test('shortenChannelLabel: falls back to the raw string on an unparseable/non-URL value', () => {
   assert.equal(shortenChannelLabel('not a url at all'), 'not a url at all');
+});
+
+// v1.338 D8b (Dean: "non-YouTube things supported by YT DLP should have generally
+// first-class experiences"): the By channel row for a download from another site
+// reads "uploader (Site)"; a YouTube row keeps its shortened channel URL.
+test('v1.338 D8b channelBreakdownLabel: a YouTube row keeps its @handle; another site reads "uploader (Site)"; nothing usable reads "Unknown channel"', () => {
+  assert.equal(channelBreakdownLabel({ channelUrl: 'https://www.youtube.com/@somechannel', count: 1 }), '@somechannel');
+  assert.equal(channelBreakdownLabel({ sourceExtractor: 'Reddit', channelName: 'alice', count: 2 }), 'alice (Reddit)');
+  assert.equal(channelBreakdownLabel({ channelUrl: 'https://www.youtube.com/@yt', sourceExtractor: 'Reddit', channelName: 'alice' }), '@yt', 'a channelUrl always wins');
+  assert.equal(channelBreakdownLabel({ sourceExtractor: 'Reddit' }), 'Unknown channel');
+  assert.equal(channelBreakdownLabel(null), 'Unknown channel');
 });
 
 test('shortenChannelLabel: a missing/blank channelUrl reads "Unknown channel"', () => {

@@ -94,6 +94,21 @@ test('isYtdlpManagedItem: no ambiguous/absent input can ever resolve to true (fa
   }
 });
 
+// v1.338 D8d (Dean: "non-YouTube things supported by YT DLP should have generally
+// first-class experiences"): `sourceExtractor` is the fourth signal - a download from
+// another site whose site reported no uploader has none of the other three.
+test('v1.338 D8d isYtdlpManagedItem: true for a download from another site with no uploader (sourceExtractor alone)', () => {
+  assert.strictEqual(isYtdlpManagedItem({ sourceExtractor: 'Reddit', sourceId: 'abc123', filePath: '/dl/Reddit/x [Reddit=abc123].mp4' }), true);
+  assert.strictEqual(deleteFlowFor({ sourceExtractor: 'Facebook', sourceId: '99' }), 'normal');
+});
+
+test('v1.338 D8d isYtdlpManagedItem: a blank / whitespace / non-string sourceExtractor is no signal (still fails safe to LOCAL)', () => {
+  for (const v of ['', '   ', null, undefined, 42, {}, true]) {
+    assert.strictEqual(isYtdlpManagedItem({ sourceExtractor: v, sourceId: 'abc' }), false, `sourceExtractor ${JSON.stringify(v)}`);
+  }
+  assert.strictEqual(isYtdlpManagedItem({ sourceId: 'abc' }), false, 'a sourceId alone is no signal');
+});
+
 // ---- deleteFlowFor: mirrors the predicate into the caller vocabulary -------
 
 test('deleteFlowFor: "normal" for a yt-dlp-managed item', () => {
