@@ -37,6 +37,15 @@ const PUBLIC = (host, o, cb) => cb(null, [{ address: '151.101.1.140', family: 4 
 const PRIVATE = (host, o, cb) => cb(null, [{ address: '10.0.0.5', family: 4 }]);
 const PAGE = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
 
+// A refusal must come back null WITHOUT spawning; racing a timer turns a mutant that spawned (and so
+// awaits a fake child that never closes) into a clean failure instead of a cancelled test.
+async function refused(url, f, root, lookup) {
+  return Promise.race([
+    run.repullItemMetaAndSubs(url, f, { downloadDir: root }, { universal: true, lookup }),
+    new Promise((res) => setTimeout(() => res('HUNG: it spawned'), 300)),
+  ]);
+}
+
 function mediaFile() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-uni-'));
   const f = path.join(root, 'someone', 'A clip [Reddit=abc123].mp4');
@@ -74,7 +83,12 @@ test('universal re-pull: a private / local / credentialed / non-http link is ref
   const { root, f } = mediaFile();
   stubSpawn();
   for (const bad of ['http://127.0.0.1/x', 'http://10.1.2.3/v', 'http://169.254.169.254/latest/meta-data/', 'http://localhost:8080/', 'https://user:pw@www.reddit.com/x', 'file:///etc/passwd', 'javascript:alert(1)', '-oProxy=x']) {
-    assert.strictEqual(await run.repullItemMetaAndSubs(bad, f, { downloadDir: root }, { universal: true, lookup: PUBLIC }), null, bad);
+    assert.strictEqual(await refused(bad, f, root, PUBLIC), null, bad);
+  }
+  // only the download lane's intake check refuses these (the DNS guard alone would pass them): its
+  // forbidden-character set and its length cap
+  for (const bad of ['https://www.reddit.com/r/v/$(id)', 'https://www.reddit.com/r/v;x', 'https://www.reddit.com/r/v/' + 'a'.repeat(2100)]) {
+    assert.strictEqual(await refused(bad, f, root, PUBLIC), null, bad.slice(0, 60));
   }
   assert.strictEqual(calls.length, 0, 'yt-dlp never ran');
 });
@@ -82,9 +96,9 @@ test('universal re-pull: a private / local / credentialed / non-http link is ref
 test('universal re-pull: a public NAME that resolves to a private address is refused (DNS resolve-then-check), no spawn', async () => {
   const { root, f } = mediaFile();
   stubSpawn();
-  assert.strictEqual(await run.repullItemMetaAndSubs('https://sneaky.example/v/1', f, { downloadDir: root }, { universal: true, lookup: PRIVATE }), null);
+  assert.strictEqual(await refused('https://sneaky.example/v/1', f, root, PRIVATE), null);
   const unresolvable = (h, o, cb) => cb(new Error('ENOTFOUND'));
-  assert.strictEqual(await run.repullItemMetaAndSubs('https://nowhere.example/v/1', f, { downloadDir: root }, { universal: true, lookup: unresolvable }), null, 'fail closed');
+  assert.strictEqual(await refused('https://nowhere.example/v/1', f, root, unresolvable), null, 'fail closed');
   assert.strictEqual(calls.length, 0);
 });
 

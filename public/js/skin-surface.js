@@ -288,7 +288,10 @@
         var pl = extrasPlayer();
         var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
         var opts = [{ label: 'Share file', onPick: shareFile }, { label: 'Share link', onPick: function () { shareLink(link); } }];
-        if (typeof t === 'number' && isFinite(t) && t >= 1 && typeof window.withShareStartTime === 'function') {
+        // v1.338 (plan first-class-any-site D6): a start time is YouTube's `?t=` - a download from another
+        // site shares its own page link as it is.
+        var isYouTubeLink = link === item.watchUrl;
+        if (isYouTubeLink && typeof t === 'number' && isFinite(t) && t >= 1 && typeof window.withShareStartTime === 'function') {
           opts.push({ label: 'Share link at ' + fmtTime(t), onPick: function () { shareLink(window.withShareStartTime(link, t)); } });
         }
         var dismiss = window.showChoiceModal('Share', opts);

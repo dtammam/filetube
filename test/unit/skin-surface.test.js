@@ -495,7 +495,7 @@ test('U1 onShuffle: the [data-skin-shuffle] zone fires the hook; without the hoo
 // stubs on the window, and a player facade with loop/close/getCurrentTime.
 function bootSticker({ extras, eligible, video, skin, adapter } = {}) {
   const calls = []; const toasts = []; const spy = { skinChange: 0, mutated: 0, setLoop: [], closed: 0 };
-  const state = { loop: false };
+  const state = { loop: false, t: null }; // v1.338: t = the facade's getCurrentTime (null = none)
   const savedFetch = global.fetch;
   const boot = bootEngine({
     skin,
@@ -505,6 +505,7 @@ function bootSticker({ extras, eligible, video, skin, adapter } = {}) {
         getPlayer: () => ({
           isLoopEnabled: () => state.loop,
           setLoop: (on) => { state.loop = !!on; spy.setLoop.push(!!on); },
+          getCurrentTime: () => state.t,
           close: () => { spy.closed += 1; },
         }),
         extras: extras === false ? undefined : Object.assign({
@@ -608,6 +609,35 @@ test('U2 extras entry: requires the hooks AND eligibility AND the main document'
       b.engine.paint();
       sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
       assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-extras]'), null, 'view says ineligible -> no entry');
+    } finally { b.restoreAll(); }
+  }
+});
+
+// v1.338 D6 (plan docs/exec-plans/active/2026-09-26-first-class-any-site.md): a download from another site
+// shares its saved page link from the skins too, and never with a YouTube-style start time.
+test('v1.338 extras Share: a download from another site offers its sourceShareUrl, with no "at <time>" option mid-track; YouTube keeps it', async () => {
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  for (const [video, expectLink, expectTimed] of [
+    [{ watchUrl: undefined, sourceShareUrl: page }, page, false],
+    [{}, 'https://www.youtube.com/watch?v=x', true],
+  ]) {
+    const b = bootSticker({ video });
+    b.state.t = 42; // mid-track
+    const modal = {}; const shared = [];
+    b.dom.window.showChoiceModal = (title, opts) => { modal.opts = opts; return () => {}; };
+    b.dom.window.shareExternalUrl = (u) => { shared.push(u); return Promise.resolve('shared'); };
+    b.dom.window.withShareStartTime = (u, t) => u + '?t=' + Math.floor(t);
+    try {
+      b.engine.paint();
+      sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+      sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+      for (let i = 0; i < 6; i++) await b.settle();
+      sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="share"]'));
+      assert.ok(modal.opts, 'a source exists -> the Share choice');
+      const labels = modal.opts.map((o) => o.label);
+      assert.strictEqual(labels.some((l) => /^Share link at /.test(l)), expectTimed, labels.join(' | '));
+      modal.opts.find((o) => o.label === 'Share link').onPick();
+      assert.deepStrictEqual(shared, [expectLink]);
     } finally { b.restoreAll(); }
   }
 });

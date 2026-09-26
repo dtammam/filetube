@@ -12,6 +12,23 @@
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+// The new-file fallback needs a REAL media file the scan's own probe reads tags from; the server finds
+// ffmpeg / ffprobe BY NAME at boot, so the binary's directory joins PATH before the app loads
+// (FILETUBE_TEST_FFMPEG points at one on this box). Without one that test SKIPS and says so.
+function findFfmpeg() {
+  const explicit = process.env.FILETUBE_TEST_FFMPEG;
+  if (explicit && fs.existsSync(explicit)) return explicit;
+  for (const dir of String(process.env.PATH || '').split(path.delimiter)) {
+    const p = path.join(dir, 'ffmpeg');
+    try { fs.accessSync(p, fs.constants.X_OK); return p; } catch (_) { /* next */ }
+  }
+  return null;
+}
+const FFMPEG = findFfmpeg();
+if (FFMPEG) process.env.PATH = path.dirname(FFMPEG) + path.delimiter + process.env.PATH;
+
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-sourceurl-'));
 delete process.env.FILETUBE_YTDLP_ENABLED;
 delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
@@ -194,4 +211,18 @@ test('a hostile comment tag never becomes a saved link (the backfill runs the st
   const id = await seedSettled(filePath, { videoCodec: 'h264', audioCodec: 'aac', sourceExtractor: 'Reddit', sourceId: 'pl1xyz', tags: { comment: 'javascript:alert(1)' } });
   await scanDirectories();
   assert.equal(loadDatabase().metadata[id].sourceUrl, null);
+}));
+
+test('the new-file fallback: a download from another site with NO capture takes its link from its own comment tag (a real MP4, the real probe)', { skip: FFMPEG ? false : 'no ffmpeg binary (set FILETUBE_TEST_FFMPEG)' }, () => withYtdlpEnv(async () => {
+  // yt-dlp's `--embed-metadata` writes webpage_url into `comment` (MP4 keeps only `comment`); no capture is
+  // bridged (a download from before v1.338, or one whose capture was lost), so only the fallback fills it.
+  const filePath = path.join(downloadDir, 'New Clip [Reddit=new001].mp4');
+  execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=160x90:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    '-metadata', `comment=${PAGE}`, filePath]);
+  await new Promise((r) => setTimeout(r, 300)); // the server's boot-time ffmpeg check is async
+  await scanDirectories();
+  const item = loadDatabase().metadata[getMediaId(filePath)];
+  assert.equal(item.sourceExtractor, 'Reddit', 'precondition: the bracket gave it its source identity');
+  assert.equal(item.tags && item.tags.comment, PAGE, 'precondition: the probe persisted the comment tag');
+  assert.equal(item.sourceUrl, PAGE);
 }));
