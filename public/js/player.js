@@ -840,12 +840,18 @@ function formatPauseProvenance(ctx) {
 // v1.336 (Dean, D1: "after I pause or resume, pause and resume again, the screen of
 // the video goes black"; audio playing, controls up, STILL black after leaving
 // fullscreen, so the video element itself stopped showing frames). The detail line
-// for the video's OWN state at a media event, in the ?debugLifecycle=1 log. One
-// screenshot then separates the causes: frames still decoding (f / dec climbing)
-// while black = the picture is not composited (a layer); frames stopped while time
-// runs = the decoder stopped; `act=bgAudio` = the sound is the sidecar, not the
-// video; `pm` not inline = iOS moved the video into a native presentation; a `ld`
-// change = a reload. Pure so it is testable; the format mirrors formatPauseProvenance.
+// for the video's OWN state at a media event, in the ?debugLifecycle=1 log. On the
+// iPhone `f` is the AVPlayerLayer's own frame count (WebKit
+// MediaPlayerPrivateAVFoundationObjC::videoPlaybackQualityMetrics reads the LAYER's
+// videoPerformanceMetrics, and reports nothing without a layer), so one screenshot
+// separates the causes: `f` climbing while black = frames reach the layer but the
+// layer is not shown; `f` dropping to 0 or restarting = the video layer was torn
+// down and rebuilt; `f` flat while `t` runs = frames stopped; `act=bgAudio` = the
+// sound is the sidecar, not the video; `pm` not inline = iOS moved the video into a
+// native presentation; an `ld` change = a reload. `dec` (webkitDecodedFrameCount) has
+// no AVFoundation implementation and reads 0 on the iPhone; `dc` (display-composited
+// frames) appears only where WebKit's setting exposes it. Pure so it is testable;
+// the format mirrors formatPauseProvenance.
 function formatVideoStateDetail(s) {
   var c = s || {};
   var num = function (v) { return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; };
@@ -856,6 +862,7 @@ function formatVideoStateDetail(s) {
     + ' t=' + t
     + ' f=' + num(c.frames) + '/' + num(c.dropped)
     + ' dec=' + num(c.decoded)
+    + (typeof c.composited === 'number' ? ' dc=' + num(c.composited) : '')
     + ' pm=' + (c.pm || '-')
     + ' act=' + (c.act || '?')
     + ' bg=' + (c.bg || '?')
@@ -4050,6 +4057,7 @@ if (typeof module !== 'undefined' && module.exports) {
       t: v ? v.currentTime : null,
       frames: q ? q.totalVideoFrames : null,
       dropped: q ? q.droppedVideoFrames : null,
+      composited: q ? q.displayCompositedVideoFrames : null,
       decoded: v ? v.webkitDecodedFrameCount : null,
       pm: v && typeof v.webkitPresentationMode === 'string' ? v.webkitPresentationMode : null,
       act: activeMediaElement() === bgAudioEl && bgAudioEl ? 'bgAudio' : 'video',

@@ -96,9 +96,22 @@ poster toggle on a user pause/resume, and nothing adds a filter/mask/transform o
 | H3 The tap glyph: every tap on the picture flashes `.art-play-glyph` (a `filter: drop-shadow` + an opacity/scale animation) over the video. Old (2026-08-16), so "recent" fits only an iOS change. | style.css `.art-play-glyph` | It still goes black using only the bar's play button. |
 | H4 v1.311.2 (2026-09-23): faux fullscreen pins `<body>` with `position:fixed` (a stacking context around the fixed overlay). | body-scroll-lock.js | Weakened already: the picture stays black INLINE after leaving fullscreen (the lock is released there). |
 
-The instrument's `video:check` line separates decode from compositing: `+dec`/`+f` climbing while
-black = frames decode but are not shown (a layer: H1/H3); `+dec=0` with `+t` running = the decoder
-stopped; `act=bgAudio` = H2; `pm` other than `inline` = iOS moved the video to a native presentation.
+The instrument's `video:check` line separates the layer from the frames: `+f` climbing while black =
+frames reach a layer that is not shown (H1/H3); `f` back to 0 or restarting = the video layer was
+rebuilt; `+f=0` with `+t` running = frames stopped; `act=bgAudio` = H2; `pm` other than `inline` = iOS moved the video to a native presentation.
+What the counters mean ON THE IPHONE (WebKit main, primary source, fetched 2026-09-26):
+`HTMLMediaElement::getVideoPlaybackQuality` (Source/WebCore/html/HTMLMediaElement.cpp) adds
+`player->videoPlaybackQualityMetrics()`, which for the AVFoundation player
+(Source/WebCore/platform/graphics/avfoundation/objc/MediaPlayerPrivateAVFoundationObjC.mm) is
+`[m_videoLayer videoPerformanceMetrics]`: the AVPlayerLayer's own `totalNumberOfVideoFrames` /
+`numberOfDroppedVideoFrames`, and `std::nullopt` with no layer. So `f` is the LAYER's count: climbing
+while black = frames reach a layer that is not shown; dropping to 0 or restarting = the layer was torn
+down and rebuilt. `webkitDecodedFrameCount` (HTMLVideoElement.cpp) calls `player->decodedFrameCount()`,
+which the AVFoundation player does not implement: `dec` reads 0 on the iPhone (disclosed; Chromium
+fills it). `displayCompositedVideoFrames` is exposed only behind
+`videoQualityIncludesDisplayCompositingEnabled` (VideoPlaybackQuality.idl), so `dc` is printed only
+when present.
+
 Reachability (the probe, real Chromium media events, `?debugLifecycle=1`, faux fullscreen, pause /
 resume x2 by `#pp-btn`): `INSTRUMENT pause=2 playing=2 check=1 fs-at-pause=2`; base: all 0. A
 healthy check reads `+f=50 +dec=50 +t=2.0`.

@@ -65,6 +65,11 @@ test('formatVideoStateDetail: a property the engine lacks reads "-", never NaN o
   assert.doesNotMatch(formatVideoStateDetail(undefined), /NaN|undefined|null/);
 });
 
+test('formatVideoStateDetail: dc (display-composited frames) appears only when the engine exposes it', () => {
+  assert.match(formatVideoStateDetail({ frames: 90, dropped: 0, decoded: 0, composited: 88 }), / f=90\/0 dec=0 dc=88 pm=/);
+  assert.doesNotMatch(formatVideoStateDetail({ frames: 90 }), / dc=/);
+});
+
 test('formatVideoStateDetail: an error code and the check deltas are appended only when present', () => {
   assert.match(formatVideoStateDetail({ err: 3 }), / err=3$/);
   assert.doesNotMatch(formatVideoStateDetail({}), /err=|\+f=/);
