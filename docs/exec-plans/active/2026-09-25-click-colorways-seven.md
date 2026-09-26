@@ -317,3 +317,38 @@ Gate: CHANGES r1 @48ef515f - adversary
 - Measured after the fixes: touched unit suites 252/252; lint:css 0; overlay 0; eslint clean on the 6 files;
   the Original's overflow probe (390x844 + 380x700, Off): every line 1 line (30/30), no spills, no errors.
 
+
+Gate: APPROVED r2 @c87eeb2d - adversary
+  Delta re-review (Node 22.23.1, /tmp git-archive sandbox of c87eeb2d; targeted unit incl. music-skin-integration and
+  css-token-lint 330/330; lint:css 0; overlay 0).
+  - W1 fixed as prescribed. Early-launch probe (ipod-original, /music?play=nd1, 300 ms RTT): the FIRST class the panel
+    wears is `... mms-ipod-original mms-ipod mms-look-original`, LCD rgb(200,203,182), "Jersey 10" (r1: 1.8 s of white
+    Click). panelClass() equals the old string for all 24 other ids (0 mismatches). Mutant (revert mountEarlyCover to a
+    hand-built string): 3 RED.
+  - W2 fixed. My four r1 survivors on c87eeb2d: glass paper -> --mms-white RED; fallback respelling RED; relocation to
+    .mms-full RED; the inherit dropped (.ipm-badge) RED. S1 closed (.ipm-letter/.ipm-badge now in the inherit rule).
+  - New (--ip-turn moved to the wheel): a real CDP touch drag writes `--ip-turn: 60.0deg` on .ip-wheel, the panel's
+    style stays null, the disc computes matrix(0.5, 0.866, ...); a sticker switch to Cider then Click leaves no turn.
+    Mutants: no re-apply on repaint RED; writing on the panel RED (2). The font now carries name IDs 13/14 (the OFL).
+  - S2 (Brick's ink) stays open, disclosed as Dean's call; not blocking.
+Gate: APPROVED r2 @c87eeb2d - qa
+  Instruments (Node 22.23.1, qa, on c87eeb2d): full `npm test` 9638/9638, 0 fail (exit 0); targeted unit +
+  integration (pocket-*, music-skins, music-pocket-menus, skin-surface, setup picker, seattle census, token-scale-lock,
+  music-skin-integration, ipod-brick, integration music-pocket-menus(-r1)) 468/468; lint:css TOTAL 0; overlay 0;
+  eslint on the 6 touched files exit 0. Mutants in a /tmp git-archive sandbox (left identical to a pristine copy):
+  10/10 RED - my r1 .ip-lcd-in mutant, a fallback spelling, a `body .ipm-val` ancestor, the cover bypassing the
+  builder, the builder dropping the look, no turn re-apply, no turn reset, the turn on the panel, .ip-artist dropped
+  from the inherit rule, the turn written for every skin.
+  - r1 W1: fixed as prescribed (one builder, both writers, the real ?play= launch bound + a writer census).
+  - r1 W2: fixed as prescribed and wider (the glass root, fallback/spaced spellings, any ancestor, the derived button test).
+  - r1 S1, S3: fixed differently, and better: the turn lives on the fresh wheel, so no clear is needed.
+  - r1 S2: fixed (name IDs 0-6, 9, 13, 14; ID 13 is the OFL statement; 217 glyphs, as before). r1 S4: comment fixed;
+    Brick ink disclosed.
+  - NEW WARNING (introduced by the fix, LESSONS 12), argued safe to ship disclosed: public/css/style.css:12509 still
+    says "the engine writes ... --ip-turn on the panel", and the plan's AC6 (e) (line 160) says "on the panel". Both
+    are now false: it is written on the wheel. It is comment and doc only, and the mechanism is test-bound (the
+    turn-on-panel mutant goes RED), so the code cannot drift toward the lie. Fix both words in the release commit;
+    that delta then needs a quick qa re-confirm, because this approval binds to c87eeb2d.
+  - SUGGESTION (suspicion): skin-surface.js:1965 and music.js:3988 call SKINS.panelClass unguarded, while the
+    engine guards every other SKINS call with typeof. It only matters with mixed-version assets, and those are
+    served no-cache, so it is not a finding.
