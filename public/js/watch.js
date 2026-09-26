@@ -2616,7 +2616,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // `isChannelDirConfined` exactly like every other pin request (never a
     // new trust boundary). Visible under the SAME gate as the Subscribe
     // button (`currentSubState.visible` -- module enabled AND a resolvable
-    // channel identity), per the AC's "when it has channel identity."
+    // channel identity), per the AC's "when it has channel identity." v1.338
+    // D8a: one exception, a download from another site (`sourceExtractor`)
+    // gets Pin alone under the module gate (the `pinOnly` arm below).
     // v1.54 A1 (Dean's FOUC report): ONE synchronous state applier for
     // Subscribe AND Pin, fed either CACHED answers (frame-one on a seeded
     // nav; hydration-instant otherwise) or CONFIRMED answers when the real
@@ -2626,6 +2628,15 @@ if (typeof module !== 'undefined' && module.exports) {
     function applySubscribeAndPinState(item, moduleEnabled, subs, channelPins, confirmed) {
       if (!subscribeBtn || !item) return;
       currentSubState = decideSubscribeButtonState(item, subs, moduleEnabled);
+      // v1.338 D8a (Dean: "non-YouTube things supported by YT DLP should have
+      // generally first-class experiences"): a download from another site
+      // (`sourceExtractor`, no YouTube channel identity) keeps Pin. Pin needs
+      // only the folder (the channelDir fallback below), and the universal lane
+      // folds each uploader into its own folder under the download root.
+      // Subscribe and the bell stay YouTube-only; the pins routes live behind
+      // the same module gate, so a disabled module still hides all three.
+      const pinOnly = !currentSubState.visible && moduleEnabled === true
+        && typeof item.sourceExtractor === 'string' && item.sourceExtractor.trim() !== '';
       if (!currentSubState.visible) {
         // Gate v1.54 round 1 (QA CRITICAL + adversarial W4): only a CONFIRMED
         // answer may remove ("absent, not merely disabled/greyed", AC15 --
@@ -2635,32 +2646,38 @@ if (typeof module !== 'undefined' && module.exports) {
         // later can still show the controls.
         if (confirmed) {
           subscribeBtn.remove();
-          if (pinBtn) { pinBtn.remove(); pinBtn = null; }
+          if (pinBtn && !pinOnly) { pinBtn.remove(); pinBtn = null; }
           if (bellBtn) { bellBtn.remove(); bellBtn = null; }
         } else {
           subscribeBtn.hidden = true;
-          if (pinBtn) pinBtn.hidden = true;
+          if (pinBtn && !pinOnly) pinBtn.hidden = true;
           if (bellBtn) bellBtn.hidden = true;
         }
-        return;
-      }
-      // Belt-and-braces for the same finding: removal must never be terminal.
-      // Re-mount into the container captured before any removal (see
-      // subscribeBtnContainer above); first-child keeps Subscribe before Pin.
-      if (!subscribeBtn.isConnected) {
-        if (!subscribeBtnContainer) return;
-        subscribeBtnContainer.insertBefore(subscribeBtn, subscribeBtnContainer.firstChild);
-      }
-      subscribeBtn.hidden = false;
-      if (pinBtn) pinBtn.hidden = false;
-      if (bellBtn) bellBtn.hidden = false;
-      applySubscribeButtonLabel(currentSubState.subscribed);
-      if (!subscribeClickWired) {
-        subscribeClickWired = true;
-        subscribeBtn.addEventListener('click', () => {
-          if (currentSubState.subscribed) handleUnsubscribe();
-          else openSubscribeModal();
-        }, { signal });
+        // A pin-only item keeps its Pin (never removed, never hidden) and
+        // falls through to the Pin block below. Reveal it too (gate r1 qa 8):
+        // an earlier non-pin-only pass (a cached moduleEnabled:false) may have
+        // hidden it, and hide and reveal are two axes.
+        if (!pinOnly) return;
+        if (pinBtn) pinBtn.hidden = false;
+      } else {
+        // Belt-and-braces for the same finding: removal must never be terminal.
+        // Re-mount into the container captured before any removal (see
+        // subscribeBtnContainer above); first-child keeps Subscribe before Pin.
+        if (!subscribeBtn.isConnected) {
+          if (!subscribeBtnContainer) return;
+          subscribeBtnContainer.insertBefore(subscribeBtn, subscribeBtnContainer.firstChild);
+        }
+        subscribeBtn.hidden = false;
+        if (pinBtn) pinBtn.hidden = false;
+        if (bellBtn) bellBtn.hidden = false;
+        applySubscribeButtonLabel(currentSubState.subscribed);
+        if (!subscribeClickWired) {
+          subscribeClickWired = true;
+          subscribeBtn.addEventListener('click', () => {
+            if (currentSubState.subscribed) handleUnsubscribe();
+            else openSubscribeModal();
+          }, { signal });
+        }
       }
       // B3: the pin button, from the SAME answer set -- no serial second
       // fetch (the pre-v1.54 pin pop was exactly that extra round trip).
@@ -3666,7 +3683,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (entry.outcome === 'failed') {
         return 'Reheat did not complete. Some metadata may have been saved; try again.';
       }
-      if (entry.networkRan === false) return 'No YouTube source found for this video, so there was nothing to refresh.';
+      if (entry.networkRan === false) return 'No source link found for this video, so there was nothing to refresh.';
       const before = entry.before || {};
       const after = entry.after || {};
       const parts = [];

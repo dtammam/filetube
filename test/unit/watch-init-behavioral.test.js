@@ -145,7 +145,7 @@ const FULL_SEED_ITEM = {
 
 // Builds a fresh sandbox, evaluates the REAL watch.js in it, and returns
 // {init, els} -- els is the shared selector->element map, pre-seedable.
-function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides, playerCurrentId } = {}) {
+function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides, playerCurrentId, seedItem } = {}) {
   storage.clear();
   if (cacheEntry) storage.set('ft-cap-cache-v1', JSON.stringify(cacheEntry));
 
@@ -202,7 +202,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides,
         // REAL player api carries them; anything else is undefined, as in the browser.
         get(t, p) { if (p in t) return t[p]; return REAL_PLAYER_API.has(p) ? () => undefined : undefined; },
       }),
-      consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
+      consumeWatchSeed: (id) => { seedCalls.push(id); return { item: seedItem || FULL_SEED_ITEM, folderSettings: null }; }, // v1.338 D8a: seedItem
       registerView: (name, handlers) => { if (name === 'watch') { capturedInit = handlers.init; capturedDestroy = handlers.destroy; } },
       navigate: () => {},
     },
@@ -1087,4 +1087,171 @@ test('v1.319 D2: crossing the desktop breakpoint re-syncs both ways; theatre ON 
   d.realm.init(d.mkRoot(d.wc1));
   assert.deepStrictEqual(norm(d.state()), GUIDE_THEATRE, 'collapsed at 1025px');
   d.realm.destroy();
+});
+
+// ---- v1.338 D8a (Dean: "non-YouTube things supported by YT DLP should have generally
+// first-class experiences"): a download from another site keeps Pin channel. It has
+// no YouTube channel identity, so Subscribe and the bell stay away, but Pin needs only
+// the folder. Driven through the REAL watch.js applier: the frame-one seed, the cached
+// hydration pass and the CONFIRMED pass (the only one allowed to remove), then a real
+// pin + unpin through the button's own click handler.
+const UNIVERSAL_ITEM = {
+  id: 'vid1', title: 'A clip', type: 'video', size: 123, addedAt: Date.now() - 1000, duration: 60,
+  filePath: '/downloads/someuser/A clip [Reddit=abc123].mp4',
+  sourceExtractor: 'Reddit', sourceId: 'abc123', channelName: 'someuser', // the universal capture's shape (no channelUrl/channelId/youtubeId)
+};
+const WARM_UNSUBSCRIBED_CACHE = { ts: Date.now(), moduleEnabled: true, subs: [], pins: [] };
+
+function mountUniversal({ item = UNIVERSAL_ITEM, cacheEntry = WARM_UNSUBSCRIBED_CACHE, health = 200, pinRoute, overrides } = {}) {
+  const calls = [];
+  const realm = buildWatchRealm({
+    cacheEntry, seedItem: item,
+    overrides: { applyLikedSidebarEntry: () => {}, ...(overrides || {}) },
+    fetchImpl: (url, opts) => {
+      const u = String(url);
+      const method = (opts && opts.method) || 'GET';
+      calls.push({ url: u, method, body: opts && opts.body ? JSON.parse(opts.body) : null });
+      if (u.indexOf('/api/config') === 0) return Promise.resolve(jsonRes(200, { folderSettings: {}, folders: [], folderDisplayNames: {}, syntheticFolders: [] }));
+      if (u === '/api/videos/vid1' && method === 'GET') return Promise.resolve(jsonRes(200, item));
+      if (u.indexOf('/api/settings') === 0) return Promise.resolve(jsonRes(200, {}));
+      if (u === '/api/subscriptions/health') return health === null ? new Promise(() => {}) : Promise.resolve(jsonRes(health, {}));
+      if (u === '/api/subscriptions' && method === 'GET') return Promise.resolve(jsonRes(200, []));
+      if (u === '/api/subscriptions/pins' && method === 'GET') return Promise.resolve(jsonRes(200, []));
+      const r = pinRoute ? pinRoute(method, u, calls[calls.length - 1].body) : null;
+      return r ? Promise.resolve(r) : new Promise(() => {});
+    },
+  });
+  const btn = Object.assign(makeEl('button'), { hidden: true });
+  realm.els.set('#subscribe-btn-mock', btn);
+  const container = btn.parentNode;
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
+  realm.init(root);
+  const pin = () => container.children.find((c) => c.id === 'pin-channel-btn' && c.isConnected);
+  const bell = () => container.children.find((c) => c.id === 'notify-channel-btn' && c.isConnected);
+  const confirmed = async () => { // the confirmed pass ran once the subs + pins GETs were asked (and resolved)
+    for (let i = 0; i < 60 && !calls.some((c) => c.url === '/api/subscriptions/pins' && c.method === 'GET'); i++) await settle();
+    for (let i = 0; i < 6; i++) await settle();
+  };
+  return { realm, btn, container, calls, pin, bell, confirmed };
+}
+
+test('v1.338 D8a frame one: a download from another site renders Pin (visible, "Pin channel") with Subscribe hidden and no bell', () => {
+  const { btn, pin, bell } = mountUniversal({ health: null });
+  assert.equal(btn.hidden, true, 'Subscribe stays hidden: no YouTube channel identity to subscribe to');
+  const p = pin();
+  assert.ok(p, 'Pin is created in the frame-one apply for a sourceExtractor item');
+  assert.equal(p.hidden, false, 'and it is visible');
+  assert.equal(p.textContent, 'Pin channel');
+  assert.equal(bell(), undefined, 'no bell: it belongs to a subscription record');
+});
+
+test('v1.338 D8a hydrated + CONFIRMED: Subscribe is removed, the SAME Pin survives connected and visible, the bell never appears', async () => {
+  const { btn, pin, bell, confirmed, calls } = mountUniversal();
+  const first = pin();
+  assert.ok(first, 'precondition: the frame-one Pin');
+  await confirmed();
+  assert.ok(calls.some((c) => c.url === '/api/videos/vid1'), 'precondition: the detail hydrated');
+  assert.ok(calls.some((c) => c.url === '/api/subscriptions/health'), 'precondition: the confirmed probe ran');
+  assert.equal(btn.isConnected, false, 'the CONFIRMED no-identity answer still removes Subscribe');
+  const p = pin();
+  assert.strictEqual(p, first, 'the frame-one Pin is kept, never removed and rebuilt (no pop)');
+  assert.equal(p.isConnected, true);
+  assert.equal(p.hidden, false, 'never hidden by the cached or confirmed pass');
+  assert.equal(bell(), undefined, 'no bell');
+});
+
+test('v1.338 D8a (gate r1 qa 8): a Pin an earlier pass HID is revealed again by the pin-only pass (hide and reveal are two axes)', async () => {
+  const { pin, confirmed } = mountUniversal();
+  const first = pin();
+  assert.ok(first, 'precondition: the frame-one Pin');
+  first.hidden = true; // what a non-pin-only pass (a cached moduleEnabled:false) leaves behind
+  await confirmed();
+  assert.strictEqual(pin(), first);
+  assert.equal(first.hidden, false, 'the confirmed pin-only pass shows it');
+});
+
+test('v1.338 D8a: the Pin POSTs the item\'s own folder + uploader, flips to Pinned, and the unpin DELETEs the returned id', async () => {
+  const { pin, calls, confirmed } = mountUniversal({
+    pinRoute: (m, url) => {
+      if (m === 'POST' && url === '/api/subscriptions/pins') return jsonRes(201, { id: 'pin-someuser' });
+      if (m === 'DELETE' && url === '/api/subscriptions/pins/pin-someuser') return jsonRes(200, { success: true });
+      return null;
+    },
+  });
+  await confirmed();
+  const p = pin();
+  p._l.click();
+  for (let i = 0; i < 6; i++) await settle();
+  const post = calls.find((c) => c.method === 'POST' && c.url === '/api/subscriptions/pins');
+  assert.ok(post, 'the pin request fired');
+  assert.deepStrictEqual(post.body, { channelDir: '/downloads/someuser', label: 'someuser' }, 'the folder the universal lane put the uploader in, labelled with the uploader');
+  assert.equal(p.textContent, 'Pinned ★');
+  p._l.click();
+  for (let i = 0; i < 6; i++) await settle();
+  assert.ok(calls.some((c) => c.method === 'DELETE' && c.url === '/api/subscriptions/pins/pin-someuser'), 'unpin DELETEs the id the POST returned');
+  assert.equal(p.textContent, 'Pin channel');
+});
+
+test('v1.338 D8a: the module gate still rules - a disabled module (cached AND confirmed) gives a download from another site no Pin', async () => {
+  const cached = mountUniversal({ cacheEntry: { ...WARM_UNSUBSCRIBED_CACHE, moduleEnabled: false }, health: null });
+  assert.equal(cached.pin(), undefined, 'cached moduleEnabled:false: no Pin');
+  const conf = mountUniversal({ health: 503 });
+  assert.ok(conf.pin(), 'precondition: the warm cache built a frame-one Pin');
+  await conf.confirmed();
+  for (let i = 0; i < 40 && conf.btn.isConnected; i++) await settle();
+  assert.equal(conf.btn.isConnected, false, 'precondition: the confirmed disabled answer landed');
+  assert.equal(conf.pin(), undefined, 'a CONFIRMED disabled module removes the Pin too (the pins routes are behind that gate)');
+});
+
+test('v1.338 D8a UNCHANGED: a plain local file (no sourceExtractor, no identity) still gets no Pin; a YouTube item still gets Subscribe + Pin', async () => {
+  const local = { ...UNIVERSAL_ITEM, filePath: '/media/home/movie.mp4', sourceExtractor: undefined, sourceId: undefined, channelName: undefined };
+  const l = mountUniversal({ item: local, health: null });
+  assert.equal(l.btn.hidden, true);
+  assert.equal(l.pin(), undefined, 'no Pin for a plain local file (frame one)');
+  const l2 = mountUniversal({ item: local });
+  await l2.confirmed();
+  assert.equal(l2.pin(), undefined, 'no Pin for a plain local file (confirmed)');
+  const yt = { ...FULL_SEED_ITEM };
+  const y = mountUniversal({ item: yt, cacheEntry: WARM_SUBSCRIBED_CACHE });
+  await y.confirmed();
+  assert.equal(y.btn.isConnected, true, 'a YouTube item keeps Subscribe');
+  assert.equal(y.btn.hidden, false);
+  assert.equal(y.btn.textContent, 'Subscribe', 'the confirmed subs (none) relabel it Subscribe');
+  assert.ok(y.pin(), 'and Pin beside it');
+});
+
+// ---- v1.338 D8d (Dean: "non-YouTube things supported by YT DLP should have generally
+// first-class experiences"): the watch page's delete picks its confirm with the REAL
+// isYtdlpManagedItem. A download from another site whose site reported no uploader
+// (no channelName) got the local-file hard-delete modal; it now gets the downloaded-
+// item confirm. Both arms end in the SAME DELETE /api/videos/:id (performMediaDelete).
+async function driveWatchDelete(item) {
+  const seen = [];
+  const u = mountUniversal({
+    item, health: null,
+    pinRoute: (m, url) => (m === 'DELETE' && url === '/api/videos/vid1') ? jsonRes(200, { success: true, outcome: 'clean' }) : null,
+    overrides: {
+      showConfirmModal: (title, html, onConfirm) => { seen.push({ modal: 'confirm', title, onConfirm }); },
+      showHardDeleteModal: (it, onConfirm) => { seen.push({ modal: 'hard', onConfirm }); },
+      deleteResultToast: () => 'ok', showToast: () => {},
+    },
+  });
+  for (let i = 0; i < 60 && !u.calls.some((c) => c.url === '/api/videos/vid1'); i++) await settle();
+  for (let i = 0; i < 20; i++) await settle();
+  const del = u.realm.els.get('#delete-media-btn');
+  assert.ok(del && del._l && typeof del._l.click === 'function', 'precondition: the delete click listener is wired');
+  del._l.click();
+  assert.equal(seen.length, 1, 'exactly one confirm opened');
+  await seen[0].onConfirm();
+  for (let i = 0; i < 6; i++) await settle();
+  assert.ok(u.calls.some((c) => c.method === 'DELETE' && c.url === '/api/videos/vid1'), 'the confirm fires DELETE /api/videos/:id');
+  return seen[0].modal;
+}
+
+test('v1.338 D8d watch delete: a download from another site with NO captured uploader gets the downloaded-item confirm; a plain local file keeps the hard-delete modal', async () => {
+  const noUploader = { ...UNIVERSAL_ITEM, channelName: undefined };
+  assert.equal(await driveWatchDelete(noUploader), 'confirm', 'sourceExtractor alone marks it downloaded (re-downloadable)');
+  const local = { ...UNIVERSAL_ITEM, filePath: '/media/home/movie.mp4', sourceExtractor: undefined, sourceId: undefined, channelName: undefined };
+  assert.equal(await driveWatchDelete(local), 'hard', 'a plain local file is still irreplaceable: the checkbox-gated modal');
 });

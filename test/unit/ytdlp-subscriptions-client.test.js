@@ -2836,7 +2836,7 @@ test('formatReheatSummary: eligible === 0 with ineligible === 0 too (an empty li
 test('formatReheatSummary: withSourceId < eligible calls out how many actually have a source link', () => {
   assert.strictEqual(
     formatReheatSummary(100, 0, 12),
-    'Reheating 100 items · 12 with a YouTube source link (the rest get a local tag check) · '
+    'Reheating 100 items · 12 with a source link (the rest get a local tag check) · '
     + 'one fetch each, so this can take a while — downloads and checks wait until it finishes (Cancel stops it between items)'
   );
 });
@@ -2844,7 +2844,7 @@ test('formatReheatSummary: withSourceId < eligible calls out how many actually h
 test('formatReheatSummary: withSourceId === eligible says so plainly', () => {
   assert.strictEqual(
     formatReheatSummary(7, 0, 7),
-    'Reheating 7 items · all with a YouTube source link · '
+    'Reheating 7 items · all with a source link · '
     + 'one fetch each, so this can take a while — downloads and checks wait until it finishes (Cancel stops it between items)'
   );
 });
@@ -2862,7 +2862,7 @@ test('formatReheatSummary: a network-bound reheat discloses the duration + that 
 test('formatReheatSummary: withSourceId === 0 is explicit that nothing goes to the network -- and does NOT warn about blocking (nothing spawns)', () => {
   assert.strictEqual(
     formatReheatSummary(30, 0, 0),
-    'Reheating 30 items · none have a YouTube source link yet (local tag check only)'
+    'Reheating 30 items · none have a source link yet (local tag check only)'
   );
 });
 
@@ -3060,7 +3060,7 @@ test('triggerReheat: the 202\'s withSourceId is forwarded into the rendered summ
   await flushMicrotasks();
 
   assert.strictEqual(status.textContent, formatReheatSummary(120, 0, 8));
-  assert.ok(status.textContent.includes('8 with a YouTube source link'), status.textContent);
+  assert.ok(status.textContent.includes('8 with a source link'), status.textContent);
 });
 
 test('triggerReheat: a 409 alreadyRunning response is reflected as "already in progress", never treated as a failure or a second start', async () => {

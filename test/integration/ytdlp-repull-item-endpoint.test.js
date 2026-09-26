@@ -336,6 +336,120 @@ test('a video with no derivable YouTube identity never touches the network and i
   }
 });
 
+// ---- v1.338 D9: Reheat for a download from another site ------------------------
+// (Dean: "Reheat is fine"; plan docs/exec-plans/completed/2026-09-26-first-class-any-site.md) The item
+// re-pulls from its SAVED page link (else the page link in its own tags) in the re-pull's UNIVERSAL
+// mode; the guards themselves are bound in test/integration/ytdlp-repull-universal.test.js.
+
+const D9_PAGE = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+async function d9Run(itemFields, localTags) {
+  const deps = makeFakeDeps();
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields })],
+    eligible: 1, ineligible: 0, withSourceId: 0,
+  });
+  deps.probeEmbeddedTags = async () => (localTags || {});
+  const calls = [];
+  run.repullItemMetaAndSubs = async (...a) => { calls.push(a); return { sourceTitle: 'Refreshed' }; };
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(itemUrl(base), { method: 'POST' });
+    await flush();
+    return { calls, entry: itemEntry() };
+  } finally {
+    await close();
+  }
+}
+
+test('v1.338 D9: a download from another site re-pulls from its SAVED link, in universal mode', async () => {
+  const { calls, entry } = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], D9_PAGE);
+  assert.deepEqual(calls[0][3], { universal: true, expectSourceId: 'abc123' }, 'the guarded universal mode, checked against the item\'s own id');
+  assert.equal(entry.networkRan, true);
+});
+
+test('v1.338 D9: no saved link -> the page link in its own tags; neither -> no network (honest "nothing to refresh")', async () => {
+  const fromTags = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: null, inDownloadRoot: true }, { sourceUrl: D9_PAGE });
+  assert.equal(fromTags.calls.length, 1);
+  assert.equal(fromTags.calls[0][0], D9_PAGE);
+  const none = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: null, inDownloadRoot: true }, {});
+  assert.equal(none.calls.length, 0);
+  assert.equal(none.entry.networkRan, false);
+});
+
+test('v1.338 D9 (gate r1 qa 9): a saved link whose fetch FAILED reports "failed" (try again), never "no source link"', async () => {
+  // The Share corner shows that same link, so "No source link found" would contradict it; the client
+  // branches on outcome 'failed' before networkRan.
+  const deps = makeFakeDeps();
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true })],
+    eligible: 1, ineligible: 0, withSourceId: 1,
+  });
+  deps.probeEmbeddedTags = async () => ({});
+  run.repullItemMetaAndSubs = async () => null; // a 429 / timeout
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(itemUrl(base), { method: 'POST' });
+    await flush();
+    const entry = itemEntry();
+    assert.equal(entry.outcome, 'failed');
+    assert.equal(entry.failed, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('v1.338 D9: a HOSTILE saved link, or an item outside the download root, never reaches the re-pull', async () => {
+  const hostile = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: 'javascript:alert(1)', inDownloadRoot: true }, {});
+  assert.equal(hostile.calls.length, 0, 'the saved link is re-checked before use');
+  const outside = await d9Run({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: false }, {});
+  assert.equal(outside.calls.length, 0, 'only a file the download lane put there');
+  const notUniversal = await d9Run({ universal: false, sourceUrl: D9_PAGE, inDownloadRoot: true }, {});
+  assert.equal(notUniversal.calls.length, 0, 'a plain file with a stray key is not a download from another site');
+});
+
+test('v1.338 D9 (gate r1 qa 4): a download from another site whose network pass FAILED stays retryable; with no link it is exhausted', async () => {
+  // The batch skips an item once its marker is set, so a 429 / timeout on the saved link must NOT mark
+  // it complete (a YouTube item in the same state stays retryable too). Only an item with NO link from
+  // anywhere is exhausted.
+  async function once(itemFields, pass) {
+    const metas = [];
+    const deps = { probeEmbeddedTags: async () => ({}), recordRepulledItemMeta: async (_d, _id, meta) => { metas.push(meta); return true; } };
+    run.repullItemMetaAndSubs = async () => pass;
+    metas.outcome = await ytdlp.reheatOneItem(deps, enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields }), {});
+    return metas;
+  }
+  const failed = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, null);
+  assert.equal(failed.length, 0, 'a failed pass with nothing new persists nothing - no marker, retried by the next batch');
+  const noSubs = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: false });
+  assert.equal(noSubs.length, 1);
+  assert.equal(noSubs[0].markComplete, false, 'Pass A only: not complete, like a YouTube item');
+  const done = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: true });
+  assert.equal(done[0].markComplete, true, 'Pass B done: complete');
+  const noLink = await once({ universal: true, sourceId: 'abc123', sourceUrl: null, inDownloadRoot: true }, null);
+  assert.equal(noLink.length, 1);
+  assert.equal(noLink[0].markComplete, true, 'no link from anywhere: exhausted, as before');
+  // gate adversary r1 W1 / S3: a REFUSED link (implausible, or now a different video) keeps nothing and
+  // is exhausted - never retried forever, never "try again".
+  for (const why of ['different-video', 'implausible-link']) {
+    const refused = await once({ universal: true, sourceId: 'abc123', sourceUrl: D9_PAGE, inDownloadRoot: true }, { refused: why, wroteSubs: false });
+    assert.equal(refused.length, 1, why);
+    assert.equal(refused[0].markComplete, true, `${why}: exhausted`);
+    assert.equal(refused[0].sourceTitle, undefined, `${why}: nothing from the other page is kept`);
+    assert.equal(refused[0].sourceViewCount, undefined);
+    assert.equal(refused.outcome.networkRan, false, `${why}: the refused answer is dropped, not treated as a network result`);
+  }
+  // An item with no id to check against is never fetched.
+  let fetched = false;
+  const metas = [];
+  run.repullItemMetaAndSubs = async () => { fetched = true; return { sourceTitle: 'X', wroteSubs: true }; };
+  await ytdlp.reheatOneItem({ probeEmbeddedTags: async () => ({}), recordRepulledItemMeta: async (_d, _id, m) => { metas.push(m); return true; } },
+    enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, universal: true, sourceId: null, sourceUrl: D9_PAGE, inDownloadRoot: true }), {});
+  assert.equal(fetched, false, 'no sourceId: unverifiable, never fetched');
+  assert.equal(metas[0].markComplete, true, 'and exhausted');
+});
+
 // ---- Eligibility + the shared latch ----------------------------------------
 
 test('404 when the id is not among the enumerated (reheatable) items -- never a 202 that resolves to a silent no-op', async () => {

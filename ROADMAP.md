@@ -88,6 +88,14 @@
 - [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
   overlay-containment lint's scroll match, with a fixture.
 
+- [ ] **Bug: the Notify button shifts the row when it toggles** (Dean, 2026-09-26: "notify button shifts
+  unreasonably - should be stable", with two iPhone screenshots of a watch page's channel card). The
+  label flips between "Notify" (bell struck through) and "Notifying" (bell), so the button changes width
+  and "Pin channel" beside it jumps sideways on every tap. First questions when picked up: reserve the
+  wider label's width (the button sized to "Notifying" in both states) or a fixed-width button; check
+  every era/theme and the phone and desktop rows (rows wrap, buttons never shrink - the measure-UI norm),
+  and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
+
 - [ ] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
   like a hold to speed up lock option by dragging down. No need to do now please just add to roadmap").
   Today a press-and-hold on the picture plays at 2x until the finger lifts (player.js hold-to-2x:
@@ -203,6 +211,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.338.0 - Downloads from any site are first-class: Share on every card, a site icon, Reheat (2026-09-26)
+
+- **The saved page link** (Dean: "non-YouTube things supported by YT DLP should have generally first-class
+  experiences in terms of icon, shareability, deletion, transcripts"; his ruling: save the link with the
+  video). A download from another site now keeps its page link as a new per-item key `sourceUrl`: captured
+  from yt-dlp's `webpage_url` (the job's own URL when none is printed), carried through the scan's terminal
+  write, re-init and Phase-2 gap-fill, and filled once for past downloads from the tags the library already
+  holds (no new file reads). It is re-checked every time it is served; the raw key never rides a list. No
+  schema bump (a key, not a namespace).
+- **Share everywhere:** the card corner, search results, Liked (which also gains the YouTube link it never
+  had), the watch page (the saved link first, the v1.337 file read as the fallback) and the music / pocket
+  skins share it. Chapter shares and "at current time" stay YouTube-only.
+- **A site icon:** a download with no uploader photo shows its site's badge (style A, the brand disc; 12
+  sites: Reddit, Facebook, Instagram, TikTok, X, Vimeo, Twitch, Dailymotion, SoundCloud, Bandcamp,
+  bilibili, Rumble; Simple Icons, CC0). A real photo always wins, on the channels list too; Music keeps its
+  album-art mosaic.
+- **Small fixes:** Pin channel works without Subscribe; Stats "by channel" and the duplicate report include
+  these downloads; they always get the downloaded-item delete confirm.
+- **Reheat for any site:** refreshes title, date, counts and captions from the saved link, behind the
+  download lane's guards (the intake check, a DNS resolve-then-check, named extractors only), and only when
+  the page still returns the item's OWN id - a Twitch channel link or an Instagram stories feed that now
+  shows another video is refused and nothing is kept. A failed fetch stays retryable; a link that can never
+  be fetched stops being retried. The Reheat summary counts these downloads and says "source link".
+- Gate: adversary + qa + security-brief (full: a new persisted key). r1 @c90977a2: qa CHANGES (the
+  integration suite was red on a pinned parser shape; the badge leaked into Music; failed reheats marked
+  done; five more). r2 @2f949473: qa + security APPROVED, adversary CHANGES (a reheat could keep a
+  DIFFERENT video's title and date; the badge replaced a real channel photo on the channels list). r3
+  (delta, Dean's word) APPROVED @2447efab by all three. Carried, disclosed: tech-debt #286.
 
 ### v1.337.0 - Share any download, and no swipe-back in fullscreen video (2026-09-26)
 

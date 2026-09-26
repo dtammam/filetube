@@ -1763,6 +1763,8 @@ test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta an
     source: null,
     uploader: null,
     filePath: null,
+    // v1.338 D2: the universal page link; a YouTube capture prints no webpage_url.
+    webpageUrl: null,
     // v1.48 item 2: absent from this payload -> normalized null.
     sourceViewCount: null,
     sourceFollowerCount: null,

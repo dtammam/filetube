@@ -340,6 +340,34 @@ test('POST /api/ytdlp/download with a non-YouTube media URL is accepted (202) an
   }
 });
 
+// v1.338 D2 (plan first-class-any-site; gate r1 qa 5): when yt-dlp prints no webpage_url for a universal
+// download, the saved page link falls back to the job's own validated URL - bound at the CALL SITE (the
+// one-shot's persist), not only as a pure function. A printed link wins over the job URL.
+test('v1.338 D2: a universal one-shot with no printed webpage_url saves the JOB URL as its page link; a printed one wins', async () => {
+  for (const [printed, expected] of [[undefined, 'https://vimeo.com/76979871'], ['https://vimeo.com/76979871/printed', 'https://vimeo.com/76979871/printed']]) {
+    const deps = makeFakeDeps();
+    run.runDownload = async () => ({
+      ok: true, code: 0, stdout: '', stderr: '',
+      channelMeta: [{ videoId: '76979871', source: 'Vimeo', uploader: 'Someone', title: 'A clip', filePath: '/dl/Someone/A clip [Vimeo=76979871].mp4', ...(printed ? { webpageUrl: printed } : {}) }],
+    });
+    const { base, close } = await startTestApp(deps, enabledConfig());
+    try {
+      const res = await postJson(base, '/api/ytdlp/download', { url: 'https://vimeo.com/76979871' });
+      assert.equal(res.status, 202);
+      let row;
+      const deadline = Date.now() + 4000;
+      while (!row && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+        row = store.ensureYtdlp(deps.loadDatabase()).downloadMeta['A clip [Vimeo=76979871].mp4'];
+      }
+      assert.ok(row, 'the universal capture is persisted under its rendered basename');
+      assert.equal(row.sourceUrl, expected);
+    } finally {
+      await close();
+    }
+  }
+});
+
 // ---- AC56 (cross-cutting): a metacharacter-laden URL is rejected, never ---
 // reaching the spawn boundary --------------------------------------------
 

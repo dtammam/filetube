@@ -1782,6 +1782,9 @@ test('universal one-off: uses the extended print template (extractor_key/uploade
   assert.match(uni, /extractor_key/);
   assert.match(uni, /filepath/);
   assert.match(uni, /uploader[,)]/);
+  // v1.338 (plan first-class-any-site D2): the page link joins the UNIVERSAL selector only.
+  assert.match(uni, /,webpage_url,/);
+  assert.doesNotMatch(args.CHANNEL_META_PRINT_TEMPLATE, /webpage_url/, 'the YouTube template never asks for it');
 
   const yt = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
   assert.equal(yt[yt.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'YouTube one-off keeps the legacy template (byte-identical)');

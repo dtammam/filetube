@@ -742,14 +742,22 @@ function buildCardCornerControlHtml(control, cornerClass, item, caps) {
       return `<button type="button" class="card-queue-btn ${cornerClass}" data-id="${id}"${kindAttr} aria-label="Add to queue" title="Add to queue">
               <i class="icon-queue"></i>
             </button>`;
-    case 'share':
+    case 'share': {
       // Applies only when the server derived an original link (C4); the URL
       // is the SERVER-resolved field, never re-approximated from the raw
-      // youtubeId client-side (the v1.52 lesson).
-      if (typeof item.watchUrl !== 'string' || item.watchUrl === '') return '';
-      return `<button type="button" class="card-share-btn ${cornerClass}" data-id="${id}" data-share-url="${escapeBookRowHtml(item.watchUrl)}" aria-label="Share the original YouTube link" title="Share">
+      // youtubeId client-side (the v1.52 lesson). v1.338 (Dean: "Is there a
+      // reason we can't just like share from the bottom right corner?"): a
+      // download from another site shares its saved page link
+      // (`sourceShareUrl`, server-checked); YouTube's `watchUrl` wins.
+      const isYouTubeLink = typeof item.watchUrl === 'string' && item.watchUrl !== '';
+      const shareUrl = isYouTubeLink ? item.watchUrl
+        : ((typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') ? item.sourceShareUrl : '');
+      if (!shareUrl) return '';
+      const shareName = isYouTubeLink ? 'Share the original YouTube link' : 'Share the original link';
+      return `<button type="button" class="card-share-btn ${cornerClass}" data-id="${id}" data-share-url="${escapeBookRowHtml(shareUrl)}" aria-label="${shareName}" title="Share">
               <i class="icon-share"></i>
             </button>`;
+    }
     case 'transcript':
       // v1.203 (Dean: "add the transcript button as a selectable option for
       // a given card ... from a card view maybe send a video along to an
