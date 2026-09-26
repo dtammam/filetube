@@ -44,7 +44,7 @@
   saved resume point / the notification's deep link) replayed on `ended` or on a re-load, and is the
   element's `loop` or the player's loop state actually on at that moment.
 
-- [ ] **Share for non-YouTube downloads** (Dean, 2026-09-25: "I want us to make it so that we can share
+- [x] **Share for non-YouTube downloads** (SHIPPED v1.337.0; Dean, 2026-09-25: "I want us to make it so that we can share
   content that is not YouTube downloads. So for example, I'm downloading some things supported by YTDLP,
   like Facebook and Reddit ... it's watching them as like a 95% first class experience ... There's no
   share button ... a share button that basically just shares the logged URL of whatever it is that we
@@ -203,6 +203,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.337.0 - Share any download, and no swipe-back in fullscreen video (2026-09-26)
+
+- **Share for non-YouTube downloads** (Dean: "a share button that basically just shares the logged URL
+  of whatever it is that we captured"; his ruling: the watch page only, read from the file itself,
+  nothing stored). A yt-dlp download from another site (Facebook, Reddit, ...) has no YouTube link,
+  so its watch page had no Share. yt-dlp writes the page URL into every download's tags (`purl` and
+  `comment`; an MP4 or M4A keeps only `comment`, an Opus file keeps them per stream - verified in
+  yt-dlp's source and with the box's ffmpeg), so the watch route now reads it (its own ffprobe of the
+  file and stream tags, one per file at a time, killed at 15s, cached per file) and sends it as a NEW
+  field `sourceShareUrl` - the YouTube `watchUrl` also feeds the chapter share and the music skins,
+  which stay YouTube-only. The watch page shares it as is (no "at current time" choice). Works for
+  past downloads too. A strict link check refuses hidden characters, userinfo and backslashes. Every
+  other item's response is byte-identical (both seats measured it).
+- **A right swipe does nothing in fullscreen video** (Dean: "In full screen video view if I swipe right
+  anywhere that isn't the scrub bar it exits full screen on mobile"; his ruling). The v1.311.3
+  swipe-back ("scrubbers only") went back from the faux fullscreen overlay too, leaving the page. It
+  now stands down while the faux overlay or a Fullscreen API element is up; the audio view and the
+  full-screen skins keep it. Measured headless (a real touch swipe after an in-app navigation): base
+  `fullscreen true->false url /watch.html?v=v1->/`, now unchanged; left, up and down swipes also leave
+  fullscreen and the page as they were.
+- ROADMAP: Dean's idea, lock the hold-to-speed-up by dragging down (not built).
+- Gate: adversary + qa, CHANGES r1 (hidden characters in the link; a slow file never got Share and
+  every timed-out ffprobe was left running; Opus never got Share; three unbound guards), APPROVED r2
+  @98801b94. Carried, disclosed: tech-debt #285.
 
 ### v1.336.0 - No border around fullscreen video, and a log for the black picture (2026-09-26)
 
