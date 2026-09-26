@@ -163,6 +163,7 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line (legacy YouT
     source: null,
     uploader: null,
     filePath: null,
+    webpageUrl: null, // v1.338: the universal page link (null on a legacy YouTube line)
     // v1.48 item 2: a payload with no `view_count` yields null (absent).
     sourceViewCount: null,
     sourceFollowerCount: null,
@@ -244,6 +245,14 @@ test('parseChannelMetaLine: a UNIVERSAL-lane line carries source/uploader/filePa
   assert.equal(result.filePath, '/media/ytdlp/Vimeo/A Vimeo Film [Vimeo=76979871].mp4');
 });
 
+test('parseChannelMetaLine: a UNIVERSAL-lane line carries the page link as webpageUrl, raw (v1.338)', () => {
+  const line = `FTCHMETA ${JSON.stringify({ id: 'abc123', extractor_key: 'Reddit', webpage_url: 'https://www.reddit.com/r/v/comments/abc123/x/' })}`;
+  assert.equal(parseChannelMetaLine(line).webpageUrl, 'https://www.reddit.com/r/v/comments/abc123/x/');
+  for (const absent of [null, '', 'NA']) {
+    assert.equal(parseChannelMetaLine(`FTCHMETA ${JSON.stringify({ id: 'a', webpage_url: absent })}`).webpageUrl, null);
+  }
+});
+
 // v1.25 QoL bugfix regression lock: a real per-video info dict never carries
 // a `channel_thumbnail` field (verified live against yt-dlp 2026.07.04) --
 // even when a video's FTCHMETA payload includes one anyway (e.g. a stale
@@ -284,6 +293,7 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     source: null,
     uploader: null,
     filePath: null,
+    webpageUrl: null, // v1.338: the universal page link (null on a legacy YouTube line)
     sourceViewCount: null,
     sourceFollowerCount: null,
   });

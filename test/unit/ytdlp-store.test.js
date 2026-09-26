@@ -2341,6 +2341,42 @@ test('v1.41.13 bridge round-trip: record a universal capture, consume it by comp
   assert.equal(store.consumeUniversalDownloadMeta(db, key), null, 'a second consume returns null');
 });
 
+test('v1.338 bridge: a universal capture saves its page link (sanitized), consumes it re-checked; YouTube never stores one', async () => {
+  const ytdlpDb = scratchYtdlp.seed({ downloadMeta: {} });
+  const deps = { ytdlpDb, updateDatabase: async (fn) => fn() };
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  await store.recordDownloadChannelMeta(deps, { source: 'Reddit', videoId: 'abc123', uploader: 'someone', webpageUrl: page });
+  await store.recordDownloadChannelMeta(deps, { source: 'Reddit', videoId: 'bad001', uploader: 'x', webpageUrl: 'https://www.reddit.com/\u202egpj.exe' });
+  await store.recordDownloadChannelMeta(deps, { source: 'Youtube', videoId: 'dQw4w9WgXcQ', channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', webpageUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
+  const rows = ytdlpDb.read().downloadMeta;
+  assert.equal(rows[store.compositeMetaKey('Reddit', 'abc123')].sourceUrl, page, 'saved at capture');
+  assert.equal(rows[store.compositeMetaKey('Reddit', 'bad001')].sourceUrl, undefined, 'a hostile link is not saved');
+  assert.equal(rows.dQw4w9WgXcQ && rows.dQw4w9WgXcQ.sourceUrl, undefined, 'a YouTube capture never stores one');
+  const db = ytdlpDb.holder();
+  assert.equal(store.consumeUniversalDownloadMeta(db, store.compositeMetaKey('Reddit', 'abc123')).sourceUrl, page);
+  // a planted row (a backup, a hand edit) is re-checked at the read boundary
+  db.ytdlp.downloadMeta['planted 1'] = { universal: true, sourceExtractor: 'Reddit', sourceId: 'p1', sourceUrl: 'javascript:alert(1)', capturedAt: 1 };
+  assert.equal(store.consumeUniversalDownloadMeta(db, 'planted 1').sourceUrl, undefined);
+});
+
+test('v1.338 withUniversalPageUrl: the job URL fills a universal capture that printed none; never a YouTube one; never overrides', () => {
+  const { withUniversalPageUrl } = require('../../lib/ytdlp/index.js');
+  const job = 'https://www.reddit.com/r/v/comments/job1/x/';
+  const out = withUniversalPageUrl([
+    { source: 'Reddit', videoId: 'a' },
+    { source: 'Reddit', videoId: 'b', webpageUrl: 'https://www.reddit.com/printed/' },
+    { videoId: 'dQw4w9WgXcQ' },
+    null,
+  ], job);
+  assert.equal(out[0].webpageUrl, job, 'filled');
+  assert.equal(out[1].webpageUrl, 'https://www.reddit.com/printed/', 'what yt-dlp printed wins');
+  assert.equal(out[2].webpageUrl, undefined, 'a YouTube capture is untouched');
+  assert.equal(out[3], null);
+  const input = [{ source: 'Reddit' }];
+  assert.strictEqual(withUniversalPageUrl(input, undefined), input, 'no job URL: unchanged');
+  assert.strictEqual(withUniversalPageUrl(undefined, job), undefined);
+});
+
 test('v1.41.13 bridge (W3): a capture WITH a filePath is keyed by the RENDERED BASENAME, consumed by path.basename -- not the composite', () => {
   const ytdlpDb = scratchYtdlp.seed({ downloadMeta: {} }); // Wave 5
   const deps = { ytdlpDb, updateDatabase: async (fn) => fn() };

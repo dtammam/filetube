@@ -376,6 +376,55 @@ test('enumerateRepullableItems: an id-suffixed item under the download root is e
   assert.equal(entry.alreadyRepulled, false);
 });
 
+// v1.338 D9 (plan docs/exec-plans/completed/2026-09-26-first-class-any-site.md): a download from another site
+// is flagged `universal` and carries its saved page link (raw; the reheat re-checks it); a YouTube item,
+// even a proxy-host one, is not universal.
+test('enumerateRepullableItems (v1.338): a download from another site is universal with its saved link; YouTube and plain files are not', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  const reddit = path.join(downloadDir, 'A clip [Reddit=abc123].mp4');
+  const proxy = path.join(downloadDir, 'Proxy [Youtube=dQw4w9WgXcQ].mp4');
+  const plain = path.join(downloadDir, 'Plain Home Video.mp4');
+  const db = { metadata: {
+    [getMediaId(reddit)]: { id: getMediaId(reddit), filePath: reddit, name: path.basename(reddit), ext: '.mp4', sourceExtractor: 'Reddit', sourceId: 'abc123', sourceUrl: page },
+    [getMediaId(proxy)]: { id: getMediaId(proxy), filePath: proxy, name: path.basename(proxy), ext: '.mp4', sourceExtractor: 'Youtube', youtubeId: 'dQw4w9WgXcQ' },
+    [getMediaId(plain)]: { id: getMediaId(plain), filePath: plain, name: path.basename(plain), ext: '.mp4', sourceUrl: page },
+  } };
+  const byPath = Object.fromEntries(enumerateRepullableItems(db, config).items.map((e) => [e.filePath, e]));
+  assert.equal(byPath[reddit].universal, true);
+  assert.equal(byPath[reddit].sourceUrl, page);
+  assert.equal(byPath[reddit].watchUrl, null);
+  assert.equal(byPath[reddit].sourceId, 'abc123', 'the id the re-pull must see come back (gate adversary r1 W1)');
+  assert.equal(byPath[proxy].sourceId, null, 'never for a YouTube item');
+  assert.equal(byPath[proxy].universal, false, 'a proxy-host YouTube download keeps its YouTube re-pull');
+  assert.equal(byPath[plain].universal, false, 'a plain file is not a download from another site');
+});
+
+// v1.338 D9 (gate r1 qa 3): the Reheat summary's network count (`withSourceId`) includes a download from
+// another site with a usable saved link - it re-pulls under the same shared gate, so the "downloads wait"
+// warning must show. A hostile link, a link outside the download root, or none: not counted.
+test('enumerateRepullableItems (v1.338): withSourceId counts a download from another site with a usable saved link', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  const mk = (name, extra) => { const fp = path.join(downloadDir, name); return [getMediaId(fp), { id: getMediaId(fp), filePath: fp, name, ext: '.mp4', sourceExtractor: 'Reddit', ...extra }]; };
+  const outside = path.join(os.tmpdir(), 'elsewhere', 'Outside [Reddit=o1].mp4');
+  const db = { metadata: Object.fromEntries([
+    mk('Linked [Reddit=a1].mp4', { sourceId: 'a1', sourceUrl: page }),
+    mk('Hostile [Reddit=h1].mp4', { sourceId: 'h1', sourceUrl: 'javascript:alert(1)' }),
+    mk('Unlinked [Reddit=n1].mp4', { sourceId: 'n1' }),
+    [getMediaId(outside), { id: getMediaId(outside), filePath: outside, name: 'x.mp4', ext: '.mp4', sourceExtractor: 'Reddit', sourceUrl: page }],
+    // gate r2 (qa S2): a plain in-root file with a stray link is not a download from another site.
+    mk('Plain.mp4', { sourceExtractor: undefined, sourceId: 'x1', sourceUrl: page }),
+    // gate r2 (adversary S3, qa S1): a link the re-pull would refuse, or could not verify, is not counted.
+    mk('Private [Reddit=p1].mp4', { sourceId: 'p1', sourceUrl: 'http://10.1.2.3/v' }),
+    mk('Parens [Reddit=q1].mp4', { sourceId: 'q1', sourceUrl: 'https://www.reddit.com/r/v/a_(b)' }),
+    mk('NoId [Reddit=].mp4', { sourceUrl: page }),
+  ]) };
+  const result = enumerateRepullableItems(db, config);
+  assert.equal(result.eligible, 8);
+  assert.equal(result.withSourceId, 1, 'only the in-root download with a usable saved link goes to the network');
+});
+
 // v1.33 T1: a bracket-less (MeTube-style) import is now ELIGIBLE -- it flows
 // through with null videoId/watchUrl so the batch worker's LOCAL ffprobe
 // tags pass still runs on it (the only shot such a file gets at an embedded

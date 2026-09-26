@@ -72,7 +72,8 @@
 //       fetchItem(id) -> Promise<item|null> (default: GET /api/videos/:id). Item shape:
 //                        {id,title,liked,watchState:'watched'|'unwatched',hasSubtitles,watchUrl}.
 //       downloadUrl(item) -> the file's ?download=1 URL (default: /video/:id?download=1)
-//       shareLinkUrl(item) -> the external SOURCE link, '' if none (default: item.watchUrl).
+//       shareLinkUrl(item) -> the external SOURCE link, '' if none (default: item.watchUrl, else - v1.338 -
+//                                a download from another site's item.sourceShareUrl).
 //                        Its presence decides the "both when a source exists" Share fork.
 //       capabilities  -> array of action rows to render (default: the full video set). Podcasts
 //                        pass the applicable subset; move/reheat/transcript are omitted for them.
@@ -151,9 +152,12 @@
     }
     // v1.287: the shareable SOURCE link (default = item.watchUrl). Its presence decides the
     // "both when a source exists" Share fork below; a file-only type (podcasts) returns ''.
+    // v1.338 (Dean: "anything that can and is grabbed should be kind of treated and formed the same
+    // way"): a download from another site shares its saved page link (`sourceShareUrl`, server-checked).
     function extrasShareLink(item) {
       try { if (typeof cfg.shareLinkUrl === 'function') return cfg.shareLinkUrl(item) || ''; } catch (_) { /* fall through */ }
-      return (typeof item.watchUrl === 'string' && item.watchUrl !== '') ? item.watchUrl : '';
+      if (typeof item.watchUrl === 'string' && item.watchUrl !== '') return item.watchUrl;
+      return (typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') ? item.sourceShareUrl : '';
     }
     // v1.287: the item-detail source. Default = the /api/videos/:id payload (video/music);
     // podcasts inject a fetch of the episode payload (normalized to {id,title,liked,watchState,...}).
@@ -284,7 +288,10 @@
         var pl = extrasPlayer();
         var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
         var opts = [{ label: 'Share file', onPick: shareFile }, { label: 'Share link', onPick: function () { shareLink(link); } }];
-        if (typeof t === 'number' && isFinite(t) && t >= 1 && typeof window.withShareStartTime === 'function') {
+        // v1.338 (plan first-class-any-site D6): a start time is YouTube's `?t=` - a download from another
+        // site shares its own page link as it is.
+        var isYouTubeLink = link === item.watchUrl;
+        if (isYouTubeLink && typeof t === 'number' && isFinite(t) && t >= 1 && typeof window.withShareStartTime === 'function') {
           opts.push({ label: 'Share link at ' + fmtTime(t), onPick: function () { shareLink(window.withShareStartTime(link, t)); } });
         }
         var dismiss = window.showChoiceModal('Share', opts);
@@ -346,7 +353,7 @@
     // that may not have happened).
     function extrasReheatToastFor(entry) {
       if (entry.outcome === 'failed') return 'Reheat did not complete. Some metadata may have been saved; try again.';
-      if (entry.networkRan === false) return 'No YouTube source found for this track, so there was nothing to refresh.';
+      if (entry.networkRan === false) return 'No source link found for this track, so there was nothing to refresh.';
       return 'Reheat finished.';
     }
     function extrasReheat(item) {
