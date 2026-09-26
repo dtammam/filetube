@@ -837,6 +837,66 @@ function formatPauseProvenance(ctx) {
     + ' state=' + (c.state || '?');
 }
 
+// v1.336 (Dean, D1: "after I pause or resume, pause and resume again, the screen of
+// the video goes black"; audio playing, controls up, STILL black after leaving
+// fullscreen, so the video element itself stopped showing frames). The detail line
+// for the video's OWN state at a media event, in the ?debugLifecycle=1 log. On the
+// iPhone `f` is the AVPlayerLayer's own frame count (WebKit
+// MediaPlayerPrivateAVFoundationObjC::videoPlaybackQualityMetrics reads the LAYER's
+// videoPerformanceMetrics), relayed from the GPU process as a CACHED copy that
+// refreshes about every 2s while the page keeps asking and freezes with no layer
+// (MediaPlayerPrivateRemote / RemoteMediaPlayerProxy). So one reading means little;
+// the `video:check` SERIES (`fser`, one read a second for six seconds after a
+// 'playing') is the answer: it climbs = frames reach the layer (a black picture is
+// then the layer not being shown); it stays flat while `t` runs = no frames reach it,
+// or there is no layer. `act`/`bg` = which element the player treats as sounding;
+// `bgp` = the sidecar audio element's OWN paused flag (bgp=0 while act=video = the
+// sound is not the video's), `mu`/`vol` = the video's own mute and volume; `pm` not
+// inline = iOS moved the video into a native presentation; an `ld` change = a
+// reload. `dec` (webkitDecodedFrameCount) is compiled out of iOS WebKit
+// (MEDIA_STATISTICS off) and reads '-' there; `dc` (display-composited frames)
+// appears only where WebKit's setting exposes it. Pure so it is testable; the format
+// mirrors formatPauseProvenance.
+function formatVideoStateDetail(s) {
+  var c = s || {};
+  var num = function (v) { return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; };
+  var t = (typeof c.t === 'number' && isFinite(c.t)) ? c.t.toFixed(1) : '-';
+  var out = 'rs=' + num(c.rs) + ' ns=' + num(c.ns)
+    + ' p=' + (c.paused ? '1' : '0')
+    + ' wh=' + num(c.vw) + 'x' + num(c.vh)
+    + ' t=' + t
+    + ' f=' + num(c.frames) + '/' + num(c.dropped)
+    + ' dec=' + num(c.decoded)
+    + (typeof c.composited === 'number' ? ' dc=' + num(c.composited) : '')
+    + ' pm=' + (c.pm || '-')
+    + ' act=' + (c.act || '?')
+    + ' bg=' + (c.bg || '?')
+    + ' bgp=' + (c.bgp === true ? '1' : c.bgp === false ? '0' : '-')
+    + ' mu=' + (c.muted ? '1' : '0')
+    + ' vol=' + ((typeof c.vol === 'number' && isFinite(c.vol)) ? c.vol.toFixed(2) : '-')
+    + ' fs=' + (c.fs ? '1' : '0')
+    + ' ah=' + (c.ah ? '1' : '0')
+    + ' amb=' + (c.amb ? '1' : '0')
+    + ' lock=' + (c.lock ? '1' : '0')
+    + ' ld=' + num(c.ld);
+  if (c.err) out += ' err=' + num(c.err);
+  if (c.delta) out += ' +f=' + num(c.delta.frames) + ' +dec=' + num(c.delta.decoded) + ' +t=' + ((typeof c.delta.t === 'number' && isFinite(c.delta.t)) ? c.delta.t.toFixed(1) : '-');
+  if (c.series) out += ' fser=' + c.series;
+  return out;
+}
+// v1.336: what moved between two readings (b minus a); a counter either side lacks is null.
+function videoStateDelta(a, b) {
+  var d = function (k) { return (a && b && typeof a[k] === 'number' && typeof b[k] === 'number' && isFinite(a[k]) && isFinite(b[k])) ? b[k] - a[k] : null; };
+  return { frames: d('frames'), decoded: d('decoded'), t: d('t') };
+}
+// v1.336: the check's frame series - each sample's layer frame count relative to the
+// 'playing' reading ('-' where a sample had none), e.g. '0,0,48,48,96,96'.
+function formatFrameSeries(startFrames, samples) {
+  return (samples || []).map(function (f) {
+    return (typeof f === 'number' && isFinite(f) && typeof startFrames === 'number' && isFinite(startFrames)) ? String(Math.round(f - startFrames)) : '-';
+  }).join(',');
+}
+
 // v1.161.1 (Dean device bug: AirPods/lock-screen play-pause inconsistent during
 // background play). The detail line for a MediaSession action ARRIVAL - records
 // WHICH element the handler will act on (`bgAudio` sidecar vs the paused `video`)
@@ -1804,6 +1864,10 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveImmersiveCarryTarget,
     // v1.131: CarPlay pause-provenance diagnostics detail line.
     formatPauseProvenance,
+    // v1.336: the video's own state per media event (the D1 black-picture instrument).
+    formatVideoStateDetail,
+    videoStateDelta,
+    formatFrameSeries,
     // v1.161.1: the MediaSession-action arrival detail line (element + bg state).
     formatMsActionDetail,
     // v1.161.4: the runtime silent-WAV builder (the background keep-alive's loop).
@@ -3997,6 +4061,76 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
+  // v1.336 (D1 instrument): the runtime half of formatVideoStateDetail. Gated on the
+  // debug flag BEFORE any read, and it changes nothing on the page: property reads
+  // plus getVideoPlaybackQuality(). On iOS that call starts the GPU process polling
+  // the video LAYER's metrics on a background queue (every page that calls the API
+  // does); it adds no video output. Never requestVideoFrameCallback or a canvas read
+  // of the video - in WebKit both attach a video output to the player, the shape of
+  // the v1.312 ambient blackout, so the instrument could cause the black it measures.
+  function readVideoState() {
+    var v = mediaPlayer;
+    var q = null;
+    try { q = (v && typeof v.getVideoPlaybackQuality === 'function') ? v.getVideoPlaybackQuality() : null; } catch (_) { q = null; }
+    var root = (typeof document !== 'undefined') ? document.documentElement : null;
+    return {
+      rs: v ? v.readyState : null,
+      ns: v ? v.networkState : null,
+      paused: !!(v && v.paused),
+      vw: v ? v.videoWidth : null,
+      vh: v ? v.videoHeight : null,
+      t: v ? v.currentTime : null,
+      frames: q ? q.totalVideoFrames : null,
+      dropped: q ? q.droppedVideoFrames : null,
+      composited: q ? q.displayCompositedVideoFrames : null,
+      decoded: v ? v.webkitDecodedFrameCount : null,
+      pm: v && typeof v.webkitPresentationMode === 'string' ? v.webkitPresentationMode : null,
+      act: activeMediaElement() === bgAudioEl && bgAudioEl ? 'bgAudio' : 'video',
+      bg: bgAudioState,
+      bgp: bgAudioEl ? !!bgAudioEl.paused : null,
+      muted: !!(v && v.muted),
+      vol: v ? v.volume : null,
+      fs: !!(host && host.classList.contains('css-fullscreen')),
+      ah: !!(host && host.classList.contains('controls-autohidden')),
+      amb: !!(root && root.hasAttribute('data-ambient-on')),
+      lock: !!(document.body && document.body.style.position === 'fixed'),
+      ld: loadGeneration,
+      err: v && v.error ? v.error.code : null,
+    };
+  }
+  // One pending check at a time: after a 'playing', one reading a second for six
+  // seconds, then ONE log line - the last reading, what moved since the 'playing'
+  // (delta) and the layer frame count at each second (the series). Six seconds spans
+  // at least two refreshes of iOS's ~2s cached counters, so a healthy resume climbs
+  // and a starved one stays flat - the "is the picture advancing" answer for the
+  // resume that went black. A newer 'playing' restarts it; a newer load or the flag
+  // going off drops it.
+  var VIDEO_CHECK_SAMPLES = 6;
+  var VIDEO_CHECK_EVERY_MS = 1000;
+  var videoStateCheckTimer = null;
+  function recordVideoState(evName) {
+    if (!isDebugLifecycleEnabled() || !mediaPlayer) return;
+    var s = readVideoState();
+    recordLifecycleEvent('video:' + evName, { detail: formatVideoStateDetail(s) });
+    if (evName !== 'playing') return;
+    if (videoStateCheckTimer) clearTimeout(videoStateCheckTimer);
+    var samples = [];
+    var tick = function () {
+      videoStateCheckTimer = null;
+      if (!isDebugLifecycleEnabled() || !mediaPlayer || loadGeneration !== s.ld) return;
+      var n = readVideoState();
+      samples.push(n.frames);
+      if (samples.length < VIDEO_CHECK_SAMPLES) {
+        videoStateCheckTimer = setTimeout(tick, VIDEO_CHECK_EVERY_MS);
+        return;
+      }
+      n.delta = videoStateDelta(s, n);
+      n.series = formatFrameSeries(s.frames, samples);
+      recordLifecycleEvent('video:check', { detail: formatVideoStateDetail(n) });
+    };
+    videoStateCheckTimer = setTimeout(tick, VIDEO_CHECK_EVERY_MS);
+  }
+
   // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
   // A PASSIVE observer of the v1.27 / v1.35 / v1.121 / v1.161 handoff (see the
   // pure half, bgTimingMetrics, for the record's meaning). Every hook only READS
@@ -4467,7 +4601,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // e.g. a skip reason, or a position/error summary) rendered right after
       // the type, truncated so one noisy entry (e.g. a long err.message)
       // never blows out the overlay's fixed-height, tap-to-clear layout.
-      var detailStr = entry && entry.detail ? ' (' + String(entry.detail).slice(0, 60) + ')' : '';
+      // v1.336: a `video:` line is the D1 instrument's reading and every field of it
+      // is evidence, so it renders in full (the panel wraps it); every other type keeps
+      // the 60-character cut.
+      var detailCap = (entry && typeof entry.type === 'string' && entry.type.indexOf('video:') === 0) ? 400 : 60;
+      var detailStr = entry && entry.detail ? ' (' + String(entry.detail).slice(0, detailCap) + ')' : '';
       return (entry.type || '?') + detailStr + ' · persisted=' + entry.persisted + ' · vis=' + entry.vis +
         ' · playing=' + entry.playing + ' · ' + agoS + 's ago';
     });
@@ -6496,6 +6634,11 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('playing', bgTimingOnVideoPlaying);
     mediaPlayer.addEventListener('timeupdate', bgTimingOnVideoTime);
     mediaPlayer.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=video' }); });
+    // v1.336 (D1 instrument): the video's own state at each event that can start,
+    // stop or starve its picture - no-ops unless the ?debugLifecycle=1 flag is on.
+    ['pause', 'playing', 'waiting', 'stalled', 'emptied', 'error', 'resize', 'loadstart', 'webkitpresentationmodechanged'].forEach(function (evName) {
+      mediaPlayer.addEventListener(evName, function () { recordVideoState(evName); });
+    });
     // v1.27.2 (pre-pause candidate bridge): any resumed playback invalidates
     // a pending candidate -- the pause it described is no longer "the last
     // thing that happened" (e.g. user paused, changed their mind, hit play,
