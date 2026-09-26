@@ -3,9 +3,9 @@ plan: share-any-download
 harness: v2 · lean
 branch: feat/v1.337-share-any-download
 anchor: outcome
-status: Gate:CHANGES r1 @4a039ff4
-next: commit the r1 fix round, then re-engage the SAME adversary and qa seats for r2 (the last before asking Dean).
-gate: pending
+status: Gate:APPROVED r2 @98801b94
+next: release v1.337.0 (docs/RELEASING.md).
+gate: APPROVED r2 @98801b94 (adversary, qa)
 ---
 
 # v1.337.0: Share for non-YouTube downloads, and no swipe-back in fullscreen video
@@ -248,6 +248,104 @@ re-read per touchstart (not latched: the control drag after removing the class g
 -> branch ok binds the fix end to end; cache size+mtime key, LRU, eviction, failed/timed-out-not-cached all bind
 (mutants R1-R11 red).
 
+Gate: APPROVED r2 @98801b94 - qa
+
+Delta re-review of 4a039ff4..98801b94. Instruments run by QA at 98801b94 (Node 22.23.1): `npm run test:unit`
+`# tests 7488` `# pass 7488` `# fail 0`; `npm run lint` `0 errors, 6 warnings` (the same 6 common.js names as base);
+`lint:css` `TOTAL 0`; `lint:overlay` `clean (0 violations)`; check-markers `clean`; the two integration files
+(FILETUBE_TEST_FFMPEG set) `# tests 15` `# pass 15` `# fail 0` `# skipped 0`; faux-fullscreen-probe exit 0: `SWIPE
+depth=1 fullscreen true->true url /watch.html?v=v1->/watch.html?v=v1 ok`, `SWIPE-left|up|down fullscreen true url
+/watch.html?v=v1 ok`, `SUMMARY combos=24 edge-painted=0`. No em dashes added.
+
+r1 findings against 98801b94:
+1. (WARNING, sanitizer) FIXED as prescribed. Re-measured: C1 U+0085 / U+009B, RLO, LRI, ZWSP, ZWJ, BOM, U+2028,
+   NBSP, U+00AD, U+FFF9, a tag char, backslash-@ (both orders), backslash host, `https:///`, every userinfo form
+   (`user:pass@`, `:secret@`, `@host`, `%40`, `%2F@`), `https:host`, javascript:, data: all return null.
+   Legitimate URLs are not refused: ports, IPv4/IPv6, percent-encoded path and query, `@` in a path (TikTok) or
+   query, a 2000-char query, fragments, x.com, bilibili pass unchanged; a unicode path is percent-encoded, an IDN
+   host becomes punycode, `:443`, case and a bare host normalize (URL.href, the intended form).
+2. (WARNING, probe) FIXED. My r1 measurement re-run (20 concurrent cold loads, a 2s probe, the default 1.5s wait):
+   `spawns=1 stats=1`, all 20 answer null at 1507 ms; a 21st load during the probe joins it and gets the URL; after
+   it lands `cacheSize=1 inFlight=0`, the next load hits the cache with `spawns=1`. A failed probe is still not
+   cached; a hung stat answers at the wait with one stat call; sync throws from stat or probe resolve null with
+   `inFlight=0` (no stuck entries). The server's own probe: execFile with an args array, the absolute DB path last,
+   `timeout 15000` + SIGKILL, maxBuffer 4 MB. Measured `format_tags:stream_tags` + sourceUrlFromProbeJson on real
+   files from the box's ffmpeg: MP4, M4A, MKV, WebM, MP3, Opus, Ogg Vorbis, FLAC all yield the URL.
+3. (SUGGESTION, comments) FIXED for the three named. See new note A.
+4. (SUGGESTION, webkitFullscreenElement) FIXED: bound with its own on/off case (fsEl already null).
+5. (SUGGESTION, plan) FIXED: acceptance 4 added. Byte identity re-measured at r2 by QA (the plan's copy is the r1
+   run): the same 9 shapes vs base cbe0d880, 8 sha-identical, the tagged Reddit item differs only by the trailing
+   `sourceShareUrl`.
+6. (SUGGESTION, ROADMAP) FIXED: the unlock ideas now sit under "First questions (ours, not his words)".
+
+New in the fix round (non-blocking, SUGGESTIONS):
+A. source-share.js header and server.js probeSourceShareUrl comment list M4A with the containers that keep `purl`
+   at the file level. Measured: the M4A (an MP4 container) keeps only `comment`, like MP4. The URL still resolves
+   (the comment arm), so only the stated mechanism is wrong; move M4A next to MP4.
+B. routes.js final `.catch` says "the sync path's 500": same status, but the sync path's throw reaches Express's
+   default handler (an HTML body), while this one answers JSON. Reword or leave; nothing reaches it in practice.
+No blocking findings.
+
+Gate: APPROVED r2 @98801b94 - adversary
+
+Delta re-review of 4a039ff4..98801b94. Instruments (Node 22.23.1, /tmp git-archive sandboxes of 98801b94, a pristine
+copy compared after every mutant): the diff's test files `# tests 123` `# pass 123` `# fail 0`; the plan's r2 counts
+reproduced (`# tests 31` `# pass 31`; integration `# tests 15` `# pass 15` `# fail 0` `# skipped 0`); eslint on the
+changed files exit 0 (the same 6 common.js warnings). Full `npm test` in the sandbox `# tests 9685` `# pass 9674`
+`# fail 8` `# skipped 3`: the same 8 git-backed source locks as r1, which need a .git; in the real worktree at
+98801b94 they are `# pass 69` `# fail 0`. Probe on 98801b94, exit 0: `SWIPE depth=1 fullscreen true->true url
+/watch.html?v=v1->/watch.html?v=v1 ok`, `SWIPE-left|up|down fullscreen true url /watch.html?v=v1 ok`, `SUMMARY
+combos=24 edge-painted=0`. Byte identity re-measured at r2 (my r1 scratch, real app, real ffprobe, vs the r1 base
+dump): plain, YouTube, proxy YouTube and missing-file bodies are byte-identical; the 7 tagged non-YouTube items
+differ only by the trailing `sourceShareUrl` (sed-stripped: IDENTICAL). RBAC: a restricted member gets
+`404 {"error":"Media file not found"}` and no ffprobe runs on that file.
+
+r1 findings against 98801b94 (all three WARNINGs closed):
+1. WARNING (Opus): FIXED. The same measurement: files written with yt-dlp's full metadata argv (description
+   included, so the Ogg stream's `comment` is the description and only `purl` holds the link). Through the real
+   app `r_opus` now answers `sourceShareUrl=https://www.reddit.com/r/videos/comments/abc123/a_clip/`, as do
+   mp4/mkv/webm/mp3/m4a.
+2. WARNING (orphaned ffprobe): FIXED. The same FIFO measurement: 5 GETs answered in 1504-1517 ms, then exactly 1 live
+   `ffprobe .. hang.mp4` (single-flight), and 0 16s later (SIGKILL at 15s). The test process exited by itself;
+   r1 needed a manual kill.
+3. WARNING (unbound arms): FIXED. The three r1 survivors are now killed by name: webkitFullscreenElement (the
+   swipe-back-owners Fullscreen API test), the `@` authority rule and the scheme/authority check (the sanitizer
+   refusal table).
+4. S4 (Fullscreen API stands down the audio view on desktop-class devices): kept on purpose and documented; accepted.
+   S5 (stat outside the limit): FIXED; mutant "stat not within" reds the hung-stat test. S6: the dead guards are gone.
+   I drove the route chain with a patched resolver: a rejecting resolve gives 200 with the body, a synchronous
+   throw gives 200 with the body, and an unserializable result (a BigInt) gives `500 {"error":"Internal server error"}`.
+Mutants: 50 run on 98801b94. 47 were killed. The 2 survivors are N8 and N10 (see S3 below). My own R16 is withdrawn:
+it was equivalent by construction.
+
+New in the fix round. No blocking findings; these are SUGGESTIONS:
+S1. The raw `\p{Cf}` refusal also refuses legitimate IRIs: `https://example.com/zwj/<family emoji with ZWJ>` and a
+    Persian slug with ZWNJ (`https://fa.wikipedia.org/wiki/<text with U+200C>`) both return null, while their
+    percent-encoded forms pass. Failing means no Share, which is safe, and it is rare (yt-dlp page URLs are ASCII in
+    every canonical form I tried: reddit, facebook watch/reel, x, instagram, tiktok `@`, mastodon `@`, vimeo,
+    soundcloud, twitch, bilibili, niconico, dailymotion, archive, streamable, bitchute, rumble all pass unchanged).
+    Since URL.href already percent-encodes Cf/Cc in the path, query and fragment, the raw check could be limited to
+    the authority. The other changes URL.href makes are equivalent normalizations: `:443` dropped, punycode host,
+    lower-cased host, `'` in the query, `{}`, dot segments.
+S2. A stale join for a file replaced mid-probe: the in-flight map is keyed by path only. In a harness, load 1 probes
+    the old file; the file is then replaced; load 2 stats the NEW key but joins the old probe and returns the OLD
+    URL; load 3 re-probes and returns the new one (2 probes). This heals itself after one load. Keying the in-flight
+    probe by path+size+mtime would close it.
+S3. The two length caps mask each other: mutants N8 (drop the href cap) and N10 (drop the raw cap) each survive. The
+    input that binds the href cap is a raw URL of 2048 characters or fewer whose percent-encoding pushes it over 2048.
+S4. The probe's direction lines are chained. I planted a second mechanism in a copy of the tree (player.js host
+    listeners: a left swipe calls history.back, a down swipe calls setCssFullscreen(false)). The run printed
+    `SWIPE-left fullscreen false url / FAIL`, and up and down then FAILed only as a CASCADE (they started off the
+    page). With only the down mechanism planted: left ok, up ok, `SWIPE-down fullscreen false url /watch.html?v=v1
+    FAIL`. So the instrument does reach the player's own touch handlers and catches a second mechanism, but after
+    the first failure the later lines are not independent. Re-entering fullscreen before each direction would fix it.
+S5. I concur with QA's note A (M4A keeps only `comment`, as in my r1 ffprobe: `"major_brand":"M4A",..,"comment":..`
+    with no `purl`) and QA's note B.
+Notes, not findings: the route has no time limit of its own. A stubbed never-settling resolve gives no answer in 3s,
+but the real resolver is bounded (both waits; FIFO measured at about 1.5s), so this is a contract the unit tests
+enforce, not a live path. The new probe's 4 MB maxBuffer fails on a 5 MB tag (measured: `ffprobe .. | wc -c` 5000587),
+which yt-dlp never writes; the failure is not cached and is retried single-flight.
+
 ## Fix round r1 -> r2
 
 Both seats CHANGES r1 @4a039ff4 (findings in the Gate section). What changed:
@@ -281,3 +379,19 @@ Both seats CHANGES r1 @4a039ff4 (findings in the Gate section). What changed:
   /watch.html?v=v1 ok`, `SWIPE-up ... ok`, `SWIPE-down ... ok`, `SUMMARY combos=24 edge-painted=0`.
   Base cbe0d880: `SWIPE depth=1 fullscreen true->false url /watch.html?v=v1->/ FAIL` (its later
   direction lines start already out of fullscreen).
+
+## Carried to the next touch (gate r2, disclosed as tech-debt #285; none blocking)
+
+- qa A / adv S5: the source-share.js header and the probeSourceShareUrl comment group M4A with the
+  containers that keep `purl`; an M4A keeps only `comment` (measured by both seats). The URL is still
+  found through `comment`: a comment fix.
+- qa B: the route's final `.catch` calls itself "the sync path's 500"; the sync path's 500 is
+  Express's HTML default, this one answers JSON.
+- adv S1: the `\p{Cf}` check refuses a RAW zero-width joiner / non-joiner (a family emoji, a Persian
+  slug) anywhere in the URL; the percent-encoded forms pass; 19 real sites' standard URLs pass. Only
+  effect: no Share for such a link. Could be limited to the host.
+- adv S2: in-flight probes are keyed by path only: a file replaced mid-probe can share the OLD link
+  once (the next load corrects it). Key by path + size + mtime.
+- adv S3: the raw and the parsed length caps mask each other (either can go, tests stay green).
+- adv S4: the probe's SWIPE-left/up/down lines depend on the one before (after a failure the later
+  lines start outside fullscreen); re-enter fullscreen before each direction.
