@@ -3554,6 +3554,7 @@ function currentBookScanState() {
 // boot path) and the integration tests reach it through this file's exports.
 const { runBookScan } = booksScanRunner.createBookScanRunner({
   BOOKCOVER_DIR,
+  __getPersistedStateEpoch, // v1.339 (T-S3): the LIVE accessor (a snapshot would freeze the epoch)
   booksDb,
   booksScan,
   booksStore,
@@ -3923,6 +3924,7 @@ async function extractAlbumArt(job) {
 const musicScanRunner = require('./lib/music/scanRunner'); // Wave 7b R2: the require sits at its call site so parallel slices never touch the same hunk
 const { runMusicScan } = musicScanRunner.createMusicScanRunner({
   ALBUMART_DIR,
+  __getPersistedStateEpoch, // v1.339 (T-S3): the LIVE accessor (a snapshot would freeze the epoch)
   albumArtExists,
   audioPath,
   extractAlbumArt,
@@ -4413,6 +4415,7 @@ function extractTvThumb(job) {
 // this file's exports all reach the scan through it.
 const tvScanRunner = require('./lib/tv/scanRunner'); // Wave 7b S4: the module's require sits at its call site so parallel slices never touch the same hunk
 const { runTvScan } = tvScanRunner.createTvScanRunner({
+  __getPersistedStateEpoch, // v1.339 (T-S3): the LIVE accessor (a snapshot would freeze the epoch)
   extractTvThumb,
   fs,
   getMediaId,
