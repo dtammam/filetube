@@ -3,8 +3,8 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Approved @46427eb0
-next: build in blast-radius order - D1-D5 (the saved link: capture, carriers, backfill, serve), D6 Share, D7 icon, D8 fixes, D9 Reheat.
+status: Building
+next: the gate (adversary + qa + security-brief, fresh, max two rounds) at 1f6e9b1b's successor.
 design: Approved 2026-09-26 @46427eb0
 gate: pending
 ---
@@ -187,3 +187,37 @@ What the plan got wrong or left out:
   always was for YouTube items.
 - (c) residual, disclosed: two copies whose `sourceId` came from different writers (the raw captured id vs
   the sanitized filename-bracket fallback, e.g. an id holding `/`) do not match each other.
+
+## Build record (D1-D7, D9; D8 above)
+
+| Commit | What |
+|---|---|
+| e651a26b | D1-D4: `webpage_url` in the universal selector only; parser `webpageUrl`; sanitized at capture (store universal arm) and consume; the job-URL fallback (`withUniversalPageUrl`); scan carriers: terminal write, re-init carry-forward, Phase-2 gap-fill; the schema-only backfill in BOTH reuse arms (`deriveScanSourceUrl`, lib/scan/identity.js) and the new-file tag fallback |
+| 09108c09 | D5-D6: `savedSourceShareUrl` (re-checked at serve) on GET /api/videos, GET /api/liked (+ its missing YouTube `watchUrl`), the modern grid, search, the watch route (saved first, the v1.337 probe as fallback); the card corner, search and skins share it |
+| 98671cb3 | merge of D8 (92296185) |
+| 2443becd | D7: 12 style-A badges (public/assets/sites/, Simple Icons CC0 + README), `siteBadgeAvatarUrl` at `resolveItemChannelAvatarUrl`'s no-identity exit |
+| 30dc17da | D9: `enumerateRepullableItems` flags `universal` + the raw saved link; `reheatOneItem` re-pulls from it (else the file's tag link), re-checked; `repullItemMetaAndSubs` UNIVERSAL mode: `isPlausibleMediaUrl`, `shortlink.guardHop` (DNS resolve-then-check, fail closed), `--use-extractors default,-generic` + `--playlist-items 1` on both passes, no YouTube channel capture; the "nothing to refresh" text no longer says YouTube |
+| 1f6e9b1b | the self-check's four survivors bound; the skins' timed share made YouTube-only (a defect the new test found) |
+
+### Measured (copied from the runs)
+
+- Pre-commit unit suite at 1f6e9b1b: `tests 7511`, `pass 7511`, `fail 0`; the merged tree before D7:
+  `npm run test:unit` `# tests 7506` `# pass 7506` `# fail 0`.
+- New / extended tests (node --test, Node 22.23.1): scan-source-url-bridge `# tests 12` `# pass 12`
+  (with FILETUBE_TEST_FFMPEG; the real-MP4 case skips without it); source-share-lists `# tests 7` `# pass 7`;
+  ytdlp-repull-universal `# tests 4` `# pass 4`; ytdlp-repull-item-endpoint `# tests 33` `# pass 33`;
+  repull-persist `# tests 40` `# pass 40`; card-corner-renderer `# tests 30` `# pass 30`; skin-surface
+  `# tests 71` `# pass 71`; site-badges `# tests 4` `# pass 4`; ytdlp-args + ytdlp-store + ytdlp-run
+  `# tests 479` `# pass 479`.
+- Pre-gate mutation self-check (a /tmp git-archive sandbox, pristine diff 0 after each): 17 mutants over the
+  carriers, the backfills, the consume and serve re-checks, the re-pull guards, the reheat branch, the Liked
+  `watchUrl`, the card and skins fallbacks. At 30dc17da 13 went red, 4 survived (the new-file fallback, the
+  intake check, the DNS guard - their refusal tests hung instead of failing - and the skins fallback); at
+  1f6e9b1b all bound (M8's literal form is equivalent: `guardHop` refuses the undefined URL; its meaningful
+  form, the raw link past the intake check, goes red).
+- Render (scratch CDP probe, the real app, modern cards with Share in the bottom-right, desktop 1280x800,
+  light + dark): Reddit / Facebook / TikTok cards show their badge and a Share corner sharing the page link
+  ("Share the original link"); YouTube shares its watch link ("Share the original YouTube link"); the plain
+  file has no Share. The TikTok disc keeps its ring on dark. Sent to Dean. NOT captured: the phone watch page
+  (the probe's page evaluate timed out twice; the watch route's badge / Share and the watch page's Pin are
+  bound by source-share-lists and the D8 watch-init tests) - Dean's device check.
