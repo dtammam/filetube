@@ -3,10 +3,10 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Gate:CHANGES r2 @2f949473 (adversary r1 CHANGES; qa + security-brief APPROVED r2)
-next: r2 fixes at 5cd542f2 + 2d58e6f5; a round 3 (delta: adversary confirms W1/W2, qa + security-brief re-confirm) needs Dean's word; then release v1.338.0.
+status: Gate:APPROVED @2447efab (security-brief r3, qa r3, adversary r2)
+next: release v1.338.0; the three r3 suggestions carried to tech-debt #286.
 design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
-gate: pending
+gate: APPROVED @2447efab
 ---
 
 # v1.338.0: downloads from any site are first-class (the saved link, the card Share, and the rest of the gaps)
@@ -475,3 +475,29 @@ Measured (Node 22.23.1): full `npm test` with FILETUBE_TEST_FFMPEG at 5cd542f2: 
 git-archive sandbox, pristine diff 0 after each): 16 at 5cd542f2, 11 RED and 5 survivors (two were hangs
 the runner cancels, one dropped-refusal, the count's `universal` conjunct, the enumerated `sourceId`);
 bound at 2d58e6f5, the 5 re-run: all RED. So 16 of 16.
+
+## Gate r3 (delta, Dean's word; review sha 2447efab, code 2d58e6f5)
+
+Gate: APPROVED r3 @2447efab - security-brief
+
+Not completed: no Bash (no git diff, tests or mutants run by this seat; the files were read at the working tree); no network (yt-dlp's source was not read). No CRITICAL, no WARNING.
+
+1. INFO (the id check is an integrity guard, not a trust boundary). run.js:1642-1648, :1712: the stored sourceId is only compared, never reaches argv (the only link is `target`, after `--`, run.js:1694-1703). A hostile page already controls what it serves for the matching id. Planting a matching sourceId needs download-folder write access or an admin backup restore and only restores the r2 behaviour. The squash (NFKC, letters and digits) can equate two ids on one site that differ only in punctuation: one item's metadata or captions overwritten, never a leak. Fails closed (non-string / empty = mismatch; an empty squash must match exactly; a refusal returns before any field is kept or Pass B; an unverified Pass A skips Pass B, run.js:1799-1801). Verified.
+2. INFO (/api/channels: no new leak). routes.js:686-737: visibility (:689) before either avatar call; real photo with `{ siteBadge: false }` (:722); the badge from the fixed table only when no visible item has a real photo; no new response field. Verified.
+3. INFO (r2 INFO 1 reduced). index.js:807-817, :920: an intake-refused link (no spawn), a different-video answer (one Pass A, no Pass B) and a missing sourceId (never fetched) are exhausted and marked; only a guardHop DNS miss and a timeout / 429 stay retryable; no Pass B after an unverified Pass A. Triggers and latch unchanged; relocation.js's require('./url') cannot cycle. Verified.
+4. INFO (carried, unverified): yt-dlp re-resolves and follows redirects after guardHop; disclosed in run.js:1660-1664.
+
+Gate: APPROVED r3 @2447efab - qa
+
+Instruments (Node 22.23.1, this seat): the four targeted files `# tests 92` `# pass 92` `# fail 0` `# skipped 0`, EXIT=0; nearby reheat / re-pull / channels files `# tests 314` `# pass 314` `# fail 0`; `npm run lint` 0 errors, 6 warnings (pre-existing). Full suite not re-run: no lib/server/public change between 5cd542f2 (the Architect's 9750/9750) and 2d58e6f5. 14 mutants in a /tmp git-archive sandbox of 2d58e6f5 (pristine diff exit 0): 14 RED. No CRITICAL, no WARNING.
+
+1. SUGGESTION - two new helpers sit between an existing JSDoc and its function: `sameSourceId` (run.js:1639-1648) under repullItemMetaAndSubs's JSDoc, `reheatableLink` (relocation.js:1008-1014) under enumerateRepullableItems's. repullItemMetaAndSubs's @returns and "only ... resolve null" prose omit the new `{ refused, wroteSubs: false }` result: a future caller could treat it as a completed pass (reheatOneItem handles it today). Fix: move the helpers above, document `refused?`.
+
+Verified against 2d58e6f5: qa r2 S1 FIXED (run.js:1673; index.js:815-816, :920; relocation.js:1010-1013; the DNS case retryable and disclosed); qa r2 S2 FIXED (Plain.mp4 fixture); adversary W1 FIXED (run.js:1711-1714, Pass B gate :1799; index.js:810-817); adversary W2 FIXED (routes.js:722-727, :737). Each bound by a RED mutant.
+
+Gate: APPROVED r2 @2447efab - adversary
+
+Instruments (Node 22.23.1, FILETUBE_TEST_FFMPEG, a fresh git archive of 2d58e6f5 with a pristine copy): 6 targeted files `# tests 222 # pass 222 # fail 0`; YouTube regression (9 repull integration files + unit ytdlp-run, ytdlp-subscriptions-client, reheat-button-wiring) `# tests 663 # pass 663 # fail 0`. 13 mutants on the fix code: 12 RED, 1 survived (item 1); pristine diff 0 after each. r1 findings: W1 FIXED (a different id: Pass A only, {"networkRan":false,"markComplete":true,"exhausted":true}, only the file's own tag title kept; the same id refreshes; the bracket id `abc⧸page＝1` vs raw `abc/page=1` accepted; a case-only difference refused). W2 FIXED (the mixed folder serves the real photo; a site-only folder the badge). S3 FIXED (a `;` link: 0 spawns, exhausted, not counted). S4 FIXED. yt-dlp source: sanitize_filename changes only `"*:<>?|/\` (full-width lookalikes), digits:digits `:` to `_`, and control characters, never case; `id` is forced present and a string (YoutubeDL.py ~2839). An id-scheme change after a yt-dlp upgrade exhausts the item (safe direction).
+
+1. SUGGESTION - the tests do not bind case: a `.toLowerCase()` added to sameSourceId's squash (run.js) passes 83/83. Ids are case-sensitive (Instagram shortcodes, bilibili BV ids). Fix: a case-only refusal in the sameSourceId test.
+2. SUGGESTION - the squash drops every non-alphanumeric, so ids differing only in `-` / `_` match (synthetic `Ab-Cd_E` vs `AbC-d_E` refreshed); the sanitizer never touches those. Tighter: apply sanitize_filename's own mapping to the returned id and compare exactly. No real-site case known (the drift sites' ids are numeric).
