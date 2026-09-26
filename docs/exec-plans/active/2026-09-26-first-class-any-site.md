@@ -3,8 +3,8 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Gate:CHANGES r1 @c90977a2; r1 fixes at 0e90a9c7
-next: gate r2 at 0e90a9c7 - fresh qa + security-brief (verify each r1 finding) + a fresh adversary; then release v1.338.0.
+status: Gate:CHANGES r2 @2f949473 (adversary r1 CHANGES; qa + security-brief APPROVED r2)
+next: fix the adversary's 2 WARNINGs + the qa/adversary suggestions, then the adversary's delta round (the last allowed; round 3 = ask Dean); then release v1.338.0.
 design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
 gate: pending
 ---
@@ -420,3 +420,34 @@ Measured (Node 22.23.1): full `npm test` with FILETUBE_TEST_FFMPEG at 0e90a9c7: 
 the Music call site, the resolver opt, `exhausted` without `sourcePage`, the universal pass disabled,
 the three `withSourceId` conjuncts, the summary wording, the D2 call site, the four spreads, the Pin
 reveal, the skins toast text, and the parser's `webpageUrl` (the integration pin, the r1 CRITICAL).
+
+## Gate r2 (review sha 2f949473, code 0e90a9c7)
+
+Gate: APPROVED r2 @2f949473 - security-brief
+
+Not completed: no Bash (no git diff, tests or mutants run by this seat; the files were read at the working tree, clean at 2f949473); no network (yt-dlp's source was not read; anything that depends on yt-dlp's redirect or DNS behaviour is a suspicion).
+
+No CRITICAL, no WARNING. r1 re-verified: suggestion 1 fixed (run.js:1649-1653 discloses the residual and the replay; run.js:1628-1631 doc comment and @param corrected); suggestion 2 fixed (source-share.js:3-17); qa 7 fixed (`sourceUrl: undefined` after the spread at routes.js:410 and :790, user-routes.js:513, user/routes.js:227). A grep of every spread of a media item in lib/** and server.js finds no other route that serves the raw link: search, the modern grid, the home rows and /api/trash build explicit fields; queue, notifications and playlists have no spread; the backup is admin-only (backup.js:527).
+
+1. INFO (the retry means more fetches: parity with YouTube, not a new abuse path). index.js:907: a failed universal pass is retried by every later non-force batch. A stored link to a public host that always times out holds the runExclusive gate for two REPULL_TIMEOUT_MS windows per batch click. Bound: only the two manage-subs routes trigger it (index.js:6490, 6662), nothing is scheduled, the in-progress latch stops overlap, the guards run on every try, and the clicker can already start any universal download. No action.
+2. INFO (the raw link is still served under another name, as before v1.338). The watch route's spread carries `item.tags.comment` (server.js:2145-2188), which for most yt-dlp files holds the same page link, not re-checked; escaped as text (watch.js:1728-1730) and served to the same audience. qa 7's fix is defense-in-depth for the new key; D1's "only the re-checked sourceShareUrl is served" covers the new key only.
+3. INFO (carried from r1, still unverified): yt-dlp re-resolves and follows redirects after guardHop; disclosed in run.js; the MediasiteIE subtitle idea stays a suspicion.
+4. INFO: the new top-level require in relocation.js cannot form a cycle (source-share.js requires nothing); the new withSourceId count (relocation.js:1071) runs after the visibility check (:1023). Verified.
+
+Gate: APPROVED r2 @2f949473 - qa
+
+Instruments (Node 22.23.1, this seat): full `npm test` with FILETUBE_TEST_FFMPEG `# tests 9746` `# pass 9746` `# fail 0` `# skipped 0`, EXIT=0; `npm run lint` 0 errors, 6 warnings (pre-existing); `npm run lint:css` `TOTAL 0`. 17 mutants in a /tmp git-archive sandbox of 0e90a9c7 (pristine diff exit 0): 16 RED, 1 survivor (item 2). No CRITICAL, no WARNING. Carriers for `sourceUrl` present: backfill in both reuse arms (orchestrator.js:854, :922), re-init carry-forward (:1191), Phase-2 gap-fill (:1591), terminal consume (:1670), new-file tag fallback (:1695).
+
+1. SUGGESTION - fix 3 makes a structurally refused saved link a "failed, try again" item forever. index.js:798-800, :907: `sourcePage` is gated only by `sanitizeSourceShareUrl`, which admits private hosts and `( ) ; '`, but the re-pull refuses such a link before any spawn (isPlausibleMediaUrl, or guardHop's private-address check). So `exhausted` stays false, the marker is never set, every non-force batch counts it failed, the per-video Reheat says "try again" every time, and the summary counts it network-bound. Driven: `https://commons.wikimedia.org/wiki/File:Foo_(bar).webm` passes the sanitizer and fails isPlausibleMediaUrl; reheatOneItem returns {exhausted:false, markComplete:false, networkRan:false}. Contradicts "a skip that can never succeed is not a retryable failure" (subsSkipped). No data loss, no spawn. Fix: gate `sourcePage` on isPlausibleMediaUrl too, or a distinct `refused` result treated as exhausted; or disclose.
+2. SUGGESTION - the `universal` conjunct of the new withSourceId clause (relocation.js:1071) is unbound: dropping it leaves repull-persist 41/41. Fix: add an in-root plain item with `sourceUrl` to the fixture.
+
+r1 verification (against 0e90a9c7): qa 1 CRITICAL FIXED (ytdlp-spawn-security.test.js:1767; 9746/9746; parser mutant red). qa 2 FIXED (server.js:4211, store.js:1058; both mutants red). qa 3 FIXED (relocation.js:1071, subscriptions.js:1473-1476; residual = items 1, 2). qa 4 FIXED (index.js:798, :907; mutant red in 2 tests; old-marker behaviour disclosed; introduced item 1). qa 5 FIXED (ytdlp-oneshot call-site test; mutant red). qa 6 FIXED (a-f). qa 7 FIXED (four strips, each mutant red; no other item spreads). qa 8 FIXED (watch.js:2661; mutant red). qa 9 FIXED (exact-text bindings; failed fetch -> outcome 'failed'). security-brief 1 FIXED (run.js:1649-1653, :1627-1631). security-brief 2 FIXED (source-share.js:3-17).
+
+Gate: CHANGES r1 @2f949473 - adversary
+
+Instruments (Node 22.23.1, FILETUBE_TEST_FFMPEG, a /tmp git-archive sandbox of 0e90a9c7 with a pristine copy): targeted integration (10 files) `# tests 314 # pass 314 # fail 0`; targeted unit (13 files) `# tests 1067 # pass 1067 # fail 0`; `npm run lint` 0 errors, 6 warnings (pre-existing); `npm run lint:css` `TOTAL 0`; em dashes in added lines 0. yt-dlp master read at source: ffmpeg.py:749 (purl/comment from webpage_url); YoutubeDL.py:4456 (no subtitles = a message and exit 0, so a site with no captions completes Pass B); :1890 (a missing webpage_url becomes the requested URL); :2051-2070 (entries inherit a playlist's webpage_url); twitch.py TwitchStreamIE sets no webpage_url; instagram.py:725-767 (a stories URL returns the current stories as a playlist); every SITE_BADGES prefix matches only that site's extractors. End to end on the real server (capture, move + rescan, trash + restore + rescan, a reheat persist, backup + restore + rescan): sourceUrl, sourceExtractor, sourceId, youtubeId, channelName survive; nothing new erased data. All 103 GET routes with a planted sourceUrl: the raw key only in /api/admin/backup (admin, verbatim by design). Mutants: 50, 46 RED, 4 survived (M08 = item 4; M10, M17, B02 equivalent). Every r1 fix binds.
+
+1. WARNING (data corruption) - D9: universal repullItemMetaAndSubs never checks the returned id / extractor against the item's sourceId / sourceExtractor; recordRepulledItemMeta then overwrites title, sourceTitle, releaseDate, view count, chapters, marks complete, and Pass B can save the other item's captions. A Twitch live recording saves the channel URL (TwitchStreamIE sets no webpage_url); an Instagram stories download saves the feed URL. Repro /tmp/adv338r2-drift.test.js: sourceId 3111..., Pass A returns id 3999... -> {"title":"A DIFFERENT story","releaseDate":1790812800000,"sourceViewCount":99}, markComplete true. Fix: drop Pass A and skip Pass B on an id mismatch (accept the bracket-sanitized form); a test.
+2. WARNING - D7's badge reaches GET /api/channels (lib/media/routes.js ~718: first non-empty avatar per folder, rowid order): a download from another site in a YouTube channel's folder replaces the channel's real photo with the site logo (channel list, the Modern avatar bar; Roku gets an SVG path it cannot load). Measured: base "https://yt3.ggpht.com/real-photo=s88", 0e90a9c7 "/assets/sites/reddit.svg". Fix: prefer a real avatar across the folder, the badge only when none; a mixed-folder test.
+3. SUGGESTION - a saved link that passes sanitizeSourceShareUrl but that isPlausibleMediaUrl refuses sets sourcePage: no spawn, never exhausted, never complete, counted in withSourceId, "try again" forever. Repro /tmp/adv338r2-struct.test.js. Fix: apply isPlausibleMediaUrl when deriving sourcePage and when counting.
+4. SUGGESTION - ytdlp-repull-universal's "the YouTube-only channel capture is skipped" cannot fail: dropping `universal ? null :` (run.js, M08) passes 39/39 (the fixture has no channel_url). Fix: add channel_url / channel_id to the fixture.
