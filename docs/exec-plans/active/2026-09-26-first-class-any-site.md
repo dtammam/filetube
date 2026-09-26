@@ -3,8 +3,8 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Gate:CHANGES r1 @c90977a2
-next: do the '## r1 fix list (handoff 2026-09-26)' at the end, commit, then re-engage QA + security-brief for r2 AND launch a FRESH adversary (its r1 was stopped mid-run, no verdict).
+status: Gate:CHANGES r1 @c90977a2; r1 fixes at 0e90a9c7
+next: gate r2 at 0e90a9c7 - fresh qa + security-brief (verify each r1 finding) + a fresh adversary; then release v1.338.0.
 design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
 gate: pending
 ---
@@ -391,3 +391,32 @@ Then: commit (by name, -F file, verify git log); mutate each new fix in a /tmp g
 full `npm test` on 22.23.1; re-engage QA + security-brief (SendMessage cannot reach them from a new
 session - spawn FRESH seats with the r1 findings and "verify each r1 finding against the fix sha") +
 a FRESH adversary; max two rounds (round 3 = ask Dean). Release per docs/RELEASING.md as v1.338.0.
+
+## r1 fix record (0e90a9c7)
+
+Every item of the list above, in order: (1) the integration pin gains `webpageUrl: null`; (2) Music: the
+resolver takes `{ siteBadge: false }` at `projectedLibraryTracks` (server.js), bound through GET
+/api/music/artists with a Bandcamp download (music-library-projection) and in site-badges; the resolver
+JSDoc moved back above its function; (3) `sourcePage` hoisted, `exhausted = !watchUrl && !sourcePage &&
+local !== null`: a failed universal pass persists nothing and stays retryable, a Pass-A-only pass is not
+complete, no link from anywhere is still exhausted (ytdlp-repull-item-endpoint); (4) `withSourceId` counts
+an in-root download from another site with a usable saved link (relocation.js; a hostile, an out-of-root,
+an unlinked one: not counted; repull-persist), wording "source link"; (5) the D2 fallback bound at the
+one-shot call site (ytdlp-oneshot: no printed link -> the job URL; a printed one wins); (6) the stale
+comments and titles corrected, the re-pull residual disclosed in run.js; (7) `sourceUrl: undefined` after
+the spread on GET /api/videos, /api/videos/:id, /api/liked and /api/history (source-share-lists, all four
+bound); (8) the pin-only pass reveals a hidden Pin (watch-init-behavioral); exact-text bindings for both
+reheat toasts; a failed fetch of a saved link reports outcome 'failed' ("try again"), never "No source
+link found" (fix 3 made that so; bound).
+
+Disclosed (ships): downloads from another site reheated before v1.338 carry `metadataRepulledAt` from
+their earlier exhausted pass, so a non-force library batch skips them; D9 reaches them through the
+per-video Reheat or a forced batch. A saved link found only in the file's tags is fetched at reheat time
+but not counted in the summary's network count (no file reads while enumerating).
+
+Measured (Node 22.23.1): full `npm test` with FILETUBE_TEST_FFMPEG at 0e90a9c7: `# tests 9746` `# pass 9746`
+`# fail 0` `# skipped 0`, exit 0. `npm run lint` 0 errors (the 6 pre-existing warnings); `npm run lint:css`
+`TOTAL 0`. Mutants (a /tmp git-archive sandbox of 0e90a9c7, pristine diff 0 after each): 16 of 16 RED -
+the Music call site, the resolver opt, `exhausted` without `sourcePage`, the universal pass disabled,
+the three `withSourceId` conjuncts, the summary wording, the D2 call site, the four spreads, the Pin
+reveal, the skins toast text, and the parser's `webpageUrl` (the integration pin, the r1 CRITICAL).
