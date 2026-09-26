@@ -1,7 +1,7 @@
 # Site badges (v1.338)
 
 The uploader avatar for a download from another site that offers no uploader photo (plan
-docs/exec-plans/active/2026-09-26-first-class-any-site.md D7; Dean picked style A, the brand disc):
+docs/exec-plans/completed/2026-09-26-first-class-any-site.md D7; Dean picked style A, the brand disc):
 each file is a 48x48 brand-colour disc with the site's white mark; near-black brands (TikTok, X,
 Dailymotion) carry a faint light ring so the disc keeps its edge on the dark theme.
 

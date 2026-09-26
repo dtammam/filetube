@@ -337,7 +337,7 @@ test('a video with no derivable YouTube identity never touches the network and i
 });
 
 // ---- v1.338 D9: Reheat for a download from another site ------------------------
-// (Dean: "Reheat is fine"; plan docs/exec-plans/active/2026-09-26-first-class-any-site.md) The item
+// (Dean: "Reheat is fine"; plan docs/exec-plans/completed/2026-09-26-first-class-any-site.md) The item
 // re-pulls from its SAVED page link (else the page link in its own tags) in the re-pull's UNIVERSAL
 // mode; the guards themselves are bound in test/integration/ytdlp-repull-universal.test.js.
 

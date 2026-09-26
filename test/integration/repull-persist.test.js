@@ -376,7 +376,7 @@ test('enumerateRepullableItems: an id-suffixed item under the download root is e
   assert.equal(entry.alreadyRepulled, false);
 });
 
-// v1.338 D9 (plan docs/exec-plans/active/2026-09-26-first-class-any-site.md): a download from another site
+// v1.338 D9 (plan docs/exec-plans/completed/2026-09-26-first-class-any-site.md): a download from another site
 // is flagged `universal` and carries its saved page link (raw; the reheat re-checks it); a YouTube item,
 // even a proxy-host one, is not universal.
 test('enumerateRepullableItems (v1.338): a download from another site is universal with its saved link; YouTube and plain files are not', () => {

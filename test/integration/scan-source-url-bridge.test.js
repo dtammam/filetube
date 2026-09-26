@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.338 (Dean: "non-YouTube things supported by YT DLP should have generally
-// first-class experiences"; plan docs/exec-plans/active/2026-09-26-first-class-any-site.md D1-D4):
+// first-class experiences"; plan docs/exec-plans/completed/2026-09-26-first-class-any-site.md D1-D4):
 // a download from another site saves the page it came from as `sourceUrl`, so Share works on every
 // surface. This drives the REAL scan (scanDirectories) over real files in a yt-dlp download root and
 // binds every persist-gate checkpoint (LESSONS 9) on its own: the capture bridge (terminal write),

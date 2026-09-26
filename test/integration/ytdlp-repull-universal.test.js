@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.338 D9 (Dean: "Reheat is fine" for downloads from any site; plan
-// docs/exec-plans/active/2026-09-26-first-class-any-site.md): the re-pull's UNIVERSAL mode re-pulls a
+// docs/exec-plans/completed/2026-09-26-first-class-any-site.md): the re-pull's UNIVERSAL mode re-pulls a
 // download from another site from its STORED page link, behind the download lane's own guards. The
 // spawn boundary is the real one (`child_process.spawn` monkey-patched, the ytdlp-repull.test.js
 // harness); the DNS resolve-then-check takes an injected lookup.

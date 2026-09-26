@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] v1.338 D7 (Dean: "There was an icon from this source"; plan
-// docs/exec-plans/active/2026-09-26-first-class-any-site.md, his pick: style A, the brand disc). A download
+// docs/exec-plans/completed/2026-09-26-first-class-any-site.md, his pick: style A, the brand disc). A download
 // from another site with no uploader photo shows its SOURCE site's badge as its avatar.
 const { test } = require('node:test');
 const assert = require('node:assert');

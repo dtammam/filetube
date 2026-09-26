@@ -3,7 +3,7 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Gate:APPROVED @2447efab (security-brief r3, qa r3, adversary r2)
+status: Shipped v1.338.0
 next: release v1.338.0; the three r3 suggestions carried to tech-debt #286.
 design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
 gate: APPROVED @2447efab

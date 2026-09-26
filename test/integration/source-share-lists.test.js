@@ -2,7 +2,7 @@
 
 // [INTEGRATION] v1.338 (Dean: "Is there a reason we can't just like share from the bottom right corner?"
 // / "anything that can and is grabbed should be kind of treated and formed the same way"; plan
-// docs/exec-plans/active/2026-09-26-first-class-any-site.md D5): every surface a card reads carries a
+// docs/exec-plans/completed/2026-09-26-first-class-any-site.md D5): every surface a card reads carries a
 // download from another site's SAVED page link as `sourceShareUrl` (re-checked at serve), never as
 // `watchUrl`; the Liked list gains the YouTube `watchUrl` it never derived. Driven through the real app.
 
