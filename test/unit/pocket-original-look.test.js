@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] v1.335 (Dean: "one special Original skin which includes the entire vibe of the first"; plan
-// docs/exec-plans/active/2026-09-25-click-colorways-seven.md, D9-D12 / AC6). The Original is a Click
+// docs/exec-plans/completed/2026-09-25-click-colorways-seven.md, D9-D12 / AC6). The Original is a Click
 // colorway (ONE role block, like every colorway) PLUS a LOOK: a registry field the engine turns into ONE
 // panel class, on which every structural rule keys - the button ring, the monochrome screen, the bitmap
 // face and the wheel that turns (--ip-turn on the wheel, written from the real spin handler).

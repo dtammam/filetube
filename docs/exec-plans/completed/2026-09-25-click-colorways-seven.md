@@ -3,8 +3,8 @@ plan: click-colorways-seven
 harness: v2 · lean
 branch: feat/v1.335-click-colorways
 anchor: spec
-status: Build
-next: the release steps (docs/RELEASING.md + AGENTS.md): version, ROADMAP, ledger, LESSONS, plan-complete, dual-Node suites, release branch, merge --no-ff, tag v1.335.0, PR, CI, merge.
+status: Shipped v1.335.0
+next: none - shipped. Dean's device checks are tech-debt #283 (e).
 design: "Approved 2026-09-25 (Dean's picks in this session: D2, D9-D12 are his answers)"
 gate: APPROVED r2 @a787bc27 (adversary, qa)
 ---
