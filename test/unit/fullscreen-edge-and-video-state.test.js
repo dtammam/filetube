@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.336 (Dean, 2026-09-26; plan docs/exec-plans/active/2026-09-26-fullscreen-black-and-border.md).
+// [UNIT] v1.336 (Dean, 2026-09-26; plan docs/exec-plans/completed/2026-09-26-fullscreen-black-and-border.md).
 //  D2 "in full screen, in all modes, I see a very thin white border around the entire screen": the base
 //     `.player-container` 1px --border-color border (and its era radius) survived into every fullscreen.
 //     Measured by scripts/faux-fullscreen-probe.js: 24 of 24 combos painted it before, 0 after. These

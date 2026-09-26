@@ -3,8 +3,8 @@ plan: fullscreen-black-and-border
 harness: v2 · lean
 branch: feat/v1.336-fullscreen-black-border
 anchor: outcome
-status: Gate:APPROVED r2 @c712521c
-next: release v1.336.0 (docs/RELEASING.md); Dean owes the D1 capture and the D2 device check.
+status: Shipped v1.336.0
+next: none - shipped. Dean owes the D1 capture and the D2 device check (tech-debt #284).
 gate: APPROVED r2 @c712521c (adversary, qa)
 ---
 

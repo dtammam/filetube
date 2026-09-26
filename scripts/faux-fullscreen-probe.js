@@ -1,7 +1,7 @@
 'use strict';
 
 // faux-fullscreen-probe - the headless instrument for the faux fullscreen overlay (plan
-// docs/exec-plans/active/2026-09-26-fullscreen-black-and-border.md). Boots the real app (this tree,
+// docs/exec-plans/completed/2026-09-26-fullscreen-black-and-border.md). Boots the real app (this tree,
 // or FT_ROOT=<other worktree>) on a scratch DATA_DIR with one real H.264 clip, turns the "custom
 // player on mobile" setting on, emulates an iPhone (touch, no hover, iPhone platform, 390x844 and
 // 844x390), opens the watch page, plays, and taps the REAL #fs-btn into faux fullscreen. Then, for
