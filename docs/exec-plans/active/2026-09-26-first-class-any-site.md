@@ -3,8 +3,8 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Building
-next: the gate (adversary + qa + security-brief, fresh, max two rounds).
+status: Gate:CHANGES r1 @c90977a2
+next: do the '## r1 fix list (handoff 2026-09-26)' at the end, commit, then re-engage QA + security-brief for r2 AND launch a FRESH adversary (its r1 was stopped mid-run, no verdict).
 design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
 gate: pending
 ---
@@ -221,3 +221,173 @@ What the plan got wrong or left out:
   file has no Share. The TikTok disc keeps its ring on dark. Sent to Dean. NOT captured: the phone watch page
   (the probe's page evaluate timed out twice; the watch route's badge / Share and the watch page's Pin are
   bound by source-share-lists and the D8 watch-init tests) - Dean's device check.
+
+## Gate
+
+Gate: APPROVED r1 @c90977a2 - security-brief
+
+Not completed: no Bash, so no `git diff`. I read the named files at the working tree, which the session snapshot
+says is clean at c90977a2. I also had no network, so I did not read yt-dlp's source. Anything below that depends on
+yt-dlp behavior is a suspicion, not verified.
+
+No CRITICAL, no WARNING. Verified: every path to yt-dlp is guarded. YouTube goes through buildWatchUrl /
+classifySingleVideo (index.js:781-796). Universal goes sanitize -> isPlausibleMediaUrl -> guardHop, then argv with `--`
+(run.js:1650-1675, 1801-1806), and only for `inDownloadRoot` non-YouTube extractors (relocation.js:1050-1058). Both
+reheat routes require manage-subs, check visibility, and refuse read-only media (index.js:6445, 6616-6650). The one-off
+download has the same capability gate (index.js:6207), with only the literal-host guard and no DNS check. So D9 gives
+no one a fetch they could not already make, and its DNS check is stricter than the lane's. Every list checks
+visibility before it adds `sourceShareUrl`. The share attribute is escaped (main.js:757, 141-147). The URL check
+allows only http(s) with no `@` in the authority, rejects Cc/Cf/whitespace/backslash, and turns IDN hosts into
+punycode (source-share.js:26-36). The SVGs contain only svg/circle/path elements and sit behind the auth gate
+(gate.js:135).
+
+1. SUGGESTION (residual not disclosed). run.js:1641-1647 lists the guards "before yt-dlp sees it", but yt-dlp
+   resolves the host again and follows redirects with no address check. A public host that passes guardHop can 302
+   or DNS-rebind to 192.168.x. The lane already has this residual (url.js:327-341, shortlink.js:28-29). What D9 adds
+   is replay: a stored link is fetched later, including in the admin's batch. Suspicion, not verified: a named
+   extractor that matches any host (MediasiteIE) could hand back subtitle URLs. Pass B would then write the internal
+   response next to the media file, and /api/subtitles would serve it. The first download already has the same
+   exposure. Fix: say this in the run.js comment. Also update the stale "already-validated single-video watch URL"
+   @param (run.js:1626-1630).
+2. SUGGESTION (stale comment). source-share.js:7-9 says "The library does not store its page URL", and lines 3-5 say
+   "nothing new stored". Both are false as of D1. Fix: update.
+
+INFO: (a) the raw `sourceUrl` rides the `...item` spread without being checked again (routes.js:409, 788). No client
+code reads it, and the audience is the same as the item's. (b) The pins routes have no visibility check. That is
+older code the server side of D8 does not touch (index.js:5696). (c) guardHop's DNS lookup runs inside runExclusive
+with no timeout of its own. The libc resolver timeout bounds it, and the yt-dlp spawns already hold the same gate for
+longer. (d) A `[Key=id]` file with a `comment` tag in the download root can now start a fetch on the next reheat. That
+needs write access to that folder, and there is no upload route. (e) A saved link can carry a site's private-share
+token. It reaches the same users the v1.337 watch page already served it to.
+
+Gate: CHANGES r1 @c90977a2 - qa
+
+Instruments (Node 22.23.1, run by this seat at c90977a2): `npm run test:unit` `# tests 7511` `# pass 7511` `# fail 0`
+(exit 0); `npm run lint` `0 errors, 6 warnings` (the six pre-existing common.js unused vars); `npm run lint:css`
+`TOTAL 0`; `npm run lint:overlay` `overlay-containment: clean (0 violations)`; `check-markers.sh` `clean`. The eight
+named files with FILETUBE_TEST_FFMPEG, all exit 0: scan-source-url-bridge 12/12, source-share-lists 7/7,
+ytdlp-repull-universal 4/4, ytdlp-repull-item-endpoint 33/33, repull-persist 40/40, stats-any-site 4/4,
+watch-source-share 5/5, watch-share-button 10/10. The FULL integration suite (`node --test test/integration/*.test.js`):
+`# tests 2228` `# pass 2218` `# fail 1` `# skipped 9` (exit 1).
+
+1. CRITICAL - the integration suite is red at this sha. `not ok - runDownload: a captured FTCHMETA line is parsed onto
+   result.channelMeta and is NEVER forwarded to onProgress` (test/integration/ytdlp-spawn-security.test.js:1733). The
+   file is 118/118 at base ca185903 and 117/118 here. Cause: `parseChannelMetaLine` now returns `webpageUrl: null`
+   (lib/ytdlp/run.js:356-359). This test pins the exact parsed shape with a deep equal. Its twin pins in
+   test/unit/ytdlp-run.test.js were updated, but this one was not. The plan's Measured section lists only targeted
+   files, never a full `npm test`, and the unit hook cannot see this test (LESSONS 2). The Definition of Done ("All
+   existing tests pass") fails, and CI will go red. Fix: add `webpageUrl: null` to that expected shape (the intent
+   holds: a YouTube line carries no page link), then run the full `npm test`.
+2. WARNING - D7's badge reaches Music, which the plan never listed. server.js:4210 (`projectedLibraryTracks`) sets
+   `track.avatarUrl` from `resolveItemChannelAvatarUrl`, which now returns the site badge. lib/music/query.js:175
+   (`groupArtists`) takes the lowest-id track's avatar. public/js/music.js:97/143 then draws that circle INSTEAD OF the
+   album-art mosaic, and music-skins.js:432/510 uses it as the menu art ahead of the cover. Scenario: someone downloads
+   a Bandcamp or SoundCloud album as audio (both sites are in the curated set). Music > Artists then shows the Bandcamp
+   logo instead of the cover mosaic. Driven: `groupArtists` on a Bandcamp track `b1` plus a YouTube track `y2` that
+   has a real photo gives `avatarUrl "/assets/sites/bandcamp.svg"`, so the badge replaces a real channel photo. The
+   research table ("watch, cards, bell, queue, lists") never lists this surface, and D7 says the badge replaces the
+   LETTER avatar. Fix: keep the badge out of the Music projection, with a test. Or get Dean's ruling and disclose it.
+3. WARNING - the library Reheat summary is wrong now that D9 exists. lib/ytdlp/client/subscriptions.js:1458-1476 bases
+   its wording on `withSourceId`, which counts YouTube only (relocation.js:1061). A download from another site with a
+   saved link now runs two yt-dlp passes and holds the `runExclusive` gate. Verified: `formatReheatSummary(3,0,0)` gives
+   "Reheating 3 items · none have a YouTube source link yet (local tag check only)". The line leaves out the "one fetch
+   each ... downloads and checks wait" warning. An earlier adversarial WARNING made that warning mandatory whenever
+   any item is network-bound. Fix: count universal items with a usable link as network-bound and reword to "source
+   link", with a test.
+4. WARNING - in the batch, a failed universal network pass is never retried. lib/ytdlp/index.js:891-903:
+   `exhausted = !watchUrl && local !== null` stays true for a universal item even after its network pass ran from the
+   saved link. One 429 or timeout therefore marks the item complete (`metadataRepulledAt`), and a later non-force
+   batch skips it (index.js:1200). A YouTube item in the same state stays retryable. The comment above it is now false
+   ("NO watch URL is derivable from anywhere"), and it contradicts its own rule that "a brief ... hiccup must never
+   permanently foreclose". Also undisclosed: universal downloads from before v1.338 already carry `metadataRepulledAt`
+   from their earlier exhausted pass. So the library batch skips every existing one unless forced, and for them D9
+   works only through the per-item button or a forced batch. Fix: not exhausted when a universal page link exists,
+   with a test; disclose the old-marker behaviour. This could ship if disclosed, but only with the comment corrected.
+5. WARNING - the capture fallback's call site is not bound by any test. lib/ytdlp/index.js:4556
+   `persistCapturedChannelMeta(deps, withUniversalPageUrl(downloadResult.channelMeta, universalSourceUrl))`. The mutant
+   `persistCapturedChannelMeta(deps, downloadResult.channelMeta)` was run in a /tmp git-archive sandbox against the 14
+   ytdlp / scan-source / source-share / oneshot test files: `# tests 789` `# pass 788` `# fail 1`, and the one failure
+   is item 1, which is also red without the mutant. The mutant SURVIVES. D2's fallback is tested only as a pure
+   function. Fix: add a universal one-shot test (ytdlp-oneshot.test.js:1268 already stubs `run.runDownload` with
+   `channelMeta`) that asserts the downloadMeta row's `sourceUrl` equals the job URL when yt-dlp printed none.
+6. WARNING - lying comments, several of them now stating the wrong mechanism (LESSONS 12):
+   (a) lib/media/source-share.js:3-15 still says "WATCH PAGE only ... nothing new stored", "The library does not
+   store its page URL" and "turns that into the watch page's sourceShareUrl". (b) lib/media/routes.js:828-833 says
+   `watchUrl` feeds "the music skins' share, which stay YouTube-only", but D6 made the skins share `sourceShareUrl`
+   (skin-surface.js:159-160). (c) lib/ytdlp/store.js:~997-1008: the resolver's JSDoc now sits above `SITE_BADGES`, and
+   it still says "Every candidate URL is re-validated via sanitizeChannelAvatarUrl" and that step 5 falls back to the
+   letter avatar. The badge does neither. (d) lib/scan/orchestrator.js:1587-1588 ("a mid-scan reheat or capture may
+   have written it") and the test title at scan-source-url-bridge.test.js:138 both claim writers that do not exist.
+   Only the scan writes `metadata[].sourceUrl`: the reheat's persistMeta has no such key, and the capture writes the
+   downloadMeta bridge row. (e) lib/ytdlp/index.js:1484-1486 says the client shows "No YouTube identity found".
+   run.js:1626-1630 still says `@param watchUrl` is "an already-validated single-video watch URL".
+   (f) test/unit/reheat-button-wiring.test.js:228 is still titled "no YouTube source".
+7. SUGGESTION - the raw `sourceUrl` rides the `...item` spread on GET /api/videos, /api/videos/:id and /api/liked
+   without the serve re-check D1 describes. No client code reads it today (grep of public/js: zero `.sourceUrl`
+   reads). Either leave it out of the spreads or say that D1's serve rule covers the derived field only.
+8. SUGGESTION - public/js/watch.js:2646-2660: the `pinOnly` path never sets `pinBtn.hidden = false`. If an earlier
+   unconfirmed, non-pinOnly pass hid Pin (a cached `moduleEnabled:false` followed by a confirmed `true`), Pin stays
+   hidden. Suspicion only: it needs the module to flip within one page. It is one line on the reveal axis.
+9. SUGGESTION - the new toast "No source link found for this video" (watch.js:3683, skin-surface.js:356) has no
+   exact-text binding (tests match /nothing to refresh/ only). For a universal item whose saved link exists but whose
+   fetch failed, it contradicts the Share corner showing that same link. The same conflation existed before, when the
+   YouTube text was "No YouTube source found".
+
+Security (standing): no new route (0 added `app.<verb>(`), SCHEMA_VERSION 33 unchanged. Verified: the card attribute
+is escaped (main.js:141-147, 757; test at card-corner-renderer), aria-label and title are fixed strings, and the Stats
+and duplicate labels are textContent (common.js:16002, stats.js:291). The badge path comes from a fixed table; the 12
+SVGs have no script, handler or href (grep, plus site-badges.test.js). Simple Icons 16.32.0 exists and its license is
+CC0-1.0 (verified with `npm view simple-icons@16.32.0 version license`). Every list gates visibility before it adds
+`sourceShareUrl`. The reheat's guards agree with the security-brief's entry above. No em dashes in the diff
+(grep count 0). Acceptance: D1-D10 are each measured by a named test, except D2's call-site wire (item 5). The
+phone watch-page render is honestly disclosed as Dean's device check, and the route and Pin halves are bound
+elsewhere.
+
+## r1 fix list (handoff 2026-09-26)
+
+Seats at c90977a2: security-brief APPROVED r1 (2 suggestions); qa CHANGES r1 (1 CRITICAL, 5 WARNING,
+3 SUGGESTION); adversary STOPPED mid-run by the Architect for a session handoff (no verdict; partial
+scratch logs in the session scratchpad adv338-*: it had reached an end-to-end carrier test - move,
+trash/restore, backup round-trip). A FRESH adversary must run r1 on the fix-round sha.
+
+To do, in order:
+1. qa 1 (CRITICAL): test/integration/ytdlp-spawn-security.test.js:1733 pins parseChannelMetaLine's
+   exact shape - add `webpageUrl: null`. Then run the FULL `npm test` (the pre-commit hook runs only
+   the unit suite; the integration suite was never run before the gate).
+2. qa 2: the site badge leaks into Music (server.js ~4210 sets `track.avatarUrl` from
+   resolveItemChannelAvatarUrl -> lib/music/query.js groupArtists -> music.js / music-skins.js artist
+   circles show the site logo instead of the cover mosaic, and can displace a real channel photo).
+   Planned fix: keep the badge out of the Music projection (e.g. an opts flag on the resolver,
+   `{ siteBadge: false }`, at that one call site) + a test; disclose. (A ruling for Dean only if he
+   wants badges in Music.)
+3. qa 4 + security-brief's note: lib/ytdlp/index.js ~903 `exhausted = !watchUrl && local !== null`
+   marks every universal item complete even when its NEW network pass failed (a 429 = never retried
+   by a non-force batch). Fix: not exhausted when a universal page link was derivable (hoist
+   `sourcePage`); a failed universal pass leaves it retryable; bind with a test; fix the comment.
+   Disclose: downloads reheated before v1.338 carry `metadataRepulledAt`, so the batch skips them -
+   D9 reaches them via the per-video Reheat or a forced batch.
+4. qa 3: lib/ytdlp/client/subscriptions.js ~1458-1476 `formatReheatSummary` words on `withSourceId`
+   (YouTube only): count universal items with a link as having a source (relocation.js
+   enumerateRepullableItems `withSourceId`), reword "YouTube source link" -> "source link", keep the
+   "one fetch each ... downloads wait" warning for them.
+5. qa 5: bind the D2 fallback CALL SITE (index.js ~4556 `withUniversalPageUrl(...)` in runOneShot):
+   a test through the one-shot harness (test/integration/ytdlp-oneshot.test.js ~1268) - a universal
+   capture with no webpage_url saves the job's URL.
+6. qa 6 + security-brief 1/2 (stale comments): lib/media/source-share.js header ("WATCH PAGE only ...
+   nothing new stored" / "does not store its page URL"); lib/media/routes.js ~828-833 (skins share
+   no longer YouTube-only); lib/ytdlp/store.js resolver JSDoc pushed above SITE_BADGES (move it back,
+   note the badge bypasses sanitizeChannelAvatarUrl); lib/scan/orchestrator.js ~1587 + the test title
+   scan-source-url-bridge.test.js:138 (no real mid-scan writer of sourceUrl exists today - word it as
+   the persist-gate checkpoint); index.js ~1484-1486 client text quote; run.js ~1626-1630 @param and
+   ~1641-1647: DISCLOSE the residual (yt-dlp re-resolves the host and follows redirects after
+   guardHop; the download lane carries the same residual, url.js:327-341, shortlink.js:28-29; D9 adds
+   REPLAY of a stored link); test/unit/reheat-button-wiring.test.js:228 title.
+7. qa 7 (suggestion, cheap): strip the raw `sourceUrl` from the `...item` spreads of GET /api/videos,
+   /api/videos/:id, /api/liked (serve only the re-checked `sourceShareUrl`).
+8. qa 8/9 (suggestions): watch.js pinOnly never un-hides Pin (needs the module to flip on within one
+   page - likely disclose); an exact-text test for the "No source link found" toast.
+
+Then: commit (by name, -F file, verify git log); mutate each new fix in a /tmp git-archive sandbox;
+full `npm test` on 22.23.1; re-engage QA + security-brief (SendMessage cannot reach them from a new
+session - spawn FRESH seats with the r1 findings and "verify each r1 finding against the fix sha") +
+a FRESH adversary; max two rounds (round 3 = ask Dean). Release per docs/RELEASING.md as v1.338.0.
