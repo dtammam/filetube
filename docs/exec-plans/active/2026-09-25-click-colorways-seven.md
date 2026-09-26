@@ -157,7 +157,7 @@ the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
   - (c) the monochrome LCD on every level (Now Playing, queue, each menu level, Settings, About, the
     A-Z picker, Brick) and in the pop-out and tray: screenshots; no blue selection, no art;
   - (d) the font is bundled (OFL cited), declared once, named only by the look;
-  - (e) a rotation writes `--ip-turn` on the panel for the Original (it grows with the turn) and never
+  - (e) a rotation writes `--ip-turn` on the Original's WHEEL element (gate r1: moved off the panel) (it grows with the turn) and never
     for another skin; the disc's transform reads it; reduced motion drops it (bound; mutants RED);
   - (f) the status-bar / overflow probe: every line one line tall on the Original at 390x844 and 380x700;
   - (g) the census: every rule naming `mms-look-original` is in the look's section; AC4 still green.

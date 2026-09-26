@@ -12506,8 +12506,8 @@ html[data-modern="on"] .video-uploader {
   .mms-look-original .ip-wheel::before{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - under the scroll wheel, inside the isolated wheel */ border-radius:var(--radius-full);
     background:linear-gradient(45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)),
       linear-gradient(-45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)); }
-  /* 4. The wheel turns: the engine writes the thumb's accumulated turn as --ip-turn on the panel; only
-        this layer reads it (a transform - no filter, blur or mask). The real wheel is smooth plastic,
+  /* 4. The wheel turns: the engine writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied
+        to the fresh wheel on a repaint; gate r1 qa S3); only this layer reads it (a transform - no filter, blur or mask). The real wheel is smooth plastic,
         so FAINT tick marks at its rim are what show the turn. */
   .mms-look-original .ip-wheel::after{ content:""; position:absolute; inset:var(--pk-o-disc-inset); z-index:-1; /* token-exempt: local stacking - over the gaps, under the zones and the center */ border-radius:var(--radius-full);
     background:radial-gradient(circle closest-side, var(--pk-o-disc-1) 0%, var(--pk-o-disc-2) 88%, var(--pk-o-clear) 88.5%),
