@@ -4,10 +4,10 @@
 // docs/exec-plans/active/2026-09-25-click-colorways-seven.md, D9-D12 / AC6). The Original is a Click
 // colorway (ONE role block, like every colorway) PLUS a LOOK: a registry field the engine turns into ONE
 // panel class, on which every structural rule keys - the button ring, the monochrome screen, the bitmap
-// face and the wheel that turns (--ip-turn on the panel, written from the real spin handler).
+// face and the wheel that turns (--ip-turn on the wheel, written from the real spin handler).
 //  - AC6 (a): the registry entry and the class, through the REAL paint, for the Original and no other skin;
-//  - AC6 (e): a rotation writes --ip-turn for the Original only, a switch away removes it, the disc reads
-//    it, reduced motion drops it;
+//  - AC6 (e): a rotation writes --ip-turn on the Original's wheel only, a switch away leaves no trace, the
+//    disc reads it, reduced motion drops it;
 //  - AC6 (d): the face is bundled, declared once and named only by the look;
 //  - AC6 (g): the look's rules live in its one section, the screen-role re-points stop at the glass.
 // Paint is jsdom-invisible, so the CSS arms are source locks over comment-stripped rules.
@@ -112,39 +112,56 @@ test('AC6 (a): the real paint puts mms-look-original on the panel for the Origin
   } finally { engine.destroy(); restore(); }
 });
 
-test('AC6 (e): a rotation writes --ip-turn on the panel for the Original - it follows the thumb, both ways', () => {
+const wheelOf = (dom) => panelOf(dom).querySelector('.ip-wheel');
+test('AC6 (e): a rotation writes --ip-turn on the WHEEL for the Original - it follows the thumb, both ways, and survives a repaint', () => {
   const state = { skin: 'ipod-original' };
   const { dom, engine, restore } = bootEngine(state);
   try {
     engine.paint();
-    const p = panelOf(dom);
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '', 'no turn before the thumb moves');
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '', 'no turn before the thumb moves');
     spin(dom, [10, 20, 30, 40]);
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '40.0deg', 'clockwise 40 degrees');
-    engine.paint(); // a repaint (a track change) keeps the wheel where the thumb left it
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '40.0deg', 'the turn survives a repaint');
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '40.0deg', 'clockwise 40 degrees');
+    engine.paint(); // a repaint (a track change) renders a NEW wheel - it keeps the turn where the thumb left it
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '40.0deg', 'the turn survives a repaint (re-applied to the new wheel)');
     spin(dom, [-15, -30]);
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '10.0deg', 'counter-clockwise 30 back');
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '10.0deg', 'counter-clockwise 30 back');
+    assert.strictEqual(panelOf(dom).style.getPropertyValue('--ip-turn'), '', 'never on the panel (gate r1 qa S3: the turn restyles the wheel only)');
   } finally { engine.destroy(); restore(); }
 });
 
-test('AC6 (e): no other skin ever gets --ip-turn, and switching away from the Original removes it', () => {
+test('AC6 (e): no other skin ever gets --ip-turn - not on a spin, not after a switch away (even from a turn back to 0)', () => {
   const state = { skin: 'ipod-red' };
   const { dom, engine, restore } = bootEngine(state);
   try {
     engine.paint();
     const p = panelOf(dom);
     spin(dom, [10, 20, 30]);
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '', 'a colorway without a look: no turn written');
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '', 'a colorway without a look: no turn written');
     assert.strictEqual(p.getAttribute('style') || '', '', 'its style attribute untouched by the spin');
     state.skin = 'ipod-original'; engine.paint();
-    spin(dom, [10, 20]);
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '20.0deg');
-    state.skin = 'ipod'; engine.paint();
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '', 'the switch away drops the turn');
+    spin(dom, [10, 0]); // gate r1 qa S1: +10 then -10 - a turn that returns to 0 must not strand a value
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '0.0deg', 'the Original, back at 0');
+    state.skin = 'ipod-red'; engine.paint();
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '', 'the switch away: the Red wheel carries no turn');
+    assert.strictEqual(p.getAttribute('style') || '', '', 'nor does the panel');
     state.skin = 'ipod-original'; engine.paint();
-    assert.strictEqual(p.style.getPropertyValue('--ip-turn'), '', 'and a return starts the wheel at rest');
+    spin(dom, [10, 20]); state.skin = 'ipod'; engine.paint(); state.skin = 'ipod-original'; engine.paint();
+    assert.strictEqual(wheelOf(dom).style.getPropertyValue('--ip-turn'), '', 'a return after a switch starts the wheel at rest');
   } finally { engine.destroy(); restore(); }
+});
+
+test('gate r1 W1: the full-screen panel classes have ONE builder (the registry\'s panelClass) - no source assembles them', () => {
+  assert.strictEqual(skins.panelClass('ipod-original'), 'music-nowplaying-panel mms mms-full mms-ipod-original mms-ipod mms-look-original');
+  assert.strictEqual(skins.panelClass('ipod-red'), 'music-nowplaying-panel mms mms-full mms-ipod-red mms-ipod');
+  assert.strictEqual(skins.panelClass('apple'), 'music-nowplaying-panel mms mms-full mms-apple');
+  const dir = path.join(ROOT, 'public', 'js');
+  const writers = [];
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    if (/mms mms-full mms-/.test(src)) writers.push(f);
+    for (const m of src.matchAll(/(\w+)\.className\s*=\s*SKINS\.panelClass\(/g)) writers.push(f + ':' + m[1]);
+  }
+  assert.deepStrictEqual(writers.sort(), ['music-skins.js', 'music.js:nowPlayingPanel', 'skin-surface.js:panel'], 'the builder, and the two writers through it');
 });
 
 test('AC6 (e): only the scroll-wheel layer reads the turn (a transform), and reduced motion drops it', () => {

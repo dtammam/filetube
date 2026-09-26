@@ -33,5 +33,6 @@ screen names it, so no other page or skin downloads it.
 - Font: **Jersey 10**, (c) 2023 The Soft Type Project Authors (https://github.com/scfried/soft-type-jersey)
 - License: **SIL Open Font License 1.1** - https://openfontlicense.org
 - Source: Google Fonts (https://fonts.google.com/specimen/Jersey+10); subsetted to
-  latin (fontTools pyftsubset, woff2), otherwise unmodified. OFL permits
-  subsetting/bundling/redistribution.
+  latin (fontTools pyftsubset, woff2, every name record kept - the copyright
+  and the OFL license text travel inside the file), otherwise unmodified. OFL
+  permits subsetting/bundling/redistribution.

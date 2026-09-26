@@ -315,6 +315,13 @@
     return normalizeSkinId(id);
   }
   function skinById(id) { return BY_ID[normalizeSkinId(id)]; }
+  // v1.335 gate r1 W1 (qa + adversary): the ONE builder of the full-screen skin panel's classes - the
+  // engine's paint AND music.js's launch cover (a ?play= open) call it, so a skin's base and LOOK (the
+  // Original's structure class) can never be on one writer and missing from the other.
+  function panelClass(id) {
+    var s = skinById(id) || {};
+    return 'music-nowplaying-panel mms mms-full mms-' + id + (s.base ? ' mms-' + s.base : '') + (s.look ? ' mms-look-' + s.look : '');
+  }
 
   // The GATE: the mobile-music skin is active on a mobile viewport AND an audio item
   // the skin can drive - a MUSIC item (meta.isMusic) or, since v1.246, a PODCAST episode
@@ -719,7 +726,7 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, clickColorways: clickColorways, isClickColorway: isClickColorway,
+    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
     // the pocket menus (the pure half - see the block above).

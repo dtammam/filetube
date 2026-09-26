@@ -450,33 +450,63 @@ function pocketLevels() {
   out.push(v([{ label: LONG }], { jump: { letter: 'A', overlay: true, badge: true, grid: SK.menuLetterTargets(runs) } }));
   return out;
 }
-// v1.335 (plan 2026-09-25-click-colorways-seven, the Original's screen): every rule that styles an element
-// INSIDE the glass reads the SCREEN roles, never the palette tokens they wrap - else the Original's monochrome
-// glass would miss it (the inert-sibling class). The glass's classes are DERIVED from the renderers (every
-// level pocketLevels draws, plus Brick's layer), never a hand list.
-test('the screen census: no rule inside the LCD glass reads a palette token directly (it reads --pk-s-*)', () => {
-  const chassis = ALL.find((r) => r.sel === '.mms-ipod' && /--pk-s-/.test(r.body));
-  const wrapped = decls(chassis.body).filter(([p]) => /^--pk-s-/.test(p)).map(([, v]) => /^var\((--[a-z0-9-]+)\)$/.exec(v)[1]);
-  assert.ok(wrapped.length >= 10, 'the screen roles wrap the palette (' + wrapped.length + ')');
+// v1.335 (plan 2026-09-25-click-colorways-seven, the Original's screen): every rule that styles the glass or an
+// element INSIDE it reads the SCREEN roles, never the 16 palette tokens they wrap - else the Original's monochrome
+// glass would miss it (the inert-sibling class). The glass's classes are DERIVED from the renderers (every level
+// pocketLevels draws, the glass itself, plus Brick's layer), never a hand list. Gate r1 W2 (qa + adversary): the
+// glass element itself, a var() WITH a fallback, and a rule under ANY ancestor (only the other skins' own screens,
+// Cider's and Nordic's, are out of scope) are all in.
+function glassClasses() {
   const inGlass = new Set(['ipod-brick']);
   for (const html of pocketLevels()) {
     const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
     const glasses = doc.querySelectorAll('.ip-lcd-in');
     const roots = glasses.length ? [...glasses] : [doc.getElementById('h')]; // a menu view renders INTO the glass
-    for (const g of roots) for (const el of g.querySelectorAll('[class]')) for (const c of el.classList) inGlass.add(c);
+    for (const g of roots) { for (const c of g.classList) inGlass.add(c); for (const el of g.querySelectorAll('[class]')) for (const c of el.classList) inGlass.add(c); }
   }
-  assert.ok(inGlass.has('ipm-row') && inGlass.has('mms-row') && inGlass.has('ip-status'), 'the derived glass classes (' + inGlass.size + ')');
+  return inGlass;
+}
+function glassButtons() {
+  const out = new Set();
+  for (const html of pocketLevels()) {
+    const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
+    const glasses = doc.querySelectorAll('.ip-lcd-in');
+    const roots = glasses.length ? [...glasses] : [doc.getElementById('h')];
+    for (const g of roots) for (const b of g.querySelectorAll('button[class]')) out.add(b.classList[0]);
+  }
+  return out;
+}
+const OTHER_SKIN = /\.mms-(apple|spotify)\b/;
+test('the screen census: no rule on or inside the LCD glass reads a WRAPPED palette token (it reads --pk-s-*)', () => {
+  const chassis = ALL.find((r) => r.sel === '.mms-ipod' && /--pk-s-/.test(r.body));
+  const wrapped = decls(chassis.body).filter(([p]) => /^--pk-s-/.test(p)).map(([, v]) => /^var\((--[a-z0-9-]+)\)$/.exec(v)[1]);
+  assert.ok(wrapped.length >= 16, 'the screen roles wrap the palette (' + wrapped.length + ')');
+  const inGlass = glassClasses();
+  assert.ok(inGlass.has('ip-lcd-in') && inGlass.has('ipm-row') && inGlass.has('mms-row') && inGlass.has('ip-status'), 'the derived glass classes, the glass itself included (' + inGlass.size + ')');
+  const reads = (body, t) => new RegExp('var\\(\\s*' + t + '\\s*[,)]').test(body);
   const bad = [];
   for (const r of ALL) {
+    if (OTHER_SKIN.test(r.sel)) continue; // Cider's and Nordic's own screens share a few class names
     const classes = (r.sel.match(/\.([a-z][a-z0-9-]*)/g) || []).map((c) => c.slice(1));
     if (!classes.some((c) => inGlass.has(c))) continue;
-    if (!classes.some((c) => c === 'mms-ipod' || c === 'ipod-brick' || c === 'mms-tray')) continue; // the Click screen only (Cider/Nordic share a few class names)
-    for (const t of wrapped) if (new RegExp('var\\(' + t + '\\)').test(r.body)) bad.push(r.sel + ' reads ' + t);
+    for (const t of wrapped) if (reads(r.body, t)) bad.push(r.sel + ' reads ' + t);
   }
   assert.deepStrictEqual(bad, [], 'a glass rule that bypasses the screen roles');
-  // not vacuous: the spelling the census hunts is the one a regression would write
-  assert.ok(new RegExp('var\\(' + wrapped[0] + '\\)').test('color:var(' + wrapped[0] + ');'));
+  // not vacuous: each spelling the census hunts - bare, with a fallback, spaced - is caught
+  for (const probe of ['color:var(' + wrapped[0] + ');', 'color:var(' + wrapped[0] + ', #fff);', 'color:var( ' + wrapped[0] + ' );']) assert.ok(reads(probe, wrapped[0]), probe);
+  assert.ok(!reads('color:var(' + wrapped[0] + '-x);', wrapped[0]), 'a longer token name is not a read');
 });
+
+test('the Original: every button the renderers put in the glass inherits the bitmap face AND its size adjust', () => {
+  // a button's UA font shorthand resets both (48ef515f; gate r1 adversary S1: the quick-scroll letter and badge)
+  const buttons = [...glassButtons()].sort();
+  assert.ok(buttons.includes('ipm-row') && buttons.includes('mms-row'), 'the derived glass buttons (' + buttons.join(' ') + ')');
+  const rule = ALL.filter((r) => /font-size-adjust:\s*inherit/.test(r.body) && /font-family:\s*inherit/.test(r.body) && /mms-look-original/.test(r.sel));
+  assert.strictEqual(rule.length, 1, 'ONE inherit rule on the look');
+  const covered = rule[0].sel.split(',').map((x) => x.trim());
+  for (const b of buttons) assert.ok(covered.includes('.mms-look-original .' + b), 'the glass button .' + b + ' inherits the face and the adjust');
+});
+
 function classify(html) {
   const doc = new JSDOM('<div id="h">' + html + '</div>').window.document;
   const found = [];

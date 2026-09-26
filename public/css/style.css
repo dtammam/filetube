@@ -12061,8 +12061,9 @@ html[data-modern="on"] .video-uploader {
      interactive"). The menu screen is the LCD's third view beside Now Playing and the
      queue list; the controller (skin-surface.js) toggles .mms-menumode. The Click look is
      the 6th/7th-gen SPLIT SCREEN: the list on the left half, the highlighted item's art
-     easing in on the right. Every color is the Classic palette this skin already carries
-     (the blue selection bar, the status-bar greys, the screen white) - nothing guessed. */
+     easing in on the right. Every color is a SCREEN role (--pk-s-*): on the chassis each is the
+     Classic palette this skin already carries (the blue selection bar, the status-bar greys, the
+     screen white) - nothing guessed; the Original look re-points them inside its glass (v1.335). */
   .mms-ipod .ip-menuview{ display:none; flex:1; min-height:0; position:relative; }
   .mms-ipod.mms-menumode .ip-npview, .mms-ipod.mms-menumode .ip-listview{ display:none; }
   .mms-ipod.mms-menumode .ip-menuview{ display:flex; flex-direction:column; }
@@ -12490,7 +12491,7 @@ html[data-modern="on"] .video-uploader {
   .mms-look-original .ip-cover, .mms-look-original .ip-stars, .mms-look-original .ipm-art{ display:none; }
   .mms-look-original .ip-meta{ text-align:center; }
   /* the screen's buttons: a button's UA font shorthand resets the family AND the size adjust - inherit both */
-  .mms-look-original .mms-row, .mms-look-original .ipm-row, .mms-look-original .ipm-gl{ font-family:inherit; font-size-adjust:inherit; }
+  .mms-look-original .ip-artist, .mms-look-original .mms-row, .mms-look-original .ipm-row, .mms-look-original .ipm-gl, .mms-look-original .ipm-letter, .mms-look-original .ipm-badge{ font-family:inherit; font-size-adjust:inherit; }
   .mms-look-original .ipm-click .ipm-lpane{ flex:1 1 auto; max-width:none; }
   .mms-look-original .ip-np, .mms-look-original .ipm-row, .mms-look-original .mms-row, .mms-look-original .ip-ttl, .mms-look-original .ip-nof,
     .mms-look-original .mms-pos, .mms-look-original .mms-rem{ font-weight:var(--fw-normal); }

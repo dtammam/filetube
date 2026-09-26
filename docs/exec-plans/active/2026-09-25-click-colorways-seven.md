@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.335-click-colorways
 anchor: spec
 status: Build
-next: the gate (adversary + qa, fresh) on the committed tip.
+next: gate r2 - re-engage the SAME seats (adversary, qa) on the fix commit.
 design: "Approved 2026-09-25 (Dean's picks in this session: D2, D9-D12 are his answers)"
 gate: none yet
 ---
@@ -99,8 +99,9 @@ the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
 
 - **The look axis.** A registry field `look: 'original'` on `{ id: 'ipod-original', label: 'Click (Original)',
   base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod }`. The engine's ONE className
-  writer (`skin-surface.js` paint) adds `mms-look-<look>` when the entry has one - so the phone, the
-  desktop pop-out and the Nano tray (the same engine) all carry it. Every structural rule keys on
+  writer adds `mms-look-<look>` when the entry has one (CORRECTED in gate r1 W1: there were TWO writers -
+  the engine's paint and music.js's `?play=` launch cover; both now call the registry's ONE builder,
+  `panelClass(id)`) - so the phone, the launch cover, the desktop pop-out and the Nano tray all carry it. Every structural rule keys on
   `.mms-look-original`; the colors stay ONE `.mms-ipod-original` role block (the census unchanged).
   The markup is renderIpod's, unchanged: the ring, the disc and the gaps are CSS on the existing wheel.
 - **The screen.** (Revised in the build - see the status log: the palette tokens are contract-locked to
@@ -125,8 +126,9 @@ the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
   only - a small container, LESSONS 6 - and the two pseudo layers at z -1). "menu" is lowercase by
   `text-transform`.
 - **The wheel turns.** The spin handler (`st.onMove`) accumulates its signed angle into one engine
-  variable and writes `--ip-turn` on the PANEL (so a repaint keeps it) - only for a skin with a look
-  (never for the other 24: their style attribute is unchanged). The disc layer rotates by it
+  variable and writes `--ip-turn` on the WHEEL element (gate r1 qa S3/S1: not the panel) - only for a skin
+  with a look; paint re-applies it to the Original's fresh wheel, and every other skin's wheel is freshly
+  rendered without it. The disc layer rotates by it
   (`transform` only; no filter, blur, mask). The real 1G wheel is smooth plastic, so a turning disc is
   invisible without marks: the disc carries FAINT tick marks near its rim (disclosed; Dean judges).
   Under `prefers-reduced-motion: reduce` the disc does not turn.
@@ -286,3 +288,32 @@ Gate: CHANGES r1 @48ef515f - adversary
     status log's "every level monochrome incl. Brick" holds for the backdrop only. Dean judges.
   Not measured by me: the other 7 pre-existing Click skins on the tip (the tip's delta over 9c571d49 is look-scoped
   only); Cider / Nordic (untouched by construction); Node 24.
+
+### Gate r1 fix round (both seats CHANGES @48ef515f)
+
+- **W1 (qa + adversary, measured 1.8 s of Click White on a `?play=` launch):** the launch cover
+  (`music.js` `mountEarlyCover`) was a second className writer without the look. Now ONE builder,
+  `FileTubeMusicSkins.panelClass(id)` (music-skins.js), called by the engine's paint and the cover. Bound:
+  music-skin-integration "v1.335 gate r1 W1" drives the REAL `?play=` launch into the Original (the cover's
+  className is exactly the Original's, synchronously, the track never loading); pocket-original-look "gate r1
+  W1" pins `panelClass` for the Original / a colorway / Cider and a source census (comments stripped) that
+  the class string is assembled only in the builder and assigned only by the two writers through it; the
+  v1.244 source lock follows the builder.
+- **W2 (qa + adversary, four surviving mutants):** the screen census now (a) derives the GLASS ELEMENT'S own
+  classes too (`.ip-lcd-in`), (b) matches `var(--token` bare, with a fallback, or spaced (and not a longer
+  name), (c) selects rules by the glass classes under ANY ancestor (only Cider's and Nordic's own screens are
+  out of scope), and its title claims only the 16 WRAPPED tokens (`--mms-ipod-jump-line` stays a direct read -
+  the A-Z picker's hairline, rgba(0,0,0,.12), neutral on both screens). (d) NEW test: every button the
+  renderers put in the glass (derived: ip-artist, mms-row, ipm-row, ipm-gl, ipm-letter, ipm-badge) inherits the
+  face AND font-size-adjust from ONE look rule - it found `.ip-artist` (a tappable artist line), which neither
+  seat named, and covers adversary S1 (the letter and badge). The CSS rule now lists all six.
+- **qa S1 + S3:** `--ip-turn` moved from the panel to the wheel element (restyles the wheel only; a switch
+  leaves nothing on any other skin - the +10/-10 case is in the test).
+- **qa S2:** the font re-subset keeping every name record (IDs 0-6, 9, 13, 14: the copyright and the OFL
+  statement and URL travel inside the file; 12 520 bytes); the README says so.
+- **qa S4:** the pocket-menus palette comment names the screen roles.
+- **Not changed (disclosed, Dean's call):** Brick draws its own ink (#2b3a4a, system-ui) on the Original's
+  grey-green glass (qa S4 / adversary S2) - the backdrop is the glass; the game's ink is Brick's own on every skin.
+- Measured after the fixes: touched unit suites 252/252; lint:css 0; overlay 0; eslint clean on the 6 files;
+  the Original's overflow probe (390x844 + 380x700, Off): every line 1 line (30/30), no spills, no errors.
+
