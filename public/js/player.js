@@ -837,6 +837,38 @@ function formatPauseProvenance(ctx) {
     + ' state=' + (c.state || '?');
 }
 
+// v1.336 (Dean, D1: "after I pause or resume, pause and resume again, the screen of
+// the video goes black"; audio playing, controls up, STILL black after leaving
+// fullscreen, so the video element itself stopped showing frames). The detail line
+// for the video's OWN state at a media event, in the ?debugLifecycle=1 log. One
+// screenshot then separates the causes: frames still decoding (f / dec climbing)
+// while black = the picture is not composited (a layer); frames stopped while time
+// runs = the decoder stopped; `act=bgAudio` = the sound is the sidecar, not the
+// video; `pm` not inline = iOS moved the video into a native presentation; a `ld`
+// change = a reload. Pure so it is testable; the format mirrors formatPauseProvenance.
+function formatVideoStateDetail(s) {
+  var c = s || {};
+  var num = function (v) { return (typeof v === 'number' && isFinite(v)) ? String(Math.round(v)) : '-'; };
+  var t = (typeof c.t === 'number' && isFinite(c.t)) ? c.t.toFixed(1) : '-';
+  var out = 'rs=' + num(c.rs) + ' ns=' + num(c.ns)
+    + ' p=' + (c.paused ? '1' : '0')
+    + ' wh=' + num(c.vw) + 'x' + num(c.vh)
+    + ' t=' + t
+    + ' f=' + num(c.frames) + '/' + num(c.dropped)
+    + ' dec=' + num(c.decoded)
+    + ' pm=' + (c.pm || '-')
+    + ' act=' + (c.act || '?')
+    + ' bg=' + (c.bg || '?')
+    + ' fs=' + (c.fs ? '1' : '0')
+    + ' ah=' + (c.ah ? '1' : '0')
+    + ' amb=' + (c.amb ? '1' : '0')
+    + ' lock=' + (c.lock ? '1' : '0')
+    + ' ld=' + num(c.ld);
+  if (c.err) out += ' err=' + num(c.err);
+  if (c.delta) out += ' +f=' + num(c.delta.frames) + ' +dec=' + num(c.delta.decoded) + ' +t=' + ((typeof c.delta.t === 'number' && isFinite(c.delta.t)) ? c.delta.t.toFixed(1) : '-');
+  return out;
+}
+
 // v1.161.1 (Dean device bug: AirPods/lock-screen play-pause inconsistent during
 // background play). The detail line for a MediaSession action ARRIVAL - records
 // WHICH element the handler will act on (`bgAudio` sidecar vs the paused `video`)
@@ -1804,6 +1836,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveImmersiveCarryTarget,
     // v1.131: CarPlay pause-provenance diagnostics detail line.
     formatPauseProvenance,
+    // v1.336: the video's own state per media event (the D1 black-picture instrument).
+    formatVideoStateDetail,
     // v1.161.1: the MediaSession-action arrival detail line (element + bg state).
     formatMsActionDetail,
     // v1.161.4: the runtime silent-WAV builder (the background keep-alive's loop).
@@ -3995,6 +4029,60 @@ if (typeof module !== 'undefined' && module.exports) {
         state: bgAudioState,
       }),
     });
+  }
+
+  // v1.336 (D1 instrument): the runtime half of formatVideoStateDetail. Gated on the
+  // debug flag BEFORE any read, and PASSIVE: plain property reads only. Never
+  // requestVideoFrameCallback or a canvas read of the video - in WebKit both attach
+  // a video output to the player, the shape of the v1.312 ambient blackout, so the
+  // instrument could cause the very black it is measuring.
+  function readVideoState() {
+    var v = mediaPlayer;
+    var q = null;
+    try { q = (v && typeof v.getVideoPlaybackQuality === 'function') ? v.getVideoPlaybackQuality() : null; } catch (_) { q = null; }
+    var root = (typeof document !== 'undefined') ? document.documentElement : null;
+    return {
+      rs: v ? v.readyState : null,
+      ns: v ? v.networkState : null,
+      paused: !!(v && v.paused),
+      vw: v ? v.videoWidth : null,
+      vh: v ? v.videoHeight : null,
+      t: v ? v.currentTime : null,
+      frames: q ? q.totalVideoFrames : null,
+      dropped: q ? q.droppedVideoFrames : null,
+      decoded: v ? v.webkitDecodedFrameCount : null,
+      pm: v && typeof v.webkitPresentationMode === 'string' ? v.webkitPresentationMode : null,
+      act: activeMediaElement() === bgAudioEl && bgAudioEl ? 'bgAudio' : 'video',
+      bg: bgAudioState,
+      fs: !!(host && host.classList.contains('css-fullscreen')),
+      ah: !!(host && host.classList.contains('controls-autohidden')),
+      amb: !!(root && root.hasAttribute('data-ambient-on')),
+      lock: !!(document.body && document.body.style.position === 'fixed'),
+      ld: loadGeneration,
+      err: v && v.error ? v.error.code : null,
+    };
+  }
+  // One pending check at a time: 2s after a 'playing', the same reading plus what
+  // moved since (frames decoded vs media time) - the "is the picture advancing"
+  // answer for the resume that went black. Skipped if a newer load replaced it.
+  var videoStateCheckTimer = null;
+  function recordVideoState(evName) {
+    if (!isDebugLifecycleEnabled() || !mediaPlayer) return;
+    var s = readVideoState();
+    recordLifecycleEvent('video:' + evName, { detail: formatVideoStateDetail(s) });
+    if (evName !== 'playing') return;
+    if (videoStateCheckTimer) clearTimeout(videoStateCheckTimer);
+    videoStateCheckTimer = setTimeout(function () {
+      videoStateCheckTimer = null;
+      if (!isDebugLifecycleEnabled() || !mediaPlayer || loadGeneration !== s.ld) return;
+      var n = readVideoState();
+      n.delta = {
+        frames: (typeof n.frames === 'number' && typeof s.frames === 'number') ? n.frames - s.frames : null,
+        decoded: (typeof n.decoded === 'number' && typeof s.decoded === 'number') ? n.decoded - s.decoded : null,
+        t: (typeof n.t === 'number' && typeof s.t === 'number') ? n.t - s.t : null,
+      };
+      recordLifecycleEvent('video:check', { detail: formatVideoStateDetail(n) });
+    }, 2000);
   }
 
   // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
@@ -6496,6 +6584,11 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('playing', bgTimingOnVideoPlaying);
     mediaPlayer.addEventListener('timeupdate', bgTimingOnVideoTime);
     mediaPlayer.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=video' }); });
+    // v1.336 (D1 instrument): the video's own state at each event that can start,
+    // stop or starve its picture - no-ops unless the ?debugLifecycle=1 flag is on.
+    ['pause', 'playing', 'waiting', 'stalled', 'emptied', 'error', 'resize', 'loadstart', 'webkitpresentationmodechanged'].forEach(function (evName) {
+      mediaPlayer.addEventListener(evName, function () { recordVideoState(evName); });
+    });
     // v1.27.2 (pre-pause candidate bridge): any resumed playback invalidates
     // a pending candidate -- the pause it described is no longer "the last
     // thing that happened" (e.g. user paused, changed their mind, hit play,
