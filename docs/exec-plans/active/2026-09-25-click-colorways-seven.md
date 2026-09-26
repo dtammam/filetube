@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/v1.335-click-colorways
 anchor: spec
 status: Build
-next: gate r2 - re-engage the SAME seats (adversary, qa) on the fix commit.
+next: the release steps (docs/RELEASING.md + AGENTS.md): version, ROADMAP, ledger, LESSONS, plan-complete, dual-Node suites, release branch, merge --no-ff, tag v1.335.0, PR, CI, merge.
 design: "Approved 2026-09-25 (Dean's picks in this session: D2, D9-D12 are his answers)"
-gate: none yet
+gate: APPROVED r2 @a787bc27 (adversary, qa)
 ---
 
 # v1.335.0: twelve more Click colorways and the Original
@@ -352,3 +352,6 @@ Gate: APPROVED r2 @c87eeb2d - qa
   - SUGGESTION (suspicion): skin-surface.js:1965 and music.js:3988 call SKINS.panelClass unguarded, while the
     engine guards every other SKINS call with typeof. It only matters with mixed-version assets, and those are
     served no-cache, so it is not a finding.
+
+Gate: APPROVED r2 @a787bc27 - adversary
+Gate: APPROVED r2 @a787bc27 - qa
