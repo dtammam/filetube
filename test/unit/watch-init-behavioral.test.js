@@ -1161,6 +1161,16 @@ test('v1.338 D8a hydrated + CONFIRMED: Subscribe is removed, the SAME Pin surviv
   assert.equal(bell(), undefined, 'no bell');
 });
 
+test('v1.338 D8a (gate r1 qa 8): a Pin an earlier pass HID is revealed again by the pin-only pass (hide and reveal are two axes)', async () => {
+  const { pin, confirmed } = mountUniversal();
+  const first = pin();
+  assert.ok(first, 'precondition: the frame-one Pin');
+  first.hidden = true; // what a non-pin-only pass (a cached moduleEnabled:false) leaves behind
+  await confirmed();
+  assert.strictEqual(pin(), first);
+  assert.equal(first.hidden, false, 'the confirmed pin-only pass shows it');
+});
+
 test('v1.338 D8a: the Pin POSTs the item\'s own folder + uploader, flips to Pinned, and the unpin DELETEs the returned id', async () => {
   const { pin, calls, confirmed } = mountUniversal({
     pinRoute: (m, url) => {

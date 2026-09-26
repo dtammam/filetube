@@ -2654,8 +2654,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (bellBtn) bellBtn.hidden = true;
         }
         // A pin-only item keeps its Pin (never removed, never hidden) and
-        // falls through to the Pin block below.
+        // falls through to the Pin block below. Reveal it too (gate r1 qa 8):
+        // an earlier non-pin-only pass (a cached moduleEnabled:false) may have
+        // hidden it, and hide and reveal are two axes.
         if (!pinOnly) return;
+        if (pinBtn) pinBtn.hidden = false;
       } else {
         // Belt-and-braces for the same finding: removal must never be terminal.
         // Re-mount into the container captured before any removal (see

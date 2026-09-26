@@ -398,6 +398,25 @@ test('enumerateRepullableItems (v1.338): a download from another site is univers
   assert.equal(byPath[plain].universal, false, 'a plain file is not a download from another site');
 });
 
+// v1.338 D9 (gate r1 qa 3): the Reheat summary's network count (`withSourceId`) includes a download from
+// another site with a usable saved link - it re-pulls under the same shared gate, so the "downloads wait"
+// warning must show. A hostile link, a link outside the download root, or none: not counted.
+test('enumerateRepullableItems (v1.338): withSourceId counts a download from another site with a usable saved link', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const page = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+  const mk = (name, extra) => { const fp = path.join(downloadDir, name); return [getMediaId(fp), { id: getMediaId(fp), filePath: fp, name, ext: '.mp4', sourceExtractor: 'Reddit', ...extra }]; };
+  const outside = path.join(os.tmpdir(), 'elsewhere', 'Outside [Reddit=o1].mp4');
+  const db = { metadata: Object.fromEntries([
+    mk('Linked [Reddit=a1].mp4', { sourceId: 'a1', sourceUrl: page }),
+    mk('Hostile [Reddit=h1].mp4', { sourceId: 'h1', sourceUrl: 'javascript:alert(1)' }),
+    mk('Unlinked [Reddit=n1].mp4', { sourceId: 'n1' }),
+    [getMediaId(outside), { id: getMediaId(outside), filePath: outside, name: 'x.mp4', ext: '.mp4', sourceExtractor: 'Reddit', sourceUrl: page }],
+  ]) };
+  const result = enumerateRepullableItems(db, config);
+  assert.equal(result.eligible, 4);
+  assert.equal(result.withSourceId, 1, 'only the in-root download with a usable saved link goes to the network');
+});
+
 // v1.33 T1: a bracket-less (MeTube-style) import is now ELIGIBLE -- it flows
 // through with null videoId/watchUrl so the batch worker's LOCAL ffprobe
 // tags pass still runs on it (the only shot such a file gets at an embedded

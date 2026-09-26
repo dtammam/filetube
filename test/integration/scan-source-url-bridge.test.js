@@ -135,7 +135,7 @@ test('the re-init carry-forward ALONE keeps the link when the Phase-2 gap-fill c
   assert.equal(loadDatabase().metadata[id].sourceUrl, PAGE, 'the carry-forward kept it');
 }));
 
-test('the Phase-2 gap-fill ALONE adopts a link written MID-SCAN (a reheat / capture landing during the scan)', () => withYtdlpEnv(async () => {
+test('the Phase-2 gap-fill ALONE adopts a link written MID-SCAN (the persist-gate checkpoint: any live-row writer during the scan)', () => withYtdlpEnv(async () => {
   // The item has no link (its file carries none: backfill null). A writer adds one to the live row in the
   // same synchronous turn as the scan; the scan's own snapshot has null, so only the gap-fill keeps it.
   const base = 'Midscan Clip [Reddit=mid001].mp4';

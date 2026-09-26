@@ -4206,8 +4206,9 @@ function projectedLibraryTracks(req, nativeTracks) {
     const tracks = itemChapterTracks(item);
     // Music redesign Slice 1: carry the channel avatar so the artist circle has a
     // real picture (the resolver is READ-ONLY: item -> channelId registry ->
-    // subscription). Native music tracks have no channel, so no avatar.
-    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item) || '';
+    // subscription). Native music tracks have no channel, so no avatar. v1.338: no site badge here -
+    // a badge would replace the artist's album-art mosaic (music.js) and a real photo (groupArtists).
+    const avatarUrl = ytdlp.resolveItemChannelAvatarUrl(ytView, item, { siteBadge: false }) || '';
     for (const track of tracks) { track.avatarUrl = avatarUrl; out.push(track); }
   }
   return out;

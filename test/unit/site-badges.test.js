@@ -33,6 +33,10 @@ test('resolveItemChannelAvatarUrl: the badge is the fallback ONLY for an item wi
   assert.strictEqual(store.resolveItemChannelAvatarUrl({}, {}), null, 'a plain file keeps the letter avatar');
   assert.strictEqual(store.resolveItemChannelAvatarUrl({}, { sourceExtractor: 'Reddit', channelAvatarUrl: 'https://i.example/a.jpg' }),
     'https://i.example/a.jpg', 'a real captured photo wins');
+  assert.strictEqual(store.resolveItemChannelAvatarUrl({}, { sourceExtractor: 'Reddit' }, { siteBadge: false }), null,
+    'siteBadge:false (the Music projection) gets no badge');
+  assert.strictEqual(store.resolveItemChannelAvatarUrl({}, { sourceExtractor: 'Reddit', channelAvatarUrl: 'https://i.example/a.jpg' }, { siteBadge: false }),
+    'https://i.example/a.jpg', 'siteBadge:false still returns a real photo');
 });
 
 test('census: every mapped slug has its file and every file is mapped (no inert entry, no orphan)', () => {

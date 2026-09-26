@@ -152,6 +152,21 @@ test('redesign S1: the artist grid carries the CHANNEL avatar for circles ("" fo
   assert.strictEqual(native.avatarUrl, '', 'a native-only artist has no channel avatar -> "" (client falls back to the mosaic)');
 });
 
+test('v1.338 D7: a download from another site gets NO site badge as its artist circle (the album-art mosaic stays)', async () => {
+  // The badge is the watch / card avatar for a download with no uploader photo; in Music it would draw
+  // the Bandcamp logo INSTEAD of the cover mosaic (music.js) - so the Music projection opts out.
+  setToggle(actingUser.id, 'on');
+  await updateDatabase((db) => { db.metadata.bc1 = audioItem('bc1', 'somebandcamp', 'Music', 'Some Band', { sourceExtractor: 'Bandcamp', sourceId: 'bc1' }); });
+  try {
+    const artists = (await (await get('/api/music/artists')).json()).items;
+    const band = artists.find((a) => a.artist === 'Some Band');
+    assert.ok(band, 'the Bandcamp download is an artist');
+    assert.strictEqual(band.avatarUrl, '', 'no /assets/sites/bandcamp.svg circle - the client draws the mosaic');
+  } finally {
+    await updateDatabase((db) => { delete db.metadata.bc1; });
+  }
+});
+
 test('dedup: a projected id colliding with a native track appears ONCE (native wins)', async () => {
   setToggle(actingUser.id, 'on');
   const music = await (await get('/api/music')).json();

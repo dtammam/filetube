@@ -68,6 +68,8 @@ function check(items, where) {
   assert.strictEqual(by('y').watchUrl, YT, `${where}: YouTube keeps its watchUrl`);
   assert.ok(!('sourceShareUrl' in by('y')), `${where}: and gets no sourceShareUrl`);
   assert.ok(!('sourceShareUrl' in by('p')), `${where}: a plain file is not a download from another site`);
+  // gate r1 qa 7: the RAW saved link never rides a list (only the re-checked sourceShareUrl does).
+  for (const id of ['r', 'h', 'p']) assert.ok(!('sourceUrl' in by(id)), `${where}: no raw sourceUrl on ${id}`);
 }
 
 test('GET /api/videos carries the saved link for a download from another site', async () => {
@@ -77,6 +79,14 @@ test('GET /api/videos carries the saved link for a download from another site', 
 test('GET /api/liked carries it too, AND the YouTube watchUrl it never derived before', async () => {
   const body = await json('/api/liked?limit=50');
   check((body.items || body).filter((i) => i.kind === 'media' || !i.kind), '/api/liked');
+});
+
+test('gate r1 qa 7: GET /api/history never carries the raw saved link either', async () => {
+  const res = await fetch(`${base}/api/progress`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'r', timestamp: 5, duration: 60 }) });
+  assert.strictEqual(res.status, 200);
+  const r = (await json('/api/history?limit=50')).items.find((i) => i.id === 'r');
+  assert.ok(r, 'the watched item is in history');
+  assert.ok(!('sourceUrl' in r), 'no raw sourceUrl on /api/history');
 });
 
 test('the modern grid (field-complete projection) carries it', async () => {
@@ -93,6 +103,7 @@ test('the watch route answers from the SAVED link at once (no probe needed)', as
   assert.ok(!('watchUrl' in r));
   const h = await json('/api/videos/h');
   assert.ok(!('sourceShareUrl' in h), 'a planted link is never served (and its file does not exist to probe)');
+  assert.ok(!('sourceUrl' in r) && !('sourceUrl' in h), 'the raw saved link never rides the watch route');
 });
 
 // ---- v1.338 D7: the site badge as the uploader avatar ----------------------------------

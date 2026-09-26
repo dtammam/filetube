@@ -378,6 +378,28 @@ test('v1.338 D9: no saved link -> the page link in its own tags; neither -> no n
   assert.equal(none.entry.networkRan, false);
 });
 
+test('v1.338 D9 (gate r1 qa 9): a saved link whose fetch FAILED reports "failed" (try again), never "no source link"', async () => {
+  // The Share corner shows that same link, so "No source link found" would contradict it; the client
+  // branches on outcome 'failed' before networkRan.
+  const deps = makeFakeDeps();
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true })],
+    eligible: 1, ineligible: 0, withSourceId: 1,
+  });
+  deps.probeEmbeddedTags = async () => ({});
+  run.repullItemMetaAndSubs = async () => null; // a 429 / timeout
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(itemUrl(base), { method: 'POST' });
+    await flush();
+    const entry = itemEntry();
+    assert.equal(entry.outcome, 'failed');
+    assert.equal(entry.failed, 1);
+  } finally {
+    await close();
+  }
+});
+
 test('v1.338 D9: a HOSTILE saved link, or an item outside the download root, never reaches the re-pull', async () => {
   const hostile = await d9Run({ universal: true, sourceUrl: 'javascript:alert(1)', inDownloadRoot: true }, {});
   assert.equal(hostile.calls.length, 0, 'the saved link is re-checked before use');
@@ -385,6 +407,29 @@ test('v1.338 D9: a HOSTILE saved link, or an item outside the download root, nev
   assert.equal(outside.calls.length, 0, 'only a file the download lane put there');
   const notUniversal = await d9Run({ universal: false, sourceUrl: D9_PAGE, inDownloadRoot: true }, {});
   assert.equal(notUniversal.calls.length, 0, 'a plain file with a stray key is not a download from another site');
+});
+
+test('v1.338 D9 (gate r1 qa 4): a download from another site whose network pass FAILED stays retryable; with no link it is exhausted', async () => {
+  // The batch skips an item once its marker is set, so a 429 / timeout on the saved link must NOT mark
+  // it complete (a YouTube item in the same state stays retryable too). Only an item with NO link from
+  // anywhere is exhausted.
+  async function once(itemFields, pass) {
+    const metas = [];
+    const deps = { probeEmbeddedTags: async () => ({}), recordRepulledItemMeta: async (_d, _id, meta) => { metas.push(meta); return true; } };
+    run.repullItemMetaAndSubs = async () => pass;
+    await ytdlp.reheatOneItem(deps, enabledConfig(), makeItem({ videoId: null, watchUrl: null, mediaId: MEDIA_ID, ...itemFields }), {});
+    return metas;
+  }
+  const failed = await once({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true }, null);
+  assert.equal(failed.length, 0, 'a failed pass with nothing new persists nothing - no marker, retried by the next batch');
+  const noSubs = await once({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: false });
+  assert.equal(noSubs.length, 1);
+  assert.equal(noSubs[0].markComplete, false, 'Pass A only: not complete, like a YouTube item');
+  const done = await once({ universal: true, sourceUrl: D9_PAGE, inDownloadRoot: true }, { sourceTitle: 'T', wroteSubs: true });
+  assert.equal(done[0].markComplete, true, 'Pass B done: complete');
+  const noLink = await once({ universal: true, sourceUrl: null, inDownloadRoot: true }, null);
+  assert.equal(noLink.length, 1);
+  assert.equal(noLink[0].markComplete, true, 'no link from anywhere: exhausted, as before');
 });
 
 // ---- Eligibility + the shared latch ----------------------------------------

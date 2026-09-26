@@ -225,10 +225,14 @@ test('a FAILED reheat is never reported as a success (state is a lifecycle marke
     'the server must publish that outcome field for the client to branch on');
 });
 
-test('a video with no YouTube source is reported honestly, not as a success', () => {
+test('a video with no source link is reported honestly, not as a success', () => {
   const body = functionBody(watchJs, 'describeReheat');
   assert.ok(/networkRan === false/.test(body), 'the no-identity case is branched on explicitly');
   assert.ok(/nothing to refresh/i.test(body), 'and says so plainly');
+  // gate r1 qa 9 (v1.338): the exact words, on both surfaces - no longer "No YouTube source found".
+  assert.ok(body.includes("'No source link found for this video, so there was nothing to refresh.'"), 'the watch page text, exactly');
+  const skinsJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'), 'utf8');
+  assert.ok(skinsJs.includes("if (entry.networkRan === false) return 'No source link found for this track, so there was nothing to refresh.';"), 'the skins text, exactly');
   assert.ok(/already up to date/i.test(body),
     'a reheat that changed nothing must say that too, rather than implying it did work');
 });
