@@ -4955,6 +4955,12 @@ configRoutes.registerCacheRoutes(app, {
 // exactly where GET /api/search was registered, so the routing order is
 // unchanged.
 const mediaRoutes = require('./lib/media/routes'); // Wave 7b S10a: the require sits at its call site so parallel slices never touch the same hunk
+// v1.337: the watch page's Share for a non-YouTube download - the page URL yt-dlp wrote into the
+// file's own tags, read by the reheat's probeEmbeddedTags (cached per file, time-limited).
+const sourceShare = require('./lib/media/source-share').createSourceShareResolver({
+  probe: probeEmbeddedTags,
+  stat: (p) => fs.promises.stat(p),
+});
 mediaRoutes.registerBrowseRoutes(app, {
   audioExtractProgress, // the live per-id extract progress Map - the OBJECT, never a copy
   bookVisibleTo,
@@ -4980,6 +4986,7 @@ mediaRoutes.registerBrowseRoutes(app, {
   resolveItemChapters,
   resolveModernGridItem,
   searchRegistry, // lib/search/registry - the universal-search provider list
+  sourceShare, // v1.337: a non-YouTube download's page URL for the watch page's Share
   storyboardDescriptor,
   trackVisibleTo,
   transcodeProgress,
