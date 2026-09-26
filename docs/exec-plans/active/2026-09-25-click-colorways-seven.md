@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.335-click-colorways
 anchor: spec
 status: Build
-next: measure - pocket-render-probe on the branch (4 LIGHTS; the 12 existing skins vs the base run), skin-chips-probe after; mutants on the committed tree; the full suite on both Nodes; then the gate.
+next: the gate (adversary + qa, fresh) on the committed tip.
 design: "Approved 2026-09-25 (Dean's picks in this session: D2, D9-D12 are his answers)"
 gate: none yet
 ---
@@ -117,8 +117,8 @@ the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
 - **The font.** Jersey 10 (SIL OFL 1.1, (c) 2023 The Soft Type Project Authors), subset to latin, as
   `public/fonts/jersey10.woff2` with an `@font-face` beside Geist / Roboto and a README entry (the Geist
   precedent). Only the Original's LCD names it, so no other skin downloads it (no preload). Its sizes
-  come from overriding the pocket type tokens on the look (a condensed face reads small); the overflow
-  rule still holds (every line one line tall; `scripts/skin-status-bar-probe.js`).
+  stay the chassis type roles; `font-size-adjust` scales the condensed face (x-height .429 em) to .64 so
+  its lettering fills the rows as on the photo (tuned on the side-by-side); the overflow rule still holds (every line one line tall; `scripts/skin-status-bar-probe.js`).
 - **The ring.** On the Original the wheel's own background (the role gradient, lit as today) is the RING;
   `::before` draws the four gaps (two thin diagonals, fixed); `::after` draws the inner scroll wheel (a
   disc at ~70 %, a thin rim) BELOW the zones and the center button (`isolation:isolate` on the wheel
@@ -202,4 +202,27 @@ the ring #feffff, the inner wheel #f9f9f5, the center #fefefe.
   each chassis role exactly a palette token), pocket-original-look (b)/(c). NEW census (pocket-design-
   system): no rule inside the glass reads a wrapped palette token, the glass classes DERIVED from the
   renderers. Renders: the Original and Click White Now Playing 0 px vs before the refactor.
+- 2026-09-26: tuned on the side-by-side before sending: the screen type read small beside the photo, so
+  `--pk-o-xh` .53 -> .64; the screen's buttons (.mms-row, .ipm-row, .ipm-gl) now inherit
+  `font-size-adjust` too (a button's UA font shorthand reset it - the menu rows had not scaled). The
+  overflow probe after: every line 1 line tall (30/30), no spills. Sheets sent (the Original beside its two
+  photos, the ring close up at rest and turned 25 deg; the 12 colorways). **Dean: "Ship it."**
+- 2026-09-26: measurements on 9c571d49 (Off identical): pocket-render-probe base (main @bf0b2b8b) vs branch,
+  the 10 pre-existing Click skins x 4 LIGHTS: 1240 shots, 1219 identical; 130 element-style diffs, ALL
+  the 13 new Color chips in the 10 tray menus (classified by script); 0 px on every Off shot; 11 lit shots
+  differ at max channel delta 1-2 with 0 style diffs - the two largest (Pink Subtle 380x700 album-long
+  8462 px, lighting 11371 px) reproduce exactly base-vs-base (a second base shoot), so render noise.
+  The Original's 34 shots identical before/after the screen-role refactor.
+- 2026-09-26: skin-chips-probe base (12 skins) vs branch (25), 41 surfaces: 0 pre-existing chips or cards
+  changed size. Rows: the sticker's Skin page 6 -> 12 (it FIT on all 18 phone configs; now it scrolls on 16
+  of 18 - fits only at 390x844 with the default / 2x sticker and no insets - its top in reach on all 18);
+  Settings picker 6 -> 13 (390x844, 380x700), 12 -> 25 (375x667, one column), 3 -> 7 (1280x800); the tray's
+  Color chips 6 -> 12 (content 577 -> 877 px in its 119 px window, scrolls). Page 1 unchanged. Disclosed
+  under #280 (a) / #281 (b), no redesign.
+- 2026-09-26: mutants on 9c571d49 (a /tmp git-archive sandbox, a pristine copy beside it): 15/15 RED -
+  the look class, the turn guard, the turn removal on a switch, the reduced-motion stop, a glass rule
+  bypassing the roles, the look redefining a palette token, the roles re-pointed on the panel, the
+  registry look field, a colorway-specific structural rule, the font-face, the disc not reading the
+  turn, a new colorway losing its block, a missing blurb, a chassis role not its token, Brick's backdrop
+  bypassing the roles. The pristine sandbox 136/136; the sandbox left identical to the pristine copy.
 

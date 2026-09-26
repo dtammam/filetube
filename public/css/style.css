@@ -12471,9 +12471,10 @@ html[data-modern="on"] .video-uploader {
     --pk-o-rim:0 0 0 1px rgba(0,0,0,.14), inset 0 1px 2px rgba(0,0,0,.06);
     --pk-o-gap:#c9c9c9; --pk-o-tick:rgba(0,0,0,.045); --pk-o-clear:rgba(0,0,0,0);
     --pk-o-center-rim:0 0 0 1px rgba(0,0,0,.16), inset 0 -1px 2px rgba(0,0,0,.06);
-    /* the bitmap face's x-height is .429 em, the app face's (Geist, Roboto) .53: font-size-adjust scales it
-       to read at the SAME type roles (the chassis's --pk-fs-* sizes stay the one authority - AC5) */
-    --pk-o-xh:.53; }
+    /* the bitmap face's x-height is .429 em (the app face's, Geist / Roboto, .53): font-size-adjust .64 scales
+       it about 1.5x, past the app face, so the lettering fills the rows as on the photo's screen - the
+       chassis's --pk-fs-* sizes stay the one authority (AC5); every line still one line (the probe) */
+    --pk-o-xh:.64; }
   /* 2. The monochrome screen: the chassis's SCREEN roles (--pk-s-*) re-pointed INSIDE the glass only (the
         sticker, the wheel and the body never see them; the palette tokens themselves keep their one
         value), so every level - Now Playing, the queue, each menu, Settings, About, the A-Z picker,
@@ -12488,7 +12489,8 @@ html[data-modern="on"] .video-uploader {
   /* no album art on the first iPod: the cover and the menus' art pane go, the list takes the glass */
   .mms-look-original .ip-cover, .mms-look-original .ip-stars, .mms-look-original .ipm-art{ display:none; }
   .mms-look-original .ip-meta{ text-align:center; }
-  .mms-look-original .mms-row{ font-family:inherit; } /* a button does not inherit the face by default */
+  /* the screen's buttons: a button's UA font shorthand resets the family AND the size adjust - inherit both */
+  .mms-look-original .mms-row, .mms-look-original .ipm-row, .mms-look-original .ipm-gl{ font-family:inherit; font-size-adjust:inherit; }
   .mms-look-original .ipm-click .ipm-lpane{ flex:1 1 auto; max-width:none; }
   .mms-look-original .ip-np, .mms-look-original .ipm-row, .mms-look-original .mms-row, .mms-look-original .ip-ttl, .mms-look-original .ip-nof,
     .mms-look-original .mms-pos, .mms-look-original .mms-rem{ font-weight:var(--fw-normal); }
