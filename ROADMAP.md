@@ -88,6 +88,15 @@
 - [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
   overlay-containment lint's scroll match, with a fixture.
 
+- [ ] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
+  like a hold to speed up lock option by dragging down. No need to do now please just add to roadmap").
+  Today a press-and-hold on the picture plays at 2x until the finger lifts (player.js hold-to-2x:
+  `HOLD_MS` 500, cancelled by a drag past `MOVE_TOL` 16px). The ask: while holding, drag DOWN to LOCK
+  the speed so it stays after the finger lifts (the YouTube-style lock), then a way to unlock (a tap on
+  a speed pill, or holding again). First questions when picked up: the lock's visible state and how to
+  release it; whether it applies in faux fullscreen and inline alike; that the drag-down does not fight
+  the drag-cancel, the swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
+
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.

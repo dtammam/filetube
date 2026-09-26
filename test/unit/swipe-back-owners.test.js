@@ -182,16 +182,43 @@ test('the touch-action NET still works OUTSIDE the skin (an unlisted drag handle
   assert.strictEqual(backs.n, 1, 'inside .mms-full the same touch-action is the page lock - the back fires');
 });
 
-test('immersive views no longer swallow the back; their scrubbers still do (v1.311.3 scrubbers only)', () => {
-  for (const cls of ['ft-css-fullscreen', 'ft-audio-expanded']) {
-    const { doc, win, backs } = boot(shellBody('watch.html'));
-    doc.body.classList.add(cls);
-    dragRight(win, doc.getElementById('seek-bar'));
-    assert.strictEqual(backs.n, 0, `${cls}: scrubbing the seek bar is still a seek`);
-    dragRight(win, doc.getElementById('media-player'));
-    assert.strictEqual(backs.n, 1, `${cls}: a swipe on the video goes back`);
-    dom.window.close(); dom = null;
+test('the expanded audio view does not swallow the back; its scrubbers still do (v1.311.3 scrubbers only)', () => {
+  const { doc, win, backs } = boot(shellBody('watch.html'));
+  doc.body.classList.add('ft-audio-expanded');
+  dragRight(win, doc.getElementById('seek-bar'));
+  assert.strictEqual(backs.n, 0, 'ft-audio-expanded: scrubbing the seek bar is still a seek');
+  dragRight(win, doc.getElementById('media-player'));
+  assert.strictEqual(backs.n, 1, 'ft-audio-expanded: a swipe on the art/video goes back');
+});
+
+// v1.337 (Dean: "In full screen video view if I swipe right anywhere that isn't the scrub bar it exits
+// full screen on mobile"; his ruling: a right swipe does NOTHING in fullscreen video). The back left
+// the watch page (or popped to a previous one), which dropped fullscreen.
+test('v1.337: in faux fullscreen video a right swipe from ANYWHERE never goes back', () => {
+  const { doc, win, backs } = boot(shellBody('watch.html'));
+  doc.body.classList.add('ft-css-fullscreen');
+  const starts = [doc.getElementById('media-player'), doc.getElementById('seek-bar'), doc.querySelector('.player-controls'), doc.body];
+  for (const el of starts) {
+    assert.ok(el, 'the real shell carries the start element');
+    dragRight(win, el);
   }
+  assert.strictEqual(backs.n, 0, 'no back from the picture, the bar, the scrubber or the page');
+  assert.strictEqual(swipeBackStandDownReason(doc.getElementById('media-player'), doc, win), 'fullscreen');
+  // not latched: leaving fullscreen gives the swipe back (the CONTROL for this test)
+  doc.body.classList.remove('ft-css-fullscreen');
+  dragRight(win, doc.getElementById('media-player'));
+  assert.strictEqual(backs.n, 1, 'out of fullscreen, a swipe on the video goes back again');
+});
+
+test('v1.337: a Fullscreen API element (desktop, iPad) stands the swipe-back down too', () => {
+  const { doc, win, backs } = boot(shellBody('watch.html'));
+  let fsEl = doc.getElementById('player-wrapper') || doc.body;
+  Object.defineProperty(doc, 'fullscreenElement', { configurable: true, get: () => fsEl });
+  dragRight(win, doc.getElementById('media-player'));
+  assert.strictEqual(backs.n, 0, 'no back while the Fullscreen API holds an element');
+  fsEl = null;
+  dragRight(win, doc.getElementById('media-player'));
+  assert.strictEqual(backs.n, 1, 'after it exits, the swipe goes back again');
 });
 
 test('the touch-action NET: an unlisted element that took horizontal panning stands down', () => {

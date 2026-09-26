@@ -8,7 +8,7 @@ next: the gate (adversary + qa, fresh, max two rounds).
 gate: pending
 ---
 
-# v1.337.0: Share for non-YouTube downloads
+# v1.337.0: Share for non-YouTube downloads, and no swipe-back in fullscreen video
 
 ## The ask (Dean, 2026-09-25, verbatim, ROADMAP Planned)
 
@@ -94,3 +94,32 @@ the logged URL of whatever it is that we captured. I'm not really asking for any
 - `node --test test/integration/watch-share-button.test.js` (the real watch.js in jsdom, 6 new):
   `# tests 10`, `# pass 10`, `# fail 0`.
 - `npx eslint` over the changed files: exit 0.
+
+## Item 2: a right swipe exits fullscreen video (Dean, 2026-09-26, added to this branch)
+
+- Dean: "I noticed a bug can we resolve with this branch. In full screen video view if I swipe right
+  anywhere that isn't the scrub bar it exits full screen on mobile." His answers: what happens
+  "depends it seems"; a right swipe should do **nothing in fullscreen video**; **one release** with
+  Share.
+- Research contradicted his earlier ruling, so it was surfaced (flow.md invalidation rule): v1.311.3
+  ("scrubbers only") made the document-wide swipe-back (common.js `wireSwipeBackGesture`, 90px
+  rightward, 1.5x dominance) fire from anywhere but a scrubber, INCLUDING faux fullscreen (its own
+  comment said so). The back is `history.back()`, which leaves the watch page and drops fullscreen.
+- Hypothesis: that one gesture is both of his outcomes (where you land is the previous history entry:
+  another page, or a previous watch page that looks like "still on the video page"). Falsifier: a
+  right swipe that still ends fullscreen after the stand-down = a second mechanism, re-root-caused.
+- Fix: `swipeBackStandDownReason` returns 'fullscreen' while `body.ft-css-fullscreen` (the faux
+  overlay) or a Fullscreen API element is up. The expanded audio view and the full-screen skins keep
+  their swipe-back (the v1.311.3 escape); the scrubber owners are unchanged.
+- Measured: `node scripts/faux-fullscreen-probe.js` (home, an in-app navigation into the video, the
+  real `#fs-btn`, a real touch swipe right across the picture):
+  - base cbe0d880 (v1.336.0), exit 1: `SWIPE depth=1 fullscreen true->false url
+    /watch.html?v=v1->/ FAIL` (Dean's bug, reproduced headless);
+  - branch, exit 0: `SWIPE depth=1 fullscreen true->true url /watch.html?v=v1->/watch.html?v=v1 ok`.
+- `node --test test/unit/swipe-back-owners.test.js test/unit/router-helpers.test.js`: `# tests 87`,
+  `# pass 87`, `# fail 0`. The v1.311.3 test that asserted a swipe on the video in faux fullscreen
+  goes back was the old ruling, rewritten to the new one (the audio view's half kept as it was).
+
+## ROADMAP
+
+- Dean (2026-09-26) added an idea, not built: lock the hold-to-speed-up by dragging down.

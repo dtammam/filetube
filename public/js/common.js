@@ -9943,8 +9943,9 @@ function isHorizontalScrollerBox(overflowX, scrollWidth, clientWidth) {
 // body lock - which took away the one escape from a skin stuck behind a pinned body.
 // Now only the things you actually drag sideways own the gesture: the pc-range
 // seek/volume on every shell, the skin seeks, the click wheel, the Brick paddle, the wheel-calibration stage, any other
-// range/slider. Everywhere else - the video, a skin's art, faux fullscreen - a
-// clear rightward swipe goes back again.
+// range/slider. Everywhere else - the video, a skin's art - a clear rightward
+// swipe goes back again. (v1.337, Dean: NOT in fullscreen video - see
+// swipeBackStandDownReason.)
 const SWIPE_BACK_OWNER_SELECTORS = [
   '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
   '.whcal-stage', // the wheel-calibration tool's spin area (Settings > Experimental) - v1.311.2 gate W2
@@ -9965,10 +9966,18 @@ function touchActionOwnsHorizontal(touchAction) {
 // lists are pan-y so they scroll vertically. Read as the NET, it made the whole skin
 // an owner again. Every skin scrubber is enumerated above, so the NET stands aside there.
 const SWIPE_BACK_NET_EXEMPT_ROOT = '.mms-full';
-// Why a drag starting at `startEl` must NOT be a back ('owner' | 'touch-action' |
+// Why a drag starting at `startEl` must NOT be a back ('fullscreen' | 'owner' | 'touch-action' |
 // 'scroller'), or null when it may be one. Walks startEl up to <body> once, reading
 // each box's computed style (the v1.160.3 scroller guard folded into the same walk).
 function swipeBackStandDownReason(startEl, doc, win) {
+  // v1.337 (Dean: "In full screen video view if I swipe right anywhere that isn't the scrub bar it
+  // exits full screen on mobile"; his ruling: a right swipe does NOTHING in fullscreen video). The
+  // back left the watch page (or popped to a previous watch page), which drops fullscreen. Fullscreen
+  // has its own ways out (the fullscreen button, a rotate), so while the faux overlay
+  // (body.ft-css-fullscreen, player.js setCssFullscreen) or a Fullscreen API element is up, the swipe
+  // is not a back. The expanded audio view and the full-screen skins keep their swipe-back (v1.311.3).
+  if (doc && doc.body && doc.body.classList && doc.body.classList.contains('ft-css-fullscreen')) return 'fullscreen';
+  if (doc && (doc.fullscreenElement || doc.webkitFullscreenElement)) return 'fullscreen';
   const ownerSel = SWIPE_BACK_OWNER_SELECTORS.join(',');
   const gcs = win && typeof win.getComputedStyle === 'function' ? win.getComputedStyle.bind(win) : null;
   const netOff = !!(startEl && typeof startEl.closest === 'function' && startEl.closest(SWIPE_BACK_NET_EXEMPT_ROOT));

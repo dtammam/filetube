@@ -21,7 +21,10 @@
 //     ?debugLifecycle=1 video:* entries after a pause / resume / pause / resume), and
 //       INSTRUMENT pause=<n> playing=<n> check=<n> fs-at-pause=<n>
 //       PANEL ok|FAIL <the video:check line as the on-screen panel renders it>
-//     Exits 1 on any painted edge, a failed tap, too few instrument lines or a cut panel line.
+//       SWIPE depth=<n> fullscreen <before>-><after> url <before>-><after> ok|FAIL  (v1.337: a right
+//       swipe across the picture in faux fullscreen, after an in-app navigation, changes nothing)
+//     Exits 1 on any painted edge, a failed tap, too few instrument lines, a cut panel line or a swipe
+//     that leaves fullscreen or the page.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -193,6 +196,31 @@ async function main() {
   const panelOk = / act=\S+ bg=\S+ bgp=\S+ /.test(panelCheck) && / \+f=\S+ \+dec=\S+ \+t=\S+ fser=\S+\)/.test(panelCheck);
   console.log(`PANEL ${panelOk ? 'ok' : 'FAIL'} ${panelCheck}`);
   if (inst.pause < 2 || inst.playing < 3 || inst.check < 1 || inst.fsAtPause < 2 || !panelOk) process.exitCode = 1;
+
+  // v1.337 SWIPE (Dean: "In full screen video view if I swipe right anywhere that isn't the scrub bar it
+  // exits full screen on mobile"; his ruling: a right swipe does nothing in fullscreen video). Home, then
+  // an in-app navigation into the video (so the router has a page to go back to), faux fullscreen by
+  // the real #fs-btn, then a REAL touch swipe right across the middle of the picture.
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await send('Page.navigate', { url: base + '/' });
+  await waitFor('document.readyState === "complete" && !!(window.FileTube && window.FileTube.navigate)');
+  await ev('window.FileTube.navigate("/watch.html?v=v1"), true');
+  await waitFor('(function(){var h=document.getElementById("player-wrapper"); var v=document.getElementById("media-player"); return location.pathname === "/watch.html" && !!(h && v && v.readyState >= 2 && !h.classList.contains("native-controls"));})()', 20000);
+  await ev('document.getElementById("fs-btn").click(), true');
+  await waitFor('document.getElementById("player-wrapper").classList.contains("css-fullscreen")', 5000);
+  const swipeBefore = await ev('({ url: location.pathname + location.search, depth: history.state && history.state.depth, fs: document.getElementById("player-wrapper").classList.contains("css-fullscreen") })');
+  const y = 422;
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 80, y }] });
+  for (const x of [110, 150, 200, 250, 300]) {
+    await sleep(16);
+    await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 3 }] });
+  }
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(1500);
+  const swipeAfter = await ev('({ url: location.pathname + location.search, fs: document.getElementById("player-wrapper") ? document.getElementById("player-wrapper").classList.contains("css-fullscreen") : false })');
+  const swipeOk = swipeBefore.fs === true && swipeBefore.depth > 0 && swipeAfter.fs === true && swipeAfter.url === swipeBefore.url;
+  console.log(`SWIPE depth=${swipeBefore.depth} fullscreen ${swipeBefore.fs}->${swipeAfter.fs} url ${swipeBefore.url}->${swipeAfter.url} ${swipeOk ? 'ok' : 'FAIL'}`);
+  if (!swipeOk) process.exitCode = 1;
 
   // desktop: the staged Fullscreen API path (#fs-stage), the same host border in the other fullscreen
   await send('Emulation.setTouchEmulationEnabled', { enabled: false });
