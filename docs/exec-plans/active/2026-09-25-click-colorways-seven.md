@@ -318,7 +318,7 @@ Gate: CHANGES r1 @48ef515f - adversary
   the Original's overflow probe (390x844 + 380x700, Off): every line 1 line (30/30), no spills, no errors.
 
 
-Gate: APPROVED r2 @c87eeb2d - adversary
+Gate (superseded by the r2 re-bind @a787bc27 below): APPROVED r2 at c87eeb2d - adversary
   Delta re-review (Node 22.23.1, /tmp git-archive sandbox of c87eeb2d; targeted unit incl. music-skin-integration and
   css-token-lint 330/330; lint:css 0; overlay 0).
   - W1 fixed as prescribed. Early-launch probe (ipod-original, /music?play=nd1, 300 ms RTT): the FIRST class the panel
@@ -331,7 +331,7 @@ Gate: APPROVED r2 @c87eeb2d - adversary
     style stays null, the disc computes matrix(0.5, 0.866, ...); a sticker switch to Cider then Click leaves no turn.
     Mutants: no re-apply on repaint RED; writing on the panel RED (2). The font now carries name IDs 13/14 (the OFL).
   - S2 (Brick's ink) stays open, disclosed as Dean's call; not blocking.
-Gate: APPROVED r2 @c87eeb2d - qa
+Gate (superseded by the r2 re-bind @a787bc27 below): APPROVED r2 at c87eeb2d - qa
   Instruments (Node 22.23.1, qa, on c87eeb2d): full `npm test` 9638/9638, 0 fail (exit 0); targeted unit +
   integration (pocket-*, music-skins, music-pocket-menus, skin-surface, setup picker, seattle census, token-scale-lock,
   music-skin-integration, ipod-brick, integration music-pocket-menus(-r1)) 468/468; lint:css TOTAL 0; overlay 0;
