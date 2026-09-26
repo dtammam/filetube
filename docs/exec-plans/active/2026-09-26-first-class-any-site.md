@@ -3,8 +3,9 @@ plan: first-class-any-site
 harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
-status: Draft
+status: Approved @46427eb0
 next: build in blast-radius order - D1-D5 (the saved link: capture, carriers, backfill, serve), D6 Share, D7 icon, D8 fixes, D9 Reheat.
+design: Approved 2026-09-26 @46427eb0
 gate: pending
 ---
 
