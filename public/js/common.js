@@ -5627,7 +5627,10 @@ function formatOneOffStatusText(entry) {
     const percent = Math.max(0, Math.min(100, Math.round(entry.percent)));
     return [title !== null ? title : 'Downloading', position, percent + '%'].filter((part) => part !== '').join(' — ');
   }
-  if (state === 'done') return 'Done';
+  // v1.339 S1 (D1 "Keep mine"): the file was already in the library, so
+  // yt-dlp kept it and downloaded nothing -- a success, never an error.
+  // `alreadyInLibrary` is read only while `state === 'done'` (state-gated).
+  if (state === 'done') return entry.alreadyInLibrary === true ? 'Already in your library' : 'Done';
   if (state === 'error') return typeof entry.error === 'string' && entry.error.trim() !== '' ? entry.error : 'error';
   // v1.24.0 A3: a NEW terminal state distinct from 'error' -- see
   // `lib/ytdlp/index.js`'s cancel route.

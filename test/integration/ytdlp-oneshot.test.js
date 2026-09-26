@@ -661,7 +661,9 @@ test('POST /api/ytdlp/download (one-shot) threads oneOff:true to run.runDownload
     assert.equal(capturedOpts.oneOff, true, 'runOneShot must pass oneOff:true to run.runDownload');
 
     assert.ok(capturedBuiltArgs.includes('--no-download-archive'));
-    assert.ok(capturedBuiltArgs.includes('--force-overwrites'));
+    // v1.339 S1 (D1 "Keep mine"): never an overwrite -- yt-dlp would delete
+    // the library copy before downloading (see ytdlp-oneshot-keep-mine.test.js).
+    assert.ok(!capturedBuiltArgs.includes('--force-overwrites'));
     assert.ok(!capturedBuiltArgs.includes('--download-archive'), 'a one-off download must never carry the shared --download-archive flag');
   } finally {
     run.runDownload = originalRunDownload;
@@ -1183,13 +1185,15 @@ test('idempotent: one-off-ing the same video twice appends "youtube <id>" to the
   }
 });
 
-test('a re-download of an already-archived video still actually re-downloads (the one-off download pass itself ignores the archive)', async () => {
+test('a one-off of an already-ARCHIVED video still runs its download pass (the one-off ignores the archive; only a file already on disk is kept)', async () => {
   const deps = makeFakeDeps();
   const config = enabledConfig();
   // Pre-seed the archive as if a subscription (or a prior one-off) already
   // recorded this id -- the one-off DOWNLOAD pass must still spawn (never
   // silently skip) since buildYtdlpDownloadArgs's oneOff branch keeps
-  // --no-download-archive regardless of what's already recorded.
+  // --no-download-archive regardless of what's already recorded. (v1.339 S1:
+  // whether bytes are then fetched is yt-dlp's own file-exists check -- a
+  // file already on disk is kept, never overwritten.)
   fs.mkdirSync(config.downloadDir, { recursive: true });
   fs.writeFileSync(args.resolveArchivePath(config), 'youtube dQw4w9WgXcQ\n', 'utf8');
 
@@ -1205,7 +1209,7 @@ test('a re-download of an already-archived video still actually re-downloads (th
     assert.equal(res.status, 202);
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(downloadCalls, 1, 'a one-off of an already-archived video must still actually re-download');
+    assert.equal(downloadCalls, 1, 'a one-off of an already-archived video must still run its download pass');
 
     // Still recorded exactly once afterward (idempotent re-assert of the
     // append, not a duplicate line from the re-download).
@@ -1901,16 +1905,27 @@ test('FIX-10 regression: POST /api/ytdlp/download rejects once the pending one-s
     assert.equal(typeof cap, 'number');
     assert.ok(cap > 0);
 
+    // v1.339 S1: a DISTINCT video per request -- a repeat of the same video
+    // while it is in flight now JOINS that job (single-flight) and never
+    // counts against the cap, so the same URL N times would never reach it.
+    const distinctUrl = (i) => `https://youtu.be/cap${String(i).padStart(8, '0')}`;
     for (let i = 0; i < cap; i++) {
-      const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+      const res = await postJson(base, '/api/ytdlp/download', { url: distinctUrl(i) });
       assert.equal(res.status, 202, `request ${i} should be accepted (still under the cap)`);
     }
 
-    const overCapRes = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    const overCapRes = await postJson(base, '/api/ytdlp/download', { url: distinctUrl(cap) });
     assert.equal(overCapRes.status, 503, 'a one-shot POST beyond the cap must be rejected, not enqueued');
     const body = await overCapRes.json();
     assert.equal(typeof body.error, 'string');
     assert.ok(body.error.length > 0);
+
+    // v1.339 S1: at the cap, a repeat of a video ALREADY queued is joined
+    // (202, joined) -- the join is checked before the cap, since it adds
+    // nothing to the queue.
+    const repeatRes = await postJson(base, '/api/ytdlp/download', { url: distinctUrl(0) });
+    assert.equal(repeatRes.status, 202);
+    assert.equal((await repeatRes.json()).joined, true);
   } finally {
     await close();
   }
