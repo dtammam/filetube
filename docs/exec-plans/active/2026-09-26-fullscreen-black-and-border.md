@@ -138,3 +138,140 @@ healthy check reads `+f=50 +dec=50 +t=2.0`.
 - D1: open `<app>/?debugLifecycle=1` once; play a video, fullscreen, pause/resume until it goes black;
   wait 3 seconds; leave fullscreen and screenshot the log panel at the bottom. Also, if he can: the same
   with Ambient OFF, and once using only the bar's play button.
+
+## Gate
+
+Gate: CHANGES r1 @5996fbc2 - qa
+
+1. CRITICAL - the capture cannot be read from Dean's screenshot. public/js/player.js:4566 (unchanged) renders
+   `String(entry.detail).slice(0, 60)`; the new detail lines are 114-133 chars. An iPhone-shaped reading renders as
+   `rs=4 ns=1 p=0 wh=1920x1080 t=734.2 f=18342/3 dec=0 pm=inline ` and stops: no act/bg/fs/amb/lock/ld, and the
+   video:check deltas `+f/+dec/+t` (the plan's primary discriminator) never appear. Measured in headless faux
+   fullscreen: the RENDERED overlay line is `video:check (rs=4 ns=1 p=0 wh=640x360 t=2.0 f=53/4 dec=53 pm=- act=video )`
+   while localStorage holds `... +f=49 +dec=49 +t=2.0`. The probe reads localStorage, never the overlay, so its
+   reachability proof misses what the device shows. Fix: every discriminating field visible in the rendered
+   overlay, bound by reading the overlay's textContent (probe and/or test), not the store.
+2. CRITICAL - with ?debugLifecycle=1 the debug overlay (fixed, bottom:0, z 999999, max-height 35vh,
+   pointer-events:auto, tap = clear log) sits over the faux-fullscreen control bar. A real touch tap
+   (Input.dispatchTouchEvent) at #pp-btn's centre hits `ft-lifecycle-overlay` and CLEARS THE LOG without pausing:
+   390x844 logLen|paused 10|false -> 0|false; 844x390 15|false -> 0|false. Dean's procedure ("pause/resume until
+   black", and the H3 run "using only the bar's play button") erases its own capture; any tap in the bottom 35vh of
+   the picture does too. The probe's `pp-btn.click()` bypasses hit-testing, so it could not see this. Fix: the
+   overlay must not take taps over the player in faux fullscreen (e.g. pointer-events:none while
+   body.ft-css-fullscreen; he reads it after leaving fullscreen), bound by a real touch tap in the probe
+   asserting paused flips and the log survives.
+3. WARNING - lying comment, scripts/faux-fullscreen-probe.js (D1 block): "Chromium has no webkitDecodedFrameCount
+   ... so those read '-' here; the iPhone fills them". Inverted: this probe's own output reads `dec=19`..`dec=85`
+   in Chromium, and the plan (WebKit source) says dec reads 0 on the iPhone. 5996fbc2 corrected player.js but not
+   the probe. A reader of a device capture primed by this comment reads dec=0 as "decode stopped".
+4. WARNING - `act` cannot falsify H2. player.js readVideoState: `act` = activeMediaElement(), a pure function of
+   bgAudioState, so `act=video` iff `bg` is inline/swap-back: the plan's H2 falsifier ("act=video with
+   bg=inline_video") is circular. Scenario: bgAudioEl.paused=false (sidecar sounding) while
+   bgAudioState=INLINE_VIDEO -> logs `act=video bg=inline_video` -> the plan's table reads H2 as falsified. Acceptance 1
+   promises "which element is sounding". Fix: log the sidecar's own paused/currentTime and the video's
+   muted/volume (plain reads).
+5. WARNING - D2 overclaims "why a screenshot missed it". The plan says "on his phone it is 3 device pixels of
+   near-white", but Dean runs DARK mode, where the measured ring is rgb(45,45,45)/(51,51,51)/(52,48,43)/(56,56,56)
+   (base probe). A painted CSS border lands in an iOS screenshot pixel for pixel, so the asymmetry Dean reports
+   ("doesn't appear in the screenshots") is NOT explained by this cause. The fix is right (the border is real,
+   24/24 -> 0/24), but record the asymmetry as open and make Dean's D2 check a falsifier: a light edge still
+   there in dark mode after v1.336 means his edge has another cause.
+6. WARNING - acceptance 3 is unevidenced at this sha: "skins probe" byte-identity has no recorded run in the plan
+   (only INLINE geometry). Record the run's summary line, or narrow the claim.
+7. SUGGESTION - the log ring: at a plain load+play+fullscreen, 6 of 10 entries are video:* (measured); the ring
+   stays LIFECYCLE_LOG_CAP=30, whose comment budgets for a handoff cycle, and the flag is shared with the open
+   #282 notification capture. Consider scoping video:* to css-fullscreen or raising the cap (with its lock).
+8. SUGGESTION - player.js recordVideoState comment "(frames decoded vs media time)" and the test's "zero frames
+   decoded": `+f` is totalVideoFrames (the layer's count on the iPhone, per the header comment), not decoded frames.
+9. SUGGESTION - frontmatter `next: commit the build, then the gate` is stale (the build is committed); the
+   deviation's "ROADMAP D1 item ... marked instrumented" is not in this sha (fine if it lands in the release commit).
+
+Evidence (qa, Node 22.23.1): `npm run test:unit` -> `# tests 7463` `# pass 7463` `# fail 0` EXIT=0; `npm run lint` ->
+`6 problems (0 errors, 6 warnings)` (all in public/js/common.js, untouched); `npm run lint:css` -> `TOTAL 0`;
+`npm run lint:overlay` -> `overlay-containment: clean (0 violations)`; `bash .harness/lib/check-markers.sh` ->
+`check-markers: clean (docs/exec-plans)`; probe on HEAD -> `INSTRUMENT pause=2 playing=2 check=1 fs-at-pause=2`,
+`SUMMARY combos=24 edge-painted=0`; probe with FT_ROOT=git archive of 9946a335 -> `INSTRUMENT pause=0 playing=0
+check=0 fs-at-pause=0`, `SUMMARY combos=24 edge-painted=24`; INLINE lines identical on both trees. U+2014 in the
+diff: 0. Security: no surface of concern - the probe binds 127.0.0.1, mints its session in-process
+(`__mintTestSession`, not a route), uses mkdtemp dirs and execFileSync with argv arrays (no shell); like its
+siblings it leaves its temp dirs (a scratch session-secret, 0600). The instrument writes element state only
+(no title/id/URL/user) to the existing same-origin debug log, rendered via textContent, flag-gated before any read.
+
+Gate: CHANGES r1 @5996fbc2 - adversary
+
+1. CRITICAL - the capture is truncated on the only surface Dean can read (concurs with qa 1, measured independently).
+   renderLifecycleOverlay (player.js:4566, unchanged) prints `String(entry.detail).slice(0, 60)`. A scratch copy of the
+   probe (FT_ROOT = git archive of 5996fbc2) that reads `#ft-lifecycle-overlay` textContent after 2 pause/resume cycles
+   and a fullscreen exit prints `video:check (rs=4 ns=1 p=0 wh=640x360 t=9.6 f=245/1 dec=245 pm=- act=vide) ...`,
+   while the stored entry ends `... ld=1 +f=50 +dec=50 +t=2.0`. An iPhone-shaped line (formatVideoStateDetail with
+   1920x1080, t=754.21, f=18234/12, dec undefined) is 134 chars; the panel shows only
+   `rs=4 ns=1 p=0 wh=1920x1080 t=754.2 f=18234/12 dec=- pm=inlin`: act, bg, fs, amb, lock, ld and all check deltas are
+   cut. The shipped probe reads localStorage, not the overlay, so its reachability proof missed this (LESSONS 2, inert
+   feature). Fix: every discriminating field visible in the RENDERED overlay, bound by reading the overlay text.
+2. WARNING (blocks) - on the iPhone `f` does not mean what the plan says. The plan cites
+   MediaPlayerPrivateAVFoundationObjC, but on Cocoa media runs in the GPU process (PlatformEnableCocoa.h
+   `#define ENABLE_GPU_PROCESS_BY_DEFAULT 1`; UnifiedWebPreferences.yaml UseGPUProcessForMediaEnabled true under it).
+   The page calls MediaPlayerPrivateRemote::videoPlaybackQualityMetrics (WebKit main,
+   WebProcess/GPU/media/MediaPlayerPrivateRemote.cpp), which returns a CACHED copy (`return m_cachedState.videoMetrics;`).
+   RemoteMediaPlayerProxy.cpp refreshes it on pause/rate/readyState changes, when the page's query cadence changes, and
+   on the cached-state timer (2000 ms when observing time changes, else 250 ms), never while paused
+   (maybeUpdateCachedVideoMetrics returns if `m_cachedState.paused`). The page stops the refresh after 30 s with no
+   query, and keeps the LAST value when the layer is gone (`if (state.videoMetrics)` only overwrites a present value).
+   From that code (not measured on a device): (a) pause at P, resume at P+3s: the 'playing' query renegotiates the
+   interval to 3 s (next refresh at resume+2.75s), so the check at resume+2s returns the value from the resume and
+   reads `+f=0 +t=2.0` on a HEALTHY video. That is the plan's "frames stopped" signature, for any resume gap over
+   ~2.25 s. (b) With no layer, `f` freezes instead of dropping to 0, so "layer torn down" and "frames stopped" read
+   the same. Fix: poll the quality object at a steady 1 s cadence while the flag is on and the video plays, and take
+   the check later (e.g. +4 s, or +2 s and +5 s). Correct the plan's counter semantics and cite the Remote path. Also
+   log a healthy baseline check in the same capture. This prescription is reasoning, not a measurement.
+3. WARNING - the plan's bisect summary is false. It says "player.js changed in v1.322 (Chapter Snap) and v1.334
+   only". `git log --oneline v1.311.2..v1.335.0 -- public/js/player.js` lists 17 commits, first released in
+   v1.311.3 (3b4a9b12), v1.317 (bc488b95, 35a3bb1d), v1.319 (77a3f5bc lock-to-audio: "resume the video only if the
+   audio was playing"; background audio is ON for Dean), v1.320 (a28f8b32, 612cadd5), v1.322 and v1.334 (+660 lines).
+   `git diff --stat v1.311.2 v1.335.0 -- public/js/ambient.js` = 762 insertions: the H1 engine (Ambient is ON for Dean)
+   moved into ambient.js in v1.318 (45815d94, 45284736, 61904f6c) inside the regression window. The H1 row omits this.
+   Fix: correct the Research text. The v1.337 bisect should start at v1.318 ambient and v1.319 bg audio.
+4. WARNING - D2 "3 device pixels of near-white" does not hold in Dean's DARK mode (concurs with qa 5). Base probe (my
+   run): dark ring rgb(51,51,51) / rgb(52,48,43) / rgb(56,56,56) / rgb(45,45,45). 390x844-2021-dark.png edge pixel
+   (45,45,45) next to (0,0,0), and 24/24 -> 0/24 edge-painted after the fix. Keep D2's screenshot asymmetry OPEN. A
+   light edge that remains in dark mode after v1.336 means another cause (suspicion only: no other light edge found
+   headless).
+5. WARNING - the instrument's runtime half is not bound. 16 mutants of 5996fbc2 in a /tmp archive sandbox against
+   test/unit/fullscreen-edge-and-video-state.test.js: 9 red (each border:none removal, the base border, the flag gate,
+   the ld guard, +f dropped, pm constant, a wrong event list). 7 SURVIVE green (11/11 pass):
+   - M4: a later `body #player-wrapper.css-fullscreen { border: 1px solid var(--border-color); }`. The lock proves the
+     rule exists, not that it wins (LESSONS 6).
+   - M7: the check fires after 'pause' instead of 'playing'.
+   - M8: the check delay is 20000 ms.
+   - M9: `act: 'video'` as a constant.
+   - M10: the wiring inside `if (false)`.
+   - M11: amb reads `data-ambient`.
+   - M12: the +f sign is flipped.
+   The probe prints INSTRUMENT counts but asserts nothing (exit 0 either way) and cannot see M9/M11 (no handoff, no
+   ambient headless). Fix: a behavioural test that runs the real listener with the flag on (jsdom/vm), plus the probe
+   failing on its counts.
+6. SUGGESTION - `dec` is absent on the iPhone, not 0. HTMLVideoElement.idl `[Conditional=MEDIA_STATISTICS]
+   webkitDecodedFrameCount`. PlatformEnable.h `#define ENABLE_MEDIA_STATISTICS 0`, with no override in
+   PlatformEnableCocoa.h or WebCore FeatureDefines.xcconfig (WebKit main). So the line reads `dec=-` and `+dec=-`.
+   The player.js comment and the plan ("reads 0 on the iPhone") are wrong. Beware qa 3's prescription: the probe
+   comment's "'-' ... on the iPhone" is the RIGHT half, and its Chromium half is the wrong one.
+7. SUGGESTION - B2 "plain property reads only" overstates the passivity. On iOS the first getVideoPlaybackQuality()
+   sends SetVideoPlaybackMetricsUpdateInterval and makes the GPU process query the AVPlayerLayer on a background
+   WorkQueue. It adds no video output, and it is the path every page calling the API takes. Say so.
+
+Verified, not findings: only the base `.player-container` rule gives the host a non-none border (comment-stripped rule
+walk of style.css). No host-state class rule adds border/outline/shadow. No JS writes style.border* to the host.
+INLINE is identical on both trees (`1px solid rgb(226, 226, 226)` r=12px, video 17,73 356x200.25 and 255,81 564x317.25).
+The check timer dies at close() (player.js:9127) and teardownMediaState (8367) via loadGeneration. Measured load: 6 log
+entries per pause/resume cycle (bgAudio:candidate, media:pause, video:pause, media:play, video:playing,
+video:check), so the 30-entry cap holds 5 cycles, and leaving fullscreen adds 0. bgTimingTap drops video:* (player.js:4250).
+The probe's first-combo bodyBg rgb(255,255,255) is body's `transition: background-color var(--dur-fast)` (0.15s)
+toward the #000 belt. It is identical on both trees and pre-existing. qa 2 (the overlay eats bar taps) was not
+independently re-measured.
+Evidence (adversary): probe, base archive: `INSTRUMENT pause=0 playing=0 check=0 fs-at-pause=0`,
+`SUMMARY combos=24 edge-painted=24`. Probe, HEAD archive: `INSTRUMENT pause=2 playing=2 check=1 fs-at-pause=2`,
+`SUMMARY combos=24 edge-painted=0`, healthy check `+f=50 +dec=50 +t=2.0`. New test file: 11/11 on Node 22.23.1 and
+24.20.0. `npm run test:unit` in the /tmp archive: `tests 7463 pass 7455 fail 8` on BOTH Nodes. All 8 are
+sandbox-only: `fatal: not a git repository` (6) and `EISDIR` (2, comment-debt-census TIER 1/2). Their 7 files re-run
+in the repo: `# tests 69 # pass 69 # fail 0`. `npx eslint .` = `6 problems (0 errors, 6 warnings)` on base and HEAD.
+`lint:css` TOTAL 0. `lint:overlay` clean.
