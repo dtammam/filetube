@@ -4,8 +4,8 @@ harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
 status: Building
-next: the gate (adversary + qa + security-brief, fresh, max two rounds) at 1f6e9b1b's successor.
-design: Approved 2026-09-26 @46427eb0
+next: the gate (adversary + qa + security-brief, fresh, max two rounds).
+design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
 gate: pending
 ---
 
