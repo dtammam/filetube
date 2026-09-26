@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.337 Share for non-YouTube downloads, through the REAL app and a REAL ffprobe over a
-// REAL file (plan docs/exec-plans/active/2026-09-26-share-any-download.md). The file is written in
+// REAL file (plan docs/exec-plans/completed/2026-09-26-share-any-download.md). The file is written in
 // the shape a yt-dlp MP4 download actually has: yt-dlp maps `webpage_url` to `purl` AND `comment`
 // (yt_dlp/postprocessor/ffmpeg.py), but without `-movflags +use_metadata_tags` (yt-dlp passes none)
 // the MP4 muxer keeps only `comment` - so the URL is read from `comment` here. Skips, and says so,

@@ -2,7 +2,7 @@
 
 // [UNIT] v1.337 Share for non-YouTube downloads (Dean: "a share button that basically just shares the
 // logged URL of whatever it is that we captured"; watch page only, read from the file itself). Plan:
-// docs/exec-plans/active/2026-09-26-share-any-download.md. The resolver turns the page URL yt-dlp wrote
+// docs/exec-plans/completed/2026-09-26-share-any-download.md. The resolver turns the page URL yt-dlp wrote
 // into a download's `purl` / `comment` tags into the watch route's `sourceShareUrl`.
 const { test } = require('node:test');
 const assert = require('node:assert');

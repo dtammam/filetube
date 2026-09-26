@@ -3,8 +3,8 @@ plan: share-any-download
 harness: v2 · lean
 branch: feat/v1.337-share-any-download
 anchor: outcome
-status: Gate:APPROVED r2 @98801b94
-next: release v1.337.0 (docs/RELEASING.md).
+status: Shipped v1.337.0
+next: none - shipped. Dean owes the device checks (tech-debt #285 g).
 gate: APPROVED r2 @98801b94 (adversary, qa)
 ---
 

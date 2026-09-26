@@ -232,7 +232,7 @@ test('watch page: without navigator.share, clicking Share copies the link to the
 // logged URL of whatever it is that we captured"). The server sends `sourceShareUrl` (the page URL
 // yt-dlp wrote into the file's tags) for an item with `sourceExtractor` and no YouTube link; the watch
 // page shares it AS IT IS - never a `?t=` (that is YouTube's). Plan:
-// docs/exec-plans/active/2026-09-26-share-any-download.md.
+// docs/exec-plans/completed/2026-09-26-share-any-download.md.
 
 const SOURCE_URL = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
 
