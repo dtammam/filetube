@@ -224,7 +224,7 @@ What the plan got wrong or left out:
 
 ## Gate
 
-Gate: APPROVED r1 @c90977a2 - security-brief
+Gate: APPROVED r1 - security-brief, reviewed at c90977a2 (superseded: re-approved r3 @2447efab)
 
 Not completed: no Bash, so no `git diff`. I read the named files at the working tree, which the session snapshot
 says is clean at c90977a2. I also had no network, so I did not read yt-dlp's source. Anything below that depends on
@@ -423,7 +423,7 @@ reveal, the skins toast text, and the parser's `webpageUrl` (the integration pin
 
 ## Gate r2 (review sha 2f949473, code 0e90a9c7)
 
-Gate: APPROVED r2 @2f949473 - security-brief
+Gate: APPROVED r2 - security-brief, reviewed at 2f949473 (superseded: re-approved r3 @2447efab)
 
 Not completed: no Bash (no git diff, tests or mutants run by this seat; the files were read at the working tree, clean at 2f949473); no network (yt-dlp's source was not read; anything that depends on yt-dlp's redirect or DNS behaviour is a suspicion).
 
@@ -434,7 +434,7 @@ No CRITICAL, no WARNING. r1 re-verified: suggestion 1 fixed (run.js:1649-1653 di
 3. INFO (carried from r1, still unverified): yt-dlp re-resolves and follows redirects after guardHop; disclosed in run.js; the MediasiteIE subtitle idea stays a suspicion.
 4. INFO: the new top-level require in relocation.js cannot form a cycle (source-share.js requires nothing); the new withSourceId count (relocation.js:1071) runs after the visibility check (:1023). Verified.
 
-Gate: APPROVED r2 @2f949473 - qa
+Gate: APPROVED r2 - qa, reviewed at 2f949473 (superseded: re-approved r3 @2447efab)
 
 Instruments (Node 22.23.1, this seat): full `npm test` with FILETUBE_TEST_FFMPEG `# tests 9746` `# pass 9746` `# fail 0` `# skipped 0`, EXIT=0; `npm run lint` 0 errors, 6 warnings (pre-existing); `npm run lint:css` `TOTAL 0`. 17 mutants in a /tmp git-archive sandbox of 0e90a9c7 (pristine diff exit 0): 16 RED, 1 survivor (item 2). No CRITICAL, no WARNING. Carriers for `sourceUrl` present: backfill in both reuse arms (orchestrator.js:854, :922), re-init carry-forward (:1191), Phase-2 gap-fill (:1591), terminal consume (:1670), new-file tag fallback (:1695).
 

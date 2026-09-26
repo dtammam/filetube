@@ -3274,5 +3274,11 @@
     "date": "2026-09-26",
     "title": "Share videos from any site, and fullscreen stays put when you swipe",
     "intent": "Videos you downloaded from sites other than YouTube, like Facebook or Reddit, now have a Share button on their page that shares the original link, including ones you downloaded before. In fullscreen video, swiping right no longer throws you out of fullscreen or back to the previous page."
+  },
+  {
+    "version": "1.338.0",
+    "date": "2026-09-26",
+    "title": "Videos from any site get Share, a site icon and Reheat",
+    "intent": "Videos you downloaded from sites like Reddit, Facebook or TikTok now have Share on their cards, in search and in Liked, not just on their page, and show the site's icon where there is no uploader photo. Reheat now refreshes their title, date and views from the original link too, and Pin channel works for them."
   }
 ]
