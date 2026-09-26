@@ -87,7 +87,9 @@ test('v1.110 source-lock: player.getCurrentTime is VOD-only (null for live), and
   const watchSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'watch.js'), 'utf8');
   const fn = watchSrc.slice(watchSrc.indexOf('function handleShareClick()'), watchSrc.indexOf('function handleShareClick()') + 1200);
   assert.match(fn, /player\.getCurrentTime\(\)/, 'reads the live position from the player');
-  assert.match(fn, /if \(typeof t === 'number' && isFinite\(t\) && t >= 1\) \{/, 'prompts only for a meaningful position (>= 1s)');
+  // v1.337: the prompt is YouTube's `?t=` - a non-YouTube download's own link is shared as it is.
+  assert.match(fn, /const isYouTube = base === mediaData\.watchUrl;/, 'the time choice is keyed on the YouTube link');
+  assert.match(fn, /if \(isYouTube && typeof t === 'number' && isFinite\(t\) && t >= 1\) \{/, 'prompts only for a meaningful position (>= 1s), YouTube only');
   assert.match(fn, /label: 'Share video', onPick: \(\) => runShare\(base\)/, 'a plain-link choice');
   assert.match(fn, /withShareStartTime\(base, t\)/, 'a share-at-current-time choice with ?t=');
   assert.match(fn, /runShare\(base\);/, 'falls back to the plain share under 1s / null');

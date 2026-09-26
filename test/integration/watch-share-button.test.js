@@ -227,3 +227,137 @@ test('watch page: without navigator.share, clicking Share copies the link to the
     dom.window.close();
   }
 });
+
+// ---- v1.337: Share for a NON-YouTube download (Dean: "a share button that basically just shares the
+// logged URL of whatever it is that we captured"). The server sends `sourceShareUrl` (the page URL
+// yt-dlp wrote into the file's tags) for an item with `sourceExtractor` and no YouTube link; the watch
+// page shares it AS IT IS - never a `?t=` (that is YouTube's). Plan:
+// docs/exec-plans/completed/2026-09-26-share-any-download.md.
+
+const SOURCE_URL = 'https://www.reddit.com/r/videos/comments/abc123/a_clip/';
+
+function makeResponseStub(responses) {
+  let n = 0;
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    const method = (init && init.method) || 'GET';
+    if (url === '/api/config' && method === 'GET') {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ folders: [], folderSettings: {} }) });
+    }
+    if (url === `/api/videos/${MEDIA_ID}` && method === 'GET') {
+      const body = responses[Math.min(n, responses.length - 1)];
+      n += 1;
+      return Promise.resolve({ ok: true, status: 200, json: async () => body });
+    }
+    return new Promise(() => {});
+  };
+  return { fetchImpl };
+}
+
+function sourceItem() {
+  const base = makeMediaResponse(false);
+  return { ...base, sourceExtractor: 'Reddit', sourceId: 'abc123', sourceShareUrl: SOURCE_URL };
+}
+
+function recordShares(calls) {
+  return (window) => {
+    window.navigator.share = (payload) => { calls.push(payload); return Promise.resolve(); };
+  };
+}
+
+test('v1.337 watch page: a non-YouTube download with a sourceShareUrl gets Share, named "Share the original link"', async () => {
+  const { fetchImpl } = makeResponseStub([sourceItem()]);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  try {
+    await settle();
+    const shareBtn = dom.window.document.getElementById('share-media-btn');
+    assert.ok(shareBtn, 'mounted for a sourceShareUrl');
+    assert.strictEqual(shareLabel(shareBtn), 'Share');
+    assert.strictEqual(shareBtn.title, 'Share the original link');
+    assert.strictEqual(shareBtn.getAttribute('aria-label'), 'Share the original link');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('v1.337 watch page: the YouTube item keeps its "Share the original YouTube link" name', async () => {
+  const { fetchImpl } = makeWatchFetchStub(true);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  try {
+    await settle();
+    const shareBtn = dom.window.document.getElementById('share-media-btn');
+    assert.strictEqual(shareBtn.title, 'Share the original YouTube link');
+    assert.strictEqual(shareBtn.getAttribute('aria-label'), 'Share the original YouTube link');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('v1.337 watch page: Share of a non-YouTube download sends its source URL as is, with NO time choice mid-video', async () => {
+  const calls = [];
+  const { fetchImpl } = makeResponseStub([sourceItem()]);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, recordShares(calls));
+  try {
+    await settle();
+    const player = dom.window.FileTube && dom.window.FileTube.player;
+    assert.ok(player, 'sanity: the player API is up');
+    player.getCurrentTime = () => 42; // mid-video: a YouTube item would be offered "at current time"
+    const shareBtn = dom.window.document.getElementById('share-media-btn');
+    shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(dom.window.document.querySelector('.choice-modal-list'), null, 'no "at current time" choice for another site');
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0].url, SOURCE_URL, 'the logged URL, untouched (no ?t=)');
+    assert.strictEqual(calls[0].title, 'A Shareable Video 🎵');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('v1.337 watch page: a YouTube item mid-video STILL offers the "at current time" choice (unchanged)', async () => {
+  const calls = [];
+  const { fetchImpl } = makeWatchFetchStub(true);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, recordShares(calls));
+  try {
+    await settle();
+    dom.window.FileTube.player.getCurrentTime = () => 42;
+    const shareBtn = dom.window.document.getElementById('share-media-btn');
+    shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await settle();
+    const list = dom.window.document.querySelector('.choice-modal-list');
+    assert.ok(list, 'the choice modal opened');
+    assert.match(list.textContent, /Share at current time \(0:42\)/);
+    assert.strictEqual(calls.length, 0, 'nothing shared until a pick');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('v1.337 watch page: a watchUrl WINS over a sourceShareUrl (a proxy-host YouTube download shares the YouTube link)', async () => {
+  const calls = [];
+  const both = { ...makeMediaResponse(true), sourceExtractor: 'Youtube', sourceShareUrl: 'https://yewtu.be/watch?v=dQw4w9WgXcQ' };
+  const { fetchImpl } = makeResponseStub([both]);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl, recordShares(calls));
+  try {
+    await settle();
+    const shareBtn = dom.window.document.getElementById('share-media-btn');
+    assert.strictEqual(shareBtn.title, 'Share the original YouTube link');
+    shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(calls[0].url, WATCH_URL);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('v1.337 watch page: an item with sourceExtractor but NO sourceShareUrl (untagged file) gets no Share', async () => {
+  const { sourceShareUrl, ...noUrl } = sourceItem(); // eslint-disable-line no-unused-vars
+  const { fetchImpl } = makeResponseStub([noUrl]);
+  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  try {
+    await settle();
+    assert.strictEqual(dom.window.document.getElementById('share-media-btn'), null);
+  } finally {
+    dom.window.close();
+  }
+});

@@ -3268,5 +3268,11 @@
     "date": "2026-09-26",
     "title": "No more thin border around fullscreen video, and a log to catch the black picture",
     "intent": "Fullscreen video now fills the screen edge to edge: the thin light line around it in every theme is gone, on the phone and on the computer. The picture going black after pausing and playing again is not fixed yet: the debug log can now record what the video was doing when it happened, so one capture from your phone can show the cause."
+  },
+  {
+    "version": "1.337.0",
+    "date": "2026-09-26",
+    "title": "Share videos from any site, and fullscreen stays put when you swipe",
+    "intent": "Videos you downloaded from sites other than YouTube, like Facebook or Reddit, now have a Share button on their page that shares the original link, including ones you downloaded before. In fullscreen video, swiping right no longer throws you out of fullscreen or back to the previous page."
   }
 ]
