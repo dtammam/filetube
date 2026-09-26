@@ -3262,5 +3262,11 @@
     "date": "2026-09-26",
     "title": "Twelve more Click colorways, and the Original",
     "intent": "Twelve new Click colors, each matched to a photo of the real thing: the first minis in silver, sky, olive and blush, the 2004 white, the 2007 charcoal classic, and six vivid colors from the nano years (violet, yellow, lime, cobalt, magenta and raspberry). Click (Original) brings back the very first one: the ring of four buttons around a wheel that turns under your thumb, and a grey-green screen with chunky pixel lettering on every menu."
+  },
+  {
+    "version": "1.336.0",
+    "date": "2026-09-26",
+    "title": "No more thin border around fullscreen video, and a log to catch the black picture",
+    "intent": "Fullscreen video now fills the screen edge to edge: the thin light line around it in every theme is gone, on the phone and on the computer. The picture going black after pausing and playing again is not fixed yet: the debug log can now record what the video was doing when it happened, so one capture from your phone can show the cause."
   }
 ]
