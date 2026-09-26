@@ -3,9 +3,9 @@ plan: fullscreen-black-and-border
 harness: v2 · lean
 branch: feat/v1.336-fullscreen-black-border
 anchor: outcome
-status: Gate:CHANGES r1 @5996fbc2
-next: commit the r1 fix round, then re-engage the SAME adversary and qa seats for r2 (the last round before asking Dean).
-gate: pending
+status: Gate:APPROVED r2 @c712521c
+next: release v1.336.0 (docs/RELEASING.md); Dean owes the D1 capture and the D2 device check.
+gate: APPROVED r2 @c712521c (adversary, qa)
 ---
 
 # v1.336.0: the fullscreen video goes black after pause/resume, and the thin white border in fullscreen
@@ -186,12 +186,32 @@ Both seats CHANGES r1 @5996fbc2 (findings in the Gate section). What changed:
   `# fail 0`. The pre-existing panel lock (test/unit/player-lifecycle-release.test.js, the 60-char
   cut) was updated to bind the new cap: 39/39. `npm run lint:css`: `TOTAL 0`. `npm run lint:overlay`: `clean (0 violations)`.
 
+## Carried to v1.337 (gate r2, disclosed; the next release touches the instrument for the D1 fix)
+
+Both seats APPROVED r2 @c712521c with these left open, none blocking (a code change now would be a
+third round):
+
+- adv W1: nothing binds the frame SERIES (`samples.push(s.frames)` survives the tests and the probe).
+  The behaviour at c712521c is measured correct (`fser=25,50,75,100,125,150`). Fix: the probe asserts
+  a climbing series and `mu=1`.
+- adv S1: the series keeps sampling through a pause; a check with `p=1` has a flat tail. Reading
+  guide: judge a check by its `p` first.
+- adv S2: in landscape the panel's 6px left padding sits under the 59px left inset (the first
+  characters of its top lines under the rounded corner). Fix: left/right safe-area padding.
+- adv S3: three mutants survive the unit locks (a stronger non-fullscreen host rule re-adding a
+  border, the wiring inside an `if (false)` at the same indent, `detailCap` reset to 60 after the
+  ternary); the probe would catch the first and third (reasoned, not run).
+- qa b / adv S5: `bgp=0` also reads during the muted gesture-prime play; the comment "bgp=0 while
+  act=video = the sound is not the video's" overstates. Fix: log the sidecar's muted flag.
+- qa a / adv S4: done in this doc (Dean's steps say to leave fullscreen before scrolling).
+
 ## Dean's device check (after v1.336)
 
 - D2: fullscreen, any theme: no light edge.
 - D1: open `<app>/?debugLifecycle=1` once; play a video, fullscreen, pause/resume until it goes black;
-  wait 8 seconds; screenshot the log panel (at the TOP while in fullscreen, newest line first; scroll
-  it for more). Also, if he can: the same
+  wait 8 seconds; screenshot the log panel (at the TOP while in fullscreen, newest line first). For
+  the older lines, leave fullscreen first (the panel ignores touches in fullscreen, so a swipe there
+  moves the picture), then scroll it and screenshot again. Leaving fullscreen adds no entries. Also, if he can: the same
   with Ambient OFF, and once using only the bar's play button.
 
 ## Gate
@@ -330,3 +350,128 @@ Evidence (adversary): probe, base archive: `INSTRUMENT pause=0 playing=0 check=0
 sandbox-only: `fatal: not a git repository` (6) and `EISDIR` (2, comment-debt-census TIER 1/2). Their 7 files re-run
 in the repo: `# tests 69 # pass 69 # fail 0`. `npx eslint .` = `6 problems (0 errors, 6 warnings)` on base and HEAD.
 `lint:css` TOTAL 0. `lint:overlay` clean.
+
+Gate: APPROVED r2 @c712521c - qa
+
+Blocking (CRITICAL/WARNING): none open. Each r1 qa finding against c712521c:
+1. CRITICAL panel cut at 60 - FIXED as prescribed. Re-measured with the r1 method (rendered textContent of
+   #ft-lifecycle-overlay, real Chromium, faux fullscreen): 390x844 `video:check (rs=4 ns=1 p=0 wh=640x360 t=9.7
+   f=246/55 dec=246 pm=- act=video bg=inline_video bgp=1 mu=1 vol=1.00 fs=1 ah=1 amb=0 lock=1 ld=1 +f=150 +dec=150
+   +t=6.0 fser=24,49,74,100,125,150)`; it is the newest entry and its Range rect (17-78 in a 0-295 panel; 17-47 of 0-137
+   at 844x390) lies wholly inside the panel box. The probe now asserts on the panel text and goes red on base.
+2. CRITICAL panel over the bar, a tap cleared the log - FIXED as prescribed. Same real touch tap
+   (Input.dispatchTouchEvent at #pp-btn's centre): 390x844 hit=pp-btn, paused false->true, log 9->12; resume tap
+   hit=SPAN.pp-icon-play, true->false, log 12->14; 844x390 false->true 29->30, true->false 30->30. Panel top=0,
+   pointer-events none in fullscreen; after exit back at the bottom with pointer-events auto (549-844 / 254-390).
+   Probe on base: `TAP pp-btn hit=ft-lifecycle-overlay paused true->true log 2->0 FAIL`, `PANEL FAIL`, EXIT=1.
+3. WARNING probe `dec` comment - FIXED (Chromium fills dec, lacks pm; the iPhone the reverse), and it matches the probe's
+   own output (dec=205, pm=-).
+4. WARNING `act` cannot falsify H2 - FIXED: bgp (bgAudioEl.paused), mu, vol read from the elements; the H2 falsifier
+   is now act=video + bgp=1 + mu=0, which is not circular.
+5. WARNING screenshot overclaim - FIXED: withdrawn, recorded OPEN with Dean's check as the falsifier; his third
+   answer (grey-ish in dark, paused and playing) fits the measured rgb 45-56 ring.
+6. WARNING skins byte-identity - FIXED: recorded run at 5996fbc2 (`TOTAL: 782 shots, 0 differing pixels ...`); the
+   only r2 CSS is scoped to #ft-lifecycle-overlay, which exists only with the flag on (reasoned, not re-shot).
+7-9. SUGGESTIONS - 8 and 9 fixed; 7 declined with the adversary's measurement (6 entries/cycle, 5 cycles in 30).
+   Accepted; the check stays newest and visible even with the ring full (my 844x390 run above was at 30/30).
+
+What the fix round introduced (reviewed; nothing blocking):
+- Chained sample timer: one handle (videoStateCheckTimer) always names the pending timeout (nulled then re-set in
+  each tick); a new 'playing' clears it; each tick re-gates flag + loadGeneration, so close()/teardown's
+  loadGeneration++ drops it; samples are per-series closure state. The comment's claims match the code.
+- `body.ft-css-fullscreen #ft-lifecycle-overlay`: top-level (no @media), the body class is toggled in the same
+  setCssFullscreen as the host class, !important is needed over the inline style, and it is behaviourally bound
+  by the probe's real tap. lint:css TOTAL 0.
+- 400 cap: only for `video:` types; bound by a test that the longest formattable line fits.
+- player-lifecycle-release.test.js edit: intent preserved (non-video types still bind the 60 cut through the
+  ternary literal); the title states the exception.
+
+SUGGESTIONS (non-blocking):
+a. Plan device check says "scroll it for more" while in fullscreen, but the panel is pointer-events:none there, so a
+   swipe goes to the picture (reasoned from pointer-events semantics, not measured on touch). Say "leave fullscreen,
+   then scroll" (the adversary measured 0 entries added on exit). The CSS comment already says "after leaving fullscreen".
+b. player.js header "bgp=0 while act=video = the sound is not the video's" (and the test message) overstates it:
+   primeBackgroundAudioElement plays the sidecar MUTED for a moment, which reads bgp=0. Say "the sidecar is playing",
+   or log its muted flag too.
+
+Evidence (qa r2, Node 22.23.1): `npm run test:unit` -> `# tests 7469` `# pass 7469` `# fail 0` EXIT=0; `npm run lint` ->
+`6 problems (0 errors, 6 warnings)` (all common.js, untouched); `lint:css` -> `TOTAL 0`; `lint:overlay` ->
+`overlay-containment: clean (0 violations)`; `bash .harness/lib/check-markers.sh` -> `check-markers: clean
+(docs/exec-plans)`; `node scripts/faux-fullscreen-probe.js` on HEAD, EXIT=0: `TAP pp-btn hit=(none) paused
+true->false log 3->5 ok`, `INSTRUMENT pause=3 playing=3 check=1 fs-at-pause=3`, `PANEL ok ... fser=25,50,76,101,126,151)`,
+`SUMMARY combos=24 edge-painted=0`, INLINE unchanged; same probe with FT_ROOT = archive of 9946a335, EXIT=1. U+2014
+in 5996fbc2..c712521c: 0. Security: unchanged from r1 (no new surface; the probe's new tap is CDP input only).
+
+Gate: APPROVED r2 @c712521c - adversary
+
+Blocking (CRITICAL/WARNING): none open. One WARNING (W1) is argued safe to ship, disclosed below.
+
+Each r1 adversary finding against c712521c:
+1. CRITICAL, panel cut at 60: FIXED as prescribed. My r2 probe run on a c712521c archive (exit 0) printed
+   `PANEL ok video:check (... bgp=1 mu=1 vol=1.00 fs=1 ah=1 amb=0 lock=1 ld=1 +f=151 +dec=151 +t=6.0
+   fser=25,51,76,101,126,151) ...`. The same probe on a 9946a335 archive (exit 1) printed `PANEL FAIL`.
+   At 393x852 with a 59px top inset, the check is the newest entry and its text lies at y 76-137 inside the
+   0-298 panel. At 852x393 it lies at y 17-47 inside 0-138. The worst-case line, with negative deltas and
+   series, is 298 chars, under the 400 cap.
+2. WARNING, `f` is a cached copy: FIXED differently than I prescribed, and the design holds. Six reads 1s apart,
+   logged once. My own prescription re-checked against WebKit main (reasoning, not a device measurement): the
+   first tick renegotiates the 1s interval, and RemoteMediaPlayerProxy::setVideoPlaybackMetricsUpdateInterval
+   refreshes the cache at once. After that it refreshes on the proxy's cached-state timer, so six seconds span
+   at least two refreshes. The plan now says "flat = no frames OR no layer (cannot tell apart)". That is correct.
+3. WARNING, bisect: FIXED. `git log --oneline v1.311.2..v1.335.0 -- public/js/player.js | wc -l` = 18, as the
+   plan says (14 with --no-merges). My r1 "17" was a miscount. v1.318 ambient and v1.319 bg audio are named.
+4. WARNING, D2 screenshot claim: FIXED. Withdrawn and left OPEN with Dean's check as the falsifier. His
+   "grey-ish" fits the rgb 45-56 ring I measured.
+5. WARNING, surviving mutants: all 7 r1 survivors now die. I re-ran the r1 set adapted to c712521c against both
+   edited test files (`# pass 56` pristine): M4, M7, M8, M9, M10, M11 and M12 go red, and so does every r1 red.
+   New survivors are W1 and S3 below.
+6. and 7. (dec comments, B2 wording): FIXED as prescribed.
+
+W1. WARNING, disclosed and argued safe to ship: the new frame series is not bound, in the tests or in the probe.
+   Mutant N1 (`samples.push(n.frames)` -> `samples.push(s.frames)`) survives the unit tests (56/56). The shipped
+   probe on that mutant also passes: EXIT 0, `PANEL ok ... +f=150 +dec=150 +t=6.0 fser=0,0,0,0,0,0`.
+   So a healthy video would print the "no frames reach the layer" signature, and nothing goes red. These
+   also survive both: N2 (frames read from droppedVideoFrames), N3 (`muted: false`), N4 (`vol: null`),
+   N10 (every other sample null).
+   Why it can ship: at this exact sha the behaviour is MEASURED correct. The healthy series climbs
+   (`fser=25,51,76,101,126,151`), and mu=1 vol=1.00 match the probe's muted video. The instrument is flag-gated and
+   lives for one capture. Fix at the next touch: the probe asserts that the series climbs every second and
+   reads `mu=1` for its muted video.
+
+Fix round, attacked (verified unless marked reasoned):
+- Chained timer: each tick nulls the handle, then re-arms it. A new 'playing' clears the pending tick. Each tick
+  re-gates the flag and loadGeneration, which close() and teardown bump. No leak (reasoned from the code, bound
+  by source locks).
+- The panel rule. Measured in faux fullscreen at 393x852 (insets top 59, bottom 34): rect 0,0 393x298,
+  padding-top 61px, pointer-events none, and elementFromPoint at the panel centre = media-player. So nothing Dean
+  must tap is covered. At 852x393 (insets left/right 59): rect 0,0 852x138. Only #ft-lifecycle-overlay matches
+  it, and that element exists only with the flag on. pocket-render-probe never sets the flag.
+- player-lifecycle-release.test.js: its intent is kept. The non-video 60-char cut is still bound by the exact
+  ternary literal.
+
+SUGGESTIONS (not blocking):
+S1. The series keeps sampling through a pause, and the check still logs. In my 852x393 run the newest check came
+    right after a video:pause. A check with p=1 has a flat tail by design, so say so in the plan's reading guide.
+S2. In landscape the panel pads only the top (padding-left 6px against a 59px left inset). The first characters
+    of the top lines sit under the rounded corner or the Dynamic Island. Add env(safe-area-inset-left/right).
+S3. Blind spots in the unit locks. The probe covers these three (reasoned from its measurements, not run):
+    - M4b: a stronger rule that does not name fullscreen re-adds the border, e.g. `#view-root #player-wrapper
+      {border:1px solid ...}`. The CSS scan only reads rules naming a fullscreen state.
+    - M10b: the wiring inside `if (false) { ... }` at the same indent.
+    - N7: `detailCap = 60;` re-assigned after the ternary.
+    Nothing binds N6 (the safe-area padding dropped).
+S4. On screen, fullscreen shows 4 entries (portrait and landscape both), so the previous, healthy cycle's check
+    is off screen. The panel cannot scroll in fullscreen. Concur with qa (a): "leave fullscreen, then scroll".
+    Leaving adds no entries (measured r1).
+S5. Concur with qa (b): the muted priming play reads bgp=0.
+
+Evidence (adversary r2):
+- Probe on a c712521c archive, EXIT 0: `TAP pp-btn hit=(none) paused true->false log 3->5 ok`,
+  `INSTRUMENT pause=3 playing=3 check=1 fs-at-pause=3`, `SUMMARY combos=24 edge-painted=0`. INLINE is unchanged:
+  `1px solid rgb(226, 226, 226)` 12px, video 17,73 356x200.25 and 255,81 564x317.25.
+- The same probe on a 9946a335 archive, EXIT 1: `TAP pp-btn hit=ft-lifecycle-overlay paused true->true log 2->0
+  FAIL`, `PANEL FAIL`, `SUMMARY combos=24 edge-painted=24`.
+- `npm run test:unit` in the /tmp archive: `tests 7469 pass 7461 fail 8` on Node 22.23.1 AND 24.20.0. All 8 are
+  the same sandbox-only r1 failures (no .git). Their 7 files re-run in the repo at c712521c: `tests 69 pass 69
+  fail 0` on both Nodes.
+- `npx eslint .` 6 problems (0 errors, 6 warnings). `lint:css` TOTAL 0. `lint:overlay` clean.
