@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.338-card-share-saved-link
 anchor: spec
 status: Gate:CHANGES r2 @2f949473 (adversary r1 CHANGES; qa + security-brief APPROVED r2)
-next: fix the adversary's 2 WARNINGs + the qa/adversary suggestions, then the adversary's delta round (the last allowed; round 3 = ask Dean); then release v1.338.0.
+next: r2 fixes at 5cd542f2 + 2d58e6f5; a round 3 (delta: adversary confirms W1/W2, qa + security-brief re-confirm) needs Dean's word; then release v1.338.0.
 design: "Approved 2026-09-26 by Dean (D1-D10 and icon style A, AskUserQuestion; the plan as of commit 46427eb0)"
 gate: pending
 ---
@@ -451,3 +451,27 @@ Instruments (Node 22.23.1, FILETUBE_TEST_FFMPEG, a /tmp git-archive sandbox of 0
 2. WARNING - D7's badge reaches GET /api/channels (lib/media/routes.js ~718: first non-empty avatar per folder, rowid order): a download from another site in a YouTube channel's folder replaces the channel's real photo with the site logo (channel list, the Modern avatar bar; Roku gets an SVG path it cannot load). Measured: base "https://yt3.ggpht.com/real-photo=s88", 0e90a9c7 "/assets/sites/reddit.svg". Fix: prefer a real avatar across the folder, the badge only when none; a mixed-folder test.
 3. SUGGESTION - a saved link that passes sanitizeSourceShareUrl but that isPlausibleMediaUrl refuses sets sourcePage: no spawn, never exhausted, never complete, counted in withSourceId, "try again" forever. Repro /tmp/adv338r2-struct.test.js. Fix: apply isPlausibleMediaUrl when deriving sourcePage and when counting.
 4. SUGGESTION - ytdlp-repull-universal's "the YouTube-only channel capture is skipped" cannot fail: dropping `universal ? null :` (run.js, M08) passes 39/39 (the fixture has no channel_url). Fix: add channel_url / channel_id to the fixture.
+
+## r2 fix record (5cd542f2, tests 2d58e6f5)
+
+- adversary W1: universal re-pull passes `expectSourceId` (the item's `sourceId`, now on each enumerated
+  item); run.js `sameSourceId` (exact, or equal as letters and digits: the bracket's sanitized id) must
+  match Pass A's `parsed.id`, else `{ refused: 'different-video' }`: nothing kept, no Pass B, the item
+  exhausted. An unverified Pass A (timeout, 429, bad output) skips Pass B and stays retryable. An item
+  with no `sourceId` is never fetched (exhausted).
+- adversary W2: GET /api/channels resolves with `{ siteBadge: false }` across the folder; the badge
+  only when no item has a real photo.
+- adversary S3 + qa S1: an intake-refused link is `{ refused: 'implausible-link' }` (structural,
+  exhausted); the summary count needs a plausible link and a `sourceId`. A guardHop DNS miss stays a
+  retryable null (it may be a blip).
+- adversary S4: the universal fixture carries a YouTube channel identity. qa S2: a plain in-root file
+  with a stray link and an id in the count fixture.
+
+Disclosed: a refused link reads "No source link found for this video, so there was nothing to
+refresh" on the per-video Reheat (networkRan false), although its Share still shows the saved link.
+
+Measured (Node 22.23.1): full `npm test` with FILETUBE_TEST_FFMPEG at 5cd542f2: `# tests 9750` `# pass 9750`
+`# fail 0` `# skipped 0`, exit 0; `npm run lint` 0 errors (6 pre-existing warnings). Mutants (a /tmp
+git-archive sandbox, pristine diff 0 after each): 16 at 5cd542f2, 11 RED and 5 survivors (two were hangs
+the runner cancels, one dropped-refusal, the count's `universal` conjunct, the enumerated `sourceId`);
+bound at 2d58e6f5, the 5 re-run: all RED. So 16 of 16.
