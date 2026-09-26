@@ -753,12 +753,50 @@ test('buildYtdlpListArgs: <n> in the duration clause is always the exact bounded
 
 // ---- v1.15.0 item 6: one-off archive bypass (oneOff opt) ------------------
 
-test('buildYtdlpDownloadArgs: a one-off build (opts.oneOff: true) includes --no-download-archive + --force-overwrites, and OMITS --download-archive', () => {
+test('buildYtdlpDownloadArgs: a one-off build (opts.oneOff: true) includes --no-download-archive and OMITS --download-archive', () => {
   const config = makeConfig();
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
   assert.ok(result.includes('--no-download-archive'));
-  assert.ok(result.includes('--force-overwrites'));
   assert.ok(!result.includes('--download-archive'), 'a one-off must never carry the shared --download-archive flag');
+});
+
+// v1.339 S1 (T-S1, D1 "Keep mine"): yt-dlp's existing_file os.remove()s the
+// file already in the library BEFORE downloading when overwrites is on, so a
+// failed re-download lost the only copy. No lane may ever turn it on. Every
+// spelling yt-dlp's options.py maps to dest='overwrites' = True is refused,
+// on BOTH one-off lanes (YouTube and universal) and every format.
+const OVERWRITE_ON_SPELLINGS = ['--force-overwrites', '--yes-overwrites'];
+test('v1.339 S1: a one-off argv NEVER turns on overwrites (YouTube + universal lanes, audio + video) -- a file already in the library is kept', () => {
+  const config = makeConfig();
+  const builds = [
+    args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true }),
+    args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config, ['vid1'], { oneOff: true }),
+    args.buildYtdlpDownloadArgs(baseSub(), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/123456' }),
+    args.buildYtdlpDownloadArgs(baseSub(), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/123456', autoUploaderFolder: true }),
+  ];
+  for (const argv of builds) {
+    assert.ok(argv.includes('--no-download-archive'), 'anti-vacuity: this really is the one-off argv');
+    for (const flag of OVERWRITE_ON_SPELLINGS) {
+      assert.ok(!argv.includes(flag), `a one-off argv must never carry ${flag}: ${JSON.stringify(argv)}`);
+    }
+    // We do not pass --ignore-config, so a user/system yt-dlp config carrying
+    // --force-overwrites must be beaten on the command line (CLI > config).
+    assert.ok(argv.includes('--no-force-overwrites'), `a one-off argv must reset overwrites explicitly: ${JSON.stringify(argv)}`);
+    assert.ok(argv.indexOf('--no-force-overwrites') < argv.indexOf('--'), 'an option, never a positional');
+  }
+});
+
+test('v1.339 S1: a one-off argv prints the FTCHREAL real-download flag (the only reachable "already in your library" signal); a subscription argv never does', () => {
+  const config = makeConfig();
+  const printPair = ['--print', 'after_move:FTCHREAL %(__real_download)j'];
+  assert.equal(args.ONE_OFF_REAL_DOWNLOAD_PRINT_TEMPLATE, printPair[1], 'the fixed literal, byte for byte');
+  const hasPair = (argv) => argv.some((tok, i) => tok === printPair[0] && argv[i + 1] === printPair[1]);
+  assert.ok(hasPair(args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true })), 'YouTube one-off');
+  assert.ok(hasPair(args.buildYtdlpDownloadArgs(baseSub(), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/123456' })), 'universal one-off');
+  assert.ok(!hasPair(args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'])), 'subscription argv unchanged');
+  // Before `--` (a positional after `--` would be a URL, not an option).
+  const oneOff = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+  assert.ok(oneOff.indexOf(printPair[1]) < oneOff.indexOf('--'));
 });
 
 test('buildYtdlpDownloadArgs: a subscription-cycle build (no opts / oneOff falsy) keeps --download-archive UNCHANGED and carries neither one-off flag (regression)', () => {
@@ -767,6 +805,7 @@ test('buildYtdlpDownloadArgs: a subscription-cycle build (no opts / oneOff falsy
   assert.ok(noOpts.includes('--download-archive'));
   assert.ok(!noOpts.includes('--no-download-archive'));
   assert.ok(!noOpts.includes('--force-overwrites'));
+  assert.ok(!noOpts.includes(args.ONE_OFF_REAL_DOWNLOAD_PRINT_TEMPLATE));
 
   const explicitlyFalse = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: false });
   assert.ok(explicitlyFalse.includes('--download-archive'));
@@ -774,19 +813,26 @@ test('buildYtdlpDownloadArgs: a subscription-cycle build (no opts / oneOff falsy
   assert.ok(!explicitlyFalse.includes('--force-overwrites'));
 });
 
-test('buildYtdlpDownloadArgs: the one-off and subscription code paths diverge ONLY in the archive-related flags -- everything else (embed/format/confinement/"--"discipline) is identical', () => {
+test('buildYtdlpDownloadArgs: the one-off and subscription code paths diverge ONLY in the archive/overwrite flags and the one-off FTCHREAL print -- everything else (embed/format/confinement/"--"discipline) is identical', () => {
   const config = makeConfig();
   const subscriptionArgs = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
   const oneOffArgs = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
 
-  const archiveRelated = new Set(['--download-archive', '--no-download-archive', '--force-overwrites']);
+  const archiveRelated = new Set(['--download-archive', '--no-download-archive', '--no-force-overwrites']);
   // Strip the archive path value (which immediately follows --download-archive
   // in the subscription array) before comparing, alongside the flag tokens.
+  // v1.339 S1: the one-off's `--print <FTCHREAL template>` pair is the other
+  // deliberate divergence (stripped as a PAIR, so the shared FTCHMETA
+  // `--print` stays compared).
   const stripArchiveRelated = (arr) => {
     const out = [];
     for (let i = 0; i < arr.length; i++) {
       if (archiveRelated.has(arr[i])) {
         if (arr[i] === '--download-archive') i += 1; // also skip its path value
+        continue;
+      }
+      if (arr[i] === '--print' && arr[i + 1] === args.ONE_OFF_REAL_DOWNLOAD_PRINT_TEMPLATE) {
+        i += 1;
         continue;
       }
       out.push(arr[i]);
