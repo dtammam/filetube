@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
 status: Gate:CHANGES r1 @8919ba55
-next: gate r1 CHANGES on the safety checkpoint - fix round F1 (scan keep-guard regression), F2 (audio one-off deletes the video), F3 (config Save with no base + QA items), then r2 with the SAME seats; look base = L1 + R1 merged, L2 building
+next: fix round F1-F3 merged at e305fe56; dual-Node full suite, then r2 delta with the SAME seats; then merge build/look-base (L1 + L2 + R1) and gate that delta
 design: pending
-gate: CHANGES r1 @8919ba55 (adversary + qa CHANGES, security-brief APPROVED); fix round F1-F3 in progress
+gate: CHANGES r1 @8919ba55 (adversary + qa CHANGES, security-brief APPROVED); fix round F1-F3 merged, r2 pending
 ---
 
 # Audit: FOUC / layout shift / TOCTOU across the app
@@ -380,7 +380,52 @@ this branch.
   being moved to the trash -- try restoring it again in a moment". Shape (a) (re-check after the
   await) has a hole: a restore already past its `alreadyLinked` read still passes the re-check.
 
+### Fix round r1 -> r2 (merged at e305fe56)
+
+- **F1 (C1):** a prune candidate is kept only when `walkWouldInclude(filePath, walkedRoots)`: under a
+  configured root that existed at walk time, not inside the trash folder, not a yt-dlp intermediate
+  / in-flight temp, a media extension, a regular file by lstat; the walk now calls the SAME helpers
+  (`isWalkedDirName`, `isSkippedTempName`, `isWalkedMediaExt`). New scan-prune-walk-scope tests:
+  8/8 red on bd935043, 8/8 green on base cbb6ef8d and on the fix. The "yt-dlp disabled" case does
+  not reproduce (a disabled module's existing folder stays a scan root, D1); the bound case is a
+  repointed download folder. Also: T-S4 retired record is an explicit skip + test; the S4 hold
+  helpers race the restore so a release mutant fails in ~2s (was a ~400s hang); G2 M14 bound (the
+  harm is real: an unconsumed downloadMeta capture after S1). Survivor C1-relchk masked (documented).
+- **F2 (C2, W1):** audio ONE-OFFS get `-f bestaudio/best -k` plus `post_process:FTCHSRC` /
+  `after_move:FTCHDST` prints; a pure planner deletes a source only when this job downloaded it
+  (`real === true`), it is not the final file, and it shares the final's folder + stem;
+  `removeFreshOneOffSources` lstat + realpath-under-root re-checks. Status: "Already in your
+  library" only when nothing was made from an existing file. Real yt-dlp 2026.08.19 through the
+  real route: before, the folder ended with only the mp3; after, the mp4 is byte-identical beside
+  the new mp3; a fresh audio download leaves only the mp3. Deviations: failed runs clean nothing
+  (a rare post-conversion failure leaves the fresh video, safe); `-f` overrides a user config `-f`
+  for audio one-offs; `-k` can leave other post-processor originals (a converted `.srt`, an
+  `X.orig.<ext>`) - leftovers, never loss.
+- **F3 (W + QA items):** Save refuses without a loaded base ("Could not load your folders - reload
+  the page before saving"); a failed/partial loadConfig never leaves a savable empty form; `init()`
+  resets the base (a second wipe path: a SPA revisit could save an empty form under the previous
+  visit's still-current version); the sidebar persist refuses a GET without `configVersion`. Server:
+  a LEGACY (no base) POST that would remove every stored folder is refused 409 inside the mutator
+  (four existing tests now send the base). The POST body runs in a try/catch wrapper (no Express 4
+  hang). skippedFolders never lists the synthetic download root; comments corrected; trash 409 texts
+  unified on " - " and no absolute trash path.
+- **L2 (look base):** probe-measured (copied): mobile home cold CLS 0.037 -> 0.0065, first-launch
+  0.19 stays (no remembered flags yet), card growth on reveal 52.4px -> 0, books cold 0.6659 ->
+  0.0027, TV stuck shimmer 1 -> 0, bottom nav 0 re-spaces on a warm launch. Deviation: pre-paint
+  inline reserve scripts in all 11 header shells (the first frame paints before common.js). Dean
+  ruled (2026-09-27): leave the Modern one-line-title card nudge (15px) and the "Playing from" line.
+
 ## For the tracker (found while building, not fixed here)
+
+- F2: subscription audio has the same C2 mechanism if an audio subscription and a video of the same
+  id share a folder (archive usually prevents it); the subtitle converter can delete a user's own
+  same-name `.srt` on video one-offs; the escaped-download quarantine can delete a user's own
+  pre-existing symlink (the link, not its target).
+- L2: Modern sort / view toggle mount after first paint (header re-spaces once, 80-92px); watch
+  channel row grows when Subscribe / Pin show on mobile (cold 0.0752); desktop home cold 0.0553 from
+  sidebar Library entries + toolbar widening; TV has no grid skeleton.
+- R1: `music.js prewarmThenLoad` has no view-abort check (late loadTrack after nav-away); podcasts
+  `consumeDeepLink` early lookup failure clears the grid (pre-existing).
 
 - S2b: a new folder path that does not exist is silently not added from the user's view
   (`skippedFolders` is response-only).
