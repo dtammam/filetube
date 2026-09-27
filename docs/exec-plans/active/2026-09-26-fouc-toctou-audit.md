@@ -3,16 +3,16 @@ plan: fouc-toctou-audit
 harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
-status: Building
-next: safety slices S1-S5 + S2b merged; dual-Node full suite, then the checkpoint gate (adversary + qa + security-brief) on the safety sha; look/race slices L1/L2/R1 build on build/look-base
+status: Gate:CHANGES r1 @8919ba55
+next: gate r1 CHANGES on the safety checkpoint - fix round F1 (scan keep-guard regression), F2 (audio one-off deletes the video), F3 (config Save with no base + QA items), then r2 with the SAME seats; look base = L1 + R1 merged, L2 building
 design: pending
-gate: pending
+gate: CHANGES r1 @8919ba55 (adversary + qa CHANGES, security-brief APPROVED); fix round F1-F3 in progress
 ---
 
 # Audit: FOUC / layout shift / TOCTOU across the app
 
-Captured 2026-09-26 (Dean, ROADMAP "Audit: TOCTOU / FOUC across the app"). **Audit only - nothing is
-built.** The output is a ranked findings list for Dean's triage; fixes are a later plan.
+Captured 2026-09-26 (Dean, ROADMAP "Audit: TOCTOU / FOUC across the app"). Started as an audit (the
+findings below); after Dean's triage the same plan carries the fix branch (see "Triage and build plan").
 
 ## The ask (Dean's words, 2026-09-25)
 
@@ -338,7 +338,9 @@ this branch.
   original only after ffmpeg succeeds: bytes/inode may change, the media is never lost; a failing
   post-processor leaves the original intact (bound by test).
 - **S1 single-flight key** = target + format + filetype + explicit folder (an audio request is never
-  swallowed by an in-flight video job of the same id).
+  swallowed by an in-flight video job of the same id). Quality is not in the key (a join takes the
+  running job's quality) and the key uses the REQUESTED folder, not the resolved one; `runExclusive`
+  serialises one-offs, so two jobs are never concurrent writers.
 - **S3 found two adjacent data-loss gaps** (G1, G2 above) - added as slice S5 on the same branch
   (Dean's "I cannot lose data" rule; same checkpoint gate).
 - **S3 T-S4 skip:** on a failed live re-check the file is skipped for the pass (not indexed), so the
@@ -399,3 +401,35 @@ this branch.
 - S1: subscription downloads also lack `--ignore-config` / `--no-force-overwrites` (subscription argv
   byte-parity lock kept; the archive skips known ids, so exposure is a user config + an on-disk
   collision).
+
+## Gate
+
+Gate: APPROVED r1 @8919ba55 — security-brief
+Gate: CHANGES r1 @8919ba55 — qa
+Gate: CHANGES r1 @8919ba55 — adversary
+
+r1 findings (seat reports, summarized by the Architect; repros live in the seats' scratch dirs):
+- **C1 (qa + adversary, CRITICAL, regression from S3):** the T-S2 keep-guard (orchestrator.js
+  ~1934-1950) keeps any prune candidate that is live with its file on disk, so a folder removed in
+  Settings (files still on disk), the disabled yt-dlp root, and newly excluded files are never pruned;
+  base prunes, 8919ba55 keeps (both seats reproduced). Also breaks roots.js:72-76's documented escape
+  hatch. Fix: keep only a candidate whose file lies under a root this scan WALKED and passes the
+  walker's inclusion rule; promote "removing a configured folder whose files remain prunes its items
+  and per-user state".
+- **C2 (adversary, CRITICAL, pre-existing, breaks D1 and the new status text):** an AUDIO one-off for a
+  URL whose video is in the library: yt-dlp's `existing_video_file` picks up the existing mp4 as the
+  download, FFmpegExtractAudio converts it and deletes the mp4, and FileTube reports "Already in your
+  library" (measured with real yt-dlp 2026.08.19 + ffmpeg-static; YoutubeDL.py:3472-3479,
+  postprocessor/ffmpeg.py:476-529).
+- **W (adversary, pre-existing):** Settings opened while GET /api/config fails leaves
+  `configuredFolders=[]`, `configBaseVersion=null`; Save posts `{folders:[],folderSettings:{}}` with no
+  base, the legacy path wipes the folder config (and, once C1 is fixed, prunes the library).
+- **W1 (qa):** lib/ytdlp/index.js ~3966-3974 `recordOneShotInArchive` doc still says a one-off
+  "still actually re-downloads" - a lying comment on a data-loss surface.
+- Suggestions: unify the new trash / restore 409 texts on " - "; drop the absolute trashPath from the
+  "different file" 409; the skippedFolders comment is wrong for the synthetic download root; move
+  S2b's `folderStore.list()` read inside the try (Express 4 hang); routes.js ~411-413 comment
+  overstates the awaits; T-S4 `!!liveTrashRec` conjunct survives (test the retired-record case
+  directly); S4 release mutants only die by a 400s hang (add a bounded assertion); G2 M14
+  (`freshlyScannedIds.delete`) unbound; single-flight key omits quality / uses the requested folder
+  (runExclusive serialises one-offs, so no second writer) - noted in Deviations.
