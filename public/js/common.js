@@ -57,6 +57,13 @@ const CHROME_ICON_SVG = {
   // v1.339 (L2): the bottom-nav Subs tab glyph (was the `.icon-refresh` mask, which
   // decode-lags on iOS) - shared with the shells' pre-paint reserve. rounded/refresh.svg.
   refresh: { vb: '0 -960 960 960', d: 'M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-70q0-17 11.5-28.5T760-800q17 0 28.5 11.5T800-760v200q0 17-11.5 28.5T760-520H560q-17 0-28.5-11.5T520-560q0-17 11.5-28.5T560-600h128q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q68 0 124.5-34.5T692-367q8-14 22.5-19.5t29.5-.5q16 5 23 21t-1 30q-41 80-117 128t-169 48Z' },
+  // v1.340 (Dean: "use the same notification glyph versus emoji"): the header bell's own
+  // path (notifications.svg, the one it always drew) and Material's notifications_off
+  // (upstream google/material-design-icons src/social/notifications_off/materialicons/24px.svg,
+  // its empty 0 0 24 24 box path dropped). The header bell, the watch page's Notify button and
+  // the Subscriptions rows all draw from these two, so the bell is one glyph everywhere.
+  bell: { vb: '0 0 24 24', d: 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z' },
+  bellOff: { vb: '0 0 24 24', d: 'M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01L18 14.68z' },
 };
 
 // The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
@@ -72,22 +79,43 @@ function chromeIconMarkup(name, extraClass) {
 
 // A live SVG element for the same glyph, built in the SVG namespace so it is
 // robust under both browsers and jsdom (the bell/queue use the same approach).
-function chromeIconEl(name, extraClass) {
+// `doc` (optional, v1.340) = the document to build in - a caller holding an element from
+// another document (a test's JSDOM) passes its ownerDocument; default the page's.
+function chromeIconEl(name, extraClass, doc) {
   const g = CHROME_ICON_SVG[name];
+  const d = doc || (typeof document !== 'undefined' ? document : null);
   // Real browsers always have createElementNS (mandatory: an SVG built via the
   // plain createElement lands in the HTML namespace and never renders). Some
   // lightweight unit-test document stubs model only createElement, so degrade to
   // null there and let callers skip the (incidental) glyph.
-  if (!g || typeof document === 'undefined' || typeof document.createElementNS !== 'function') return null;
+  if (!g || !d || typeof d.createElementNS !== 'function') return null;
   const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
+  const svg = d.createElementNS(NS, 'svg');
   svg.setAttribute('class', 'chrome-icon' + (extraClass ? ' ' + extraClass : ''));
   svg.setAttribute('viewBox', g.vb);
   svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(NS, 'path');
+  const path = d.createElementNS(NS, 'path');
   path.setAttribute('d', g.d);
   svg.appendChild(path);
   return svg;
+}
+
+// v1.340 (Dean, 2026-09-26: "notify button shifts unreasonably - should be stable"): the
+// label of a TWO-STATE button whose words change width (Notify / Notifying, Subscribe /
+// Subscribed, Pin channel / Pinned). Every label is laid out in ONE grid cell, so the
+// button is always as wide as the longest and nothing beside it moves on a tap; only the
+// current one is visible (the idle ones are `visibility:hidden`, which also keeps them
+// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON_SVG name }, the
+// glyph drawn INSIDE that label's slot, before its words - inside, so the button's
+// baseline stays the text's (a leading svg item would set a flex button's baseline to
+// its bottom edge and drop the neighbouring buttons ~3px). `data-label` carries the
+// current label for tests and CSS. Labels are fixed literals at every call site; they
+// are escaped anyway.
+function stableToggleLabelHtml(current, labels, glyphs) {
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const slots = labels.map((l) => '<span class="btn-label-slot"' + (l === current ? '' : ' data-idle') + '>'
+    + (glyphs && glyphs[l] ? chromeIconMarkup(glyphs[l], 'btn-glyph') : '') + esc(l) + '</span>').join('');
+  return '<span class="btn-label-stack" data-label="' + esc(current) + '">' + slots + '</span>';
 }
 
 // v1.102 (tranche 4 shimmer): the ART-DECODE reveal. Every card image (album/
@@ -3978,7 +4006,7 @@ function injectNotificationBellIfEnabled() {
       svg.setAttribute('height', '22');
       svg.setAttribute('aria-hidden', 'true');
       const bellPath = document.createElementNS(svgNs, 'path');
-      bellPath.setAttribute('d', 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z');
+      bellPath.setAttribute('d', CHROME_ICON_SVG.bell.d); // the shared bell (v1.340)
       bellPath.setAttribute('fill', 'currentColor');
       svg.appendChild(bellPath);
       bellBtn.appendChild(svg);
@@ -16969,7 +16997,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
     // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
     // and source-locks the static bottom-nav markup against chromeIconMarkup.
-    CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
+    CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl, stableToggleLabelHtml,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).

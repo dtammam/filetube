@@ -115,14 +115,14 @@ test('AC1: a bell tap = ONE PATCH, NO list re-fetch, the SAME row element, and t
     const bell = bellOf(rowBefore);
     assert.ok(bell, 'the row has a bell');
     assert.strictEqual(bell.className, 'btn btn-chip sub-row-bell');
-    assert.strictEqual(bell.textContent, '🔕');
+    assert.strictEqual(bell.getAttribute('data-glyph'), 'bellOff');
 
     click(window, bell);
     // Gate r1 (adversary ME/ME2): the in-flight disable is bound HERE, before the
     // response lands. (Do NOT bind it by double-dispatching clicks and counting
     // PATCHes - jsdom delivers synthetic clicks to disabled buttons.)
     assert.strictEqual(bell.disabled, true, 'the bell is disabled for the flight');
-    await settle(() => patches(calls).length === 1 && bell.textContent === '🔔', 'the in-place update after the PATCH');
+    await settle(() => patches(calls).length === 1 && bell.getAttribute('data-glyph') === 'bell', 'the in-place update after the PATCH');
 
     assert.strictEqual(patches(calls).length, 1, 'exactly one PATCH');
     assert.deepStrictEqual(patches(calls)[0].body, { pushBell: true });
@@ -138,12 +138,12 @@ test('AC1: a bell tap = ONE PATCH, NO list re-fetch, the SAME row element, and t
 
     // The record was patched: the SECOND tap sends the flipped value.
     click(window, bell);
-    await settle(() => patches(calls).length === 2 && bell.textContent === '🔕', 'the second toggle');
+    await settle(() => patches(calls).length === 2 && bell.getAttribute('data-glyph') === 'bellOff', 'the second toggle');
     assert.deepStrictEqual(patches(calls)[1].body, { pushBell: false }, 'the next tap reads the patched record');
     assert.strictEqual(bell.className, 'btn btn-chip sub-row-bell');
     assert.strictEqual(listFetches(calls), loadsBefore, 'still no list re-fetch');
     // The other row is untouched.
-    assert.strictEqual(bellOf(rowOf(document, 's2')).textContent, '🔔');
+    assert.strictEqual(bellOf(rowOf(document, 's2')).getAttribute('data-glyph'), 'bell');
   } finally {
     handlers.destroy();
   }
@@ -158,7 +158,7 @@ test('AC1 (anti-echo): the glyph follows the RESPONSE - a route that answers pus
     await settle(() => patches(calls).length === 1 && bell.disabled === false, 'the PATCH round trip');
     await tick();
     assert.deepStrictEqual(patches(calls)[0].body, { pushBell: true }, 'the request asked for on');
-    assert.strictEqual(bell.textContent, '🔕', 'the RESPONSE said off - the glyph stays off');
+    assert.strictEqual(bell.getAttribute('data-glyph'), 'bellOff', 'the RESPONSE said off - the glyph stays off');
     assert.strictEqual(bell.className, 'btn btn-chip sub-row-bell');
     assert.strictEqual(bell.getAttribute('aria-pressed'), 'false');
     // and the record followed the response too: the next tap asks for on AGAIN
@@ -180,14 +180,14 @@ test('AC2: a 403 leaves the row byte-identical (class/aria/glyph/identity), logs
     await settle(() => !!rowOf(document, 's2'), 'the initial list render');
     const row = rowOf(document, 's2');
     const bell = bellOf(row);
-    const snapshot = { cls: bell.className, label: bell.getAttribute('aria-label'), pressed: bell.getAttribute('aria-pressed'), glyph: bell.textContent };
-    assert.strictEqual(snapshot.glyph, '🔔', 's2 starts ON');
+    const snapshot = { cls: bell.className, label: bell.getAttribute('aria-label'), pressed: bell.getAttribute('aria-pressed'), glyph: bell.getAttribute('data-glyph'), svg: bell.innerHTML };
+    assert.strictEqual(snapshot.glyph, 'bell', 's2 starts ON');
     click(window, bell);
     await settle(() => patches(calls).length === 1 && errors.length === 1 && bell.disabled === false, 'the failed round trip');
     await tick();
     assert.strictEqual(rowOf(document, 's2'), row, 'row identity unchanged');
     assert.strictEqual(bellOf(row), bell, 'bell identity unchanged');
-    assert.deepStrictEqual({ cls: bell.className, label: bell.getAttribute('aria-label'), pressed: bell.getAttribute('aria-pressed'), glyph: bell.textContent }, snapshot, 'the row is exactly as it was');
+    assert.deepStrictEqual({ cls: bell.className, label: bell.getAttribute('aria-label'), pressed: bell.getAttribute('aria-pressed'), glyph: bell.getAttribute('data-glyph'), svg: bell.innerHTML }, snapshot, 'the row is exactly as it was');
     assert.strictEqual(errors.length, 1, 'logged exactly once');
     assert.match(errors[0], /Forbidden: manage-subscriptions required/, 'the server\'s own error text is surfaced');
     assert.strictEqual(listFetches(calls), 1, 'no list re-fetch on failure either');
@@ -227,11 +227,11 @@ test('AC7 (gate r1 adversary MB): a list rebuild MID-FLIGHT (Pause -> loadSubscr
     const newRow = rowOf(document, 's1');
     const newBell = bellOf(newRow);
     assert.notStrictEqual(newBell, oldBell, 'a fresh bell was built');
-    assert.strictEqual(newBell.textContent, '🔕', 'rebuilt from the server list (still off)');
+    assert.strictEqual(newBell.getAttribute('data-glyph'), 'bellOff', 'rebuilt from the server list (still off)');
 
     // Now the bell response lands: the NEW row flips, the NEW record is patched.
     releaseBell();
-    await settle(() => newBell.textContent === '🔔', 'the in-place update lands on the rebuilt row');
+    await settle(() => newBell.getAttribute('data-glyph') === 'bell', 'the in-place update lands on the rebuilt row');
     assert.strictEqual(rowOf(document, 's1'), newRow, 'no further rebuild');
     assert.strictEqual(newBell.className, 'btn btn-chip sub-row-bell sub-row-bell-active');
     click(window, newBell);
@@ -250,12 +250,12 @@ test('applyBellUpdateInPlace: keyed by id through rowElementsById; a missing row
   const row = dom.window.document.querySelector('.sub-row');
   const bell = row.querySelector('.sub-row-bell');
   applyBellState(bell, false);
-  assert.strictEqual(bell.textContent, '🔕');
+  assert.strictEqual(bell.getAttribute('data-glyph'), 'bellOff');
   assert.strictEqual(applyBellUpdateInPlace({ x: row }, 'x', true), true);
   assert.strictEqual(bell.className, 'btn btn-chip sub-row-bell sub-row-bell-active');
   assert.strictEqual(bell.getAttribute('aria-pressed'), 'true');
   assert.strictEqual(applyBellUpdateInPlace({ x: row }, 'x', 'true'), true, 'a non-boolean truthy is OFF (the record\'s boolean truth)');
-  assert.strictEqual(bell.textContent, '🔕');
+  assert.strictEqual(bell.getAttribute('data-glyph'), 'bellOff');
   assert.strictEqual(applyBellUpdateInPlace({ x: row }, 'missing', true), false, 'unknown id -> no-op');
   assert.strictEqual(applyBellUpdateInPlace({}, 'x', true), false, 'no row -> no-op');
   assert.strictEqual(applyBellUpdateInPlace(null, 'x', true), false);

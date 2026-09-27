@@ -51,6 +51,14 @@ test('T11: buildMusicRowCardHtml escapes title + carries the album art', () => {
   assert.match(html, /albumart\/a%22b/);
 });
 
+test('v1.340 (#287 e): the Continue-listening tile asks for the 256 rendition, keyed on the album artId', () => {
+  const sized = main.buildMusicRowCardHtml({ id: 'trk9', artId: 'rep1', title: 'Song', artist: 'A' });
+  assert.match(sized, /src="\/albumart\/rep1\?s=256"/, 'the album representative, sized for a 92px tile at 2x');
+  assert.match(sized, /href="\/music\?play=trk9"/, 'the link still resumes the TRACK, not the art id');
+  const legacy = main.buildMusicRowCardHtml({ id: 'trk9', title: 'Song', artist: 'A' });
+  assert.match(legacy, /src="\/albumart\/trk9\?s=256"/, 'a payload without artId falls back to the track id');
+});
+
 test('T11 (gate note): the Continue-listening CARD deep-links /music?play=<id> so the resume pointer is consumed', () => {
   const html = main.buildMusicRowCardHtml({ id: 'trk9', title: 'Song', artist: 'A' });
   assert.match(html, /href="\/music\?play=trk9"/, 'the card resumes the specific track, not the generic /music');

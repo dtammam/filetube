@@ -4928,6 +4928,21 @@ a.sub-row-channel-link:focus-visible {
   flex: none;
 }
 
+/* v1.340: a two-state button's label (common.js stableToggleLabelHtml). Every label
+   shares ONE grid cell, so the button is as wide as its longest label in both states
+   and the row beside it never shifts on a tap; only the current label is visible. */
+.btn-label-stack { display: inline-grid; }
+.btn-label-slot { grid-area: 1 / 1; text-align: center; }
+.btn-label-slot[data-idle] { visibility: hidden; }
+/* A hidden label still sets the line box: the fallback-font star in "Pinned ★" is taller than
+   the text, which moved the baseline of an inline-flex button and dropped it ~2px below its
+   neighbours (probed at 390px, every era). Middle-align these buttons so their resting row is
+   level whatever their labels hold. */
+.btn:has(> .btn-label-stack) { vertical-align: middle; }
+/* The glyph before the words (the Notify bell), inline in its slot: a touch larger than
+   the text, like the emoji it replaced, with the emoji's space after it. */
+.btn .btn-glyph { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin-right: 0.3em; }
+
 .icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
 .icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }
 .icon-cog { -webkit-mask-image: url(/assets/icons/settings.svg); mask-image: url(/assets/icons/settings.svg); }

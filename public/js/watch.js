@@ -2357,7 +2357,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function applySubscribeButtonLabel(subscribed) {
       if (!subscribeBtn) return;
-      subscribeBtn.textContent = subscribed ? 'Subscribed' : 'Subscribe';
+      // v1.340: a stable width (stableToggleLabelHtml) - the row beside it never jumps.
+      subscribeBtn.innerHTML = stableToggleLabelHtml(subscribed ? 'Subscribed' : 'Subscribe', ['Subscribed', 'Subscribe']);
       // Reuses the existing era-themed .btn/.btn-primary tokens (no new CSS)
       // -- "Subscribed" drops the red primary styling for the neutral .btn
       // look, "Subscribe" keeps it, mirroring the real YouTube's own
@@ -2466,7 +2467,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // CSS.
     function applyPinButtonLabel(pinned) {
       if (!pinBtn) return;
-      pinBtn.textContent = pinned ? 'Pinned ★' : 'Pin channel';
+      pinBtn.innerHTML = stableToggleLabelHtml(pinned ? 'Pinned ★' : 'Pin channel', ['Pin channel', 'Pinned ★']); // v1.340: stable width
       pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
       pinBtn.classList.toggle('btn-primary', !pinned);
     }
@@ -2475,7 +2476,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // persisted truth is the subscription record (PATCH /api/subscriptions/:id).
     function applyBellButtonLabel(on) {
       if (!bellBtn) return;
-      bellBtn.textContent = on ? '🔔 Notifying' : '🔕 Notify';
+      // v1.340 (Dean): the header's own bell glyph (slashed when off), never the emoji
+      // pair, and a stable width so "Pin channel" beside it holds still on every tap.
+      bellBtn.innerHTML = stableToggleLabelHtml(on ? 'Notifying' : 'Notify', ['Notifying', 'Notify'], { Notifying: 'bell', Notify: 'bellOff' });
       bellBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
       bellBtn.setAttribute('aria-label', on ? 'Push notifications for this channel are on' : 'Push notifications for this channel are off');
     }

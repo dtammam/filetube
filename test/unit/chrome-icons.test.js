@@ -57,6 +57,8 @@ const NAME_ASSET = {
   menu: 'menu', star: 'star',
   // v1.339 (L2): the bottom-nav Subs tab (and its pre-paint reserve).
   refresh: 'refresh',
+  // v1.340: the bell pair (header bell, watch Notify, Subscriptions rows).
+  bell: 'notifications', bellOff: 'notifications_off',
 };
 
 function assetSvg(asset) {

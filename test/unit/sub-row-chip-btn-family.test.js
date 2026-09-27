@@ -128,15 +128,15 @@ test('AC4: the 2009 gloss (light + dark) still targets .btn - the chip inherits 
   assert.doesNotMatch(CSS, /\[data-theme="[0-9]+"\][^{]*\.btn-chip(?![\w-])/, 'no per-era hand copy for .btn-chip');
 });
 
-test('AC3: ONE writer of the bell state - the glyph literals appear exactly once (in applyBellState), the builder calls it, and the writer sets class + aria + glyph together', () => {
-  const on = (JS.match(/🔔/g) || []).length;
-  const off = (JS.match(/🔕/g) || []).length;
-  assert.strictEqual(on, 1, 'the ON glyph is written in exactly one place');
-  assert.strictEqual(off, 1, 'the OFF glyph is written in exactly one place');
+test('AC3: ONE writer of the bell state - the glyph is chosen in exactly one place (applyBellState), the builder calls it, and the writer sets class + aria + glyph together', () => {
+  // v1.340: the emoji pair became the shared bell glyphs (common.js CHROME_ICON_SVG bell /
+  // bellOff), so the one-writer census counts the glyph NAMES.
+  assert.strictEqual((JS.match(/'bellOff'/g) || []).length, 1, 'the OFF glyph is chosen in exactly one place');
+  assert.doesNotMatch(JS, /\u{1F514}|\u{1F515}|🔔|🔕/u, 'no emoji bell is left');
   const fnStart = JS.indexOf('function applyBellState(bellBtn, on) {');
   assert.ok(fnStart !== -1);
   const fn = JS.slice(fnStart, JS.indexOf('\n}', fnStart));
-  assert.match(fn, /🔔/);
+  assert.match(fn, /'bellOff'/);
   assert.match(fn, /aria-pressed/);
   assert.match(fn, /aria-label/);
   assert.match(fn, /'btn btn-chip sub-row-bell sub-row-bell-active' : 'btn btn-chip sub-row-bell'/);
@@ -145,11 +145,13 @@ test('AC3: ONE writer of the bell state - the glyph literals appear exactly once
   const rowFn = JS.slice(rowStart, JS.indexOf('\n}', rowStart));
   assert.match(rowFn, /applyBellState\(bellBtn, sub\.pushBell === true\)/);
   assert.doesNotMatch(rowFn, /bellBtn\.className =/, 'the builder never writes the bell class itself');
-  // executed: the writer is the same function the module exports
-  const { document } = new JSDOM('<button></button>').window;
+  // executed: the writer is the same function the module exports, and it DRAWS the glyph
+  const { CHROME_ICON_SVG } = require('../../public/js/common.js');
+  const { document } = new JSDOM('<button>old</button>').window;
   const b = document.querySelector('button');
+  const drawn = () => { const svgs = b.querySelectorAll('svg'); return svgs.length === 1 ? svgs[0].querySelector('path').getAttribute('d') : `${svgs.length} svgs`; };
   applyBellState(b, true);
-  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.textContent], ['btn btn-chip sub-row-bell sub-row-bell-active', 'true', '🔔']);
+  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell sub-row-bell-active', 'true', 'bell', CHROME_ICON_SVG.bell.d, '']);
   applyBellState(b, 1);
-  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.textContent], ['btn btn-chip sub-row-bell', 'false', '🔕'], 'only boolean true is ON');
+  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell', 'false', 'bellOff', CHROME_ICON_SVG.bellOff.d, ''], 'only boolean true is ON; the old glyph is replaced, never stacked');
 });
