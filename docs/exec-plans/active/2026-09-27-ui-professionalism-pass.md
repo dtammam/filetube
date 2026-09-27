@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: D12 step 2 (Icons) - tools/icons/fetch.js + build.js (Material Symbols, 3 styles + fill), public/js/icons.js + sprite injection, all shells' header/nav SVGs to <use>, drop the emoji icon set with its migration
+next: D12 step 3 (Primitives) - public/css/ui.css, public/js/ui.js, public/js/interaction.js with every D4 primitive, loaded in every shell, plus the hidden kit page rendering every primitive in every variant and state; ui-builders.test.js
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -1175,6 +1175,44 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   first rerun had 1 failure, era-row-overflow reading 2021 light as `:root`; fixed); `lint:css` 0,
   `lint:overlay` 0, eslint 0 errors. `test/visual/capture.js` gained `--era`.
 
+
+### Step 2a - the icon registry and sprite (2026-09-27, f7aa126d)
+
+- `tools/icons/names.js` (65 Material Symbols names, 9 with FILL twins), `fetch.js` (Apache-2.0 sources at
+  a pinned google/material-design-icons commit into `tools/icons/src/{outlined,rounded,filled}`; `filled` =
+  the Outlined family at FILL=1) and `build.js` (compiles `public/js/icons.js`, 67 KB / 16 KB gzipped; every
+  `<path>` kept; `--check` for staleness). **Deviation:** sources live under `tools/icons/src`, not
+  `public/assets/icons/`, because the existing public assets still feed the `.icon-*` masks and the glyph
+  pool until their sweeps; overwriting them would restyle those now.
+- `icons.js` exposes `FTIcons.inject(set)`: a hidden sprite of `<symbol id="i-NAME">` as the first child of
+  `<body>`. Each shell with chrome glyphs (10 app shells + the Subscriptions view) loads it in `<head>` and
+  calls it from the first script in `<body>`, so glyphs still paint with the text (the v1.87.1 rule);
+  `applyIconSet` swaps it when the set changes.
+- `chromeIconMarkup` / `chromeIconEl` keep their API over a `CHROME_ICON` name map and emit
+  `<svg><use href="#i-NAME"/></svg>`; new `spriteIconEl` for the header bell and queue. The shells' static
+  header/nav/sidebar glyphs and both pre-paint reserve blocks draw from the sprite.
+- **Visible changes (deliberate):** the chrome glyphs now follow the icon-set picker (they were fixed at
+  rounded since v1.87.1 because inline paths could not follow it; a fresh user's default set is outlined);
+  the Music tab is `music_note` (was a play arrow); the Subs tab is `subscriptions` (was refresh); the
+  Podcasts glyph is whole (F29).
+- **Bug caught by the render, fixed:** the UA `[hidden]` rule is scoped to the HTML namespace, so the SVG
+  sprite kept a 300x150 box and pushed desktop Home down. Fixed with `#ft-icon-sprite { display: none }`
+  (style.css, moves to ui.css in step 3) plus width/height 0; `icons-registry.test.js` pins both.
+- Tests: `icons-registry.test.js` (icons.js == build of its sources; every path kept; all names in all
+  sets; every referenced `#i-` name exists; inject contract; shell wiring). Converted (none deleted):
+  `chrome-icons` (per-path byte binds -> the name-to-registry identity map, pinned whole), `app-look-l2`
+  (reserves draw the same registry names; "before the first external script" now means in `<body>`),
+  `music-view`, `row-glyph-inline-svg`, `stable-toggle-label`, `sub-row-chip-btn-family`,
+  `watch-init-behavioral`.
+- Demo (measured): against a server built from the step 1 commit, 18 shots (home, watch channel row,
+  notifications x 6 viewport/modes): only glyph pixels change, max 0.10% of a shot, no layout shift. Unit
+  suite (Node 22): 7710 pass, 0 fail.
+
+### Step 2c - F39, the Shows tile (2026-09-27, 7125efdd)
+
+- `MD_ICON_PATHS` gains `tv`; `md-icons-resolve.test.js` requires every `data-md-icon` /
+  `data-md-hero-icon` a shell names to exist (mutated: removing `tv` fails it naming setup.html). The tiles
+  are a fifth icon system (stroke glyphs); S8 moves them onto the registry.
 
 ### Step 2b - the emoji icon set removed (2026-09-27)
 
