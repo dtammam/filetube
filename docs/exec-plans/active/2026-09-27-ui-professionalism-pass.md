@@ -1175,3 +1175,52 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   first rerun had 1 failure, era-row-overflow reading 2021 light as `:root`; fixed); `lint:css` 0,
   `lint:overlay` 0, eslint 0 errors. `test/visual/capture.js` gained `--era`.
 
+
+### Step 2b - the emoji icon set removed (2026-09-27)
+
+- Branch `feat/ui-pro-emoji` from 7125efdd; commits cb6afb40 (the removal) and 4255da09 (a lock fix
+  mutation found, below).
+- **Axis (D2.6):** `ICON_SETS` = outlined | rounded | filled; `AUTO_ERA_ICON_MAP` = 2005/2009/2014 filled,
+  2021 rounded; the Settings picker is Auto, Outlined, Rounded, Filled. Deleted: the 74
+  `[data-icons="emoji"]` rules in style.css (the neutralize group, the `::before` glyphs, the v1.147 corner
+  auto-size exception) and the glyph pool's `emoji` codepoints. The icons README and tech-debt row 113 say
+  three sets.
+- **Migration:** `migrateIconPref` (common.js, `LEGACY_ICON_SET_MAP = { emoji: 'filled' }`) runs in
+  `resolveIconSet`, in the v1.43 mirror seed (`icons: 'emoji'` from /api/auth/me seeds `filled`) and in
+  setup.js's picker highlight; all 13 inline bootstraps map `emoji` to `filled` before resolving. A
+  prefs-sync row lands in `ft-icons`, so it takes the same path. **Decision:** boot resolves a stored
+  `emoji` but never rewrites it - a boot write changes the value, so prefs-sync would stamp and push it and
+  beat a newer choice from another device (the last-BOOT-wins class). A picker click replaces it.
+- **Tests:** `resolve-icon-set` covers emoji -> filled (every era) and the new auto map, pins the axis
+  (ICON_SETS, picker ids, sprite registry sets, no `[data-icons]` rule for any other set) and runs each of
+  the 13 bootstraps in a vm over 6 eras x 7 stored values against `resolveIconSet`. New
+  `icon-set-migration` (jsdom, real glyph-pool + icons + common, setup.js's real `renderIconPicker`): boot
+  paints filled and draws the filled sprite without writing `ft-icons`; the mirror seed; a local choice
+  beats a server `emoji`; picker ids and highlight. Shared helper `test/helpers/icon-sets.js`
+  (`effectiveMask`: the mask each spelling resolves to per set, scoped rule over bare, last wins).
+- **Locks converted (AC12; none deleted):** `books-router-nav` (emoji entry + strip membership -> books.svg
+  paints in all 3 sets, both spellings, + @supports fill membership); `card-corner-mobile-size` (the
+  emoji auto-size exception -> no `[data-icons]` rule re-sizes a corner icon); `download-icon` (emoji
+  neutralize + U+1F4E5 -> each set paints its own download.svg in both spellings, no `::before`);
+  `glyph-pool` (seven sites -> five, + every glyph paints its own asset per set; the codepoint-collision
+  rule and Dean's Shows/Downloads ruling now bind mask pictures per set, twins favorites+liked and
+  shows+tv; registry entries carry no `emoji`); `icon-queue-mask` and `icon-transcript-mask` (out of the
+  emoji group -> falls back to the base mask in all 3 sets); `shuffle-rescan-icon` (U+1F500 only under
+  emoji -> no `::before`, no U+1F500 escape, own shuffle.svg per set); `icons-registry` (inject of an unknown
+  set uses `bogus`); `icon-assets` (comment). Left alone (not the icon set): the Pocket sticker's emoji kind
+  (setup-sticker-picker, music-sticker-menu, pocket-lighting, skin-surface.js, pocket-lighting.js), and
+  the iOS colour-emoji glyph guards.
+- **Mutation (sandbox of the committed tree, 20 mutants, each restored and diffed):** all 20 red. The
+  migration: LEGACY map emoji -> outlined (18 red across resolve-icon-set + icon-set-migration), the
+  `migrateIconPref` call dropped from `resolveIconSet` (15 red), tv.html's emoji line deleted (1 red, its
+  bootstrap test), subscriptions.html emoji -> rounded (1 red), index.html's 2005 auto -> outlined (1 red),
+  the mirror seed passing raw `s.icons`, the picker skipping the migration, boot rewriting `emoji` (1 red
+  each). Locks: a set-scoped kill on books, books out of the fill list, a -webkit-only download kill, a
+  set-scoped corner re-size inside @media, a shuffle `::before`, a queue kill, a transcript override, a
+  late filled kill on `.icon-liked`, Downloads on the rounded TV (2 red), an `emoji` field back on a pool
+  entry, an emoji-set rule back, the Emoji picker option back (2 red). The corner re-size mutant SURVIVED
+  the first cut (a `[^}]*` body swallowed the first rule inside @media); fixed in 4255da09 and re-run red.
+- **Counts (Node 22.23.1):** `npm run test:unit` tests 7735, pass 7735, fail 0 (exit 0; the pre-commit run
+  of 4255da09 the same). Targeted integration (shell-smoke, star-pref-seed, history-nav-gate,
+  folder-glyph-api, library-glyph-api): tests 28, pass 28, fail 0. `npx eslint .` 0 errors, 6 warnings (the
+  existing common.js unused-global warnings). `npm run lint:css` TOTAL 0.
