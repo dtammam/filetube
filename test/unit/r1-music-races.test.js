@@ -347,3 +347,62 @@ for (const removed of [false, true]) {
     });
   });
 }
+
+// ---- T-C7, the other acting callers ----------------------------------------------------------
+
+for (const supersede of [true, false]) {
+  test('T-C7 drill Shuffle: ' + (supersede ? 'a newer load (the Songs tab) supersedes it -> no drill repaint over Songs, nothing plays' : 'control - the drill shuffle repaints and plays the top'), async () => {
+    const hold = defer();
+    await bootMusic({
+      storage: { filetube_music_tab: 'albums' },
+      route: (u) => {
+        if (u.indexOf('/api/music/albums') === 0) return { items: [{ albumKey: 'k1', album: 'One', artist: 'Band', artId: 'x', trackCount: 2 }] };
+        if (u.indexOf('/api/music?') === 0 && u.indexOf('sort=random') >= 0) return hold.promise;
+        if (u.indexOf('/api/music?') === 0) return { items: [track('s1', { albumKey: 'k1' }), track('s2', { albumKey: 'k1' })] };
+        return { items: [] };
+      },
+    }, async (c) => {
+      await settleMany();
+      c.content().querySelector('.music-album-card').click(); // drill into the album
+      await settleMany();
+      const shuffle = c.content().querySelector('.music-drill-shuffle');
+      assert.ok(shuffle, 'precondition: the drill view (with its Shuffle) is up');
+      shuffle.click();
+      await settleMany();
+      assert.ok(c.fetches.some((u) => u.indexOf('sort=random') >= 0), 'precondition: the drill shuffle load is in flight');
+      if (supersede) {
+        c.dom.window.document.querySelector('.music-tab[data-tab="songs"]').click();
+        await settleMany();
+        assert.strictEqual(c.content().querySelector('.music-drill'), null, 'precondition: Songs replaced the drill');
+      }
+      hold.resolve({ items: [track('s2', { albumKey: 'k1' }), track('s1', { albumKey: 'k1' })] });
+      await settleMany();
+      assert.deepStrictEqual(c.loads, supersede ? [] : ['s2']);
+      if (supersede) assert.strictEqual(c.content().querySelector('.music-drill'), null, 'no stale drill repaint over Songs');
+    });
+  });
+}
+
+test('T-C7 rebuildPlayingQueue: a newer load (Shuffle) supersedes the rebuild -> it does NOT re-arm nav around a queue it did not write', async () => {
+  const hold = defer();
+  const meta = { id: 't1', isMusic: true, title: 'T t1', artist: 'Band', album: 'Rec', albumKey: '', browseCtx: 'ctx' };
+  await bootMusic({
+    storage: { filetube_music_tab: 'albums' },
+    currentId: 't1', playerState: 'full', meta,
+    fileTube: { decodeListContext: () => ({ src: 'music', album: 'k1' }) },
+    route: (u) => {
+      if (u.indexOf('/api/music?') === 0 && u.indexOf('sort=random') >= 0) return new Promise(() => {}); // the newer load, never answering
+      if (u.indexOf('/api/music?') === 0 && u.indexOf('album=k1') >= 0) return hold.promise;
+      return { items: [] };
+    },
+  }, async (c) => {
+    await settleMany();
+    assert.ok(c.fetches.some((u) => u.indexOf('album=k1') >= 0), 'precondition: the rebuild load is in flight');
+    c.dom.window.document.getElementById('music-shuffle-btn').click(); // claims a newer loadSongs
+    await settleMany();
+    const before = c.navs.length;
+    hold.resolve({ items: [track('t1'), track('t2')] });
+    await settleMany();
+    assert.strictEqual(c.navs.length - before, 0, 'no nav registration from the superseded rebuild');
+  });
+});

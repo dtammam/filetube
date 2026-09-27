@@ -3100,8 +3100,7 @@ if (typeof module !== 'undefined' && module.exports) {
             // have left the drill (or the view) while the modal was open, and painting a
             // drill header over whatever they navigated to is its own bug (QA W4).
             if (drill !== scopeAtClick) return;
-            loadSongs({ scope: scopeAtClick }).then(function (q) {
-              if (!q) return; // T-C7: superseded - the newer load repaints and re-registers
+            loadSongs({ scope: scopeAtClick }).then(function () {
               if (drill !== scopeAtClick || !content.isConnected) return; // v1.203: ask, do not assume
               renderDrillView();
               reflectChapter(); // the reloaded queue carries the new starts - re-derive the playing chapter
@@ -4258,7 +4257,6 @@ if (typeof module !== 'undefined' && module.exports) {
       // bounce never applies (the S5 background ALBUMS browse is the only music-API touch).
       playListenItem(playParam).catch((err) => {
         console.error('Music: listen-mode play failed', err);
-        if (signal.aborted) return; // T-C5: destroy() already reset the cover; a dead view renders nothing
         straightToPlayerPending = false; // a rejected load must not strand the cover
         render().catch(() => {});
       });
@@ -4267,7 +4265,6 @@ if (typeof module !== 'undefined' && module.exports) {
       // bounce a miss to /watch. A bare ?play= (a continue-listening card) keeps render() on a miss.
       playTrackFromContinue(playParam, urlParams.get('ao') === '1').catch((err) => {
         console.error('Music: continue-listening play failed', err);
-        if (signal.aborted) return; // T-C5: destroy() already reset the cover; a dead view renders nothing
         straightToPlayerPending = false; // a rejected load must not strand the cover
         render().catch(() => {});
       });

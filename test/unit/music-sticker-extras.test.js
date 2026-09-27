@@ -448,6 +448,28 @@ test('Delete routes a yt-dlp item through the TRASH confirm and a local item thr
   }, { video: { channelName: undefined, channelId: undefined, channelUrl: undefined, watchUrl: undefined } });
 });
 
+// v1.339 R1 (T-C4), the real mobile path end to end: the trash confirm is HELD open, a real
+// track advance (the registered onNext -> playAt -> load) happens under it, then the user
+// confirms. The confirmed item is still deleted, but the player now plays s2 - it must not be
+// closed, and the view (engine onMutated forward -> music afterExtrasMutation) must keep s2's
+// skin up. The Delete test above is the control (s1 still playing: closed, skin torn down).
+test('R1 T-C4: an auto-advance while the Delete confirm is open - s1 is deleted, s2 keeps playing and keeps its skin', async () => {
+  await boot(async (dom, ctx) => {
+    await openExtras(dom);
+    click(dom, act(dom, 'delete'));
+    assert.strictEqual(ctx.confirmModals.length, 1, 'precondition: the trash confirm is open (held)');
+    ctx.nav().onNext(); // the track ends under the modal: the production advance path
+    for (let i = 0; i < 12; i++) await settle();
+    assert.strictEqual(dom.window.FileTube.player.currentId, 's2', 'precondition: the player advanced to s2');
+    ctx.confirmModals[0].onConfirm();
+    for (let i = 0; i < 12; i++) await settle();
+    assert.ok(ctx.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'DELETE'), 'the confirmed item (s1) is deleted');
+    assert.strictEqual(ctx.state.closed, false, 'the player playing s2 was NOT closed');
+    assert.strictEqual(dom.window.FileTube.player.currentId, 's2', 's2 is still the current track');
+    assert.ok(dom.window.document.body.classList.contains('mms-on'), 's2\'s full-screen skin stays up (the view kept its playing state)');
+  });
+});
+
 test('two-page nav: Back returns to the quick controls; closing and reopening the menu RESETS to page 1', async () => {
   await boot(async (dom) => {
     await openExtras(dom);
