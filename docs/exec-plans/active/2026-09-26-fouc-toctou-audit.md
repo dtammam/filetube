@@ -3,10 +3,10 @@ plan: fouc-toctou-audit
 harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
-status: Gate:CHANGES r1 @8919ba55
-next: fix round F1-F3 merged at e305fe56; dual-Node full suite, then r2 delta with the SAME seats; then merge build/look-base (L1 + L2 + R1) and gate that delta
+status: Gate:APPROVED r2 @f8a7ee52
+next: safety checkpoint APPROVED r2 @f8a7ee52; merge build/look-base (L1 + L2 + R1), add F4 (security r2 LOW: fence the fresh-source delete to files created during the job; drop over-long stdout carries), dual-Node, then gate the delta f8a7ee52..HEAD
 design: pending
-gate: CHANGES r1 @8919ba55 (adversary + qa CHANGES, security-brief APPROVED); fix round F1-F3 merged, r2 pending
+gate: SAFETY CHECKPOINT APPROVED r2 @f8a7ee52 (adversary + qa + security-brief); r1 CHANGES fixed in F1-F3; final delta (look base + F4) pending
 ---
 
 # Audit: FOUC / layout shift / TOCTOU across the app
@@ -415,6 +415,19 @@ this branch.
   inline reserve scripts in all 11 header shells (the first frame paints before common.js). Dean
   ruled (2026-09-27): leave the Modern one-line-title card nudge (15px) and the "Playing from" line.
 
+### Gate r2 notes (all three seats APPROVED @f8a7ee52)
+
+- security-brief r2 LOW (to fix in F4, reviewed in the final delta): `removeFreshOneOffSources`
+  fences to the whole download root, not the job's output; only exploitable with an operator yt-dlp
+  config adding a raw-title `--print`. INFO: an over-long stdout line keeps its tail and is parsed.
+- qa r2: a repeat audio one-off whose mp3 already exists reads "Done" (yt-dlp leaves
+  `__real_download` NA there), not "Already in your library" - the file is kept; a restricted member
+  on the folder form sees "Could not load your folders" (POST is admin-only anyway).
+- adversary r2: an entry whose parent folder later became a symlink is now kept (walk never follows
+  symlinked dirs; lstat follows parents) - nothing lost; a fresh audio download into an explicit
+  folder outside the download root leaves its mp4 (realpath fence) - a leftover, not loss. Adversary
+  ran its Node 24 check on 24.14.0, not 24.20.0 (the Architect's full suite used 24.20.0).
+
 ## For the tracker (found while building, not fixed here)
 
 - F2: subscription audio has the same C2 mechanism if an audio subscription and a video of the same
@@ -452,6 +465,9 @@ this branch.
 Gate: APPROVED r1 @8919ba55 — security-brief
 Gate: CHANGES r1 @8919ba55 — qa
 Gate: CHANGES r1 @8919ba55 — adversary
+Gate: APPROVED r2 @f8a7ee52 — security-brief
+Gate: APPROVED r2 @f8a7ee52 — qa
+Gate: APPROVED r2 @f8a7ee52 — adversary
 
 r1 findings (seat reports, summarized by the Architect; repros live in the seats' scratch dirs):
 - **C1 (qa + adversary, CRITICAL, regression from S3):** the T-S2 keep-guard (orchestrator.js
