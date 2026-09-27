@@ -4518,7 +4518,7 @@ a.sub-row-channel-link:focus-visible {
 /* v1.40.0: Like heart for the card corner control. A real SVG mask painted in
    currentColor like every other .icon-* (NOT the U+2665 codepoint, which iOS
    force-renders as the red-heart emoji). Only the base/outlined mask is added;
-   the rounded/filled/emoji sets fall back to this, same as any un-overridden
+   the rounded/filled sets fall back to this, same as any un-overridden
    icon. */
 .icon-heart { -webkit-mask-image: url(/assets/icons/heart.svg); mask-image: url(/assets/icons/heart.svg); }
 /* v1.47.6: the Share glyph. Base-directory only, exactly like `heart.svg` --
@@ -4528,7 +4528,7 @@ a.sub-row-channel-link:focus-visible {
 .icon-share { -webkit-mask-image: url(/assets/icons/share.svg); mask-image: url(/assets/icons/share.svg); }
 /* Transcript export (Dean: "a little chat bubble icon"): Material Symbols
    `chat` (a speech bubble with text lines). Follows the .icon-share precedent
-   EXACTLY - ONE base mask, every other set (rounded/filled/emoji) falls back
+   EXACTLY - ONE base mask, every other set (rounded/filled) falls back
    to it (the deliberate tech-debt-113 minority pattern), and it sits in the
    SAME three lists the share glyph does (size block above, this mask line,
    the @supports fill below) - the v1.47.6 "blank box" scar. */
@@ -4547,9 +4547,8 @@ a.sub-row-channel-link:focus-visible {
    (U+1F500) even in non-emoji/modern themes -- unlike every other .icon-*
    glyph, which is a real SVG mask painted in currentColor. Fixed: real
    shuffle.svg masks added to all three vector sets (outlined/rounded/filled),
-   same treatment as .icon-download above. The emoji-set ::before entry below
-   still renders U+1F500 there, same as before -- only non-emoji themes
-   changed. */
+   same treatment as .icon-download above. (The emoji set that kept U+1F500
+   was retired in the UI pass, D2.6.) */
 .icon-shuffle { -webkit-mask-image: url(/assets/icons/shuffle.svg); mask-image: url(/assets/icons/shuffle.svg); }
 /* v1.49 (Dean): the per-video "reheat" flame. Base directory only, like
    `heart.svg`/`share.svg` -- the per-icon-set blocks below enumerate their
@@ -4589,9 +4588,10 @@ a.sub-row-channel-link:focus-visible {
 
 /* ---- v1.77: the assignable glyph pool (base/outlined masks) ---------------
    Unlike the ten single-asset glyphs above (heart/share/flame/history/queue/
-   podcast/downloads/books/grid/list), every member here ships in ALL FOUR sets
-   - that was Dean's ask ("each glyph we choose should be out of a set of
-   four"). Filenames track the upstream Material glyph name, not the class
+   podcast/downloads/books/grid/list), every member here ships in EVERY set
+   (outlined, rounded, filled) - that was Dean's ask ("each glyph we choose
+   should be out of a set of four", from when an emoji set was the fourth; it
+   was retired in the UI pass, D2.6). Filenames track the upstream Material glyph name, not the class
    name, matching the established convention (.icon-cog ships as settings.svg).
    `.icon-favorites` and `.icon-liked` deliberately share star.svg: different
    intents, same picture, so the Liked lane can change later without silently
@@ -4731,110 +4731,6 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="filled"] .icon-favorites { -webkit-mask-image: url(/assets/icons/filled/star.svg); mask-image: url(/assets/icons/filled/star.svg); }
 [data-icons="filled"] .icon-liked { -webkit-mask-image: url(/assets/icons/filled/star.svg); mask-image: url(/assets/icons/filled/star.svg); }
 
-/* Emoji set: restores the pre-v1.6.0 ::before emoji per icon. No-square fix
-   (AC7): this grouped rule neutralizes BOTH the mask (mask-image: none) AND
-   the @supports currentColor fill (background-color: transparent) at (0,2,0)
-   specificity, so no solid currentColor box renders behind/around the emoji
-   in any theme combo. width/height: auto lets the glyph size naturally
-   instead of being clipped to a 1em mask box. */
-[data-icons="emoji"] .icon-home,
-[data-icons="emoji"] .icon-folder,
-[data-icons="emoji"] .icon-cog,
-[data-icons="emoji"] .icon-delete,
-[data-icons="emoji"] .icon-moon,
-[data-icons="emoji"] .icon-sun,
-[data-icons="emoji"] .icon-menu,
-[data-icons="emoji"] .icon-search,
-[data-icons="emoji"] .icon-play,
-[data-icons="emoji"] .icon-refresh,
-[data-icons="emoji"] .icon-arrow-up,
-[data-icons="emoji"] .icon-arrow-down,
-[data-icons="emoji"] .icon-download,
-[data-icons="emoji"] .icon-downloads,
-[data-icons="emoji"] .icon-books,
-[data-icons="emoji"] .icon-school,
-[data-icons="emoji"] .icon-movies,
-[data-icons="emoji"] .icon-shows,
-[data-icons="emoji"] .icon-documents,
-[data-icons="emoji"] .icon-music-note,
-[data-icons="emoji"] .icon-kids,
-[data-icons="emoji"] .icon-games,
-[data-icons="emoji"] .icon-camcorder,
-[data-icons="emoji"] .icon-photos,
-[data-icons="emoji"] .icon-travel,
-[data-icons="emoji"] .icon-work,
-[data-icons="emoji"] .icon-cooking,
-[data-icons="emoji"] .icon-fitness,
-[data-icons="emoji"] .icon-comedy,
-[data-icons="emoji"] .icon-pets,
-[data-icons="emoji"] .icon-cars,
-[data-icons="emoji"] .icon-archive,
-[data-icons="emoji"] .icon-radio,
-[data-icons="emoji"] .icon-favorites,
-[data-icons="emoji"] .icon-liked,
-[data-icons="emoji"] .icon-shuffle {
-  -webkit-mask-image: none;
-  mask-image: none;
-  background-color: transparent;  /* CRITICAL: overrides the @supports currentColor fill -> no solid box */
-  width: auto;                    /* let the glyph size naturally, no 1em clip/overlap */
-  height: auto;
-}
-
-/* FR-7 (v1.17.0, T6): emoji-set glyph for the download icon -- U+1F4E5
-   INBOX TRAY, matching the same "restores the pre-v1.6.0-style ::before
-   emoji" pattern as the group above (icon-download itself predates the
-   emoji-set restoration, so it needs its OWN ::before entry here, same as
-   every other .icon-* the emoji set covers). */
-[data-icons="emoji"] .icon-download::before { content: "\1F4E5"; }
-/* Downloads' emoji-set glyph. U+1F4FC VIDEOCASSETTE since v1.77 (Dean: "i want
-   downloads and shows to not share"); it was U+1F4FA TELEVISION from v1.73
-   ruling 4 until v1.77's glyph pool gave `.icon-shows` that same codepoint.
-   A television is the literal read of a Shows folder, so Downloads moved and
-   Shows kept the TV - and a tape suits a library of things you recorded, in a
-   skin built to look like old YouTube. Both are user-changeable now, in
-   different ways: Downloads is a Library entry with its own picker, Shows is a
-   pool glyph any folder or entry can wear. So this is only the default. The MASK sets are untouched:
-   Downloads still uses the smart-display asset in outlined/rounded/filled. */
-[data-icons="emoji"] .icon-downloads::before { content: "\1F4FC"; }
-[data-icons="emoji"] .icon-books::before { content: "\1F4DA"; } /* books stack - the Books library */
-
-[data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
-[data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */
-[data-icons="emoji"] .icon-cog::before       { content: "\2699";  } /* ⚙ */
-[data-icons="emoji"] .icon-delete::before    { content: "\1F5D1"; } /* 🗑 */
-[data-icons="emoji"] .icon-moon::before      { content: "\1F319"; } /* 🌙 */
-[data-icons="emoji"] .icon-sun::before       { content: "\2600\FE0F"; } /* ☀️ */
-[data-icons="emoji"] .icon-menu::before      { content: "\2630";  } /* ☰ */
-[data-icons="emoji"] .icon-search::before    { content: "\1F50D"; } /* 🔍 */
-[data-icons="emoji"] .icon-play::before      { content: "\25B6";  } /* ▶ */
-[data-icons="emoji"] .icon-refresh::before   { content: "\1F504"; } /* 🔄 */
-[data-icons="emoji"] .icon-arrow-up::before  { content: "\25B2";  } /* ▲ */
-[data-icons="emoji"] .icon-arrow-down::before{ content: "\25BC";  } /* ▼ */
-[data-icons="emoji"] .icon-shuffle::before   { content: "\1F500"; } /* 🔀 */
-
-/* v1.77 pool: emoji-set glyphs (generated from public/js/glyph-pool.js).
-   Codepoints live in the registry so the test can rebuild these exactly. */
-[data-icons="emoji"] .icon-school::before { content: "\1F393"; }
-[data-icons="emoji"] .icon-movies::before { content: "\1F3AC"; }
-[data-icons="emoji"] .icon-shows::before { content: "\1F4FA"; }
-[data-icons="emoji"] .icon-documents::before { content: "\1F4C4"; }
-[data-icons="emoji"] .icon-music-note::before { content: "\1F3B5"; }
-[data-icons="emoji"] .icon-kids::before { content: "\1F9F8"; }
-[data-icons="emoji"] .icon-games::before { content: "\1F3AE"; }
-[data-icons="emoji"] .icon-camcorder::before { content: "\1F4F9"; }
-[data-icons="emoji"] .icon-photos::before { content: "\1F4F7"; }
-[data-icons="emoji"] .icon-travel::before { content: "\2708\FE0F"; }
-[data-icons="emoji"] .icon-work::before { content: "\1F4BC"; }
-[data-icons="emoji"] .icon-cooking::before { content: "\1F37D\FE0F"; }
-[data-icons="emoji"] .icon-fitness::before { content: "\1F3CB\FE0F"; }
-[data-icons="emoji"] .icon-comedy::before { content: "\1F3AD"; }
-[data-icons="emoji"] .icon-pets::before { content: "\1F43E"; }
-[data-icons="emoji"] .icon-cars::before { content: "\1F697"; }
-[data-icons="emoji"] .icon-archive::before { content: "\1F4E6"; }
-[data-icons="emoji"] .icon-radio::before { content: "\1F4FB"; }
-[data-icons="emoji"] .icon-favorites::before { content: "\2B50"; }
-[data-icons="emoji"] .icon-liked::before { content: "\2B50"; }
-
 /* .icon-star is deliberately absent from every block above - but NOT for the
    reason this comment gave until v1.77 ("the gold ★ rating renders identically
    regardless of icon-set selection (AC8)"). That binding never existed: rating
@@ -4842,7 +4738,7 @@ a.sub-row-channel-link:focus-visible {
    `#star-rating-control` (watch.js) and have never gone through this class.
    The real reason is simply that .icon-star is a plain ::before character, not
    a mask - its only remaining users are the two Stats sidebar links. The Liked
-   nav moved to .icon-liked in v1.77, which DOES carry all four sets. */
+   nav moved to .icon-liked in v1.77, which DOES carry all three sets. */
 
 /* New mobile-shell elements never render outside the phone breakpoint.
    Additive: new selectors only — no existing desktop rule is touched. */
@@ -15131,17 +15027,6 @@ a.queue-upnext-next:hover {
   .video-grid.list-view .card-queue-btn::after,
   .video-grid.list-view .card-transcript-btn::after {
     inset: -2px -7px; /* token-exempt: positional geometry (list-view corner zones must not shadow sibling pills) */
-  }
-  /* v1.147 gate S1: the emoji icon set sizes .icon-delete/.icon-download
-     with width/height auto (the AC7 no-square fix) - re-imposing a fixed
-     18px box would grow the pill around an UNCHANGED font-sized glyph.
-     Restore auto: under the emoji set those two simply keep their
-     pre-v1.147 look (disclosed; the other four corner icons have no
-     emoji variants and grow normally). */
-  [data-icons="emoji"] .card-delete-btn .icon-delete,
-  [data-icons="emoji"] .card-download-btn .icon-download {
-    width: auto;
-    height: auto;
   }
 }
 

@@ -269,6 +269,7 @@ module.exports = [
         setIconSet: 'readonly',
         ICON_SET_REGISTRY: 'readonly',
         ICON_SETS: 'readonly',
+        migrateIconPref: 'readonly',
         sortItems: 'readonly',
         shouldShowShuffleButton: 'readonly',
         visibleSidebarFolders: 'readonly',

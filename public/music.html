@@ -36,9 +36,10 @@
           : 'light';
         d.setAttribute('data-theme', era);
         d.setAttribute('data-mode', mode);
-        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
-        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var iconSets = ['outlined', 'rounded', 'filled'];
+        var iconAutoMap = { '2005': 'filled', '2009': 'filled', '2014': 'filled', '2021': 'rounded' };
         var storedIcons = localStorage.getItem('ft-icons');
+        if (storedIcons === 'emoji') storedIcons = 'filled'; // the retired emoji set (UI pass D2.6)
         var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
           : storedIcons === 'auto' ? iconAutoMap[era]
           : 'outlined';

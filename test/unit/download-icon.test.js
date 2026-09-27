@@ -18,6 +18,7 @@ const path = require('node:path');
 
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+const { ICON_SETS, liveCss, effectiveMask, beforeGlyphRules } = require('../helpers/icon-sets');
 
 test('style.css: the OLD fixed-unicode .icon-download::before rule is gone', () => {
   assert.doesNotMatch(css, /\.icon-download::before\s*\{\s*content:\s*"\\2B07"/,
@@ -48,38 +49,23 @@ test('style.css: [data-icons="filled"] wires .icon-download to filled/download.s
   assert.match(css, /\[data-icons="filled"\]\s*\.icon-download\s*\{\s*-webkit-mask-image:\s*url\(\/assets\/icons\/filled\/download\.svg\);\s*mask-image:\s*url\(\/assets\/icons\/filled\/download\.svg\);\s*\}/);
 });
 
-test('style.css: [data-icons="emoji"] neutralizes the .icon-download mask (no solid box) and supplies an emoji ::before', () => {
-  // NOTE: v1.25.4 appended `.icon-shuffle` to this same selector group (see
-  // shuffle-rescan-icon.test.js), and the pattern was widened to a {0,80}
-  // window after `.icon-download,` to tolerate it. v1.77 appended 20 pool
-  // glyphs to the same group, blew past that window, and the lazy match then
-  // found the WRONG block entirely (the `::before` rule below), failing on a
-  // change that broke nothing.
-  //
-  // Rewritten to extract the group by its real bounds and assert MEMBERSHIP
-  // plus the group's declarations - which is what this lock is actually for.
-  // Both mutants it exists to kill still fail it (re-verified in the v1.77 fix
-  // round): dropping `.icon-download` from the group, and dropping either
-  // declaration. Comments are stripped so one naming a class cannot satisfy
-  // the membership check (the v1.50 source-lock lesson).
-  const groupStart = css.indexOf('[data-icons="emoji"] .icon-home,');
-  assert.notEqual(groupStart, -1, 'expected the emoji neutralize group');
-  const groupBrace = css.indexOf('{', groupStart);
-  const selectors = css.slice(groupStart, groupBrace).replace(/\/\*[\s\S]*?\*\//g, '');
-  const declarations = css.slice(groupBrace, css.indexOf('}', groupBrace));
-  assert.match(selectors, /\.icon-download(?![a-z0-9-])/, 'expected .icon-download to be listed in the emoji neutralize group');
-  // v1.77: these were one `/mask-image:\s*none/` assertion, which the PREFIXED
-  // `-webkit-mask-image: none` already satisfies - so deleting the STANDARD
-  // property survived the lock (found by mutation-testing the rewrite above
-  // against its own commit; it was porous before that rewrite too, and the
-  // rewrite carried it forward unchanged). Dropping the standard property
-  // leaves the mask applied in every non-WebKit browser, i.e. Firefox shows a
-  // masked box behind the emoji. Both properties are now bound separately.
-  assert.match(declarations, /-webkit-mask-image:\s*none/, 'the webkit-prefixed mask kill');
-  assert.match(declarations, /(^|[^-\w])mask-image:\s*none/m, 'the STANDARD mask kill (non-WebKit browsers)');
-  assert.match(declarations, /background-color:\s*transparent/);
-  assert.match(css, /\[data-icons="emoji"\]\s*\.icon-download::before\s*\{\s*content:\s*"\\1F4E5";?\s*\}/,
-    'expected an emoji ::before for .icon-download (U+1F4E5 inbox tray)');
+// Until the UI pass this lock pinned the emoji set's neutralize group (mask-image:
+// none in BOTH spellings, a transparent fill) and its U+1F4E5 ::before. The emoji set
+// is retired (D2.6); the three-set intent is the same "no blank or solid box, a real
+// glyph" in every set: under each of outlined/rounded/filled BOTH mask spellings
+// resolve to that set's download.svg (a set-scoped `mask-image: none` or a
+// prefix-only kill goes red), and no set paints a ::before glyph over the mask.
+test('style.css: in every icon set .icon-download paints its own download.svg mask (both spellings), never a ::before glyph', () => {
+  const live = liveCss();
+  const expected = { outlined: 'url(/assets/icons/download.svg)', rounded: 'url(/assets/icons/rounded/download.svg)', filled: 'url(/assets/icons/filled/download.svg)' };
+  assert.deepEqual(Object.keys(expected), ICON_SETS, 'one expectation per set on the axis');
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(live, set, 'icon-download');
+    assert.equal(m.std, expected[set], `${set}: the STANDARD mask (non-WebKit browsers)`);
+    assert.equal(m.webkit, expected[set], `${set}: the -webkit- mask (iOS)`);
+  }
+  assert.deepEqual(beforeGlyphRules(live, 'icon-download').map((r) => r.sels.join(', ')), [],
+    'no rule paints a ::before glyph on .icon-download in any set');
 });
 
 test('icon assets: the new download.svg files are self-hosted (no CDN references)', () => {

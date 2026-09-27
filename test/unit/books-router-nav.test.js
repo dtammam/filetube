@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const common = require('../../public/js/common.js');
+const { ICON_SETS, liveCss, effectiveMask } = require('../helpers/icon-sets');
 
 test('T7: deriveRouteView maps /books, /books.html, and /read.html; unknown paths still fall through', () => {
   assert.equal(common.deriveRouteView('/books'), 'books');
@@ -230,7 +231,7 @@ test('v1.37.3: epub.js is NEVER handed percentage dimensions -- explicit measure
 
 // ---- v1.73.2 (Dean): Books' own glyph ----------------------------------------
 
-test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet mirror, all nine shells, real mask asset + emoji entry', () => {
+test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet mirror, all nine shells, real mask asset in every icon set', () => {
   const pub = path.join(__dirname, '../../public');
   const commonSrc = fs.readFileSync(path.join(pub, 'js/common.js'), 'utf8');
   assert.ok(commonSrc.includes("injectLibraryNavEntry('books', '/books', 'Books', 'icon-books')"), 'the Library injector');
@@ -247,7 +248,15 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   assert.ok(!commonSrc.includes('\'icon-folder\'); // v1.73.2'), 'no stale folder-icon books call survives');
   const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
   assert.ok(css.includes('.icon-books { -webkit-mask-image: url(/assets/icons/books.svg)'), 'a real mask rule');
-  assert.ok(css.includes('[data-icons="emoji"] .icon-books::before { content: "\\1F4DA"; }'), 'the emoji-set entry (no silent drop - the v1.73 W2 lesson)');
+  // No silent drop in any set (the v1.73 W2 lesson). This pinned the emoji-set entry
+  // until the UI pass retired that set (D2.6); the three-set form: under each of
+  // outlined/rounded/filled both mask spellings resolve to the books asset, so no
+  // set-scoped rule blanks it.
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(liveCss(), set, 'icon-books');
+    assert.equal(m.std, 'url(/assets/icons/books.svg)', `${set}: .icon-books paints the books mask`);
+    assert.equal(m.webkit, m.std, `${set}: the -webkit- spelling agrees`);
+  }
   assert.ok(fs.existsSync(path.join(pub, 'assets/icons/books.svg')), 'the asset exists');
   assert.ok(fs.readFileSync(path.join(pub, 'assets/icons/books.svg'), 'utf8').includes('<svg'), 'and is a real svg, not a corrupted husk (slim-gate S2)');
   // Slim-gate W1: the two memberships the first lock left unbound - both
@@ -263,13 +272,22 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   const sizingGroup = css.slice(css.indexOf('\n.icon-home,\n'), css.indexOf('{', css.indexOf('\n.icon-home,\n')))
     .replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(sizingGroup, /\.icon-books(?![a-z0-9-])/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
-  assert.ok(css.includes('[data-icons="emoji"] .icon-books,'), 'emoji mask-STRIP membership (dropped = the documented colored-box-behind-the-emoji class)');
+  // The second membership was the emoji set's mask-STRIP group until that set was
+  // retired (D2.6). Every set is a mask set now, so the membership that matters is
+  // the @supports currentColor fill list (dropped = a mask with no fill: a blank box,
+  // the v1.47.6 class), read by selector list, comments stripped.
+  const live = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const supportsAt = live.indexOf('@supports (mask-image: url("#"))');
+  assert.notEqual(supportsAt, -1, 'the @supports fill block');
+  const fillBrace = live.lastIndexOf('{', live.indexOf('background-color: currentColor', supportsAt));
+  const fillList = live.slice(live.indexOf('{', supportsAt) + 1, fillBrace);
+  assert.match(fillList, /\.icon-books(?![a-z0-9-])/, '@supports fill-list membership (dropped = a blank box in every set)');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));
   assert.ok(shells.length >= 9, `full shell roster (${shells.length})`);
   // v1.87.1 (Dean): the bottom-nav glyph is an inline chrome-icon <svg> now (a
   // `.icon-*` mask decode-lags -> pop-in on a mobile cold start). The mask rule
-  // + emoji entry + injector/sheet-mirror above are UNCHANGED (icon-books still
+  // + injector/sheet-mirror above are UNCHANGED (icon-books still
   // serves the sidebar/mirror). Only the static bottom item flipped to svg.
   const booksSvg = require('../../public/js/common.js').chromeIconMarkup('books');
   for (const f of shells) {

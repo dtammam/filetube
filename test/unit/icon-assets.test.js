@@ -72,12 +72,11 @@ test('icon assets: no replaced chrome emoji remains in markup/JS', () => {
   // These were swapped for Material Symbols. Allowed to remain: the gold ★/☆
   // rating glyphs, the ▶▶ speed badge, and emoji inside mock comment TEXT
   // (public/js/watch.js) — those are content/ratings, not UI chrome, so they're
-  // not in this list or the checked file set. style.css is intentionally
-  // EXCLUDED from this check (icon-sets): it now carries these same 12 glyphs
-  // on purpose, as \XXXX CSS unicode escapes, for the 'emoji' icon set's
-  // ::before content — see public/css/style.css's [data-icons="emoji"] block
-  // and public/assets/icons/README.md. HTML/JS must still contain zero
-  // literal emoji chars — only CSS may.
+  // not in this list or the checked file set. style.css is not in the file set:
+  // it carried these glyphs as \XXXX escapes for the 'emoji' icon set's ::before
+  // content until the UI pass retired that set (D2.6); resolve-icon-set.test.js
+  // now proves no [data-icons] rule outside the three sets survives, and
+  // shuffle-rescan-icon.test.js that no U+1F500 escape does.
   const CHROME = ['🌙', '☀️', '🔄', '▲', '▼', '☰', '🏠', '📁', '⚙', '🗑', '🔍', '🔀'];
   for (const f of ['index.html', 'setup.html', 'watch.html', 'js/common.js', 'js/main.js']) {
     const c = fs.readFileSync(path.join(PUB, f), 'utf8');

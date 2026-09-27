@@ -532,6 +532,7 @@ function renderIconPicker() {
   if (!container || !controller) return;
   let pref = null;
   try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
+  pref = migrateIconPref(pref); // a stored retired set (emoji) highlights its replacement (D2.6)
   const active = (pref === 'auto' || ICON_SETS.includes(pref)) ? pref : 'outlined';
   container.innerHTML = ICON_SET_REGISTRY.map(s => `
     <button type="button" class="theme-card${s.id === active ? ' active' : ''}"

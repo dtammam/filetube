@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const PUB = path.join(__dirname, '..', '..', 'public');
+const { ICON_SETS, liveCss, effectiveMask } = require('../helpers/icon-sets');
 const stripCss = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 const stripJs = (js) => js.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
@@ -33,13 +34,16 @@ test('icon-transcript: style.css carries the mask, the 1em size-block membership
   assert.ok(supportsIdx > 0);
   const supportsBlock = css.slice(supportsIdx, css.indexOf('background-color: currentColor', supportsIdx));
   assert.ok(supportsBlock.includes('.icon-transcript,'), 'must be in the @supports fill list (else a mask with no colour = blank box)');
-  // Never in the emoji-set neutraliser (falls back to the mask there, like share).
-  // The WHOLE selector list of the emoji neutraliser (not a slice anchored
-  // after its first member - a prepended entry survived that; gate note).
-  const emojiRule = /((?:\[data-icons="emoji"\] \.icon-[a-z-]+,\s*)+\[data-icons="emoji"\] \.icon-[a-z-]+)\s*\{[^}]*mask-image: none/.exec(css);
-  assert.ok(emojiRule, 'the emoji neutraliser rule exists');
-  assert.ok(!emojiRule[1].includes('.icon-transcript'), 'share-precedent: the emoji set falls back to the mask');
-  assert.ok(!/\[data-icons="emoji"\] \.icon-transcript/.test(css), 'no emoji-set entry anywhere');
+  // Share precedent: every set falls back to the ONE base mask. This pinned "never in
+  // the emoji-set neutraliser" until the UI pass retired that set (D2.6); the
+  // three-set form: under each of outlined/rounded/filled both mask spellings resolve
+  // to chat.svg (a set-scoped override or kill goes red).
+  const live = liveCss();
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(live, set, 'icon-transcript');
+    assert.equal(m.std, 'url(/assets/icons/chat.svg)', `${set}: falls back to the base chat.svg mask`);
+    assert.equal(m.webkit, m.std, `${set}: the -webkit- spelling agrees`);
+  }
 });
 
 test('icon-transcript: watch.js is the renderer - the Transcript button emits <i class="icon-transcript"> with a .btn-label', () => {

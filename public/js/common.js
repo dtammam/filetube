@@ -393,8 +393,10 @@ async function pullMirroredDisplayPrefs() {
       mode || d.getAttribute('data-mode') || DEFAULT_MODE);
     applyCustomLogoIfSet();
   }
-  if (!hasIcons && (s.icons === 'auto' || ICON_SETS.includes(s.icons))) {
-    applyIconSet(s.icons); // persists the pref + re-resolves against the era
+  // A mirrored retired set (icons: 'emoji') seeds its replacement (D2.6).
+  const seedIcons = migrateIconPref(s.icons);
+  if (!hasIcons && (seedIcons === 'auto' || ICON_SETS.includes(seedIcons))) {
+    applyIconSet(seedIcons); // persists the pref + re-resolves against the era
   }
   // v1.63.1: the stars pref seeds the same way (locally-unchosen only).
   if (!hasStars && STAR_RATINGS_VALUES.includes(s.starRatings)) {
@@ -737,30 +739,45 @@ function resolveAvatarSource(name, channelAvatarUrl) {
 // A third, orthogonal appearance axis (theme x mode x icon-set) layered on
 // top of the era/mode system above, with no change to resolveTheme/
 // applyTheme/toggleTheme. See docs/exec-plans/completed/2026-07-05-icon-sets.md for the
-// full design. Two axes: a persisted `ft-icons` preference (one of the 4
+// full design. Two axes: a persisted `ft-icons` preference (one of the 3
 // concrete sets, or the meta-value 'auto') and a `data-icons` attribute on
-// <html> that always holds one of the 4 CONCRETE values — 'auto' is never
+// <html> that always holds one of the 3 CONCRETE values - 'auto' is never
 // written to data-icons.
+//
+// UI pass D2.6: the fourth set, 'emoji', is retired. A RETIRED value still
+// arrives from older storage: this device's ft-icons, the prefs-sync row, or
+// the v1.43 user-settings mirror. It resolves through LEGACY_ICON_SET_MAP
+// (emoji -> filled) and is never rewritten on boot: a boot write would
+// re-stamp the pref and beat a newer choice from another device (the
+// prefs-sync last-BOOT-wins class). The inline FOUC bootstraps in every
+// shell <head> carry the same mapping.
 
-const ICON_SETS = ['outlined', 'rounded', 'filled', 'emoji'];
+const ICON_SETS = ['outlined', 'rounded', 'filled'];
 const DEFAULT_ICON_SET = 'outlined';
-const AUTO_ERA_ICON_MAP = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+const AUTO_ERA_ICON_MAP = { '2005': 'filled', '2009': 'filled', '2014': 'filled', '2021': 'rounded' };
+const LEGACY_ICON_SET_MAP = { emoji: 'filled' };
+
+// Pure: a stored pref with a retired set id becomes its replacement; any
+// other value passes through unchanged (validation is resolveIconSet's job).
+function migrateIconPref(storedSet) {
+  return (typeof storedSet === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_ICON_SET_MAP, storedSet))
+    ? LEGACY_ICON_SET_MAP[storedSet] : storedSet;
+}
 
 // Single source of truth for the setup-page Icons picker. Auto listed first.
 const ICON_SET_REGISTRY = [
   { id: 'auto', name: 'Auto', blurb: 'Matches the icon style to whichever era you\'ve picked.' },
   { id: 'outlined', name: 'Outlined', blurb: 'Material Symbols Outlined — today\'s default look.' },
   { id: 'rounded', name: 'Rounded', blurb: 'Material Symbols Rounded — a softer, modern style.' },
-  { id: 'filled', name: 'Filled', blurb: '2014-flavored solid Material icons — the original flat era.' },
-  { id: 'emoji', name: 'Emoji', blurb: 'The original emoji glyphs — \u{1F3E0} \u{1F4C1} \u{2699}\u{FE0F} and friends.' }
+  { id: 'filled', name: 'Filled', blurb: '2014-flavored solid Material icons — the original flat era.' }
 ];
 
 // Pure: resolves a stored icon-set preference (+ the current era, needed only
-// for 'auto') into one of the four CONCRETE set ids. Never throws; never
-// returns 'auto'. Exported for node:test — see test/unit/resolve-icon-set.test.js.
-// Kept in sync with the inline FOUC bootstrap in <head> on
-// index.html/setup.html/watch.html (see the comment there).
+// for 'auto') into one of the three CONCRETE set ids. Never throws; never
+// returns 'auto'. Exported for node:test - see test/unit/resolve-icon-set.test.js,
+// which also runs every shell's inline FOUC bootstrap against this function.
 function resolveIconSet(storedSet, era) {
+  storedSet = migrateIconPref(storedSet);                     // retired set -> its replacement
   if (ICON_SETS.includes(storedSet)) return storedSet;      // valid explicit set
   if (storedSet === 'auto') {                                // meta -> era map
     const e = THEME_ERAS.includes(era) ? era : DEFAULT_ERA;  // invalid era -> DEFAULT_ERA mapping
@@ -17031,7 +17048,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
     formatHandoffTime, formatHandoffAge, handoffProgressPercent,
     HANDOFF_LIST_SURFACES, HANDOFF_POLL_MS,
-    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
+    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS, AUTO_ERA_ICON_MAP, migrateIconPref,
     // v1.77: exported so the Playlists sheet's folder rows can be asserted as
     // RENDERED DOM rather than as a source pattern. The per-folder glyph has
     // four render sites and this is one of only two with a test seam - the

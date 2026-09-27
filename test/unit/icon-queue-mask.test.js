@@ -5,8 +5,8 @@
 // the card-corner renderer treats all six corner controls uniformly.
 // Follows the heart/share/flame/history precedent EXACTLY: base
 // (outlined-dir) mask only, every other icon set falls back to it
-// automatically, and it is deliberately ABSENT from the emoji-set block
-// (those four never joined it either - emoji queue codepoints render
+// automatically (it was deliberately ABSENT from the emoji-set block too,
+// until the UI pass retired that set, D2.6 - emoji queue codepoints render
 // inconsistently on iOS, the v1.38 lesson).
 //
 // Source-text checks here strip comments first, SYMMETRICALLY (the v1.50.3
@@ -25,6 +25,7 @@ const PUB = path.join(__dirname, '..', '..', 'public');
 const QUEUE_SVG_PATH = path.join(PUB, 'assets', 'icons', 'queue.svg');
 const STYLE_CSS_PATH = path.join(PUB, 'css', 'style.css');
 const MAIN_JS_PATH = path.join(PUB, 'js', 'main.js');
+const { ICON_SETS, liveCss, effectiveMask } = require('../helpers/icon-sets');
 
 // The exact glyph shipped inline since v1.63 (three list lines + a play
 // triangle - YouTube's queue vocabulary). Promotion preserves the drawing.
@@ -87,13 +88,16 @@ test('style.css: .icon-queue joins the @supports currentColor-fill group', () =>
   );
 });
 
-test('style.css: .icon-queue stays OUT of the emoji-set block (the heart/share/flame precedent)', () => {
-  const emojiSelectorHits = css.match(/\[data-icons="emoji"\][^{]*\{/g) || [];
-  for (const sel of emojiSelectorHits) {
-    assert.ok(
-      !sel.includes('.icon-queue'),
-      `.icon-queue must not appear in any emoji-set selector, found in: ${sel.trim().slice(0, 120)}`
-    );
+// This bound "OUT of the emoji-set block" until the UI pass retired that set (D2.6).
+// The three-set form of the heart/share/flame precedent: no set scopes a rule to
+// .icon-queue, so under each of outlined/rounded/filled both mask spellings resolve
+// to the one base queue.svg.
+test('style.css: .icon-queue falls back to its one base mask in every icon set (the heart/share/flame precedent)', () => {
+  const live = liveCss();
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(live, set, 'icon-queue');
+    assert.equal(m.std, 'url(/assets/icons/queue.svg)', `${set}: the base queue.svg mask`);
+    assert.equal(m.webkit, m.std, `${set}: the -webkit- spelling agrees`);
   }
 });
 

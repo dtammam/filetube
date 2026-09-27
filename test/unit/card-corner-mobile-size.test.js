@@ -105,15 +105,23 @@ test('gate W3: list view reduces the VERTICAL extension so corner zones cannot s
   }
 });
 
-test('gate S1: the emoji icon set keeps its AC7 auto sizing for delete/download (no empty 18px box)', () => {
-  for (const [btn, icon] of [['card-delete-btn', 'icon-delete'], ['card-download-btn', 'icon-download']]) {
-    const bodies = mobileRuleBodiesFor(new RegExp(`^\\[data-icons="emoji"\\] \\.${btn} \\.${icon}$`));
-    assert.ok(bodies.length >= 1, `emoji exception exists for ${btn} .${icon}`);
-    for (const b of bodies) {
-      assert.match(b, /width: auto/, `${btn} emoji glyph stays auto-width`);
-      assert.match(b, /height: auto/, `${btn} emoji glyph stays auto-height`);
+// gate S1 kept an emoji-set exception here (delete/download stayed auto-sized, since
+// their emoji glyphs were font-sized). The UI pass retired the emoji set (D2.6), so
+// the exception is gone with it; the three-set intent is that EVERY set gets the
+// 18px corner glyph: no `[data-icons]`-scoped rule, anywhere in the stylesheet,
+// re-sizes a corner icon (it would out-specify the 18px rule for that set only).
+test('every icon set gets the 18px corner glyph: no [data-icons]-scoped rule re-sizes a corner icon', () => {
+  const offenders = [];
+  for (const m of CSS.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (!/(^|[;\s])(width|height)\s*:/.test(m[2])) continue;
+    for (const sel of m[1].split(',')) {
+      if (!/\[data-icons=/.test(sel)) continue;
+      for (const [btn, icon] of CORNER_ICONS) {
+        if (new RegExp(`\\.${btn} \\.${icon}(?![a-z0-9-])`).test(sel)) offenders.push(sel.trim());
+      }
     }
   }
+  assert.deepEqual(offenders, [], `set-scoped corner-icon size overrides: ${offenders.join(' | ')}`);
 });
 
 test('COMPLETENESS: every base-rule corner icon (14px sibling convention) has a mobile 18px twin', () => {

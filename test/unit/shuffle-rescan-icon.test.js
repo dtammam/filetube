@@ -14,6 +14,7 @@ const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'index.html');
 const MAIN_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'main.js');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+const { ICON_SETS, liveCss, effectiveMask, beforeGlyphRules } = require('../helpers/icon-sets');
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 
@@ -51,8 +52,8 @@ test('main.js: rescanBtn re-renders keep .icon-refresh (never re-render the shuf
 // themes (Rescan's .icon-refresh, right next to it, rendered correctly).
 // .icon-shuffle now joins the same mask-image/currentColor mechanism as
 // .icon-download (see style.css's chrome-icon block + icon-set-axis
-// section), so it themes across every era x mode x icon-set combo. The
-// emoji icon-set is UNCHANGED -- it still renders U+1F500 there on purpose.
+// section), so it themes across every era x mode x icon-set combo. (The
+// emoji icon-set kept U+1F500 on purpose until the UI pass retired it, D2.6.)
 test('style.css: .icon-shuffle is a real SVG mask (currentColor), not a fixed unicode ::before glyph', () => {
   assert.match(css, /\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/shuffle\.svg\)/);
   // The OLD unscoped ::before rule must be gone -- that was the actual bug
@@ -85,12 +86,21 @@ test('style.css: .icon-shuffle gets a themed mask in the rounded and filled icon
   assert.match(css, /\[data-icons="filled"\]\s*\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/filled\/shuffle\.svg\)/);
 });
 
-test('style.css: the emoji icon-set is unchanged -- .icon-shuffle still renders U+1F500 ONLY under [data-icons="emoji"]', () => {
-  assert.match(css, /\[data-icons="emoji"\]\s*\.icon-shuffle::before\s*\{\s*content:\s*"\\1F500";?\s*\}/);
-  // And the emoji-set group neutralizes the mask (same treatment as every
-  // other icon-set glyph), so no solid currentColor box renders behind it.
-  const emojiNeutralizeMatch = /\[data-icons="emoji"\][\s\S]*?\.icon-shuffle\s*\{\s*-webkit-mask-image:\s*none;/.exec(css);
-  assert.ok(emojiNeutralizeMatch, 'expected .icon-shuffle in the emoji-set mask-neutralize group');
+// This pinned the emoji set's U+1F500 ::before and its mask-neutralize membership.
+// The emoji set is retired (D2.6); the three-set intent: U+1F500 renders in NO set
+// (no ::before glyph on .icon-shuffle anywhere), and under each of outlined/rounded/
+// filled both mask spellings resolve to that set's shuffle.svg (nothing blanks it).
+test('style.css: no icon set renders the U+1F500 glyph -- .icon-shuffle is its own shuffle.svg mask in all three sets', () => {
+  const live = liveCss();
+  assert.deepEqual(beforeGlyphRules(live, 'icon-shuffle').map((r) => r.sels.join(', ')), [],
+    'no rule paints a ::before glyph on .icon-shuffle');
+  assert.doesNotMatch(live, /\\1F500/, 'no U+1F500 escape left in the stylesheets');
+  const dir = { outlined: '', rounded: 'rounded/', filled: 'filled/' };
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(live, set, 'icon-shuffle');
+    assert.equal(m.std, `url(/assets/icons/${dir[set]}shuffle.svg)`, `${set}: the standard mask`);
+    assert.equal(m.webkit, m.std, `${set}: the -webkit- mask agrees`);
+  }
 });
 
 test('assets: shuffle.svg is bundled for all three vector icon sets (outlined/rounded/filled)', () => {

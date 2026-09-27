@@ -97,7 +97,9 @@ test('inject(): a hidden sprite as the FIRST child of <body>, swapped in place o
   FTIcons.inject('filled', doc);
   assert.equal(doc.querySelectorAll('#ft-icon-sprite').length, 1, 'one sprite, never stacked');
   assert.equal(doc.getElementById('i-home').querySelector('path').getAttribute('d'), FTIcons.ICONS.filled.home);
-  FTIcons.inject('emoji', doc);
+  // An unknown set falls back to outlined. (A stored `emoji`, the retired set, never
+  // reaches inject: common.js resolves it to filled first - icon-set-migration.test.js.)
+  FTIcons.inject('bogus', doc);
   assert.equal(doc.getElementById('ft-icon-sprite').getAttribute('data-set'), 'outlined', 'an unknown set falls back to outlined');
 });
 
