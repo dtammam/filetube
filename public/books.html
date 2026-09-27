@@ -180,23 +180,21 @@
       <!-- Per-view content boundary (FR-1, T1): the router swaps ONLY this
            node on in-app navigation -- see index.html's matching comment. -->
       <div id="view-root" data-view="books">
+        <!-- UI pass sweep S10: the toolbar's controls are ui-btn primitives (the sort menu
+             and Scan); books.js fills the shelf chips (ui-chip filters), the shelf Pin
+             toggle and the grid, and renders the empty / error state into #books-state. -->
         <div class="books-toolbar">
           <h2>Books</h2>
-          <div>
-            <select id="books-sort-select" class="btn btn-sm" aria-label="Sort books">
-              <option value="recent">Recently added</option>
-              <option value="title-asc">Title A-Z</option>
-              <option value="title-desc">Title Z-A</option>
-              <option value="author">Author</option>
-              <option value="recent-progress">Recently read</option>
-            </select>
-            <button class="btn btn-sm" id="books-scan-btn" type="button" title="Scan book folders now">
-              <i class="icon-refresh"></i> Scan
-            </button>
+          <div class="books-toolbar-actions">
+            <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="books-sort-btn" aria-haspopup="menu" aria-label="Sort books"><span class="ui-btn__label" id="books-sort-label">Recently added</span><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span></button>
+            <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="books-scan-btn" title="Scan book folders now"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></span><span class="ui-btn__label">Scan</span></button>
           </div>
         </div>
 
-        <div class="books-shelf-chips" id="books-shelf-chips"><!-- folder chips + pin toggles --></div>
+        <div class="books-shelf-bar">
+          <div class="books-shelf-chips" id="books-shelf-chips"><!-- ui-chip filters, one per shelf --></div>
+          <span id="books-shelf-pin-host"><!-- the Pin toggle for the selected shelf --></span>
+        </div>
 
         <div id="books-continue-section" hidden>
           <h3 class="books-section-title">Continue reading</h3>
@@ -207,9 +205,7 @@
         <div class="books-grid" id="books-grid">
           <!-- Populated by /js/books.js -->
         </div>
-        <div class="books-empty" id="books-empty" hidden>
-          No books yet. Add a book folder in <a href="/setup.html">Settings</a>, drop EPUB or PDF files in it, and scan.
-        </div>
+        <div id="books-state" hidden><!-- ui-state: empty / error (plan D9) --></div>
       </div>
     </main>
   </div>

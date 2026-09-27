@@ -941,8 +941,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 /* v1.189.0 (Dean): extend the same modern feed-chip PILL look to the remaining
-   list-page toolbars - books (`.books-toolbar`), music + podcasts (both use
-   `.music-toolbar-actions`), and history (`.history-toolbar-actions`). Same
+   list-page toolbars - music + podcasts (both use `.music-toolbar-actions`) and
+   history (`.history-toolbar-actions`); books (`.books-toolbar`) left this recipe
+   for ui-btn primitives in the UI pass (sweep S10). Same
    recipe + same tokens as the home toolbar above (census-clean), so they theme
    with every era + light/dark identically. Unlike the home toolbar these carry
    PRIMARY actions (+Add / Subscribe), so the flat secondary FILL is applied only
@@ -951,21 +952,18 @@ html.reader-immersive .app-container { padding-top: 0; }
    controls (books/music) carry `.btn` too and round cleanly. Left as-is on
    purpose: the `.music-tab` strip is an underline-tab component, not a toolbar
    button. */
-.books-toolbar .btn,
 .music-toolbar-actions .btn,
 .history-toolbar-actions .btn {
   border-radius: var(--radius-full);
   box-shadow: none;
   font-weight: normal; /* v1.190 (Dean): match the modern feed chips' weight (the base .btn is --fw-semibold, which read "bolder / different" than the feed pills) */
 }
-.books-toolbar .btn:not(.btn-primary),
 .music-toolbar-actions .btn:not(.btn-primary),
 .history-toolbar-actions .btn:not(.btn-primary) {
   background-color: var(--bg-secondary);
   border-color: var(--border-color);
 }
 @media (hover: hover) {
-  .books-toolbar .btn:not(.btn-primary):hover,
   .music-toolbar-actions .btn:not(.btn-primary):hover,
   .history-toolbar-actions .btn:not(.btn-primary):hover {
     background-color: var(--bg-sidebar);
@@ -1761,16 +1759,17 @@ img.art-shimmer {
 img.art-shimmer.art-together { object-position: -100000px 0; }
 
 /* v1.98 shimmer sweep (library views): the seeded skeletons REUSE each view's
-   real reserved-space art box (`.book-cover-link` 2:3, `.music-album-art` 1:1,
-   `.history-thumb` 16:9) so the reveal is zero-shift. (Podcasts' placeholder is a
-   `.ui-art.skeleton-shimmer` square since UI pass S6: `.skeleton-shimmer` is the later
-   equal-specificity rule, so its fill already beats ui-art's ground.) The boxes listed
-   below set `background: var(--thumbnail-bg)` (a dark fill) that would swallow the shimmer sweep, so restore the shimmer base fill on the
+   real reserved-space art box (`.music-album-art` 1:1, `.history-thumb` 16:9) so the
+   reveal is zero-shift. (Podcasts' placeholder is a `.ui-art.skeleton-shimmer` square
+   since UI pass S6, and a book's is its card's `.ui-thumb.skeleton-shimmer` since S10:
+   `.skeleton-shimmer` is the later equal-specificity rule (style.css loads after ui.css),
+   so its fill already beats the primitive's ground.) The boxes listed below set
+   `background: var(--thumbnail-bg)` (a dark fill) that would swallow the shimmer sweep,
+   so restore the shimmer base fill on the
    skeleton variant (2-class specificity beats each art box's 1-class rule
    regardless of order). `.history-thumb` already uses `--bg-secondary`, so it is
    deliberately NOT listed here (the rule would be a no-op). The shared
    `.skeleton-shimmer` ::after sweep + reduced-motion carve-out apply unchanged. */
-.book-cover-link.skeleton-shimmer,
 .music-album-art.skeleton-shimmer,
 .music-artist-mosaic.skeleton-shimmer, /* v1.103: the artist mosaic box (also thumbnail-bg) on the now-DEFAULT Artists cold landing */
 .book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
@@ -9741,112 +9740,79 @@ html[data-modern="on"] .video-uploader {
 
 /* ---- v1.37.1: books page styles (moved from the page <head> -- the SPA
    router swaps only #view-root, so page-local styles were lost on in-app
-   navigation) */
-
-    /* v1.37.0 books page -- era tokens only, no hardcoded colors (the
-       subscriptions.html page-local-style precedent). Cover cards are
-       PORTRAIT (2:3) unlike the 16:9 video cards, so they get their own
-       grid rather than reusing .video-card's aspect machinery. */
-    .books-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-5);
-      margin-bottom: var(--space-6);
-    }
-    .books-toolbar h2 { margin: 0; }
-    .books-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: var(--space-8);
-    }
-    .book-card {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-    .book-cover-link {
-      display: block;
-      aspect-ratio: 2 / 3;
-      border-radius: var(--radius);
-      overflow: hidden;
-      background: var(--thumbnail-bg);
-      position: relative;
-    }
-    .book-cover-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .book-progress-track {
-      position: absolute;
-      left: 0; right: 0; bottom: 0;
-      height: 4px;
-      background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5d) */
-    }
-    .book-progress-fill {
-      height: 100%;
-      background: var(--yt-red);
-    }
-    .book-title {
-      margin-top: var(--space-3);
-      font-weight: var(--fw-bold);
-      font-size: var(--fs-base);
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-    }
-    .book-author {
-      font-size: var(--fs-sm);
-      opacity: 0.75;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .books-shelf-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-4);
-      margin-bottom: var(--space-6);
-    }
-    .books-shelf-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-2) var(--space-5);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      font-size: var(--fs-sm);
-      cursor: pointer;
-      background: none;
-      color: inherit;
-    }
-    .books-shelf-chip.active { background: var(--yt-red); color: var(--on-accent); border-color: transparent; }
-    .books-shelf-pin-btn {
-      border: none;
-      background: none;
-      cursor: pointer;
-      color: inherit;
-      opacity: 0.7;
-      padding: 0 var(--space-1);
-      font-size: var(--fs-sm);
-    }
-    .books-shelf-pin-btn.pinned { opacity: 1; }
-    .books-empty {
-      opacity: 0.75;
-      padding: var(--space-12) 0;
-    }
-    .books-section-title {
-      margin: var(--space-8) 0 var(--space-5);
-      font-size: var(--fs-lg);
-    }
+   navigation). UI pass sweep S10: the controls are primitives (the toolbar's
+   ui-btn sort + Scan, ui-chip shelf filters, the ui-btn Pin toggle, ui-thumb
+   covers, ui-state for empty / error); what stays here is surface layout and
+   the card's text. */
+.books-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.books-toolbar h2 { margin: 0; }
+.books-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.books-shelf-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.books-shelf-bar:not(:has(.ui-chip)) { display: none; }
+.books-shelf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-8);
+}
+.book-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.book-cover-link { display: block; }
+/* D8.6: a card title is ink (link blue only in 2005, through --ink-link) */
+.book-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: var(--space-3);
+  color: var(--ink-link);
+  font: var(--t-callout);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+}
+.book-author {
+  overflow: hidden;
+  color: var(--ink-2);
+  font: var(--t-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.books-section-title {
+  margin: var(--space-8) 0 var(--space-5);
+  font: var(--t-title);
+}
 
 /* ---- v1.37.1: reader styles (moved from the page <head> -- the SPA
    router swaps only #view-root, so page-local styles were lost on in-app
-   navigation) */
+   navigation). UI pass sweep S10 (F69): the chrome is primitives - ui-btn icon
+   buttons in the toolbar (44px hit areas), ui.sheet for Contents and the Aa
+   settings, ui.segmented for the theme, ui-state for a book that cannot open.
+   The reading themes (--reader-*) and the page itself are untouched. */
 
     /* v1.37.0 reader chassis -- a full-height reading surface under the
        shared shell header. Reading themes are reader-local (paper/sepia/
@@ -9855,30 +9821,29 @@ html[data-modern="on"] .video-uploader {
     .reader-chassis {
       display: flex;
       flex-direction: column;
-      /* Fill the viewport below the fixed header; the reader owns its own
-         scrolling/pagination inside the content pane. */
-      height: calc(100vh - var(--mobile-header-h, var(--header-h)) - env(safe-area-inset-bottom, 0px)); /* desktop fallback derives --header-h - the adversarial gate found this 56px copy surviving f5c; a diverged copy here overflows the reader by the delta and clips the bottombar */
+      /* read.js sizeReader measures the real space and writes it as DATA (--reader-h);
+         until then, fill the viewport below the fixed header. */
+      height: var(--reader-h, calc(100vh - var(--mobile-header-h, var(--header-h)) - env(safe-area-inset-bottom, 0px))); /* desktop fallback derives --header-h - the adversarial gate found this 56px copy surviving f5c; a diverged copy here overflows the reader by the delta and clips the bottombar */
       min-height: 320px;
     }
+    /* one row, never wrapped: the title is the only flexible slot */
     .reader-topbar {
       display: flex;
       align-items: center;
-      flex-wrap: wrap; /* v1.37.2: buttons wrap to a second row, never clipped */
-      gap: var(--space-4);
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--border-color);
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      border-bottom: var(--hairline) solid var(--separator);
       flex: 0 0 auto;
     }
     .reader-title {
       flex: 1 1 auto;
       min-width: 0;
-      font-weight: var(--fw-bold);
-      font-size: var(--fs-md);
+      padding: 0 var(--space-2);
+      font: var(--t-title);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .reader-topbar .btn { flex: 0 0 auto; }
     .reader-content {
       flex: 1 1 auto;
       min-height: 0;
@@ -9904,64 +9869,65 @@ html[data-modern="on"] .video-uploader {
       height: auto;
       box-shadow: 0 1px 6px rgba(0,0,0,0.35); /* token-exempt: paper-page depth on pdf canvas (F.5 ruling 5) */
     }
+    /* a page holder keeps a page-sized gap until its canvas renders */
+    .reader-pdf-page.is-pending { min-height: calc(var(--av-2xl) * 2); }
     .reader-bottombar {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
       gap: var(--space-5);
       padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
-      border-top: 1px solid var(--border-color);
-      font-size: var(--fs-sm);
+      border-top: var(--hairline) solid var(--separator);
+      color: var(--ink-2);
+      font: var(--t-meta);
     }
     .reader-progress-track {
       flex: 1 1 auto;
-      height: 6px;
-      border-radius: 3px; /* token-exempt: geometry - half the 6px track height (F.5 ruling 5) */
-      background: var(--border-color);
+      height: var(--progress-h);
+      border-radius: var(--r-pill);
+      background: var(--separator);
       overflow: hidden;
     }
+    /* the bar scales by --p (read.js writes the read fraction as DATA) */
     .reader-progress-fill {
       height: 100%;
-      width: 0;
-      background: var(--yt-red);
+      background: var(--progress);
+      transform: scaleX(var(--p, 0));
+      transform-origin: left center;
     }
-    .reader-percent { flex: 0 0 auto; min-width: 42px; text-align: right; opacity: 0.85; }
-    /* TOC + settings drawers -- the chapters-menu lessons applied: an
-       explicit [hidden]{display:none!important} companion for every
-       show/hide-via-hidden element with its own display rule. */
-    .reader-drawer {
-      position: absolute;
-      top: 0; right: 0; bottom: 0;
-      width: min(320px, 85vw);
-      background: var(--card-bg);
-      border-left: 1px solid var(--border-color);
-      overflow-y: auto;
-      z-index: 30; /* token-exempt: local stacking */
-      display: flex;
-      flex-direction: column;
-      padding: var(--space-5);
+    .reader-percent {
+      flex: 0 0 auto;
+      min-width: calc(var(--space-16) + var(--space-4));
+      text-align: right;
+      font-variant-numeric: tabular-nums;
     }
-    .reader-drawer[hidden] { display: none !important; }
-    .reader-drawer h3 { margin: var(--space-2) 0 var(--space-5); font-size: var(--fs-md); }
-    .reader-toc-item {
-      display: block;
-      padding: var(--space-3) var(--space-2);
-      font-size: var(--fs-base);
-      border-bottom: 1px solid var(--border-color);
-      cursor: pointer;
-      background: none;
-      border-left: none; border-right: none; border-top: none;
-      color: inherit;
-      text-align: left;
-      width: 100%;
+    /* the Contents sheet: nested TOC entries indent under their chapter */
+    .reader-toc-sub .ui-row__body { padding-left: var(--space-8); }
+    /* the Aa sheet: text size stepper + reading theme */
+    .reader-settings {
+      display: grid;
+      gap: var(--space-6);
+      padding: var(--space-2) var(--space-8) var(--space-6);
     }
-    .reader-settings-row {
+    .reader-setting {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       gap: var(--space-5);
-      padding: var(--space-4) 0;
-      font-size: var(--fs-base);
+      font: var(--t-body);
+    }
+    .reader-setting__name { color: var(--ink-1); }
+    .reader-stepper {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+    .reader-stepper__value {
+      min-width: calc(var(--space-16) + var(--space-4));
+      text-align: center;
+      font: var(--t-callout);
+      font-variant-numeric: tabular-nums;
     }
     .reader-tap-nav {
       position: absolute;
@@ -9974,24 +9940,20 @@ html[data-modern="on"] .video-uploader {
     }
     .reader-tap-prev { left: 0; }
     .reader-tap-next { right: 0; }
+    /* the status layer: a plain line, a ui-state (a book that cannot open), or the
+       "Tap to start listening" button (v1.38.4: the whole pane stays the tap target
+       when iOS blocks autoplay - read.js listens on this layer) */
     .reader-status {
       position: absolute;
       inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: var(--fs-md);
-      opacity: 0.8;
+      color: var(--ink-2);
+      font: var(--t-body);
       z-index: 5; /* token-exempt: local stacking */
     }
-    .reader-status[hidden] { display: none !important; }
-    /* v1.38.4: the "Tap to start listening" fallback fills the pane (inset:0)
-       so the whole reading area is one big tap target when iOS blocks autoplay. */
-    .reader-status.reader-status-tap {
-      cursor: pointer;
-      font-weight: var(--fw-bold);
-      opacity: 1;
-    }
+    .reader-status .ui-state { background: var(--surface-1); border-radius: var(--r-md); }
 
 /* ---- v1.39.0: in-reader now-playing bar (book narration) -------------------
    The shared player mounts FULL into #player-slot here (not docked), so its
@@ -10014,11 +9976,8 @@ html[data-modern="on"] .video-uploader {
 }
 .reader-nowplaying[hidden] { display: none; }
 .reader-np-info { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
-.reader-np-cover {
-  width: 26px; height: 26px; object-fit: cover; border-radius: 4px; /* token-exempt: ruling B per-site radius (was 3px; no small-radius token exists by design) */
-  flex-shrink: 0; background: var(--border-color);
-}
-.reader-np-cover:not([src]) { display: none; }
+.reader-np-art { display: flex; flex: none; }
+.reader-np-art:empty { display: none; }
 .reader-np-chapter {
   font-size: var(--fs-xs); color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

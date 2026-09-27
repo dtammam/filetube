@@ -369,12 +369,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.book-progress-track|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.book-row-card|width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -400,12 +394,6 @@
       },
       {
         "key": "public/css/style.css|.books-grid|grid-template-columns",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.books-shelf-chip|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -3975,25 +3963,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.reader-bottombar|border-top",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.reader-chassis|min-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-drawer|border-left",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-drawer|width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -4018,30 +3988,6 @@
       },
       {
         "key": "public/css/style.css|.reader-np-ico|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-percent|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-progress-track|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-toc-item|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-topbar|border-bottom",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -6657,12 +6603,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/read.js|js-style|min-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/setup.js|js-template-style|font-size",
         "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6851,18 +6791,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".books-shelf-chip",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".books-shelf-pin-btn",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".bottom-nav-item",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6882,7 +6810,7 @@
       },
       {
         "key": ".btn",
-        "count": 54,
+        "count": 50,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -7733,25 +7661,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".reader-settings-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".reader-status",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".reader-tap-nav",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".reader-toc-item",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8303,12 +8213,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/books.html|<button>|btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/books.html|<button>|menu-toggle",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -8556,12 +8460,6 @@
       },
       {
         "key": "public/index.html|<button>|search-btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/books.js|createElement(button)|pinBtn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -9053,12 +8951,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/read.js|createElement(button)|btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/setup.js|<button>|(no class)",
         "count": 19,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -9390,7 +9282,7 @@
       },
       {
         "key": "public/read.html|<button>|btn",
-        "count": 13,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -9787,18 +9679,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/books.js|glyph|U+2605",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/books.js|glyph|U+2606",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/common.js|<svg>",
         "count": 11,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -9885,12 +9765,6 @@
       {
         "key": "public/js/player.js|glyph|U+00D7",
         "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/read.js|glyph|U+25B6",
-        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -10003,12 +9877,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/read.html|glyph|U+2190",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/read.html|glyph|U+25B6",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -10016,12 +9884,6 @@
       },
       {
         "key": "public/read.html|glyph|U+26F6",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/read.html|glyph|U+2713",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -10399,19 +10261,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.reader-drawer[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.reader-nowplaying #media-player, .reader-nowplaying #audio-bg-art, .reader-nowplaying .art-play-glyph, .reader-nowplaying #audio-visualizer, .reader-nowplaying #skip-controls, .reader-nowplaying #speed-badge, .reader-nowplaying #fs-btn, .reader-nowplaying #pip-btn, .reader-nowplaying #cc-btn, .reader-nowplaying #mute-btn, .reader-nowplaying #vol-bar|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reader-status[hidden]|display",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -10498,12 +10348,6 @@
       },
       {
         "key": "public/css/style.css|#theater-btn[aria-pressed=\"true\"]|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.books-shelf-chip.active|background",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"

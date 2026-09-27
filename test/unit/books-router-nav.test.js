@@ -55,18 +55,33 @@ test('T7: vendored reader libs carry their upstream LICENSE files with the expec
 
 const booksView = require('../../public/js/books.js');
 
-test('T8: buildBookCardHtml -- escaped title/author, encoded id in hrefs, progress bar only when meaningful', () => {
-  const html = booksView.buildBookCardHtml({
+// UI pass sweep S10 (AC12 conversion): the card was an HTML string (escaped by hand, an
+// inline `width: N%` progress fill); it is now DOM built on ui.thumb, so the same four
+// properties are asserted on the built element instead of on a string.
+test('T8: buildBookCard -- title/author are TEXT, encoded id in both hrefs, a 2:3 ui-thumb cover, progress only when meaningful', () => {
+  const { JSDOM } = require('jsdom');
+  const doc = new JSDOM('<!DOCTYPE html><body></body>').window.document;
+  const card = booksView.buildBookCard({
     id: 'abc/def', title: '<b>Sneaky</b> & Title', author: "O'Author",
     progress: { percent: 37.4 },
-  });
-  assert.ok(html.includes('/read.html?b=abc%2Fdef'), 'id URL-encoded');
-  assert.ok(!html.includes('<b>Sneaky</b>'), 'title escaped');
-  assert.ok(html.includes('&lt;b&gt;Sneaky&lt;/b&gt;'));
-  assert.ok(html.includes('&#039;Author'), 'author escaped');
-  assert.ok(html.includes('width: 37.4%'), 'progress fill');
-  const fresh = booksView.buildBookCardHtml({ id: 'x', title: 'T', author: '' });
-  assert.ok(!fresh.includes('book-progress-track'), 'no bar on unread books');
+  }, doc);
+  const links = card.querySelectorAll('a');
+  assert.equal(links.length, 2, 'the cover link and the title link');
+  for (const a of links) assert.equal(a.getAttribute('href'), '/read.html?b=abc%2Fdef', 'id URL-encoded');
+  const title = card.querySelector('.book-title');
+  assert.equal(title.textContent, '<b>Sneaky</b> & Title', 'the title is text');
+  assert.equal(title.querySelector('b'), null, 'never parsed as markup');
+  assert.equal(card.querySelector('.book-author').textContent, "O'Author");
+  const thumb = card.querySelector('.book-cover-link > .ui-thumb');
+  assert.ok(thumb && thumb.classList.contains('ui-thumb--2x3') && thumb.classList.contains('ui-thumb--card'), 'a 2:3 card thumb');
+  assert.equal(thumb.querySelector('img').getAttribute('src'), '/bookcover/abc%2Fdef');
+  const bar = thumb.querySelector('.ui-thumb__bar');
+  assert.ok(bar, 'a progress bar');
+  assert.equal(bar.style.getPropertyValue('--p'), '0.374', 'the fraction is DATA (--p), not an inline width');
+  const fresh = booksView.buildBookCard({ id: 'x', title: 'T', author: '' }, doc);
+  assert.equal(fresh.querySelector('.ui-thumb__progress'), null, 'no bar on unread books');
+  const sliver = booksView.buildBookCard({ id: 'y', title: 'T', progress: { percent: 0.4 } }, doc);
+  assert.equal(sliver.querySelector('.ui-thumb__progress'), null, 'no sliver bar for an opened-once book (<= 0.5%)');
 });
 
 test('T8: deriveShelfChips -- sorted, malformed entries dropped, non-arrays degrade to []', () => {
@@ -207,14 +222,42 @@ test("v1.37.1: ePub() is called with openAs:'epub' -- the extension-less /book/:
   assert.ok(readSrc.includes("{ openAs: 'epub' }"), 'the archived-epub hint must be explicit');
 });
 
-test('v1.37.1: books/reader styles live in the SHARED stylesheet -- the SPA router swaps only #view-root, so page-local <head> styles are lost on in-app navigation', () => {
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  for (const cls of ['.reader-chassis', '.reader-topbar', '.reader-drawer', '.books-grid', '.book-cover-link', '.books-shelf-chip']) {
-    assert.ok(css.includes(`${cls} {`) || css.includes(`${cls},`), `${cls} must be in style.css`);
-  }
+// UI pass sweep S10 (AC12 conversion): this pinned a hand-kept list of six bespoke
+// classes in style.css. Most of them are gone (the shelf chips, the drawers and the
+// cover link's look are ui-* primitives now), so the lock is the styling-source law it
+// stood for, derived instead of listed: EVERY class the books and reader views put on
+// the page (their #view-root markup and every className / classList literal in
+// books.js and read.js) has a rule in the SHARED stylesheets (ui.css or style.css),
+// and neither shell carries a page-local <style> (lost on the SPA #view-root swap,
+// v1.37.1; ui-lint no-shell-style enforces the same app-wide).
+test('v1.37.1: books/reader styles live in the SHARED stylesheets -- every class the two views use has a rule in ui.css or style.css; no page-local <style>', () => {
+  const pub = path.join(__dirname, '../../public');
+  const strip = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = strip(fs.readFileSync(path.join(pub, 'css/ui.css'), 'utf8')) + strip(fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8'));
+  const classes = new Map(); // class -> where it came from
   for (const page of ['books.html', 'read.html']) {
-    const html = fs.readFileSync(path.join(__dirname, `../../public/${page}`), 'utf8');
-    assert.ok(!html.includes('<style>'), `${page} must carry NO page-local style block (lost on SPA swap)`);
+    const html = fs.readFileSync(path.join(pub, page), 'utf8');
+    assert.ok(!/<style[\s>]/.test(html), `${page} must carry NO page-local style block (lost on SPA swap)`);
+    const viewStart = html.indexOf('<div id="view-root"');
+    const viewEnd = html.indexOf('</main>');
+    assert.ok(viewStart > 0 && viewEnd > viewStart, `${page}: the #view-root region is found`);
+    const view = html.slice(viewStart, viewEnd).replace(/<!--[\s\S]*?-->/g, '');
+    for (const m of view.matchAll(/class="([^"]+)"/g)) for (const c of m[1].split(/\s+/)) if (c) classes.set(c, page);
+  }
+  for (const file of ['js/books.js', 'js/read.js']) {
+    const js = fs.readFileSync(path.join(pub, file), 'utf8');
+    for (const m of js.matchAll(/className = '([a-z0-9_ -]+)'/g)) for (const c of m[1].split(/\s+/)) if (c) classes.set(c, file);
+    for (const m of js.matchAll(/classList\.(?:add|toggle)\('([a-z0-9_-]+)'/g)) classes.set(m[1], file);
+    for (const m of js.matchAll(/class="([^"$]+)"/g)) for (const c of m[1].split(/\s+/)) if (c) classes.set(c, file);
+  }
+  assert.ok(classes.size >= 30, `sanity: the scan found the views' classes (${classes.size})`);
+  // One listed exception: ui.thumb's DEFAULT context modifier. ui.css paints the card
+  // radius on the base .ui-thumb and styles only the --row override, so --card is a
+  // builder-emitted marker with nothing to add (ui-builders.test.js pins it).
+  const EXCUSED = new Map([['ui-thumb--card', "ui.thumb's default context; the base .ui-thumb rule is the card look"]]);
+  for (const [cls, from] of classes) {
+    if (EXCUSED.has(cls)) continue;
+    assert.ok(new RegExp(`\\.${cls.replace(/[-_]/g, (ch) => '\\' + ch)}(?![\\w-])`).test(css), `${from}: class '${cls}' has NO rule in ui.css or style.css - a bare control (the styling-source law)`);
   }
 });
 

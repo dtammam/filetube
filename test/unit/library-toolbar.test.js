@@ -62,24 +62,34 @@ test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill rec
   assert.match(era2009[1], /color:\s*var\(--text-primary\)/, '2009 active label keeps legible primary ink on its retained gloss');
 });
 
-test('v1.189.0 the pill look extends to the books / music / podcasts / history toolbars, tokens only, primary accent preserved', () => {
-  // The three other list-page toolbar containers all get the pill SHAPE.
-  const shape = /\.books-toolbar \.btn,\s*\.music-toolbar-actions \.btn,\s*\.history-toolbar-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(shape, 'the grouped pill-shape rule for the other toolbars exists (books + music/podcasts + history)');
+test('v1.189.0 the pill look extends to the music / podcasts / history toolbars, tokens only, primary accent preserved; books is ui-btn pills (UI pass S10)', () => {
+  // UI pass sweep S10 (AC12 conversion of the books third): the books toolbar left this
+  // recipe for ui-btn primitives - its Sort and Scan are tonal pill ui-btns in the shell
+  // markup, and no .books-toolbar .btn rule survives to restyle them.
+  const books = fs.readFileSync(path.join(__dirname, '../../public/books.html'), 'utf8');
+  for (const id of ['books-sort-btn', 'books-scan-btn']) {
+    const tag = new RegExp(`<button[^>]*id="${id}"[^>]*>`).exec(books);
+    assert.ok(tag, `books.html carries #${id}`);
+    for (const cls of ['ui-btn', 'ui-btn--tonal', 'ui-btn--pill']) assert.match(tag[0], new RegExp(`class="[^"]*\\b${cls}(?![\\w-])`), `#${id} is a ${cls}`);
+  }
+  assert.doesNotMatch(STYLE_CSS, /\.books-toolbar \.btn/, 'no bespoke .btn recipe for the books toolbar remains');
+  // The other list-page toolbar containers all get the pill SHAPE.
+  const shape = /\.music-toolbar-actions \.btn,\s*\.history-toolbar-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
+  assert.ok(shape, 'the grouped pill-shape rule for the other toolbars exists (music/podcasts + history)');
   assert.match(shape[1], /border-radius:\s*var\(--radius-full\)/, 'fully rounded like the home toolbar');
   assert.match(shape[1], /box-shadow:\s*none/, 'flat - base .btn shadow dropped');
   assert.match(shape[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips + the home toolbar');
   // The flat secondary FILL is scoped to :not(.btn-primary) so +Add / Subscribe
   // keep their --yt-red accent (only the shape rounds).
-  const fill = /\.books-toolbar \.btn:not\(\.btn-primary\),\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\),\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\) \{([^}]*)\}/.exec(STYLE_CSS);
+  const fill = /\.music-toolbar-actions \.btn:not\(\.btn-primary\),\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\) \{([^}]*)\}/.exec(STYLE_CSS);
   assert.ok(fill, 'the fill rule excludes .btn-primary (accent preserved)');
   assert.match(fill[1], /background-color:\s*var\(--bg-secondary\)/, 'non-primary buttons get the flat secondary fill');
   assert.match(fill[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
   // Bind the hover tint too (gate SUGGESTION: without this a future edit could
   // silently drop it, matching the v1.188 sibling test's own hover lock).
-  const hover = /\.books-toolbar \.btn:not\(\.btn-primary\):hover,\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover,\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
+  const hover = /\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover,\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
   assert.ok(hover, 'the non-primary hover rule exists for the other toolbars');
-  assert.ok(hoverGated('.books-toolbar .btn:not(.btn-primary):hover, .music-toolbar-actions .btn:not(.btn-primary):hover, .history-toolbar-actions .btn:not(.btn-primary):hover'), 'the toolbars hover rule is inside @media (hover: hover)');
+  assert.ok(hoverGated('.music-toolbar-actions .btn:not(.btn-primary):hover, .history-toolbar-actions .btn:not(.btn-primary):hover'), 'the toolbars hover rule is inside @media (hover: hover)');
   assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like the home toolbar');
   // No raw color literal sneaks in (the census enforces this globally, but bind
   // it here too since this is the theming question Dean raised).

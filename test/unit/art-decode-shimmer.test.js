@@ -96,7 +96,7 @@ const ART_SITES = [
   // a ui.avatar kind 'podcast' whose img takes the class); podcasts-ui-sweep.test.js binds both
   // rendered imgs carrying it.
   ['public/js/podcasts.js', "img.classList.add('art-shimmer')"],
-  ['public/js/books.js', 'class="book-cover-img art-shimmer"'],
+  ['public/js/books.js', "img.classList.add('art-shimmer');"], // UI pass S10: the ui.thumb cover's img (books-reader-ui.test.js runs it)
   ['public/js/history.js', 'class="history-thumb-img art-shimmer"'],
   ['public/js/main.js', "img.className = 'art-shimmer';"],
 ];

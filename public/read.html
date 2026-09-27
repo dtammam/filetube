@@ -180,51 +180,31 @@
     <main class="main-content" id="main-content">
       <div id="view-root" data-view="read">
         <div class="reader-chassis" id="reader-chassis">
+          <!-- UI pass sweep S10 (F69): an icon-button toolbar with RESERVED slots. Back, the
+               title, then Contents, Aa, Like and More always hold their places; Like is
+               disabled (not hidden) until the book's detail resolves, so nothing pops in.
+               Listen (TTS, opt-in) sits right of the title and only narrows it when shown.
+               Finished, Save to device and Share live in the More menu (ui.menu); Contents
+               is a panel sheet and Aa a popover / bottom sheet (ui.sheet), built by read.js. -->
           <div class="reader-topbar">
-            <a href="/books" class="btn btn-sm" id="reader-back-btn" aria-label="Back to books">&#8592;</a>
+            <a href="/books" class="ui-btn ui-btn--plain ui-btn--md ui-btn--icon" id="reader-back-btn" aria-label="Back to books"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-arrow_back"/></svg></span></a>
             <div class="reader-title" id="reader-title">Loading&hellip;</div>
-            <button class="btn btn-sm" id="reader-toc-btn" type="button" aria-label="Table of contents">Contents</button>
-            <button class="btn btn-sm" id="reader-settings-btn" type="button" aria-label="Reader settings">Aa</button>
             <!-- v1.38.0 TTS: shown by read.js only when GET /api/books/tts/config
                  reports an engine is configured (opt-in like yt-dlp). -->
-            <button class="btn btn-sm" id="reader-listen-btn" type="button" aria-label="Listen from here" hidden>Listen</button>
-            <!-- v1.72 books first-class: like + mark-finished + save-to-device.
-                 Hidden until the detail resolves (read.js seeds their state
-                 from the server-derived liked/finished fields). -->
-            <button class="btn btn-sm" id="reader-like-btn" type="button" aria-label="Like this book" aria-pressed="false" hidden><i class="icon-heart"></i></button>
-            <button class="btn btn-sm" id="reader-finished-btn" type="button" aria-label="Mark as finished" aria-pressed="false" hidden>&#10003;</button>
-            <a class="btn btn-sm" id="reader-download-btn" aria-label="Save to device" download hidden><i class="icon-download"></i></a>
-            <!-- v1.287 (Dean, "everything shareable"): share the actual book file (pdf/epub)
-                 via the shared shareMediaFile helper. Hidden until the detail resolves. -->
-            <button class="btn btn-sm" id="reader-share-btn" type="button" aria-label="Share this book" hidden><i class="icon-share"></i></button>
+            <button type="button" class="ui-btn ui-btn--plain ui-btn--md ui-btn--icon" id="reader-listen-btn" aria-label="Listen from here" hidden><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-headphones"/></svg></span></button>
+            <button type="button" class="ui-btn ui-btn--plain ui-btn--md ui-btn--icon" id="reader-toc-btn" aria-label="Contents" aria-haspopup="dialog"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-toc"/></svg></span></button>
+            <button type="button" class="ui-btn ui-btn--plain ui-btn--md ui-btn--icon" id="reader-settings-btn" aria-label="Reader settings" aria-haspopup="dialog"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-format_size"/></svg></span></button>
+            <!-- v1.72 books first-class: like (a toggle; the icon fills when liked - never red,
+                 D8.8). Seeded from the server-derived liked field once the detail resolves. -->
+            <button type="button" class="ui-btn ui-btn--plain ui-btn--md ui-btn--icon" id="reader-like-btn" aria-label="Like this book" aria-pressed="false" data-icon-off="favorite" data-icon-on="favorite.fill" disabled><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-favorite"/></svg></span></button>
+            <!-- More: Mark as finished (v1.72), Save to device (v1.72), Share the book file (v1.287) -->
+            <button type="button" class="ui-btn ui-btn--plain ui-btn--md ui-btn--icon" id="reader-more-btn" aria-label="More actions" aria-haspopup="menu" disabled><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-more_vert"/></svg></span></button>
           </div>
           <div class="reader-content theme-paper" id="reader-content">
             <div id="reader-pane" class="ui-selectable"></div>
             <button class="reader-tap-nav reader-tap-prev" id="reader-tap-prev" aria-label="Previous page"></button>
             <button class="reader-tap-nav reader-tap-next" id="reader-tap-next" aria-label="Next page"></button>
-            <div class="reader-status" id="reader-status">Opening book&hellip;</div>
-            <div class="reader-drawer" id="reader-toc-drawer" hidden>
-              <h3>Contents</h3>
-              <div id="reader-toc-list"></div>
-            </div>
-            <div class="reader-drawer" id="reader-settings-drawer" hidden>
-              <h3>Reader settings</h3>
-              <div class="reader-settings-row">
-                <span>Font size</span>
-                <span>
-                  <button class="btn btn-sm" id="reader-font-smaller" type="button" aria-label="Smaller text">A-</button>
-                  <button class="btn btn-sm" id="reader-font-larger" type="button" aria-label="Larger text">A+</button>
-                </span>
-              </div>
-              <div class="reader-settings-row">
-                <span>Theme</span>
-                <span>
-                  <button class="btn btn-sm" data-reader-theme="paper" type="button">Paper</button>
-                  <button class="btn btn-sm" data-reader-theme="sepia" type="button">Sepia</button>
-                  <button class="btn btn-sm" data-reader-theme="night" type="button">Night</button>
-                </span>
-              </div>
-            </div>
+            <div class="reader-status" id="reader-status" role="status">Opening book&hellip;</div>
           </div>
           <div class="reader-bottombar">
             <div class="reader-progress-track"><div class="reader-progress-fill" id="reader-progress-fill"></div></div>
@@ -244,7 +224,7 @@
              with the view swap while narration continues in the mini-player. -->
         <div id="reader-nowplaying" class="reader-nowplaying" hidden aria-label="Now playing">
           <div class="reader-np-info">
-            <img id="reader-np-cover" class="reader-np-cover" alt="" />
+            <span id="reader-np-art" class="reader-np-art"></span>
             <span id="reader-np-chapter" class="reader-np-chapter"></span>
           </div>
           <div class="reader-np-transport">

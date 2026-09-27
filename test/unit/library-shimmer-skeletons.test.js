@@ -25,7 +25,8 @@ const countOf = (html, cls) => (html.match(new RegExp('class="[^"]*\\b' + cls + 
 // The n / n<=0 / shimmer-present contract, applied to every builder.
 const CASES = [
   { name: 'history rows', fn: buildHistorySkeletonRows, container: 'history-row', aspectBox: 'history-thumb' },
-  { name: 'book cards', fn: buildBookSkeletonCards, container: 'book-card', aspectBox: 'book-cover-link' },
+  // UI pass S10: the reserved box is the real card's 2:3 ui-thumb (inside .book-cover-link)
+  { name: 'book cards', fn: buildBookSkeletonCards, container: 'book-card', aspectBox: 'ui-thumb--2x3' },
   { name: 'music album cards', fn: buildMusicSkeletonCards, container: 'music-album-card', aspectBox: 'music-album-art', wrapper: 'music-card-grid' },
   { name: 'music song rows', fn: buildMusicSkeletonRows, container: 'music-song-row', aspectBox: 'music-song-thumb-wrap', wrapper: 'music-song-list' },
 ];
@@ -103,9 +104,9 @@ test('the shimmer base fill is restored on the reused art boxes (so the sweep is
   // The library art boxes share the specificity-winning shimmer-fill rule
   // (later selectors like .related-thumb may join it - tolerate them). v1.103:
   // .music-artist-mosaic joins between album-art and podcast-card-art.
-  // UI pass S6: podcasts left the list (its placeholder is a .ui-art square, which the later
-  // .skeleton-shimmer rule already fills; podcasts-ui-sweep.test.js binds that order).
-  assert.match(css, /\.book-cover-link\.skeleton-shimmer,\s*\n\s*\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,360}background-color: var\(--bg-secondary\);/,
+  // UI pass S6 + S10: podcasts and books left the list (their placeholders are a .ui-art square and a
+  // .ui-thumb card box, which the later .skeleton-shimmer rule already fills; each sweep's own test binds that order).
+  assert.match(css, /\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,360}background-color: var\(--bg-secondary\);/,
     'a specificity-winning rule restores --bg-secondary on the reused skeleton art boxes (incl. the artist mosaic)');
   assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.podcast-card-art/, 'no rule for the retired podcast card art box');
   // .history-thumb already uses --bg-secondary, so it is deliberately NOT in the rule.
@@ -127,4 +128,25 @@ test('podcast show rows: exactly n ui-row placeholders, each with the xl ui-art 
   assert.strictEqual(buildPodcastSkeletonRows(-2), '');
   assert.strictEqual(buildPodcastSkeletonRows('nope'), '');
   assert.strictEqual(buildPodcastSkeletonRows(), '');
+});
+
+// UI pass sweep S10 (AC12 conversion of the books half above): the book skeleton's box
+// is now the real card's ui-thumb, which paints --thumb-ground in ui.css. The shared
+// `.skeleton-shimmer` rule (style.css, one class, same specificity as `.ui-thumb`) wins
+// by FILE ORDER because every shell loads ui.css before style.css - so the lock is that
+// order in every shell, plus no style.css rule re-grounding a ui-thumb after it.
+test('book skeleton: the ui-thumb box shows the shimmer fill (style.css after ui.css in every shell; nothing re-grounds .ui-thumb)', () => {
+  const pub = path.join(__dirname, '../../public');
+  for (const page of fs.readdirSync(pub).filter((f) => f.endsWith('.html'))) {
+    const html = fs.readFileSync(path.join(pub, page), 'utf8');
+    const uiAt = html.indexOf('href="/css/ui.css"');
+    const styleAt = html.indexOf('href="/css/style.css"');
+    if (uiAt === -1 || styleAt === -1) continue;
+    assert.ok(uiAt < styleAt, `${page}: ui.css loads before style.css`);
+  }
+  const style = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const base = /\n\.skeleton-shimmer \{[^}]*background-color: var\(--bg-secondary\);/.exec(style);
+  assert.ok(base, 'the shared .skeleton-shimmer rule paints --bg-secondary');
+  assert.doesNotMatch(style, /\.ui-thumb[^{},]*\{[^}]*background/, 'no style.css rule repaints a ui-thumb ground');
+  assert.ok(buildBookSkeletonCards(1).includes('ui-thumb ui-thumb--2x3 ui-thumb--card skeleton-shimmer'), 'the skeleton box is the card thumb, shimmering');
 });
