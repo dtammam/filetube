@@ -5521,6 +5521,9 @@ const MD_ICON_PATHS = {
   flask: '<path d="M10 3h4M10.8 3v5.2L5.6 17.8A2 2 0 0 0 7.4 21h9.2a2 2 0 0 0 1.8-3.2L13.2 8.2V3M8 14.5h8"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   channel: '<rect x="3.5" y="8" width="17" height="11.5" rx="2"/><path d="M8.5 3.5L12 8l3.5-4.5"/>',
+  // UI pass step 2 (F39): the Shows folders tile named `tv`, which was never here, so it
+  // drew the `info` fallback. A screen on a stand (distinct from `channel`'s antenna).
+  tv: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20.5h6M12 16.5v4"/>',
   trophy: '<path d="M8 4h8v3.5a4 4 0 0 1-8 0zM8 5.5H5.5v1a3 3 0 0 0 3 3M16 5.5h2.5v1a3 3 0 0 1-3 3M10.5 12h3l.7 4h-4.4zM8 20h8"/>',
   eye: '<path d="M2.5 12s3.6-6.8 9.5-6.8S21.5 12 21.5 12s-3.6 6.8-9.5 6.8S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/>',
