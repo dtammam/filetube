@@ -103,3 +103,16 @@ test('a rounded overlay that scrolls splits clip from scroll (LESSONS 6)', () =>
   assert.match(body.body, /overflow-y:\s*auto/);
   assert.doesNotMatch(body.body, /border-radius/);
 });
+
+// Sweep S8: Settings' switches are native checkboxes wearing .ui-switch (their .checked and
+// change wiring stay native). The checkbox form must drop the UA box and paint exactly what
+// the button form paints for each state, or a Settings switch and a kit switch diverge.
+test('ui-switch on a native checkbox: UA appearance dropped, :checked mirrors aria-checked (sweep S8)', () => {
+  const body = (sel) => { const r = RULES.find((x) => x.sel === sel && x.at === ''); assert.ok(r, `rule ${sel}`); return r.body.replace(/\s+/g, ' ').trim(); };
+  const inputRule = body('input.ui-switch');
+  assert.match(inputRule, /(^|;)\s*appearance: none/);
+  assert.match(inputRule, /-webkit-appearance: none/);
+  assert.strictEqual(body('.ui-switch:checked'), body('.ui-switch[aria-checked="true"]'));
+  assert.strictEqual(body('.ui-switch:checked::before'), body('.ui-switch[aria-checked="true"]::before'));
+  assert.strictEqual(body('.ui-switch:checked:active::before'), body('.ui-switch[aria-checked="true"]:active::before'));
+});

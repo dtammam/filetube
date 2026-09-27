@@ -848,6 +848,12 @@ button.ui-row:focus-visible,
 .ui-switch[aria-checked="true"]::before { transform: translateX(calc(var(--switch-w) - var(--switch-h))); }
 .ui-switch:active::before { transform: scale(0.94); }
 .ui-switch[aria-checked="true"]:active::before { transform: translateX(calc(var(--switch-w) - var(--switch-h))) scale(0.94); }
+/* the same switch on a native checkbox (<input type="checkbox" role="switch" class="ui-switch">):
+   the look is identical, and the form semantics (.checked, the change event) stay native */
+input.ui-switch { -webkit-appearance: none; appearance: none; }
+.ui-switch:checked { background-color: var(--accent-fill); }
+.ui-switch:checked::before { transform: translateX(calc(var(--switch-w) - var(--switch-h))); }
+.ui-switch:checked:active::before { transform: translateX(calc(var(--switch-w) - var(--switch-h))) scale(0.94); }
 .ui-switch:disabled { opacity: 0.4; cursor: default; }
 .ui-switch:focus-visible {
   outline: var(--ring-w) solid var(--focus-ring);
