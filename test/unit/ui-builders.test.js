@@ -379,14 +379,28 @@ test('ui.sheet: DOM contract (dialog), is-open ALWAYS added on the next frame, f
   assertNoInlineStyle(c.el);
 });
 
-test('ui.sheet: open() twice never stacks a second scrim; setContent replaces', () => {
-  clock();
+test('ui.sheet: open() twice never stacks a second scrim, keeps the first opener and one close; setContent replaces', () => {
+  const t = clock();
   const { doc, win } = page();
-  const c = ui.sheet({ title: 'T', doc, win });
+  const opener = doc.getElementById('opener');
+  opener.focus();
+  let closed = 0;
+  const c = ui.sheet({ title: 'T', onClose: () => { closed++; }, doc, win });
   c.open();
   c.open();
   assert.strictEqual(doc.querySelectorAll('.ui-scrim').length, 1);
   assert.strictEqual(doc.querySelectorAll('.ui-sheet').length, 1);
+  // The second open is a no-op: it must not re-capture the opener (focus is now
+  // inside the sheet) nor register the sheet twice for Esc.
+  key(win, doc.body, 'Escape');
+  assert.strictEqual(c.isOpen(), false);
+  t.tick(400);
+  assert.strictEqual(doc.activeElement, opener, 'focus returns to the ORIGINAL opener');
+  assert.strictEqual(closed, 1);
+  const next = ui.sheet({ title: 'N', doc, win }).open();
+  key(win, doc.body, 'Escape');
+  assert.strictEqual(next.isOpen(), false, 'no stale registration swallows the next Esc');
+  c.open();
   const a = doc.createElement('span'); a.textContent = 'a';
   const b = doc.createElement('span'); b.textContent = 'b';
   c.setContent(a);
