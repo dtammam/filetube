@@ -56,9 +56,9 @@ const PAGES = [
   ['/watch.html?v=' + (FX.video || ''), '#media-title', [
     '#media-title', '#media-player', '#more-actions-btn', '.pc-time', '.pc-btn',
   ], ['#new-comment-text', '#search-input']],
-  ['/subscriptions', '.sub-row-kebab', [
-    '.sub-row-kebab', '.sub-row', '.sub-pill',
-  ], ['#search-input']],
+  ['/subscriptions', '.subs-more', [
+    '.subs-more', '.ui-row[data-sub-id]', '#sub-repull-all-btn',
+  ], ['#sub-search-input', '#search-input']],
   ['/setup.html', '.setup-select', [
     '.setup-subhead', '.setup-check-label', '.md-row',
   ], ['.setup-select', '#search-input']],

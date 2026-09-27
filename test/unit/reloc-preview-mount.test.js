@@ -12,7 +12,7 @@
 //   (1) the modal + its required IDs are DESCENDANTS of #view-root, so an
 //       in-app swap mounts them (exactly what extractViewFragment returns);
 //   (2) the .reloc-preview-* rules live in public/css/style.css (survives the
-//       swap) and are NOT left behind in subscriptions.html's <style>.
+//       swap), and (UI pass S5) the view carries no <style> at all.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -29,14 +29,15 @@ const STYLE_CSS_PATH = path.join(ROOT, 'public', 'css', 'style.css');
 const subsHtml = fs.readFileSync(SUBS_HTML_PATH, 'utf8');
 const styleCss = fs.readFileSync(STYLE_CSS_PATH, 'utf8');
 
-// The four element IDs the preview handler resolves from the DOM
-// (subscriptions.js's reheatPreviewElements) -- all must be reachable AFTER an
-// in-app swap, i.e. from within the #view-root fragment.
+// The element IDs the preview handler resolves from the DOM (subscriptions.js's
+// reheatPreviewElements) -- all must be reachable AFTER an in-app swap, i.e. from
+// within the #view-root fragment. UI pass S5: the preview is a ui.sheet whose BODY
+// is the static #reloc-preview-panel (its backdrop, Close and Esc are ui.sheet's).
 const REQUIRED_IDS = [
-  'reloc-preview-backdrop',
+  'reloc-preview-panel',
   'reloc-preview-summary',
   'reloc-preview-body',
-  'reloc-preview-close',
+  'sub-reheat-preview-btn',
 ];
 
 // Parse the shell WITHOUT running scripts / fetching sub-resources (default
@@ -45,7 +46,7 @@ function parseSubs() {
   return new JSDOM(subsHtml).window.document;
 }
 
-test('the preview modal + its required IDs are descendants of #view-root (so an in-app SPA swap mounts them)', () => {
+test('the preview panel + its required IDs are descendants of #view-root (so an in-app SPA swap mounts them)', () => {
   const doc = parseSubs();
   // extractViewFragment(html) does exactly `doc.getElementById('view-root')`
   // and returns ONLY that subtree; mirror it here.
@@ -68,50 +69,40 @@ test('the preview modal + its required IDs are descendants of #view-root (so an 
 });
 
 test('the .reloc-preview-* styles live in public/css/style.css (survive the #view-root swap)', () => {
-  // The load-bearing rules (backdrop overlay + its hidden state + the panel and
-  // the copy-warning that is the whole point of the preview).
-  assert.match(styleCss, /\.reloc-preview-backdrop\s*\{/, 'backdrop rule must be in style.css');
-  assert.match(styleCss, /\.reloc-preview-backdrop\[hidden\]\s*\{/, 'the [hidden] display:none rule must be in style.css');
-  assert.match(styleCss, /\.reloc-preview-panel\s*\{/, 'panel rule must be in style.css');
+  // The load-bearing rules: the copy warning and the COPY tag are the whole point
+  // of the preview. The sheet chrome is ui.css's (.ui-sheet), also global.
   assert.match(styleCss, /\.reloc-preview-summary\s+\.reloc-copy-warning\s*\{/, 'copy-warning rule must be in style.css');
-  assert.match(styleCss, /\.reloc-preview-badge\.reloc-badge-copy\s*\{/, 'copy badge rule must be in style.css');
+  assert.match(styleCss, /\.reloc-preview-entry-title\s*>\s*\.reloc-copy\s*\{/, 'the COPY tag rule must be in style.css');
+  assert.match(styleCss, /\.reloc-preview-entry\s*\{/, 'the plan entry rule must be in style.css');
+  assert.doesNotMatch(styleCss, /\.reloc-preview-(backdrop|panel|close|header)\s*[{[]/, 'the bespoke modal chrome is gone (a ui.sheet now)');
 });
 
-test('the .reloc-preview-* styles are NOT left behind in subscriptions.html <style> (page-local styles are lost on an in-app swap)', () => {
-  const styleMatch = subsHtml.match(/<style>([\s\S]*?)<\/style>/);
-  assert.ok(styleMatch, 'subscriptions.html still has a <style> block');
-  const pageLocalCss = styleMatch[1];
-  // Match an actual RULE (a `.reloc-preview-*` selector opening a `{` block) --
-  // a passing-mention in the explanatory comment left behind is fine and
-  // expected (it points readers at style.css), but a real declaration is not.
-  assert.doesNotMatch(
-    pageLocalCss,
-    /\.reloc-preview-[\w-]*(\[[^\]]*\])?\s*(,[^{]*)?\{/,
-    'no .reloc-preview-* RULE may remain in the page-local <style> -- it would be lost on an in-app swap'
-  );
+test('subscriptions.html carries NO <style> at all (page-local styles are lost on an in-app swap - UI pass S5, F62)', () => {
+  // The v1.41.8 lesson generalised: ui-lint's no-shell-style rule enforces it for every
+  // shell; this binds it for this view directly.
+  assert.doesNotMatch(subsHtml, /<style[\s>]/i, 'the Subscriptions view must not carry a <style> block');
 });
 
-test('driving triggerReheatPreview against the #view-root fragment shows the modal (backdrop.hidden -> false)', async () => {
+test('driving triggerReheatPreview against the #view-root fragment opens the preview with the plan rendered into it', async () => {
   // Prove the fix end-to-end at the mount point: resolve the handler's element
   // refs the SAME way subscriptions.js does, but scoped to the fragment
-  // extractViewFragment returns -- if the modal were still outside #view-root
-  // these would be null and the open would no-op (the v1.41.7 bug).
+  // extractViewFragment returns -- if the panel were outside #view-root these
+  // would be null and the open would no-op (the v1.41.7 bug).
   const doc = parseSubs();
   const viewRoot = doc.getElementById('view-root');
-
+  let opened = 0;
   const elements = {
     button: viewRoot.querySelector('#sub-reheat-preview-btn'),
-    backdrop: viewRoot.querySelector('#reloc-preview-backdrop'),
     summary: viewRoot.querySelector('#reloc-preview-summary'),
     body: viewRoot.querySelector('#reloc-preview-body'),
     status: viewRoot.querySelector('#sub-reheat-status'),
+    open: () => { opened += 1; },
     doc,
   };
   for (const [name, el] of Object.entries(elements)) {
-    if (name === 'doc') continue;
+    if (name === 'doc' || name === 'open') continue;
     assert.ok(el, `#${name} ref must resolve from within the #view-root fragment`);
   }
-  assert.equal(elements.backdrop.hidden, true, 'the modal starts hidden');
 
   const payload = {
     summary: { hardlinkCount: 1, copyCount: 0, metadataOnlyCount: 0, untouchedCount: 0, wouldHydrateCount: 0 },
@@ -123,5 +114,6 @@ test('driving triggerReheatPreview against the #view-root fragment shows the mod
   triggerReheatPreview(elements, fakeFetch);
   await new Promise((r) => setImmediate(r));
 
-  assert.equal(elements.backdrop.hidden, false, 'the modal must become visible after a successful preview when mounted inside #view-root');
+  assert.equal(opened, 1, 'the preview must open after a successful preview when mounted inside #view-root');
+  assert.ok(elements.body.querySelector('.reloc-preview-entry'), 'the plan rendered into the panel body');
 });

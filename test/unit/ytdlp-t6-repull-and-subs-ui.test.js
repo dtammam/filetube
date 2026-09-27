@@ -101,11 +101,11 @@ test('B1: public/index.html no longer contains its own inline copy of the widget
 // ---- A5: relocated, prominent "check all subscriptions now" control -------
 
 test('A5/T3: #sub-repull-all-btn is not nested inside the Add-a-subscription panel', () => {
-  // v1.156 (T3): the Add form is a slide-in PANEL now (#sub-panel-add), not a
-  // <details> disclosure. Check all must stay on the main screen (its own pill),
-  // never inside a panel a user must open first.
-  const panelMatch = /<div class="sub-sheet-backdrop sub-panel" id="sub-panel-add"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/.exec(subsHtml);
-  assert.ok(panelMatch, 'expected the #sub-panel-add slide-in panel to exist');
+  // v1.156 (T3) / UI pass S5: the Add form is a panel (#sub-panel-add) a ui.sheet shows.
+  // Check all must stay on the main screen (its own toolbar button), never inside a
+  // panel a user must open first.
+  const panelMatch = /<div class="subs-panel" id="sub-panel-add"[\s\S]*?<div class="subs-panel" id="sub-panel-oneoff"/.exec(subsHtml);
+  assert.ok(panelMatch, 'expected the #sub-panel-add panel to exist');
   assert.ok(
     !panelMatch[0].includes('sub-repull-all-btn'),
     'the re-pull-all control must live in the toolbar, never inside the Add panel'
@@ -120,34 +120,26 @@ test('A5: #sub-repull-all-btn and #sub-repull-status exist exactly once, both ou
 });
 
 test('A5/T3: Check all sits in the pills toolbar above the channel list', () => {
-  // v1.156 (T3): the master-detail menu + the .sub-list-header are gone.
-  // "Check all" is the primary pill in .sub-toolbar (Dean-approved), directly
-  // above the search + the always-visible A-Z list -- reachable with no
-  // expanding, no scrolling.
+  // v1.156 (T3) / UI pass S5: "Check all" is the first toolbar button (a tonal
+  // ui-btn; Add is the one primary), directly above the search + the
+  // always-visible A-Z list -- reachable with no expanding, no scrolling.
   assert.match(
     subsHtml,
-    /<div class="sub-toolbar"[\s\S]*?id="sub-repull-all-btn"[\s\S]*?<\/div>[\s\S]*?<div class="sub-search">[\s\S]*?<div id="sub-list-container"/,
-    'expected Check all in .sub-toolbar, above .sub-search and the list'
+    /<div class="subs-toolbar"[\s\S]*?id="sub-repull-all-btn"[\s\S]*?<\/div>[\s\S]*?<div class="subs-search">[\s\S]*?<div id="sub-list-container"/,
+    'expected Check all in .subs-toolbar, above .subs-search and the list'
   );
 });
 
 // ---- B4: CSS ownership for the new DnD affordance --------------------------
 
-test('subscriptions.html still carries its page-local <style> block for the list-header chrome', () => {
-  // v1.155 (Subscriptions redesign, Q2): the `.sub-row` drag-and-drop classes
-  // (.sub-row-dragging / .sub-row-drag-over-before/after) were REMOVED with
-  // manual reordering -- the list is alphabetical (A-Z sections + search) now,
-  // and the .sub-search / .sub-section rules live in the GLOBAL style.css (so
-  // they survive the SPA #view-root swap). Only the header-chrome rules remain
-  // page-local.
-  const styleMatch = /<style>[\s\S]*?<\/style>/.exec(subsHtml);
-  assert.ok(styleMatch, 'expected a <style> block in subscriptions.html');
-  // Strip CSS comments FIRST -- the block's own comment names the retired
-  // classes (explaining why they left), and a substring check against raw
-  // text would be satisfied by that prose (the comment-porous-lock class this
-  // repo has repeatedly paid for). Assert against actual RULES only.
-  const styleRules = styleMatch[0].replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.ok(styleRules.includes('.sub-list-header'), 'expected .sub-list-header to be styled page-locally');
+test('subscriptions.html carries NO page-local <style>; the page chrome lives in style.css; the drag-reorder classes stay gone', () => {
+  // v1.155 (Subscriptions redesign, Q2): the drag-and-drop classes were REMOVED
+  // with manual reordering (the list is alphabetical). UI pass S5 (F62): the last
+  // page-local header-chrome rules moved into the GLOBAL style.css, so every rule
+  // survives the SPA #view-root swap.
+  assert.doesNotMatch(subsHtml, /<style[\s>]/i, 'no <style> block in subscriptions.html');
+  const styleRules = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(styleRules, /\.subs-toolbar \{/, 'the toolbar chrome is global');
   for (const cls of ['.sub-row-dragging', '.sub-row-drag-over-before', '.sub-row-drag-over-after']) {
     assert.ok(!styleRules.includes(cls), `${cls} should be gone with manual reorder`);
   }

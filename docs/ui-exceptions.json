@@ -3,48 +3,6 @@
   "rules": {
     "no-raw-values": [
       {
-        "key": "lib/ytdlp/views/subscriptions.html|.sub-list-header-status|min-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|style-attr|border",
-        "count": 6,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|style-attr|gap",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|style-attr|margin-top",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|style-attr|max-width",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|style-attr|min-width",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|style-attr|padding",
-        "count": 6,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|#dl-status-chip|max-width",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -3897,42 +3855,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.reloc-preview-badge|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reloc-preview-header|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reloc-preview-panel|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reloc-preview-panel|max-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reloc-preview-row|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.reloc-preview-summary|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.search-btn|border-left",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -4137,24 +4059,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.skeleton-row-info|flex",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.skeleton-row-info|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.skeleton-row|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.skeleton-shimmer.skel-title|height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -4270,174 +4174,6 @@
       },
       {
         "key": "public/css/style.css|.sticker-opt-label|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-collapsible[open] > summary|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-list|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-avatar|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-avatar|border-left",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-avatar|border-right",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-avatar|border-top",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-info|flex",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-info|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-navigable:focus-within|outline",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-navigable:focus-within|outline-offset",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-navigable:hover|outline",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-navigable:hover|outline-offset",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-search-input:focus|outline",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-search-input:focus|outline-offset",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-search-input|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-section-head|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-actions|border-top",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-avatar|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-avatar|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-avatar|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-backdrop|transition",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-field .setup-select, .sub-sheet-field input|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-header|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-hero|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet|border-left",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet|max-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet|transition",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -6678,13 +6414,7 @@
       },
       {
         "key": ".btn",
-        "count": 45,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".btn-chip",
-        "count": 2,
+        "count": 44,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -7427,30 +7157,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".reloc-preview-backdrop",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".reloc-preview-badge",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".reloc-preview-close",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".reloc-preview-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".remove-folder-btn",
         "count": 4,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7565,18 +7271,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".skeleton-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".skeleton-row-avatar",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".sort-menu",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7649,54 +7343,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".sub-pill",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-row",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-row-avatar",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-row-navigable",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-sheet",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-sheet-avatar",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-sheet-backdrop",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sub-sheet-close",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".subscribe-modal-checkbox-row",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7704,12 +7350,6 @@
       },
       {
         "key": ".theme-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".theme-toggle",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -7823,84 +7463,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|bellBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|clearBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|closeBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|del",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|deleteBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|dismissBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|kebabBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|pauseBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|pinBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|repullBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|retryBtn",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|saveBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|createElement(button)|skipBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "lib/ytdlp/views/subscriptions.html|<button>|bottom-nav-item",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7908,7 +7470,7 @@
       },
       {
         "key": "lib/ytdlp/views/subscriptions.html|<button>|btn",
-        "count": 17,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -7931,25 +7493,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "lib/ytdlp/views/subscriptions.html|<button>|reloc-preview-close",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "lib/ytdlp/views/subscriptions.html|<button>|search-btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|<button>|sub-sheet-close",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|<button>|theme-toggle",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8010,12 +7554,6 @@
       },
       {
         "key": "public/css/style.css|.sort-menu li",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-collapsible > summary",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -9217,49 +8755,13 @@
     ],
     "icons": [
       {
-        "key": "lib/ytdlp/client/subscriptions.js|glyph|U+00D7",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|glyph|U+2039",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|glyph|U+22EE",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|glyph|U+2605",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/client/subscriptions.js|glyph|U+2606",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "lib/ytdlp/views/subscriptions.html|<svg>",
-        "count": 2,
+        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": "lib/ytdlp/views/subscriptions.html|glyph|U+00D7",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|glyph|U+2039",
         "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -9763,12 +9265,6 @@
     ],
     "display-ownership": [
       {
-        "key": "lib/ytdlp/client/subscriptions.js|style.display",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|#ambient-toggle-row[hidden]|display",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -10155,54 +9651,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.sub-row-kebab:focus-visible|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-kebab:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-pin-active:focus-visible, .sub-row-bell-active:focus-visible|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-pin-active:hover, .sub-row-bell-active:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-pin:focus-visible, .sub-row-bell:focus-visible|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-row-pin:hover, .sub-row-bell:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-close:focus-visible|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sub-sheet-close:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.theme-card.active|border-color",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -10213,27 +9661,9 @@
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|a.sub-row-channel-link:focus-visible|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|a.sub-row-channel-link:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
       }
     ],
     "no-shell-style": [
-      {
-        "key": "lib/ytdlp/views/subscriptions.html|<style>",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
       {
         "key": "public/diag.html|<style>",
         "count": 1,

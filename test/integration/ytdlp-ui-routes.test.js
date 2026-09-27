@@ -207,14 +207,15 @@ test('AC32: GET /subscriptions serves the page HTML when enabled, referencing th
     assert.match(body, /sub-add-url/, 'page must contain the add-subscription form');
     assert.match(body, /sub-add-format/, 'page must contain the audio/video format control');
     assert.match(body, /sub-members-only-check/, 'page must contain the members-only toggle');
-    // v1.15.0 item 4 UI: per-subscription skip-Shorts toggle on the add form.
-    assert.match(body, /<input type="checkbox" id="sub-add-skipshorts"/, 'page must contain the skip-Shorts toggle on the add form (item 4 UI)');
+    // v1.15.0 item 4 UI: per-subscription skip-Shorts toggle on the add form
+    // (UI pass S5: a ui-switch, off at rest).
+    assert.match(body, /<button class="ui-switch" type="button" role="switch" aria-checked="false" id="sub-add-skipshorts"/, 'page must contain the skip-Shorts toggle on the add form (item 4 UI)');
     assert.match(body, /sub-repull-all-btn/, 'page must contain the re-pull-all control');
 
     // T5/FR-B: the free-text quality input is gone -- a dropdown with the
     // full args.QUALITY_ALLOWLIST is present instead (AC14).
     assert.doesNotMatch(body, /id="sub-add-quality"[^>]*type="text"/, 'the quality field must be a <select>, not a free-text input');
-    assert.match(body, /<select id="sub-add-quality"/, 'the subscription add form must present quality as a dropdown (AC14)');
+    assert.match(body, /<select [^>]*id="sub-add-quality"/, 'the subscription add form must present quality as a dropdown (AC14)');
     for (const quality of ['best', '2160p', '1440p', '1080p', '720p', '480p', '360p']) {
       assert.match(body, new RegExp(`<option value="${quality}"`), `sub-add-quality must offer ${quality}`);
     }
@@ -222,7 +223,7 @@ test('AC32: GET /subscriptions serves the page HTML when enabled, referencing th
     // v1.25 QoL (T5): the "download last N videos" count input is retired,
     // replaced by a cutoff-DATE input (everything published on/after it
     // downloads, no count cap).
-    assert.match(body, /<input type="date" id="sub-add-cutoffdate"/, 'page must contain the cutoff-date input, replacing the retired per-channel maxVideos count field');
+    assert.match(body, /<input [^>]*type="date" id="sub-add-cutoffdate"/, 'page must contain the cutoff-date input, replacing the retired per-channel maxVideos count field');
     assert.doesNotMatch(body, /sub-add-maxvideos/, 'the retired maxVideos count field must no longer exist in the add form');
 
     // T5/FR-A: the one-shot form (paste-URL + format/quality dropdowns).
@@ -236,8 +237,8 @@ test('AC32: GET /subscriptions serves the page HTML when enabled, referencing th
     // on BOTH the add-subscription form and the one-shot form, defaulting to
     // the video option set (mp4 selected) to match each form's default
     // format select.
-    assert.match(body, /<select id="sub-add-filetype"/, 'the subscription add form must present a filetype/container dropdown');
-    assert.match(body, /<select id="oneshot-filetype"/, 'the one-shot form must present a filetype/container dropdown');
+    assert.match(body, /<select [^>]*id="sub-add-filetype"/, 'the subscription add form must present a filetype/container dropdown');
+    assert.match(body, /<select [^>]*id="oneshot-filetype"/, 'the one-shot form must present a filetype/container dropdown');
     for (const filetype of ['mp4', 'mkv', 'webm', 'default']) {
       assert.match(body, new RegExp(`<option value="${filetype}"`), `sub-add-filetype/oneshot-filetype must offer ${filetype}`);
     }

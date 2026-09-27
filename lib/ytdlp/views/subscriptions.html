@@ -40,102 +40,6 @@
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/ui.css">
   <link rel="stylesheet" href="/css/style.css">
-  <style>
-    /* v1.24.0 T6 (A5): prominent "check all subscriptions now" header row --
-       the existing #sub-repull-all-btn/#sub-repull-status controls
-       (previously buried inside the collapsed "+ Add a subscription"
-       <details>, easy to miss) relocate here, directly under the page's
-       primary "Your subscriptions" heading -- reachable without scrolling or
-       expanding anything, on both desktop and mobile. Era tokens only, no
-       hardcoded colors -- consistent with every other rule in this file/
-       public/css/style.css. */
-    .sub-list-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-5);
-      margin-bottom: var(--space-6);
-    }
-    /* v1.55 (gate S1): a header row whose heading moved into the details
-       summary holds only its controls -- keep them right-aligned, where
-       they sat beside the old h2. */
-    .sub-list-header-end {
-      justify-content: flex-end;
-    }
-    .sub-list-header h2 {
-      margin: 0;
-    }
-    /* v1.55 Track B: layout now comes from the sitewide .action-bar grid
-       (style.css) -- equal-width buttons, whole-column wrap, in-cell
-       Cancel swaps. This page-local block keeps only the header-flex
-       sizing so the bar takes the full row under the h2. */
-    .sub-list-header-actions {
-      flex: 1 1 100%;
-    }
-    /* v1.26.2 polish fix (Dean punchlist #5): dedicated full-width row for
-       the three status spans (see the markup comment above this row) --
-       `flex-basis: 100%` inside the `.sub-list-header` flex container
-       forces it onto its own line below `.sub-list-header-actions` rather
-       than sharing a row with the buttons, and `min-height` reserves that
-       line's height up front so text appearing/clearing never shifts the
-       buttons above it.
-
-       v1.26.2 code-review fix (F3, MINOR): `min-height` must match the
-       actual rendered line-box height of the `.sub-repull-status` spans
-       inside it, or the reservation itself causes a (smaller, but still
-       real) shift the first time a status populates. This row's spans are
-       12px font-size (`.sub-repull-status` below); left at the inherited
-       `line-height: 1.4` from `body` (style.css), the rendered line box is
-       12 * 1.4 = 16.8px -- taller than the previous 15px reservation. Fixed
-       by declaring `line-height` explicitly HERE (12 * var(--lh-tight) [1.25, token-scale-lock authority] = 15, an exact
-       match to `min-height`) rather than relying on `body`'s inherited
-       value, so this arithmetic holds even if `body`'s line-height ever
-       changes. */
-    .sub-list-header-status {
-      flex-basis: 100%;
-      line-height: var(--lh-tight);
-      min-height: 15px;
-    }
-    /* v1.55 Track C: font-size/color now come from the sitewide
-       .action-status class (style.css) -- this page-local rule keeps only
-       the multi-span row spacing. */
-    .sub-repull-status {
-      margin-right: var(--space-5);
-    }
-    .sub-repull-status:empty {
-      margin-right: 0;
-    }
-
-    /* v1.41.8: the .reloc-preview-* rules for the DRY-RUN relocation preview
-       modal MOVED OUT of this page-local <style> into public/css/style.css.
-       WHY: the SPA router (common.js extractViewFragment) swaps ONLY #view-root
-       on in-app navigation, so page-local <head> styles do NOT come along --
-       the modal rendered unstyled/invisible after a nav-link click (worked only
-       on a hard load). Global style.css survives the swap. Tech-debt #34 / the
-       playlists-sheet pattern. See .reloc-preview-* in public/css/style.css. */
-
-    /* v1.155 (Subscriptions redesign, Q2): the drag-to-reorder CSS
-       (.sub-row.reorder-row / .sub-row-dragging / .sub-row-drag-over-*) was
-       REMOVED with manual reordering -- the list is alphabetical (A-Z sections
-       + search) now. The .sub-search / .sub-list-body / .sub-section rules
-       live in public/css/style.css (global, so they survive the SPA
-       #view-root swap -- page-local <head> styles do not; see the
-       reloc-preview note above). */
-
-    /* v1.24.0 A2 (T14): the per-item {video: reason} detail line under a
-       subscription row's status line, shown only while that subscription's
-       live status is a partially-failed download batch (see
-       lib/ytdlp/client/subscriptions.js's `formatFailuresLine`) -- era
-       tokens only, no hardcoded colors. Hidden (via the element's own
-       `hidden` attribute, set in JS) when there is nothing to show, rather
-       than left visibly empty. */
-    .sub-row-failures {
-      font-size: var(--fs-sm);
-      color: var(--text-secondary);
-      margin-top: var(--space-1);
-    }
-  </style>
   <script>
     /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
        resolveTheme()/resolveIconSet() in /js/common.js -- keep all three in
@@ -201,7 +105,8 @@
     </div>
 
     <div class="header-right">
-      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
+      <!-- v1.82: theme toggle moved into the account menu (injected here by common.js). UI pass S5
+           (D8.10): the Subscriptions-only moon is gone; this header matches every other shell. -->
     </div>
   </header>
   <!-- ft-chrome-reserve:header (v1.339 L2) -->
@@ -302,326 +207,250 @@
       <!-- Per-view content boundary (FR-1, T1): see index.html's matching
            comment. The router swaps ONLY this node on in-app navigation. -->
       <div id="view-root" data-view="subscriptions">
-      <!-- v1.156 (T3, Subscriptions redesign part 2): a compact pills toolbar
-           over an always-visible channel list REPLACES the v1.152 master-detail
-           menu. Check all is an action pill (its #sub-repull-all-btn keeps the
-           same re-pull-all wiring, unchanged); One-off / Activity / + Add open
-           the .sub-sheet slide-in panels below (the same iOS push-in overlay
-           the per-channel settings panel uses -- desktop = mobile, no two-rail
-           fork). The reloc-preview modal stays a sibling OUTSIDE .subs-root
-           (still inside #view-root). -->
+      <!-- UI pass S5 (plan D5/D8.9): the page is built from the primitives (ui.css / ui.js). Every
+           style it needs lives in ui.css or style.css - this view carries NO page-local style block
+           (F62: the SPA router swaps only #view-root, so page-local head styles were lost on in-app
+           nav). -->
       <div class="subs-root">
-        <!-- v1.160.1 (Dean): the iOS-style hero header block (icon tile + title +
-             explainer) the master-detail pages (Stats/Settings) show - Subscriptions
-             lost it moving off the master-detail menu in v1.156. Reuses the shared
-             .md-hero styling (static markup; this page is not a .md-root). -->
+        <!-- v1.160.1 (Dean): the iOS-style hero header block (icon tile + title + explainer) the
+             master-detail pages show. The glyph comes from the icon sprite (UI pass S5). -->
         <div class="subs-head md-hero">
-          <span class="md-tile md-tile--hero"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="8" width="17" height="11.5" rx="2"/><path d="M8.5 3.5L12 8l3.5-4.5"/></svg></span>
+          <span class="md-tile md-tile--hero"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#i-subscriptions"/></svg></span>
           <div class="md-hero-text">
             <h2>Subscriptions</h2>
             <p>The channels you follow. Check for new videos, add or remove channels, and review download history in Activity.</p>
           </div>
         </div>
-        <div class="sub-toolbar" role="toolbar" aria-label="Subscription actions">
-          <button class="btn btn-primary btn-sm sub-pill sub-pill-primary" id="sub-repull-all-btn" type="button">
-            <i class="icon-refresh"></i> Check all
-          </button>
-          <button class="btn btn-sm sub-pill" type="button" data-sub-panel="oneoff">One-off</button>
-          <button class="btn btn-sm sub-pill" type="button" data-sub-panel="activity">Activity</button>
-          <button class="btn btn-sm sub-pill" type="button" data-sub-panel="add">+ Add</button>
+        <!-- UI pass S5: ONE button language - tonal text controls with one primary (Add, the only
+             glyph), like the Podcasts toolbar; one line on a 390px phone. Each panel button opens its
+             panel as a ui.sheet (data-sub-panel). -->
+        <div class="subs-toolbar" role="toolbar" aria-label="Subscription actions">
+          <button class="ui-btn ui-btn--tonal ui-btn--sm" id="sub-repull-all-btn" type="button" title="Check every subscription for new videos now"><span class="ui-btn__label">Check all</span></button>
+          <button class="ui-btn ui-btn--tonal ui-btn--sm" type="button" data-sub-panel="activity"><span class="ui-btn__label">Activity</span></button>
+          <button class="ui-btn ui-btn--tonal ui-btn--sm" type="button" data-sub-panel="oneoff"><span class="ui-btn__label">One-off</span></button>
+          <button class="ui-btn ui-btn--primary ui-btn--sm" type="button" data-sub-panel="add"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-add"/></svg></span><span class="ui-btn__label">Add</span></button>
         </div>
-        <!-- Check all's own status line stays on the main screen (its pill is
-             here); the four maintenance status spans live with their buttons in
-             the Activity panel. -->
-        <div class="sub-list-header-status">
-          <span id="sub-repull-status" class="sub-repull-status action-status" aria-live="polite"></span>
+        <!-- Check all's own status line (a reserved line, so text appearing never shifts the list). -->
+        <div class="subs-status">
+          <span id="sub-repull-status" class="action-status" aria-live="polite"></span>
         </div>
-        <div class="sub-search">
-          <input type="search" id="sub-search-input" class="sub-search-input"
+        <div class="subs-search">
+          <input type="search" id="sub-search-input" class="ui-field__input"
                  placeholder="Search your channels"
                  aria-label="Search your subscriptions"
                  autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
         </div>
-        <!-- v1.156.1 (Dean device): the A-Z scrubber rail was removed (it read
-             as a fat floating column and scrolled away on a long list). The
-             search box + the A-Z section headers are the navigation now. -->
-        <div class="sub-list-body">
-          <div id="sub-list-container" class="sub-list">
-            <!-- Populated dynamically by /js/subscriptions.js -->
-          </div>
-        </div>
+        <!-- The A-Z channel list: ui-list rows with three reserved trailing slots (pin, bell, menu),
+             built by /js/subscriptions.js. -->
+        <div id="sub-list-container" class="subs-list"></div>
 
-        <!-- ===== slide-in panels (static, hidden until a pill opens one) ===== -->
-        <div class="sub-sheet-backdrop sub-panel" id="sub-panel-add" hidden>
-          <div class="sub-sheet" role="dialog" aria-modal="true" aria-label="Add a subscription">
-            <div class="sub-sheet-header">
-              <button class="sub-sheet-close" type="button" aria-label="Back" data-sub-panel-close>‹</button>
-              <div class="sub-sheet-name">Add a subscription</div>
+        <!-- ===== panel content (UI pass S5) =====
+             Each .subs-panel is the BODY of a ui.sheet: a toolbar button (or a menu action) moves it
+             into the sheet on open and back into this hidden holder on close. It stays in the view
+             the whole time, so every id below is wired once at init and the ~2.5s status poll keeps
+             updating it (the v1.156 static-panel contract). -->
+        <div class="subs-panels" hidden>
+          <div class="subs-panel" id="sub-panel-add" data-title="Add a subscription">
+            <p class="subs-panel-intro">New videos from the channels you subscribe to here download automatically. Downloads land in your library like any other file; deleting one in FileTube removes it everywhere, and a later check never downloads it again.</p>
+            <div class="ui-field">
+              <label class="ui-field__label" for="sub-add-url">Channel or playlist URL</label>
+              <input class="ui-field__input" type="text" id="sub-add-url" placeholder="https://www.youtube.com/@channel">
+              <p id="sub-add-error" class="ui-field__error" hidden></p>
             </div>
-            <div class="sub-sheet-body">
-        <p>
-          Automatically download new videos from YouTube channels you subscribe
-          to here. Downloaded media lands in your library like any other file --
-          deleting it in FileTube removes it everywhere, and it stays deleted
-          (it will not be re-downloaded by a later check).
-        </p>
-
-        <div class="form-group">
-          <label for="sub-add-url">Channel or playlist URL</label>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <input type="text" id="sub-add-url" placeholder="https://www.youtube.com/@channel" style="flex:1; min-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:var(--fs-input-min); background-color:var(--bg-color); color:var(--text-primary);" />
-            <select id="sub-add-format" class="setup-select">
-              <option value="video" selected>Video</option>
-              <option value="audio">Audio only</option>
-            </select>
-            <select id="sub-add-quality" class="setup-select">
-              <option value="best" selected>best</option>
-              <option value="2160p">2160p</option>
-              <option value="1440p">1440p</option>
-              <option value="1080p">1080p</option>
-              <option value="720p">720p</option>
-              <option value="480p">480p</option>
-              <option value="360p">360p</option>
-            </select>
-            <!-- v1.13.0 item 4: filetype/container -- options default to the
-                 VIDEO set (mp4 selected) to match sub-add-format's default;
-                 /js/subscriptions.js repopulates this from the AUDIO set
-                 (mp3 selected) when the format select is switched to Audio. -->
-            <select id="sub-add-filetype" class="setup-select">
-              <option value="mp4" selected>MP4 (recommended)</option>
-              <option value="mkv">MKV</option>
-              <option value="webm">WebM</option>
-              <option value="default">Default (yt-dlp)</option>
-            </select>
-            <!-- v1.25 QoL (T5): retires the old "download last N videos"
-                 count field -- a cutoff-DATE input instead (everything
-                 published on/after it downloads, no count cap; see
-                 lib/ytdlp/store.js's `cutoffDate` schema, T1). Left BLANK by
-                 default -- an empty value omits `cutoffDate` from the
-                 request body entirely, letting the server apply its own
-                 default (yesterday), see the helper text below. -->
-            <input type="date" id="sub-add-cutoffdate" aria-label="Download videos published on or after" style="max-width:200px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:var(--fs-input-min); background-color:var(--bg-color); color:var(--text-primary);" />
-            <!-- v1.285: per-channel duration WINDOW, in MINUTES (converted to the
-                 server's SECONDS by minutesInputToSeconds). The floor keeps out
-                 short teaser clips; blank = no minimum, 0 = no minimum. -->
-            <input type="number" id="sub-add-minduration" min="0" placeholder="Min length in minutes (blank/0 = no minimum)" style="max-width:260px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:var(--fs-input-min); background-color:var(--bg-color); color:var(--text-primary);" />
-            <!-- v1.22.0 FR-6 + v1.285: max-duration download gate override -- now
-                 in MINUTES (converted to the server's SECONDS), blank = inherit the
-                 global 2h default, 0 = unlimited. -->
-            <input type="number" id="sub-add-maxduration" min="0" placeholder="Max length in minutes (blank=2h default, 0=unlimited)" style="max-width:260px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:var(--fs-input-min); background-color:var(--bg-color); color:var(--text-primary);" />
-            <button class="btn btn-primary" id="sub-add-btn" type="button">Add subscription</button>
-          </div>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Download videos published on or after this date. Default: yesterday
-            -- only new videos going forward. Set an earlier date to pull history.
-          </small>
-          <small id="sub-add-error" class="field-error"></small>
-        </div>
-
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="sub-members-only-check" />
-            Allow members-only content (requires a configured cookies file)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When off (default), members-only/subscriber-only videos are always
-            skipped, regardless of this toggle.
-          </small>
-          <small id="sub-members-only-error" class="field-error"></small>
-        </div>
-
-        <!-- v1.15.0 item 4: per-subscription skip-Shorts toggle for a NEW
-             subscription -- default unchecked (download everything). Sent as
-             `skipShorts` in the add-subscription POST body. -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="sub-add-skipshorts" />
-            Skip Shorts (exclude this channel's YouTube Shorts)
-          </label>
-        </div>
-
-      
+            <div class="subs-field-grid">
+              <div class="ui-field">
+                <label class="ui-field__label" for="sub-add-format">Type</label>
+                <span class="ui-select"><select class="ui-select__native" id="sub-add-format">
+                  <option value="video" selected>Video</option>
+                  <option value="audio">Audio only</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+              </div>
+              <div class="ui-field">
+                <label class="ui-field__label" for="sub-add-quality">Quality</label>
+                <span class="ui-select"><select class="ui-select__native" id="sub-add-quality">
+                  <option value="best" selected>best</option>
+                  <option value="2160p">2160p</option>
+                  <option value="1440p">1440p</option>
+                  <option value="1080p">1080p</option>
+                  <option value="720p">720p</option>
+                  <option value="480p">480p</option>
+                  <option value="360p">360p</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+              </div>
+              <!-- v1.13.0 item 4: filetype/container - options default to the VIDEO set; /js/subscriptions.js
+                   repopulates this from the AUDIO set when the format select is switched to Audio. -->
+              <div class="ui-field">
+                <label class="ui-field__label" for="sub-add-filetype">File type</label>
+                <span class="ui-select"><select class="ui-select__native" id="sub-add-filetype">
+                  <option value="mp4" selected>MP4 (recommended)</option>
+                  <option value="mkv">MKV</option>
+                  <option value="webm">WebM</option>
+                  <option value="default">Default (yt-dlp)</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+              </div>
+              <!-- v1.25 QoL (T5): a cutoff DATE (everything published on or after it downloads). Blank
+                   omits cutoffDate, so the server applies its own default (yesterday). -->
+              <div class="ui-field">
+                <label class="ui-field__label" for="sub-add-cutoffdate">Published on or after</label>
+                <input class="ui-field__input" type="date" id="sub-add-cutoffdate" aria-describedby="sub-add-cutoff-help">
+              </div>
+              <!-- v1.285: the per-channel duration WINDOW, in MINUTES (minutesInputToSeconds). -->
+              <div class="ui-field">
+                <label class="ui-field__label" for="sub-add-minduration">Min length (minutes)</label>
+                <input class="ui-field__input" type="number" min="0" id="sub-add-minduration" placeholder="Blank or 0 = no minimum">
+              </div>
+              <div class="ui-field">
+                <label class="ui-field__label" for="sub-add-maxduration">Max length (minutes)</label>
+                <input class="ui-field__input" type="number" min="0" id="sub-add-maxduration" placeholder="Blank = 2h, 0 = no limit">
+              </div>
+            </div>
+            <p class="ui-field__help" id="sub-add-cutoff-help">Blank date: only new videos from yesterday on. Set an earlier date to pull a channel's history.</p>
+            <!-- v1.15.0 item 4: skip-Shorts for a NEW subscription (default off: download everything). -->
+            <div class="subs-switch">
+              <span class="subs-switch__text" id="sub-add-skipshorts-label">Skip Shorts</span>
+              <button class="ui-switch" type="button" role="switch" aria-checked="false" id="sub-add-skipshorts" aria-labelledby="sub-add-skipshorts-label"></button>
+            </div>
+            <div class="subs-switch">
+              <span class="subs-switch__text"><span id="sub-members-only-label">Allow members-only videos</span><span class="ui-field__help">Needs a configured cookies file. Off: members-only videos are always skipped.</span></span>
+              <button class="ui-switch" type="button" role="switch" aria-checked="false" id="sub-members-only-check" aria-labelledby="sub-members-only-label"></button>
+            </div>
+            <p id="sub-members-only-error" class="ui-field__error" hidden></p>
+            <div class="subs-panel-actions">
+              <button class="ui-btn ui-btn--primary ui-btn--md" id="sub-add-btn" type="button"><span class="ui-btn__label">Add subscription</span></button>
             </div>
           </div>
-        </div>
 
-        <div class="sub-sheet-backdrop sub-panel" id="sub-panel-oneoff" hidden>
-          <div class="sub-sheet" role="dialog" aria-modal="true" aria-label="One-off download">
-            <div class="sub-sheet-header">
-              <button class="sub-sheet-close" type="button" aria-label="Back" data-sub-panel-close>‹</button>
-              <div class="sub-sheet-name">One-off download</div>
+          <div class="subs-panel" id="sub-panel-oneoff" data-title="One-off download">
+            <p class="subs-panel-intro">Download one video once, without subscribing. It lands in a folder named for its channel unless you name one.</p>
+            <div class="ui-field">
+              <label class="ui-field__label" for="oneshot-url">Video URL</label>
+              <input class="ui-field__input" type="text" id="oneshot-url" placeholder="Any site yt-dlp supports">
+              <p id="oneshot-error" class="ui-field__error" hidden></p>
             </div>
-            <div class="sub-sheet-body">
-        <p>
-          Download a single YouTube video once -- no subscription is created.
-          Lands in a per-channel folder by default (v1.25 QoL, T3).
-        </p>
-        <div class="form-group">
-          <label for="oneshot-url">Video URL</label>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <input type="text" id="oneshot-url" placeholder="Media URL — any yt-dlp-supported site" style="flex:1; min-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:var(--fs-input-min); background-color:var(--bg-color); color:var(--text-primary);" />
-            <select id="oneshot-format" class="setup-select">
-              <option value="video" selected>Video</option>
-              <option value="audio">Audio only</option>
-            </select>
-            <select id="oneshot-quality" class="setup-select">
-              <option value="best" selected>best</option>
-              <option value="2160p">2160p</option>
-              <option value="1440p">1440p</option>
-              <option value="1080p">1080p</option>
-              <option value="720p">720p</option>
-              <option value="480p">480p</option>
-              <option value="360p">360p</option>
-            </select>
-            <!-- v1.13.0 item 4: same filetype/container control as the
-                 subscription add form above; /js/subscriptions.js keeps its
-                 options in sync with oneshot-format. -->
-            <select id="oneshot-filetype" class="setup-select">
-              <option value="mp4" selected>MP4 (recommended)</option>
-              <option value="mkv">MKV</option>
-              <option value="webm">WebM</option>
-              <option value="default">Default (yt-dlp)</option>
-            </select>
-            <!-- v1.25 QoL (T3/T5): the manual folder is now an OPTIONAL
-                 override -- left blank, the download auto-routes into a
-                 per-channel folder server-side (see the disclosure's own
-                 intro paragraph above). -->
-            <input type="text" id="oneshot-folder" placeholder="Folder (optional -- defaults to the channel)" aria-label="Folder (optional -- defaults to the channel)" style="max-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:var(--fs-input-min); background-color:var(--bg-color); color:var(--text-primary);" />
-            <button class="btn btn-primary" id="oneshot-download-btn" type="button">Download</button>
-          </div>
-          <small id="oneshot-error" class="field-error"></small>
-          <!-- v1.55 Track C: the ad-hoc inline style becomes the shared
-               .action-status treatment (block here via its own wrapper
-               display). -->
-          <small id="oneshot-status" class="action-status" style="display:block; margin-top:4px;" aria-live="polite"></small>
-        </div>
-        <div id="oneshot-list-container" class="folder-list-builder">
-          <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
-        </div>
-      
+            <div class="subs-field-grid">
+              <div class="ui-field">
+                <label class="ui-field__label" for="oneshot-format">Type</label>
+                <span class="ui-select"><select class="ui-select__native" id="oneshot-format">
+                  <option value="video" selected>Video</option>
+                  <option value="audio">Audio only</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+              </div>
+              <div class="ui-field">
+                <label class="ui-field__label" for="oneshot-quality">Quality</label>
+                <span class="ui-select"><select class="ui-select__native" id="oneshot-quality">
+                  <option value="best" selected>best</option>
+                  <option value="2160p">2160p</option>
+                  <option value="1440p">1440p</option>
+                  <option value="1080p">1080p</option>
+                  <option value="720p">720p</option>
+                  <option value="480p">480p</option>
+                  <option value="360p">360p</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+              </div>
+              <!-- v1.13.0 item 4: kept in sync with oneshot-format by /js/subscriptions.js. -->
+              <div class="ui-field">
+                <label class="ui-field__label" for="oneshot-filetype">File type</label>
+                <span class="ui-select"><select class="ui-select__native" id="oneshot-filetype">
+                  <option value="mp4" selected>MP4 (recommended)</option>
+                  <option value="mkv">MKV</option>
+                  <option value="webm">WebM</option>
+                  <option value="default">Default (yt-dlp)</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+              </div>
+              <!-- v1.25 QoL (T3/T5): an OPTIONAL folder override; blank routes by channel server-side. -->
+              <div class="ui-field">
+                <label class="ui-field__label" for="oneshot-folder">Folder (optional)</label>
+                <input class="ui-field__input" type="text" id="oneshot-folder" placeholder="Defaults to the channel">
+              </div>
+            </div>
+            <div class="subs-panel-actions">
+              <span id="oneshot-status" class="action-status" aria-live="polite"></span>
+              <button class="ui-btn ui-btn--primary ui-btn--md" id="oneshot-download-btn" type="button"><span class="ui-btn__label">Download</span></button>
+            </div>
+            <div id="oneshot-list-container" class="subs-oneshots">
+              <!-- Populated by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
             </div>
           </div>
-        </div>
 
-        <div class="sub-sheet-backdrop sub-panel" id="sub-panel-activity" hidden>
-          <div class="sub-sheet" role="dialog" aria-modal="true" aria-label="Activity">
-            <div class="sub-sheet-header">
-              <button class="sub-sheet-close" type="button" aria-label="Back" data-sub-panel-close>‹</button>
-              <div class="sub-sheet-name">Activity</div>
-            </div>
-            <div class="sub-sheet-body">
-              <!-- history + failures mount into these containers (mountHistorySection / mountFailureSection). -->
-              <div id="sub-activity-history"></div>
-              <div id="sub-activity-failures"></div>
-              <!-- v1.156: the 5 power-user maintenance actions moved here from the
-                   old list header (Dean Q3) -- ids unchanged, so their getElementById
-                   wiring + the ~2.5s status poll bindings are untouched. -->
-              <!-- v1.160 (Dean): Maintenance is now a DEFAULT-COLLAPSED section
-                   (like Download history/failures) so the Activity panel opens
-                   tidy - the janky button row is tucked away. All ids unchanged
-                   (getElementById wiring + the ~2.5s status poll untouched). -->
-              <details class="sub-maint setup-box sub-collapsible" data-collapse-key="maintenance">
-                <summary>Maintenance</summary>
-                <div class="sub-list-header-actions action-bar">
-            <button class="btn btn-sm" id="sub-reheat-preview-btn" type="button"
-                    title="See exactly which files a reheat would move — and which get copied across filesystems — without moving anything">
-              <i class="icon-refresh"></i> Preview changes
-            </button>
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-reheat-btn" type="button"
-                      title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
-                <i class="icon-refresh"></i> Reheat metadata &amp; channels
-              </button>
-              <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-            <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
-                 bulk re-probe of EVERY subscription's channel avatar (POST
-                 /api/ytdlp/refresh-avatars), distinct from the Reheat button
-                 above (which re-pulls metadata+subtitles for existing
-                 downloaded items) and from the Check-all button (which polls
-                 for new videos). Progress/terminal state ride the SAME
-                 ~2.5s GET /api/subscriptions/status poll this page already
-                 runs -- see
-                 lib/ytdlp/client/subscriptions.js's
-                 applyRefreshAvatarsStateToControls. -->
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
-                <i class="icon-refresh"></i> Refresh avatars
-              </button>
-              <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-            <!-- v1.56 (Dean): triggers a bulk re-probe of EVERY distinct
-                 channel with content in the library -- subscriptions AND
-                 one-off-downloaded channels alike -- and fans the fresh
-                 subscriber count out to every video of that channel
-                 (POST /api/ytdlp/reheat-sub-counts). One cheap
-                 channel-level probe per channel, never per-video; distinct
-                 from the Reheat button above (per-video metadata dumps) and
-                 from Refresh avatars (same unit of work, different value).
-                 Progress/terminal state ride the SAME ~2.5s
-                 GET /api/subscriptions/status poll this page already runs --
-                 see lib/ytdlp/client/subscriptions.js
-                 applyReheatSubsStateToControls. -->
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-reheat-subs-btn" type="button"
-                      title="Re-fetch the current subscriber count for every channel and update all its videos">
-                <i class="icon-refresh"></i> Reheat sub counts
-              </button>
-              <button class="btn btn-sm" id="sub-reheat-subs-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
-            <!-- v1.115 (Dean, A1): re-fetch the canonical channel NAME for every
-                 channel that currently shows a handle/folder instead of its real
-                 name and fan it out to all its videos + pins
-                 (POST /api/ytdlp/backfill-channel-names). One cheap channel-level
-                 probe per channel; progress rides the SAME status poll. -->
-            <span class="action-bar-cell">
-              <button class="btn btn-sm" id="sub-backfill-names-btn" type="button"
-                      title="Re-fetch the real name for every channel showing a handle/folder instead, and update all its videos">
-                <i class="icon-refresh"></i> Refresh channel names
-              </button>
-              <button class="btn btn-sm" id="sub-backfill-names-cancel-btn" type="button" hidden>Cancel</button>
-            </span>
+          <div class="subs-panel" id="sub-panel-activity" data-title="Activity">
+            <!-- UI pass S5: one segmented control switches History / Failures / Maintenance (was three
+                 collapsed <details> cards). /js/subscriptions.js mounts the control here. -->
+            <div class="subs-activity-tabs" id="sub-activity-tabs"></div>
+            <div class="subs-activity-pane" data-activity-pane="history" id="sub-activity-history"></div>
+            <div class="subs-activity-pane" data-activity-pane="failures" id="sub-activity-failures" hidden></div>
+            <div class="subs-activity-pane" data-activity-pane="maintenance" id="sub-activity-maintenance" hidden>
+              <!-- v1.156: the maintenance actions; ids unchanged, so their wiring and the ~2.5s
+                   status-poll bindings are untouched. Each is one entry: what it does, its live status
+                   line, and its action (a Cancel swaps in while it runs). -->
+              <div class="subs-tool">
+                <div class="subs-tool__text">
+                  <span class="subs-tool__title">Preview a reheat</span>
+                  <span class="subs-tool__desc">See which files a reheat would move, and which get copied across filesystems, without moving anything.</span>
                 </div>
-                <div class="sub-list-header-status">
-            <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-reheat-subs-status" class="sub-repull-status action-status" aria-live="polite"></span>
-            <span id="sub-backfill-names-status" class="sub-repull-status action-status" aria-live="polite"></span>
+                <div class="subs-tool__act">
+                  <button class="ui-btn ui-btn--tonal ui-btn--sm" id="sub-reheat-preview-btn" type="button" aria-label="Preview a reheat"><span class="ui-btn__label">Preview</span></button>
                 </div>
-              </details>
+              </div>
+              <div class="subs-tool">
+                <div class="subs-tool__text">
+                  <span class="subs-tool__title">Reheat metadata and channels</span>
+                  <span class="subs-tool__desc">Re-fetch channel, title, date, chapters and subtitles for videos already in your library, including imported ones.</span>
+                  <span id="sub-reheat-status" class="action-status" aria-live="polite"></span>
+                </div>
+                <div class="subs-tool__act">
+                  <button class="ui-btn ui-btn--tonal ui-btn--sm" id="sub-reheat-btn" type="button" aria-label="Reheat metadata and channels"><span class="ui-btn__label">Run</span></button>
+                  <button class="ui-btn ui-btn--secondary ui-btn--sm" id="sub-reheat-cancel-btn" type="button" hidden><span class="ui-btn__label">Cancel</span></button>
+                </div>
+              </div>
+              <!-- v1.25.5: POST /api/ytdlp/refresh-avatars - re-probe every subscription's avatar. -->
+              <div class="subs-tool">
+                <div class="subs-tool__text">
+                  <span class="subs-tool__title">Refresh avatars</span>
+                  <span class="subs-tool__desc">Re-fetch every subscription's channel picture.</span>
+                  <span id="sub-refresh-avatars-status" class="action-status" aria-live="polite"></span>
+                </div>
+                <div class="subs-tool__act">
+                  <button class="ui-btn ui-btn--tonal ui-btn--sm" id="sub-refresh-avatars-btn" type="button" aria-label="Refresh avatars"><span class="ui-btn__label">Run</span></button>
+                  <button class="ui-btn ui-btn--secondary ui-btn--sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden><span class="ui-btn__label">Cancel</span></button>
+                </div>
+              </div>
+              <!-- v1.56: POST /api/ytdlp/reheat-sub-counts - one channel-level probe per channel. -->
+              <div class="subs-tool">
+                <div class="subs-tool__text">
+                  <span class="subs-tool__title">Reheat subscriber counts</span>
+                  <span class="subs-tool__desc">Re-fetch the subscriber count for every channel and update all its videos.</span>
+                  <span id="sub-reheat-subs-status" class="action-status" aria-live="polite"></span>
+                </div>
+                <div class="subs-tool__act">
+                  <button class="ui-btn ui-btn--tonal ui-btn--sm" id="sub-reheat-subs-btn" type="button" aria-label="Reheat subscriber counts"><span class="ui-btn__label">Run</span></button>
+                  <button class="ui-btn ui-btn--secondary ui-btn--sm" id="sub-reheat-subs-cancel-btn" type="button" hidden><span class="ui-btn__label">Cancel</span></button>
+                </div>
+              </div>
+              <!-- v1.115: POST /api/ytdlp/backfill-channel-names. -->
+              <div class="subs-tool">
+                <div class="subs-tool__text">
+                  <span class="subs-tool__title">Refresh channel names</span>
+                  <span class="subs-tool__desc">Re-fetch the real name for every channel showing a handle or folder instead, and update its videos.</span>
+                  <span id="sub-backfill-names-status" class="action-status" aria-live="polite"></span>
+                </div>
+                <div class="subs-tool__act">
+                  <button class="ui-btn ui-btn--tonal ui-btn--sm" id="sub-backfill-names-btn" type="button" aria-label="Refresh channel names"><span class="ui-btn__label">Run</span></button>
+                  <button class="ui-btn ui-btn--secondary ui-btn--sm" id="sub-backfill-names-cancel-btn" type="button" hidden><span class="ui-btn__label">Cancel</span></button>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <!-- v1.41.7 (Dean has NO media backup): the DRY-RUN relocation preview. Opened by
+               #sub-reheat-preview-btn (triggerReheatPreview) as a ui.sheet over the Activity sheet.
+               The body is built ENTIRELY with createElement/textContent (paths and titles are
+               untrusted-ish). v1.41.8: it lives INSIDE #view-root so an in-app nav mounts it. -->
+          <div class="subs-panel" id="reloc-preview-panel" data-title="Preview: what a reheat would move">
+            <div class="reloc-preview-summary" id="reloc-preview-summary"></div>
+            <div class="reloc-preview-body" id="reloc-preview-body"></div>
           </div>
         </div>
       </div><!-- /.subs-root -->
-
-      <!-- v1.41.7 (Dean has NO media backup): the DRY-RUN relocation preview
-           modal. Opened by #sub-reheat-preview-btn (see subscriptions.js's
-           triggerReheatPreview). The body (#reloc-preview-body) is populated
-           ENTIRELY via createElement/textContent -- paths and titles are
-           untrusted-ish, so no innerHTML ever touches them. Hidden until a
-           preview is fetched. Era-styled via the .reloc-preview-* rules in
-           public/css/style.css; scrolls on mobile.
-
-           v1.41.8 (bug fix): this modal MUST live INSIDE #view-root. The SPA
-           router (common.js extractViewFragment) swaps ONLY the #view-root
-           subtree on in-app navigation, so a shell-level sibling (as this was)
-           is NOT mounted after a nav-link click -- getElementById returned null
-           and the open was a silent no-op (it worked only on a hard load). It
-           is position:fixed;inset:0 (no ancestor of #view-root carries a
-           transform/filter/perspective -- verified against style.css), so its
-           DOM position here does not affect layout: it still resolves against
-           the viewport. Tech-debt #34 / the SPA-router lesson -- do not hoist
-           it back out. -->
-      <div class="reloc-preview-backdrop" id="reloc-preview-backdrop" hidden>
-        <div class="reloc-preview-panel" role="dialog" aria-modal="true" aria-labelledby="reloc-preview-title">
-          <div class="reloc-preview-header">
-            <span id="reloc-preview-title">Preview: what a reheat would move</span>
-            <button type="button" class="reloc-preview-close" id="reloc-preview-close" aria-label="Close">&times;</button>
-          </div>
-          <div class="reloc-preview-summary" id="reloc-preview-summary"></div>
-          <div class="reloc-preview-body" id="reloc-preview-body"></div>
-        </div>
-      </div>
       </div>
     </main>
   </div>

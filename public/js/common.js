@@ -8135,7 +8135,7 @@ var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // are already skipped by the placement-rect exclusion check.
 // v1.167 (Dean: "everywhere... popping up behind the button in a cute
 // cartoonish way"): the MACHINE-DERIVED per-view sweep (exec plan carries the
-// full accept/reject table) - `.btn` (buttons, PRIORITY-weighted), `.sub-row`,
+// full accept/reject table) - `.btn` (buttons, PRIORITY-weighted),
 // `.history-thumb` (now the `.ui-thumb` anchor, sweep S2), `.book-row-cover`, `.music-artist-mosaic`,
 // `.podcast-card-art`, `.comment-input-box`. Rejected as TRANSPARENT (the
 // tightened ground contract): the music/podcast CARDS (their art tiles paint
@@ -8143,9 +8143,11 @@ var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // UI pass S6: the podcast art is the shared `.ui-art` rounded square now (ui.css paints
 // its --thumb-ground), so the pool names the primitive instead of the retired
 // `.podcast-card-art`; every surface that adopts ui-art (albums, books) anchors too.
+// UI pass S5: the Subscriptions row became a ui-row, which paints NO background (the
+// ground contract), so the retired `.sub-row` left the pool like the other transparent rows.
 var CRITTER_ANCHOR_SELECTORS = [
   '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container',
-  '.btn', '.sub-row', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box',
+  '.btn', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box',
   // v1.169 (Dean: the mobile feed needs critters ON the cards): the thumbnail
   // (paints its ground - critters rise from behind the artwork onto the title
   // zone) and the small channel-avatar circle (a micro-ambush; the anchor

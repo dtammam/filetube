@@ -1185,10 +1185,11 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
 
 test('v1.167: the machine-derived sweep is in the pool; the transparent rejects are NOT', () => {
   // UI pass sweep S2: the history/card thumbnails and the card avatar are ui primitives now.
-  for (const sel of ['.btn', '.sub-row', '.ui-thumb', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box', '.video-card .ui-avatar']) {
+  for (const sel of ['.btn', '.ui-thumb', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box', '.video-card .ui-avatar']) {
     assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) !== -1, sel + ' anchors (verified painting)');
   }
-  for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row', '.related-thumb', '.history-thumb']) {
+  // UI pass S5: the Subscriptions row is a transparent ui-row now (the retired .sub-row painted).
+  for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row', '.related-thumb', '.history-thumb', '.sub-row', '.ui-row']) {
     assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) === -1, sel + ' is transparent - rejected by the ground contract');
   }
   const { CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT } = require('../../public/js/common.js');
@@ -1243,7 +1244,7 @@ test('gate PNB: collectCritterRects WIRING - fixed subtrees skipped AND .btn tag
   const dom = new JSDOM('<!DOCTYPE html><body>'
     + '<div style="position: fixed;"><button class="btn" data-m="1">Pinned</button></div>'
     + '<button class="btn" data-m="1" id="free">Free</button>'
-    + '<div class="sub-row" data-m="1"></div>'
+    + '<span class="ui-art" data-m="1"></span>'
     + '</body>', { url: 'http://localhost/' });
   global.window = dom.window; global.document = dom.window.document;
   const proto = dom.window.Element.prototype;
@@ -1259,7 +1260,7 @@ test('gate PNB: collectCritterRects WIRING - fixed subtrees skipped AND .btn tag
     const rects = collectCritterRects(POOL, true);
     assert.strictEqual(rects.length, 2, 'the fixed-wrapped button is SKIPPED (viewport rect vs document critters)');
     const weights = rects.map((r) => r.weight).sort();
-    assert.deepStrictEqual(weights, [1, 3], 'the free .btn is TAGGED weight 3; .sub-row stays 1 (the ambush priority wiring)');
+    assert.deepStrictEqual(weights, [1, 3], 'the free .btn is TAGGED weight 3; .ui-art stays 1 (the ambush priority wiring)');
   } finally {
     proto.getBoundingClientRect = orig;
     delete global.window; delete global.document;

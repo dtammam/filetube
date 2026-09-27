@@ -14,7 +14,7 @@
 // Subscriptions page's own format/quality/filetype selects since its
 // "Add a subscription"/one-shot rows share the SAME `.setup-select` class),
 // and the per-subscription settings sheet's cutoff-date/max-duration inputs
-// and selects (`.sub-sheet-field`) were all 13px -- bumped to 16px, scoped
+// and selects (the retired `.sub-sheet-field`; ui-field since UI pass S5) were all 13px -- bumped to 16px, scoped
 // to the existing mobile `@media (max-width: 768px)` breakpoint so desktop
 // (mouse input, no zoom-on-focus behavior to guard against) keeps its
 // compact 13px sizing.
@@ -141,25 +141,28 @@ test('Settings form fix does not touch .setup-box .btn (buttons never trigger iO
   assert.match(block, /\.setup-box \.setup-select,\s*\n\s*\.setup-box input\[type="text"\],\s*\n\s*\.setup-box input\[type="number"\]\s*\{\s*font-size:\s*var\(--fs-input-min\);\s*\}/);
 });
 
-test('per-subscription settings sheet: .sub-sheet-field input / .setup-select are >=16px on mobile', () => {
-  // The `.sub-sheet-field .setup-select, .sub-sheet-field input` selector
-  // group appears TWICE: once as the base (desktop, 13px) rule, once inside
-  // the NEW mobile-scoped font-size rule -- find the mobile occurrence
-  // specifically, and confirm it really is inside an
-  // `@media (max-width: 768px)` block (not accidentally unconditional).
-  const occurrences = [...css.matchAll(/\.sub-sheet-field \.setup-select,\s*\n\s*\.sub-sheet-field input\s*\{([^}]*)\}/g)];
-  assert.strictEqual(occurrences.length, 2, 'expected the .sub-sheet-field selector group to appear twice (base rule + mobile font-size rule)');
-  const mobileOccurrence = occurrences.find((o) => /font-size:\s*var\(--fs-input-min\);/.test(o[1]));
-  assert.ok(mobileOccurrence, 'expected one occurrence to carry font-size: var(--fs-input-min)');
-
-  const idx = mobileOccurrence.index;
-  const before = css.slice(0, idx);
-  const lastMediaOpenIdx = before.lastIndexOf('@media (max-width: 768px) {');
-  assert.ok(lastMediaOpenIdx > -1, 'expected an @media (max-width: 768px) block to precede the mobile .sub-sheet-field rule');
-  const betweenMediaAndRule = css.slice(lastMediaOpenIdx, idx);
-  const closeBraceCount = (betweenMediaAndRule.match(/\}/g) || []).length;
-  const openBraceCount = (betweenMediaAndRule.match(/\{/g) || []).length;
-  assert.ok(openBraceCount > closeBraceCount, 'expected the mobile .sub-sheet-field rule to still be inside the @media block (unbalanced braces = still open)');
+test('per-subscription settings sheet + the Subscriptions forms: ui-field / ui-select fields are 16px at EVERY width (UI pass S5)', () => {
+  // UI pass S5 (AC12): the settings sheet and the Add / One-off forms are ui-field /
+  // ui-select markup now (ui.js field/select + the view's static fields), and the
+  // primitive holds the 16px iOS floor UNCONDITIONALLY (no mobile override to forget).
+  // It must be exactly --fs-input-min (16px), in the field rule's font shorthand.
+  const uiCss = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = /\n\.ui-field__input,\s*\n\.ui-select__native \{([^}]*)\}/.exec(uiCss);
+  assert.ok(rule, 'expected the shared .ui-field__input, .ui-select__native rule');
+  assert.match(rule[1], /font:\s*var\(--fw-normal\) var\(--fs-input-min\) \/ var\(--lh-tight\) var\(--font-ui\);/);
+  const tokens = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8');
+  assert.match(tokens, /--fs-input-min:\s*16px;/, 'the floor token is 16px');
+  // no later rule in the ui layer shrinks the field font
+  assert.doesNotMatch(uiCss.slice(rule.index + rule[0].length), /\.(ui-field__input|ui-select__native)[^{]*\{[^}]*font(-size)?:/,
+    'nothing after the base rule re-sizes a ui field');
+  // and the Subscriptions view's fields actually ARE ui fields (no bare classed input left)
+  const subsHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'), 'utf8');
+  const viewRoot = subsHtml.slice(subsHtml.indexOf('<div id="view-root"'), subsHtml.indexOf('</main>'));
+  const fields = [...viewRoot.matchAll(/<(input|select)\b([^>]*)>/g)].map((m) => m[2]);
+  assert.strictEqual(fields.length, 13, 'the view carries its 13 form fields (search + Add 7 + One-off 5)');
+  for (const attrs of fields) {
+    assert.match(attrs, /class="(ui-field__input|ui-select__native)"/, `every view field is a ui field: <${attrs}>`);
+  }
 });
 
 test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping search no longer auto-zooms on iOS)', () => {
@@ -170,7 +173,7 @@ test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping sear
   );
 });
 
-test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select/.setup-select/.sub-sheet-field rules still resolve to 13px', () => {
+test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select/.setup-select rules still resolve to 13px', () => {
   const oneOffField = /(?:^|\n)\.oneoff-modal-field\s*\{([^}]*)\}/.exec(css);
   assert.ok(oneOffField);
   assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffField[1])[1]), 13);
@@ -183,9 +186,6 @@ test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneo
   assert.ok(setupSelect);
   assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(setupSelect[1])[1]), 13);
 
-  const subSheetField = /\.sub-sheet-field \.setup-select,\s*\n\.sub-sheet-field input\s*\{([^}]*)\}/.exec(css);
-  assert.ok(subSheetField);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(subSheetField[1])[1]), 13);
 });
 
 // ---- census: every CLASSED text-entry control in the shells ------------------

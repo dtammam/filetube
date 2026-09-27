@@ -75,30 +75,32 @@ test('.pinned-avatar-generated: does not hardcode background-color (left to the 
   assert.doesNotMatch(rule[1], /background-color:/);
 });
 
-// v1.25.5 (coordinator follow-up): a real channel-avatar <img> is being
-// wired directly INSIDE the existing fixed-size `.sub-row-avatar` /
-// `.sub-sheet-avatar` containers on the subscriptions page -- this file only
-// owns the CSS contract (an <img> placed inside either container fills it
-// cleanly), decoupled from whichever code renders the <img> itself.
-test('.sub-row-avatar img: fills the fixed-size container and crops to it (object-fit: cover)', () => {
-  const rule = findRule('.sub-row-avatar img');
-  assert.ok(rule, 'expected a .sub-row-avatar img rule in style.css');
+// v1.25.5 (coordinator follow-up) -> UI pass S5: a real channel-avatar <img> on the
+// Subscriptions page (its rows and its settings sheet) is ui.avatar's now (D4.4), so the
+// CSS contract moves to ui.css: the <img> fills the fixed-size box and crops to it, and
+// the box clips it to its own shape (overflow hidden + its radius), so no image can
+// render unbounded or square in a round avatar (the v1.25.5 bug). AC12: the retired
+// .sub-row-avatar / .sub-sheet-avatar img rules are replaced here, not dropped.
+const UI_CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+function findUiRule(selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(UI_CSS);
+}
+
+test('.ui-avatar__img (the Subscriptions row + sheet avatar): fills the fixed-size box and crops to it (object-fit: cover)', () => {
+  const rule = findUiRule('.ui-avatar__img');
+  assert.ok(rule, 'expected a .ui-avatar__img rule in ui.css');
   assert.match(rule[1], /width:\s*100%;/);
   assert.match(rule[1], /height:\s*100%;/);
   assert.match(rule[1], /object-fit:\s*cover;/);
 });
 
-test('.sub-row-avatar img: follows the container\'s own corner radius (border-radius: inherit)', () => {
-  const rule = findRule('.sub-row-avatar img');
-  assert.ok(rule);
-  assert.match(rule[1], /border-radius:\s*inherit;/);
-});
-
-test('.sub-sheet-avatar img: fills its fixed-size container the same way as .sub-row-avatar img', () => {
-  const rule = findRule('.sub-sheet-avatar img');
-  assert.ok(rule, 'expected a .sub-sheet-avatar img rule in style.css');
-  assert.match(rule[1], /width:\s*100%;/);
-  assert.match(rule[1], /height:\s*100%;/);
-  assert.match(rule[1], /object-fit:\s*cover;/);
-  assert.match(rule[1], /border-radius:\s*inherit;/);
+test('.ui-avatar / .ui-art: a fixed box that clips its image to its own shape (overflow hidden; circle vs rounded square)', () => {
+  const box = /\n\.ui-avatar,\s*\n\.ui-art \{([^}]*)\}/.exec(UI_CSS);
+  assert.ok(box, 'expected the shared .ui-avatar, .ui-art box rule');
+  assert.match(box[1], /width:\s*var\(--av\);/);
+  assert.match(box[1], /height:\s*var\(--av\);/);
+  assert.match(box[1], /overflow:\s*hidden;/);
+  assert.match(box[1], /flex:\s*none;/, 'never squeezed by a row');
+  assert.match(UI_CSS, /\n\.ui-avatar \{ border-radius: 50%; \}/, 'channels are circles (decision 7)');
 });

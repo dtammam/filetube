@@ -6,7 +6,8 @@
 // would be touched, and in what way"), the cross-filesystem COPY warning that is
 // the whole point, the metadata-effect wording (never overstated), XSS
 // discipline (untrusted paths/titles rendered via textContent, never innerHTML),
-// and that the trigger opens the modal after a successful fetch.
+// and that the trigger opens the preview (the caller's ui.sheet, `elements.open`,
+// UI pass S5) after a successful fetch.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -184,9 +185,10 @@ test('render shows a hard-link category with NO warning when nothing is copied',
 
 // ---- triggerReheatPreview / closeRelocationPreview -------------------------
 
-test('triggerReheatPreview fetches the preview, renders it, and opens the modal', async () => {
+test('triggerReheatPreview fetches the preview, renders it, and opens the preview sheet', async () => {
   const button = new FakeElement('button');
-  const backdrop = new FakeElement('div'); backdrop.hidden = true;
+  let opened = 0;
+  const open = () => { opened += 1; };
   const summary = new FakeElement('div');
   const body = new FakeElement('div');
   const status = new FakeElement('span');
@@ -202,33 +204,37 @@ test('triggerReheatPreview fetches the preview, renders it, and opens the modal'
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) });
   };
 
-  triggerReheatPreview({ button, backdrop, summary, body, status, doc: fakeDoc }, fakeFetch);
+  triggerReheatPreview({ button, open, summary, body, status, doc: fakeDoc }, fakeFetch);
+  assert.equal(opened, 0, 'nothing opens before the plan arrives');
   await new Promise((r) => setImmediate(r));
 
   assert.equal(requestedUrl, '/api/ytdlp/repull-metadata/preview');
   assert.equal(requestedMethod, 'POST');
-  assert.equal(backdrop.hidden, false, 'the modal must be shown after a successful preview');
+  assert.equal(opened, 1, 'the preview must be opened (once) after a successful preview');
   assert.equal(button.disabled, false, 'the button must be re-enabled');
   assert.match(body.collectText(), /Move — hard link/);
 });
 
-test('triggerReheatPreview on a failed response shows an error and does NOT open the modal', async () => {
+test('triggerReheatPreview on a failed response shows an error and does NOT open the preview', async () => {
   const button = new FakeElement('button');
-  const backdrop = new FakeElement('div'); backdrop.hidden = true;
+  let opened = 0;
+  const open = () => { opened += 1; };
   const summary = new FakeElement('div');
   const body = new FakeElement('div');
   const status = new FakeElement('span');
   const fakeFetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) });
 
-  triggerReheatPreview({ button, backdrop, summary, body, status, doc: fakeDoc }, fakeFetch);
+  triggerReheatPreview({ button, open, summary, body, status, doc: fakeDoc }, fakeFetch);
   await new Promise((r) => setImmediate(r));
 
-  assert.equal(backdrop.hidden, true, 'the modal must stay closed on a failed preview');
+  assert.equal(opened, 0, 'the preview must stay closed on a failed preview');
   assert.match(status.textContent, /Could not compute the preview/);
 });
 
-test('closeRelocationPreview hides the backdrop', () => {
-  const backdrop = new FakeElement('div'); backdrop.hidden = false;
-  closeRelocationPreview({ backdrop });
-  assert.equal(backdrop.hidden, true);
+test('closeRelocationPreview closes the preview through the caller\'s close (a ui.sheet), and tolerates none', () => {
+  let closed = 0;
+  closeRelocationPreview({ close: () => { closed += 1; } });
+  assert.equal(closed, 1);
+  assert.doesNotThrow(() => closeRelocationPreview({}));
+  assert.doesNotThrow(() => closeRelocationPreview(null));
 });

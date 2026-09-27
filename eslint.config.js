@@ -424,28 +424,9 @@ module.exports = [
     },
   },
 
-  // v1.26.2 polish (sheet/modal transitions): `openOverlay`/`closeOverlayThen`
-  // are DEFINED in public/js/common.js and consumed here (the subscription
-  // settings sheet's open/close), same "declare only where consumed" posture
-  // as the public/js/main.js|watch.js|setup.js|player.js block above --
-  // common.js loads first as a classic script (see `/js/subscriptions.js`'s
-  // route in lib/ytdlp/index.js), so this is the SAME bare-global pattern
-  // `showHardDeleteModal`/`showMoveModal`/etc. already use.
-  //
-  // C5 (v1.30.0, T12): `resolveAvatarSource` joins this list -- the subs-row
-  // and settings-sheet-header avatars now route through the SAME shared
-  // precedence seam `watch.js` already consumes (see the block above), rather
-  // than a locally-reimplemented one.
-  {
-    files: ['lib/ytdlp/client/subscriptions.js'],
-    languageOptions: {
-      globals: {
-        openOverlay: 'readonly',
-        closeOverlayThen: 'readonly',
-        resolveAvatarSource: 'readonly',
-      },
-    },
-  },
+  // UI pass S5: lib/ytdlp/client/subscriptions.js no longer consumes openOverlay /
+  // closeOverlayThen / resolveAvatarSource (its sheets and avatars are ui.js
+  // primitives), so its private globals block was removed.
 
   // v1.66: a PUSH-ONLY worker at public/filetube-worker.js (no fetch
   // handler, no CacheStorage - locked by test/unit/v1264-service-worker

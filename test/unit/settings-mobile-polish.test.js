@@ -66,59 +66,50 @@ test('mobile: .folder-item-row stacks vertically on a narrow phone (comfortable 
   assert.match(block[1], /\.folder-item-row\s*\{[^}]*flex-direction:\s*column/);
 });
 
-// v1.21.0 FR-3, T3: `.sub-row`'s anatomy changed from a cramped multi-button
-// cluster (which needed the column-stack fallback above) to a dense
-// avatar+info+kebab row -- it now DELIBERATELY stays a horizontal flex row
-// at every width, including mobile (a compact contact-list-style row is
-// more comfortable there than stacking three thin sub-elements), so it must
-// NOT be swept into the .folder-item-row column-stack rule anymore. See
-// public/css/style.css's ".sub-row DELIBERATELY stays a horizontal flex
-// row on mobile too" comment for the full rationale.
-test('mobile: .sub-row is NOT swept into the .folder-item-row column-stack rule (v1.21.0 FR-3 -- it deliberately stays horizontal)', () => {
+// v1.21.0 FR-3, T3 -> UI pass S5: the subscription row is a ui-row now (a grid with
+// reserved columns, ui.css), which stays horizontal at every width; it must never be
+// swept into the .folder-item-row column-stack rule.
+test('mobile: the subscription row (a ui-row) is NOT swept into the .folder-item-row column-stack rule', () => {
   const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
   const block = mobileBlockRe.exec(css);
   assert.ok(block);
   assert.doesNotMatch(
     block[1],
-    /\.folder-item-row,\s*\n\s*\.sub-row\s*\{[^}]*flex-direction:\s*column/,
-    '.sub-row must not share .folder-item-row\'s column-stack rule -- its new avatar+info+kebab anatomy stays horizontal on mobile'
+    /\.folder-item-row,\s*\n\s*\.(sub-row|ui-row)\s*\{[^}]*flex-direction:\s*column/,
+    'the row must not share .folder-item-row\'s column-stack rule'
   );
 });
 
 // v1.21.0 FR-3, T3 (AC24): the v1.19.0 FR-2a `#sub-list-container` scoped
 // max-height override (superseded) is gone entirely -- the subscriptions
-// list is now the page's PRIMARY content and gets its own `.sub-list` class
-// with NO scroll cap, rather than a bigger-but-still-capped box. The Setup
-// folder builder and the one-shot job list are UNCHANGED -- still
-// `.folder-list-builder` at its original 240px/12px sizing.
-test('v1.21.0 FR-3: #sub-list-container no longer carries a scoped max-height override -- .sub-list has no scroll cap (AC24), while the shared .folder-list-builder default (Setup builder + one-shot list) is untouched', () => {
+// list is the page's PRIMARY content with NO scroll cap. The Setup folder builder
+// is UNCHANGED -- still `.folder-list-builder` at its original 240px/12px sizing.
+// UI pass S5: the list container is `.subs-list` (A-Z ui-lists inside).
+test('v1.21.0 FR-3: #sub-list-container carries no scoped max-height override -- the subscriptions list has no scroll cap (AC24), while the shared .folder-list-builder default is untouched', () => {
   const sharedRule = /\.folder-list-builder\s*\{([^}]*)\}/.exec(css);
   assert.ok(sharedRule, 'expected the shared .folder-list-builder rule');
-  assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list and #oneshot-list-container must not grow');
+  assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list must not grow');
   assert.match(rs(sharedRule[1]), /padding:\s*12px/, 'the shared class padding must be unchanged');
 
   const scopedRule = /#sub-list-container\s*\{([^}]*)\}/.exec(css);
-  assert.ok(!scopedRule, '#sub-list-container must no longer carry its own rule block -- AC24 replaces the v1.19.0 FR-2a "bigger box" override with .sub-list\'s uncapped container instead');
-
-  const subListRule = /\.sub-list\s*\{([^}]*)\}/.exec(css);
-  assert.ok(subListRule, 'expected a .sub-list rule (the new, uncapped primary-list container)');
-  assert.doesNotMatch(subListRule[1], /max-height/, '.sub-list must have NO scroll cap (AC24) -- it is the page\'s PRIMARY content now');
+  assert.ok(!scopedRule, '#sub-list-container must not carry its own rule block (AC24)');
+  for (const sel of ['subs-list', 'subs-sections', 'subs-root']) {
+    const rule = new RegExp(`\\.${sel}\\s*\\{([^}]*)\\}`).exec(css);
+    assert.ok(!rule || !/max-height|overflow/.test(rule[1]), `.${sel} must have NO scroll cap (AC24) -- the list is the page's PRIMARY content`);
+  }
 });
 
-test('the /subscriptions page and the Setup page share the same .setup-box/.form-group/.folder-item-row selectors (one fix improves both)', () => {
+test('the /subscriptions forms are the shared ui-field primitive (one fix improves every form that adopts it)', () => {
   const setupHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
   const subsHtml = fs.readFileSync(
     path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
     'utf8'
   );
-  // v1.156 (T3): the subscriptions FORMS moved into .sub-sheet slide-in panels,
-  // so subscriptions.html no longer wraps them in .setup-box cards (that card
-  // chrome now lives only on setup.html + the JS-built history/failures
-  // sections). The .form-group / .folder-list-builder selectors are still
-  // shared -- the "one fix improves both" intent holds for those.
+  // v1.156 (T3) the forms moved into panels; UI pass S5 builds them from ui-field /
+  // ui-select / ui-switch (D4.10), so the shared fix is the primitive in ui.css.
+  // setup.html keeps its own .setup-box/.form-group chrome until sweep S8.
   assert.ok(setupHtml.includes('class="setup-box'), 'setup.html must use .setup-box');
-  for (const cls of ['form-group', 'folder-list-builder']) {
-    assert.ok(setupHtml.includes(`class="${cls}`), `setup.html must use .${cls}`);
-    assert.ok(subsHtml.includes(`class="${cls}`), `subscriptions.html must use .${cls}`);
-  }
+  assert.ok(setupHtml.includes('class="form-group'), 'setup.html must use .form-group');
+  assert.ok(subsHtml.includes('class="ui-field"'), 'subscriptions.html uses .ui-field');
+  assert.doesNotMatch(subsHtml, /class="(form-group|setup-box|setup-select)/, 'no pre-primitive form chrome left on subscriptions.html');
 });

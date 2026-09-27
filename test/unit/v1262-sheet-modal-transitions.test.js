@@ -488,23 +488,31 @@ test('.playlists-sheet slides up via .sheet-open (translateY(100%) -> translateY
   assert.match(css, /\.playlists-sheet:not\(\[hidden\]\)\.sheet-open\s*\{\s*transform:\s*translateY\(0\);/);
 });
 
-test('.sub-sheet slides IN FROM THE RIGHT via .sheet-open (translateX(100%) -> translateX(0)) at every viewport width (not gated by [hidden] -- fresh create/destroy)', () => {
-  // v1.155 (Subscriptions redesign): the settings sheet became a right-anchored
-  // iOS push-in PANEL (was a bottom sheet), so it slides on the X axis now.
-  assert.match(css, /\.sub-sheet\s*\{[^}]*transform:\s*translateX\(100%\);/s);
-  assert.match(css, /\.sub-sheet\.sheet-open\s*\{\s*transform:\s*translateX\(0\);/);
+// UI pass S5 (AC12): the Subscriptions settings/panel sheets are ui.sheets now, so the
+// retired .sub-sheet translateX slide is replaced by the primitive's contract: a bottom
+// sheet slides on Y, a dialog scales in, and the open class is ALWAYS applied (F48).
+const UI_CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
+test('the Subscriptions sheets are ui.sheets: bottom slides translateY(100%) -> drag offset, dialog scales, both open via .is-open', () => {
+  assert.match(UI_CSS, /\.ui-sheet--bottom \{[^}]*transform:\s*translateY\(100%\);/s);
+  assert.match(UI_CSS, /\.ui-sheet--bottom\.is-open \{ transform: translateY\(var\(--ui-drag, 0px\)\); \}/);
+  assert.match(UI_CSS, /\.ui-sheet--dialog \{[^}]*transform:\s*scale\(0\.98\);/s);
+  assert.match(UI_CSS, /\.ui-sheet--popover\.is-open,\s*\n\.ui-sheet--dialog\.is-open \{ transform: none; \}/);
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.sub-sheet/, 'the bespoke .sub-sheet family is gone');
 });
 
 test('prefers-reduced-motion: reduce collapses every sheet/modal transition to instant, fully-visible/in-place (no stuck half-state)', () => {
-  const rule = /\.modal-backdrop,\s*\.modal-content,\s*\.playlists-sheet-backdrop:not\(\[hidden\]\),\s*\.playlists-sheet:not\(\[hidden\]\),\s*\.sub-sheet-backdrop,\s*\.sub-sheet\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a combined selector list covering every sheet/modal surface');
+  const rule = /\.modal-backdrop,\s*\.modal-content,\s*\.playlists-sheet-backdrop:not\(\[hidden\]\),\s*\.playlists-sheet:not\(\[hidden\]\)\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected a combined selector list covering every pre-primitive sheet/modal surface');
   assert.match(rule[1], /transition:\s*none;/);
   assert.match(rule[1], /opacity:\s*1;/);
   assert.match(rule[1], /transform:\s*none;/);
 
   // And that selector list must actually live inside the reduced-motion query.
-  const queryBlock = /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.sub-sheet\s*\{[^}]*\}\s*\n\}/.exec(css);
+  const queryBlock = /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.playlists-sheet:not\(\[hidden\]\)\s*\{[^}]*\}\s*\n\}/.exec(css);
   assert.ok(queryBlock, 'expected the combined rule to sit inside @media (prefers-reduced-motion: reduce)');
+  // The ui.sheets (the Subscriptions panels + settings sheet) take their own reduced-motion
+  // rule in ui.css: opacity only, never a transform (F48 - the open class still applies).
+  assert.match(UI_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*\n\s*\.ui-sheet,\s*\n\s*\.ui-sheet\.is-open,\s*\n\s*\.ui-sheet--bottom,\s*\n\s*\.ui-sheet--panel \{\s*\n\s*transform: none;/);
 });
 
 test('every open/close call site of the Playlists sheet routes through openPlaylistsSheet/closePlaylistsSheet (no bypass leaving a stuck half-state)', () => {

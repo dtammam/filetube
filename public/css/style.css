@@ -294,7 +294,7 @@ summary,
    per-page zoom (the fixed bottom-nav icons rendered at different sizes on
    home vs watch vs subs) and a visible zoom-"jerk" on navigation. The real
    offenders are fixed at source (see the subs `.mobile-logo` removal, the
-   `.sub-row-info`/`.watch-prevnext`/`.comment-input-box` rules), so this is
+   `.watch-prevnext`/`.comment-input-box` rules), so this is
    PURE INSURANCE that pins every page to 1.0 zoom and never actually clips.
    `clip` (not `hidden`) so it does NOT create a scroll container or a
    containing block for the `position:fixed` header/bottom-nav/#player-dock,
@@ -576,31 +576,6 @@ html.reader-immersive .app-container { padding-top: 0; }
   box-shadow: none;
 }
 
-/* v1.316 (Dean, B2): the 32x32 glyph CHIP variant of `.btn` - the subscription
-   row's pin / push-bell / kebab (lib/ytdlp/client/subscriptions.js). They used
-   to carry their own hand-copied bevel (a `--bg-color` fill + a two-tone
-   border), which inherited each era's COLOUR tokens but never its control
-   TREATMENT: the 2009 gloss is a `background-image` declared on `.btn` only
-   (the two [data-theme="2009"] rules near the top of this file), and the 2005
-   flat bevel / 2014 flat / 2021 shadow all ride `.btn`'s `--btn-bg` +
-   `--shadow`. Making the chip a real `.btn` puts every era treatment on it for
-   free and keeps ONE rule family (the INERT-SIBLING lesson: a per-era override
-   for the chip would drift). This variant only squares the box, drops the text
-   padding and centres the glyph - it declares NO background, border, radius or
-   shadow of its own, so those can only come from `.btn` (locked by
-   test/unit/sub-row-chip-btn-family.test.js). The role classes below keep
-   only their STATE colours (hover red, active gold, the kebab's larger glyph). */
-.btn-chip {
-  flex-shrink: 0;
-  width: var(--size-control-sm);
-  height: var(--size-control-sm);
-  padding: 0;
-  justify-content: center;
-  font-size: var(--fs-xl);
-  line-height: 1; /* token-exempt: glyph centering */
-  color: var(--text-secondary);
-}
-
 .btn-primary {
   background-color: var(--yt-red);
   color: var(--on-accent);
@@ -623,25 +598,6 @@ html.reader-immersive .app-container { padding-top: 0; }
    background/border. */
 .btn.liked {
   color: var(--yt-red);
-}
-
-.theme-toggle {
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-size: var(--fs-2xl);
-  cursor: pointer;
-  padding: var(--space-3);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-@media (hover: hover) {
-  .theme-toggle:hover {
-    background-color: var(--bg-secondary);
-  }
 }
 
 /* Main Container Layout */
@@ -1394,29 +1350,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .skeleton-line-meta {
   width: 50%;
   margin-bottom: 0;
-}
-
-/* Subscriptions list skeleton row -- mirrors `.sub-row`'s box model (avatar
-   + info block, same gap/padding/border-bottom) exactly (see
-   subscriptions.js's buildSkeletonRows). */
-.skeleton-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.skeleton-row-avatar {
-  flex-shrink: 0;
-  width: var(--size-control);
-  height: var(--size-control);
-  border-radius: var(--radius);
-}
-
-.skeleton-row-info {
-  flex: 1 1 240px;
-  min-width: 240px;
 }
 
 /* Respect the user's OS-level reduced-motion preference: the shimmer sweep
@@ -2656,10 +2589,9 @@ select {
    Line-height/min-height reserve the line box up front so populate/clear
    never shifts the controls above it (the v1.26.2 lesson, now systemic). */
 .action-status {
-  /* inline-block, not block: the subscriptions header keeps its three
-     status spans on ONE reserved row (only one is ever populated); block
-     would stack three empty min-height boxes. Containers that want a
-     full-width line get it from their own layout. */
+  /* inline-block, not block: a status span keeps its reserved line box
+     inside whatever row holds it. Containers that want a full-width line
+     get it from their own layout. */
   display: inline-block;
   font-size: var(--fs-xs);
   color: var(--text-secondary);
@@ -2833,16 +2765,11 @@ select {
   max-height: min(60vh, 520px);
 }
 
-/* v1.21.0 FR-3, T3: `#sub-list-container` no longer uses `.folder-list-builder`
-   at all (superseding the v1.19.0 FR-2a scoped 420px override that used to
-   live here) -- the subscriptions list is now the page's PRIMARY content, so
-   it gets its OWN `.sub-list` class with NO scroll cap (AC24), rather than a
-   bigger-but-still-capped box. See the labeled "v1.21 FR-3" section near the
-   end of this file for `.sub-list`/`.sub-row-avatar`/`.sub-row-kebab`/
-   `.sub-sheet-*`/`.sub-collapsible`. The Setup folder-management builder
-   (#folders-builder-list) and the one-shot job list (#oneshot-list-container)
-   are UNCHANGED -- still `.folder-list-builder` at its original 240px/12px
-   sizing. */
+/* v1.21.0 FR-3, T3: `#sub-list-container` does not use `.folder-list-builder`
+   (the subscriptions list is the page's PRIMARY content, no scroll cap, AC24);
+   since UI pass S5 it and the one-shot job list are ui-list primitives, laid out
+   by the "UI pass S5" section of this file. The Setup folder-management builder
+   (#folders-builder-list) is unchanged. */
 
 .folder-item-row {
   display: flex;
@@ -3003,257 +2930,6 @@ select {
   font-style: italic;
   text-align: center;
   padding: var(--space-6) 0;
-}
-
-/* v1.13.0 item 1/6 -- the /subscriptions page's OWN row layout, used by
-   lib/ytdlp/client/subscriptions.js's createSubscriptionRow/createOneShotRow.
-   This is DELIBERATELY separate from .folder-item-row/.folder-path-text
-   above: that pair was found to collapse its info column to ~1 character
-   wide (subscription names/URLs wrapped one character per line, v1.12.0
-   BUG). `.sub-row-info` carries a guaranteed minimum width (240px) via
-   flex-basis, so it can never be squeezed toward zero. Long names/URLs wrap
-   at normal word/URL-segment boundaries (`overflow-wrap`/`word-break:
-   break-word`), never mid-character (`break-all`) and never vertical --
-   this word-wrap fix is preserved UNCHANGED by v1.21.0 FR-3, T3's row
-   rewrite below (only the row's own anatomy/layout changed, not this text
-   -wrapping behavior).
-
-   v1.21.0 FR-3, T3: the row anatomy changed from a two-column
-   [info | actions-cluster] layout to a dense THREE-part row -- avatar +
-   info (name / one muted meta+status line / FR-4 channel link) + a single
-   trailing kebab -- per the UI research's "list, not grid; one row =
-   avatar + name + one muted metadata line + a single trailing kebab/gear"
-   guidance. `align-items: center` (not the old `flex-start`) since there is
-   no longer a multi-line button cluster to top-align against; `flex-wrap`
-   is dropped from the row itself (the kebab must always stay pinned to the
-   trailing edge) -- `.sub-row-info`'s own text still wraps internally via
-   `overflow-wrap`/`word-break: break-word` exactly as before. Zebra
-   striping (odd/even) + a 1px separator (instead of the old per-row
-   border+radius+margin "card" look) per the research's retro translation. */
-.sub-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-5) var(--space-6);
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.sub-row:nth-child(even) {
-  background-color: var(--bg-color);
-}
-
-.sub-row:last-child {
-  border-bottom: none;
-}
-
-/* v1.155 (Subscriptions redesign, Q2): the subscription-row drag-to-reorder
-   CSS (.sub-row.reorder-row / .sub-row-dragging / .sub-row-drag-over-*) was
-   removed with manual reordering -- the list is alphabetical (A-Z sections +
-   search) now. See the .sub-search / .sub-list-body / .sub-section block
-   further down this file. */
-.sub-row-navigable {
-  cursor: pointer;
-}
-
-.sub-row-navigable:focus-within {
-  outline: 1px solid var(--border-dark);
-  outline-offset: -1px;
-}
-@media (hover: hover) {
-  .sub-row-navigable:hover {
-    outline: 1px solid var(--border-dark);
-    outline-offset: -1px;
-  }
-}
-
-/* Beveled single-letter avatar (`name[0]`, uppercased) -- research: "one
-   row = avatar + name + ...". Fixed-size so it never squeezes .sub-row-info;
-   the inset/outset border pair is the retro "beveled" look used elsewhere
-   in this file (e.g. .drag-handle's era styling), era tokens only. */
-.sub-row-avatar {
-  flex-shrink: 0;
-  width: var(--size-control);
-  height: var(--size-control);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-lg);
-  color: var(--text-primary);
-  background-color: var(--bg-color);
-  border-top: 1px solid var(--border-dark);
-  border-left: 1px solid var(--border-dark);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-  border-radius: var(--radius);
-}
-
-/* v1.25.5: contract for a real channel-avatar `<img>` placed INSIDE the
-   fixed-size `.sub-row-avatar` box above (wired up separately) -- same
-   object-fit: cover treatment as `.pinned-avatar-img` below, so a real
-   avatar of any natural size crops to fill the container instead of
-   overflowing it. `border-radius: inherit` follows the container's own
-   `var(--radius)` corner rather than duplicating/hardcoding it. */
-.sub-row-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-  display: block;
-}
-
-.sub-row-info {
-  flex: 1 1 240px;
-  min-width: 240px;
-  max-width: 100%;
-}
-
-.sub-row-name {
-  font-family: var(--font-family);
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* Still used by the one-shot job row (createOneShotRow) -- a plain,
-   non-link URL line (one-shot jobs are ephemeral activity entries, not
-   subscriptions, so the FR-4 clickable-channel-link treatment below does
-   not apply to them). Preserves the original v1.13.0 word-wrap fix
-   unchanged. */
-.sub-row-url {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  margin-top: var(--space-2);
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* v1.21.0 FR-3: ONE muted metadata line -- `.sub-row-meta` (static,
-   format/quality/count + the FR-4 subscribed date, only rebuilt on a full
-   render) and `.sub-row-status` (the live-poll target, see
-   applyStatusUpdatesInPlace in subscriptions.js) sit on the SAME visual
-   line via `display: inline-flex` + wrap, separated by a thin bullet, even
-   though they remain two distinct DOM nodes -- keeping them separate is
-   what lets the ~2.5s poll update ONLY the status fragment in place without
-   ever touching/rebuilding the rest of the row (the FR-1 fix). */
-.sub-row-meta,
-.sub-row-status {
-  display: inline;
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-}
-
-/* Only prefixes a bullet when `.sub-row-status` immediately follows
-   `.sub-row-meta` (the subscription-row anatomy) -- the one-shot job row's
-   standalone `.sub-row-status` (no preceding `.sub-row-meta` sibling) is
-   deliberately unaffected, so it never grows a stray leading "· ". */
-.sub-row-meta + .sub-row-status:not(:empty)::before {
-  content: " · ";
-}
-
-/* v1.21.0 FR-4 -- the channel URL row is now a real, clickable link
-   (previously inert text via .sub-row-url) opening the actual YouTube
-   channel in a new tab. `href`/`target`/`rel` are set directly on the
-   anchor in JS (never a template string); this rule is purely cosmetic. */
-.sub-row-channel-link {
-  display: block;
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  margin-top: var(--space-2);
-  overflow-wrap: break-word;
-  word-break: break-word;
-  text-decoration: none;
-}
-
-a.sub-row-channel-link:focus-visible {
-  color: var(--yt-red);
-  text-decoration: underline;
-}
-@media (hover: hover) {
-  a.sub-row-channel-link:hover {
-    color: var(--yt-red);
-    text-decoration: underline;
-  }
-}
-
-.sub-row-actions {
-  display: flex;
-  gap: var(--space-4);
-  flex-shrink: 0;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* v1.37.5 (Dean's "Skip" action): the per-item failure list under a
-   subscription row is now one flex row per failed video, each with an
-   optional "Skip" button that adds the video to the permanent skip list.
-   Deliberately lives HERE in style.css rather than the subscriptions view's
-   page-local <style> block (where `.sub-row-failures` itself still sits), so
-   these rules survive an in-app SPA navigation that only swaps `#view-root`
-   -- see the CONTRIBUTING/working-style lesson on page-local head styles.
-   `.btn.btn-sm` already supplies the button chrome; era tokens only. */
-.sub-row-failure {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-1);
-}
-
-.sub-row-failure-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-.sub-row-skip {
-  flex: 0 0 auto;
-}
-
-/* v1.20.0 FR-4 -- per-subscription "View as Playlist" link
-   (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), a distinct
-   block from the .sub-row-* set above. Rendered only when the row's
-   `channelDir` was resolved server-side; links to `/?root=<channelDir>`,
-   reusing the existing sidebar/Playlists-sheet `?root=` pattern. Era-theme
-   custom properties only, no hardcoded colors. v1.21.0 FR-3: kept as its
-   own explicit, always-visible link even though the whole row is now also
-   tap-to-navigate -- redundant on purpose (keyboard/assistive-tech users
-   get an explicit target, not just a full-row pointer affordance). */
-.sub-row-playlist-link {
-  display: inline-block;
-  margin-top: var(--space-3);
-  font-size: var(--fs-xs);
-  color: var(--yt-red);
-  text-decoration: none;
-}
-
-.sub-row-playlist-link:focus-visible {
-  text-decoration: underline;
-}
-@media (hover: hover) {
-  .sub-row-playlist-link:hover {
-    text-decoration: underline;
-  }
-}
-
-/* v1.21.0 FR-3: the single trailing kebab/gear (AC19) -- chunky,
-   right-aligned, per the UI research's retro translation ("chunky
-   right-aligned button"). v1.316 (B2): its box, fill, border, radius and
-   shadow now come from `.btn` + `.btn-chip` (see `.btn-chip`'s comment near
-   `.btn`); only the kebab's larger glyph stays here. */
-.sub-row-kebab {
-  font-size: var(--fs-2xl);
-}
-
-.sub-row-kebab:focus-visible {
-  color: var(--yt-red);
-}
-@media (hover: hover) {
-  .sub-row-kebab:hover {
-    color: var(--yt-red);
-  }
 }
 
 /* Appearance (era theme) picker — setup.html */
@@ -4393,14 +4069,6 @@ a.sub-row-channel-link:focus-visible {
 }
 
 @media (max-width: 768px) {
-  /* v1.24.6: drop the 240px desktop anti-collapse min-width on `.sub-row-info`
-     for narrow phones -- it forced each `.sub-row` to a ~406px min-content that
-     exceeded the viewport (contributing to the subscriptions-page fit-to-width
-     zoom + clipped the trailing kebab). The row's text still wraps via the
-     existing `.sub-row-name`/`.sub-row-url`/`.sub-row-meta` overflow-wrap/
-     word-break rules, so the guard is safe to drop here. */
-  .sub-row-info { min-width: 0; }
-
   /* v1.17.0 FR-2 (Decision log): a single source of truth for the mobile
      shell's fixed-header/bottom-nav offsets, computed ONCE and consumed by
      every rule that needs to reserve space for them. Before this fix, the
@@ -5001,14 +4669,6 @@ a.sub-row-channel-link:focus-visible {
   .folder-item-row .remove-folder-btn {
     align-self: flex-end;
   }
-
-  /* v1.21.0 FR-3, T3: `.sub-row` DELIBERATELY stays a horizontal flex row
-     on mobile too (avatar left / info middle / kebab or dismiss-button
-     right) -- unlike `.folder-item-row` above, it no longer has a cramped
-     multi-button cluster to fall back to a column for; a compact horizontal
-     row is the more comfortable mobile list pattern here (contact-list
-     style), per the UI research's "dense vertical LIST" guidance (the list
-     is vertical; each ROW stays horizontal). */
 
   /* ---- v1.15.0 item 2: home-page sort-row overflow fix -----------------
      Pre-fix: `.section-title` was a single non-wrapping flex row of
@@ -6127,7 +5787,6 @@ html:has(> body.ft-audio-expanded),
 .modal-content,
 .oneoff-modal,
 .speed-sheet,
-.sub-sheet,
 .hard-delete-modal,
 .playlists-sheet-list {
   overscroll-behavior: contain;
@@ -7314,131 +6973,193 @@ html:has(> body.ft-audio-expanded),
   font-size: var(--fs-sm);
 }
 
-/* === v1.21 FR-3: subscriptions list / settings sheet ======================
-   T3: the subscriptions-FIRST rearchitect. `.sub-row`/`.sub-row-avatar`/
-   `.sub-row-meta`/`.sub-row-status`/`.sub-row-channel-link`/`.sub-row-kebab`
-   are defined near line ~1735 above (alongside the pre-existing .sub-row-*
-   set they extend, to keep one source of truth for the row rather than a
-   second, conflicting override block here). This section holds everything
-   genuinely NEW and self-contained: the primary list's outer frame, the
-   demoted-forms `<details>` styling, and the settings bottom-sheet (built
-   entirely in JS -- lib/ytdlp/client/subscriptions.js's buildSettingsSheet
-   -- and appended to document.body on demand, never present in
-   subscriptions.html's static markup). Era CSS custom properties only. */
-
-/* Primary list container (AC24): replaces `.folder-list-builder` for
-   `#sub-list-container` -- no scroll cap, sized for a PRIMARY list rather
-   than a secondary builder box. Row separators/zebra striping live on
-   `.sub-row` itself; this is just the outer frame + rounded-corner clip. */
-.sub-list {
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-secondary);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
 /* ===========================================================================
-   v1.155 Subscriptions redesign: the list-first, scale-ready channel list --
-   a live search field + A-Z sections (answers Dean's "how do we deal with 200+
-   subscriptions"; the A-Z scrubber rail was removed in v1.156.1). Global so it
-   survives the SPA #view-root swap -- page-local <head> styles do not (the
-   reloc-preview lesson). All colour/size rides tokens (census ceiling ZERO).
-   =========================================================================== */
-.sub-search {
-  margin-bottom: var(--space-6);
-}
-.sub-search-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: var(--space-4) var(--space-5);
-  font-size: var(--fs-md);
-  color: var(--text-primary);
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-}
-.sub-search-input:focus {
-  outline: 1px solid var(--border-dark);
-  outline-offset: -1px;
-}
-/* v1.156.1 (Dean device): the A-Z scrubber rail was removed, so the list is
-   the sole child here -- a plain full-width block, no flex column. */
-.sub-list-body {
-  display: block;
-}
-/* An A-Z section header: a styled divider labelling its run of rows. (A
-   position:sticky variant is a follow-up -- it needs the fixed-header offset
-   measured rather than guessed, per the layout-measurement lesson.) */
-.sub-section-head {
-  padding: var(--space-3) var(--space-6);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-secondary);
-  background-color: var(--bg-color);
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* ===========================================================================
-   v1.156 (T3): the pills-toolbar Subscriptions shell (replaces the v1.152
-   master-detail menu). A page title + a horizontally-scrollable pill strip
-   over the always-visible A-Z channel list; One-off / Activity / + Add open
-   the static `.sub-sheet` slide-in panels below. All tokens (census 0).
+   UI pass S5: the Subscriptions page (lib/ytdlp/views/subscriptions.html +
+   lib/ytdlp/client/subscriptions.js). Controls, rows, avatars, sheets, fields,
+   switches, the segmented control and the empty/error states are ui.css
+   primitives; this block holds only the page's own layout. It lives here, not
+   in the view, because the SPA router swaps only #view-root (F62, LESSONS 4).
+   Tokens only.
    =========================================================================== */
 .subs-root { display: block; }
 .subs-head { margin-bottom: var(--space-6); }
-/* v1.160.1: the Subscriptions header is now the shared .md-hero block (title via
-   .md-hero-text h2) - the old .subs-title h1 rule was removed with it. The hero
-   tile colours itself via CSS here (the graphite tone), NOT a data-md-tone attr,
-   so subscriptions.html keeps zero data-md-* attrs (the v1.156 master-detail
-   drop lock). */
+/* The hero tile colours itself here (the graphite tone), not via a data-md-tone
+   attr, so the view keeps zero data-md-* attrs (the v1.156 master-detail drop). */
 .subs-head .md-tile--hero { background: var(--md-graphite); }
-/* A single horizontally-scrollable pill strip (the v1.150 pattern) so the four
-   pills never orphan onto a second row. No abspos popout children, so the
-   overflow-x:auto force-computed overflow-y cannot clip anything (v1.150). */
-.sub-toolbar {
+/* One toolbar language (tonal controls, one primary), like Podcasts. Rows wrap and
+   buttons never shrink (LESSONS 6). */
+.subs-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-4);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: var(--space-2);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-2);
 }
-.sub-pill {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  border-radius: var(--radius-lg);
+.subs-status { display: block; margin-bottom: var(--space-4); }
+.subs-search { margin-bottom: var(--space-4); }
+.subs-search > .ui-field__input { width: 100%; }
+/* An A-Z section label over its run of rows, on the page gutter like the avatars. */
+.subs-letter {
+  padding: var(--space-6) 0 var(--space-1);
+  font: var(--t-footnote);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-2);
 }
-/* The static slide-in panels reuse `.sub-sheet-backdrop`/`.sub-sheet`. While
-   hidden they must NOT show -- a bare [hidden] loses to `.sub-sheet-backdrop`'s
-   `display:flex` (the repo's [hidden]-loses lesson), so scope it explicitly. */
-.sub-sheet-backdrop.sub-panel[hidden] { display: none; }
-/* Maintenance subsection at the foot of the Activity panel. */
-.sub-maint { margin-top: var(--space-8); }
+.subs-sections > .subs-letter:first-child { padding-top: 0; }
+/* The row's ONE meta line (D8.9): "3 new · checked 2h ago", or the failed check in
+   --danger. The new count is the only bold word. */
+.subs-meta__new { font-weight: var(--fw-semibold); color: var(--ink-1); }
+.subs-meta[data-tone="error"] { color: var(--danger); }
+/* A row whose channel is paused reads quieter; its controls keep full contrast. */
+.ui-row[data-paused] > .ui-row__media,
+.ui-row[data-paused] .ui-row__title { opacity: 0.6; }
 
-/* Native `<details>`/`<summary>` disclosures demoting add-subscription/
-   one-off download BELOW the list (AC23) -- no JS required to expand them.
-   Reuses `.setup-box` for the same card chrome the rest of this page
-   already uses; only `<summary>` gets new styling here, replacing the old
-   `<h2>` as the clickable "heading" -- the native disclosure triangle is
-   the sole open/close affordance. */
-.sub-collapsible > summary {
-  font-size: var(--fs-4xl);
-  font-weight: var(--fw-bold);
-  color: var(--yt-red);
-  cursor: pointer;
-  padding-bottom: var(--space-6);
+/* ---- panels: the bodies of the page's ui.sheets ------------------------- */
+.subs-panel {
+  display: grid;
+  gap: var(--space-6);
+  /* the sheet body has no inline padding of its own; this lines the panel up with the
+     sheet title (ui.css .ui-sheet__header, --space-8) */
+  padding: 0 var(--space-8);
 }
+.subs-panel-intro {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--ink-2);
+}
+.subs-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--panel-w) * 0.45), 1fr));
+  gap: var(--space-6);
+}
+/* A labelled switch: text on the left, the ui-switch on the trailing edge. */
+.subs-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-height: var(--hit);
+}
+.subs-switch__text {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  font: var(--t-body);
+  color: var(--ink-1);
+}
+.subs-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+.subs-panel-actions > .action-status { margin-right: auto; }
+/* the row sheet's one destructive action sits on its own line, apart from Save */
+.subs-sheet-danger { display: flex; }
+.subs-banner { margin: 0 0 var(--space-4); font: var(--t-footnote); color: var(--danger); }
+.subs-activity-pane { display: grid; gap: var(--space-4); }
+/* The failure log's filter chips + Clear all. */
+.subs-activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.subs-activity-filters > .ui-btn { margin-left: auto; }
+.subs-empty {
+  margin: 0;
+  padding: var(--space-6) 0;
+  font: var(--t-footnote);
+  color: var(--ink-2);
+}
+/* Verbatim error text (a failure record, a failed check) wraps in full: it is the
+   whole point of the record, so it is never clipped to the row's one meta line. */
+.subs-reason {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* A maintenance tool: what it does + its live status, and its action on the trailing edge. */
+.subs-tool {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-5) 0;
+  background-image: linear-gradient(var(--separator), var(--separator));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% var(--hairline);
+}
+.subs-tool:last-child { background-image: none; }
+.subs-tool__text { display: grid; gap: var(--space-1); flex: 1 1 0; min-width: 0; }
+.subs-tool__title { font: var(--t-body); color: var(--ink-1); }
+.subs-tool__desc { font: var(--t-footnote); color: var(--ink-2); }
+.subs-tool__act { display: flex; flex: none; gap: var(--space-3); }
 
-.sub-collapsible[open] > summary {
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: var(--space-8);
+/* ---- the row sheet (per-subscription settings) --------------------------- */
+.subs-sheet-status {
+  display: grid;
+  gap: var(--space-2);
+  font: var(--t-footnote);
+  color: var(--ink-2);
 }
+.subs-sheet-status[data-tone="error"] > .subs-sheet-line:first-child { color: var(--danger); }
+.subs-sheet-line { margin: 0; }
+.subs-sheet-failure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.subs-sheet-failure > .subs-reason { flex: 1 1 0; min-width: 0; }
+.subs-sheet-about {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--ink-2);
+}
+.subs-sheet-about a { color: var(--ink-link); overflow-wrap: anywhere; }
 
-.sub-collapsible > summary::-webkit-details-marker,
-.sub-collapsible > summary::marker {
-  color: var(--yt-red);
+/* ---- the DRY-RUN relocation preview (v1.41.7, Dean has NO media backup) ----
+   The sheet itself is a ui.sheet; these rules lay out the summary and the grouped
+   plan inside it (built by subscriptions.js renderRelocationPreview). */
+.reloc-preview-summary {
+  display: grid;
+  gap: var(--space-2);
+  font: var(--t-footnote);
 }
+.reloc-preview-summary .reloc-copy-warning {
+  color: var(--danger);
+  font-weight: var(--fw-semibold);
+}
+/* v1.41.7 gate fix (HONESTY 2): the best-effort-prediction + checksum-safety
+   disclosure. Muted, but always present under the summary. */
+.reloc-preview-note { color: var(--ink-2); }
+.reloc-preview-group-title {
+  margin: var(--space-6) 0 var(--space-2);
+  font: var(--t-callout);
+  font-weight: var(--fw-semibold);
+}
+.reloc-preview-entry {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) 0;
+  overflow-wrap: anywhere;
+  background-image: linear-gradient(var(--separator), var(--separator));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% var(--hairline);
+}
+.reloc-preview-entry-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font: var(--t-body);
+  font-weight: var(--fw-semibold);
+}
+.reloc-preview-entry-detail { font: var(--t-footnote); color: var(--ink-2); }
+.reloc-preview-entry-title > .reloc-copy { color: var(--danger); }
 
 /* ===========================================================================
    v1.152 master-detail menu (wireMasterDetail in common.js). Mobile-first:
@@ -7607,230 +7328,6 @@ html:has(> body.ft-audio-expanded),
   .md-root[data-md-open="true"] .md-panes { animation: none; }
 }
 
-/* ---- settings bottom-sheet (AC21/AC22) ------------------------------------
-   Mirrors the existing `.playlists-sheet`/`-backdrop` silhouette (fixed,
-   bottom-anchored, era tokens) but is its OWN class set (this sheet carries
-   a real settings form, not just a list) and -- unlike the Playlists sheet,
-   which is mobile-only (desktop uses the sidebar instead) -- renders at
-   EVERY viewport width: the kebab that opens it lives in the row at every
-   width, so the sheet must too. This is a wholly separate top-level DOM
-   subtree from `#sub-list-container`'s rows -- the ~2.5s live-status poll
-   (`applyStatusUpdatesInPlace`) has no reference to it and never rebuilds
-   it, which is what makes an open/unsaved edit here immune to the FR-1
-   poll-clobber bug class by construction (AC22). */
-.sub-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are POINTER-blocked by each other's full-cover backdrops; keyboard focus is NOT trapped - pre-existing gap, tech-debt #67 - so a Tab+Enter co-open exists, and either stacking order is acceptable there; the tie itself was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
-  background: var(--scrim-legacy);
-  display: flex;
-  /* v1.155 (Subscriptions redesign): the settings panel is a right-anchored,
-     full-height iOS push-in page now (was a bottom sheet) -- anchor the panel
-     to the trailing edge and stretch it top-to-bottom. */
-  align-items: stretch;
-  justify-content: flex-end;
-  /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this
-     backdrop is freshly created + appended on every open and removed
-     entirely on close (lib/ytdlp/client/subscriptions.js's
-     openSettingsSheet/closeSettingsSheet, via the shared common.js
-     `openOverlay`/`closeOverlayThen` helpers) -- no prior [hidden] state,
-     same posture as the generic `.modal-backdrop` above. */
-  opacity: 0;
-  transition: opacity var(--dur-fast) ease-out;
-}
-
-.sub-sheet-backdrop.sheet-open {
-  opacity: 1;
-}
-
-.sub-sheet {
-  width: 100%;
-  max-width: 480px;
-  height: 100%;
-  overflow-y: auto;
-  background-color: var(--bg-sidebar);
-  border: none;
-  border-left: 1px solid var(--border-color);
-  box-shadow: var(--shadow-lg);
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  font-family: var(--font-family);
-  /* v1.155 (Subscriptions redesign): slide in from the trailing edge (iOS
-     push-in) rather than up from the bottom -- translateX(100%) -> 0. */
-  transform: translateX(100%);
-  transition: transform var(--dur-fast) ease-out;
-}
-
-.sub-sheet.sheet-open {
-  transform: translateX(0);
-}
-
-/* v1.155: the iOS nav-bar -- the back chevron is pinned left (absolute), the
-   channel name is centered as the title. Horizontal padding reserves the
-   back-button gutter on BOTH sides so a long centered title never sits under
-   it. Mirrors the v1.154 master-detail `.md-detail-head` treatment. */
-.sub-sheet-header {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--size-touch);
-  padding: var(--space-4) var(--size-touch);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.sub-sheet-avatar {
-  flex-shrink: 0;
-  /* v1.155: larger in the centered hero than the old inline-header 40px. */
-  width: 64px;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-2xl);
-  color: var(--text-primary);
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-}
-
-/* v1.25.5: same `<img>`-fills-fixed-container contract as
-   `.sub-row-avatar img` above, for the per-sub settings sheet header's
-   avatar. */
-.sub-sheet-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-  display: block;
-}
-
-/* v1.155 (Subscriptions redesign): the avatar + subscribed-date hero, centered
-   below the nav-bar (the channel name lives in the nav-bar title now). */
-.sub-sheet-hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-8);
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* READ-ONLY (coordinator decision): rendered as plain text, no input control
-   backs this field anywhere in the sheet -- see buildSettingsSheet's doc
-   comment in subscriptions.js. v1.155: it is the nav-bar's centered title now
-   -- one line, ellipsised, never overlapping the pinned back button. */
-.sub-sheet-name {
-  font-family: var(--font-family);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.sub-sheet-subtext {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-}
-
-/* v1.155: the nav-bar back button, pinned to the leading edge and vertically
-   centered (a large chevron). Class kept as `.sub-sheet-close` -- its onClose
-   wiring and the tests that bind it are unchanged; only the look/position now
-   read as "Back". */
-.sub-sheet-close {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--size-touch);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  font-size: var(--fs-3xl);
-  line-height: 1; /* token-exempt: glyph centering */
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.sub-sheet-close:focus-visible {
-  color: var(--yt-red);
-}
-@media (hover: hover) {
-  .sub-sheet-close:hover {
-    color: var(--yt-red);
-  }
-}
-
-.sub-sheet-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  padding: var(--space-8);
-}
-
-.sub-sheet-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-}
-
-.sub-sheet-field .setup-select,
-.sub-sheet-field input {
-  padding: var(--space-5);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  font-size: var(--fs-base);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-}
-
-.sub-sheet-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  font-size: var(--fs-base);
-  font-weight: normal;
-  color: var(--text-primary);
-}
-
-.sub-sheet-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-  padding: var(--space-8);
-  border-top: 1px solid var(--border-color);
-}
-
-.sub-sheet-actions .btn {
-  flex: 1 1 auto;
-}
-
-.sub-sheet-delete {
-  color: var(--yt-red);
-}
-
-/* v1.25.4 polish (on-device iOS PWA): same 16px-floor fix as the one-off/
-   subscribe modal and settings-form rules above -- the per-subscription
-   settings sheet's cutoff-date/max-duration inputs and Type/Quality/Filetype
-   selects (`.sub-sheet-field input`/`.setup-select`, built by
-   lib/ytdlp/client/subscriptions.js's buildSettingsSheet, no inline
-   font-size of their own) were 13px, auto-zooming the page on focus in iOS
-   Safari. Mobile-only, matching every other zoom-on-focus fix in this file. */
-@media (max-width: 768px) {
-  .sub-sheet-field .setup-select,
-  .sub-sheet-field input {
-    font-size: var(--fs-input-min);
-  }
-}
-
 /* === v1.21 FR-6: mobile grid density ========================================
    T4. The pre-existing v1.15.0 `@media (max-width: 768px)` rule (line ~2707)
    already tightens `.video-grid` to `minmax(140px, 1fr)` / 12px gap, which
@@ -7861,15 +7358,7 @@ html:has(> body.ft-audio-expanded),
 /* === v1.21 FR-5: channel pins ===============================================
    T5. Two new, additive surfaces, both era-theme custom properties only (no
    hardcoded colors):
-     1. `.sub-row-pin` -- the star/pin toggle on a subscription row
-        (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), sitting
-        between `.sub-row-info` and `.sub-row-kebab`. Mirrors `.sub-row-kebab`'s
-        chunky 32x32 silhouette (since v1.316 both are `.btn.btn-chip`, so
-        the box/bevel comes from `.btn-chip` near `.btn`, not from here) for visual
-        consistency, but stays visually distinct via its glyph alone (a plain
-        textContent star, not an icon-set mask) so pin (quick-access shortcut)
-        reads as a clearly different action from the kebab (settings), per the
-        UI research's "pin and subscribe are different intents" guidance.
+     (1. the subscription row's pin toggle moved onto ui.css in UI pass S5.)
      2. `.playlists-pinned-section` -- the pinned-channel-playlist subsection
         appended into the Playlists sheet's `#playlists-sheet-list`
         (public/js/common.js's renderPinnedPlaylists), ALONGSIDE (never
@@ -7880,42 +7369,6 @@ html:has(> body.ft-audio-expanded),
         plus `.icon-star` (the existing fixed-glyph star, line ~2276 above)
         on each pinned entry so it reads as "pinned," matching the research's
         "left-nav Pinned list with a star icon" retro translation. */
-/* v1.314: the push bell shares the pin's chip treatment (one rule family, the
-   INERT-SIBLING lesson: a bell styled by its own hand-copy would drift).
-   v1.316 (B2): that family is now `.btn` + `.btn-chip` (box, fill, border,
-   radius, shadow, the 2009 gloss - see `.btn-chip`'s comment near `.btn`);
-   the pin/bell role classes keep only their STATE colours below. */
-
-.sub-row-pin:focus-visible,
-.sub-row-bell:focus-visible {
-  color: var(--yt-red);
-}
-@media (hover: hover) {
-  .sub-row-pin:hover,
-  .sub-row-bell:hover {
-    color: var(--yt-red);
-  }
-}
-
-/* Pinned (filled star) state: a warm gold accent regardless of era/mode, so
-   "this is pinned" reads at a glance without depending on the outline-vs-
-   filled glyph difference alone. */
-.sub-row-pin-active,
-.sub-row-bell-active {
-  color: #e0a800; /* token-exempt: the gold pin/bell accent - the same "this is on" semantic; name it if ever reused (F.5 ruling 5) */
-}
-
-.sub-row-pin-active:focus-visible,
-.sub-row-bell-active:focus-visible {
-  color: var(--yt-red);
-}
-@media (hover: hover) {
-  .sub-row-pin-active:hover,
-  .sub-row-bell-active:hover {
-    color: var(--yt-red);
-  }
-}
-
 .playlists-pinned-section {
   margin-top: var(--space-4);
   padding-top: var(--space-4);
@@ -8116,8 +7569,7 @@ html:has(> body.ft-audio-expanded),
    (while staying AFTER it in DOM/source order, so the summary button is
    still first in tab order) -- "dock as a slim bottom strip that expands
    upward" per docs/references/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
-   bevels (the two-tone hand bevel `.sub-row-pin` carried before v1.316 moved
-   the chips into `.btn.btn-chip`; this chip keeps its own copy), a
+   bevels (its own hand bevel), a
    repeating-gradient segmented/striped progress fill (never a plain smooth
    `background-color` bar), era tokens only -- no hardcoded surface colors,
    so every era/light-dark combination stays themed. */
@@ -8367,9 +7819,7 @@ html:has(> body.ft-audio-expanded),
   .modal-backdrop,
   .modal-content,
   .playlists-sheet-backdrop:not([hidden]),
-  .playlists-sheet:not([hidden]),
-  .sub-sheet-backdrop,
-  .sub-sheet {
+  .playlists-sheet:not([hidden]) {
     transition: none;
     opacity: 1;
     transform: none;
@@ -8388,9 +7838,8 @@ html:has(> body.ft-audio-expanded),
 /* FIX-5 (two-reviewer gate, post-release): v1.24.0 A2 (T14)'s per-item
    {video: reason} failure lines on the compact retro chip -- mirrors
    `.dl-status-chip-item-status` above (same font-size/color) plus a small
-   top margin to visually separate the list from the status line, matching
-   the sibling `.sub-row-failures` rule's era-token-only intent
-   (lib/ytdlp/views/subscriptions.html). Wraps rather than clipping (unlike
+   top margin to visually separate the list from the status line, era
+   tokens only. Wraps rather than clipping (unlike
    the single-line status above) since a batch can carry several failure
    lines, each of which should stay fully readable. */
 .dl-status-chip-item-failures {
@@ -9566,116 +9015,6 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .main-content { min-width: 0; }
 .books-home-row { max-width: 100%; min-width: 0; }
 .books-home-row-scroller { max-width: 100%; }
-
-/* ---- v1.41.7/.8 (Dean has NO media backup): the DRY-RUN relocation preview
-   modal on Subscriptions. Era tokens only, no hardcoded colors -- consistent
-   with the rest of the file. Mirrors the .playlists-sheet-backdrop overlay
-   pattern (a fixed, centered dialog over a dimmed backdrop).
-
-   v1.41.8 (bug fix): these rules MOVED here out of subscriptions.html's
-   page-local <head> <style>. The SPA router (common.js extractViewFragment)
-   swaps ONLY #view-root on in-app navigation, so page-local styles were lost
-   on a nav-link click -- the modal rendered unstyled/invisible (it worked only
-   on a hard load). Global style.css survives the swap. The modal markup itself
-   likewise now lives inside #view-root (see subscriptions.html). Tech-debt #34.
-   Keep these together with the markup change; do not move them back. */
-.reloc-preview-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim-legacy);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: calc(var(--z-modal) - 100); /* 1900: the preview is modal-grade chrome - its own rung just below the confirm modal (--z-modal), cleanly above the header instead of the old DOM-order-dependent 1000/1000 tie (Tier 4 re-ladder). Every surface between the old and new rung is POINTER-impossible to co-open (the full-cover backdrops block each other's openers); keyboard focus is NOT trapped (pre-existing gap, tech-debt #67), and in a Tab+Enter co-open the modal-grade preview deliberately paints on top */
-  padding: var(--space-8);
-}
-.reloc-preview-backdrop[hidden] {
-  display: none;
-}
-.reloc-preview-panel {
-  background: var(--card-bg);
-  /* v1.70 undefined-token sweep: was var(--text-color) - never defined, so
-     this panel has always inherited its color instead. --text-primary is
-     the real token. */
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  width: 100%;
-  max-width: 720px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: var(--shadow-modal);
-}
-.reloc-preview-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
-  padding: var(--space-6) var(--space-8);
-  border-bottom: 1px solid var(--border-color);
-  font-weight: var(--fw-bold);
-}
-.reloc-preview-close {
-  background: none;
-  border: none;
-  color: inherit;
-  font-size: var(--fs-4xl);
-  line-height: 1; /* token-exempt: glyph centering */
-  cursor: pointer;
-  padding: 0 var(--space-2);
-}
-.reloc-preview-summary {
-  padding: var(--space-6) var(--space-8);
-  border-bottom: 1px solid var(--border-color);
-  font-size: var(--fs-base);
-}
-.reloc-preview-summary .reloc-copy-warning {
-  color: var(--yt-red);
-  font-weight: var(--fw-bold);
-}
-/* v1.41.7 gate fix (HONESTY 2): the best-effort-prediction + checksum-safety
-   disclosure. Muted, smaller, but always present under the summary. */
-.reloc-preview-note {
-  margin-top: var(--space-4);
-  font-size: var(--fs-sm);
-  font-style: italic;
-  color: var(--text-secondary);
-}
-.reloc-preview-body {
-  padding: var(--space-4) var(--space-8) var(--space-8);
-  overflow-y: auto;
-}
-.reloc-preview-group-title {
-  font-weight: var(--fw-bold);
-  margin: var(--space-6) 0 var(--space-3);
-}
-.reloc-preview-row {
-  padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--border-color);
-  font-size: var(--fs-base);
-  word-break: break-word;
-}
-.reloc-preview-row-title {
-  font-weight: var(--fw-bold);
-}
-.reloc-preview-row-detail {
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-}
-.reloc-preview-badge {
-  display: inline-block;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  padding: 1px var(--space-3); /* token-exempt: hairline badge pad, sub-scale (F.5 ruling 5 disposition - Dean may overrule) */
-  border-radius: 2px; /* token-exempt: ruling B per-site radius (was 3px; no small-radius token exists by design) */
-  margin-left: var(--space-3);
-  border: 1px solid var(--border-color);
-}
-.reloc-preview-badge.reloc-badge-copy {
-  color: var(--yt-red);
-  border-color: var(--yt-red);
-}
 
 /* ============================================================================
    v1.43 auth: the /login + /welcome sign-in card.
@@ -14016,14 +13355,6 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
 @media (max-width: 768px) {
   /* buttons (incl. the resume / start-over overlay CTAs): the 44px touch floor */
   .btn { min-height: var(--size-touch); }
-  /* v1.316 (B2): the subscription-row chips became real `.btn`s for the era
-     treatment; without this line the floor above would stretch each 32x32
-     chip to 32x44 (MEASURED: scripts/sub-row-chip-probe.js at 390px). The
-     chip keeps the square 32px box it has always had on phones (it was never
-     a `.btn`, so v1.95's floor never applied to it) - this block's own rule
-     is "bigger hit areas, NOT bigger visuals", and a chip's box IS its visual. */
-  .btn-chip { min-height: var(--size-control-sm); }
-
   /* notification dismiss x: 36px -> a centered 44px box, same glyph */
   .notif-row-dismiss { min-width: var(--size-touch); min-height: var(--size-touch); }
 

@@ -94,7 +94,7 @@ test('createFailureRow: renders the VERBATIM error text', () => {
   const d = doc();
   const reason = "ERROR: Unable to download video subtitles for 'en-en-US': HTTP Error 429: Too Many Requests";
   const row = createFailureRow(entry({ reason }), d, {});
-  assert.equal(row.querySelector('.sub-row-failures').textContent, reason,
+  assert.equal(row.querySelector('.subs-failure-reason').textContent, reason,
     'the operator needs the real error, not a summary');
 });
 
@@ -103,14 +103,14 @@ test('SECURITY: untrusted yt-dlp text is rendered as TEXT, never parsed as marku
   const hostile = '<img src=x onerror=alert(1)>';
   const row = createFailureRow(entry({ reason: hostile, title: hostile, url: hostile }), d, {});
   assert.equal(row.querySelectorAll('img').length, 0, 'no element may be created from stderr text');
-  assert.equal(row.querySelector('.sub-row-failures').textContent, hostile, 'shown literally');
+  assert.equal(row.querySelector('.subs-failure-reason').textContent, hostile, 'shown literally');
 });
 
 test('createFailureRow: a row is never anonymous (title -> videoId -> placeholder)', () => {
   const d = doc();
-  assert.equal(createFailureRow(entry({ title: '' }), d, {}).querySelector('.sub-row-name').textContent, 'vid1');
+  assert.equal(createFailureRow(entry({ title: '' }), d, {}).querySelector('.ui-row__title').textContent, 'vid1');
   assert.equal(
-    createFailureRow(entry({ title: '', videoId: '' }), d, {}).querySelector('.sub-row-name').textContent,
+    createFailureRow(entry({ title: '', videoId: '' }), d, {}).querySelector('.ui-row__title').textContent,
     'Unknown item',
   );
 });
@@ -118,22 +118,25 @@ test('createFailureRow: a row is never anonymous (title -> videoId -> placeholde
 test('createFailureRow: a missing reason still says something honest', () => {
   const d = doc();
   const row = createFailureRow(entry({ reason: '' }), d, {});
-  assert.equal(row.querySelector('.sub-row-failures').textContent, 'Unknown error');
+  assert.equal(row.querySelector('.subs-failure-reason').textContent, 'Unknown error');
 });
 
 test('createFailureRow: the delete control passes the entry id and only exists when addressable', () => {
   const d = doc();
   const deleted = [];
   const row = createFailureRow(entry({ id: 'abc' }), d, { onDelete: (id) => deleted.push(id) });
-  const btn = row.querySelector('button');
+  const btn = row.querySelector('button.subs-failure-delete');
   assert.ok(btn, 'a deletable row offers a delete control');
+  assert.match(btn.className, /\bui-btn--icon\b/, 'an icon button in the row\'s one reserved action slot');
   btn.dispatchEvent(new d.defaultView.Event('click'));
   assert.deepEqual(deleted, ['abc']);
 
   // An entry with no id cannot be addressed by the DELETE route, so offering a
   // control that could never work would be a lie.
-  assert.equal(createFailureRow(entry({ id: '' }), d, { onDelete: () => {} }).querySelector('button'), null);
-  assert.equal(createFailureRow(entry(), d, {}).querySelector('button'), null, 'no handler -> no control');
+  assert.equal(createFailureRow(entry({ id: '' }), d, { onDelete: () => {} }).querySelector('button.subs-failure-delete'), null);
+  assert.equal(createFailureRow(entry(), d, {}).querySelector('button.subs-failure-delete'), null, 'no handler -> no control');
+  // ... but the slot stays reserved, so rows with and without the control line up (AC5)
+  assert.equal(createFailureRow(entry(), d, {}).querySelectorAll('.ui-row__actions > .ui-row__slot').length, 1);
 });
 
 // ---- createFailureListElement ----------------------------------------------
@@ -141,7 +144,7 @@ test('createFailureRow: the delete control passes the entry id and only exists w
 test('createFailureListElement: renders one row per entry, in the given order', () => {
   const d = doc();
   const el = createFailureListElement([entry({ id: 'a', title: 'First' }), entry({ id: 'b', title: 'Second' })], d, {});
-  const names = [...el.querySelectorAll('.sub-row-name')].map((n) => n.textContent);
+  const names = [...el.querySelectorAll('.ui-row__title')].map((n) => n.textContent);
   // faillog.readFailures already returns newest-first; this must not re-order.
   assert.deepEqual(names, ['First', 'Second']);
 });
@@ -154,41 +157,39 @@ test('createFailureListElement: an ACTIVE FILTER never reads as a clean bill of 
 
 // ---- createFailureSectionElement -------------------------------------------
 
-test('createFailureSectionElement: a collapsible details card reusing the existing section/list classes', () => {
-  // v1.55 Track D (DELIBERATE lock update): details/summary now, with the
-  // persistence key; open by default so the layout matches yesterday until
-  // the user collapses it. The filter/clear controls live in the body row,
-  // never inside the summary (they would toggle the disclosure).
+test('createFailureSectionElement: one Activity pane - filter chips + a danger Clear all above the list node (UI pass S5)', () => {
+  // UI pass S5 (DELIBERATE lock update): the pane lives under the Activity sheet's
+  // segmented control, so it is no longer a collapsible <details> card; the source
+  // filter is a row of ui-chip filters (D4.5) and Clear all a danger ui-btn.
   const d = doc();
-  const { section, list } = createFailureSectionElement(d, {});
-  assert.equal(section.tagName, 'DETAILS');
-  assert.equal(section.className, 'setup-box sub-collapsible');
-  assert.equal(section.open, false); // v1.160: default-collapsed (Dean)
-  assert.equal(section.getAttribute('data-collapse-key'), 'download-failures');
-  assert.equal(list.className, 'sub-list');
-  assert.match(section.querySelector('summary').textContent, /Download failures/);
-  assert.ok(section.querySelector('.sub-list-header select'), 'controls stay in the body header row');
-  assert.equal(section.querySelector('summary select'), null, 'no controls inside the summary');
+  const { section, list, clearBtn } = createFailureSectionElement(d, {});
+  assert.equal(section.tagName, 'DIV');
+  assert.equal(section.getAttribute('data-section'), 'download-failures');
+  assert.equal(list.className, 'subs-activity-list');
+  assert.ok(section.querySelector('.subs-activity-filters .ui-chip--filter'), 'the filter row holds ui-chip filters');
+  assert.match(clearBtn.className, /\bui-btn--danger\b/, 'Clear all reads as destructive');
+  assert.equal(clearBtn.textContent, 'Clear all');
 });
 
 test('createFailureSectionElement: the filter offers exactly the supported sources and defaults to all', () => {
   const d = doc();
-  const { select } = createFailureSectionElement(d, {});
-  assert.deepEqual([...select.options].map((o) => o.value), FAILURE_SOURCE_FILTERS);
-  assert.equal(select.value, 'all', 'a failure must never be hidden by a filter the user did not set');
+  const { chips } = createFailureSectionElement(d, {});
+  assert.deepEqual(chips.map((c) => c.getAttribute('data-value')), FAILURE_SOURCE_FILTERS);
+  assert.deepEqual(chips.map((c) => c.getAttribute('aria-pressed')), ['true', 'false', 'false'],
+    'a failure must never be hidden by a filter the user did not set');
 });
 
-test('createFailureSectionElement: the filter and clear controls invoke their handlers', () => {
+test('createFailureSectionElement: the filter and clear controls invoke their handlers; one chip is pressed at a time', () => {
   const d = doc();
   const seen = { filter: [], cleared: 0 };
-  const { select, clearBtn } = createFailureSectionElement(d, {
+  const { chips, clearBtn } = createFailureSectionElement(d, {
     onFilterChange: (v) => seen.filter.push(v),
     onClear: () => { seen.cleared += 1; },
   });
-  select.value = 'subscription';
-  select.dispatchEvent(new d.defaultView.Event('change'));
+  chips[2].dispatchEvent(new d.defaultView.Event('click'));
   clearBtn.dispatchEvent(new d.defaultView.Event('click'));
   assert.deepEqual(seen.filter, ['subscription']);
+  assert.deepEqual(chips.map((c) => c.getAttribute('aria-pressed')), ['false', 'false', 'true']);
   assert.equal(seen.cleared, 1);
 });
 
