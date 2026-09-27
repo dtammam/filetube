@@ -27,6 +27,7 @@
 //   every calendar day; the server runs on the same pinned clock (clock-shim.js);
 // - every context pins timezone UTC, locale en-US and colour scheme light (the app's
 //   mode comes from ft-mode, never from the OS);
+// - Math.random is seeded per document (installSeededRandom), with the pinned clock;
 // - volatile text is masked (MASK_CSS): the tools/capture set plus the watch page's
 //   file path, which carries the DATA_DIR;
 // - Chromium rasterizes on one CPU thread with SwiftShader (LESSONS 7) and a fresh
@@ -99,6 +100,23 @@ function installPinnedClock(startMs) {
   window.Date = PinnedDate;
   window.__ftPinnedClock = { startMs };
 }
+
+// Math.random, seeded (mulberry32) per document: Pocket's menu preview picks a random album's
+// art (skin-surface.js), which made 41-pocket-ipod-menu differ in 7 of 760 shots between two
+// back-to-back runs of one tree. crypto.getRandomValues is untouched.
+function installSeededRandom(seed) {
+  if (window.__ftSeededRandom) return;
+  let a = seed >>> 0;
+  Math.random = function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  window.__ftSeededRandom = { seed };
+}
+const RANDOM_SEED = 20260901;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isMobile = (vp) => vp !== 'desktop';
@@ -225,7 +243,10 @@ async function newScenePage(browser, o) {
   const vpOpts = viewports(dpr)[vp];
   const ctx = await newGuardedContext(browser, { ...vpOpts, ...CONTEXT_PINS, storageState,
     reducedMotion: tag.rotation ? 'no-preference' : (tag.rm || 'reduce') }, record, tag);
-  if (clockMs) await ctx.addInitScript(installPinnedClock, clockMs);
+  if (clockMs) {
+    await ctx.addInitScript(installPinnedClock, clockMs);
+    await ctx.addInitScript(installSeededRandom, RANDOM_SEED);
+  }
   await ctx.addInitScript(([m, e]) => { try { localStorage.setItem('ft-era', e); localStorage.setItem('ft-mode', m); } catch (_) { /* storage off */ } }, [mode, era]);
   return { ctx, page: await ctx.newPage() };
 }
@@ -369,7 +390,7 @@ function readFixtures(dataDir) {
 }
 
 module.exports = {
-  ERAS, MODES, viewports, FREEZE_CSS, MASK_CSS, LAUNCH_ARGS, CONTEXT_PINS, installPinnedClock,
+  ERAS, MODES, viewports, FREEZE_CSS, MASK_CSS, LAUNCH_ARGS, CONTEXT_PINS, installPinnedClock, installSeededRandom,
   sceneKit, shotName, newRecord, login, newScenePage, captureEra, rotationSteps, pocketState,
   pausePlayback, readFixtures, playwright, tap, sleep,
 };

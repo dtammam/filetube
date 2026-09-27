@@ -64,7 +64,8 @@ The fixture (`<DIR>/fixtures.json` lists the ids):
   status line), yt-dlp boot one-shots and folder migration (`FILETUBE_READ_ONLY_MEDIA=1`);
   the downloader-engine daily tick skips the fixture's bundled engine.
 - **Browser.** Timezone UTC, locale en-US; one CPU raster thread, no partial raster,
-  SwiftShader, no font hinting (LESSONS 7); a fresh browser per viewport; DPR 1 in
+  SwiftShader, no font hinting (LESSONS 7); `Math.random` seeded per document (Pocket's
+  menu preview picks a random album's art); a fresh browser per viewport; DPR 1 in
   the visual job; reduced motion; animations frozen at their end state.
 - **Masks.** The subscriptions status line, notification times, the watch page's
   added date and file path (the DATA_DIR) keep their boxes but not their glyphs.

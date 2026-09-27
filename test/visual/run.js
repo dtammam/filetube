@@ -6,7 +6,7 @@
 // (tools/capture/compare.js, channel threshold 16, AA-suppressed) -> report + crops.
 //
 //   node test/visual/run.js [--update] [--data DIR] [--out DIR] [--era 2021,2005|all]
-//        [--only 04,18] [--jobs N] [--dpr N] [--baselines DIR]
+//        [--only 04,18] [--jobs N] [--dpr N] [--baselines DIR] [--idle SECONDS]
 //
 // --update writes the captured shots as the new baselines (the CI rebaseline job,
 // .github/workflows/visual.yml; D10.5: committed baselines come ONLY from the pinned CI
@@ -39,6 +39,9 @@ const ONLY = arg('--only', '');
 const JOBS = Math.max(1, Number(arg('--jobs', '1')) || 1);
 const DPR = arg('--dpr', '1');
 const THRESHOLD = 16;
+// --idle SECONDS: leave the booted server idle this long before the first page (the
+// determinism proof: a server that has sat idle must render what a fresh one does).
+const IDLE_S = Math.max(0, Number(arg('--idle', '0')) || 0);
 
 function die(code, msg) { console.error(msg); process.exit(code); }
 for (const e of eras) if (!ERAS.includes(e)) die(2, `run: --era must be 2021, 2014, 2009, 2005, a comma list of them, or all (got ${eraArg})`);
@@ -72,6 +75,7 @@ function captureEra(era, base, shots) {
   const srv = await boot(DATA, { logFile: path.join(OUT, 'server.log'), log: console.log });
   // An interrupted run must not leave its fixture server behind.
   for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { for (const c of children) c.kill('SIGTERM'); srv.stop().then(() => process.exit(130)); });
+  if (IDLE_S) { console.log(`visual: server idle for ${IDLE_S}s before capturing`); await new Promise((r) => setTimeout(r, IDLE_S * 1000)); }
   const failures = [];
   const blocked = [];
   let captured = 0;

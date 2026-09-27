@@ -87,6 +87,11 @@ test('capture.js installPinnedClock: the browser Date starts at the fixture cloc
   ctx.out = JSON.parse(ctx.out);
   assert.ok(ctx.out[0] >= pinned && ctx.out[0] - pinned < 5000);
   assert.deepStrictEqual(ctx.out.slice(2), [7, 'string']);
+  const { installSeededRandom } = require('../visual/capture.js');
+  const seq = () => { const c = vm.createContext({}); c.window = c; vm.runInContext(`(${installSeededRandom.toString()})(42); globalThis.out = JSON.stringify([Math.random(), Math.random(), Math.random()])`, c); return JSON.parse(c.out); };
+  const a = seq();
+  assert.deepStrictEqual(seq(), a, 'Math.random repeats per document');
+  assert.ok(a.every((v) => v >= 0 && v < 1) && new Set(a).size === 3);
   assert.ok(MASK_CSS.includes('#file-path-text'), 'the watch page file path (the DATA_DIR) is masked');
   assert.deepStrictEqual(CONTEXT_PINS, { timezoneId: 'UTC', locale: 'en-US', colorScheme: 'light' });
 });
