@@ -4090,7 +4090,10 @@ function trackIsLiked(track, likedSets) {
   return !!(set && set.has(track.id));
 }
 
-function publicTrackListItem(track, userId, likedSets, progressMap) {
+// v1.339 (L1, M2): `artReps` (musicQuery.artRepresentatives over the tracks THIS viewer
+// can see) adds `artId` - the id the row's /albumart URL keys on, shared by every track
+// of one cover. Absent -> no artId (the client falls back to the track id).
+function publicTrackListItem(track, userId, likedSets, progressMap, artReps) {
   const liked = trackIsLiked(track, likedSets);
   const prog = progressMap ? progressMap[track.id] : null;
   // Wave G: a PROJECTED library-audio track (source 'library') streams the mp3
@@ -4120,6 +4123,7 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
     // <Album>" line (the album/artist drill filters on this exact key).
     albumKey: musicStore.albumKeyFor(track),
     albumArtKey: track.albumArtKey,
+    ...(artReps ? { artId: musicQuery.artIdFor(track, artReps) } : {}),
     // A library track's art is its media thumbnail (served via /albumart/:id ->
     // thumbnail fallback); a native track's is the extracted album-art file.
     hasArt: isLib ? !!track.hasEmbeddedArt : !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
@@ -4317,9 +4321,20 @@ userRoutes.registerRoutes(app, {
 // /albumart byte routes, moved VERBATIM to lib/music/routes.js and registering
 // here, where POST /api/music/progress sat - after the S1a user-state routes
 // above, whose registration splits the music surface in two.
+// v1.339 (L1, M2): the /albumart sized-rendition cache. `ffmpegIsAvailable` is the LIVE
+// reader (the boot-time probe flips `ffmpegAvailable` after this line runs - LESSONS 12).
+const artRendition = require('./lib/music/artRendition');
+const albumArtRenditions = artRendition.createArtRenditions({
+  dir: artRendition.renditionDirFor(ALBUMART_DIR, path),
+  fs,
+  path,
+  execFile,
+  ffmpegIsAvailable: () => ffmpegAvailable,
+});
 musicRoutes.registerTrackRoutes(app, {
   ALBUMART_DIR,
   THUMBNAIL_DIR,
+  albumArtRenditions,
   armMusicProgressFlushTimerIfNeeded, // assigns this file's musicProgressFlushTimer
   audioPath,
   contentDispositionAttachment,
