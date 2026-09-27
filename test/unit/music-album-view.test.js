@@ -317,8 +317,12 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     const home = doc.querySelector('.music-home');
     assert.ok(home, 'the default landing is the HOME shelves, not a flat grid');
     // The sort control is inert on Home (fixed recently-added shelves), so it's
-    // hidden there - never a mislabeled dropdown on the landing (QA gate).
-    assert.ok(doc.getElementById('music-sort-select').hidden, 'the sort control is hidden on Home');
+    // hidden there - never a mislabeled dropdown on the landing (QA gate). v1.339 (L1, M4):
+    // hidden by VISIBILITY (.music-sort-reserved), never display, so its slot stays and
+    // the toolbar does not reflow - [hidden] would collapse the slot.
+    const sortSel = doc.getElementById('music-sort-select');
+    assert.ok(sortSel.classList.contains('music-sort-reserved'), 'the sort control is hidden (slot reserved) on Home');
+    assert.ok(!sortSel.hidden, 'never [hidden] on Home (that removes the slot and reflows the toolbar)');
     const shelves = home.querySelectorAll('.music-shelf');
     assert.strictEqual(shelves.length, 2, 'Your artists + Recently added shelves');
     assert.match(home.innerHTML, /Your artists/, 'the artists shelf');
@@ -340,6 +344,7 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     assert.strictEqual(active.getAttribute('data-tab'), 'artists', 'See all landed on the ARTISTS tab specifically');
     assert.ok(content.querySelector('.music-artist-card'), 'the full grid is the Artists grid (artist cards)');
     assert.ok(!doc.getElementById('music-sort-select').hidden, 'the sort control returns on a sortable full tab');
+    assert.ok(!doc.getElementById('music-sort-select').classList.contains('music-sort-reserved'), 'and is visible again (the reserve class is cleared)');
   });
 });
 

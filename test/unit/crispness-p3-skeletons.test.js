@@ -54,7 +54,11 @@ test('podcasts.js: every show-view skeleton seed pairs with a clear-on-error (no
   for (const fn of ['openShow', 'consumeDeepLink']) {
     const start = src.indexOf('function ' + fn + '(');
     assert.ok(start !== -1, `${fn} must exist`);
-    const body = src.slice(start, start + 2600); // covers each function's body (incl. embedded comments)
+    // The whole function: up to its closing brace at the declaration's 4-space indent (v1.339 R1:
+    // the T-C8 re-checks grew consumeDeepLink past the old fixed 2600-char window).
+    const end = src.indexOf('\n    }\n', start);
+    assert.ok(end !== -1, `${fn} must close`);
+    const body = src.slice(start, end);
     if (body.includes('buildPodcastShowSkeleton')) {
       assert.match(body, /content\.innerHTML = ''/,
         `${fn} seeds the show skeleton but never clears content on error (stranded-shimmer regression)`);

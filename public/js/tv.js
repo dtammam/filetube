@@ -131,6 +131,19 @@ if (typeof document !== 'undefined') {
     function showEmpty(on) { var e = el('tv-empty'); if (e) e.hidden = !on; }
     function setCrumb(html) { var c = el('tv-crumb'); if (!c) return; if (html) { c.innerHTML = html; c.hidden = false; } else { c.innerHTML = ''; c.hidden = true; } }
 
+    // v1.339 (L2, plan D5): every poster ships `art-shimmer`, but nothing ever cleared it -
+    // the shimmer swept forever over a loaded poster, and a failed poster shimmered forever.
+    // The shared reveal (common.js revealArtTogether) clears the on-screen posters together
+    // once all have decoded or errored (or its cap elapses), off-screen ones per image; the
+    // view's abort signal hands every held poster back on teardown.
+    function revealTvArt(scope) {
+      var ft = window.FileTube;
+      if (!ft) return;
+      var sig = controller ? controller.signal : undefined;
+      if (typeof ft.revealArtTogether === 'function') ft.revealArtTogether(scope, { signal: sig });
+      else if (typeof ft.shimmerArt === 'function') ft.shimmerArt(scope);
+    }
+
     function api(path) {
       return fetch(path, { signal: controller && controller.signal, headers: { Accept: 'application/json' } })
         .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); });
@@ -165,6 +178,7 @@ if (typeof document !== 'undefined') {
         }
         html += r.shows.length ? '<div class="show-grid">' + r.shows.map(buildShowCardHtml).join('') + '</div>' : '';
         content.innerHTML = html;
+        revealTvArt(content);
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load shows.'); });
     }
 
@@ -205,6 +219,7 @@ if (typeof document !== 'undefined') {
         setCrumb('<button type="button" class="tv-back" id="tv-back">← All shows</button>');
         var heading = el('tv-heading'); if (heading) heading.textContent = detail.name || 'Shows';
         content.innerHTML = buildShowDetailHtml(detail);
+        revealTvArt(content);
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load that show.'); });
     }
     // v1.198 (Dean): the in-app "Change poster" control (and its whole upload

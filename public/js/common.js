@@ -54,6 +54,9 @@ const CHROME_ICON_SVG = {
   // Stats glyph (same rounded/star.svg as `liked`).
   menu: { vb: '0 -960 960 960', d: 'M160-240q-17 0-28.5-11.5T120-280q0-17 11.5-28.5T160-320h640q17 0 28.5 11.5T840-280q0 17-11.5 28.5T800-240H160Zm0-200q-17 0-28.5-11.5T120-480q0-17 11.5-28.5T160-520h640q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440H160Zm0-200q-17 0-28.5-11.5T120-680q0-17 11.5-28.5T160-720h640q17 0 28.5 11.5T840-680q0 17-11.5 28.5T800-640H160Z' },
   star: { vb: '0 -960 960 960', d: 'm354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z' },
+  // v1.339 (L2): the bottom-nav Subs tab glyph (was the `.icon-refresh` mask, which
+  // decode-lags on iOS) - shared with the shells' pre-paint reserve. rounded/refresh.svg.
+  refresh: { vb: '0 -960 960 960', d: 'M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-70q0-17 11.5-28.5T760-800q17 0 28.5 11.5T800-760v200q0 17-11.5 28.5T760-520H560q-17 0-28.5-11.5T520-560q0-17 11.5-28.5T560-600h128q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q68 0 124.5-34.5T692-367q8-14 22.5-19.5t29.5-.5q16 5 23 21t-1 30q-41 80-117 128t-169 48Z' },
 };
 
 // The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
@@ -110,6 +113,93 @@ function shimmerArt(root) {
     img.addEventListener('load', clear, { once: true });
     img.addEventListener('error', clear, { once: true });
   });
+}
+
+// v1.339 (L1, plan D4): REVEAL-TOGETHER. shimmerArt reveals each image the moment it
+// decodes, so a screen of tiles pops in one by one. This reveals the `art-shimmer` images
+// currently INTERSECTING the viewport as ONE batch: each gets `art-together` (CSS holds its
+// decoded pixels out of view, `object-position`, so only the shimmer shows) and all clear
+// in the same task once EVERY one has settled - loaded AND decoded (`img.decode()` after
+// `load`, so iOS never paints a half-decoded frame), or errored (a broken image counts as
+// settled; its broken-image affordance then shows, never a perpetual shimmer) - or when
+// REVEAL_TOGETHER_CAP_MS elapses, whichever is first. At the cap the settled ones reveal
+// together and the rest fall back to their own per-image reveal. An image already
+// `complete` counts as settled immediately, so a warm screen reveals in the same tick.
+// Off-screen images keep the per-image reveal (their decode is not what the eye waits
+// on). Every exit is bound: all-settled, the cap, `opts.signal` abort and handle.abort()
+// (view teardown) - an abort stops the batch and hands each image back to its own reveal
+// (settled ones now, pending ones on their own load/error), so nothing can stay held.
+// An image a pending batch already holds is skipped, so a re-run over the same host never
+// re-owns (or early-reveals) it. `opts.capMs` overrides the cap. Returns `{ abort }`.
+// Exposed on window.FileTube (general: any view's `art-shimmer` images).
+// The cap: 600ms is long enough to absorb the per-image network/decode stagger of a
+// screen of right-sized covers (the probe measured 0.12-0.25s at 20Mbps for 240px art)
+// and short enough that one stalled cover never holds a whole screen of loaded art.
+const REVEAL_TOGETHER_CAP_MS = 600;
+function revealArtTogether(root, opts) {
+  const o = opts || {};
+  const handle = { abort() {} };
+  if (typeof document === 'undefined') return handle;
+  const scope = (root && typeof root.querySelectorAll === 'function') ? root : document;
+  const win = typeof window !== 'undefined' ? window : null;
+  const vw = (win && win.innerWidth) || document.documentElement.clientWidth || 0;
+  const vh = (win && win.innerHeight) || document.documentElement.clientHeight || 0;
+  const capMs = (typeof o.capMs === 'number' && o.capMs >= 0) ? o.capMs : REVEAL_TOGETHER_CAP_MS;
+  const clear = (img) => { img.classList.remove('art-shimmer'); img.classList.remove('art-together'); };
+  const perImage = (img) => {
+    if (img.complete) { clear(img); return; }
+    img.addEventListener('load', () => clear(img), { once: true });
+    img.addEventListener('error', () => clear(img), { once: true });
+  };
+  const dead = !!(o.signal && o.signal.aborted); // a torn-down view batches nothing
+  const inView = [];
+  scope.querySelectorAll('img.art-shimmer').forEach((img) => {
+    if (img.classList.contains('art-together')) return; // owned by a still-pending batch (a re-run over the same host)
+    const r = (!dead && typeof img.getBoundingClientRect === 'function') ? img.getBoundingClientRect() : null;
+    const visible = !!r && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+    if (visible) inView.push(img); else perImage(img);
+  });
+  if (inView.length === 0) return handle;
+  const settled = new Set(inView.filter((img) => img.complete));
+  if (settled.size === inView.length) { inView.forEach(clear); return handle; }
+  let done = false;
+  let timer = null;
+  const unbinders = [];
+  const stop = () => {
+    done = true;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    unbinders.forEach((fn) => fn());
+    unbinders.length = 0;
+    if (o.signal && typeof o.signal.removeEventListener === 'function') o.signal.removeEventListener('abort', onAbort);
+  };
+  // All settled, or the cap: the settled ones reveal TOGETHER, the rest per image.
+  const finish = () => {
+    if (done) return;
+    stop();
+    inView.forEach((img) => { if (settled.has(img)) clear(img); else perImage(img); });
+  };
+  function onAbort() { finish(); }
+  const settle = (img) => {
+    if (done || settled.has(img)) return;
+    settled.add(img);
+    if (settled.size === inView.length) finish();
+  };
+  inView.forEach((img) => {
+    img.classList.add('art-together');
+    if (settled.has(img)) return;
+    const onLoad = () => {
+      if (typeof img.decode === 'function') img.decode().then(() => settle(img), () => settle(img));
+      else settle(img);
+    };
+    const onError = () => settle(img);
+    img.addEventListener('load', onLoad, { once: true });
+    img.addEventListener('error', onError, { once: true });
+    unbinders.push(() => { img.removeEventListener('load', onLoad); img.removeEventListener('error', onError); });
+  });
+  timer = setTimeout(finish, capMs);
+  if (o.signal && typeof o.signal.addEventListener === 'function') o.signal.addEventListener('abort', onAbort, { once: true });
+  handle.abort = onAbort;
+  return handle;
 }
 
 // Single source of truth for both the setup-page Appearance picker and the
@@ -3237,20 +3327,31 @@ function injectSubscriptionsNavLinkIfEnabled() {
   // v1.53 gate QA-W1: optimistic inject from the capability cache (the
   // idempotency guard makes the later real-path inject a no-op); the real
   // probe below reconciles -- a revoked module REMOVES the optimistic links.
+  // v1.339 (L2): the per-device remembered flag (ft-ytdlp-module) counts too - the
+  // capability cache is sessionStorage with a 5-minute TTL, so a cold PWA launch never
+  // had it and the Subs tab always popped in; an undecided cache defers to the flag.
   const cachedCap = readCapabilityCache();
-  if (cachedCap && cachedCap.moduleEnabled === true && !subscriptionsNavAlreadyInjected()) {
+  let rememberedOn = false;
+  try { rememberedOn = localStorage.getItem(CHROME_FLAG_KEYS.ytdlpModule) === '1'; } catch (_) { /* private mode */ }
+  const optimisticOn = (cachedCap && typeof cachedCap.moduleEnabled === 'boolean') ? cachedCap.moduleEnabled === true : rememberedOn;
+  if (optimisticOn && !subscriptionsNavAlreadyInjected()) {
     injectSubscriptionsNavNodes();
   }
+  const dropNavReserve = () => {
+    const r = chromeReserveEl(document.getElementById('bottom-nav'), 'subscriptions');
+    if (r) { r.remove(); applyBottomNavCustomization(); }
+  };
 
   fetch('/api/subscriptions/health')
     .then((res) => {
       writeCapabilityCache({ moduleEnabled: res.ok === true });
       if (!shouldInjectSubscriptionsNav(res)) {
         // Reconcile an optimistic inject against a revoked module.
+        dropNavReserve();
         const sidebarLink = document.querySelector('[data-nav-sidebar="subscriptions"]');
         if (sidebarLink) sidebarLink.remove();
         const navLink = document.querySelector('#bottom-nav [data-nav="subscriptions"]');
-        if (navLink) navLink.remove();
+        if (navLink) { navLink.remove(); applyBottomNavCustomization(); }
         // v1.153.1: the You-menu row too, or the optimistic inject leaves it
         // orphaned pointing at a now-disabled /subscriptions (slim-gate note).
         const acctRow = document.querySelector('a.account-menu-item[href="/subscriptions"]');
@@ -3264,7 +3365,7 @@ function injectSubscriptionsNavLinkIfEnabled() {
       if (subscriptionsNavAlreadyInjected()) return;
       injectSubscriptionsNavNodes();
     })
-    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+    .catch(() => { if (!subscriptionsNavAlreadyInjected()) dropNavReserve(); /* network/parse failure -- fail closed, inject nothing (v1.339 L2: and clear the reserve) */ });
 }
 
 // The actual DOM builders, shared by the optimistic (cache) and confirmed
@@ -3299,14 +3400,18 @@ function injectSubscriptionsNavNodes() {
         navLink.href = '/subscriptions';
         navLink.className = 'bottom-nav-item';
         navLink.setAttribute('data-nav', 'subscriptions');
-        const navIcon = document.createElement('i');
-        navIcon.className = 'icon-refresh';
+        // v1.339 (L2): an inline chrome-icon <svg>, not the `.icon-refresh` mask (iOS
+        // decode lag - the v1.87.1 first-paint glyph rule), matching the reserve's glyph;
+        // the tab takes its pre-paint reserve's place when the shell painted one.
+        const navIcon = chromeIconEl('refresh');
         const navLabel = document.createElement('span');
         navLabel.className = 'bottom-nav-label';
         navLabel.textContent = 'Subs';
-        navLink.appendChild(navIcon);
+        if (navIcon) navLink.appendChild(navIcon);
         navLink.appendChild(navLabel);
-        settingsNavItem.insertAdjacentElement('afterend', navLink);
+        const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'subscriptions');
+        if (navReserve) navReserve.replaceWith(navLink);
+        else settingsNavItem.insertAdjacentElement('afterend', navLink);
 
         // Match the existing active-state highlight logic (DOMContentLoaded,
         // below) in case injection resolves after that already ran.
@@ -3494,6 +3599,55 @@ function writeCapabilityCache(patch) {
     const merged = { ...existing, ...patch, ts: now };
     sessionStorage.setItem(CAP_CACHE_KEY, JSON.stringify(merged));
   } catch (_) { /* storage disabled -- the probes still work uncached */ }
+  // v1.339 (L2): every confirmed module answer also lands in the per-device flag the
+  // pre-paint chrome reserve reads (the capability cache above is sessionStorage with a
+  // 5-minute TTL, so a cold PWA launch never has it).
+  if (patch && typeof patch.moduleEnabled === 'boolean') rememberModuleEnabled(patch.moduleEnabled);
+}
+
+// ---- v1.339 (L2, plan D5): remembered chrome flags -------------------------
+// The header Queue / Download buttons and the bottom-nav Subs / Download / You tabs are
+// injected AFTER a fetch, so each used to pop in and re-space its row a beat after first
+// paint. Each injector now records its last outcome in localStorage (the v1.99 / v1.101
+// persist-last-known pattern: the avatar bar, the bell) and the shells' inline pre-paint
+// reserve (the `ft-chrome-reserve` blocks, byte-identical in every header shell) paints a
+// same-box placeholder from that flag BEFORE first paint; the injector then REPLACES the
+// placeholder in place (or removes it when the feature is gone - a one-time collapse,
+// disclosed). A first-ever launch has no flags, so it still pops in once (disclosed).
+// Every read/write is try/catch'd (private mode / blocked storage -> no reserve, the
+// pre-L2 behaviour). Keys: see CHROME_FLAG_KEYS; dropped on sign-out with the bell flag.
+const CHROME_FLAG_KEYS = {
+  ytdlpModule: 'ft-ytdlp-module', // '1' | '0' - the optional yt-dlp module answered enabled
+  queueShown: 'ft-queue-shown', // '1' | '0' - the header queue button was visible (non-empty queue)
+  bottomNavLast: 'ft-bottomnav-last', // JSON array - the bottom bar's last resolved visible ids, in order
+};
+function rememberModuleEnabled(enabled) {
+  try { localStorage.setItem(CHROME_FLAG_KEYS.ytdlpModule, enabled ? '1' : '0'); } catch (_) { /* private mode */ }
+}
+function rememberQueueShown(shown) {
+  try { localStorage.setItem(CHROME_FLAG_KEYS.queueShown, shown ? '1' : '0'); } catch (_) { /* private mode */ }
+}
+function rememberBottomNavLayout(visibleIds) {
+  try { localStorage.setItem(CHROME_FLAG_KEYS.bottomNavLast, JSON.stringify(Array.isArray(visibleIds) ? visibleIds : [])); } catch (_) { /* private mode */ }
+}
+// The pre-paint placeholder a reserve block left for `kind` in `scope`, or null.
+function chromeReserveEl(scope, kind) {
+  if (!scope || typeof scope.querySelector !== 'function') return null;
+  return scope.querySelector('[data-ft-reserve="' + kind + '"]');
+}
+
+// v1.339 (L2, plan D5): the watch page's frame-one Subscribe render reads the capability
+// cache, but the cache is written by SEVERAL probes - the nav injectors write only
+// `{ moduleEnabled }` - so a cache holding moduleEnabled:true with NO `subs` rendered a
+// subscribed channel as "Subscribe" (no bell), then flipped to "Subscribed" when the
+// confirmed fetch landed (the v1.54 fix's hole, `cachedCap.subs || []`). Pure: returns
+// `{ moduleEnabled, subs }` only when the cache can decide the state - module off, or on
+// WITH a subs array - else null (render nothing from cache; the confirmed pass paints).
+function cachedSubscribeState(cap) {
+  if (!cap || typeof cap.moduleEnabled !== 'boolean') return null;
+  if (cap.moduleEnabled === false) return { moduleEnabled: false, subs: [] };
+  if (!Array.isArray(cap.subs)) return null;
+  return { moduleEnabled: true, subs: cap.subs };
 }
 
 // The write-side sub scrub: exactly what the Subscribe/pin decisions need.
@@ -3776,6 +3930,11 @@ function injectNotificationBellIfEnabled() {
   };
   let bellWasEnabled = false;
   try { bellWasEnabled = localStorage.getItem(NOTIF_BELL_ENABLED_KEY) === '1'; } catch (_) { /* private mode */ }
+  // v1.339 (L2): the shells' inline pre-paint block paints this same placeholder before
+  // first paint (so this DCL-time copy only runs on a shell without it); both sit AFTER
+  // the queue button / its reserve so the queue stays left of the bell (#140).
+  const queueEl = () => document.getElementById('queue-btn') || chromeReserveEl(headerRight, 'queue');
+  const afterQueue = () => { const q = queueEl(); return q && q.parentNode === headerRight ? q.nextSibling : headerRight.firstChild; };
   if (bellWasEnabled && !document.getElementById('notif-bell-placeholder')) {
     const ph = document.createElement('span');
     ph.id = 'notif-bell-placeholder';
@@ -3784,7 +3943,7 @@ function injectNotificationBellIfEnabled() {
     const disc = document.createElement('span');
     disc.className = 'notif-bell-skel skeleton-shimmer';
     ph.appendChild(disc);
-    headerRight.insertBefore(ph, headerRight.firstChild);
+    headerRight.insertBefore(ph, afterQueue());
   }
 
   fetch('/api/notifications/badge')
@@ -3796,9 +3955,10 @@ function injectNotificationBellIfEnabled() {
       return res.json().then((body) => ({ count: body && Number.isInteger(body.count) ? body.count : 0 }));
     })
     .then((probe) => {
-      removeBellPlaceholder(); // reveal-once: drop the reserve (enabled -> real bell below; disabled -> just gone)
-      if (!probe) return;
-      if (notificationBellAlreadyInjected()) return; // async double-inject window
+      // reveal-once: the reserve goes on every exit - disabled -> just gone; enabled -> the
+      // real bell takes its exact place below (v1.339 L2: replaceWith, not a re-insert at
+      // firstChild, so the row never re-orders or re-spaces).
+      if (!probe || notificationBellAlreadyInjected()) { removeBellPlaceholder(); return; } // (the second arm: the async double-inject window)
       try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '1'); } catch (_) { /* private mode */ }
 
       // ---- bell button + badge bubble (createElement/textContent only) ----
@@ -3827,7 +3987,9 @@ function injectNotificationBellIfEnabled() {
       badge.className = 'notif-bell-badge';
       badge.hidden = true;
       bellBtn.appendChild(badge);
-      headerRight.insertBefore(bellBtn, headerRight.firstChild);
+      const bellPlaceholder = document.getElementById('notif-bell-placeholder');
+      if (bellPlaceholder && bellPlaceholder.parentNode === headerRight) bellPlaceholder.replaceWith(bellBtn);
+      else { removeBellPlaceholder(); headerRight.insertBefore(bellBtn, afterQueue()); }
 
       // ---- panel + (mobile) backdrop, body-mounted like the one-off modal --
       const backdrop = document.createElement('div');
@@ -4442,11 +4604,14 @@ function injectQueueChrome() {
   const headerRight = document.querySelector('.header-right');
   if (!headerRight) return; // shell without a header (login/welcome)
 
+  // v1.339 (L2): the pre-paint reserve (a `[data-ft-reserve="queue"]` placeholder the
+  // shell's inline block painted from ft-queue-shown) is dropped on every no-button exit.
+  const dropReserve = () => { const r = chromeReserveEl(headerRight, 'queue'); if (r) r.remove(); };
   fetch('/api/queue')
     .then((res) => (res.ok ? res.json() : null))
     .then((queue) => {
-      if (!queue) return; // pre-auth / error: fail closed, inject nothing
-      if (queueButtonAlreadyInjected()) return; // async double-inject window
+      if (!queue) { dropReserve(); return; } // pre-auth / error: fail closed, inject nothing
+      if (queueButtonAlreadyInjected()) { dropReserve(); return; } // async double-inject window
 
       // ---- button + badge (createElement/textContent only) ---------------
       const btn = document.createElement('button');
@@ -4474,11 +4639,14 @@ function injectQueueChrome() {
       badge.className = 'queue-btn-badge';
       badge.hidden = true;
       btn.appendChild(badge);
-      // Beside the bell (ruling 4). Both injectors are async fetch-then-
-      // insert, so arrival ORDER races: insert directly before the bell
-      // when it already landed, else at firstChild - either race outcome
-      // leaves the two adjacent in the header's left cluster.
-      headerRight.insertBefore(btn, document.getElementById('notif-bell-btn') || headerRight.firstChild);
+      // Beside the bell (ruling 4), LEFT of it. v1.339 (L2, tracker #140): the queue now
+      // takes its pre-paint reserve's place when one is painted (same box, zero shift);
+      // else it anchors on the bell OR the bell's placeholder (the reserve the bell
+      // injector swaps in place), else firstChild - and the bell injector anchors AFTER
+      // the queue - so the pair's order no longer depends on which fetch lands first.
+      const queueReserve = chromeReserveEl(headerRight, 'queue');
+      if (queueReserve) queueReserve.replaceWith(btn);
+      else headerRight.insertBefore(btn, document.getElementById('notif-bell-btn') || document.getElementById('notif-bell-placeholder') || headerRight.firstChild);
 
       // ---- panel + (mobile) backdrop, body-mounted like the bell's --------
       const backdrop = document.createElement('div');
@@ -4516,6 +4684,7 @@ function injectQueueChrome() {
         badge.textContent = label;
         badge.hidden = label === '';
         btn.hidden = !shouldShowQueueButton(q);
+        rememberQueueShown(!btn.hidden); // v1.339 (L2): the next launch's pre-paint reserve
         heading.textContent = count > 0 ? `Queue - ${count} item${count === 1 ? '' : 's'}` : 'Queue';
         // v1.68.3 (Dean): an OPEN panel stays open on empty - renderRows'
         // empty state gets to show (the bell's posture: dismissing the last
@@ -4714,7 +4883,7 @@ function injectQueueChrome() {
       document.addEventListener('visibilitychange', resync);
       window.addEventListener('pageshow', resync);
     })
-    .catch(() => { /* network failure - fail closed, inject nothing */ });
+    .catch(() => { dropReserve(); /* network failure - fail closed, inject nothing */ });
 }
 
 // ---- v1.37.0 books nav-link injection (the D4 posture, books-gated) --------
@@ -5069,12 +5238,24 @@ function applyBottomNavCustomization() {
     byId[id] = el;
     presentIds.push(id);
   });
+  // v1.339 (L2): a pre-paint RESERVE (`data-ft-reserve`, painted by the shell's inline
+  // block from the remembered layout) counts as its item until the real one replaces it,
+  // so the bar resolves - and stays spaced - exactly as it will once every tab lands. A
+  // reserve whose real item already exists is stale and dropped.
+  items.forEach((el) => {
+    const id = el.getAttribute('data-ft-reserve');
+    if (!id || el.getAttribute('data-nav')) return;
+    if (byId[id]) { el.remove(); return; }
+    byId[id] = el;
+    presentIds.push(id);
+  });
   const layout = resolveBottomNavLayout(presentIds, readBottomNavConfig());
   const visibleSet = new Set(layout.visible);
   presentIds.forEach((id) => { if (byId[id]) byId[id].hidden = !visibleSet.has(id); });
   // Reorder: appendChild moves each element to the end, so appending in the
   // resolved order re-sorts the bar without recreating any node.
   layout.visible.forEach((id) => { if (byId[id]) nav.appendChild(byId[id]); });
+  rememberBottomNavLayout(layout.visible); // v1.339 (L2): the next launch's pre-paint layout
 }
 
 // ---- v1.15.0 item 3: one-off download header button + compact modal -------
@@ -6143,6 +6324,11 @@ function accountSignOut() {
     // user (e.g. a non-admin on a shared device) never reserves an admin
     // shimmer slot the master-detail nav would strand.
     try { localStorage.removeItem('ft-is-admin'); } catch (_) { /* storage disabled */ }
+    // v1.339 (L2): the per-user pre-paint reserves (the queue button, the bottom bar's
+    // last layout - it carries the You tab - and the books Continue shelf size) go too.
+    try { localStorage.removeItem('ft-queue-shown'); } catch (_) { /* storage disabled */ }
+    try { localStorage.removeItem('ft-bottomnav-last'); } catch (_) { /* storage disabled */ }
+    try { localStorage.removeItem('ft-books-continue-count'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);
@@ -6584,7 +6770,10 @@ function wireSearchAffordances() {
   // cold start (the bell/queue, inline SVG, never did). See CHROME_ICON_SVG.
   const searchGlyph = chromeIconEl('search');
   if (searchGlyph) btn.appendChild(searchGlyph);
-  headerRight.appendChild(btn);
+  // v1.339 (L2): take the pre-paint reserve's place (same box) when the shell painted one.
+  const searchReserve = chromeReserveEl(headerRight, 'search');
+  if (searchReserve) searchReserve.replaceWith(btn);
+  else headerRight.appendChild(btn);
 
   let panel = document.getElementById('search-history-panel');
   if (!panel) {
@@ -6659,9 +6848,13 @@ function injectYouNavItem() {
   if (typeof document === 'undefined' || typeof fetch !== 'function') return;
   const nav = document.getElementById('bottom-nav');
   if (!nav || nav.querySelector('[data-nav="you"]')) return;
+  // v1.339 (L2): the shells' pre-paint block reserves the tab (from the bar's remembered
+  // layout, ft-bottomnav-last) so the bar never re-spaces when it lands; the real tab
+  // takes the reserve's place, and every no-tab exit drops it.
+  const dropReserve = () => { const r = chromeReserveEl(nav, 'you'); if (r) { r.remove(); applyBottomNavCustomization(); } };
   fetchCurrentUser().then((me) => {
-    if (!me || !me.user) return; // signed-out shell: no You tab
-    if (nav.querySelector('[data-nav="you"]')) return; // race guard
+    if (!me || !me.user) { dropReserve(); return; } // signed-out shell: no You tab
+    if (nav.querySelector('[data-nav="you"]')) { dropReserve(); return; } // race guard
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'bottom-nav-item';
@@ -6684,9 +6877,11 @@ function injectYouNavItem() {
       const trigger = document.querySelector('.account-menu-trigger');
       if (trigger) trigger.click();
     });
-    nav.appendChild(btn);
+    const youReserve = chromeReserveEl(nav, 'you');
+    if (youReserve) youReserve.replaceWith(btn);
+    else nav.appendChild(btn);
     applyBottomNavCustomization(); // ranks the roster-absent 'you' right-most
-  }).catch(() => { /* signed-out / offline: no You tab, nothing broken */ });
+  }).catch(() => { dropReserve(); /* signed-out / offline: no You tab, nothing broken */ });
 }
 
 function injectAccountMenu() {
@@ -6702,21 +6897,29 @@ function injectAccountMenu() {
   // (mobile reaches account via the You tab). Removed on resolve (signed-in ->
   // real menu; signed-out / error -> just gone, never a stranded shimmer).
   if (!document.getElementById('account-menu-placeholder')) {
+    // v1.339 (L2): an `.account-menu` wrapper around the trigger-shaped disc, like the real
+    // root - so on mobile (trigger display:none) it still takes the row's flex gap and the
+    // swap to the real menu no longer nudges the glyph row 6px (home-fouc-probe). The shells'
+    // inline pre-paint block paints this same shape, so this copy only runs without it.
     const ph = document.createElement('span');
     ph.id = 'account-menu-placeholder';
-    ph.className = 'account-menu-trigger';
+    ph.className = 'account-menu';
     ph.setAttribute('aria-hidden', 'true');
+    const phTrigger = document.createElement('span');
+    phTrigger.className = 'account-menu-trigger';
     const avatarSkel = document.createElement('span');
     avatarSkel.className = 'account-avatar skeleton-shimmer';
-    ph.appendChild(avatarSkel);
+    phTrigger.appendChild(avatarSkel);
+    ph.appendChild(phTrigger);
     headerRight.appendChild(ph);
   }
 
   fetchCurrentUser().then((me) => {
     const ph = document.getElementById('account-menu-placeholder');
-    if (ph) ph.remove(); // reveal-once: drop the reserve whether signed-in or out
-    if (!me || !me.user) return; // signed-out shell -- inject nothing
-    if (document.getElementById('account-menu-root')) return; // re-check after the await (overlap guard)
+    // reveal-once: the reserve goes on every exit - signed-out / overlap -> just gone;
+    // signed-in -> the real menu takes its exact place below (v1.339 L2: replaceWith, so
+    // a Download button that landed after the placeholder stays left of the avatar).
+    if (!me || !me.user || document.getElementById('account-menu-root')) { if (ph) ph.remove(); return; } // signed-out shell / the overlap guard
     const user = me.user;
 
     const root = document.createElement('div');
@@ -6955,7 +7158,9 @@ function injectAccountMenu() {
     }
 
     root.appendChild(menu);
-    headerRight.appendChild(root);
+    const phNow = document.getElementById('account-menu-placeholder');
+    if (phNow && phNow.parentNode === headerRight) phNow.replaceWith(root);
+    else { if (phNow) phNow.remove(); headerRight.appendChild(root); }
 
     // Interaction: click toggles; outside-click + Escape close; aria in sync.
     const setOpen = (open) => {
@@ -7015,13 +7220,23 @@ function injectOneOffDownloadButtonIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return; // already injected
 
+  // v1.339 (L2): the shells' pre-paint reserves (header `[data-ft-reserve="download"]`,
+  // bottom-nav `[data-ft-reserve="oneoff-download"]`, painted from ft-ytdlp-module) are
+  // replaced in place below, or dropped on every exit that builds nothing.
+  const dropReserves = () => {
+    const h = chromeReserveEl(document.querySelector('.header-right'), 'download');
+    if (h) h.remove();
+    const n = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
+    if (n) { n.remove(); applyBottomNavCustomization(); }
+  };
   fetch('/api/subscriptions/health')
     .then((res) => {
-      if (!shouldInjectOneOffButton(res)) return; // disabled (404) -- inject nothing
+      rememberModuleEnabled(res.ok === true); // v1.339 (L2): the next launch's reserve flag
+      if (!shouldInjectOneOffButton(res)) { dropReserves(); return; } // disabled (404) -- inject nothing
       // v1.47.4 item 4: RE-CHECK after the await, using the SAME predicate as
       // the pre-fetch guard above. Without it, two overlapping calls both pass
       // the pre-fetch check and both build a header button + modal.
-      if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return;
+      if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) { dropReserves(); return; }
 
       const headerRight = document.querySelector('.header-right');
       // v1.15.1: the desktop header button lives inside `.header-right`. It was
@@ -7189,8 +7404,19 @@ function injectOneOffDownloadButtonIfEnabled() {
         // direct child of this header (none since v1.82 -> appendChild), never a
         // descendant. Regression-bound in test/unit/oneoff-header-injection-placement.test.js.
         const settingsLink = headerRight.querySelector(':scope > a[href="/setup.html"]');
-        if (settingsLink) {
+        // v1.339 (L2): the pre-paint reserve's place first (same box, zero shift); else
+        // left of the account avatar or its placeholder (the account injector swaps its
+        // placeholder in place), so the order no longer depends on which fetch lands
+        // first (a first-ever launch put Download right of the avatar when the account
+        // resolved first); else the pre-v1.82 Settings anchor / append.
+        const dlReserve = chromeReserveEl(headerRight, 'download');
+        const acct = headerRight.querySelector(':scope > #account-menu-root, :scope > #account-menu-placeholder');
+        if (dlReserve) {
+          dlReserve.replaceWith(btn);
+        } else if (settingsLink) {
           headerRight.insertBefore(btn, settingsLink);
+        } else if (acct) {
+          headerRight.insertBefore(btn, acct);
         } else {
           headerRight.appendChild(btn);
         }
@@ -7208,14 +7434,17 @@ function injectOneOffDownloadButtonIfEnabled() {
         navBtn.className = 'bottom-nav-item';
         navBtn.setAttribute('data-nav', 'oneoff-download');
         navBtn.setAttribute('aria-label', 'Download a video');
-        const navIcon = document.createElement('i');
-        navIcon.className = 'icon-download';
+        // v1.339 (L2): an inline chrome-icon <svg>, not the `.icon-download` mask (iOS
+        // decode lag - the v1.87.1 first-paint glyph rule), matching the reserve's glyph.
+        const navIcon = chromeIconEl('download');
         const navLabel = document.createElement('span');
         navLabel.className = 'bottom-nav-label';
         navLabel.textContent = 'Download';
-        navBtn.appendChild(navIcon);
+        if (navIcon) navBtn.appendChild(navIcon);
         navBtn.appendChild(navLabel);
-        settingsNavItem.insertAdjacentElement('afterend', navBtn);
+        const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
+        if (navReserve) navReserve.replaceWith(navBtn);
+        else settingsNavItem.insertAdjacentElement('afterend', navBtn);
 
         navBtn.addEventListener('click', openModal);
         // v1.44 T12: re-apply the user's bar layout now that Download exists.
@@ -7228,7 +7457,7 @@ function injectOneOffDownloadButtonIfEnabled() {
         if (e.key === 'Escape' && modalState && !modalState.backdrop.hidden) closeModal();
       });
     })
-    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+    .catch(() => { dropReserves(); /* network/parse failure -- fail closed, inject nothing (v1.339 L2: and clear the reserves) */ });
 }
 
 // Small local HTML-escape mirroring the per-page escapeHtml helpers, used only
@@ -11265,6 +11494,8 @@ if (typeof window !== 'undefined') {
   // v1.102 (tranche 4 shimmer): the art-decode reveal helper, called by every
   // view file after it renders a batch of card images.
   window.FileTube.shimmerArt = shimmerArt;
+  // v1.339 (L1): the batched in-viewport reveal (music first; a general helper for any view).
+  window.FileTube.revealArtTogether = revealArtTogether;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -16741,6 +16972,13 @@ if (typeof module !== 'undefined' && module.exports) {
     CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
+    // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).
+    revealArtTogether, REVEAL_TOGETHER_CAP_MS,
+    // v1.339 (L2): the remembered chrome flags behind the shells' pre-paint reserve, and the
+    // decidable-cache gate for the watch page's frame-one Subscribe render (jsdom-tested).
+    CHROME_FLAG_KEYS, rememberModuleEnabled, rememberQueueShown,
+    rememberBottomNavLayout, chromeReserveEl, cachedSubscribeState,
+    injectQueueChrome, injectSubscriptionsNavLinkIfEnabled,
     // v1.247 (F2): the pure MENU-returns-to-origin decision (launch nav -> FROM tab, else null).
     isPlayerLaunchUrl, nextPlayerLaunchOrigin, isPlayerOpenUrl,
     // v1.63 playback queue: the chrome's pure decisions.

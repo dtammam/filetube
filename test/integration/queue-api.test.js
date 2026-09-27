@@ -287,7 +287,7 @@ test('v1.72: a track queues under entry kind track with the album-art projection
   assert.equal(e.kind, 'track');
   assert.equal(e.item.title, 'Track trkQ1');
   assert.equal(e.item.channelName, 'The Artist');
-  assert.equal(e.item.artUrl, '/albumart/trkQ1', 'album art rides as artUrl (the podcast projection contract)');
+  assert.equal(e.item.artUrl, '/albumart/trkQ1?s=256', 'album art rides as artUrl (the podcast projection contract; v1.339 L1: the 256 rendition for the 72x40 queue row)');
   assert.ok(!('filePath' in e.item), 'no server paths in the projection');
 });
 

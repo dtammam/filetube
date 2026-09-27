@@ -66,8 +66,36 @@ function buildBookSkeletonCards(n) {
   return html;
 }
 
+// v1.339 (L2, plan D5): the Continue shelf sits ABOVE the grid and used to unhide after
+// its own fetch, pushing the whole library down on every visit (August row 27; probe:
+// books cold CLS 0.66 at 390). The last shelf size is remembered per device (the v1.99
+// avatar-bar pattern) and, on the next visit, the shelf is reserved with that many
+// shape-matched skeleton cards before the fetch, so the real covers fill in place. A
+// shelf that is now empty collapses once (disclosed); a fetch error clears the reserve
+// but keeps the count (a transient failure still reserves next time).
+const BOOKS_CONTINUE_COUNT_KEY = 'ft-books-continue-count';
+const BOOKS_CONTINUE_LIMIT = 12;
+function readBooksContinueCount() {
+  try {
+    const v = parseInt(localStorage.getItem(BOOKS_CONTINUE_COUNT_KEY), 10);
+    return Number.isInteger(v) && v > 0 ? Math.min(v, BOOKS_CONTINUE_LIMIT) : 0;
+  } catch (_) { return 0; }
+}
+function writeBooksContinueCount(n) {
+  try { localStorage.setItem(BOOKS_CONTINUE_COUNT_KEY, String(Number.isInteger(n) && n > 0 ? Math.min(n, BOOKS_CONTINUE_LIMIT) : 0)); } catch (_) { /* private mode */ }
+}
+// Reserve the shelf from the remembered count (no-op when there is none).
+function reserveBooksContinueShelf(section, grid) {
+  const n = readBooksContinueCount();
+  if (!section || !grid || n <= 0) return false;
+  grid.innerHTML = buildBookSkeletonCards(n);
+  section.hidden = false;
+  return true;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildBookCardHtml, deriveShelfChips, escapeBookHtml, buildBookSkeletonCards };
+  module.exports = { buildBookCardHtml, deriveShelfChips, escapeBookHtml, buildBookSkeletonCards,
+    readBooksContinueCount, writeBooksContinueCount, reserveBooksContinueShelf, BOOKS_CONTINUE_COUNT_KEY };
 }
 
 (function () {
@@ -162,13 +190,18 @@ if (typeof module !== 'undefined' && module.exports) {
       // The Continue shelf only decorates the UNFILTERED library view --
       // a shelf/search view IS already a narrowed list.
       if (rootFilter || searchFilter || !continueSection || !continueGrid) return;
+      reserveBooksContinueShelf(continueSection, continueGrid); // v1.339 (L2): hold its place
       try {
-        const data = await fetchJson('/api/books?filter=reading&limit=12');
+        const data = await fetchJson(`/api/books?filter=reading&limit=${BOOKS_CONTINUE_LIMIT}`);
+        if (signal.aborted) return; // a torn-down view writes nothing
         const items = Array.isArray(data.items) ? data.items : [];
         continueGrid.innerHTML = items.map(buildBookCardHtml).join('');
         continueSection.hidden = items.length === 0;
+        writeBooksContinueCount(items.length);
         revealBookArt(continueGrid);
       } catch (_) {
+        if (signal.aborted) return;
+        continueGrid.innerHTML = '';
         continueSection.hidden = true;
       }
     }
@@ -176,10 +209,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.102 (tranche 4 shimmer): the cover images ship `art-shimmer`; the shared
     // decode-reveal clears each the instant it decodes (immediately for a cached
     // cover, so a warm image never shimmers forever under a visible picture).
+    // v1.339 (L2): the on-screen covers reveal TOGETHER (common.js revealArtTogether:
+    // all decoded or errored, or its cap), off-screen per image; shimmerArt fallback.
     function revealBookArt(scope) {
-      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
-        window.FileTube.shimmerArt(scope);
-      }
+      const ft = typeof window !== 'undefined' ? window.FileTube : null;
+      if (!ft) return;
+      if (typeof ft.revealArtTogether === 'function') ft.revealArtTogether(scope, { signal });
+      else if (typeof ft.shimmerArt === 'function') ft.shimmerArt(scope);
     }
 
     async function loadShelfChips() {

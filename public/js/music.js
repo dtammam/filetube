@@ -67,7 +67,7 @@ function nowPlayingFrom(t) {
 // An album card (square art + album + artist). `artId` is a representative
 // track id whose album art the /albumart route resolves.
 function buildAlbumCardHtml(album) {
-  var art = '/albumart/' + encodeURIComponent(album.artId || '');
+  var art = albumArtSrc(album.artId || '', musicArtCardPx()); // v1.339 L1: the card-sized rendition
   var count = album.trackCount ? album.trackCount + (album.trackCount === 1 ? ' track' : ' tracks') : '';
   return '' +
     '<button type="button" class="music-album-card" data-album-key="' + escapeMusicHtml(album.albumKey) + '">' +
@@ -87,8 +87,9 @@ function buildAlbumCardHtml(album) {
 // zero-artIds branch (`['']`) only fires on a stale/malformed cached payload:
 // /albumart/ with an EMPTY segment 404s, but the tile's `error` still clears the
 // shimmer (a broken-image glyph, never a perpetual shimmer or a blank card).
-// Each tile ships `art-shimmer`; revealMusicArt() (via the shared shimmerArt)
-// clears it on decode OR error - the reveal-once both-axes contract, per tile.
+// Each tile ships `art-shimmer`; revealMusicArt() (via revealArt -> the shared
+// revealArtTogether, v1.339) clears it on decode OR error - the reveal-once both-axes
+// contract (an on-screen tile with its on-screen neighbours, an off-screen one alone).
 function buildArtistCardHtml(artist) {
   var meta = (artist.albumCount || 0) + (artist.albumCount === 1 ? ' album' : ' albums') +
     ' · ' + (artist.trackCount || 0) + (artist.trackCount === 1 ? ' track' : ' tracks');
@@ -106,7 +107,7 @@ function buildArtistCardHtml(artist) {
   } else {
     var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
     var tiles = ids.map(function (id) {
-      return '<img class="art-shimmer" src="/albumart/' + encodeURIComponent(id || '') + '" alt="" loading="lazy" />';
+      return '<img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(id || '', musicArtCardPx())) + '" alt="" loading="lazy" />';
     }).join('');
     visual = '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>';
   }
@@ -125,7 +126,7 @@ function buildArtistCardHtml(artist) {
 function buildJumpBackTileHtml(item) {
   return '' +
     '<button type="button" class="music-jump-tile" data-id="' + escapeMusicHtml(item.id) + '">' +
-    '<img class="music-jump-art art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<img class="music-jump-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx())) + '" alt="" loading="lazy" />' +
     '<span class="music-jump-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title || 'Unknown track') + '</span>' +
     '<span class="music-jump-sub" title="' + escapeMusicHtml(item.artist || '') + '">' + escapeMusicHtml(item.artist || '') + '</span>' +
     '</button>';
@@ -145,7 +146,7 @@ function buildArtistListRowHtml(artist) {
       '<img class="maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" /></span>';
   } else {
     var artId = (Array.isArray(artist.artIds) && artist.artIds[0]) || '';
-    circle = '<span class="music-artist-row-circle"><img class="art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="" loading="lazy" /></span>';
+    circle = '<span class="music-artist-row-circle"><img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" /></span>';
   }
   return '' +
     '<button type="button" class="music-artist-row" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
@@ -163,7 +164,7 @@ function buildRecentArtistTileHtml(item) {
   var name = item.artist || 'Unknown artist';
   return '' +
     '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(name) + '">' +
-    '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" /></span>' +
+    '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx())) + '" alt="" loading="lazy" /></span>' +
     '<span class="music-artist-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
     '</button>';
 }
@@ -212,7 +213,7 @@ function buildSongRowHtml(item, index) {
   return '' +
     '<div class="music-song-row" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
     '<span class="music-song-thumb-wrap">' +
-    '<img class="music-song-thumb art-shimmer" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<img class="music-song-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" />' +
     '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
     '</span>' +
     '<span class="music-song-main">' +
@@ -250,16 +251,59 @@ function buildSongRowHtml(item, index) {
 // "Up next" queue. `np` = the playing track {title,artist,album}; `upNext` = the
 // remaining queue items, each `{id,title,artist,index}` (`index` is the real
 // queue index, so a tap can `playAt(index)`). Queue thumbs ship `art-shimmer`
-// (reveal-once, cleared by the shared shimmerArt).
+// (reveal-once, cleared by the view's revealArt -> revealArtTogether, v1.339).
 // v1.253 (Dean, listen-art fix): the ONE art-URL rule for a music-side row/cover. A
 // PROJECTED track carries its own artUrl (the media thumbnail, Wave G) - honour it. A
 // LISTEN track's id is a VIDEO id, and /albumart's thumbnail fallback serves type
 // 'audio' only (server.js), so hardcoding /albumart here rendered Dean the placeholder
 // SVG. Everything artUrl-less keeps the /albumart route (native art file, else the
 // server's audio-thumbnail fallback).
-function musicArtUrl(id, explicitArtUrl) {
+// v1.339 (L1, M2): `cssPx` (optional) = the CSS box the art renders in; the /albumart URL
+// then asks for the sized rendition fitting it (albumArtSrc). Omitted = the full-size file
+// (the big now-playing / skin art, the ambient sampler, the player's own art).
+function musicArtUrl(id, explicitArtUrl, cssPx) {
   if (typeof explicitArtUrl === 'string' && explicitArtUrl) return explicitArtUrl;
-  return '/albumart/' + encodeURIComponent(id);
+  return albumArtSrc(id, cssPx);
+}
+
+// v1.339 (L1, M2): SIZED art. /albumart/:id?s=<px> serves the cover scaled to <px> on its
+// short side (lib/music/artRendition.js - the server's allowlist is this same set). A
+// 1200px cover in a 44px song thumb was 20-80x the pixels the box needs.
+var MUSIC_ART_SIZES = [128, 256, 512];
+// The device-pixel ratio a rendition is sized for is capped at 2: a 2x cover in a
+// 44-220px tile is indistinguishable from 3x at phone viewing distance, and the 3x
+// rendition of a 120px card (360px -> the 512 file) costs ~2x the bytes of the 256 one.
+var MUSIC_ART_DPR_CAP = 2;
+// The CSS box of each art surface (style.css): song/queue rows and the sticky/list circles
+// are <= 54px; a card is the grid cell (minmax(108px, 1fr): ~112-120px on a phone, up to
+// ~216px on a wide desktop grid) - one card size for the Home shelf, the grids, the artist
+// mosaic and the jump-back tiles (116px) so they SHARE one URL per cover; the drill header
+// is 180px (220px max on a phone).
+var MUSIC_ART_ROW_PX = 54;
+var MUSIC_ART_DRILL_PX = 220;
+function musicArtCardPx() {
+  var w = (typeof window !== 'undefined' && Number(window.innerWidth)) || 0;
+  return (w > 600) ? 216 : 120;
+}
+// The smallest allowlisted rendition covering `cssPx` at the (capped) DPR, or 0 when
+// the box needs more than the largest rendition (serve the original).
+function musicArtSize(cssPx, dpr) {
+  var d = Number(dpr) > 0 ? Number(dpr) : ((typeof window !== 'undefined' && Number(window.devicePixelRatio)) || 1);
+  var need = Number(cssPx) * Math.min(d, MUSIC_ART_DPR_CAP);
+  if (!(need > 0)) return 0;
+  for (var i = 0; i < MUSIC_ART_SIZES.length; i++) if (MUSIC_ART_SIZES[i] >= need) return MUSIC_ART_SIZES[i];
+  return 0;
+}
+function albumArtSrc(id, cssPx) {
+  var s = cssPx ? musicArtSize(cssPx) : 0;
+  return '/albumart/' + encodeURIComponent(id == null ? '' : id) + (s ? '?s=' + s : '');
+}
+// v1.339 (L1, M2): the id a track's art URL keys on - the server's `artId` (the album's
+// visible representative, shared by every track of one cover: publicTrackListItem), else
+// the track's own id (an older cached payload, a listen row).
+function musicArtId(item) {
+  if (item && typeof item.artId === 'string' && item.artId) return item.artId;
+  return (item && item.id != null) ? String(item.id) : '';
 }
 
 // v1.317 M4: the image the desktop AMBIENT glow samples for the playing music track -
@@ -291,7 +335,7 @@ function buildNowPlayingPanelHtml(np, upNext) {
     // v1.317 (M2): each row's own length - an explicit durLabel wins (updateNowPlayingPanel
     // precomputes it), else derive it from the row's durationSec ('' for 0/unknown).
     var durLabel = (typeof it.durLabel === 'string') ? it.durLabel : formatTrackDuration(it.durationSec);
-    return { id: it.id, artUrl: musicArtUrl(it.id, it.artUrl), title: it.title, artist: it.artist, index: it.index, state: it.state, durLabel: durLabel };
+    return { id: it.id, artUrl: musicArtUrl(musicArtId(it), it.artUrl, MUSIC_ART_ROW_PX), title: it.title, artist: it.artist, index: it.index, state: it.state, durLabel: durLabel };
   });
   // v1.317 (M1): subArtist makes the artist · album line a data-artist button (the artist drill,
   // or the channel grid for a listen video). Gate r1 W2: `np.artistTap === false` is the view's
@@ -433,7 +477,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
   tracks = Array.isArray(tracks) ? tracks : [];
   var isAlbum = !!(drill && drill.type === 'album');
   var first = tracks[0] || {};
-  var artId = first.id || '';
+  var artId = first.id ? musicArtId(first) : ''; // v1.339 L1: the album's shared art id
   var title = (drill && drill.label) || (isAlbum ? 'Album' : 'Artist');
   var artist = isAlbum ? ((typeof first.albumArtist === 'string' && first.albumArtist) || first.artist || '') : '';
   var count = tracks.length;
@@ -452,7 +496,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // Gate r1 W2 (adversary): never request `/albumart/` with an EMPTY id (an empty drill has
     // no first track) - the slot keeps its box, srcless and unshimmered (nothing to reveal).
     (artId
-      ? '<img class="music-drill-art art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="' + escapeMusicHtml(title) + '" />'
+      ? '<img class="music-drill-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_DRILL_PX)) + '" alt="' + escapeMusicHtml(title) + '" />'
       : '<img class="music-drill-art" alt="" />') + // gate r2 S5: a srcless img paints its alt text - keep the box empty
     '<div class="music-drill-info">' +
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
@@ -489,13 +533,13 @@ function buildStickyBarHtml(drill, tracks) {
   tracks = Array.isArray(tracks) ? tracks : [];
   var isAlbum = !!(drill && drill.type === 'album');
   var first = tracks[0] || {};
-  var artId = first.id || '';
+  var artId = first.id ? musicArtId(first) : ''; // v1.339 L1: the album's shared art id
   var title = (drill && drill.label) || (isAlbum ? 'Album' : 'Artist');
   return '' +
     '<div class="music-drill-sticky">' +
     '<button type="button" class="music-drill-back music-sticky-back btn btn-sm" aria-label="Back">‹</button>' +
     (artId
-      ? '<img class="music-sticky-thumb art-shimmer" src="/albumart/' + encodeURIComponent(artId) + '" alt="" />'
+      ? '<img class="music-sticky-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" />'
       : '<img class="music-sticky-thumb" alt="" />') + // gate r1 W2: no empty-id art request
     '<span class="music-sticky-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</span>' +
     '<button type="button" class="music-drill-play music-sticky-play btn btn-primary btn-sm" aria-label="Play"><i class="icon-play"></i></button>' +
@@ -669,6 +713,42 @@ function buildMusicSkeletonRows(n) {
   return '<div class="music-song-list">' + rows + '</div>';
 }
 
+// v1.339 (L1, M1): "Jump back in" sits ABOVE the tabs and used to ship `hidden`, then
+// unhide after its own fetch - shoving the tabs + content down 181px on every cold load
+// and SPA return (CLS 0.14 on every mobile tab). The v1.99 avatar-bar pattern
+// (readModernAvatarBarCount): persist the last-known tile count and, when the last visit
+// had items, reserve the strip synchronously with a skeleton of the EXACT final shape -
+// the real heading, the real `.music-jump-row`, and `.music-jump-tile` BUTTONS (a button
+// resets line-height, so a span tile would measure differently) holding the real 116px
+// `.music-jump-art` box and one-line title/sub - so the fill is in place. A fetch that
+// returns none collapses the strip (the disclosed reverse-collapse: the one case the flag
+// was stale); a flag of 0 keeps it hidden and accepts a one-time shift when items first
+// appear. Per browser, not per user (a layout hint only, like the avatar-bar count).
+var MUSIC_JUMPBACK_COUNT_KEY = 'ft-music-jumpback-count';
+var MUSIC_JUMPBACK_MAX = 12; // renderJumpBackIn's limit=12
+function readJumpBackCount() {
+  try {
+    var v = parseInt(window.localStorage.getItem(MUSIC_JUMPBACK_COUNT_KEY), 10);
+    return (isFinite(v) && v > 0) ? Math.min(v, MUSIC_JUMPBACK_MAX) : 0;
+  } catch (_) { return 0; }
+}
+function writeJumpBackCount(n) {
+  try { window.localStorage.setItem(MUSIC_JUMPBACK_COUNT_KEY, String((isFinite(n) && n > 0) ? Math.min(Math.floor(n), MUSIC_JUMPBACK_MAX) : 0)); } catch (_) { /* private mode / blocked storage */ }
+}
+function buildJumpBackSkeletonHtml(n) {
+  var count = (isFinite(n) && n > 0) ? Math.min(Math.floor(n), MUSIC_JUMPBACK_MAX) : 0;
+  if (count === 0) return '';
+  var tiles = '';
+  for (var i = 0; i < count; i++) {
+    tiles += '<button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true">' +
+      '<span class="music-jump-art skeleton-shimmer"></span>' +
+      '<span class="music-jump-title">&nbsp;</span>' +
+      '<span class="music-jump-sub">&nbsp;</span>' +
+      '</button>';
+  }
+  return '<h2 class="music-jump-head">Jump back in</h2><div class="music-jump-row">' + tiles + '</div>';
+}
+
 // v1.311.3 (Dean's ruling): where a chapter TAP starts. A saved place inside the chapter
 // resumes there (v1.222), but one in the chapter's last CHAPTER_RESUME_TAIL_SEC - where a
 // chapter you just heard to its end leaves it, since the solo exit saves at the boundary -
@@ -744,17 +824,28 @@ if (typeof module !== 'undefined' && module.exports) {
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
+    MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks, channelFolderOf, nowPlayingFrom,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
+    MUSIC_JUMPBACK_COUNT_KEY, readJumpBackCount, writeJumpBackCount, buildJumpBackSkeletonHtml,
   };
 }
 
 (function () {
   if (typeof window === 'undefined') return;
   var controller = null;
+  // v1.339 (L1, M1): the last "Jump back in" strip this page rendered. Module-scoped (NOT
+  // in init's closure) so a warm SPA return re-paints the real tiles synchronously at init
+  // - no skeleton flash - and the fetch then replaces them only if the list changed.
+  var jumpbackWarmHtml = '';
+  // v1.339 (L1, M2): the playing track's shared art id, remembered at load. A dock-return /
+  // SPA re-init paints the skin before its queue reloads; without this the big art fell back
+  // to /albumart/<track id> - a second URL (and a second full-size download) for the cover
+  // the player already shows under /albumart/<artId>.
+  var playingArtMemo = { id: null, artId: '' };
   // v1.44.2: the drill-header collapse IntersectionObserver. Module-scoped (NOT
   // in init's closure) so destroy() can disconnect it on the SPA #view-root
   // swap — leaving /music mid-drill must not leak an observer pointed at a
@@ -1143,7 +1234,10 @@ if (typeof module !== 'undefined' && module.exports) {
         || ((playingId && activeListenId && sameMusicItem(playingId, activeListenId)) ? ('/thumbnail/' + encodeURIComponent(String(playingId).replace(/::c\d+$/, ''))) : '');
       return {
         track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
-          artUrl: playingId ? musicArtUrl(playingId, curArt) : '' },
+          // v1.339 L1: keyed on the album's shared art id, so the next track of the same
+          // album re-uses the cover already loaded (full size: the skin's big art).
+          artUrl: playingId ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci])
+            : ((playingArtMemo.id === playingId && playingArtMemo.artId) ? playingArtMemo.artId : playingId), curArt) : '' },
         // v1.317 gate r1 W2: the view's veto on the artist line (the engine ANDs it with its
         // onArtist presence) - a listen video with no channel folder gets the plain line, and in
         // the pop-out a listen video's line is plain too (gate r2). The tooltip names the target.
@@ -2044,11 +2138,18 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       return true;
     }
-    // A successful Move/Delete removed (or re-keyed) the playing item: the engine already
-    // closed the player and re-primed the liked cache; the VIEW clears its playing state,
-    // lets the panel teardown run (drops the full-screen skin), and re-renders the lists.
-    function afterExtrasMutation() {
+    // A successful Move/Delete removed (or re-keyed) the menu's item: the engine re-primed the
+    // liked cache and, when that item was still playing, closed the player - then the VIEW
+    // clears its playing state, lets the panel teardown run (drops the full-screen skin), and
+    // re-renders the lists. v1.339 R1 (T-C4): `info.playingRemoved === false` means an
+    // auto-advance moved on while the confirm was open - the engine left the NEW track
+    // playing, so only the lists refresh.
+    function afterExtrasMutation(info) {
       invalidateMenuData(); // pocket menus: a deleted/moved track must leave the pocket menus too
+      if (info && info.playingRemoved === false) {
+        render().catch(function () { /* the fetch-level catch already showed the empty/error state */ });
+        return;
+      }
       playingId = null;
       nowPlaying = null;
       chapterViewId = null;
@@ -2082,18 +2183,42 @@ if (typeof module !== 'undefined' && module.exports) {
     // position). Populated ONCE on init from the recently-played list; hidden
     // when empty so it never leaves a bare header. Its own art-reveal (the strip
     // lives outside #music-content, so revealMusicArt doesn't reach it).
+    // v1.339 (L1, M1): its space is RESERVED before the fetch (synchronously, at init): a
+    // warm SPA return re-paints the last strip (jumpbackWarmHtml); a cold load with a
+    // remembered count seeds the exact-shape skeleton (buildJumpBackSkeletonHtml). The
+    // fetch then fills in place, or collapses a reserve the library no longer backs.
     async function renderJumpBackIn() {
       if (!jumpbackHost) return;
+      var seededHtml = '';
+      if (jumpbackWarmHtml) {
+        seededHtml = jumpbackWarmHtml;
+        jumpbackHost.innerHTML = seededHtml;
+        jumpbackHost.hidden = false;
+        revealArt(jumpbackHost);
+      } else {
+        var seedN = readJumpBackCount();
+        if (seedN > 0) {
+          jumpbackHost.innerHTML = buildJumpBackSkeletonHtml(seedN);
+          jumpbackHost.hidden = false;
+        } else {
+          jumpbackHost.hidden = true; // no remembered items: no reserve (music.html's static skeleton stays unshown)
+        }
+      }
       var items = [];
       try {
         var data = await fetchJson('/api/music?filter=recent-listening&limit=12');
         items = Array.isArray(data.items) ? data.items : [];
       } catch (_) { items = []; }
-      if (!items.length) { jumpbackHost.hidden = true; jumpbackHost.innerHTML = ''; return; }
-      jumpbackHost.innerHTML = '<h2 class="music-jump-head">Jump back in</h2>' +
+      if (signal.aborted) return; // the view was torn down while the fetch was in flight
+      writeJumpBackCount(items.length);
+      if (!items.length) { jumpbackWarmHtml = ''; jumpbackHost.hidden = true; jumpbackHost.innerHTML = ''; return; }
+      var html = '<h2 class="music-jump-head">Jump back in</h2>' +
         '<div class="music-jump-row">' + items.map(buildJumpBackTileHtml).join('') + '</div>';
+      jumpbackWarmHtml = html;
       jumpbackHost.hidden = false;
-      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(jumpbackHost);
+      if (html === seededHtml) return; // the warm strip IS the fresh one - keep its (revealed) DOM
+      jumpbackHost.innerHTML = html;
+      revealArt(jumpbackHost);
     }
     if (jumpbackHost) {
       jumpbackHost.addEventListener('click', function (e) {
@@ -2198,7 +2323,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var start = Math.max(0, ci - 20); // keep a little history for jump-back
         for (var j = start; j < queue.length && rows.length < 200; j++) {
           rows.push({
-            id: queue[j].id, artUrl: queue[j].artUrl, title: queue[j].title, artist: queue[j].artist, index: j,
+            id: queue[j].id, artId: queue[j].artId, artUrl: queue[j].artUrl, title: queue[j].title, artist: queue[j].artist, index: j,
             state: j < ci ? 'played' : (j === ci ? 'current' : 'next'),
             // v1.317 (M2, Dean: "the length of a given section in the right-hand view"): each
             // row's own length - a chapter track's durationSec is that chapter's span.
@@ -2213,7 +2338,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // (artistTapAvailable: a listen video with no channel renders the plain line).
       nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(Object.assign({}, nowPlaying, { artistTap: artistTapAvailable(), artistTitle: artistTapTitle() }), rows);
       nowPlayingPanel.hidden = false;
-      if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
+      revealArt(nowPlayingPanel); // v1.339 L1: the panel's on-screen art reveals together
       // v1.224 (Dean): the up-next now includes played history above the current
       // row, so scroll the (bounded, scrollable) list to the PLAYING song - it's
       // always visible when you pick a track, no hunting. Scroll only WITHIN the
@@ -2446,8 +2571,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // list, so the sort control is hidden there (gate: no inert/mislabeled
       // dropdown on the default landing). A drill IS sortable (friction pass:
       // Dean wanted release-date order for an artist's songs).
-      if (tab === 'home') { wrap.hidden = true; return; }
+      // v1.339 (L1, M4): hidden by VISIBILITY, not display - the select keeps its slot, so
+      // the toolbar never reflows between Home and the other tabs (display:none shifted
+      // the wrapped mobile toolbar on every Home entry: CLS 0.019). visibility:hidden also
+      // takes it out of the tab order and the accessibility tree.
       wrap.hidden = false;
+      var reserveOnly = tab === 'home';
+      wrap.classList.toggle('music-sort-reserved', reserveOnly);
+      if (reserveOnly) return;
       var key = activeSortKey();
       var opts = musicSortOptionsFor(key);
       var current = sortForTab(key);
@@ -2508,7 +2639,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // sort, then play from the top of the shuffled queue.
         askLightingForOpen(); // v1.334 gate r1 (adversary W2): the play waits on a fetch + a JSON read, which spends the gesture
         var seed = String(Math.floor(Math.random() * 1e9));
-        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function () {
+        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function (q) {
+          if (!q) return; // T-C7: superseded - a newer load owns the queue and the view
           if (queue.length) playAt(0);
         }).catch(function () {});
       }, { signal });
@@ -2596,20 +2728,32 @@ if (typeof module !== 'undefined' && module.exports) {
       // under the winner's already-registered nav -> Prev/Next played a
       // wrong-ALBUM track (the v1.104 desync/wrong-track class). The ctx write
       // moves AFTER the guard for the same reason.
-      if (myLoad !== loadSongsGen) return queue;
+      // v1.339 R1 (T-C7): and a superseded load answers NULL, never the live queue - a caller
+      // that acts on the result (Shuffle's playAt(0)) would otherwise play row 0 of whatever
+      // list the winner holds (unshuffled / the wrong list). Every acting caller bails on null.
+      if (myLoad !== loadSongsGen) return null;
       queueCtx = ctx;
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       queue = Array.isArray(data.items) ? data.items : [];
       return queue;
     }
 
+    // v1.339 (L1, D4): the ONE music art-reveal seam. The in-viewport covers of `host`
+    // reveal TOGETHER (common.js revealArtTogether: all decoded, or the capped wait - the
+    // off-screen ones per image); the view's signal aborts a pending batch on teardown.
+    // shimmerArt is the fallback for a shell whose common.js predates the helper.
+    function revealArt(host) {
+      var FT = (typeof window !== 'undefined') ? window.FileTube : null;
+      if (!FT || !host) return;
+      if (typeof FT.revealArtTogether === 'function') FT.revealArtTogether(host, { signal: signal });
+      else if (typeof FT.shimmerArt === 'function') FT.shimmerArt(host);
+    }
+
     // v1.102 (tranche 4 shimmer): every art image in `content` (album/song/drill/
-    // sticky) ships `art-shimmer`; hand them to the shared decode-reveal so each
-    // clears the shimmer the instant it decodes (and immediately for a cached one).
+    // sticky) ships `art-shimmer`; hand them to the shared decode-reveal (v1.339: the
+    // batched in-viewport reveal, revealArt) - a cached one clears immediately.
     function revealMusicArt() {
-      if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
-        window.FileTube.shimmerArt(content);
-      }
+      revealArt(content);
       // Redesign S1: wire the artist-avatar circles - reveal on load, DROP on
       // error so a broken avatar degrades to the monogram behind it (the
       // buildAccountAvatarEl reveal-once contract, both axes).
@@ -2726,6 +2870,7 @@ if (typeof module !== 'undefined' && module.exports) {
       stickyObserver.observe(sentinel);
     }
 
+    var renderGen = 0; // v1.339 R1 (T-C6): bumped by every render(); only the newest may paint
     async function render() {
       // v1.44.2: a drill's Back + title live in the large collapsing header
       // (buildDrillHeaderHtml) now, so the thin #music-crumb strip is unused for
@@ -2761,8 +2906,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // Gate r1 (adversary S7, closes D6): a pocket-menu pick that lands while this render is in
       // flight owns the browse view (it re-draws it FROM its queue); a render superseded by one
       // must not paint over it - the wrong header over the pick's rows, or a whole stale list.
+      // v1.339 R1 (T-C6): ...and a NEWER render (a tab switch, a sort change, a drill in/out
+      // while this one's fetch was in flight) owns it too - the stale response never paints
+      // the old tab/sort/drill over the active one. renderGen is claimed before any await.
       var menuPickAtStart = menuPickGen;
-      var stillMine = function () { return menuPickAtStart === menuPickGen; };
+      var myRender = ++renderGen;
+      var stillMine = function () { return menuPickAtStart === menuPickGen && myRender === renderGen; };
       try {
         if (drill) {
           // v1.273 (adversarial W1): mark the window in which `drill` is already the
@@ -2971,7 +3120,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // and play from the top — the seed makes next/prev walk it verbatim.
         askLightingForOpen(); // v1.334 gate r1 (adversary W2): before the fetch + JSON read spend the gesture
         var seed = String(Math.floor(Math.random() * 1e9));
-        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function () {
+        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function (q) {
+          if (!q) return; // T-C7: superseded - a newer load owns the queue and the view
           renderDrillView();
           if (queue.length) playAt(0);
         }).catch(function () {});
@@ -3077,6 +3227,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function loadTrack(item, i, opts) {
       opts = opts || {};
+      playingArtMemo = { id: item && item.id, artId: musicArtId(item) }; // v1.339 L1: survives a view re-init
       // Wave G: a PROJECTED library-audio track (source 'library') streams the
       // mp3 from the media byte route, arts from its YouTube thumbnail, and saves
       // progress to the MEDIA store - so it carries its OWN routes, which we
@@ -3098,7 +3249,7 @@ if (typeof module !== 'undefined' && module.exports) {
         albumKey: item.albumKey || '', // v1.104: so the player can re-seed the now-playing panel's album drill after a re-init
         channelFolder: channelFolderOf(item), // v1.317 (M1, D7): the channel folder survives a dock-return re-init via getCurrentMeta (the albumKey carry)
         duration: item.durationSec || 0,
-        artUrl: (isLib && item.artUrl) ? item.artUrl : ('/albumart/' + item.id),
+        artUrl: (isLib && item.artUrl) ? item.artUrl : ('/albumart/' + encodeURIComponent(musicArtId(item))), // v1.339 L1: the album's shared art id (full size: the big art)
         streamSrc: (isLib && item.streamSrc) ? item.streamSrc : ('/track/' + item.id),
         progressEndpoint: (isLib && item.progressEndpoint) ? item.progressEndpoint : '/api/music/progress',
         // v1.221: seek to the chapter start on load. v1.222: a chapter play now
@@ -3459,9 +3610,12 @@ if (typeof module !== 'undefined' && module.exports) {
         ? window.FileTube.decodeListContext(meta.browseCtx || '') : null;
       if (!ctx || ctx.src !== 'music') return;
       var scope = ctx.album ? { type: 'album', key: ctx.album } : (ctx.artist ? { type: 'artist', key: ctx.artist } : null);
+      var rebuilt;
       try {
-        await loadSongs({ scope: scope, sort: ctx.sort, seed: ctx.seed });
+        rebuilt = await loadSongs({ scope: scope, sort: ctx.sort, seed: ctx.seed });
       } catch (_) { return; }
+      if (!rebuilt) return; // T-C7: superseded - never re-arm nav around a queue this load did not write
+      if (signal.aborted) return; // T-C5 class: a view torn down mid-fetch must not re-register the player's global nav
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
       // ci<0 (the playing id isn't in the rebuilt queue - a ctx/scope mismatch)
@@ -3555,6 +3709,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var myGen = ++playSelectGen; // claim this select BEFORE the async album load
       drill = { type: 'album', key: item.albumKey, label: item.album || 'Album' };
       await render(); // loads the album into `queue` + renders the drill (render never throws)
+      if (signal.aborted) return; // v1.339 R1 (T-C5): the view died during the album load - never play into a dead view
       // Race guard (gate WARNING): a NEWER select - a fast second tap on a
       // DIFFERENT album - supersedes this one and owns the view + play. Bail
       // before playAt so a stale track never plays into the newer album's queue
@@ -3802,7 +3957,6 @@ if (typeof module !== 'undefined' && module.exports) {
       if (emptyNote) emptyNote.hidden = true;
       var host = content.querySelector('.music-song-list');
       var next = 0;
-      var shimmer = (window.FileTube && typeof window.FileTube.shimmerArt === 'function') ? window.FileTube.shimmerArt : null;
       function chunk() {
         // a newer build (or any re-render of the browse view) detached this host / bumped the gen.
         // NOT `list !== queue`: an autoplay append re-assigns `queue` (concat) mid-build, and the
@@ -3822,7 +3976,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (playingId && rowsIn[r].getAttribute('data-id') === playingId) rowsIn[r].classList.add('playing');
         }
         host.appendChild(box);
-        if (shimmer) shimmer(box);
+        revealArt(box); // v1.339 L1: a chunk's on-screen thumbs reveal together (off-screen ones per image)
         next = end;
         if (next < list.length) later(chunk);
       }
@@ -3936,6 +4090,10 @@ if (typeof module !== 'undefined' && module.exports) {
       mountEarlyCover();
       try {
         const v = await fetchJson('/api/videos/' + encodeURIComponent(mediaId));
+        // v1.339 R1 (T-C5): the view was left during the fetch - a late playAt would replace
+        // whatever the user moved on to (a video on the watch page), and the bounce below would
+        // hijack their navigation. Every exit after an await re-checks the view's signal.
+        if (signal.aborted) return;
         if (v && v.id) {
           const t = {
             id: v.id,
@@ -3968,6 +4126,7 @@ if (typeof module !== 'undefined' && module.exports) {
           return;
         }
       } catch (_) { /* unresolvable - fall through to the bounce */ }
+      if (signal.aborted) return; // T-C5: a failed fetch after the view died must not navigate either
       // The id came FROM a watch page, so a miss means it vanished mid-navigation -
       // return to the watch surface (its own 404 view explains better than a blank list).
       try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(mediaId)); return; } } catch (_) { /* no navigable location */ }
@@ -4035,6 +4194,8 @@ if (typeof module !== 'undefined' && module.exports) {
         const data = await fetchJson('/api/music?filter=recent-listening&limit=200');
         queue = Array.isArray(data.items) ? data.items : [];
       } catch (_) { queue = []; }
+      // v1.339 R1 (T-C5): the view died during the fetch (or its failure) - no late play/paint/nav
+      if (signal.aborted) return;
       setActiveTab(); // keep the tab-strip highlight consistent with tab='songs'
       if (crumb) { crumb.hidden = false; crumb.textContent = 'Recently played'; }
       renderSongList();
@@ -4043,7 +4204,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // v1.207 (Dean): a song opened from search / a card lands in its ALBUM
         // view (the friction this wave fixes), unless it has no album tag.
         var t0 = queue[idx];
-        if (t0 && t0.albumKey) { await playTrackInAlbum(t0); return; }
+        if (t0 && t0.albumKey) { await playTrackInAlbum(t0); return; } // playTrackInAlbum re-checks after its own await
         playAt(idx);
         return;
       }
@@ -4051,11 +4212,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // (in its album if it has one, else solo) so the right song still plays.
       try {
         const t = await fetchJson('/api/music/' + encodeURIComponent(trackId));
+        if (signal.aborted) return; // T-C5
         if (t && t.id) {
           if (t.albumKey) { await playTrackInAlbum(t); return; }
           queue = [t]; renderSongList(); playAt(0); return;
         }
       } catch (_) { /* not a resolvable music track - see the bounce vs render decision below */ }
+      if (signal.aborted) return; // T-C5: never bounce (location.replace) out of a view the user already left
       // v1.236 (Dean, "open downloaded music in the music player" is BOUND to the library):
       // a rerouted audio tile (bounceOnMiss - the &ao=1 origin marker) whose id the music API
       // can't resolve (a NON-projected download) must not dead-end - send it where it plays:
@@ -4127,6 +4290,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // around the playing track once the album queue has loaded.
       drill = { type: 'album', key: nowPlaying.albumKey, label: nowPlaying.album || 'Album' };
       render().then(function () {
+        // v1.339 R1 (T-C5): a view torn down during the album load must not re-register the
+        // lock-screen Prev/Next (a player GLOBAL) around its dead queue.
+        if (signal.aborted) return;
         var ci = -1;
         for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
         registerTrackNav(ci);
