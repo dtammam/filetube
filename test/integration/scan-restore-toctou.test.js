@@ -153,7 +153,19 @@ function heldRestore(trashId, holdCall, extraDeps = {}) {
     return updateDatabase(mutator);
   };
   const done = restoreTrashItem({ loadDatabase, updateDatabase: heldUpdate, getMediaId, ...extraDeps }, trashId);
-  return { done, reached: reached.promise, release: () => gate.resolve() };
+  // Bounded (gate r1): a restore that RETURNS without ever reaching the held
+  // call (a refusal - e.g. a trash/restore in-flight mark that was never
+  // released) fails the test at once, instead of parking on `reached` until
+  // the runner's timeout.
+  let parked = false;
+  reached.promise.then(() => { parked = true; });
+  const reachedOrFail = Promise.race([
+    reached.promise,
+    done.then((res) => {
+      if (!parked) throw new Error(`the restore returned before reaching its held call ${holdCall}: ${JSON.stringify(res)}`);
+    }),
+  ]);
+  return { done, reached: reachedOrFail, release: () => gate.resolve() };
 }
 
 // A stand-in stream on `filePath` that closes on the next turn: the scan's
@@ -458,4 +470,70 @@ test('G2 conjunct (filePath): a live row under a new file\'s id that names ANOTH
   const entry = loadDatabase().metadata[freshId];
   assert.equal(entry.filePath, fresh, 'THE binding: the entry names the walked file');
   assert.equal(entry.title, 'brand-new');
+});
+
+// v1.339 gate r1 (G2 survivor M14, `freshlyScannedIds.delete(id)`): the kept
+// restored entry must also leave the "new this scan" set, or the yt-dlp
+// new-download bridge treats it as a fresh download. The harmful input: an
+// UNCONSUMED downloadMeta capture for the restored file's video id - the
+// shape a keep-mine re-download of a video already in the library leaves
+// behind (S1: yt-dlp keeps the file, the capture is still recorded, and the
+// reuse fast path never consumes it). Without the delete, the bridge
+// overwrites the restored entry's title with the capture's, consumes the
+// capture, and records a false "new download" notification.
+test('G2 bridge: an item restored mid-walk in the download root is NOT fed an unconsumed capture - its title stays, the capture stays, no new-download notification', async () => {
+  const { ytdlpDb } = require('../../server');
+  const store = require('../../lib/ytdlp/store');
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scanrestore-dl-'));
+  const prevEnabled = process.env.FILETUBE_YTDLP_ENABLED;
+  const prevDir = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const root = path.resolve(downloadDir);
+    const chan = path.join(root, 'Chan');
+    fs.mkdirSync(chan, { recursive: true });
+    const clip = path.join(chan, 'Clip [dQw4w9WgXcQ].mp4');
+    const keep = path.join(chan, 'keep.mp4');
+    fs.writeFileSync(clip, 'clip-bytes');
+    fs.writeFileSync(keep, 'keep-bytes');
+    const clipId = getMediaId(clip);
+    seedState({
+      folders: [], folderSettings: {},
+      metadata: {
+        [clipId]: richEntry(root, clip, { youtubeId: 'dQw4w9WgXcQ', sourceTitle: undefined, title: 'Restored Title' }),
+        [getMediaId(keep)]: richEntry(root, keep),
+      },
+      settings: SETTINGS,
+    });
+    await updateDatabase(() => ytdlpDb.mutate((db) => {
+      const ns = store.ensureYtdlp(db);
+      ns.downloadMeta.dQw4w9WgXcQ = {
+        channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+        channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+        channelName: 'Captured Channel',
+        sourceTitle: 'Captured Title',
+        capturedAt: Date.now(),
+      };
+    }));
+    const tr = await trashItem(trashDeps(), clipId);
+    assert.equal(tr.ok, true);
+    assert.ok(ytdlpDb.read().downloadMeta.dQw4w9WgXcQ, 'precondition: the unconsumed capture is seeded');
+    const notesBefore = userStore.countNotifications();
+
+    await scanWithMidWalk({ chan }, async () => {
+      const res = await restoreTrashItem(trashDeps(), tr.trashId);
+      assert.equal(res.ok, true, 'precondition: the restore landed mid-walk');
+    });
+
+    const after = loadDatabase().metadata[clipId];
+    assert.ok(after, 'the restored item is live');
+    assert.equal(after.addedAt, 1600000000000, 'precondition: the restored entry was kept verbatim (the G2 keep ran)');
+    assert.equal(after.title, 'Restored Title', 'THE binding: the capture did not overwrite the restored title');
+    assert.ok(ytdlpDb.read().downloadMeta.dQw4w9WgXcQ, 'the capture was not consumed by the restored item'); // Wave 5: the bridge map is a table
+    assert.equal(userStore.countNotifications(), notesBefore, 'no false new-download notification');
+  } finally {
+    if (prevEnabled === undefined) delete process.env.FILETUBE_YTDLP_ENABLED; else process.env.FILETUBE_YTDLP_ENABLED = prevEnabled;
+    if (prevDir === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR; else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prevDir;
+  }
 });

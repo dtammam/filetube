@@ -253,7 +253,17 @@ async function raceRestoreIntoReconcile({ trashUnlinkFails }) {
     }
     : fs;
   const restoreP = restoreTrashItem({ loadDatabase, updateDatabase: heldUpdate, getMediaId, fs: restoreFs }, tr.trashId);
-  await linked.promise;
+  // Bounded (gate r1): a restore that RETURNS without reaching its commit (a
+  // refusal - e.g. a trash in-flight mark that was never released) fails
+  // here at once instead of parking on `linked` until the runner's timeout.
+  let parked = false;
+  linked.promise.then(() => { parked = true; });
+  await Promise.race([
+    linked.promise,
+    restoreP.then((res) => {
+      if (!parked) throw new Error(`the restore returned before reaching its commit: ${JSON.stringify(res)}`);
+    }),
+  ]);
   assert.equal(fs.statSync(lib.clip).ino, fs.statSync(tr.trashPath).ino, 'precondition: the half-restored same-inode shape');
   assert.ok(trashStore().get(tr.trashId), 'precondition: the record is still present (commit pending)');
 
@@ -368,4 +378,54 @@ test('T-S4 conjunct: the live record now names a DIFFERENT trashPath - the diren
   await reconcileWithLiveChange(({ tr, rec }) => {
     trashStore().set(tr.trashId, { ...rec, trashPath: `${rec.trashPath}.moved` });
   });
+});
+
+// v1.339 gate r1 (the T-S4 `!!liveTrashRec` survivor): the record RETIRED
+// inside the reconcile's await (a purge or a restore committed) is its own
+// explicit skip. Before, a null record fell to the next conjunct's
+// `liveTrashRec.originalPath`, threw, and landed in the catch's "could not
+// remove" warning - the file happened to survive only because that catch
+// never unlinks. Bind the explicit branch: the file is kept, the retired-
+// record skip is what ran, and the throw path (the catch warning) did not.
+test('T-S4 conjunct: the trash record RETIRED inside the await - the dirent is kept by the explicit skip, never by a throw into the catch', async () => {
+  const lib = seedLibrary();
+  const tr = await trashItem(trashDeps(), lib.clipId);
+  assert.equal(tr.ok, true);
+  fs.linkSync(tr.trashPath, lib.clip); // the crash-leftover shape: record + same inode
+  const stand = new EventEmitter();
+  stand.closed = false;
+  stand.destroyed = false;
+  let retired = false;
+  stand.destroy = () => {
+    trashStore().remove([tr.trashId]); // retired between the snapshot and the re-check
+    retired = true;
+    setImmediate(() => { stand.closed = true; stand.emit('close'); });
+  };
+  activeMediaStreams.set(lib.clip, new Set([stand]));
+
+  const logs = [];
+  const warns = [];
+  const realLog = console.log;
+  const realWarn = console.warn;
+  console.log = (...a) => { logs.push(a.join(' ')); };
+  console.warn = (...a) => { warns.push(a.join(' ')); };
+  try {
+    await scanDirectories();
+  } finally {
+    console.log = realLog;
+    console.warn = realWarn;
+  }
+
+  assert.equal(retired, true, 'precondition: the scan reached the reconcile branch and awaited destroyMediaStreams');
+  assert.equal(trashStore().get(tr.trashId), undefined, 'precondition: the record is gone at the re-check');
+  assert.ok(fs.existsSync(lib.clip), 'THE binding: the dirent was NOT unlinked');
+  assert.equal(fs.readFileSync(lib.clip, 'utf8'), 'clip-bytes');
+  assert.ok(
+    logs.some((l) => l.includes(`NOT reconciling ${lib.clip}`) && l.includes('its trash record was retired')),
+    `the explicit retired-record skip ran (logs: ${JSON.stringify(logs.filter((l) => l.includes('reconcil')))})`,
+  );
+  assert.ok(
+    !warns.some((w) => w.includes('could not remove the trash-move leftover')),
+    `no throw into the catch (warns: ${JSON.stringify(warns)})`,
+  );
 });
