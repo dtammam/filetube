@@ -27,6 +27,13 @@
   or an outline / box-shadow on the overlay; why a screenshot misses it (a compositor-only edge, or the
   screenshot's own crop). Measure the overlay's rect against the viewport on the device first.
 
+- [ ] **UI professionalism pass: an audit, a component layer, guardrails that hold** (Dean, 2026-09-27:
+  "Something about the full UI feels 'amateurish' ... flimsy and not premium ... make sure our design
+  system doesn't allow for anything imperfect when tweaking in the future"; plus native interactions:
+  "If I hold the screen to have it fast forward ... I see an iOS text magnifying glass ... It shouldn't
+  be so."). Audit and ranking across EVERY surface; candidate directions side by side before a north
+  star; then primitives + hard-fail guardrails (pre-push + CI, shrink-only exceptions), then per-surface
+  sweeps. Plan 2026-09-27-ui-professionalism-pass.
 - [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
   a PWA or a web app to query the device for battery and show that battery instead of just an
   arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
