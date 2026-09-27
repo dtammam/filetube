@@ -166,18 +166,22 @@ test('newGuardedContext: creates the context WITH serviceWorkers blocked, instal
   assert.strictEqual(record.blockedExpected.length, 1);
 });
 
-test('CALLSITE BINDING (gate CRITICAL-1): capture.js creates contexts ONLY through newGuardedContext - bare newContext is banned', () => {
-  const src = fs.readFileSync(path.join(__dirname, '../../tools/capture/capture.js'), 'utf8');
-  // Strip comments first - a lock satisfied by prose is the v1.50.3 class.
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  // Remove the factory name, then the SUBSTRING 'newContext' must not
-  // survive anywhere - catches dot access, bracket notation, destructuring
-  // aliases, the lot (gate DELTA-C: /\.newContext\(/ missed brackets).
-  const residue = code.replace(/newGuardedContext/g, '');
-  assert.ok(!/newContext/.test(residue), 'a bare newContext reference survives in capture.js - every context MUST go through newGuardedContext');
-  const sites = code.match(/newGuardedContext\s*\(/g) || [];
-  assert.ok(sites.length >= 2, `expected the scene AND login contexts to use newGuardedContext (found ${sites.length})`);
-});
+// Both capture drivers: the Tier 3 harness and the UI-professionalism scene capture
+// (test/visual/capture.js), which drives destructive-looking controls on the same fixture.
+for (const rel of ['tools/capture/capture.js', 'test/visual/capture.js']) {
+  test(`CALLSITE BINDING (gate CRITICAL-1): ${rel} creates contexts ONLY through newGuardedContext - bare newContext is banned`, () => {
+    const src = fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
+    // Strip comments first - a lock satisfied by prose is the v1.50.3 class.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    // Remove the factory name, then the SUBSTRING 'newContext' must not
+    // survive anywhere - catches dot access, bracket notation, destructuring
+    // aliases, the lot (gate DELTA-C: /\.newContext\(/ missed brackets).
+    const residue = code.replace(/newGuardedContext/g, '');
+    assert.ok(!/newContext/.test(residue), `a bare newContext reference survives in ${rel} - every context MUST go through newGuardedContext`);
+    const sites = code.match(/newGuardedContext\s*\(/g) || [];
+    assert.ok(sites.length >= 2, `expected the scene AND login contexts to use newGuardedContext (found ${sites.length})`);
+  });
+}
 
 test('the capture allowlist stays a SUBSET of the server readonly allowlist (twin contracts cannot drift apart)', () => {
   const { READONLY_ALLOWED_POSTS } = require('../../server.js');
