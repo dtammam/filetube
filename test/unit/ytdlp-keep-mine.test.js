@@ -20,10 +20,11 @@ const assert = require('node:assert');
 
 const run = require('../../lib/ytdlp/run');
 const ytdlp = require('../../lib/ytdlp');
-const { formatOneOffStatusText, resolveAvatarSource } = require('../../public/js/common.js');
+const { formatOneOffStatusText, resolveAvatarSource, chromeIconEl } = require('../../public/js/common.js');
 // subscriptions.js consumes resolveAvatarSource as a bare global (browser
 // script order) -- same install as ytdlp-subscriptions-client.test.js.
 global.resolveAvatarSource = resolveAvatarSource;
+global.chromeIconEl = chromeIconEl; // v1.340: the Subscriptions bell glyph (a common.js global)
 const { formatLiveStatusText } = require('../../lib/ytdlp/client/subscriptions.js');
 
 // ---- parseRealDownloadLine -------------------------------------------------

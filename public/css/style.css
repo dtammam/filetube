@@ -4928,6 +4928,24 @@ a.sub-row-channel-link:focus-visible {
   flex: none;
 }
 
+/* v1.340: a two-state button's label (common.js stableToggleLabelHtml). Every label
+   shares ONE grid cell, so the button is as wide as its longest label in both states
+   and the row beside it never shifts on a tap; only the current label is visible. */
+.btn-label-stack { display: inline-grid; }
+.btn-label-slot { grid-area: 1 / 1; text-align: center; }
+.btn-label-slot[data-idle] { visibility: hidden; }
+/* A hidden label still sets the line box: the fallback-font star in "Pinned ★" is taller than
+   the text, which moved the baseline of an inline-flex button and dropped it ~2px below its
+   neighbours (probed at 390px, every era). Middle-align these buttons so their resting row is
+   level whatever their labels hold. */
+.btn:has(> .btn-label-stack) { vertical-align: middle; }
+/* A glyph inside a label (the Notify bell before its words, the Pinned star after): a touch
+   larger than the text, like the emoji it replaced. The negative block margins keep its
+   margin box inside the text's line, so a glyph never makes its button taller than a
+   plain-text neighbour (gate r1 W2). */
+.btn .btn-glyph { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin: -0.2em 0.3em -0.2em 0; }
+.btn .btn-glyph-after { margin: -0.2em 0 -0.2em 0.3em; }
+
 .icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
 .icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }
 .icon-cog { -webkit-mask-image: url(/assets/icons/settings.svg); mask-image: url(/assets/icons/settings.svg); }
@@ -12554,7 +12572,7 @@ html[data-modern="on"] .video-uploader {
     --pk-o-edge:inset 0 0 0 1px var(--pk-o-ink);
     --pk-o-disc-1:#fcfcfa; --pk-o-disc-2:#f0f0ec; --pk-o-disc-inset:15%;
     --pk-o-rim:0 0 0 1px rgba(0,0,0,.14), inset 0 1px 2px rgba(0,0,0,.06);
-    --pk-o-gap:#c9c9c9; --pk-o-tick:rgba(0,0,0,.045); --pk-o-clear:rgba(0,0,0,0);
+    --pk-o-gap:#c9c9c9; --pk-o-clear:rgba(0,0,0,0);
     --pk-o-center-rim:0 0 0 1px rgba(0,0,0,.16), inset 0 -1px 2px rgba(0,0,0,.06);
     /* the bitmap face's x-height is .429 em (the app face's, Geist / Roboto, .53): font-size-adjust .64 scales
        it about 1.5x, past the app face, so the lettering fills the rows as on the photo's screen - the
@@ -12590,12 +12608,13 @@ html[data-modern="on"] .video-uploader {
   .mms-look-original .ip-wheel::before{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - under the scroll wheel, inside the isolated wheel */ border-radius:var(--radius-full);
     background:linear-gradient(45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)),
       linear-gradient(-45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)); }
-  /* 4. The wheel turns: the engine writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied
-        to the fresh wheel on a repaint; gate r1 qa S3); only this layer reads it (a transform - no filter, blur or mask). The real wheel is smooth plastic,
-        so FAINT tick marks at its rim are what show the turn. */
+  /* 4. The scroll wheel: a PLAIN disc, as on the real one (v1.340, Dean: "it's a plain disc in the real one";
+        Commons "IPod 1Gen.jpg" shows smooth white plastic, no marks - v1.335's faint rim ticks are gone). The
+        engine still writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied to the fresh
+        wheel on a repaint; gate r1 qa S3) and this layer still turns with it (a transform - no filter, blur or
+        mask); on a plain radial disc the turn draws nothing, which is the real wheel's look. */
   .mms-look-original .ip-wheel::after{ content:""; position:absolute; inset:var(--pk-o-disc-inset); z-index:-1; /* token-exempt: local stacking - over the gaps, under the zones and the center */ border-radius:var(--radius-full);
     background:radial-gradient(circle closest-side, var(--pk-o-disc-1) 0%, var(--pk-o-disc-2) 88%, var(--pk-o-clear) 88.5%),
-      repeating-conic-gradient(var(--pk-o-tick) 0deg 1deg, var(--pk-o-clear) 1deg 15deg),
       radial-gradient(circle closest-side, var(--pk-o-disc-2), var(--pk-o-disc-2));
     box-shadow:var(--pk-o-rim); transform:rotate(var(--ip-turn, 0deg)); }
   /* the center button's thin grey rim when unlit (a lit wheel keeps its moving dome shadow) */

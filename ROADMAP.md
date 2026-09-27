@@ -88,7 +88,7 @@
 - [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
   overlay-containment lint's scroll match, with a fixture.
 
-- [ ] **Bug: the Notify button shifts the row when it toggles** (Dean, 2026-09-26: "notify button shifts
+- [x] **Bug: the Notify button shifts the row when it toggles** - SHIPPED v1.340.0 (see Shipped) (Dean, 2026-09-26: "notify button shifts
   unreasonably - should be stable", with two iPhone screenshots of a watch page's channel card). The
   label flips between "Notify" (bell struck through) and "Notifying" (bell), so the button changes width
   and "Pin channel" beside it jumps sideways on every tap. First questions when picked up: reserve the
@@ -104,6 +104,43 @@
   the lock's visible state and how to release it (a tap on a speed pill? holding again?); whether it
   applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
   swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
+
+- [ ] **Bug: the mobile bottom bar still slides up to the middle of the screen, in some edge case** (Dean,
+  2026-09-27: "Weird edge case where bottom bar still slides upto middle on mobile. No bien."). "Still"
+  = it is the known item: #6 from v1.311 ("the bottom nav unsticking after a rotate", left waiting on a
+  device check since v1.311.3), now seen again on the phone. Not yet reproduced here. First questions
+  when picked up (LESSONS 1: name the falsifying observation before editing): what came just before
+  (a rotate, leaving fullscreen or the expanded audio view, the keyboard closing after a search,
+  returning to the PWA from the background, pull-to-refresh); does it fix itself on a scroll or a
+  rotate back; the iPhone PWA or Safari. Candidate mechanisms to measure: `position:fixed; bottom:0`
+  measured against a stale visual viewport (iOS keeps the old innerHeight after a rotate or the
+  keyboard), a body scroll-lock that pins `top` and is not released, and the safe-area inset changing
+  while the bar is laid out. A `?debugLifecycle=1` capture of the bar's rect against `visualViewport`
+  when it happens decides which one.
+
+- [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
+  vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
+  around, not a headset; his files are generic website downloads). **PAUSED mid-build on his call, same
+  day.** Today a VR file plays as the raw stretched panorama. A WIP commit (untested) lives on the
+  local branch `feat/v1.340-vr-360` (worktree `.claude/worktrees/vr360`), not pushed and not gated:
+  `lib/media/projection.js` (detection: the owner's pick > the file's spherical metadata > the file name
+  in the DeoVR/Skybox convention `_180_LR` / `_360_TB` / `180x180_3dh`, the name counting only when the
+  frame's shape agrees) and `public/js/vr-view.js` (a WebGL canvas over the `<video>`: one triangle and a
+  ray-to-longitude/latitude shader; 360 / 180, mono / side-by-side / stacked, left eye only; drag, wheel
+  and pinch zoom, opt-in motion via the device quaternion). Measured: ffprobe 7.0.2 on files from
+  Google's spatial-media injector prints `side_data_type: 'Spherical Mapping'` +
+  `projection: 'equirectangular' | 'tiled equirectangular'` (VR180's bound_left/right in panorama
+  PIXELS) + `'Stereo 3D'` / `type: 'top and bottom' | 'side by side'`; the probe's
+  `stream_side_data=rotation` must grow those keys (rotation keeps working beside them). Not done: the
+  scan wiring, the owner's per-video pick (the `chaptersManual` precedent: requireModifyLibrary, the
+  scan's re-init carry AND the Phase-2 mirror, route-write classification), a player settings-menu row,
+  tests, the gate. Known risks for the device pass: (1) an iPhone fullscreen is Apple's own player, so
+  the sphere needs a full-window mode instead; (2) iOS once blacked out video when a page drew live
+  frames (the v1.312 Ambient lesson) - the sphere must upload live frames to WebGL, so test it on the
+  iPhone FIRST; (3) the existing library is never re-probed, so metadata-only files need a tag-only
+  backfill pass or a manual pick (the file-name rule works at once); (4) not verified yet: the shader's
+  left/right sense, which needs one rendered frame of a labelled panorama. Out of scope: headset WebXR,
+  cardboard, fisheye and cubemap files (YouTube's EAC), Roku / TV / thumbnails (they stay flat).
 
 ## Resolved
 
@@ -211,6 +248,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.340.0 - A steadier channel row with a real bell, and a plainer Original wheel (2026-09-27)
+
+- **Notify holds still** (Dean: "notify button shifts unreasonably - should be stable"; "use the same
+  notification glyph versus emoji"): the watch page's Subscribe, Pin channel and Notify buttons keep ONE
+  width in both states - every label is laid out in one grid cell and only the current one shows
+  (`stableToggleLabelHtml`, common.js). Notify draws the header's bell (Material's slashed bell when off),
+  never the emoji pair; the Pinned star is a drawn glyph too (a text star is a taller fallback-font glyph
+  that made Pin 3px taller on desktop). Measured in the real watch page, four eras, light and dark: at
+  390px each button keeps one x/width/y/height across five states (was 2 / 3 / 5 positions); at 1280 the
+  row is level at 28px. The Subscriptions page's row bells and the Podcasts "Pin to Playlists" button
+  follow suit.
+- **The Subscriptions page's bottom bar** is the other pages' bar: Liked, Podcasts, Music, Books and
+  Downloads were missing, and its glyphs were the old late-painting masks (tech-debt #114, closed).
+- **Continue listening asks for the 512px cover**, keyed on the album, not the full-size file (#287 e,
+  the home-row half; the 92x138 tile cover-fits the square art to 138px, 276px at 2x).
+- **The Original skin's wheel is a plain disc** (Dean: "it's a plain disc in the real one"): the v1.335 rim
+  ticks are gone, checked against a photo of a real first iPod (Wikimedia Commons "IPod 1Gen.jpg").
+- Gate: APPROVED r2 @a4cb6e98 (adversary, qa, security-brief); r1 caught an untested width CSS, the desktop
+  Pin height, a flash probe gone blind and the tile's real shape. Residuals: tech-debt #288. Device pass:
+  tap Notify / Pin / Subscribe on the phone (nothing beside them moves), the Subscriptions page's bottom
+  bar, the Original skin's wheel.
 
 ### v1.339.0 - Nothing you download or keep can be lost, and screens stop jumping (2026-09-27)
 

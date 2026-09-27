@@ -164,6 +164,13 @@ test('gate r1 W1: the full-screen panel classes have ONE builder (the registry\'
   assert.deepStrictEqual(writers.sort(), ['music-skins.js', 'music.js:nowPlayingPanel', 'skin-surface.js:panel'], 'the builder, and the two writers through it');
 });
 
+test('v1.340 (Dean: "a plain disc in the real one"): the Original scroll wheel carries no marks', () => {
+  const disc = ALL.filter((r) => r.sel === '.mms-look-original .ip-wheel::after' && /background:/.test(r.body));
+  assert.strictEqual(disc.length, 1, 'one painted disc rule (the other is the reduced-motion transform)');
+  assert.doesNotMatch(disc[0].body, /conic-gradient|linear-gradient/, 'only the radial disc paints: no ticks, no spokes');
+  assert.doesNotMatch(CSS, /--pk-o-tick/, 'the tick token is gone, not left dangling');
+});
+
 test('AC6 (e): only the scroll-wheel layer reads the turn (a transform), and reduced motion drops it', () => {
   const readers = ALL.filter((r) => /--ip-turn/.test(r.body));  // (the reduced-motion override names no var)
   assert.deepStrictEqual(readers.map((r) => r.sel), ['.mms-look-original .ip-wheel::after'], 'one reader: the disc');

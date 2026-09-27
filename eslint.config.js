@@ -256,6 +256,8 @@ module.exports = [
         chromeIconEl: 'readonly',
         chromeIconMarkup: 'readonly',
         CHROME_ICON_SVG: 'readonly',
+        // v1.340: the stable-width two-state button label (common.js), used by watch.js.
+        stableToggleLabelHtml: 'readonly',
         selectRecentUploaderChannels: 'readonly',
         modernCardAvatar: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper

@@ -1403,6 +1403,8 @@
     // --ip-turn on the WHEEL element only while the skin has a LOOK (gate r1 qa S3: on the wheel, not the
     // panel, so a turn restyles the wheel, not a 200-row queue). Every paint renders a fresh wheel, so no
     // other skin can ever carry it (qa S1); paint re-applies it to the Original's new wheel.
+    // v1.340: the disc it turns is now PLAIN, as on the real first iPod (Dean), so the turn draws
+    // nothing visible; the write stays so a future look on the disc (a sheen, a mark) follows the thumb.
     var wheelTurn = 0;
     function skinLook() {
       var e = (typeof SKINS.skinById === 'function' && SKINS.skinById(getSkinId())) || {};
@@ -2528,7 +2530,8 @@
         st.accum += d;
         var lettered = !!(st.menu && pocket && !wheelTakeover && pocket.inLetterMode());
         hapticOnMove(st, ev, Math.abs(d), d, lettered); // v1.256: ticks in BOTH modes (cursor + scrub); v1.303 signed d for the sweep engine; quick scroll: per letter in letter mode
-        // v1.335: the Original's wheel turns under the thumb - every rotation, Brick's included
+        // v1.335: the Original's wheel turns under the thumb - every rotation, Brick's included (a plain
+        // disc since v1.340, so nothing visible moves; see wheelTurn)
         if (skinLook()) {
           wheelTurn = (wheelTurn + d) % 360;
           try { st.wheel.style.setProperty('--ip-turn', wheelTurn.toFixed(1) + 'deg'); } catch (_) { /* detached */ }
