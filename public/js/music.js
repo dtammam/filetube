@@ -713,6 +713,35 @@ function buildMusicSkeletonRows(n) {
   return '<div class="music-song-list">' + rows + '</div>';
 }
 
+// v1.339 (L1b): the ONE writer of a music-toolbar control's presence. The toolbar wraps on
+// a phone, so a control that APPEARS or VANISHES (display none <-> shown) reflows every
+// control after it - the Artists-only view toggle moved Autoplay from row 1 to row 2 (CLS
+// 0.0174) once L2's global `.btn[hidden]` guard made [hidden] really remove the box. Three
+// states: 'shown'; 'reserved' = the box keeps its slot but is invisible
+// (.music-slot-reserved -> visibility:hidden), inert, aria-hidden and out of the tab order;
+// 'gone' = [hidden] (display:none), only for a control that is absent for the WHOLE life of
+// a layout (the pop-out where it is unsupported, More outside the expanded player).
+function setToolbarSlot(el, state) {
+  if (!el) return;
+  var reserved = state === 'reserved';
+  el.hidden = state === 'gone';
+  el.classList.toggle('music-slot-reserved', reserved);
+  if (reserved) {
+    el.setAttribute('aria-hidden', 'true');
+    el.setAttribute('tabindex', '-1');
+    el.setAttribute('inert', '');
+  } else {
+    el.removeAttribute('aria-hidden');
+    el.removeAttribute('tabindex');
+    el.removeAttribute('inert');
+  }
+}
+// A reserved (or gone) control never acts - `inert` already drops real input; this is the
+// belt for a programmatic click. Pure -> tested.
+function toolbarSlotLive(el) {
+  return !!el && !el.hidden && !el.classList.contains('music-slot-reserved');
+}
+
 // v1.339 (L1, M1): "Jump back in" sits ABOVE the tabs and used to ship `hidden`, then
 // unhide after its own fetch - shoving the tabs + content down 181px on every cold load
 // and SPA return (CLS 0.14 on every mobile tab). The v1.99 avatar-bar pattern
@@ -831,6 +860,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
     MUSIC_JUMPBACK_COUNT_KEY, readJumpBackCount, writeJumpBackCount, buildJumpBackSkeletonHtml,
+    setToolbarSlot, toolbarSlotLive,
   };
 }
 
@@ -1795,7 +1825,10 @@ if (typeof module !== 'undefined' && module.exports) {
       var p = window.FileTube && window.FileTube.player;
       var expanded = !!(p && typeof p.getState === 'function' && p.getState() === 'full');
       var show = expanded && extrasEligibleView();
-      actionsBtn.hidden = !show;
+      // v1.339 (L1b): while the player is expanded, More keeps its slot even when this track
+      // has no extras (an autoplay advance native <-> library never reflows the toolbar);
+      // outside the expanded player it is gone (the expansion itself re-lays the page).
+      setToolbarSlot(actionsBtn, show ? 'shown' : (expanded ? 'reserved' : 'gone'));
       // Gate (both seats): the desktop menu lives in the PERSISTENT toolbar, so an autoplay
       // advance would leave it open still bound to the PREVIOUS track - Delete/Move would
       // close() the now-playing track, and Share/Like/etc would act on the wrong item. Close
@@ -1805,7 +1838,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // panel and detaches the sticker menu node.)
       if (!show || (actionsMenu && !actionsMenu.hidden && extrasBaseId() !== actionsMenuBaseId)) hideActionsMenu();
     }
-    if (actionsBtn) actionsBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleActionsMenu(); }, { signal: signal });
+    if (actionsBtn) actionsBtn.addEventListener('click', function (e) { e.stopPropagation(); if (toolbarSlotLive(actionsBtn)) toggleActionsMenu(); }, { signal: signal }); // v1.339 L1b: a reserved slot never acts
     if (actionsMenu) actionsMenu.addEventListener('click', function (e) {
       var xact = e.target.closest && e.target.closest('[data-skin-x]');
       if (!xact) return;
@@ -2458,10 +2491,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // button's lockstep hide, but its own support gate (not CSS).
     function updatePopoutBtn() {
       if (!popoutBtn) return;
-      popoutBtn.hidden = !(popoutSupported() && hasCurrentMusicTrack());
+      // v1.339 (L1b): where the pop-out is supported its slot is held from the start and
+      // the button only turns visible when a track plays (no reflow on the first play).
+      setToolbarSlot(popoutBtn, !popoutSupported() ? 'gone' : (hasCurrentMusicTrack() ? 'shown' : 'reserved'));
       popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
     }
-    if (popoutBtn) popoutBtn.addEventListener('click', togglePopout, { signal });
+    if (popoutBtn) popoutBtn.addEventListener('click', function () { if (toolbarSlotLive(popoutBtn)) togglePopout(); }, { signal }); // v1.339 L1b: a reserved slot never acts
     // Gate finding (both seats): the ONLY thing keeping the in-tab and pop-out skins from
     // being live at once is the viewport split, and nothing re-checked it on a RESIZE - so a
     // wide->narrow shrink with the pop-out open left the button visible AND let the in-tab
@@ -2575,9 +2610,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // the toolbar never reflows between Home and the other tabs (display:none shifted
       // the wrapped mobile toolbar on every Home entry: CLS 0.019). visibility:hidden also
       // takes it out of the tab order and the accessibility tree.
-      wrap.hidden = false;
+      // v1.339 (L1b): through the one slot writer (setToolbarSlot) with the other toolbar
+      // controls; its WIDTH is fixed in CSS so a drill's longer option list ("Release date
+      // (newest)") cannot widen it and reflow the row either.
       var reserveOnly = tab === 'home';
-      wrap.classList.toggle('music-sort-reserved', reserveOnly);
+      setToolbarSlot(wrap, reserveOnly ? 'reserved' : 'shown');
       if (reserveOnly) return;
       var key = activeSortKey();
       var opts = musicSortOptionsFor(key);
@@ -2653,7 +2690,9 @@ if (typeof module !== 'undefined' && module.exports) {
     function syncViewToggle() {
       if (!viewToggleBtn) return;
       var showable = (tab === 'artists' && !drill);
-      viewToggleBtn.hidden = !showable;
+      // v1.339 (L1b): RESERVED off the Artists grid, never removed - showing it on the Artists
+      // tab reflowed the wrapped mobile toolbar (Autoplay row 1 -> row 2, CLS 0.0174).
+      setToolbarSlot(viewToggleBtn, showable ? 'shown' : 'reserved');
       if (!showable) return;
       var isList = getArtistView() === 'list';
       var icon = viewToggleBtn.querySelector('i');
@@ -2664,6 +2703,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (viewToggleBtn) {
       viewToggleBtn.addEventListener('click', function () {
+        if (!toolbarSlotLive(viewToggleBtn)) return; // v1.339 L1b: a reserved slot never acts
         writePref(ARTIST_VIEW_KEY, getArtistView() === 'list' ? 'grid' : 'list');
         syncViewToggle();
         render().catch(function () {});
