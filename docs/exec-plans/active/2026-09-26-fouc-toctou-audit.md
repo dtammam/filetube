@@ -3,10 +3,10 @@ plan: fouc-toctou-audit
 harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
-status: Gate:APPROVED r2 @f8a7ee52
-next: safety checkpoint APPROVED r2 @f8a7ee52; look base + L1b + F4 merged; dual-Node, then the final delta gate f8a7ee52..HEAD (adversary + qa + security-brief)
+status: Gate:APPROVED r3 @03a1f634
+next: final gate APPROVED r3 @03a1f634; fix qa W1 (22 shell comments -> test/unit/app-look-l2.test.js), seats confirm the comment-only delta, then release v1.339.0 (docs/RELEASING.md)
 design: pending
-gate: SAFETY CHECKPOINT APPROVED r2 @f8a7ee52 (adversary + qa + security-brief); r1 CHANGES fixed in F1-F3; final delta (look base + F4) pending
+gate: APPROVED r3 @03a1f634 (adversary + qa + security-brief); safety checkpoint APPROVED r2 @f8a7ee52 after r1 CHANGES fixed in F1-F3; qa r3 W1 (shell comments name a missing test file) fixed next, delta confirm pending
 ---
 
 # Audit: FOUC / layout shift / TOCTOU across the app
@@ -459,6 +459,23 @@ this branch.
   Residual: an uploader-filed one-off's forged pair could still name a file created during the job
   window elsewhere (needs an operator `--print` + timing); that wiring is untested.
 
+### Gate r3 notes (all three seats APPROVED @03a1f634)
+
+- qa r3 W1: the pre-paint reserve blocks in all 11 header shells name `test/unit/chrome-reserve.test.js`,
+  which does not exist (the lock is test/unit/app-look-l2.test.js) - fixed in a comment-only sweep.
+- security-brief r3 LOW (tracker): no global cap on concurrent ffmpeg rendition jobs
+  (artRendition.js runJob); a member or a cold HTTP/2 Music load can start one per key x size at
+  once, once per key (cached after). INFO: harden the rendition ffmpeg with `-f image2` +
+  `-protocol_whitelist file`; `ft-ytdlp-module` and `ft-music-jumpback-count` are not cleared on
+  sign-out (cosmetic); the app sends no CSP (long-standing).
+- qa r3 suggestions (tracker): home Continue-listening row (main.js ~204) and home track cards
+  (main.js ~677) still request full-size `/albumart/<trackId>`; music-ambient's aborted-view guard is
+  now masked by R1 T-C5; music-toolbar-slots popout/More click belts and slot-state decisions are
+  source-lock-only (behavioural binding feasible); the first cold visit after a scan pays for every
+  rendition (home cold first reveal 1372ms vs 899ms originals).
+- adversary r3 suggestions (tracker): a SIGKILL mid-rendition leaves a `.tmp.jpg` in `.albumart/sized`
+  (never swept); a filesystem clock >1s behind the server leaves a fresh audio source beside the mp3.
+
 ## For the tracker (found while building, not fixed here)
 
 - F2: subscription audio has the same C2 mechanism if an audio subscription and a video of the same
@@ -496,9 +513,12 @@ this branch.
 Gate: APPROVED r1 - security-brief, reviewed at 8919ba55 (superseded: re-approved r2 @f8a7ee52)
 Gate: CHANGES r1 @8919ba55 — qa
 Gate: CHANGES r1 @8919ba55 — adversary
-Gate: APPROVED r2 @f8a7ee52 — security-brief
-Gate: APPROVED r2 @f8a7ee52 — qa
-Gate: APPROVED r2 @f8a7ee52 — adversary
+Gate: APPROVED r2 - security-brief, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)
+Gate: APPROVED r3 @03a1f634 — security-brief
+Gate: APPROVED r2 - qa, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)
+Gate: APPROVED r3 @03a1f634 — qa
+Gate: APPROVED r2 - adversary, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)
+Gate: APPROVED r3 @03a1f634 — adversary
 
 r1 findings (seat reports, summarized by the Architect; repros live in the seats' scratch dirs):
 - **C1 (qa + adversary, CRITICAL, regression from S3):** the T-S2 keep-guard (orchestrator.js
