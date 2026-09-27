@@ -327,6 +327,17 @@ test('home grid: an appended page uses createElement/append -- the already-rende
 // fresh params (a new seed on a re-roll) and REPLACE the grid.
 // ---------------------------------------------------------------------------
 
+// UI pass sweep S2: the sort control opens a ui.menu (a sheet on <body>); pick a row by its label.
+async function pickSort(dom, label) {
+  const { document } = dom.window;
+  document.getElementById('sort-select-btn').click();
+  await new Promise((r) => setTimeout(r, 40));
+  const row = Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === label);
+  assert.ok(row, `expected the sort menu to offer "${label}"`);
+  row.click();
+  await settle();
+}
+
 test('home grid: a sort change refetches a fresh page 0 with the new sort param and REPLACES the grid', async () => {
   const fullList = makeFullList(200);
   const ioInstances = [];
@@ -339,11 +350,9 @@ test('home grid: a sort change refetches a fresh page 0 with the new sort param 
     assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 60);
     assert.strictEqual(videosCallCount(calls), 1);
 
-    // v1.41.2: the sort control is a custom dropdown -- pick an option by
-    // clicking its menu item (the same UI path a user takes).
-    const sortItem = document.querySelector('#sort-menu [data-sort="title-asc"]');
-    sortItem.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-    await settle();
+    // UI pass sweep S2: the sort control is a ui-btn that opens a ui.menu --
+    // pick an option by clicking its menu row (the same UI path a user takes).
+    await pickSort(dom, 'Title (A-Z)');
 
     assert.strictEqual(videosCallCount(calls), 2, 'expected the sort change to trigger exactly one more /api/videos fetch');
     // REPLACED, not appended: still exactly one page's worth of cards.
@@ -369,8 +378,9 @@ test('home grid: the format toggle refetches page 0 with the new format param', 
     const { document } = dom.window;
     assert.strictEqual(videosCallCount(calls), 1);
 
-    const videoToggleBtn = document.querySelector('.format-toggle-btn[data-format-mode="video"]');
-    assert.ok(videoToggleBtn, 'expected the format toggle\'s "Videos" button to exist');
+    // UI pass sweep S2 (F19): the format is a dimension of the ONE chip row.
+    const videoToggleBtn = document.querySelector('#library-filter-chips .ui-chip[data-group="format"][data-chip="video"]');
+    assert.ok(videoToggleBtn, 'expected the chip row\'s "Videos" chip to exist');
     videoToggleBtn.click();
     await settle();
 
@@ -393,12 +403,11 @@ test('home grid: "shuffle again" re-fetches page 0 with a FRESH seed each time (
   try {
     await settle();
     const { document, window } = dom.window;
-    // Switch to "random" via the custom sort dropdown (the same UI path a
-    // user would take) -- this both persists `filetube_sort=random` AND
-    // triggers the reset that makes the Shuffle button visible.
-    const sortItem = document.querySelector('#sort-menu [data-sort="random"]');
-    sortItem.dispatchEvent(new window.Event('click', { bubbles: true }));
-    await settle();
+    // Switch to "random" via the sort menu (the same UI path a user would
+    // take) -- this both persists `filetube_sort=random` AND triggers the
+    // reset that makes the Shuffle button visible.
+    await pickSort(dom, 'Feeling lucky');
+    void window;
 
     const firstSeedCall = gridVideosCalls(calls).pop();
     const firstSeed = parseQueryParams(firstSeedCall.url).get('seed');

@@ -28,34 +28,29 @@ function loadLibraryPrefix() {
   return mainJs.slice(start, cfg);
 }
 
-test('loadLibrary renders the format + watch toggles BEFORE the first fetch (toolbar complete from first paint)', () => {
+// UI pass sweep S2 (F19): the format + watch toggles are dimensions of the ONE
+// chip row now (mountLibraryChips); the v1.100 complete-from-first-paint lock
+// carries over to it (AC12 conversion).
+test('loadLibrary renders the filter chip row BEFORE the first fetch (toolbar complete from first paint)', () => {
   const prefix = loadLibraryPrefix();
-  // Rendered before any await, alongside the grid skeleton seed.
-  // v1.339 (L2): the skeleton now carries the Modern byline-avatar option (shape-matched).
-  assert.match(prefix, /buildSkeletonGrid\(SKELETON_CARD_COUNT, \{ avatar: !!modernMode \}\)/, 'the grid skeleton is still seeded first');
-  assert.match(prefix, /renderFormatToggle\(sectionActions,\s*getStoredFormatFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,
-    'the format toggle renders in loadLibrary BEFORE the /api/config fetch');
-  assert.match(prefix, /renderWatchToggle\(sectionActions,\s*getStoredWatchFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,
-    'the watch-state toggle renders in loadLibrary BEFORE the fetch');
-  assert.ok(prefix.indexOf('renderFormatToggle(') < prefix.indexOf('renderWatchToggle('),
-    'format toggle before watch toggle (the watch renderer anchors behind #library-format-toggle)');
+  assert.match(prefix, /buildSkeletonGrid\(SKELETON_CARD_COUNT, \{ avatar: !!modernMode, typeLine: isUnifiedSearch \}\)/, 'the grid skeleton is still seeded first (with the search type line on a global search)');
+  assert.match(prefix, /ensureLibraryChips\(\);/, 'the chip row mounts in loadLibrary BEFORE the /api/config fetch');
+  const mount = mainJs.slice(mainJs.indexOf('function mountLibraryChips() {'), mainJs.indexOf('function updateShuffleButtonVisibility() {'));
+  assert.match(mount, /getStoredFormatFilter\(\)[\s\S]*getStoredWatchFilter\(\)/, 'from the synchronous stored prefs');
+  assert.doesNotMatch(mount, /await|fetch\(/, 'the mount itself is synchronous');
 });
 
-test('the early render is scoped to the classic toolbar (NOT modern home) and guarded against a re-render flash', () => {
+test('the early render is scoped to the classic toolbar (NOT modern home) and guarded against a rebuild', () => {
   const prefix = loadLibraryPrefix();
-  // The guard block: modern home uses its own chip chrome (section-actions
-  // hidden); not-present so a loadLibrary retry / cached re-entry never
-  // removes+reinserts the toggles (a flash).
-  assert.match(prefix, /if \(!modernMode && sectionActions && !sectionActions\.querySelector\('#library-format-toggle'\)\) \{[\s\S]*?renderFormatToggle[\s\S]*?renderWatchToggle[\s\S]*?\}/,
-    'the early render is guarded on !modernMode + not-already-present');
+  assert.match(prefix, /if \(!modernMode\) ensureLibraryChips\(\);/, 'the early render is scoped to the classic toolbar');
+  const ensure = mainJs.slice(mainJs.indexOf('function ensureLibraryChips() {'), mainJs.indexOf('function mountLibraryChips() {'));
+  assert.match(ensure, /if \(cur && cur\.getAttribute\('data-kind'\) === chipRowKind\(\)\) return;/, 'a row of this kind is never rebuilt (no flash, scroll kept)');
 });
 
-test('fetchLibraryPage0 no longer UNCONDITIONALLY re-renders the toggles (it would remove+reinsert = a flash); its call is guarded too', () => {
+test('fetchLibraryPage0 never UNCONDITIONALLY re-renders the chip row; its fallback call is guarded too', () => {
   const start = mainJs.indexOf('async function fetchLibraryPage0()');
   const end = mainJs.indexOf('\n    }', start);
   const body = mainJs.slice(start, end);
-  // The fetchLibraryPage0 toggle render (a fallback) is now behind the same
-  // not-present guard, so it can't flash over the early-rendered toggles.
-  assert.match(body, /if \(sectionActions && !sectionActions\.querySelector\('#library-format-toggle'\)\) \{[\s\S]*?renderFormatToggle/,
-    'the fetchLibraryPage0 toggle render is guarded on not-present (no unconditional re-render flash)');
+  assert.match(body, /ensureLibraryChips\(\);/, 'the fetchLibraryPage0 chip render goes through the same guard');
+  assert.doesNotMatch(body, /mountLibraryChips\(\)/, 'never the unguarded mount');
 });

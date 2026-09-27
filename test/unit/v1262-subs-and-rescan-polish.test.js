@@ -89,11 +89,15 @@ test('subscriptions.html: exactly one #sub-repull-all-btn/#sub-reheat-btn/#sub-r
   }
 });
 
-test('main.js: #rescan-library-btn keeps a stable width via CSS min-width (label swap "Rescan" <-> "Scanning..." never reflows its row)', () => {
-  const rule = /#rescan-library-btn\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a #rescan-library-btn rule reserving width');
-  assert.match(rule[1], /min-width:\s*\d+px;/);
-  // Sanity: the label-swap code this rule protects against still exists.
-  assert.match(mainJs, /Scanning\.\.\./);
-  assert.match(mainJs, /<span class="btn-label">Rescan<\/span>/);
+// UI pass sweep S2 (F19; converts the v1.26.2 min-width lock, AC12): Rescan is a
+// square ui-btn icon (width = its height, ui.css .ui-btn--icon) and its scanning
+// state is aria-busy (the spinner swaps inside the icon slot) - there is no label
+// to swap, so the row can never reflow.
+test('main.js: #rescan-library-btn keeps a stable width - a square ui-btn icon whose busy state never changes its content box', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../public/index.html'), 'utf8');
+  assert.match(html, /<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="rescan-library-btn"/);
+  const ui = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
+  assert.match(ui, /\.ui-btn--icon \{\s*width: var\(--btn-h\);/, 'an icon button is exactly as wide as it is tall');
+  assert.match(mainJs, /u\.setBusy\(rescanBtn, !!on\)/, 'scanning is the busy state');
+  assert.doesNotMatch(mainJs, /Scanning\.\.\.'|btn-label">Rescan/, 'no label swap left');
 });

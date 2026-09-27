@@ -2,9 +2,9 @@
 // books.js pattern: `init(root)` runs on a full page load AND an in-app swap
 // into /history; every listener binds through ONE per-instance
 // AbortController so `destroy()` removes them all. Renders GET /api/history
-// (newest first, server-merged progress + watched) as removable list rows;
-// per-row remove and Clear-all are two-tap confirms against the DELETE
-// routes. Optimistic ops follow the v1.54 rule: optimistic HIDES, only the
+// (newest first, server-merged progress + watched) as ui-row list rows; per-row
+// Remove and Clear all go through ui.confirm before their DELETE routes (UI pass
+// sweep S2). Optimistic ops follow the v1.54 rule: optimistic HIDES, only the
 // confirmed answer REMOVES.
 
 // ---- Pure, DOM-free helpers (node:test-covered without a browser) ----------
@@ -68,75 +68,89 @@ function historyBarPercent(item) {
   return Math.min(100, pct);
 }
 
-// One history list row. The bar's width lands via a CSS custom property set
-// AFTER insertion (wireHistoryRowBars) -- the setProperty idiom
-// (player.js --seek-fill), never an inline width literal (#71/ratchet).
-function buildHistoryRowHtml(item, nowMs) {
-  var id = escapeHistoryHtml(item.id);
-  var title = escapeHistoryHtml(item.title || item.name || 'Untitled');
-  // v1.114 A2 (gate WARNING): strip a leading "@" so a handle-stored-as-the-name
-  // ("@Apple") shows the name here too (this standalone History list has its own
-  // row renderer, not buildCardHtml -- mirrors common.js displayChannelName).
-  var chName = typeof item.channelName === 'string' && item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
-  // v1.126 (gate WARNING): a nameless item takes the folder display map before
-  // the raw folderName (mirrors resolveChannelName's fallback order).
-  if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
-  var channel = escapeHistoryHtml(chName || item.folderName || '');
-  // v1.251 (Dean's consistency rule): an AUDIO history row re-opens in Music like every
-  // other tap surface - the ONE rule (common.js audioOpenHref) decides; video keeps /watch.
-  var watchHref = (typeof audioOpenHref === 'function' && audioOpenHref(item))
-    || '/watch.html?v=' + encodeURIComponent(item.id || '');
-  var durationStr = item.duration > 0 ? formatHistoryDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
-  var when = formatHistoryWhen(item.lastWatchedAt, nowMs);
-  var barPct = historyBarPercent(item);
-  var metaBits = [];
-  if (channel) metaBits.push('<a class="history-channel" href="/?folder=' + encodeURIComponent(item.folderName || '') + '">' + channel + '</a>');
-  if (when) metaBits.push('<span class="history-when">' + escapeHistoryHtml(when) + '</span>');
-  return '' +
-    '<div class="history-row" data-id="' + id + '">' +
-    '<a href="' + escapeHistoryHtml(watchHref) + '" class="history-thumb">' +
-    '<img class="history-thumb-img art-shimmer" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
-    (durationStr ? '<span class="duration-badge">' + escapeHistoryHtml(durationStr) + '</span>' : '') +
-    (barPct !== null ? '<span class="history-bar"><span class="history-bar-fill" data-pct="' + barPct + '"></span></span>' : '') +
-    '</a>' +
-    '<div class="history-info">' +
-    '<a href="' + escapeHistoryHtml(watchHref) + '" class="history-title" title="' + title + '">' + title + '</a>' +
-    '<div class="history-meta">' + metaBits.join(' &bull; ') +
-    (item.watchState === 'watched' ? ' <span class="history-watched-chip">Watched</span>' : '') +
-    '</div>' +
-    '</div>' +
-    '<button type="button" class="history-remove-btn" data-id="' + id + '" aria-label="Remove from history" title="Remove from history">' +
-    '<i class="icon-delete"></i><span class="history-remove-confirm">Remove?</span>' +
-    '</button>' +
-    '</div>';
+// The ui builders: the page's window.ui, else (node:test) the sibling module.
+function historyUi() {
+  if (typeof window !== 'undefined' && window.ui) return window.ui;
+  if (typeof module !== 'undefined' && module.require) {
+    try { return module.require('./ui.js'); } catch (_) { return null; }
+  }
+  return null;
 }
 
-// v1.98 shimmer sweep: n `.history-row`-shaped shimmer rows seeded into
-// #history-list BEFORE the first fetch, so the list shows the reveal-once
-// shimmer instead of a blank host then a snap-in. Reuses the REAL .history-row/
-// .history-thumb (aspect 16/9) / .history-info box model, so the swap to real
-// rows is zero-shift (the buildSkeletonGrid discipline). No remove button in the
-// skeleton (nothing to act on yet).
-function buildHistorySkeletonRows(n) {
+// The byline's channel label (v1.114 A2: strip a leading "@" so a handle-stored-
+// as-the-name shows the name; v1.126: a nameless item takes the folder display
+// map before the raw folderName - resolveChannelName's fallback order).
+function historyChannelLabel(item) {
+  var chName = typeof item.channelName === 'string' && item.channelName.charAt(0) === '@' ? item.channelName.slice(1) : item.channelName;
+  if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
+  return chName || item.folderName || '';
+}
+
+// Pure: the row's meta line - "Channel · 2 days ago · Watched" (plain text: the
+// whole row is the link, D4.3, so no second link can sit inside it).
+function historyMetaText(item, nowMs) {
+  var bits = [];
+  var channel = historyChannelLabel(item);
+  if (channel) bits.push(channel);
+  var when = formatHistoryWhen(item.lastWatchedAt, nowMs);
+  if (when) bits.push(when);
+  if (item.watchState === 'watched') bits.push('Watched');
+  return bits.join(' · ');
+}
+
+// One history row (UI pass sweep S2): a ui-row in the History ui-list - the
+// ui-thumb (duration badge + resume bar) in the media slot, the title linking
+// to the item, the meta line, and ONE reserved action slot holding the Remove
+// button (a ui-btn plain icon). Built with textContent only. The resume bar's
+// fraction is the ui-thumb's own --p data property.
+function buildHistoryRowEl(item, nowMs, doc) {
+  var u = historyUi();
+  var d = doc || document;
+  var watchHref = (typeof audioOpenHref === 'function' && audioOpenHref(item))
+    || '/watch.html?v=' + encodeURIComponent(item.id || '');
+  var pct = historyBarPercent(item);
+  var thumb = u.thumb({ src: '/thumbnail/' + encodeURIComponent(item.id || ''), duration: item.duration,
+    progress: pct === null ? 0 : pct / 100, context: 'row', doc: d });
+  var img = thumb.querySelector('.ui-thumb__img');
+  if (img) img.classList.add('art-shimmer');
+  var remove = u.button({ variant: 'plain', shape: 'icon', size: 'sm', icon: 'close', ariaLabel: 'Remove from history', doc: d });
+  remove.classList.add('history-remove');
+  remove.setAttribute('data-id', String(item.id || ''));
+  var row = u.row({ size: 'media', media: thumb, title: item.title || item.name || 'Untitled', meta: historyMetaText(item, nowMs),
+    href: watchHref, actions: [remove], doc: d });
+  row.setAttribute('data-id', String(item.id || ''));
+  return row;
+}
+
+// v1.98 shimmer sweep, UI pass sweep S2 (D9): n skeleton rows of the FINAL row
+// geometry - the same ui-row grid (thumb media slot, two lines, the reserved
+// action slot), so the reveal is zero-shift. Every node aria-hidden.
+function buildHistorySkeletonRows(n, doc) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
+  var d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || count === 0) return '';
+  var u = historyUi();
   var html = '';
   for (var i = 0; i < count; i++) {
-    html += '' +
-      '<div class="history-row" aria-hidden="true">' +
-      '<span class="history-thumb skeleton-shimmer"></span>' +
-      '<div class="history-info">' +
-      '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
-      '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
-      '</div>' +
-      '</div>';
+    var thumb = u.thumb({ context: 'row', doc: d });
+    thumb.classList.add('skeleton-shimmer');
+    var title = d.createElement('span');
+    title.className = 'skeleton-text skeleton-text-long skeleton-shimmer';
+    title.textContent = ' ';
+    var meta = d.createElement('span');
+    meta.className = 'skeleton-text skeleton-text-mid skeleton-shimmer';
+    meta.textContent = ' ';
+    var row = u.row({ size: 'media', media: thumb, title: title, meta: meta, actions: [null], doc: d });
+    row.setAttribute('aria-hidden', 'true');
+    html += row.outerHTML;
   }
   return html;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    escapeHistoryHtml, formatHistoryDuration, formatHistoryWhen, historyBarPercent, buildHistoryRowHtml,
-    buildHistorySkeletonRows,
+    escapeHistoryHtml, formatHistoryDuration, formatHistoryWhen, historyBarPercent,
+    historyChannelLabel, historyMetaText, buildHistoryRowEl, buildHistorySkeletonRows,
   };
 }
 
@@ -145,8 +159,6 @@ if (typeof module !== 'undefined' && module.exports) {
   var controller = null;
 
   var PAGE_LIMIT = 50;
-  // Two-tap confirm window (matches the card-delete affordance's feel).
-  var CONFIRM_MS = 3000;
 
   function init(root) {
     controller = new AbortController();
@@ -170,15 +182,6 @@ if (typeof module !== 'undefined' && module.exports) {
     var total = 0;
     var loading = false;
 
-    // The bar widths land here, AFTER innerHTML insertion (see
-    // buildHistoryRowHtml's comment).
-    function wireHistoryRowBars(scope) {
-      scope.querySelectorAll('.history-bar-fill[data-pct]').forEach(function (el) {
-        el.style.setProperty('--history-pct', el.getAttribute('data-pct') + '%');
-        el.removeAttribute('data-pct');
-      });
-    }
-
     function refreshChrome() {
       if (emptyEl) emptyEl.hidden = total > 0;
       if (moreBtn) moreBtn.hidden = !(listEl.children.length < total);
@@ -194,10 +197,10 @@ if (typeof module !== 'undefined' && module.exports) {
           if (signal.aborted) return; // dead-view guard (v1.41.11)
           total = Number(body.total) || 0;
           offset = pageOffset + body.items.length;
-          var html = body.items.map(function (item) { return buildHistoryRowHtml(item); }).join('');
-          if (replace) listEl.innerHTML = html;
-          else listEl.insertAdjacentHTML('beforeend', html);
-          wireHistoryRowBars(listEl);
+          var frag = document.createDocumentFragment();
+          body.items.forEach(function (item) { frag.appendChild(buildHistoryRowEl(item)); });
+          if (replace) listEl.replaceChildren(frag);
+          else listEl.appendChild(frag);
           // v1.102 (tranche 4 shimmer): the thumbnails ship `art-shimmer`; the
           // shared decode-reveal clears each on decode (immediately for cached).
           if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.shimmerArt === 'function') {
@@ -209,12 +212,26 @@ if (typeof module !== 'undefined' && module.exports) {
           if (!signal.aborted) {
             console.error('History: fetch failed', err);
             // v1.98: never strand the seeded shimmer on a failed FIRST load -
-            // clear it so the empty state (not a forever-shimmer) shows.
-            if (replace) { listEl.innerHTML = ''; refreshChrome(); }
+            // D9: an error state with Retry, never "No watch history yet".
+            if (replace) {
+              listEl.replaceChildren(historyUi().state({ icon: 'warning', title: 'Could not load your history',
+                body: 'Check your connection and try again.', action: { label: 'Retry', onClick: function () { fetchPage(0, true); } } }));
+              if (emptyEl) emptyEl.hidden = true;
+              if (moreBtn) moreBtn.hidden = true;
+              if (clearBtn) clearBtn.hidden = true;
+            }
           }
         })
         .then(function () { loading = false; });
     }
+
+    // D9: the empty state is the ui-state block (icon, title, body).
+    function renderEmpty() {
+      if (!emptyEl) return;
+      emptyEl.replaceChildren(historyUi().state({ icon: 'history', title: 'No watch history yet',
+        body: 'Anything you watch or start shows up here.' }));
+    }
+    renderEmpty();
 
     // After a removal empties the loaded window while more rows exist
     // server-side, re-pull from the top (offsets have shifted under us).
@@ -224,80 +241,69 @@ if (typeof module !== 'undefined' && module.exports) {
       return Promise.resolve();
     }
 
-    // Two-tap arm state: at most one armed control at a time.
-    var armed = null; // { el, timer }
-    function disarm() {
-      if (!armed) return;
-      clearTimeout(armed.timer);
-      armed.el.classList.remove('history-confirming');
-      armed = null;
-    }
-    function arm(el) {
-      disarm();
-      el.classList.add('history-confirming');
-      armed = { el: el, timer: setTimeout(disarm, CONFIRM_MS) };
-    }
-
-    function removeRow(row, btn) {
-      disarm();
-      var id = btn.getAttribute('data-id');
+    // UI pass sweep S2 (D4.8, F33): removing history clears the item's resume
+    // position and watched mark (DELETE /api/history/:id), so it goes through
+    // ui.confirm - the in-row "Remove?" two-tap arming is retired (confirms
+    // never grow in place). The request is sent only when the confirm resolves true.
+    function removeRow(row, id) {
       // QA gate W1: a falsy id would build '/api/history/' -- which Express's
       // non-strict routing aliases onto CLEAR-ALL (the server now 400s that
       // form too; this is the belt to its suspenders).
       if (!id) return;
-      row.hidden = true; // optimistic HIDE
-      fetch('/api/history/' + encodeURIComponent(id), { method: 'DELETE' })
-        .then(function (r) {
-          if (signal.aborted) return;
-          if (!r.ok) throw new Error('remove failed: ' + r.status);
-          row.remove(); // confirmed answer REMOVES
-          total = Math.max(0, total - 1);
-          offset = Math.max(0, offset - 1);
-          return refill();
-        })
-        .catch(function (err) {
-          if (signal.aborted) return;
-          row.hidden = false; // roll the optimistic hide back
-          console.error('History: remove failed', err);
-        });
+      historyUi().confirm({ title: 'Remove from history?', body: 'Its resume position and watched mark are cleared.',
+        confirmLabel: 'Remove', danger: true }).then(function (ok) {
+        if (ok !== true || signal.aborted) return;
+        row.hidden = true; // optimistic HIDE
+        fetch('/api/history/' + encodeURIComponent(id), { method: 'DELETE' })
+          .then(function (r) {
+            if (signal.aborted) return;
+            if (!r.ok) throw new Error('remove failed: ' + r.status);
+            row.remove(); // confirmed answer REMOVES
+            total = Math.max(0, total - 1);
+            offset = Math.max(0, offset - 1);
+            return refill();
+          })
+          .catch(function (err) {
+            if (signal.aborted) return;
+            row.hidden = false; // roll the optimistic hide back
+            console.error('History: remove failed', err);
+          });
+      });
     }
 
     function clearAll() {
-      disarm();
-      listEl.hidden = true; // optimistic HIDE
-      fetch('/api/history', { method: 'DELETE' })
-        .then(function (r) {
-          if (signal.aborted) return;
-          if (!r.ok) throw new Error('clear failed: ' + r.status);
-          listEl.innerHTML = '';
-          listEl.hidden = false;
-          total = 0;
-          offset = 0;
-          refreshChrome();
-        })
-        .catch(function (err) {
-          if (signal.aborted) return;
-          listEl.hidden = false;
-          console.error('History: clear failed', err);
-        });
+      historyUi().confirm({ title: 'Clear all watch history?', body: 'Every resume position and watched mark is cleared.',
+        confirmLabel: 'Clear all', danger: true }).then(function (ok) {
+        if (ok !== true || signal.aborted) return;
+        listEl.hidden = true; // optimistic HIDE
+        fetch('/api/history', { method: 'DELETE' })
+          .then(function (r) {
+            if (signal.aborted) return;
+            if (!r.ok) throw new Error('clear failed: ' + r.status);
+            listEl.replaceChildren();
+            listEl.hidden = false;
+            total = 0;
+            offset = 0;
+            refreshChrome();
+          })
+          .catch(function (err) {
+            if (signal.aborted) return;
+            listEl.hidden = false;
+            console.error('History: clear failed', err);
+          });
+      });
     }
 
     listEl.addEventListener('click', function (e) {
-      var btn = e.target.closest('.history-remove-btn');
+      var btn = e.target.closest('.history-remove');
       if (!btn) return;
       e.preventDefault();
-      var row = btn.closest('.history-row');
+      var row = btn.closest('.ui-row');
       if (!row) return;
-      if (armed && armed.el === btn) removeRow(row, btn);
-      else arm(btn);
+      removeRow(row, btn.getAttribute('data-id'));
     }, { signal: signal });
 
-    if (clearBtn) {
-      clearBtn.addEventListener('click', function () {
-        if (armed && armed.el === clearBtn) clearAll();
-        else arm(clearBtn);
-      }, { signal: signal });
-    }
+    if (clearBtn) clearBtn.addEventListener('click', clearAll, { signal: signal });
 
     if (moreBtn) {
       moreBtn.addEventListener('click', function () { fetchPage(offset, false); }, { signal: signal });
@@ -305,7 +311,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // v1.98 shimmer sweep: seed the shimmer BEFORE the first fetch so the list
     // never shows a blank host then a snap-in (the reveal is fetchPage's own
-    // `listEl.innerHTML = html`).
+    // replace of the list's children).
     listEl.innerHTML = buildHistorySkeletonRows(6);
     fetchPage(0, true);
   }

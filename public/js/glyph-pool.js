@@ -95,7 +95,7 @@ function allGlyphEntries() {
 
 // Pure. A stored folder-glyph value -> a safe class name. Anything unknown,
 // absent, or non-string resolves to the default folder glyph. This is the
-// garbage-defense layer (the resolveCardCornerPrefs posture): the server
+// garbage-defense layer (the v1.67 card-corner resolver's posture): the server
 // validates too, but a database written by an older/hand-edited build must
 // still render something sane rather than emitting an arbitrary class.
 function resolveFolderGlyphClass(value) {

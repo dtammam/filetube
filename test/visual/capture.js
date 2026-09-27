@@ -197,6 +197,13 @@ function sceneKit(FX, BASE) {
     { id: '28-history', path: '/history', run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(800); } },
     { id: '29-search-open', path: '/', vps: ['phone'], run: async (p, vp) => { await tap(p, '#search-toggle-btn', vp); await sleep(600); } },
     { id: '30-stats', path: '/stats.html', vps: ['phone', 'desktop'], run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(800); } },
+    // Sweep S2 (cards and feeds): search results, the card action menu, the watch page's related rail.
+    { id: '31-search-results', path: '/?search=Harbor', vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('.video-card', { timeout: 12000 }); } },
+    { id: '32-card-menu', path: '/', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForSelector('.video-card', { timeout: 12000 });
+      // The card action menu (D8.5): the kebab in the first card's meta row. A tree without it
+      // (before the sweep) photographs the card corners instead.
+      if (await p.locator('.video-card .card-kebab').count()) { await tap(p, '.video-card .card-kebab', vp); await p.waitForSelector('.ui-sheet.is-open', { timeout: 8000 }); await sleep(500); } } },
+    { id: '33-watch-related', path: `/watch.html?v=${FX.video}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#related-files-container a', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#related-files-container a'); } },
     // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
     { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
     { id: '51-books-shelf', path: `/books?root=${encodeURIComponent(FX.bookShelf || '')}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },

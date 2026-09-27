@@ -8,7 +8,7 @@
 //
 // The swap is SURGICAL: the card-corner queue mask and the watch action-row
 // masks are NOT first-paint-lagging in the same way and stay masks (bound by
-// card-corner-renderer.test.js / era-row-overflow.test.js). This test binds the
+// card-action-menu.test.js / era-row-overflow.test.js). This test binds the
 // two row surfaces flipped AND that the survivors did not.
 
 const { test } = require('node:test');
@@ -90,11 +90,10 @@ test('ui.css: the ui-btn icon slot sizes the sprite glyph (replaces the 14px .po
 
 // ---- SURGICAL SCOPE: the survivors stay masks -------------------------------
 
-test('surgical scope: the card-corner queue mask and watch-row masks are NOT swapped', () => {
-  // The card-corner queue button (main.js) is a promoted mask, deliberately kept
-  // (card-corner-renderer.test.js binds it) - a mask here does not first-paint-lag
-  // the way the row glyphs did.
-  assert.match(read('public/js/main.js'), /icon-queue/, 'the card-corner queue mask survives');
+test('surgical scope: the watch-row masks are NOT swapped (the card queue is a menu entry since sweep S2)', () => {
+  // UI pass sweep S2 retired the card-corner queue button: the card's queue is a
+  // menu entry drawing the registry's playlist_add (card-action-menu.test.js).
+  assert.match(read('public/js/main.js'), /icon: 'playlist_add', label: 'Add to queue'/, 'the card queue entry draws a registry icon');
   // The watch action row keeps its masks (era-row-overflow.test.js binds them).
   const watch = read('public/watch.html') + read('public/js/watch.js');
   assert.match(watch, /icon-heart/, 'the watch action-row like mask survives');

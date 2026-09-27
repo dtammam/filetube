@@ -5081,7 +5081,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   if (!item) return null;
   // v1.92 note: the horizontal home-ROW card (buildFeedCardHtml/buildVideoRowCardHtml)
   // does NOT render a .card-preview overlay, so no storyboard descriptor is sent
-  // here - the preview lives on the main + modern GRID cards (buildCardHtml),
+  // here - the preview lives on the main + modern GRID cards (buildVideoCardEl),
   // fed by /api/videos (spreads ...item) and resolveModernGridItem.
   // v1.236 (Dean): carry `type` + `chapterCount` so the client can reroute an AUDIO download
   // to the music player from the ROW feed too (the card otherwise has no audio/chapter signal).
@@ -5097,7 +5097,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
 }
 
 // v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
-// client's buildCardHtml expects (a superset of resolveHomeItem's row-card
+// client's buildVideoCardEl expects (a superset of resolveHomeItem's row-card
 // fields). Media cards carry the channel identity + view count + channel avatar
 // (via the SAME resolver that feeds subscription avatars - Dean's call) + type +
 // duration; podcast cards carry subId/showName so cardKindPresentation renders

@@ -22,10 +22,12 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'ma
 test('the toggle renders for a library-write user on a folder view, gated authoritatively on the server hasAudio', () => {
   // Anchor on the music block's own id ('folder-music-toggle') right after the
   // gate so this can never latch onto the byte-identical rename-button gate.
-  const m = SRC.match(/if \(musicFolderName && videosHeader && cardCornerCaps && cardCornerCaps\.canModifyLibrary === true\)[\s\S]{0,200}?folder-music-toggle[\s\S]{0,2800}?insertAdjacentElement\('afterend', mbtn\)/);
+  // UI pass sweep S2 (F61): the toggle is a ui-btn plain icon appended to the
+  // heading group; the gate is unchanged.
+  const m = SRC.match(/if \(musicFolderName && headingGroup && cardCaps\.canModifyLibrary === true\)[\s\S]{0,400}?folder-music-toggle[\s\S]{0,2800}?headingGroup\.appendChild\(mbtn\)/);
   assert.ok(m, 'the folder-music-toggle render block is present');
   const block = m[0];
-  assert.match(block, /cardCornerCaps\s*&&\s*cardCornerCaps\.canModifyLibrary === true/, 'gated on the library-write capability');
+  assert.match(block, /cardCaps\.canModifyLibrary === true/, 'gated on the library-write capability');
   // v1.224: hasAudio (server truth) is the authority, NOT the loaded-page
   // folderHasAudio - a folder with no audio removes the button, one WITH audio
   // reveals it even if the loaded page was all videos (the channel-view fix).
@@ -54,8 +56,10 @@ test('the toggle reads the mark (GET) and writes the mark (POST) via the music-f
   assert.match(SRC, /const next = effectiveNow \? 'off' : 'on'/, 'the click flips the current effective state');
 });
 
-test('the on-state paints the is-on class (the glanceable accent)', () => {
-  assert.match(SRC, /mbtn\.classList\.toggle\('is-on', !!effective\)/, 'the is-on class tracks the effective state');
+test('sweep S2 (F61): the toggle is a ui-btn icon toggle - pressed = in Music (music_note), not pressed = hidden (music_off), no text dingbat', () => {
+  assert.match(SRC, /cardUi\(\)\.button\(\{ variant: 'plain', shape: 'icon', size: 'sm', icon: \{ off: 'music_off', on: 'music_note' \}, pressed: true, ariaLabel: 'Show in Music' \}\)/);
+  assert.match(SRC, /cardUi\(\)\.setPressed\(mbtn, !!effective\)/, 'the pressed state (and its icon) tracks the effective state');
+  assert.ok(!/[\u266a\u270e]/.test(SRC), 'no text dingbat (the struck-through note, the pencil) in live code');
 });
 
 
@@ -75,12 +79,9 @@ test('v1.268: BOTH labels say what the button does, in hide/show terms - never "
   assert.match(SRC, /: 'Hidden from Music - tap to show this channel/, 'the OFF arm carries the HIDDEN label');
   assert.ok(!/click to remove/.test(SRC), 'the delete-sounding wording is gone');
   // both strings must reach the user through the touch-reachable paths, not just title
-  const m = SRC.match(/const t = effective[\s\S]{0,600}?setAttribute\('aria-pressed'[^\n]*\)/);
-  assert.ok(m, 'one label source of truth feeds title, aria-label and the pressed state');
-  assert.match(m[0], /mbtn\.title = t;/, 'title (pointer devices)');
-  assert.match(m[0], /setAttribute\('aria-label', t\)/, 'aria-label (assistive tech)');
-  assert.match(m[0], /setAttribute\('aria-pressed', effective \? 'true' : 'false'\)/,
-    'the pressed state is exposed AND its arms are bound (slim S-a: swapping them alone survived - a screen reader would announce "Showing in Music, not pressed")');
+  const m = SRC.match(/const t = effective[\s\S]{0,600}?cardUi\(\)\.setPressed\(mbtn, !!effective\)/);
+  assert.ok(m, 'one label source of truth feeds the accessible name and the pressed state');
+  assert.match(m[0], /mbtn\.setAttribute\('aria-label', t\)/, 'aria-label (assistive tech; a phone has no hover title)');
 });
 
 test('v1.268 (slim W2): the optimistic pre-fetch paint seeds the v1.242 DEFAULT (on), not a pessimistic false', () => {
@@ -89,9 +90,13 @@ test('v1.268 (slim W2): the optimistic pre-fetch paint seeds the v1.242 DEFAULT 
   assert.ok(!/paint\(false\);/.test(SRC), 'the pessimistic paint is gone');
 });
 
-test('v1.268: the OFF state is legible WITHOUT hover - a struck-through note, not just a colour shift', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.folder-music-toggle:not\(\.is-on\) \{\s*text-decoration: line-through;/,
-    'OFF is struck through (a phone has no hover title - colour alone left the state unreadable)');
-  assert.match(css, /\.folder-music-toggle\.is-on \{\s*color: var\(--text-link\);/, 'ON stays the link colour');
+test('v1.268 (converted, sweep S2): the OFF state is legible WITHOUT hover - the music_off glyph, not a colour shift', () => {
+  // The v1.268 strikethrough on a text note became the registry's music_off icon
+  // (a struck-through note) - ui.setPressed swaps the icon with the state.
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'ui.js'), 'utf8');
+  assert.match(ui, /var name = btn\.getAttribute\(on \? 'data-icon-on' : 'data-icon-off'\);/, 'setPressed picks the state icon');
+  const icons = require('../../public/js/icons.js');
+  for (const n of ['music_note', 'music_off']) assert.ok(icons.has(n), n + ' is in the registry');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/\.folder-music-toggle/.test(css), 'no bespoke toggle CSS (and no link-blue ON state, D8.6)');
 });

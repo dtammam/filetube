@@ -97,8 +97,10 @@ const ART_SITES = [
   // rendered imgs carrying it.
   ['public/js/podcasts.js', "img.classList.add('art-shimmer')"],
   ['public/js/books.js', "img.classList.add('art-shimmer');"], // UI pass S10: the ui.thumb cover's img (books-reader-ui.test.js runs it)
-  ['public/js/history.js', 'class="history-thumb-img art-shimmer"'],
-  ['public/js/main.js', "img.className = 'art-shimmer';"],
+  // UI pass sweep S2: History's row thumb and the Modern avatar bar are ui
+  // primitives built as DOM; their image takes the class after the build.
+  ['public/js/history.js', "if (img) img.classList.add('art-shimmer');"],
+  ['public/js/main.js', "if (img) img.classList.add('art-shimmer');"],
 ];
 
 test('all 9 art image sites ship the art-shimmer class (prediction: exactly 9)', () => {

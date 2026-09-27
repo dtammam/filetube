@@ -42,8 +42,6 @@ const path = require('node:path');
 const MAIN_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'main.js');
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 
-const INDEX_HTML_PATH = path.join(__dirname, '..', '..', 'public', 'index.html');
-const indexHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
 
 // ---- fetchLibraryPage0()/buildVideosApiUrl(): server-authoritative sort/format, C2/C3 controls rendered ----
 
@@ -69,18 +67,16 @@ test('main.js: the OLD local filterByMediaType(currentItems, ...)/sortItems(filt
   );
 });
 
-test('fetchLibraryPage0: renders the C2 item-count badge, format toggle, and page-0 grid, in that order', () => {
+test('fetchLibraryPage0: renders the C2 item-count badge, the chip row (guarded twin), and the page-0 grid', () => {
   const fnMatch = /async function fetchLibraryPage0\(\) \{([\s\S]*?)\n {4}\}/.exec(mainJs);
   assert.ok(fnMatch, 'expected to find fetchLibraryPage0() in main.js');
   const body = fnMatch[1];
 
   assert.match(body, /renderMediaGridPage\(currentItems,\s*\{\s*append:\s*false\s*\}\)/, 'expected fetchLibraryPage0 to render page 0 as a full REPLACE, never an append');
   assert.match(body, /updateItemCountBadge\(\)/, 'expected fetchLibraryPage0 to refresh the C2 item-count badge');
-  assert.match(
-    body,
-    /renderFormatToggle\(sectionActions,\s*getStoredFormatFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,
-    'expected renderFormatToggle to be mounted with the live stored mode and an onChange that resets to a fresh page 0'
-  );
+  // UI pass sweep S2 (F19): the format + watch filters are dimensions of the ONE
+  // chip row (mountLibraryChips) - its guarded twin mount lives here.
+  assert.match(body, /ensureLibraryChips\(\);/, 'expected the guarded chip row twin mount');
 });
 
 test('updateItemCountBadge: renders the C2 item-count badge using the SERVER-authoritative currentTotal, not just the rendered page', () => {
@@ -112,76 +108,64 @@ test('buildVideosApiUrl: forwards the watched-state filter to the server (pagina
   assert.match(body, /watch=\$\{encodeURIComponent\(getStoredWatchFilter\(\)\)\}/, 'expected the watch param to be forwarded to the server');
 });
 
-test('fetchLibraryPage0: mounts the watch toggle AFTER renderFormatToggle (its renderer anchors behind #library-format-toggle)', () => {
-  const fnMatch = /async function fetchLibraryPage0\(\) \{([\s\S]*?)\n {4}\}/.exec(mainJs);
-  const body = fnMatch[1];
-  assert.match(
-    body,
-    /renderWatchToggle\(sectionActions,\s*getStoredWatchFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,
-    'expected renderWatchToggle mounted with the live stored mode and a reset-to-page-0 onChange'
-  );
-  assert.ok(
-    body.indexOf('renderFormatToggle(') < body.indexOf('renderWatchToggle('),
-    'renderWatchToggle must run after renderFormatToggle -- it inserts relative to the format toggle'
-  );
+// UI pass sweep S2 (F19; converts the v1.50 watch-toggle mount + container-
+// scoped de-dupe locks, AC12): the chip row persists each dimension through the
+// SAME storage helpers and reloads ONCE per tap; its host is view-scoped (a
+// root.querySelector, never a document-wide lookup - the doubled-row class).
+test('mountLibraryChips: format + watch persist through their storage helpers and a tap resets to a fresh page 0, once', () => {
+  const body = mainJs.slice(mainJs.indexOf('function mountLibraryChips() {'), mainJs.indexOf('function updateShuffleButtonVisibility() {'));
+  assert.match(body, /groups\.push\(\{ key: 'format', value: getStoredFormatFilter\(\), all: 'both'/, 'format: the live stored mode');
+  assert.match(body, /groups\.push\(\{ key: 'watch', value: getStoredWatchFilter\(\), all: 'all'/, 'watch: the live stored mode');
+  assert.match(body, /if \('format' in changes\) setStoredFormatFilter\(changes\.format\);/);
+  assert.match(body, /if \('watch' in changes\) setStoredWatchFilter\(changes\.watch\);/);
+  assert.strictEqual((body.match(/resetAndReload\(\)/g) || []).length, 1, 'one reload per tap');
+  assert.match(body, /chipHost\.replaceChildren\(row\)/, 'the row replaces its host content - never a second row');
+  assert.match(mainJs, /const chipHost = root\.querySelector\('#library-chip-host'\)/, 'the host is scoped to this view root');
 });
 
-test('common.js: BOTH toolbar toggles + the count badge de-dupe via container-scoped lookups, never document.getElementById (the doubled-row bug class)', () => {
+test('common.js: the count badge de-dupes via a container-scoped lookup, never document.getElementById (the doubled-row bug class)', () => {
   const commonJs = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
-  for (const [fnName, controlId] of [
-    ['renderFormatToggle', 'library-format-toggle'],
-    ['renderWatchToggle', 'library-watch-toggle'],
-  ]) {
-    const fnMatch = new RegExp(`function ${fnName}\\(actionsEl[\\s\\S]*?\\n\\}`).exec(commonJs);
-    assert.ok(fnMatch, `expected to find ${fnName} in common.js`);
-    assert.match(fnMatch[0], new RegExp(`actionsEl\\.querySelector\\('#${controlId}'\\)`), `${fnName} must scope its de-dupe to actionsEl`);
-    assert.doesNotMatch(fnMatch[0], /document\.getElementById/, `${fnName} must not use a document-wide lookup (cannot see the detached cached home view)`);
-  }
   const badgeMatch = /function renderItemCountBadge\(headerEl[\s\S]*?\n\}/.exec(commonJs);
   assert.ok(badgeMatch, 'expected to find renderItemCountBadge in common.js');
   assert.match(badgeMatch[0], /headerEl\.parentNode\.querySelector\('#library-item-count'\)/);
   assert.doesNotMatch(badgeMatch[0], /document\.getElementById/);
+  const row = /function buildFilterChipRow\([\s\S]*?\n\}/.exec(commonJs);
+  assert.ok(row && !/document\.getElementById/.test(row[0]), 'the chip row builder never looks anything up document-wide');
 });
 
-test('style.css: the watch toggle gets its own full-width mobile row (order + width) and text-sized desktop pills', () => {
+test('style.css (sweep S2, converts the v1.50 two-row mobile lock): on a phone the toolbar is ONE full-width row that never wraps', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.watch-toggle \.format-toggle-btn \{[^}]*min-width:\s*0/, 'desktop: watch pills size to their text (4 labels at 58px would overflow the toolbar)');
-  const mobileRow = /\.section-actions \.watch-toggle \{[^}]*\}/.exec(css);
-  assert.ok(mobileRow, 'expected the mobile .section-actions .watch-toggle rule');
-  assert.match(mobileRow[0], /order:\s*10/, 'forced last so it never shares the v1.45 one-glyph-line row');
-  // v1.50.4: hard width:100% relaxed to a 70% grow-basis -- still can never
-  // fit the fully-budgeted row 1 (still wraps, still anchors row 2), but
-  // leaves room for the order-11 Re-pull button to share row 2 on
-  // subscribed-channel views instead of orphaning a middle row.
-  assert.match(mobileRow[0], /flex:\s*1 1 70%/, '70% grow-basis: fills row 2 alone, shares it with Re-pull');
-  // The wrap that makes the second row possible must exist on the mobile
-  // .section-actions rule (v1.50 relaxed the v1.45.2 nowrap).
-  const actionsRule = /\.section-actions \{\n[^}]*flex-wrap:\s*wrap/.exec(css);
-  assert.ok(actionsRule, 'mobile .section-actions must be flex-wrap: wrap for the second row to exist');
+  const { cssRules } = require('../helpers/stylesheets');
+  const mobile = cssRules(css).filter((r) => r.sel === '.section-actions' && /max-width:\s*768px/.test(r.at));
+  assert.ok(mobile.length >= 1, 'the phone .section-actions rule exists');
+  for (const r of mobile) {
+    assert.match(r.body, /width:\s*100%/, 'row 2 is the full width');
+    assert.doesNotMatch(r.body, /flex-wrap:\s*wrap/, 'never a second toolbar row');
+  }
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.watch-toggle|\.format-toggle/, 'the segmented-toggle recipe is gone');
 });
 
 // ---- index.html: C5 release-date sort option ---------------------------------
 
-// v1.41.2: the sort control is a custom .btn dropdown (#sort-menu with
-// [data-sort] <li>s), not a native <select> -- see index.html / main.js.
-test('index.html: the sort dropdown offers a "release-date" option (available, not default)', () => {
-  const menuMatch = /<ul class="sort-menu"[^>]*>([\s\S]*?)<\/ul>/.exec(indexHtml);
-  assert.ok(menuMatch, 'expected to find #sort-menu in index.html');
-  const itemsBlock = menuMatch[1];
+// UI pass sweep S2: the sort control is a ui-btn icon that opens a ui.menu of
+// main.js's SORT_MENU_OPTIONS (the options moved from index.html's <ul> into
+// the view); the C5 option lock follows them there.
+const sortOptions = () => {
+  const block = /const SORT_MENU_OPTIONS = \[([\s\S]*?)\];/.exec(mainJs);
+  assert.ok(block, 'expected SORT_MENU_OPTIONS in main.js');
+  return [...block[1].matchAll(/\{ value: '([^']+)', label: '([^']+)' \}/g)].map((m) => [m[1], m[2]]);
+};
 
-  assert.match(itemsBlock, /<li role="option" data-sort="release-date">Release date<\/li>/);
-
-  // The FIRST option must remain "newest" -- the default home order is
-  // unchanged; release-date is available-only, never the default.
-  const firstItem = /data-sort="([^"]+)"/.exec(itemsBlock);
-  assert.strictEqual(firstItem[1], 'newest', 'the default sort option must remain "newest"');
+test('the sort menu offers a "release-date" option (available, not first)', () => {
+  const opts = sortOptions();
+  assert.ok(opts.some(([v, l]) => v === 'release-date' && l === 'Release date'));
+  assert.strictEqual(opts[0][0], 'newest', 'the first option remains "newest"');
 });
 
-test('index.html: every sort option is still present in the dropdown menu', () => {
-  const menuMatch = /<ul class="sort-menu"[^>]*>([\s\S]*?)<\/ul>/.exec(indexHtml);
-  const itemsBlock = menuMatch[1];
-  const values = [...itemsBlock.matchAll(/data-sort="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepStrictEqual(values, [
+test('every sort option is still present in the sort menu, and the menu checks the current sort', () => {
+  assert.deepStrictEqual(sortOptions().map((o) => o[0]), [
     'newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc', 'random',
   ]);
+  assert.match(mainJs, /items: SORT_MENU_OPTIONS\.map\(\(o\) => \(\{ label: o\.label, value: o\.value, checked: o\.value === currentSort \}\)\)/);
+  assert.match(mainJs, /onSelect: \(value\) => chooseSort\(value\)/);
 });

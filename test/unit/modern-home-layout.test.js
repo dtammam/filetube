@@ -85,14 +85,18 @@ test('maybeLoadNextPage has a modern branch that APPENDS the next page (never re
   const modernBranch = fn.slice(fn.indexOf('if (modernMode) {'));
   assert.match(modernBranch, /buildModernGridUrl\(nextOffset\)/, 'fetches the NEXT page URL');
   assert.match(modernBranch, /if \(token !== modernReqToken\) return/, 'a chip/sort change mid-fetch drops the stale append');
-  assert.match(modernBranch, /videoGrid\.insertAdjacentHTML\('beforeend'/, 'APPENDS cards (never innerHTML-replaces)');
+  assert.match(modernBranch, /putCards\(fresh, true\);/, 'APPENDS cards (never replaces; sweep S2: DOM cards via putCards)');
 });
 
-test('(v1.86.2 #2) the card delete second tap deletes STRAIGHT to trash - no checkbox-modal escalation', () => {
-  // Dean: revert the card trash icon to the pre-YouTube-feed inline 2-tap.
-  const handler = MAIN.slice(MAIN.indexOf("closest('.card-delete-btn')"), MAIN.indexOf("closest('.card-delete-btn')") + 1400);
-  assert.match(handler, /if \(result\.deleted\) \{[\s\S]*deleteCardById\(id\)/, 'the confirming tap deletes directly');
-  assert.doesNotMatch(handler, /showHardDeleteModal|isYtdlpManagedItem/, 'the card no longer escalates local files to the checkbox hard-delete modal');
+// UI pass sweep S2 (D8.5, D4.8 F33; supersedes the v1.86.2 inline two-tap - AC12):
+// the card's Delete is a menu entry that asks ONE ui.confirm (Move to Trash) and
+// only then calls the trash delete - still never the checkbox-gated hard-delete
+// modal (the v1.86.2 friction Dean removed from the feed stays removed).
+test('(v1.86.2 #2, converted) the card Delete asks one ui.confirm then deletes to trash - no checkbox-modal escalation', () => {
+  const fn = MAIN.slice(MAIN.indexOf('async function confirmAndDeleteCard(item) {'), MAIN.indexOf('// Runs one menu action for one card'));
+  assert.match(fn, /const ok = await u\.confirm\(cardDeleteConfirmCopy\(item\)\);\s*if \(ok !== true\) return;[\s\S]*deleteCardById\(item\.id\);/, 'the confirm resolves true, then the trash delete');
+  assert.doesNotMatch(fn, /showHardDeleteModal/, 'the card never escalates to the checkbox hard-delete modal');
+  assert.doesNotMatch(MAIN, /card-delete-btn|nextArmState/, 'the inline two-tap arm is gone');
 });
 
 test('(v1.87.1 Dean) the sort control is an inline keyboard_arrow_down chrome-icon svg, not a mask or a ▾ text caret', () => {

@@ -25,9 +25,15 @@ test('the flat grid: 3-up on desktop, 4-up on wide, 1-up on phones', () => {
     'one full-width card per row on phones');
 });
 
-test('the filter chips + active pill', () => {
-  assert.match(css, /\.modern-chip \{[^}]*border-radius:\s*var\(--radius-full\)/, 'chips are pills');
-  assert.match(css, /\.modern-chip\.active \{[^}]*background-color:\s*var\(--text-primary\)/, 'the active chip is the inverted pill');
+// UI pass sweep S2 (F19, AC12): the Modern chips are the ui-chip filter primitive
+// in the shared .library-chips row - the pill and the selected state are ui.css's.
+test('the filter chips are ui-chip filter pills; the selected chip is ink on the tonal fill, never red', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.match(main, /<button type="button" class="ui-chip ui-chip--filter" aria-pressed="\$\{on\}" data-chip="\$\{c\.filter\}">/);
+  assert.match(main, /<div class="modern-chip-row library-chips" role="group"/);
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-chip--filter \{[^}]*border-radius:\s*var\(--r-pill\)/, 'chips are pills');
+  assert.match(ui, /\.ui-chip--filter\[aria-pressed="true"\] \{[^}]*background-color:\s*var\(--fill-selected\)/, 'the selected chip');
 });
 
 test('the mobile avatar bar is hidden on desktop', () => {
@@ -36,14 +42,22 @@ test('the mobile avatar bar is hidden on desktop', () => {
     'desktop hides the avatar bar (YouTube desktop uses the sidebar for subs)');
 });
 
-test('rounded thumbnails wherever modern is on', () => {
-  assert.match(css, /html\[data-modern="on"\][^{]*\.card-media[^{]*\{[^}]*border-radius:\s*var\(--radius-lg\)/,
-    'modern rounds the thumbnail');
+// UI pass sweep S2 (F53, D4.4; AC12): thumbnail rounding is the ui-thumb's era
+// knob (--thumb-radius: --r-md in Modern, 0 in the square retro eras) and the
+// byline avatar is ui.avatar (a monogram on a hash tone - never an inline colour).
+test('rounded thumbnails come from the ui-thumb era knob, not a data-modern override', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-thumb \{[^}]*border-radius:\s*var\(--thumb-radius\)/, 'the thumb radius is the era knob');
+  const tokens = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8');
+  assert.match(tokens, /:root \{[\s\S]*?--thumb-radius:\s*var\(--r-md\)/, 'Modern rounds');
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /html\[data-modern="on"\][^{]*\.card-media|\.thumbnail-container/, 'no bespoke rounding rule');
 });
 
-test('the byline monogram consumes the inline --ch-av custom property (census-safe colour)', () => {
-  assert.match(css, /\.card-channel-avatar-mono \{\s*background-color:\s*var\(--ch-av\b/,
-    'the per-card monogram colour comes from the inline custom property T5 sets');
+test('the byline avatar is ui.avatar - a monogram tone from the palette, never an inline --ch-av colour', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.match(main, /ui\.avatar\(\{ name: opts\.channelName, url: opts\.avatar\.url \|\| null, kind: 'channel', size: 'sm', doc \}\)/);
+  assert.doesNotMatch(main, /--ch-av|card-channel-avatar/, 'the inline colour and the bespoke disc are gone');
+  assert.doesNotMatch(css, /\.card-channel-avatar/, 'no bespoke avatar CSS');
 });
 
 test('(v1.85.2 #3+#4) modern home hides the whole section-title row (folder heading + controls bar)', () => {

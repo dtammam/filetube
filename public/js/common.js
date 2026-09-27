@@ -251,12 +251,40 @@ function resolveTheme(storedEra, storedMode, legacyTheme) {
   return { era, mode };
 }
 
+// ---- UI pass D8.1: the era flourish (fabricated stats) ----------------------
+// The deterministic MOCKS (getStarRating's stars, getMockViews' view counts,
+// getMockSubCount's subscriber counts, the mock comment roster) are the retro
+// house style: shown in the 2005/2009/2014 eras, hidden in Modern (2021) - Dean's
+// audit decision 1. ONE mechanism, not per-feature ifs: a writer that renders a
+// FABRICATED value wraps it in `.ft-fabricated`, and one style.css rule hides every
+// such node unless <html data-era-flourish="on">. The attribute is derived from the
+// era here and nowhere else, set at common.js load (before any view renders) and on
+// every era change (applyTheme). Real values (a yt-dlp view count captured at
+// download, a captured subscriber count) are never wrapped, so they show in every
+// era. The v1.63.1 ft-hide-stars preference composes on top: stars show only when
+// the era allows them AND the preference does not hide them.
+const ERA_FLOURISH_ERAS = ['2005', '2009', '2014'];
+
+// Pure: does this era show fabricated stats? Unknown/garbage = the Modern default (no).
+function eraShowsFabricated(era) {
+  return ERA_FLOURISH_ERAS.includes(String(era));
+}
+
+// Reflects the era onto <html data-era-flourish="on|off">. `doc` for jsdom tests.
+function applyEraFlourish(era, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || !d.documentElement) return;
+  const e = era != null ? era : d.documentElement.getAttribute('data-theme');
+  d.documentElement.setAttribute('data-era-flourish', eraShowsFabricated(e) ? 'on' : 'off');
+}
+
 // Applies both attributes + persists both keys. Also flips the header
 // moon/sun icon to reflect the current mode.
 function applyTheme(era, mode) {
   const d = document.documentElement;
   d.setAttribute('data-theme', era);
   d.setAttribute('data-mode', mode);
+  applyEraFlourish(era);
   try {
     localStorage.setItem('ft-era', era);
     localStorage.setItem('ft-mode', mode);
@@ -607,7 +635,7 @@ function resolveHomeLayout(opts) {
 }
 
 // v1.84 T5: the per-card channel avatar DECISION (Modern mode, media cards).
-// Pure + exported (the render + escaping stays in main.js's buildCardHtml, where
+// Pure + exported (the render + escaping stays in main.js's buildVideoCardEl, where
 // escapeHtml lives). Returns a descriptor: {kind:'none'} in classic (so the
 // classic card is byte-unchanged); {kind:'img',url} when the channel has a photo
 // (the SAME channelAvatarUrl the subscription avatars use); else {kind:'mono',
@@ -917,7 +945,7 @@ function bytesToGb(bytes) {
 // (resolveChannelName + the bell/queue row models + the pinned-sidebar render),
 // and -- because the server does not require client code -- the same one-liner
 // is INLINED at server.js /api/channels, public/js/history.js and public/js/
-// setup.js's Feed-Hidden row (their own renderers, not buildCardHtml). Change
+// setup.js's Feed-Hidden row (their own renderers, not buildVideoCardEl). Change
 // the rule -> update all four sites (a small, accepted duplication).
 function displayChannelName(name) {
   return typeof name === 'string' && name.charAt(0) === '@' ? name.slice(1) : name;
@@ -1741,16 +1769,11 @@ function buildErrorStateHtml(opts) {
 
 // ---- C2/C3: item count + format-toggle library controls (v1.24.0, T3) -----
 //
-// Both are client-side only (no server change) and injected via
-// createElement/textContent -- neither control is baked into any HTML shell
-// (index.html/watch.html/setup.html/subscriptions.html all stay untouched
-// this wave; T1 owns those shells' markup). A CALLER (whichever view is
-// rendering the current item list -- home/folder/playlist/channel all funnel
-// through the same grid) owns invoking `renderItemCountBadge`/
-// `renderFormatToggle` once per render with the CURRENT (already
-// format-filtered) list; these are pure/DOM-builder primitives, not a
-// self-driving feature, so the same count is never computed two different
-// ways in two different places.
+// Client-side only (no server change), injected via createElement/textContent.
+// A CALLER (whichever view is rendering the current item list -- home/folder/
+// playlist/channel all funnel through the same grid) owns invoking
+// `renderItemCountBadge` once per render; the format filter is a dimension of
+// the one library chip row (buildFilterChipRow, UI pass sweep S2).
 
 // Pure: item count for a rendered list. Never throws on a non-array input.
 function countItems(list) {
@@ -1911,73 +1934,86 @@ function filterByMediaType(list, mode) {
   });
 }
 
+// The format dimension's chips (the 'both' mode is the chip row's shared All).
 const FORMAT_TOGGLE_OPTIONS = [
-  { mode: 'both', label: 'All' },
   { mode: 'video', label: 'Videos' },
   { mode: 'audio', label: 'Audio' },
 ];
 
-// Builds a fresh "All / Videos / Audio" toggle control (createElement +
-// textContent only -- no innerHTML). Clicking a button persists the choice
-// via `setStoredFormatFilter`, updates the pressed/active state on all three
-// buttons, and (when supplied) invokes `onChange(normalizedMode)` so a
-// mounting caller can re-filter + re-render its own grid without this
-// function needing to know anything about that caller's render pipeline
-// (mirrors the `onConfirm`-callback convention `showConfirmModal` already
-// uses elsewhere in this file).
-function buildFormatToggleControl(currentMode, onChange) {
-  const active = FORMAT_FILTER_MODES.includes(currentMode) ? currentMode : 'both';
-  const container = document.createElement('div');
-  container.className = 'format-toggle';
-  container.id = 'library-format-toggle';
-  FORMAT_TOGGLE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
-    btn.dataset.formatMode = opt.mode;
-    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      const normalized = setStoredFormatFilter(opt.mode);
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.formatMode === normalized;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(normalized);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotently mounts the format-toggle control as the FIRST child of
-// `actionsEl` (e.g. `.section-actions`, ahead of the sort <select>) -- any
-// prior instance IN THAT CONTAINER is removed first, so repeated calls (e.g.
-// once per render) never accumulate duplicates. The lookup MUST be scoped to
-// `actionsEl`, never `document.getElementById`: this can run against the
-// DETACHED cached home view (homeViewCache + a background
-// `__filetubeRefreshLibrary` while another view is live), where a
-// document-wide lookup finds nothing (-> a second toggle appended, the
-// "doubled All/Videos/Audio row" bug) or finds the LIVE page's toggle and
-// removes it. No-ops safely when `actionsEl` is absent.
-function renderFormatToggle(actionsEl, currentMode, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-format-toggle');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildFormatToggleControl(currentMode, onChange);
-  actionsEl.insertBefore(control, actionsEl.firstChild);
-}
-
-// ---- v1.50: watched-state filter toggle ------------------------------------
+// ---- UI pass sweep S2 (F19, D4.5): the library's ONE filter chip row -------
 //
-// The home page's second segmented group: `All | New | Watching | Watched`.
-// Deliberately a sibling of the format toggle in every way -- same component
-// classes (`.format-toggle`/`.format-toggle-btn`, plus `.watch-toggle` for
-// layout-only overrides), same localStorage persistence pattern, same
-// onChange contract, and the SAME container-scoped de-dupe posture (born
-// with the fix for the doubled-row bug -- see renderFormatToggle above).
-// The value rides `GET /api/videos?watch=`; the SERVER derives watched
+// Home, channel/folder and search views used to stack up to three segmented
+// .btn groups (format All/Videos/Audio, watch All/New/Watching/Watched, the
+// search scope All/Titles/Channels), each with its own "All", wrapping to two
+// or three rows on a phone. They are now ONE horizontally scrolling row of
+// ui-chip filter chips: a leading "All", then each dimension's values. A
+// dimension is single-select-or-none: tapping a chip selects it (and deselects
+// its siblings in that dimension); tapping the selected chip again returns that
+// dimension to its all-value. "All" is pressed exactly when every dimension is
+// at its all-value, and tapping it resets them all.
+//
+//   groups: [{ key, value, all, options: [{ value, label }] }]
+//   onChange(changes): ONCE per tap, with { key: newValue } for every dimension
+//     the tap changed (All can change several; a no-op tap never calls it)
+//
+// Built with ui.chip (createElement + textContent only). The caller owns the
+// state (persistence, URL): this function only reports changes. `opts.doc` for tests.
+function buildFilterChipRow(groups, onChange, opts) {
+  const o = opts || {};
+  const doc = o.doc || document;
+  const u = (typeof window !== 'undefined' && window.ui) || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
+  const state = {};
+  (groups || []).forEach((g) => { state[g.key] = g.value; });
+  const row = doc.createElement('div');
+  row.className = 'library-chips';
+  if (o.id) row.id = o.id;
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', o.label || 'Filter');
+  const allChip = u.chip({ kind: 'filter', label: 'All', doc });
+  allChip.setAttribute('data-chip', 'all');
+  row.appendChild(allChip);
+  const chips = [];
+  (groups || []).forEach((g) => {
+    g.options.forEach((opt) => {
+      const c = u.chip({ kind: 'filter', label: opt.label, doc });
+      c.setAttribute('data-group', g.key);
+      c.setAttribute('data-chip', String(opt.value));
+      chips.push({ el: c, group: g, value: opt.value });
+      row.appendChild(c);
+    });
+  });
+  function paint() {
+    const allOn = (groups || []).every((g) => state[g.key] === g.all);
+    allChip.setAttribute('aria-pressed', allOn ? 'true' : 'false');
+    chips.forEach((c) => c.el.setAttribute('aria-pressed', state[c.group.key] === c.value ? 'true' : 'false'));
+  }
+  function apply(next) {
+    const changes = {};
+    Object.keys(next).forEach((k) => {
+      if (state[k] !== next[k]) { state[k] = next[k]; changes[k] = next[k]; }
+    });
+    paint();
+    if (Object.keys(changes).length && typeof onChange === 'function') onChange(changes);
+  }
+  allChip.addEventListener('click', () => {
+    const next = {};
+    (groups || []).forEach((g) => { next[g.key] = g.all; });
+    apply(next);
+  });
+  chips.forEach((c) => {
+    c.el.addEventListener('click', () => {
+      apply({ [c.group.key]: state[c.group.key] === c.value ? c.group.all : c.value });
+    });
+  });
+  paint();
+  return row;
+}
+
+// ---- v1.50: watched-state filter ---------------------------------------------
+//
+// The library's watch dimension (New | Watching | Watched; 'all' = none), a
+// dimension of the one chip row above (buildFilterChipRow), persisted per
+// device like the format. The value rides `GET /api/videos?watch=`; the SERVER derives watched
 // state (progress thresholds + the sticky completion latch) -- the client
 // never re-implements the thresholds.
 
@@ -1996,133 +2032,47 @@ function setStoredWatchFilter(mode) {
   return normalized;
 }
 
+// The watch dimension's chips ('all' is the chip row's shared All).
 const WATCH_TOGGLE_OPTIONS = [
-  { mode: 'all', label: 'All' },
   { mode: 'new', label: 'New' },
   { mode: 'watching', label: 'Watching' },
   { mode: 'watched', label: 'Watched' },
 ];
 
-// Builds a fresh watched-state toggle control -- createElement + textContent
-// only, mirroring buildFormatToggleControl exactly.
-function buildWatchToggleControl(currentMode, onChange) {
-  const active = WATCH_TOGGLE_MODES.includes(currentMode) ? currentMode : 'all';
-  const container = document.createElement('div');
-  container.className = 'format-toggle watch-toggle';
-  container.id = 'library-watch-toggle';
-  WATCH_TOGGLE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
-    btn.dataset.watchMode = opt.mode;
-    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      const normalized = setStoredWatchFilter(opt.mode);
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.watchMode === normalized;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(normalized);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotently mounts the watched toggle DIRECTLY AFTER the format toggle
-// (falling back to first child when the format toggle isn't mounted yet).
-// Container-scoped de-dupe -- never document.getElementById -- for exactly
-// the detached-homeViewCache reasons documented on renderFormatToggle.
-function renderWatchToggle(actionsEl, currentMode, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-watch-toggle');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildWatchToggleControl(currentMode, onChange);
-  const formatToggle = actionsEl.querySelector('#library-format-toggle');
-  actionsEl.insertBefore(control, formatToggle ? formatToggle.nextSibling : actionsEl.firstChild);
-}
-
 // ---- v1.149 (Dean): search-scope toggle (All | Titles | Channels) ----------
 //
-// The classic toolbar's THIRD segmented group, rendered ONLY while a search
-// is active (main.js guards on searchQuery). A sibling of the format/watch
-// toggles in every way EXCEPT persistence: each new search deliberately
-// starts on 'all' (the YouTube posture), so there is NO storage key - the
-// current value lives in the search view's closure and deep links carry it
-// via ?searchIn=. Labels are Titles/Channels (not YouTube's Videos/
-// Channels) because the format toggle beside it already owns a "Videos"
-// button - two same-labeled buttons in one toolbar would be a coin flip.
-// Three buttons = the format toggle's exact width budget, so the shared
-// .format-toggle classes style it with ZERO new CSS.
+// A dimension of the library chip row, present ONLY on a folder/root-scoped
+// search (main.js). Unlike format/watch it is NOT persisted: each new search
+// starts on 'all' (the YouTube posture) - the value lives in the search view's
+// closure and deep links carry it via ?searchIn=. Labels are Titles/Channels
+// (not YouTube's Videos/Channels) because the format dimension in the same row
+// already owns a "Videos" chip.
 const SEARCH_SCOPE_MODES = ['all', 'title', 'channel'];
 
 function normalizeSearchScopeMode(raw) {
   return SEARCH_SCOPE_MODES.includes(raw) ? raw : 'all';
 }
 
+// The search-scope dimension's chips ('all' is the chip row's shared All).
 const SEARCH_SCOPE_OPTIONS = [
-  { mode: 'all', label: 'All' },
   { mode: 'title', label: 'Titles' },
   { mode: 'channel', label: 'Channels' },
 ];
 
-// Builds a fresh search-scope toggle -- createElement + textContent only,
-// mirroring buildFormatToggleControl exactly (minus the storage write:
-// the caller owns the state).
-function buildSearchScopeToggleControl(currentMode, onChange) {
-  const active = normalizeSearchScopeMode(currentMode);
-  const container = document.createElement('div');
-  container.className = 'format-toggle';
-  container.id = 'library-search-scope-toggle';
-  SEARCH_SCOPE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
-    btn.dataset.searchScope = opt.mode;
-    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.searchScope === opt.mode;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(opt.mode);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotent mount AFTER the watch toggle (or the format toggle, or first) -
-// the same container-scoped de-dupe posture as its two siblings (see
-// renderFormatToggle's doubled-row rationale above).
-function renderSearchScopeToggle(actionsEl, currentMode, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-search-scope-toggle');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildSearchScopeToggleControl(currentMode, onChange);
-  const anchor = actionsEl.querySelector('#library-watch-toggle') || actionsEl.querySelector('#library-format-toggle');
-  actionsEl.insertBefore(control, anchor ? anchor.nextSibling : actionsEl.firstChild);
-}
-
-// v1.205 Wave B: the unified-search content-TYPE chip row (All | Videos |
-// Audio | Music | Podcasts | Shows | Books). Same .format-toggle recipe as the
-// searchIn scope toggle (zero new CSS beyond a wrap rule), but a DIFFERENT
-// vocabulary (?type=) and SEVEN chips. The header's GLOBAL search uses this in
-// place of the video-only Titles/Channels toggle (Dean: drop the sub-scope in
-// unified search); a folder/root search keeps that toggle. State lives in the
-// view closure; the mount below and buildVideosApiUrl read/write it.
+// v1.205 Wave B: the unified-search content TYPE (Videos | Audio | Music |
+// Podcasts | Shows | Books; 'all' = none). The header's GLOBAL search shows it
+// as the ONLY dimension of the library chip row (sort/format/watch do not apply
+// to the server-ranked cross-type stream); a folder/root search keeps the
+// Titles/Channels scope instead. State lives in the view closure; main.js's
+// chip mount and buildVideosApiUrl read/write it.
 const SEARCH_TYPE_CHIPS = ['all', 'videos', 'audio', 'music', 'podcasts', 'shows', 'books'];
 
 function normalizeSearchTypeChip(raw) {
   return SEARCH_TYPE_CHIPS.includes(raw) ? raw : 'all';
 }
 
+// The unified search's type chips ('all' is the chip row's shared All).
 const SEARCH_TYPE_OPTIONS = [
-  { chip: 'all', label: 'All' },
   { chip: 'videos', label: 'Videos' },
   { chip: 'audio', label: 'Audio' },
   { chip: 'music', label: 'Music' },
@@ -2130,42 +2080,6 @@ const SEARCH_TYPE_OPTIONS = [
   { chip: 'shows', label: 'Shows' },
   { chip: 'books', label: 'Books' },
 ];
-
-function buildSearchTypeChipsControl(currentChip, onChange) {
-  const active = normalizeSearchTypeChip(currentChip);
-  const container = document.createElement('div');
-  container.className = 'format-toggle search-type-chips';
-  container.id = 'library-search-type-chips';
-  SEARCH_TYPE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.chip === active ? ' active' : '');
-    btn.dataset.searchType = opt.chip;
-    btn.setAttribute('aria-pressed', opt.chip === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.searchType === opt.chip;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(opt.chip);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotent mount as the FIRST control in the action row (the chip row is the
-// primary filter for a unified search). Same container-scoped de-dupe as the
-// scope/format toggles.
-function renderSearchTypeChips(actionsEl, currentChip, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-search-type-chips');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildSearchTypeChipsControl(currentChip, onChange);
-  actionsEl.insertBefore(control, actionsEl.firstChild);
-}
 
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
 //
@@ -3148,13 +3062,21 @@ function resolveSubscriberLabel(item, channelName) {
   return `${getMockSubCount(channelName)} subscribers`;
 }
 
+// UI pass D8.1: true when resolveViewCountLabel would print the MOCK (no captured
+// count), so a writer can wrap that label in `.ft-fabricated` (the era flourish).
+// The same test resolveViewCountLabel branches on - one definition of "real".
+function isFabricatedViewCount(item) {
+  const raw = item ? item.sourceViewCount : undefined;
+  return !Number.isInteger(raw) || raw < 0;
+}
+
 function resolveViewCountLabel(item, opts) {
   const detailed = !!(opts && opts.detailed);
   const raw = item ? item.sourceViewCount : undefined;
   // `Number.isInteger` rather than a truthiness test: 0 is a real view count
   // (a brand-new upload), and `count && ...` would fall it back to a fabricated
   // number that is guaranteed to be wrong.
-  if (!Number.isInteger(raw) || raw < 0) {
+  if (isFabricatedViewCount(item)) {
     return getMockViews((item && item.id) || '', (item && item.size) || 0);
   }
   const base = `${raw.toLocaleString()} view${raw === 1 ? '' : 's'}`;
@@ -8214,7 +8136,7 @@ var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // v1.167 (Dean: "everywhere... popping up behind the button in a cute
 // cartoonish way"): the MACHINE-DERIVED per-view sweep (exec plan carries the
 // full accept/reject table) - `.btn` (buttons, PRIORITY-weighted), `.sub-row`,
-// `.history-thumb`, `.book-row-cover`, `.music-artist-mosaic`,
+// `.history-thumb` (now the `.ui-thumb` anchor, sweep S2), `.book-row-cover`, `.music-artist-mosaic`,
 // `.podcast-card-art`, `.comment-input-box`. Rejected as TRANSPARENT (the
 // tightened ground contract): the music/podcast CARDS (their art tiles paint
 // instead), history/song/stable rows, comment-item.
@@ -8222,13 +8144,17 @@ var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // its --thumb-ground), so the pool names the primitive instead of the retired
 // `.podcast-card-art`; every surface that adopts ui-art (albums, books) anchors too.
 var CRITTER_ANCHOR_SELECTORS = [
-  '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb',
-  '.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box',
+  '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container',
+  '.btn', '.sub-row', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box',
   // v1.169 (Dean: the mobile feed needs critters ON the cards): the thumbnail
-  // (paints letterbox black - critters rise from behind the artwork onto the
-  // title zone) and the tiny channel-avatar circle (24px - a micro-ambush;
-  // the anchor minimum drops to 24x24 for it, pool stays curated).
-  '.thumbnail-container', '.card-channel-avatar',
+  // (paints its ground - critters rise from behind the artwork onto the title
+  // zone) and the small channel-avatar circle (a micro-ambush; the anchor
+  // minimum drops for it, pool stays curated). UI pass sweep S2: every
+  // thumbnail the sweep migrated - the cards', the watch page's related rail
+  // (was `.related-thumb`) and History's rows (was `.history-thumb`) - is the
+  // ui-thumb primitive, which paints --thumb-ground; the card avatar is a
+  // ui-avatar (the same ground).
+  '.ui-thumb', '.video-card .ui-avatar',
 ];
 // Buttons get sampling PRIORITY (Dean's ambush-over-wallpaper ruling): anchors
 // matching these selectors carry weight 3 in the without-replacement sample.
@@ -16047,48 +15973,37 @@ function ensureRepullButton(sub) {
   const actions = document.querySelector('.section-actions');
   if (!actions) { removeRepullButton(); return; }
   let btn = document.getElementById(REPULL_BTN_ID);
-  let label;
-  if (btn) {
-    label = btn.querySelector('.btn-label');
-  } else {
-    btn = document.createElement('button');
-    btn.type = 'button';
-    // Tokens Phase 1 Tier 1: font-size/padding moved to .repull-btn-compact
-    // (style.css) - font-size rides var(--fs-xs).
-    btn.className = 'btn btn-sm repull-btn-compact';
+  if (!btn) {
+    // UI pass sweep S2 (F19): a ui-btn icon tool beside the toolbar's others (the
+    // library toolbar is ONE row that never wraps, so no word label): the
+    // subscriptions glyph, distinct from Rescan's refresh. Busy = the ui-btn
+    // spinner; the outcome is a toast (the v1.31 P5 never-silent posture).
+    const ui = (typeof window !== 'undefined' && window.ui)
+      || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
+    if (!ui) return;
+    btn = ui.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'subscriptions', ariaLabel: 'Re-pull this channel now' });
     btn.id = REPULL_BTN_ID;
-    btn.title = 'Re-pull this channel now';
-    btn.setAttribute('aria-label', 'Re-pull this channel now');
-    const icon = document.createElement('i');
-    icon.className = 'icon-refresh';
-    btn.appendChild(icon);
-    btn.appendChild(document.createTextNode(' '));
-    label = document.createElement('span');
-    label.className = 'btn-label';
-    label.textContent = 'Re-pull';
-    btn.appendChild(label);
-    actions.appendChild(btn);
+    const tools = actions.querySelector('.library-tools');
+    (tools || actions).appendChild(btn);
     btn.addEventListener('click', () => {
       if (btn.disabled) return;
       btn.disabled = true;
-      const originalLabel = label.textContent;
-      label.textContent = 'Checking…';
+      ui.setBusy(btn, true);
       // v1.31 P5 (FR5): read the v1.29 {started, reason} body instead of
-      // discarding it -- a busy-coalesced repull shows 'Queued behind run'
-      // on the button itself for the reset window, so the click is never a
-      // silent no-op.
+      // discarding it -- a busy-coalesced repull says so, so the click is
+      // never a silent no-op.
       fetch('/api/subscriptions/' + encodeURIComponent(btn.dataset.subId) + '/repull', { method: 'POST' })
         .then((r) => (r && r.ok ? r.json() : null))
         .then((body) => {
-          if (body && body.started === false && body.reason === 'busy') {
-            label.textContent = 'Queued behind run';
-          }
+          if (body && body.started === false && body.reason === 'busy') ui.toast('Queued behind the current run');
+          else if (body) ui.toast('Checking this channel for new videos');
+          else ui.toast('Could not re-pull this channel', { kind: 'error' });
         })
-        .catch((err) => console.error('Re-pull-this-channel failed:', err))
+        .catch((err) => { console.error('Re-pull-this-channel failed:', err); ui.toast('Could not re-pull this channel', { kind: 'error' }); })
         .finally(() => {
           setTimeout(() => {
             btn.disabled = false;
-            label.textContent = originalLabel;
+            ui.setBusy(btn, false);
           }, 1500);
         });
     });
@@ -16723,6 +16638,11 @@ const handoffCard = (() => {
   return { init, __poll: poll, __hide: hide };
 })();
 
+// UI pass D8.1: reflect the era's flourish NOW, from the data-theme the shell's
+// pre-paint bootstrap already set, so the first card render (this script runs
+// before any view's init) never shows a fabricated stat the era hides.
+applyEraFlourish();
+
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
@@ -17027,7 +16947,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
     formatBreakerChipText,
-    getStarRating, getCommentCount, resolveChannelName, displayChannelName, resolveRootHeaderLabel, clampPositionState,
+    getStarRating, getCommentCount, formatRelativeTime, resolveChannelName, displayChannelName, resolveRootHeaderLabel, clampPositionState,
     // v1.126: the folder display-name map cache (setter + reader).
     setFolderDisplayNames, folderDisplayName,
     resolveTheme, THEME_REGISTRY, activeNavItem,
@@ -17128,6 +17048,8 @@ if (typeof module !== 'undefined' && module.exports) {
     decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState, deleteResultToast,
+    // UI pass D8.1: the era flourish (fabricated stats) mechanism.
+    ERA_FLOURISH_ERAS, eraShowsFabricated, applyEraFlourish, isFabricatedViewCount,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState, popStateDelegate,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
     // selects between, exported so tests assert the reader carve-out against the
@@ -17245,13 +17167,14 @@ if (typeof module !== 'undefined' && module.exports) {
     getStoredViewMode, setStoredViewMode,
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
     pullRefreshState, pullIsHorizontalDrag,
-    FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
-    // v1.50: the watched-state filter toggle (the format toggle's sibling).
-    WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
-    buildWatchToggleControl, renderWatchToggle,
-    // v1.149: the search-scope toggle family (no storage - caller-owned state).
-    SEARCH_SCOPE_MODES, normalizeSearchScopeMode, buildSearchScopeToggleControl, renderSearchScopeToggle,
-    SEARCH_TYPE_CHIPS, normalizeSearchTypeChip, buildSearchTypeChipsControl, renderSearchTypeChips,
+    FORMAT_FILTER_MODES, FORMAT_TOGGLE_OPTIONS,
+    // v1.50: the watched-state filter (the format filter's sibling).
+    WATCH_TOGGLE_MODES, WATCH_TOGGLE_OPTIONS, getStoredWatchFilter, setStoredWatchFilter,
+    // v1.149: the search scope (no storage - caller-owned state); v1.205: the type.
+    SEARCH_SCOPE_MODES, SEARCH_SCOPE_OPTIONS, normalizeSearchScopeMode,
+    SEARCH_TYPE_CHIPS, SEARCH_TYPE_OPTIONS, normalizeSearchTypeChip,
+    // UI pass sweep S2 (F19): the ONE library filter chip row.
+    buildFilterChipRow,
     // v1.150: the search-box clear X (pure predicate + injector).
     shouldShowSearchClear, injectSearchClearButton, shouldClearSearchInputAfterResults,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,

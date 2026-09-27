@@ -48,13 +48,18 @@ function fakeDoc() {
   return { createElement: (tag) => new FakeNode(tag) };
 }
 
+// UI pass sweep S2 (D9; AC12): the skeleton card is built from the SAME ui-thumb
+// box and info block as the real card (main.js buildSkeletonCardEl), so the
+// reveal is zero-shift; test/geometry/library-toolbar.check.js measures it.
+const { JSDOM } = require('jsdom');
+const DOC = new JSDOM('<!doctype html><body></body>').window.document;
+
 test('buildSkeletonGrid: returns exactly n skeleton cards, each matching the real card box model', () => {
-  const html = buildSkeletonGrid(3);
+  const html = buildSkeletonGrid(3, { doc: DOC });
   const cardMatches = html.match(/class="video-card skeleton-card"/g) || [];
   assert.strictEqual(cardMatches.length, 3);
-  // Same thumbnail box the real card uses (`.thumbnail-container`), so
-  // swapping skeleton for real content produces zero layout shift.
-  assert.match(html, /class="thumbnail-container skeleton-shimmer"/);
+  // Same thumbnail box the real card uses (the ui-thumb 16:9 primitive).
+  assert.match(html, /<div class="card-media"><div class="ui-thumb ui-thumb--16x9 ui-thumb--card skeleton-shimmer"><\/div><\/div>/);
   assert.match(html, /class="video-info"/);
   assert.match(html, /aria-hidden="true"/);
 });
@@ -104,7 +109,7 @@ test('style.css defines the shared .skeleton-shimmer sweep animation, honoring p
 });
 
 test('style.css defines the home-grid skeleton card and subscriptions skeleton row box models', () => {
-  assert.match(css, /\.skeleton-card \.thumbnail-container\s*\{/);
+  assert.match(css, /\.skeleton-card \.card-rating\s*\{/, 'the skeleton rating row keeps its box but never paints (sweep S2)');
   assert.match(css, /\.skeleton-line\s*\{/);
   assert.match(css, /\.skeleton-row\s*\{/);
   assert.match(css, /\.skeleton-row-avatar\s*\{/);

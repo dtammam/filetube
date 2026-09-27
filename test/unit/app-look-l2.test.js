@@ -130,7 +130,8 @@ test('TV: a poster that ERRORS (404) clears its shimmer through the real reveal 
 // ---------------------------------------------------------------- 3. home art
 test('home: every card thumbnail and row cover ships art-shimmer (the six builders)', () => {
   const src = read('public/js/main.js');
-  assert.match(src, /<img class="thumbnail-img art-shimmer" src="\$\{kp \? kp\.thumbSrc/, 'buildCardHtml thumbnail');
+  // UI pass sweep S2: the grid card is DOM (buildVideoCardEl) - its ui-thumb image takes the class.
+  assert.match(src, /const img = thumb\.querySelector\('\.ui-thumb__img'\);\s*if \(img\) img\.classList\.add\('art-shimmer'\);/, 'buildVideoCardEl thumbnail');
   const m = require('../../public/js/main.js');
   // the row builders read common.js's resolveChannelName (a shell global) - stub it
   const hadResolve = 'resolveChannelName' in global;
@@ -168,36 +169,41 @@ test('home: revealHomeArt hands the scope (+ signal) to revealArtTogether, else 
 
 test('home: EVERY grid/row render and append reveals right after it writes (source lock, comments stripped)', () => {
   const src = stripJs(read('public/js/main.js'));
+  // UI pass sweep S2: every grid write (classic page 0 + append, modern page 0 +
+  // append) goes through putCards, which reveals right after it writes.
   const sites = [
-    /videoGrid\.innerHTML = items\.map\(buildCardHtml\)\.join\(''\);\s*revealHomeArt\(videoGrid, signal\);/, // classic/folder/search/Liked page 0
-    /Array\.from\(wrapper\.children\)\.forEach\(\(card\) => videoGrid\.append\(card\)\);\s*revealHomeArt\(videoGrid, signal\);/, // classic append
-    /buildModernEmptyHtml\(filter\);\s*revealHomeArt\(videoGrid, sig\);/, // modern page 0
-    /videoGrid\.insertAdjacentHTML\('beforeend', fresh\.map\([^\n]*\);\s*revealHomeArt\(videoGrid, signal\);/, // modern append
+    /if \(append\) videoGrid\.appendChild\(frag\);\s*else videoGrid\.replaceChildren\(frag\);\s*revealHomeArt\(videoGrid, signal\);/, // putCards: every grid render + append
+    /putCards\(items, false\);/, // classic/folder/search/Liked page 0 (and the modern page 0)
+    /putCards\(items, true\);/, // classic append (appendCardsToGrid)
+    /putCards\(fresh, true\);/, // modern append
     /host\.innerHTML = html \|\| '';\s*revealHomeArt\(host\);/, // Continue rows
     /host\.innerHTML = rows\.map\(buildFeedRowHtml\)\.join\(''\);\s*revealHomeArt\(host, signal\);/, // feed
     /encodeURIComponent\(searchQuery\),\s*\);\s*revealHomeArt\(booksRowHost, signal\);/, // search books row
   ];
+  assert.ok(!/videoGrid\.innerHTML = items|videoGrid\.insertAdjacentHTML/.test(src), 'no grid write bypasses putCards');
   for (const re of sites) assert.match(src, re, String(re).slice(0, 90));
-  assert.strictEqual((src.match(/revealHomeArt\(/g) || []).length, 8, 'the seven call sites + the definition (a new render site must join)');
+  assert.strictEqual((src.match(/revealHomeArt\(/g) || []).length, 5, 'putCards + the three row/feed sites + the definition (a new render site must join)');
 });
 
 // ---------------------------------------------------------------- 4. grid skeleton
-test('buildSkeletonGrid: each card is built from the REAL card line structure (2-line title, uploader, meta, stars)', () => {
+test('buildSkeletonGrid: each card is built from the REAL card line structure (ui-thumb, 2-line title, uploader, meta, stars)', () => {
+  // UI pass sweep S2 (D9, F63): built by buildSkeletonCardEl from the same primitives as the card.
   const { buildSkeletonGrid } = require('../../public/js/main.js');
-  const dom = new JSDOM(`<div id="g">${buildSkeletonGrid(2)}</div>`);
-  const cards = dom.window.document.querySelectorAll('#g > .video-card.skeleton-card[aria-hidden="true"]');
+  const doc = new JSDOM('<!doctype html><body></body>').window.document;
+  const g = new JSDOM(`<div id="g">${buildSkeletonGrid(2, { doc })}</div>`).window.document;
+  const cards = g.querySelectorAll('#g > .video-card.skeleton-card[aria-hidden="true"]');
   assert.strictEqual(cards.length, 2);
   for (const card of cards) {
-    const info = card.querySelector(':scope > .video-info');
-    assert.ok(card.querySelector(':scope > .card-media > .thumbnail-container.skeleton-shimmer'), 'the real 16:9 box');
-    const kids = Array.from(info.children).map((k) => k.className);
+    const text = card.querySelector(':scope > .video-info > .card-text');
+    assert.ok(card.querySelector(':scope > .card-media > .ui-thumb.ui-thumb--16x9.skeleton-shimmer'), 'the real 16:9 ui-thumb box');
+    const kids = Array.from(text.children).map((k) => k.className.split(' ')[0]);
     assert.deepStrictEqual(kids, ['video-title', 'video-uploader', 'video-meta', 'card-rating'], 'the real info rows, in order');
-    assert.strictEqual(info.querySelectorAll('.video-title > .skeleton-text').length, 2, 'the title reserves TWO lines');
-    assert.ok(info.querySelector('.video-title > br'), 'the two title lines are separate line boxes');
-    assert.strictEqual(info.querySelector('.card-channel-avatar'), null, 'no avatar disc on a classic card');
+    assert.strictEqual(text.querySelectorAll('.video-title > .skeleton-text').length, 2, 'the title reserves TWO lines');
+    assert.ok(text.querySelector('.video-title > br'), 'the two title lines are separate line boxes');
+    assert.strictEqual(card.querySelector('.ui-avatar'), null, 'no avatar on a classic card');
   }
-  const modern = new JSDOM(buildSkeletonGrid(1, { avatar: true })).window.document;
-  assert.ok(modern.querySelector('.video-uploader > .card-channel-avatar.skeleton-shimmer + .skeleton-text'), 'Modern: the 24px byline avatar disc sets the uploader row height');
+  const modern = new JSDOM(buildSkeletonGrid(1, { avatar: true, doc })).window.document;
+  assert.ok(modern.querySelector('.video-info > .ui-avatar.ui-avatar--sm.skeleton-shimmer + .card-text'), 'Modern: the byline avatar reserve sits where the real avatar does');
 });
 
 test('CSS: a .skeleton-text bar is one transparent line box, top-aligned (baseline + overflow:hidden would grow the line)', () => {

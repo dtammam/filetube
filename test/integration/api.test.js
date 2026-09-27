@@ -149,7 +149,7 @@ test('GET /api/videos resolves the channel avatar from the registry (Fix A) with
 });
 
 // v1.113 slim-gate WARNING: search was NOT the only card surface -- /api/liked
-// (and /api/history) spread the raw item through the SAME buildCardHtml ->
+// (and /api/history) spread the raw item through the SAME buildVideoCardEl ->
 // modernCardAvatar path, so the monogram bug was live there too. Sweep lock.
 test('GET /api/liked resolves the channel avatar too (Fix A sweep -- no monogram in Liked)', async () => {
   const CHID = 'UC-lHJZR3Gqxm24_Vd_AJ5Yw';

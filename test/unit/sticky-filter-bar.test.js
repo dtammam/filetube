@@ -37,19 +37,15 @@ test('#4: the item count is parenthesized in CSS (data string stays "N items")',
   assert.match(css, /\.library-item-count::after\s*\{\s*content:\s*"\)"/, 'close paren');
 });
 
-test('#3: on mobile the action row keeps its one-glyph-line contract; wrap exists ONLY for the watch group\'s own second row', () => {
-  // v1.45.2 made .section-actions nowrap (one clean line, icon-only). v1.50
-  // relaxed nowrap -> wrap SOLELY so the watched-state group can take a
-  // full-width second row -- the original line's members are unchanged and
-  // the watch group is forced off it (order + width:100%), so the v1.45
-  // width budget still holds. These declarations exist only in the mobile
-  // block (desktop .section-actions has no flex-wrap and never hides
-  // labels), so a bare match is unambiguous.
-  assert.match(css, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap/, '.section-actions wraps on mobile (v1.50: watch-group second row)');
-  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10/, 'the watch group is forced OFF the one-glyph line');
-  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*flex:\s*1 1 70%/, 'v1.50.4: grows to fill row 2 alone, leaves room for Re-pull beside it');
-  assert.match(css, /\.section-actions #sub-repull-channel-btn\s*\{[^}]*order:\s*11/, 'v1.50.4: Re-pull joins row 2, never orphans a middle row');
-  assert.match(css, /\.section-actions \.btn \.btn-label\s*\{\s*display:\s*none/, 'Shuffle/Rescan labels are hidden on mobile');
+// UI pass sweep S2 (F19): the v1.45-v1.50.4 two-row machinery (the watch group's
+// order/basis, Re-pull's order band, hidden word labels) retired with the ONE
+// chip row: the toolbar never wraps, and every tool - Re-pull included - is an
+// icon joining the fixed .library-tools group (common.js ensureRepullButton).
+test('#3 (converted): on mobile the toolbar is ONE row - it never wraps, and Re-pull joins the icon tools', () => {
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap|\.watch-toggle|#sub-repull-channel-btn/, 'no second-row machinery');
+  const common = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.match(common, /btn = ui\.button\(\{ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'subscriptions', ariaLabel: 'Re-pull this channel now' \}\);/);
+  assert.match(common, /const tools = actions\.querySelector\('\.library-tools'\);\s*\(tools \|\| actions\)\.appendChild\(btn\);/);
 });
 
 // The base (desktop) sticky rule.

@@ -18,31 +18,33 @@ const { ICON_SETS, liveCss, effectiveMask, beforeGlyphRules } = require('../help
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 
-test('index.html: the shuffle-again button uses a distinct .icon-shuffle icon, not .icon-refresh', () => {
-  const shuffleButtonMatch = /<button[^>]*id="shuffle-again-btn"[^>]*>[\s\S]*?<\/button>/.exec(html);
-  assert.ok(shuffleButtonMatch, 'expected to find the shuffle-again-btn markup');
-  assert.match(shuffleButtonMatch[0], /<i class="icon-shuffle"><\/i>/);
-  assert.doesNotMatch(shuffleButtonMatch[0], /icon-refresh/);
+// UI pass sweep S2 (converts the v1.15.1 markup locks, AC12): the two tools are
+// ui-btn icons drawing DISTINCT registry glyphs (shuffle vs refresh) - the v1.15.1
+// bug was two identical glyphs side by side on a phone.
+const toolButton = (id) => {
+  const m = new RegExp(`<button[^>]*id="${id}"[^>]*>[\\s\\S]*?<\\/button>`).exec(html);
+  assert.ok(m, `expected to find the ${id} markup`);
+  return m[0];
+};
+
+test('index.html: the shuffle-again tool draws the registry shuffle glyph, never refresh', () => {
+  const b = toolButton('shuffle-again-btn');
+  assert.match(b, /<use href="#i-shuffle"\/>/);
+  assert.doesNotMatch(b, /i-refresh|icon-refresh/);
 });
 
-test('index.html: the shuffle-again button keeps its accessible name/title unchanged', () => {
-  assert.match(html, /id="shuffle-again-btn"[^>]*title="Shuffle again"/);
+test('index.html: the shuffle-again tool keeps its accessible name', () => {
   assert.match(html, /id="shuffle-again-btn"[^>]*aria-label="Shuffle again"/);
 });
 
-test('index.html: the rescan-library button still uses .icon-refresh', () => {
-  const rescanButtonMatch = /<button[^>]*id="rescan-library-btn"[^>]*>[\s\S]*?<\/button>/.exec(html);
-  assert.ok(rescanButtonMatch, 'expected to find the rescan-library-btn markup');
-  assert.match(rescanButtonMatch[0], /<i class="icon-refresh"><\/i>/);
+test('index.html: the rescan tool draws the registry refresh glyph', () => {
+  assert.match(toolButton('rescan-library-btn'), /<use href="#i-refresh"\/>/);
 });
 
-test('main.js: rescanBtn re-renders keep .icon-refresh (never re-render the shuffle button\'s icon at all)', () => {
-  assert.doesNotMatch(mainJs, /shuffleAgainBtn\.innerHTML/, 'the shuffle button markup is static; main.js must not overwrite its icon');
-  const rescanInnerHtmlMatches = mainJs.match(/rescanBtn\.innerHTML\s*=\s*'[^']*'/g) || [];
-  assert.ok(rescanInnerHtmlMatches.length > 0, 'expected at least one rescanBtn.innerHTML assignment');
-  for (const assignment of rescanInnerHtmlMatches) {
-    assert.match(assignment, /icon-refresh/, `rescanBtn re-render should keep icon-refresh: ${assignment}`);
-  }
+test('main.js: neither tool\'s markup is rewritten - the rescan busy state is aria-busy (the ui-btn spinner), never an innerHTML swap', () => {
+  assert.doesNotMatch(mainJs, /shuffleAgainBtn\.innerHTML/, 'the shuffle button markup is static');
+  assert.doesNotMatch(mainJs, /rescanBtn\.innerHTML/, 'the rescan glyph is never re-rendered');
+  assert.match(mainJs, /function setRescanBusy\(on\) \{\s*rescanBtn\.disabled = !!on;[\s\S]{0,160}?u\.setBusy\(rescanBtn, !!on\)/);
 });
 
 // v1.25.4 fix: .icon-shuffle previously rendered as a fixed ::before unicode

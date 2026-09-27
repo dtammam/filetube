@@ -1383,118 +1383,9 @@ function wireHomeRowToggle(id, key, signal) {
 // against common.js's live roster - an id without a label would otherwise
 // render as its raw slug in Dean's Settings panel.
 const BOTTOMBAR_LABELS = { home: 'Home', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
-// ---- v1.67: the card-corner editor (plan D9) --------------------------------
-//
-// Four pickers (Top left / Top right / Bottom left / Bottom right) in the
-// Appearance box. The corner VOCABULARY (control roster, defaults, resolver)
-// is main.js's - consumed here as browser globals (script order: common ->
-// main -> setup), never hand-copied (the v1.64 roster-rot lesson; the unit
-// suite binds the label map against main.js's exported roster). Per-user
-// SERVER-persisted (C1): seeds from GET /api/auth/me, writes one key per
-// change via POST /api/me/settings, and deliberately touches NO localStorage.
-// v1.204: the bottom-right picker joined the other three - that corner shares
-// its space with the duration badge (the card render nudges the badge left
-// when the slot is occupied), so it defaults to None and the badge stays put.
-
-const CARD_CORNER_LABELS = {
-  download: 'Download', delete: 'Delete', like: 'Like',
-  queue: 'Queue', share: 'Share', reheat: 'Reheat', transcript: 'Transcript', none: 'None',
-};
-
-const CORNER_EDITOR_SLOTS = [
-  ['cornerTL', 'Top left'],
-  ['cornerTR', 'Top right'],
-  ['cornerBL', 'Bottom left'],
-  ['cornerBR', 'Bottom right'], // v1.204: shares bottom-right with the duration badge
-];
-
-// Pure (C2): one corner's <option> list - every canonical control MINUS the
-// ones the OTHER two corners currently hold (a duplicate is a UI bug, not a
-// feature), plus None always (two empty corners are legal). `controls` is
-// injected (main.js's CARD_CORNER_CONTROLS) so Node tests need no globals.
-function buildCornerEditorOptions(effective, cornerKey, controls) {
-  const chosenElsewhere = new Set(
-    CORNER_EDITOR_SLOTS.map((s) => s[0]).filter((k) => k !== cornerKey).map((k) => effective[k])
-  );
-  const options = [];
-  for (const control of controls) {
-    // v1.67 gate (adversarial S1): a corner's OWN stored value is never
-    // filtered, even when a direct settings POST duplicated it into another
-    // corner (bypassing this editor is the plan's accepted residual). The
-    // select must display the stored truth - a filtered-out own-value left
-    // no selected option, so the browser showed the first entry as a lie.
-    if (chosenElsewhere.has(control) && effective[cornerKey] !== control) continue;
-    options.push({
-      value: control,
-      label: CARD_CORNER_LABELS[control] || control,
-      selected: effective[cornerKey] === control,
-    });
-  }
-  options.push({ value: 'none', label: CARD_CORNER_LABELS.none, selected: effective[cornerKey] === 'none' });
-  return options;
-}
-
-async function renderCardCornerEditor(signal) {
-  const host = document.getElementById('card-corner-editor');
-  if (!host) return;
-  let settings = null;
-  try {
-    const r = await fetch('/api/auth/me');
-    if (r.ok) {
-      const me = await r.json();
-      settings = me && me.settings;
-    }
-  } catch (_) { /* signed-out/offline: draw the C5 defaults (a save would fail the same way and re-seed) */ }
-  drawCardCornerEditor(host, resolveCardCornerPrefs(settings), signal);
-}
-
-function drawCardCornerEditor(host, effective, signal) {
-  host.innerHTML = '';
-  for (const [key, slotLabel] of CORNER_EDITOR_SLOTS) {
-    const row = document.createElement('div');
-    row.className = 'card-corner-editor-row';
-    const label = document.createElement('span');
-    label.className = 'card-corner-editor-label';
-    label.textContent = slotLabel;
-    const select = document.createElement('select');
-    select.className = 'card-corner-editor-select';
-    select.setAttribute('aria-label', `${slotLabel} corner control`);
-    for (const opt of buildCornerEditorOptions(effective, key, CARD_CORNER_CONTROLS)) {
-      const o = document.createElement('option');
-      o.value = opt.value;
-      o.textContent = opt.label;
-      o.selected = opt.selected;
-      select.appendChild(o);
-    }
-    select.addEventListener('change', () => {
-      const value = select.value;
-      effective[key] = value;
-      // Redraw FIRST so the sibling pickers re-filter instantly (C2 live),
-      // then persist; a failed save re-seeds the whole editor from the
-      // server truth rather than leaving the UI lying about what stuck.
-      // QA S2: the redraw destroys the focused <select>, which strands a
-      // keyboard user (Firefox fires `change` per arrow press) - re-focus
-      // the SAME slot's fresh select so arrow-keying keeps working.
-      drawCardCornerEditor(host, effective, signal);
-      const slotIndex = CORNER_EDITOR_SLOTS.findIndex((s) => s[0] === key);
-      const freshSelect = host.querySelectorAll('select')[slotIndex];
-      if (freshSelect) freshSelect.focus();
-      fetch('/api/me/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: value }),
-      })
-        .then((res) => { if (!res.ok) throw new Error(`save failed: ${res.status}`); })
-        .catch(() => {
-          showToast('Could not save the corner layout.');
-          renderCardCornerEditor(signal);
-        });
-    }, { signal });
-    row.appendChild(label);
-    row.appendChild(select);
-    host.appendChild(row);
-  }
-}
+// (v1.67's card-corner editor retired in UI pass sweep S2: every card action now
+// lives in the card's one action menu - kebab, long-press, right-click - so there
+// is no corner layout left to pick. The stored cornerTL..BR settings are ignored.)
 
 // ---- v1.77: the Library-icon editor ---------------------------------------
 //
@@ -4622,7 +4513,6 @@ function init(root) {
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
-  renderCardCornerEditor(controller.signal); // v1.67 card-corner pickers (Appearance box)
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
   renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
@@ -4714,8 +4604,6 @@ if (typeof module !== 'undefined' && module.exports) {
     formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
     // v1.97.1 "Hidden" section row builder (pure; the render/wiring is jsdom-adjacent).
     buildFeedHiddenRowHtml,
-    // v1.67: the card-corner editor (drawn pieces are jsdom-tested).
-    buildCornerEditorOptions, CARD_CORNER_LABELS, CORNER_EDITOR_SLOTS, renderCardCornerEditor,
     // v1.77: the glyph pickers. The option list is a pure decision; the DRAWN
     // editors are jsdom-tested, because a correct list nothing renders is the
     // decision-vs-use trap this repo keeps falling into.

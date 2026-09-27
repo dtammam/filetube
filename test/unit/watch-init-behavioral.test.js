@@ -56,14 +56,24 @@ function labelOf(el) {
 }
 
 // ---- minimal generic DOM shim ---------------------------------------------
+// UI pass sweep S2: the related rail renders DOM nodes (buildRelatedCardEl), so
+// the rail asserts read the recorded replaceChildren nodes' href/src/text.
+function railDump(box) {
+  const out = [];
+  const walk = (e) => { if (!e) return; out.push(e.href || '', e.src || '', e.textContent || ''); (e.children || []).forEach(walk); };
+  (box._rail || []).forEach(walk);
+  return out.join('|');
+}
+
 function makeEl(tag) {
   const el = {
     tagName: (tag || 'div').toUpperCase(),
-    children: [], style: {}, dataset: {}, hidden: false, disabled: false,
+    children: [], style: { setProperty() {}, removeProperty() {} }, dataset: {}, hidden: false, disabled: false,
     textContent: '', innerHTML: '', className: '', title: '', href: '', src: '',
     isConnected: true, value: '',
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
+    // UI pass sweep S2: the related rail's cards are DOM now - keep their href/src.
+    setAttribute(n, v) { if (n === 'href' || n === 'src') el[n] = v; }, removeAttribute() {}, getAttribute() { return null; },
     // v1.314 gate r1: listeners are RECORDED so a test can drive a click; every earlier
     // test ignores them. v1.317 gate r2: the OPTIONS too (_lo), so a test can bind a
     // listener's `{ signal }` by execution. Music follow-ups item 4d: EVERY listener is
@@ -185,6 +195,10 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides,
   const theaterCalls = [];
   const documentShim = {
     createElement: (t) => makeEl(t),
+    // UI pass sweep S2: the related rail builds through the ui primitives
+    // (window.ui below), and ui.icon draws an SVG element.
+    createElementNS: (_ns, t) => makeEl(t),
+    createDocumentFragment: () => makeEl('fragment'),
     createTextNode: () => makeEl('text'),
     querySelector: (sel) => getEl(sel),
     querySelectorAll: () => [],
@@ -233,6 +247,9 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides,
     setTimeout, clearTimeout, setInterval, clearInterval,
   };
   windowShim.window = windowShim;
+  // UI pass sweep S2: every shell loads ui.js before watch.js; the related rail's
+  // cards, skeletons and states are built by it (on this shim document).
+  windowShim.ui = require('../../public/js/ui.js');
 
   const sandbox = {
     window: windowShim, document: documentShim,
@@ -440,6 +457,7 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   const commentsBox = makeEl('div'); els.set('#comments-container', commentsBox);
   const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
   const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
+  relatedBox.replaceChildren = (...nodes) => { relatedBox._rail = nodes; }; // sweep S2: the rail renders DOM nodes
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
 
@@ -502,19 +520,19 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   // [ep0, ep1, ep2] -> [ep2, ep0]; the ep0-after-ep2 ordering IS the wrap bind).
   assert.equal(relatedHeader.hidden, false, 'the Up-next header is revealed on tv');
   assert.equal(relatedHeader.textContent, 'Up next', 'labelled Up next, not Related files');
-  const ep2At = relatedBox.innerHTML.indexOf('?tv=ep2');
-  const ep0At = relatedBox.innerHTML.indexOf('?tv=ep0');
+  const ep2At = railDump(relatedBox).indexOf('?tv=ep2');
+  const ep0At = railDump(relatedBox).indexOf('?tv=ep0');
   assert.ok(ep2At !== -1 && ep0At !== -1, 'both other episodes render as ?tv= cards');
   assert.ok(ep2At < ep0At, 'ep2 (next in order) precedes ep0 (the wrap-around)');
-  assert.ok(!relatedBox.innerHTML.includes('?tv=ep1'), 'the CURRENT episode is excluded');
-  assert.ok(relatedBox.innerHTML.includes('/tvthumb/ep2'), 'cards use the per-episode art route');
+  assert.ok(!railDump(relatedBox).includes('?tv=ep1'), 'the CURRENT episode is excluded');
+  assert.ok(railDump(relatedBox).includes('/tvthumb/ep2'), 'cards use the per-episode art route');
   // Gate W1 (presence-not-binding): the hide mechanism is style.display, which
   // the .hidden asserts above cannot see - re-adding the rail selectors to the
   // hide list rendered everything into an invisible container, suite green.
   assert.notEqual(relatedHeader.style.display, 'none', 'the header is not display-hidden (the tv hide-list must not cover it)');
   assert.notEqual(relatedBox.style.display, 'none', 'the container is not display-hidden');
   // Gate S1: the enriched fixture drives the real card-title path.
-  assert.ok(relatedBox.innerHTML.includes('S01E03 - End'), 'the SxxEyy code + title render (padding + escape path exercised)');
+  assert.ok(railDump(relatedBox).includes('S01E03 - End'), 'the SxxEyy code + title render (padding + escape path exercised)');
 });
 
 // Gate W2's empty axis: a single-episode show has NO "up next" - the header must
@@ -538,6 +556,7 @@ test('v1.198.1 Up-next rail: a single-episode show hides the header and clears t
   const { init, els } = buildWatchRealm({ search: '?tv=solo', fetchImpl });
   const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
   const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
+  relatedBox.replaceChildren = (...nodes) => { relatedBox._rail = nodes; }; // sweep S2: the rail renders DOM nodes
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
   init(root);

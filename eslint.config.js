@@ -337,23 +337,27 @@ module.exports = [
         // v1.77: common.js's Library-glyph repainter, called by setup.js's
         // Library-icon picker so a change is visible on this page immediately.
         applyLibraryGlyphs: 'readonly',
-        // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
+        // C2/C3 (T3-WIRE, v1.24.0): item-count badge + the format filter
         // (video/audio/both) library controls, consumed by main.js's
         // home/folder/playlist/channel grid render.
         renderItemCountBadge: 'readonly',
         filterByMediaType: 'readonly',
         getStoredFormatFilter: 'readonly',
         setStoredFormatFilter: 'readonly',
-        renderFormatToggle: 'readonly',
-        // v1.50: watched-state toggle (common.js), consumed by main.js.
+        // v1.50: the watched-state filter (common.js), consumed by main.js.
         getStoredWatchFilter: 'readonly',
-        renderWatchToggle: 'readonly',
-        // v1.149: the search-scope toggle family (common.js -> main.js).
+        setStoredWatchFilter: 'readonly',
+        // v1.149: the search scope; v1.205 Wave B: the unified-search type (common.js -> main.js).
         normalizeSearchScopeMode: 'readonly',
-        renderSearchScopeToggle: 'readonly',
-        // v1.205 Wave B: the unified-search content-type chip family (common.js -> main.js).
         normalizeSearchTypeChip: 'readonly',
-        renderSearchTypeChips: 'readonly',
+        // UI pass sweep S2 (F19): the ONE library filter chip row and its dimensions.
+        buildFilterChipRow: 'readonly',
+        FORMAT_TOGGLE_OPTIONS: 'readonly',
+        WATCH_TOGGLE_OPTIONS: 'readonly',
+        SEARCH_SCOPE_OPTIONS: 'readonly',
+        SEARCH_TYPE_OPTIONS: 'readonly',
+        // UI pass D8.1: the era flourish (fabricated stats).
+        isFabricatedViewCount: 'readonly',
         // v1.161 (Dean): clear the search box after a search that found results.
         shouldClearSearchInputAfterResults: 'readonly',
         // v1.45.6 (Dean): library view-mode + per-page-sort helpers (common.js),
@@ -400,20 +404,6 @@ module.exports = [
         glyphClassName: 'readonly',
         resolveFolderGlyphClass: 'readonly',
         resolveLibraryGlyphClass: 'readonly',
-      },
-    },
-  },
-
-  // v1.67 (plan D9): the corner VOCABULARY (resolver + control roster) is
-  // DEFINED at main.js module scope (main.js loads before setup.js on every
-  // shell) and consumed by setup.js's corner editor. Declared ONLY for the
-  // consumer, per the "declare only where consumed, not where defined" rule.
-  {
-    files: ['public/js/setup.js'],
-    languageOptions: {
-      globals: {
-        resolveCardCornerPrefs: 'readonly',
-        CARD_CORNER_CONTROLS: 'readonly',
       },
     },
   },

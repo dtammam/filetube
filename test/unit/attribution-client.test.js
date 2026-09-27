@@ -31,10 +31,13 @@ test('LOCK (wiring): the folder view mounts the bulk control with the order-band
   assert.match(main, /ensureAttributeFolderButton\(sectionActions\);/, 'the render call site was deleted');
   assert.match(main, /typeof it\.channelUrl !== 'string' \|\| it\.channelUrl === ''/, 'the unattributed predicate was changed');
   assert.match(main, /\/api\/videos\/attribute-channel-bulk/, 'the bulk POST was deleted');
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  const idx = css.indexOf('.section-actions #attribute-folder-btn');
-  assert.ok(idx !== -1, 'the order-band rule exists');
-  assert.match(css.slice(idx, css.indexOf('}', idx)), /order: 12/, 'the v1.50.4 orphan-row lesson: an explicit order after repull’s 11');
+  // UI pass sweep S2 (F19; converts the v1.53 order-band lock, AC12): the toolbar
+  // is ONE row that never wraps (no orphan row to band against); the control is
+  // a ui-btn appended after the tools.
+  assert.match(main, /const btn = cardUi\(\)\.button\(\{ variant: 'tonal', size: 'sm', pill: true, label: 'Attribute folder',/, 'a ui-btn');
+  assert.match(main, /btn\.id = 'attribute-folder-btn';/);
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/#attribute-folder-btn/.test(css), 'no bespoke rule: the primitive owns the look, the one row owns the place');
 });
 
 test('LOCK (wiring): the shared picker exists once, in common.js, and both callers use it', () => {

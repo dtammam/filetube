@@ -212,10 +212,10 @@
            at all -- this markup is already the complete, correct home view. -->
       <div id="view-root" data-view="home">
       <!-- Welcome message if no libraries are set up -->
-      <div id="welcome-message" class="setup-box" style="display: none; margin: 20px 0;">
+      <div id="welcome-message" class="setup-box welcome-box" hidden>
         <h2>Welcome to FileTube!</h2>
         <p>It looks like you haven't configured any media folders yet. To start enjoying your local video and audio library, click below to configure folders.</p>
-        <a href="/setup.html" class="btn btn-primary" style="padding: 10px 20px;">Configure media folders</a>
+        <a href="/setup.html" class="ui-btn ui-btn--primary ui-btn--md ui-btn--pill"><span class="ui-btn__label">Configure media folders</span></a>
       </div>
 
       <div id="library-content">
@@ -228,40 +228,19 @@
                centre on desktop. renderItemCountBadge inserts #library-item-count
                as #videos-section-header's next sibling, i.e. INSIDE this wrapper. -->
           <span class="section-heading"><span id="videos-section-header">Recently added</span></span>
+          <!-- UI pass sweep S2 (F19): ONE toolbar row - the library's filter chips
+               (a horizontally scrolling ui-chip row main.js mounts into
+               #library-chip-host: All, then the format / watch-state / search
+               dimensions) and a fixed trailing group of ui-btn icon tools (sort
+               opens a ui.menu; Shuffle again shows only on the random sort). -->
           <div class="section-actions">
-            <!-- v1.41.2 (Dean): a custom button-styled sort dropdown, NOT a
-                 native <select>. A <select> under 16px triggers iOS's
-                 focus-zoom (the v1.26.2 floor), which forced it a size larger
-                 than the 12px filter pills; this is a plain .btn so the whole
-                 row is one uniform size with no zoom. Wired in main.js. -->
-            <div class="sort-dropdown" id="sort-dropdown">
-              <button type="button" class="btn sort-select-btn" id="sort-select-btn" title="Sort library" aria-haspopup="listbox" aria-expanded="false">
-                <span id="sort-select-label">Release date</span>
-                <span class="sort-caret" aria-hidden="true">&#9662;</span>
-              </button>
-              <ul class="sort-menu" id="sort-menu" role="listbox" aria-label="Sort library" hidden>
-                <li role="option" data-sort="newest">Newest first</li>
-                <li role="option" data-sort="oldest">Oldest first</li>
-                <li role="option" data-sort="release-date">Release date</li>
-                <li role="option" data-sort="title-asc">Title (A&ndash;Z)</li>
-                <li role="option" data-sort="title-desc">Title (Z&ndash;A)</li>
-                <li role="option" data-sort="size-desc">Largest first</li>
-                <li role="option" data-sort="size-asc">Smallest first</li>
-                <li role="option" data-sort="random">Feeling lucky</li>
-              </ul>
+            <div class="library-chip-host" id="library-chip-host"></div>
+            <div class="library-tools">
+              <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="sort-select-btn" aria-label="Sort" aria-haspopup="menu"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></span></button>
+              <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="shuffle-again-btn" aria-label="Shuffle again" hidden><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-shuffle"/></svg></span></button>
+              <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="rescan-library-btn" aria-label="Rescan files"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></span></button>
+              <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="view-mode-btn" aria-label="Switch to list view"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-view_list"/></svg></span></button>
             </div>
-            <!-- Visual-consistency polish: dropped the vestigial `.btn-sm`
-                 class + inline font-size/padding override (`.btn-sm` itself
-                 carries no CSS rule -- see style.css -- so these were the
-                 ONLY thing making Shuffle/Rescan render smaller than the
-                 watch page's Download/Delete/Move family). Plain `.btn` now
-                 matches that same glyph+short-label size/padding. -->
-            <button class="btn" id="shuffle-again-btn" title="Shuffle again" aria-label="Shuffle again" hidden><i class="icon-shuffle"></i> <span class="btn-label">Shuffle</span></button>
-            <button class="btn" id="rescan-library-btn" title="Rescan Files" aria-label="Rescan Files"><i class="icon-refresh"></i> <span class="btn-label">Rescan</span></button>
-            <!-- v1.45.6 (Dean): card/compact-list view toggle. Icon-only (a mode
-                 switch, not an action) — shows the TARGET view's glyph; main.js
-                 sets the initial icon/label from the stored mode and flips it. -->
-            <button class="btn view-mode-btn" id="view-mode-btn" title="Switch to list view" aria-label="Switch to list view"><i class="icon-list"></i></button>
           </div>
         </div>
 

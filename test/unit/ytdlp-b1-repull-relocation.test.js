@@ -169,6 +169,8 @@ function makeFakeDocument(actions) {
     getElementById: (id) => findById(actions, id),
     querySelector: (sel) => (sel === '.section-actions' ? actions : null),
     createElement: (tag) => new FakeElement(tag),
+    // UI pass sweep S2: the button is a ui.button (an SVG icon inside).
+    createElementNS: (_ns, tag) => new FakeElement(tag),
     createTextNode: (text) => ({ nodeType: 3, textContent: text }),
   };
 }

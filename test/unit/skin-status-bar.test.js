@@ -238,7 +238,6 @@ const CLUSTER_RULES = {
 // the panel or the pop-out). Anything else that reaches counts.
 const EXCEPTIONS = [
   { selector: '.theme-swatch span', ancestor: 'theme-swatch', why: 'the Setup page theme picker swatch (setup.js)' },
-  { selector: '.section-actions.search-scoped-toolbar > *', ancestor: 'search-scoped-toolbar', why: 'the Home search toolbar strip (main.js)' },
 ];
 const PANEL_HOSTS = ['public/music.html', 'public/podcasts.html', 'public/js/music.js', 'public/js/podcasts.js', 'public/js/music-skins.js', 'public/js/skin-surface.js', 'public/js/ipod-brick.js'];
 function census(el, base, table) {
@@ -265,7 +264,9 @@ test('NO other rule whose final selector can match the TITLE (any ancestor, any 
 
 test('NO other rule that can match the BAR stacks, wraps or re-lays it out', () => {
   const { found, bad } = census(BAR, '.mms-ipod .ip-status', BAR_RULES);
-  assert.ok(found.some((r) => r.selectors.includes('.section-actions.search-scoped-toolbar > *')), 'precondition: a universal rule is found (the census is not vacuous)');
+  // UI pass sweep S2 retired the search-strip universal rule this precondition
+  // used; the watch-actions reveal barrier is another universal final compound.
+  assert.ok(found.some((r) => r.selectors.includes('.watch-actions[data-loading] > *')), 'precondition: a universal rule is found (the census is not vacuous)');
   assert.deepStrictEqual(bad, [], 'rules that break the bar');
 });
 

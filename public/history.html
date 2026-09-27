@@ -172,21 +172,19 @@
         <div class="history-toolbar">
           <h2>History</h2>
           <div class="history-toolbar-actions">
-            <!-- Two-tap confirm (public/js/history.js): first tap arms
-                 ("Sure?" swaps in), second tap clears. Hidden while empty. -->
-            <button class="btn btn-sm history-clear-btn" id="history-clear-btn" type="button" title="Clear all watch history" hidden>
-              <i class="icon-delete"></i> <span class="history-clear-label">Clear all</span><span class="history-remove-confirm">Sure?</span>
-            </button>
+            <!-- UI pass sweep S2: Clear all asks ui.confirm (public/js/history.js)
+                 before it clears. Hidden while empty. -->
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="history-clear-btn" type="button" hidden><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-delete"/></svg></span><span class="ui-btn__label">Clear all</span></button>
           </div>
         </div>
 
-        <!-- Newest-first rows render into this host (GET /api/history). -->
-        <div id="history-list" class="history-list"></div>
-        <div class="history-empty" id="history-empty" hidden>
-          No watch history yet. Anything you watch or start shows up here.
-        </div>
+        <!-- Newest-first ui-row rows render into this ui-list (GET /api/history):
+             a thumb media slot and ONE reserved action slot (Remove), D4.3. -->
+        <div id="history-list" class="history-list ui-list ui-list--media ui-list--media-thumb ui-list--aside-none ui-list--actions-1 ui-list--divider-inset" role="list" aria-label="Watch history"></div>
+        <!-- The empty state (a ui-state block, rendered by history.js). -->
+        <div class="history-empty" id="history-empty" hidden></div>
         <div class="history-more-wrap">
-          <button class="btn" id="history-loadmore" type="button" hidden>Load more</button>
+          <button class="ui-btn ui-btn--secondary ui-btn--md ui-btn--pill" id="history-loadmore" type="button" hidden><span class="ui-btn__label">Load more</span></button>
         </div>
       </div>
     </main>

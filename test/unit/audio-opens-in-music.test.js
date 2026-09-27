@@ -65,18 +65,27 @@ test('v1.251 queue chrome: an AUDIO media entry opens Music (the shaped entry ca
 });
 
 test('v1.251 history rows: an AUDIO history row re-opens in Music; a video row keeps /watch', () => {
+  // UI pass sweep S2: the row is a ui-row (DOM) whose title link carries the href.
   const history = require('../../public/js/history.js');
-  const audio = history.buildHistoryRowHtml({ id: 'a1', type: 'audio', title: 'Song', duration: 0, folderName: 'Ch' }, Date.now());
-  assert.match(audio, /href="\/music\?play=a1&(?:amp;)?ao=1"/, 'audio history row -> Music');
-  const video = history.buildHistoryRowHtml({ id: 'v1', type: 'video', title: 'Clip', duration: 60, folderName: 'Ch' }, Date.now());
-  assert.match(video, /href="\/watch\.html\?v=v1"/, 'video history row unchanged');
+  const doc = new (require('jsdom').JSDOM)('<!doctype html><body></body>').window.document;
+  const hrefOf = (row) => row.querySelector('.ui-row__link').getAttribute('href');
+  const audio = history.buildHistoryRowEl({ id: 'a1', type: 'audio', title: 'Song', duration: 0, folderName: 'Ch' }, Date.now(), doc);
+  assert.strictEqual(hrefOf(audio), '/music?play=a1&ao=1', 'audio history row -> Music');
+  const video = history.buildHistoryRowEl({ id: 'v1', type: 'video', title: 'Clip', duration: 60, folderName: 'Ch' }, Date.now(), doc);
+  assert.strictEqual(hrefOf(video), '/watch.html?v=v1', 'video history row unchanged');
 });
 
 test('v1.251 watch related rail: the template consults the ONE rule (source binding; the net test guards the shape)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
-  assert.match(src, /const relatedHref = \(typeof audioOpenHref === 'function' && audioOpenHref\(item\)\) \|\| `\/watch\.html\?v=\$\{item\.id\}`/,
+  assert.match(src, /href: \(typeof audioOpenHref === 'function' && audioOpenHref\(item\)\) \|\| `\/watch\.html\?v=\$\{item\.id\}`/,
     'the related card derives its href through audioOpenHref');
-  assert.match(src, /href="\$\{relatedHref\}" class="related-card"/, 'and the card actually renders that derived href');
+  // UI pass sweep S2: the card is DOM (buildRelatedCardEl) - it renders the href it is handed.
+  const { buildRelatedCardEl } = require('../../public/js/watch.js');
+  const doc = new (require('jsdom').JSDOM)('<!doctype html><body></body>').window.document;
+  const card = buildRelatedCardEl({ href: '/music?play=a1&ao=1', src: '/thumbnail/a1', title: 'Song', byline: 'Ch', doc });
+  assert.strictEqual(card.tagName, 'A');
+  assert.strictEqual(card.className, 'related-card');
+  assert.strictEqual(card.getAttribute('href'), '/music?play=a1&ao=1', 'and the card actually renders that derived href');
 });
 
 test('musicHrefForItem: an audio item -> /music?play=<id> (unconditional)', () => {
@@ -118,9 +127,9 @@ test('buildVideoRowCardHtml (continue-watching / video-home rows): an AUDIO row 
 });
 
 // ---- source locks (the grid card wiring + the music-view /watch fallback) --------------
-test('the grid card (buildCardHtml) routes an audio tile through musicHrefForItem', () => {
+test('the grid card (buildCardEl) routes an audio tile through musicHrefForItem', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
-  assert.match(src, /const watchHref = musicHrefForItem\(item\) \|\|/, 'buildCardHtml overrides ONLY the href via musicHrefForItem');
+  assert.match(src, /const href = musicHrefForItem\(item\) \|\|/, 'buildCardEl overrides ONLY the href via musicHrefForItem');
 });
 
 test('the music view BOUNCES a non-resolvable ?play= id to /watch (no dead end) with the ::c suffix stripped', () => {

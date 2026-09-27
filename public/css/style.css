@@ -21,14 +21,7 @@ summary,
 .pc-btn,
 .bottom-nav-item,
 .video-card,
-.sidebar-item,
-.card-download-btn,
-.card-delete-btn,
-.card-like-btn,
-.card-queue-btn,
-.card-share-btn,
-.card-reheat-btn,
-.card-transcript-btn {
+.sidebar-item {
   touch-action: manipulation;
 }
 
@@ -282,10 +275,8 @@ summary,
   /* v1.84: the modern chip row + avatar bar are horizontal scrollers that hide
      their scrollbar on webkit (::-webkit-scrollbar display:none); Firefox hides
      it here, inside the one guard, so the partition stays intact. */
-  .modern-chip-row,
+  .library-chips,
   .modern-avatar-bar { scrollbar-width: none; }
-  /* v1.150: the mobile search-toolbar strip hides its bar the same way. */
-  .section-actions.search-scoped-toolbar { scrollbar-width: none; }
   /* v1.281 (Dean): the immersive mobile music skin hides its bar the same way (webkit
      side: body.mms-on ::-webkit-scrollbar display:none) - kills the launch scrollbar flash. */
   body.mms-on, body.mms-on * { scrollbar-width: none; }
@@ -624,9 +615,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* The watch-page Like button's liked state (v1.108, Dean): a plain neutral
    `.btn` when NOT liked (grey heart, the resting look), turning the heart RED
-   when liked -- the YouTube heart convention, the same red-heart idea as
-   `.card-like-btn.liked` below (there `color: var(--yt-red)` rides an `opacity:1`;
-   here it's `color`-only because a full `.btn` has no resting dim to undo).
+   when liked -- the YouTube heart convention. `color`-only because a full
+   `.btn` has no resting dim to undo.
    currentColor tints the `.icon-heart` mask + the "Liked" label together.
    Deliberately NOT `.btn-primary`: red-as-actionable / grey-as-done read
    backwards to Dean. `color` only, so the button keeps its era-themed `.btn`
@@ -773,6 +763,11 @@ html.reader-immersive .app-container { padding-top: 0; }
    directly beside the folder name (as "(N items)") instead of floating in the
    space-between centre. min-width:0 lets a long folder name ellipsize rather
    than push the actions off the row. */
+/* The no-folders welcome box (index.html #welcome-message; shown via `hidden`). */
+.welcome-box {
+  margin: var(--space-10) 0;
+}
+
 .section-heading {
   display: inline-flex;
   align-items: baseline;
@@ -785,52 +780,12 @@ html.reader-immersive .app-container { padding-top: 0; }
 .library-item-count::before { content: "("; }
 .library-item-count::after { content: ")"; }
 
-/* v1.126: the folder-rename pencil - a header SIBLING (main.js inserts it
-   afterend; never inside the header, whose textContent writes would wipe it -
-   the v1.122 count-badge lesson). Quiet chrome: secondary color, no border,
-   brightens on hover. */
-.folder-rename-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: var(--fs-md);
-  padding: 0 var(--space-2);
-  vertical-align: baseline;
-}
-@media (hover: hover) {
-  .folder-rename-btn:hover {
-    color: var(--text-primary);
-  }
-}
-
-/* Wave G: the per-folder "show in Music library" toggle - a sibling of the
-   rename pencil, same understated treatment; the on-state reads in the link
-   accent so an included channel is glanceable. */
-.folder-music-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: var(--fs-md);
-  padding: 0 var(--space-2);
-  vertical-align: baseline;
-}
-@media (hover: hover) {
-  .folder-music-toggle:hover {
-    color: var(--text-primary);
-  }
-}
-.folder-music-toggle.is-on {
-  color: var(--text-link);
-}
-/* v1.268 (Dean): the OFF state was only a grey-vs-blue colour shift with the
-   meaning hidden in a hover title - unreadable on a phone, which is why the
-   button felt inert. Striking the glyph through does not by itself SAY "not in
-   Music" - the label does that - but it gives the tap a visible result in the
-   view where you tapped, which is the actual fix. */
-.folder-music-toggle:not(.is-on) {
-  text-decoration: line-through;
+/* v1.126 rename + Wave G Music toggle: UI pass sweep S2 (F61) made both ui-btn
+   plain icon buttons (edit; music_note / music_off, aria-pressed), appended at
+   the end of the heading group; the ui-btn primitive owns their look. The
+   heading group centres them on its line. */
+.section-heading > .ui-btn {
+  align-self: center;
 }
 
 /* v1.211: the Settings "Channels in Music" manager rows (class-based so the
@@ -856,95 +811,35 @@ html.reader-immersive .app-container { padding-top: 0; }
   margin-left: 0;
   font-weight: normal;
 }
-.format-toggle {
-  display: inline-flex;
-  gap: var(--space-2);
-}
-.format-toggle-btn.active {
-  background-color: var(--btn-hover);
-  border-color: var(--yt-red);
-  font-weight: var(--fw-semibold);
-}
-
-/* v1.45.3 (#3, Dean): equal-sized action buttons so the toolbar reads as one
-   clean set instead of "a hobble of things through time". The All/Videos/Audio
-   pills are uniform width; the sort dropdown, Shuffle and Rescan share a width
-   so Rescan no longer dwarfs the rest. (Mobile compacts these — see the
-   max-width:768px block.) */
-.format-toggle-btn {
-  min-width: 58px;
-  justify-content: center;
-}
-/* v1.50: the watched-state group ("All | New | Watching | Watched") reuses the
-   format-toggle component wholesale; only the width budget differs -- four
-   labels (one of them "Watching") at the uniform 58px would push the desktop
-   toolbar toward overflow, so its pills size to their text instead. */
-.watch-toggle .format-toggle-btn {
+/* UI pass sweep S2 (F19, D4.5): the library's ONE filter chip row - ui-chip
+   filter chips (32px pills, --surface-2, selected = ink on --fill-selected,
+   never red) in one horizontally scrolling row, before a fixed trailing group
+   of ui-btn icon tools. Replaces the v1.45-v1.190 .format-toggle / .btn pill
+   recipe (two or three wrapping rows on a phone). The modern home's chip row
+   (.modern-chip-row) is the same component. */
+.library-chip-host {
+  flex: 1 1 auto;
   min-width: 0;
 }
-#sort-select-btn,
-#shuffle-again-btn,
-#rescan-library-btn {
-  min-width: 104px;
-  justify-content: center;
+.library-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
-/* v1.45.6: the view-mode toggle is an icon-only mode switch (not a labelled
-   action), so it's a compact square rather than matching the 104px buttons. */
-#view-mode-btn {
-  min-width: var(--size-touch);
-  justify-content: center;
-}
-
-/* v1.188 (Dean): convert the classic library toolbar to the modern feed-chip
-   PILL look he loves ("the buttons for the main YouTube feed are awesome - I
-   want to start converting the other ones... the downloads page. I just love the
-   pills"). The .section-actions toolbar (Sort / Shuffle / Rescan / View + the
-   All/Videos/Audio and watched-state filter toggles - all .btn-based) is
-   reshaped to the .modern-chip recipe: fully-rounded, flat, secondary fill,
-   hairline border, hover to the sidebar tint, and an INVERTED active state
-   (replacing the red-accent) so a selected filter reads exactly like an active
-   feed chip. All token-driven (census-clean); scoped to .section-actions, which
-   lives only on the home/library toolbar.
-   DISCLOSED per-era residual (gate QA-W2): the glossy [data-theme="2009"] era
-   paints its .btn fill with `background-image` (a linear-gradient), a DIFFERENT
-   property than this rule's `background-color` - so the gloss keeps painting over
-   the pill fill there (the button still ROUNDS, it just isn't flat). That is
-   deliberate (2009 keeps its skin). But the INVERTED active state would then put
-   light `--bg-color` text on the retained light gloss = illegible, so the 2009
-   override below restores legible `--text-primary` ink on the active toggle.
-   Every OTHER era gets the full flat pill + inversion. */
-.section-actions .btn {
-  border-radius: var(--radius-full);
-  background-color: var(--bg-secondary);
-  border-color: var(--border-color);
-  box-shadow: none;
-  font-weight: normal; /* v1.190 (Dean): match the modern feed chips (.modern-chip has no weight = normal); the base .btn is --fw-semibold, which read as "bolder / different" next to the feed */
-}
-@media (hover: hover) {
-  .section-actions .btn:hover {
-    background-color: var(--bg-sidebar);
-  }
-}
-.section-actions .format-toggle-btn.active {
-  background-color: var(--text-primary);
-  color: var(--bg-color);
-  border-color: var(--text-primary);
-  font-weight: normal; /* v1.190: the feed's active chip isn't bold either - the inverted fill is the emphasis */
-}
-/* gate QA-W2: in 2009 the retained gloss (background-image) means the inverted
-   active fill never shows, so keep the active label's ink legible against it
-   (spec: this 0-4-0 selector outranks both the base active rule and the 2009
-   gloss .btn rule). Border stays --text-primary (from the rule above) as the
-   active affordance. */
-[data-theme="2009"] .section-actions .format-toggle-btn.active {
-  color: var(--text-primary);
+.library-chips::-webkit-scrollbar { display: none; }
+.library-tools {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-3);
 }
 
-/* v1.189.0 (Dean): extend the same modern feed-chip PILL look to the remaining
-   list-page toolbars - music + podcasts (both use `.music-toolbar-actions`) and
-   history (`.history-toolbar-actions`); books (`.books-toolbar`) left this recipe
-   for ui-btn primitives in the UI pass (sweep S10). Same
-   recipe + same tokens as the home toolbar above (census-clean), so they theme
+/* v1.189.0 (Dean): the modern feed-chip PILL look on the remaining list-page
+   toolbar - music + podcasts (both use `.music-toolbar-actions`). Books' toolbar
+   is ui-btn since UI pass sweep S10, History's and Home's since sweep S2. Tokens
+   only, so they theme
    with every era + light/dark identically. Unlike the home toolbar these carry
    PRIMARY actions (+Add / Subscribe), so the flat secondary FILL is applied only
    to `:not(.btn-primary)` - the primary keeps its --yt-red accent and only its
@@ -952,20 +847,17 @@ html.reader-immersive .app-container { padding-top: 0; }
    controls (books/music) carry `.btn` too and round cleanly. Left as-is on
    purpose: the `.music-tab` strip is an underline-tab component, not a toolbar
    button. */
-.music-toolbar-actions .btn,
-.history-toolbar-actions .btn {
+.music-toolbar-actions .btn {
   border-radius: var(--radius-full);
   box-shadow: none;
   font-weight: normal; /* v1.190 (Dean): match the modern feed chips' weight (the base .btn is --fw-semibold, which read "bolder / different" than the feed pills) */
 }
-.music-toolbar-actions .btn:not(.btn-primary),
-.history-toolbar-actions .btn:not(.btn-primary) {
+.music-toolbar-actions .btn:not(.btn-primary) {
   background-color: var(--bg-secondary);
   border-color: var(--border-color);
 }
 @media (hover: hover) {
-  .music-toolbar-actions .btn:not(.btn-primary):hover,
-  .history-toolbar-actions .btn:not(.btn-primary):hover {
+  .music-toolbar-actions .btn:not(.btn-primary):hover {
     background-color: var(--bg-sidebar);
   }
 }
@@ -1068,40 +960,15 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
   min-width: 0; /* v1.17.0 FR-1: let this flex item (and its children) shrink
                    instead of forcing the row past the viewport width */
 }
 
-/* v1.41.2 (Dean): the sort control is a custom .btn dropdown, NOT a native
-   <select>. The button IS a `.btn` (`.btn.sort-select-btn`), so it's pixel-
-   identical to the All/Videos/Audio filter pills -- same 12px/600/padding -- and
-   being a plain button it never triggers iOS's <16px focus-zoom, which used to
-   force a native <select> a size larger than the pills. `max-width:100%`+
-   `min-width:0` keep the FR-1 mobile-overflow fix (the row can wrap/shrink
-   without the control's intrinsic width pushing past 100vw). */
-.sort-dropdown {
-  position: relative;
-  display: inline-flex;
-  max-width: 100%;
-  min-width: 0;
-}
-.sort-select-btn {
-  max-width: 100%;
-  min-width: 0;
-}
-.sort-select-btn > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sort-caret {
-  flex-shrink: 0;
-  font-size: var(--fs-xs);
-  line-height: 1; /* token-exempt: glyph centering */
-}
-/* The options menu -- absolutely positioned below the button, overlaying the
-   grid; `[hidden]` (toggled in main.js) is the single show/hide mechanism. */
+/* The Modern home's header sort menu (main.js injectModernHeaderSort) -
+   absolutely positioned below its button; `[hidden]` is the single show/hide
+   mechanism. (The library toolbar's sort is a ui.menu since sweep S2.) */
 .sort-menu {
   position: absolute;
   top: calc(100% + 4px); /* token-exempt: positional geometry (Stop A Batch A) */
@@ -1140,18 +1007,6 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-semibold);
 }
 
-/* v1.26.2 polish fix (Dean punchlist #5): #rescan-library-btn's label swaps
-   between "Rescan" and the wider "Scanning..." (public/js/main.js's click
-   handler) while it sits in the same flex row as #shuffle-again-btn/
-   .sort-select -- without a floor, that swap changes the button's own
-   content width and reflows/shifts its neighbors in the row. `min-width`
-   reserves enough room for the widest label ("Scanning...") plus its icon,
-   so the swap only ever repaints text in place. */
-#rescan-library-btn {
-  min-width: 132px;
-  justify-content: center;
-}
-
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -1169,43 +1024,23 @@ html.reader-immersive .app-container { padding-top: 0; }
   overflow: hidden;
   position: relative;
 }
+/* F53 (UI pass sweep S2): Modern has no card tile - the thumbnail and the text
+   sit on the page ground (C, the YouTube/Spotify card); the retro eras keep
+   their tile (--card-bg). It PAINTS the ground (--surface-0, the page's own)
+   rather than going transparent: the critter layer hides behind cards (the
+   ground contract, critter-mode.test.js). */
+[data-theme="2021"] .video-card {
+  background-color: var(--surface-0);
+  border-radius: 0;
+  overflow: visible;
+}
 
-/* v1.40.0: the thumbnail + its corner overlays (download/delete/like) live in
-   this box so the overlays anchor to the THUMBNAIL, not the whole card. Before
-   this, the overlays were absolute against `.video-card` and only looked
-   thumbnail-cornered because the top-anchored ones happen to share the card's
-   top edge; a BOTTOM-anchored control (the new Like heart) would otherwise sit
-   at the card's bottom, over the title/meta/rating. This box is thumbnail-
-   height (the badge/buttons are out of flow), so bottom:6px reaches the
-   thumbnail's bottom-left.
-   v1.40.1 (regression fix): `display:flex; flex-direction:column` is REQUIRED,
-   not just `position:relative`. `.thumbnail-container`'s `aspect-ratio:16/9`
-   height is only DEFINITE (so its `.thumbnail-img { height:100% }` resolves and
-   crops to 16:9) when the container is a FLEX ITEM -- which it was as a direct
-   child of `.video-card`. A plain block wrapper made that height indefinite, so
-   `height:100%` collapsed to auto and a portrait/Shorts thumbnail rendered at
-   its full natural height (oversized card). Making this wrapper a flex column
-   restores the flex-item context. */
+/* UI pass sweep S2 (D8.5, F53): the card's media is a link around the ui-thumb
+   primitive (ui.css owns the box: aspect, --thumb-radius, --thumb-ground, no
+   frame, the one duration badge and the progress bar). */
 .card-media {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-.thumbnail-container {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16/9;
-  background-color: #000; /* token-exempt: letterbox black */
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.thumbnail-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  display: block;
+  text-decoration: none;
 }
 
 /* v1.92 storyboard card preview: a sprite-backed layer over the thumbnail that
@@ -1215,8 +1050,10 @@ html.reader-immersive .app-container { padding-top: 0; }
 .card-preview {
   position: absolute;
   inset: 0;
-  z-index: 1; /* token-exempt: local stacking - above .thumbnail-img, below the overlay badges (corner buttons z:2, and v1.205.1 the .duration-badge z:2) so the time + controls stay visible while the clip plays */
-  background-color: #000; /* token-exempt: letterbox black, matches .thumbnail-container */
+  /* No z-index (UI pass sweep S2): positioned, it already paints over the
+     unpositioned thumbnail image, and the ui-thumb duration badge and progress
+     bar FOLLOW it in DOM order, so they stay visible while the clip plays. */
+  background-color: var(--thumb-ground);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-ui);
   pointer-events: none; /* never intercept the card's own tap/hover */
@@ -1239,322 +1076,50 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .duration-badge {
+  /* The legacy duration pill. Cards, History and the watch page's related rail
+     moved to the ui-thumb badge (UI pass sweep S2, F04); the notification panel
+     (sweep S4) is its remaining user, with its own scoped size rule below. */
   position: absolute;
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
-  z-index: 2; /* token-exempt: local stacking - above .card-preview (z:1) so the time stays visible while the hover clip plays (Dean device report) */
-  background-color: var(--scrim-legacy); /* v1.205.2 (Dean): match the corner glyph buttons' background (was the darker --scrim-heavy) so the row's pills are one look */
+  z-index: 2; /* token-exempt: local stacking (contained by the notification row's isolation) */
+  background-color: var(--scrim-legacy);
   color: var(--on-overlay);
-  /* v1.205.1 (Dean device report): size the pill to MATCH the corner controls -
-     same glyph-size font (14px, the .card-*-btn icon size) + line-height 1 +
-     the buttons' own padding, so the duration and a neighbouring corner button
-     are the same height (they were 3px/7px off on desktop/mobile). The mobile
-     18px twin is in the @media block below, tracking the 18px mobile glyph. */
   padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-md); /* 14px - matches the .card-*-btn corner glyph so the pill height equals the corner controls */
-  line-height: 1; /* token-exempt: glyph centering, like the corner buttons */
+  font-size: var(--fs-md);
+  line-height: 1; /* token-exempt: glyph centering */
   font-weight: var(--fw-normal); /* v1.205.2 (Dean): non-bold - the bigger pill read too heavy in bold */
   border-radius: var(--radius);
 }
 
-/* v1.204: when the bottom-right corner slot renders a button (main.js sets
-   .duration-badge--beside-corner via buildCardCorners.brOccupied), the badge
-   shifts LEFT to sit beside it - never under it. The offset clears the resting
-   corner button: its right anchor (6px) + width (14px icon + 2x --space-3
-   padding = 26px) + a 4px gap = 36px. The mobile bump (icon 18px -> 30px wide)
-   is in the @media (max-width: 768px) twin below. */
-.duration-badge--beside-corner {
-  right: 36px; /* token-exempt: positional geometry (clears the .card-corner-br button) */
-}
-
-/* v1.204 (gate, adversarial): the ONE corner control that expands is delete -
-   its .armed state reveals the inline "Sure?" and the button (right-anchored
-   in .card-corner-br) grows LEFTWARD, back over the shifted badge. Hide the
-   badge while a BR delete is armed so the destructive confirm reads cleanly;
-   the armed state is transient and the badge returns on disarm/timeout. Scoped
-   to .card-corner-br.armed, so an armed delete in any OTHER corner (where it
-   never meets the badge) leaves the duration alone. :has() is already used for
-   card layout (.video-info:has(> .card-feedhide-btn)). */
-.card-media:has(.card-corner-br.armed) .duration-badge {
-  visibility: hidden;
-}
-
-.progress-bar-container {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 4px;
-  background-color: rgba(255, 255, 255, 0.3); /* token-exempt: thumbnail track wash (translucent overlay art, F.5 ruling 5) */
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background-color: var(--yt-red);
-}
-
-/* v1.205 Wave B: the unified-search content-type chip row - the .format-toggle
-   recipe, but seven chips overflow one row on a phone, so let it wrap. */
-.search-type-chips {
-  flex-wrap: wrap;
-}
-
-/* v1.205: the small TYPE badge on a unified-search result card (Video / Music /
-   Show / ...). A quiet pill at the top of the info row - deliberately NOT an
-   overlay, so it never collides with the four configurable corner controls. */
-.card-type-badge {
-  display: inline-block;
-  align-self: flex-start;
+/* v1.205: the TYPE label on a unified-search result card (Video / Music /
+   Show / ...): a ui-chip--meta line above the title (never an overlay). */
+.card-type {
   margin-bottom: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius);
-  background-color: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  line-height: 1.2; /* token-exempt: pill text metrics */
 }
 
-/* v1.17.0 FR-3(b), T2: home/library card trash-can affordance. A sibling of
-   .thumbnail-container (not a child -- a <button> can't nest inside the
-   card's <a>), positioned via .video-card's own `position: relative` over
-   the thumbnail (v1.67: WHICH corner is a per-user pref via the
-   .card-corner-* classes; the C5 default keeps it top-right, opposite
-   .duration-badge). Visible (not hover-only) at a reduced opacity by default
-   so it's equally discoverable on touch/mobile (no :hover there) and on
-   desktop; full opacity on hover/focus/armed. First tap adds `.armed`
-   (revealing the inline "Sure?" confirm via CSS, see main.js's
-   nextArmState-driven click handler); a second tap on the SAME armed button
-   deletes. Era tokens only. */
-/* ---- v1.67: card-corner position classes ----------------------------------
-   Position split from identity (plan D3): which corner a control occupies is
-   a per-user pref, so the anchor geometry lives on these four corner classes
-   and the control classes below keep ONLY look + behavior. The renderer
-   (main.js buildCardCorners) appends exactly one corner class per control.
-   v1.204: bottom-right became a SELECTABLE slot (.card-corner-br) that SHARES
-   its space with .duration-badge - when occupied, the badge moves left (see
-   .duration-badge--beside-corner) rather than sitting under the button. */
-.card-corner-tl {
-  top: 6px; /* token-exempt: positional geometry (the card-corner convention, Stop A Batch A) */
-  left: 6px; /* token-exempt: positional geometry */
-}
-
-.card-corner-tr {
-  top: 6px; /* token-exempt: positional geometry */
-  right: 6px; /* token-exempt: positional geometry */
-}
-
-.card-corner-bl {
-  bottom: 6px; /* token-exempt: positional geometry */
-  left: 6px; /* token-exempt: positional geometry */
-}
-
-.card-corner-br {
-  bottom: 6px; /* token-exempt: positional geometry */
-  right: 6px; /* token-exempt: positional geometry */
-}
-
-.card-delete-btn {
-  position: absolute;
-  /* v1.67: anchor geometry moved to the .card-corner-* classes above. */
-  z-index: 2; /* token-exempt: local stacking */
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-radius: var(--radius);
-  background-color: var(--scrim-legacy);
-  color: var(--on-overlay);
-  cursor: pointer;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  line-height: 1; /* token-exempt: glyph centering */
-  opacity: 0.85;
-  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
-}
-
-.card-delete-btn:focus-visible,
-.card-delete-btn.armed {
-  opacity: 1;
-}
-@media (hover: hover) {
-  .card-delete-btn:hover {
-    opacity: 1;
-  }
-}
-
-.card-delete-btn .icon-delete {
-  width: 14px;
-  height: 14px;
-}
-
-.card-delete-btn .card-delete-confirm {
-  display: none;
-  white-space: nowrap;
-}
-
-.card-delete-btn.armed {
-  background-color: var(--yt-red);
-}
-
-.card-delete-btn.armed .card-delete-confirm {
-  display: inline;
-}
-
-/* v1.22.0 FR-9, T-H: home/library card "save to device" affordance. A
-   SIBLING of `.thumbnail-container` (not a child -- see main.js's card
-   template comment: an `<a>` can't nest inside another `<a>` without
-   breaking navigation semantics, so this button never intercepts the
-   thumbnail's watch-page link), positioned via the .card-corner-* classes
-   (v1.67; the C5 default keeps it top-left, opposite `.card-delete-btn`).
-   Mirrors `.card-delete-btn`'s look exactly (same size/opacity/hover
-   behavior); no confirm step needed since a download is non-destructive.
-   Era tokens only. */
-.card-download-btn {
-  position: absolute;
-  /* v1.67: anchor geometry moved to the .card-corner-* classes. */
-  z-index: 2; /* token-exempt: local stacking */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-radius: var(--radius);
-  background-color: var(--scrim-legacy);
-  color: var(--on-overlay);
-  cursor: pointer;
-  opacity: 0.85;
-  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
-}
-
-.card-download-btn:focus-visible {
-  opacity: 1;
-  background-color: var(--yt-red);
-}
-@media (hover: hover) {
-  .card-download-btn:hover {
-    opacity: 1;
-    background-color: var(--yt-red);
-  }
-}
-
-.card-download-btn .icon-download {
-  width: 14px;
-  height: 14px;
-}
-
-/* v1.40.0 (Dean): home/library card "Like" affordance. A SIBLING of
-   `.thumbnail-container` (like the download/delete overlays -- never nested in
-   the watch-link `<a>`), positioned via the .card-corner-* classes (v1.67;
-   the C5 default keeps it bottom-left. v1.204: bottom-right became a
-   selectable slot too - a control there shares the corner with the duration
-   badge, which slides left beside it). Mirrors `.card-download-btn`'s
-   look/size/opacity. When
-   liked, the heart fills red (via currentColor on the mask) and stays fully
-   opaque so the state is legible at a glance. Era tokens only. */
-/* v1.67: .card-share-btn / .card-reheat-btn are the two NEW corner controls
-   (Dean's request) and share this block - the same simple-icon-overlay
-   recipe as Like. Anchor geometry lives on the .card-corner-* classes. */
-.card-like-btn,
-.card-share-btn,
-.card-reheat-btn,
-.card-transcript-btn {
-  position: absolute;
-  z-index: 2; /* token-exempt: local stacking */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-radius: var(--radius);
-  background-color: var(--scrim-legacy);
-  color: var(--on-overlay);
-  cursor: pointer;
-  opacity: 0.85;
-  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
-}
-
-.card-like-btn:focus-visible,
-.card-share-btn:focus-visible,
-.card-reheat-btn:focus-visible,
-.card-transcript-btn:focus-visible {
-  opacity: 1;
-}
-@media (hover: hover) {
-  .card-like-btn:hover,
-  .card-share-btn:hover,
-  .card-reheat-btn:hover,
-  .card-transcript-btn:hover {
-    opacity: 1;
-  }
-}
-
-.card-like-btn.liked {
-  opacity: 1;
-  color: var(--yt-red);
-}
-
-.card-like-btn .icon-heart,
-.card-share-btn .icon-share,
-.card-reheat-btn .icon-flame,
-.card-transcript-btn .icon-transcript {
-  width: 14px;
-  height: 14px;
-}
-
+/* UI pass sweep S2 (D8.5): the card's info block - [avatar] text [kebab]. The
+   kebab (a ui-btn plain icon) opens the card's ONE action menu; flex, so a card
+   without the Modern avatar has no empty column. */
 .video-info {
-  padding: var(--density) var(--space-2);
-  position: relative; /* v1.97: containing block for the modern-feed .card-feedhide-btn */
-}
-
-/* v1.97 "Hide from feed": a modern-feed-only affordance in the card's info
-   block (the YouTube-style card-menu corner, next to the title) - rendered only
-   when buildCardHtml is passed { feedHideable: true } by the modern-grid paths,
-   so it never appears on folder/search/liked cards. Glyph-only with a
-   transparent resting background (like the queue/notif tap-targets), so a bigger
-   mobile hit area grows only the invisible box, not the look. */
-.card-feedhide-btn {
-  position: absolute;
-  top: var(--space-2); /* token-exempt: positional geometry (card-corner convention) */
-  right: var(--space-2); /* token-exempt: positional geometry */
-  z-index: 2; /* token-exempt: local stacking */
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2);
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  line-height: 1; /* token-exempt: glyph centering */
-  opacity: 0.7;
-  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--density) 0;
 }
-.card-feedhide-btn:focus-visible {
-  opacity: 1;
-  color: var(--text-primary);
-  background-color: var(--bg-secondary);
+.card-text {
+  flex: 1;
+  min-width: 0;
 }
-@media (hover: hover) {
-  .card-feedhide-btn:hover {
-    opacity: 1;
-    color: var(--text-primary);
-    background-color: var(--bg-secondary);
-  }
-}
-/* Reserve the title's top-right gutter ONLY on cards that carry the button, so
-   a long first line never runs under it (no shift on cards without it). */
-.video-info:has(> .card-feedhide-btn) .video-title {
-  padding-right: var(--space-10);
+.video-info > .ui-avatar {
+  margin-top: var(--space-1);
 }
 
 /* v1.45.6 (Dean): compact LIST view — a CSS-only reflow of the SAME cards into
    dense rows (small thumbnail left, title+meta right), so more items fit per
-   screen. Toggled by adding `.list-view` to #video-grid (see main.js). The card
-   overlays (delete/like/download) stay put — .card-media keeps position:relative
-   and just gets a fixed width. Placed AFTER the base .video-card/.card-media/
+   screen. Toggled by adding `.list-view` to #video-grid (see main.js). The
+   card's thumb keeps only its duration badge and progress bar; .card-media
+   just gets a fixed width. Placed AFTER the base .video-card/.card-media/
    .video-info rules so it's a clean modifier layer. The phone thumbnail-width
    override lives in the main max-width:768px block (search "list-view"). */
 .video-grid.list-view {
@@ -1574,11 +1139,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-grid.list-view .video-info {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-6);
+  align-self: center;
+  padding: var(--space-3) 0 var(--space-3) var(--space-6);
 }
 
 /* v1.45.8 (Dean): pull-to-refresh indicator. Fixed just under the header (mobile
@@ -1653,6 +1215,10 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .video-title {
+  /* D8.6 (F03): a card title is ink, never link blue - except the 2005 era,
+     whose --ink-link IS its link blue (tokens.css). */
+  color: var(--ink-link);
+  text-decoration: none;
   font-size: var(--fs-base);
   font-family: var(--heading-font, var(--font-family));
   font-weight: var(--heading-weight, var(--fw-bold));
@@ -1667,14 +1233,30 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .video-uploader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   margin-bottom: var(--space-1);
+}
+/* the byline link: secondary ink (2005: its link blue, the era's knob) */
+.video-uploader a {
+  color: var(--ink-2);
+  text-decoration: none;
+}
+[data-theme="2005"] .video-uploader a {
+  color: var(--ink-link);
 }
 
 .video-meta {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
+}
+/* the separator rides the views label, so a hidden fabricated count (D8.1)
+   takes its dot with it */
+.video-meta > .card-views::after {
+  content: ' \00b7 ';
 }
 
 /* v1.26.3 (Item 1): shared skeleton-loading placeholder shimmer. CSS-only
@@ -1712,14 +1294,12 @@ html.reader-immersive .app-container { padding-top: 0; }
   100% { transform: translateX(100%); }
 }
 
-/* Home/library grid skeleton card -- mirrors `.video-card`'s box model
-   exactly (see main.js's buildSkeletonGrid): same flex column, the SAME
-   `.thumbnail-container` (aspect-ratio/radius/border unchanged, only the
-   shimmer fill + a transparent border replace the real thumbnail image/
-   overlays), and the SAME `.video-info` padding -- so swapping the skeleton
-   for real card markup produces zero layout shift. */
-.skeleton-card .thumbnail-container {
-  border-color: transparent; /* the shimmer fill already reads as a placeholder; a visible frame border would look like an empty photo slot instead */
+/* Home/library grid skeleton card -- built from the SAME primitives as the
+   real card (main.js buildSkeletonCardEl): the same ui-thumb box, the same
+   .video-info block and line boxes, so the reveal is zero-shift. The rating
+   row's star icons hold its box but never paint. */
+.skeleton-card .card-rating {
+  color: transparent;
 }
 
 .skeleton-line {
@@ -1759,21 +1339,19 @@ img.art-shimmer {
 img.art-shimmer.art-together { object-position: -100000px 0; }
 
 /* v1.98 shimmer sweep (library views): the seeded skeletons REUSE each view's
-   real reserved-space art box (`.music-album-art` 1:1, `.history-thumb` 16:9) so the
-   reveal is zero-shift. (Podcasts' placeholder is a `.ui-art.skeleton-shimmer` square
-   since UI pass S6, and a book's is its card's `.ui-thumb.skeleton-shimmer` since S10:
-   `.skeleton-shimmer` is the later equal-specificity rule (style.css loads after ui.css),
-   so its fill already beats the primitive's ground.) The boxes listed below set
-   `background: var(--thumbnail-bg)` (a dark fill) that would swallow the shimmer sweep,
-   so restore the shimmer base fill on the
-   skeleton variant (2-class specificity beats each art box's 1-class rule
-   regardless of order). `.history-thumb` already uses `--bg-secondary`, so it is
-   deliberately NOT listed here (the rule would be a no-op). The shared
+   real reserved-space art box (`.music-album-art` 1:1) so the reveal is zero-shift.
+   (Podcasts' placeholder is a `.ui-art.skeleton-shimmer` square since UI pass S6, a
+   book's is its card's `.ui-thumb.skeleton-shimmer` since S10, and History's rows are
+   ui-thumb since S2: `.skeleton-shimmer` is the later equal-specificity rule (style.css
+   loads after ui.css), so its fill already beats the primitive's ground.) The boxes
+   listed below set `background: var(--thumbnail-bg)` (a dark fill) that would swallow
+   the shimmer sweep, so restore the shimmer base fill on the skeleton variant (2-class
+   specificity beats each art box's 1-class rule regardless of order). The shared
    `.skeleton-shimmer` ::after sweep + reduced-motion carve-out apply unchanged. */
 .music-album-art.skeleton-shimmer,
 .music-artist-mosaic.skeleton-shimmer, /* v1.103: the artist mosaic box (also thumbnail-bg) on the now-DEFAULT Artists cold landing */
 .book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
-.related-thumb.skeleton-shimmer { /* v1.99: .related-thumb is #000 letterback - restore the fill so the sweep shows */
+.related-thumb.skeleton-shimmer { /* v1.99: the rail thumb skeleton takes the shimmer's base fill */
   background-color: var(--bg-secondary);
 }
 
@@ -2641,19 +2219,19 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
      `.watch-actions` row. `white-space: nowrap` keeps the count atomic;
      `flex-shrink: 0` (this is a flex child of `.star-rating`) stops it from
      being compressed instead of the stars shrinking around it. Scoped to
-     this class only -- the home-card `.card-rating` glyph variant
-     (main.js, star glyphs not "N / 5" text) is a separate class/selector
-     and is unaffected. */
+     this class only -- the home-card `.card-rating` row (main.js, drawn star
+     icons, no "N / 5" text) is a separate class/selector and is unaffected. */
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* Deterministic 3–5 star rating shown on each media card in the grid/list.
-   .on = gold filled stars, .off = gray remainder (out of 5). */
+/* Deterministic 3-5 star rating shown on each media card in the grid/list: a
+   FABRICATED stat (the era flourish, D8.1 - .ft-fabricated). Drawn icons
+   (star.fill / star from the registry, AC4), .on = gold, .off = gray. */
 .card-rating {
-  font-size: var(--fs-base);
-  letter-spacing: 2px; /* token-exempt: era display styling */
-  line-height: 1; /* token-exempt: glyph centering */
+  display: flex;
+  gap: var(--space-1);
+  width: fit-content;
   margin-top: var(--space-2);
 }
 .card-rating .on { color: var(--star-gold); }
@@ -2929,15 +2507,12 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   }
 }
 
+/* UI pass sweep S2 (F53, F63): the rail thumb is a ui-thumb (row context: no
+   frame, --thumb-ground placeholder, the one duration badge); only its width
+   is the rail's. */
 .related-thumb {
   width: 120px;
-  aspect-ratio: 16/9;
-  background-color: #000; /* token-exempt: letterbox black */
   flex-shrink: 0;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  overflow: hidden;
-  position: relative;
 }
 
 .related-info {
@@ -2948,7 +2523,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .related-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
-  color: var(--text-primary);
+  color: var(--ink-link); /* D8.6: ink (the 2005 era's --ink-link is its link blue) */
   line-height: var(--lh-tight);
   max-height: 32px;
   display: -webkit-box;
@@ -2960,7 +2535,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 
 .related-uploader {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   margin-bottom: 1px; /* token-exempt: optical nudge */
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2968,8 +2543,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 }
 
 .related-meta {
-  font-size: var(--fs-2xs);
-  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
 }
 
 /* Setup Wizard Styles */
@@ -4359,15 +3934,6 @@ a.sub-row-channel-link:focus-visible {
   margin: -6px 0 10px; /* token-exempt: positional */
 }
 
-/* Tokens Phase 1 Tier 1: the injected per-channel Re-pull button, moved out
-   of JS-applied styles (probe injection in common.js). 11px == var(--fs-xs);
-   the padding literal is a deliberate burn-down entry (spacing adoption is
-   Tier 2). */
-.repull-btn-compact {
-  font-size: var(--fs-xs);
-  padding: var(--space-2) var(--space-4);
-}
-
 .oneoff-modal-progress {
   margin-bottom: var(--space-5);
 }
@@ -4461,8 +4027,9 @@ a.sub-row-channel-link:focus-visible {
    NOTE: icon-star is intentionally NOT in this group - it is a plain ::before
    character used by the two Stats sidebar links. (Before v1.77 this comment
    said it was excluded to keep "the gold rating" stable; that was never true.
-   Rating stars are literal ★/☆ textContent in `.card-rating` and
-   `#star-rating-control` and have never used this class.)
+   The watch page's `#star-rating-control` stars are literal ★/☆ textContent
+   and the cards' `.card-rating` stars are drawn registry icons (UI pass sweep
+   S2); neither has ever used this class.)
    The tail of this list, from .icon-school down, is v1.77's assignable glyph
    pool - GENERATED from public/js/glyph-pool.js and re-derived by
    test/unit/glyph-pool.test.js, which fails CI if a pool member is missing
@@ -4633,8 +4200,7 @@ a.sub-row-channel-link:focus-visible {
    to this one in every set (deliberate, not a gap). */
 .icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
 /* v1.67: the playback-queue glyph (three list lines + a play triangle),
-   promoted from the v1.63 inline card <svg> so the card-corner renderer
-   treats all six corner controls uniformly. Base directory only, like
+   promoted from the v1.63 inline card <svg>. Base directory only, like
    heart/share/flame/history -- an icon with no set-specific variant falls
    back to this one in every set (deliberate, not a gap). FileTube's own
    drawing (the v1.63 glyph, preserved exactly), not a Material asset. */
@@ -4705,9 +4271,9 @@ a.sub-row-channel-link:focus-visible {
    ::before character, not a mask, so it is not in any block above.
    v1.77: the comment that stood here claimed this class was kept out of the
    icon-set blocks so "the gold ★ rating renders identically regardless of
-   icon-set selection (AC8)". That was NEVER true: ratings are literal ★/☆
-   textContent in `.card-rating` (main.js) and `#star-rating-control`
-   (watch.js), and have never gone through .icon-star at all. The class's only
+   icon-set selection (AC8)". That was NEVER true: ratings never went through
+   .icon-star at all (`#star-rating-control`, watch.js, is literal ★/☆
+   textContent; the cards' `.card-rating` draws registry icons since sweep S2). The class's only
    users were the Liked nav and these two Stats links - and Liked moved to its
    own `.icon-liked` in v1.77, leaving Stats alone here. */
 .icon-star::before { content: "★"; }
@@ -4802,8 +4368,8 @@ a.sub-row-channel-link:focus-visible {
 /* .icon-star is deliberately absent from every block above - but NOT for the
    reason this comment gave until v1.77 ("the gold ★ rating renders identically
    regardless of icon-set selection (AC8)"). That binding never existed: rating
-   stars are literal ★/☆ textContent in `.card-rating` (main.js) and
-   `#star-rating-control` (watch.js) and have never gone through this class.
+   stars (`#star-rating-control`, watch.js; the cards' `.card-rating`, drawn
+   icons since sweep S2) have never gone through this class.
    The real reason is simply that .icon-star is a plain ::before character, not
    a mask - its only remaining users are the two Stats sidebar links. The Liked
    nav moved to .icon-liked in v1.77, which DOES carry all three sets. */
@@ -5466,80 +5032,12 @@ a.sub-row-channel-link:focus-visible {
     padding-top: var(--space-8);
   }
 
-  /* v1.45.2 (#3, Dean): the mobile filter row on ONE clean line. The heading +
-     count take row 1 (.section-title still wraps); .section-actions is its own
-     full-width row 2 that no longer wraps to two lines — the Shuffle/Rescan
-     labels are hidden so those buttons are icon-only and everything fits. This
-     REVISITS v1.23 (which showed the words because icon-only "read as just an
-     emoji"): with the item count moved beside the name (#4) freeing the row and
-     the buttons evenly distributed, one glyph line reads cleaner than a wrapped
-     two-line cluster. Meaning is preserved via each button's title/aria-label,
-     and desktop keeps its labels (there's room).
-
-     v1.50: `nowrap` relaxed to `wrap` ONLY so the new watched-state group can
-     take its own full-width row below (its width:100% + order rules — next
-     block). The original one-clean-line contract for the format pills +
-     sort/shuffle/rescan/view buttons still holds exactly as long as that set
-     fits the viewport, which is the SAME budget v1.45.3 tuned; nothing was
-     added to that line (the watch group never shares it, by construction). */
+  /* UI pass sweep S2 (F19): on phones the heading takes row 1 and the toolbar
+     (the scrolling chip row + the trailing icon tools) is ONE full-width row 2 -
+     it never wraps: the chips scroll, the tools stay put. */
   .section-actions {
-    flex-wrap: wrap;
     width: 100%;
-    justify-content: space-between;
-    gap: var(--space-2); /* v1.45.6: tightened from 6px to absorb the added view-mode button
-                 on the one-line row (Dean: "move them slightly closer"). */
-  }
-  /* v1.50: the watched-state group is the sticky bar's own second line on
-     phones — forced last (order), with its four pills sharing the line
-     evenly. Keeping it OFF the v1.45 one-glyph-line row is what preserves
-     that row's hard-won width budget.
-
-     v1.50.4 (Dean: "the repull button goes onto a middle row"): the wrap
-     trigger relaxes from a hard width:100% to flex-basis 70% — the group
-     still can never fit the always-fully-budgeted row 1, so it still wraps
-     and still anchors row 2, but it now GROWS instead of hard-filling:
-     alone (home) it fills row 2 exactly as before; on a subscribed
-     channel's folder view the Re-pull button (order 11, glyph-only on
-     phones) shares row 2 beside it instead of orphaning onto a middle row
-     between the glyph line and the watch group (it had no order, so it
-     landed in row 1's zero-slack budget and wrapped alone). */
-  .section-actions .watch-toggle {
-    order: 10;
-    flex: 1 1 70%;
-  }
-  .section-actions #sub-repull-channel-btn {
-    order: 11;
-  }
-
-  /* v1.53: the bulk-attribution button joins row 2 beside Re-pull -- an
-     explicit order (the v1.50.4 orphan-row lesson; repull owns 11). */
-  .section-actions #attribute-folder-btn {
-    order: 12;
-  }
-  .section-actions .watch-toggle .format-toggle-btn {
-    flex: 1 1 0;
-  }
-  /* v1.45.3 (#3): the previous swing forced EVERY button (incl. the 3 format
-     pills) to 44px and kept the sort's text label, so the nowrap row overflowed
-     the viewport (Rescan spilled off the edge) — "mangled". Fix the width budget:
-     the All/Videos/Audio pills go compact (min-width:0, overriding the desktop
-     58px), and ALL word-labels are hidden — Shuffle/Rescan (.btn-label) AND the
-     sort's current-value label — leaving the sort as a compact caret. The three
-     icon action buttons keep a 40px min-WIDTH and override the desktop 104px;
-     they are `.btn`, so v1.95 floors their HEIGHT at 44px (--size-touch). */
-  .section-actions .format-toggle-btn {
-    min-width: 0;
-  }
-  #sort-select-btn,
-  #shuffle-again-btn,
-  #rescan-library-btn {
-    min-width: 40px;
-  }
-  .section-actions .btn .btn-label {
-    display: none;
-  }
-  #sort-select-label {
-    display: none;
+    gap: var(--space-3);
   }
 
   /* v1.19.0 FR-6: search reuses this same home view/heading (main.js sets
@@ -5550,8 +5048,7 @@ a.sub-row-channel-link:focus-visible {
      `Search Results for "<query>"` with a long/unbroken query token
      establishes an intrinsic min-width wider than the phone viewport,
      forcing horizontal overflow -- the exact same family of bug as the
-     v1.17.0 FR-1 `.sort-select` fix above (`min-width: auto` on a flex
-     child), which is what makes mobile Safari zoom the whole page out
+     v1.17.0 FR-1 fix (`min-width: auto` on a flex child), which is what makes mobile Safari zoom the whole page out
      (reads as "everything is too big"). Fix at the named element, not an
      `overflow-x` band-aid: `min-width: 0` lets the heading shrink to its
      row (`.section-title` already wraps and `.section-actions` is
@@ -5586,17 +5083,18 @@ a.sub-row-channel-link:focus-visible {
     width: 120px;
   }
 
+  /* F18 (sweep S2): a phone title is the desktop grid size (13px, was 12), the
+     byline 12 and the meta 11 - never below the caption role. */
   .video-title {
-    font-size: var(--fs-sm);
-    max-height: 31px;
+    font-size: var(--fs-base);
   }
 
   .video-uploader {
-    font-size: var(--fs-xs);
+    font-size: var(--fs-sm);
   }
 
   .video-meta {
-    font-size: var(--fs-2xs);
+    font-size: var(--fs-xs);
   }
 
   /* ---- v1.15.1 FIX 5: one-off modal comfortable on a phone -------------
@@ -6899,7 +6397,7 @@ html:has(> body.ft-audio-expanded),
   }
 }
 .chapters-menu-share .icon-share {
-  width: 14px; /* token-exempt: fixed glyph size (matches .card-share-btn .icon-share) */
+  width: 14px; /* token-exempt: fixed glyph size */
   height: 14px; /* token-exempt: fixed glyph size */
 }
 .chapters-menu-loop.active {
@@ -9468,34 +8966,10 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   }
 }
 
-/* the one-line filter-chip row */
+/* the one-line filter-chip row (the .library-chips row; ui-chip chips) */
 .modern-chip-row {
-  display: flex;
-  align-items: center; /* v1.85.1 (#C, DEFENSIVE - unconfirmed pending Dean's screenshot): no cross-axis stretch, so a stretched pill's border can't clip at the overflow-x edge. NOTE overflow-x:auto forces overflow-y to compute to auto (spec), so extra bottom padding is the real breathing room. */
-  gap: var(--space-4);
-  overflow-x: auto;
   padding: var(--space-4) 0 var(--space-6);
   margin-bottom: var(--space-4);
-}
-.modern-chip-row::-webkit-scrollbar { display: none; }
-.modern-chip {
-  flex: 0 0 auto;
-  padding: var(--space-3) var(--space-8);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  background-color: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-@media (hover: hover) {
-  .modern-chip:hover { background-color: var(--bg-sidebar); }
-}
-.modern-chip.active {
-  background-color: var(--text-primary);
-  color: var(--bg-color);
-  border-color: var(--text-primary);
 }
 
 /* the mobile recent-uploader subscription avatar bar (hidden on desktop) */
@@ -9520,20 +8994,6 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   text-decoration: none;
   color: var(--text-secondary);
 }
-.modern-avatar-circle {
-  width: 56px; /* token-exempt: avatar disc geometry */
-  height: 56px; /* token-exempt: avatar disc geometry */
-  border-radius: var(--radius-full);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--bg-secondary);
-  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-}
-.modern-avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 .modern-avatar-name {
   max-width: 64px; /* token-exempt: avatar-chip label width */
   font-size: var(--fs-2xs);
@@ -9545,40 +9005,8 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   .modern-avatar-bar { display: none; }
 }
 
-/* rounded thumbnails wherever modern is on */
-html[data-modern="on"] .card-media,
-html[data-modern="on"] .thumbnail-container {
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-/* the per-card channel avatar beside the byline */
-html[data-modern="on"] .video-uploader {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.card-channel-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px; /* token-exempt: byline avatar geometry */
-  height: 24px; /* token-exempt: byline avatar geometry */
-  border-radius: var(--radius-full);
-  overflow: hidden;
-  flex: 0 0 auto;
-  /* v1.169: the avatar circle is a critter anchor (the micro-ambush) - paint
-     the disc so the ground contract holds even while the image loads. */
-  background-color: var(--thumbnail-bg);
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-semibold);
-  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
-}
-.card-channel-avatar img { width: 100%; height: 100%; object-fit: cover; }
-/* --ch-av is the per-card monogram colour T5 injects inline; the fallback keeps
-   the disc coloured if it is ever absent (and satisfies the fallback-less-var
-   token check - --ch-av is intentionally not a stylesheet token). */
-.card-channel-avatar-mono { background-color: var(--ch-av, var(--overlay-surface)); }
+/* The per-card channel avatar beside the byline (Modern, D4.4): ui.avatar sm,
+   a circle; its thumbnail radius comes from ui-thumb (--thumb-radius). */
 
 /* ============================================================
    v1.85 #1: mobile search magnifier + recent-search history.
@@ -12339,8 +11767,9 @@ html[data-modern="on"] .video-uploader {
 .bottom-nav-item[hidden] { display: none !important; }
 
 /* The Settings bottom-bar editor rows (toggle + up/down reorder). */
-/* v1.67: the card-corner editor rows (Appearance box) - the bottom-bar
-   editor's row idiom (label left, control right, hairline separators). */
+/* v1.67's editor-row idiom (label left, control right, hairline separators),
+   born with the retired card-corner editor; the v1.77 Library-icon editor
+   (#library-glyph-editor) still uses it. */
 .card-corner-editor-row {
   display: flex;
   align-items: center;
@@ -13321,8 +12750,8 @@ html[data-modern="on"] .video-uploader {
 
 /* v1.161 (Dean): the per-video delete button - a SIBLING of the row anchor,
    left of the dismiss X. Resting: a de-emphasised trash glyph; hover/focus goes
-   red; ARMED reveals the "Sure?" confirm on a red fill (mirrors .card-delete-btn's
-   two-tap reveal). Media rows only. */
+   red; ARMED reveals the "Sure?" confirm on a red fill (the old card-corner
+   delete's two-tap reveal, retired on cards in sweep S2). Media rows only. */
 .notif-row-delete {
   flex: 0 0 auto;
   display: flex;
@@ -13477,10 +12906,8 @@ html[data-modern="on"] .video-uploader {
   isolation: isolate;
 }
 
-/* The SAME .duration-badge system as the cards, scaled to the 72x40 notif thumb
-   using the app's existing small-pill language (the list-view precedent:
-   fs-xs + tight 2/4 padding). Scoped so it wins over the mobile .duration-badge
-   fs-2xl bump (0-2-0 > 0-1-0) - the panel badge stays small at every width. */
+/* The legacy .duration-badge, scaled to the 72x40 notif thumb (fs-xs + tight
+   2/4 padding) - the panel badge stays small at every width. */
 .notif-row-thumb-wrap .duration-badge {
   bottom: 2px; /* token-exempt: positional geometry (tight to the small thumb) */
   right: 2px; /* token-exempt: positional geometry */
@@ -14137,47 +13564,6 @@ html[data-modern="on"] .video-uploader {
   }
 }
 
-/* v1.63: the add-to-queue affordances (q3), same overlay treatment as its
-   card siblings. v1.67: no fixed corner anymore - the old bottom-right
-   anchor sat ON the duration badge, so queue is now an ASSIGNABLE control
-   (unassigned by default, C5) positioned via the .card-corner-* classes.
-   The watch page's two verbs reuse the standard .btn. */
-.card-queue-btn {
-  position: absolute;
-  z-index: 2; /* token-exempt: local stacking */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-radius: var(--radius);
-  background-color: var(--scrim-legacy);
-  color: var(--on-overlay);
-  cursor: pointer;
-  opacity: 0.85; /* token-exempt: card-overlay resting opacity (the sibling buttons' exact value) */
-  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
-}
-
-.card-queue-btn:focus-visible {
-  opacity: 1;
-  background-color: var(--scrim-heavy);
-}
-@media (hover: hover) {
-  .card-queue-btn:hover {
-    opacity: 1;
-    background-color: var(--scrim-heavy);
-  }
-}
-
-/* v1.67 T1: the promoted icon-queue mask, sized to the .card-*-btn sibling
-   convention (delete/download/heart are all 14px here; the v1.63 inline
-   <svg> was 16px -- normalized down 2px so any control reads identically
-   in any corner). */
-.card-queue-btn .icon-queue {
-  width: 14px;
-  height: 14px;
-}
-
 /* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
    slot on watch, YouTube-playlist-box treatment. */
 .queue-upnext-box {
@@ -14259,6 +13645,16 @@ html[data-modern="on"] .video-uploader {
   display: none;
 }
 
+/* UI pass D8.1: the era flourish. Every FABRICATED stat (the mock stars, a mock
+   view count, a mock subscriber count, the mock commenters) carries
+   .ft-fabricated; it shows only in an era whose flourish is on (2005/2009/2014 -
+   common.js eraShowsFabricated sets <html data-era-flourish>). Real captured
+   counts never carry the class. A missing attribute counts as off, so Modern is
+   the safe default. The ft-hide-stars rule above composes with it. */
+html:not([data-era-flourish="on"]) .ft-fabricated {
+  display: none;
+}
+
 /* v1.63.1: class-based settings-checkbox styling (the page's legacy
    checkboxes use inline style attrs - the #71 unscanned channel; new
    markup uses THESE instead and existing ones migrate opportunistically). */
@@ -14286,133 +13682,15 @@ html[data-modern="on"] .video-uploader {
 .history-toolbar-actions { display: flex; gap: var(--space-4); }
 
 .history-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
   max-width: 860px;
 }
-
-.history-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-6);
-}
-
-.history-thumb {
-  position: relative;
-  flex: 0 0 auto;
-  width: 200px;
-  max-width: 42vw;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background-color: var(--bg-secondary);
-}
-.history-thumb-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* The red resume bar, same visual weight as the card bar; the width rides
-   the --history-pct custom property (set via setProperty after insertion --
-   the player.js --seek-fill idiom, never an inline width literal). */
-.history-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 4px;
-  background-color: var(--scrim-legacy);
-}
-.history-bar-fill {
-  display: block;
-  width: var(--history-pct, 0%);
-  height: 100%;
-  background-color: var(--yt-red);
-}
-
-.history-info {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.history-title {
-  display: block;
-  color: var(--text-primary);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-@media (hover: hover) {
-  .history-title:hover { color: var(--text-link); }
-}
-.history-meta {
-  margin-top: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-}
-.history-channel {
-  color: var(--text-secondary);
-  text-decoration: none;
-}
-@media (hover: hover) {
-  .history-channel:hover { color: var(--text-link); }
-}
-.history-watched-chip {
-  display: inline-block;
-  margin-left: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  font-size: var(--fs-2xs);
-  text-transform: uppercase;
-}
-
-/* Per-row remove: icon-first, the label swaps in while armed (two-tap). */
-.history-remove-btn {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: var(--space-2);
-  border-radius: var(--radius);
-  font-size: var(--fs-sm);
-}
-@media (hover: hover) {
-  .history-remove-btn:hover { color: var(--text-primary); background-color: var(--bg-secondary); }
-}
-.history-remove-confirm { display: none; }
-.history-confirming .history-remove-confirm { display: inline; }
-.history-confirming.history-remove-btn { color: var(--yt-red); }
-/* The armed Clear-all swaps its label for "Sure?" (single-width control). */
-.history-clear-btn.history-confirming .history-clear-label { display: none; }
-.history-clear-btn.history-confirming { color: var(--yt-red); }
-
-.history-empty {
-  color: var(--text-secondary);
-  padding: var(--space-10) 0;
-}
-
+/* UI pass sweep S2 (F18, F53): each row is a ui-row in a ui-list (thumb media
+   slot, title in ink, the meta line, ONE reserved Remove slot) - ui.css owns
+   the row; the empty state is a ui-state block. */
 .history-more-wrap {
   display: flex;
   justify-content: center;
   padding: var(--space-8) 0;
-}
-
-@media (max-width: 600px) {
-  .history-row { gap: var(--space-4); }
-  .history-thumb { width: 160px; }
-  .history-title { font-size: var(--fs-base); }
 }
 
 /* ---- v1.65 trash (Settings section) -------------------------------- */
@@ -14880,14 +14158,6 @@ html[data-modern="on"] .video-uploader {
   .watch-actions .btn { min-height: var(--size-touch-watch-action); }
 }
 
-/* v1.97 "Hide from feed": on phones give the modern-feed card-menu button a
-   comfortable 44px hit area (the v1.95 touch-target convention). The glyph has
-   a transparent resting background, so the bigger min box grows only the
-   INVISIBLE tap zone - the icon stays the same size/position ("same look"). */
-@media (max-width: 768px) {
-  .card-feedhide-btn { min-width: var(--size-touch); min-height: var(--size-touch); }
-}
-
 /* ---- v1.146 downloader-engine: the Downloads box's channel selector.
    Three side-by-side radio cards (the ruling's term 5); wraps on narrow
    widths via flex-wrap, so no media query is needed. Version strings can
@@ -14920,139 +14190,12 @@ html[data-modern="on"] .video-uploader {
   word-break: break-all;
 }
 
-/* ---- v1.147 (Dean): bigger card-corner controls on mobile -----------------
-   The six corner overlays (download/delete/like/queue/share/reheat) read
-   fine on desktop but their 14px glyphs are a hard press on a phone. Two
-   levers, BOTH mobile-only and scoped to exactly these six (each button's
-   own base rule keeps the 14px sibling convention - desktop stays
-   byte-identical):
-   1. The glyph grows 14px -> 18px (Dean's +30%); the scrim pill grows
-      with it (flex + padding), so the VISIBLE button is honestly bigger.
-   2. An invisible tap-zone extension via an inset ::after - the pill's
-      look is unchanged but the hit box reaches the 44px touch guideline
-      (the pill is ~30x26 at the new glyph size; -7/-9 reaches ~44x44).
-      The .card-feedhide-btn precedent grows min-width instead ONLY
-      because that button has no background; these six wear the visible
-      scrim pill, which min-width would visibly stretch. The extension
-      necessarily overlaps a sliver of the surrounding watch-link - the
-      standard price of any corner tap-target growth. */
-@media (max-width: 768px) {
-  .card-download-btn .icon-download,
-  .card-delete-btn .icon-delete,
-  .card-like-btn .icon-heart,
-  .card-share-btn .icon-share,
-  .card-reheat-btn .icon-flame,
-  .card-queue-btn .icon-queue,
-  .card-transcript-btn .icon-transcript {
-    width: 18px;
-    height: 18px;
-  }
-  /* v1.204: the bottom-right slot's button is wider on mobile (18px glyph ->
-     ~30px pill), so the beside-corner duration badge clears a bit further:
-     right anchor (6px) + 30px + 4px gap = 40px. (Gate SUGGESTION, disclosed:
-     the button's invisible tap-zone ::after still extends ~7px past its pill,
-     so its left edge grazes the badge's rightmost ~3px - the same accepted
-     v1.147 tap-zone-overlaps-a-sliver tradeoff every corner control carries,
-     non-interactive badge pixels only.) */
-  .duration-badge--beside-corner {
-    right: 40px; /* token-exempt: positional geometry (clears the mobile .card-corner-br button) */
-  }
-  /* v1.205.1 (Dean device report): the corner glyphs grow 14px -> 18px on
-     mobile, so the duration pill grows with them to stay the same height as a
-     neighbouring corner button (was 7px shorter). */
-  .duration-badge {
-    font-size: var(--fs-2xl); /* 18px - matches the mobile corner glyph */
-  }
-  /* v1.205.1 (gate WARNING): LIST view pins the thumb to ~120px, which cannot
-     hold a bottom-left control + the wider 18px pill + a bottom-right control.
-     So in list view the duration stays small (fs-xs) - a big pill on a tiny
-     thumb reads wrong anyway, and this keeps its left edge clear of the
-     bottom-left corner button (the grid tiles Dean sized keep the 18px match). */
-  .video-grid.list-view .duration-badge {
-    font-size: var(--fs-xs); /* 11px - the compact list thumb can't fit the 18px pill beside two corners */
-    padding: var(--space-1) var(--space-2); /* revert the wider grid padding too, so the list-view pill is byte-identical to v1.204 (no width worsening at all) */
-  }
-  .card-download-btn::after,
-  .card-delete-btn::after,
-  .card-like-btn::after,
-  .card-share-btn::after,
-  .card-reheat-btn::after,
-  .card-queue-btn::after,
-  .card-transcript-btn::after {
-    content: '';
-    position: absolute;
-    inset: -9px -7px; /* token-exempt: positional geometry (invisible tap-zone extension to the 44px touch guideline) */
-  }
-  /* v1.147 gate W3: phone LIST view pins the thumb to 120px wide (~68px
-     tall), where the full -9px vertical extension made the BL corner's
-     invisible zone shadow the BOTTOM edge of the TL pill (BL renders
-     last at equal z, so its zone wins the overlap - tapping the visible
-     lower edge of the TL button fired the BL action). List view keeps
-     the horizontal growth and pulls vertical back to -2px: the zones
-     clear each other and neither covers a sibling's VISIBLE pill. */
-  .video-grid.list-view .card-download-btn::after,
-  .video-grid.list-view .card-delete-btn::after,
-  .video-grid.list-view .card-like-btn::after,
-  .video-grid.list-view .card-share-btn::after,
-  .video-grid.list-view .card-reheat-btn::after,
-  .video-grid.list-view .card-queue-btn::after,
-  .video-grid.list-view .card-transcript-btn::after {
-    inset: -2px -7px; /* token-exempt: positional geometry (list-view corner zones must not shadow sibling pills) */
-  }
-}
-
-/* ---- v1.150 (Dean's device report): search toolbar strip + the clear X ----
-   Half 1: v1.149's scope toggle carried no mobile order/flex rules, so it
-   fell into row 1's zero-slack budget and orphaned onto a THIRD toolbar
-   row (the v1.50.4 orphan-row class, restruck). On SEARCH views only
-   (main.js stamps .search-scoped-toolbar while mounting the scope toggle,
-   and removes it on every non-search render), the mobile toolbar becomes
-   ONE horizontally scrollable strip - the .modern-chip-row recipe:
-   full-size buttons, nothing wraps, hidden scrollbar, the search-specific
-   scope toggle leading. Non-search views keep the hard-won v1.45/v1.50
-   two-row contract byte-identical (the class is simply absent); desktop
-   is untouched (media-scoped). */
-@media (max-width: 768px) {
-  .section-actions.search-scoped-toolbar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    justify-content: flex-start;
-    -webkit-overflow-scrolling: touch;
-    /* scrollbar hiding is ENGINE-PARTITIONED: the webkit pseudo below, and
-       the standard scrollbar-width inside the one @supports guard (the
-       era-scrollbar census forbids an unguarded standard declaration -
-       Chromium 121+ would discard the ::-webkit-scrollbar art). */
-  }
-  .section-actions.search-scoped-toolbar::-webkit-scrollbar { display: none; }
-  /* v1.150 gate W1 (adversarial): `overflow-x: auto` force-computes
-     overflow-y to auto too, and the sort dropdown's below-row menu is an
-     absolutely-positioned DESCENDANT of this toolbar - it cannot escape
-     the strip's clip (z-index never beats an overflow clip), and with
-     both scrollbars deliberately hidden the open menu would be invisible
-     and unreachable. While the menu is OPEN, lift the clip on BOTH axes;
-     the strip simply pauses scrolling for the duration of the menu
-     interaction. */
-  .section-actions.search-scoped-toolbar:has(#sort-menu:not([hidden])) {
-    overflow: visible;
-  }
-  /* Neutralize the two-row machinery inside the strip: the watch group's
-     row-2 anchors (order 10 / basis 70%) and its evenly-stretched inner
-     pills would otherwise fight the nowrap strip. */
-  .section-actions.search-scoped-toolbar > * {
-    flex: 0 0 auto;
-    order: 0;
-  }
-  .section-actions.search-scoped-toolbar .watch-toggle .format-toggle-btn {
-    flex: 0 0 auto;
-  }
-  .section-actions.search-scoped-toolbar #library-search-scope-toggle {
-    order: -1; /* the search-specific control leads the strip */
-  }
-}
-
+/* ---- v1.150 (Dean's device report): the search-box clear X ----------------
+   (Its Half 1, the search toolbar strip, retired in UI pass sweep S2: every
+   toolbar is one chip row now.) */
 /* Half 2: the search-box clear X (injected by common.js into every shell's
    .search-form, between the input and the Search button). Glyph-only on a
-   transparent ground - the .card-feedhide-btn posture - so the mobile
+   transparent ground - a glyph-only posture - so the mobile
    touch-size bump below grows only the invisible tap zone. Visible ONLY
    while the input carries text ([hidden] toggled on input events; the
    explicit display override is the [hidden]-loses-to-author-display

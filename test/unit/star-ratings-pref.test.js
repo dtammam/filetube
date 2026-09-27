@@ -28,6 +28,20 @@ test('the ONE CSS gate covers both star writers (source lock)', () => {
     'the root-class rule hides the watch control AND the card rows in one place');
 });
 
+// UI pass sweep S2 (D8.1; AC12 - the plan's star-ratings-pref conversion): the
+// card stars are a FABRICATED stat, so they also answer to the era flourish; the
+// pref composes on top (a retro era shows them unless the pref hides them). The
+// per-era jsdom cascade over the real rules is test/unit/card-action-menu.test.js;
+// here the two gates are bound together on the card row.
+test('D8.1: the card star row is gated by BOTH the era flourish (.ft-fabricated) and this pref (.card-rating)', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /html:not\(\[data-era-flourish="on"\]\) \.ft-fabricated \{\s*display: none;\s*\}/, 'the era gate');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.match(main, /stars\.className = 'card-rating ft-fabricated';/, 'the card star row carries both gates');
+  const { eraShowsFabricated } = require('../../public/js/common.js');
+  assert.deepStrictEqual(['2005', '2009', '2014', '2021'].map(eraShowsFabricated), [true, true, true, false]);
+});
+
 test('the mobile centering rule exists inside a phone media block (source lock)', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   const phoneBlocks = css.split('@media (max-width: 768px)').slice(1);

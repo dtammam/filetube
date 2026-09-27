@@ -1,12 +1,14 @@
 'use strict';
 
-// [INTEGRATION] v1.203 (Dean): the Transcript card corner runs the SAME flow
-// as the watch page (common.js openTranscriptFor). Boots the real index.html
-// on a `?root=` view with a captioned item and the corner assigned via the
-// per-user prefs (/api/auth/me settings.cornerTL etc.), then: the corner
-// renders only for the captioned item; a click fetches the transcript +
-// prompts and opens the modal (desktop) or the picker (phone width) with the
-// SAME picks; the payload shared from the picker is the fetched document.
+// [INTEGRATION] v1.203 (Dean): the card's Transcript action runs the SAME flow
+// as the watch page (common.js openTranscriptFor). Boots the real index.html on
+// a `?root=` view with a captioned item. UI pass sweep S2 (D8.5; AC12): the
+// v1.67 corner became an entry of the card's ONE action menu (the kebab), so
+// every bind below drives the menu: the entry is offered only for the captioned
+// item; selecting it fetches the transcript + prompts and opens the modal
+// (desktop) or the picker (phone width) with the SAME picks; the payload shared
+// from the picker is the fetched document; a late answer never opens over
+// another page; rapid repeats while loading make ONE fetch.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -43,7 +45,7 @@ function loadFolder({ phone, prompts, defer }) {
           const method = (init && init.method) || 'GET';
           const json = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
           if (url === '/api/settings' && method === 'GET') return json({ defaultView: '', defaultSort: 'release-date', attributeControlEnabled: false, transcriptAiPrompts: prompts || [] });
-          if (url === '/api/auth/me') return json({ user: { username: 'dean', role: 'admin' }, settings: { cornerTL: 'transcript', cornerTR: 'none', cornerBL: 'none' } });
+          if (url === '/api/auth/me') return json({ user: { username: 'dean', role: 'admin' }, settings: {} });
           if (url === '/api/config') return json({ folders: [ROOT], folderSettings: {} });
           if (url.startsWith('/api/transcript/')) { transcriptUrls.push(url); const ans = { ok: true, status: 200, text: async () => TEXT }; if (defer) return new Promise((r) => deferred.push(() => r(ans))); return Promise.resolve(ans); }
           if (url.startsWith('/api/videos')) return json({ items, total: items.length, offset: 0, limit: 50 });
@@ -61,15 +63,29 @@ function loadFolder({ phone, prompts, defer }) {
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const click = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+// Sweep S2: the card's action menu (kebab) and its entries.
+const menuLabels = (d) => Array.from(d.querySelectorAll('.ui-sheet.is-open .ui-row')).map((r) => r.textContent.trim());
+async function openMenu(dom, id) {
+  click(dom, dom.window.document.querySelector(`#video-grid .video-card[data-id="${id}"] .card-kebab`));
+  await wait(40);
+}
+async function chooseTranscript(dom, id) {
+  await openMenu(dom, id);
+  const row = Array.from(dom.window.document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Transcript');
+  assert.ok(row, 'the menu offers Transcript');
+  click(dom, row);
+}
 
-test('card corner: Transcript renders on the captioned card only; a click (desktop) opens the read-only modal with the fetched document', async () => {
+test('card menu: Transcript is offered on the captioned card only; choosing it (desktop) opens the read-only modal with the fetched document', async () => {
   const { dom, transcriptUrls } = await loadFolder({ phone: false });
   try {
     await wait(400);
     const d = dom.window.document;
-    const corners = Array.from(d.querySelectorAll('.card-transcript-btn'));
-    assert.deepStrictEqual(corners.map((b) => b.dataset.id), ['cap'], 'only the captioned item gets the corner');
-    click(dom, corners[0]);
+    await openMenu(dom, 'plain');
+    assert.ok(!menuLabels(d).includes('Transcript'), 'no captions -> no Transcript entry');
+    click(dom, d.querySelector('.ui-sheet.is-open .ui-sheet__close'));
+    await wait(400);
+    await chooseTranscript(dom, 'cap');
     await wait(200);
     assert.deepStrictEqual(transcriptUrls, ['/api/transcript/cap']);
     const ta = d.getElementById('transcript-text');
@@ -78,14 +94,14 @@ test('card corner: Transcript renders on the captioned card only; a click (deskt
   } finally { dom.window.close(); }
 });
 
-test('card corner (phone width): the click opens the SAME picker - Share / Copy / Share with AI - and Share hands navigator.share {title, text}', async () => {
+test('card menu (phone width): choosing Transcript opens the SAME picker - Share / Copy / Share with AI - and Share hands navigator.share {title, text}', async () => {
   const shares = [];
   const { dom } = await loadFolder({ phone: true, prompts: [{ id: 'summarize', name: 'Summarize', text: 'Sum it.' }] });
   try {
     dom.window.navigator.share = (p) => { shares.push(p); return Promise.resolve(); };
     await wait(400);
     const d = dom.window.document;
-    click(dom, d.querySelector('.card-transcript-btn'));
+    await chooseTranscript(dom, 'cap');
     await wait(200);
     assert.deepStrictEqual(Array.from(d.querySelectorAll('.choice-modal-btn')).map((b) => b.textContent), ['Share transcript', 'Copy transcript', 'Share with AI']);
     click(dom, d.querySelectorAll('.choice-modal-btn')[0]);
@@ -97,13 +113,13 @@ test('card corner (phone width): the click opens the SAME picker - Share / Copy 
 });
 
 // ---- GATE (adversarial): a late text must never open over ANOTHER page ----
-test('card corner: click, then navigate away before the text lands -> nothing opens (cached-away view via stillWanted AND a real abort)', async () => {
+test('card menu: choose Transcript, then navigate away before the text lands -> nothing opens (cached-away view via stillWanted AND a real abort)', async () => {
   for (const target of ['/history', '/?liked=1']) {
     const { dom, deferred } = await loadFolder({ phone: false, defer: true });
     try {
       await wait(400);
       const d = dom.window.document;
-      click(dom, d.querySelector('.card-transcript-btn'));
+      await chooseTranscript(dom, 'cap');
       await wait(50);
       dom.window.FileTube.navigate(target);
       await wait(400);
@@ -115,19 +131,22 @@ test('card corner: click, then navigate away before the text lands -> nothing op
   }
 });
 
-test('card corner: three rapid clicks while the text is loading -> ONE fetch and ONE modal (the corner disables itself)', async () => {
+test('card menu: choosing Transcript three times while the text is loading -> ONE fetch and ONE modal (the item is busy until it lands)', async () => {
   const { dom, transcriptUrls, deferred } = await loadFolder({ phone: false, defer: true });
   try {
     await wait(400);
     const d = dom.window.document;
-    const corner = d.querySelector('.card-transcript-btn');
-    click(dom, corner); click(dom, corner); click(dom, corner);
+    await chooseTranscript(dom, 'cap');
+    await chooseTranscript(dom, 'cap');
+    await chooseTranscript(dom, 'cap');
     await wait(50);
     assert.strictEqual(transcriptUrls.length, 1, 'one fetch');
-    assert.strictEqual(corner.disabled, true, 'disabled while loading');
     deferred.splice(0).forEach((r) => r());
     await wait(300);
     assert.strictEqual(d.querySelectorAll('.transcript-modal').length, 1);
-    assert.strictEqual(corner.disabled, false, 're-enabled after');
+    d.querySelector('.transcript-modal') && d.querySelector('.transcript-modal').remove();
+    await chooseTranscript(dom, 'cap');
+    await wait(50);
+    assert.strictEqual(transcriptUrls.length, 2, 'not busy once the text landed - a later choice fetches again');
   } finally { dom.window.close(); }
 });

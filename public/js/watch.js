@@ -679,23 +679,94 @@ function resolveWatchMediaId(search) {
   return params.get('v') || params.get('id') || null;
 }
 
-// v1.99 shimmer sweep: n `.related-card`-shaped shimmer rows seeded into
-// #related-files-container BEFORE the /api/videos fetch, so the related rail
-// shimmers instead of sitting blank then snapping in. Reuses the REAL
-// `.related-card` / `.related-thumb` (aspect 16/9) / `.related-info` box, so the
-// swap to real cards is zero-shift (the buildSkeletonGrid contract).
-function buildRelatedSkeletonCards(n) {
+// The ui builders: the page's window.ui, else (node:test) the sibling module.
+function relatedUi() {
+  if (typeof window !== 'undefined' && window.ui) return window.ui;
+  if (typeof module !== 'undefined' && module.require) {
+    try { return module.require('./ui.js'); } catch (_) { return null; }
+  }
+  return null;
+}
+
+// UI pass sweep S2 (F63, D8.5/D8.6): one related-rail card - a link holding the
+// ui-thumb (duration badge only; the art-shimmer reveal), the title in ink
+// (link blue only as the 2005 era's --ink-link), the byline and an optional
+// meta line. `o`: { href, src, title, byline, meta, metaFabricated, duration, doc }.
+// `metaFabricated` marks a MOCK view count (the era flourish, D8.1). The video
+// rail and the TV Up-next rail both build through here.
+function buildRelatedCardEl(o) {
+  const u = relatedUi();
+  const doc = o.doc || document;
+  const a = doc.createElement('a');
+  a.className = 'related-card';
+  a.setAttribute('href', o.href);
+  const thumb = u.thumb({ src: o.src, duration: o.duration, context: 'row', doc });
+  thumb.classList.add('related-thumb');
+  const img = thumb.querySelector('.ui-thumb__img');
+  if (img) img.classList.add('art-shimmer');
+  a.appendChild(thumb);
+  const info = doc.createElement('div');
+  info.className = 'related-info';
+  const title = doc.createElement('div');
+  title.className = 'related-title';
+  title.setAttribute('title', o.title || '');
+  title.textContent = o.title || '';
+  info.appendChild(title);
+  const by = doc.createElement('div');
+  by.className = 'related-uploader';
+  by.textContent = o.byline || '';
+  info.appendChild(by);
+  if (o.meta) {
+    const meta = doc.createElement('div');
+    meta.className = 'related-meta' + (o.metaFabricated ? ' ft-fabricated' : '');
+    meta.textContent = o.meta;
+    info.appendChild(meta);
+  }
+  a.appendChild(info);
+  return a;
+}
+
+// v1.99 shimmer sweep, UI pass sweep S2 (F63, D9): n skeleton cards of the FINAL
+// geometry, seeded into #related-files-container BEFORE the fetch - the same
+// ui-thumb box, a TWO-line title (the clamp maximum) and the byline + meta line
+// boxes, so the reveal swaps in place. Serialized for the innerHTML seed.
+function buildRelatedSkeletonCards(n, doc) {
   const count = Number.isInteger(n) && n > 0 ? n : 0;
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || count === 0) return '';
+  const u = relatedUi();
+  const bar = (host, cls) => {
+    const sp = d.createElement('span');
+    sp.className = 'skeleton-text skeleton-shimmer ' + cls;
+    sp.textContent = ' ';
+    host.appendChild(sp);
+  };
   let html = '';
   for (let i = 0; i < count; i++) {
-    html += '<div class="related-card" aria-hidden="true">'
-      + '<div class="related-thumb skeleton-shimmer"></div>'
-      + '<div class="related-info">'
-      + '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>'
-      + '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>'
-      + '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>'
-      + '</div>'
-      + '</div>';
+    const card = d.createElement('div');
+    card.className = 'related-card';
+    card.setAttribute('aria-hidden', 'true');
+    const thumb = u.thumb({ context: 'row', doc: d });
+    thumb.classList.add('related-thumb', 'skeleton-shimmer');
+    card.appendChild(thumb);
+    const info = d.createElement('div');
+    info.className = 'related-info';
+    const title = d.createElement('div');
+    title.className = 'related-title';
+    bar(title, 'skeleton-text-long');
+    title.appendChild(d.createElement('br'));
+    bar(title, 'skeleton-text-mid');
+    info.appendChild(title);
+    const by = d.createElement('div');
+    by.className = 'related-uploader';
+    bar(by, 'skeleton-text-mid');
+    info.appendChild(by);
+    const meta = d.createElement('div');
+    meta.className = 'related-meta';
+    bar(meta, 'skeleton-text-short');
+    info.appendChild(meta);
+    card.appendChild(info);
+    html += card.outerHTML;
   }
   return html;
 }
@@ -705,6 +776,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveDisplayDescription,
     buildRelatedSkeletonCards,
+    buildRelatedCardEl, // UI pass sweep S2 (F63): the related-rail card
     MAX_DISPLAY_DESCRIPTION,
     isCurrentCommentAuthor,
     reconcileStoredComments,
@@ -1771,38 +1843,38 @@ if (typeof module !== 'undefined' && module.exports) {
         if (relatedHeader) relatedHeader.hidden = false;
 
         if (related.length === 0) {
-          relatedContainer.innerHTML = '<div style="color: var(--text-secondary); font-style: italic;">No other files found.</div>';
+          // D9: the shared empty state (was ad-hoc italic text, F63).
+          relatedContainer.replaceChildren(relatedUi().state({ icon: 'movie', title: 'No other files yet', doc: document }));
           return;
         }
 
-        relatedContainer.innerHTML = related.map(item => {
-          const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
-          const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
-          const views = resolveViewCountLabel(item);
+        const frag = document.createDocumentFragment();
+        related.forEach((item) => {
           // v1.251 (Dean's consistency rule): an AUDIO related card opens Music - the ONE
           // rule (common.js audioOpenHref) decides; a video card keeps this /watch href.
-          const relatedHref = (typeof audioOpenHref === 'function' && audioOpenHref(item)) || `/watch.html?v=${item.id}`;
-
-          return `
-            <a href="${relatedHref}" class="related-card">
-              <div class="related-thumb">
-                <img src="/thumbnail/${item.id}" style="width:100%; height:100%; object-fit:cover;" loading="lazy" />
-                ${durationBadge}
-              </div>
-              <div class="related-info">
-                <div class="related-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-                <div class="related-uploader">${escapeHtml(resolveChannelName(item, folderSettings))}</div>
-                <div class="related-meta">${views}</div>
-              </div>
-            </a>
-          `;
-        }).join('');
+          frag.appendChild(buildRelatedCardEl({
+            href: (typeof audioOpenHref === 'function' && audioOpenHref(item)) || `/watch.html?v=${item.id}`,
+            src: `/thumbnail/${item.id}`,
+            title: item.title,
+            byline: resolveChannelName(item, folderSettings),
+            meta: resolveViewCountLabel(item),
+            metaFabricated: typeof isFabricatedViewCount === 'function' && isFabricatedViewCount(item),
+            duration: item.duration,
+          }));
+        });
+        relatedContainer.replaceChildren(frag);
+        // F63: the rail reveals its thumbnails together (the shared art reveal),
+        // not one by one onto black boxes.
+        if (window.FileTube && typeof window.FileTube.revealArtTogether === 'function') window.FileTube.revealArtTogether(relatedContainer, { signal });
+        else if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(relatedContainer);
 
       } catch (e) {
         console.error('Error loading related files:', e);
         const relatedHeader = root.querySelector('#related-header');
         if (relatedHeader) relatedHeader.hidden = false;
-        relatedContainer.innerHTML = '<div style="color: var(--yt-red);">Error loading related files.</div>';
+        // D9: the shared error state with a Retry (was inline red text, F63).
+        relatedContainer.replaceChildren(relatedUi().state({ icon: 'warning', title: 'Could not load related files',
+          action: { label: 'Retry', onClick: () => loadRelatedFiles() }, doc: document }));
       }
     }
 
@@ -1878,7 +1950,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // out.
         // v1.36.2 (Dean): when the player was launched FROM the Liked view
         // (`?list=liked`, set by the home grid's cards -- see main.js's
-        // buildCardHtml), prev/next walk the LIKED list instead of the
+        // buildVideoCardEl), prev/next walk the LIKED list instead of the
         // item's folder: that is the list the user was actually browsing,
         // and a cross-folder liked item frequently has no folder-mates at
         // all (both buttons greyed -- the reported bug). GET /api/liked
@@ -4214,8 +4286,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // page lists the show's OTHER episodes ROTATED around the current one -
     // everything after it in (season, episode) order, then wrap from the start;
     // the current episode itself is excluded. Mirrors the video rail's card
-    // markup byte-for-byte (classes/structure) with tv art + ?tv= hrefs; every
-    // interpolated string goes through escapeHtml (the video rail's posture).
+    // card (buildRelatedCardEl, UI pass sweep S2) with tv art + ?tv= hrefs;
+    // every string is textContent.
     function renderTvUpNextRail(orderedEps, currentId, showName) {
       var relatedHeader = root.querySelector('#related-header');
       var relatedContainer = root.querySelector('#related-files-container');
@@ -4227,25 +4299,22 @@ if (typeof module !== 'undefined' && module.exports) {
         : orderedEps.slice(idx + 1).concat(orderedEps.slice(0, idx));
       if (relatedHeader) { relatedHeader.textContent = 'Up next'; relatedHeader.hidden = rotated.length === 0; }
       if (rotated.length === 0) { relatedContainer.innerHTML = ''; return; }
-      relatedContainer.innerHTML = rotated.map(function (ep) {
+      var frag = document.createDocumentFragment();
+      rotated.forEach(function (ep) {
         var code = (ep.seasonNum != null && ep.episodeNum != null)
           ? 'S' + (ep.seasonNum < 10 ? '0' : '') + ep.seasonNum + 'E' + (ep.episodeNum < 10 ? '0' : '') + ep.episodeNum
           : '';
         var title = (code ? code + ' - ' : '') + (ep.title || (ep.episodeNum != null ? 'Episode ' + ep.episodeNum : 'Episode'));
-        var durationBadge = (ep.durationSec > 0 && typeof formatDuration === 'function')
-          ? '<div class="duration-badge">' + escapeHtml(formatDuration(ep.durationSec)) + '</div>' : '';
-        return ''
-          + '<a href="/watch.html?tv=' + encodeURIComponent(ep.id) + '" class="related-card">'
-          + '<div class="related-thumb">'
-          + '<img src="/tvthumb/' + encodeURIComponent(ep.id) + '" style="width:100%; height:100%; object-fit:cover;" loading="lazy" />'
-          + durationBadge
-          + '</div>'
-          + '<div class="related-info">'
-          + '<div class="related-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
-          + '<div class="related-uploader">' + escapeHtml(showName) + '</div>'
-          + '</div>'
-          + '</a>';
-      }).join('');
+        frag.appendChild(buildRelatedCardEl({
+          href: '/watch.html?tv=' + encodeURIComponent(ep.id),
+          src: '/tvthumb/' + encodeURIComponent(ep.id),
+          title: title,
+          byline: showName,
+          duration: ep.durationSec,
+        }));
+      });
+      relatedContainer.replaceChildren(frag);
+      if (window.FileTube && typeof window.FileTube.revealArtTogether === 'function') window.FileTube.revealArtTogether(relatedContainer, { signal: signal });
     }
     async function initTvWatch(episodeId) {
       revealActionBar();     // drop the action-row shimmer (the row itself is then hidden)

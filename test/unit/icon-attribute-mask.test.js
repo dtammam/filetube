@@ -30,10 +30,10 @@ test('icon-attribute: style.css carries the mask, the 1em size-block membership 
   assert.ok(!/icon-user/.test(css), 'the mask-less class is gone from CSS (it never existed there)');
 });
 
-test('icon-attribute: watch.js (Attribute button) and main.js (folder bulk tool) emit icon-attribute and never the old mask-less class', () => {
-  for (const f of ['watch.js', 'main.js']) {
-    const js = stripJs(fs.readFileSync(path.join(PUB, 'js', f), 'utf8'));
-    assert.match(js, /icon\.className = 'icon-attribute';/, f);
-    assert.ok(!/icon-user/.test(js), `no icon-user left in ${f}`);
-  }
+test('icon-attribute: watch.js (Attribute button) emits icon-attribute; main.js (folder bulk tool, a labelled ui-btn since sweep S2) needs no mask; neither uses the old mask-less class', () => {
+  const watch = stripJs(fs.readFileSync(path.join(PUB, 'js', 'watch.js'), 'utf8'));
+  assert.match(watch, /icon\.className = 'icon-attribute';/, 'watch.js');
+  const main = stripJs(fs.readFileSync(path.join(PUB, 'js', 'main.js'), 'utf8'));
+  assert.match(main, /cardUi\(\)\.button\(\{ variant: 'tonal', size: 'sm', pill: true, label: 'Attribute folder',/, 'main.js: a labelled ui-btn');
+  for (const js of [watch, main]) assert.ok(!/icon-user/.test(js), 'no icon-user left');
 });

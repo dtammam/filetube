@@ -24,12 +24,29 @@ const countOf = (html, cls) => (html.match(new RegExp('class="[^"]*\\b' + cls + 
 
 // The n / n<=0 / shimmer-present contract, applied to every builder.
 const CASES = [
-  { name: 'history rows', fn: buildHistorySkeletonRows, container: 'history-row', aspectBox: 'history-thumb' },
   // UI pass S10: the reserved box is the real card's 2:3 ui-thumb (inside .book-cover-link)
   { name: 'book cards', fn: buildBookSkeletonCards, container: 'book-card', aspectBox: 'ui-thumb--2x3' },
   { name: 'music album cards', fn: buildMusicSkeletonCards, container: 'music-album-card', aspectBox: 'music-album-art', wrapper: 'music-card-grid' },
   { name: 'music song rows', fn: buildMusicSkeletonRows, container: 'music-song-row', aspectBox: 'music-song-thumb-wrap', wrapper: 'music-song-list' },
 ];
+
+// UI pass sweep S2 (D9; AC12): History's skeleton rows are ui-rows of the FINAL
+// row geometry (the ui-thumb media slot, two line boxes, the reserved action
+// slot) - converted out of the shared CASES table below.
+test('history rows: exactly n ui-row skeletons of the final row geometry, aria-hidden, shimmering; n<=0 -> \'\'', () => {
+  const { JSDOM } = require('jsdom');
+  const doc = new JSDOM('<!doctype html><body></body>').window.document;
+  const html = buildHistorySkeletonRows(3, doc);
+  const g = new JSDOM(`<div id="g">${html}</div>`).window.document;
+  const rows = g.querySelectorAll('#g > .ui-row.ui-row--media[aria-hidden="true"]');
+  assert.strictEqual(rows.length, 3);
+  for (const r of rows) {
+    assert.ok(r.querySelector('.ui-row__media > .ui-thumb.ui-thumb--16x9.ui-thumb--row.skeleton-shimmer'), 'the real thumb box');
+    assert.ok(r.querySelector('.ui-row__title > .skeleton-text.skeleton-shimmer') && r.querySelector('.ui-row__meta > .skeleton-text.skeleton-shimmer'), 'two line boxes');
+    assert.strictEqual(r.querySelectorAll('.ui-row__actions > .ui-row__slot').length, 1, 'the reserved Remove slot');
+  }
+  for (const n of [0, -2, 'nope', undefined]) assert.strictEqual(buildHistorySkeletonRows(n, doc), '');
+});
 
 for (const c of CASES) {
   test(`${c.name}: exactly n nodes, each reusing the real container + aspect box + skeleton-shimmer`, () => {
@@ -92,7 +109,8 @@ test('each view SEEDS its skeleton into the host before the fetch, and CLEARS it
   assert.match(podcasts, /if \(!currentShow && content && !content\.querySelector\('\.podcast-show-list'\)\) \{\s*\n\s*content\.innerHTML = buildPodcastSkeletonRows\(\d+\);/, 'podcasts seeds only when the list is blank (no reveal-once flash-backward)');
 
   // Cleared on error so a failed FIRST load shows the empty state, not a forever-shimmer.
-  assert.match(history, /if \(replace\) \{ listEl\.innerHTML = ''; refreshChrome\(\); \}/, 'history clears the shimmer on error');
+  // Sweep S2 (D9): a failed FIRST load REPLACES the shimmer with the error state (Retry), never "No watch history yet".
+  assert.match(history, /if \(replace\) \{\s*listEl\.replaceChildren\(historyUi\(\)\.state\(\{ icon: 'warning', title: 'Could not load your history'/, 'history clears the shimmer on error');
   assert.match(books, /catch \(err\) \{\s*\n\s*grid\.innerHTML = '';/, 'books clears the shimmer on error');
   assert.match(music, /catch \(err\) \{[\s\S]*?if \(content\) content\.innerHTML = '';/, 'music clears the shimmer on error');
   // UI pass S6: the clear is followed by the error state (D9), inside the same guard.
@@ -109,8 +127,8 @@ test('the shimmer base fill is restored on the reused art boxes (so the sweep is
   assert.match(css, /\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,360}background-color: var\(--bg-secondary\);/,
     'a specificity-winning rule restores --bg-secondary on the reused skeleton art boxes (incl. the artist mosaic)');
   assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.podcast-card-art/, 'no rule for the retired podcast card art box');
-  // .history-thumb already uses --bg-secondary, so it is deliberately NOT in the rule.
-  assert.doesNotMatch(css, /\.history-thumb\.skeleton-shimmer \{/, 'history-thumb (already --bg-secondary) is not redundantly re-listed');
+  // History's thumb is a ui-thumb since sweep S2 (the .skeleton-shimmer fill applies directly).
+  assert.doesNotMatch(css, /\.history-thumb/, 'no bespoke history thumb rule');
 });
 
 // ---- UI pass S6: the podcasts show list's placeholder (ui-list media rows) ----------------------

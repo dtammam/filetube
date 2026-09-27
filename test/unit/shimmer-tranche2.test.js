@@ -16,10 +16,18 @@ const { buildRelatedSkeletonCards } = require('../../public/js/watch.js');
 
 const countOf = (html, cls) => (html.match(new RegExp('class="[^"]*\\b' + cls + '(?![-\\w])', 'g')) || []).length;
 
-test('buildAvatarBarSkeleton: n chips reusing the real .modern-avatar-chip/.modern-avatar-circle; caps at 12; n<=0 -> \'\'', () => {
+// UI pass sweep S2 (D4.4, D9; converts the v1.99 box-reuse locks, AC12): the
+// skeletons are the SAME primitives as the real content, so the reserved box IS
+// the final box: the avatar bar's disc is ui-avatar xl on both sides; the related
+// rail's card is the ui-thumb + a TWO-line title (F63) + byline + meta.
+const { JSDOM } = require('jsdom');
+
+test('buildAvatarBarSkeleton: n chips whose disc is the SAME ui-avatar xl box the real chip draws; caps at 12; n<=0 -> \'\'', () => {
   const html = buildAvatarBarSkeleton(5);
   assert.strictEqual(countOf(html, 'modern-avatar-chip'), 5);
-  assert.strictEqual(countOf(html, 'modern-avatar-circle'), 5, 'each reuses the real 56px disc box (zero-shift)');
+  assert.strictEqual((html.match(/class="ui-avatar ui-avatar--xl skeleton-shimmer"/g) || []).length, 5, 'the real disc box (zero-shift)');
+  const main = fs.readFileSync(path.join(__dirname, '../../public/js/main.js'), 'utf8');
+  assert.match(main, /u\.avatar\(\{ name: c\.name, url: c\.avatarUrl \|\| null, kind: 'channel', size: 'xl' \}\)/, 'the real chip draws ui.avatar xl');
   assert.ok((html.match(/skeleton-shimmer/g) || []).length >= 10, 'shimmer on the disc and the label line');
   assert.ok(html.includes('aria-hidden="true"'));
   assert.strictEqual(buildAvatarBarSkeleton(0), '');
@@ -28,19 +36,20 @@ test('buildAvatarBarSkeleton: n chips reusing the real .modern-avatar-chip/.mode
   assert.strictEqual(countOf(buildAvatarBarSkeleton(50), 'modern-avatar-chip'), 12, 'capped at 12');
 });
 
-test('buildRelatedSkeletonCards: n cards reusing the real .related-card/.related-thumb; n<=0 -> \'\'', () => {
-  const html = buildRelatedSkeletonCards(4);
-  assert.strictEqual(countOf(html, 'related-card'), 4);
-  assert.strictEqual(countOf(html, 'related-thumb'), 4, 'each reuses the real 16/9 thumb box (zero-shift)');
-  assert.ok(html.includes('related-info'), 'the real info column');
-  assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'title + meta lines');
-  assert.doesNotMatch(html, /<span class="skeleton-line/, 'block div text lines, not inline spans');
-  assert.strictEqual(buildRelatedSkeletonCards(0), '');
-  // A DISCRIMINATING input for the Number.isInteger guard: a negative/NaN is
-  // already '' from the loop bound, so it can't tell a guarded fn from `count=n`.
-  // A non-integer POSITIVE (3.5) only returns '' when the guard runs (gate: the
-  // divergent-fixture trap - build the survivor at a spelling that diverges).
-  assert.strictEqual(buildRelatedSkeletonCards(3.5), '', 'non-integer positive -> empty (binds the isInteger guard, not just the loop bound)');
+test('buildRelatedSkeletonCards: n cards of the FINAL geometry - the ui-thumb box, a two-line title, byline + meta lines; n<=0 -> \'\'', () => {
+  const doc = new JSDOM('<!doctype html><body></body>').window.document;
+  const html = buildRelatedSkeletonCards(4, doc);
+  const g = new JSDOM(`<div id="g">${html}</div>`).window.document;
+  const cards = g.querySelectorAll('#g > .related-card[aria-hidden="true"]');
+  assert.strictEqual(cards.length, 4);
+  for (const c of cards) {
+    assert.ok(c.querySelector(':scope > .ui-thumb.ui-thumb--16x9.ui-thumb--row.related-thumb.skeleton-shimmer'), 'the real ui-thumb box (zero-shift)');
+    assert.strictEqual(c.querySelectorAll('.related-info > .related-title > .skeleton-text').length, 2, 'F63: a TWO-line title skeleton (the clamp maximum)');
+    assert.ok(c.querySelector('.related-info > .related-uploader > .skeleton-text') && c.querySelector('.related-info > .related-meta > .skeleton-text'), 'byline + meta line boxes');
+  }
+  assert.strictEqual(buildRelatedSkeletonCards(0, doc), '');
+  // A DISCRIMINATING input for the Number.isInteger guard (the divergent-fixture trap).
+  assert.strictEqual(buildRelatedSkeletonCards(3.5, doc), '', 'non-integer positive -> empty (binds the isInteger guard, not just the loop bound)');
 });
 
 test('avatar bar: PERSIST last-known count + RESERVE the strip before the fetch (no pop-in above the chips)', () => {
@@ -61,9 +70,10 @@ test('watch related: seed shimmer + reveal the header BEFORE the fetch; the real
   const watch = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
   assert.match(watch, /relatedContainer\.innerHTML = buildRelatedSkeletonCards\(\d+\);\s*\n\s*try \{/,
     'the rail is seeded with shimmer rows before the try/await');
-  // The three existing exits all innerHTML= real content, so the seed never strands.
-  assert.match(watch, /relatedContainer\.innerHTML = related\.map/, 'success reveals real cards');
-  assert.match(watch, /No other files found/, 'empty reveals the empty message');
+  // The three exits each REPLACE the seed, so it never strands (sweep S2: DOM + ui.state, D9).
+  assert.match(watch, /relatedContainer\.replaceChildren\(frag\);/, 'success reveals real cards');
+  assert.match(watch, /relatedContainer\.replaceChildren\(relatedUi\(\)\.state\(\{ icon: 'movie', title: 'No other files yet'/, 'empty reveals the empty state');
+  assert.match(watch, /relatedContainer\.replaceChildren\(relatedUi\(\)\.state\(\{ icon: 'warning', title: 'Could not load related files'/, 'an error reveals the error state (Retry)');
 });
 
 test('CSS: the related thumb restores the shimmer fill (it is #000 letterbox) and the avatar name line is sized for zero-shift', () => {

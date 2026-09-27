@@ -114,24 +114,25 @@ test('mixed cards carry a type badge and route correctly (tv-show -> /tv?show=, 
   try {
     await settle();
     const { document } = dom.window;
-    const badges = Array.from(document.querySelectorAll('#video-grid .card-type-badge')).map((b) => b.textContent.trim());
+    // UI pass sweep S2: the type label is a ui-chip--meta line above the title.
+    const badges = Array.from(document.querySelectorAll('#video-grid .card-type.ui-chip--meta')).map((b) => b.textContent.trim());
     assert.ok(badges.includes('Music') && badges.includes('Book') && badges.includes('Show') && badges.includes('Episode') && badges.includes('Video'),
       `expected type badges, saw ${JSON.stringify(badges)}`);
     // tv-show card links to the Shows page scrolled to it
-    const showLink = Array.from(document.querySelectorAll('#video-grid a.thumbnail-container')).map((a) => a.getAttribute('href'));
+    const showLink = Array.from(document.querySelectorAll('#video-grid a.card-media')).map((a) => a.getAttribute('href'));
     assert.ok(showLink.some((h) => h === '/tv?show=shZ'), `tv-show routes to /tv?show=shZ (saw ${JSON.stringify(showLink)})`);
     assert.ok(showLink.some((h) => h === '/watch.html?tv=tve'), 'tv-episode routes to the shared watch page');
-    // v1.205 gate (adversarial): a TV card must render NO download/like corner
-    // (default corners are download TL + like BL) - no route backs them.
+    // v1.205 gate (adversarial): a TV card offers NO download/like - no route
+    // backs them. Sweep S2: its action menu would be empty, so it renders no
+    // kebab at all (never an inert control).
     const tvCards = Array.from(document.querySelectorAll('#video-grid .video-card')).filter((c) => {
-      const a = c.querySelector('a.thumbnail-container');
+      const a = c.querySelector('a.card-media');
       const href = a && a.getAttribute('href');
       return href === '/tv?show=shZ' || href === '/watch.html?tv=tve';
     });
     assert.strictEqual(tvCards.length, 2, 'both TV cards present');
     for (const c of tvCards) {
-      assert.strictEqual(c.querySelector('.card-download-btn'), null, 'TV card: no download corner');
-      assert.strictEqual(c.querySelector('.card-like-btn'), null, 'TV card: no like corner');
+      assert.strictEqual(c.querySelector('button, a[download]'), null, 'TV card: no control at all (no download, no like, no empty kebab)');
     }
   } finally { dom.window.close(); }
 });
@@ -142,10 +143,12 @@ test('the content-TYPE chip row mounts for a global search (not the video-only s
   try {
     await settle();
     const { document } = dom.window;
-    const chips = document.querySelector('#library-search-type-chips');
+    // UI pass sweep S2 (F19): the ONE chip row carries the type dimension only.
+    const chips = document.querySelector('#library-filter-chips[data-kind="search"]');
     assert.ok(chips, 'the type-chip row is mounted');
-    assert.strictEqual(document.querySelector('#library-search-scope-toggle'), null, 'the video-only searchIn toggle is NOT mounted');
-    const musicChip = chips.querySelector('[data-search-type="music"]');
+    assert.strictEqual(chips.querySelector('[data-group="scope"], [data-group="format"], [data-group="watch"]'), null, 'no searchIn scope (nor format/watch) on a global search');
+    assert.strictEqual(document.getElementById('sort-select-btn').hidden, true, 'sort does not apply to the ranked stream');
+    const musicChip = chips.querySelector('[data-group="type"][data-chip="music"]');
     assert.ok(musicChip, 'a Music chip exists');
     const before = calls.length;
     click(dom, musicChip);

@@ -15,14 +15,10 @@
 //      guard pattern) so they're directly `require()`-able without a
 //      jsdom/browser harness (none exists in this codebase, see
 //      CONTRIBUTING.md).
-//   2. A structural, source-text regression lock (AC64): the rendered
-//      `.card-download-btn` anchor must be a SIBLING of `.thumbnail-
-//      container`'s `<a>`, never nested inside it -- an `<a>` nested inside
-//      another `<a>` would still trigger the OUTER watch-page navigation on
-//      click in every browser, defeating the whole feature. Mirrors the
-//      existing `.card-delete-btn` overlay's proven placement (a `<button>`
-//      can't nest in an `<a>` at all; `.card-download-btn` is itself an `<a>`
-//      so this is the one placement mistake that's easy to make silently).
+//   2. AC64 (a download control never nests inside the thumbnail's watch-page
+//      link): since UI pass sweep S2 the card has NO control on the media at
+//      all - Save to device is an entry of the card's action menu (a transient
+//      <a download> built on selection) - bound structurally below.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -78,60 +74,21 @@ test('buildCardDownloadFilename: returns the RAW (unescaped) string -- callers b
 
 // ---- card template: sibling/isolation structure (AC64) ----------------------
 //
-// v1.67 UPDATE: the corner buttons moved out of the inline card template into
-// the ONE exported corner renderer (buildCardCornerButtonsHtml, plan D3).
-// The AC64 invariant is unchanged - the download <a> must never nest inside
-// the thumbnail's watch-link <a> - but it now decomposes into (1) the
-// template injects the corner markup AFTER the thumbnail anchor closes, and
-// (2) the renderer's OUTPUT keeps the overlays as flat standalone elements.
-// (2) is asserted on the rendered STRING, not the source text - stronger
-// than the old source parse.
+// UI pass sweep S2 (D8.5; converts the v1.22/v1.67 corner-anchor locks, AC12):
+// Save to device is an entry of the card's ONE action menu. The AC64 invariant
+// (a download control never nests inside the thumbnail's watch-page link) now
+// holds by construction - the card has NO control on the media at all - and the
+// menu's save reuses the SAME href/filename builders.
 
-const { buildCardCornerButtonsHtml, resolveCardCornerPrefs } = require('../../public/js/main.js');
-
-test('card template: the corner-renderer injection point sits AFTER the thumbnail anchor closes (never inside the watch-page link)', () => {
-  const cardMatch = /<div class="video-card">([\s\S]*?)<div class="video-info">/.exec(mainJs);
-  assert.ok(cardMatch, 'expected to find the video-card template block in main.js');
-  const cardBody = cardMatch[1];
-
-  const thumbOpenIdx = cardBody.indexOf('class="thumbnail-container"');
-  assert.ok(thumbOpenIdx !== -1, 'expected a .thumbnail-container anchor in the card template');
-
-  // The FIRST </a> after the thumbnail anchor opens is that anchor's own
-  // closing tag (it contains only an <img> + non-anchor overlay divs).
-  const thumbCloseIdx = cardBody.indexOf('</a>', thumbOpenIdx);
-  assert.ok(thumbCloseIdx !== -1, 'expected the thumbnail anchor to close');
-
-  // v1.204: the template injects the pre-built corner markup (cardCorners.html
-  // from buildCardCorners, which also yields brOccupied for the duration
-  // shift), not a bare buildCardCornerButtonsHtml call - the marker moved with it.
-  const injectIdx = cardBody.indexOf('cardCorners.html');
-  assert.ok(injectIdx !== -1, 'expected the card template to inject the corner renderer output');
-  assert.ok(
-    injectIdx > thumbCloseIdx,
-    'the corner buttons must be injected AFTER the thumbnail anchor closes (siblings under .card-media), never between its open/close tags'
-  );
+test('the card media link holds no download control (AC64 by construction: no control on the thumbnail)', () => {
+  const src = mainJs.slice(mainJs.indexOf('function buildVideoCardEl(item, o) {'), mainJs.indexOf('function buildSkeletonCardEl('));
+  assert.ok(src.length > 0, 'expected buildVideoCardEl in main.js');
+  assert.doesNotMatch(src, /download/i, 'the card builder draws no download affordance');
+  assert.doesNotMatch(mainJs, /card-download-btn/, 'the corner download family is gone');
 });
 
-test('rendered corners: .card-download-btn is its own standalone <a>, not nested in the delete <button> (nor vice versa)', () => {
-  const html = buildCardCornerButtonsHtml(
-    { id: 'vid1', title: 'A Video', ext: '.mp4', liked: false },
-    resolveCardCornerPrefs(null), { canModifyLibrary: true } // v1.81: delete corner needs the capability
-  );
-
-  const deleteBtnMatch = /<button[^>]*class="card-delete-btn[^"]*"[\s\S]*?<\/button>/.exec(html);
-  assert.ok(deleteBtnMatch, 'expected the delete button in the default rendered corners');
-
-  const downloadBtnMatch = /<a[^>]*class="card-download-btn[^"]*"[\s\S]*?<\/a>/.exec(html);
-  assert.ok(downloadBtnMatch, 'expected a standalone .card-download-btn <a>...</a> element');
-
-  // Neither overlay's markup contains the other's -- flat siblings.
-  assert.ok(!deleteBtnMatch[0].includes('card-download-btn'));
-  assert.ok(!downloadBtnMatch[0].includes('card-delete-btn'));
-});
-
-test('corner renderer source: the download anchor reuses buildCardDownloadHref/buildCardDownloadFilename (not a hand-rolled duplicate) and is attribute-escaped', () => {
-  assert.match(mainJs, /href="\$\{buildCardDownloadHref\(item\.id\)\}"/);
-  assert.match(mainJs, /download="\$\{escapeBookRowHtml\(buildCardDownloadFilename\(item\.title, item\.ext\)\)\}"/);
-  assert.match(mainJs, /aria-label="Save to device"/);
+test('the menu\'s Save to device reuses buildCardDownloadHref / buildCardDownloadFilename (not a hand-rolled duplicate), via setAttribute', () => {
+  assert.match(mainJs, /function cardDownloadHref\(item\) \{[\s\S]{0,160}?return buildCardDownloadHref\(item\.id\);/);
+  assert.match(mainJs, /a\.setAttribute\('download', cardKindPresentation\(item\) \? '' : buildCardDownloadFilename\(item\.title, item\.ext\)\);/);
+  assert.match(mainJs, /\{ id: 'download', icon: 'download', label: 'Save to device' \}/);
 });

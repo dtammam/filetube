@@ -12,7 +12,7 @@
 // Source-text checks here strip comments first, SYMMETRICALLY (the v1.50.3
 // lock lesson, re-struck in v1.66: a comment quoting the locked line must
 // never satisfy - or defeat - a lock). The RENDERED bind (the real
-// buildCardHtml emitting <i class="icon-queue"> into a real jsdom grid)
+// buildVideoCardEl emitting <i class="icon-queue"> into a real jsdom grid)
 // lands with the T4 full-chain suite; this file locks the asset + CSS
 // mechanics that rendering depends on.
 
@@ -101,22 +101,17 @@ test('style.css: .icon-queue falls back to its one base mask in every icon set (
   }
 });
 
-test('main.js: the card queue button renders the mask, and the inline glyph path is GONE from main.js', () => {
-  assert.match(
-    mainJs,
-    /card-queue-btn[\s\S]{0,400}?<i class="icon-queue"><\/i>/,
-    'the card queue button must emit <i class="icon-queue"></i>'
-  );
-  assert.ok(
-    !mainJs.includes(QUEUE_GLYPH_D),
-    'no inline copy of the queue glyph path may remain in main.js (the drift class; watch.html/common.js chrome copies are deliberately out of this lock\'s scope)'
-  );
+// UI pass sweep S2 (D8.5; AC12): the card's queue control is an entry of its
+// ONE action menu, drawing the registry's playlist_add icon (sized by the
+// ui-row media slot, not a 14px corner rule); the .icon-queue mask above keeps
+// serving the watch page's queue verbs (sweep S3).
+test('main.js: the card menu\'s queue entry draws a registry icon, and the inline glyph path is GONE from main.js', () => {
+  assert.match(mainJs, /\{ id: 'queue', icon: 'playlist_add', label: 'Add to queue' \}/, 'the card queue entry');
+  assert.ok(require('../../public/js/icons.js').has('playlist_add'), 'the icon is in the registry');
+  assert.ok(!mainJs.includes(QUEUE_GLYPH_D), 'no inline copy of the queue glyph path may remain in main.js (the drift class)');
+  assert.ok(!/card-queue-btn/.test(mainJs), 'the corner queue button is gone');
 });
 
-test('style.css: the card queue icon is sized like its corner siblings (14px)', () => {
-  assert.match(
-    css,
-    /\.card-queue-btn\s+\.icon-queue\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/,
-    'expected .card-queue-btn .icon-queue sized 14px x 14px (the .card-*-btn sibling convention)'
-  );
+test('style.css: no card-corner queue sizing rule survives (the menu row owns the icon size)', () => {
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.card-queue-btn/);
 });
