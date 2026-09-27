@@ -35,6 +35,14 @@ to a release while he sleeps.
    Downloads present; inline SVG glyphs, no `.icon-*` masks (tech-debt #114).
    subscriptions-shell-bottom-nav-parity.test.js (red on the old shell, measured).
 
+4. **The Original skin's scroll wheel is a plain disc** (Dean, 2026-09-27: "the original iPod classic
+   wheel has marks in our skin but it's a plain disc in the real one... cross reference the web and if
+   there are no marks remove from our skin"). Cross-referenced: Wikimedia Commons "IPod 1Gen.jpg" (the
+   photo v1.335 sampled its LCD from) shows smooth white plastic with no marks; the marks were v1.335's
+   own disclosed addition (faint rim ticks, there to make the turn visible). The tick layer and its
+   token are gone; the turn plumbing (--ip-turn) stays and now draws nothing. pocket-original-look.test.js
+   (red on the old CSS, measured); render: pocket-render-probe `ipod-original` at 390x844, lights off.
+
 ## Approach notes
 
 - `stableToggleLabelHtml(current, labels, glyphs)` (common.js): every label in one grid cell,

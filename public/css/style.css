@@ -12569,7 +12569,7 @@ html[data-modern="on"] .video-uploader {
     --pk-o-edge:inset 0 0 0 1px var(--pk-o-ink);
     --pk-o-disc-1:#fcfcfa; --pk-o-disc-2:#f0f0ec; --pk-o-disc-inset:15%;
     --pk-o-rim:0 0 0 1px rgba(0,0,0,.14), inset 0 1px 2px rgba(0,0,0,.06);
-    --pk-o-gap:#c9c9c9; --pk-o-tick:rgba(0,0,0,.045); --pk-o-clear:rgba(0,0,0,0);
+    --pk-o-gap:#c9c9c9; --pk-o-clear:rgba(0,0,0,0);
     --pk-o-center-rim:0 0 0 1px rgba(0,0,0,.16), inset 0 -1px 2px rgba(0,0,0,.06);
     /* the bitmap face's x-height is .429 em (the app face's, Geist / Roboto, .53): font-size-adjust .64 scales
        it about 1.5x, past the app face, so the lettering fills the rows as on the photo's screen - the
@@ -12605,12 +12605,13 @@ html[data-modern="on"] .video-uploader {
   .mms-look-original .ip-wheel::before{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - under the scroll wheel, inside the isolated wheel */ border-radius:var(--radius-full);
     background:linear-gradient(45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)),
       linear-gradient(-45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)); }
-  /* 4. The wheel turns: the engine writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied
-        to the fresh wheel on a repaint; gate r1 qa S3); only this layer reads it (a transform - no filter, blur or mask). The real wheel is smooth plastic,
-        so FAINT tick marks at its rim are what show the turn. */
+  /* 4. The scroll wheel: a PLAIN disc, as on the real one (v1.340, Dean: "it's a plain disc in the real one";
+        Commons "IPod 1Gen.jpg" shows smooth white plastic, no marks - v1.335's faint rim ticks are gone). The
+        engine still writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied to the fresh
+        wheel on a repaint; gate r1 qa S3) and this layer still turns with it (a transform - no filter, blur or
+        mask); on a plain radial disc the turn draws nothing, which is the real wheel's look. */
   .mms-look-original .ip-wheel::after{ content:""; position:absolute; inset:var(--pk-o-disc-inset); z-index:-1; /* token-exempt: local stacking - over the gaps, under the zones and the center */ border-radius:var(--radius-full);
     background:radial-gradient(circle closest-side, var(--pk-o-disc-1) 0%, var(--pk-o-disc-2) 88%, var(--pk-o-clear) 88.5%),
-      repeating-conic-gradient(var(--pk-o-tick) 0deg 1deg, var(--pk-o-clear) 1deg 15deg),
       radial-gradient(circle closest-side, var(--pk-o-disc-2), var(--pk-o-disc-2));
     box-shadow:var(--pk-o-rim); transform:rotate(var(--ip-turn, 0deg)); }
   /* the center button's thin grey rim when unlit (a lit wheel keeps its moving dome shadow) */
