@@ -3,10 +3,10 @@ plan: notify-bell-art-subs-nav
 harness: v2 · lean
 branch: feat/v1.340-small-fixes
 anchor: outcome
-status: Building
-next: commit, then the gate (adversary + qa + security-brief: lib/ytdlp/client/subscriptions.js matches the forced `**/*client*` rule)
+status: Approved
+next: release v1.340.0
 design: n/a (outcome anchor)
-gate: pending
+gate: APPROVED r2 @a4cb6e98 (adversary + qa + security-brief); r1 CHANGES (adversary W1-W4, qa Q1-Q5) fixed in a4cb6e98
 ---
 
 # v1.340: a steady Notify button with the real bell, smaller Continue-listening art, and the Subscriptions page's full bottom bar
@@ -113,3 +113,31 @@ Gate: CHANGES r1 @7d8c1f0f — qa
 - SUGGESTION Q4: subscriptions.js:3146 adds a `require()` arm, but the file's own contract (its comment near line 1374) is "tests install the common.js global, the file never requires". It is dead in the browser and harmless, but it is a second pattern. Install `global.chromeIconEl` in the two test files instead, or note the exception at line 1374.
 - SUGGESTION Q5: skin-surface.js:2531 ("the Original's wheel turns under the thumb") and :1402 describe a turn that now draws nothing, and every wheel move still writes a style. The plan keeps this on purpose. Update the comments to match, or retire the write.
 - Security: no injection path. The three watch.js innerHTML writers pass only fixed literals through `esc` (& < > "). The glyph markup comes from the fixed CHROME_ICON_SVG table. subscriptions.js stays DOM-only (createElementNS). The art URL is encodeURIComponent'd inside a double-quoted attribute, and /albumart re-gates visibility. The probe script is dev-only and uses execFileSync with an argv array.
+
+Gate: APPROVED r2 @a4cb6e98 — security-brief
+- Could not run `git diff` or confirm HEAD (no Bash): reviewed the worktree files named in "Fix round r1 -> r2".
+- Verified: podcasts.js writePinLabel passes only the literals 'Pinned' / 'Pin to Playlists' and { name: 'starFilled', after: true }. No show or server string reaches the innerHTML, and the fallback path uses textContent.
+- Verified: stableToggleLabelHtml's { name, after } spec only picks a key and a class. The name is looked up in the fixed CHROME_ICON_SVG table (an unknown name gives ''), the class strings are literals, and esc is unchanged. starFilled is a static path literal.
+- Verified: subscriptions.js has no require() arm left (bellGlyphEl calls only the chromeIconEl global) and still has no innerHTML assignment.
+- Verified: s=512 is in ART_RENDITION_SIZES [128, 256, 512]. The artId encoding and the /albumart visibility re-gate are unchanged from r1.
+- No new findings.
+
+Gate: APPROVED r2 @a4cb6e98 — adversary
+- W1 fixed as prescribed: all six CSS mutants now go red in stable-toggle-label.test.js: the idle slot visible, no shared grid cell, the stack not a grid, no vertical-align, positive glyph margins, no `.btn-glyph-after` rule.
+- W2 fixed differently (the star is now a drawn glyph; the glyphs get negative block margins); the deviation holds. Measured on the real watch page, every era, light and dark: at 1280 Sub, Pin and Notify are all 28px tall at y 594.4 across 5 states; at 390 all are 44px tall at y 582.8, with one x and one width each. Pin's accessible name is "Pinned" (the star is aria-hidden; aria-pressed carries the state). Mutants on the text star or a dropped glyph go red.
+- W3 fixed (home-fouc-probe reads data-label). W4 fixed (512; its mutant back to 256 goes red).
+- Suggestions closed: the header-bell lock is red under a path swap; starFilled is bound to filled/star.svg byte for byte; tracker #283 (c) is closed. On the real /podcasts page, the Pin sibling keeps one width in both states: 114.6px, 44px tall at 390 and 28px tall at 1280.
+- SUGGESTION (non-blocking): three things have no test. The podcasts.js stable label: forcing its textContent fallback passes. home-fouc-probe's data-label read: reverting it passes. stable-toggle-label's `decls()` says "top-level", but moving the vertical-align rule into `@media (min-width: 9999px)` stays green. The podcast Pin sits about 0.6px lower than a plain `.btn-sm` beside it (vertical-align middle).
+- Suites and lint on a clean a4cb6e98 sandbox: 128 related test files, 2448/2448 pass. eslint: 0 errors (6 warnings in code this diff does not touch). css-token-lint: 0. overlay-containment: 0.
+
+Gate: APPROVED r2 @a4cb6e98 — qa
+- Ran: eslint 0 errors / 6 warnings (the same older unused-var ones). Unit suite 7710/7710 pass on Node 22.23.1 and 7710/7710 on 24.20.0.
+- Q1 fixed as prescribed: the tile asks for ?s=512 (in ART_RENDITION_SIZES), and the main.js comment and AC2 now say 92x138 -> 138 cover-fit -> 276 at 2x -> 512. The test binds 512 for both the artId and the fallback path.
+- Q2 fixed as prescribed: home-fouc-probe reads `.btn-label-stack[data-label]` on #subscribe-btn-mock, the button watch.js writes. It falls back to textContent for the static first-paint "Subscribe".
+- Q3 fixed: the census now counts `'bell'` once, `'bellOff'` once and one `setAttribute('data-glyph'`.
+- Q4 fixed differently, and better: the require arm is gone. chromeIconEl is a bare global like resolveAvatarSource, the comment says so, and all four test files that load subscriptions.js install the global.
+- Q5 fixed: both skin-surface.js comments now say the plain disc shows no turn, and why the write stays.
+- New code checked: the Pin label is "Pinned" plus a drawn starFilled, placed after the words. chrome-icons binds it to filled/star.svg with the Material box paths stripped. The glyph's negative block margins are locked in stable-toggle-label.test.js. Measured with scripts/channel-row-probe.js on this tree (headless Chromium 1234, static page): 1 x/w per button across 5 states in all 4 eras. At 390px every button is y 73 / h 44. A desktop-width copy of the probe (1280) gives y 73 / h 28 for all three, so the row is level.
+- SUGGESTION: podcasts.js's new stable Pin label is unbound. No test renders `.podcast-pin-btn`, so reverting it to textContent passes the suite. It is low risk: the fallback branch is correct and the label uses the same helper.
+- SUGGESTION: style.css's `.music-row-cover { aspect-ratio: 1/1 !important }` and its "the album-art cover is SQUARE" comment are still dead and untrue (older code). main.js now documents the real shape. Delete the rule or square the tile later.
+- Security: unchanged from r1. The new glyph option only picks a name from the fixed CHROME_ICON_SVG table, and the labels are still escaped literals.
