@@ -1539,3 +1539,130 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   (2) Baselines at DPR 1 are ~52 MB for 760 PNGs: fewer scenes/modes or Git LFS is a decision for Dean.
   (3) G4 pocket-rotation is XFAIL (F23) until S7 (worst box 457px on rotate).
 
+### Sweep S2 - cards and feeds (2026-09-27, branch feat/ui-sweep-s2 from 6b7408d6)
+
+Commits: d70c6883 (registry: six icons - a PRIMITIVE addition for the Architect: local_fire_department,
+playlist_add, grid_view, view_list, sort, music_off), 0ca84f04 (the sweep), and this one (the meta separator
+fix found by the render, the History confirm test, this log).
+
+- **What changed.** Home grid, channel/folder pages, search results, History and the watch page's related
+  rail moved onto the primitives:
+  - **D8.5 clean cards.** `buildVideoCardEl` (main.js module scope, DOM, textContent only): a `ui-thumb`
+    (duration badge + progress bar ONLY), the Modern byline `ui-avatar`, and ONE kebab (`ui-btn` plain icon
+    `more_vert`) in the meta row. Queue / Like / Share / Save to device / Transcript / Reheat / Hide from feed /
+    Move to Trash live in ONE `ui.menu`, reached by the kebab, a long-press and a desktop right-click
+    (`FTInteraction.onActionMenu` on the grid, torn down with the view signal). Applicability is the old C4
+    rules (`buildCardMenuItems`). A TV card (an empty menu in every capability) renders NO kebab. The eight
+    `.card-*-btn` families, the four `.card-corner-*` classes, `.duration-badge--beside-corner`, the v1.17
+    inline delete arm and the v1.67 per-user corner layout are deleted; Settings' "Card corners" editor is
+    removed with them (it would have been an inert control - an S8 surface, touched only for that).
+  - **Delete (destructive).** "Move to Trash" asks `ui.confirm` (`cardDeleteConfirmCopy`): "Move to Trash?" /
+    body / "Move to Trash" danger. The copy says what the ONE path does: `DELETE /api/videos/:id` moves the file
+    to Trash for every item (lib/media/routes.js, the v1.65 trash move; never a permanent unlink) - the SAME
+    route as before, called by `deleteCardById` only after the confirm resolves exactly `true`. A local
+    (non-yt-dlp) file's body adds "This local file cannot be re-downloaded." (the watch page's hard-delete
+    wording). The yt-dlp-managed case, which deleted with no modal at all (the v1.86.2 two-tap), now confirms too.
+  - **D8.1 era flourish (the ONE mechanism S3 reuses).** common.js `ERA_FLOURISH_ERAS` / `eraShowsFabricated` /
+    `applyEraFlourish` set `<html data-era-flourish="on|off">` from the era - once at common.js load (before any
+    view renders) and in `applyTheme`. ONE style.css rule hides every `.ft-fabricated` node unless "on"
+    (2005/2009/2014). Fabricated vs real, read from the generators: `getStarRating` (always mock), `getMockViews`
+    (the fallback when no `sourceViewCount` - `isFabricatedViewCount` shares resolveViewCountLabel's own test),
+    `getMockSubCount` and the mock comments (watch page: S3 wraps them). Cards and the rail wrap only the mock;
+    a captured count shows in every era. `ft-hide-stars` composes (stars show only if the era allows AND the pref
+    does). Card stars are drawn registry icons now (no ★☆ glyphs).
+  - **D8.6 / F03.** Card and rail titles are `--ink-link` (ink; the 2005 link blue by the era knob); the byline is
+    `--ink-2` (2005: link blue).
+  - **F19 one chip row.** common.js `buildFilterChipRow`: ONE horizontally scrolling row of `ui-chip` filters -
+    a single leading All, then each dimension; a dimension is select-or-none (re-tap = back to all), All resets
+    every dimension, ONE onChange (one reload) per tap. Library views: format + watch; a folder/root search adds
+    Titles/Channels; a GLOBAL search shows the type dimension only (and hides sort/shuffle - they never applied
+    to the ranked stream: a lying control before). **Choice by measurement:** at 390px the six library chips need
+    ~464px - neither a merged row nor a segmented second row fits one line, so the merged row SCROLLS inside a
+    `min-width:0` host while the tools stay fixed; measured one line on every phone/desktop page
+    (geometry check below). The tools are `ui-btn` tonal icons: sort (opens a `ui.menu` with the current sort
+    checked), shuffle, rescan (busy = `aria-busy` spinner, no label swap), view (grid_view/view_list), and the
+    per-channel Re-pull (common.js, the `subscriptions` glyph; outcome by toast). The Modern chip row is the same
+    `ui-chip` component; the Modern avatar bar is `ui.avatar` xl.
+  - **F61.** The channel heading's rename / Music controls are `ui-btn` plain icons (`edit`; `music_note` /
+    `music_off` via `ui.setPressed`), appended AFTER the count so a late reveal/removal moves nothing; rename uses
+    `ui.prompt`, failures toast (no `window.prompt/alert`).
+  - **F63.** The related rail is `buildRelatedCardEl` (ui-thumb + ink title), reveals together
+    (`revealArtTogether`), `ui.state` empty / error (Retry) replace the italic and red inline text, and the
+    skeleton is two title lines + byline + meta of the final geometry. The TV Up-next rail uses the same card.
+  - **History** rows are `ui-row` + `ui-thumb` in a `ui-list` (one reserved action slot); Remove and Clear all
+    go through `ui.confirm` (they clear resume positions and watched marks - D4.8 F33; the in-row "Remove?" arm is
+    retired); the empty and error states are `ui.state`.
+  - **Skeletons** (grid, rail, History, avatar bar) are built from the same primitives as the content; the
+    unified search skeleton reserves the type line.
+  - Also: the Modern card has no tile (F53) - it paints `--surface-0` (the page ground) rather than going
+    transparent, so the critter ground contract holds; the welcome box swaps by `hidden` (no inline display).
+- **Found by the conversion and fixed:** (1) the v1.94 hover preview keyed on `.thumbnail-container` - a
+  rename would have silently killed it; it keys on `.card-media` and a full-chain test now drives it. (2)
+  `fetchCardCaps` first awaited `/api/subscriptions/health` inside the grid's `Promise.all` (a hung probe blocked
+  the grid - the v1.67 code only probed when a corner held Reheat); the probe now runs in the background and
+  upgrades the latched caps object. (3) The render showed "views ·yesterday": a CSS escape ate its space.
+- **Findings.** Closed: F03, F04 (one badge size, `--t-caption` <= every card title), F05, F19, F53 (no frame,
+  Modern no tile, radii from `ui-thumb`), F63, F67. F15: closed on cards and the rail; the watch page's stats are
+  S3's (the mechanism is in place). Partial: F18 (phone card titles 12 -> 13px, rail meta 10 -> 11px; the Home
+  feed rows `.book-row-card` / `.music-row-card` / `.video-row-card` and the queue are not migrated), F61 (the
+  icon controls; the ChannelHeader - avatar, count, Subscribe on folder views - is NOT built: it needs the
+  subscribe flow S3/S5 own).
+- **Locks converted (AC12; every removal has its replacement in the same commit):** card-corner-renderer ->
+  card-action-menu (C4 applicability over `buildCardMenuItems`, `cardKindPresentation` arms kept, the clean-card
+  DOM contract, the delete copy, the per-era flourish over the REAL style.css rules, the no-inert-kebab and
+  retirement tests); card-corner-br-css -> card-thumb-badge (one badge size, badge over the preview by paint
+  order, no frame); card-corner-mobile-size (risky) -> card-kebab-hit (the 44px `--hit`, no card hit-zone
+  pseudo-elements, the kebab out of the thumbnail in grid and list) + the DOM test that no control sits on the
+  media; card-corner-editor -> the retirement test; card-corners-fullchain -> card-action-menu-fullchain (menu,
+  C4, RBAC, share/reheat/queue endpoints, the hover preview, and the delete-safety suite below); card-like
+  (S2 half: the menu Like, driven behaviourally on the chapter/native lanes); folder-music-toggle-lock;
+  home-mobile-scale (c) + test/geometry/library-toolbar.check.js; library-toolbar; library-toolbar-wiring;
+  library-toolbar-early-render; modern-css-source-lock; shimmer-tranche2 (c) + geometry; star-ratings-pref (+ the
+  D8.1 composition); v1264-skeleton-states (c) + geometry; sticky-filter-bar (#3); art-decode-shimmer;
+  attribution-client. Kept (a), untouched and green: library-view-prefs, pull-to-refresh, reveal-art-together.
+  Touched outside the S2 rows (the shape they read moved): watch-init-behavioral (harness gets `window.ui`),
+  critter-mode (anchors `.ui-thumb`, `.video-card .ui-avatar`; the ground contract reads ui.css too and checks
+  era overrides keep painting), app-look-l2 (home halves), audio-opens-in-music, channel-name-consistency,
+  home-chip-memory, icon-attribute-mask, icon-queue-mask (S2 half), library-shimmer-skeletons (the History row
+  only; S6/S10 own the rest), modern-home-layout, row-glyph-inline-svg, search-clear (the v1.150 strip half ->
+  the chip row's kind belt), skin-status-bar (census exception), v1262-subs-and-rescan-polish (rescan half),
+  v1362-minors-client, history-view, card-download-btn, shuffle-rescan-icon, the two ytdlp repull shims; and
+  integration library-pagination, rescan-scan-poll, universal-search-client, home-card-transcript-corner.
+- **Delete safety (the full gate; LESSONS 9).** card-action-menu-fullchain drives the real index.html: every
+  path into the menu (kebab click, kebab by keyboard - a detail-0 click, long-press through the real
+  FTInteraction timer, desktop right-click) and every way out of the confirm without a yes (Cancel, Esc, scrim,
+  Close, Enter, a tap on Move to Trash after Cancel) sends NO `DELETE`; only the confirm's own button sends
+  exactly one, of that item. history-remove-confirm drives the real history.js the same way for Remove / Clear all.
+- **Mutation (a /tmp git-archive sandbox of 0ca84f04, pristine diff after: identical): 15 of 15 killed.**
+  M1 the `ok !== true` guard deleted (7 red), M2 the menu Delete calling `deleteCardById` directly (7 red),
+  M3 `ok !== true` -> `!ok` (killed only by the source guard - behaviourally equivalent: ui.confirm resolves only
+  true/false), M4 the flourish gate inverted in style.css (7 red), M5 2021 in `ERA_FLOURISH_ERAS` (2), M6 a real
+  count marked fabricated (1), M7 the kebab on an empty menu (1), M8 the preview host back to
+  `.thumbnail-container` (1), M9 All leaving a dimension set (1), M10 a re-tap not toggling off (1), M11 History
+  Remove without its confirm (1), M12 Delete offered without the capability (2), M13 the local-file warning
+  dropped (1), M14 the transcript busy guard removed (1), M15 the skeleton's second title line dropped (2).
+- **Debt paid (`ui-lint --shrink`; no new debt):** no-raw-values 1297 -> 1271, no-bespoke-controls 1091 -> 983,
+  icons 163 -> 157, colour-roles 44 -> 41, display-ownership 86 -> 82; TOTAL 2703 -> 2556 (-147).
+- **Renders** (seeded instance, `test/visual/capture.js`, scenes 01, 02, 03, 28 + new 31 search, 32 card menu,
+  33 related rail; phone / landscape / desktop x light / dark x 4 eras): before 136 captured, 0 failed; after 136
+  captured, 0 failed, no page errors (the retro eras recaptured after the separator fix). `compare.js` (threshold
+  16): 136 of 136 changed, as designed - home 7.6-69.0%, scrolled 45.1-68.0%, channel 10.1-69.0%, search
+  29.8-64.5%, card menu 24.3-77.8%, related rail 1.2-3.6%, History 0.3-1.9% (the seed has no history: that is the
+  empty state; a populated History was rendered separately through a routed fixture, 9 shots incl. the Remove
+  confirm). `test/geometry/library-toolbar.check.js` PASS: the toolbar one line on every page (top spread 0px),
+  no horizontal overflow, 2 phone columns, kebab hit 44x44 off the thumbnail, skeleton thumb and info boxes
+  equal to the real card (86.7px; 106.7px with the search type line), rail skeleton thumb 120x67.5 == real,
+  menu rows 44px.
+- **Interpretations for the gate to attack:** (1) the menu lists every applicable action - the stored
+  cornerTL..BR settings are now ignored (the server lane still accepts them); (2) History Remove/Clear were
+  given `ui.confirm` (danger) as destructive; (3) on a global search the sort and shuffle tools hide; (4) the
+  Like action answers with a toast (no heart on the card any more); (5) a Modern card paints `--surface-0`
+  instead of transparent (critter ground contract); (6) the critter pool anchors every `.ui-thumb` (cards, rail,
+  History) - `.related-thumb` / `.history-thumb` / `.thumbnail-container` / `.card-channel-avatar` left it;
+  (7) the channel heading's controls moved after the item count; (8) the long-press is delegated on the grid, so
+  a hold on grid gap (no card) opens nothing but still swallows the release click (FTInteraction's own rule);
+  (9) the Modern header sort (`.sort-menu` in the persistent header) is untouched - header chrome, S1's.
+- **Counts (Node 22.23.1):** `npm test` before the sweep commit: tests 10161, pass 10151, fail 0, skipped 10.
+  The sweep commit's hook: tests 7833, pass 7832, fail 0 (two earlier hook runs failed ONLY critter-mode
+  "v1.176 gate W closure" at box load ~7 - the known load flake; it passed standalone, and the retry after the
+  load drained passed). Final counts for this commit are in the report.

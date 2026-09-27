@@ -1256,7 +1256,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* the separator rides the views label, so a hidden fabricated count (D8.1)
    takes its dot with it */
 .video-meta > .card-views::after {
-  content: ' \00b7 ';
+  content: ' \00b7\0020'; /* the escape eats one following space, so the trailing space is escaped too */
 }
 
 /* v1.26.3 (Item 1): shared skeleton-loading placeholder shimmer. CSS-only
