@@ -3,8 +3,8 @@ plan: notify-bell-art-subs-nav
 harness: v2 · lean
 branch: feat/v1.340-small-fixes
 anchor: outcome
-status: Approved @a4cb6e98
-next: release v1.340.0
+status: Shipped v1.340.0
+next: shipped v1.340.0; Dean's device pass (tech-debt #288 lists the checks)
 design: n/a (outcome anchor)
 gate: APPROVED r2 @a4cb6e98 (adversary + qa + security-brief); r1 CHANGES (adversary W1-W4, qa Q1-Q5) fixed in a4cb6e98
 ---
