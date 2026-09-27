@@ -97,6 +97,18 @@ function tmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-audiokeep-unit-'));
 }
 
+// v1.339 F4: a job that started a moment before the files were seeded (so
+// they count as created during it), folder not known before the spawn.
+function sinceJust() {
+  return { jobStartMs: Date.now() - 5000, outputDir: null };
+}
+// ...and a job that started AFTER every seeded file (they pre-date it by far
+// more than the clock-skew allowance) -- a birth/change time cannot be
+// back-dated, so the job start moves forward instead.
+function startedLater() {
+  return { jobStartMs: Date.now() + ytdlp.ONE_OFF_SOURCE_CLOCK_SKEW_MS + 60000, outputDir: null };
+}
+
 test('removeFreshOneOffSources: removes a planned regular file under the download root, keeps the final', () => {
   const root = tmp();
   try {
@@ -105,7 +117,7 @@ test('removeFreshOneOffSources: removes a planned regular file under the downloa
     fs.mkdirSync(path.dirname(mp4));
     fs.writeFileSync(mp4, 'v');
     fs.writeFileSync(mp3, 'a');
-    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root });
+    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root }, sinceJust());
     assert.deepStrictEqual(out, { removed: 1, madeFromExisting: false });
     assert.ok(!fs.existsSync(mp4));
     assert.ok(fs.existsSync(mp3));
@@ -124,7 +136,7 @@ test('removeFreshOneOffSources: a planned path that is a SYMLINK is never remove
     fs.writeFileSync(target, 'library bytes');
     fs.symlinkSync(target, link);
     fs.writeFileSync(mp3, 'a');
-    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, link)], finalFiles: [mp3] }, { downloadDir: root });
+    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, link)], finalFiles: [mp3] }, { downloadDir: root }, sinceJust());
     assert.strictEqual(out.removed, 0);
     assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link itself is kept');
     assert.strictEqual(fs.readFileSync(target, 'utf8'), 'library bytes');
@@ -143,7 +155,7 @@ test('removeFreshOneOffSources: a planned file whose REAL path is outside the do
     fs.writeFileSync(mp4, 'outside bytes');
     fs.writeFileSync(mp3, 'a');
     assert.ok(fs.lstatSync(mp4).isFile(), 'anti-vacuity: the lstat check alone would pass');
-    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root });
+    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root }, sinceJust());
     assert.strictEqual(out.removed, 0);
     assert.strictEqual(fs.readFileSync(path.join(outside, 'clip [x].mp4'), 'utf8'), 'outside bytes');
   } finally {
@@ -159,12 +171,224 @@ test('removeFreshOneOffSources: an existing source (real false) is kept and repo
     const mp3 = path.join(root, 'clip [x].mp3');
     fs.writeFileSync(mp4, 'library');
     fs.writeFileSync(mp3, 'a');
-    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(false, mp4)], finalFiles: [mp3] }, { downloadDir: root });
+    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(false, mp4)], finalFiles: [mp3] }, { downloadDir: root }, sinceJust());
     assert.deepStrictEqual(out, { removed: 0, madeFromExisting: true });
     assert.strictEqual(fs.readFileSync(mp4, 'utf8'), 'library');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// ---- v1.339 F4: the creation-time + folder fence ------------------------------
+
+function seedPair(dir, stem = 'clip [x]') {
+  fs.mkdirSync(dir, { recursive: true });
+  const mp4 = path.join(dir, `${stem}.mp4`);
+  const mp3 = path.join(dir, `${stem}.mp3`);
+  fs.writeFileSync(mp4, 'library video');
+  fs.writeFileSync(mp3, 'a');
+  return { mp4, mp3 };
+}
+
+test('F4 fileCreatedAtMs: birthtime when reported, ctime when birthtime is 0 / missing / not finite, NaN when neither', () => {
+  assert.strictEqual(ytdlp.fileCreatedAtMs({ birthtimeMs: 1000, ctimeMs: 5000, mtimeMs: 9000 }), 1000);
+  assert.strictEqual(ytdlp.fileCreatedAtMs({ birthtimeMs: 0, ctimeMs: 5000, mtimeMs: 9000 }), 5000, 'libuv reports 0 where the fs has no birth time');
+  assert.strictEqual(ytdlp.fileCreatedAtMs({ ctimeMs: 5000, mtimeMs: 9000 }), 5000);
+  assert.strictEqual(ytdlp.fileCreatedAtMs({ birthtimeMs: NaN, ctimeMs: 5000 }), 5000);
+  assert.strictEqual(ytdlp.fileCreatedAtMs({ birthtimeMs: -1, ctimeMs: 5000 }), 5000);
+  assert.ok(Number.isNaN(ytdlp.fileCreatedAtMs({ birthtimeMs: 0, ctimeMs: 0, mtimeMs: 9000 })), 'mtime is never used');
+  assert.ok(Number.isNaN(ytdlp.fileCreatedAtMs(null)));
+});
+
+test('F4 fileCreatedAtMs: a real fs.Stats on this box yields a creation time no later than now', () => {
+  const root = tmp();
+  try {
+    const f = path.join(root, 'f');
+    fs.writeFileSync(f, 'x');
+    const t = ytdlp.fileCreatedAtMs(fs.lstatSync(f));
+    assert.ok(Number.isFinite(t) && t <= Date.now() + 5 && t > Date.now() - 60000, String(t));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('F4: a SOURCE created before the job is never removed, even when a fresh final with its stem exists (forged FTCHSRC true)', () => {
+  const root = tmp();
+  try {
+    const { mp4, mp3 } = seedPair(path.join(root, 'Other'));
+    const job = startedLater();
+    // Make the FINAL fresh (so only the source's own time can refuse): the
+    // source's stat is read for real; the final is re-created and the job
+    // start sits between the two by patching fs.lstatSync for the final only.
+    const realLstat = fs.lstatSync;
+    fs.lstatSync = (p, ...rest) => {
+      const st = realLstat(p, ...rest);
+      if (p === mp3) return Object.assign(Object.create(Object.getPrototypeOf(st)), st, { birthtimeMs: job.jobStartMs + 1, ctimeMs: job.jobStartMs + 1 });
+      return st;
+    };
+    let out;
+    try {
+      out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root }, job);
+    } finally {
+      fs.lstatSync = realLstat;
+    }
+    assert.strictEqual(out.removed, 0);
+    assert.strictEqual(fs.readFileSync(mp4, 'utf8'), 'library video');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('F4: a fresh source whose paired FINAL pre-dates the job is never removed', () => {
+  const root = tmp();
+  try {
+    const { mp4, mp3 } = seedPair(path.join(root, 'Other'));
+    const job = startedLater();
+    const realLstat = fs.lstatSync;
+    fs.lstatSync = (p, ...rest) => {
+      const st = realLstat(p, ...rest);
+      if (p === mp4) return Object.assign(Object.create(Object.getPrototypeOf(st)), st, { birthtimeMs: job.jobStartMs + 1, ctimeMs: job.jobStartMs + 1 });
+      return st;
+    };
+    let out;
+    try {
+      out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root }, job);
+    } finally {
+      fs.lstatSync = realLstat;
+    }
+    assert.strictEqual(out.removed, 0);
+    assert.ok(fs.existsSync(mp4));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('F4: a fresh source whose paired final does NOT EXIST is never removed', () => {
+  const root = tmp();
+  try {
+    const { mp4, mp3 } = seedPair(path.join(root, 'F'));
+    fs.unlinkSync(mp3);
+    const out = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mp4)], finalFiles: [mp3] }, { downloadDir: root }, sinceJust());
+    assert.strictEqual(out.removed, 0);
+    assert.ok(fs.existsSync(mp4));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('F4: a fresh pair OUTSIDE the job\'s known output folder is never removed (the folder fence); inside it, it is', () => {
+  const root = tmp();
+  try {
+    const other = seedPair(path.join(root, 'Other'));
+    const mine = seedPair(path.join(root, 'Mine'));
+    const outputDir = path.join(root, 'Mine');
+    const job = { ...sinceJust(), outputDir };
+    const outOther = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, other.mp4)], finalFiles: [other.mp3] }, { downloadDir: root }, job);
+    assert.strictEqual(outOther.removed, 0);
+    assert.ok(fs.existsSync(other.mp4), 'another folder\'s fresh file is kept');
+    const outMine = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(true, mine.mp4)], finalFiles: [mine.mp3] }, { downloadDir: root }, job);
+    assert.strictEqual(outMine.removed, 1, 'anti-vacuity: the same shape inside the folder is removed');
+    assert.ok(!fs.existsSync(mine.mp4));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('F4: no job start, a non-finite one, or an unresolved output folder removes nothing (fail closed); madeFromExisting still reported', () => {
+  const root = tmp();
+  try {
+    const { mp4, mp3 } = seedPair(path.join(root, 'F'));
+    const result = { sourceFiles: [src(true, mp4)], finalFiles: [mp3] };
+    for (const opts of [undefined, {}, { outputDir: null }, { jobStartMs: NaN, outputDir: null }, { jobStartMs: '1', outputDir: null }, { jobStartMs: Date.now() - 5000 }, { jobStartMs: Date.now() - 5000, outputDir: '' }]) {
+      const out = ytdlp.removeFreshOneOffSources(result, { downloadDir: root }, opts);
+      assert.strictEqual(out.removed, 0, JSON.stringify(opts));
+    }
+    assert.ok(fs.existsSync(mp4));
+    const existing = ytdlp.removeFreshOneOffSources({ sourceFiles: [src(false, mp4)], finalFiles: [mp3] }, { downloadDir: root }, undefined);
+    assert.deepStrictEqual(existing, { removed: 0, madeFromExisting: true });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('F4: the clock-skew allowance is a named, small constant (a second)', () => {
+  assert.strictEqual(ytdlp.ONE_OFF_SOURCE_CLOCK_SKEW_MS, 1000);
+});
+
+test('F4: the allowance boundary, behaviourally -- a pair created 1.5s before the job start is kept, 0.5s before is still the job\'s own', () => {
+  const root = tmp();
+  try {
+    const { mp4, mp3 } = seedPair(path.join(root, 'F'));
+    const created = [mp4, mp3].map((p) => ytdlp.fileCreatedAtMs(fs.lstatSync(p)));
+    const result = { sourceFiles: [src(true, mp4)], finalFiles: [mp3] };
+    const kept = ytdlp.removeFreshOneOffSources(result, { downloadDir: root }, { jobStartMs: Math.max(...created) + 1500, outputDir: null });
+    assert.strictEqual(kept.removed, 0);
+    assert.ok(fs.existsSync(mp4));
+    const removed = ytdlp.removeFreshOneOffSources(result, { downloadDir: root }, { jobStartMs: Math.min(...created) + 500, outputDir: null });
+    assert.strictEqual(removed.removed, 1);
+    assert.ok(!fs.existsSync(mp4));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---- v1.339 F4: the bounded line splitter drops an over-long line whole ------
+
+test('F4 makeLineSplitter: a line whose carry outgrows the cap is discarded WHOLE -- its tail is never parsed, even when it looks like a sentinel line', () => {
+  const lines = [];
+  const s = run.makeLineSplitter((l) => lines.push(l));
+  const forged = `FTCHSRC true "${MP4}"`;
+  s.push('ok before\n');
+  s.push('x'.repeat(5000)); // no newline yet: over the cap
+  s.push(forged); // the tail a keep-the-tail splitter would parse
+  s.push('\nok after\n');
+  assert.deepStrictEqual(lines, ['ok before', 'ok after']);
+});
+
+// A VALID sentinel line exactly `run.STDERR_TAIL_LIMIT` chars long: the path is
+// padded with `/.` segments (path.resolve folds them away) and, for parity,
+// one JSON `\/` escape -- so a keep-the-tail splitter's 4096-char tail of
+// `<junk><this line>` would be exactly this parseable line.
+function exactCapLine(prefix, p) {
+  const cap = run.STDERR_TAIL_LIMIT;
+  const need = cap - (prefix + JSON.stringify(p)).length;
+  let lit = JSON.stringify(path.dirname(p) + '/.'.repeat(Math.floor(need / 2)) + '/' + path.basename(p));
+  if (need % 2 === 1) lit = lit.replace('/', '\\/');
+  const line = prefix + lit;
+  assert.strictEqual(line.length, cap);
+  return line;
+}
+
+test('F4 makeLineSplitter: an over-long line whose last cap-sized chunk is a VALID FTCHSRC line is still discarded (the keep-the-tail boundary)', () => {
+  const lines = [];
+  const s = run.makeLineSplitter((l) => lines.push(l));
+  const tail = exactCapLine('FTCHSRC true ', MP4);
+  const parsed = run.parseAudioSourceLine(tail);
+  assert.ok(parsed && parsed.real === true && path.resolve(parsed.path) === MP4, 'anti-vacuity: the tail alone parses and names MP4');
+  s.push('x'.repeat(1000) + tail);
+  s.push('\n');
+  assert.deepStrictEqual(lines, []);
+});
+
+test('F4 makeLineSplitter: an over-long unterminated line at close is not flushed; normal lines and a short unterminated last line still are', () => {
+  const lines = [];
+  const s = run.makeLineSplitter((l) => lines.push(l));
+  s.push('a\nb');
+  s.push('c\n');
+  s.push('z'.repeat(5000));
+  s.push('FTCHDST "/x.mp3"');
+  s.flush();
+  assert.deepStrictEqual(lines, ['a', 'bc']);
+  const lines2 = [];
+  const s2 = run.makeLineSplitter((l) => lines2.push(l));
+  s2.push('p\nlast without newline');
+  s2.flush();
+  assert.deepStrictEqual(lines2, ['p', 'last without newline']);
+  const lines3 = [];
+  const s3 = run.makeLineSplitter((l) => lines3.push(l));
+  s3.push('q'.repeat(4096)); // exactly at the cap: kept
+  s3.push('\n');
+  assert.deepStrictEqual(lines3, ['q'.repeat(4096)]);
 });
 
 // ---- the argv -----------------------------------------------------------------
