@@ -112,7 +112,9 @@ test('gate W3: list view reduces the VERTICAL extension so corner zones cannot s
 // re-sizes a corner icon (it would out-specify the 18px rule for that set only).
 test('every icon set gets the 18px corner glyph: no [data-icons]-scoped rule re-sizes a corner icon', () => {
   const offenders = [];
-  for (const m of CSS.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+  // Innermost rules only: `[^{}]` in the BODY too, or a rule opening an @media block
+  // swallows the first nested rule into its "body" (a mutant inside @media survived that).
+  for (const m of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!/(^|[;\s])(width|height)\s*:/.test(m[2])) continue;
     for (const sel of m[1].split(',')) {
       if (!/\[data-icons=/.test(sel)) continue;
