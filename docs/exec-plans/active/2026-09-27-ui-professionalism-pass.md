@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: D12 step 3 (Primitives) - public/css/ui.css, public/js/ui.js, public/js/interaction.js with every D4 primitive, loaded in every shell, plus the hidden kit page rendering every primitive in every variant and state; ui-builders.test.js
+next: D12 step 4 (Guardrails) - scripts/ui-lint.js (css-tree; rules D10.1 + canaries), docs/ui-exceptions.json baseline + ratchet test, G1-G3 geometry checks, the CI visual + rebaseline jobs (fresh server, feed polling off), hook wiring, the 92-rule hover-gated wrap, the D6 native-interaction base
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -1262,3 +1262,39 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   of 4255da09 the same). Targeted integration (shell-smoke, star-pref-seed, history-nav-gate,
   folder-glyph-api, library-glyph-api): tests 28, pass 28, fail 0. `npx eslint .` 0 errors, 6 warnings (the
   existing common.js unused-global warnings). `npm run lint:css` TOTAL 0.
+
+### Step 3 - primitives (2026-09-27; 0e267042, b8623da5, cc97cf47, f319c9c6, ea5fac98, ea5b89b2)
+
+- **Built:** `public/css/ui.css` (every D4 primitive; tokens only; hover gated; a pressed state per
+  interactive part; no layout transition; the one global `[hidden]{display:none!important}`, which also
+  hides the SVG sprite), `public/js/ui.js` (the builders: icon, button + setPressed/setBusy, list, row,
+  avatar, thumb, chip, sheet, menu, toast, confirm, prompt, switch, segmented, field, select, state, copy),
+  `public/js/interaction.js` (onLongPress, onContextMenu, onActionMenu, swipeRow), and the hidden kit page
+  `public/ui-kit.html?era=&mode=&icons=`. ui.js and interaction.js were built in parallel worktrees against a
+  fixed DOM contract and cherry-picked. New tokens: the primitives' metrics, 8 monogram tones, the inverted
+  toast pair, `--dur-spin` (token-scale-lock 198). Registry gains `visibility`/`visibility_off`.
+- **Load order:** `ui.css` between `tokens.css` and `style.css` in 12 shells + the Subscriptions view;
+  pre-auth allowlisted like tokens.css (**security seat: note**). ui.js/interaction.js load only on the kit
+  page until the sweeps wire them.
+- **Interpretations recorded by the builders (for the gate):** each sheet takes its own body-lock owner
+  (`ui-sheet:N`) so a menu's exit cannot release the lock under a confirm it opened; confirm/prompt settle
+  when dismissal STARTS; popover anchor = the anchor's left/bottom; a sheet with no title gets aria-label.
+  swipeRow is stricter than D8.3: an action runs only from a tap that began on its revealed button with the
+  row open and idle; every action must declare its kind (setup throws otherwise, and on a danger fullSwipe);
+  a full swipe needs max(threshold x width, actions width); the click after a drag or long-press is
+  swallowed once (400ms); a script calling `.click()` on an open row's Delete still runs it (jsdom cannot
+  make trusted events), so D8.3 keeps Delete behind `ui.confirm` at the wiring.
+- **Tests:** ui-builders (39), interaction-policy (38), ui-css-contract (9), plus the contrast/era/token
+  additions. Mutation: ui.js 18 mutants, 16 red first pass, 1 survivor exposed a weak test (fixed, red), 1
+  masked by the earlier guard (a combined mutant goes red); interaction.js 22 mutants, 20 red + M17 masked
+  by the outside-tap close (combined M22 red); ui-css-contract 2/2 red. Unit suite (Node 22): 7814 pass, 0
+  fail before the kit commit; each later commit's hook green.
+- **Renders:** ui.css + global [hidden] on the existing app, 76 shots vs 0e267042: 0 changed pixels after a
+  server restart. **Determinism note for step 4:** a long-running seeded server re-checks the podcast feeds
+  and a status line changes; the visual job must boot fresh with feed polling off. Kit in 4 eras x 2 modes
+  (phone), desktop, an open menu, a danger confirm: every primitive draws, no page errors. Found and fixed
+  by the render: 2005 underlined row links (F20), a focus ring on every sheet's Close (focus now goes to the
+  sheet), two look-alike monogram tones.
+- **Demo for Dean:** `/ui-kit.html` on the phone (switch era/mode/icons at the top; long-press and swipe the
+  two rows under Gestures).
+
