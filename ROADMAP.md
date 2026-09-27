@@ -88,7 +88,7 @@
 - [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
   overlay-containment lint's scroll match, with a fixture.
 
-- [ ] **Bug: the Notify button shifts the row when it toggles** (Dean, 2026-09-26: "notify button shifts
+- [x] **Bug: the Notify button shifts the row when it toggles** - SHIPPED v1.340.0 (see Shipped) (Dean, 2026-09-26: "notify button shifts
   unreasonably - should be stable", with two iPhone screenshots of a watch page's channel card). The
   label flips between "Notify" (bell struck through) and "Notifying" (bell), so the button changes width
   and "Pin channel" beside it jumps sideways on every tap. First questions when picked up: reserve the
@@ -248,6 +248,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.340.0 - A steadier channel row with a real bell, and a plainer Original wheel (2026-09-27)
+
+- **Notify holds still** (Dean: "notify button shifts unreasonably - should be stable"; "use the same
+  notification glyph versus emoji"): the watch page's Subscribe, Pin channel and Notify buttons keep ONE
+  width in both states - every label is laid out in one grid cell and only the current one shows
+  (`stableToggleLabelHtml`, common.js). Notify draws the header's bell (Material's slashed bell when off),
+  never the emoji pair; the Pinned star is a drawn glyph too (a text star is a taller fallback-font glyph
+  that made Pin 3px taller on desktop). Measured in the real watch page, four eras, light and dark: at
+  390px each button keeps one x/width/y/height across five states (was 2 / 3 / 5 positions); at 1280 the
+  row is level at 28px. The Subscriptions page's row bells and the Podcasts "Pin to Playlists" button
+  follow suit.
+- **The Subscriptions page's bottom bar** is the other pages' bar: Liked, Podcasts, Music, Books and
+  Downloads were missing, and its glyphs were the old late-painting masks (tech-debt #114, closed).
+- **Continue listening asks for the 512px cover**, keyed on the album, not the full-size file (#287 e,
+  the home-row half; the 92x138 tile cover-fits the square art to 138px, 276px at 2x).
+- **The Original skin's wheel is a plain disc** (Dean: "it's a plain disc in the real one"): the v1.335 rim
+  ticks are gone, checked against a photo of a real first iPod (Wikimedia Commons "IPod 1Gen.jpg").
+- Gate: APPROVED r2 @a4cb6e98 (adversary, qa, security-brief); r1 caught an untested width CSS, the desktop
+  Pin height, a flash probe gone blind and the tile's real shape. Residuals: tech-debt #288. Device pass:
+  tap Notify / Pin / Subscribe on the phone (nothing beside them moves), the Subscriptions page's bottom
+  bar, the Original skin's wheel.
 
 ### v1.339.0 - Nothing you download or keep can be lost, and screens stop jumping (2026-09-27)
 

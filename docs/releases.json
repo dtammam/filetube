@@ -3286,5 +3286,11 @@
     "date": "2026-09-27",
     "title": "Your files are safer, and screens stop jumping around",
     "intent": "Closes several rare ways a file or your watch progress could be lost: downloading something you already have, asking for the audio of a video you already have, dragging folders in the sidebar, saving settings while a drive is offline, and restoring from the trash while the library is scanning. Music and the home page now load without shifting, and album art loads faster and appears all at once."
+  },
+  {
+    "version": "1.340.0",
+    "date": "2026-09-27",
+    "title": "A steadier channel row with a real bell, and a plainer Original wheel",
+    "intent": "The Notify, Subscribe and Pin buttons under a video no longer change width when you tap them, so nothing beside them jumps, and Notify shows the same bell as the top bar (crossed out when off) instead of an emoji; the Subscriptions page's bells match. The Subscriptions page's bottom bar now has every place the other pages do (Liked, Podcasts, Music, Books, Downloads). Continue listening loads a smaller cover. The Original iPod skin's scroll wheel is a plain disc, like the real one."
   }
 ]

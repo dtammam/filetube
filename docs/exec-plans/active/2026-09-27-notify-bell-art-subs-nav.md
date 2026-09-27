@@ -3,7 +3,7 @@ plan: notify-bell-art-subs-nav
 harness: v2 · lean
 branch: feat/v1.340-small-fixes
 anchor: outcome
-status: Approved
+status: Approved @a4cb6e98
 next: release v1.340.0
 design: n/a (outcome anchor)
 gate: APPROVED r2 @a4cb6e98 (adversary + qa + security-brief); r1 CHANGES (adversary W1-W4, qa Q1-Q5) fixed in a4cb6e98
@@ -89,7 +89,7 @@ h 44.
 
 ## Gate
 
-Gate: APPROVED r1 @7d8c1f0f — security-brief
+Gate: APPROVED r1 - security-brief, reviewed at 7d8c1f0f (superseded: re-approved r2 @a4cb6e98)
 - No CRITICAL/HIGH/MEDIUM/LOW. Could not run `git diff` (no Bash): reviewed the tree's files at the worktree HEAD, located by v1.340 markers.
 - Verified: the 3 watch.js stableToggleLabelHtml innerHTML writers pass only fixed literals; esc covers & < > "; glyphs come from the fixed CHROME_ICON_SVG table.
 - Verified: subscriptions.js has no live innerHTML; the bell is built with createElementNS. The require arm is dead in the browser (common.js loads first on every shell, which makes chromeIconEl a global) and in Node it resolves a fixed repo-relative path.
