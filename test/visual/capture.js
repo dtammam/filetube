@@ -39,7 +39,19 @@ const { newGuardedContext } = require(path.join(CAP, 'request-policy.js'));
 const { settlePageImages, snapScroll, VOLATILE_MASK_CSS } = require(path.join(CAP, 'settle.js'));
 
 // Lazy: requiring this module (unit tests, run.js's baseline checks) must not need Playwright.
-function playwright() { return require(path.join(CAP, 'node_modules', 'playwright')); }
+// Resolved like the git hooks resolve node_modules (#227): this checkout's tools/capture
+// first, then the same path in every ancestor, so a git worktree under .claude/worktrees/
+// uses the main checkout's install without a symlink.
+function playwright() {
+  const tried = [];
+  for (let dir = path.resolve(__dirname, '..', '..'); ; dir = path.dirname(dir)) {
+    const p = path.join(dir, 'tools', 'capture', 'node_modules', 'playwright');
+    tried.push(p);
+    if (fs.existsSync(path.join(p, 'package.json'))) return require(p);
+    if (path.dirname(dir) === dir) break;
+  }
+  throw new Error(`Playwright not found (looked in ${tried.join(', ')}); cd tools/capture && npm ci && npx playwright install chromium`);
+}
 
 const ERAS = ['2021', '2014', '2009', '2005'];
 const MODES = ['dark', 'light'];
@@ -156,7 +168,9 @@ function sceneKit(FX, BASE) {
       if (isMobile(vp) && await p.locator('#bottom-nav button[aria-label*="account"], .bottom-nav-item:has-text("You")').first().isVisible().catch(() => false)) await tap(p, '.bottom-nav-item:has-text("You")', vp);
       else await tap(p, '#account-menu-root button, #account-menu-root [aria-haspopup]', vp);
       await sleep(800); } },
-    { id: '24-playlists-sheet', path: '/', vps: ['phone', 'land'], run: async (p, vp) => { await tap(p, '#nav-playlists-btn', vp); await p.waitForSelector('.playlists-sheet:not([hidden])', { timeout: 8000 }); await sleep(600); } },
+    // Phone only: the landscape phone (844px) shows the sidebar, not the bottom bar, so it has
+    // no #nav-playlists-btn (the scene timed out there on every run).
+    { id: '24-playlists-sheet', path: '/', vps: ['phone'], run: async (p, vp) => { await tap(p, '#nav-playlists-btn', vp); await p.waitForSelector('.playlists-sheet:not([hidden])', { timeout: 8000 }); await sleep(600); } },
     // Not on the phone: phone portrait has no #menu-toggle (the bottom bar replaces the
     // sidebar), so the scene timed out there on every run (2 capture failures per era).
     { id: '25-hamburger-sidebar', path: '/', vps: ['land', 'desktop'], run: async (p, vp) => { await tap(p, '#menu-toggle', vp); await sleep(700); } },

@@ -1,0 +1,117 @@
+name: Visual
+
+# UI professionalism pass, plan D10.5 (visual diff) + D10.2 (geometry checks G1-G4).
+#
+# `visual` runs on every push and PR: in the pinned Playwright container it seeds the
+# synthetic fixture (test/visual/seed.js), boots a FRESH read-only server on it
+# (test/visual/start-server.sh sets FILETUBE_READONLY=1 and FILETUBE_READ_ONLY_MEDIA=1 and
+# turns every background poller off), runs the geometry checks, then captures the scene
+# matrix and diffs it against test/visual/baselines/ at 0 changed pixels. With no committed
+# baselines it FAILS ("no baselines - run the rebaseline job") instead of passing vacuously.
+#
+# `rebaseline` runs only from "Run workflow" (workflow_dispatch) in the SAME container and
+# uploads the new baselines as an artifact. Committing them is a human/Architect step: download
+# the artifact into test/visual/baselines/ and commit it as its own commit, named for the step.
+# Baselines are never generated on a dev box (fonts and raster differ outside the container).
+#
+# The container tag must equal the Playwright version tools/capture/package-lock.json pins
+# (test/unit/visual-workflow.test.js binds the two).
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.0-jammy
+      options: --ipc=host
+    env:
+      # A FIXED data dir: media ids hash the file path, so the baselines are shot from this one.
+      VISUAL_DATA_DIR: /tmp/filetube-visual-data
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install the capture tools (Playwright, pinned by tools/capture/package-lock.json)
+        run: npm ci --prefix tools/capture
+
+      - name: Playwright matches the container
+        run: |
+          node -e "const v = require('./tools/capture/node_modules/playwright/package.json').version; if (v !== '1.62.0') { console.error('tools/capture installed Playwright ' + v + ' but the container is v1.62.0-jammy - bump both together'); process.exit(1); } console.log('playwright ' + v)"
+
+      - name: Geometry checks (G1-G4)
+        run: npm run test:geometry
+
+      - name: Visual diff (0 changed pixels)
+        if: ${{ !cancelled() }}
+        run: node test/visual/run.js --data /tmp/filetube-visual-data --out test-results/visual --jobs 2
+
+      - name: Upload the report and crops (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: |
+            test-results/visual/report/
+            test-results/visual/run-record-*.json
+            test-results/visual/server.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  rebaseline:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.0-jammy
+      options: --ipc=host
+    env:
+      VISUAL_DATA_DIR: /tmp/filetube-visual-data
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install the capture tools (Playwright, pinned by tools/capture/package-lock.json)
+        run: npm ci --prefix tools/capture
+
+      - name: Playwright matches the container
+        run: |
+          node -e "const v = require('./tools/capture/node_modules/playwright/package.json').version; if (v !== '1.62.0') { console.error('tools/capture installed Playwright ' + v + ' but the container is v1.62.0-jammy - bump both together'); process.exit(1); } console.log('playwright ' + v)"
+
+      - name: Capture new baselines
+        run: node test/visual/run.js --update --data /tmp/filetube-visual-data --out test-results/visual --jobs 2
+
+      - name: Upload the baselines (commit them into test/visual/baselines/ yourself)
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: test/visual/baselines/*.png
+          if-no-files-found: error
+          retention-days: 30
