@@ -2949,6 +2949,7 @@ const {
   getMediaId,
   inSaveTransaction,
   isInFlightTranscode: (...args) => isInFlightTranscode(...args), // S8 (parallel): lazy so it survives S8 turning this hoisted fn into a factory const below
+  isRestoreInFlight: (...args) => isRestoreInFlight(...args), // v1.339 S5: the restore claim the leftover reconcile checks - same lazy TDZ deferral
   isSafeVideoId,
   isValidMediaDimension,
   isYtdlpIntermediate,
@@ -5419,7 +5420,7 @@ mediaUserRoutes.registerLikedRoutes(app, {
 // to cross as a live accessor.
 const trashOps = require('./lib/media/trash'); // Wave 7b S5: the require sits at its call site so parallel slices never edit one hunk
 const {
-  trashItem, trashOrphanFile, restoreTrashItem, purgeTrashItem, sweepTrash,
+  trashItem, trashOrphanFile, restoreTrashItem, purgeTrashItem, sweepTrash, isRestoreInFlight,
 } = trashOps.createTrashOps({
   AUDIO_EXTENSIONS, // trashOrphanFile's audio/video type guess for the minimal snapshot
   DEFAULT_SETTINGS, // the sweep's retention-days fallback
