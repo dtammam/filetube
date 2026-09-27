@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: D12 step 1 (Tokens) - tokens.css with the D2 roles for 4 eras x 2 modes + aliases, loaded first in all 13 shells + diag; ui-contrast and ui-era-roles tests; repoint the step-1 locks (Build log triage, note 2)
+next: D12 step 2 (Icons) - tools/icons/fetch.js + build.js (Material Symbols, 3 styles + fill), public/js/icons.js + sprite injection, all shells' header/nav SVGs to <use>, drop the emoji icon set with its migration
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -934,7 +934,7 @@ only when `public/` changed. CI runs G1-G4 on all scenes.
   - Open for step 4 (not deterministic across machines yet): ids hash the path, so they change with the data
     dir; the watch page prints the file path; relative dates follow the clock (`SEED_NOW` pins the seed side,
     the browser clock freeze is step 4's).
-- **Demo: \`npm test\` on the untouched app tree (Node 22.23.1, at c144db52 + this log):** tests 10037, pass
+- **Demo: `npm test` on the untouched app tree (Node 22.23.1, at c144db52 + this log):** tests 10037, pass
   10028, fail 0, cancelled 0, skipped 9; exit 0; 320s. (Node 24 runs with the phase's dual-Node pass.)
 - **Source-lock triage (D11).** The audit counted 136 locks (its method is not recorded); the grep below
   finds 141 files that mention style.css, 128 of which actually read and pin it.
@@ -1121,3 +1121,57 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
 - **glyph-pool / icon-* family** (b, 2): v1.47.6, a mask without its @supports fill painted a blank box on device. icons-registry must prove every referenced name resolves in all three styles.
 - **player-rotation-cap-nudge** (a, S3): v1.68.1, rotating landscape and back left the player at 45% height. It is untouched, but S7's rotation work (D7) sits next to it.
 - **music-playback-modes** (b, S7): v1.284.1, an invisible ON state (the 2009 gloss painted over a background-color longhand). The ui-btn selected state must still show in 2009.
+
+### Step 1 - tokens (2026-09-27)
+
+- `public/css/tokens.css` (new) holds the D2.1 roles and D2.5 era knobs in all 8 era x mode blocks
+  (2021 light = the `:root` safe default, so a missing or invalid era still resolves to Modern light), the
+  D2.2 type roles (`font: var(--t-body)`, plus `--t-*-size` twins), the D2.3 geometry and D2.4 motion
+  scales, `color-scheme` per mode and `accent-color: var(--accent-fill)`. The Phase-1 mode-invariant layer
+  (spacing, sizes, overlay chrome, reader themes, z ladder) and the `--fs-*` scale moved in verbatim.
+  style.css keeps only feature-owned families (`--md-*`, `--whcal-*`, `--mms-*`, the mobile header metrics).
+- Load order: `tokens.css` directly before `style.css` in all 13 shells and the Subscriptions view, and in
+  `diag.html`. `/css/tokens.css` joins the pre-auth allowlist in `lib/auth/gate.js` (login and welcome load
+  it; static CSS, same trust level as style.css; `auth-gate.test.js` lists it). **Security seat: note this.**
+- **Retro-era values:** each retro role takes that era's existing value (surfaces, ink, separator, outline =
+  the old `--border-dark`, accent = `--yt-red`). The dark retro eras get a lighter TEXT red (`--accent`
+  #ff4e45 in 2005/2009, #ff5a50 in 2014) because #cc0000 on their grounds is 3.2:1; their fills keep the era
+  red. `--ink-3` equals `--ink-2` in the retro eras (they had no tertiary). `--ink-link` is the old link blue
+  in 2005 only (D8.6), ink everywhere else.
+- **Deviations (decided in the build, recorded here):**
+  1. Aliases are limited to the eight old names with an EXACT role equivalent (`--font-family`,
+     `--heading-font`, `--bg-color`, `--card-bg`, `--bg-secondary`, `--text-primary`, `--text-secondary`,
+     `--border-color`). The rest (`--yt-red`, `--text-link`, `--btn-*`, `--header-bg`, `--bg-sidebar`,
+     `--border-dark`, `--star-*`, `--radius*`, `--shadow*`) stay per-era literals: each mixes jobs that D2
+     splits (e.g. `--yt-red` is both a text red and a fill red), so the sweep that owns its consumers splits
+     it. In Modern, the header, sidebar and neutral-button grounds follow the C surfaces.
+  2. The `--fs-*` scale is NOT aliased to the type roles yet: "nearest role" moves 10px to 11px, 16px and 18px
+     to 15/17 and so on, i.e. a restyle of every surface at once. Each sweep moves its rules onto roles; step
+     7 deletes the scale.
+  3. `--r-sm/md/lg` are era knobs (0 in 2005, 2px in 2009/2014), not fixed scale values, so the retro eras
+     keep their square corners when primitives adopt the radii.
+  4. The old `--scrim` (.55, mode-invariant) was consumed by card corner glyph pills as well as backdrops. It
+     is renamed `--scrim-legacy` (18 consumers, same value); `--scrim` is now the D2 backdrop role.
+- **Tests (new):** `ui-era-roles.test.js` (36 roles and knobs in all 8 blocks, `color-scheme` per mode, no
+  role redefined in style.css, the eight aliases exact, `--fill-selected` neutral) and `ui-contrast.test.js`
+  (WCAG AA over 29 pairs per era x mode, var() resolved the way the cascade does, translucent fills
+  composited; the excluded pairs and why are in its header). Mutated: a pale 2014 accent, a role dropped
+  from 2009 dark, a role shadowed in style.css, an alias bypassed, a dim Modern `--ink-2`: all 5 red;
+  restored, green.
+- **Locks converted (AC12; none deleted):** `token-scale-lock` (reads tokens.css + style.css; `--scrim` ->
+  `--scrim-legacy`; +41 D2 scale tokens, 179 pinned), `era-typography` and `modern-theme-geist` (era blocks
+  from tokens.css; the family knobs `--font-ui`/`--font-heading`; the gate C1 lock now asserts each retro
+  era sets its OWN stack and the aliases exist; the shells' load order preload -> tokens.css -> style.css),
+  `era-row-overflow`, `handoff-card-styling`, the `--fs-*` parsers (`home-mobile-scale`,
+  `mobile-input-zoom-fontsize`, `v1262-mobile-input-zoom`, `watch-action-bar-nowrap`, `type-scale-tokens`),
+  and the token-definition reads in `ipad-header-safe-area`, `sticky-filter-bar`, `watch-action-bar-reveal`,
+  `player-audio-expand`, `player-chapters-parity`, `critter-mode`, `card-corner-br-css`. Shared helper:
+  `test/helpers/stylesheets.js`.
+- **Demo (measured):** the same 6 scenes (home, Subscriptions, podcast detail, watch channel row,
+  notifications, Settings) x phone/landscape/desktop x light/dark, base tree vs branch, all four eras (288
+  shots, 0 capture failures), diffed with `tools/capture/compare.js`: **2005, 2009, 2014: 108 of 108 shots
+  identical (0 changed pixels).** 2021: 36 of 36 changed, the C palette (black ground with #1c1c1e cards in
+  dark; #f2f2f7 ground with white groups in light). Unit suite (Node 22): tests 7725, pass 7725, fail 0 (the
+  first rerun had 1 failure, era-row-overflow reading 2021 light as `:root`; fixed); `lint:css` 0,
+  `lint:overlay` 0, eslint 0 errors. `test/visual/capture.js` gained `--era`.
+

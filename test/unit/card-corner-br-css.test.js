@@ -111,9 +111,11 @@ test('v1.205.1: the duration pill matches the corner glyph size (14px base, 18px
   assert.match(mob, /font-size:\s*var\(--fs-2xl\)/, 'mobile font --fs-2xl (18px, the mobile corner glyph size)');
 });
 
-test('v1.205.2 (Dean): the duration pill uses the corner-button background (--scrim) and non-bold weight (--fw-normal)', () => {
+// UI pass step 1: the pre-D2 .55 scrim is --scrim-legacy (--scrim is now the D2 backdrop role).
+// S2 (D8.5, clean cards) replaces this lock with the ui-thumb duration-badge contract.
+test('v1.205.2 (Dean): the duration pill uses the corner-button background (--scrim-legacy) and non-bold weight (--fw-normal)', () => {
   const base = ruleBody(OUTSIDE, '.duration-badge');
-  assert.match(base, /background-color:\s*var\(--scrim\)/, 'matches the corner glyph button background (not the darker --scrim-heavy)');
+  assert.match(base, /background-color:\s*var\(--scrim-legacy\)/, 'matches the corner glyph button background (not the darker --scrim-heavy)');
   assert.match(base, /font-weight:\s*var\(--fw-normal\)/, 'non-bold (the bigger pill read too heavy in bold)');
 });
 

@@ -41,10 +41,10 @@ function mediaBlockContaining(marker) {
 }
 
 function rootTokenPx(name) {
-  // Sizing tokens live in style.css's SECOND :root block, so scan the whole
-  // file for the token's DEFINITION (`--name: <n>px`, not a `var()` usage).
+  // Sizing tokens live in tokens.css (UI pass step 1), so scan it for the token's
+  // DEFINITION (`--name: <n>px`, not a `var()` usage).
   const re = new RegExp(`${name.replace(/[-]/g, '\\-')}:\\s*(\\d+)px`);
-  const m = re.exec(css);
+  const m = re.exec(require('../helpers/stylesheets').readTokensCss());
   return m ? Number(m[1]) : undefined;
 }
 

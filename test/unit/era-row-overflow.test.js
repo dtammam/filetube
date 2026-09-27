@@ -37,11 +37,12 @@ const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 
 
 const ERAS = ['2005', '2009', '2014', '2021'];
 
+// UI pass step 1: the era token blocks live in tokens.css; 2021 light is its :root block,
+// and each era's family is the --font-ui knob (--font-family is its alias).
 function eraBlock(era) {
-  const marker = `[data-theme="${era}"] {`;
-  const start = CSS.indexOf(marker);
-  assert.notEqual(start, -1, `expected an era block for ${era}`);
-  return CSS.slice(start, CSS.indexOf('}', start));
+  const block = require('../helpers/stylesheets').eraBlock(era);
+  assert.ok(block !== null, `expected an era block for ${era}`);
+  return block;
 }
 
 // ---- the asymmetry itself --------------------------------------------------
@@ -55,9 +56,14 @@ test('every era ships the SAME type scale (but NOT the same density)', () => {
   const densities = {};
   for (const era of ERAS) {
     const block = eraBlock(era);
-    assert.doesNotMatch(block, /--fs-[a-z0-9-]+\s*:/,
-      `era ${era} must not redefine type-scale tokens -- the scale is global`);
-    assert.match(block, /--font-family\s*:/, `era ${era} defines its own font family`);
+    // 2021 light IS the :root block that holds the global scale (UI pass step 1).
+    if (era !== '2021') {
+      assert.doesNotMatch(block, /--fs-[a-z0-9-]+\s*:/,
+        `era ${era} must not redefine type-scale tokens -- the scale is global`);
+    }
+    assert.doesNotMatch(require('../helpers/stylesheets').eraBlock(era, 'dark'), /--fs-[a-z0-9-]+\s*:/,
+      `era ${era} dark must not redefine type-scale tokens -- the scale is global`);
+    assert.match(block, /--font-ui\s*:/, `era ${era} defines its own font family`);
     const density = /--density\s*:\s*([0-9]+)px/.exec(block);
     assert.ok(density, `era ${era} defines its own --density`);
     densities[era] = Number(density[1]);
@@ -90,7 +96,7 @@ test('the DOMINANT cause is button count, not the era (now 8 buttons in the grou
 });
 
 test('2005 is the wide-font outlier (documents WHY it, and only it, overflowed)', () => {
-  assert.match(eraBlock('2005'), /--font-family:\s*Verdana/,
+  assert.match(eraBlock('2005'), /--font-ui:\s*Verdana/,
     'the diagnosis depends on 2005 being the Verdana era');
   for (const era of ['2009', '2014', '2021']) {
     assert.doesNotMatch(eraBlock(era), /Verdana/, `era ${era} should not be on Verdana`);

@@ -1,0 +1,729 @@
+/* FileTube design tokens (UI professionalism pass, plan D2).
+
+   THE token layer: loaded FIRST in every shell (tokens.css, then ui.css, then
+   style.css). style.css keeps only feature-owned token families (--md-*,
+   --whcal-*, --mms-*, the mobile header metrics); everything else lives here.
+
+   Structure:
+   1. :root - the 2021 Modern LIGHT roles (the safe default: a missing or invalid
+      data-theme/data-mode resolves to the full Modern light look), the D2.2-D2.4
+      scales, the era knobs, and the legacy per-era names not yet retired.
+   2. One block per era x mode. EVERY role and era knob is written in EVERY block
+      (test/unit/ui-era-roles.test.js), including values that happen to repeat, so
+      a block can never inherit a role from the wrong era by omission.
+   3. The alias block: old names that have an exact role equivalent point at the
+      role. The sweeps retire their consumers; step 7 deletes them and ui-lint bans
+      them. Old names WITHOUT an exact equivalent (--yt-red, --text-link, --btn-*,
+      --header-bg, --bg-sidebar, --border-dark, --star-*, --radius*, --shadow*) stay
+      per-era literals until the sweep that owns their consumers splits them.
+   4. The Phase-1 mode-invariant layer (spacing, sizes, overlay chrome, reader
+      themes, z ladder...), moved here verbatim from style.css.
+
+   Role use (plan D2.1): red is brand, primary action, progress, danger and the
+   unread indicator ONLY; selected state is ink on --fill-selected. --accent is the
+   red for TEXT and icons; --accent-fill is the red a button is FILLED with (white
+   text on it). test/unit/ui-contrast.test.js holds every text/background pair a
+   primitive uses to WCAG AA, in every era and mode. */
+
+/* ---- 1. 2021 Modern, light (the safe default) -------------------------------- */
+:root {
+  color-scheme: light;
+  accent-color: var(--accent-fill);
+
+  /* D2.1 surfaces and ink (direction C: native iOS / Spotify) */
+  --surface-0: #f2f2f7;
+  --surface-1: #ffffff;
+  --surface-2: #e5e5ea;
+  --surface-overlay: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.3);
+  --separator: #c6c6c8;
+  --ink-1: #000000;
+  --ink-2: #5e5e63;
+  --ink-3: #6c6c70;
+  --ink-on-accent: #ffffff;
+  --ink-link: var(--ink-1);
+  --accent: #d70015;
+  --accent-fill: #e0190f;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #ff0033;
+  --fill-selected: rgba(120, 120, 128, 0.16);
+  --tint-press: rgba(120, 120, 128, 0.14);
+  --tint-hover: rgba(120, 120, 128, 0.08);
+  --focus-ring: #007aff;
+  --outline: rgba(0, 0, 0, 0.28);
+  --thumb-ground: #e5e5ea;
+  --star: #ffcc00;
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.18);
+
+  /* D2.5 era knobs */
+  --font-ui: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --font-heading: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --btn-radius: var(--r-md);
+  --btn-fill: transparent;
+  --btn-border: none;
+  --btn-shadow: none;
+  --btn-weight: 500;
+  --row-divider-style: solid;
+  --thumb-radius: var(--r-md);
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+
+  /* D2.2 type roles: `font: var(--t-body)`. Eight roles only; the weight is the
+     role's default (titles in --t-body set 600 themselves). The --t-*-size twins
+     serve rules that set only font-size. The legacy --fs-* scale below stays
+     until each sweep moves its rules onto a role (aliasing it now would restyle
+     every surface at once). */
+  --t-caption: 500 11px/13px var(--font-ui);
+  --t-footnote: 400 12px/16px var(--font-ui);
+  --t-meta: 400 13px/18px var(--font-ui);
+  --t-callout: 500 14px/19px var(--font-ui);
+  --t-body: 400 15px/20px var(--font-ui);
+  --t-title: 600 17px/22px var(--font-heading);
+  --t-headline: 650 20px/25px var(--font-heading);
+  --t-display: 700 28px/34px var(--font-heading);
+  --t-caption-size: 11px;
+  --t-footnote-size: 12px;
+  --t-meta-size: 13px;
+  --t-callout-size: 14px;
+  --t-body-size: 15px;
+  --t-title-size: 17px;
+  --t-headline-size: 20px;
+  --t-display-size: 28px;
+
+  /* D2.3 geometry */
+  --ctl-sm: 32px;
+  --ctl-md: 36px;
+  --ctl-lg: 44px;
+  --hit: 44px;
+  --icon-sm: 18px;
+  --icon-md: 22px;
+  --icon-lg: 24px;
+  --r-xs: 4px;
+  --r-pill: 999px;
+  --av-xs: 20px;
+  --av-sm: 28px;
+  --av-md: 36px;
+  --av-lg: 40px;
+  --av-xl: 64px;
+  --av-2xl: 96px;
+  --row-compact: 44px;
+  --row-default: 56px;
+  --row-media: 64px;
+  --inset: 16px;
+
+  /* D2.4 motion. Transitions animate only opacity, transform, color,
+     background-color, border-color, box-shadow and filter (ui-lint). */
+  --dur-press: 90ms;
+  --dur-fade: 180ms;
+  --dur-sheet: 280ms;
+  --ease-std: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 1, 1);
+
+  /* Legacy per-era names (no exact role yet; retired by the sweeps). The Modern
+     values below are today's, except the four chrome grounds, which follow the
+     C surfaces so the page, header, sidebar and neutral buttons stay one family. */
+  --logo-font: 'Geist', 'Roboto', "Arial Black", Gadget, sans-serif;
+  --mono-font: monospace;
+  --heading-weight: 500;
+  --heading-tracking: -0.01em;
+  --radius: 4px;
+  --radius-lg: 12px;
+  --density: 8px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.1);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
+  --yt-red: #cc0000;
+  --yt-red-dark: #990000;
+  --bg-sidebar: var(--surface-0);
+  --header-bg: var(--surface-0);
+  --text-link: #03c;
+  --border-dark: #cccccc;
+  --btn-bg: var(--surface-2);
+  --btn-hover: #d1d1d6;
+  --star-gold: #ffcc00;
+  --star-gray: #e0e0e0;
+  /* v1.45.0 T1: the offset the sticky home filter bar pins at - the fixed
+     header height (--header-h on desktop); overridden to --mobile-header-h
+     in style.css's max-width:768px :root (the mobile header is taller). */
+  --sticky-bar-top: calc(var(--header-h) + env(safe-area-inset-top)); /* v1.106: clear the top safe-area at ALL widths - env is 0 on desktop, non-zero on an iPad PWA once the status bar overlays after a fullscreen exit */
+
+  /* v1.30 C1: type-scale tokens (AC7.1). One token per distinct font-size
+     literal that existed in style.css pre-sweep, so tokenizing was a pure
+     rename. Superseded by the D2.2 roles above; each sweep moves its rules
+     onto a role and step 7 deletes what is left. */
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;  /* the single most common size in the stylesheet */
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 16px;     /* general-purpose 16px text/icon sizing (non-input) */
+  --fs-input-min: 16px; /* the v1.26.2 iOS-zoom-on-focus floor (AC7.2) --
+     every text-entry control (input[type=text|search], textarea, select,
+     etc.) must resolve to >=16px via this token. Same value as --fs-xl today,
+     but kept as a separate, purpose-named token so the regression guard is
+     never accidentally weakened by a future edit to the general scale. */
+  --fs-2xl: 18px;
+  --fs-3xl: 20px;
+  --fs-4xl: 22px;
+  --fs-5xl: 32px;
+  --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
+}
+
+/* ---- 2. era x mode blocks ------------------------------------------------------ */
+
+/* 2021 Modern, dark (C) */
+[data-theme="2021"][data-mode="dark"] {
+  color-scheme: dark;
+  --surface-0: #000000;
+  --surface-1: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-overlay: #1c1c1e;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --separator: #38383a;
+  --ink-1: #ffffff;
+  --ink-2: #a1a1a6;
+  --ink-3: #8e8e93;
+  --ink-on-accent: #ffffff;
+  --ink-link: var(--ink-1);
+  --accent: #ff453a;
+  --accent-fill: #e0190f;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #ff0033;
+  --fill-selected: rgba(120, 120, 128, 0.32);
+  --tint-press: rgba(120, 120, 128, 0.24);
+  --tint-hover: rgba(120, 120, 128, 0.14);
+  --focus-ring: #0a84ff;
+  --outline: rgba(255, 255, 255, 0.35);
+  --thumb-ground: #1c1c1e;
+  --star: #ffcc00;
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --font-ui: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --font-heading: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --btn-radius: var(--r-md);
+  --btn-fill: transparent;
+  --btn-border: none;
+  --btn-shadow: none;
+  --btn-weight: 500;
+  --row-divider-style: solid;
+  --thumb-radius: var(--r-md);
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  /* legacy */
+  --text-link: #3ea6ff;
+  --border-dark: #444444;
+  --btn-hover: #3a3a3c;
+  --star-gray: #444444;
+}
+
+/* 2005 Original: Verdana, square corners, plain black and white, blue links, bordered buttons */
+[data-theme="2005"] {
+  color-scheme: light;
+  --surface-0: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #ececec;
+  --surface-overlay: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.3);
+  --separator: #cccccc;
+  --ink-1: #000000;
+  --ink-2: #666666;
+  --ink-3: #666666;
+  --ink-on-accent: #ffffff;
+  --ink-link: #0000cc;
+  --accent: #cc0000;
+  --accent-fill: #cc0000;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #cc0000;
+  --fill-selected: rgba(120, 120, 128, 0.16);
+  --tint-press: rgba(120, 120, 128, 0.14);
+  --tint-hover: rgba(120, 120, 128, 0.08);
+  --focus-ring: #007aff;
+  --outline: #999999;
+  --thumb-ground: #ececec;
+  --star: #ffcc00;
+  --shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --font-ui: Verdana, Arial, Helvetica, sans-serif;
+  --font-heading: Verdana, Arial, Helvetica, sans-serif;
+  --btn-radius: 0;
+  --btn-fill: var(--surface-2);
+  --btn-border: 1px solid var(--outline);
+  --btn-shadow: none;
+  --btn-weight: 700;
+  --row-divider-style: solid;
+  --thumb-radius: 0;
+  --r-sm: 0;
+  --r-md: 0;
+  --r-lg: 0;
+  /* legacy */
+  --logo-font: "Arial Black", Arial, sans-serif;
+  --mono-font: "Courier New", monospace;
+  --heading-weight: bold;
+  --heading-tracking: normal;
+  --radius: 0;
+  --radius-lg: 0;
+  --density: 4px;               /* dense */
+  --shadow: none;
+  --shadow-lg: 0 2px 6px rgba(0,0,0,0.35);  /* minimal, keeps modals usable */
+  --yt-red: #cc0000;
+  --yt-red-dark: #990000;
+  --bg-sidebar: #f5f5f5;
+  --header-bg: #ffffff;
+  --text-link: #0000cc;
+  --border-dark: #999999;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #e4e4e4 -- against --bg-sidebar
+     #f5f5f5 the old value read as near-invisible chrome (contrast ~1.2). */
+  --btn-bg: #d2d2d2;
+  --btn-hover: #c6c6c6;
+  --star-gold: #ffcc00;
+  --star-gray: #cccccc;
+}
+[data-theme="2005"][data-mode="dark"] {
+  color-scheme: dark;
+  --surface-0: #0d0d0d;
+  --surface-1: #111111;
+  --surface-2: #1a1a1a;
+  --surface-overlay: #111111;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --separator: #333333;
+  --ink-1: #e8e8e8;
+  --ink-2: #9a9a9a;
+  --ink-3: #9a9a9a;
+  --ink-on-accent: #ffffff;
+  --ink-link: #6699ff;
+  --accent: #ff4e45;
+  --accent-fill: #cc0000;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #cc0000;
+  --fill-selected: rgba(120, 120, 128, 0.32);
+  --tint-press: rgba(120, 120, 128, 0.24);
+  --tint-hover: rgba(120, 120, 128, 0.14);
+  --focus-ring: #0a84ff;
+  --outline: #555555;
+  --thumb-ground: #1a1a1a;
+  --star: #ffcc00;
+  --shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --font-ui: Verdana, Arial, Helvetica, sans-serif;
+  --font-heading: Verdana, Arial, Helvetica, sans-serif;
+  --btn-radius: 0;
+  --btn-fill: var(--surface-2);
+  --btn-border: 1px solid var(--outline);
+  --btn-shadow: none;
+  --btn-weight: 700;
+  --row-divider-style: solid;
+  --thumb-radius: 0;
+  --r-sm: 0;
+  --r-md: 0;
+  --r-lg: 0;
+  /* legacy */
+  --bg-sidebar: #141414;
+  --text-link: #6699ff;
+  --border-dark: #555555;
+  --header-bg: #000000;
+  --btn-bg: #262626;
+  --btn-hover: #333333;
+  --star-gray: #444444;
+}
+
+/* 2009 Classic: Arial, 2px corners, warm greys, gloss on every button */
+[data-theme="2009"] {
+  color-scheme: light;
+  --surface-0: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #ededed;
+  --surface-overlay: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.3);
+  --separator: #d5d5d5;
+  --ink-1: #333333;
+  --ink-2: #666666;
+  --ink-3: #666666;
+  --ink-on-accent: #ffffff;
+  --ink-link: var(--ink-1);
+  --accent: #cc0000;
+  --accent-fill: #cc0000;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #cc0000;
+  --fill-selected: rgba(120, 120, 128, 0.16);
+  --tint-press: rgba(120, 120, 128, 0.14);
+  --tint-hover: rgba(120, 120, 128, 0.08);
+  --focus-ring: #007aff;
+  --outline: #b0b0b0;
+  --thumb-ground: #ededed;
+  --star: #ffcc00;
+  --shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.3);
+  --font-ui: Arial, Helvetica, sans-serif;
+  --font-heading: Arial, Helvetica, sans-serif;
+  --btn-radius: 3px;
+  --btn-fill: linear-gradient(to bottom, #e0e0e0, #c4c4c4);
+  --btn-border: 1px solid var(--outline);
+  --btn-shadow: none;
+  --btn-weight: 700;
+  --row-divider-style: solid;
+  --thumb-radius: 0;
+  --r-sm: 2px;
+  --r-md: 2px;
+  --r-lg: 2px;
+  /* legacy */
+  --logo-font: Arial, Helvetica, sans-serif;
+  --mono-font: "Courier New", monospace;
+  --heading-weight: bold;
+  --heading-tracking: normal;
+  --radius: 2px;
+  --radius-lg: 2px;
+  --density: 6px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.15);
+  --shadow-lg: 0 2px 6px rgba(0,0,0,0.30);
+  --yt-red: #cc0000;
+  --yt-red-dark: #990000;
+  --bg-sidebar: #f0f0f0;
+  --header-bg: #f5f5f5;
+  --text-link: #2b587a;
+  --border-dark: #b0b0b0;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #e3e3e3 (near-invisible chrome on
+     --bg-sidebar #f0f0f0); the glossy .btn gradient in style.css matches. */
+  --btn-bg: #d0d0d0;
+  --btn-hover: #c4c4c4;
+  --star-gold: #ffcc00;
+  --star-gray: #d0d0d0;
+}
+[data-theme="2009"][data-mode="dark"] {
+  color-scheme: dark;
+  --surface-0: #141210;
+  --surface-1: #191612;
+  --surface-2: #201d19;
+  --surface-overlay: #191612;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --separator: #34302b;
+  --ink-1: #ededed;
+  --ink-2: #a8a29a;
+  --ink-3: #a8a29a;
+  --ink-on-accent: #ffffff;
+  --ink-link: var(--ink-1);
+  --accent: #ff4e45;
+  --accent-fill: #cc0000;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #cc0000;
+  --fill-selected: rgba(120, 120, 128, 0.32);
+  --tint-press: rgba(120, 120, 128, 0.24);
+  --tint-hover: rgba(120, 120, 128, 0.14);
+  --focus-ring: #0a84ff;
+  --outline: #4a453e;
+  --thumb-ground: #201d19;
+  --star: #ffcc00;
+  --shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.3);
+  --font-ui: Arial, Helvetica, sans-serif;
+  --font-heading: Arial, Helvetica, sans-serif;
+  --btn-radius: 3px;
+  --btn-fill: linear-gradient(to bottom, #34302a, #211d19);
+  --btn-border: 1px solid var(--outline);
+  --btn-shadow: none;
+  --btn-weight: 700;
+  --row-divider-style: solid;
+  --thumb-radius: 0;
+  --r-sm: 2px;
+  --r-md: 2px;
+  --r-lg: 2px;
+  /* legacy */
+  --bg-sidebar: #1b1815;
+  --text-link: #7fa8cc;
+  --border-dark: #4a453e;
+  --header-bg: #1c1916;
+  --btn-bg: #2a2621;
+  --btn-hover: #38332c;
+  --star-gray: #4a453e;
+}
+
+/* 2014 Flat: Arial (era-accurate), 2px corners, flat white, brighter red, airy */
+[data-theme="2014"] {
+  color-scheme: light;
+  --surface-0: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f5;
+  --surface-overlay: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.3);
+  --separator: #e0e0e0;
+  --ink-1: #333333;
+  --ink-2: #757575;
+  --ink-3: #757575;
+  --ink-on-accent: #ffffff;
+  --ink-link: var(--ink-1);
+  --accent: #e62117;
+  --accent-fill: #e62117;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #e62117;
+  --fill-selected: rgba(120, 120, 128, 0.16);
+  --tint-press: rgba(120, 120, 128, 0.14);
+  --tint-hover: rgba(120, 120, 128, 0.08);
+  --focus-ring: #007aff;
+  --outline: #cccccc;
+  --thumb-ground: #f5f5f5;
+  --star: #ffc107;
+  --shadow-overlay: 0 1px 4px rgba(0, 0, 0, 0.12);
+  --font-ui: Arial, Helvetica, sans-serif;
+  --font-heading: Arial, Helvetica, sans-serif;
+  --btn-radius: 2px;
+  --btn-fill: var(--surface-2);
+  --btn-border: none;
+  --btn-shadow: none;
+  --btn-weight: 500;
+  --row-divider-style: solid;
+  --thumb-radius: 0;
+  --r-sm: 2px;
+  --r-md: 2px;
+  --r-lg: 2px;
+  /* legacy. v1.50.2 (Dean, font pass): the real 2012-2016 desktop site was
+     Arial; Roboto only took over with the 2017 Material redesign. */
+  --logo-font: Arial, Helvetica, sans-serif;
+  --mono-font: monospace;
+  --heading-weight: bold;
+  --heading-tracking: normal;
+  --radius: 2px;
+  --radius-lg: 2px;
+  --density: 10px;             /* airier */
+  --shadow: none;             /* flat design */
+  --shadow-lg: 0 1px 4px rgba(0,0,0,0.12);
+  --yt-red: #e62117;
+  --yt-red-dark: #c1160f;
+  --bg-sidebar: #fafafa;
+  --header-bg: #ffffff;
+  --text-link: #167ac6;
+  --border-dark: #cccccc;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #f5f5f5 (contrast ~1.04 on
+     --bg-sidebar #fafafa, essentially invisible chrome). */
+  --btn-bg: #e2e2e2;
+  --btn-hover: #d6d6d6;
+  --star-gold: #ffc107;
+  --star-gray: #e0e0e0;
+}
+[data-theme="2014"][data-mode="dark"] {
+  color-scheme: dark;
+  --surface-0: #212121;
+  --surface-1: #212121;
+  --surface-2: #2a2a2a;
+  --surface-overlay: #212121;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --separator: #383838;
+  --ink-1: #ffffff;
+  --ink-2: #aaaaaa;
+  --ink-3: #aaaaaa;
+  --ink-on-accent: #ffffff;
+  --ink-link: var(--ink-1);
+  --accent: #ff5a50;
+  --accent-fill: #e62117;
+  --danger: var(--accent);
+  --indicator: var(--accent);
+  --progress: #e62117;
+  --fill-selected: rgba(120, 120, 128, 0.32);
+  --tint-press: rgba(120, 120, 128, 0.24);
+  --tint-hover: rgba(120, 120, 128, 0.14);
+  --focus-ring: #0a84ff;
+  --outline: #4d4d4d;
+  --thumb-ground: #2a2a2a;
+  --star: #ffc107;
+  --shadow-overlay: 0 1px 4px rgba(0, 0, 0, 0.12);
+  --font-ui: Arial, Helvetica, sans-serif;
+  --font-heading: Arial, Helvetica, sans-serif;
+  --btn-radius: 2px;
+  --btn-fill: var(--surface-2);
+  --btn-border: none;
+  --btn-shadow: none;
+  --btn-weight: 500;
+  --row-divider-style: solid;
+  --thumb-radius: 0;
+  --r-sm: 2px;
+  --r-md: 2px;
+  --r-lg: 2px;
+  /* legacy */
+  --bg-sidebar: #1a1a1a;
+  --text-link: #3ea6ff;
+  --border-dark: #4d4d4d;
+  --header-bg: #212121;
+  --btn-bg: #303030;
+  --btn-hover: #3d3d3d;
+  --star-gray: #4d4d4d;
+}
+
+/* ---- 3. aliases: old names with an exact role equivalent ---------------------- */
+/* Resolved on <html> (where data-theme/data-mode live), so each era's roles flow
+   through. In the retro eras every role above carries that era's old value, so
+   these render byte-identically there; in 2021 they carry the C palette. */
+:root {
+  --font-family: var(--font-ui);
+  --heading-font: var(--font-heading);
+  --bg-color: var(--surface-0);
+  --card-bg: var(--surface-1);
+  --bg-secondary: var(--surface-2);
+  --text-primary: var(--ink-1);
+  --text-secondary: var(--ink-2);
+  --border-color: var(--separator);
+}
+
+/* ---- 4. the Phase-1 mode-invariant layer (moved verbatim from style.css) ---- */
+/* ==== Design-token layer, Phase 1 (docs/references/design-token-audit-v1.1.md)
+   The 38-name contract, additive on top of the era/mode layer above (moved from style.css
+   in the UI professionalism pass, step 1). These
+   are MODE-INVARIANT tokens (one :root definition, no era overrides) - the
+   era palette above stays the authority for everything themed. No consumers
+   are migrated in this commit; adoption happens per approved tier.
+
+   BREAKPOINT CONSTANTS (documented, not tokens - CSS custom properties
+   cannot drive @media, and this repo is vanilla CSS with no build step):
+     768px  - THE phone breakpoint (17 queries). Mirrored in JS by
+              SHORTCUTS_DESKTOP_QUERY '(min-width: 769px)', which is
+              TEST-LOCKED (keyboard-shortcuts.test.js): change both or
+              neither.
+     1024px - tablet grid threshold.
+     480px / 520px / 600px - three DELIBERATE small thresholds, kept per
+              audit amendment (a): v1.54 subs-chip wrap, v1.55 footer
+              row-flow (gate W7), music grid. Each carries an origin
+              comment at its query. Do not consolidate. */
+:root {
+  /* Spacing - base-4 grid with 2px half-steps (audit: the 4-family carries
+     ~70% of 865 uses; 6px x68 and 10px x71 are entrenched half-steps whose
+     removal would visibly shift ~139 sites). Names are multiples of the
+     2px base so half-steps can retire later without renaming. Plain 0 is
+     written literally, never tokenized. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+
+  /* Sizing - control-chrome heights only (audit 2.2). 44px is the iOS
+     touch-target floor and already consistent at x20. Layout geometry
+     (panel widths, vh caps) stays literal by design. */
+  --size-touch: 44px;
+  /* v1.96 A1 (Dean, on-device): the watch action-row buttons (.watch-actions
+     .btn) sit 5px UNDER the 44px touch floor on mobile -- the v1.95 floor made
+     that specific row too tall. Still above the ~36px pre-v1.95 height. One
+     tunable knob so Dean's device pass can nudge it without hunting a rule. */
+  --size-touch-watch-action: 39px;
+  --size-control: 36px;
+  --size-control-sm: 32px;
+
+  /* Overlay color set - the mode-invariant DARK chrome (player, reader,
+     backdrops) that previously used raw grays (audit 2.3). The era palette
+     is untouched: these tokens are for surfaces that deliberately look the
+     same in every era and mode. AMENDMENT (c), recorded here so it is
+     never lost: when scrim consolidation happens (Tier 2), the cc-overlay
+     TEXT BACKGROUND keeps its own rgba(0,0,0,0.72) [comment corrected 2026-07-31 per OQ8: this text long claimed 0.85, but 0.72 is what always shipped] - it is a LEGIBILITY
+     floor over arbitrary video, not a style surface, and must not adopt
+     --scrim-heavy. */
+  --overlay-surface: #222;
+  --overlay-border: #444;
+  --on-overlay: #fff;
+  --on-overlay-muted: #ccc;
+  /* The pre-D2 scrim: its consumers (card corner glyph pills, legacy backdrops) keep
+     this .55 until their sweep moves them to the D2 --scrim role or deletes them. */
+  --scrim-legacy: rgba(0, 0, 0, 0.55);
+  --scrim-heavy: rgba(0, 0, 0, 0.8);
+
+  /* White text/glyphs on saturated ACCENT surfaces (F.5 ruling 1 close-out,
+     Dean-approved 2026-08-01): on-red buttons and badges, the logo/login
+     "Tube" spans, generated-avatar initials on their hash-colored
+     backgrounds, the autoplay switch knob (accent when checked; neutral
+     --border-dark track when off - the one filing where the surface is
+     accent only half the time, noted by both gate seats and kept per
+     Dean's explicit knob ruling). Mode- and era-invariant - the accent
+     surface itself varies (--yt-red is #e62117 in 2014), the white on
+     top never does. Distinct from --on-overlay (white on the DARK
+     overlay chrome family). */
+  --on-accent: #fff;
+
+  /* Media placeholder surface (Tier 4, Dean's OQ7 ruling: DEFINE). The
+     box behind thumbnails/covers while the image loads. Equals
+     --overlay-surface only coincidentally - a thumbnail placeholder and
+     the player chrome are different semantics and may diverge. */
+  --thumbnail-bg: #222;
+
+  /* Reading themes (tranche F.5, Dean's ruling 2): the reader's OWN AXIS.
+     Selected by the user's reading-theme preference (.reader-content
+     theme classes + epub.js iframe registration in read.js, which derives
+     these SAME tokens via getComputedStyle - the chapter iframe is a
+     separate document, so var() cannot reach it). NEVER wire these into
+     the light/dark mode tokens or the era blocks: paper stays paper in
+     every era and mode, by ruling. */
+  --reader-paper-bg: #f7f4ec;
+  --reader-paper-fg: #1c1c1c;
+  --reader-sepia-bg: #f0e3c9;
+  --reader-sepia-fg: #3a2f20;
+  --reader-night-bg: #101014;
+  --reader-night-fg: #c8c8d0;
+
+  /* Structural layout pair (tranche F.5, Dean's ruling 4 - a NARROW
+     amendment to "layout geometry stays literal": only these two, and
+     only because each has proven coupled sites that must stay in sync.
+     The header height = the header rule AND .app-container's clearance
+     AND .sidebar's top AND the --sticky-bar-top base. The sidebar width
+     = the .sidebar rule AND .main-content's clearance AND the
+     slide-away translateX pair. Player-bar reserves and all other
+     geometry STAY literal per the same ruling. (No "name colon" in this
+     prose - the scale-lock's definition regex reads comments too, the
+     recurring Tier 2 class.) */
+  --header-h: 56px;
+  --sidebar-w: 230px;
+
+  /* Type weights + line heights (audit 2.4). `bold` and `700` were two
+     spellings of ONE rendered weight (x55 combined) - --fw-bold is the
+     single spelling. `normal`/400 stays literal (the default needs no
+     token). line-height: 1 stays literal (glyph centering, not prose). */
+  --fw-normal: 400; /* v1.205.2: the base body weight, as a token (the census governs font-weight) */
+  --fw-light: 200; /* v1.262: the Metro hairline - was a phantom var() fallback at 10 sites (slim S2) */
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 900;
+  --lh-tight: 1.25;
+  --lh-relaxed: 1.5;
+
+  /* Radius - pills only. Circles stay 50% (geometry, not style); the
+     era-varying corner radii remain --radius/--radius-lg above. NOTE:
+     audit R7 (raw px radii -> var(--radius)) EXECUTED in Tier 4 batch 4e
+     (2026-07-31) at the 11 drift sites; per-surface approval against the
+     era screenshots is pending at the Tier 4 Stop per amendment (b), with
+     per-site rejection flips ready. */
+  --radius-full: 999px;
+
+  /* Shadow - the one panel-elevation token the 6-member drift band (24px
+     blurs at .25-.6 alphas) converges into at Tier 2+. Era bevel/gloss
+     insets are skin art and stay literal (token-exempt). */
+  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  /* Motion (audit 2.7). Bespoke animation choreography (spin 0.9s, vinyl
+     6s, eq 1.4s, ripple, shimmer) stays literal; these govern UI
+     transitions only. */
+  --dur-fast: 0.15s;
+  --dur-slow: 0.25s;
+  /* v1.187 (Dean): the critter arrival is its own, much slower beat - a
+     "sneak in" rather than a pop (the UI durations above stay snappy). */
+  --dur-critter-arrive: 1.2s;
+  --ease-ui: ease;
+
+  /* Z-index ladder (audit 2.8). NAMES ONLY in Phase 1 - no component is
+     re-laddered until the co-open enumeration (R11, Tier 3). Convention:
+     a backdrop/content pair derives with calc(var(--z-X) - 1) /
+     calc(var(--z-X) + 1); new raw numbers above the local 0-40 band are
+     never added. The local band (in-component stacking contexts) stays
+     literal by design. */
+  --z-nav: 900;
+  --z-chip: 940;
+  --z-dock: 950;
+  --z-header: 1000;
+  --z-player-max: 1100;
+  --z-sheet: 1500;
+  --z-panel: 1600;
+  --z-modal: 2000;
+  --z-top: 2200;
+}

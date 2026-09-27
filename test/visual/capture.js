@@ -5,7 +5,7 @@
 //
 //   node test/visual/seed.js                 (builds the synthetic DATA_DIR)
 //   test/visual/start-server.sh &            (serves it on :3917, FILETUBE_READONLY=1)
-//   node test/visual/capture.js [--data DIR] [--out DIR] [--only substr,substr] [--no-rotation] [--no-matrix]
+//   node test/visual/capture.js [--data DIR] [--out DIR] [--only substr,substr] [--era 2021|2014|2009|2005] [--no-rotation] [--no-matrix]
 //
 // Needs Playwright from tools/capture (cd tools/capture && npm install &&
 // npx playwright install chromium). Fixture ids and the login come from the
@@ -30,6 +30,8 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3917';
 const DATA = path.resolve(arg('--data', process.env.VISUAL_DATA_DIR || path.join(os.tmpdir(), 'filetube-visual-data')));
 const OUT = path.resolve(arg('--out', path.join(os.tmpdir(), 'filetube-visual-shots')));
 const ONLY = arg('--only', '') ? arg('--only', '').split(',') : null;
+const ERA = arg('--era', '2021');
+if (!['2021', '2014', '2009', '2005'].includes(ERA)) throw new Error(`--era must be 2021, 2014, 2009 or 2005 (got ${ERA})`);
 
 // Fixture ids + login, written by seed.js: video = Harbor Workshop (subscribed,
 // notify on); videoUnsub = Northbound Field Notes (not subscribed); track = Halden Arcs.
@@ -148,12 +150,12 @@ async function login(browser) {
 
 async function newPage(browser, vp, mode, storageState, tag) {
   const ctx = await newGuardedContext(browser, { ...VIEWPORTS[vp], storageState, reducedMotion: tag.rotation ? 'no-preference' : (tag.rm || 'reduce') }, record, tag);
-  await ctx.addInitScript(([m]) => { try { localStorage.setItem('ft-era', '2021'); localStorage.setItem('ft-mode', m); } catch (_) { /* storage off */ } }, [mode]);
+  await ctx.addInitScript(([m, e]) => { try { localStorage.setItem('ft-era', e); localStorage.setItem('ft-mode', m); } catch (_) { /* storage off */ } }, [mode, ERA]);
   return { ctx, page: await ctx.newPage() };
 }
 
 async function runScene(browser, st, scene, vp, mode) {
-  const fname = `${scene.id}--${vp}-${mode}.png`;
+  const fname = `${scene.id}--${vp}-${mode}${ERA === '2021' ? '' : '-' + ERA}.png`;
   const { ctx, page } = await newPage(browser, vp, mode, st, { scene: scene.id, vp, mode, rm: scene.rm });
   const errs = [];
   page.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));

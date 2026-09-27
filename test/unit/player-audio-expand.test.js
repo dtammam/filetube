@@ -310,7 +310,7 @@ test('WARNING FIX -- CSS overlay rule: z-index sits above the app chrome but bel
   assert.match(overlayRuleMatch[1], /z-index:\s*var\(--z-player-max\)\s*;/,
     'expected the overlay to ride the --z-player-max rung');
   const zdef = (name) => {
-    const m = new RegExp(name + ':\\s*(\\d+);').exec(CSS);
+    const m = new RegExp(name + ':\\s*(\\d+);').exec(require('../helpers/stylesheets').readTokensCss()); // the ladder lives in tokens.css
     assert.ok(m, `expected a :root definition for ${name}`);
     return Number(m[1]);
   };

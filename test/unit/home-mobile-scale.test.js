@@ -20,6 +20,8 @@ const path = require('node:path');
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'index.html');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+// UI pass step 1: the --fs-* scale is defined in tokens.css (loaded before style.css).
+const TOKENS_CSS = require('../helpers/stylesheets').readTokensCss();
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 
 // v1.30 C1 (AC7.1): style.css's font-size declarations are now token-driven
@@ -28,7 +30,7 @@ const html = fs.readFileSync(HTML_PATH, 'utf8');
 // assertions below keep working regardless of the token's source spelling.
 function parseRootFsTokens(source) {
   const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
-  assert.ok(rootMatch, 'expected a :root block in style.css');
+  assert.ok(rootMatch, 'expected a :root block in tokens.css');
   const tokens = {};
   const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
   let m;
@@ -38,7 +40,7 @@ function parseRootFsTokens(source) {
   return tokens;
 }
 
-const fsTokens = parseRootFsTokens(css);
+const fsTokens = parseRootFsTokens(TOKENS_CSS);
 
 function resolveFontSizePx(value) {
   const trimmed = value.trim();

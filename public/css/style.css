@@ -65,74 +65,7 @@ summary,
 }
 
 :root {
-  /* Safe default == 2021 Modern light. Guarantees every token resolves even
-     if data-theme / data-mode is missing or invalid. v1.107: Modern is Geist,
-     so the pre-theme default mirrors it (no Roboto->Geist FOUC flash); Roboto is
-     the self-hosted fallback. */
-  --font-family: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
-  --logo-font: 'Geist', 'Roboto', "Arial Black", Gadget, sans-serif;
-  --mono-font: monospace;
-  /* v1.50.2 gate S2: the heading tokens honor the same contract -- an
-     invalid/missing era must resolve to the full 2021 look, headings
-     included, not a bold/normal hybrid from the var() fallbacks. v1.107: Dean
-     wants ONE font across all elements, so Modern headings are Geist too (no
-     separate YouTube Sans heading face). */
-  --heading-font: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
-  --heading-weight: 500;
-  --heading-tracking: -0.01em;
-  --radius: 4px;
-  --radius-lg: 12px;
-  --density: 8px;
-  --shadow: 0 1px 2px rgba(0,0,0,0.1);
-  /* v1.45.0 T1: the offset the sticky home filter bar pins at — the fixed
-     header height (--header-h on desktop); overridden to --mobile-header-h
-     in the max-width:768px :root below (the mobile header is taller). */
-  --sticky-bar-top: calc(var(--header-h) + env(safe-area-inset-top)); /* v1.106: clear the top safe-area at ALL widths - env is 0 on desktop, non-zero on an iPad PWA once the status bar overlays after a fullscreen exit */
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
-  --yt-red: #cc0000;
-  --yt-red-dark: #990000;
-  --bg-color: #ffffff;
-  --bg-secondary: #f1f1f1;
-  --bg-sidebar: #f9f9f9;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-link: #03c;
-  --border-color: #e2e2e2;
-  --border-dark: #cccccc;
-  --header-bg: #ffffff;
-  --btn-bg: #dcdcdc;
-  --btn-hover: #d0d0d0;
-  --card-bg: #ffffff;
-  --star-gold: #ffcc00;
-  --star-gray: #e0e0e0;
-
-  /* v1.30 C1: type-scale tokens (AC7.1). One token per distinct font-size
-     literal that existed in this file pre-sweep, so tokenizing is a pure
-     rename -- no value was invented or approximated, so no declaration's
-     rendered size changes. Named ascending t-shirt-size steps (Tailwind-style)
-     rather than the smaller 7-step sketch in the exec plan, because the real
-     declarations spanned 11 distinct sizes (10-32px); collapsing genuinely
-     distinct, frequently-used sizes (e.g. 13px x31, 20px x5) onto a
-     neighboring token would have been a restyle, which this task explicitly
-     forbids. Still a small, closed scale relative to the ~127 raw
-     declarations it replaces. */
-  --fs-2xs: 10px;
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-base: 13px;  /* the single most common size in the stylesheet */
-  --fs-md: 14px;
-  --fs-lg: 15px;
-  --fs-xl: 16px;     /* general-purpose 16px text/icon sizing (non-input) */
-  --fs-input-min: 16px; /* the v1.26.2 iOS-zoom-on-focus floor (AC7.2) --
-     every text-entry control (input[type=text|search], textarea, select,
-     etc.) must resolve to >=16px via this token. Same value as --fs-xl today,
-     but kept as a separate, purpose-named token so the regression guard is
-     never accidentally weakened by a future edit to the general scale. */
-  --fs-2xl: 18px;
-  --fs-3xl: 20px;
-  --fs-4xl: 22px;
-  --fs-5xl: 32px;
-  --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
+  /* Feature-owned token families (the D2 layer lives in tokens.css). */
 
   /* v1.152 master-detail menu: tile tones (colour encodes the group) + the
      era-reactive Appearance tile tints. Fixed, mode-invariant tints that read
@@ -166,397 +99,6 @@ summary,
   --whcal-wheel-1: #222b38;
   --whcal-wheel-2: #12161d;
   --whcal-lcd: #0e1218;
-}
-
-/* ==== Design-token layer, Phase 1 (docs/references/design-token-audit-v1.1.md)
-   The 38-name contract, additive on top of the era/mode layer above. These
-   are MODE-INVARIANT tokens (one :root definition, no era overrides) - the
-   era palette above stays the authority for everything themed. No consumers
-   are migrated in this commit; adoption happens per approved tier.
-
-   BREAKPOINT CONSTANTS (documented, not tokens - CSS custom properties
-   cannot drive @media, and this repo is vanilla CSS with no build step):
-     768px  - THE phone breakpoint (17 queries). Mirrored in JS by
-              SHORTCUTS_DESKTOP_QUERY '(min-width: 769px)', which is
-              TEST-LOCKED (keyboard-shortcuts.test.js): change both or
-              neither.
-     1024px - tablet grid threshold.
-     480px / 520px / 600px - three DELIBERATE small thresholds, kept per
-              audit amendment (a): v1.54 subs-chip wrap, v1.55 footer
-              row-flow (gate W7), music grid. Each carries an origin
-              comment at its query. Do not consolidate. */
-:root {
-  /* Spacing - base-4 grid with 2px half-steps (audit: the 4-family carries
-     ~70% of 865 uses; 6px x68 and 10px x71 are entrenched half-steps whose
-     removal would visibly shift ~139 sites). Names are multiples of the
-     2px base so half-steps can retire later without renaming. Plain 0 is
-     written literally, never tokenized. */
-  --space-1: 2px;
-  --space-2: 4px;
-  --space-3: 6px;
-  --space-4: 8px;
-  --space-5: 10px;
-  --space-6: 12px;
-  --space-8: 16px;
-  --space-10: 20px;
-  --space-12: 24px;
-  --space-16: 32px;
-
-  /* Sizing - control-chrome heights only (audit 2.2). 44px is the iOS
-     touch-target floor and already consistent at x20. Layout geometry
-     (panel widths, vh caps) stays literal by design. */
-  --size-touch: 44px;
-  /* v1.96 A1 (Dean, on-device): the watch action-row buttons (.watch-actions
-     .btn) sit 5px UNDER the 44px touch floor on mobile -- the v1.95 floor made
-     that specific row too tall. Still above the ~36px pre-v1.95 height. One
-     tunable knob so Dean's device pass can nudge it without hunting a rule. */
-  --size-touch-watch-action: 39px;
-  --size-control: 36px;
-  --size-control-sm: 32px;
-
-  /* Overlay color set - the mode-invariant DARK chrome (player, reader,
-     backdrops) that previously used raw grays (audit 2.3). The era palette
-     is untouched: these tokens are for surfaces that deliberately look the
-     same in every era and mode. AMENDMENT (c), recorded here so it is
-     never lost: when scrim consolidation happens (Tier 2), the cc-overlay
-     TEXT BACKGROUND keeps its own rgba(0,0,0,0.72) [comment corrected 2026-07-31 per OQ8: this text long claimed 0.85, but 0.72 is what always shipped] - it is a LEGIBILITY
-     floor over arbitrary video, not a style surface, and must not adopt
-     --scrim-heavy. */
-  --overlay-surface: #222;
-  --overlay-border: #444;
-  --on-overlay: #fff;
-  --on-overlay-muted: #ccc;
-  --scrim: rgba(0, 0, 0, 0.55);
-  --scrim-heavy: rgba(0, 0, 0, 0.8);
-
-  /* White text/glyphs on saturated ACCENT surfaces (F.5 ruling 1 close-out,
-     Dean-approved 2026-08-01): on-red buttons and badges, the logo/login
-     "Tube" spans, generated-avatar initials on their hash-colored
-     backgrounds, the autoplay switch knob (accent when checked; neutral
-     --border-dark track when off - the one filing where the surface is
-     accent only half the time, noted by both gate seats and kept per
-     Dean's explicit knob ruling). Mode- and era-invariant - the accent
-     surface itself varies (--yt-red is #e62117 in 2014), the white on
-     top never does. Distinct from --on-overlay (white on the DARK
-     overlay chrome family). */
-  --on-accent: #fff;
-
-  /* Media placeholder surface (Tier 4, Dean's OQ7 ruling: DEFINE). The
-     box behind thumbnails/covers while the image loads. Equals
-     --overlay-surface only coincidentally - a thumbnail placeholder and
-     the player chrome are different semantics and may diverge. */
-  --thumbnail-bg: #222;
-
-  /* Reading themes (tranche F.5, Dean's ruling 2): the reader's OWN AXIS.
-     Selected by the user's reading-theme preference (.reader-content
-     theme classes + epub.js iframe registration in read.js, which derives
-     these SAME tokens via getComputedStyle - the chapter iframe is a
-     separate document, so var() cannot reach it). NEVER wire these into
-     the light/dark mode tokens or the era blocks: paper stays paper in
-     every era and mode, by ruling. */
-  --reader-paper-bg: #f7f4ec;
-  --reader-paper-fg: #1c1c1c;
-  --reader-sepia-bg: #f0e3c9;
-  --reader-sepia-fg: #3a2f20;
-  --reader-night-bg: #101014;
-  --reader-night-fg: #c8c8d0;
-
-  /* Structural layout pair (tranche F.5, Dean's ruling 4 - a NARROW
-     amendment to "layout geometry stays literal": only these two, and
-     only because each has proven coupled sites that must stay in sync.
-     The header height = the header rule AND .app-container's clearance
-     AND .sidebar's top AND the --sticky-bar-top base. The sidebar width
-     = the .sidebar rule AND .main-content's clearance AND the
-     slide-away translateX pair. Player-bar reserves and all other
-     geometry STAY literal per the same ruling. (No "name colon" in this
-     prose - the scale-lock's definition regex reads comments too, the
-     recurring Tier 2 class.) */
-  --header-h: 56px;
-  --sidebar-w: 230px;
-
-  /* Type weights + line heights (audit 2.4). `bold` and `700` were two
-     spellings of ONE rendered weight (x55 combined) - --fw-bold is the
-     single spelling. `normal`/400 stays literal (the default needs no
-     token). line-height: 1 stays literal (glyph centering, not prose). */
-  --fw-normal: 400; /* v1.205.2: the base body weight, as a token (the census governs font-weight) */
-  --fw-light: 200; /* v1.262: the Metro hairline - was a phantom var() fallback at 10 sites (slim S2) */
-  --fw-semibold: 600;
-  --fw-bold: 700;
-  --fw-black: 900;
-  --lh-tight: 1.25;
-  --lh-relaxed: 1.5;
-
-  /* Radius - pills only. Circles stay 50% (geometry, not style); the
-     era-varying corner radii remain --radius/--radius-lg above. NOTE:
-     audit R7 (raw px radii -> var(--radius)) EXECUTED in Tier 4 batch 4e
-     (2026-07-31) at the 11 drift sites; per-surface approval against the
-     era screenshots is pending at the Tier 4 Stop per amendment (b), with
-     per-site rejection flips ready. */
-  --radius-full: 999px;
-
-  /* Shadow - the one panel-elevation token the 6-member drift band (24px
-     blurs at .25-.6 alphas) converges into at Tier 2+. Era bevel/gloss
-     insets are skin art and stay literal (token-exempt). */
-  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.45);
-
-  /* Motion (audit 2.7). Bespoke animation choreography (spin 0.9s, vinyl
-     6s, eq 1.4s, ripple, shimmer) stays literal; these govern UI
-     transitions only. */
-  --dur-fast: 0.15s;
-  --dur-slow: 0.25s;
-  /* v1.187 (Dean): the critter arrival is its own, much slower beat - a
-     "sneak in" rather than a pop (the UI durations above stay snappy). */
-  --dur-critter-arrive: 1.2s;
-  --ease-ui: ease;
-
-  /* Z-index ladder (audit 2.8). NAMES ONLY in Phase 1 - no component is
-     re-laddered until the co-open enumeration (R11, Tier 3). Convention:
-     a backdrop/content pair derives with calc(var(--z-X) - 1) /
-     calc(var(--z-X) + 1); new raw numbers above the local 0-40 band are
-     never added. The local band (in-component stacking contexts) stays
-     literal by design. */
-  --z-nav: 900;
-  --z-chip: 940;
-  --z-dock: 950;
-  --z-header: 1000;
-  --z-player-max: 1100;
-  --z-sheet: 1500;
-  --z-panel: 1600;
-  --z-modal: 2000;
-  --z-top: 2200;
-}
-
-/* ---- 2021 Modern: today's shipped look, verbatim (structural + light palette) ---- */
-[data-theme="2021"] {
-  /* v1.107 (Dean): the Modern face is GEIST (Vercel's product font - modern,
-     sleek, app-like, distinctive-but-unobtrusive), applied across ALL elements
-     (body, logo, headings). Self-hosted variable woff2 (100-900); Roboto is the
-     bundled fallback. This REPLACES the v1.50.2 YouTube-Sans-first heading stack:
-     Dean wanted one font everywhere, and Geist is bundled (weight 500 renders
-     genuinely from the variable file, so titles stay medium). Sizes/spacing
-     untouched; only family. Other eras keep their own stacks. */
-  --font-family: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
-  --logo-font: 'Geist', 'Roboto', "Arial Black", Gadget, sans-serif;
-  --mono-font: monospace;
-  --heading-font: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
-  --heading-weight: 500;
-  --heading-tracking: -0.01em;
-  --radius: 4px;
-  --radius-lg: 12px;
-  --density: 8px;
-  --shadow: 0 1px 2px rgba(0,0,0,0.1);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
-  --yt-red: #cc0000;
-  --yt-red-dark: #990000;
-  --bg-color: #ffffff;
-  --bg-secondary: #f1f1f1;
-  --bg-sidebar: #f9f9f9;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-link: #03c;
-  --border-color: #e2e2e2;
-  --border-dark: #cccccc;
-  --header-bg: #ffffff;
-  /* v1.22.0 FR-4 (AC28-30): darkened from #ececec -- against --bg-sidebar
-     #f9f9f9 the old value read as near-invisible chrome (contrast ~1.1),
-     making neutral .btn instances (e.g. the "Subscribed" state) look like
-     washed-out grey-on-white. --btn-hover darkened to match, preserving the
-     existing hover-darkens-further relationship. Light mode only. */
-  --btn-bg: #dcdcdc;
-  --btn-hover: #d0d0d0;
-  --card-bg: #ffffff;
-  --star-gold: #ffcc00;
-  --star-gray: #e0e0e0;
-}
-
-[data-theme="2021"][data-mode="dark"] {
-  /* dark overrides only (== today's [data-theme="dark"]) */
-  --bg-color: #121212;
-  --bg-secondary: #1e1e1e;
-  --bg-sidebar: #181818;
-  --text-primary: #f1f1f1;
-  --text-secondary: #aaaaaa;
-  --text-link: #3ea6ff;
-  --border-color: #2d2d2d;
-  --border-dark: #444444;
-  --header-bg: #1c1c1c;
-  --btn-bg: #2b2b2b;
-  --btn-hover: #3a3a3a;
-  --card-bg: #1a1a1a;
-  --star-gray: #444444;
-}
-
-/* ---- 2005 Original: system Verdana, sharp 0px, plain B/W, blue links ---- */
-[data-theme="2005"] {
-  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
-     contract), and custom properties INHERIT -- without a per-era
-     override the var() fallback in the title rules is dead and every
-     era would render 2021 Modern's own title font. Re-point the
-     heading family at this era's own body stack. */
-  --heading-font: var(--font-family);
-  --font-family: Verdana, Arial, Helvetica, sans-serif;
-  --logo-font: "Arial Black", Arial, sans-serif;
-  --mono-font: "Courier New", monospace;
-  --heading-weight: bold;
-  --heading-tracking: normal;
-  --radius: 0;
-  --radius-lg: 0;
-  --density: 4px;               /* dense */
-  --shadow: none;
-  --shadow-lg: 0 2px 6px rgba(0,0,0,0.35);  /* minimal, keeps modals usable */
-  --yt-red: #cc0000;
-  --yt-red-dark: #990000;
-  --bg-color: #ffffff;
-  --bg-secondary: #ececec;
-  --bg-sidebar: #f5f5f5;
-  --text-primary: #000000;
-  --text-secondary: #666666;
-  --text-link: #0000cc;
-  --border-color: #cccccc;
-  --border-dark: #999999;
-  --header-bg: #ffffff;
-  /* v1.22.0 FR-4 (AC28-30): darkened from #e4e4e4 -- against --bg-sidebar
-     #f5f5f5 the old value read as near-invisible chrome (contrast ~1.2),
-     making neutral .btn instances (e.g. the "Subscribed" state) look like
-     washed-out grey-on-white. --btn-hover darkened to match. Light mode
-     only. */
-  --btn-bg: #d2d2d2;
-  --btn-hover: #c6c6c6;
-  --card-bg: #ffffff;
-  --star-gold: #ffcc00;
-  --star-gray: #cccccc;
-}
-[data-theme="2005"][data-mode="dark"] {
-  --bg-color: #0d0d0d;
-  --bg-secondary: #1a1a1a;
-  --bg-sidebar: #141414;
-  --text-primary: #e8e8e8;
-  --text-secondary: #9a9a9a;
-  --text-link: #6699ff;
-  --border-color: #333333;
-  --border-dark: #555555;
-  --header-bg: #000000;
-  --btn-bg: #262626;
-  --btn-hover: #333333;
-  --card-bg: #111111;
-  --star-gray: #444444;
-}
-
-/* ---- 2009 Classic: Arial, ~2px, warm grays, red/gray chrome ---- */
-[data-theme="2009"] {
-  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
-     contract), and custom properties INHERIT -- without a per-era
-     override the var() fallback in the title rules is dead and every
-     era would render 2021 Modern's own title font. Re-point the
-     heading family at this era's own body stack. */
-  --heading-font: var(--font-family);
-  --font-family: Arial, Helvetica, sans-serif;
-  --logo-font: Arial, Helvetica, sans-serif;
-  --mono-font: "Courier New", monospace;
-  --heading-weight: bold;
-  --heading-tracking: normal;
-  --radius: 2px;
-  --radius-lg: 2px;
-  --density: 6px;
-  --shadow: 0 1px 2px rgba(0,0,0,0.15);
-  --shadow-lg: 0 2px 6px rgba(0,0,0,0.30);
-  --yt-red: #cc0000;
-  --yt-red-dark: #990000;
-  --bg-color: #ffffff;
-  --bg-secondary: #ededed;
-  --bg-sidebar: #f0f0f0;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-link: #2b587a;
-  --border-color: #d5d5d5;
-  --border-dark: #b0b0b0;
-  --header-bg: #f5f5f5;
-  /* v1.22.0 FR-4 (AC28-30): darkened from #e3e3e3 -- against --bg-sidebar
-     #f0f0f0 the old value read as near-invisible chrome (contrast ~1.1),
-     making neutral .btn instances (e.g. the "Subscribed" state) look like
-     washed-out grey-on-white; the glossy .btn gradient below is fixed to
-     match. --btn-hover darkened proportionally. Light mode only. */
-  --btn-bg: #d0d0d0;
-  --btn-hover: #c4c4c4;
-  --card-bg: #ffffff;
-  --star-gold: #ffcc00;
-  --star-gray: #d0d0d0;
-}
-[data-theme="2009"][data-mode="dark"] {
-  --bg-color: #141210;
-  --bg-secondary: #201d19;
-  --bg-sidebar: #1b1815;
-  --text-primary: #ededed;
-  --text-secondary: #a8a29a;
-  --text-link: #7fa8cc;
-  --border-color: #34302b;
-  --border-dark: #4a453e;
-  --header-bg: #1c1916;
-  --btn-bg: #2a2621;
-  --btn-hover: #38332c;
-  --card-bg: #191612;
-  --star-gray: #4a453e;
-}
-
-/* ---- 2014 Flat: Arial (era-accurate), ~2px, flat white, brighter red, airy ---- */
-[data-theme="2014"] {
-  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
-     contract), and custom properties INHERIT -- without a per-era
-     override the var() fallback in the title rules is dead and every
-     era would render 2021 Modern's own title font. Re-point the
-     heading family at this era's own body stack. */
-  --heading-font: var(--font-family);
-  /* v1.50.2 (Dean, font pass): Roboto was WRONG for this era -- the real
-     2012-2016 (pre-Polymer) YouTube desktop site was Arial; Roboto only
-     took the site over with the 2017 Material redesign. Roboto here read
-     as "2017 wearing a 2014 layout". Arial/Helvetica metrics are close
-     enough that no spacing rules change. */
-  --font-family: Arial, Helvetica, sans-serif;
-  --logo-font: Arial, Helvetica, sans-serif;
-  --mono-font: monospace;
-  --heading-weight: bold;
-  --heading-tracking: normal;
-  --radius: 2px;
-  --radius-lg: 2px;
-  --density: 10px;             /* airier */
-  --shadow: none;             /* flat design */
-  --shadow-lg: 0 1px 4px rgba(0,0,0,0.12);
-  --yt-red: #e62117;
-  --yt-red-dark: #c1160f;
-  --bg-color: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-sidebar: #fafafa;
-  --text-primary: #333333;
-  --text-secondary: #757575;
-  --text-link: #167ac6;
-  --border-color: #e0e0e0;
-  --border-dark: #cccccc;
-  --header-bg: #ffffff;
-  /* v1.22.0 FR-4 (AC28-30): darkened from #f5f5f5 -- the worst offender of
-     the four eras: against --bg-sidebar #fafafa the old value read as
-     essentially invisible chrome (contrast ~1.04), making neutral .btn
-     instances (e.g. the "Subscribed" state) look like washed-out
-     grey-on-white. --btn-hover darkened to match. Light mode only. */
-  --btn-bg: #e2e2e2;
-  --btn-hover: #d6d6d6;
-  --card-bg: #ffffff;
-  --star-gold: #ffc107;
-  --star-gray: #e0e0e0;
-}
-[data-theme="2014"][data-mode="dark"] {
-  --bg-color: #212121;
-  --bg-secondary: #2a2a2a;
-  --bg-sidebar: #1a1a1a;
-  --text-primary: #ffffff;
-  --text-secondary: #aaaaaa;
-  --text-link: #3ea6ff;
-  --border-color: #383838;
-  --border-dark: #4d4d4d;
-  --header-bg: #212121;
-  --btn-bg: #303030;
-  --btn-hover: #3d3d3d;
-  --card-bg: #212121;
-  --star-gray: #4d4d4d;
 }
 
 /* Per-era bespoke overrides (namespaced, not bare selectors) — flourishes
@@ -1669,7 +1211,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking - above .card-preview (z:1) so the time stays visible while the hover clip plays (Dean device report) */
-  background-color: var(--scrim); /* v1.205.2 (Dean): match the corner glyph buttons' background (was the darker --scrim-heavy) so the row's pills are one look */
+  background-color: var(--scrim-legacy); /* v1.205.2 (Dean): match the corner glyph buttons' background (was the darker --scrim-heavy) so the row's pills are one look */
   color: var(--on-overlay);
   /* v1.205.1 (Dean device report): size the pill to MATCH the corner controls -
      same glyph-size font (14px, the .card-*-btn icon size) + line-height 1 +
@@ -1790,7 +1332,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   color: var(--on-overlay);
   cursor: pointer;
   font-size: var(--fs-xs);
@@ -1843,7 +1385,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85;
@@ -1885,7 +1427,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85;
@@ -2418,7 +1960,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: var(--scrim);
+  background: var(--scrim-legacy);
   color: var(--on-overlay);
   font-size: var(--fs-xl);
   cursor: pointer;
@@ -4127,7 +3669,7 @@ a.sub-row-channel-link:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -4500,7 +4042,7 @@ a.sub-row-channel-link:focus-visible {
   right: 0;
   bottom: 0;
   height: 3px; /* token-exempt: hairline progress bar (matches .book-row-progress) */
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
 }
 
 .handoff-progress-fill {
@@ -4608,7 +4150,7 @@ a.sub-row-channel-link:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -5649,7 +5191,7 @@ a.sub-row-channel-link:focus-visible {
     position: fixed;
     inset: 0;
     z-index: var(--z-sheet);
-    background: var(--scrim);
+    background: var(--scrim-legacy);
     opacity: 0;
     transition: opacity var(--dur-fast) ease-out;
   }
@@ -7248,7 +6790,7 @@ body.ft-audio-expanded {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   display: flex;
   flex-direction: column;
   justify-content: flex-end; /* slide up from the bottom */
@@ -8570,7 +8112,7 @@ body.ft-audio-expanded {
   position: fixed;
   inset: 0;
   z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are POINTER-blocked by each other's full-cover backdrops; keyboard focus is NOT trapped - pre-existing gap, tech-debt #67 - so a Tab+Enter co-open exists, and either stacking order is acceptable there; the tie itself was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
-  background: var(--scrim);
+  background: var(--scrim-legacy);
   display: flex;
   /* v1.155 (Subscriptions redesign): the settings panel is a right-anchored,
      full-height iOS push-in page now (was a bottom sheet) -- anchor the panel
@@ -10606,7 +10148,7 @@ html[data-modern="on"] .video-uploader {
 .reloc-preview-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
+  background: var(--scrim-legacy);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11891,7 +11433,7 @@ html[data-modern="on"] .video-uploader {
   /* v1.240/1.241 (Dean): a placed-sticker feel. --mms-sticker-px drives the size (bumped base
      52px; the size classes below scale it); the tilt classes rotate the BUTTON only, so the
      pop-up menu (a sibling) stays upright. Bottom-left over the safe-area inset. */
-  .mms-sticker{ --mms-sticker-px:52px; width:var(--mms-sticker-px); height:var(--mms-sticker-px); padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  .mms-sticker{ --mms-sticker-px:52px; width:var(--mms-sticker-px); height:var(--mms-sticker-px); padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim-legacy); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   .mms-sticker .mms-sticker-ic{ width:100%; height:100%; object-fit:contain; border-radius:var(--radius-full); display:block; }
   .mms-sticker .mms-sticker-emoji{ font-size:var(--fs-2xl); }
   /* v1.241: per-user SIZE (default = the 52px base) + TILT settings on ft-sticker. Image
@@ -14202,7 +13744,7 @@ html[data-modern="on"] .video-uploader {
     display: block;
     position: fixed;
     inset: 0;
-    background: var(--scrim);
+    background: var(--scrim-legacy);
     z-index: calc(var(--z-panel) - 1); /* backdrop one under its panel */
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease-ui);
@@ -14492,7 +14034,7 @@ html[data-modern="on"] .video-uploader {
     display: block;
     position: fixed;
     inset: 0;
-    background: var(--scrim);
+    background: var(--scrim-legacy);
     z-index: calc(var(--z-panel) - 1); /* backdrop one under its panel */
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease-ui);
@@ -14539,7 +14081,7 @@ html[data-modern="on"] .video-uploader {
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
   color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85; /* token-exempt: card-overlay resting opacity (the sibling buttons' exact value) */
@@ -14705,7 +14247,7 @@ a.queue-upnext-next:hover {
   right: 0;
   bottom: 0;
   height: 4px;
-  background-color: var(--scrim);
+  background-color: var(--scrim-legacy);
 }
 .history-bar-fill {
   display: block;
@@ -15264,7 +14806,7 @@ a.queue-upnext-next:hover {
 .podcasts-add-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
+  background: var(--scrim-legacy);
   z-index: calc(var(--z-modal) - 1);
 }
 .podcasts-add-backdrop[hidden] { display: none !important; }

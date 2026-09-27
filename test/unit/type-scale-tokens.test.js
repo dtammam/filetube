@@ -25,6 +25,8 @@ const path = require('node:path');
 
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+// UI pass step 1: the --fs-* scale is defined in tokens.css (loaded before style.css).
+const TOKENS_CSS = require('../helpers/stylesheets').readTokensCss();
 
 // Matches only real `font-size:` PROPERTY declarations (colon immediately
 // after the property name, a value, then `;` or the rule's closing `}`) --
@@ -45,7 +47,7 @@ function findAllFontSizeDeclarations(source) {
 
 function parseRootFsTokens(source) {
   const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
-  assert.ok(rootMatch, 'expected a :root block in style.css');
+  assert.ok(rootMatch, 'expected a :root block in tokens.css');
   const tokens = {};
   const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
   let m;
@@ -55,8 +57,8 @@ function parseRootFsTokens(source) {
   return tokens;
 }
 
-test('style.css defines a type-scale token block in :root, including --fs-input-min', () => {
-  const tokens = parseRootFsTokens(css);
+test('tokens.css defines a type-scale token block in :root, including --fs-input-min', () => {
+  const tokens = parseRootFsTokens(TOKENS_CSS);
   assert.ok(Object.keys(tokens).length > 0, 'expected at least one --fs-* token defined in :root');
   assert.strictEqual(tokens['--fs-input-min'], 16, 'expected --fs-input-min to be defined as 16px in :root (the v1.26.2 floor, AC7.2)');
 });
@@ -98,7 +100,7 @@ test('every font-size: declaration in style.css uses a var(--fs-*) token (AC7.1)
 });
 
 test('every font-size: var(--fs-*) reference in style.css points at a token actually defined in :root (no stray/typo\'d token name)', () => {
-  const tokens = parseRootFsTokens(css);
+  const tokens = parseRootFsTokens(TOKENS_CSS);
   const declarations = findAllFontSizeDeclarations(css);
   const roles = pocketTypeRoles(css);
   const undefinedRefs = declarations.filter((d) => {
@@ -113,7 +115,7 @@ test('every font-size: var(--fs-*) reference in style.css points at a token actu
 });
 
 test('the type scale is small relative to the raw declaration count it replaces (tokenization, not per-declaration renaming)', () => {
-  const tokens = parseRootFsTokens(css);
+  const tokens = parseRootFsTokens(TOKENS_CSS);
   const declarations = findAllFontSizeDeclarations(css);
   assert.ok(
     Object.keys(tokens).length < declarations.length / 2,

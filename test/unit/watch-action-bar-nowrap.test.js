@@ -44,6 +44,8 @@ const WATCH_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'watch.js
 // Comments stripped once at read (the v1.50.3 lock lesson): a commented copy
 // of a rule must never satisfy these locks.
 const css = fs.readFileSync(CSS_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// UI pass step 1: the --fs-* scale is defined in tokens.css (loaded before style.css).
+const TOKENS_CSS = require('../helpers/stylesheets').readTokensCss();
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 
@@ -53,7 +55,7 @@ const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 // assertion below keeps working regardless of the token's source spelling.
 function parseRootFsTokens(source) {
   const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
-  assert.ok(rootMatch, 'expected a :root block in style.css');
+  assert.ok(rootMatch, 'expected a :root block in tokens.css');
   const tokens = {};
   const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
   let m;
@@ -63,7 +65,7 @@ function parseRootFsTokens(source) {
   return tokens;
 }
 
-const fsTokens = parseRootFsTokens(css);
+const fsTokens = parseRootFsTokens(TOKENS_CSS);
 
 function resolveFontSizePx(value) {
   const trimmed = value.trim();

@@ -139,9 +139,12 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
   // There are THREE separate :root blocks in style.css, not one - reading only
   // the first reported 12 perfectly good tokens as missing from all four eras.
   // Union them all.
+  // UI pass step 1: the token layer moved to tokens.css (loaded first), so scan both
+  // files in load order; 2021 light is tokens.css's :root block itself.
+  const all = require('../helpers/stylesheets').readAllCss();
   const rootDefined = new Set();
-  for (const m of css.matchAll(/:root\s*\{/g)) {
-    const block = css.slice(m.index, css.indexOf('}', m.index));
+  for (const m of all.matchAll(/:root\s*\{/g)) {
+    const block = all.slice(m.index, all.indexOf('}', m.index));
     for (const t of block.matchAll(/(--[a-z0-9-]+)\s*:/g)) rootDefined.add(t[1]);
   }
   assert.ok(rootDefined.size > 40, `the :root token layer must be found in full, got ${rootDefined.size}`);
@@ -149,9 +152,9 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
   const eras = ['2005', '2009', '2014', '2021'];
   const failures = [];
   for (const era of eras) {
-    const start = css.indexOf(`[data-theme="${era}"] {`);
+    const start = era === '2021' ? all.indexOf(':root {') : all.indexOf(`[data-theme="${era}"] {`);
     assert.ok(start > -1, `era ${era} block must exist`);
-    const block = css.slice(start, css.indexOf('\n}', start));
+    const block = all.slice(start, all.indexOf('\n}', start));
     const eraDefined = new Set([...block.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
     for (const tok of consumed) {
       if (!eraDefined.has(tok) && !rootDefined.has(tok)) failures.push(`${era}: ${tok}`);

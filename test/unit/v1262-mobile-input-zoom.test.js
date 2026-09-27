@@ -18,6 +18,8 @@ const CSS_PATH = path.join(ROOT, 'public', 'css', 'style.css');
 const SETUP_JS_PATH = path.join(ROOT, 'public', 'js', 'setup.js');
 
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+// UI pass step 1: the --fs-* scale is defined in tokens.css (loaded before style.css).
+const TOKENS_CSS = require('../helpers/stylesheets').readTokensCss();
 const setupJs = fs.readFileSync(SETUP_JS_PATH, 'utf8');
 
 // v1.30 C1 (AC7.1/AC7.2): style.css's font-size declarations are now
@@ -27,7 +29,7 @@ const setupJs = fs.readFileSync(SETUP_JS_PATH, 'utf8');
 // (>=16px), not a specific source-text spelling.
 function parseRootFsTokens(source) {
   const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
-  assert.ok(rootMatch, 'expected a :root block in style.css');
+  assert.ok(rootMatch, 'expected a :root block in tokens.css');
   const tokens = {};
   const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
   let m;
@@ -37,7 +39,7 @@ function parseRootFsTokens(source) {
   return tokens;
 }
 
-const fsTokens = parseRootFsTokens(css);
+const fsTokens = parseRootFsTokens(TOKENS_CSS);
 
 // Resolves a font-size declaration's VALUE (e.g. "16px" or
 // "var(--fs-input-min)") to a numeric px, following the token indirection

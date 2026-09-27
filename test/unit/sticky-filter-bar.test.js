@@ -102,7 +102,7 @@ test('--sticky-bar-top is the desktop header height and is overridden to the tal
   // fullscreen exit). Still DERIVES var(--header-h) (token-scale-lock is the
   // byte-exact authority that --header-h == 56px), so the sticky offset can never
   // silently diverge from the real header height.
-  assert.match(css, /--sticky-bar-top:\s*calc\(var\(--header-h\) \+ env\(safe-area-inset-top\)\)/, 'base derives the desktop header height token + the top safe-area');
+  assert.match(require('../helpers/stylesheets').readTokensCss(), /--sticky-bar-top:\s*calc\(var\(--header-h\) \+ env\(safe-area-inset-top\)\)/, 'base derives the desktop header height token + the top safe-area');
   // The mobile :root (inside the max-width:768px block, alongside --mobile-header-h)
   // re-points it at the taller mobile header.
   assert.match(css, /--sticky-bar-top:\s*var\(--mobile-header-h\)/, 'mobile override clears the taller header');

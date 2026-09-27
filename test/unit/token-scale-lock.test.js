@@ -9,10 +9,10 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
 
-const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+// UI pass step 1: the token layer moved to tokens.css (loaded before style.css); the
+// exactly-once rule spans BOTH files, so a stray redefinition in either still fails.
+const css = require('../helpers/stylesheets').readAllCss();
 
 const CONTRACT = {
   '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px',
@@ -23,7 +23,9 @@ const CONTRACT = {
 
   '--overlay-surface': '#222', '--overlay-border': '#444',
   '--on-overlay': '#fff', '--on-overlay-muted': '#ccc',
-  '--scrim': 'rgba(0, 0, 0, 0.55)', '--scrim-heavy': 'rgba(0, 0, 0, 0.8)',
+  // UI pass step 1: the pre-D2 .55 scrim is --scrim-legacy; --scrim is now the D2 backdrop
+  // ROLE (per era x mode, value authority: ui-era-roles + ui-contrast), so it left this map.
+  '--scrim-legacy': 'rgba(0, 0, 0, 0.55)', '--scrim-heavy': 'rgba(0, 0, 0, 0.8)',
   '--fw-semibold': '600', '--fw-bold': '700', '--fw-black': '900',
   '--lh-tight': '1.25', '--lh-relaxed': '1.5',
   '--radius-full': '999px',
@@ -125,10 +127,26 @@ const CONTRACT = {
   // shared metrics.
   '--mms-r-art': '16px', '--mms-r-art-ipod': '6px', '--mms-r-queue': '16px', '--mms-r-th': '6px', '--mms-ipod-r-sm': '2px',
   '--mms-ls-caps': '.14em', '--mms-ls-caps2': '.1em', '--mms-ls-tight': '-.02em', '--mms-lh-ttl': '1.1',
+  // UI professionalism pass step 1 (plan D2.2-D2.4): the mode- and era-invariant scales.
+  // (The radii --r-sm/md/lg are era knobs - 0 in 2005, 2px in 2009/2014 - so they are
+  // pinned by ui-era-roles, not here.)
+  '--t-caption': '500 11px/13px var(--font-ui)', '--t-footnote': '400 12px/16px var(--font-ui)',
+  '--t-meta': '400 13px/18px var(--font-ui)', '--t-callout': '500 14px/19px var(--font-ui)',
+  '--t-body': '400 15px/20px var(--font-ui)', '--t-title': '600 17px/22px var(--font-heading)',
+  '--t-headline': '650 20px/25px var(--font-heading)', '--t-display': '700 28px/34px var(--font-heading)',
+  '--t-caption-size': '11px', '--t-footnote-size': '12px', '--t-meta-size': '13px', '--t-callout-size': '14px',
+  '--t-body-size': '15px', '--t-title-size': '17px', '--t-headline-size': '20px', '--t-display-size': '28px',
+  '--ctl-sm': '32px', '--ctl-md': '36px', '--ctl-lg': '44px', '--hit': '44px',
+  '--icon-sm': '18px', '--icon-md': '22px', '--icon-lg': '24px',
+  '--r-xs': '4px', '--r-pill': '999px',
+  '--av-xs': '20px', '--av-sm': '28px', '--av-md': '36px', '--av-lg': '40px', '--av-xl': '64px', '--av-2xl': '96px',
+  '--row-compact': '44px', '--row-default': '56px', '--row-media': '64px', '--inset': '16px',
+  '--dur-press': '90ms', '--dur-fade': '180ms', '--dur-sheet': '280ms',
+  '--ease-std': 'cubic-bezier(0.2, 0, 0, 1)', '--ease-enter': 'cubic-bezier(0, 0, 0, 1)', '--ease-exit': 'cubic-bezier(0.3, 0, 1, 1)',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 138, 'the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 179, 'UI pass step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
@@ -151,9 +169,7 @@ test('every new-layer token is defined EXACTLY ONCE with its contract value (mod
 // file's own prose names the dead tokens, and an unstripped scan would
 // flag itself).
 test('v1.70: every fallback-less var() names a token the stylesheet defines (the undefined-token blind spot)', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const raw = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const raw = require('../helpers/stylesheets').readAllCss(); // tokens.css + style.css, load order
   const css = raw.replace(/\/\*[\s\S]*?\*\//g, ''); // strip comments FIRST
   // Definitions: ';{'-anchored (an inline `:root { --a: 1; --b: 2 }` defines
   // BOTH) and case-SENSITIVE (custom properties are).

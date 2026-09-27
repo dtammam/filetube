@@ -179,7 +179,7 @@ test('v1.34.4: faux fullscreen outranks header/nav, freezes the page, and the ba
   // not just spelled - rung values re-derived from the ladder definitions.
   assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?z-index: var\(--z-sheet\);/, 'the faux-fullscreen overlay rides the --z-sheet rung');
   const zdef = (name) => {
-    const m = new RegExp(name + ':\\s*(\\d+);').exec(css);
+    const m = new RegExp(name + ':\\s*(\\d+);').exec(require('../helpers/stylesheets').readTokensCss()); // the ladder lives in tokens.css
     assert.ok(m, `expected a :root definition for ${name}`);
     return Number(m[1]);
   };

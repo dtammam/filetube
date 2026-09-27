@@ -2832,7 +2832,7 @@ test('v1.187 SNEAK-IN: a slow fade on the wrapper + a rise on the POSE; still/re
   const critter = /(?:^|\n)\.critter\s*\{([^}]*)\}/.exec(CSS);
   assert.match(critter[1], /animation:\s*critter-arrive var\(--dur-critter-arrive\)/, 'the arrival uses the new slow beat');
   assert.doesNotMatch(critter[1].replace(/\/\*[\s\S]*?\*\//g, ''), /transform/, 'the WRAPPER still never transforms');
-  assert.match(CSS, /--dur-critter-arrive:\s*1\.2s;/, 'the sneak beat is 1.2s (Dean\'s pick), not the 0.25s UI duration');
+  assert.match(require('../helpers/stylesheets').readTokensCss(), /--dur-critter-arrive:\s*1\.2s;/, 'the sneak beat is 1.2s (Dean\'s pick), not the 0.25s UI duration');
   const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
   assert.match(pose[1], /animation:\s*var\(--critter-pose-anim, critter-sneak\) var\(--dur-critter-arrive\)/, 'the pose carries the rise, name via an inherited var');
   assert.match(pose[1], /transform:\s*rotate\(var\(--critter-angle/, 'the pose still owns the angle/flip transform');
