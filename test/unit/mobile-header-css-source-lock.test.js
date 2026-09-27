@@ -54,17 +54,18 @@ test('(#E) the mobile header collapses to the logo-row height (no empty band und
 test('(#D) the one-off Download button is un-hidden on mobile via id specificity', () => {
   // The v1.82 `.header-right .btn { display:none }` (0,2,0) hides it on phones;
   // the id selector (1,1,0) beats it so the button shows in the top-right.
-  assert.match(css, /\.header-right #ytdlp-oneoff-btn \{\s*display:\s*inline-flex/,
+  // v1.339 (L2): the pre-paint reserve rides the same rule (a second selector).
+  assert.match(css, /\.header-right #ytdlp-oneoff-btn,\s*\.header-right \[data-ft-reserve="download"\] \{\s*display:\s*inline-flex/,
     'the mobile Download exemption must use the id selector to out-specify the .btn hide');
 });
 
 test('(v1.86.0) the mobile Download button is GLYPH-ONLY (its .btn-label is hidden; desktop keeps the word)', () => {
-  assert.match(css, /\.header-right #ytdlp-oneoff-btn \.btn-label \{\s*display:\s*none/,
+  assert.match(css, /\.header-right #ytdlp-oneoff-btn \.btn-label,\s*\.header-right \[data-ft-reserve="download"\] \.btn-label \{\s*display:\s*none/,
     'mobile Download hides its .btn-label -> glyph-only');
 });
 
 test('(v1.86.1 Dean) the mobile Download button drops the .btn box (bell/search styling) and is sized to match the siblings', () => {
-  const rule = (css.match(/\.header-right #ytdlp-oneoff-btn \{[^}]*\}/) || [''])[0];
+  const rule = (css.match(/\.header-right #ytdlp-oneoff-btn,\s*\.header-right \[data-ft-reserve="download"\] \{[^}]*\}/) || [''])[0];
   assert.match(rule, /background:\s*none/, 'no .btn background box');
   assert.match(rule, /border:\s*none/, 'no .btn border box');
   assert.match(rule, /border-radius:\s*var\(--radius-full\)/, 'circular hit area like the bell');

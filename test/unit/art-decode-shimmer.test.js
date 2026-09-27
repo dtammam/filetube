@@ -109,9 +109,14 @@ test('all 10 art image sites ship the art-shimmer class (prediction: exactly 10)
 test('every surface hands its rendered art to FileTube.shimmerArt (music: revealArtTogether)', () => {
   // podcasts/books route through a local reveal helper that calls it; history/main
   // call it inline. Each must reference window.FileTube.shimmerArt.
-  for (const file of ['public/js/podcasts.js', 'public/js/books.js', 'public/js/history.js', 'public/js/main.js']) {
+  for (const file of ['public/js/podcasts.js', 'public/js/history.js', 'public/js/main.js']) {
     assert.match(read(file), /window\.FileTube\.shimmerArt\(/, `${file} calls shimmerArt after render`);
   }
+  // v1.339 (L2): books' revealBookArt hands its covers to the batched reveal, bound to the
+  // view signal, with shimmerArt as the fallback (test/unit/app-look-l2.test.js binds it).
+  const books = read('public/js/books.js');
+  assert.match(books, /ft\.revealArtTogether\(scope, \{ signal \}\)/, 'books.js reveals through revealArtTogether, bound to the view signal');
+  assert.match(books, /ft\.shimmerArt\(scope\)/, 'books.js keeps the per-image fallback');
   // v1.339 (L1): music's one reveal seam (revealArt) hands its art to the batched
   // in-viewport reveal, with shimmerArt as the fallback for an older common.js.
   const music = read('public/js/music.js');
