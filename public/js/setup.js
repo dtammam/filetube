@@ -1,6 +1,7 @@
 'use strict';
 
 /* global buildSortableTable */ // v1.159: the shared table component (common.js, loaded first)
+/* global sidebarMoveAnchor, persistSidebarMoveByPath */ // v1.339 S2: the by-path sidebar persist (common.js, loaded first; not in eslint.config.js's list)
 
 // FileTube Setup/Settings page — registered VIEW MODULE (FR-1, T1).
 //
@@ -24,6 +25,12 @@ let folderSettings = {}; // { "<path>": { name, hidden } }
 // isSyntheticFolder() in common.js) without ever touching the server-side
 // db.folders-exclusion invariant.
 let syntheticFolders = [];
+// v1.339 S2 (T-C1 / D2): the `configVersion` GET /api/config returned when
+// loadConfig() last filled the folder form. The Save button POSTs it as
+// `baseVersion`, so a Save built on a form another device has since outdated
+// is refused (409) instead of replacing the newer folder config. null = none
+// known (the POST then omits it: the server's legacy, unchecked path).
+let configBaseVersion = null;
 let loadedDefaultView = null; // null until the /api/settings fetch resolves
 // v1.38.0 Part A: book folders — an unordered set of paths (no per-folder
 // display/hide/reorder), wired to the existing /api/books/config routes.
@@ -80,6 +87,8 @@ async function loadConfig() {
     const data = await response.json();
     configuredFolders = data.folders || [];
     folderSettings = data.folderSettings || {};
+    // v1.339 S2: the base the form is now built on (see configBaseVersion).
+    configBaseVersion = typeof data.configVersion === 'string' ? data.configVersion : null;
     // v1.126 (gate WARNING): seed the shell folder-display map so the Feed-Hidden
     // row byline below can resolve renamed folders (this page owns its own config
     // fetch, so it must seed the common.js cache itself).
@@ -296,13 +305,14 @@ function renderFolders() {
 //
 // Item 1 (v1.15.0): the sidebar has no Save button (unlike the wizard
 // list above), so a drag-and-drop reorder here persists IMMEDIATELY via
-// the SAME POST /api/config path the wizard's Save button uses --
-// computed the same way the design's sidebar reorder always is: (1) the
-// reordered VISIBLE subset via moveArrayItem, (2) rebuilt into the FULL
-// folders order via rebuildFullFolderOrder (hidden-from-sidebar folders
-// keep their absolute positions), (3) POSTed, then the full config is
-// reloaded so the synthetic Downloads folder's GET-time position splice
-// (server.js) is reflected everywhere (wizard list + sidebar).
+// POST /api/config. v1.339 S2 (T-C1): the drop becomes a path-anchored move
+// (sidebarMoveAnchor) that common.js's persistSidebarMoveByPath replays onto
+// a FRESH GET of the config (rebuildFullFolderOrder keeps hidden-from-sidebar
+// and synthetic folders at their absolute positions) and POSTs with the fresh
+// folderSettings and `baseVersion`, one retry on a 409 - never the lists this
+// page loaded (nor the wizard form's unsaved edits). The full config is then
+// reloaded so the synthetic Downloads folder's GET-time position splice is
+// reflected everywhere (wizard list + sidebar).
 function renderSidebarFolders(folders, settings = {}) {
   const sidebarContainer = document.getElementById('sidebar-folders-list');
   if (!sidebarContainer) return;
@@ -328,11 +338,11 @@ function renderSidebarFolders(folders, settings = {}) {
   // link rows drag whole and keep their normal arrow-key focus behaviour
   // (see main.js's identical sidebar for the full rationale).
   //
-  // The persist posture is UNCHANGED: the sidebar has no Save button of its
-  // own (unlike the wizard list above), so a drop persists immediately via
-  // moveArrayItem -> rebuildFullFolderOrder -> POST /api/config, then
-  // reloads the whole config so the synthetic Downloads folder's GET-time
-  // position splice is reflected in BOTH lists.
+  // The sidebar has no Save button of its own (unlike the wizard list
+  // above), so a drop persists immediately - v1.339 S2: by path onto the
+  // FRESH config (see the header above) - then reloads the whole config so
+  // the synthetic Downloads folder's GET-time position splice is reflected
+  // in BOTH lists, whatever the outcome (saved, refused, or failed).
   const wireRows = (typeof wireReorderable === 'function')
     ? wireReorderable
     : (window.FileTube && window.FileTube.wireReorderable);
@@ -340,19 +350,13 @@ function renderSidebarFolders(folders, settings = {}) {
     rowSelector: '.sidebar-item[data-index]',
     scrollContainer: document.getElementById('sidebar'),
     onReorder: async (fromIndex, toIndex) => {
-      const newVisibleOrder = moveArrayItem(visible, fromIndex, toIndex);
-      const rebuiltFull = rebuildFullFolderOrder(folders, settings, newVisibleOrder, syntheticFolders);
-      try {
-        const res = await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folders: rebuiltFull, folderSettings: settings })
-        });
-        const data = await res.json();
-        if (data.success) await loadConfig();
-      } catch (err) {
-        console.error('Failed to persist sidebar folder reorder:', err);
-      }
+      const move = sidebarMoveAnchor(visible, fromIndex, toIndex);
+      if (!move) return;
+      const outcome = await persistSidebarMoveByPath(move);
+      // Re-render from storage on every outcome (a refused or failed drop
+      // must not leave the stale list on screen); loadConfig re-reads it and
+      // re-seeds configBaseVersion with it.
+      if (outcome.config) await loadConfig();
     },
     signal: controller.signal,
   });
@@ -2495,6 +2499,48 @@ function wireTvFolderControls(signal) {
   }
 }
 
+// The Settings folder form's Save (wired in wireStaticControls). POSTs the
+// form's folder list + settings as the new config.
+async function saveFolderConfig(statusText) {
+  setActionStatus(statusText, 'Saving configuration…', 'busy');
+
+  try {
+    // v1.339 S2 (T-C1 / D2): the form's base rides along, so the server
+    // refuses this Save if the stored folder config moved since the form
+    // was loaded (another device added/renamed a folder) - replacing it
+    // would drop that device's change.
+    const body = { folders: configuredFolders, folderSettings };
+    if (typeof configBaseVersion === 'string') body.baseVersion = configBaseVersion;
+    const response = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (response.status === 409) {
+      // Nothing was written. Reload the form from storage (which also takes
+      // the new base) so the user reviews the other device's change and
+      // saves again deliberately.
+      await loadConfig();
+      setActionStatus(statusText, 'Folders changed on another device - reloaded, review and save again', 'error');
+      return;
+    }
+    const data = await response.json();
+
+    if (data.success) {
+      // v1.339 S2: the form now IS the stored config - its new base.
+      if (typeof data.configVersion === 'string') configBaseVersion = data.configVersion;
+      renderSidebarFolders(data.folders, data.folderSettings || {});
+      // The scan runs in the background — poll it so the user sees real progress.
+      pollScanStatus(statusText);
+    } else {
+      setActionStatus(statusText, 'Error: ' + data.error, 'error');
+    }
+  } catch (err) {
+    setActionStatus(statusText, 'Error saving configuration.', 'error');
+    console.error(err);
+  }
+}
+
 function wireStaticControls(signal) {
   const addFolderBtn = document.getElementById('add-folder-btn');
   const newFolderPathInput = document.getElementById('new-folder-path');
@@ -2518,30 +2564,12 @@ function wireStaticControls(signal) {
 
   const saveConfigBtn = document.getElementById('save-config-btn');
   if (saveConfigBtn) {
-    saveConfigBtn.addEventListener('click', async () => {
+    // v1.339 S2: the body moved to saveFolderConfig() (top level, exported)
+    // so its 409 path is jsdom-tested through the real function.
+    saveConfigBtn.addEventListener('click', () => {
       const statusText = document.getElementById('scan-status');
       if (!statusText) return;
-      setActionStatus(statusText, 'Saving configuration…', 'busy');
-
-      try {
-        const response = await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folders: configuredFolders, folderSettings })
-        });
-        const data = await response.json();
-
-        if (data.success) {
-          renderSidebarFolders(data.folders, data.folderSettings || {});
-          // The scan runs in the background — poll it so the user sees real progress.
-          pollScanStatus(statusText);
-        } else {
-          setActionStatus(statusText, 'Error: ' + data.error, 'error');
-        }
-      } catch (err) {
-        setActionStatus(statusText, 'Error saving configuration.', 'error');
-        console.error(err);
-      }
+      return saveFolderConfig(statusText);
     }, { signal });
   }
 
@@ -4668,6 +4696,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // migration, and the one with the interesting persist chain (immediate
     // POST, hidden/synthetic folders holding their absolute positions).
     renderSidebarFolders,
+    // v1.339 S2 (T-C1): the Save's compare-and-set 409 path and the form's
+    // base (seeded by loadConfig) are jsdom-tested through the real functions.
+    saveFolderConfig, loadConfig,
+    __getConfigBaseVersionForTests() { return configBaseVersion; },
     // v1.102 (tranche 4 shimmer): the automation-toggle reveal-once barrier -
     // loadAutomationSettings reveals every /api/settings-fed toggle on the single
     // fetch settle; jsdom-tested for the real reveal (success AND error).
@@ -4677,6 +4709,7 @@ if (typeof module !== 'undefined' && module.exports) {
       folderSettings = state.settings || {};
       syntheticFolders = state.synthetic || [];
       controller = state.controller;
+      if (Object.prototype.hasOwnProperty.call(state, 'configVersion')) configBaseVersion = state.configVersion;
     },
     __getConfiguredFoldersForTests() { return configuredFolders.slice(); },
   };

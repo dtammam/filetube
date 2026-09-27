@@ -484,7 +484,11 @@ test('existing GET /api/config response shape is unaffected by Task 6 (plus v1.1
   // this lock to include it (rather than leaving the assertion to fail) is
   // the correct move: the shape is still fully additive/backward-compatible,
   // and `folders`/`folderSettings` themselves are untouched.
-  assert.deepEqual(Object.keys(json).sort(), ['folderDisplayNames', 'folderSettings', 'folders', 'syntheticFolders'].sort()); // v1.126: additive read-only folderDisplayNames (same posture as FR-4)
+  // v1.339 S2 (T-C1 / D2): additive `configVersion`, the compare-and-set token
+  // a writer echoes back as POST's `baseVersion` (admin/unrestricted only; a
+  // restricted member's shape is bound in rbac-config-surfaces.test.js). The
+  // lock is widened by exactly that one key, intent kept: nothing else joins.
+  assert.deepEqual(Object.keys(json).sort(), ['configVersion', 'folderDisplayNames', 'folderSettings', 'folders', 'syntheticFolders'].sort()); // v1.126: additive read-only folderDisplayNames (same posture as FR-4)
 });
 
 // ---- v1.34: negative-path validation for the two new settings keys ----------

@@ -15,6 +15,15 @@
 // inside a registered view closure with no test seam (as it did before this
 // wave), so its binding here is the shared helper's own suite plus Dean's
 // device pass. Stated plainly rather than papered over.
+//
+// v1.339 S2 (T-C1): the persist chain is now "record the move BY PATH, re-GET
+// the config at drop time, apply the move onto THAT list, POST it with the
+// fresh folderSettings + baseVersion, retry once on 409". The fetch stub
+// answers the GET with the server's config, so the tests above still see their
+// own lists come back; the S2 tests at the bottom make the server's config
+// DIFFER from the page's. main.js's home sidebar now has a behavioural test of
+// its own too: test/integration/home-sidebar-reorder-cas.test.js boots the real
+// index.html.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -40,6 +49,10 @@ function withSidebar(fn, opts) {
   global.visibleSidebarFolders = common.visibleSidebarFolders;
   global.isSyntheticFolder = common.isSyntheticFolder;
   global.wireReorderable = common.wireReorderable;
+  // v1.339 S2: the drop now persists by path onto a FRESH GET (common.js).
+  global.sidebarMoveAnchor = common.sidebarMoveAnchor;
+  global.applySidebarMoveByPath = common.applySidebarMoveByPath;
+  global.persistSidebarMoveByPath = common.persistSidebarMoveByPath;
   global.resolveFolderGlyphClass = glyphPool.resolveFolderGlyphClass;
   // The count-gated Liked entry prepends a `.sidebar-item` WITHOUT a
   // data-index. Stood in for here (its own behaviour is tested elsewhere)
@@ -52,22 +65,38 @@ function withSidebar(fn, opts) {
     container.insertBefore(liked, container.firstChild);
   };
   const posts = [];
+  const gets = [];
+  // v1.339 S2: the GET answers with the SERVER's config - by default the same
+  // lists the page rendered, or `o.server` (a config another device changed
+  // after this page loaded; a function of the 1-based GET count for per-call state).
+  // `o.postStatus(n)` picks each POST's status (409 = a stale base).
+  const serverConfig = () => {
+    const srv = typeof o.server === 'function' ? o.server(gets.length) : o.server;
+    return srv || { folders: o.folders || [], folderSettings: o.settings || {}, syntheticFolders: o.synthetic || [], configVersion: 'v-page' };
+  };
   global.fetch = (url, init) => {
-    if (init && init.method === 'POST') posts.push({ url, body: JSON.parse(init.body) });
-    return Promise.resolve({ ok: true, json: async () => ({ success: true, folders: [], folderSettings: {} }) });
+    if (init && init.method === 'POST') {
+      posts.push({ url, body: JSON.parse(init.body) });
+      const status = o.postStatus ? o.postStatus(posts.length) : 200;
+      if (status === 409) return Promise.resolve({ ok: false, status: 409, json: async () => ({ error: 'stale', configVersion: 'v-moved' }) });
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, folders: [], folderSettings: {} }) });
+    }
+    gets.push(url);
+    const cfg = serverConfig();
+    return Promise.resolve({ ok: true, status: 200, json: async () => cfg });
   };
   const controller = new dom.window.AbortController();
   setup.__setFolderStateForTests({ folders: o.folders || [], settings: o.settings || {}, synthetic: o.synthetic || [], controller });
   const cleanup = () => {
     for (const k of ['document', 'window', 'moveArrayItem', 'computeDropIndex', 'rebuildFullFolderOrder',
       'visibleSidebarFolders', 'isSyntheticFolder', 'wireReorderable', 'applyLikedSidebarEntry', 'fetch',
-      'resolveFolderGlyphClass']) delete global[k];
+      'resolveFolderGlyphClass', 'sidebarMoveAnchor', 'applySidebarMoveByPath', 'persistSidebarMoveByPath']) delete global[k];
     dom.window.close();
   };
   let result;
   try {
     setup.renderSidebarFolders(o.folders || [], o.settings || {});
-    result = fn(dom, { posts });
+    result = fn(dom, { posts, gets });
   } catch (err) { cleanup(); throw err; }
   if (result && typeof result.then === 'function') {
     return result.then((v) => { cleanup(); return v; }, (e) => { cleanup(); throw e; });
@@ -176,4 +205,83 @@ test('v1.76: a plain click on a sidebar row is still a navigation, not a drag', 
     assert.equal(click.defaultPrevented, false, 'the navigation is allowed through');
     assert.deepEqual(ctx.posts, []);
   }, { folders: THREE });
+});
+
+// ---- v1.339 S2 (T-C1): the drop persists by path onto the FRESH config -----
+
+test('S2: a drop POSTs the FRESH config - a folder another device added after this page loaded survives, with the fresh settings and baseVersion', () => {
+  // The page rendered [a, b]; the server now holds [a, b, c] with a rename on b.
+  const server = {
+    folders: ['/media/a', '/media/b', '/media/c'],
+    folderSettings: { '/media/b': { name: 'Bee' }, '/media/c': { name: 'Sea' } },
+    syntheticFolders: [], configVersion: 'v-fresh',
+  };
+  return withSidebar(async (dom, ctx) => {
+    const rows = draggableRows(dom);
+    assert.equal(rows.length, 2, 'populated: the page shows its stale two rows');
+    layOut(rows);
+    drag(dom, rows, 0, 30 + 22); // a -> after b
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(ctx.posts.length, 1, 'exactly one POST');
+    const body = ctx.posts[0].body;
+    assert.deepEqual(body.folders, ['/media/b', '/media/a', '/media/c'], 'the move applied by path onto the fresh list; c kept');
+    assert.deepEqual(body.folderSettings, server.folderSettings, 'the FRESH settings, not the page copy');
+    assert.equal(body.baseVersion, 'v-fresh', 'the fresh version rides as baseVersion');
+    assert.equal(ctx.gets[0], '/api/config', 'the config was re-read at drop time');
+  }, { folders: ['/media/a', '/media/b'], settings: {}, server });
+});
+
+test('S2: a 409 retries ONCE from a fresh GET, carrying the newer base', () => {
+  const v1 = { folders: ['/media/a', '/media/b', '/media/c'], folderSettings: {}, syntheticFolders: [], configVersion: 'v1' };
+  const v2 = { folders: ['/media/a', '/media/b', '/media/c', '/media/d'], folderSettings: { '/media/d': { name: 'Dee' } }, syntheticFolders: [], configVersion: 'v2' };
+  return withSidebar(async (dom, ctx) => {
+    const rows = draggableRows(dom);
+    layOut(rows);
+    drag(dom, rows, 2, 5); // c -> before a
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(ctx.posts.length, 2, 'the 409 was retried exactly once');
+    assert.equal(ctx.posts[0].body.baseVersion, 'v1');
+    assert.equal(ctx.posts[1].body.baseVersion, 'v2', 'the retry is built from the NEW GET');
+    assert.deepEqual(ctx.posts[1].body.folders, ['/media/c', '/media/a', '/media/b', '/media/d']);
+    assert.deepEqual(ctx.posts[1].body.folderSettings, v2.folderSettings);
+  }, { folders: THREE, server: (n) => (n === 1 ? v1 : v2), postStatus: (n) => (n === 1 ? 409 : 200) });
+});
+
+test('S2: a SECOND 409 gives up - no third POST - and the sidebar re-renders from the fresh config', () => {
+  const fresh = { folders: ['/media/a', '/media/b', '/media/c', '/media/new'], folderSettings: {}, syntheticFolders: [], configVersion: 'v9' };
+  return withSidebar(async (dom, ctx) => {
+    const rows = draggableRows(dom);
+    layOut(rows);
+    drag(dom, rows, 0, 2 * 30 + 22);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(ctx.posts.length, 2, 'one retry, then nothing else');
+    const shown = draggableRows(dom).map((r) => r.getAttribute('title'));
+    assert.deepEqual(shown, fresh.folders, 'the stale list was replaced by the stored one');
+  }, { folders: THREE, server: fresh, postStatus: () => 409 });
+});
+
+test('S2: a dragged folder that is no longer a visible row in the fresh config writes NOTHING and re-renders', () => {
+  // Another device removed /media/a; the drop must not resurrect it.
+  const fresh = { folders: ['/media/b', '/media/c'], folderSettings: {}, syntheticFolders: [], configVersion: 'v3' };
+  return withSidebar(async (dom, ctx) => {
+    const rows = draggableRows(dom);
+    layOut(rows);
+    drag(dom, rows, 0, 2 * 30 + 22);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(ctx.posts, [], 'no write built on a folder that is gone');
+    assert.deepEqual(draggableRows(dom).map((r) => r.getAttribute('title')), ['/media/b', '/media/c'], 're-rendered from storage');
+  }, { folders: THREE, server: fresh });
+});
+
+test('S2: a synthetic folder keeps its absolute position through the by-path move (the FRESH synthetic list is threaded)', () => {
+  // /dl is the yt-dlp Downloads root: in GET's folders, never a sidebar row.
+  const fresh = { folders: ['/media/a', '/dl', '/media/b', '/media/c'], folderSettings: { '/dl': { name: 'Downloads' } }, syntheticFolders: ['/dl'], configVersion: 'v4' };
+  return withSidebar(async (dom, ctx) => {
+    const rows = draggableRows(dom);
+    assert.equal(rows.length, 3, 'populated: the synthetic root is not a row');
+    layOut(rows);
+    drag(dom, rows, 0, 2 * 30 + 22); // a -> after c
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(ctx.posts[0].body.folders, ['/media/b', '/dl', '/media/c', '/media/a'], 'index 1 stays the synthetic root');
+  }, { folders: ['/media/a', '/dl', '/media/b', '/media/c'], synthetic: ['/dl'], server: fresh });
 });

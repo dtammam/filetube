@@ -1,3 +1,4 @@
+/* global sidebarMoveAnchor, persistSidebarMoveByPath */ // v1.339 S2: the by-path sidebar persist (common.js, loaded first; not in eslint.config.js's list)
 // FileTube Home Page Logic — registered VIEW MODULE (FR-1, T1).
 //
 // `init(root)` runs both on a full page load (progressive-enhancement boot,
@@ -2660,13 +2661,15 @@ const PreviewCards = (function () {
     // through common.js's shared POINTER gesture layer rather than this
     // surface's own copy of the native HTML5 DnD wiring (which never fired on
     // touch at all). The home sidebar has no Save button, so a drop persists
-    // IMMEDIATELY via the SAME POST /api/config path the Setup page's Save
-    // button uses: (1) the reordered VISIBLE subset via moveArrayItem, (2)
-    // rebuilt into the FULL folders order via rebuildFullFolderOrder (a
-    // hidden-from-sidebar folder keeps its absolute position -- it never
-    // appears here to be dragged), (3) POSTed, then the config is re-fetched
-    // (GET) so the synthetic Downloads folder's position-splice (server.js)
-    // is reflected.
+    // IMMEDIATELY via POST /api/config. v1.339 S2 (T-C1): the drop is turned
+    // into a path-anchored move (sidebarMoveAnchor), then
+    // persistSidebarMoveByPath re-GETs the config at drop time, applies the
+    // move by path onto THAT list (rebuildFullFolderOrder keeps a
+    // hidden-from-sidebar or synthetic folder at its absolute position), and
+    // POSTs it with the fresh folderSettings and `baseVersion`; the sidebar
+    // then re-renders from the freshest GET (which also reflects the synthetic
+    // Downloads folder's position-splice). This render's own `folders` /
+    // `settings` are never POSTed back - they can be an init-time copy.
     //
     // The Setup page's up/down buttons are GONE as of v1.76 (they were the
     // thing Dean asked to be rid of); keyboard reorder lives on the drag
@@ -2720,47 +2723,41 @@ const PreviewCards = (function () {
       // surface never had a keyboard reorder to preserve (the Setup page's
       // list is where that lives).
       //
-      // The persist posture is UNCHANGED: this sidebar has no Save button, so
-      // a drop persists immediately, through the SAME
-      // moveArrayItem -> rebuildFullFolderOrder -> POST /api/config path as
-      // before (a hidden-from-sidebar or synthetic folder keeps its absolute
-      // position; it never appears here to be dragged).
+      // This sidebar has no Save button, so a drop persists immediately -
+      // v1.339 S2: by path onto the FRESH config (persistSidebarFolderOrder
+      // below), never this render's copy (a hidden-from-sidebar or synthetic
+      // folder keeps its absolute position; it never appears here to be
+      // dragged).
       wireReorderable(sidebarFoldersList, {
         rowSelector: '.sidebar-item[data-index]',
         scrollContainer: document.getElementById('sidebar'),
         onReorder: async (fromIndex, toIndex) => {
-          const newVisibleOrder = moveArrayItem(visibleFolders, fromIndex, toIndex);
-          const rebuiltFull = rebuildFullFolderOrder(allFolders, settings, newVisibleOrder, syntheticFolderPaths);
-          await persistSidebarFolderOrder(rebuiltFull, settings);
+          // v1.339 S2 (T-C1): the drop is recorded BY PATH and replayed onto
+          // the config the server holds NOW - never `allFolders`/`settings`,
+          // which are this render's copy (init-time, or the cached-home
+          // restore's) and may lack a folder another device added since.
+          const move = sidebarMoveAnchor(visibleFolders, fromIndex, toIndex);
+          if (!move) return;
+          await persistSidebarFolderOrder(move);
         },
         signal,
       });
     }
 
-    // Persists a sidebar drag-and-drop reorder via the existing
-    // POST /api/config path (same one the Setup page's Save button uses), then
-    // re-fetches GET /api/config and re-renders the sidebar so the synthetic
-    // Downloads folder's GET-time position splice (server.js) is reflected.
-    async function persistSidebarFolderOrder(newFolders, settings) {
-      try {
-        const postRes = await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folders: newFolders, folderSettings: settings })
-        });
-        const postData = await postRes.json();
-        if (!postData.success) {
-          console.error('Failed to persist sidebar folder reorder:', postData.error);
-          return;
-        }
-        const getRes = await fetch('/api/config');
-        const getData = await getRes.json();
-        folderSettings = getData.folderSettings || {};
-        syntheticFolderPaths = Array.isArray(getData.syntheticFolders) ? getData.syntheticFolders : [];
-        renderSidebarFolders(getData.folders || [], folderSettings);
-      } catch (err) {
-        console.error('Failed to persist sidebar folder reorder:', err);
-      }
+    // Persists a sidebar drag-and-drop reorder through common.js's
+    // persistSidebarMoveByPath (v1.339 S2): a fresh GET /api/config at drop
+    // time, the move applied by path onto THAT list, POSTed with the fresh
+    // folderSettings and `baseVersion` (one retry on a 409). Whatever the
+    // outcome - saved, conflicted twice, the dragged folder gone, an error -
+    // the sidebar re-renders from the freshest config it read, so a stale
+    // list is never left on screen to be dragged again.
+    async function persistSidebarFolderOrder(move) {
+      const outcome = await persistSidebarMoveByPath(move);
+      const cfg = outcome.config;
+      if (!cfg) return;
+      folderSettings = cfg.folderSettings || {};
+      syntheticFolderPaths = Array.isArray(cfg.syntheticFolders) ? cfg.syntheticFolders : [];
+      renderSidebarFolders(cfg.folders || [], folderSettings);
     }
 
     // Item 1 (v1.14.0): show/hide the "shuffle again" re-roll button to match
