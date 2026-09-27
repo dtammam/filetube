@@ -714,6 +714,49 @@ test('ui.confirm: resolves false on EVERY cancel path (Cancel, scrim, Esc, close
   }
 });
 
+// UI pass S6 (the primitive addition): `signal` ties an overlay to its owner (a view's
+// AbortController). An abort closes an open sheet/menu/confirm - a confirm answers false - and an
+// already-aborted signal never opens one, so an SPA nav away cannot strand an overlay on <body>
+// or leave a confirm that could still act for a dead view.
+test('ui.sheet / ui.menu / ui.confirm signal: an abort closes the overlay (confirm resolves false); an aborted signal never opens', async () => {
+  {
+    const { t, doc, win, sheet } = confirmPage();
+    const ac = new win.AbortController();
+    const p = ui.confirm({ title: 'Delete?', danger: true, signal: ac.signal, doc, win });
+    const s = sheet();
+    assert.ok(s && s.isConnected, 'open');
+    ac.abort();
+    assert.strictEqual(await p, false, 'an abort answers false');
+    kids(s.querySelector('.ui-confirm__actions'))[1].click();
+    t.tick(400);
+    assert.strictEqual(sheet(), null, 'removed');
+    assert.strictEqual(doc.querySelector('.ui-scrim'), null, 'scrim removed');
+    mock.timers.reset();
+  }
+  {
+    const { doc, win, sheet } = confirmPage();
+    const ac = new win.AbortController();
+    ac.abort();
+    assert.strictEqual(await ui.confirm({ title: 'Late', signal: ac.signal, doc, win }), false, 'pre-aborted: false at once');
+    assert.strictEqual(sheet(), null, 'and nothing opened');
+    const ctrl = ui.sheet({ title: 'x', signal: ac.signal, doc, win }).open();
+    assert.strictEqual(ctrl.isOpen(), false, 'a sheet on an aborted signal never opens');
+    assert.strictEqual(sheet(), null);
+    mock.timers.reset();
+  }
+  {
+    const { t, doc, win, sheet } = confirmPage();
+    const ac = new win.AbortController();
+    const m = ui.menu({ items: [{ label: 'One' }], signal: ac.signal, doc, win });
+    assert.ok(m.isOpen(), 'the menu opened');
+    ac.abort();
+    assert.strictEqual(m.isOpen(), false, 'an abort closes the menu');
+    t.tick(400);
+    assert.strictEqual(sheet(), null);
+    mock.timers.reset();
+  }
+});
+
 test('ui.prompt: a field, Enter submits the value, Cancel/Esc give null; password gets a reveal toggle', async () => {
   const { t, doc, win, sheet } = confirmPage();
   const p = ui.prompt({ title: 'Rename', label: 'Name', value: 'old', doc, win });

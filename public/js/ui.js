@@ -442,6 +442,7 @@
     }
 
     function open() {
+      if (o.signal && o.signal.aborted) return ctrl; // its owner is gone: never open
       if (state === 'open') return ctrl;
       if (state === 'closing') {
         // Re-opened mid-exit: keep the nodes and the lock, cancel the removal.
@@ -507,6 +508,12 @@
 
     closeBtn.addEventListener('click', function () { close(); });
     scrim.addEventListener('click', function () { close(); });
+    // `signal` (an AbortSignal, e.g. a view's): its abort closes the sheet, so an SPA nav away
+    // never strands an overlay on <body> over the next view. A confirm/prompt resolves as a
+    // dismissal (false / null) through onClosing.
+    if (o.signal && typeof o.signal.addEventListener === 'function') {
+      o.signal.addEventListener('abort', function () { close(); }, { once: true });
+    }
 
     // Bottom sheets: drag down on the grab handle or header to dismiss.
     var drag = null;
@@ -553,7 +560,7 @@
     var items = Array.isArray(o.items) ? o.items : [];
     var withIcons = items.some(function (it) { return it && it.icon; });
     var l = list({ size: 'compact', media: withIcons ? 'avatar' : 'none', aside: 'text', label: o.title || o.label, doc: doc });
-    var ctrl = sheet({ variant: o.variant || 'auto', title: o.title, label: o.label || 'Menu', anchor: o.anchor, content: l, onClose: o.onClose, doc: doc, win: o.win });
+    var ctrl = sheet({ variant: o.variant || 'auto', title: o.title, label: o.label || 'Menu', anchor: o.anchor, content: l, onClose: o.onClose, signal: o.signal, doc: doc, win: o.win });
     items.forEach(function (it) {
       if (!it) return;
       var r = row({
@@ -669,12 +676,13 @@
     return new Promise(function (resolve) {
       var settled = false;
       function settle(v) { if (!settled) { settled = true; resolve(v); } }
+      if (o.signal && o.signal.aborted) { settle(false); return; }
       var content = doc.createDocumentFragment();
       if (o.body) { var p = el(doc, 'p', 'ui-confirm__body'); p.textContent = String(o.body); content.appendChild(p); }
       var acts = actionsRow(doc, o.cancelLabel || 'Cancel', o.confirmLabel || 'OK', !!o.danger);
       content.appendChild(acts.row);
       var ctrl = sheet({ variant: 'dialog', title: o.title, label: o.title ? null : 'Confirm', content: content,
-        onClosing: function () { settle(false); }, doc: doc, win: o.win });
+        onClosing: function () { settle(false); }, signal: o.signal, doc: doc, win: o.win });
       // Only a click on a LIVE dialog answers: a confirm tapped while the sheet
       // animates out (after Esc, the scrim, Close) must not flip a cancel to true.
       acts.cancel.addEventListener('click', function () { if (ctrl.isOpen()) { settle(false); ctrl.close(); } });
