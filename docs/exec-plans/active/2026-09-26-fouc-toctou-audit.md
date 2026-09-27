@@ -6,7 +6,7 @@ anchor: outcome
 status: Gate:APPROVED r3 @03a1f634
 next: final gate APPROVED r3 @03a1f634; fix qa W1 (22 shell comments -> test/unit/app-look-l2.test.js), seats confirm the comment-only delta, then release v1.339.0 (docs/RELEASING.md)
 design: pending
-gate: APPROVED r3 @03a1f634 (adversary + qa + security-brief); safety checkpoint APPROVED r2 @f8a7ee52 after r1 CHANGES fixed in F1-F3; qa r3 W1 (shell comments name a missing test file) fixed next, delta confirm pending
+gate: APPROVED r3 @03a1f634 (adversary + qa + security-brief); safety checkpoint approved r2 at f8a7ee52 after r1 CHANGES fixed in F1-F3; qa r3 W1 (shell comments name a missing test file) fixed next, delta confirm pending
 ---
 
 # Audit: FOUC / layout shift / TOCTOU across the app
@@ -415,7 +415,7 @@ this branch.
   inline reserve scripts in all 11 header shells (the first frame paints before common.js). Dean
   ruled (2026-09-27): leave the Modern one-line-title card nudge (15px) and the "Playing from" line.
 
-### Gate r2 notes (all three seats APPROVED @f8a7ee52)
+### Gate r2 notes (all three seats approved at f8a7ee52)
 
 - security-brief r2 LOW (to fix in F4, reviewed in the final delta): `removeFreshOneOffSources`
   fences to the whole download root, not the job's output; only exploitable with an operator yt-dlp
@@ -510,7 +510,7 @@ this branch.
 
 ## Gate
 
-Gate: APPROVED r1 - security-brief, reviewed at 8919ba55 (superseded: re-approved r2 @f8a7ee52)
+Gate: APPROVED r1 - security-brief, reviewed at 8919ba55 (superseded: re-approved r3 @03a1f634)
 Gate: CHANGES r1 @8919ba55 — qa
 Gate: CHANGES r1 @8919ba55 — adversary
 Gate: APPROVED r2 - security-brief, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)

@@ -78,7 +78,7 @@
        paint from the per-device flags common.js remembers (CHROME_FLAG_KEYS + the bell's
        ft-notif-bell-enabled), so the search box and the glyph row never re-space when the async
        injectors land - each injector REPLACES its placeholder in place, or drops it when the
-       feature is gone. Byte-identical in every header shell (test/unit/chrome-reserve.test.js). */
+       feature is gone. Byte-identical in every header shell (test/unit/app-look-l2.test.js). */
     (function () {
       try {
         var d = document, ls = window.localStorage, hr = d.querySelector('header .header-right');
@@ -331,7 +331,7 @@
        items it names shown and in order, the rest hidden, and a same-box placeholder for each
        async tab (Subs, Download, You) - so no tab re-spaces the bar when it lands; each
        injector REPLACES its placeholder in place. Byte-identical in every header shell
-       (test/unit/chrome-reserve.test.js). */
+       (test/unit/app-look-l2.test.js). */
     (function () {
       try {
         var d = document, nav = d.getElementById('bottom-nav');
