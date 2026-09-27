@@ -15,7 +15,7 @@ const NAMES = [
   'dark_mode', 'light_mode', 'account_circle', 'logout', 'refresh', 'bar_chart',
   // navigation and structure
   'close', 'arrow_back', 'chevron_right', 'expand_more', 'more_vert', 'more_horiz', 'folder', 'tv',
-  'videocam', 'movie', 'book', 'info', 'open_in_new', 'add', 'edit', 'check',
+  'videocam', 'movie', 'book', 'info', 'open_in_new', 'add', 'edit', 'check', 'visibility', 'visibility_off',
   // actions and states
   'notifications', 'notifications_active', 'notifications_off', 'push_pin', 'keep', 'thumb_up',
   'favorite', 'star', 'share', 'headphones', 'subject', 'delete', 'content_copy', 'warning', 'error',

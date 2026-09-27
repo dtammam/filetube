@@ -18,7 +18,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { eraBlock } = require('../helpers/stylesheets');
+const { eraBlock, readTokensCss } = require('../helpers/stylesheets');
 
 function decls(block) {
   const out = {};
@@ -28,7 +28,14 @@ function decls(block) {
 function resolved(era, mode) {
   const map = { ...decls(eraBlock('2021')) };
   if (era !== '2021') Object.assign(map, decls(eraBlock(era)));
-  if (mode === 'dark') Object.assign(map, decls(eraBlock(era, 'dark')));
+  if (mode === 'dark') {
+    // the every-era dark block (the inverted toast), then the era's own dark block
+    const css = readTokensCss().replace(/\/\*[\s\S]*?\*\//g, '');
+    const i = css.indexOf(':root[data-mode="dark"] {');
+    assert.ok(i !== -1, 'the every-era dark block exists');
+    Object.assign(map, decls(css.slice(i, css.indexOf('}', i))));
+    Object.assign(map, decls(eraBlock(era, 'dark')));
+  }
   const get = (name, depth = 0) => {
     assert.ok(depth < 8, `var() cycle at ${name}`);
     const v = map[name];
@@ -71,6 +78,9 @@ const PAIRS = [
   ...SURFACES.map((bg) => ['--indicator', bg, 3]),
   ['--focus-ring', '--surface-0', 3], ['--focus-ring', '--surface-1', 3],
   ['--accent-fill', '--surface-0', 3], ['--accent-fill', '--surface-1', 3],
+  // step 3 primitives: monogram initials on every avatar tone; the inverted toast
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ['--ink-on-accent', `--av-tone-${n}`, 4.5]),
+  ['--toast-ink', '--toast-ground', 4.5],
 ];
 
 for (const era of ['2005', '2009', '2014', '2021']) {

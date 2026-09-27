@@ -112,6 +112,30 @@
   --row-default: 56px;
   --row-media: 64px;
   --inset: 16px;
+  /* primitive metrics (ui.css, step 3) */
+  --hairline: 1px;              /* 0.5px on DPR >= 2, below */
+  --ring-w: 2px;                /* :focus-visible ring width and offset */
+  --progress-h: 3px;            /* the thumbnail progress bar */
+  --dialog-w: 420px;
+  --panel-w: 400px;
+  --grab-w: 36px;               /* the bottom sheet's grab handle */
+  --grab-h: 5px;
+  --switch-w: 51px;             /* iOS switch proportions */
+  --switch-h: 31px;
+  --toast-offset: var(--space-12);
+  --badge-ground: rgba(0, 0, 0, 0.72);  /* duration badge over any image */
+  /* avatar monogram tones: white initials on each clear AA (ui-contrast) */
+  --av-tone-1: #3a5ba0;
+  --av-tone-2: #7a4ea3;
+  --av-tone-3: #a0425c;
+  --av-tone-4: #9a4f16;
+  --av-tone-5: #2f7556;
+  --av-tone-6: #1f6f80;
+  --av-tone-7: #5b5b60;
+  --av-tone-8: #80531f;
+  /* the toast inverts against the app (iOS): a dark pill on a light app */
+  --toast-ground: #2c2c2e;
+  --toast-ink: #ffffff;
 
   /* D2.4 motion. Transitions animate only opacity, transform, color,
      background-color, border-color, box-shadow and filter (ui-lint). */
@@ -170,6 +194,16 @@
   --fs-4xl: 22px;
   --fs-5xl: 32px;
   --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
+}
+
+/* Hairlines are a device pixel on a retina screen. */
+@media (min-resolution: 2dppx) {
+  :root { --hairline: 0.5px; }
+}
+/* The toast inverts in every dark mode: a light-grey pill on a dark app. */
+:root[data-mode="dark"] {
+  --toast-ground: #e5e5ea;
+  --toast-ink: #000000;
 }
 
 /* ---- 2. era x mode blocks ------------------------------------------------------ */
