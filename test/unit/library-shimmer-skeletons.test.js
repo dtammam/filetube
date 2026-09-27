@@ -16,7 +16,7 @@ const path = require('node:path');
 const { buildHistorySkeletonRows } = require('../../public/js/history.js');
 const { buildBookSkeletonCards } = require('../../public/js/books.js');
 const { buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards } = require('../../public/js/music.js');
-const { buildPodcastSkeletonCards } = require('../../public/js/podcasts.js');
+const { buildPodcastSkeletonRows } = require('../../public/js/podcasts.js');
 
 // Count class-attribute tokens EXACTLY equal to `cls` (a trailing lookahead
 // rejects a longer token, so `podcast-card` never matches `podcast-card-art`).
@@ -28,7 +28,6 @@ const CASES = [
   { name: 'book cards', fn: buildBookSkeletonCards, container: 'book-card', aspectBox: 'book-cover-link' },
   { name: 'music album cards', fn: buildMusicSkeletonCards, container: 'music-album-card', aspectBox: 'music-album-art', wrapper: 'music-card-grid' },
   { name: 'music song rows', fn: buildMusicSkeletonRows, container: 'music-song-row', aspectBox: 'music-song-thumb-wrap', wrapper: 'music-song-list' },
-  { name: 'podcast cards', fn: buildPodcastSkeletonCards, container: 'podcast-card', aspectBox: 'podcast-card-art', wrapper: 'podcast-grid' },
 ];
 
 for (const c of CASES) {
@@ -87,14 +86,16 @@ test('each view SEEDS its skeleton into the host before the fetch, and CLEARS it
   // Music seeds the SHAPE-MATCHED skeleton per tab, and does NOT seed a drill
   // (its header can't be reserved by a bare song-row skeleton - gate W2).
   assert.match(music, /if \(content && !drill\) \{[\s\S]*?tab === 'songs'[\s\S]*?buildMusicSkeletonRows\(\d+\)[\s\S]*?tab === 'artists'[\s\S]*?buildMusicArtistSkeletonCards\(\d+\)[\s\S]*?buildMusicSkeletonCards\(\d+\)/, 'music seeds per-tab shape, skips drill');
-  // Podcasts seeds ONLY the true blank moment (grid on screen, not already populated).
-  assert.match(podcasts, /if \(!currentShow && content && !content\.querySelector\('\.podcast-grid'\)\) \{\s*\n\s*content\.innerHTML = buildPodcastSkeletonCards\(\d+\);/, 'podcasts seeds only when the grid is blank (no reveal-once flash-backward)');
+  // Podcasts seeds ONLY the true blank moment (the show list on screen, not already populated).
+  // UI pass S6: the list is a ui-list .podcast-show-list and its placeholder buildPodcastSkeletonRows.
+  assert.match(podcasts, /if \(!currentShow && content && !content\.querySelector\('\.podcast-show-list'\)\) \{\s*\n\s*content\.innerHTML = buildPodcastSkeletonRows\(\d+\);/, 'podcasts seeds only when the list is blank (no reveal-once flash-backward)');
 
   // Cleared on error so a failed FIRST load shows the empty state, not a forever-shimmer.
   assert.match(history, /if \(replace\) \{ listEl\.innerHTML = ''; refreshChrome\(\); \}/, 'history clears the shimmer on error');
   assert.match(books, /catch \(err\) \{\s*\n\s*grid\.innerHTML = '';/, 'books clears the shimmer on error');
   assert.match(music, /catch \(err\) \{[\s\S]*?if \(content\) content\.innerHTML = '';/, 'music clears the shimmer on error');
-  assert.match(podcasts, /catch[\s\S]*?if \(!currentShow && content\) content\.innerHTML = '';/, 'podcasts clears the shimmer on error');
+  // UI pass S6: the clear is followed by the error state (D9), inside the same guard.
+  assert.match(podcasts, /catch[\s\S]*?if \(!currentShow && content\) \{\s*\n\s*content\.innerHTML = '';/, 'podcasts clears the shimmer on error');
 });
 
 test('the shimmer base fill is restored on the reused art boxes (so the sweep is visible, not swallowed by --thumbnail-bg)', () => {
@@ -102,8 +103,28 @@ test('the shimmer base fill is restored on the reused art boxes (so the sweep is
   // The library art boxes share the specificity-winning shimmer-fill rule
   // (later selectors like .related-thumb may join it - tolerate them). v1.103:
   // .music-artist-mosaic joins between album-art and podcast-card-art.
-  assert.match(css, /\.book-cover-link\.skeleton-shimmer,\s*\n\s*\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,120}\n\s*\.podcast-card-art\.skeleton-shimmer[\s\S]{0,240}background-color: var\(--bg-secondary\);/,
+  // UI pass S6: podcasts left the list (its placeholder is a .ui-art square, which the later
+  // .skeleton-shimmer rule already fills; podcasts-ui-sweep.test.js binds that order).
+  assert.match(css, /\.book-cover-link\.skeleton-shimmer,\s*\n\s*\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,360}background-color: var\(--bg-secondary\);/,
     'a specificity-winning rule restores --bg-secondary on the reused skeleton art boxes (incl. the artist mosaic)');
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.podcast-card-art/, 'no rule for the retired podcast card art box');
   // .history-thumb already uses --bg-secondary, so it is deliberately NOT in the rule.
   assert.doesNotMatch(css, /\.history-thumb\.skeleton-shimmer \{/, 'history-thumb (already --bg-secondary) is not redundantly re-listed');
+});
+
+// ---- UI pass S6: the podcasts show list's placeholder (ui-list media rows) ----------------------
+// Replaces the retired `podcast cards` case above: the show list is a ui-list of media rows now,
+// and its placeholder is the same row DOM with a shimmering ui-art xl square.
+test('podcast show rows: exactly n ui-row placeholders, each with the xl ui-art square + two block text bars', () => {
+  const html = buildPodcastSkeletonRows(3);
+  assert.strictEqual(countOf(html, 'ui-row'), 3, 'exactly 3 rows');
+  assert.strictEqual((html.match(/class="ui-art ui-avatar--xl skeleton-shimmer"/g) || []).length, 3, 'each reserves the real xl art square');
+  assert.strictEqual((html.match(/<div class="skeleton-line skeleton-line-title skeleton-shimmer">/g) || []).length, 3, 'a title bar per row (block div)');
+  assert.strictEqual((html.match(/<div class="skeleton-line skeleton-line-meta skeleton-shimmer">/g) || []).length, 3, 'a meta bar per row (block div)');
+  assert.doesNotMatch(html, /<span class="skeleton-line/, 'no inline-span bars');
+  assert.ok(html.includes('podcast-show-list'), 'wrapped in the real .podcast-show-list container');
+  assert.strictEqual(buildPodcastSkeletonRows(0), '');
+  assert.strictEqual(buildPodcastSkeletonRows(-2), '');
+  assert.strictEqual(buildPodcastSkeletonRows('nope'), '');
+  assert.strictEqual(buildPodcastSkeletonRows(), '');
 });

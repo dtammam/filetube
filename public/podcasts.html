@@ -173,12 +173,10 @@
         <div class="music-toolbar">
           <h2>Podcasts</h2>
           <div class="music-toolbar-actions">
-            <button class="btn btn-sm" id="podcasts-check-btn" type="button" title="Check every feed for new episodes now">
-              <i class="icon-refresh"></i> Check feeds
-            </button>
-            <button class="btn btn-sm" id="podcasts-settings-btn" type="button" title="Podcast settings">
-              <svg class="chrome-icon" aria-hidden="true"><use href="#i-settings"/></svg> Settings
-            </button>
+            <!-- UI pass S6: the toolbar is ui-btn primitives (tonal controls, ONE primary: Add podcast);
+                 Settings is a gear icon button so the row holds one line on a phone. -->
+            <button class="ui-btn ui-btn--tonal ui-btn--sm" id="podcasts-check-btn" type="button" title="Check every feed for new episodes now"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></span><span class="ui-btn__label">Check feeds</span></button>
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill ui-btn--icon" id="podcasts-settings-btn" type="button" title="Podcast settings" aria-label="Podcast settings"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-settings"/></svg></span></button>
             <!-- v1.251 (R2): the same desktop-only THEATRE toggle music has (v1.222) - the
                  up-next episode panel beside the expanded player. Hidden until an episode
                  is expanded (podcasts.js updateNowPlayingPanel toggles it in lockstep);
@@ -187,15 +185,11 @@
                  shell) - float the playing episode into a small always-on-top window
                  wearing the picked skin. Hidden until a podcast episode is playing AND
                  the pop-out is supported (podcasts.js updatePopoutBtn). -->
-            <button class="btn btn-sm" id="podcast-popout-btn" type="button" hidden title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false">
-              <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-800h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h240v240h-80v-104L388-332Z"/></svg> Pop out
-            </button>
+            <button class="ui-btn ui-btn--tonal ui-btn--sm" id="podcast-popout-btn" type="button" hidden title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-open_in_new"/></svg></span><span class="ui-btn__label">Pop out</span></button>
             <button class="btn btn-sm music-theater-btn" id="podcast-theater-btn" type="button" hidden title="Theatre mode: up next beside the player" aria-label="Toggle theatre mode" aria-pressed="false">
               <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><g transform="matrix(1.2 0 0 1.2 -98 54)"><path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/><path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/></g></svg>
             </button>
-            <button class="btn btn-sm btn-primary" id="podcasts-add-btn" type="button" title="Subscribe to a podcast RSS feed">
-              + Add podcast
-            </button>
+            <button class="ui-btn ui-btn--primary ui-btn--sm" id="podcasts-add-btn" type="button" title="Subscribe to a podcast RSS feed"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-add"/></svg></span><span class="ui-btn__label">Add podcast</span></button>
           </div>
         </div>
 
@@ -229,61 +223,9 @@
              mini-player (#player-dock below) - browse-while-listening,
              the music-place pattern. -->
         <div id="podcasts-content"></div>
-        <div class="music-empty" id="podcasts-empty" hidden>
-          No podcasts yet. Tap <strong>Add podcast</strong> and paste an RSS feed URL
-          - a public feed, or a private one from Patreon's "listen in other
-          podcast apps" (its URL carries your personal token; it is stored on
-          your server only).
-        </div>
-
-        <!-- The add-subscription sheet (hidden until Add podcast). -->
-        <div class="podcasts-add-backdrop" id="podcasts-add-backdrop" hidden></div>
-        <div class="podcasts-add-sheet" id="podcasts-add-sheet" role="dialog" aria-modal="true" aria-labelledby="podcasts-add-title" hidden>
-          <h3 id="podcasts-add-title">Add a podcast</h3>
-          <label class="podcasts-add-label" for="podcasts-add-url">RSS feed URL</label>
-          <input type="url" id="podcasts-add-url" class="search-input" placeholder="https://example.com/feed.xml" autocomplete="off" spellcheck="false" />
-          <p class="podcasts-add-hint">Private feed URLs (Patreon etc.) contain a personal
-            access token. FileTube keeps the URL on your server in a
-            permissions-restricted file - it never appears in the interface,
-            logs, or backups again.</p>
-          <label class="podcasts-add-label" for="podcasts-add-backfill">Download</label>
-          <select id="podcasts-add-backfill">
-            <option value="all">Every episode (full offline cache)</option>
-            <option value="10">The latest 10 episodes</option>
-            <option value="25">The latest 25 episodes</option>
-            <option value="new">New episodes only</option>
-          </select>
-          <div class="podcasts-add-actions">
-            <button type="button" class="btn" id="podcasts-add-cancel">Cancel</button>
-            <button type="button" class="btn btn-primary" id="podcasts-add-submit">Subscribe</button>
-          </div>
-          <div class="podcasts-add-error" id="podcasts-add-error" role="alert" hidden></div>
-        </div>
-
-        <!-- The podcast settings sheet (v1.69 QA gate #2/#3: the management
-             UI). Shares the add-sheet's classes - two surfaces rendering the
-             same affordance SHARE declarations, the styling-source rule. -->
-        <div class="podcasts-add-backdrop" id="podcasts-settings-backdrop" hidden></div>
-        <div class="podcasts-add-sheet" id="podcasts-settings-sheet" role="dialog" aria-modal="true" aria-labelledby="podcasts-settings-title" hidden>
-          <h3 id="podcasts-settings-title">Podcast settings</h3>
-          <label class="podcasts-add-label" for="podcasts-settings-poll">Check feeds every</label>
-          <select id="podcasts-settings-poll">
-            <option value="30">30 minutes</option>
-            <option value="60">Hour</option>
-            <option value="180">3 hours</option>
-            <option value="360">6 hours</option>
-            <option value="720">12 hours</option>
-            <option value="1440">Day</option>
-            <option value="0">Manual checks only</option>
-          </select>
-          <label class="podcasts-add-label">Episodes are saved to</label>
-          <p class="podcasts-add-hint" id="podcasts-settings-dir">&hellip;</p>
-          <div class="podcasts-add-actions">
-            <button type="button" class="btn" id="podcasts-settings-cancel">Cancel</button>
-            <button type="button" class="btn btn-primary" id="podcasts-settings-save">Save</button>
-          </div>
-          <div class="podcasts-add-error" id="podcasts-settings-error" role="alert" hidden></div>
-        </div>
+        <!-- The zero-shows state (a ui-state block podcasts.js draws here). The add and
+             settings dialogs are ui.sheet dialogs podcasts.js builds on demand (UI pass S6). -->
+        <div id="podcasts-empty" hidden></div>
       </div>
     </main>
   </div>

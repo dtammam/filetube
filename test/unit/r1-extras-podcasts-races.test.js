@@ -189,13 +189,14 @@ async function bootPodcasts(opts, run) {
     delete require.cache[surfacePath]; require(surfacePath);
     const realCreate = w.FileTubeSkinSurface.create;
     w.FileTubeSkinSurface.create = (cfg) => { engineCfg = cfg; return realCreate(cfg); };
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S6: every shell loads ui.js (window.ui) before the view
     delete require.cache[podcastsPath]; require(podcastsPath);
     registered.init(w.document.getElementById('view-root'));
     const content = () => w.document.getElementById('podcasts-content');
     await run({
       w, player, loads, fetches, registered, content,
       engineCfg: () => engineCfg,
-      cards: () => content().querySelectorAll('.podcast-card'),
+      cards: () => content().querySelectorAll('[data-show-id]'),
       text: () => content().textContent,
     });
     registered.destroy();
@@ -313,7 +314,14 @@ for (const back of [true, false]) {
       hold.resolve();
       await settleMany();
       if (back) assert.strictEqual(c.cards().length, 2, 'the grid survived the stale failure');
-      else assert.strictEqual(c.content().innerHTML, '', 'the skeleton was cleared');
+      else {
+        // UI pass S6 (plan D9): the cleared skeleton is replaced by the error state (with Retry),
+        // never left blank and never stranded.
+        assert.strictEqual(c.content().querySelector('.skeleton-shimmer, [class*="skeleton"]'), null, 'the skeleton was cleared');
+        const st = c.content().querySelector('.ui-state');
+        assert.ok(st && /Could not load episodes/.test(st.textContent), 'the error state took its place');
+        assert.strictEqual(c.content().children.length, 1, 'and nothing else');
+      }
     });
   });
 

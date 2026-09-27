@@ -92,15 +92,17 @@ const ART_SITES = [
   ['public/js/music.js', 'class="music-drill-art art-shimmer"'],
   ['public/js/music.js', 'class="music-sticky-thumb art-shimmer"'],
   ['public/js/music.js', 'class="art-shimmer" src="\' + escapeMusicHtml(albumArtSrc('], // v1.103: the artist mosaic tile (v1.339: the sized, shared art URL)
-  ['public/js/podcasts.js', "'podcast-card-art art-shimmer'"],
-  ['public/js/podcasts.js', "'podcast-show-art art-shimmer'"],
+  // UI pass S6: the show row and the show header share ONE art builder (podcasts.js showArtEl,
+  // a ui.avatar kind 'podcast' whose img takes the class); podcasts-ui-sweep.test.js binds both
+  // rendered imgs carrying it.
+  ['public/js/podcasts.js', "img.classList.add('art-shimmer')"],
   ['public/js/books.js', 'class="book-cover-img art-shimmer"'],
   ['public/js/history.js', 'class="history-thumb-img art-shimmer"'],
   ['public/js/main.js', "img.className = 'art-shimmer';"],
 ];
 
-test('all 10 art image sites ship the art-shimmer class (prediction: exactly 10)', () => {
-  assert.strictEqual(ART_SITES.length, 10, 'the audit predicted 10 art img sites (v1.103: +artist mosaic tile)');
+test('all 9 art image sites ship the art-shimmer class (prediction: exactly 9)', () => {
+  assert.strictEqual(ART_SITES.length, 9, 'the audit predicted 10 art img sites (v1.103: +artist mosaic tile); UI pass S6 folded podcasts\' two into one builder');
   for (const [file, needle] of ART_SITES) {
     assert.ok(read(file).includes(needle), `${file} ships ${needle}`);
   }

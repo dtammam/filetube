@@ -113,6 +113,7 @@ async function boot(url, initialState, run, opts) {
     require('../../public/js/music-skins.js');
     delete require.cache[require.resolve('../../public/js/skin-surface.js')];
     require('../../public/js/skin-surface.js');
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S6: every shell loads ui.js (window.ui) before the view
     delete require.cache[podcastsPath];
     require(podcastsPath);
     assert.ok(registered && typeof registered.init === 'function', 'podcasts view registered');
@@ -130,7 +131,7 @@ async function boot(url, initialState, run, opts) {
 const panel = (dom) => dom.window.document.getElementById('podcast-nowplaying-panel');
 const lastLoad = (mock) => mock.s.loadCalls[mock.s.loadCalls.length - 1];
 const playEp = async (dom, idx) => {
-  const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+  const rows = dom.window.document.querySelectorAll('[data-episode-id] .ui-row__link');
   rows[idx].click();
   await settle(); await settle();
 };
@@ -295,11 +296,11 @@ test('v1.105 (post-await TOCTOU): a show opened DURING the rebuild fetch is not 
   // clobbers playable with s1 - else the rendered s2 rows go inert (indexOf -1).
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom, mock) => {
-    dom.window.document.querySelector('.podcast-card').click(); // open s2
+    dom.window.document.querySelector('[data-show-id]').click(); // open s2
     await settle(); await settle();
     mock.deferred.resolve(); // now let the in-flight s1 rebuild fetch resolve
     await settle(); await settle();
-    const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+    const rows = dom.window.document.querySelectorAll('[data-episode-id] .ui-row__link');
     rows[0].click(); // tap the rendered s2 row
     await settle(); await settle();
     assert.ok(lastLoad(mock), 'the rendered row played SOMETHING (playable still holds s2, not clobbered by s1)');

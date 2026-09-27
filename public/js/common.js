@@ -8218,9 +8218,12 @@ var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // `.podcast-card-art`, `.comment-input-box`. Rejected as TRANSPARENT (the
 // tightened ground contract): the music/podcast CARDS (their art tiles paint
 // instead), history/song/stable rows, comment-item.
+// UI pass S6: the podcast art is the shared `.ui-art` rounded square now (ui.css paints
+// its --thumb-ground), so the pool names the primitive instead of the retired
+// `.podcast-card-art`; every surface that adopts ui-art (albums, books) anchors too.
 var CRITTER_ANCHOR_SELECTORS = [
   '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb',
-  '.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box',
+  '.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box',
   // v1.169 (Dean: the mobile feed needs critters ON the cards): the thumbnail
   // (paints letterbox black - critters rise from behind the artwork onto the
   // title zone) and the tiny channel-avatar circle (24px - a micro-ambush;

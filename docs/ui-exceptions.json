@@ -3885,120 +3885,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.podcast-ep-action i, .podcast-ep-action .chrome-icon|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-ep-action i, .podcast-ep-action .chrome-icon|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-ep-action|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-ep-action|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-ep-action|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-episode-chip|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-episode-resume|max-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-grid|grid-template-columns",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-like-toggle|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-like-toggle|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-like-toggle|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-played-toggle|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-played-toggle|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-played-toggle|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-reenter-row .search-input|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-show-art|height",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcast-show-art|width",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcasts-add-sheet|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcasts-add-sheet|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.pp-icon-pause|box-shadow",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6771,24 +6657,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/podcasts.js|js-template-style|gap",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|js-template-style|margin-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|js-template-style|margin-top",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/read.js|js-style|min-height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7807,84 +7675,6 @@
       {
         "key": ".playlists-sheet-close",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-ep-action",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-episode-chip",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-episode-main",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-episode-row",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-like-toggle",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-manage-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-pin-btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-played-toggle",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-reenter-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcast-unsub-btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcasts-add-backdrop",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".podcasts-add-sheet",
-        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -9263,78 +9053,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/podcasts.js|createElement(button)|back",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|delBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|likeBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|main",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|pauseBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|pinBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|playedBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|queueBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|restoreBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|saveBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|createElement(button)|unsubBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/read.js|createElement(button)|btn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -9636,7 +9354,7 @@
       },
       {
         "key": "public/podcasts.html|<button>|btn",
-        "count": 11,
+        "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -10171,18 +9889,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/podcasts.js|glyph|U+2039",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/podcasts.js|glyph|U+2713",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/read.js|glyph|U+25B6",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -10256,7 +9962,7 @@
       },
       {
         "key": "public/podcasts.html|<svg>",
-        "count": 3,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -10682,18 +10388,6 @@
       },
       {
         "key": "public/css/style.css|.music-theater-btn|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcasts-add-backdrop[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.podcasts-add-sheet[hidden]|display",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"

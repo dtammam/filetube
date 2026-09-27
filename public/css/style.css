@@ -1762,9 +1762,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 
 /* v1.98 shimmer sweep (library views): the seeded skeletons REUSE each view's
    real reserved-space art box (`.book-cover-link` 2:3, `.music-album-art` 1:1,
-   `.podcast-card-art` 1:1, `.history-thumb` 16:9) so the reveal is zero-shift.
-   FOUR of those boxes set `background: var(--thumbnail-bg)` (a dark fill) that
-   would swallow the shimmer sweep, so restore the shimmer base fill on the
+   `.history-thumb` 16:9) so the reveal is zero-shift. (Podcasts' placeholder is a
+   `.ui-art.skeleton-shimmer` square since UI pass S6: `.skeleton-shimmer` is the later
+   equal-specificity rule, so its fill already beats ui-art's ground.) The boxes listed
+   below set `background: var(--thumbnail-bg)` (a dark fill) that would swallow the shimmer sweep, so restore the shimmer base fill on the
    skeleton variant (2-class specificity beats each art box's 1-class rule
    regardless of order). `.history-thumb` already uses `--bg-secondary`, so it is
    deliberately NOT listed here (the rule would be a no-op). The shared
@@ -1772,7 +1773,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .book-cover-link.skeleton-shimmer,
 .music-album-art.skeleton-shimmer,
 .music-artist-mosaic.skeleton-shimmer, /* v1.103: the artist mosaic box (also thumbnail-bg) on the now-DEFAULT Artists cold landing */
-.podcast-card-art.skeleton-shimmer,
 .book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
 .related-thumb.skeleton-shimmer { /* v1.99: .related-thumb is #000 letterback - restore the fill so the sweep shows */
   background-color: var(--bg-secondary);
@@ -10998,10 +10998,6 @@ html[data-modern="on"] .video-uploader {
    an <a> needs its default underline stripped to sit as a peer control. */
 .music-download-btn { text-decoration: none; }
 
-/* v1.72: the show drill's Pin-to-Playlists toggle sits between the meta
-   text and the manage row, left-aligned as its own line. */
-.podcast-pin-btn { align-self: flex-start; margin: var(--space-2) 0; }
-
 /* v1.44.2 (Spotify feel): the currently-playing row. Accent + a CSS equalizer
    glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint
    (iOS forces blue emoji). Driven by applyPlayingHighlight() toggling
@@ -14688,302 +14684,92 @@ html[data-modern="on"] .video-uploader {
 .dup-key { font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dup-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---- v1.69 Podcasts place ---------------------------------------------------
-   Era/mode tokens only (the type-scale lock); glyphs via icon-* masks never
-   emoji; [hidden] enforced; all markup inside #view-root so these rules live
-   HERE, never a shell <style> (the v1.41.8 SPA lesson). Reuses the music
-   toolbar/crumb/status/empty rules for the shared chrome; everything below
-   is the podcasts-specific surface. */
+/* ---- v1.69 Podcasts place (UI pass S6: surface layout only) -----------------
+   Every control, row, art square, sheet and state here is a ui-* primitive (ui.css, built by
+   public/js/ui.js); these rules only lay the surface out, from tokens. All markup lives inside
+   #view-root or is built by podcasts.js, so the rules live HERE, never in a shell <style> (the
+   v1.41.8 SPA lesson). The toolbar, crumb and status line reuse the music place's rules. */
 
-.podcast-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--space-8);
+/* The two lists sit flush with the page gutter: a ui-row starts with its padding, the reserved
+   lead (indicator) column and the column gaps, so without this the art and the titles start
+   24-32px right of the page title. The pull is exactly those widths, from the same tokens
+   ui.css uses (a media-less list also skips its empty media column's gap). */
+.podcast-show-list {
+  --media-w: var(--av-xl); /* Spotify library rows: a 64px rounded-square art column */
+  margin-left: calc(-1 * (var(--space-4) * 2 + var(--lead-w))); /* token-exempt: positional (flush with the page gutter) */
 }
-.podcast-card {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
+.podcast-episodes {
+  margin-left: calc(-1 * (var(--space-4) * 3 + var(--lead-w))); /* token-exempt: positional (flush with the page gutter) */
 }
-.podcast-card-art {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: var(--radius-lg);
-  object-fit: cover;
-  background: var(--thumbnail-bg);
-  box-shadow: var(--shadow); /* v1.70: was var(--shadow-sm), which never existed */
-  display: block;
-}
-.podcast-card-title {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.podcast-card-sub {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.podcast-card-warn {
-  font-size: var(--fs-sm);
-  color: var(--yt-red);
-  font-weight: var(--fw-semibold);
-}
+.podcast-show-list > .ui-row[data-warn] .ui-row__meta { color: var(--danger); }
 
-.podcast-crumb-name {
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* the show header: art beside title / author / notes / counts / one wrapping action group */
 .podcast-show-head {
   display: flex;
-  gap: var(--space-8);
   align-items: flex-start;
-  margin-bottom: var(--space-8);
-  min-width: 0;
+  gap: var(--space-8);
+  margin: var(--space-4) 0 var(--space-8);
 }
-.podcast-show-art {
-  width: 140px;
-  height: 140px;
-  border-radius: var(--radius-lg);
-  object-fit: cover;
-  background: var(--thumbnail-bg);
-  box-shadow: var(--shadow-lg);
-  flex-shrink: 0;
-}
-.podcast-show-meta { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-.podcast-show-meta h3 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--text-primary); }
-.podcast-show-author { font-size: var(--fs-base); color: var(--text-primary); }
-.podcast-show-desc {
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.podcast-episode-list { display: flex; flex-direction: column; }
-.podcast-episode-row {
+.podcast-show-head > .ui-art { --av: calc(var(--av-2xl) * 1.5); }
+.podcast-show-meta {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  border-radius: var(--radius-lg);
-}
-@media (hover: hover) {
-  .podcast-episode-row:hover { background: var(--bg-secondary); }
-}
-.podcast-episode-row.playing { background: var(--bg-secondary); }
-.podcast-episode-row.played .podcast-episode-title { color: var(--text-secondary); }
-.podcast-episode-main {
-  appearance: none;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
   flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-3);
-  color: inherit;
 }
-.podcast-episode-main:disabled { cursor: default; opacity: 0.65; /* token-exempt: disabled-state dimming, the shared .btn:disabled idiom */ }
-.podcast-episode-title {
-  font-size: var(--fs-base);
-  color: var(--text-primary);
+.podcast-show-title {
+  margin: 0;
+  font: var(--t-display);
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+.podcast-show-author { font: var(--t-body); color: var(--ink-1); }
+.podcast-show-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  margin: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font: var(--t-meta);
+  color: var(--ink-2);
 }
-.podcast-episode-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
-.podcast-episode-chip {
-  align-self: flex-start;
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 0 var(--space-2);
-}
-.podcast-episode-chip.failed { color: var(--yt-red); border-color: var(--yt-red); }
-.podcast-episode-resume {
-  width: 100%;
-  max-width: 240px;
-  height: 3px; /* token-exempt: hairline progress track, the seek-bar idiom */
-  border-radius: var(--radius);
-  background: var(--border-color);
-  overflow: hidden;
-}
-.podcast-episode-resume-fill { height: 100%; background: var(--yt-red); }
-.podcast-played-toggle {
-  appearance: none;
-  border: 1px solid var(--border-color);
-  border-radius: 50%; /* token-exempt: circle = half of own box, not a scale radius */
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  margin-right: var(--space-3);
+.podcast-show-counts { font: var(--t-meta); color: var(--ink-2); }
+.podcast-show-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  font-size: var(--fs-sm);
-}
-.podcast-episode-row.played .podcast-played-toggle {
-  background: var(--yt-red);
-  border-color: var(--yt-red);
-  /* Same undefined-token class as the sheet above: --text-inverse does not
-     exist. On the red fill the checkmark needs a light foreground; #fff is
-     a legibility floor against a fixed brand color, not a themed value. */
-  color: #fff; /* token-exempt: legibility floor on the fixed --yt-red fill */
-}
-
-/* v1.71.1: episode-row actions as glyph buttons (Dean's device find: three
-   text buttons truncated the title). The played/like-toggle 28px circle
-   chassis; the card corner controls' icon vocabulary. The delete keeps its
-   two-tap honesty - arming widens the circle into a pill and reveals the
-   copy (the .card-delete-btn.armed REVEAL styling; the js side has no
-   auto-disarm timer, see buildEpisodeRow). */
-.podcast-ep-action {
-  appearance: none;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  min-width: 28px;
-  height: 28px;
-  padding: 0;
-  flex-shrink: 0;
-  margin-right: var(--space-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-.podcast-ep-action i,
-.podcast-ep-action .chrome-icon { /* v1.102: the glyph is now an inline chrome-icon svg, not an .icon-* mask */
-  width: 14px;
-  height: 14px;
-}
-.podcast-ep-action .podcast-ep-confirm {
-  display: none;
-  white-space: nowrap;
-  font-size: var(--fs-sm);
-}
-.podcast-ep-delete.confirming {
-  padding: 0 var(--space-3);
-  gap: var(--space-2);
-}
-.podcast-ep-delete.confirming .podcast-ep-confirm {
-  display: inline;
-}
-
-/* v1.71: the episode like heart - the played-toggle chassis, heart glyph.
-   Liked state fills red like the music heart. */
-.podcast-like-toggle {
-  appearance: none;
-  border: 1px solid var(--border-color);
-  border-radius: 50%; /* token-exempt: circle = half of own box, not a scale radius */
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  margin-right: var(--space-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-sm);
-}
-.podcast-like-toggle.liked {
-  color: var(--yt-red);
-  border-color: var(--yt-red);
-}
-
-/* v1.75: the v1.71 Liked-lane card rules (.podcast-liked-card /
-   .podcast-liked-card-art) are DELETED with the lane itself - the central
-   /?liked=1 playlist is the one Liked surface. A rule left behind for a
-   className nothing mints is dead weight the next reader has to disprove. */
-
-/* The management row on a show's drill-in (v1.69 QA gate #3). */
-.podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
-/* Shared confirming state - unsubscribe AND the v1.70 episode delete render
-   the same two-tap affordance from ONE rule (the styling-source law). */
-.podcast-unsub-btn.confirming,
-.podcast-ep-delete.confirming { color: var(--yt-red); border-color: var(--yt-red); }
-.podcast-reenter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; width: 100%; margin-top: var(--space-3); }
-.podcast-reenter-row .search-input { flex: 1; min-width: 220px; }
-
-/* The add-subscription sheet: the playlists-sheet backdrop/panel idiom.
-   The settings sheet (v1.69 QA #2) SHARES these classes - same affordance,
-   shared declarations, the styling-source rule. */
-.podcasts-add-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim-legacy);
-  z-index: calc(var(--z-modal) - 1);
-}
-.podcasts-add-backdrop[hidden] { display: none !important; }
-.podcasts-add-sheet {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(480px, calc(100vw - var(--space-8) * 2));
-  /* v1.70 BUG FIX (Dean, on-device: "the background is translucent, you can
-     see through it"): this read var(--bg-primary), a token that DOES NOT
-     EXIST - an undefined var() makes the declaration invalid at computed-
-     value time, so the sheet had NO background in every era. --card-bg is
-     the real panel token (defined in all four era blocks). The census
-     cannot see this class of defect (it only scans literals PRESENT); the
-     styling lock only proves a class is BOUND, not that its vars resolve. */
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: var(--space-8);
-  z-index: var(--z-modal);
-  display: flex;
-  flex-direction: column;
   gap: var(--space-4);
+  margin-bottom: var(--space-8);
 }
-.podcasts-add-sheet[hidden] { display: none !important; }
-.podcasts-add-sheet h3 { margin: 0 0 var(--space-2); }
-.podcasts-add-label {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--text-primary);
+.podcast-reenter {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+  max-width: var(--dialog-w);
+  margin-bottom: var(--space-8);
 }
-.podcasts-add-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-secondary); }
-.podcasts-add-actions { display: flex; justify-content: flex-end; gap: var(--space-4); margin-top: var(--space-4); }
-.podcasts-add-error { font-size: var(--fs-sm); color: var(--yt-red); }
+/* the Back control's glyph lines up with the page title (the plain button's own padding) */
+#podcasts-crumb > .ui-btn { margin-left: calc(-1 * var(--space-6)); } /* token-exempt: positional (glyph on the page gutter) */
+.podcast-reenter > .ui-field { justify-self: stretch; }
+
+/* the episode list: the playing row is the selected tonal fill (D8.8), a played title is ink-2 */
+.podcast-episodes > .ui-row[aria-current="true"] { background-color: var(--fill-selected); }
+.podcast-episodes > .ui-row[aria-current="true"] .ui-row__title { font-weight: var(--fw-semibold); }
+.podcast-episodes > .ui-row[data-played] .ui-row__title { color: var(--ink-2); }
+
+/* the add / settings dialogs' form body (inside a ui-sheet) */
+.podcast-form {
+  display: grid;
+  gap: var(--space-8);
+  padding: 0 var(--space-8);
+}
+.podcast-form > .ui-confirm__actions { padding: 0 0 var(--space-8); }
 
 @media (max-width: 600px) {
-  .podcast-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-6); }
   .podcast-show-head { gap: var(--space-6); }
-  .podcast-show-art { width: 96px; height: 96px; }
+  .podcast-show-head > .ui-art { --av: var(--av-2xl); }
+  .podcast-show-title { font: var(--t-headline); }
 }
 
 /* === v1.95: MOBILE TOUCH TARGETS ===========================================

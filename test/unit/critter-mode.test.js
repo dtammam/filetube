@@ -36,6 +36,10 @@ const { buildCritterListing, buildCritterVoicePool } = require('../../server.js'
 
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+// UI pass S6: a pool entry may be a ui-* primitive whose base rule lives in ui.css (`.ui-art`
+// paints --thumb-ground there); the ground contract reads both sheets. Kept separate from CSS so
+// the body / .main-content locks below still read style.css alone.
+const UI_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
 const SETUP_HTML = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
 const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
 
@@ -1155,7 +1159,7 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
   assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.comments-section') === -1,
     'the comments section paints NO background - a critter behind it would show through (deliberately not an anchor)');
   for (const sel of CRITTER_ANCHOR_SELECTORS.filter((s) => s.startsWith('.'))) {
-    const rule = new RegExp('(?:^|\\n)' + sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}').exec(CSS);
+    const rule = new RegExp('(?:^|\\n)' + sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}').exec(sel.startsWith('.ui-') ? UI_CSS : CSS);
     assert.ok(rule, sel + ' has a base CSS rule');
     // v1.167 TIGHTENED (the .3 gate's disclosed nit became load-bearing:
     // `.music-artist-card` paints `background: transparent`, which the old
@@ -1168,7 +1172,7 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
 // ---- v1.167: buttons priority + scale-to-anchor + the fixed-subtree guard ---
 
 test('v1.167: the machine-derived sweep is in the pool; the transparent rejects are NOT', () => {
-  for (const sel of ['.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box', '.thumbnail-container', '.card-channel-avatar']) {
+  for (const sel of ['.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box', '.thumbnail-container', '.card-channel-avatar']) {
     assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) !== -1, sel + ' anchors (verified painting)');
   }
   for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row']) {

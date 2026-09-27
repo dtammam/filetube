@@ -63,23 +63,29 @@ test('music.js reaches chromeIconMarkup via window (no bare require - the client
   assert.match(src, /rowGlyphMarkup\('heart'\)/);
 });
 
-// ---- podcast episode row: chromeIconEl, no mask className -------------------
+// ---- podcast episode row: registry sprite icons via ui.button, no masks -------
+// UI pass S6 (AC12 conversion of the v1.102 lock): the episode row's actions are ui.button
+// icon buttons (ui-btn--icon, a ui-icon <use href="#i-NAME"> from the sprite - the same
+// no-decode-lag property the inline chrome-icon gave, now from the registry), and the old
+// 14px `.podcast-ep-action .chrome-icon` sizing rule is replaced by the ui-btn icon slot
+// contract in ui.css. podcasts-ui-sweep.test.js renders the row and binds the DOM.
 
-test('podcast episode row: like/queue/save/delete build via chromeIconEl, NO icon-* mask className', () => {
+test('podcast episode row: queue + more are ui.button sprite icons, NO icon-* mask and no bespoke glyph class', () => {
   const src = stripComments(read('public/js/podcasts.js'));
-  for (const name of ['heart', 'queue', 'download', 'delete']) {
-    assert.match(src, new RegExp("rowGlyphEl\\('" + name + "'\\)"), `episode-row ${name} builds an inline chrome-icon el`);
+  assert.match(src, /ui\.button\(\{ variant: 'plain', shape: 'icon', icon: 'playlist_play', ariaLabel: 'Add to queue' \}\)/, 'the queue action is a plain icon ui-btn');
+  assert.match(src, /ui\.button\(\{ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More actions' \}\)/, 'the more action is a plain icon ui-btn');
+  const FTIcons = require('../../public/js/icons.js');
+  for (const name of ['playlist_play', 'more_vert', 'favorite', 'favorite.fill', 'check', 'download', 'delete', 'refresh']) {
+    assert.ok(FTIcons.has(name), `registry has ${name}`);
   }
-  // The old mask <i> builders (className = 'icon-*') are gone from the episode row.
-  assert.doesNotMatch(src, /\.className = 'icon-(heart|queue|download|delete)'/,
-    'no .icon-* mask <i> className assignment survives in the episode row');
+  assert.doesNotMatch(src, /\.className = 'icon-(heart|queue|download|delete)'/, 'no .icon-* mask <i> className in the episode row');
+  assert.doesNotMatch(src, /rowGlyphEl|podcast-ep-action/, 'the retired bespoke glyph path is gone');
 });
 
-test('style.css: .podcast-ep-action sizes the inline chrome-icon (parity with the old 14px mask)', () => {
-  const css = read('public/css/style.css');
-  assert.match(css, /\.podcast-ep-action \.chrome-icon\b/, 'the svg glyph is sized in the ep-action button');
-  assert.match(css, /\.podcast-ep-action[^{]*\.chrome-icon[^{]*\{[^}]*width: 14px/,
-    'same 14px box the mask had (no size regression)');
+test('ui.css: the ui-btn icon slot sizes the sprite glyph (replaces the 14px .podcast-ep-action rule)', () => {
+  const css = read('public/css/ui.css');
+  assert.match(css, /\.ui-btn__icon > \.ui-icon \{[^}]*width: var\(--btn-icon\);[^}]*height: var\(--btn-icon\);/, 'the icon takes the slot size');
+  assert.doesNotMatch(read('public/css/style.css').replace(/\/\*[\s\S]*?\*\//g, ''), /\.podcast-ep-action/, 'the bespoke rule is deleted');
 });
 
 // ---- SURGICAL SCOPE: the survivors stay masks -------------------------------

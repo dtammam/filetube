@@ -85,7 +85,10 @@ test('PATCH libraryPlace=podcasts via the ytdlp route; the show + episodes surfa
   assert.strictEqual(show.name, CHANNEL_NAME);
   assert.strictEqual(show.source, 'ytdlp');
   assert.strictEqual(show.episodeCount, 2);
-  assert.strictEqual(show.artUrl, `/thumbnail/${itemNew.id}`, 'art = the newest item\'s thumbnail');
+  // UI pass S6 (F42, a DELIBERATE change of this lock): the art is the show's own artwork (its
+  // channel avatar), never a video frame. This fixture has no avatar anywhere, so it is null and
+  // the client draws the monogram; podcast-ytdlp-show-art.test.js binds the whole chain.
+  assert.strictEqual(show.artUrl, null, 'no channel avatar: null (the monogram), never /thumbnail/<newest item>');
 
   const data = await (await get(`/api/podcasts/shows/yt:${SUB_ID}/episodes`)).json();
   assert.deepStrictEqual(data.episodes.map((e) => e.title), ['Episode Two', 'Episode One'], 'newest-first, bracket stripped');
