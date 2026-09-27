@@ -105,6 +105,43 @@
   applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
   swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
 
+- [ ] **Bug: the mobile bottom bar still slides up to the middle of the screen, in some edge case** (Dean,
+  2026-09-27: "Weird edge case where bottom bar still slides upto middle on mobile. No bien."). "Still"
+  = it is the known item: #6 from v1.311 ("the bottom nav unsticking after a rotate", left waiting on a
+  device check since v1.311.3), now seen again on the phone. Not yet reproduced here. First questions
+  when picked up (LESSONS 1: name the falsifying observation before editing): what came just before
+  (a rotate, leaving fullscreen or the expanded audio view, the keyboard closing after a search,
+  returning to the PWA from the background, pull-to-refresh); does it fix itself on a scroll or a
+  rotate back; the iPhone PWA or Safari. Candidate mechanisms to measure: `position:fixed; bottom:0`
+  measured against a stale visual viewport (iOS keeps the old innerHeight after a rotate or the
+  keyboard), a body scroll-lock that pins `top` and is not released, and the safe-area inset changing
+  while the bar is laid out. A `?debugLifecycle=1` capture of the bar's rect against `visualViewport`
+  when it happens decides which one.
+
+- [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
+  vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
+  around, not a headset; his files are generic website downloads). **PAUSED mid-build on his call, same
+  day.** Today a VR file plays as the raw stretched panorama. A WIP commit (untested) lives on the
+  local branch `feat/v1.340-vr-360` (worktree `.claude/worktrees/vr360`), not pushed and not gated:
+  `lib/media/projection.js` (detection: the owner's pick > the file's spherical metadata > the file name
+  in the DeoVR/Skybox convention `_180_LR` / `_360_TB` / `180x180_3dh`, the name counting only when the
+  frame's shape agrees) and `public/js/vr-view.js` (a WebGL canvas over the `<video>`: one triangle and a
+  ray-to-longitude/latitude shader; 360 / 180, mono / side-by-side / stacked, left eye only; drag, wheel
+  and pinch zoom, opt-in motion via the device quaternion). Measured: ffprobe 7.0.2 on files from
+  Google's spatial-media injector prints `side_data_type: 'Spherical Mapping'` +
+  `projection: 'equirectangular' | 'tiled equirectangular'` (VR180's bound_left/right in panorama
+  PIXELS) + `'Stereo 3D'` / `type: 'top and bottom' | 'side by side'`; the probe's
+  `stream_side_data=rotation` must grow those keys (rotation keeps working beside them). Not done: the
+  scan wiring, the owner's per-video pick (the `chaptersManual` precedent: requireModifyLibrary, the
+  scan's re-init carry AND the Phase-2 mirror, route-write classification), a player settings-menu row,
+  tests, the gate. Known risks for the device pass: (1) an iPhone fullscreen is Apple's own player, so
+  the sphere needs a full-window mode instead; (2) iOS once blacked out video when a page drew live
+  frames (the v1.312 Ambient lesson) - the sphere must upload live frames to WebGL, so test it on the
+  iPhone FIRST; (3) the existing library is never re-probed, so metadata-only files need a tag-only
+  backfill pass or a manual pick (the file-name rule works at once); (4) not verified yet: the shader's
+  left/right sense, which needs one rendered frame of a labelled panorama. Out of scope: headset WebXR,
+  cardboard, fisheye and cubemap files (YouTube's EAC), Roku / TV / thumbnails (they stay flat).
+
 ## Resolved
 
 Items delivered or decided, moved out of Planned so that list stays honest.
