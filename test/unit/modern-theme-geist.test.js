@@ -64,6 +64,9 @@ test('v1.107 (gate coverage): EVERY shell that loads style.css preloads geist.wo
       // UI pass step 1: tokens.css loads FIRST, right before style.css (and after the preload).
       const tokIdx = html.indexOf('rel="stylesheet" href="/css/tokens.css"');
       assert.ok(tokIdx > preIdx && tokIdx < cssIdx, `${f}: tokens.css must load after the preload and before style.css`);
+      // step 3: the primitives load between the tokens and the surface stylesheet.
+      const uiIdx = html.indexOf('rel="stylesheet" href="/css/ui.css"');
+      assert.ok(uiIdx > tokIdx && uiIdx < cssIdx, `${f}: ui.css must load after tokens.css and before style.css`);
       assert.ok(!html.includes('preload" href="/fonts/roboto.woff2"'), `${f} still preloads the OLD roboto font`);
       // Forcing guard: no shell should reference the OLD font at all (the Modern
       // face is Geist; Roboto is only a CSS fallback, never named in a shell).

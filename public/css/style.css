@@ -4470,14 +4470,6 @@ a.sub-row-channel-link:focus-visible {
   flex: none;
 }
 
-/* UI pass step 2: the icon sprite (public/js/icons.js inject()). Its `hidden` attribute is
-   NOT enough: the UA's [hidden] rule is scoped to the HTML namespace, so an <svg> keeps its
-   default 300x150 box and pushes the page down. The symbols it holds still render through
-   every <use> while it is display:none. (Moves to ui.css with the primitives, step 3.) */
-#ft-icon-sprite {
-  display: none;
-}
-
 /* v1.340: a two-state button's label (common.js stableToggleLabelHtml). Every label
    shares ONE grid cell, so the button is as wide as its longest label in both states
    and the row beside it never shifts on a tap; only the current label is visible. */

@@ -142,6 +142,7 @@
   --dur-press: 90ms;
   --dur-fade: 180ms;
   --dur-sheet: 280ms;
+  --dur-spin: 800ms;    /* one turn of the busy spinner */
   --ease-std: cubic-bezier(0.2, 0, 0, 1);
   --ease-enter: cubic-bezier(0, 0, 0, 1);
   --ease-exit: cubic-bezier(0.3, 0, 1, 1);
