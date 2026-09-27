@@ -96,8 +96,9 @@ module.exports = [
       // `FileTube` is the SPA-lite router/view-registry namespace common.js
       // attaches to `window` (FR-1, T1); every other view script
       // (main/watch/setup/subscriptions) calls `FileTube.registerView`/
-      // `FileTube.navigate`.
-      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly', FTIcons: 'readonly' },
+      // `FileTube.navigate`. `ui` is the primitives' builder namespace ui.js
+      // attaches to `window` (UI professionalism pass, plan D4).
+      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly', FTIcons: 'readonly', ui: 'readonly' },
     },
     rules: {
       ...commonRules,
