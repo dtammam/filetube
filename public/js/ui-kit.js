@@ -48,9 +48,9 @@
   row(b, [
     ui.button({ variant: 'primary', size: 'sm', pill: true, label: 'Subscribe' }),
     ui.button({ variant: 'secondary', size: 'sm', pill: true, labels: ['Subscribe', 'Subscribed'], pressed: true }),
-    ui.button({ variant: 'plain', shape: 'icon', icon: { off: 'notifications_off', on: 'notifications_active' }, pressed: true, ariaLabel: 'Notify' }),
-    ui.button({ variant: 'plain', shape: 'icon', icon: { off: 'keep', on: 'keep.fill' }, pressed: false, ariaLabel: 'Pin' }),
-    ui.button({ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More' }),
+    ui.button({ variant: 'plain', size: 'sm', shape: 'icon', icon: { off: 'notifications_off', on: 'notifications_active' }, pressed: true, ariaLabel: 'Notify' }),
+    ui.button({ variant: 'plain', size: 'sm', shape: 'icon', icon: { off: 'keep', on: 'keep.fill' }, pressed: false, ariaLabel: 'Pin' }),
+    ui.button({ variant: 'plain', size: 'sm', shape: 'icon', icon: 'more_vert', ariaLabel: 'More' }),
   ]);
   // toggles that flip on tap: the label stack keeps the width still
   const liveToggle = ui.button({ variant: 'secondary', pill: true, labels: ['Notify', 'Notifying'], icon: { off: 'notifications_off', on: 'notifications_active' }, pressed: false });

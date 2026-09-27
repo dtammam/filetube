@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: finish step 4 (merge the geometry + visual CI slice, wire its pre-push snippet); sweep wave A in flight (S2 cards, S10 books; S6 merged); then waves B (S1, S5, S8) and C (S3, S7), then S4 + S9
+next: sweeps - S2 (cards) and S5 (Subscriptions) in flight; then wave B (S1 chrome, S8 settings) + C (S3 watch, S7 music/pocket), then S4 + S9; the CI visual job needs its first rebaseline run (workflow_dispatch) before it can go green
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -1508,3 +1508,34 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   (exit 0); the pre-commit `npm run test:unit` of c70a9120 tests 7880, pass 7879, fail 0, skipped 1;
   `npx eslint .` 0 errors, 6 warnings (the existing common.js unused globals); `npm run lint:ui` OK
   (2660, equals the file); `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations).
+
+### Step 4 - geometry + the deterministic visual job, merged; step 4 closed (2026-09-27; 42f96ad7, 0050e028, fd5fece3)
+
+- From branch feat/ui-pro-geometry (cut before S6/S10): `test/geometry/` (G1 row columns, G2 icon centring, G3
+  equal heights per button group, G4 rotation stillness; `npm run test:geometry`, `test:geometry:fast`;
+  `expected-failures.json`, shrink-only, XPASS fails), `test/visual/run.js` (seed -> fresh server -> the scene
+  matrix -> compare at 0 changed pixels; `--update`, `--idle`), `test/visual/server.js`, `clock-shim.js`, and
+  `.github/workflows/visual.yml` (job `visual` in `mcr.microsoft.com/playwright:v1.62.0-jammy`; job
+  `rebaseline` on workflow_dispatch uploads baselines as an artifact).
+- **Determinism, measured on this box** (760 shots per run, DPR 1): run 1 writes scratch baselines; run 2
+  back-to-back 760/760 identical; run 3 after a 5-minute idle server 760/760 identical. Levers: SEED_NOW pinned
+  and a clock shim in the seed; server + browser clocks start at the seed's view time; UTC/en-US; Math.random
+  seeded per document (the Pocket menu picked a random album); `#file-path-text` masked; the raster flags;
+  a fixed data dir (`/tmp/filetube-visual-data`); a fresh server per run waiting for the boot scans; every
+  poller off (podcast feed poll - the step 3 drift -, library rescan, yt-dlp). CI pixels will differ from this
+  box, so baselines come only from the container.
+- Mutation: 7/7 geometry mutants killed; 13/13 unit mutants red.
+- **Merge:** capture.js was restructured on that branch while S6 (selectors) and S10 (scenes 50-54) edited it;
+  resolved by taking the restructure and replaying both sweeps' edits. The D6 check's inline `/* global */`
+  collided with the new eslint globals block for test/geometry (removed).
+- **G3 finding fixed:** the kit's channel-card row put sm (32px) pills beside md icon buttons (44 phone / 36
+  desktop). The icon buttons are sm now (D4.9: the channel row is sm; the 44px hit area is the pseudo-element),
+  and an icon-only sm button keeps the 22px row glyph (`.ui-btn--sm.ui-btn--icon`). Its expected-failure entry
+  is deleted. `npm run test:geometry:fast`: 12 checks, 12 ok, 0 XFAIL, 11s.
+- Pre-push runs the fast geometry set when public/ changed vs the upstream.
+- **Open for Dean / the release:** (1) the visual job is red until someone runs the `rebaseline` workflow and
+  commits its artifact (it exits 2 "no baselines" rather than passing vacuously); a workflow_dispatch job must
+  exist on the default branch to be runnable, so the first baselines likely land with or right after the merge.
+  (2) Baselines at DPR 1 are ~52 MB for 760 PNGs: fewer scenes/modes or Git LFS is a decision for Dean.
+  (3) G4 pocket-rotation is XFAIL (F23) until S7 (worst box 457px on rotate).
+

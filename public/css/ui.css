@@ -126,6 +126,8 @@ select,
     border-color var(--dur-press) var(--ease-std), opacity var(--dur-fade) var(--ease-std);
 }
 .ui-btn--sm { --btn-h: var(--ctl-sm); --btn-px: var(--space-6); --btn-icon: var(--icon-sm); }
+/* an icon-only sm button (the channel row's bell and pin beside an sm pill) keeps the row glyph */
+.ui-btn--sm.ui-btn--icon { --btn-icon: var(--icon-md); }
 .ui-btn--md { --btn-h: var(--ctl-md); }
 .ui-btn--lg { --btn-h: var(--ctl-lg); --btn-px: var(--space-10); }
 @media (max-width: 768px) {
