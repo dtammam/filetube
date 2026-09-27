@@ -14690,16 +14690,10 @@ html[data-modern="on"] .video-uploader {
    #view-root or is built by podcasts.js, so the rules live HERE, never in a shell <style> (the
    v1.41.8 SPA lesson). The toolbar, crumb and status line reuse the music place's rules. */
 
-/* The two lists sit flush with the page gutter: a ui-row starts with its padding, the reserved
-   lead (indicator) column and the column gaps, so without this the art and the titles start
-   24-32px right of the page title. The pull is exactly those widths, from the same tokens
-   ui.css uses (a media-less list also skips its empty media column's gap). */
+/* Spotify library rows: a 64px rounded-square art column (ui.css's lists put the text on
+   the page gutter when a list declares no lead or media column). */
 .podcast-show-list {
-  --media-w: var(--av-xl); /* Spotify library rows: a 64px rounded-square art column */
-  margin-left: calc(-1 * (var(--space-4) * 2 + var(--lead-w))); /* token-exempt: positional (flush with the page gutter) */
-}
-.podcast-episodes {
-  margin-left: calc(-1 * (var(--space-4) * 3 + var(--lead-w))); /* token-exempt: positional (flush with the page gutter) */
+  --media-w: var(--av-xl);
 }
 .podcast-show-list > .ui-row[data-warn] .ui-row__meta { color: var(--danger); }
 

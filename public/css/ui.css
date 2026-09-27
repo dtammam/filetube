@@ -265,14 +265,21 @@ select,
 
 /* ---- ui-list / ui-row --------------------------------------------------------------- */
 /* Reserved columns: the LIST declares its slot widths, so an optional child can never move
-   a column (AC5). Every row renders every slot, empty or not. */
+   a column (AC5). Every row renders every slot, empty or not. Each declared column carries
+   its own spacing (column-gap is 0), so a column the list does not declare costs nothing:
+   a list with no media and no lead puts its text on the row's start edge (flush with the
+   page gutter, or at the group inset in a grouped list). */
 .ui-list {
-  --lead-w: var(--space-4);
+  --lead-w: 0px;
   --media-w: 0px;
+  --media-gap: 0px;
   --row-aside: 0px;
+  --aside-gap: 0px;
   --row-actions-w: 0px;
   --row-h: var(--row-default);
-  --divider-start: calc(var(--space-4) + var(--lead-w) + var(--space-4) + var(--media-w) + var(--space-4));
+  --row-pad-start: 0px;
+  --row-pad-end: 0px;
+  --divider-start: calc(var(--row-pad-start) + var(--lead-w) + var(--media-w) + var(--media-gap));
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -282,34 +289,43 @@ select,
 .ui-list--compact { --row-h: var(--row-compact); }
 .ui-list--default { --row-h: var(--row-default); }
 .ui-list--media { --row-h: var(--row-media); }
-.ui-list--media-avatar { --media-w: var(--av-md); }
+/* the unread-dot column, only in a list that declares it (ui.list({lead: true})) */
+.ui-list--lead { --lead-w: var(--space-8); }
+.ui-list--media-avatar { --media-w: var(--av-md); --media-gap: var(--space-6); }
 .ui-list--compact.ui-list--media-avatar { --media-w: var(--icon-md); }
-.ui-list--media-art { --media-w: var(--av-lg); }
-.ui-list--media-thumb { --media-w: calc(var(--av-xl) * 16 / 9); }
-.ui-list--aside-thumb { --row-aside: var(--av-2xl); }
-.ui-list--aside-text { --row-aside: var(--space-16); }
+.ui-list--media-art { --media-w: var(--av-lg); --media-gap: var(--space-6); }
+.ui-list--media-thumb { --media-w: calc(var(--av-xl) * 16 / 9); --media-gap: var(--space-6); }
+.ui-list--aside-thumb { --row-aside: var(--av-2xl); --aside-gap: var(--space-4); }
+.ui-list--aside-text { --row-aside: var(--space-16); --aside-gap: var(--space-4); }
 .ui-list--actions-1 { --row-actions-w: var(--hit); }
 .ui-list--actions-2 { --row-actions-w: calc(var(--hit) * 2); }
 .ui-list--actions-3 { --row-actions-w: calc(var(--hit) * 3); }
 .ui-list--divider-full { --divider-start: 0px; }
 .ui-list--grouped {
+  --row-pad-start: var(--inset);
+  --row-pad-end: var(--space-4);
   margin: 0 var(--inset);
   border-radius: var(--r-md);
   background: var(--surface-1);
   overflow: hidden;
 }
+.ui-list:not(.ui-list--lead) > .ui-row > .ui-row__lead,
+.ui-list--media-none > .ui-row > .ui-row__media {
+  visibility: hidden;
+}
 
 .ui-row {
   position: relative;
   display: grid;
-  grid-template-columns: var(--lead-w) var(--media-w) minmax(0, 1fr) var(--row-aside) var(--row-actions-w);
+  grid-template-columns: var(--lead-w) calc(var(--media-w) + var(--media-gap)) minmax(0, 1fr)
+    calc(var(--row-aside) + var(--aside-gap)) var(--row-actions-w);
   align-items: center;
-  column-gap: var(--space-4);
+  column-gap: 0;
   box-sizing: border-box;
   width: 100%;
   min-height: var(--row-h);
   margin: 0;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--row-pad-end) var(--space-2) var(--row-pad-start);
   border: 0;
   background-color: transparent;
   color: var(--ink-1);
@@ -342,7 +358,7 @@ select,
   align-items: center;
   min-width: 0;
 }
-.ui-row__media { justify-content: center; }
+.ui-row__media { justify-content: flex-start; }
 .ui-row__aside { justify-content: flex-end; color: var(--ink-2); font: var(--t-meta); }
 .ui-row__actions { justify-content: flex-end; position: relative; }
 .ui-row__slot { display: block; width: var(--hit); height: var(--hit); flex: none; }
@@ -921,8 +937,9 @@ button.ui-row:focus-visible,
 [data-theme="2009"] .ui-btn--tonal {
   background: var(--btn-fill);
 }
-/* 2005: square corners everywhere, pills included */
+/* 2005: square corners everywhere, pills and icon buttons included */
 [data-theme="2005"] .ui-btn--pill,
+[data-theme="2005"] .ui-btn--icon,
 [data-theme="2005"] .ui-chip--filter,
 [data-theme="2005"] .ui-chip--count {
   border-radius: 0;

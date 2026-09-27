@@ -187,7 +187,7 @@
     var divider = oneOf(o.divider, ['inset', 'full', 'none'], 'inset');
     var l = el(doc, 'div', 'ui-list ui-list--' + size + ' ui-list--media-' + media +
       ' ui-list--aside-' + aside + ' ui-list--actions-' + actions + ' ui-list--divider-' + divider +
-      (o.grouped ? ' ui-list--grouped' : ''));
+      (o.grouped ? ' ui-list--grouped' : '') + (o.lead ? ' ui-list--lead' : ''));
     l.setAttribute('role', 'list');
     if (o.label) l.setAttribute('aria-label', o.label);
     return l;

@@ -173,6 +173,9 @@ test('ui.list: every modifier class present, role list, label', () => {
   const d = ui.list({ doc });
   assert.deepStrictEqual(classes(d), ['ui-list', 'ui-list--default', 'ui-list--media-none', 'ui-list--aside-none',
     'ui-list--actions-0', 'ui-list--divider-inset']);
+  // the unread-dot column is opt-in (a list that shows dots declares it)
+  assert.ok(classes(ui.list({ lead: true, doc })).includes('ui-list--lead'));
+  assert.ok(!classes(d).includes('ui-list--lead'));
   assertNoInlineStyle(l);
 });
 

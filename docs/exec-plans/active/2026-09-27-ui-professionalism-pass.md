@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: D12 step 4 (Guardrails) - scripts/ui-lint.js (css-tree; rules D10.1 + canaries), docs/ui-exceptions.json baseline + ratchet test, G1-G3 geometry checks, the CI visual + rebaseline jobs (fresh server, feed polling off), hook wiring, the 92-rule hover-gated wrap, the D6 native-interaction base
+next: finish step 4 (merge the geometry + visual CI slice, wire its pre-push snippet); sweep wave A in flight (S2 cards, S10 books; S6 merged); then waves B (S1, S5, S8) and C (S3, S7), then S4 + S9
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -1411,3 +1411,29 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   rbac-podcast-enforcement, rbac-podcast-external-shows, route-census, shell-smoke): 58 tests, 57 pass,
   1 fail before the podcasts-ytdlp-shows conversion; that file 6 / 6 after. `npx eslint .` 0 errors,
   6 warnings; `lint:ui` OK, TOTAL 2634; `lint:css` TOTAL 0; `lint:overlay` 0 violations.
+
+### Step 4 - wiring, the baseline and the ratchet going live (2026-09-27; f6d06b94, e1e9b059, 6b7408d6)
+
+- Merged: ui-lint (ba92db70, 1acdcf72) and the hover wrap + D6 base (6364a00f, 081efd5d). colour-roles also
+  bans the legacy `--yt-red`/`--yt-red-dark` in a selected state (44 D8.8 sites now in the baseline instead
+  of passing; canary expect 7, reverting the regex fails it 5 of 7).
+- `docs/ui-exceptions.json` written with `--write-baseline` on that tree: **2703** items over 11 rules
+  (no-raw-values 1297, no-bespoke-controls 1091, icons 163, display-ownership 86, colour-roles 44, z-ladder 11,
+  hover-gated 3 (diag.html), native-interaction 3, no-layout-transition 2, no-shell-style 2, pressed-state 1;
+  no-legacy-tokens OFF until step 7, 1650 if on).
+- `lint:ui --enforce` in hooks/pre-commit, hooks/pre-push and CI (the test job checks out full history so the
+  ratchet test diffs against the merge-base). **Demo:** a commit adding `.demo-x:hover { color: var(--ink-1); }`
+  to style.css was refused by the pre-commit hook: `[hover-gated] public/css/style.css|.demo-x:hover live 1 >
+  allowed 0`; HEAD unchanged. (A raw-hex variant was refused first by the old token ratchet.)
+- `ui-lint --shrink` lowers paid entries (deleting zeroes) and refuses, writing nothing, on any new debt; tested
+  and mutation-checked. Sweeps shrink with it; on merge conflicts in the exceptions file take either side and
+  re-run `--shrink`.
+- ui.js + interaction.js load before common.js in every shell (login/welcome too; both pre-auth allowlisted -
+  **security seat: note**). Smoke: 46 shots, 0 page errors.
+- **Primitive fix from S6's report (after S6 merged):** lists put the text on the row's start edge unless they
+  declare a lead or media column. Each declared column carries its own spacing (column-gap 0), the unread-dot
+  column is opt-in (`ui.list({lead: true})`), undeclared slots are `visibility: hidden` (they must stay in the
+  grid), and only grouped lists get the 16px inner inset. S6's negative-margin workaround is deleted. 2005 icon
+  buttons are square. Rendered: podcast art and episode titles flush with the page title; the kit's
+  notifications list keeps its dot column.
+

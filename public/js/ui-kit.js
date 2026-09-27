@@ -94,7 +94,7 @@
 
   // ---- rows and lists ----
   const r = section('Rows', 'ui-row in a ui-list: the list reserves every column, so the thumbnails and actions line up whether or not a row has them.');
-  const notif = ui.list({ size: 'media', grouped: true, media: 'avatar', aside: 'thumb', actions: 1, divider: 'inset', label: 'Notifications' });
+  const notif = ui.list({ size: 'media', grouped: true, lead: true, media: 'avatar', aside: 'thumb', actions: 1, divider: 'inset', label: 'Notifications' });
   const more = () => ui.button({ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More' });
   notif.appendChild(ui.row({ lead: 'dot', media: ui.avatar({ name: 'Harbor Workshop' }), overline: 'Harbor Workshop', title: 'Restoring a 1950s workbench, part one', meta: '2 hours ago', aside: ui.thumb({ context: 'row', duration: 240 }), actions: [more()], href: '#' }));
   notif.appendChild(ui.row({ media: ui.avatar({ name: 'Harbor Lights Radio', kind: 'podcast' }), overline: 'Harbor Lights Radio', title: 'Episode 5: The long way round', meta: 'yesterday', aside: null, actions: [more()], href: '#' }));

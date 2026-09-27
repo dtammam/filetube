@@ -80,6 +80,17 @@ test('reduced motion: sheets fade only, and nothing gates the open class (F48)',
   assert.ok(RULES.some((r) => r.sel === '.ui-sheet.is-open' && /opacity:\s*1/.test(r.body)), 'is-open shows the sheet in every motion mode');
 });
 
+test('lists: column-gap 0 (each declared column carries its own spacing), and undeclared slots are hidden WITHOUT leaving the grid', () => {
+  const row = RULES.find((r) => r.sel === '.ui-row');
+  assert.match(row.body, /column-gap:\s*0;/, 'a zero-width column would still cost its gap');
+  const hide = RULES.find((r) => /\.ui-list:not\(\.ui-list--lead\) > \.ui-row > \.ui-row__lead/.test(r.sel));
+  assert.ok(hide && /\.ui-list--media-none > \.ui-row > \.ui-row__media/.test(hide.sel));
+  assert.match(hide.body, /visibility:\s*hidden/);
+  assert.doesNotMatch(hide.body, /display/, 'display:none would drop the slot and shift the body into column 1');
+  assert.ok(RULES.some((r) => r.sel === '.ui-list--lead' && /--lead-w:\s*var\(--space-8\)/.test(r.body)));
+  assert.ok(RULES.some((r) => r.sel === '.ui-list' && /--lead-w:\s*0px/.test(r.body)), 'no lead column unless declared');
+});
+
 test('a rounded overlay that scrolls splits clip from scroll (LESSONS 6)', () => {
   const sheet = RULES.find((r) => r.sel === '.ui-sheet');
   assert.match(sheet.body, /overflow:\s*hidden/);
