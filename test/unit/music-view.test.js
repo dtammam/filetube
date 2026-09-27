@@ -105,7 +105,7 @@ test('T9: formatTrackDuration renders m:ss / h:mm:ss; empty for zero/NaN', () =>
 test('T9: buildAlbumCardHtml carries album key + escaped title/artist + art src', () => {
   const html = buildAlbumCardHtml({ albumKey: 'k1', album: 'The <Wall>', artist: 'Pink Floyd', artId: 'abc', trackCount: 2 });
   assert.match(html, /data-album-key="k1"/);
-  assert.match(html, /src="\/albumart\/abc"/);
+  assert.match(html, /src="\/albumart\/abc\?s=\d+"/);
   assert.match(html, /The &lt;Wall&gt;/, 'album title escaped');
   assert.match(html, /2 tracks/);
 });
@@ -124,8 +124,8 @@ test('v1.103: buildArtistCardHtml renders a mosaic - one art-shimmer tile per ar
   const four = buildArtistCardHtml({ artist: 'Q', albumCount: 4, trackCount: 40, artIds: ['a', 'b', 'c', 'd'] });
   assert.match(four, /class="music-artist-mosaic" data-tiles="4"/);
   assert.equal(tileCount(four), 4, 'four tiles');
-  assert.match(four, /src="\/albumart\/a"/);
-  assert.match(four, /src="\/albumart\/d"/);
+  assert.match(four, /src="\/albumart\/a\?s=\d+"/);
+  assert.match(four, /src="\/albumart\/d\?s=\d+"/);
   assert.ok((four.match(/art-shimmer/g) || []).length === 4, 'every tile ships art-shimmer (reveal-once both axes)');
 
   // A server can only ever send 4, but the client also hard-caps (defence in depth).
@@ -144,7 +144,7 @@ test('v1.103: an artist with NO art still renders one placeholder tile (never a 
   const none = buildArtistCardHtml({ artist: 'Bare', albumCount: 1, trackCount: 1, artIds: [] });
   assert.match(none, /data-tiles="1"/, 'one tile reserved');
   assert.equal(tileCount(none), 1);
-  assert.match(none, /src="\/albumart\/"/, 'empty id -> /albumart/ (404s, but the img error still clears the shimmer - never a blank card)');
+  assert.match(none, /src="\/albumart\/\?s=\d+"/, 'empty id -> /albumart/ (404s, but the img error still clears the shimmer - never a blank card)');
   // Missing artIds entirely (older cached payload) behaves the same.
   assert.match(buildArtistCardHtml({ artist: 'Bare' }), /data-tiles="1"/);
 });
@@ -166,7 +166,7 @@ test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (n
 test('friction: buildRecentArtistTileHtml renders a round drillable artist tile (art + name, no meta)', () => {
   const html = buildRecentArtistTileHtml({ id: 'trk7', artist: 'NESTALGIA' });
   assert.match(html, /class="music-artist-card" data-artist="NESTALGIA"/, 'drills into the artist (same delegation)');
-  assert.match(html, /class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="\/albumart\/trk7"/, 'a full-bleed round album-art circle from the track');
+  assert.match(html, /class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="\/albumart\/trk7\?s=\d+"/, 'a full-bleed round album-art circle from the track');
   assert.match(html, />NESTALGIA</, 'the artist name');
   assert.doesNotMatch(html, /music-artist-meta/, 'no album/track meta on a recently-played tile');
 });
@@ -179,7 +179,7 @@ test('friction: buildArtistListRowHtml renders a compact drillable row (avatar c
   assert.match(withAvatar, />352 songs</, 'the song count');
   // A native/ripped artist (no avatar) uses its album art in the circle.
   const native = buildArtistListRowHtml({ artist: 'Pink Floyd', trackCount: 1, avatarUrl: '', artIds: ['a1'] });
-  assert.match(native, /class="art-shimmer" src="\/albumart\/a1"/, 'no avatar -> album art fills the row circle');
+  assert.match(native, /class="art-shimmer" src="\/albumart\/a1\?s=\d+"/, 'no avatar -> album art fills the row circle');
   assert.match(native, />1 song</, 'singular count');
 });
 
@@ -199,14 +199,14 @@ test('redesign: a shelf with no See-all target omits the See-all button', () => 
 test('redesign S1: buildJumpBackTileHtml renders a resume tile (data-id, /albumart art, title, artist)', () => {
   const html = buildJumpBackTileHtml({ id: 'trk9', title: 'Sonic 2 Coding', artist: 'NESTALGIA' });
   assert.match(html, /class="music-jump-tile" data-id="trk9"/, 'the tile carries the track id for the resume tap');
-  assert.match(html, /class="music-jump-art art-shimmer" src="\/albumart\/trk9"/, 'art via /albumart (falls back to the thumbnail for a library track), art-shimmer');
+  assert.match(html, /class="music-jump-art art-shimmer" src="\/albumart\/trk9\?s=\d+"/, 'art via /albumart (falls back to the thumbnail for a library track), art-shimmer');
   assert.match(html, />Sonic 2 Coding</, 'the title');
   assert.match(html, />NESTALGIA</, 'the artist');
 });
 
 test('v1.103: mosaic tile art ids are URL-encoded (a slash/space id cannot break the src attribute)', () => {
   const html = buildArtistCardHtml({ artist: 'Z', artIds: ['a b/c'] });
-  assert.match(html, /src="\/albumart\/a%20b%2Fc"/);
+  assert.match(html, /src="\/albumart\/a%20b%2Fc\?s=\d+"/);
 });
 
 test('v1.103 (reveal-once): the artist skeleton reserves the mosaic square, matching the revealed card shape', () => {
@@ -267,7 +267,7 @@ test('v1.104: buildNowPlayingPanelHtml renders escaped title + "artist · album"
   // v1.317 (M1): the line is the artist-drill BUTTON now (data-artist), still escaped.
   assert.match(html, /<button type="button" class="mnp-sub" data-artist="A &amp; B"[^>]*>A &amp; B · Alb&lt;x&gt;<\/button>/, 'artist · album, escaped, as the artist-drill button');
   assert.match(html, /class="mnp-queue-head">Up next/);
-  assert.match(html, /class="mnp-queue-row" data-index="3"[\s\S]*src="\/albumart\/t2"[\s\S]*>Two</, 'first up-next row carries its real queue index + thumb');
+  assert.match(html, /class="mnp-queue-row" data-index="3"[\s\S]*src="\/albumart\/t2\?s=\d+"[\s\S]*>Two</, 'first up-next row carries its real queue index + thumb');
   assert.match(html, /data-index="4"[\s\S]*>Three</);
   assert.ok((html.match(/art-shimmer/g) || []).length === 2, 'each up-next thumb ships art-shimmer (reveal-once)');
 });
@@ -495,7 +495,7 @@ test('v1.317 gate r1 W2: an EMPTY drill never requests /albumart/ with an empty 
   assert.doesNotMatch(sticky, /\/albumart\//);
   assert.match(sticky, /<img class="music-sticky-thumb" alt="" \/>/);
   // the populated axis is unchanged
-  assert.match(buildDrillHeaderHtml({ type: 'artist', label: 'X' }, [{ id: 't9' }]), /src="\/albumart\/t9"/);
+  assert.match(buildDrillHeaderHtml({ type: 'artist', label: 'X' }, [{ id: 't9' }]), /src="\/albumart\/t9\?s=\d+"/);
 });
 
 test('v1.317 gate r1 W2: buildNowPlayingPanelHtml honours the view\'s veto - artistTap:false renders the plain sub-line even with an artist', () => {

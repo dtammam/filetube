@@ -198,11 +198,15 @@ test('POST /api/config returns 500 JSON (not a hang) when persisting the configu
   // v1.42: the fs.writeFileSync stub can't intercept SQLite; the sanctioned
   // replacement is __failNextSaveForTests() — the same one-shot "this write
   // dies" force, injected at the seam instead of under it (self-disarms).
+  // v1.339 r1: the POST carries the current base - an empty legacy list
+  // against a non-empty store is refused (409) before any save, which would
+  // leave the armed shot for an unrelated later write.
+  const { configVersion } = await (await fetch(`${base}/api/config`)).json();
   __failNextSaveForTests(new Error('simulated disk failure'));
   const res = await fetch(`${base}/api/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folders: [] }),
+    body: JSON.stringify({ folders: [], baseVersion: configVersion }),
   });
   assert.equal(res.status, 500);
   const json = await res.json();

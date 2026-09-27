@@ -418,7 +418,9 @@
   var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about', 'lighting'];
   function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
-  // musicArtUrl) so the menus can never drift from the art the rest of Music shows.
+  // musicArtUrl) so the menus can never drift from the art the rest of Music shows. v1.339 (L1):
+  // a track's art keys on its server `artId` (the album's shared representative) when it has one,
+  // so a menu of one album's songs requests its cover once.
   function artVia(artFor, id, explicit) {
     try { return (typeof artFor === 'function' && id) ? (artFor(id, explicit) || '') : ''; } catch (_) { return ''; }
   }
@@ -447,7 +449,7 @@
     return (Array.isArray(tracks) ? tracks : []).map(function (t, i) {
       return {
         label: (t && t.title) || 'Unknown Song', sub: (t && t.artist) || '',
-        id: t && t.id, song: true, trackIndex: i, art: artVia(artFor, t && t.id, t && t.artUrl),
+        id: t && t.id, song: true, trackIndex: i, art: artVia(artFor, t && (t.artId || t.id), t && t.artUrl),
       };
     });
   }
@@ -463,7 +465,7 @@
       if (seen[k]) return;
       seen[k] = true;
       var name = (typeof t.album === 'string' && t.album) ? t.album : 'Unknown Album';
-      albums.push({ label: name, node: { type: 'artistAlbum', key: k, artist: node.key || '', label: name }, art: artVia(artFor, t.id, t.artUrl) });
+      albums.push({ label: name, node: { type: 'artistAlbum', key: k, artist: node.key || '', label: name }, art: artVia(artFor, t.artId || t.id, t.artUrl) });
     });
     if (albums.length > 1) albums.unshift({ label: 'All Songs', node: { type: 'artistAll', artist: node.key || '', label: node.label || 'All Songs' }, art: albums[0].art });
     return albums;
@@ -507,7 +509,7 @@
       out.push({
         label: name || 'Unknown Artist',
         node: { type: 'artist', key: name, label: name || 'Unknown Artist' },
-        art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.id, t.artUrl),
+        art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.artId || t.id, t.artUrl),
       });
       return out.length >= RECENT_ARTISTS_MAX;
     });
@@ -554,7 +556,7 @@
       if (!t || !t.hasArt) return;
       var k = 'k' + (t.albumKey || t.id);
       if (seen[k]) return;
-      var u = artVia(artFor, t.id, t.artUrl);
+      var u = artVia(artFor, t.artId || t.id, t.artUrl);
       if (!sameOriginPath(u)) return;
       seen[k] = true;
       all.push(u);

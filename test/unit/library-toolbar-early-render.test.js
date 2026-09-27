@@ -31,7 +31,8 @@ function loadLibraryPrefix() {
 test('loadLibrary renders the format + watch toggles BEFORE the first fetch (toolbar complete from first paint)', () => {
   const prefix = loadLibraryPrefix();
   // Rendered before any await, alongside the grid skeleton seed.
-  assert.match(prefix, /buildSkeletonGrid\(SKELETON_CARD_COUNT\)/, 'the grid skeleton is still seeded first');
+  // v1.339 (L2): the skeleton now carries the Modern byline-avatar option (shape-matched).
+  assert.match(prefix, /buildSkeletonGrid\(SKELETON_CARD_COUNT, \{ avatar: !!modernMode \}\)/, 'the grid skeleton is still seeded first');
   assert.match(prefix, /renderFormatToggle\(sectionActions,\s*getStoredFormatFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,
     'the format toggle renders in loadLibrary BEFORE the /api/config fetch');
   assert.match(prefix, /renderWatchToggle\(sectionActions,\s*getStoredWatchFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,

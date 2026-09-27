@@ -109,6 +109,73 @@
       <!-- v1.82: theme toggle moved into the account menu (injected here by common.js) -->
     </div>
   </header>
+  <!-- ft-chrome-reserve:header (v1.339 L2) -->
+  <script>
+    /* Pre-paint header reserve (v1.339 L2, plan D5): holds the header-right slots BEFORE first
+       paint from the per-device flags common.js remembers (CHROME_FLAG_KEYS + the bell's
+       ft-notif-bell-enabled), so the search box and the glyph row never re-space when the async
+       injectors land - each injector REPLACES its placeholder in place, or drops it when the
+       feature is gone. Byte-identical in every header shell (test/unit/app-look-l2.test.js). */
+    (function () {
+      try {
+        var d = document, ls = window.localStorage, hr = d.querySelector('header .header-right');
+        if (!hr || hr.children.length) return;
+        var NS = 'http://www.w3.org/2000/svg';
+        var svg = function (vb, p, cls, px) {
+          var g = d.createElementNS(NS, 'svg'), q = d.createElementNS(NS, 'path');
+          if (cls) g.setAttribute('class', cls);
+          g.setAttribute('viewBox', vb);
+          if (px) { g.setAttribute('width', px); g.setAttribute('height', px); q.setAttribute('fill', 'currentColor'); }
+          g.setAttribute('aria-hidden', 'true');
+          q.setAttribute('d', p);
+          g.appendChild(q);
+          return g;
+        };
+        var el = function (tag, cls, kind) {
+          var e = d.createElement(tag);
+          e.className = cls;
+          if (kind) e.setAttribute('data-ft-reserve', kind);
+          e.setAttribute('aria-hidden', 'true');
+          if (tag === 'button') { e.type = 'button'; e.tabIndex = -1; }
+          return e;
+        };
+        var b;
+        if (ls.getItem('ft-queue-shown') === '1') {
+          b = el('button', 'queue-btn', 'queue');
+          b.appendChild(svg('0 0 24 24', 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z', '', '22'));
+          hr.appendChild(b);
+        }
+        if (ls.getItem('ft-notif-bell-enabled') === '1') {
+          b = el('span', 'notif-bell-btn');
+          b.id = 'notif-bell-placeholder';
+          b.appendChild(el('span', 'notif-bell-skel skeleton-shimmer'));
+          hr.appendChild(b);
+        }
+        if (d.getElementById('search-input')) {
+          b = el('button', 'search-toggle-btn', 'search');
+          b.appendChild(svg('0 -960 960 960', 'M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z', 'chrome-icon'));
+          hr.appendChild(b);
+        }
+        if (ls.getItem('ft-ytdlp-module') === '1') {
+          b = el('button', 'btn', 'download');
+          b.appendChild(svg('0 -960 960 960', 'M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z', 'chrome-icon'));
+          var lbl = d.createElement('span');
+          lbl.className = 'btn-label';
+          lbl.textContent = 'Download';
+          b.appendChild(lbl);
+          hr.appendChild(b);
+        }
+        /* the account slot: an .account-menu wrapper like the real root, so it takes the row's
+           flex gap even on mobile, where the trigger inside is display:none */
+        b = el('span', 'account-menu');
+        b.id = 'account-menu-placeholder';
+        var t = el('span', 'account-menu-trigger');
+        t.appendChild(el('span', 'account-avatar skeleton-shimmer'));
+        b.appendChild(t);
+        hr.appendChild(b);
+      } catch (_) { /* storage blocked: no reserve (the pre-L2 behaviour) */ }
+    })();
+  </script>
 
   <div class="app-container">
     <aside class="sidebar" id="sidebar">
@@ -408,6 +475,61 @@
       <span class="bottom-nav-label">Settings</span>
     </a>
   </nav>
+  <!-- ft-chrome-reserve:nav (v1.339 L2) -->
+  <script>
+    /* Pre-paint bottom-bar reserve (v1.339 L2, plan D5): lays the bar out BEFORE first paint as
+       it last resolved (ft-bottomnav-last, written by applyBottomNavCustomization): the static
+       items it names shown and in order, the rest hidden, and a same-box placeholder for each
+       async tab (Subs, Download, You) - so no tab re-spaces the bar when it lands; each
+       injector REPLACES its placeholder in place. Byte-identical in every header shell
+       (test/unit/app-look-l2.test.js). */
+    (function () {
+      try {
+        var d = document, nav = d.getElementById('bottom-nav');
+        if (!nav) return;
+        var last = JSON.parse(window.localStorage.getItem('ft-bottomnav-last') || 'null');
+        if (!last || !last.length) return;
+        var NS = 'http://www.w3.org/2000/svg';
+        var svg = function (vb, p) {
+          var g = d.createElementNS(NS, 'svg'), q = d.createElementNS(NS, 'path');
+          g.setAttribute('class', 'chrome-icon');
+          g.setAttribute('viewBox', vb);
+          g.setAttribute('aria-hidden', 'true');
+          q.setAttribute('d', p);
+          g.appendChild(q);
+          return g;
+        };
+        var reserve = function (id) {
+          var e, label;
+          if (id === 'subscriptions') { e = d.createElement('a'); e.href = '/subscriptions'; e.appendChild(svg('0 -960 960 960', 'M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-70q0-17 11.5-28.5T760-800q17 0 28.5 11.5T800-760v200q0 17-11.5 28.5T760-520H560q-17 0-28.5-11.5T520-560q0-17 11.5-28.5T560-600h128q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q68 0 124.5-34.5T692-367q8-14 22.5-19.5t29.5-.5q16 5 23 21t-1 30q-41 80-117 128t-169 48Z')); label = 'Subs'; }
+          else if (id === 'oneoff-download') { e = d.createElement('span'); e.appendChild(svg('0 -960 960 960', 'M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z')); label = 'Download'; }
+          else if (id === 'you') { e = d.createElement('span'); var av = d.createElement('span'); av.className = 'account-avatar bottom-nav-you-avatar skeleton-shimmer'; e.appendChild(av); label = 'You'; }
+          else return null;
+          e.className = 'bottom-nav-item';
+          e.setAttribute('data-ft-reserve', id);
+          e.setAttribute('aria-hidden', 'true');
+          e.tabIndex = -1;
+          var l = d.createElement('span');
+          l.className = 'bottom-nav-label';
+          l.textContent = label;
+          e.appendChild(l);
+          return e;
+        };
+        var byId = {}, items = nav.querySelectorAll('.bottom-nav-item[data-nav]'), i, id, e;
+        for (i = 0; i < items.length; i++) byId[items[i].getAttribute('data-nav')] = items[i];
+        var order = [], seen = {};
+        for (i = 0; i < last.length && i < 16; i++) {
+          id = String(last[i]);
+          if (seen[id]) continue;
+          e = byId[id] || reserve(id);
+          if (e) { order.push(e); seen[id] = 1; }
+        }
+        if (!order.length) return;
+        for (id in byId) if (!seen[id]) byId[id].hidden = true;
+        for (i = 0; i < order.length; i++) { order[i].hidden = false; nav.appendChild(order[i]); }
+      } catch (_) { /* storage blocked / bad JSON: the static bar (the pre-L2 behaviour) */ }
+    })();
+  </script>
 
   <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
   <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">

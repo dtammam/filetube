@@ -176,6 +176,8 @@ module.exports = [
         readCapabilityCache: 'readonly',
         writeCapabilityCache: 'readonly',
         scrubSubsForCache: 'readonly',
+        // v1.339 (L2): the decidable-cache Subscribe gate (common.js), read by watch.js.
+        cachedSubscribeState: 'readonly',
         primePinnedSidebarFromCache: 'readonly',
         getStarRating: 'readonly',
         rankRelated: 'readonly',

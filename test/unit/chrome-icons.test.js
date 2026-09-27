@@ -55,6 +55,8 @@ const NAME_ASSET = {
   // v1.157 (P2a): the hamburger + Stats sidebar glyphs. star == the same
   // rounded/star.svg `liked` uses (the Stats glyph).
   menu: 'menu', star: 'star',
+  // v1.339 (L2): the bottom-nav Subs tab (and its pre-paint reserve).
+  refresh: 'refresh',
 };
 
 function assetSvg(asset) {

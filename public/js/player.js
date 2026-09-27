@@ -5261,6 +5261,23 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
+  // v1.339 R1 (T-C3): the OUTGOING item's final position, saved by teardownMediaState and
+  // close() BEFORE they pause and empty the element. The 'pause' listener above cannot do it
+  // for them: the pause event is queued as a task, and by the time it runs the element's
+  // `load()` has reset currentTime to 0 (and load()/close() have moved currentId on), so
+  // stopProgressSaver's `> 0` gate skipped it and the resume point stayed up to one 4s
+  // interval behind on every switch. Same gate as the interval saver: only a PLAYING
+  // element (a paused one was already saved by its own pause; an ended one is paused at 0,
+  // the C2 "ended saves 0" semantics). Must run while currentId/liveOffset/bgAudioState
+  // still describe the outgoing item.
+  function saveOutgoingPosition(opts) {
+    var el = activeMediaElement();
+    if (!el || el.paused) return; // (no currentId -> saveProgressToServer's own guard refuses)
+    var t = currentAbsTime();
+    if (!(t > 0)) return;
+    saveProgressToServer(t, opts);
+  }
+
   // `opts.keepalive` (bug-fix, v1.17.0 two-reviewer gate, FR-5): when true,
   // adds `keepalive: true` to the fetch so the request survives the page
   // being torn down mid-flight (see `handleBackgroundLifecycle` above, the
@@ -5472,6 +5489,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // advance is on the device-probe list).
     if (currentData && currentData.autoAdvanceViaTrackNav) {
       var fallbackToTrackNav = function () {
+        // v1.339 R1 (T-C2): every caller reaches here AFTER the /api/queue (and maybe the
+        // /api/settings) await. A manual Next pressed during that window already loaded the
+        // next track and re-registered nav around IT - advancing now would skip a second
+        // track. Re-check here, in the one seam, so no caller can forget it.
+        if (currentId !== endedId) return;
         if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') {
           immersiveCarryPending = true; // v1.130: an 'ended' trackNav advance is a continuation - carry the immersive state
           trackNavHandlers.onNext();
@@ -8406,6 +8428,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // every non-continuation load) -> both drops run exactly as before.
   function teardownMediaState(opts) {
     var preserveImmersive = !!(opts && opts.preserveImmersive);
+    saveOutgoingPosition(); // v1.339 R1 (T-C3): FIRST - before liveOffset/bgAudioState reset and the pause+empty below
     loadGeneration++; // invalidate any in-flight poll/resume-check tied to the previous media
     setAutoStartRefused(false); // v1.334: a new load starts un-refused (its own autoStart decides)
     // v1.39.0: clear any lock-screen prev/next CHAPTER handlers from a prior
@@ -9154,6 +9177,9 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function close() {
+    // v1.339 R1 (T-C3): the closing item's final position, FIRST (see saveOutgoingPosition).
+    // Marked 'paused' like the pause save it replaces: a closed player is not playing.
+    saveOutgoingPosition({ presenceState: 'paused' });
     // v1.138 gate S1 (both seats, defensive - no reachable trigger was
     // constructed): a close while staged must not leave the browser
     // fullscreen on an emptied black stage with the flag stuck true.

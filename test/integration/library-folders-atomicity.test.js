@@ -56,7 +56,10 @@ test('POST /api/config: a FAILED doc save leaves BOTH the list (order included) 
   seedState({ folders: [B, A], folderSettings: { [A]: rec('AA') }, metadata: {} });
   assert.deepStrictEqual(folderStore.list(), [B, A], 'populated');
   __failNextSaveForTests(new Error('simulated save failure'));
-  const failed = await post('/api/config', { folders: [C], folderSettings: { [C]: { name: 'CC' } } });
+  // v1.339 r1: the failing save keeps B - a legacy write that drops EVERY
+  // stored folder is refused (409) before it reaches the save, which would
+  // leave the armed save failure for the next POST.
+  const failed = await post('/api/config', { folders: [C, B], folderSettings: { [C]: { name: 'CC' } } });
   assert.strictEqual(failed.status, 500, await failed.text());
   assert.deepStrictEqual(folderStore.list(), [B, A], 'the list survived the failed save, in order');
   assert.deepStrictEqual(folderSettingsStore.getAll(), { [A]: rec('AA') }, 'the map survived the failed save');
@@ -83,7 +86,9 @@ test('a throw inside the SECOND replaceAll rolls back the FIRST - the list is ne
   }), /U\+0000/);
   assert.deepStrictEqual(folderStore.list(), [A], 'the first replaceAll was rolled back with the second');
   assert.deepStrictEqual(folderSettingsStore.getAll(), { [A]: rec('AA') });
-  const ok = await post('/api/config', { folders: [B], folderSettings: {} });
+  // v1.339 r1: replacing the whole set needs the base (a legacy wipe is refused).
+  const { configVersion } = await (await fetch(`${base}/api/config`)).json();
+  const ok = await post('/api/config', { folders: [B], folderSettings: {}, baseVersion: configVersion });
   assert.strictEqual(ok.status, 200);
   assert.deepStrictEqual(folderStore.list(), [B], 'the chain is alive');
 });

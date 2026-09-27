@@ -80,7 +80,10 @@ test('bell: persist-last-known reserve + reveal-once wiring (source lock)', () =
   assert.match(fn, /localStorage\.setItem\(NOTIF_BELL_ENABLED_KEY, '1'\)/, 'persists enabled=1 when the real bell mounts');
   assert.match(fn, /localStorage\.setItem\(NOTIF_BELL_ENABLED_KEY, '0'\)/, 'persists enabled=0 when the probe says disabled');
   // Strand-safe: the placeholder is removed on the probe resolve AND the catch.
-  assert.match(fn, /removeBellPlaceholder\(\); \/\/ reveal-once/, 'removes the reserve on resolve');
+  // v1.339 (L2, DELIBERATE lock update): the resolve removes the reserve on every no-bell
+  // exit and the real bell REPLACES it in place (no re-insert at firstChild).
+  assert.match(fn, /if \(!probe \|\| notificationBellAlreadyInjected\(\)\) \{ removeBellPlaceholder\(\); return; \}/, 'removes the reserve on a no-bell resolve');
+  assert.match(fn, /bellPlaceholder\.replaceWith\(bellBtn\)/, 'the real bell takes the reserve\'s place');
   assert.match(fn, /\.catch\(\(\) => \{ removeBellPlaceholder\(\);/, 'removes the reserve on a fetch error (no stranded shimmer)');
 });
 

@@ -51,7 +51,7 @@
   captured. I'm not really asking for anything else"). Scope: a Share button on yt-dlp downloads from
   any site, sharing the source URL recorded at download time. Nothing else.
 
-- [ ] **Audit: TOCTOU / FOUC across the app** (Dean, 2026-09-25: "I'm noticing in um, the music player,
+- [x] **Audit: TOCTOU / FOUC across the app** - SHIPPED in **v1.339.0** (see Shipped; residuals tech-debt #287) (Dean, 2026-09-25: "I'm noticing in um, the music player,
   like I'll see the thumbnails all kind of loading somewhat individually. It just feels like odd. And
   then there's like some slight page shifting. I just want an overall audit of all the potential places.
   In some places we've solved it and it's pretty good. And here, maybe not"). An overall audit: every
@@ -211,6 +211,37 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.339.0 - Nothing you download or keep can be lost, and screens stop jumping (2026-09-27)
+
+- **The audit** (Dean: "I just want an overall audit of all the potential places"): music measured with a
+  new headless probe (`scripts/music-fouc-probe.js`), the non-music loading surfaces re-audited since the
+  v1.98-v1.102 sweep, and client + server TOCTOU passes. Triaged with Dean into one branch with a
+  checkpointed gate: the data-loss fixes first, gated on their own sha, then the look and race work.
+- **Data loss closed:** a one-off download of something already in the folder deleted the existing file
+  before downloading (`--force-overwrites`; now "keep mine": the file is kept and the job reads "Already in
+  your library", duplicates join the running job); an AUDIO one-off of a video already in the folder
+  converted and deleted the video (now `-k` plus a fence that only removes a source this job created); the
+  sidebar drag and the Settings Save posted a stale folder list that the server replaced wholesale and the
+  scan pruned (now compare-and-set with a stored `configVersion`, drags re-read before saving, a Save
+  never sends without a loaded list, a base-less save that would drop every folder is refused); a save
+  while a drive is offline un-configured it (kept now); scans pruned per-user state for items trashed and
+  restored mid-walk, or restored from a backup mid-walk (prunes re-validated inside the final commit,
+  every scan checks the restore epoch, only what the walk would index is kept); two trash-vs-restore
+  windows could delete both copies (in-flight claims + a last-link re-check).
+- **The look:** Music's "Jump back in" holds its place (phone CLS per tab 0.14 -> < 0.01); album art is
+  served sized and shared per album (Music Home cold 4.1MB -> ~100KB) and on-screen art reveals together;
+  the music toolbar never reflows (reserved slots); home skeleton cards match the real card (growth 52px ->
+  0), header and bottom-nav slots are painted before first paint from remembered flags, video and row
+  covers reveal together, `.btn[hidden]` / `.queue-btn[hidden]` finally hide, TV posters stop shimmering
+  forever, Books' Continue shelf holds its place (0.67 -> 0.003).
+- **Wrong-item races:** Next at a track's end skipping two, the outgoing item's last seconds of progress,
+  Extras Delete/Move closing the NEXT track, late music deep links, stale tab / sort / shuffle responses,
+  and podcast shows painting over each other - each re-checks identity after its await.
+- Gate: adversary + qa + security-brief (full: data loss). Safety checkpoint r1 @8919ba55 CHANGES (a
+  removed folder was never pruned; an audio one-off deleted the video; a failed-load Save wiped the
+  config), fixed, r2 APPROVED @f8a7ee52; final delta r3 APPROVED @03a1f634; r4 (a comment-only fix)
+  APPROVED @ab880c99 by all three. Carried, disclosed: tech-debt #287.
 
 ### v1.338.0 - Downloads from any site are first-class: Share on every card, a site icon, Reheat (2026-09-26)
 

@@ -2949,6 +2949,7 @@ const {
   getMediaId,
   inSaveTransaction,
   isInFlightTranscode: (...args) => isInFlightTranscode(...args), // S8 (parallel): lazy so it survives S8 turning this hoisted fn into a factory const below
+  isRestoreInFlight: (...args) => isRestoreInFlight(...args), // v1.339 S5: the restore claim the leftover reconcile checks - same lazy TDZ deferral
   isSafeVideoId,
   isValidMediaDimension,
   isYtdlpIntermediate,
@@ -3554,6 +3555,7 @@ function currentBookScanState() {
 // boot path) and the integration tests reach it through this file's exports.
 const { runBookScan } = booksScanRunner.createBookScanRunner({
   BOOKCOVER_DIR,
+  __getPersistedStateEpoch, // v1.339 (T-S3): the LIVE accessor (a snapshot would freeze the epoch)
   booksDb,
   booksScan,
   booksStore,
@@ -3923,6 +3925,7 @@ async function extractAlbumArt(job) {
 const musicScanRunner = require('./lib/music/scanRunner'); // Wave 7b R2: the require sits at its call site so parallel slices never touch the same hunk
 const { runMusicScan } = musicScanRunner.createMusicScanRunner({
   ALBUMART_DIR,
+  __getPersistedStateEpoch, // v1.339 (T-S3): the LIVE accessor (a snapshot would freeze the epoch)
   albumArtExists,
   audioPath,
   extractAlbumArt,
@@ -4087,7 +4090,10 @@ function trackIsLiked(track, likedSets) {
   return !!(set && set.has(track.id));
 }
 
-function publicTrackListItem(track, userId, likedSets, progressMap) {
+// v1.339 (L1, M2): `artReps` (musicQuery.artRepresentatives over the tracks THIS viewer
+// can see) adds `artId` - the id the row's /albumart URL keys on, shared by every track
+// of one cover. Absent -> no artId (the client falls back to the track id).
+function publicTrackListItem(track, userId, likedSets, progressMap, artReps) {
   const liked = trackIsLiked(track, likedSets);
   const prog = progressMap ? progressMap[track.id] : null;
   // Wave G: a PROJECTED library-audio track (source 'library') streams the mp3
@@ -4117,6 +4123,7 @@ function publicTrackListItem(track, userId, likedSets, progressMap) {
     // <Album>" line (the album/artist drill filters on this exact key).
     albumKey: musicStore.albumKeyFor(track),
     albumArtKey: track.albumArtKey,
+    ...(artReps ? { artId: musicQuery.artIdFor(track, artReps) } : {}),
     // A library track's art is its media thumbnail (served via /albumart/:id ->
     // thumbnail fallback); a native track's is the extracted album-art file.
     hasArt: isLib ? !!track.hasEmbeddedArt : !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
@@ -4314,9 +4321,20 @@ userRoutes.registerRoutes(app, {
 // /albumart byte routes, moved VERBATIM to lib/music/routes.js and registering
 // here, where POST /api/music/progress sat - after the S1a user-state routes
 // above, whose registration splits the music surface in two.
+// v1.339 (L1, M2): the /albumart sized-rendition cache. `ffmpegIsAvailable` is the LIVE
+// reader (the boot-time probe flips `ffmpegAvailable` after this line runs - LESSONS 12).
+const artRendition = require('./lib/music/artRendition');
+const albumArtRenditions = artRendition.createArtRenditions({
+  dir: artRendition.renditionDirFor(ALBUMART_DIR, path),
+  fs,
+  path,
+  execFile,
+  ffmpegIsAvailable: () => ffmpegAvailable,
+});
 musicRoutes.registerTrackRoutes(app, {
   ALBUMART_DIR,
   THUMBNAIL_DIR,
+  albumArtRenditions,
   armMusicProgressFlushTimerIfNeeded, // assigns this file's musicProgressFlushTimer
   audioPath,
   contentDispositionAttachment,
@@ -4413,6 +4431,7 @@ function extractTvThumb(job) {
 // this file's exports all reach the scan through it.
 const tvScanRunner = require('./lib/tv/scanRunner'); // Wave 7b S4: the module's require sits at its call site so parallel slices never touch the same hunk
 const { runTvScan } = tvScanRunner.createTvScanRunner({
+  __getPersistedStateEpoch, // v1.339 (T-S3): the LIVE accessor (a snapshot would freeze the epoch)
   extractTvThumb,
   fs,
   getMediaId,
@@ -5416,7 +5435,7 @@ mediaUserRoutes.registerLikedRoutes(app, {
 // to cross as a live accessor.
 const trashOps = require('./lib/media/trash'); // Wave 7b S5: the require sits at its call site so parallel slices never edit one hunk
 const {
-  trashItem, trashOrphanFile, restoreTrashItem, purgeTrashItem, sweepTrash,
+  trashItem, trashOrphanFile, restoreTrashItem, purgeTrashItem, sweepTrash, isRestoreInFlight,
 } = trashOps.createTrashOps({
   AUDIO_EXTENSIONS, // trashOrphanFile's audio/video type guess for the minimal snapshot
   DEFAULT_SETTINGS, // the sweep's retention-days fallback
