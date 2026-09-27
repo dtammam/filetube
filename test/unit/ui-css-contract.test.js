@@ -116,3 +116,13 @@ test('ui-switch on a native checkbox: UA appearance dropped, :checked mirrors ar
   assert.strictEqual(body('.ui-switch:checked::before'), body('.ui-switch[aria-checked="true"]::before'));
   assert.strictEqual(body('.ui-switch:checked:active::before'), body('.ui-switch[aria-checked="true"]:active::before'));
 });
+
+// Sweep S8: ui.prompt's field sat flush with the dialog's edges (the render of the admin
+// password reset); it takes the dialog's text inset, like .ui-confirm__body beside it.
+test('ui.prompt: the field in a sheet body sits on the dialog text inset (sweep S8)', () => {
+  const r = RULES.find((x) => x.sel === '.ui-sheet__body > .ui-field' && x.at === '');
+  assert.ok(r, 'the rule exists');
+  const body = RULES.find((x) => x.sel === '.ui-confirm__body');
+  const inset = /padding:\s*0 (var\(--space-\d+\))/.exec(body.body)[1];
+  assert.match(r.body, new RegExp('margin:\\s*var\\(--space-\\d+\\) ' + inset.replace(/[()]/g, '\\$&') + ' 0'), 'the same side inset as the confirm body text');
+});

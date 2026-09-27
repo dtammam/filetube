@@ -717,6 +717,10 @@ button.ui-row:focus-visible,
   color: var(--ink-2);
   font: var(--t-body);
 }
+/* ui.prompt's field sits on the dialog's text inset, not flush with the sheet's edges */
+.ui-sheet__body > .ui-field {
+  margin: var(--space-6) var(--space-8) 0;
+}
 .ui-confirm__actions {
   display: flex;
   justify-content: flex-end;
