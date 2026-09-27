@@ -1337,3 +1337,77 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
     missed (overlay text, the page around the player; the body base now covers all of it) or not selection
     at all. **Falsifier:** if the loupe still shows on device with this base, it is not selection; the next
     suspect is iOS's own long-press on the passive touchstart, which S3's non-passive hold addresses.
+
+### Sweep S6 - Podcasts (2026-09-27, branch feat/ui-sweep-s6 from 6b7408d6; 0c55eb5c, 64ccce63)
+
+- **Primitive addition (0c55eb5c, its own commit):** `ui.sheet` / `ui.menu` / `ui.confirm` take a
+  `signal`. An abort closes the overlay (a confirm answers false); an already-aborted signal never
+  opens one. Why: a view's menus and confirms live on `<body>`, outside `#view-root`, so an SPA nav
+  away left them over the next view. `ui.prompt` unchanged. One new ui-builders test.
+- **Surface (64ccce63):** the show list is a ui-list of media rows (64px ui-art, "author · N
+  episodes"); the header is a 2xl ui-art (144px desktop), title, author, notes, counts, with the crumb
+  reduced to Back (F41: no duplicate title) and one action group on its own line: Pin (stable Pin/Pinned
+  toggle, BUSY while the pins load, never disabled), Pause/Resume checks, a More overflow holding
+  Unsubscribe. Episode rows are ui-rows with two reserved action columns (Add to queue, a kebab) on every
+  row (AC5); Played, Queued, In trash and "Xm left" are meta text (F27); Like, Mark played, Save to
+  device, Move to Trash and Restore live in the kebab menu. Toolbar: tonal Check feeds, a gear icon
+  button, ONE primary Add podcast (F26 podcasts half). Add and settings are ui.sheet dialogs. D9: a
+  ui.state zero state; a failed load is an error state with Retry; skeletons are the real ui-list DOM.
+  Both lists are pulled flush with the page gutter (a token-built negative margin, token-exempt:
+  positional): ui-row's padding + reserved lead column + gaps otherwise start the art and titles
+  24-32px right of the page title.
+- **Destructive paths (full gate):** Move to Trash and Unsubscribe go through `ui.confirm` (danger)
+  and call the same endpoints as before (`DELETE /api/podcasts/episodes/:id`,
+  `DELETE /api/podcasts/subscriptions/:id`) only after it resolves true; the in-row two-tap arms are
+  gone. `test/unit/podcasts-ui-sweep.test.js` drives the real view with the real ui.js: Cancel, Esc,
+  the scrim and Close each fetch nothing (and a late OK on the closing dialog stays false), a confirmed
+  double tap sends exactly one DELETE, tapping every row and header control twice deletes nothing, and a
+  confirm left open across a view teardown never deletes.
+- **F42 (server.js, read-only):** a yt-dlp show's `artUrl` is its channel avatar (the sub's own
+  `channelAvatarUrl`, the channelId registry, then the newest visible episode's baked avatar or its
+  channelId), every candidate through `sanitizeChannelAvatarUrl` (https only), else null -> the client's
+  monogram; never `/thumbnail/<newest item>`. Nothing stored changes.
+  `test/integration/podcast-ytdlp-show-art.test.js`: 4 tests (the chain, http:/javascript: refused, null
+  for none, the store and items byte-identical after the reads). `podcasts-ytdlp-shows` expected the old
+  frame; converted (deliberate).
+- **Locks converted (AC12, none deleted):** podcasts-nav-client (styling-source law reads ui.css +
+  style.css and now sees BEM `_` parts - the old `[a-z0-9- ]` scan never saw a ui-* part; the heart guard
+  follows the like into the menu), row-glyph-inline-svg (ui.button sprite icons + the ui-btn icon slot
+  contract), library-shimmer-skeletons (podcast rows placeholder; the `.podcast-card-art` fill entry
+  deleted), crispness-p3-skeletons, art-decode-shimmer (one art builder, 10 -> 9 sites), critter-mode
+  (the anchor pool names `.ui-art`, its ground read from ui.css), the four podcasts view harnesses (load
+  ui.js; `data-show-id` / `data-episode-id` hooks), `lib/media-capabilities.js` markers (the menu
+  labels; the census went red on the stale `Move to trash` marker - the inert-sibling-list class, caught).
+  capture.js scenes 08/09 wait on `[data-show-id]`.
+- **Debt (ui-lint --shrink; the Podcasts-keyed entries before -> after):** no-raw-values 28 -> 2 (the
+  2 left are the shared `.icon-*` mask rule, S2's), no-bespoke-controls 55 -> 17 (left: shell chrome S1,
+  the player template's `pc-btn`/resume buttons S3, the theatre button), icons 12 -> 9 (left: the player
+  template's glyphs, the theatre svg), display-ownership 2 -> 0; legacy-token (OFF) 62 -> 0. Whole file:
+  TOTAL 2703 -> 2634.
+- **Deferred:** the desktop theatre button stays `.btn` with its drawn popcorn svg (it shares
+  `.music-theater-btn` and the glyph with Music; S7 moves both together); the podcast Extras adapter's
+  `onDelete` in the player menu still uses `showConfirmModal` (the shared player Extras core is S7's; the
+  music adapter uses the same path, r1-extras-podcasts-races pins it).
+- **For the primitives (not changed here):** a media-less ui-list still reserves the lead column and
+  two gaps (32px) before the title, and a 2005 `ui-btn--icon` is round unless it is also `--pill`
+  (the gear takes `--pill` so it squares with its neighbours). The sweeps will keep paying the list
+  indent until ui.css collapses it.
+- **Measured (seeded instance, Node 22.23.1):** before (6b7408d6) vs after, scenes 08 + 09 x
+  phone/land/desktop x dark/light x 4 eras = 48 pairs, captured 48 / failed 0 each side, 48 of 48
+  changed (as intended; 3.1% - 21.8% of a shot). Probe (2021, phone 390 / desktop 1440): toolbar one line,
+  all three 32px; show art left edge = page title left edge (16 / 254), 64x64, radius 8px; episode
+  titles at the page gutter; the kebab and queue x identical on every row (phone 282 / 326); header
+  actions one line, equal heights (44 phone, 36 desktop); the kebab glyph's centre 0px from its button's
+  centre; 0 page errors; 0 blocked requests. Dialog / menu / confirm shots taken in both.
+- **Mutation (a /tmp git-archive sandbox of 64ccce63, each restored and byte-checked):** 14 of 14
+  killed - trash and unsubscribe DELETE regardless of the answer, the trash item deleting without a
+  confirm, both unsubscribe abort guards dropped (each alone is masked by the other, by design), a yt-dlp
+  show guessing the cover route, the kebab appended instead of slotted, Pin disabled instead of busy,
+  Played dropped from the meta, a failed load showing the empty state, the server falling back to the
+  video frame, the own avatar unsanitized, the registry step skipped, and the two ui.js signal arms.
+- **Counts (Node 22.23.1):** `npm run test:unit` (the 64ccce63 pre-commit run): tests 7873, pass 7872,
+  fail 0, skipped 1. Targeted integration (podcasts-api, podcasts-feature-atomicity,
+  podcasts-restore-race, podcasts-ytdlp-shows, podcast-ytdlp-show-art, rbac-census,
+  rbac-podcast-enforcement, rbac-podcast-external-shows, route-census, shell-smoke): 58 tests, 57 pass,
+  1 fail before the podcasts-ytdlp-shows conversion; that file 6 / 6 after. `npx eslint .` 0 errors,
+  6 warnings; `lint:ui` OK, TOTAL 2634; `lint:css` TOTAL 0; `lint:overlay` 0 violations.
