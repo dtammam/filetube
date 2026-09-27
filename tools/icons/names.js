@@ -20,6 +20,8 @@ const NAMES = [
   'notifications', 'notifications_active', 'notifications_off', 'push_pin', 'keep', 'thumb_up',
   'favorite', 'star', 'share', 'headphones', 'subject', 'delete', 'content_copy', 'warning', 'error',
   'shuffle', 'repeat',
+  // the reader (sweep S10): Contents, reader settings (Aa), the font-size stepper
+  'toc', 'format_size', 'remove',
   // media
   'play_arrow', 'pause', 'skip_next', 'skip_previous', 'fast_forward', 'fullscreen', 'fullscreen_exit',
   'picture_in_picture_alt', 'closed_caption', 'speed', 'volume_up', 'volume_off',
