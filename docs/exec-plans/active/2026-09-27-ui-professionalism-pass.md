@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: D12 step 0 - commit the seed + capture tooling under test/visual/, triage the 136 style.css locks, npm test green on the untouched tree
+next: D12 step 1 (Tokens) - tokens.css with the D2 roles for 4 eras x 2 modes + aliases, loaded first in all 13 shells + diag; ui-contrast and ui-era-roles tests; repoint the step-1 locks (Build log triage, note 2)
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -910,3 +910,214 @@ only when `public/` changed. CI runs G1-G4 on all scenes.
   plus a short side of 500px or less. The build states the iPad result explicitly.
 - **Rebaseline discipline.** A sweep could re-baseline away a regression. Re-baseline commits are
   reviewed as images (the diff report), never rubber-stamped.
+
+## Build log
+
+### Step 0 - branch and triage (2026-09-27)
+
+- Branch `feat/ui-professionalism` from main at ab31cbdc; the first commit (0f169c02) carries this plan,
+  the audit data and the ROADMAP entry.
+- **Seed and capture tooling (c144db52), `test/visual/`.** Deviation from "adapted from the baseline
+  `seed.js`": the audit's seed copied the local dev database and its thumbnails (real creators' titles and
+  art), which cannot enter the public repo or CI. `seed.js` now builds the DATA_DIR from nothing: fictional
+  channels (Harbor Workshop subscribed with notify on, Northbound Field Notes not subscribed, Home Videos
+  with no channel), drawn PNG thumbnails and art (`tools/capture/png.js`), silent audio, the same yt-dlp
+  subscriptions / music / podcasts / notifications / queue / progress shape. It wipes only a dir it made
+  (marker file). `capture.js` is the baseline capture made repo-relative, reading ids and the login from
+  `fixtures.json`; `start-server.sh` serves the seed with `FILETUBE_READONLY=1`.
+  - Trial run (9 scenes x 6 viewport/mode combos): captured 54, failed 0; every surface populated. Unexpected
+    blocked requests: 6, all `POST /api/music/resume` from the Pocket scene (the same benign block the audit
+    recorded; fulfilled in the browser, refused by the server).
+  - The capture guard's source lock (`capture-request-policy.test.js`, bare `newContext` banned) now also
+    covers `test/visual/capture.js`. Mutated: a bare `newContext` appended to it turned the suite 14 pass /
+    1 fail; restored, 15 / 0.
+  - Open for step 4 (not deterministic across machines yet): ids hash the path, so they change with the data
+    dir; the watch page prints the file path; relative dates follow the clock (`SEED_NOW` pins the seed side,
+    the browser clock freeze is step 4's).
+- **Demo: \`npm test\` on the untouched app tree (Node 22.23.1, at c144db52 + this log):** tests 10037, pass
+  10028, fail 0, cancelled 0, skipped 9; exit 0; 320s. (Node 24 runs with the phase's dual-Node pass.)
+- **Source-lock triage (D11).** The audit counted 136 locks (its method is not recorded); the grep below
+  finds 141 files that mention style.css, 128 of which actually read and pin it.
+
+Read at 0f169c02. `grep -rlE "style\.css" test/` = 141 files: 128 read and pin style.css, 13 only mention it.
+
+**Totals:** (a) still valid 54 - (b) primitive-contract 62 - (c) geometry 12 - mention only 13.
+
+**Per owner:** step 1: 7, step 2: 11, step 3: 5, step 4: 2, S1: 10, S2: 16, S3: 32, S4: 3, S5: 4, S6: 3, S7: 16, S8: 12, S9: 6, S10: 1 (step 7 owns no lock by itself: see note 3).
+
+Owner = the first D12 step or sweep that deletes, moves or renames the pinned CSS, so the lock goes red there first. A file that is mixed shows its dominant class; the other half is named in the last column.
+
+| Test file | Pins (short) | Class | Owner | Replacement intent (one short clause) |
+|---|---|---|---|---|
+| test/unit/era-scrollbar-css.test.js | era scrollbar rules, @supports engine partition, no raw colour | a | 1 | keep; retoken --radius-lg at step 7 |
+| test/unit/era-typography.test.js | titles read --heading-font; Geist @font-face first | b | 1 | title roles read the --font-heading era knob |
+| test/unit/ipad-header-safe-area.test.js | --header-h 56px; header consumes env(safe-area-inset-top) | a | 1 | keep; read --header-h from tokens.css |
+| test/unit/modern-theme-geist.test.js | :root Geist default; retro eras no Geist; shells preload geist before style.css | b | 1 | Modern --font-ui = Geist in tokens.css; preload precedes tokens.css |
+| test/unit/token-scale-lock.test.js | every token value byte-exact, defined once; every var() defined | b | 1 | value authority moves to tokens.css (+ ui-era-roles) |
+| test/unit/type-scale-tokens.test.js | :root --fs-* block; every font-size is var(--fs-*) | b | 1 | --t-* roles in tokens.css; ui-lint no-raw-values (font) |
+| test/unit/v1262-pwa-chrome.test.js | @font-face src = shell preload, font-display swap; .toast safe-area bottom | a | 1 | keep (follow @font-face if it moves); toast half -> ui-toast in S9 |
+| test/unit/books-router-nav.test.js | reader/books classes live in style.css (SPA); .icon-books mask + emoji entry | b | 2 | icons-registry has books; S10: no-shell-style + class list (.books-shelf-chip -> ui-chip) |
+| test/unit/card-like.test.js | .icon-heart mask/fill group; .card-like-btn corner look; .card-media relative flex | b | 2 | registry heart; S2: D8.5 no-overlay-buttons DOM test |
+| test/unit/download-icon.test.js | .icon-download mask in every set, fill guard, no ::before glyph | b | 2 | registry entry download x3 styles |
+| test/unit/glyph-pool.test.js | 7-site mask/set/emoji enumeration per pool glyph; shared sizing body | b | 2 | icons-registry: every pool name x3 styles, sprite symbol exists |
+| test/unit/icon-assets.test.js | every mask icon in the @supports fill list; share fully wired | b | 2 | icons-registry: referenced names exist, paths intact |
+| test/unit/icon-attribute-mask.test.js | .icon-attribute mask + 1em block + @supports fill | b | 2 | registry entry drive_file_move |
+| test/unit/icon-queue-mask.test.js | .icon-queue mask, sizing, fill, not in emoji set, 14px corner | b | 2 | registry entry queue |
+| test/unit/icon-transcript-mask.test.js | .icon-transcript mask + 1em block + fill | b | 2 | registry entry chat |
+| test/unit/reheat-button-wiring.test.js | .icon-flame mask/sizing/fill; no \1F525 in CSS (rest is JS) | b | 2 | registry entry flame; no-glyph lint |
+| test/unit/shuffle-rescan-icon.test.js | .icon-shuffle mask in 3 sets; emoji U+1F500 only in emoji set | b | 2 | registry entry shuffle (emoji set dropped, D2.6) |
+| test/unit/tv-nav.test.js | .icon-tv mask (rest is JS) | b | 2 | registry entry tv |
+| test/unit/app-look-l2.test.js | .btn[hidden]/.queue-btn[hidden] !important after base; .skeleton-text line box | b | 3 | global [hidden]{display:none!important} in ui.css; skeleton-text -> ui-state skeleton |
+| test/unit/bottom-nav-order-authority.test.js | no CSS order/flow rule on bottom-nav items | a | 3 | keep; widen scan to ui.css |
+| test/unit/music-album-view.test.js | #music-view-toggle[hidden] beats .btn inline-flex | b | 3 | global [hidden] contract (ui.css) |
+| test/unit/overlay-containment.test.js | lint over style.css: rounded-scroll clip, sticky z-index | a | 3 | keep; widen lint:overlay to ui.css |
+| test/unit/touch-eating-overlay-audit.test.js | every attr-hidden overlay has a [hidden] override; oneoff backdrop; ptr pointer-events none | b | 3 | global [hidden] last-wins + keep the negative control |
+| test/unit/pinch-zoom-suppression.test.js | body touch-action manipulation; read view opts back; no font-size lock | b | 4 | interaction-policy test on the D6 base; reader listed |
+| test/unit/router-helpers.test.js | html overscroll-behavior-x none | a | 4 | keep (follow into ui.css if D6 moves it) |
+| test/unit/critter-mode.test.js | .main-content no bg/no stacking ctx; critter layer z 2; arrive/reaction anims + reduced motion | a | S1 | keep; D7 edits .main-content transition only |
+| test/unit/header-right-reserve.test.js | .notif-bell-skel 22px round disc (zero-shift reveal) | c | S1 | G: bell placeholder box == bell box |
+| test/unit/mobile-header-css-source-lock.test.js | .header-right-scoped mobile overrides: search show, avatar hide, dropdown card, download glyph-only, order | b | S1 | header ui-btn icon + ui-menu; G at 390px |
+| test/unit/mobile-wordmark.test.js | no .mobile-logo rule; .logo not hidden on mobile | a | S1 | keep |
+| test/unit/pinned-avatar-css.test.js | .pinned-avatar 18px circle, cover, no shrink; .sub-row/.sub-sheet avatar img fill | b | S1 | ui-avatar xs contract (fixed box, cover, monogram fallback); S5 half |
+| test/unit/pre-paint-fouc-guard.test.js | .ft-custom-logo .logo hidden, img visible | a | S1 | keep |
+| test/unit/reorder-single-mechanism.test.js | every reorder surface styles .dragging + both drop indicators | b | S1 | ui-row drag states in ui.css; widen STYLESHEETS |
+| test/unit/search-clear.test.js | search-scoped strip nowrap/scroll, overflow visible with sort menu; clear X | b | S1 | X = ui-btn icon; strip layout stays in style.css |
+| test/unit/v1262-sheet-modal-transitions.test.js | modal fade/scale + dvh cap; playlists-sheet slide up; sub-sheet slide right; reduced motion | b | S1 | ui-sheet open/close contract (--dur-sheet); S5/S9 halves |
+| test/integration/version-meta.test.js | .account-menu-version text-align left | b | S1 | ui-menu footer row |
+| test/unit/art-decode-shimmer.test.js | img.art-shimmer token gradient + sweep keyframes, reduced motion | a | S2 | keep; retoken --bg-secondary at step 7 |
+| test/unit/attribution-client.test.js | .section-actions #attribute-folder-btn order-band rule exists | a | S2 | keep (surface order); button -> ui-btn |
+| test/unit/card-corner-br-css.test.js | .card-corner-br anchor; duration badge offsets, z over preview, armed hide | b | S2 | D8.5 DOM test: badge + progress only; ui-thumb badge |
+| test/unit/card-corner-mobile-size.test.js | 6 corner icons 18px + ::after tap zones on phone; list-view insets; desktop 14px | b | S2 | D8.5 no overlay buttons; kebab = ui-btn icon 44 hit |
+| test/unit/folder-music-toggle-lock.test.js | off = line-through; on = --text-link | b | S2 | ui toggle pressed state; no link blue (D8.6) |
+| test/unit/home-mobile-scale.test.js | phone grid cols/gaps, section-title wrap, labels hidden, tap widths, title size | c | S2 | G: 2 cols <=480, toolbar on one line, no overflow |
+| test/unit/library-toolbar.test.js | .section-actions .btn pill recipe, inverted active; other toolbars pill | b | S2 | ui-btn pill / ui-chip + --fill-selected |
+| test/unit/library-toolbar-wiring.test.js | .watch-toggle pills min-width 0; own mobile row (order, flex 70%) | b | S2 | ui-segmented contract |
+| test/unit/library-view-prefs.test.js | .video-grid.list-view reflow exists | a | S2 | keep |
+| test/unit/modern-css-source-lock.test.js | modern grid 3/4/1-up; chip pills; avatar bar; rounded thumbs; --ch-av mono; sort gate | b | S2 | ui-chip/ui-thumb/ui-avatar; grid columns stay |
+| test/unit/pull-to-refresh.test.js | .ptr-indicator states, spin, reduced motion | a | S2 | keep |
+| test/unit/reveal-art-together.test.js | img.art-shimmer.art-together hold; no bare .art-together | a | S2 | keep |
+| test/unit/shimmer-tranche2.test.js | .related-thumb.skeleton-shimmer fill; avatar-bar name skel 14px | c | S2 | G: skeleton box == final box |
+| test/unit/star-ratings-pref.test.js | .ft-hide-stars hides .star-rating + .card-rating; .watch-actions centred on phone | b | S2 | D8.1 era-flourish gate (jsdom per era) |
+| test/unit/sticky-filter-bar.test.js | section-heading, count parens, actions wrap, sticky pin offset, bare .section-title not sticky | a | S2 | keep (surface layout) |
+| test/unit/v1264-skeleton-states.test.js | .skeleton-shimmer sweep + reduced motion; skeleton card and sub-row box models | c | S2 | G: skeleton row/card == real geometry (D9) |
+| test/unit/ambient-glow-engine.test.js | no filter/transform/mask/will-change on stage + glow; layer paint + opacity fade | a | S3 | keep (player carve-out) |
+| test/unit/chapter-snap-shift.test.js | .chapter-snap-shift .btn in 44px phone list + desktop control-height list | b | S3 | ui-btn size contract (AC3, G3) |
+| test/unit/era-player-skins.test.js | era skin block placement; no geometry; no hex; 2005 bevel | a | S3 | keep; recheck when the docked bar is restyled |
+| test/unit/era-row-overflow.test.js | action group wraps phone+desktop, buttons never deform; More word hidden; share mask | c | S3 | G3 + action bar fits (D4.9 5 columns) |
+| test/unit/fullscreen-edge-and-video-state.test.js | no fullscreen rule re-adds a host border | a | S3 | keep |
+| test/unit/mobile-player-height.test.js | portrait .player-container max-height 40-50vh; base/landscape untouched | a | S3 | keep |
+| test/unit/music-theater-toggle.test.js | #theater-btn hidden <1024, in dock, off watch/music; pressed red | a | S3 | keep; pressed colour vs D8.8 |
+| test/unit/music-view.test.js | .audio-bg-art contain, never cover | a | S3 | keep |
+| test/unit/player-audio-desktop-fs.test.js | staged twin art geometry; single-painter visibility hidden | a | S3 | keep |
+| test/unit/player-audio-expand.test.js | expanded bar bottom 0 + safe-area padding | a | S3 | keep |
+| test/unit/player-chapters-parity.test.js | pc-range touch-action; chapters-menu[hidden]; faux-fs z/max-height; 44px rows; dock hide; current red | a | S3 | keep; [hidden] half -> global (3) |
+| test/unit/player-fullscreen-autohide.test.js | autohide opacity/pointer-events, :fullscreen twins, dvh/dvw, body black | a | S3 | keep |
+| test/unit/player-fullscreen-stage.test.js | every host :fullscreen rule has its #fs-stage twin | a | S3 | keep; widen if a rule moves |
+| test/unit/player-immersive-lock-grace.test.js | .controls-reveal-grace takes the bar out of hit-testing | a | S3 | keep |
+| test/unit/player-media-aspect-css.test.js | --media-aspect 16/9 fallback; portrait clamp; cc-overlay offsets; docked caption | a | S3 | keep |
+| test/unit/player-orientation-fs-resume.test.js | phone-landscape media height cap | a | S3 | keep |
+| test/unit/player-responsive-controls.test.js | bar hides per mode; gesture-surface user-select; dock hide group; speed/mute; mobile order | a | S3 | keep; user-select rule needs a native-interaction listing (4) |
+| test/unit/player-resume-countdown.test.js | .resume-actions .btn.countdown-armed drain + reduced-motion carve-out | b | S3 | D8.2 auto-resume toast; unit test on the resume decision |
+| test/unit/player-rotation-cap-nudge.test.js | each vh cap carries its dvh twin after it | a | S3 | keep |
+| test/unit/player-settings-cog-parity.test.js | .pc-svg-ico fill; settings-menu rows full width, bevel reset | a | S3 | keep |
+| test/unit/player-video-tracknav-and-chapter-wrap.test.js | chapter-now flex-basis 0; prev/play/next order; dock hides; track-nav-btn[hidden] | a | S3 | keep; [hidden] half -> global (3) |
+| test/unit/queue-chrome-client.test.js | .track-nav-btn[hidden] !important; dock hides prev/next | a | S3 | keep; [hidden] half -> global (3) |
+| test/unit/stable-toggle-label.test.js | stable-width label slot rules, by value | c | S3 | G: toggle width equal across states (F21) |
+| test/unit/theatre-mode.test.js | theatre height cap; desktop cap reads --player-cap-h | a | S3 | keep |
+| test/unit/uploader-subs-badge.test.js | .uploader-subs token-built badge | b | S3 | ui-chip--meta (D4.9) |
+| test/unit/watch-action-bar-container-query.test.js | .watch-action-bar named container; 959px compact; glyph line box | c | S3 | G: action bar one row; G2 icon centring |
+| test/unit/watch-action-bar-nowrap.test.js | phone gap/padding; base wraps; buttons never deform; rating count hidden on phone | c | S3 | G1/G3 on the action bar |
+| test/unit/watch-action-bar-reveal.test.js | --size-touch-watch-action 39px scoped; data-loading hides + shimmers children | b | S3 | ui-btn--stack height; reveal barrier kept |
+| test/unit/watch-action-row-tiers.test.js | CSS compact selector == SECONDARY_ACTION_IDS; fixed order; More hidden | b | S3 | D4.9 5 columns + More; tier list only in JS (DOM test) |
+| test/unit/watch-chrome-ambient.test.js | ambient stacking on the stage not #player-slot; phone clip-x; sidebar bg drop | a | S3 | keep |
+| test/unit/watch-instant-paint.test.js | #player-slot:empty reserves 16/9 + 16px margin | a | S3 | keep |
+| test/integration/watch-like-button.test.js | .btn.liked paints the heart red | b | S3 | toggle icon .fill state (D4.9); red is not a selected role |
+| test/unit/mobile-touch-targets-css.test.js | phone block: .btn, .notif-row-dismiss, .queue-row-move 44px; .pc-range touch-action | b | S4 | ui-btn --hit 44 contract + G3; X removed (D8.3) |
+| test/unit/notification-bell-client.test.js | .notif-row-thumb-wrap relative; panel duration badge fs-xs | b | S4 | ui-row media slot + badge (G1) |
+| test/unit/panel-chrome-mirror.test.js | base select mirrors .setup-select; queue == notif panel decls; sticky z; thumb-wrap isolation | b | S4 | one panel/row primitive + ui-select contract; isolation kept |
+| test/unit/reloc-preview-mount.test.js | .reloc-preview-* in style.css, not in subscriptions.html <style> | b | S5 | ui-lint no-shell-style + ui-sheet |
+| test/unit/sub-row-chip-btn-family.test.js | chip role classes declare no box props; .btn-chip after .btn; 2009 gloss on .btn | b | S5 | ui-btn era treatment attached once; role classes box-free |
+| test/unit/subscriptions-panels.test.js | .sub-sheet-backdrop flex + .sub-panel[hidden] none | b | S5 | ui-sheet + global [hidden] |
+| test/unit/v1262-subs-and-rescan-polish.test.js | .sub-row-name/.sub-sheet-name app font; header-status min-height; rescan min-width | c | S5 | G: rows and toolbar do not reflow; --t-* roles |
+| test/unit/library-shimmer-skeletons.test.js | grouped art-box .skeleton-shimmer (book/music/podcast) restores the fill | b | S6 | ui-art/ui-thumb skeleton state |
+| test/unit/podcasts-nav-client.test.js | every podcasts className has a style.css rule; no shell styles | b | S6 | styling-source law over ui.css + style.css; no-shell-style |
+| test/unit/row-glyph-inline-svg.test.js | .podcast-ep-action .chrome-icon 14px | b | S6 | ui-row trailing ui-icon (sprite) |
+| test/unit/ipod-brick.test.js | overlay containing block = LCD inner box; wheel outside | a | S7 | keep (skin scope) |
+| test/unit/music-actions-desktop.test.js | .mms-sm-act rule above the mobile sticker @media; #music-actions-menu anchored | b | S7 | ui-menu contract; the @media anchor moves (D7 html.is-phone) |
+| test/unit/music-ambient.test.js | #ambient-toggle-row per-view hides; stage stacking desktop only; theatre margin | a | S7 | keep |
+| test/unit/music-jumpback-reserve.test.js | .music-jump-art 116px + skeleton fill | c | S7 | G: jump strip skeleton == final (no shove) |
+| test/unit/music-playback-modes.test.js | Loop/Autoplay ON = red background shorthand, hover-covered | b | S7 | --fill-selected/ink (D8.8) |
+| test/unit/music-skin-integration.test.js | Nano tray reshape rules exist | a | S7 | keep (skin scope) |
+| test/unit/music-skins.test.js | LCD cap, touch-action locks, art contain, cursor bar, voladj, .mms-rd, :where reset | a | S7 | keep (skin scope) |
+| test/unit/music-sticker-menu.test.js | sticker img/size/tilt; menu rows 44px; app font; wheel scrubber | a | S7 | keep; row half converted with F70 |
+| test/unit/music-toolbar-slots.test.js | .music-slot-reserved visibility only; sort select 15em; pop-out no box on phone | c | S7 | G: toolbar does not reflow across tabs |
+| test/unit/player-tap-to-play.test.js | tap-to-play cue z under the sticker wrap, over skin chrome | a | S7 | keep (skin scope) |
+| test/unit/pocket-design-system.test.js | colorway role blocks; structure/type tokens; one text-line rule | a | S7 | keep (skin scope) |
+| test/unit/pocket-lighting.test.js | one wheel/dome rule reads the light; no filter; lit sticker keyed .mms-lit | a | S7 | keep (skin scope) |
+| test/unit/pocket-original-look.test.js | look rules in the look section; turn transform + reduced motion | a | S7 | keep (skin scope) |
+| test/unit/pocket-quick-scroll.test.js | drift animates transform/opacity only; picker safe centre; 6 cols <340px | a | S7 | keep (skin scope) |
+| test/unit/skin-scrollbar-hidden.test.js | body.mms-on scrollbar hide, scoped | a | S7 | keep (skin scope) |
+| test/unit/skin-status-bar.test.js | no rule undoes the one-line status bar; no writing-mode anywhere | a | S7 | keep; widen census to ui.css |
+| test/unit/critter-manager.test.js | critter grid classes have rules; armed state --yt-red | b | S8 | danger role (D8.8); styling-source law |
+| test/unit/master-detail.test.js | .md-back pinned left; title centred phone, left desktop | b | S8 | ui nav-header contract |
+| test/unit/md-nav-desktop-gap.test.js | .md-nav flex gap is the sole group separator; .md-group | c | S8 | G: group headers do not move on first row click |
+| test/unit/mobile-input-zoom-fontsize.test.js | inputs/selects >=16px on phone (oneoff, setup, sub-sheet) + census; desktop 13px | b | S8 | ui-field/ui-select 16px contract + census |
+| test/unit/oneoff-modal-mobile-polish.test.js | .oneoff-modal cap/scroll, select min-width, full-width CTA, phone stack, tap heights | b | S8 | ui-sheet + ui-field + ui-btn primary |
+| test/unit/settings-mobile-polish.test.js | .setup-box width, form-group/folder-item-row spacing, phone stack, .sub-row excluded | b | S8 | ui-field/ui-row form layout |
+| test/unit/setup-automation-reveal.test.js | .reveal-toggle[data-loading] shimmer barrier | a | S8 | keep on the ui-switch rows |
+| test/unit/setup-engine-client.test.js | engine channel card classes have rules | b | S8 | styling-source law over ui.css + style.css |
+| test/unit/stats-breakdown-table.test.js | .folder-list-builder--fill lifts max-height | a | S8 | keep |
+| test/unit/stats-master-detail.test.js | .md-row.md-hide-mobile hidden in the phone block | a | S8 | keep the modifier when .md-row -> ui-row |
+| test/unit/trash-toolbar.test.js | .trash-toolbar flex + [hidden]; armed red | b | S8 | ui-btn danger + global [hidden] |
+| test/unit/v1262-mobile-input-zoom.test.js | global phone input floor via --fs-input-min; class overrides; folder-name-input | b | S8 | ui-field 16px (D4.10) |
+| test/unit/ddr-easter-egg.test.js | DDR arrow glyph neutral; 2-col desktop shortcuts; reduced motion | b | S9 | ui-sheet dialog; arrows via icons (AC4) |
+| test/unit/handoff-card-styling.test.js | every card class has a rule; hidden rule; tokens resolve in 4 eras; html text-size-adjust | b | S9 | ui-toast/ui-sheet + ui-era-roles; text-size-adjust -> D6 (4) |
+| test/unit/keyboard-shortcuts.test.js | Stats entry never hidden; 768 breakpoint exists | a | S9 | keep |
+| test/unit/player-speed-btn-parity.test.js | speed sheet backdrop fixed at --z-modal; panel rule | b | S9 | ui-sheet (z ladder) |
+| test/unit/v1264-empty-error-states.test.js | .empty-state/.error-state are real shared classes | b | S9 | ui-state block (D9) |
+| test/unit/ytdlp-download-chip.test.js | #dl-status-chip font sizes tokened; summary dimmed, restored on hover/focus/expanded | b | S9 | ui-chip status; hover-gated (AC6) |
+| test/unit/reader-immersive.test.js | html.reader-immersive hides the header and zeroes its clearance | a | S10 | keep |
+
+#### Mention only (no content lock; no conversion)
+
+- test/integration/shell-smoke.test.js - comment only
+- test/unit/card-download-btn.test.js - comment only
+- test/unit/liked-glyph-split.test.js - comment only
+- test/unit/player-docked-resume.test.js - comment only
+- test/unit/player-form-factor.test.js - comment only
+- test/unit/skin-surface.test.js - comments only (cites .mms-haptic-ghost and the 768px block; D7 changes that block)
+- test/unit/ytdlp-t6-repull-and-subs-ui.test.js - comment only
+- test/integration/auth-flow.test.js - HTTP GET /css/style.css returns 200 (serving, not content)
+- test/integration/route-census.test.js - HTTP probe: /css/style.css is not gated
+- test/unit/auth-gate.test.js - allowlist path string
+- test/unit/ledger-check.test.js - string fixture ("public/css/style.css:10")
+- test/unit/comment-debt-census.test.js - witness path in the tracked-file census
+- test/unit/css-token-lint.test.js - writes a tmp style.css fixture; owner 7 (css-token-lint retires, its tests migrate to ui-lint canaries)
+
+#### Notes for the sweeps
+
+1. **Whole-file scans go blind when rules leave style.css.** These (a)/(b) tests scan style.css as a whole and prove a negative ("no rule does X"). Once ui.css and tokens.css exist, a violating rule there passes them. Widen each one's file list at step 3 (ui.css) or step 1 (tokens.css): overlay-containment, bottom-nav-order-authority, skin-status-bar, keyboard-shortcuts (no rule hides the Stats entry), ambient-glow-engine, fullscreen-edge-and-video-state, player-fullscreen-stage, touch-eating-overlay-audit, mobile-input-zoom-fontsize (census), reorder-single-mechanism (STYLESHEETS), podcasts-nav-client / setup-engine-client / critter-manager / handoff-card-styling (the styling-source law), token-scale-lock (every var() is defined).
+2. **Token relocation breaks step 1 first.** Tests that read :root tokens out of style.css (token-scale-lock, type-scale-tokens, modern-theme-geist, ipad-header-safe-area, and the token halves of sticky-filter-bar, watch-action-bar-reveal, mobile-header-css-source-lock, player-chapters-parity, v1262-mobile-input-zoom) fail when the definitions move into tokens.css. Point them at tokens.css in the step 1 commit.
+3. **Step 7 (aliases deleted).** Many (a) locks pin old alias spellings (var(--bg-secondary), var(--yt-red), var(--fs-xs), var(--radius-lg), var(--text-link), var(--space-N)). Step 7 must re-spell each one to its D2 role in the same commit that deletes the alias. It owns no file outright, so it is not a row owner.
+4. **The [hidden] family.** app-look-l2, music-album-view, touch-eating-overlay-audit, subscriptions-panels, trash-toolbar and the [hidden] halves of player-chapters-parity, player-video-tracknav-and-chapter-wrap and queue-chrome-client all pin per-class [hidden] patches. D11 replaces the 102 patches with one global rule in ui.css. Each conversion asserts that rule (display:none !important, and nothing later overrides it), and keeps touch-eating-overlay-audit's negative control.
+5. **D8.8 conflicts.** music-playback-modes, music-theater-toggle, watch-like-button, player-chapters-parity (current row) and critter-manager/trash-toolbar (armed) pin red on a selected or armed state. The first three are not red roles under D8.8 and change meaning; armed/delete stays red as --danger.
+6. **D7 width gate.** music-actions-desktop anchors on the mobile sticker @media block, and skin-surface.test.js (mention only) cites the 768px Pocket block. D7 turns that gate into html.is-phone, so S7 moves the anchor.
+7. **Native-interaction lint vs a player rule.** player-responsive-controls (a) pins user-select:none / -webkit-touch-callout on #media-player, #audio-bg-art, .skip-controls, .speed-badge. D10.1 rule 6 bans any other user-select declaration. Step 4 must either delete the rule (the D6 body rule covers it) and convert that one test, or list it as a player carve-out.
+
+#### Risky conversions (each guards a real past bug)
+
+- **ambient-glow-engine** (a, S3): v1.312, Ambient ON blacked out every video on iPhone. The lock bans filter/transform/mask/will-change on the stage and glow. Keep it as it is; any ui.css rule reaching the stage must pass it.
+- **fullscreen-edge-and-video-state** (a, S3): v1.336, a thin white border in every fullscreen (24 of 24 combos). A token or ui.css border on the player container would re-add it.
+- **touch-eating-overlay-audit** (b, 3): v1.17.0, a hidden overlay kept display:flex and ate touches until a force-close. The global-[hidden] replacement must keep the negative control.
+- **player-chapters-parity [hidden] half** (a, S3/3): v1.34.3, display:flex beat [hidden] so the chapters menu could never close.
+- **mobile-header-css-source-lock** (b, S1): v1.85 device-pass failure, where later same-specificity base rules defeated the mobile header overrides (search, avatar, account sheet). Convert to a rendered check at phone width, not a selector lock.
+- **mobile-input-zoom-fontsize + v1262-mobile-input-zoom** (b, S8): v1.25.4, iOS zooms on focus under 16px. The D6 viewport maximum-scale=1 is not a substitute. ui-field must keep 16px, and the census of every classed input must survive.
+- **reloc-preview-mount, books-router-nav, podcasts-nav-client** (b): v1.41.8 and v1.37.1, where page-local styles were dropped on the SPA #view-root swap. Their replacement is ui-lint no-shell-style plus the styling-source law over ui.css.
+- **panel-chrome-mirror** (b, S4): v1.68.3, card-corner selects shipped browser-bare (a class with no rule), and the z-index:2 duration badge escaped over the sticky panel header. Keep the isolation assertion.
+- **pinned-avatar-css** (b, S1): v1.25.5, real channel avatars rendered unbounded in the pinned lists.
+- **md-nav-desktop-gap** (c, S8): v1.157.1, the Settings/Stats group headers shifted up on the first row click and stayed there until a refresh. It was re-root-caused once already.
+- **stable-toggle-label** (c, S3): v1.340, Notify shifted the row. Gate r1 W1 found every rule deletable with the suite green, so the geometry check must be mutation-proven.
+- **card-corner-mobile-size** (b, S2): gate W3, corner tap zones shadowed sibling pills. D8.5 deletes the family, and the DOM test must prove no overlay buttons remain.
+- **glyph-pool / icon-* family** (b, 2): v1.47.6, a mask without its @supports fill painted a blank box on device. icons-registry must prove every referenced name resolves in all three styles.
+- **player-rotation-cap-nudge** (a, S3): v1.68.1, rotating landscape and back left the player at 45% height. It is untouched, but S7's rotation work (D7) sits next to it.
+- **music-playback-modes** (b, S7): v1.284.1, an invisible ON state (the 2009 gloss painted over a background-color longhand). The ui-btn selected state must still show in 2009.
