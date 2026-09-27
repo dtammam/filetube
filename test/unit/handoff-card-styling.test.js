@@ -181,12 +181,19 @@ test('the card carries no [data-theme]-scoped rules of its own (residual #103 po
 // showed the card had no behavioural hook for the fix). BOTH spellings are
 // required - the v1.77 prefixed-vs-standard lesson: -webkit- serves iOS, the
 // unprefixed serves the standard, and one alone leaves a browser boosting.
+// UI pass step 4 (plan D6): the pin moved from style.css's html rule into the
+// native-interaction base at the top of ui.css (loaded by every shell before
+// style.css), so the lock reads it there and asserts nothing later unpins it.
 test('v1.194: the html root PINS text-size-adjust:100% (both spellings) - iOS font-boost defeat', () => {
-  const rule = /(?:^|\n)html\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'the html rule must exist');
+  const { readUiCss, readAllCss, cssRules } = require('../helpers/stylesheets');
+  const uiCss = readUiCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = /(?:^|\n)html\s*\{([^}]*)\}/.exec(uiCss);
+  assert.ok(rule, 'the html rule must exist in ui.css');
+  const later = cssRules(readAllCss()).filter((r) => /text-size-adjust/.test(r.body) && !/text-size-adjust:\s*100%/.test(r.body));
+  assert.deepStrictEqual(later.map((r) => r.sel), [], 'no rule sets another text-size-adjust');
   // Strip comments first (the comment-porous class - the fix comment names the
   // property and the mechanism, which would false-pass a naive grep).
-  const decls = rule[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  const decls = rule[1];
   assert.match(decls, /-webkit-text-size-adjust:\s*100%/,
     'the -webkit- spelling pins iOS Safari to 100% (no boost) - deleting it re-inflates the handoff text on fullscreen exit');
   assert.match(decls, /(?<!-webkit-)text-size-adjust:\s*100%/,

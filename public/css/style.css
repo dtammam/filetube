@@ -313,14 +313,8 @@ html {
   /* v1.160.1 (Dean): no horizontal rubber-band on the left-edge swipe-back drag
      (the swipe handler also preventDefaults it, this is belt-and-suspenders). */
   overscroll-behavior-x: none;
-  /* v1.194 (Dean): PIN iOS text auto-sizing to 100% (no font-boosting). Without
-     this, Safari inflates the computed px of "text blocks" whenever it re-runs its
-     autosizing pass against a changed layout width -- e.g. exiting fullscreen
-     reflows the page (header/bottom-nav un-hide, overflow restores) and iOS boosts
-     the #handoff-card headline text until an in-app nav rebuilds the card.
-     100% = the default measure, so this only DISABLES the boost, never scales down. */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
+  /* v1.194's text-size-adjust:100% (the iOS font-boost defeat) moved to the
+     native-interaction base at the top of ui.css (plan D6). */
 }
 
 body {
@@ -347,10 +341,11 @@ body {
    is a feature there, so it opts back into the browser default. Keyed off the
    route rather than a per-shell class because /read.html is an SPA route -- the
    document belongs to whichever shell loaded first, so only the live route is a
-   trustworthy signal. */
-body {
-  touch-action: manipulation;
-}
+   trustworthy signal.
+
+   UI pass step 4 (plan D6): the app-wide `body { touch-action: manipulation }` is
+   part of the native-interaction base at the top of ui.css; this carve-out wins over
+   it by specificity. */
 body[data-view="read"] {
   touch-action: auto;
 }
@@ -2411,7 +2406,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   font-size: var(--fs-sm);
   color: var(--text-primary);
   cursor: pointer;
-  user-select: none;
   white-space: nowrap;
 }
 
@@ -3302,14 +3296,12 @@ select {
    -- which row dims, where the drop line is drawn -- stays in each surface's
    own class family, so no shipped rule changes meaning.
 
-   `-webkit-touch-callout` is the iOS half of the long-press story: the same
-   press that arms a touch drag is also the gesture iOS uses for the
-   selection callout / link preview, which would otherwise fire on top of it.
-   No scroll-affecting property is set here on purpose -- a row must stay
-   scrollable by finger until a drag actually arms (common.js's D2). */
-.reorder-row {
-  -webkit-touch-callout: none;
-}
+   The iOS half of the long-press story (the same press that arms a touch drag
+   is the gesture iOS uses for the selection callout / link preview) is the
+   native-interaction base in ui.css since the UI pass (plan D6): the body's
+   `-webkit-touch-callout: none` reaches every row. No scroll-affecting
+   property is set here on purpose -- a row must stay scrollable by finger
+   until a drag actually arms (common.js's D2). */
 
 /* QA gate C1, the WebKit half: several engines honour `-webkit-user-drag`
    rather than the `draggable` attribute when deciding whether a link or an
@@ -3341,8 +3333,6 @@ select {
 .reorder-dragging,
 .reorder-dragging .reorder-row {
   cursor: grabbing;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 /* Item 1 (v1.15.0): Setup folder-list drag-and-drop reordering. v1.76: no
@@ -3361,7 +3351,6 @@ select {
   line-height: 1; /* token-exempt: glyph centering */
   letter-spacing: -2px; /* token-exempt: era display styling */
   cursor: grab;
-  user-select: none;
   /* The handle is the no-long-press door onto a touch drag: taking the
      touch-action here (and ONLY here) is what lets a press on the handle arm
      immediately without stealing the list's scroll everywhere else. */
@@ -5807,7 +5796,6 @@ a.sub-row-channel-link:focus-visible {
   min-width: var(--size-control);
   text-align: center;
   flex-shrink: 0;
-  user-select: none;
 }
 
 /* ---- blocky beveled buttons (play/pause, mute, fullscreen) --------------- */
@@ -6348,18 +6336,12 @@ a.sub-row-channel-link:focus-visible {
    now-playing" overlay section below) and is no longer hidden.
    Desktop (both media types) stays byte-identical to v1.21/v1.22. */
 
-/* AC6 -- press-hold-2x must not select text / raise the iOS callout. Applied
-   to the gesture surfaces wireSkipHoldGestures() binds to (player.js), NOT the
-   native control strip -- user-select/touch-callout never affect tap
+/* AC6 -- press-hold-2x must not select text / raise the iOS callout. Since the
+   UI pass (plan D6) the native-interaction base at the top of ui.css covers
+   these gesture surfaces (#media-player, #audio-bg-art, .skip-controls,
+   .speed-badge) with every other non-field element: body user-select:none and
+   -webkit-touch-callout:none. user-select/touch-callout never affect tap
    handling, so native-control tappability (AC4/AC5) is unaffected. */
-#media-player,
-#audio-bg-art,
-.skip-controls,
-.speed-badge {
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
 
 /* v1.22.1 FR-1 -- the v1.22 AC4 "hide the custom bar for mobile video" rule
    and its AC9-correction DOCKED re-assert are RETIRED: with the native
@@ -6627,6 +6609,31 @@ body.ft-css-fullscreen #ft-lifecycle-overlay {
 body.ft-audio-expanded {
   overflow: hidden;
   background: #000; /* token-exempt: fullscreen letterbox black belt */
+}
+
+/* D6 overscroll (UI pass, plan D6): no rubber-band where a surface must not scroll -
+   Pocket (body.mms-on, the phone music skin), the player's faux fullscreen and its
+   expanded audio view. The viewport's bounce belongs to the root, so the root takes
+   `none` while one of them is up (:has, iOS 15.4+); the surfaces themselves take it
+   too, so a drag that starts on them never chains. Page lists keep native bounce.
+   The pre-primitive sheets and modals follow .ui-sheet: the non-scrolling shell takes
+   `none`, a scrolling body `contain` (it scrolls, but never drags the page behind it). */
+html:has(> body.mms-on),
+html:has(> body.ft-css-fullscreen),
+html:has(> body.ft-audio-expanded),
+.mms-full,
+#player-wrapper.css-fullscreen,
+#player-wrapper.audio-expanded,
+.playlists-sheet {
+  overscroll-behavior: none;
+}
+.modal-content,
+.oneoff-modal,
+.speed-sheet,
+.sub-sheet,
+.hard-delete-modal,
+.playlists-sheet-list {
+  overscroll-behavior: contain;
 }
 
 /* v1.34.1 (Dean's on-device pass): mobile bar declutter.
@@ -11437,8 +11444,9 @@ html[data-modern="on"] .video-uploader {
      touches starting on this fixed panel now pan nothing). Scrollable regions inside
      (the iPod list, the Spotify queue) re-enable vertical panning via touch-action:pan-y. */
   /* v1.243 (Dean): a HOLD (fast-scan / spin) must never select the skin's glyph/label text -
-     the blue highlight looked derpy. No-select the whole shell (+ iOS touch-callout). */
-  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+     the blue highlight looked derpy. Since the UI pass (plan D6) the native-interaction
+     base in ui.css no-selects the whole app (+ iOS touch-callout), this shell included. */
+  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; }
   /* v1.256 WHEEL HAPTICS: touch-action ANYWHERE on the ghost switch's ancestor chain
      disables WebKit's switch pointer-tracking (probe-proven), so a haptic-capable
      device lifts it here and a body position:fixed lock (engine-managed, ghost-scoped)
@@ -11471,11 +11479,10 @@ html[data-modern="on"] .video-uploader {
   .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
     margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
     border:0; padding:0; will-change:transform; }
-  /* v1.232 (Dean): kill the mobile tap-highlight flash on skin buttons - the grey
-     "area showing" on tap broke the iPod immersion. (-webkit-tap-highlight-color is
-     inherited; transparent is census-exempt.) Also stop text-selection on the wheel. */
-  .mms-full{ -webkit-tap-highlight-color:transparent; }
-  .mms-full button, .mms-ipod .ip-zone, .mms-ipod .ip-center{ -webkit-tap-highlight-color:transparent; user-select:none; }
+  /* v1.232 (Dean): no mobile tap-highlight flash on skin buttons (the grey "area showing"
+     on tap broke the iPod immersion) and no text-selection on the wheel: both come from
+     the native-interaction base in ui.css since the UI pass (plan D6;
+     -webkit-tap-highlight-color is inherited from body). */
   /* shared control primitives - identical hooks + reflect targets across skins */
   .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
   .mms-full .mms-chev{ width:36px; height:36px; border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
@@ -13569,7 +13576,6 @@ html[data-modern="on"] .video-uploader {
   font-weight: var(--fw-semibold);
   font-size: var(--fs-sm);
   overflow: hidden;
-  user-select: none;
 }
 .account-avatar-lg {
   width: 44px; /* token-exempt: control geometry (Stop A Batch A) */
@@ -13702,7 +13708,8 @@ html[data-modern="on"] .video-uploader {
   font-size: var(--fs-sm);
   text-align: left;
   font-variant-numeric: tabular-nums;
-  user-select: text;
+  /* UI pass (plan D6, Dean's LOCKED ruling): no longer selectable - only fields
+     and the listed .ui-selectable surfaces are. */
 }
 @media (hover: hover) {
   .account-menu-version:hover {
@@ -15349,7 +15356,6 @@ html[data-modern="on"] .video-uploader {
   display: flex; flex-direction: column; gap: var(--space-5);
   padding: var(--space-6);
   overflow-y: auto; -webkit-overflow-scrolling: touch;
-  -webkit-user-select: none; user-select: none;
 }
 .whcal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .whcal-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-semibold); }

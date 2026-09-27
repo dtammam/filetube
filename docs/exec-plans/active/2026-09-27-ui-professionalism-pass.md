@@ -1298,3 +1298,42 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
 - **Demo for Dean:** `/ui-kit.html` on the phone (switch era/mode/icons at the top; long-press and swipe the
   two rows under Gestures).
 
+
+### Step 4 - hover wrap + the D6 native-interaction base (2026-09-27, branch feat/ui-pro-native)
+
+- **Hover wrap (AC6, d6d0b555):** the 92 ungated `:hover` rules of style.css (of 94) each moved inside
+  `@media (hover: hover)` in place; 22 mixed selector lists split (the non-hover part keeps the rule, the
+  hover part follows it in its own block, same declarations). Scrollbar, Pocket and player hovers wrapped
+  too; none needed an exception. Not touched: the Subscriptions view's inline `<style>` (S5) and diag.html.
+  Measured on the seeded instance (style.css swapped by route): desktop, 13 hovered targets, computed style
+  identical before/after on all 13; phone emulation, 9 tapped targets, sticky tint before 7, after 0.
+- **D6 base:** at the top of ui.css exactly as D6 lists it, plus `.ui-selectable` (the reader's
+  `#reader-pane` and the `?debugLifecycle=1` overlay, nothing else) before the field re-enable, which is the
+  last user-select rule of the three sheets. Deleted from style.css (the base covers them): 14 user-select,
+  3 `-webkit-touch-callout`, 2 `-webkit-tap-highlight-color` declarations over 12 rules, including the
+  version footer's `user-select: text` (the LOCKED ruling: not a listed opt-in). None stay. html
+  `text-size-adjust` and body `touch-action: manipulation` moved into the base (the reader's
+  `touch-action: auto` carve-out stays in style.css and wins by specificity). Viewport meta = common.js
+  `VIEWPORT_ZOOM_LOCKED` in 13 shells + the Subscriptions view; read.html keeps `VIEWPORT_ZOOM_FREE`;
+  diag.html untouched (standalone diagnostics page). Overscroll `none` on the root while Pocket / faux
+  fullscreen / expanded audio is up (`html:has(> body.mms-on|ft-css-fullscreen|ft-audio-expanded)`) and on
+  those surfaces and `.playlists-sheet`; the pre-primitive sheet/modal scrollers take `contain`, like
+  `.ui-sheet__body`.
+- **Hold-for-2x: NOT moved onto `FTInteraction.onLongPress` (not a contained change).** What S3 owns:
+  1. onLongPress has no release callback; the hold must restore the rate on lift. S3 adds one (an
+     `onRelease`/hold variant in interaction.js) with its own tests.
+  2. It is pointer-event based and fires at 450ms / 8px; the player's layer is touch-event based at
+     `HOLD_MS` 500 / `MOVE_TOL` 16, and 16 is the v1.22.1 device fix for thumb jitter on `#audio-bg-art`.
+     Porting needs a ruling on the numbers (or opts `{ ms: 500, tolerance: 16 }`).
+  3. The same touchend handler classifies tap / double-tap skip / skip chain / art single-tap and releases
+     the hold; onLongPress's swallow-the-next-click after a fire meets the docked tap-to-expand path and
+     `scheduleArtSingleTap`. The classifier must stay on its own listener.
+  4. The latch reset (`resetTransientPlaybackUi` from dock/close/pagehide/freeze/hidden) must move with it.
+  5. F22 (listeners stop being passive during the hold) lands with the move; the 2x pill restyle is S3's.
+  - Today the D6 base covers the gesture surfaces (the per-surface rule is gone; player-responsive-controls
+    now proves no re-enable rule reaches `#media-player`, `#audio-bg-art`, `.skip-controls`, `.speed-badge`
+    or the player mount points in any player shell). **Diagnosis note:** the old per-surface rule already
+    covered those four surfaces, yet Dean saw the loupe, so the cause is either selection on a surface it
+    missed (overlay text, the page around the player; the body base now covers all of it) or not selection
+    at all. **Falsifier:** if the loupe still shows on device with this base, it is not selection; the next
+    suspect is iOS's own long-press on the passive touchstart, which S3's non-passive hold addresses.

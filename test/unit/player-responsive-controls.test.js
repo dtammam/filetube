@@ -55,13 +55,45 @@ test('v1.22/v1.22.1 FR-1 section: a labeled section header exists', () => {
 
 // ---- AC6: text-selection / touch-callout fix on the gesture surfaces --------
 
-test('AC6: user-select/-webkit-touch-callout guards are applied to the gesture surfaces (#media-player, #audio-bg-art, .skip-controls, .speed-badge), not the native control strip', () => {
-  const ruleRe = /#media-player,\s*\n#audio-bg-art,\s*\n\.skip-controls,\s*\n\.speed-badge\s*\{([^}]*)\}/;
-  const match = ruleRe.exec(css);
-  assert.ok(match, 'expected a single rule targeting #media-player, #audio-bg-art, .skip-controls, .speed-badge');
-  assert.match(match[1], /user-select:\s*none;/);
-  assert.match(match[1], /-webkit-user-select:\s*none;/);
-  assert.match(match[1], /-webkit-touch-callout:\s*none;/);
+// UI pass step 4 (plan D6): the per-surface rule is gone; the native-interaction
+// base at the top of ui.css (body: user-select none, -webkit-touch-callout none)
+// covers these surfaces with every other non-field element. Bound here: the base
+// declares all three, and in every shell that mounts the player NO rule that
+// re-enables selection or the callout matches a gesture surface or any ancestor
+// of it (jsdom `matches` over the real shell markup, every stylesheet).
+test('AC6: the D6 base covers the gesture surfaces (#media-player, #audio-bg-art, .skip-controls, .speed-badge): no selection or callout re-enable reaches them', () => {
+  const { JSDOM } = require('jsdom');
+  const { cssRules, readUiCss, readAllCss } = require('../helpers/stylesheets');
+  const base = cssRules(readUiCss()).find((r) => r.sel === 'body');
+  assert.ok(base, 'the D6 body base rule exists in ui.css');
+  assert.match(base.body, /(?:^|;)\s*user-select:\s*none;/);
+  assert.match(base.body, /-webkit-user-select:\s*none;/);
+  assert.match(base.body, /-webkit-touch-callout:\s*none;/);
+  const reEnable = cssRules(readAllCss()).filter((r) =>
+    /(?:^|;)\s*(?:-webkit-)?user-select:\s*(?!none)[a-z]/.test(r.body) || /-webkit-touch-callout:\s*(?!none)[a-z]/.test(r.body));
+  assert.ok(reEnable.length >= 2, 'the census sees the re-enable rules (fields, .ui-selectable)');
+  const root = path.join(__dirname, '..', '..');
+  const shells = fs.readdirSync(path.join(root, 'public')).filter((f) => f.endsWith('.html')).map((f) => path.join(root, 'public', f))
+    .concat([path.join(root, 'lib', 'ytdlp', 'views', 'subscriptions.html')])
+    .filter((f) => fs.readFileSync(f, 'utf8').includes('id="media-player"'));
+  assert.ok(shells.length >= 8, `player shells found: ${shells.length}`);
+  for (const file of shells) {
+    const doc = new JSDOM(fs.readFileSync(file, 'utf8')).window.document;
+    // Some shells keep the player host in a <template> (mounted into #player-slot or
+    // #player-dock at runtime), so look inside templates too, and walk the mount points.
+    const q = (s) => doc.querySelector(s) || [...doc.querySelectorAll('template')].map((t) => t.content.querySelector(s)).find(Boolean) || null;
+    const surfaces = ['#media-player', '#audio-bg-art', '.skip-controls', '.speed-badge', '#player-slot', '#player-dock'].map(q).filter(Boolean);
+    assert.ok(q('#media-player'), `${path.basename(file)}: #media-player found`);
+    for (const el of surfaces) {
+      for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+        for (const r of reEnable) {
+          let hit = false;
+          try { hit = n.matches(r.sel); } catch (_) { hit = false; }
+          assert.ok(!hit, `${path.basename(file)}: "${r.sel}" re-enables selection on ${el.id || el.className} (via <${n.tagName.toLowerCase()}${n.id ? '#' + n.id : ''}>)`);
+        }
+      }
+    }
+  }
 });
 
 // ---- v1.22.1 FR-1: the mobile-video custom-bar hide is RETIRED -------------
