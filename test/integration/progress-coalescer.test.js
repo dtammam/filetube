@@ -429,12 +429,15 @@ test('AC4.2: a simulated crash mid-write during POST /api/config never tears the
     folders: ['/keep-me'], folderSettings: {}, metadata: {}, settings: baseSettings(),
   });
   const before = readPersistedDatabase(process.env.DATA_DIR);
+  // v1.339 r1: removing every folder needs the base (a legacy empty list
+  // against a non-empty store is refused with 409 before any save).
+  const { configVersion } = await (await fetch(`${base}/api/config`)).json();
 
   __failNextSaveForTests(new Error('simulated crash before commit'));
   const res = await fetch(`${base}/api/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folders: [] }),
+    body: JSON.stringify({ folders: [], baseVersion: configVersion }),
   });
   assert.equal(res.status, 500, 'a crash mid-write must surface as a 500, not a silent false success');
 
@@ -446,7 +449,7 @@ test('AC4.2: a simulated crash mid-write during POST /api/config never tears the
   const res2 = await fetch(`${base}/api/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folders: [] }),
+    body: JSON.stringify({ folders: [], baseVersion: configVersion }),
   });
   assert.equal(res2.status, 200);
   assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders || [], [], 'a later clean write proceeds normally (Wave 4: an empty root list has no rows)');

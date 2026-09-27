@@ -277,7 +277,7 @@ test('G1/A claim is EXCLUSIVE: a second restore onto a claimed path is refused (
   const second = await restoreTrashItem(trashDeps(), tr.trashId);
   assert.equal(second.ok, false, `THE binding: the double restore was refused (${JSON.stringify(second)})`);
   assert.equal(second.status, 409);
-  assert.match(second.error, /already being restored/);
+  assert.equal(second.error, 'This item is already being restored - try again in a moment');
 
   // The first restore's claim still stands after the refusal returned.
   const stand = witnessStream(lib.clip);
@@ -336,7 +336,10 @@ test('G1/B: a DIFFERENT file appears at the original path before the restore fin
   assert.equal(fs.readFileSync(tr.trashPath, 'utf8'), 'clip-bytes');
   assert.equal(res.ok, false, `an honest failure (${JSON.stringify(res)})`);
   assert.equal(res.status, 409);
-  assert.ok(res.error.includes(tr.trashPath), 'the error names where the kept copy is');
+  // v1.339 r1: the text says where the copy is in words (the trash folder),
+  // never the server's absolute trash path.
+  assert.equal(res.error, 'The item was restored, but the file at its original location changed before the restore finished - the trashed copy was kept in the trash folder');
+  assert.ok(!res.error.includes(tr.trashPath) && !res.error.includes(path.dirname(tr.trashPath)), 'no absolute path in the message');
   assert.equal(fs.readFileSync(lib.clip, 'utf8'), 'someone-elses-bytes', 'the other file is untouched');
 });
 

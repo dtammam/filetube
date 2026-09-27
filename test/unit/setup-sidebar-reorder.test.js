@@ -82,6 +82,9 @@ function withSidebar(fn, opts) {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, folders: [], folderSettings: {} }) });
     }
     gets.push(url);
+    // v1.339 r1: `o.getFails` = the GET rejects (network) or answers 500.
+    if (o.getFails === 'network') return Promise.reject(new TypeError('Failed to fetch'));
+    if (o.getFails === 500) return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'Internal Server Error' }) });
     const cfg = serverConfig();
     return Promise.resolve({ ok: true, status: 200, json: async () => cfg });
   };
@@ -284,4 +287,40 @@ test('S2: a synthetic folder keeps its absolute position through the by-path mov
     await new Promise((r) => setTimeout(r, 0));
     assert.deepEqual(ctx.posts[0].body.folders, ['/media/b', '/dl', '/media/c', '/media/a'], 'index 1 stays the synthetic root');
   }, { folders: ['/media/a', '/dl', '/media/b', '/media/c'], synthetic: ['/dl'], server: fresh });
+});
+
+// ---- v1.339 r1 (gate W): a drag never POSTs without a base ------------------
+
+for (const getFails of ['network', 500]) {
+  test(`r1 W: a drop whose drop-time GET fails (${getFails}) sends NO POST`, () => {
+    return withSidebar(async (dom, ctx) => {
+      const rows = draggableRows(dom);
+      layOut(rows);
+      drag(dom, rows, 0, 2 * 30 + 22);
+      await new Promise((r) => setTimeout(r, 0));
+      assert.ok(ctx.gets.length >= 1, 'populated: the drop reached its GET');
+      assert.deepEqual(ctx.posts, [], 'nothing written from a failed read');
+    }, { folders: THREE, getFails });
+  });
+}
+
+test('r1 W: a drop whose GET carries NO configVersion sends no POST (never the unchecked legacy path)', () => {
+  const noVersion = { folders: THREE.slice(), folderSettings: {}, syntheticFolders: [] };
+  return withSidebar(async (dom, ctx) => {
+    const rows = draggableRows(dom);
+    layOut(rows);
+    drag(dom, rows, 0, 2 * 30 + 22);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(ctx.gets.length >= 1, 'populated: the drop reached its GET');
+    assert.deepEqual(ctx.posts, [], 'no base-less write');
+  }, { folders: THREE, server: noVersion });
+});
+
+test('r1 W: persistSidebarMoveByPath resolves error (config null) on a failed GET and never calls POST', async () => {
+  const calls = [];
+  const fetchImpl = (url, init) => { calls.push(init && init.method); return Promise.reject(new TypeError('Failed to fetch')); };
+  const out = await common.persistSidebarMoveByPath({ draggedPath: '/media/a', anchorPath: '/media/b', insertBefore: false }, fetchImpl);
+  assert.equal(out.status, 'error');
+  assert.equal(out.config, null);
+  assert.ok(!calls.includes('POST'));
 });

@@ -160,7 +160,7 @@ test('T-S5: a restore inside trashItem\'s post-commit window never leaves live m
   // The fix's contract: the in-window restore is refused honestly, and the
   // trash then completes cleanly.
   assert.equal(inWindow.status, 409, `in-window restore refused (got ${inWindow.status} ${JSON.stringify(inWindowBody)})`);
-  assert.match(inWindowBody.error, /still being moved to the trash/i);
+  assert.equal(inWindowBody.error, 'This item is still being moved to the trash - try restoring it again in a moment');
   assert.equal(live, undefined, 'the refused restore changed nothing');
   assert.ok(rec, 'the trash record is kept');
   assert.equal(fs.existsSync(filePath), false, 'the trash finished: the source path is unlinked');
