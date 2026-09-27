@@ -10,14 +10,16 @@
 // hands out `configVersion` (a hash of the STORED rows) and a POST carrying a
 // `baseVersion` that no longer matches gets 409 with the current version and
 // writes NOTHING - no replaceAll, no scan. A POST without `baseVersion` is the
-// legacy contract and still saves (the disclosed residual).
+// legacy contract and still saves (the disclosed residual) - except one that
+// would leave none of the stored folders configured, refused since v1.339 r1
+// (test/integration/config-save-guards.test.js).
 //
 // Through the REAL routes and the real updateDatabase mutator seam:
 //   - a stale base -> 409 { error, configVersion }, both tables byte-identical,
 //     and no scan started (scanState.scanning is spied, never set);
 //   - a matching base saves, starts the scan, and returns the NEW version, which
 //     equals what the next GET reports;
-//   - an absent base still saves (legacy);
+//   - an absent base still saves (legacy) when a stored folder survives;
 //   - the compare is INSIDE the mutator: two POSTs carrying the same base,
 //     enqueued in the SAME synchronous turn (the handler invoked directly, so
 //     neither mutator can run before both handlers have), -> exactly one 200

@@ -29,8 +29,14 @@ let syntheticFolders = [];
 // loadConfig() last filled the folder form. The Save button POSTs it as
 // `baseVersion`, so a Save built on a form another device has since outdated
 // is refused (409) instead of replacing the newer folder config. null = none
-// known (the POST then omits it: the server's legacy, unchecked path).
+// known: the form was never loaded from storage (the GET failed, or has not
+// answered yet), so saveFolderConfig() refuses to POST at all - an admin always
+// receives a configVersion, and a Save with no base would replace the stored
+// folders with whatever the unloaded form holds (an empty list = every folder
+// un-configured, then pruned by the scan the save fires).
 let configBaseVersion = null;
+// v1.339 r1 (W): the honest status a Save shows when no base is known.
+const CONFIG_NOT_LOADED_MESSAGE = 'Could not load your folders - reload the page before saving';
 let loadedDefaultView = null; // null until the /api/settings fetch resolves
 // v1.38.0 Part A: book folders — an unordered set of paths (no per-folder
 // display/hide/reorder), wired to the existing /api/books/config routes.
@@ -75,7 +81,8 @@ function buildSetupFolderSkeleton(n) {
   return html;
 }
 
-// Load initial folders
+// Load initial folders. Resolves true when the form was filled from storage,
+// false when the GET failed (the form is then NOT savable: see below).
 async function loadConfig() {
   // v1.157 (P3): reserve the folder list before the fetch so it never paints
   // empty-then-fills. renderFolders() (success) or the catch (error) replaces
@@ -84,8 +91,13 @@ async function loadConfig() {
   if (folderList) folderList.innerHTML = buildSetupFolderSkeleton(3);
   try {
     const response = await fetch('/api/config');
+    // v1.339 r1 (W): an error answer (a 500, a proxy page) is a FAILED load,
+    // never "you have no folders" - it goes to the catch below instead of
+    // filling the form with an empty list.
+    if (!response || !response.ok) throw new Error('GET /api/config failed' + (response ? ' (' + response.status + ')' : ''));
     const data = await response.json();
-    configuredFolders = data.folders || [];
+    if (!data || !Array.isArray(data.folders)) throw new Error('GET /api/config returned no folder list');
+    configuredFolders = data.folders;
     folderSettings = data.folderSettings || {};
     // v1.339 S2: the base the form is now built on (see configBaseVersion).
     configBaseVersion = typeof data.configVersion === 'string' ? data.configVersion : null;
@@ -97,11 +109,25 @@ async function loadConfig() {
     renderFolders();
     renderSidebarFolders(configuredFolders, folderSettings);
     populateDefaultViewSelect();
+    return true;
   } catch (err) {
     console.error('Failed to load configuration:', err);
+    // v1.339 r1 (W): the form is no longer built on storage - drop the base
+    // so a Save refuses instead of POSTing this form (an empty list after a
+    // first-load failure) over the real folder config.
+    configBaseVersion = null;
     // v1.157 (P3): clear the reserved skeleton on error so it never shimmers
-    // forever (the reveal-once error axis).
-    if (folderList) folderList.innerHTML = '';
+    // forever (the reveal-once error axis) - replaced by an honest line, not
+    // an empty list that reads as "no folders configured".
+    if (folderList) {
+      folderList.innerHTML = '';
+      const note = document.createElement('div');
+      note.className = 'config-load-error';
+      note.style.cssText = 'padding: var(--space-3) 0; color: var(--text-secondary);';
+      note.textContent = CONFIG_NOT_LOADED_MESSAGE;
+      folderList.appendChild(note);
+    }
+    return false;
   }
 }
 
@@ -2502,6 +2528,15 @@ function wireTvFolderControls(signal) {
 // The Settings folder form's Save (wired in wireStaticControls). POSTs the
 // form's folder list + settings as the new config.
 async function saveFolderConfig(statusText) {
+  // v1.339 r1 (W, data loss): no base = the form was never filled from
+  // storage (GET /api/config failed on this visit). POSTing it would replace
+  // the stored folders with the unloaded form - after a failed first load
+  // that is `{folders: []}`, which un-configured every folder and let the
+  // scan prune the library. Refuse, visibly, and send nothing.
+  if (typeof configBaseVersion !== 'string') {
+    setActionStatus(statusText, CONFIG_NOT_LOADED_MESSAGE, 'error');
+    return;
+  }
   setActionStatus(statusText, 'Saving configuration…', 'busy');
 
   try {
@@ -2509,8 +2544,7 @@ async function saveFolderConfig(statusText) {
     // refuses this Save if the stored folder config moved since the form
     // was loaded (another device added/renamed a folder) - replacing it
     // would drop that device's change.
-    const body = { folders: configuredFolders, folderSettings };
-    if (typeof configBaseVersion === 'string') body.baseVersion = configBaseVersion;
+    const body = { folders: configuredFolders, folderSettings, baseVersion: configBaseVersion };
     const response = await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2520,8 +2554,10 @@ async function saveFolderConfig(statusText) {
       // Nothing was written. Reload the form from storage (which also takes
       // the new base) so the user reviews the other device's change and
       // saves again deliberately.
-      await loadConfig();
-      setActionStatus(statusText, 'Folders changed on another device - reloaded, review and save again', 'error');
+      const reloaded = await loadConfig();
+      setActionStatus(statusText, reloaded
+        ? 'Folders changed on another device - reloaded, review and save again'
+        : CONFIG_NOT_LOADED_MESSAGE, 'error');
       return;
     }
     const data = await response.json();
@@ -4551,6 +4587,10 @@ function init(root) {
   configuredFolders = [];
   folderSettings = {};
   syntheticFolders = [];
+  // v1.339 r1 (W): a SPA re-visit must not inherit the previous visit's base -
+  // with it, a failed GET on this visit left the reset (empty) form savable
+  // under a still-current version, and the server accepted the wipe.
+  configBaseVersion = null;
   loadedDefaultView = null;
 
   // v1.152: the master-detail menu (was per-section <details> collapse). Turns

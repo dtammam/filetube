@@ -2355,7 +2355,8 @@ function applySidebarMoveByPath(folders, settings, syntheticFolders, draggedPath
 // GET /api/config, apply the move by path onto that fresh list, POST it with the
 // fresh folderSettings and `baseVersion`; a 409 (the config moved between the
 // GET and the POST) retries ONCE from a new GET. Never POSTs a caller's stale
-// arrays - the caller hands in only the move. Resolves
+// arrays - the caller hands in only the move - and never POSTs without a base
+// (a failed GET, or one with no `configVersion`, is 'error'). Resolves
 //   { status: 'saved' | 'conflict' | 'gone' | 'error', config }
 // where `config` is the freshest GET /api/config body it could read (null if
 // none), for the caller to re-render from on EVERY outcome. `fetchImpl`
@@ -2376,10 +2377,18 @@ async function persistSidebarMoveByPath(move, fetchImpl) {
       const folders = Array.isArray(cfg.folders) ? cfg.folders : [];
       const settings = cfg.folderSettings || {};
       const synthetic = Array.isArray(cfg.syntheticFolders) ? cfg.syntheticFolders : [];
+      // v1.339 r1 (W): a drag only ever POSTs WITH a base. A failed GET
+      // already throws in readConfig (to the catch: 'error', nothing sent); an
+      // answer without a configVersion (not an admin's - the POST is admin-only
+      // and admins always get one) never takes the server's unchecked legacy
+      // path either.
+      if (typeof cfg.configVersion !== 'string') {
+        console.error('Failed to persist sidebar folder reorder: the folder config has no version');
+        return { status: 'error', config: cfg };
+      }
       const next = applySidebarMoveByPath(folders, settings, synthetic, move.draggedPath, move.anchorPath, move.insertBefore);
       if (!next) return { status: 'gone', config: cfg };
-      const body = { folders: next, folderSettings: settings };
-      if (typeof cfg.configVersion === 'string') body.baseVersion = cfg.configVersion;
+      const body = { folders: next, folderSettings: settings, baseVersion: cfg.configVersion };
       const res = await doFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
