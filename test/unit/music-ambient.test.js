@@ -614,13 +614,14 @@ test('v1.317 AC8: a LATE seam of a dead view never lights the next page - (a) th
     c.ps.playing.paused = false; // the late load will find media playing
     c.deferred.splice(0).forEach((fn) => fn());
     await settleN(20);
-    assert.strictEqual(c.player.currentId, 'n1', 'the dead closure DID load the track (the seam is real)');
-    await c.play();
+    // v1.339 R1 (T-C5): the late continue no longer loads at all - playTrackFromContinue
+    // re-checks the view's signal after its fetch, so the seam this test was built on is
+    // closed at its source (it used to assert currentId === 'n1', "the seam is real").
+    assert.notStrictEqual(c.player.currentId, 'n1', 'R1 T-C5: the dead closure does NOT load the track');
     await new Promise((r) => setTimeout(r, 200));
-    assert.strictEqual(c.anyLit(), false, 'but no ambient: a host is never built for an aborted view');
+    assert.strictEqual(c.anyLit(), false, 'and no ambient');
     assert.deepStrictEqual(c.loads, []);
-    assert.ok(c.D.getElementById('settings-menu'), 'the late load DID clone the player host (so a cog menu exists)');
-    assert.strictEqual(c.check(), null, 'gate r1 (qa S3): the dead closure never even wrote the Ambient row into the persistent host');
+    assert.strictEqual(c.check(), null, 'gate r1 (qa S3): the dead closure never wrote the Ambient row into the persistent host');
   });
 });
 
@@ -642,7 +643,9 @@ test('v1.317 AC8: a LATE seam of a dead view never lights the next page - (b) th
     c.ps.playing.paused = false;
     deferred.splice(0).forEach((fn) => fn());
     await settleN(20);
-    assert.strictEqual(c.player.currentId, 'n2', 'the dead closure loaded n2 (the seam is real)');
+    // v1.339 R1 (T-C5): the late continue no longer loads - the seam is closed at its source
+    // (this used to assert currentId === 'n2', "the seam is real"); n1 keeps its place.
+    assert.notStrictEqual(c.player.currentId, 'n2', 'R1 T-C5: the dead closure does NOT load n2');
     await c.play();
     await new Promise((r) => setTimeout(r, 200));
     assert.strictEqual(c.anyLit(), false, 'the torn host ignores the late evaluate');

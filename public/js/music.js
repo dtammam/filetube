@@ -2138,11 +2138,18 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       return true;
     }
-    // A successful Move/Delete removed (or re-keyed) the playing item: the engine already
-    // closed the player and re-primed the liked cache; the VIEW clears its playing state,
-    // lets the panel teardown run (drops the full-screen skin), and re-renders the lists.
-    function afterExtrasMutation() {
+    // A successful Move/Delete removed (or re-keyed) the menu's item: the engine re-primed the
+    // liked cache and, when that item was still playing, closed the player - then the VIEW
+    // clears its playing state, lets the panel teardown run (drops the full-screen skin), and
+    // re-renders the lists. v1.339 R1 (T-C4): `info.playingRemoved === false` means an
+    // auto-advance moved on while the confirm was open - the engine left the NEW track
+    // playing, so only the lists refresh.
+    function afterExtrasMutation(info) {
       invalidateMenuData(); // pocket menus: a deleted/moved track must leave the pocket menus too
+      if (info && info.playingRemoved === false) {
+        render().catch(function () { /* the fetch-level catch already showed the empty/error state */ });
+        return;
+      }
       playingId = null;
       nowPlaying = null;
       chapterViewId = null;
@@ -2632,7 +2639,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // sort, then play from the top of the shuffled queue.
         askLightingForOpen(); // v1.334 gate r1 (adversary W2): the play waits on a fetch + a JSON read, which spends the gesture
         var seed = String(Math.floor(Math.random() * 1e9));
-        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function () {
+        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function (q) {
+          if (!q) return; // T-C7: superseded - a newer load owns the queue and the view
           if (queue.length) playAt(0);
         }).catch(function () {});
       }, { signal });
@@ -2720,7 +2728,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // under the winner's already-registered nav -> Prev/Next played a
       // wrong-ALBUM track (the v1.104 desync/wrong-track class). The ctx write
       // moves AFTER the guard for the same reason.
-      if (myLoad !== loadSongsGen) return queue;
+      // v1.339 R1 (T-C7): and a superseded load answers NULL, never the live queue - a caller
+      // that acts on the result (Shuffle's playAt(0)) would otherwise play row 0 of whatever
+      // list the winner holds (unshuffled / the wrong list). Every acting caller bails on null.
+      if (myLoad !== loadSongsGen) return null;
       queueCtx = ctx;
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
       queue = Array.isArray(data.items) ? data.items : [];
@@ -2859,6 +2870,7 @@ if (typeof module !== 'undefined' && module.exports) {
       stickyObserver.observe(sentinel);
     }
 
+    var renderGen = 0; // v1.339 R1 (T-C6): bumped by every render(); only the newest may paint
     async function render() {
       // v1.44.2: a drill's Back + title live in the large collapsing header
       // (buildDrillHeaderHtml) now, so the thin #music-crumb strip is unused for
@@ -2894,8 +2906,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // Gate r1 (adversary S7, closes D6): a pocket-menu pick that lands while this render is in
       // flight owns the browse view (it re-draws it FROM its queue); a render superseded by one
       // must not paint over it - the wrong header over the pick's rows, or a whole stale list.
+      // v1.339 R1 (T-C6): ...and a NEWER render (a tab switch, a sort change, a drill in/out
+      // while this one's fetch was in flight) owns it too - the stale response never paints
+      // the old tab/sort/drill over the active one. renderGen is claimed before any await.
       var menuPickAtStart = menuPickGen;
-      var stillMine = function () { return menuPickAtStart === menuPickGen; };
+      var myRender = ++renderGen;
+      var stillMine = function () { return menuPickAtStart === menuPickGen && myRender === renderGen; };
       try {
         if (drill) {
           // v1.273 (adversarial W1): mark the window in which `drill` is already the
@@ -3104,7 +3120,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // and play from the top — the seed makes next/prev walk it verbatim.
         askLightingForOpen(); // v1.334 gate r1 (adversary W2): before the fetch + JSON read spend the gesture
         var seed = String(Math.floor(Math.random() * 1e9));
-        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function () {
+        loadSongs({ sort: 'random', seed: seed, scope: drill }).then(function (q) {
+          if (!q) return; // T-C7: superseded - a newer load owns the queue and the view
           renderDrillView();
           if (queue.length) playAt(0);
         }).catch(function () {});
@@ -3593,9 +3610,12 @@ if (typeof module !== 'undefined' && module.exports) {
         ? window.FileTube.decodeListContext(meta.browseCtx || '') : null;
       if (!ctx || ctx.src !== 'music') return;
       var scope = ctx.album ? { type: 'album', key: ctx.album } : (ctx.artist ? { type: 'artist', key: ctx.artist } : null);
+      var rebuilt;
       try {
-        await loadSongs({ scope: scope, sort: ctx.sort, seed: ctx.seed });
+        rebuilt = await loadSongs({ scope: scope, sort: ctx.sort, seed: ctx.seed });
       } catch (_) { return; }
+      if (!rebuilt) return; // T-C7: superseded - never re-arm nav around a queue this load did not write
+      if (signal.aborted) return; // T-C5 class: a view torn down mid-fetch must not re-register the player's global nav
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
       // ci<0 (the playing id isn't in the rebuilt queue - a ctx/scope mismatch)
@@ -3689,6 +3709,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var myGen = ++playSelectGen; // claim this select BEFORE the async album load
       drill = { type: 'album', key: item.albumKey, label: item.album || 'Album' };
       await render(); // loads the album into `queue` + renders the drill (render never throws)
+      if (signal.aborted) return; // v1.339 R1 (T-C5): the view died during the album load - never play into a dead view
       // Race guard (gate WARNING): a NEWER select - a fast second tap on a
       // DIFFERENT album - supersedes this one and owns the view + play. Bail
       // before playAt so a stale track never plays into the newer album's queue
@@ -4069,6 +4090,10 @@ if (typeof module !== 'undefined' && module.exports) {
       mountEarlyCover();
       try {
         const v = await fetchJson('/api/videos/' + encodeURIComponent(mediaId));
+        // v1.339 R1 (T-C5): the view was left during the fetch - a late playAt would replace
+        // whatever the user moved on to (a video on the watch page), and the bounce below would
+        // hijack their navigation. Every exit after an await re-checks the view's signal.
+        if (signal.aborted) return;
         if (v && v.id) {
           const t = {
             id: v.id,
@@ -4101,6 +4126,7 @@ if (typeof module !== 'undefined' && module.exports) {
           return;
         }
       } catch (_) { /* unresolvable - fall through to the bounce */ }
+      if (signal.aborted) return; // T-C5: a failed fetch after the view died must not navigate either
       // The id came FROM a watch page, so a miss means it vanished mid-navigation -
       // return to the watch surface (its own 404 view explains better than a blank list).
       try { if (window.location && typeof window.location.replace === 'function') { window.location.replace('/watch.html?v=' + encodeURIComponent(mediaId)); return; } } catch (_) { /* no navigable location */ }
@@ -4168,6 +4194,8 @@ if (typeof module !== 'undefined' && module.exports) {
         const data = await fetchJson('/api/music?filter=recent-listening&limit=200');
         queue = Array.isArray(data.items) ? data.items : [];
       } catch (_) { queue = []; }
+      // v1.339 R1 (T-C5): the view died during the fetch (or its failure) - no late play/paint/nav
+      if (signal.aborted) return;
       setActiveTab(); // keep the tab-strip highlight consistent with tab='songs'
       if (crumb) { crumb.hidden = false; crumb.textContent = 'Recently played'; }
       renderSongList();
@@ -4176,7 +4204,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // v1.207 (Dean): a song opened from search / a card lands in its ALBUM
         // view (the friction this wave fixes), unless it has no album tag.
         var t0 = queue[idx];
-        if (t0 && t0.albumKey) { await playTrackInAlbum(t0); return; }
+        if (t0 && t0.albumKey) { await playTrackInAlbum(t0); return; } // playTrackInAlbum re-checks after its own await
         playAt(idx);
         return;
       }
@@ -4184,11 +4212,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // (in its album if it has one, else solo) so the right song still plays.
       try {
         const t = await fetchJson('/api/music/' + encodeURIComponent(trackId));
+        if (signal.aborted) return; // T-C5
         if (t && t.id) {
           if (t.albumKey) { await playTrackInAlbum(t); return; }
           queue = [t]; renderSongList(); playAt(0); return;
         }
       } catch (_) { /* not a resolvable music track - see the bounce vs render decision below */ }
+      if (signal.aborted) return; // T-C5: never bounce (location.replace) out of a view the user already left
       // v1.236 (Dean, "open downloaded music in the music player" is BOUND to the library):
       // a rerouted audio tile (bounceOnMiss - the &ao=1 origin marker) whose id the music API
       // can't resolve (a NON-projected download) must not dead-end - send it where it plays:
@@ -4260,6 +4290,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // around the playing track once the album queue has loaded.
       drill = { type: 'album', key: nowPlaying.albumKey, label: nowPlaying.album || 'Album' };
       render().then(function () {
+        // v1.339 R1 (T-C5): a view torn down during the album load must not re-register the
+        // lock-screen Prev/Next (a player GLOBAL) around its dead queue.
+        if (signal.aborted) return;
         var ci = -1;
         for (var k = 0; k < queue.length; k++) { if (queue[k].id === playingId) { ci = k; break; } }
         registerTrackNav(ci);
