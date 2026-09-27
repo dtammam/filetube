@@ -27,6 +27,9 @@ fi
 echo "→ eslint"
 npm run --silent lint
 
+echo "→ ui ratchet (lint:ui --enforce)"
+npm run --silent lint:ui
+
 echo "→ full test suite"
 npm test
 
