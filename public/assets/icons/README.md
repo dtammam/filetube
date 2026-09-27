@@ -205,6 +205,16 @@ intentionally colorful rather than `currentColor`-themed.
 | `.icon-download` | 📥 |
 | `.icon-shuffle` | 🔀 |
 
+## Inline-only chrome glyphs - `v1.340`
+
+`notifications.svg` (the header bell's own path) and `notifications_off.svg` (Material Icons
+`notifications_off`, upstream `google/material-design-icons`
+`src/social/notifications_off/materialicons/24px.svg`, its empty box path dropped) are NOT
+`.icon-*` mask classes and have no rounded / filled / emoji variants: they are the source of
+`CHROME_ICON_SVG.bell` / `.bellOff` in `public/js/common.js`, drawn as inline SVG by the
+header bell, the watch page's Notify button and the Subscriptions rows.
+`test/unit/chrome-icons.test.js` binds each path to its file byte for byte.
+
 ## The assignable glyph pool - `v1.77`
 
 Twenty glyphs a user can assign to a media folder (Settings → Media folders →

@@ -557,11 +557,20 @@
         var pinBtn = document.createElement('button');
         pinBtn.type = 'button';
         pinBtn.className = 'btn btn-sm podcast-pin-btn';
-        pinBtn.textContent = 'Pin to Playlists';
+        // v1.340 (the watch page's Pin sibling, gate r1): one stable width in both states
+        // (common.js stableToggleLabelHtml, a page global), the star drawn as a glyph.
+        function writePinLabel(pinned) {
+          if (typeof window !== 'undefined' && typeof window.stableToggleLabelHtml === 'function') {
+            pinBtn.innerHTML = window.stableToggleLabelHtml(pinned ? 'Pinned' : 'Pin to Playlists', ['Pin to Playlists', 'Pinned'], { Pinned: { name: 'starFilled', after: true } });
+          } else {
+            pinBtn.textContent = pinned ? 'Pinned' : 'Pin to Playlists';
+          }
+        }
+        writePinLabel(false);
         pinBtn.disabled = true;
         var showPinned = false;
         function paintPinBtn() {
-          pinBtn.textContent = showPinned ? 'Pinned ★' : 'Pin to Playlists';
+          writePinLabel(showPinned);
           pinBtn.setAttribute('aria-pressed', showPinned ? 'true' : 'false');
           pinBtn.disabled = false;
         }

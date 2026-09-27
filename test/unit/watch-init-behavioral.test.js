@@ -37,6 +37,24 @@ if (!global.sessionStorage) {
 
 const common = require('../../public/js/common.js');
 
+// v1.340: the channel-row buttons render their label through common.js's
+// stableToggleLabelHtml (innerHTML: every label in one grid cell, the current one in
+// `data-label`, CHROME_ICON_SVG glyphs inside the slots). The shim's innerHTML is a plain
+// string, so read the VISIBLE slot back from it, each glyph as "[name]" where it sits:
+// "[bellOff] Notify", "Pinned [starFilled]".
+const GLYPH_BY_PATH = new Map(Object.entries(common.CHROME_ICON_SVG).map(([name, g]) => [g.d, name]));
+function labelOf(el) {
+  const html = String(el.innerHTML || '');
+  const m = /data-label="([^"]*)"/.exec(html);
+  if (!m) return el.textContent;
+  const shown = (/<span class="btn-label-slot">(.*?)<\/span>/.exec(html) || [])[1] || '';
+  const text = shown.replace(/<svg [^>]*><path d="([^"]*)"\/><\/svg>/g, (_, d) => ` [${GLYPH_BY_PATH.get(d) || '?'}] `)
+    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ').trim();
+  assert.ok(text.replace(/\s*\[[^\]]*\]\s*/g, '') === m[1].replace(/&amp;/g, '&'), 'data-label names the visible slot');
+  return text;
+}
+
 // ---- minimal generic DOM shim ---------------------------------------------
 function makeEl(tag) {
   const el = {
@@ -261,15 +279,22 @@ test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscri
   init(root); // the C1 repro threw ReferenceError right here
 
   assert.equal(btn.hidden, false, 'Subscribe button visible in frame one');
-  assert.equal(btn.textContent, 'Subscribed', 'labeled from the cached sub match, never the "Subscribe" flash');
+  assert.equal(labelOf(btn), 'Subscribed', 'labeled from the cached sub match, never the "Subscribe" flash');
   const pin = btn.parentNode.children.find((c) => c.id === 'pin-channel-btn');
   assert.ok(pin, 'Pin button created in the SAME frame-one apply, not a later round trip');
-  assert.equal(pin.textContent, 'Pin channel');
+  assert.equal(labelOf(pin), 'Pin channel');
   // v1.314: the push bell renders in the same frame-one apply, OFF for a cached
   // record without the flag (the opt-in default).
   const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
   assert.ok(bell, 'Notify bell created in the SAME frame-one apply');
-  assert.equal(bell.textContent, '🔕 Notify');
+  assert.equal(labelOf(bell), '[bellOff] Notify');
+  // v1.340 (Dean: "notify button shifts unreasonably"): BOTH labels are laid out, only the
+  // idle one hidden, so the button is as wide as "Notifying" in either state.
+  assert.match(bell.innerHTML, /<span class="btn-label-slot" data-idle><svg [^>]*><path d="[^"]*"\/><\/svg>Notifying<\/span><span class="btn-label-slot"><svg [^>]*><path d="[^"]*"\/><\/svg>Notify<\/span>/);
+  assert.doesNotMatch(bell.innerHTML, /\u{1F514}|\u{1F515}/u, 'no emoji bell');
+  assert.match(pin.innerHTML, /<span class="btn-label-slot">Pin channel<\/span><span class="btn-label-slot" data-idle>Pinned<svg [^>]*><path d="[^"]*"\/><\/svg><\/span>/);
+  assert.doesNotMatch(pin.innerHTML, /★/, 'gate r1 W2: no text star (a taller fallback-font glyph) - it is drawn');
+  assert.match(btn.innerHTML, /<span class="btn-label-slot">Subscribed<\/span><span class="btn-label-slot" data-idle>Subscribe<\/span>/);
   // (the shim's setAttribute is a no-op, so aria-pressed is bound in ytdlp-subscriptions-client / by the label here)
 });
 
@@ -282,7 +307,7 @@ test('v1.314 frame-one bell: a cached subscription with pushBell:true renders th
   on.init(root);
   const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
   assert.ok(bell, 'bell present');
-  assert.equal(bell.textContent, '🔔 Notifying', 'the cached ON flag renders ON in frame one (scrubSubsForCache must carry it)');
+  assert.equal(labelOf(bell), '[bell] Notifying', 'the cached ON flag renders ON in frame one (scrubSubsForCache must carry it)');
 
   const off = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ id: 's9', channelUrl: 'https://www.youtube.com/@someoneelse', name: 'Else' }] } });
   const btn2 = Object.assign(makeEl('button'), { hidden: true });
@@ -290,7 +315,7 @@ test('v1.314 frame-one bell: a cached subscription with pushBell:true renders th
   const root2 = makeEl('div');
   root2.querySelector = (sel) => { if (!off.els.has(sel)) off.els.set(sel, makeEl('div')); return off.els.get(sel); };
   off.init(root2);
-  assert.equal(btn2.textContent, 'Subscribe', 'precondition: not subscribed to this channel');
+  assert.equal(labelOf(btn2), 'Subscribe', 'precondition: not subscribed to this channel');
   assert.equal(btn2.parentNode.children.find((c) => c.id === 'notify-channel-btn'), undefined, 'no bell without a subscription record to hang it on');
 });
 
@@ -588,11 +613,11 @@ test('v1.314 gate W1: an in-page UNSUBSCRIBE (DELETE 200) removes the bell - it 
   const { btn, calls, bell } = mountSubscribed(WARM_SUBSCRIBED_CACHE, {
     route: (m, url) => (m === 'DELETE' && url === '/api/subscriptions/s1') ? jsonRes(200, {}) : null,
   });
-  assert.equal(btn.textContent, 'Subscribed');
+  assert.equal(labelOf(btn), 'Subscribed');
   assert.ok(bell(), 'precondition: bell present while subscribed');
   btn._l.click();
   await settle(); await settle();
-  assert.equal(btn.textContent, 'Subscribe', 'the DELETE resolved');
+  assert.equal(labelOf(btn), 'Subscribe', 'the DELETE resolved');
   assert.equal(bell(), undefined, 'the bell is GONE with the record (W1 scenario A)');
   assert.ok(calls.some((c) => c.method === 'DELETE'), 'the unsubscribe fetch fired');
 });
@@ -603,16 +628,16 @@ test('v1.314 gate W1: an in-page SUBSCRIBE (modal confirm, POST 201) creates the
     route: (m, url) => (m === 'POST' && url === '/api/subscriptions') ? jsonRes(201, { id: 'new1', channelUrl: 'https://www.youtube.com/@chan', pushBell: false }) : null,
     overrides: { buildSubscribeModal: (doc, opts, h) => { handlers = h; return { setError() {}, backdrop: makeEl('div'), modal: makeEl('div') }; } },
   });
-  assert.equal(btn.textContent, 'Subscribe', 'precondition: not subscribed');
+  assert.equal(labelOf(btn), 'Subscribe', 'precondition: not subscribed');
   assert.equal(bell(), undefined, 'precondition: no bell');
   btn._l.click(); // opens the (captured) modal
   assert.ok(handlers && typeof handlers.onConfirm === 'function', 'the modal handlers were captured');
   handlers.onConfirm({ channelUrl: 'https://www.youtube.com/@chan', format: 'video' });
   await settle(); await settle();
-  assert.equal(btn.textContent, 'Subscribed');
+  assert.equal(labelOf(btn), 'Subscribed');
   const b = bell();
   assert.ok(b, 'the bell appears WITHOUT a reload (W1 scenario B / D9 "one tap after adding")');
-  assert.equal(b.textContent, '🔕 Notify', 'off by default');
+  assert.equal(labelOf(b), '[bellOff] Notify', 'off by default');
   const cached = JSON.parse(global.sessionStorage.getItem('ft-cap-cache-v1'));
   const rec = cached.subs.find((x) => x.id === 'new1');
   assert.strictEqual(rec.pushBell, false, 'the cached record carries its bell (write-through)');
@@ -627,12 +652,12 @@ test('v1.314 gate S1: tapping the bell PATCHes { pushBell: true }, the label fol
       : null,
   });
   const b = bell();
-  assert.equal(b.textContent, '🔕 Notify');
+  assert.equal(labelOf(b), '[bellOff] Notify');
   b._l.click();
   await settle(); await settle(); await settle();
   const patch = calls.find((c) => c.method === 'PATCH');
   assert.deepEqual(patch.body, { pushBell: true }, 'the PATCH body flips the flag');
-  assert.equal(b.textContent, '🔔 Notifying', 'the label follows the server response');
+  assert.equal(labelOf(b), '[bell] Notifying', 'the label follows the server response');
   assert.equal(b.disabled, false, 're-enabled');
   const cached = JSON.parse(global.sessionStorage.getItem('ft-cap-cache-v1'));
   assert.strictEqual(cached.subs.find((x) => x.id === 's1').pushBell, true, 'write-through to the cache');
@@ -640,7 +665,7 @@ test('v1.314 gate S1: tapping the bell PATCHes { pushBell: true }, the label fol
   b._l.click();
   await settle(); await settle(); await settle();
   assert.equal(calls.filter((c) => c.method === 'PATCH').length, 2, 'a second PATCH was attempted');
-  assert.equal(b.textContent, '🔔 Notifying', 'a 403 leaves the label at the unchanged state (D8)');
+  assert.equal(labelOf(b), '[bell] Notifying', 'a 403 leaves the label at the unchanged state (D8)');
   assert.equal(b.disabled, false);
 });
 
@@ -1142,7 +1167,7 @@ test('v1.338 D8a frame one: a download from another site renders Pin (visible, "
   const p = pin();
   assert.ok(p, 'Pin is created in the frame-one apply for a sourceExtractor item');
   assert.equal(p.hidden, false, 'and it is visible');
-  assert.equal(p.textContent, 'Pin channel');
+  assert.equal(labelOf(p), 'Pin channel');
   assert.equal(bell(), undefined, 'no bell: it belongs to a subscription record');
 });
 
@@ -1186,11 +1211,11 @@ test('v1.338 D8a: the Pin POSTs the item\'s own folder + uploader, flips to Pinn
   const post = calls.find((c) => c.method === 'POST' && c.url === '/api/subscriptions/pins');
   assert.ok(post, 'the pin request fired');
   assert.deepStrictEqual(post.body, { channelDir: '/downloads/someuser', label: 'someuser' }, 'the folder the universal lane put the uploader in, labelled with the uploader');
-  assert.equal(p.textContent, 'Pinned ★');
+  assert.equal(labelOf(p), 'Pinned [starFilled]');
   p._l.click();
   for (let i = 0; i < 6; i++) await settle();
   assert.ok(calls.some((c) => c.method === 'DELETE' && c.url === '/api/subscriptions/pins/pin-someuser'), 'unpin DELETEs the id the POST returned');
-  assert.equal(p.textContent, 'Pin channel');
+  assert.equal(labelOf(p), 'Pin channel');
 });
 
 test('v1.338 D8a: the module gate still rules - a disabled module (cached AND confirmed) gives a download from another site no Pin', async () => {
@@ -1217,7 +1242,7 @@ test('v1.338 D8a UNCHANGED: a plain local file (no sourceExtractor, no identity)
   await y.confirmed();
   assert.equal(y.btn.isConnected, true, 'a YouTube item keeps Subscribe');
   assert.equal(y.btn.hidden, false);
-  assert.equal(y.btn.textContent, 'Subscribe', 'the confirmed subs (none) relabel it Subscribe');
+  assert.equal(labelOf(y.btn), 'Subscribe', 'the confirmed subs (none) relabel it Subscribe');
   assert.ok(y.pin(), 'and Pin beside it');
 });
 

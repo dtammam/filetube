@@ -57,9 +57,16 @@ const NAME_ASSET = {
   menu: 'menu', star: 'star',
   // v1.339 (L2): the bottom-nav Subs tab (and its pre-paint reserve).
   refresh: 'refresh',
+  // v1.340: the bell pair (header bell, watch Notify, Subscriptions rows).
+  bell: 'notifications', bellOff: 'notifications_off',
+  // v1.340 (gate r1 W2): the watch page's Pinned star; a SUBPATH names the set's file directly.
+  starFilled: 'filled/star',
 };
 
 function assetSvg(asset) {
+  // a subpath ('filled/star') names one set's file; its Material 0 0 24 24 box paths
+  // (`M0 0h24v24H0z` fill="none") are dropped so the glyph path is the first one.
+  if (asset.includes('/')) return fs.readFileSync(path.join(ICON_DIR, `${asset}.svg`), 'utf8').replace(/<path d="M0 0h24v24H0z" fill="none"\/>/g, '');
   const rounded = path.join(ICON_DIR, 'rounded', `${asset}.svg`);
   const p = fs.existsSync(rounded) ? rounded : path.join(ICON_DIR, `${asset}.svg`);
   return fs.readFileSync(p, 'utf8');

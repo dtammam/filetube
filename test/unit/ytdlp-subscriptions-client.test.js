@@ -29,8 +29,9 @@ const path = require('node:path');
 // before `require`-ing subscriptions.js below, mirroring exactly what the
 // browser's script-tag order provides in production -- tests exercise the
 // actual shared seam, not a stand-in/mock.
-const { resolveAvatarSource, deriveAvatar } = require('../../public/js/common.js');
+const { resolveAvatarSource, deriveAvatar, chromeIconEl } = require('../../public/js/common.js');
 global.resolveAvatarSource = resolveAvatarSource;
+global.chromeIconEl = chromeIconEl; // v1.340: the Subscriptions bell glyph (a common.js global)
 
 const {
   FORMAT_OPTIONS,
@@ -941,7 +942,7 @@ test('v1.314 createSubscriptionRow: the bell renders OFF (muted glyph, no -activ
   assert.ok(offBtn, 'a bell exists for a subscribed row');
   assert.strictEqual(offBtn.tagName, 'BUTTON');
   assert.strictEqual(offBtn.className, 'btn btn-chip sub-row-bell', 'off carries no -active modifier');
-  assert.strictEqual(offBtn.textContent, '🔕');
+  assert.strictEqual(offBtn.getAttribute('data-glyph'), 'bellOff');
   assert.strictEqual(offBtn.attributes['aria-pressed'], 'false');
   const pinIdx = off.children.findIndex((el) => hasChipRole(el, 'sub-row-pin'));
   const bellIdx = off.children.indexOf(offBtn);
@@ -950,11 +951,11 @@ test('v1.314 createSubscriptionRow: the bell renders OFF (muted glyph, no -activ
   const on = createSubscriptionRow({ id: 'bell2', name: 'On', channelUrl: 'https://www.youtube.com/@on', pushBell: true }, fakeDoc, {});
   const onBtn = on.children.find((el) => hasChipRole(el, 'sub-row-bell'));
   assert.strictEqual(onBtn.className, 'btn btn-chip sub-row-bell sub-row-bell-active');
-  assert.strictEqual(onBtn.textContent, '🔔');
+  assert.strictEqual(onBtn.getAttribute('data-glyph'), 'bell');
   assert.strictEqual(onBtn.attributes['aria-pressed'], 'true');
   // A non-boolean value (a hostile/corrupt row) reads OFF, never ON.
   const junk = createSubscriptionRow({ id: 'bell3', name: 'Junk', channelUrl: 'https://www.youtube.com/@junk', pushBell: 'true' }, fakeDoc, {});
-  assert.strictEqual(junk.children.find((el) => hasChipRole(el, 'sub-row-bell')).textContent, '🔕');
+  assert.strictEqual(junk.children.find((el) => hasChipRole(el, 'sub-row-bell')).getAttribute('data-glyph'), 'bellOff');
   // No id -> no bell (nothing to PATCH).
   const noId = createSubscriptionRow({ name: 'NoId', channelUrl: 'https://www.youtube.com/@noid' }, fakeDoc, {});
   assert.strictEqual(noId.children.find((el) => hasChipRole(el, 'sub-row-bell')), undefined);
