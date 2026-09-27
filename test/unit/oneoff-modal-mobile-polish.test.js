@@ -159,8 +159,11 @@ test('FIX 4: a 200 (module enabled) health probe injects BOTH the header button 
     assert.ok(navBtn, 'expected a bottom-nav entry (data-nav="oneoff-download") to be injected');
     assert.strictEqual(navBtn.tagName, 'BUTTON', 'the mobile entry point must be a button (opens the modal, not a navigation link)');
     assert.strictEqual(navBtn.className, 'bottom-nav-item');
-    const navIcon = navBtn.children.find((c) => c.className === 'icon-download');
-    assert.ok(navIcon, 'expected the same download icon used by the header button');
+    // v1.339 (L2, DELIBERATE lock update): the glyph is now the inline chrome-icon <svg>
+    // (chromeIconEl('download'), the header button's own glyph) - this stub document has no
+    // createElementNS, so it builds none; the old `.icon-download` mask must be gone.
+    // test/unit/app-look-l2.test.js binds the real <svg> in jsdom.
+    assert.ok(!navBtn.children.some((c) => c.className === 'icon-download'), 'no iOS-decode-lag mask glyph');
     const navLabel = navBtn.children.find((c) => c.className === 'bottom-nav-label');
     assert.ok(navLabel, 'expected a visible label');
     assert.strictEqual(navLabel.textContent, 'Download');

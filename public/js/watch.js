@@ -2728,9 +2728,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // after it in init on every warm-cache navigation). The browser paints
     // only after init returns, so this is still frame one.
     if (watchSeed && isFullWatchSeedItem(watchSeed.item)) {
+      // v1.339 (L2): only a cache that can DECIDE the state renders (cachedSubscribeState:
+      // module off, or on WITH a subs array) - a moduleEnabled-only cache used to paint a
+      // subscribed channel as "Subscribe", then flip.
       const capAtInit = readCapabilityCache();
-      if (capAtInit && typeof capAtInit.moduleEnabled === 'boolean') {
-        applySubscribeAndPinState(watchSeed.item, capAtInit.moduleEnabled, capAtInit.subs || [], cachedChannelPins(capAtInit));
+      const cachedSubAtInit = cachedSubscribeState(capAtInit);
+      if (cachedSubAtInit) {
+        applySubscribeAndPinState(watchSeed.item, cachedSubAtInit.moduleEnabled, cachedSubAtInit.subs, cachedChannelPins(capAtInit));
       }
     }
 
@@ -2742,8 +2746,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // every mutation keeps the cache seconds-fresh, so the old
       // Subscribe->Subscribed flash is gone except cross-device, disclosed).
       const cachedCap = readCapabilityCache();
-      if (cachedCap && typeof cachedCap.moduleEnabled === 'boolean') {
-        applySubscribeAndPinState(mediaData, cachedCap.moduleEnabled, cachedCap.subs || [], cachedChannelPins(cachedCap));
+      const cachedSub = cachedSubscribeState(cachedCap); // v1.339 (L2): decidable caches only
+      if (cachedSub) {
+        applySubscribeAndPinState(mediaData, cachedSub.moduleEnabled, cachedSub.subs, cachedChannelPins(cachedCap));
       }
       let moduleEnabled = false;
       let subs = [];

@@ -65,25 +65,41 @@ function buildCardDownloadFilename(title, ext) {
 // loading placeholders, rendered into `#video-grid` BEFORE the
 // `/api/config`+`/api/videos` fetch chain in `loadLibrary()` settles --
 // replaces the old "ships empty, pops the whole grid in at once" blank
-// window. Each skeleton card matches the REAL card's box model exactly
-// (`.thumbnail-container`'s 16/9 aspect-ratio + border-radius, `.video-info`'s
-// padding, two text-line placeholders roughly matching the title/meta line
-// heights) so swapping skeleton markup for real card markup produces zero
-// layout shift. `aria-hidden="true"` on every skeleton card since it carries
-// no real content for assistive tech to announce. Pure (string-building
-// only, no DOM/timer) -- the shimmer motion itself is CSS-only
-// (`.skeleton-shimmer`, prefers-reduced-motion honored -- see style.css).
-// Exported for node:test.
-function buildSkeletonGrid(n) {
+// window. `aria-hidden="true"` on every skeleton card since it carries no real
+// content for assistive tech to announce. Pure (string-building only, no
+// DOM/timer) -- the shimmer motion itself is CSS-only (`.skeleton-shimmer`,
+// prefers-reduced-motion honored -- see style.css). Exported for node:test.
+//
+// v1.339 (L2, plan D5 - "seed the SHAPE you reveal", LESSONS 7): the old
+// skeleton claimed "zero layout shift" but carried two short bars in a
+// ~30px `.video-info`, while the real card's info block is a 2-line title +
+// uploader + meta + stars row (~90px): every card GREW ~52-65px on reveal
+// (home-fouc-probe: 52.4px at 390, 57.7px at 1440, 46-65px modern). The
+// skeleton is now built from the REAL card's own line classes
+// (`.video-title` holding two lines, `.video-uploader`, `.video-meta`,
+// `.card-rating`), each line a transparent-text `.skeleton-text` bar in the
+// same font and line-height, so each line box - and the card - is the real
+// size. The title reserves TWO lines (the clamp maximum; a grid row
+// stretches every card to its tallest, so a row holding any 2-line title is
+// 2-line tall). `opts.avatar` adds the Modern byline avatar disc (the real
+// modern card's 24px `.card-channel-avatar` sets the uploader row's height).
+// `.card-rating` rides `ft-hide-stars` exactly like the real row.
+function buildSkeletonGrid(n, opts) {
   const count = Number.isInteger(n) && n > 0 ? n : 0;
+  const avatar = (opts && opts.avatar)
+    ? '<span class="card-channel-avatar skeleton-shimmer"></span>'
+    : '';
+  const bar = (cls) => `<span class="skeleton-text ${cls} skeleton-shimmer">&nbsp;</span>`;
   let html = '';
   for (let i = 0; i < count; i++) {
     html += `
       <div class="video-card skeleton-card" aria-hidden="true">
         <div class="card-media"><div class="thumbnail-container skeleton-shimmer"></div></div>
         <div class="video-info">
-          <div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>
-          <div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>
+          <div class="video-title">${bar('skeleton-text-long')}<br>${bar('skeleton-text-mid')}</div>
+          <div class="video-uploader">${avatar}${bar('skeleton-text-short')}</div>
+          <div class="video-meta">${bar('skeleton-text-mid')}</div>
+          <div class="card-rating"><span class="skeleton-text skeleton-shimmer">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
         </div>
       </div>
     `;
@@ -157,7 +173,7 @@ function buildBookRowCardHtml(item) {
     : '';
   return `
     <a class="book-row-card" href="/read.html?b=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
-      <span class="book-row-cover"><img src="/bookcover/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
+      <span class="book-row-cover"><img class="art-shimmer" src="/bookcover/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
     </a>
   `;
@@ -185,7 +201,7 @@ function buildMusicRowCardHtml(item) {
   // per-user resume pointer), mirroring the books row's /read.html?b=<id>.
   return `
     <a class="book-row-card music-row-card" href="/music?play=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
-      <span class="book-row-cover music-row-cover"><img src="/albumart/${encodeURIComponent(item.id)}" alt="" loading="lazy" /></span>
+      <span class="book-row-cover music-row-cover"><img class="art-shimmer" src="/albumart/${encodeURIComponent(item.id)}" alt="" loading="lazy" /></span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(item.artist || '')}</span>
     </a>
@@ -226,7 +242,7 @@ function buildListeningHomeSectionHtml(tracks, episodes, heading) {
 function buildPodcastRowCardHtml(ep) {
   return `
     <a class="book-row-card music-row-card" href="/podcasts?play=${encodeURIComponent(ep.id)}" title="${escapeBookRowHtml(ep.title)}">
-      <span class="book-row-cover music-row-cover"><img src="/podcastart/${encodeURIComponent(ep.subId)}" alt="" loading="lazy" /></span>
+      <span class="book-row-cover music-row-cover"><img class="art-shimmer" src="/podcastart/${encodeURIComponent(ep.subId)}" alt="" loading="lazy" /></span>
       <span class="book-row-title">${escapeBookRowHtml(ep.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(ep.showName || '')}</span>
     </a>
@@ -254,7 +270,7 @@ function buildVideoRowCardHtml(item) {
   const rowHref = musicHrefForItem(item) || `/watch.html?v=${encodeURIComponent(item.id)}`;
   return `
     <a class="book-row-card music-row-card video-row-card" href="${rowHref}" title="${escapeBookRowHtml(item.title)}">
-      <span class="book-row-cover video-row-cover"><img src="/thumbnail/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
+      <span class="book-row-cover video-row-cover"><img class="art-shimmer" src="/thumbnail/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(resolveChannelName(item))}</span>
     </a>
@@ -288,7 +304,7 @@ function buildFeedCardHtml(item) {
   const feedHref = musicHrefForItem(item) || item.href;
   return `
     <a class="book-row-card music-row-card video-row-card" href="${escapeBookRowHtml(feedHref)}" title="${escapeBookRowHtml(item.title)}">
-      <span class="book-row-cover video-row-cover"><img src="${escapeBookRowHtml(item.thumbnailUrl)}" alt="" loading="lazy" />${bar}</span>
+      <span class="book-row-cover video-row-cover"><img class="art-shimmer" src="${escapeBookRowHtml(item.thumbnailUrl)}" alt="" loading="lazy" />${bar}</span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(item.subtitle || '')}</span>
     </a>
@@ -398,6 +414,21 @@ function buildHomeRowSkeleton(kind, n) {
 // kind has no in-progress items); the flag is then set to whether content
 // actually rendered. On a fetch error only the HOST is cleared -- the flag is
 // left intact so a transient failure still reserves next launch.
+// v1.339 (L2, plan D5): the home art reveal. Every card thumbnail and row cover ships
+// `art-shimmer`; after each render or append, the shared reveal (common.js
+// revealArtTogether) clears the ON-SCREEN images together - once all have decoded or
+// errored, or its cap elapses - so a screen of thumbnails no longer pops in tile by tile
+// (skeleton -> black -> picture). Off-screen (lazy) images reveal per image. An append
+// re-runs it over the whole host: only the NEW cards still carry the class (revealed ones
+// lost it; a pending batch's images are skipped), so it batches just the new in-view set.
+// `signal` (the view's) hands every held image back on teardown.
+function revealHomeArt(scope, signal) {
+  const ft = typeof window !== 'undefined' ? window.FileTube : null;
+  if (!ft || !scope) return;
+  if (typeof ft.revealArtTogether === 'function') ft.revealArtTogether(scope, signal ? { signal } : undefined);
+  else if (typeof ft.shimmerArt === 'function') ft.shimmerArt(scope);
+}
+
 function hydrateHomeRow(host, seenId, fetcher, skeletonHtml) {
   if (!host) return;
   const seenKey = 'ft-home-row-seen:' + seenId;
@@ -407,6 +438,7 @@ function hydrateHomeRow(host, seenId, fetcher, skeletonHtml) {
   fetcher()
     .then((html) => {
       host.innerHTML = html || '';
+      revealHomeArt(host);
       try { localStorage.setItem(seenKey, html ? '1' : '0'); } catch { /* private mode -- session-only */ }
     })
     .catch(() => { host.innerHTML = ''; });
@@ -546,6 +578,7 @@ async function renderHomeFeed(host, signal) {
       return;
     }
     host.innerHTML = rows.map(buildFeedRowHtml).join('');
+    revealHomeArt(host, signal);
   } catch (err) {
     if (err && err.name === 'AbortError') return;
     // QA gate SUGGESTION: feed mode hides the classic grid, so a thrown fetch
@@ -900,6 +933,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildHomeRowSkeleton,
     hydrateHomeRow,
     renderHomeFeed,
+    // v1.339 (L2): the home art reveal seam (every card thumbnail + row cover).
+    revealHomeArt,
     homeRowEnabled,
     musicHrefForItem,
     migrateListeningRowPref,
@@ -1474,7 +1509,7 @@ const PreviewCards = (function () {
       // the Retry button's re-invocation of this same function (see the
       // catch block below) -- a retry gets its own fresh skeleton, not a
       // stale error card sitting there while the retried fetch is in flight.
-      videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT);
+      videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode });
       // v1.100 (Dean): the classic toolbar's format (All/Videos/Audio) + watch-
       // state (All/New/Watching/Watched) toggles are SYNCHRONOUS (localStorage
       // prefs), so render them NOW - before the config/videos fetches - so the
@@ -1552,6 +1587,9 @@ const PreviewCards = (function () {
         sidebarFoldersList.innerHTML = buildSidebarSkeletonRows(SIDEBAR_SKELETON_ROWS);
       }
       try {
+        // v1.339 (L2): the modern chrome paints NOW, before the first await (see
+        // mountModernChrome; its function declaration is hoisted within this block).
+        if (modernMode) mountModernChrome(modernChromeHost, signal);
         // 1. Check configs (+ the v1.67 corner latch, raced in parallel so
         // the pref never delays the grid behind a second round-trip; both
         // must land BEFORE the first buildCardHtml call below - a
@@ -1659,6 +1697,7 @@ const PreviewCards = (function () {
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
           currentTotal = typeof data.total === 'number' ? data.total : items.length;
           videoGrid.innerHTML = items.length ? items.map((it) => buildCardHtml(it, { feedHideable: true })).join('') : buildModernEmptyHtml(filter);
+          revealHomeArt(videoGrid, sig);
           ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
@@ -1827,7 +1866,13 @@ const PreviewCards = (function () {
             if (el) el.remove();
           }, { once: true });
         }
-        async function renderModernHome(chromeHost, sig) {
+        // v1.339 (L2, plan D5): the modern CHROME (header sort + view toggle, the chip row
+        // and the avatar-bar reserve) is painted SYNCHRONOUSLY at mount - loadLibrary calls
+        // this before its first await. It used to wait behind the /api/config + /api/settings
+        // round trips, so the chips (~54px) and the reserve (~98px) landed ABOVE the
+        // already-painted grid skeleton and shoved it down (probe: 0.175 CLS, modern cold at
+        // 390). Only the channel fetch and the grid fetch wait now (renderModernHome).
+        function mountModernChrome(chromeHost, sig) {
           injectModernHeaderSort(sig); // glyph-only ▾, leftmost in the header top-right
           injectModernViewToggle(sig); // v1.160: card/list toggle beside it
           if (chromeHost) {
@@ -1854,22 +1899,26 @@ const PreviewCards = (function () {
                 fetchModernGrid(sig);
               }, { signal: sig });
             }
-            // T4: the mobile recent-uploader subscription bar - best-effort; a
-            // failure or no subs leaves it hidden, never a broken strip.
+            // v1.99 shimmer sweep: RESERVE the avatar strip with last-known-many
+            // shimmer chips, so the real chips reveal in place instead of popping in
+            // above the chips. renderModernHome's fetch fills it (or collapses it to
+            // hidden if now truly none; a failure clears the seed, never stranded).
             const bar = chromeHost.querySelector('#modern-avatar-bar');
             if (bar) {
-              // v1.99 shimmer sweep: RESERVE the strip with last-known-many shimmer
-              // chips before the fetch, so the real chips reveal in place instead
-              // of popping in above the chips. On a fetch failure the seed is
-              // cleared below (never a stranded shimmer); populateModernAvatarBar
-              // reveals the real chips or collapses to hidden if now truly none.
               const seedN = readModernAvatarBarCount();
               if (seedN > 0) { bar.innerHTML = buildAvatarBarSkeleton(seedN); bar.hidden = false; }
-              fetch('/api/channels', { signal: sig })
-                .then((r) => (r.ok ? r.json() : { channels: [] }))
-                .then((data) => populateModernAvatarBar(bar, selectRecentUploaderChannels(data && data.channels, 12)))
-                .catch(() => { if (!sig.aborted) { bar.textContent = ''; bar.hidden = true; } });
             }
+          }
+        }
+        async function renderModernHome(chromeHost, sig) {
+          // T4: the mobile recent-uploader subscription bar - best-effort; a
+          // failure or no subs leaves it hidden, never a broken strip.
+          const bar = chromeHost ? chromeHost.querySelector('#modern-avatar-bar') : null;
+          if (bar) {
+            fetch('/api/channels', { signal: sig })
+              .then((r) => (r.ok ? r.json() : { channels: [] }))
+              .then((data) => populateModernAvatarBar(bar, selectRecentUploaderChannels(data && data.channels, 12)))
+              .catch(() => { if (!sig.aborted) { bar.textContent = ''; bar.hidden = true; } });
           }
           await fetchModernGrid(sig);
         }
@@ -2396,6 +2445,7 @@ const PreviewCards = (function () {
           const fresh = items.filter((it) => !seenIds.has(String(it.id)));
           currentItems = currentItems.concat(fresh);
           videoGrid.insertAdjacentHTML('beforeend', fresh.map((it) => buildCardHtml(it, { feedHideable: true })).join(''));
+          revealHomeArt(videoGrid, signal);
         } catch (err) {
           console.error('Failed to load the next modern grid page:', err);
         } finally {
@@ -2577,7 +2627,7 @@ const PreviewCards = (function () {
         <div class="video-card">
           <div class="card-media">
             <a href="${watchHref}" class="thumbnail-container">
-              <img class="thumbnail-img" src="${kp ? kp.thumbSrc : `/thumbnail/${item.id}`}" alt="${escapeHtml(item.title)}" loading="lazy" />
+              <img class="thumbnail-img art-shimmer" src="${kp ? kp.thumbSrc : `/thumbnail/${item.id}`}" alt="${escapeHtml(item.title)}" loading="lazy" />
               ${(!kp && item.hasPreview)
                 ? `<div class="card-preview" aria-hidden="true" data-preview-id="${item.id}"></div>`
                 : ''}
@@ -2620,6 +2670,7 @@ const PreviewCards = (function () {
       const wrapper = document.createElement('div');
       wrapper.innerHTML = items.map(buildCardHtml).join('');
       Array.from(wrapper.children).forEach((card) => videoGrid.append(card));
+      revealHomeArt(videoGrid, signal);
     }
 
     // renderItemCountBadge (common.js) only ever reads `.length` off
@@ -2886,6 +2937,7 @@ const PreviewCards = (function () {
       }
 
       videoGrid.innerHTML = items.map(buildCardHtml).join('');
+      revealHomeArt(videoGrid, signal);
     }
 
     // Local escape HTML helper
@@ -3508,6 +3560,7 @@ const PreviewCards = (function () {
               'Books',
               '/books?search=' + encodeURIComponent(searchQuery),
             );
+            revealHomeArt(booksRowHost, signal);
           })
           .catch(() => { booksRowHost.innerHTML = ''; });
       }

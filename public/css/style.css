@@ -1000,6 +1000,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   box-shadow: var(--shadow);
   transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
 }
+/* v1.339 (L2, plan D5): `.btn { display:inline-flex }` beats the UA `[hidden]` rule (LESSONS
+   6), so every hidden .btn used to SHOW - Settings' perf-diag Open, logo Remove (light and
+   dark), photo Remove and push enable/disable in every state, the watch page's cached-hidden
+   Subscribe, the reader / podcast / history / subscriptions buttons their code hides. One
+   guard for the whole family; !important also beats the id rules that re-display a .btn
+   (`.header-right #ytdlp-oneoff-btn`). */
+.btn[hidden] { display: none !important; }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
 [data-theme="2005"] a.btn { text-decoration: none; }
@@ -2192,6 +2199,25 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   width: 85%;
   height: 13px;
 }
+
+/* v1.339 (L2): a skeleton LINE that is its real line box - an inline-block holding one
+   transparent line of text in the host line's own font + line-height (buildSkeletonGrid
+   puts these inside the real `.video-title` / `.video-uploader` / `.video-meta` /
+   `.card-rating`), so the skeleton card is the real card's height and the reveal is
+   zero-shift (home-fouc-probe card growth). The shimmer is the shared sweep. */
+.skeleton-text {
+  display: inline-block;
+  max-width: 100%;
+  color: transparent;
+  border-radius: var(--radius);
+  /* top, not baseline: `.skeleton-shimmer` sets overflow:hidden, which moves an
+     inline-block's baseline to its bottom edge - baseline alignment would then grow
+     the line box by the font's descent. Top-aligned, the bar is exactly one line box. */
+  vertical-align: top;
+}
+.skeleton-text-long { width: 90%; }
+.skeleton-text-mid { width: 60%; }
+.skeleton-text-short { width: 45%; }
 
 .skeleton-line-meta {
   width: 50%;
@@ -5531,7 +5557,10 @@ a.sub-row-channel-link:focus-visible {
      area, and a touch larger than the .btn default (--fs-sm=12px) so it no longer
      reads smaller than the ~13px sibling glyphs. The (1,1,0) id selector beats
      the (0,1,0) .btn base for all of these. */
-  .header-right #ytdlp-oneoff-btn {
+  /* v1.339 (L2): the shells' pre-paint reserve for this button (`[data-ft-reserve="download"]`)
+     rides the SAME mobile rules, so the placeholder is the real button's box at every width. */
+  .header-right #ytdlp-oneoff-btn,
+  .header-right [data-ft-reserve="download"] {
     display: inline-flex;
     background: none;
     border: none;
@@ -5544,7 +5573,8 @@ a.sub-row-channel-link:focus-visible {
   /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
      (desktop keeps the word). .btn is inline-flex with a gap, so the lone icon
      stays clean. */
-  .header-right #ytdlp-oneoff-btn .btn-label { display: none; }
+  .header-right #ytdlp-oneoff-btn .btn-label,
+  .header-right [data-ft-reserve="download"] .btn-label { display: none; }
   /* v1.86.0 (Dean): the search magnifier owns the far-right CORNER - order:1
      makes it the rightmost item regardless of injection order.
      v1.87.0 (Dean): DROP the extra margin-left. It stacked a second gap on top
@@ -14216,6 +14246,9 @@ html[data-modern="on"] .video-uploader {
 .queue-btn:hover {
   background-color: var(--bg-secondary);
 }
+/* v1.339 (L2): `display:flex` above beat `[hidden]`, so the header queue button showed with
+   an EMPTY queue (setChrome's `btn.hidden = !shouldShowQueueButton(q)` was inert). */
+.queue-btn[hidden] { display: none !important; }
 
 .queue-btn-badge {
   position: absolute;
