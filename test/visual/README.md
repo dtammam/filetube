@@ -40,8 +40,8 @@ The fixture (`<DIR>/fixtures.json` lists the ids):
 
 - Library: Harbor Workshop (10 videos; subscribed, notify on), Northbound Field
   Notes (6; channel identity, not subscribed), Home Videos (6; no channel).
-- yt-dlp subscriptions: Harbor Workshop, an audio-only one, a paused one with a
-  long name.
+- yt-dlp subscriptions: Harbor Workshop (3 new), an audio-only one, a paused one
+  with a long name, and one whose last check failed.
 - Music: 3 artists x 2 albums x 4 tracks. Podcasts: 2 shows x 5 downloaded episodes.
 - Books (`bookslib/`, indexed by the real scanner): two shelves, Harbor Library (4
   EPUBs) and Night Reading (2 EPUBs + a cover-less PDF). The EPUBs are tiny valid

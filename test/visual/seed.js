@@ -246,15 +246,19 @@ const CHANNELS = [
   }));
   await updateDatabase((db) => { Object.assign(db.metadata, meta); return true; });
 
-  // yt-dlp subscriptions: one matches the library channel (notify on), two are remote-only.
+  // yt-dlp subscriptions: one matches the library channel (notify on, 3 new), three are remote-only
+  // (one paused with a long name, one whose last check failed).
   const sub = (id, name, url, order, extra) => Object.assign({ id, channelUrl: url, name, format: 'video', quality: 'best', maxVideos: 5,
     maxDurationSeconds: null, minDurationSeconds: null, paused: false, skipShorts: false, pushBell: false, filetype: 'mp4', cutoffDate: null,
     order, addedAt: new Date(NOW - 30 * 86400e3).toISOString(), lastCheckedAt: new Date(NOW - 3600e3).toISOString(), lastStatus: 'ok', libraryPlace: 'default' }, extra || {});
   ytdlpDb.replaceAll({ allowMembersOnly: false, downloadMeta: {}, channelAvatars: {}, pins: [],
     subscriptions: [
-      sub('sub-harbor', 'Harbor Workshop', CHANNELS[0][1], 0, { pushBell: true }),
+      sub('sub-harbor', 'Harbor Workshop', CHANNELS[0][1], 0, { pushBell: true, lastStatus: 'ok: downloaded 3 new video(s)' }),
       sub('sub-tidewater', 'The Tidewater Set', 'https://www.youtube.com/@tidewaterset', 1, { format: 'audio' }),
       sub('sub-orchard', 'Glass Orchard Workshop - long channel name for wrapping', 'https://www.youtube.com/@glassorchard', 2, { paused: true }),
+      // A failed last check (the row's "Check failed" line, UI pass S5 / D8.9).
+      sub('sub-lantern', 'Lantern Street Studio', 'https://www.youtube.com/@lanternstreet', 3,
+        { lastCheckedAt: new Date(NOW - 2 * 3600e3).toISOString(), lastStatus: 'error: HTTP Error 403: Forbidden' }),
     ] });
 
   // Podcasts: 2 shows x 5 downloaded episodes with drawn cover art.
@@ -333,6 +337,8 @@ const CHANNELS = [
   await s.flushPendingBookProgress();
   await post(`/api/books/liked/${encodeURIComponent(readingBook)}`, {});
   await post('/api/books/pins', { dir: path.join(booksRoot, 'Harbor Library'), label: 'Harbor Library' });
+  // One pinned subscription (the Subscriptions rows show pinned and unpinned side by side).
+  await post('/api/subscriptions/pins', { channelDir: path.join(DATA, 'ytdlp-downloads', 'Harbor Workshop'), label: 'Harbor Workshop' });
   server.close();
 
   // viewNow: the wall clock the server (start-server.sh, clock-shim.js) and the browser
