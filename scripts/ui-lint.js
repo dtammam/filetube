@@ -44,7 +44,8 @@
  *   9 z-ladder              position:fixed|sticky and overlay subjects use ladder tokens.
  *  10 display-ownership     no display:...!important but the global [hidden] rule; no JS
  *                           style.display writes.
- *  11 colour-roles          no --accent/--accent-fill/--danger/--indicator in a
+ *  11 colour-roles          no --accent/--accent-fill/--danger/--indicator (or the legacy
+ *                           --yt-red/--yt-red-dark) in a
  *                           hover/active/focus/selected/pressed selector (D8.8), except
  *                           ui.css's primary-button fill.
  *  12 no-shell-style        no <style> in a shell (diag.html is listed, not hard-coded).
@@ -873,7 +874,9 @@ function detectDisplayOwnership(model, report) {
 }
 
 const STATE_SEL = /:(hover|active|focus|focus-visible|focus-within)(?![\w-])|\[aria-(selected|pressed)\b|\.(active|selected)(?![\w-])/i;
-const RED_ROLE = /var\(\s*--(accent|accent-fill|danger|indicator)\s*[,)]/;
+// The D2 red roles, plus the legacy --yt-red pair: until the sweeps split it into
+// --accent/--accent-fill, a selected state painted --yt-red is the same D8.8 debt.
+const RED_ROLE = /var\(\s*--(accent|accent-fill|danger|indicator|yt-red|yt-red-dark)\s*[,)]/;
 
 function detectColourRoles(model, report) {
   for (const r of model.rules) {
