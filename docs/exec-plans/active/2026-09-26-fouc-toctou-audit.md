@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
 status: Gate:APPROVED r2 @f8a7ee52
-next: safety checkpoint APPROVED r2 @f8a7ee52; merge build/look-base (L1 + L2 + R1), add F4 (security r2 LOW: fence the fresh-source delete to files created during the job; drop over-long stdout carries), dual-Node, then gate the delta f8a7ee52..HEAD
+next: safety checkpoint APPROVED r2 @f8a7ee52; look base + L1b + F4 merged; dual-Node, then the final delta gate f8a7ee52..HEAD (adversary + qa + security-brief)
 design: pending
 gate: SAFETY CHECKPOINT APPROVED r2 @f8a7ee52 (adversary + qa + security-brief); r1 CHANGES fixed in F1-F3; final delta (look base + F4) pending
 ---
@@ -428,6 +428,37 @@ this branch.
   folder outside the download root leaves its mp4 (realpath fence) - a leftover, not loss. Adversary
   ran its Node 24 check on 24.14.0, not 24.20.0 (the Architect's full suite used 24.20.0).
 
+### Merged-tree measurements (6de9dbd6, Architect runs, copied from the probe tables)
+
+- Full suite Node 22.23.1 on 6de9dbd6: `# tests 9998 / # pass 9989 / # fail 0 / # cancelled 0 / # skipped 9`.
+- Music probe 390x844@3: home cold 0 / 105KB, albums cold 0 / 94KB, songs cold 0 / 77KB; warm-spa 0
+  on home / albums / artists / songs; on-screen cold reveals in 1 frame (home 799/800ms). REGRESSED vs
+  L1's own numbers: artists cold + warm-tab 0.0174, album-drill 0.0194, nowplaying cold 0.0157 - one
+  mover in all four: `#music-autoplay-btn` row 1 -> row 2. Cause: L2's global `.btn[hidden]` fix makes
+  the tab/state-dependent toolbar buttons (Artists view toggle; pop-out) take no space while hidden,
+  so they now reflow the row when shown (before L2 they wrongly occupied space). Fix slice L1b.
+- **L1b (merged 9b1c459c):** two causes - the Artists view toggle, and the sort select widening 38px in a
+  drill (widest option "Release date (newest)"). One writer `setToolbarSlot(el, shown|reserved|gone)`
+  (reserved = visibility:hidden + inert + aria-hidden + tabindex -1; clicks belt-checked), fixed sort
+  width 15em, markup ships the reserved state. Probe (builder, copied): artists cold 0.0174 -> 0.0004,
+  warm-tab 0.0174 -> 0, album-drill 0.0194 -> 0.0001, nowplaying cold 0.0157 -> 0.0002; desktop all 0
+  except artists cold 0.0046 (an early narrow toolbar frame, not root-caused) and the intended
+  nowplaying full-player expansion. Trade-off (visible): the toggle slot (38px) and, on desktop, the
+  pop-out slot are always held, so Autoplay sits on row 2 on every phone tab - a static layout, nothing
+  moves between tabs. Dean's device pass judges.
+- Home probe: mobile home cold 0.0065 (card growth 0), warm-spa 0; desktop home cold 0.0286; watch
+  cold 0.0754 (the channel row, tracker); books 0.0027; tv 0.
+
+- **F4 (merged, security r2 LOW + INFO):** `removeFreshOneOffSources` now requires the source AND its
+  same-folder-and-stem final to be regular files created during the job (`birthtimeMs`, falling back
+  to `ctimeMs` where birthtime is 0; never mtime), with `ONE_OFF_SOURCE_CLOCK_SKEW_MS = 1000`, plus
+  realpath under the download root and, when known before spawn, under the job's own output folder
+  (`resolveChannelDir`); a universal uploader-filed one-off has the timestamp fence only; missing
+  options fail closed. statx birthtime is real on this box (ext4 + overlay). The line splitter drops
+  an over-long line whole. Forged-line repro red on 6de9dbd6, green after; 21/21 mutants killed.
+  Residual: an uploader-filed one-off's forged pair could still name a file created during the job
+  window elsewhere (needs an operator `--print` + timing); that wiring is untested.
+
 ## For the tracker (found while building, not fixed here)
 
 - F2: subscription audio has the same C2 mechanism if an audio subscription and a video of the same
@@ -462,7 +493,7 @@ this branch.
 
 ## Gate
 
-Gate: APPROVED r1 @8919ba55 — security-brief
+Gate: APPROVED r1 - security-brief, reviewed at 8919ba55 (superseded: re-approved r2 @f8a7ee52)
 Gate: CHANGES r1 @8919ba55 — qa
 Gate: CHANGES r1 @8919ba55 — adversary
 Gate: APPROVED r2 @f8a7ee52 — security-brief
