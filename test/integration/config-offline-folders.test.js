@@ -133,6 +133,23 @@ test('a NEW folder that does not exist is still not added, and is named in skipp
   await waitForScanIdle();
 });
 
+test('a NEW nonexistent path is dropped BEFORE the overlap nets: one inside a book root is skipped (200), never a 400 overlap', async () => {
+  // Isolates the pre-loop "only a stored folder may be missing" check: the
+  // in-mutator re-verify would also drop a ghost, so the one observable
+  // difference is that a ghost must never reach the overlap nets.
+  const { share, local } = await libraryWithShare();
+  const bookRoot = mk('ft-offline-books-');
+  const bres = await fetch(`${base}/api/books/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folders: [bookRoot] }) });
+  assert.strictEqual(bres.status, 200, 'populated: a book root is configured');
+  const ghostInBooks = path.join(bookRoot, 'not-there');
+  const cfg = await getConfig();
+  const res = await post({ folders: [share, local, ghostInBooks], folderSettings: {}, baseVersion: cfg.configVersion });
+  assert.strictEqual(res.status, 200, await res.clone().text());
+  assert.deepStrictEqual((await res.json()).skippedFolders, [ghostInBooks]);
+  assert.deepStrictEqual(folderStore.list(), [share, local]);
+  await waitForScanIdle();
+});
+
 // The route's handler, invoked directly so two calls land in ONE synchronous
 // turn (both run to their `await updateDatabase` before either mutator runs).
 function configPostHandler() {
