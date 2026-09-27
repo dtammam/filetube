@@ -44,6 +44,7 @@ const ALLOWED_POST_PATHS = new Set([
 const EXPECTED_BLOCK_PATTERNS = [
   /^\/api\/videos\/[^/]+\/view$/,
   /^\/api\/progress$/,
+  /^\/api\/books\/[^/]+\/progress$/, // the reader's position ping (the books twin of /api/progress)
   /^\/api\/notifications\/seen$/,
 ];
 

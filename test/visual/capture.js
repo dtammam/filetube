@@ -34,7 +34,8 @@ const ERA = arg('--era', '2021');
 if (!['2021', '2014', '2009', '2005'].includes(ERA)) throw new Error(`--era must be 2021, 2014, 2009 or 2005 (got ${ERA})`);
 
 // Fixture ids + login, written by seed.js: video = Harbor Workshop (subscribed,
-// notify on); videoUnsub = Northbound Field Notes (not subscribed); track = Halden Arcs.
+// notify on); videoUnsub = Northbound Field Notes (not subscribed); track = Halden Arcs;
+// book = The Lamplighter's Ledger (38% read, liked); bookShelf = its (pinned) shelf dir.
 const FX = JSON.parse(fs.readFileSync(path.join(DATA, 'fixtures.json'), 'utf8'));
 const USER = FX.user;
 const PASS = FX.password;
@@ -121,6 +122,12 @@ const SCENES = [
   { id: '28-history', path: '/history', run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(800); } },
   { id: '29-search-open', path: '/', vps: ['phone'], run: async (p, vp) => { await tap(p, '#search-toggle-btn', vp); await sleep(600); } },
   { id: '30-stats', path: '/stats.html', vps: ['phone', 'desktop'], run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(800); } },
+  // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
+  { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
+  { id: '51-books-shelf', path: `/books?root=${encodeURIComponent(FX.bookShelf || '')}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
+  { id: '52-reader', path: `/read.html?b=${FX.book}`, run: async (p) => { await p.waitForSelector('#reader-pane iframe', { timeout: 15000 }); await sleep(1500); } },
+  { id: '53-reader-contents', path: `/read.html?b=${FX.book}`, vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForSelector('#reader-pane iframe', { timeout: 15000 }); await sleep(1000); await tap(p, '#reader-toc-btn', vp); await sleep(900); } },
+  { id: '54-reader-settings', path: `/read.html?b=${FX.book}`, vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForSelector('#reader-pane iframe', { timeout: 15000 }); await sleep(1000); await tap(p, '#reader-settings-btn', vp); await sleep(900); } },
 ];
 // Pocket Classic (Click skins): phone portrait+landscape+desktop for the base skin, other skins phone only.
 const POCKET_SKINS = ['ipod', 'ipod-black', 'ipod-original', 'ipod-red', 'ipod-2004'];

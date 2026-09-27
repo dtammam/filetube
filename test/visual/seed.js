@@ -6,7 +6,8 @@
 // generated here: library videos (with drawn thumbnails), two channels with
 // channel identity (one subscribed with notify on, one not), yt-dlp subscriptions,
 // music (3 artists x 2 albums x 4 tracks), podcasts (2 shows x 5 episodes),
-// notifications, a queue and watch progress.
+// books (two shelves: 6 EPUBs with drawn covers + 1 cover-less PDF, two in progress,
+// one liked, one shelf pinned), notifications, a queue and watch progress.
 //
 //   node test/visual/seed.js [--data DIR]      (fnm Node 22 on PATH)
 //
@@ -21,6 +22,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process');
 const png = require('../../tools/capture/png.js');
 
@@ -82,6 +84,84 @@ function silentWav(sec) {
   b.writeUInt32LE(8000, 28); b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36); b.writeUInt32LE(n, 40);
   b.fill(128, 44);
   return b;
+}
+
+// ---- books: tiny valid EPUBs (a stored zip, drawn PNG covers) and one PDF ----
+// The real scanner indexes them (scanBooks), so covers, titles, authors and the spine
+// come from the same code path a real library takes; the reader opens them with epub.js.
+function zipStored(entries) {
+  const locals = []; const centrals = []; let off = 0;
+  for (const { name, data } of entries) {
+    const nm = Buffer.from(name, 'utf8'); const crc = zlib.crc32(data);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(10, 4); lh.writeUInt16LE(0x21, 12);
+    lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(nm.length, 26);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(10, 6); ch.writeUInt16LE(0x21, 14);
+    ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(nm.length, 28);
+    ch.writeUInt32LE(off, 42);
+    locals.push(lh, nm, data); centrals.push(ch, nm);
+    off += 30 + nm.length + data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const PROSE = [
+  'The harbor was quiet before the boats came in, and the lamps along the quay burned a steady yellow against the fog.',
+  'She kept the ledger open on the bench beside the window, adding a line for every ship that passed the breakwater.',
+  'Nobody asked why the lighthouse keeper wrote letters he never sent; the drawer simply filled, one envelope at a time.',
+  'By the third winter the canal had frozen twice, and the old ferryman taught the children to read the ice by its colour.',
+  'There is a kind of patience that only a tide can teach, and the town had learned it slowly, over a hundred years.',
+];
+function epubBook(n, title, author, chapters) {
+  const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="uid">urn:filetube-visual-fixture:${n}</dc:identifier>
+<dc:title>${xmlEsc(title)}</dc:title><dc:creator>${xmlEsc(author)}</dc:creator><dc:language>en</dc:language>
+<meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>
+</metadata>
+<manifest>
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+<item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>
+${chapters.map((_, i) => `<item id="c${i + 1}" href="c${i + 1}.xhtml" media-type="application/xhtml+xml"/>`).join('\n')}
+</manifest>
+<spine>${chapters.map((_, i) => `<itemref idref="c${i + 1}"/>`).join('')}</spine>
+</package>
+`;
+  const page = (head, body) => `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>${xmlEsc(head)}</title></head><body>${body}</body></html>
+`;
+  const nav = page('Contents', `<nav epub:type="toc"><h1>Contents</h1><ol>${chapters.map((c, i) => `<li><a href="c${i + 1}.xhtml">${xmlEsc(c)}</a></li>`).join('')}</ol></nav>`);
+  const files = [
+    { name: 'mimetype', data: Buffer.from('application/epub+zip') },
+    { name: 'META-INF/container.xml', data: Buffer.from('<?xml version="1.0"?>\n<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>\n') },
+    { name: 'OEBPS/content.opf', data: Buffer.from(opf) },
+    { name: 'OEBPS/nav.xhtml', data: Buffer.from(nav) },
+    { name: 'OEBPS/cover.png', data: drawImage(300 + n, 200, 300) },
+  ];
+  chapters.forEach((c, i) => {
+    const paras = Array.from({ length: 14 }, (_, k) => `<p>${PROSE[(i + k) % PROSE.length]}</p>`).join('');
+    files.push({ name: `OEBPS/c${i + 1}.xhtml`, data: Buffer.from(page(c, `<h2>${xmlEsc(c)}</h2>${paras}`)) });
+  });
+  return zipStored(files);
+}
+// A one-page PDF with a line of text (xref offsets computed, so pdf.js opens it cleanly).
+function pdfBook(text) {
+  const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 595] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>'];
+  const stream = `BT /F1 18 Tf 48 520 Td (${text}) Tj ET`;
+  objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  let out = '%PDF-1.4\n'; const offs = [];
+  objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
 }
 
 process.env.DATA_DIR = DATA;
@@ -210,12 +290,46 @@ const CHANNELS = [
     const d = meta[id].duration;
     await post('/api/progress', { id, timestamp: Math.round(d * (0.2 + i * 0.25)), duration: d });
   }
+  // Books, through the real routes and the real scanner: the config (admin), a scan,
+  // reading progress on two (the Continue shelf), a like and a pinned shelf.
+  const booksRoot = path.join(DATA, 'bookslib');
+  const BOOKS = [
+    ['Harbor Library', 'The Lamplighter\'s Ledger', 'Mara Quill', ['The Quay at Dusk', 'Ledger Lines', 'A Ship Past the Breakwater']],
+    ['Harbor Library', 'Salt and Signal', 'Tobin Arle', ['Morning Fog', 'The Signal Box', 'Low Water']],
+    ['Harbor Library', 'Letters from the Lighthouse', 'Ines Varro', ['The First Letter', 'Winter Keepers']],
+    ['Harbor Library', 'A Field Guide to Quiet Harbors, with a Title Long Enough to Wrap', 'Harbor Workshop Press', ['Introduction', 'Moorings']],
+    ['Night Reading', 'The Frozen Canal', 'Petra Lund', ['Ice Colours', 'The Ferryman', 'Thaw']],
+    ['Night Reading', 'Northbound, Slowly', 'Oriel Vance', ['Departure', 'The Rail Line']],
+  ];
+  BOOKS.forEach(([shelf, title, author, chapters], n) => {
+    const dir = path.join(booksRoot, shelf);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${title.replace(/[^A-Za-z0-9]+/g, '_')}.epub`), epubBook(n, title, author, chapters));
+  });
+  fs.writeFileSync(path.join(booksRoot, 'Night Reading', 'Tide_Tables_1987.pdf'), pdfBook('Tide Tables, 1987 - a fixture PDF'));
+  await post('/api/books/config', { folders: [booksRoot] });
+  // The config route starts its own scan (a concurrent scanBooks() only queues a
+  // follow-up), so wait for the index to hold every file.
+  let bookList = { items: [] };
+  for (let i = 0; i < 100 && bookList.items.length < BOOKS.length + 1; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    bookList = await fetch(`${base}/api/books?sort=title-asc&limit=50`, { headers: { Cookie: ck } }).then((r) => r.json());
+  }
+  if (bookList.items.length !== BOOKS.length + 1) { postFailures++; console.error('seed: books indexed', bookList.items.length); }
+  const bookByTitle = Object.fromEntries(bookList.items.map((b) => [b.title, b.id]));
+  const readingBook = bookByTitle['The Lamplighter\'s Ledger'];
+  await post(`/api/books/${encodeURIComponent(readingBook)}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/4!/4/2/1:0)', spineIndex: 1 }, percent: 38 });
+  await post(`/api/books/${encodeURIComponent(bookByTitle['The Frozen Canal'])}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/6!/4/2/1:0)', spineIndex: 2 }, percent: 71 });
+  await s.flushPendingBookProgress();
+  await post(`/api/books/liked/${encodeURIComponent(readingBook)}`, {});
+  await post('/api/books/pins', { dir: path.join(booksRoot, 'Harbor Library'), label: 'Harbor Library' });
   server.close();
 
   const fixtures = { dataDir: DATA, seededAt: NOW, user: USER, password: PASSWORD,
     video: harbor[0], videoUnsub: byChannel['Northbound Field Notes'][0], track: musicIds[0],
+    book: readingBook, bookShelf: path.join(booksRoot, 'Harbor Library'),
     counts: { videos: Object.values(meta).filter((m) => m.type === 'video').length, musicTracks: musicIds.length,
-      podcastEpisodes: Object.keys(episodes).length, notifications } };
+      podcastEpisodes: Object.keys(episodes).length, books: bookList.items.length, notifications } };
   fs.writeFileSync(path.join(DATA, 'fixtures.json'), JSON.stringify(fixtures, null, 1));
   console.log(JSON.stringify(fixtures));
   setTimeout(() => process.exit(postFailures ? 1 : 0), 500);

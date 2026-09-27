@@ -21,6 +21,10 @@ The fixture (`<DIR>/fixtures.json` lists the ids):
 - yt-dlp subscriptions: Harbor Workshop, an audio-only one, a paused one with a
   long name.
 - Music: 3 artists x 2 albums x 4 tracks. Podcasts: 2 shows x 5 downloaded episodes.
+- Books (`bookslib/`, indexed by the real scanner): two shelves, Harbor Library (4
+  EPUBs) and Night Reading (2 EPUBs + a cover-less PDF). The EPUBs are tiny valid
+  stored zips with drawn PNG covers and 2-3 chapters each; two are in progress (the
+  Continue shelf), one is liked and Harbor Library is pinned.
 - 6 unread notifications, a 3-item queue, watch progress on 3 Home Videos.
 
 Not yet deterministic across machines (step 4 of the plan closes these before the
@@ -30,4 +34,4 @@ dates move with the clock (`SEED_NOW` pins the seed's clock; the browser clock i
 frozen by the capture, step 4).
 
 Scene ids follow the 2026-09-27 audit's baseline index (01-30 surfaces, 40-42
-Pocket skins, plus the Pocket rotation screencast).
+Pocket skins, plus the Pocket rotation screencast); 50-54 are Books and the reader.
