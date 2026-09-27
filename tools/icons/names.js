@@ -22,6 +22,8 @@ const NAMES = [
   'shuffle', 'repeat',
   // the reader (sweep S10): Contents, reader settings (Aa), the font-size stepper
   'toc', 'format_size', 'remove',
+  // sweep S2 (cards and feeds): the card action menu, the library toolbar, the channel heading
+  'local_fire_department', 'playlist_add', 'grid_view', 'view_list', 'sort', 'music_off',
   // media
   'play_arrow', 'pause', 'skip_next', 'skip_previous', 'fast_forward', 'fullscreen', 'fullscreen_exit',
   'picture_in_picture_alt', 'closed_caption', 'speed', 'volume_up', 'volume_off',
