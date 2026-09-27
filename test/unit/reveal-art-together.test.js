@@ -219,6 +219,20 @@ test('a re-run over the same host never re-batches an image a pending batch owns
   dom.window.close();
 });
 
+test('a re-run cannot early-reveal a held image through its own (shorter) cap', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { c, dom, doc, host } = domWithCommon();
+  const a = img(doc, host); const b = img(doc, host, { left: 120 });
+  c.revealArtTogether(host); // the 600ms batch owns a + b
+  load(dom, a);
+  c.revealArtTogether(host, { capMs: 10 }); // a second pass with a short cap
+  t.mock.timers.tick(10);
+  assert.ok(shimmering(a), 'the second pass never owned a, so its cap cannot reveal a ahead of b');
+  load(dom, b);
+  assert.ok(!shimmering(a) && !shimmering(b), 'the owning batch reveals both together');
+  dom.window.close();
+});
+
 test('shimmerArt is untouched for its other callers (still per image)', () => {
   const { c, dom, doc, host } = domWithCommon();
   const a = img(doc, host); const b = img(doc, host, { left: 120 });
