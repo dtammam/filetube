@@ -1437,3 +1437,74 @@ Owner = the first D12 step or sweep that deletes, moves or renames the pinned CS
   buttons are square. Rendered: podcast art and episode titles flush with the page title; the kit's
   notifications list keeps its dot column.
 
+
+### Sweep S10 - Books and reader (2026-09-27, branch feat/ui-sweep-s10 from 6b7408d6)
+
+- **Commits:** 5c8f20dc (icon registry gains `toc`, `format_size`, `remove`: the one primitive-side
+  addition, its own commit; tokens/ui.css/ui.js/interaction.js untouched), 6d936d2d (synthetic books
+  fixture + scenes 50-54), 6fc72af6 (the sweep), c70a9120 (two bindings the mutation pass found
+  unbound), then this log.
+- **Fixture (seed.js):** `<DATA>/bookslib` holds two shelves, Harbor Library (4 EPUBs) and Night
+  Reading (2 EPUBs + a cover-less one-page PDF). The EPUBs are stored zips built in-process
+  (`zlib.crc32`; container.xml, an OPF with an EPUB3 cover-image PNG from the same drawn-image
+  generator, a nav TOC, 2-3 chapters of fictional prose). They go through the real config route and
+  scanner; two are in progress, one is liked, Harbor Library is pinned; `fixtures.json` gains `book`
+  and `bookShelf`. capture.js gains 50-books-library, 51-books-shelf, 52-reader, 53-reader-contents,
+  54-reader-settings; the capture's request policy lists `POST /api/books/:id/progress` as an expected
+  block (the books twin of `/api/progress`).
+- **Books library:** Sort is a tonal pill ui-btn opening a ui.menu (check = current order; the pick
+  re-fetches and is remembered), Scan a ui-btn that is busy until the refresh; the `.btn.btn-sm`
+  select is gone (tech-debt #252's books half; the tracker row is not edited). Shelves are ui-chip
+  filter buttons navigating through the router (selected = `--fill-selected`, never red). The
+  per-chip star glyph became ONE Pin toggle for the selected shelf (`keep`/`keep.fill`, "Pin shelf" /
+  "Pinned", F32); the All view has none. Covers are ui.thumb 2:3 cards (progress as `--p` data) built
+  with DOM calls; titles are `--ink-link` (ink, blue only in 2005: 2009/2014 titles change from link
+  blue to ink, D8.6). **D9:** a failed load is an error ui-state with Retry, never "No books yet"; an
+  empty library says how to add books (Open Settings); an empty shelf/search says so without it.
+- **Reader chrome (F69):** one-row toolbar of ui-btn icon buttons (44px hits) with reserved slots:
+  Back, title, [Listen, only narrows the title], Contents, Aa, Like, More. Like and More are disabled,
+  not hidden, until the detail resolves (no pop-in). Like is an icon toggle (`favorite.fill`), never
+  the red btn-primary fill; Finished (now with a result toast), Save to device and Share are in the
+  More ui.menu. Contents is a ui.sheet panel of ui-rows (nested entries indented); Aa is a ui.sheet
+  (popover on desktop, bottom sheet on a phone) with ui.segmented themes (the active one now shows)
+  and a bounded text-size stepper ("Fixed" for PDF). The arrow keys stand down while a reader sheet
+  is open; destroy() closes any open sheet (they live on `<body>`). A book that cannot open is an
+  error ui-state with Back to books; "Tap to start listening" is a primary ui-btn (no U+25B6); the
+  progress bar scales by `--p`; the chassis height is `--reader-h` data; PDF placeholders are a
+  class. The narration bar's cover is ui.avatar kind 'book' (ui-art). The page (epub.js iframe,
+  PDF canvases) and the `--reader-*` themes are unchanged.
+- **Locks converted (AC12, each replacement in 6fc72af6):** books-router-nav's v1.37.1 class list ->
+  the styling-source law, derived (every class the two views use has a rule in ui.css or style.css;
+  no shell `<style>`; one listed exception, ui.thumb's default `--card` modifier); its T8 string test
+  -> buildBookCard on a jsdom document; library-shimmer-skeletons (S6-owned, books line only) -> the
+  ui-thumb skeleton fill binding (ui.css before style.css in every shell, nothing re-grounds
+  `.ui-thumb`); art-decode-shimmer's books site; library-toolbar (S2-owned, books third only) -> Sort
+  and Scan are tonal pill ui-btns and no `.books-toolbar .btn` rule; reader-immersive kept as is
+  (class a). `lib/media-capabilities.js` markers follow download/finished/share into the More menu.
+  New: `test/unit/books-reader-ui.test.js` (18 tests; both views' real init in jsdom).
+- **Mutation (git archive sandbox of c70a9120, pristine copy diffed per mutant):** 13 of 13 red, each
+  by the named test: error-state-as-empty, no sheet key guard, Like not reserved, Pin on the All view,
+  destroy leaves a reader sheet open, a bare class, empty state hidden, red fill on Like, optimistic
+  Like, skeleton re-grounded, inline width, no `--p`, destroy leaves the sort menu open. The first pass
+  (on 6fc72af6) had 2 survivors that exposed weak tests, fixed in c70a9120: the destroy checks were
+  vacuous (ui.sheet opens on the next frame; they now assert OPEN first) and the inline-style lock
+  excused every read.js `.style.width` write (now only `canvas.width`, plus a behavioural `--p` check).
+- **ui-lint (6b7408d6 -> this branch):** TOTAL 2703 -> 2660. no-raw-values 1297 -> 1287,
+  no-bespoke-controls 1091 -> 1066, icons 163 -> 158, display-ownership 86 -> 84, colour-roles 44 ->
+  43; hover-gated 3, pressed-state 1, native-interaction 3, no-layout-transition 2, z-ladder 11,
+  no-shell-style 2 unchanged. 28 keys / 43 items shrunk out of `docs/ui-exceptions.json`.
+- **Left on this surface (listed debt, not added):** `.books-grid` 140px column and `.reader-chassis`
+  320px floor (layout geometry; a token swap moves them); the two invisible page-turn zones
+  (`.reader-tap-nav`, no primitive fits); read.html's zoom-free viewport (the D10.4 carve-out). Not
+  S10's: the narration bar's prev/next (`pc-btn`, the player mount, S3 / player carve-out), the
+  shells' header / nav / player template (S1 / S3), Home's books row (`main.js`, S2).
+- **Renders (seeded, :3971, 4 eras x phone/landscape/desktop x light/dark, scenes 50-54):** before 96
+  shots, after 96 shots, 0 failed, 0 unexpected blocked requests, no page errors. Looked at: the
+  toolbar is one row at 390 (before: two rows of bordered glyph buttons); Like reads as a filled
+  heart in ink; Contents and Aa open as sheets with a scrim and a close (before: an unanimated
+  drawer); the theme picker shows the active theme; 2005 keeps its square, bordered, underlined-link
+  look through the era knobs.
+- **Counts (Node 22.23.1):** `npm test` tests 10206, pass 10196, fail 0, cancelled 0, skipped 10
+  (exit 0); the pre-commit `npm run test:unit` of c70a9120 tests 7880, pass 7879, fail 0, skipped 1;
+  `npx eslint .` 0 errors, 6 warnings (the existing common.js unused globals); `npm run lint:ui` OK
+  (2660, equals the file); `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations).
