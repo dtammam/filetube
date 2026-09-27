@@ -30,7 +30,11 @@ const NAMES = [
 ];
 
 const FILL = ['notifications', 'notifications_active', 'push_pin', 'keep', 'thumb_up', 'favorite', 'star',
-  'home', 'subscriptions'];
+  'home', 'subscriptions',
+  // sweep S1 (F49): the bottom bar's selected tab is its FILLED glyph in ink, so every tab
+  // glyph has a twin (home, subscriptions and star above)
+  'folder', 'history', 'podcasts', 'music_note', 'menu_book', 'smart_display', 'download',
+  'dark_mode', 'light_mode', 'settings'];
 
 // The three icon sets (the data-icons axis). Each maps to a Material Symbols style +
 // FILL: `filled` is the Outlined family at FILL=1 (the solid classic Material look).
