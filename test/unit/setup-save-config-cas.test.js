@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.339 S2 (plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md,
+// [UNIT] v1.339 S2 (plan docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md,
 // finding T-C1, decision D2): the Settings folder form's Save is
 // compare-and-set. loadConfig() remembers the `configVersion` the form was
 // built from; saveFolderConfig() POSTs it as `baseVersion`; a 409 (another

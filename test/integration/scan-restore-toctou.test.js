@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.339 FOUC / TOCTOU audit, slice S5 (plan
-// docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, findings T-S4 and
+// docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, findings T-S4 and
 // T-S2, decision D3): the two gaps the S3 builder left open between a trash
 // RESTORE and a running media scan.
 //

@@ -3,8 +3,8 @@ plan: fouc-toctou-audit
 harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
-status: Gate:APPROVED r4 @ab880c99
-next: release v1.339.0 (release commit, plan close, merge, tag, PR); then Dean's device pass (tech-debt #287 lists the checks)
+status: Shipped v1.339.0
+next: shipped v1.339.0; Dean's device pass (tech-debt #287 lists the checks)
 design: pending
 gate: APPROVED r4 @ab880c99 (adversary + qa + security-brief); safety checkpoint approved r2 at f8a7ee52 after r1 CHANGES fixed in F1-F3; final delta approved r3 at 03a1f634; r4 = the qa W1 comment-only fix; residuals filed as tech-debt #287
 ---

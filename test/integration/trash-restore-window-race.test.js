@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.339 T-S5 (docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md,
+// [INTEGRATION] v1.339 T-S5 (docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md,
 // decision D3) -- trashItem's post-commit window vs a restore of the SAME
 // trashId, against the REAL app, the REAL routes and REAL files on disk.
 //

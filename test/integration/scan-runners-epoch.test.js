@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.339 FOUC / TOCTOU audit, slice S3 (plan
-// docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, finding T-S3,
+// docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, finding T-S3,
 // decision D3): the music, Shows and books scan runners now carry the media
 // scan's v1.42 W4 persistedStateEpoch guard. Before it, an admin restore
 // landing while one of them walked was merged against: the restored items

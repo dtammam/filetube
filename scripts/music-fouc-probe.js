@@ -2,7 +2,7 @@
 
 // music-fouc-probe - the MEASUREMENT instrument for the Music "thumbnails load
 // somewhat individually + slight page shifting" audit (2026-09-26, plan
-// docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md).
+// docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md).
 //
 // Boots the real app (this tree, or FT_ROOT=<other worktree> for a BEFORE baseline)
 // on a scratch DATA_DIR seeded with a realistic music library - 40 native tracks over

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.339 (L2, plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, D5):
+// [UNIT] v1.339 (L2, plan docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, D5):
 // the app-wide look. Measured by scripts/home-fouc-probe.js; bound here:
 //   1. `[hidden]` guards for `.btn` and `.queue-btn` (source lock - jsdom has no cascade)
 //      + the queue button's hide/flag behaviour;

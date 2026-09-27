@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.339 S2b (plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md,
+// [INTEGRATION] v1.339 S2b (plan docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md,
 // the offline-folder follow-up to T-C1): POST /api/config used to DROP any
 // submitted folder that failed `fs.existsSync`, so saving Settings (or dragging
 // a sidebar row) while a drive / NAS share was unmounted un-configured it, and

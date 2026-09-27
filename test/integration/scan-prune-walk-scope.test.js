@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.339 gate r1 C1 (plan
-// docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, `## Gate`): the
+// docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, `## Gate`): the
 // T-S2 keep-guard in the scan's final mutator re-validates each prune
 // candidate against the FRESH db. On 8919ba55 it kept ANY candidate that was
 // live with its file on disk - so an item whose file the walk no longer

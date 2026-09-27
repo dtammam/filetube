@@ -1,7 +1,7 @@
 'use strict';
 
 // home-fouc-probe - the MEASUREMENT instrument for slice L2 (app-wide look, plan
-// docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, decision D5), modeled on
+// docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, decision D5), modeled on
 // scripts/music-fouc-probe.js (same raw-CDP driver, no npm dependency).
 //
 // Boots the real app (this tree, or FT_ROOT=<other worktree> for a BEFORE baseline) on a

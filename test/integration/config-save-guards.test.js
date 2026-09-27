@@ -1,7 +1,7 @@
 'use strict';
 
 // [INTEGRATION] v1.339 r1 gate fixes on POST /api/config (plan
-// docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, `## Gate` r1: W and
+// docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, `## Gate` r1: W and
 // the suggestions).
 //
 // W (data loss, pre-existing): Settings opened while GET /api/config failed

@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.339 S2 (plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md,
+// [INTEGRATION] v1.339 S2 (plan docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md,
 // finding T-C1, decision D2): POST /api/config is compare-and-set.
 //
 // Before: the home sidebar drag, the Settings sidebar drag and the Settings

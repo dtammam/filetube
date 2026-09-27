@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.339 S2 (plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md,
+// [INTEGRATION] v1.339 S2 (plan docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md,
 // finding T-C1, decision D2): the HOME sidebar drag, driven through the real
 // index.html + main.js + common.js in jsdom.
 //

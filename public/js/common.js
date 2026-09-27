@@ -2396,7 +2396,7 @@ function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder, syntheti
 
 // ---- v1.339 S2: sidebar drops persist BY PATH onto the FRESH config ---------
 //
-// T-C1 (plan docs/exec-plans/active/2026-09-26-fouc-toctou-audit.md, D2): the
+// T-C1 (plan docs/exec-plans/completed/2026-09-26-fouc-toctou-audit.md, D2): the
 // two sidebar drags used to POST the folder list the page loaded at init back
 // to POST /api/config, which replaces both folder tables wholesale - so a
 // folder another device added after this page loaded was DROPPED by a drag
