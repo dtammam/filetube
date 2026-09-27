@@ -223,7 +223,8 @@ test('T9: buildSongRowHtml carries the index + id, escaped title, duration, and 
   assert.match(html, /music-like-btn liked/, 'liked state reflected');
   // v1.102 (tranche 4): the like glyph is the inline chrome-icon heart svg, not a
   // decode-lagging `.icon-heart` mask (single heart, still no -filled variant).
-  assert.match(html, /class="chrome-icon"[^>]*><path d="m480-120/, 'the like glyph is the inline chrome-icon heart svg');
+  // UI pass step 2: the svg draws the registry's `favorite` from the sprite.
+  assert.match(html, /class="chrome-icon"[^>]*><use href="#i-favorite"\/>/, 'the like glyph is the inline chrome-icon heart svg');
   assert.doesNotMatch(html, /icon-heart/, 'no .icon-heart mask <i> survives in the song row');
 });
 

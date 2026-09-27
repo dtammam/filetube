@@ -30,10 +30,13 @@ const { buildSongRowHtml } = require('../../public/js/music.js');
 
 // ---- the 3 new glyphs exist in the shared map -------------------------------
 
-test('CHROME_ICON_SVG gained queue, heart, delete (the row action glyphs)', () => {
-  const map = require('../../public/js/common.js').CHROME_ICON_SVG;
+// UI pass step 2 (DELIBERATE lock update): the map names registry icons (the sprite draws
+// them); icons-registry.test.js binds the paths.
+test('CHROME_ICON has queue, heart, delete (the row action glyphs), each a registry icon', () => {
+  const map = require('../../public/js/common.js').CHROME_ICON;
+  const FTIcons = require('../../public/js/icons.js');
   for (const name of ['queue', 'heart', 'delete']) {
-    assert.ok(map[name] && map[name].d && map[name].vb, `${name} is in the chrome-icon map`);
+    assert.ok(map[name] && FTIcons.has(map[name]), `${name} is in the chrome-icon map`);
   }
 });
 
@@ -41,11 +44,11 @@ test('CHROME_ICON_SVG gained queue, heart, delete (the row action glyphs)', () =
 
 test('music song row: queue/download/like are inline chrome-icon svgs, NO .icon-* masks', () => {
   const html = buildSongRowHtml({ id: 't1', title: 'x', artist: 'a', album: 'b', durationSec: 60, liked: false }, 0);
-  // Three inline chrome-icon svgs (queue, download, heart), each with its path.
+  // Three inline chrome-icon svgs (queue, download, heart), each drawing its sprite symbol.
   assert.strictEqual((html.match(/<svg class="chrome-icon"/g) || []).length, 3, 'three inline chrome-icon glyphs');
-  assert.match(html, /<path d="M3 6h13v2H3V6/, 'queue glyph path');
-  assert.match(html, /<path d="M480-337/, 'download glyph path');
-  assert.match(html, /<path d="m480-120-58-52/, 'heart glyph path');
+  assert.match(html, /<use href="#i-playlist_play"\/>/, 'queue glyph');
+  assert.match(html, /<use href="#i-download"\/>/, 'download glyph');
+  assert.match(html, /<use href="#i-favorite"\/>/, 'heart glyph');
   // No decode-lagging mask <i> survives in the row.
   assert.doesNotMatch(html, /<i class="icon-(queue|download|heart)"/, 'no .icon-* mask <i> in the song row');
 });

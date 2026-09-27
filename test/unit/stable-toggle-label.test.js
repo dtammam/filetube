@@ -13,7 +13,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const COMMON_SRC = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
-const { stableToggleLabelHtml, CHROME_ICON_SVG } = require('../../public/js/common.js');
+const { stableToggleLabelHtml } = require('../../public/js/common.js');
 
 // The ONE top-level rule for a selector, as { prop: value } (whitespace-normalized).
 function decls(selector) {
@@ -51,8 +51,9 @@ test('stableToggleLabelHtml: every label laid out, the current one named and vis
 
 test('stableToggleLabelHtml: a glyph sits INSIDE its slot, before the words or after them', () => {
   const html = stableToggleLabelHtml('On', ['On', 'Off'], { On: 'bell', Off: { name: 'bellOff', after: true } });
-  assert.ok(html.includes('<span class="btn-label-slot"><svg class="chrome-icon btn-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="' + CHROME_ICON_SVG.bell.d + '"/></svg>On</span>'));
-  assert.ok(html.includes('<span class="btn-label-slot" data-idle>Off<svg class="chrome-icon btn-glyph btn-glyph-after" viewBox="0 0 24 24" aria-hidden="true"><path d="' + CHROME_ICON_SVG.bellOff.d + '"/></svg></span>'));
+  // UI pass step 2: the glyph draws its registry symbol from the sprite.
+  assert.ok(html.includes('<span class="btn-label-slot"><svg class="chrome-icon btn-glyph" aria-hidden="true"><use href="#i-notifications"/></svg>On</span>'));
+  assert.ok(html.includes('<span class="btn-label-slot" data-idle>Off<svg class="chrome-icon btn-glyph btn-glyph-after" aria-hidden="true"><use href="#i-notifications_off"/></svg></span>'));
 });
 
 test('stableToggleLabelHtml: labels are escaped (the call sites pass literals; this is the belt)', () => {
@@ -62,6 +63,7 @@ test('stableToggleLabelHtml: labels are escaped (the call sites pass literals; t
 });
 
 test('the header bell draws the SHARED bell path (one glyph everywhere, not a private copy)', () => {
-  assert.match(COMMON_SRC, /bellPath\.setAttribute\('d', CHROME_ICON_SVG\.bell\.d\)/);
-  assert.ok(!COMMON_SRC.includes("bellPath.setAttribute('d', 'M"), 'no literal path left on the header bell');
+  // UI pass step 2: the header bell is the sprite's shared bell (CHROME_ICON.bell).
+  assert.match(COMMON_SRC, /const svg = spriteIconEl\(CHROME_ICON\.bell\);/);
+  assert.ok(!/setAttribute\('d', 'M/.test(COMMON_SRC), 'no literal path left in common.js');
 });

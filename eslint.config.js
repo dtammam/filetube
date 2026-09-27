@@ -97,7 +97,7 @@ module.exports = [
       // attaches to `window` (FR-1, T1); every other view script
       // (main/watch/setup/subscriptions) calls `FileTube.registerView`/
       // `FileTube.navigate`.
-      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly' },
+      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly', FTIcons: 'readonly' },
     },
     rules: {
       ...commonRules,

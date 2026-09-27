@@ -4460,7 +4460,7 @@ a.sub-row-channel-link:focus-visible {
    (the bell/queue always worked this way). Sized in `em` like the masks were,
    so each usage inherits its container's font-size; `fill: currentColor` tints
    it with the container exactly like the old mask + `background-color`. See
-   CHROME_ICON_SVG in common.js. */
+   CHROME_ICON in common.js (the icon sprite). */
 .chrome-icon {
   display: inline-block;
   width: 1em;
@@ -4468,6 +4468,14 @@ a.sub-row-channel-link:focus-visible {
   vertical-align: -0.15em;
   fill: currentColor;
   flex: none;
+}
+
+/* UI pass step 2: the icon sprite (public/js/icons.js inject()). Its `hidden` attribute is
+   NOT enough: the UA's [hidden] rule is scoped to the HTML namespace, so an <svg> keeps its
+   default 300x150 box and pushes the page down. The symbols it holds still render through
+   every <use> while it is display:none. (Moves to ui.css with the primitives, step 3.) */
+#ft-icon-sprite {
+  display: none;
 }
 
 /* v1.340: a two-state button's label (common.js stableToggleLabelHtml). Every label

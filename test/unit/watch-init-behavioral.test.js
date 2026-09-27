@@ -39,16 +39,16 @@ const common = require('../../public/js/common.js');
 
 // v1.340: the channel-row buttons render their label through common.js's
 // stableToggleLabelHtml (innerHTML: every label in one grid cell, the current one in
-// `data-label`, CHROME_ICON_SVG glyphs inside the slots). The shim's innerHTML is a plain
+// `data-label`, CHROME_ICON glyphs inside the slots). The shim's innerHTML is a plain
 // string, so read the VISIBLE slot back from it, each glyph as "[name]" where it sits:
-// "[bellOff] Notify", "Pinned [starFilled]".
-const GLYPH_BY_PATH = new Map(Object.entries(common.CHROME_ICON_SVG).map(([name, g]) => [g.d, name]));
+// "[bellOff] Notify", "Pinned [starFilled]". UI pass step 2: a glyph is <use href="#i-REG">.
+const GLYPH_BY_HREF = new Map(Object.entries(common.CHROME_ICON).map(([name, reg]) => ['#i-' + reg.replace(/\./g, '-'), name]));
 function labelOf(el) {
   const html = String(el.innerHTML || '');
   const m = /data-label="([^"]*)"/.exec(html);
   if (!m) return el.textContent;
   const shown = (/<span class="btn-label-slot">(.*?)<\/span>/.exec(html) || [])[1] || '';
-  const text = shown.replace(/<svg [^>]*><path d="([^"]*)"\/><\/svg>/g, (_, d) => ` [${GLYPH_BY_PATH.get(d) || '?'}] `)
+  const text = shown.replace(/<svg [^>]*><use href="([^"]*)"\/><\/svg>/g, (_, h) => ` [${GLYPH_BY_HREF.get(h) || '?'}] `)
     .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ').trim();
   assert.ok(text.replace(/\s*\[[^\]]*\]\s*/g, '') === m[1].replace(/&amp;/g, '&'), 'data-label names the visible slot');
@@ -290,9 +290,9 @@ test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscri
   assert.equal(labelOf(bell), '[bellOff] Notify');
   // v1.340 (Dean: "notify button shifts unreasonably"): BOTH labels are laid out, only the
   // idle one hidden, so the button is as wide as "Notifying" in either state.
-  assert.match(bell.innerHTML, /<span class="btn-label-slot" data-idle><svg [^>]*><path d="[^"]*"\/><\/svg>Notifying<\/span><span class="btn-label-slot"><svg [^>]*><path d="[^"]*"\/><\/svg>Notify<\/span>/);
+  assert.match(bell.innerHTML, /<span class="btn-label-slot" data-idle><svg [^>]*><use href="#i-[^"]*"\/><\/svg>Notifying<\/span><span class="btn-label-slot"><svg [^>]*><use href="#i-[^"]*"\/><\/svg>Notify<\/span>/);
   assert.doesNotMatch(bell.innerHTML, /\u{1F514}|\u{1F515}/u, 'no emoji bell');
-  assert.match(pin.innerHTML, /<span class="btn-label-slot">Pin channel<\/span><span class="btn-label-slot" data-idle>Pinned<svg [^>]*><path d="[^"]*"\/><\/svg><\/span>/);
+  assert.match(pin.innerHTML, /<span class="btn-label-slot">Pin channel<\/span><span class="btn-label-slot" data-idle>Pinned<svg [^>]*><use href="#i-[^"]*"\/><\/svg><\/span>/);
   assert.doesNotMatch(pin.innerHTML, /★/, 'gate r1 W2: no text star (a taller fallback-font glyph) - it is drawn');
   assert.match(btn.innerHTML, /<span class="btn-label-slot">Subscribed<\/span><span class="btn-label-slot" data-idle>Subscribe<\/span>/);
   // (the shim's setAttribute is a no-op, so aria-pressed is bound in ytdlp-subscriptions-client / by the label here)

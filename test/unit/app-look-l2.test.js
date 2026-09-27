@@ -235,25 +235,29 @@ test('reserve blocks: every header shell (discovered, not listed) carries BOTH b
     assert.strictEqual(html.slice(0, h.start).trimEnd().endsWith('</header>'), true, `${shell}: the header block follows </header>`);
     const navOpen = html.indexOf('id="bottom-nav"');
     assert.ok(navOpen > 0 && html.slice(navOpen, n.start).trimEnd().endsWith('</nav>'), `${shell}: the nav block follows the bottom nav`);
-    assert.ok(n.end < html.indexOf('<script src='), `${shell}: both run before the first external script`);
+    // UI pass step 2: icons.js (the sprite) is the one external script in <head>, by design:
+    // the reserves must still run before the first external script in <body>.
+    assert.ok(n.end < html.indexOf('<script src=', html.indexOf('<body')), `${shell}: both run before the first external script in <body>`);
     if (!ref) ref = { h: h.text, n: n.text };
     assert.strictEqual(h.text, ref.h, `${shell}: header block byte-identical`);
     assert.strictEqual(n.text, ref.n, `${shell}: nav block byte-identical`);
   }
 });
 
-test('reserve blocks: their glyphs are the chrome-icon paths common.js builds (no drift)', () => {
+test('reserve blocks: their glyphs are the sprite icons common.js builds (no drift)', () => {
+  // UI pass step 2 (DELIBERATE lock update): the reserves draw <use href="#i-NAME"> from the
+  // icon sprite, like the injectors they stand in for; bind each to the SAME registry name
+  // common.js's CHROME_ICON map gives the real glyph.
   const c = freshCommon();
   const html = read('public/index.html');
   const h = block(html, 'header').text; const n = block(html, 'nav').text;
   for (const name of ['search', 'download', 'queue']) {
-    const g = c.CHROME_ICON_SVG[name];
-    assert.ok(h.includes(`'${g.vb}', '${g.d}'`), `header block ${name} glyph`);
+    assert.ok(h.includes(`svg('${c.CHROME_ICON[name]}'`), `header block ${name} glyph`);
   }
   for (const name of ['refresh', 'download']) {
-    const g = c.CHROME_ICON_SVG[name];
-    assert.ok(n.includes(`'${g.vb}', '${g.d}'`), `nav block ${name} glyph`);
+    assert.ok(n.includes(`svg('${c.CHROME_ICON[name]}'`), `nav block ${name} glyph`);
   }
+  assert.ok(h.includes("u.setAttribute('href', '#i-' + name)") && n.includes("u.setAttribute('href', '#i-' + name)"), 'both draw from the sprite');
 });
 
 // Parse index.html with its inline scripts (external scripts are never fetched by jsdom).

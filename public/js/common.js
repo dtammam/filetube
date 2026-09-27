@@ -8,76 +8,38 @@ const THEME_MODES = ['light', 'dark'];
 const DEFAULT_ERA = '2021';
 const DEFAULT_MODE = 'light';
 
-// ---- First-paint chrome icons: inline SVG (not CSS masks) -----------------
-// v1.87.1 (Dean): the bottom-nav + top-right header glyphs used the
-// `-webkit-mask-image` technique, which on iOS shows NOTHING until the mask
-// image is DECODED - so on a mobile PWA cold start the labels paint first and
-// the glyphs "pop in" a beat later. The notification bell + queue never lagged
-// because they are inline <svg> (they ride the text layer, no mask-decode gate).
-// v1.87.0 inlined the mask as a data-URI to kill the fetch; on-device the pop-in
-// was UNCHANGED, proving the fetch was never the cause - the mask DECODE was.
-// The fix Dean chose: render these glyphs as inline <svg>, exactly like the bell
-// /queue. Trade-off (accepted): the chrome glyphs no longer follow the icon-set
-// picker (outlined/rounded/filled/emoji) - like the bell/queue, they use ONE
-// fixed style. Dean picked ROUNDED (falling back to outlined for the four glyphs
-// with no rounded variant on disk: history, podcast, books, downloads).
+// ---- Chrome icons: the icon registry's sprite ------------------------------
+// v1.87.1 (Dean): the bottom-nav + header glyphs moved off `-webkit-mask-image`
+// (iOS paints NOTHING until a mask image decodes, so glyphs popped in after their
+// labels on a cold start) to inline <svg>, which rides the text layer.
+// UI professionalism pass step 2 (plan D4.2): they are still inline <svg>, but draw a
+// <symbol> from the icon registry's sprite (public/js/icons.js, generated from
+// Material Symbols by tools/icons/build.js). Each shell injects the sprite from the
+// first script in <body>, so the glyphs still paint with the text; and the sprite
+// follows the icon-set picker again (outlined/rounded/filled), which the fixed-path
+// inline glyphs could not.
 //
-// The path data is machine-derived from the on-disk assets (rounded/ where it
-// exists, else the default outlined) and byte-bound by chrome-icons.test.js, so
-// a drift or a swapped asset goes red. All share Material's `0 -960 960 960`
-// coordinate box except `podcast` (an older `0 0 24 24` asset).
-const CHROME_ICON_SVG = {
-  home: { vb: '0 -960 960 960', d: 'M240-200h120v-200q0-17 11.5-28.5T400-440h160q17 0 28.5 11.5T600-400v200h120v-360L480-740 240-560v360Zm-80 0v-360q0-19 8.5-36t23.5-28l240-180q21-16 48-16t48 16l240 180q15 11 23.5 28t8.5 36v360q0 33-23.5 56.5T720-120H560q-17 0-28.5-11.5T520-160v-200h-80v200q0 17-11.5 28.5T400-120H240q-33 0-56.5-23.5T160-200Zm320-270Z' },
-  liked: { vb: '0 -960 960 960', d: 'm354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z' },
-  folder: { vb: '0 -960 960 960', d: 'M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h207q16 0 30.5 6t25.5 17l57 57h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z' },
-  history: { vb: '0 -960 960 960', d: 'M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z' },
-  podcast: { vb: '0 0 24 24', d: 'M12 14.2c.85 0 1.53.73 1.44 1.58l-.58 5.32c-.05.51-.42.9-.86.9s-.81-.39-.86-.9l-.58-5.32A1.45 1.45 0 0 1 12 14.2z' },
-  music: { vb: '0 -960 960 960', d: 'M320-273v-414q0-17 12-28.5t28-11.5q5 0 10.5 1.5T381-721l326 207q9 6 13.5 15t4.5 19q0 10-4.5 19T707-446L381-239q-5 3-10.5 4.5T360-233q-16 0-28-11.5T320-273Zm80-207Zm0 134 210-134-210-134v268Z' },
-  books: { vb: '0 -960 960 960', d: 'M560-564v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-600q-38 0-73 9.5T560-564Zm0 220v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-380q-38 0-73 9t-67 27Zm0-110v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-490q-38 0-73 9.5T560-454ZM260-320q47 0 91.5 10.5T440-278v-394q-41-24-87-36t-93-12q-36 0-71.5 7T120-692v396q35-12 69.5-18t70.5-6Zm260 42q44-21 88.5-31.5T700-320q36 0 70.5 6t69.5 18v-396q-33-14-68.5-21t-71.5-7q-47 0-93 12t-87 36v394Zm-40 118q-48-38-104-59t-116-21q-42 0-82.5 11T100-198q-21 11-40.5-1T40-234v-482q0-11 5.5-21T62-752q46-24 96-36t102-12q58 0 113.5 15T480-740q51-30 106.5-45T700-800q52 0 102 12t96 36q11 5 16.5 15t5.5 21v482q0 23-19.5 35t-40.5 1q-37-20-77.5-31T700-240q-60 0-116 21t-104 59ZM280-494Z' },
-  downloads: { vb: '0 -960 960 960', d: 'M380-300 660-480 380-660v360ZM140-160q-24.75 0-42.37-17.63Q80-195.25 80-220v-520q0-24.75 17.63-42.38Q115.25-800 140-800h680q24.75 0 42.38 17.62Q880-764.75 880-740v520q0 24.75-17.62 42.37Q844.75-160 820-160H140Zm0-60h680v-520H140v520Zm0 0v-520 520Z' },
-  moon: { vb: '0 -960 960 960', d: 'M480-120q-151 0-255.5-104.5T120-480q0-138 90-239.5T440-838q13-2 23 3.5t16 14.5q6 9 6.5 21t-7.5 23q-17 26-25.5 55t-8.5 61q0 90 63 153t153 63q31 0 61.5-9t54.5-25q11-7 22.5-6.5T819-479q10 5 15.5 15t3.5 24q-14 138-117.5 229T480-120Zm0-80q88 0 158-48.5T740-375q-20 5-40 8t-40 3q-123 0-209.5-86.5T364-660q0-20 3-40t8-40q-78 32-126.5 102T200-480q0 116 82 198t198 82Zm-10-270Z' },
-  sun: { vb: '0 -960 960 960', d: 'M480-360q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0 80q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680q83 0 141.5 58.5T680-480q0 83-58.5 141.5T480-280ZM80-440q-17 0-28.5-11.5T40-480q0-17 11.5-28.5T80-520h80q17 0 28.5 11.5T200-480q0 17-11.5 28.5T160-440H80Zm720 0q-17 0-28.5-11.5T760-480q0-17 11.5-28.5T800-520h80q17 0 28.5 11.5T920-480q0 17-11.5 28.5T880-440h-80ZM480-760q-17 0-28.5-11.5T440-800v-80q0-17 11.5-28.5T480-920q17 0 28.5 11.5T520-880v80q0 17-11.5 28.5T480-760Zm0 720q-17 0-28.5-11.5T440-80v-80q0-17 11.5-28.5T480-200q17 0 28.5 11.5T520-160v80q0 17-11.5 28.5T480-40ZM226-678l-43-42q-12-11-11.5-28t11.5-29q12-12 29-12t28 12l42 43q11 12 11 28t-11 28q-11 12-27.5 11.5T226-678Zm494 495-42-43q-11-12-11-28.5t11-27.5q11-12 27.5-11.5T734-282l43 42q12 11 11.5 28T777-183q-12 12-29 12t-28-12Zm-42-495q-12-11-11.5-27.5T678-734l42-43q11-12 28-11.5t29 11.5q12 12 12 29t-12 28l-43 42q-12 11-28 11t-28-11ZM183-183q-12-12-12-29t12-28l43-42q12-11 28.5-11t27.5 11q12 11 11.5 27.5T282-226l-42 43q-11 12-28 11.5T183-183Zm297-297Z' },
-  cog: { vb: '0 -960 960 960', d: 'M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z' },
-  search: { vb: '0 -960 960 960', d: 'M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z' },
-  download: { vb: '0 -960 960 960', d: 'M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z' },
-  caret: { vb: '0 -960 960 960', d: 'M480-361q-8 0-15-2.5t-13-8.5L268-556q-11-11-11-28t11-28q11-11 28-11t28 11l156 156 156-156q11-11 28-11t28 11q11 11 11 28t-11 28L508-372q-6 6-13 8.5t-15 2.5Z' },
-  // v1.102 (tranche 4): the music song-row + podcast episode-row action glyphs,
-  // swapped from `.icon-*` masks (which decode-lag on iOS -> pop-in) to these
-  // inline chrome-icon SVGs. Byte-bound to the on-disk assets in chrome-icons.test.js.
-  queue: { vb: '0 0 24 24', d: 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z' },
-  heart: { vb: '0 -960 960 960', d: 'm480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 24.5t81 66.5q34-42 81-66.5t99-24.5q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q744-381 678-315T538-172l-58 52Z' },
-  delete: { vb: '0 -960 960 960', d: 'M280-120q-33 0-56.5-23.5T200-200v-520q-17 0-28.5-11.5T160-760q0-17 11.5-28.5T200-800h160q0-17 11.5-28.5T400-840h160q17 0 28.5 11.5T600-800h160q17 0 28.5 11.5T800-760q0 17-11.5 28.5T760-720v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM400-280q17 0 28.5-11.5T440-320v-280q0-17-11.5-28.5T400-640q-17 0-28.5 11.5T360-600v280q0 17 11.5 28.5T400-280Zm160 0q17 0 28.5-11.5T600-320v-280q0-17-11.5-28.5T560-640q-17 0-28.5 11.5T520-600v280q0 17 11.5 28.5T560-280ZM280-720v520-520Z' },
-  // v1.157 (P2a): the hamburger + desktop-sidebar (Stats) glyphs, swapped from
-  // `.icon-*` masks (which decode-lag on iOS -> cold-start pop-in) to inline
-  // chrome-icon SVGs. Byte-bound to the on-disk rounded/ assets in
-  // chrome-icons.test.js. `home`/`cog` already exist above; `star` is the
-  // Stats glyph (same rounded/star.svg as `liked`).
-  menu: { vb: '0 -960 960 960', d: 'M160-240q-17 0-28.5-11.5T120-280q0-17 11.5-28.5T160-320h640q17 0 28.5 11.5T840-280q0 17-11.5 28.5T800-240H160Zm0-200q-17 0-28.5-11.5T120-480q0-17 11.5-28.5T160-520h640q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440H160Zm0-200q-17 0-28.5-11.5T120-680q0-17 11.5-28.5T160-720h640q17 0 28.5 11.5T840-680q0 17-11.5 28.5T800-640H160Z' },
-  star: { vb: '0 -960 960 960', d: 'm354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z' },
-  // v1.339 (L2): the bottom-nav Subs tab glyph (was the `.icon-refresh` mask, which
-  // decode-lags on iOS) - shared with the shells' pre-paint reserve. rounded/refresh.svg.
-  refresh: { vb: '0 -960 960 960', d: 'M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-70q0-17 11.5-28.5T760-800q17 0 28.5 11.5T800-760v200q0 17-11.5 28.5T760-520H560q-17 0-28.5-11.5T520-560q0-17 11.5-28.5T560-600h128q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q68 0 124.5-34.5T692-367q8-14 22.5-19.5t29.5-.5q16 5 23 21t-1 30q-41 80-117 128t-169 48Z' },
-  // v1.340 (Dean: "use the same notification glyph versus emoji"): the header bell's own
-  // path (notifications.svg, the one it always drew) and Material's notifications_off
-  // (upstream google/material-design-icons src/social/notifications_off/materialicons/24px.svg,
-  // its empty 0 0 24 24 box path dropped). The header bell, the watch page's Notify button and
-  // the Subscriptions rows all draw from these two, so the bell is one glyph everywhere.
-  bell: { vb: '0 0 24 24', d: 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z' },
-  bellOff: { vb: '0 0 24 24', d: 'M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01L18 14.68z' },
-  // v1.340 (gate r1 W2): the FILLED star (filled/star.svg) that replaces the text "★" in the watch
-  // page's "Pinned" label: the text star came from a taller fallback font and grew the button.
-  starFilled: { vb: '0 0 24 24', d: 'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z' },
+// CHROME_ICON maps the chrome's historical glyph names to registry names; new code
+// names registry icons directly (ui.icon, step 3).
+const CHROME_ICON = {
+  home: 'home', liked: 'star', folder: 'folder', history: 'history', podcast: 'podcasts',
+  music: 'music_note', books: 'menu_book', downloads: 'smart_display', moon: 'dark_mode',
+  sun: 'light_mode', cog: 'settings', search: 'search', download: 'download', caret: 'expand_more',
+  queue: 'playlist_play', heart: 'favorite', delete: 'delete', menu: 'menu', star: 'star',
+  refresh: 'subscriptions', bell: 'notifications', bellOff: 'notifications_off', starFilled: 'star.fill',
 };
 
+// The sprite reference for a registry name ('keep.fill' -> '#i-keep-fill').
+const iconHref = (registryName) => '#i-' + registryName.replace(/\./g, '-');
+
 // The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
-// reconstructs it to source-lock the static bottom-nav markup in index.html).
-// Colour comes from CSS (`.chrome-icon { fill: currentColor }`), so the glyph
-// tints with its container exactly like the old mask + `background-color`.
+// reconstructs it to source-lock the shells' static header/nav markup). Colour
+// comes from CSS (`.chrome-icon { fill: currentColor }`), inherited into the symbol.
 function chromeIconMarkup(name, extraClass) {
-  const g = CHROME_ICON_SVG[name];
-  if (!g) return '';
+  const reg = CHROME_ICON[name];
+  if (!reg) return '';
   const cls = 'chrome-icon' + (extraClass ? ' ' + extraClass : '');
-  return '<svg class="' + cls + '" viewBox="' + g.vb + '" aria-hidden="true"><path d="' + g.d + '"/></svg>';
+  return '<svg class="' + cls + '" aria-hidden="true"><use href="' + iconHref(reg) + '"/></svg>';
 }
 
 // A live SVG element for the same glyph, built in the SVG namespace so it is
@@ -85,21 +47,28 @@ function chromeIconMarkup(name, extraClass) {
 // `doc` (optional, v1.340) = the document to build in - a caller holding an element from
 // another document (a test's JSDOM) passes its ownerDocument; default the page's.
 function chromeIconEl(name, extraClass, doc) {
-  const g = CHROME_ICON_SVG[name];
+  const reg = CHROME_ICON[name];
+  return reg ? spriteIconEl(reg, 'chrome-icon' + (extraClass ? ' ' + extraClass : ''), doc) : null;
+}
+
+// A live <svg><use href="#i-NAME"/></svg> for a REGISTRY name (the header bell and
+// queue, which size themselves with width/height attributes rather than .chrome-icon).
+// fill="currentColor" is inherited into the symbol, so the glyph tints with its button.
+function spriteIconEl(registryName, cls, doc) {
   const d = doc || (typeof document !== 'undefined' ? document : null);
   // Real browsers always have createElementNS (mandatory: an SVG built via the
   // plain createElement lands in the HTML namespace and never renders). Some
   // lightweight unit-test document stubs model only createElement, so degrade to
   // null there and let callers skip the (incidental) glyph.
-  if (!g || !d || typeof d.createElementNS !== 'function') return null;
+  if (!registryName || !d || typeof d.createElementNS !== 'function') return null;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = d.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'chrome-icon' + (extraClass ? ' ' + extraClass : ''));
-  svg.setAttribute('viewBox', g.vb);
+  if (cls) svg.setAttribute('class', cls);
+  svg.setAttribute('fill', 'currentColor');
   svg.setAttribute('aria-hidden', 'true');
-  const path = d.createElementNS(NS, 'path');
-  path.setAttribute('d', g.d);
-  svg.appendChild(path);
+  const use = d.createElementNS(NS, 'use');
+  use.setAttribute('href', iconHref(registryName));
+  svg.appendChild(use);
   return svg;
 }
 
@@ -108,7 +77,7 @@ function chromeIconEl(name, extraClass, doc) {
 // Subscribed, Pin channel / Pinned). Every label is laid out in ONE grid cell, so the
 // button is always as wide as the longest and nothing beside it moves on a tap; only the
 // current one is visible (the idle ones are `visibility:hidden`, which also keeps them
-// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON_SVG name } draws
+// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON name } draws
 // that glyph INSIDE the label's slot before its words, or { label: { name, after: true } }
 // after them - inside, so the button's baseline stays the text's (a leading svg item would
 // set a flex button's baseline to its bottom edge and drop the neighbouring buttons ~3px).
@@ -806,7 +775,10 @@ function resolveIconSet(storedSet, era) {
 function applyIconSet(storedSetPref) {
   const d = document.documentElement;
   const era = d.getAttribute('data-theme') || DEFAULT_ERA;
-  d.setAttribute('data-icons', resolveIconSet(storedSetPref, era));
+  const set = resolveIconSet(storedSetPref, era);
+  d.setAttribute('data-icons', set);
+  // UI pass step 2: the chrome glyphs draw from the sprite; swap it to the new set.
+  if (typeof FTIcons !== 'undefined') FTIcons.inject(set);
   if (storedSetPref === 'auto' || ICON_SETS.includes(storedSetPref)) {
     try { localStorage.setItem('ft-icons', storedSetPref); }
     catch (_) { /* storage disabled — attribute still applied */ }
@@ -4008,19 +3980,10 @@ function injectNotificationBellIfEnabled() {
       bellBtn.setAttribute('aria-label', 'Notifications');
       bellBtn.setAttribute('aria-haspopup', 'true');
       bellBtn.setAttribute('aria-expanded', 'false');
-      // Inline SVG (currentColor) rather than an icon-font class: the era
-      // icon sets have no bell glyph, and adding one per set is a bigger
-      // change than the bell warrants. viewBox path = a plain outline bell.
-      const svgNs = 'http://www.w3.org/2000/svg';
-      const svg = document.createElementNS(svgNs, 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
+      // The shared bell (v1.340), from the icon registry's sprite (UI pass step 2).
+      const svg = spriteIconEl(CHROME_ICON.bell);
       svg.setAttribute('width', '22');
       svg.setAttribute('height', '22');
-      svg.setAttribute('aria-hidden', 'true');
-      const bellPath = document.createElementNS(svgNs, 'path');
-      bellPath.setAttribute('d', CHROME_ICON_SVG.bell.d); // the shared bell (v1.340)
-      bellPath.setAttribute('fill', 'currentColor');
-      svg.appendChild(bellPath);
       bellBtn.appendChild(svg);
       const badge = document.createElement('span');
       badge.id = 'notif-bell-badge';
@@ -4660,19 +4623,11 @@ function injectQueueChrome() {
       btn.setAttribute('aria-label', 'Playback queue');
       btn.setAttribute('aria-haspopup', 'true');
       btn.setAttribute('aria-expanded', 'false');
-      // Inline SVG like the bell (paired header chrome - the bell is inline
-      // too; the cards use the icon-queue mask since v1.67): three list
-      // lines + a play triangle - YouTube's queue vocabulary.
-      const svgNs = 'http://www.w3.org/2000/svg';
-      const svg = document.createElementNS(svgNs, 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
+      // Inline SVG like the bell (paired header chrome): list lines + a play
+      // triangle - YouTube's queue vocabulary. From the icon sprite (UI pass step 2).
+      const svg = spriteIconEl(CHROME_ICON.queue);
       svg.setAttribute('width', '22');
       svg.setAttribute('height', '22');
-      svg.setAttribute('aria-hidden', 'true');
-      const glyph = document.createElementNS(svgNs, 'path');
-      glyph.setAttribute('d', 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z');
-      glyph.setAttribute('fill', 'currentColor');
-      svg.appendChild(glyph);
       btn.appendChild(svg);
       const badge = document.createElement('span');
       badge.id = 'queue-btn-badge';
@@ -6807,7 +6762,7 @@ function wireSearchAffordances() {
   btn.setAttribute('aria-label', 'Search');
   // v1.87.1 (Dean): inline <svg>, not an `.icon-search` mask - a mask shows
   // nothing until it decodes, so it "popped in" after the label on a mobile
-  // cold start (the bell/queue, inline SVG, never did). See CHROME_ICON_SVG.
+  // cold start (the bell/queue, inline SVG, never did). See CHROME_ICON.
   const searchGlyph = chromeIconEl('search');
   if (searchGlyph) btn.appendChild(searchGlyph);
   // v1.339 (L2): take the pre-paint reserve's place (same box) when the shell painted one.
@@ -7415,7 +7370,7 @@ function injectOneOffDownloadButtonIfEnabled() {
         btn.setAttribute('aria-label', 'Download a video');
         btn.title = 'Download a video';
         // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-download`
-        // mask - the mask decode-lags on a mobile cold start. See CHROME_ICON_SVG.
+        // mask - the mask decode-lags on a mobile cold start. See CHROME_ICON.
         const dlGlyph = chromeIconEl('download');
         if (dlGlyph) btn.appendChild(dlGlyph);
         // v1.86.0 (Dean): the word "Download" lives in a .btn-label span (like the
@@ -17006,10 +16961,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,
-    // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
-    // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
-    // and source-locks the static bottom-nav markup against chromeIconMarkup.
-    CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl, stableToggleLabelHtml,
+    // v1.87.1 / UI pass step 2: the chrome glyphs (the name map + markup/element
+    // builders over the icon sprite). chrome-icons.test.js binds every map entry to a
+    // registry icon and source-locks the shells' static markup against chromeIconMarkup.
+    CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl, stableToggleLabelHtml,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).

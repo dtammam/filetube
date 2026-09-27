@@ -211,7 +211,7 @@ intentionally colorful rather than `currentColor`-themed.
 `notifications_off`, upstream `google/material-design-icons`
 `src/social/notifications_off/materialicons/24px.svg`, its empty box path dropped) are NOT
 `.icon-*` mask classes and have no rounded / filled / emoji variants: they are the source of
-`CHROME_ICON_SVG.bell` / `.bellOff` in `public/js/common.js`, drawn as inline SVG by the
+`CHROME_ICON.bell` / `.bellOff` in `public/js/common.js` (the icon sprite), drawn by the
 header bell, the watch page's Notify button and the Subscriptions rows.
 `test/unit/chrome-icons.test.js` binds each path to its file byte for byte.
 

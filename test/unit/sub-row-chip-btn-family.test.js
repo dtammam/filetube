@@ -130,7 +130,7 @@ test('AC4: the 2009 gloss (light + dark) still targets .btn - the chip inherits 
 });
 
 test('AC3: ONE writer of the bell state - the glyph is chosen in exactly one place (applyBellState), the builder calls it, and the writer sets class + aria + glyph together', () => {
-  // v1.340: the emoji pair became the shared bell glyphs (common.js CHROME_ICON_SVG bell /
+  // v1.340: the emoji pair became the shared bell glyphs (common.js CHROME_ICON bell /
   // bellOff), so the one-writer census counts the glyph NAMES.
   assert.strictEqual((JS.match(/'bellOff'/g) || []).length, 1, 'the OFF glyph is chosen in exactly one place');
   assert.strictEqual((JS.match(/'bell'/g) || []).length, 1, 'the ON glyph is chosen in exactly one place (qa r1 Q3)');
@@ -149,12 +149,12 @@ test('AC3: ONE writer of the bell state - the glyph is chosen in exactly one pla
   assert.match(rowFn, /applyBellState\(bellBtn, sub\.pushBell === true\)/);
   assert.doesNotMatch(rowFn, /bellBtn\.className =/, 'the builder never writes the bell class itself');
   // executed: the writer is the same function the module exports, and it DRAWS the glyph
-  const { CHROME_ICON_SVG } = require('../../public/js/common.js');
+  // UI pass step 2: the glyph is the sprite symbol it <use>s (the registry binds the path).
   const { document } = new JSDOM('<button>old</button>').window;
   const b = document.querySelector('button');
-  const drawn = () => { const svgs = b.querySelectorAll('svg'); return svgs.length === 1 ? svgs[0].querySelector('path').getAttribute('d') : `${svgs.length} svgs`; };
+  const drawn = () => { const svgs = b.querySelectorAll('svg'); return svgs.length === 1 ? svgs[0].querySelector('use').getAttribute('href') : `${svgs.length} svgs`; };
   applyBellState(b, true);
-  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell sub-row-bell-active', 'true', 'bell', CHROME_ICON_SVG.bell.d, '']);
+  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell sub-row-bell-active', 'true', 'bell', '#i-notifications', '']);
   applyBellState(b, 1);
-  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell', 'false', 'bellOff', CHROME_ICON_SVG.bellOff.d, ''], 'only boolean true is ON; the old glyph is replaced, never stacked');
+  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell', 'false', 'bellOff', '#i-notifications_off', ''], 'only boolean true is ON; the old glyph is replaced, never stacked');
 });
