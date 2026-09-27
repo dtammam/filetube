@@ -1,0 +1,10 @@
+/* ui-lint-canary: path=public/css/ui.css */
+.ui-foo { cursor: pointer; }
+.ui-foo:active::after { background-color: var(--tint-press); }
+.ui-bar { cursor: pointer; }
+.ui-bar[data-pressed] { background-color: var(--tint-press); }
+.ui-q__link { cursor: pointer; }
+.ui-q:has(> .ui-q__body .ui-q__link:active) { background-color: var(--tint-press); }
+.ui-sw[aria-checked="true"] { cursor: pointer; }
+.ui-sw[aria-checked="true"]:active { background-color: var(--tint-press); }
+.plain-link { cursor: pointer; }

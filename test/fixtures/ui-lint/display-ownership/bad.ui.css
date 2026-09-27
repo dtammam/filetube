@@ -1,0 +1,2 @@
+/* ui-lint-canary: path=public/css/ui.css expect=1 */
+@media (max-width: 768px) { [hidden] { display: none !important; } }

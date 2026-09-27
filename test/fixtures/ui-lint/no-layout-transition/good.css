@@ -1,0 +1,6 @@
+/* ui-lint-canary: path=public/css/style.css */
+.a { transition: opacity var(--dur-fade) var(--ease-std), transform var(--dur-sheet) var(--ease-enter); }
+.b { transition: none; }
+.c { transition-property: background-color, border-color; }
+.d { transition: var(--canary-transition); }
+.e { transition: box-shadow var(--dur-press) linear, filter var(--dur-press); }

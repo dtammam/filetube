@@ -1,0 +1,6 @@
+/* ui-lint-canary: path=public/css/ui.css expect=3 */
+.ui-foo { cursor: pointer; }
+.ui-bar { cursor: pointer; }
+@media (hover: hover) { .ui-bar:hover { color: var(--ink-1); } }
+.ui-baz__item { cursor: pointer; }
+.ui-baz:active { color: var(--ink-1); }

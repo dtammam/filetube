@@ -1,0 +1,7 @@
+/* ui-lint-canary: path=public/css/ui.css */
+.ui-btn--primary:active { background-color: var(--accent-fill); }
+.a { color: var(--accent); }
+.b:hover { color: var(--ink-1); background: var(--tint-hover); }
+.activex { color: var(--accent); }
+.c:hover { color: var(--accent-text); }
+.tab.active { background-color: var(--fill-selected); color: var(--ink-1); }

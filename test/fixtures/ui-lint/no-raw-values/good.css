@@ -1,0 +1,10 @@
+/* ui-lint-canary: path=public/css/style.css */
+/* Near misses: tokens, %, viewport units, fr, keywords, calc over tokens, the ladder idiom,
+   a url() holding hashes, linear easing, a zero env() fallback, a token-exempt line. */
+.g1 { color: var(--ink-1); width: 100%; height: 50vh; min-height: 100dvh; margin: 0; padding: var(--space-4) var(--space-8); }
+.g2 { max-width: calc(100% - var(--inset)); border-radius: 50%; grid-template-columns: repeat(3, 1fr); }
+.g3 { z-index: calc(var(--z-modal) + 1); transition: opacity var(--dur-fade) var(--ease-std); font: var(--t-body); }
+.g4 { width: 13px; } /* token-exempt: canary exemption */
+.g5 { color: transparent; background: currentColor; flex: 1 1 0; line-height: normal; }
+.g6 { background: url("data:image/svg+xml,%23fff#abc") no-repeat; animation: ui-spin var(--dur-spin) linear infinite; }
+.g7 { top: env(safe-area-inset-top, 0px); box-shadow: none; font-weight: var(--btn-weight); }

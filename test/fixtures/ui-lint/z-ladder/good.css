@@ -1,0 +1,5 @@
+/* ui-lint-canary: path=public/css/style.css */
+.a { position: fixed; z-index: var(--z-modal); }
+.b-sheet { z-index: calc(var(--z-sheet) + 1); }
+.c { position: relative; z-index: 2; }
+.d { position: sticky; z-index: auto; }
