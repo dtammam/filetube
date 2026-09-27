@@ -3,10 +3,10 @@ plan: fouc-toctou-audit
 harness: v2 · lean
 branch: feat/v1.339-fouc-toctou
 anchor: outcome
-status: Gate:APPROVED r3 @03a1f634
-next: final gate APPROVED r3 @03a1f634; fix qa W1 (22 shell comments -> test/unit/app-look-l2.test.js), seats confirm the comment-only delta, then release v1.339.0 (docs/RELEASING.md)
+status: Gate:APPROVED r4 @ab880c99
+next: release v1.339.0 (release commit, plan close, merge, tag, PR); then Dean's device pass (tech-debt #287 lists the checks)
 design: pending
-gate: APPROVED r3 @03a1f634 (adversary + qa + security-brief); safety checkpoint approved r2 at f8a7ee52 after r1 CHANGES fixed in F1-F3; qa r3 W1 (shell comments name a missing test file) fixed next, delta confirm pending
+gate: APPROVED r4 @ab880c99 (adversary + qa + security-brief); safety checkpoint approved r2 at f8a7ee52 after r1 CHANGES fixed in F1-F3; final delta approved r3 at 03a1f634; r4 = the qa W1 comment-only fix; residuals filed as tech-debt #287
 ---
 
 # Audit: FOUC / layout shift / TOCTOU across the app
@@ -459,7 +459,7 @@ this branch.
   Residual: an uploader-filed one-off's forged pair could still name a file created during the job
   window elsewhere (needs an operator `--print` + timing); that wiring is untested.
 
-### Gate r3 notes (all three seats APPROVED @03a1f634)
+### Gate r3 notes (all three seats approved at 03a1f634)
 
 - qa r3 W1: the pre-paint reserve blocks in all 11 header shells name `test/unit/chrome-reserve.test.js`,
   which does not exist (the lock is test/unit/app-look-l2.test.js) - fixed in a comment-only sweep.
@@ -510,15 +510,18 @@ this branch.
 
 ## Gate
 
-Gate: APPROVED r1 - security-brief, reviewed at 8919ba55 (superseded: re-approved r3 @03a1f634)
+Gate: APPROVED r1 - security-brief, reviewed at 8919ba55 (superseded: re-approved r4 @ab880c99)
 Gate: CHANGES r1 @8919ba55 — qa
 Gate: CHANGES r1 @8919ba55 — adversary
-Gate: APPROVED r2 - security-brief, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)
-Gate: APPROVED r3 @03a1f634 — security-brief
-Gate: APPROVED r2 - qa, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)
-Gate: APPROVED r3 @03a1f634 — qa
-Gate: APPROVED r2 - adversary, reviewed at f8a7ee52 (superseded: re-approved r3 @03a1f634)
-Gate: APPROVED r3 @03a1f634 — adversary
+Gate: APPROVED r2 - security-brief, reviewed at f8a7ee52 (superseded: re-approved r4 @ab880c99)
+Gate: APPROVED r3 - security-brief, reviewed at 03a1f634 (superseded: re-approved r4 @ab880c99)
+Gate: APPROVED r4 @ab880c99 — security-brief
+Gate: APPROVED r2 - qa, reviewed at f8a7ee52 (superseded: re-approved r4 @ab880c99)
+Gate: APPROVED r3 - qa, reviewed at 03a1f634 (superseded: re-approved r4 @ab880c99)
+Gate: APPROVED r4 @ab880c99 — qa
+Gate: APPROVED r2 - adversary, reviewed at f8a7ee52 (superseded: re-approved r4 @ab880c99)
+Gate: APPROVED r3 - adversary, reviewed at 03a1f634 (superseded: re-approved r4 @ab880c99)
+Gate: APPROVED r4 @ab880c99 — adversary
 
 r1 findings (seat reports, summarized by the Architect; repros live in the seats' scratch dirs):
 - **C1 (qa + adversary, CRITICAL, regression from S3):** the T-S2 keep-guard (orchestrator.js

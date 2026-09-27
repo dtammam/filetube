@@ -3280,5 +3280,11 @@
     "date": "2026-09-26",
     "title": "Videos from any site get Share, a site icon and Reheat",
     "intent": "Videos you downloaded from sites like Reddit, Facebook or TikTok now have Share on their cards, in search and in Liked, not just on their page, and show the site's icon where there is no uploader photo. Reheat now refreshes their title, date and views from the original link too, and Pin channel works for them."
+  },
+  {
+    "version": "1.339.0",
+    "date": "2026-09-27",
+    "title": "Your files are safer, and screens stop jumping around",
+    "intent": "Closes several rare ways a file or your watch progress could be lost: downloading something you already have, asking for the audio of a video you already have, dragging folders in the sidebar, saving settings while a drive is offline, and restoring from the trash while the library is scanning. Music and the home page now load without shifting, and album art loads faster and appears all at once."
   }
 ]
