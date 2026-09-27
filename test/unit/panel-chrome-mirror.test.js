@@ -31,12 +31,14 @@ const path = require('node:path');
 const REPO = path.join(__dirname, '..', '..');
 const STYLE_CSS = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
 const COMMON_JS = fs.readFileSync(path.join(REPO, 'public', 'js', 'common.js'), 'utf8');
+const { cssRules, isHoverGated } = require('../helpers/stylesheets');
 
 // Extract a rule's declarations as a SORTED array of `prop: value` strings,
-// comments stripped - order-insensitive, whitespace-insensitive.
+// comments stripped - order-insensitive, whitespace-insensitive. A rule may be
+// indented: UI pass step 4 (AC6) moved every :hover rule inside @media (hover: hover).
 function declarations(css, selector) {
   const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:^|\\n)${esc} \\{([\\s\\S]*?)\\}`);
+  const re = new RegExp(`(?:^|\\n)[ ]*${esc} \\{([\\s\\S]*?)\\}`);
   const m = re.exec(css);
   assert.ok(m, `rule found: ${selector}`);
   return m[1]
@@ -85,8 +87,13 @@ for (const [queueSel, notifSel] of [
     // green mirror. Each locked selector must define exactly ONE rule.
     for (const sel of [queueSel, notifSel]) {
       const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const count = (STYLE_CSS.match(new RegExp(`(?:^|\\n)${esc} \\{`, 'g')) || []).length;
+      const count = (STYLE_CSS.match(new RegExp(`(?:^|\\n)[ ]*${esc} \\{`, 'g')) || []).length;
       assert.strictEqual(count, 1, `${sel} defined exactly once - no shadowing duplicate`);
+      // UI pass step 4 (AC6): the hover twin is gated, so a touch tap never leaves the tint.
+      if (sel.includes(':hover')) {
+        const rule = cssRules(STYLE_CSS).find((r) => r.sel === sel);
+        assert.ok(rule && isHoverGated(rule.at), `${sel} sits inside @media (hover: hover)`);
+      }
     }
   });
 }

@@ -1171,8 +1171,15 @@ test('v1.50.1: the collapsed chip summary is dimmed, and restored on hover/focus
   const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.dl-status-chip-summary\s*\{[^}]*opacity:\s*0\.55/, 'collapsed summary dimmed');
-  const restore = /#dl-status-chip:hover \.dl-status-chip-summary,\s*\.dl-status-chip-summary:focus-visible,\s*\.dl-status-chip-expanded \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/;
-  assert.match(css, restore, 'hover, focus-visible, and the expanded state all restore full opacity');
+  // UI pass step 4 (AC6): the rule split - focus-visible and expanded restore everywhere;
+  // the hover leg restores only inside @media (hover: hover), so a tap never leaves it lit.
+  const restore = /\.dl-status-chip-summary:focus-visible,\s*\.dl-status-chip-expanded \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/;
+  assert.match(css, restore, 'focus-visible and the expanded state restore full opacity');
+  const { cssRules, isHoverGated } = require('../helpers/stylesheets');
+  const hoverLeg = cssRules(css).find((r) => r.sel === '#dl-status-chip:hover .dl-status-chip-summary');
+  assert.ok(hoverLeg, 'the hover leg exists');
+  assert.match(hoverLeg.body, /opacity:\s*1/, 'hover restores full opacity');
+  assert.ok(isHoverGated(hoverLeg.at), 'the hover leg sits inside @media (hover: hover)');
   // v1.50.1 slim-gate WARNING: the ERROR state must be exempt from the dim
   // entirely -- a sticky unacknowledged failure is an attention affordance,
   // and touch devices have no hover to rescue it.

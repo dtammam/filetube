@@ -168,8 +168,10 @@ summary,
   border: 3px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+  }
 }
 ::-webkit-scrollbar-corner {
   background: var(--bg-color);
@@ -192,9 +194,11 @@ summary,
   border: 1px solid var(--border-dark);
   background-clip: border-box;
 }
-[data-theme="2005"]::-webkit-scrollbar-thumb:hover,
-[data-theme="2005"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--btn-hover);
+@media (hover: hover) {
+  [data-theme="2005"]::-webkit-scrollbar-thumb:hover,
+  [data-theme="2005"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--btn-hover);
+  }
 }
 [data-theme="2005"]::-webkit-scrollbar-corner,
 [data-theme="2005"] ::-webkit-scrollbar-corner {
@@ -218,9 +222,11 @@ summary,
   border: 1px solid var(--border-dark);
   background-clip: border-box;
 }
-[data-theme="2009"]::-webkit-scrollbar-thumb:hover,
-[data-theme="2009"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--btn-hover);
+@media (hover: hover) {
+  [data-theme="2009"]::-webkit-scrollbar-thumb:hover,
+  [data-theme="2009"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--btn-hover);
+  }
 }
 [data-theme="2009"]::-webkit-scrollbar-corner,
 [data-theme="2009"] ::-webkit-scrollbar-corner {
@@ -239,9 +245,11 @@ summary,
   border: 0;
   background-clip: border-box;
 }
-[data-theme="2014"]::-webkit-scrollbar-thumb:hover,
-[data-theme="2014"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+@media (hover: hover) {
+  [data-theme="2014"]::-webkit-scrollbar-thumb:hover,
+  [data-theme="2014"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+  }
 }
 [data-theme="2014"]::-webkit-scrollbar-corner,
 [data-theme="2014"] ::-webkit-scrollbar-corner {
@@ -352,8 +360,10 @@ a {
   text-decoration: none;
 }
 
-a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  a:hover {
+    text-decoration: underline;
+  }
 }
 
 /* Header Styles */
@@ -490,8 +500,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
-.search-btn:hover {
-  background-color: var(--btn-hover);
+@media (hover: hover) {
+  .search-btn:hover {
+    background-color: var(--btn-hover);
+  }
 }
 
 .header-right {
@@ -558,10 +570,14 @@ html.reader-immersive .app-container { padding-top: 0; }
    affordance above. Re-add the underline explicitly on :hover so the
    affordance still works under the 2005 theme. */
 [data-theme="2005"] a.uploader-channel-link { text-decoration: none; }
-[data-theme="2005"] a.uploader-channel-link:hover { text-decoration: underline; }
+@media (hover: hover) {
+  [data-theme="2005"] a.uploader-channel-link:hover { text-decoration: underline; }
+}
 
-.btn:hover {
-  background-color: var(--btn-hover);
+@media (hover: hover) {
+  .btn:hover {
+    background-color: var(--btn-hover);
+  }
 }
 
 /* Tactile press feedback (a nudge down, not a color swap) replaces the old
@@ -605,8 +621,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-color: var(--yt-red-dark);
 }
 
-.btn-primary:hover {
-  background-color: var(--yt-red-dark);
+@media (hover: hover) {
+  .btn-primary:hover {
+    background-color: var(--yt-red-dark);
+  }
 }
 
 /* The watch-page Like button's liked state (v1.108, Dean): a plain neutral
@@ -635,8 +653,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   justify-content: center;
 }
 
-.theme-toggle:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .theme-toggle:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 
 /* Main Container Layout */
@@ -707,10 +727,17 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-base);
 }
 
-.sidebar-item:hover, .sidebar-item.active {
+.sidebar-item.active {
   background-color: var(--bg-secondary);
   text-decoration: none;
   font-weight: var(--fw-bold);
+}
+@media (hover: hover) {
+  .sidebar-item:hover {
+    background-color: var(--bg-secondary);
+    text-decoration: none;
+    font-weight: var(--fw-bold);
+  }
 }
 
 .sidebar-item i {
@@ -776,8 +803,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 0 var(--space-2);
   vertical-align: baseline;
 }
-.folder-rename-btn:hover {
-  color: var(--text-primary);
+@media (hover: hover) {
+  .folder-rename-btn:hover {
+    color: var(--text-primary);
+  }
 }
 
 /* Wave G: the per-folder "show in Music library" toggle - a sibling of the
@@ -792,8 +821,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 0 var(--space-2);
   vertical-align: baseline;
 }
-.folder-music-toggle:hover {
-  color: var(--text-primary);
+@media (hover: hover) {
+  .folder-music-toggle:hover {
+    color: var(--text-primary);
+  }
 }
 .folder-music-toggle.is-on {
   color: var(--text-link);
@@ -894,8 +925,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   box-shadow: none;
   font-weight: normal; /* v1.190 (Dean): match the modern feed chips (.modern-chip has no weight = normal); the base .btn is --fw-semibold, which read as "bolder / different" next to the feed */
 }
-.section-actions .btn:hover {
-  background-color: var(--bg-sidebar);
+@media (hover: hover) {
+  .section-actions .btn:hover {
+    background-color: var(--bg-sidebar);
+  }
 }
 .section-actions .format-toggle-btn.active {
   background-color: var(--text-primary);
@@ -936,10 +969,12 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--bg-secondary);
   border-color: var(--border-color);
 }
-.books-toolbar .btn:not(.btn-primary):hover,
-.music-toolbar-actions .btn:not(.btn-primary):hover,
-.history-toolbar-actions .btn:not(.btn-primary):hover {
-  background-color: var(--bg-sidebar);
+@media (hover: hover) {
+  .books-toolbar .btn:not(.btn-primary):hover,
+  .music-toolbar-actions .btn:not(.btn-primary):hover,
+  .history-toolbar-actions .btn:not(.btn-primary):hover {
+    background-color: var(--bg-sidebar);
+  }
 }
 
 .sidebar-item.drag-over-after {
@@ -1099,9 +1134,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   white-space: nowrap;
   cursor: pointer;
 }
-.sort-menu li:hover,
 .sort-menu li:focus-visible {
   background-color: var(--btn-hover);
+}
+@media (hover: hover) {
+  .sort-menu li:hover {
+    background-color: var(--btn-hover);
+  }
 }
 .sort-menu li.active {
   color: var(--yt-red);
@@ -1342,10 +1381,14 @@ html.reader-immersive .app-container { padding-top: 0; }
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
-.card-delete-btn:hover,
 .card-delete-btn:focus-visible,
 .card-delete-btn.armed {
   opacity: 1;
+}
+@media (hover: hover) {
+  .card-delete-btn:hover {
+    opacity: 1;
+  }
 }
 
 .card-delete-btn .icon-delete {
@@ -1392,10 +1435,15 @@ html.reader-immersive .app-container { padding-top: 0; }
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
-.card-download-btn:hover,
 .card-download-btn:focus-visible {
   opacity: 1;
   background-color: var(--yt-red);
+}
+@media (hover: hover) {
+  .card-download-btn:hover {
+    opacity: 1;
+    background-color: var(--yt-red);
+  }
 }
 
 .card-download-btn .icon-download {
@@ -1434,15 +1482,19 @@ html.reader-immersive .app-container { padding-top: 0; }
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
 }
 
-.card-like-btn:hover,
 .card-like-btn:focus-visible,
-.card-share-btn:hover,
 .card-share-btn:focus-visible,
-.card-reheat-btn:hover,
 .card-reheat-btn:focus-visible,
-.card-transcript-btn:hover,
 .card-transcript-btn:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .card-like-btn:hover,
+  .card-share-btn:hover,
+  .card-reheat-btn:hover,
+  .card-transcript-btn:hover {
+    opacity: 1;
+  }
 }
 
 .card-like-btn.liked {
@@ -1487,11 +1539,17 @@ html.reader-immersive .app-container { padding-top: 0; }
   opacity: 0.7;
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
 }
-.card-feedhide-btn:hover,
 .card-feedhide-btn:focus-visible {
   opacity: 1;
   color: var(--text-primary);
   background-color: var(--bg-secondary);
+}
+@media (hover: hover) {
+  .card-feedhide-btn:hover {
+    opacity: 1;
+    color: var(--text-primary);
+    background-color: var(--bg-secondary);
+  }
 }
 /* Reserve the title's top-right gutter ONLY on cards that carry the button, so
    a long first line never runs under it (no shift on cards without it). */
@@ -1966,8 +2024,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   cursor: pointer;
 }
 
-.player-dock-close:hover {
-  background: var(--scrim-heavy);
+@media (hover: hover) {
+  .player-dock-close:hover {
+    background: var(--scrim-heavy);
+  }
 }
 
 @media (max-width: 768px) {
@@ -2663,8 +2723,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   cursor: pointer;
 }
 
-.uploader-channel-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .uploader-channel-link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* v1.50 (Dean, mid-wave ask): the subscriber count reads as a BADGE now --
@@ -2868,8 +2930,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   text-decoration: none;
 }
 
-.related-card:hover {
-  text-decoration: none;
+@media (hover: hover) {
+  .related-card:hover {
+    text-decoration: none;
+  }
 }
 
 .related-thumb {
@@ -3360,8 +3424,10 @@ select {
   font-size: var(--fs-xl);
 }
 
-.remove-folder-btn:hover {
-  color: var(--yt-red-dark);
+@media (hover: hover) {
+  .remove-folder-btn:hover {
+    color: var(--yt-red-dark);
+  }
 }
 
 .remove-folder-btn:disabled {
@@ -3427,10 +3493,15 @@ select {
   cursor: pointer;
 }
 
-.sub-row-navigable:hover,
 .sub-row-navigable:focus-within {
   outline: 1px solid var(--border-dark);
   outline-offset: -1px;
+}
+@media (hover: hover) {
+  .sub-row-navigable:hover {
+    outline: 1px solid var(--border-dark);
+    outline-offset: -1px;
+  }
 }
 
 /* Beveled single-letter avatar (`name[0]`, uppercased) -- research: "one
@@ -3533,10 +3604,15 @@ select {
   text-decoration: none;
 }
 
-a.sub-row-channel-link:hover,
 a.sub-row-channel-link:focus-visible {
   color: var(--yt-red);
   text-decoration: underline;
+}
+@media (hover: hover) {
+  a.sub-row-channel-link:hover {
+    color: var(--yt-red);
+    text-decoration: underline;
+  }
 }
 
 .sub-row-actions {
@@ -3590,9 +3666,13 @@ a.sub-row-channel-link:focus-visible {
   text-decoration: none;
 }
 
-.sub-row-playlist-link:hover,
 .sub-row-playlist-link:focus-visible {
   text-decoration: underline;
+}
+@media (hover: hover) {
+  .sub-row-playlist-link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* v1.21.0 FR-3: the single trailing kebab/gear (AC19) -- chunky,
@@ -3604,9 +3684,13 @@ a.sub-row-channel-link:focus-visible {
   font-size: var(--fs-2xl);
 }
 
-.sub-row-kebab:hover,
 .sub-row-kebab:focus-visible {
   color: var(--yt-red);
+}
+@media (hover: hover) {
+  .sub-row-kebab:hover {
+    color: var(--yt-red);
+  }
 }
 
 /* Appearance (era theme) picker — setup.html */
@@ -4006,8 +4090,10 @@ a.sub-row-channel-link:focus-visible {
   padding: 0 var(--space-2);
 }
 
-.handoff-dismiss:hover {
-  color: var(--text-primary);
+@media (hover: hover) {
+  .handoff-dismiss:hover {
+    color: var(--text-primary);
+  }
 }
 
 .handoff-body {
@@ -4210,8 +4296,10 @@ a.sub-row-channel-link:focus-visible {
   padding: var(--space-1) var(--space-3);
 }
 
-.oneoff-modal-close:hover {
-  color: var(--text-primary);
+@media (hover: hover) {
+  .oneoff-modal-close:hover {
+    color: var(--text-primary);
+  }
 }
 
 .oneoff-modal-field {
@@ -5025,7 +5113,9 @@ a.sub-row-channel-link:focus-visible {
     border-radius: var(--radius-full);
     font-size: var(--fs-4xl); /* v1.86.3 (Dean): 22px 1em mask box == the bell/queue inline-SVG box (22px), so the whole header glyph family is one size */
   }
-  .header-right #ytdlp-oneoff-btn:hover { background-color: var(--bg-secondary); }
+  @media (hover: hover) {
+    .header-right #ytdlp-oneoff-btn:hover { background-color: var(--bg-secondary); }
+  }
   /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
      (desktop keeps the word). .btn is inline-flex with a gap, so the lone icon
      stays clean. */
@@ -5743,8 +5833,10 @@ a.sub-row-channel-link:focus-visible {
   box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.5), inset -1px -1px 0 rgba(0, 0, 0, 0.3); /* token-exempt: era skin art */
 }
 
-.pc-btn:hover {
-  background-color: var(--btn-hover);
+@media (hover: hover) {
+  .pc-btn:hover {
+    background-color: var(--btn-hover);
+  }
 }
 
 .pc-btn:active {
@@ -5991,8 +6083,10 @@ a.sub-row-channel-link:focus-visible {
   background-color: transparent;
   box-shadow: none;
 }
-[data-theme="2014"] .pc-btn:hover {
-  background-color: var(--btn-hover);
+@media (hover: hover) {
+  [data-theme="2014"] .pc-btn:hover {
+    background-color: var(--btn-hover);
+  }
 }
 [data-theme="2014"] .pc-btn:active {
   background-color: var(--btn-bg);
@@ -6041,8 +6135,10 @@ a.sub-row-channel-link:focus-visible {
   background-color: transparent;
   box-shadow: none;
 }
-[data-theme="2021"] .pc-btn:hover {
-  background-color: var(--btn-hover);
+@media (hover: hover) {
+  [data-theme="2021"] .pc-btn:hover {
+    background-color: var(--btn-hover);
+  }
 }
 [data-theme="2021"] .pc-btn:active {
   background-color: var(--btn-bg);
@@ -6584,8 +6680,10 @@ body.ft-audio-expanded {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.chapters-menu-item:hover {
-  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+@media (hover: hover) {
+  .chapters-menu-item:hover {
+    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+  }
 }
 /* v1.109 (Dean): the chapter the playhead is currently in -- the follow-along
    highlight in the Ch menu. Red text + a red left-accent bar (the SAME --yt-red
@@ -6624,8 +6722,10 @@ body.ft-audio-expanded {
   padding: var(--space-4) var(--space-6);
   cursor: pointer;
 }
-#settings-menu .settings-menu-item:hover {
-  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback (matches .chapters-menu-item:hover) */
+@media (hover: hover) {
+  #settings-menu .settings-menu-item:hover {
+    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback (matches .chapters-menu-item:hover) */
+  }
 }
 #settings-menu .settings-menu-item::before { font-weight: var(--fw-semibold); }
 #settings-menu #speed-btn::before { content: "Playback speed"; }
@@ -6647,8 +6747,10 @@ body.ft-audio-expanded {
   font-weight: normal;
   font-size: var(--fs-base);
 }
-#settings-menu .settings-menu-toggle:hover {
-  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback (matches .settings-menu-item:hover) */
+@media (hover: hover) {
+  #settings-menu .settings-menu-toggle:hover {
+    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback (matches .settings-menu-item:hover) */
+  }
 }
 #settings-menu .settings-menu-toggle .watch-autoplay-text {
   font-weight: normal;
@@ -6764,8 +6866,10 @@ body.ft-audio-expanded {
   align-items: center;
   min-height: var(--size-control-sm);
 }
-.chapters-menu-loop:hover {
-  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+@media (hover: hover) {
+  .chapters-menu-loop:hover {
+    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+  }
 }
 /* v1.110 (Dean): the per-chapter share icon -- same structural recipe as the
    Loop toggle (flex:0, left border, stretch-centered), icon-only. */
@@ -6783,8 +6887,10 @@ body.ft-audio-expanded {
   justify-content: center;
   min-height: var(--size-control-sm);
 }
-.chapters-menu-share:hover {
-  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+@media (hover: hover) {
+  .chapters-menu-share:hover {
+    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+  }
 }
 .chapters-menu-share .icon-share {
   width: 14px; /* token-exempt: fixed glyph size (matches .card-share-btn .icon-share) */
@@ -7401,7 +7507,9 @@ body.ft-audio-expanded {
   cursor: pointer;
   transition: color var(--dur-slow) var(--ease-ui);
 }
-.chapter-now:hover { color: var(--text-primary); }
+@media (hover: hover) {
+  .chapter-now:hover { color: var(--text-primary); }
+}
 .chapter-now.changed { color: var(--yt-red); }
 .chapter-now[hidden] { display: none !important; }
 #player-dock .chapter-now { display: none; }
@@ -7860,7 +7968,9 @@ body.ft-audio-expanded {
 .md-row + .md-row::before {
   content: ""; position: absolute; top: 0; left: var(--md-divider-inset); right: 0; height: 1px; background: var(--border-color);
 }
-.md-row:hover { background: var(--bg-secondary); }
+@media (hover: hover) {
+  .md-row:hover { background: var(--bg-secondary); }
+}
 .md-row--active { background: var(--bg-secondary); }
 .md-row:focus-visible { outline: 2px solid var(--yt-red); outline-offset: -2px; }
 .md-row-label { flex: 1; font-size: var(--fs-lg); }
@@ -8144,9 +8254,13 @@ body.ft-audio-expanded {
   cursor: pointer;
 }
 
-.sub-sheet-close:hover,
 .sub-sheet-close:focus-visible {
   color: var(--yt-red);
+}
+@media (hover: hover) {
+  .sub-sheet-close:hover {
+    color: var(--yt-red);
+  }
 }
 
 .sub-sheet-body {
@@ -8268,11 +8382,15 @@ body.ft-audio-expanded {
    radius, shadow, the 2009 gloss - see `.btn-chip`'s comment near `.btn`);
    the pin/bell role classes keep only their STATE colours below. */
 
-.sub-row-pin:hover,
 .sub-row-pin:focus-visible,
-.sub-row-bell:hover,
 .sub-row-bell:focus-visible {
   color: var(--yt-red);
+}
+@media (hover: hover) {
+  .sub-row-pin:hover,
+  .sub-row-bell:hover {
+    color: var(--yt-red);
+  }
 }
 
 /* Pinned (filled star) state: a warm gold accent regardless of era/mode, so
@@ -8283,11 +8401,15 @@ body.ft-audio-expanded {
   color: #e0a800; /* token-exempt: the gold pin/bell accent - the same "this is on" semantic; name it if ever reused (F.5 ruling 5) */
 }
 
-.sub-row-pin-active:hover,
 .sub-row-pin-active:focus-visible,
-.sub-row-bell-active:hover,
 .sub-row-bell-active:focus-visible {
   color: var(--yt-red);
+}
+@media (hover: hover) {
+  .sub-row-pin-active:hover,
+  .sub-row-bell-active:hover {
+    color: var(--yt-red);
+  }
 }
 
 .playlists-pinned-section {
@@ -8534,9 +8656,13 @@ body.ft-audio-expanded {
   max-width: 100%;
 }
 
-.dl-status-chip-summary:hover,
 .dl-status-chip-summary:focus-visible {
   color: var(--yt-red);
+}
+@media (hover: hover) {
+  .dl-status-chip-summary:hover {
+    color: var(--yt-red);
+  }
 }
 
 /* v1.50.1 (Dean): the COLLAPSED chip is just a pulsing dot in a solid box --
@@ -8551,10 +8677,14 @@ body.ft-audio-expanded {
   opacity: 0.55;
   transition: opacity var(--dur-fast) var(--ease-ui);
 }
-#dl-status-chip:hover .dl-status-chip-summary,
 .dl-status-chip-summary:focus-visible,
 .dl-status-chip-expanded .dl-status-chip-summary {
   opacity: 1;
+}
+@media (hover: hover) {
+  #dl-status-chip:hover .dl-status-chip-summary {
+    opacity: 1;
+  }
 }
 /* v1.50.1 slim-gate WARNING: the ERROR state is exempt from the dim -- the
    static dark-red dot exists to read as "needs attention" (see the
@@ -8803,8 +8933,10 @@ body.ft-audio-expanded {
   color: var(--text-primary);
 }
 
-.dl-status-chip-dismiss-btn:hover {
-  background-color: var(--btn-hover);
+@media (hover: hover) {
+  .dl-status-chip-dismiss-btn:hover {
+    background-color: var(--btn-hover);
+  }
 }
 
 /* Mobile: clear the fixed `.bottom-nav` the SAME way `#player-dock`'s own
@@ -9290,7 +9422,9 @@ body[data-view="home"] .modern-sort {
   line-height: 1; /* token-exempt: glyph centering */
 }
 body[data-view="home"] .modern-view-toggle { display: inline-flex; }
-.modern-view-toggle:hover { background-color: var(--bg-secondary); }
+@media (hover: hover) {
+  .modern-view-toggle:hover { background-color: var(--bg-secondary); }
+}
 .modern-sort-btn {
   background: none;
   border: none;
@@ -9304,8 +9438,10 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   font-size: var(--fs-4xl); /* v1.86.2 (Dean): the ▾ is a small caret CHARACTER (fills less of the em box than the mask-icons), so it needs one step MORE (22px) than the download/search glyphs to read the same size */
   line-height: 1; /* token-exempt: glyph centering */
 }
-.modern-sort-btn:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .modern-sort-btn:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 .modern-sort-caret {
   line-height: 1; /* token-exempt: glyph centering */
@@ -9347,7 +9483,9 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   cursor: pointer;
   white-space: nowrap;
 }
-.modern-chip:hover { background-color: var(--bg-sidebar); }
+@media (hover: hover) {
+  .modern-chip:hover { background-color: var(--bg-sidebar); }
+}
 .modern-chip.active {
   background-color: var(--text-primary);
   color: var(--bg-color);
@@ -9482,7 +9620,9 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
 }
 .search-history-term span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search-history-term:hover { background-color: var(--bg-secondary); }
+@media (hover: hover) {
+  .search-history-term:hover { background-color: var(--bg-secondary); }
+}
 .search-history-del {
   flex: 0 0 auto;
   background: none;
@@ -9492,7 +9632,9 @@ html[data-modern="on"] .video-uploader {
   padding: var(--space-4) var(--space-6);
   cursor: pointer;
 }
-.search-history-del:hover { color: var(--text-primary); }
+@media (hover: hover) {
+  .search-history-del:hover { color: var(--text-primary); }
+}
 .search-history-clear {
   width: 100%;
   padding: var(--space-4);
@@ -9580,7 +9722,9 @@ html[data-modern="on"] .video-uploader {
   flex: 0 0 auto;
 }
 .sidebar-item .pinned-unpin-btn { float: right; }
-.pinned-unpin-btn:hover { opacity: 1; }
+@media (hover: hover) {
+  .pinned-unpin-btn:hover { opacity: 1; }
+}
 .pinned-unpin-btn.armed {
   opacity: 1;
   background: var(--yt-red);
@@ -10270,7 +10414,9 @@ html[data-modern="on"] .video-uploader {
   margin-top: calc(var(--density) * 0.5);
   transition: filter var(--dur-fast) var(--ease-ui);
 }
-.login-submit:hover { filter: brightness(1.08); }
+@media (hover: hover) {
+  .login-submit:hover { filter: brightness(1.08); }
+}
 .login-submit:active { filter: brightness(0.94); }
 .login-submit:disabled { opacity: 0.6; cursor: default; filter: none; }
 .login-submit:focus-visible { outline: 3px solid var(--text-link); outline-offset: 2px; }
@@ -10488,7 +10634,9 @@ html[data-modern="on"] .video-uploader {
   box-shadow: var(--shadow);
   transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
-.music-jump-tile:hover .music-jump-art { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+@media (hover: hover) {
+  .music-jump-tile:hover .music-jump-art { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+}
 /* v1.339 (L1, M1): the reserved strip's skeleton tile (buildJumpBackSkeletonHtml) reuses
    the real 116px art box; restore the shimmer base fill its --thumbnail-bg would swallow
    (the v1.98 library-skeleton rule, 2-class specificity). */
@@ -10526,7 +10674,9 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
   padding: var(--space-1) var(--space-2);
 }
-.music-shelf-seeall:hover { color: var(--text-primary); }
+@media (hover: hover) {
+  .music-shelf-seeall:hover { color: var(--text-primary); }
+}
 .music-shelf-row {
   display: flex;
   gap: var(--space-3);
@@ -10621,7 +10771,9 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
   text-align: left;
 }
-.music-artist-row:hover { background: var(--btn-hover); }
+@media (hover: hover) {
+  .music-artist-row:hover { background: var(--btn-hover); }
+}
 .music-artist-row-circle {
   position: relative;
   flex: 0 0 auto;
@@ -10680,10 +10832,12 @@ html[data-modern="on"] .video-uploader {
   transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 .music-album-art { object-fit: cover; }
-.music-album-card:hover .music-album-art,
-.music-artist-card:hover .music-artist-mosaic {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+@media (hover: hover) {
+  .music-album-card:hover .music-album-art,
+  .music-artist-card:hover .music-artist-mosaic {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
 }
 /* The mosaic: up to four album-art tiles in a 2x2 grid. Fewer tiles reflow so
    the block always fills the square (1 = full bleed, 2 = side-by-side, 3 = one
@@ -10714,9 +10868,11 @@ html[data-modern="on"] .video-uploader {
   box-shadow: var(--shadow);
   transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
-.music-artist-card:hover .music-artist-avatar {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+@media (hover: hover) {
+  .music-artist-card:hover .music-artist-avatar {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
 }
 .music-artist-avatar .maa-mono {
   font-size: var(--fs-2xl);
@@ -10761,7 +10917,9 @@ html[data-modern="on"] .video-uploader {
 .show-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-8); }
 .show-card { display: flex; flex-direction: column; min-width: 0; gap: var(--space-2); padding: 0; border: none; background: transparent; text-align: left; cursor: pointer; color: inherit; }
 .show-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; box-shadow: var(--shadow); transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui); }
-.show-card:hover .show-poster { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+@media (hover: hover) {
+  .show-card:hover .show-poster { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+}
 .show-card-title { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .show-card-meta { font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* v1.196: the Shows-home Continue-Watching row (horizontal poster strip). */
@@ -10786,7 +10944,9 @@ html[data-modern="on"] .video-uploader {
 .tv-season-label { font-size: var(--fs-lg); color: var(--text-primary); margin-bottom: var(--space-3); }
 .tv-episode-list { display: flex; flex-direction: column; }
 .tv-episode-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-2); border: none; background: transparent; border-bottom: 1px solid var(--border-color); text-align: left; cursor: pointer; color: inherit; width: 100%; }
-.tv-episode-row:hover { background: var(--thumbnail-bg); }
+@media (hover: hover) {
+  .tv-episode-row:hover { background: var(--thumbnail-bg); }
+}
 .tv-episode-code { font-size: var(--fs-sm); color: var(--text-secondary); font-weight: var(--fw-semibold); flex-shrink: 0; min-width: 56px; }
 .tv-episode-title { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tv-episode-dur { font-size: var(--fs-sm); color: var(--text-secondary); flex-shrink: 0; }
@@ -10806,7 +10966,9 @@ html[data-modern="on"] .video-uploader {
   border-radius: var(--radius-lg);
   cursor: pointer;
 }
-.music-song-row:hover { background: var(--bg-secondary); }
+@media (hover: hover) {
+  .music-song-row:hover { background: var(--bg-secondary); }
+}
 .music-song-thumb-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
 .music-song-thumb { width: 44px; height: 44px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); display: block; }
 .music-song-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
@@ -10886,7 +11048,9 @@ html[data-modern="on"] .video-uploader {
   padding: var(--space-2) var(--space-1) var(--space-5);
   cursor: pointer;
 }
-.music-nowplaying:hover { color: var(--text-primary); }
+@media (hover: hover) {
+  .music-nowplaying:hover { color: var(--text-primary); }
+}
 .music-nowplaying[hidden] { display: none !important; }
 
 /* v1.104: the expanded now-playing panel (track metadata + up-next queue), under
@@ -10917,11 +11081,17 @@ html[data-modern="on"] .video-uploader {
    2009 era skin's `.btn` gradient gloss (the `background-image`-over-`background-color` trap this
    file documents at ~1299-1330); the theatre toggle and the sticker both use the shorthand for
    the same reason. Existing tokens only - the census stays 0. */
-.music-toolbar-actions .music-mode-btn[aria-pressed="true"],
-.music-toolbar-actions .music-mode-btn[aria-pressed="true"]:hover {
+.music-toolbar-actions .music-mode-btn[aria-pressed="true"] {
   background: var(--yt-red);
   color: var(--on-accent);
   border-color: var(--yt-red-dark);
+}
+@media (hover: hover) {
+  .music-toolbar-actions .music-mode-btn[aria-pressed="true"]:hover {
+    background: var(--yt-red);
+    color: var(--on-accent);
+    border-color: var(--yt-red-dark);
+  }
 }
 @media (max-width: 1023px) { .music-theater-btn { display: none !important; } } /* v1.251: class-based - the podcast theatre button shares it */
 @media (min-width: 1024px) {
@@ -10998,7 +11168,9 @@ html[data-modern="on"] .video-uploader {
   text-align: inherit;
   cursor: pointer;
 }
-.music-song-artist:hover, .mnp-sub[data-artist]:hover, .music-drill-artist[data-artist]:hover { text-decoration: underline; }
+@media (hover: hover) {
+  .music-song-artist:hover, .mnp-sub[data-artist]:hover, .music-drill-artist[data-artist]:hover { text-decoration: underline; }
+}
 /* v1.105: the podcast now-playing show-notes block. Descriptions can be long
    (64KB store cap), so cap the height and let it scroll rather than push the
    up-next list off-screen. Plain text (stripped at parse + set via textContent). */
@@ -11039,11 +11211,15 @@ html[data-modern="on"] .video-uploader {
   color: inherit;
   cursor: pointer;
 }
-.mnp-queue-row:hover { background: var(--bg-secondary); }
+@media (hover: hover) {
+  .mnp-queue-row:hover { background: var(--bg-secondary); }
+}
 /* v1.223 (Dean): the panel lists the whole queue - already-played rows grey out
    but stay clickable (hover restores them), the current row is marked. */
 .mnp-queue-row.is-played { opacity: 0.55; }
-.mnp-queue-row.is-played:hover { opacity: 1; }
+@media (hover: hover) {
+  .mnp-queue-row.is-played:hover { opacity: 1; }
+}
 .mnp-queue-row.is-current { background: var(--bg-secondary); }
 .mnp-queue-row.is-current .mnp-queue-title { font-weight: var(--fw-semibold); }
 .mnp-queue-thumb {
@@ -12277,8 +12453,10 @@ html[data-modern="on"] .video-uploader {
   cursor: pointer;
 }
 
-.shortcuts-ddr-arrow:hover {
-  filter: brightness(1.2);
+@media (hover: hover) {
+  .shortcuts-ddr-arrow:hover {
+    filter: brightness(1.2);
+  }
 }
 
 /* The light-up: pressing (or clicking) an arrow flashes its SQUARE and pops it.
@@ -12942,8 +13120,10 @@ html[data-modern="on"] .video-uploader {
   font-size: var(--fs-md);
 }
 
-.attr-picker-row:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .attr-picker-row:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 
 .attr-picker-avatar {
@@ -13035,8 +13215,10 @@ html[data-modern="on"] .video-uploader {
   display: block;
 }
 
-.notif-bell-btn:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .notif-bell-btn:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 
 .notif-bell-badge {
@@ -13130,8 +13312,10 @@ html[data-modern="on"] .video-uploader {
   border-radius: var(--radius);
 }
 
-.notif-clear-btn:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .notif-clear-btn:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 
 /* v1.68: each panel row = anchor + dismiss X, flex siblings (a <button>
@@ -13162,10 +13346,15 @@ html[data-modern="on"] .video-uploader {
   touch-action: manipulation;
 }
 
-.notif-row-dismiss:hover,
 .notif-row-dismiss:focus-visible {
   opacity: 1;
   color: var(--text-primary);
+}
+@media (hover: hover) {
+  .notif-row-dismiss:hover {
+    opacity: 1;
+    color: var(--text-primary);
+  }
 }
 
 /* v1.161 (Dean): the per-video delete button - a SIBLING of the row anchor,
@@ -13189,10 +13378,15 @@ html[data-modern="on"] .video-uploader {
   touch-action: manipulation;
 }
 
-.notif-row-delete:hover,
 .notif-row-delete:focus-visible {
   opacity: 1;
   color: var(--yt-red);
+}
+@media (hover: hover) {
+  .notif-row-delete:hover {
+    opacity: 1;
+    color: var(--yt-red);
+  }
 }
 
 .notif-row-delete .icon-delete {
@@ -13226,8 +13420,10 @@ html[data-modern="on"] .video-uploader {
   text-decoration: none;
 }
 
-.notif-row:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .notif-row:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 
 .notif-row-avatar {
@@ -13419,7 +13615,9 @@ html[data-modern="on"] .video-uploader {
   width: 12px; /* icon box (width/height ungoverned) */
   height: 12px;
 }
-.account-menu-avatar-edit:hover { filter: brightness(1.08); }
+@media (hover: hover) {
+  .account-menu-avatar-edit:hover { filter: brightness(1.08); }
+}
 .account-menu-dropdown {
   position: absolute;
   top: calc(100% + var(--space-2));
@@ -13466,8 +13664,10 @@ html[data-modern="on"] .video-uploader {
   text-decoration: none;
   white-space: nowrap;
 }
-.account-menu-item:hover {
-  background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+@media (hover: hover) {
+  .account-menu-item:hover {
+    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
+  }
 }
 .account-menu-item i {
   width: 18px; /* token-exempt: icon box (Stop A Batch A) */
@@ -13504,8 +13704,10 @@ html[data-modern="on"] .video-uploader {
   font-variant-numeric: tabular-nums;
   user-select: text;
 }
-.account-menu-version:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .account-menu-version:hover {
+    text-decoration: underline;
+  }
 }
 /* v1.158 (Dean): the "total size on disk" footer link into Stats - styled like
    the version row beside it. Tabular digits so the figure sits steady; the
@@ -13520,7 +13722,9 @@ html[data-modern="on"] .video-uploader {
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
-.account-menu-disk:hover { text-decoration: underline; }
+@media (hover: hover) {
+  .account-menu-disk:hover { text-decoration: underline; }
+}
 .account-menu-disk-shimmer {
   display: inline-block;
   min-width: 5em;
@@ -13539,7 +13743,9 @@ html[data-modern="on"] .video-uploader {
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
-.account-menu-trash:hover { text-decoration: underline; }
+@media (hover: hover) {
+  .account-menu-trash:hover { text-decoration: underline; }
+}
 /* Both footer info-links hide on a failed lazy fetch (el.hidden = true). An
    author `display` rule (above) OUTRANKS the UA `[hidden] { display:none }`, so
    the hide needs this explicit guard or the row would stay visible (the crown-
@@ -13713,8 +13919,10 @@ html[data-modern="on"] .video-uploader {
   justify-content: center;
 }
 
-.queue-btn:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .queue-btn:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 /* v1.339 (L2): `display:flex` above beat `[hidden]`, so the header queue button showed with
    an EMPTY queue (setChrome's `btn.hidden = !shouldShowQueueButton(q)` was inert). */
@@ -13814,8 +14022,10 @@ html[data-modern="on"] .video-uploader {
   border-radius: var(--radius);
 }
 
-.queue-clear-btn:hover {
-  background-color: var(--bg-secondary);
+@media (hover: hover) {
+  .queue-clear-btn:hover {
+    background-color: var(--bg-secondary);
+  }
 }
 
 /* Armed ("Really clear?") = the hover surface LATCHED while the two-tap
@@ -13919,8 +14129,10 @@ html[data-modern="on"] .video-uploader {
   flex-shrink: 0;
 }
 
-.queue-row-remove:hover {
-  color: var(--yt-red);
+@media (hover: hover) {
+  .queue-row-remove:hover {
+    color: var(--yt-red);
+  }
 }
 
 /* Mobile: bottom-sheet posture with a scrim, the notif-panel mobile
@@ -13984,10 +14196,15 @@ html[data-modern="on"] .video-uploader {
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
-.card-queue-btn:hover,
 .card-queue-btn:focus-visible {
   opacity: 1;
   background-color: var(--scrim-heavy);
+}
+@media (hover: hover) {
+  .card-queue-btn:hover {
+    opacity: 1;
+    background-color: var(--scrim-heavy);
+  }
 }
 
 /* v1.67 T1: the promoted icon-queue mask, sized to the .card-*-btn sibling
@@ -14033,8 +14250,10 @@ html[data-modern="on"] .video-uploader {
   white-space: nowrap;
 }
 
-a.queue-upnext-next:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  a.queue-upnext-next:hover {
+    text-decoration: underline;
+  }
 }
 
 /* v1.63 gate: the toast's optional action button (the add-queue Undo). */
@@ -14168,7 +14387,9 @@ a.queue-upnext-next:hover {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.history-title:hover { color: var(--text-link); }
+@media (hover: hover) {
+  .history-title:hover { color: var(--text-link); }
+}
 .history-meta {
   margin-top: var(--space-2);
   color: var(--text-secondary);
@@ -14178,7 +14399,9 @@ a.queue-upnext-next:hover {
   color: var(--text-secondary);
   text-decoration: none;
 }
-.history-channel:hover { color: var(--text-link); }
+@media (hover: hover) {
+  .history-channel:hover { color: var(--text-link); }
+}
 .history-watched-chip {
   display: inline-block;
   margin-left: var(--space-2);
@@ -14203,7 +14426,9 @@ a.queue-upnext-next:hover {
   border-radius: var(--radius);
   font-size: var(--fs-sm);
 }
-.history-remove-btn:hover { color: var(--text-primary); background-color: var(--bg-secondary); }
+@media (hover: hover) {
+  .history-remove-btn:hover { color: var(--text-primary); background-color: var(--bg-secondary); }
+}
 .history-remove-confirm { display: none; }
 .history-confirming .history-remove-confirm { display: inline; }
 .history-confirming.history-remove-btn { color: var(--yt-red); }
@@ -14341,7 +14566,9 @@ a.queue-upnext-next:hover {
 }
 .stable-th--end { justify-content: flex-end; text-align: right; }
 .stable-th--actions { cursor: default; }
-.stable-th:hover { color: var(--text-primary); }
+@media (hover: hover) {
+  .stable-th:hover { color: var(--text-primary); }
+}
 .stable-th[aria-sort="ascending"],
 .stable-th[aria-sort="descending"] { color: var(--text-primary); }
 /* the caret marks (and points for) the active sort column */
@@ -14395,8 +14622,10 @@ a.queue-upnext-next:hover {
   opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus/armed */
   touch-action: manipulation;
 }
-.stable-delete-btn:hover,
 .stable-delete-btn:focus-visible { opacity: 1; color: var(--yt-red); }
+@media (hover: hover) {
+  .stable-delete-btn:hover { opacity: 1; color: var(--yt-red); }
+}
 .stable-delete-btn .icon-delete { width: 16px; height: 16px; }
 .stable-delete-confirm { display: none; white-space: nowrap; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
 .stable-delete-btn.stable-delete-armed { opacity: 1; color: var(--on-overlay); background-color: var(--yt-red); }
@@ -14416,8 +14645,10 @@ a.queue-upnext-next:hover {
   opacity: 0.7; /* token-exempt: resting de-emphasis */
   touch-action: manipulation;
 }
-.stable-expand-btn:hover,
 .stable-expand-btn:focus-visible { opacity: 1; color: var(--text-primary); }
+@media (hover: hover) {
+  .stable-expand-btn:hover { opacity: 1; color: var(--text-primary); }
+}
 .stable-expand-btn[aria-expanded="true"] .icon-arrow-down { transform: rotate(180deg); }
 .stable-expando { grid-column: 1 / -1; }
 .dup-expando {
@@ -14549,7 +14780,9 @@ a.queue-upnext-next:hover {
   gap: var(--space-4);
   border-radius: var(--radius-lg);
 }
-.podcast-episode-row:hover { background: var(--bg-secondary); }
+@media (hover: hover) {
+  .podcast-episode-row:hover { background: var(--bg-secondary); }
+}
 .podcast-episode-row.playing { background: var(--bg-secondary); }
 .podcast-episode-row.played .podcast-episode-title { color: var(--text-secondary); }
 .podcast-episode-main {
@@ -15090,9 +15323,13 @@ a.queue-upnext-next:hover {
   padding: 0 var(--space-4);
   cursor: pointer;
 }
-.search-clear-btn:hover,
 .search-clear-btn:focus-visible {
   color: var(--text-primary);
+}
+@media (hover: hover) {
+  .search-clear-btn:hover {
+    color: var(--text-primary);
+  }
 }
 .search-clear-btn[hidden] { display: none !important; }
 @media (max-width: 768px) {

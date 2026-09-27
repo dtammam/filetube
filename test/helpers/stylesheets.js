@@ -30,4 +30,34 @@ function eraBlock(era, mode = 'light') {
   return start === -1 ? null : css.slice(start + marker.length, css.indexOf('}', start));
 }
 
-module.exports = { eraBlock, TOKENS_CSS_PATH, UI_CSS_PATH, STYLE_CSS_PATH, readTokensCss, readUiCss, readStyleCss, readAllCss };
+// Every style rule of a stylesheet in source order, comments stripped: { sel, body, at, index }.
+// `at` joins the preludes of the at-rules the rule sits in ('' at top level), so a lock can
+// ask "is this rule inside @media (hover: hover)" without a regex over nested braces.
+// `index` is the rule's ordinal in the file (cascade order within one sheet).
+function cssRules(css) {
+  const src = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  const stack = [];
+  let prelude = '';
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === '{') {
+      const p = prelude.trim(); prelude = '';
+      if (p.startsWith('@')) { stack.push(p); i++; continue; }
+      const end = src.indexOf('}', i);
+      out.push({ sel: p, body: src.slice(i + 1, end), at: stack.join(' '), index: out.length });
+      i = end + 1; continue;
+    }
+    if (ch === '}') { stack.pop(); prelude = ''; i++; continue; }
+    if (ch === ';') { prelude = ''; i++; continue; } // a statement at-rule (@import, @charset)
+    prelude += ch; i++;
+  }
+  return out;
+}
+
+// True when an at-rule chain gates on a hover-capable primary pointer.
+// (`@media not ...` negates the whole query, so it is never a gate.)
+const isHoverGated = (at) => /@media(?![^{]*\bnot\b)[^{]*\(\s*hover\s*:\s*hover\s*\)/.test(at);
+
+module.exports = { eraBlock, cssRules, isHoverGated, TOKENS_CSS_PATH, UI_CSS_PATH, STYLE_CSS_PATH, readTokensCss, readUiCss, readStyleCss, readAllCss };

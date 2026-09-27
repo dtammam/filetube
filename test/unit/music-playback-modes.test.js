@@ -26,7 +26,17 @@ test('music.html actually carries the Loop + Autoplay toggles in the toolbar (th
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   // v1.284.1: `background` SHORTHAND (not background-color) so it resets the 2009 skin's .btn
   // gradient gloss and the red actually shows there too (the documented background-image trap).
-  assert.match(css, /\.music-toolbar-actions \.music-mode-btn\[aria-pressed="true"\],\s*\.music-toolbar-actions \.music-mode-btn\[aria-pressed="true"\]:hover \{\s*background: var\(--yt-red\);\s*color: var\(--on-accent\);\s*border-color: var\(--yt-red-dark\);/, 'the ON state is the red selected look via the background shorthand, scoped + hover-covered, tokens only');
+  // UI pass step 4 (AC6): the :hover twin moved into @media (hover: hover) with the SAME
+  // declarations (the only hover tints it must beat are gated too).
+  const ON_DECLS = /^\s*background: var\(--yt-red\);\s*color: var\(--on-accent\);\s*border-color: var\(--yt-red-dark\);/;
+  const { cssRules, isHoverGated } = require('../helpers/stylesheets');
+  const rules = cssRules(css);
+  const on = rules.find((r) => r.sel === '.music-toolbar-actions .music-mode-btn[aria-pressed="true"]');
+  assert.ok(on && on.at === '', 'the scoped ON rule exists at top level');
+  assert.match(on.body, ON_DECLS, 'the ON state is the red selected look via the background shorthand, tokens only');
+  const twin = rules.find((r) => r.sel === '.music-toolbar-actions .music-mode-btn[aria-pressed="true"]:hover');
+  assert.ok(twin && isHoverGated(twin.at), 'the :hover twin exists inside @media (hover: hover)');
+  assert.match(twin.body, ON_DECLS, 'the :hover twin carries the same red look');
   assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\] \{ background: var\(--bg-secondary\); \}/, 'the invisible --bg-secondary ON state is gone');
   assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\][\s\S]{0,80}background-color: var\(--yt-red\)/, 'not the longhand (which the 2009 gloss would paint over)');
 });

@@ -28,6 +28,9 @@ const {
 } = require('../../public/js/common.js');
 
 const STYLE_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+const { cssRules, isHoverGated } = require('../helpers/stylesheets');
+// UI pass step 4 (AC6): a hover tint lives only inside @media (hover: hover).
+const hoverGated = (sel) => { const r = cssRules(STYLE_CSS).find((x) => x.sel.replace(/\s+/g, ' ') === sel); return !!r && isHoverGated(r.at); };
 
 // ---- v1.188 (Dean): the library toolbar wears the modern feed-chip PILL look --
 
@@ -41,6 +44,7 @@ test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill rec
   assert.match(base[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips (not the base .btn semibold)');
   const hover = /\.section-actions \.btn:hover \{([^}]*)\}/.exec(STYLE_CSS);
   assert.ok(hover, 'the hover rule exists');
+  assert.ok(hoverGated('.section-actions .btn:hover'), 'the hover rule is inside @media (hover: hover)');
   assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like a chip');
   // The selected filter reads like an ACTIVE feed chip (inverted), not the old
   // red-accent. Higher specificity than the base .format-toggle-btn.active.
@@ -75,6 +79,7 @@ test('v1.189.0 the pill look extends to the books / music / podcasts / history t
   // silently drop it, matching the v1.188 sibling test's own hover lock).
   const hover = /\.books-toolbar \.btn:not\(\.btn-primary\):hover,\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover,\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
   assert.ok(hover, 'the non-primary hover rule exists for the other toolbars');
+  assert.ok(hoverGated('.books-toolbar .btn:not(.btn-primary):hover, .music-toolbar-actions .btn:not(.btn-primary):hover, .history-toolbar-actions .btn:not(.btn-primary):hover'), 'the toolbars hover rule is inside @media (hover: hover)');
   assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like the home toolbar');
   // No raw color literal sneaks in (the census enforces this globally, but bind
   // it here too since this is the theming question Dean raised).
