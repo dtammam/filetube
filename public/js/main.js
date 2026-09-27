@@ -196,11 +196,13 @@ function buildBooksHomeSectionHtml(items, heading, seeAllHref) {
 // to /music (the queue picks up from the resume pointer). Reuses the books-row
 // scroller styling; empty items = empty string (music-less home stays
 // byte-identical).
-// v1.340 (#287 e): the tile is 92px square (.book-row-cover), so at the 2x DPR cap
-// music.js sizes art for (MUSIC_ART_DPR_CAP) it needs 184px: the 256 rendition, not the
-// full-size cover (often 1000px+). Keyed on the album's `artId` when the payload carries
-// it, so the tile shares one cached file with the album's rows on /music.
-var MUSIC_ROW_CARD_ART_SIZE = 256;
+// v1.340 (#287 e): the tile is 92x138 (.book-row-cover's fixed height wins over
+// .music-row-cover's aspect-ratio), so the square cover cover-fits to 138x138; at the 2x DPR
+// cap music.js sizes art for (MUSIC_ART_DPR_CAP) that needs 276px: the 512 rendition (the
+// smallest allowlisted size covering it, what musicArtSize(138, 2) picks), not the full-size
+// cover (often 1000px+). Keyed on the album's `artId` when the payload carries it, so the tile
+// shares one cached file with the album's rows on /music.
+var MUSIC_ROW_CARD_ART_SIZE = 512;
 function buildMusicRowCardHtml(item) {
   // Deep-link to the specific track so /music resumes it (consuming the
   // per-user resume pointer), mirroring the books row's /read.html?b=<id>.

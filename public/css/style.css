@@ -4939,9 +4939,12 @@ a.sub-row-channel-link:focus-visible {
    neighbours (probed at 390px, every era). Middle-align these buttons so their resting row is
    level whatever their labels hold. */
 .btn:has(> .btn-label-stack) { vertical-align: middle; }
-/* The glyph before the words (the Notify bell), inline in its slot: a touch larger than
-   the text, like the emoji it replaced, with the emoji's space after it. */
-.btn .btn-glyph { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin-right: 0.3em; }
+/* A glyph inside a label (the Notify bell before its words, the Pinned star after): a touch
+   larger than the text, like the emoji it replaced. The negative block margins keep its
+   margin box inside the text's line, so a glyph never makes its button taller than a
+   plain-text neighbour (gate r1 W2). */
+.btn .btn-glyph { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin: -0.2em 0.3em -0.2em 0; }
+.btn .btn-glyph-after { margin: -0.2em 0 -0.2em 0.3em; }
 
 .icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
 .icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }

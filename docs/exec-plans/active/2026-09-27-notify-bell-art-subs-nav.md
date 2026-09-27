@@ -29,8 +29,11 @@ to a release while he sleeps.
    glyphs. Bound by watch-init-behavioral.test.js (labels + slot shape), sub-row-chip-btn-family
    AC3 (the drawn path, executed in JSDOM), chrome-icons.test.js (paths == the asset files), and
    the row probe (below).
-2. **The Continue-listening tile asks for the 256px cover**, keyed on the album's `artId`, never the
-   full-size file (tech-debt #287 e, the home row half). music-home-row.test.js.
+2. **The Continue-listening tile asks for the 512px cover**, keyed on the album's `artId`, never the
+   full-size file (tech-debt #287 e, the home row half). The tile is 92x138 (`.book-row-cover`'s
+   height beats `.music-row-cover`'s aspect-ratio), so the square cover fits to 138x138 = 276px at
+   2x -> 512 (r1 as drafted said 256 on a wrong "92px square" premise; gate r1 W4 / Q1).
+   music-home-row.test.js.
 3. **The Subscriptions page's bottom bar is the other shells' bar**: Liked, Podcasts, Music, Books,
    Downloads present; inline SVG glyphs, no `.icon-*` masks (tech-debt #114).
    subscriptions-shell-bottom-nav-parity.test.js (red on the old shell, measured).
@@ -67,6 +70,22 @@ h 44.
 ## Deviations
 
 - Scope grew on Dean's answers: Subscribe and Pin widths, and the Subscriptions page bells.
+
+## Fix round r1 -> r2
+
+- W1: tests/unit/stable-toggle-label.test.js locks the four CSS rules by value (each deletion measured red
+  in a /tmp sandbox) and the helper's output; it also locks the header bell to CHROME_ICON_SVG.bell.d.
+- W2: "Pinned ★" -> "Pinned" + a drawn filled star (`starFilled`, filled/star.svg) after the words; glyphs
+  get negative block margins. Real watch page (the adversary's probe, pin labels updated), every era,
+  light + dark: 390 all 44 tall at one y; 1280 all 28 tall at y 594.4 (was Pin 31 at 592.9; Notify 28.4).
+  Accessible names: "Pinned" / "Pin channel" / "Notifying" / "Notify" / "Subscribed" / "Subscribe".
+- W3: scripts/home-fouc-probe.js reads `.btn-label-stack[data-label]`.
+- W4 / Q1: 512 (see AC2).
+- Q3: the one-writer census also counts 'bell' and the data-glyph setter. Q4: the require() arm is gone;
+  the tests install `global.chromeIconEl` like resolveAvatarSource. Q5: skin-surface.js comments say the
+  plain disc draws the turn as nothing (the write is kept for a future look on the disc).
+- Suggestions: podcasts.js "Pin to Playlists" / "Pinned" uses the same stable label + drawn star;
+  tech-debt #283 (c) closed.
 
 ## Gate
 

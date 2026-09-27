@@ -28,6 +28,7 @@ const { createSubscriptionRow, applyBellState } = require('../../lib/ytdlp/clien
 // The row builder reaches for common.js's avatar helpers as page globals.
 const common = require('../../public/js/common.js');
 global.resolveAvatarSource = common.resolveAvatarSource;
+global.chromeIconEl = common.chromeIconEl; // v1.340: the Subscriptions bell glyph (a common.js global)
 global.deriveAvatar = common.deriveAvatar;
 
 // v1.317 (QA r2 suggestion on v1.316.0): the `-active` modifier tokens join the census so a
@@ -132,6 +133,8 @@ test('AC3: ONE writer of the bell state - the glyph is chosen in exactly one pla
   // v1.340: the emoji pair became the shared bell glyphs (common.js CHROME_ICON_SVG bell /
   // bellOff), so the one-writer census counts the glyph NAMES.
   assert.strictEqual((JS.match(/'bellOff'/g) || []).length, 1, 'the OFF glyph is chosen in exactly one place');
+  assert.strictEqual((JS.match(/'bell'/g) || []).length, 1, 'the ON glyph is chosen in exactly one place (qa r1 Q3)');
+  assert.strictEqual((JS.match(/setAttribute\('data-glyph'/g) || []).length, 1, 'one writer of data-glyph (qa r1 Q3)');
   assert.doesNotMatch(JS, /\u{1F514}|\u{1F515}|🔔|🔕/u, 'no emoji bell is left');
   const fnStart = JS.indexOf('function applyBellState(bellBtn, on) {');
   assert.ok(fnStart !== -1);

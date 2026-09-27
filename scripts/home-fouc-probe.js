@@ -218,7 +218,11 @@ const OBSERVER_JS = `(function () {
     }
     var subBtn = document.getElementById('subscribe-btn-mock');
     if (subBtn) {
-      var sk = (subBtn.isConnected ? (subBtn.hidden ? 'hidden' : 'shown:' + subBtn.textContent.trim()) : 'removed');
+      // v1.340: the label is a stable-width stack holding BOTH words (common.js
+      // stableToggleLabelHtml) - read the CURRENT one from data-label (gate r1 W3), never textContent.
+      var subStack = subBtn.querySelector('.btn-label-stack');
+      var subLabel = subStack ? subStack.getAttribute('data-label') : subBtn.textContent.trim();
+      var sk = (subBtn.isConnected ? (subBtn.hidden ? 'hidden' : 'shown:' + subLabel) : 'removed');
       var bell = document.querySelector('.watch-bell-btn, #subscribe-bell-btn, .subscribe-bell-btn');
       if (bell) sk += '+bell:' + (bell.hidden ? 'h' : 's');
       var lastS = hf.sub[hf.sub.length - 1];

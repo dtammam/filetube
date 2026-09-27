@@ -64,6 +64,9 @@ const CHROME_ICON_SVG = {
   // the Subscriptions rows all draw from these two, so the bell is one glyph everywhere.
   bell: { vb: '0 0 24 24', d: 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z' },
   bellOff: { vb: '0 0 24 24', d: 'M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01L18 14.68z' },
+  // v1.340 (gate r1 W2): the FILLED star (filled/star.svg) that replaces the text "★" in the watch
+  // page's "Pinned" label: the text star came from a taller fallback font and grew the button.
+  starFilled: { vb: '0 0 24 24', d: 'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z' },
 };
 
 // The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
@@ -105,16 +108,25 @@ function chromeIconEl(name, extraClass, doc) {
 // Subscribed, Pin channel / Pinned). Every label is laid out in ONE grid cell, so the
 // button is always as wide as the longest and nothing beside it moves on a tap; only the
 // current one is visible (the idle ones are `visibility:hidden`, which also keeps them
-// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON_SVG name }, the
-// glyph drawn INSIDE that label's slot, before its words - inside, so the button's
-// baseline stays the text's (a leading svg item would set a flex button's baseline to
-// its bottom edge and drop the neighbouring buttons ~3px). `data-label` carries the
+// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON_SVG name } draws
+// that glyph INSIDE the label's slot before its words, or { label: { name, after: true } }
+// after them - inside, so the button's baseline stays the text's (a leading svg item would
+// set a flex button's baseline to its bottom edge and drop the neighbouring buttons ~3px).
+// A glyph never grows the line (negative block margins, style.css .btn-glyph), and no
+// label may carry a text symbol from a fallback font (gate r1 W2: the hidden "Pinned ★"
+// made Pin 3px taller than its neighbours on desktop) - draw it as a glyph. `data-label` carries the
 // current label for tests and CSS. Labels are fixed literals at every call site; they
 // are escaped anyway.
 function stableToggleLabelHtml(current, labels, glyphs) {
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const slots = labels.map((l) => '<span class="btn-label-slot"' + (l === current ? '' : ' data-idle') + '>'
-    + (glyphs && glyphs[l] ? chromeIconMarkup(glyphs[l], 'btn-glyph') : '') + esc(l) + '</span>').join('');
+  const slots = labels.map((l) => {
+    const g = glyphs && glyphs[l];
+    const name = g && (typeof g === 'string' ? g : g.name);
+    const after = !!(g && typeof g === 'object' && g.after);
+    const svg = name ? chromeIconMarkup(name, after ? 'btn-glyph btn-glyph-after' : 'btn-glyph') : '';
+    return '<span class="btn-label-slot"' + (l === current ? '' : ' data-idle') + '>'
+      + (after ? esc(l) + svg : svg + esc(l)) + '</span>';
+  }).join('');
   return '<span class="btn-label-stack" data-label="' + esc(current) + '">' + slots + '</span>';
 }
 

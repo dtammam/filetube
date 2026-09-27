@@ -29,8 +29,9 @@ const path = require('node:path');
 // before `require`-ing subscriptions.js below, mirroring exactly what the
 // browser's script-tag order provides in production -- tests exercise the
 // actual shared seam, not a stand-in/mock.
-const { resolveAvatarSource, deriveAvatar } = require('../../public/js/common.js');
+const { resolveAvatarSource, deriveAvatar, chromeIconEl } = require('../../public/js/common.js');
 global.resolveAvatarSource = resolveAvatarSource;
+global.chromeIconEl = chromeIconEl; // v1.340: the Subscriptions bell glyph (a common.js global)
 
 const {
   FORMAT_OPTIONS,

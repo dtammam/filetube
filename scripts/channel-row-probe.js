@@ -12,7 +12,7 @@ const ROOT=process.argv[2]; const OUT=process.argv[3];
 const common=require(path.join(ROOT,'public/js/common.js'));
 const H=common.stableToggleLabelHtml;
 const old={sub:(s)=>s?'Subscribed':'Subscribe',pin:(p)=>p?'Pinned ★':'Pin channel',bell:(b)=>b?'🔔 Notifying':'🔕 Notify'};
-const nu={sub:(s)=>H(s?'Subscribed':'Subscribe',['Subscribed','Subscribe']),pin:(p)=>H(p?'Pinned ★':'Pin channel',['Pin channel','Pinned ★']),bell:(b)=>H(b?'Notifying':'Notify',['Notifying','Notify'],{Notifying:'bell',Notify:'bellOff'})};
+const nu={sub:(s)=>H(s?'Subscribed':'Subscribe',['Subscribed','Subscribe']),pin:(p)=>H(p?'Pinned':'Pin channel',['Pin channel','Pinned'],{Pinned:{name:'starFilled',after:true}}),bell:(b)=>H(b?'Notifying':'Notify',['Notifying','Notify'],{Notifying:'bell',Notify:'bellOff'})};
 const states=[[1,0,0],[1,1,0],[1,0,1],[1,1,1],[0,0,0]];
 let rows='';
 for(const era of ['2005','2009','2014','2021']) for(const [kind,f] of [['old',old],['new',nu]]) states.forEach((st,i)=>{

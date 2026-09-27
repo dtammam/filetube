@@ -62,6 +62,7 @@ function mountView(route) {
   // (subscriptions.js runs after common.js on the real shell).
   const common = require('../../public/js/common.js');
   global.resolveAvatarSource = common.resolveAvatarSource;
+  global.chromeIconEl = common.chromeIconEl; // v1.340: the bell glyph (a common.js global)
   global.deriveAvatar = common.deriveAvatar;
   global.window = window;
   global.document = document;

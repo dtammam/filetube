@@ -39,19 +39,20 @@ const common = require('../../public/js/common.js');
 
 // v1.340: the channel-row buttons render their label through common.js's
 // stableToggleLabelHtml (innerHTML: every label in one grid cell, the current one in
-// `data-label`, a CHROME_ICON_SVG glyph first for the bell). The shim's innerHTML is a plain
-// string, so read the label back from it; a bell glyph reads as "[bell] " / "[bellOff] ".
+// `data-label`, CHROME_ICON_SVG glyphs inside the slots). The shim's innerHTML is a plain
+// string, so read the VISIBLE slot back from it, each glyph as "[name]" where it sits:
+// "[bellOff] Notify", "Pinned [starFilled]".
+const GLYPH_BY_PATH = new Map(Object.entries(common.CHROME_ICON_SVG).map(([name, g]) => [g.d, name]));
 function labelOf(el) {
   const html = String(el.innerHTML || '');
   const m = /data-label="([^"]*)"/.exec(html);
   if (!m) return el.textContent;
-  // the VISIBLE slot (no data-idle) carries the glyph the user sees
   const shown = (/<span class="btn-label-slot">(.*?)<\/span>/.exec(html) || [])[1] || '';
-  const glyph = shown.includes(common.CHROME_ICON_SVG.bellOff.d) ? '[bellOff] '
-    : (shown.includes(common.CHROME_ICON_SVG.bell.d) ? '[bell] ' : '');
-  const label = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-  assert.ok(shown.endsWith(m[1]), 'data-label names the visible slot');
-  return glyph + label;
+  const text = shown.replace(/<svg [^>]*><path d="([^"]*)"\/><\/svg>/g, (_, d) => ` [${GLYPH_BY_PATH.get(d) || '?'}] `)
+    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ').trim();
+  assert.ok(text.replace(/\s*\[[^\]]*\]\s*/g, '') === m[1].replace(/&amp;/g, '&'), 'data-label names the visible slot');
+  return text;
 }
 
 // ---- minimal generic DOM shim ---------------------------------------------
@@ -291,7 +292,8 @@ test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscri
   // idle one hidden, so the button is as wide as "Notifying" in either state.
   assert.match(bell.innerHTML, /<span class="btn-label-slot" data-idle><svg [^>]*><path d="[^"]*"\/><\/svg>Notifying<\/span><span class="btn-label-slot"><svg [^>]*><path d="[^"]*"\/><\/svg>Notify<\/span>/);
   assert.doesNotMatch(bell.innerHTML, /\u{1F514}|\u{1F515}/u, 'no emoji bell');
-  assert.match(pin.innerHTML, /<span class="btn-label-slot">Pin channel<\/span><span class="btn-label-slot" data-idle>Pinned ★<\/span>/);
+  assert.match(pin.innerHTML, /<span class="btn-label-slot">Pin channel<\/span><span class="btn-label-slot" data-idle>Pinned<svg [^>]*><path d="[^"]*"\/><\/svg><\/span>/);
+  assert.doesNotMatch(pin.innerHTML, /★/, 'gate r1 W2: no text star (a taller fallback-font glyph) - it is drawn');
   assert.match(btn.innerHTML, /<span class="btn-label-slot">Subscribed<\/span><span class="btn-label-slot" data-idle>Subscribe<\/span>/);
   // (the shim's setAttribute is a no-op, so aria-pressed is bound in ytdlp-subscriptions-client / by the label here)
 });
@@ -1209,7 +1211,7 @@ test('v1.338 D8a: the Pin POSTs the item\'s own folder + uploader, flips to Pinn
   const post = calls.find((c) => c.method === 'POST' && c.url === '/api/subscriptions/pins');
   assert.ok(post, 'the pin request fired');
   assert.deepStrictEqual(post.body, { channelDir: '/downloads/someuser', label: 'someuser' }, 'the folder the universal lane put the uploader in, labelled with the uploader');
-  assert.equal(labelOf(p), 'Pinned ★');
+  assert.equal(labelOf(p), 'Pinned [starFilled]');
   p._l.click();
   for (let i = 0; i < 6; i++) await settle();
   assert.ok(calls.some((c) => c.method === 'DELETE' && c.url === '/api/subscriptions/pins/pin-someuser'), 'unpin DELETEs the id the POST returned');

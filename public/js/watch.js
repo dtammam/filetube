@@ -2467,7 +2467,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // CSS.
     function applyPinButtonLabel(pinned) {
       if (!pinBtn) return;
-      pinBtn.innerHTML = stableToggleLabelHtml(pinned ? 'Pinned ★' : 'Pin channel', ['Pin channel', 'Pinned ★']); // v1.340: stable width
+      // v1.340: stable width; the star is a glyph (a text \u2605 is a taller fallback-font glyph that grew the button)
+      pinBtn.innerHTML = stableToggleLabelHtml(pinned ? 'Pinned' : 'Pin channel', ['Pin channel', 'Pinned'], { Pinned: { name: 'starFilled', after: true } });
       pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
       pinBtn.classList.toggle('btn-primary', !pinned);
     }
