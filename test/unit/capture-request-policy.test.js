@@ -42,13 +42,15 @@ test('POST is blocked by default as an alarm', () => {
 });
 
 test('fire-and-forget page telemetry is blocked but EXPECTED (non-run-failing)', () => {
-  for (const p of ['/api/videos/abc/view', '/api/progress', '/api/notifications/seen']) {
+  for (const p of ['/api/videos/abc/view', '/api/progress', '/api/notifications/seen', '/api/music/resume']) {
     const v = requestVerdict('POST', `${B}${p}`);
     assert.deepStrictEqual([v.allow, v.expected], [false, true], p);
   }
   // ...but only those exact shapes:
   assert.strictEqual(requestVerdict('POST', `${B}/api/videos/abc/view/extra`).expected, false);
   assert.strictEqual(requestVerdict('DELETE', `${B}/api/progress`).expected, false);
+  assert.strictEqual(requestVerdict('POST', `${B}/api/music/resume/clear`).expected, false);
+  assert.strictEqual(requestVerdict('DELETE', `${B}/api/music/resume`).expected, false);
 });
 
 test('the two contract POSTs pass: login + relocation dry-run preview', () => {
@@ -182,6 +184,24 @@ for (const rel of ['tools/capture/capture.js', 'test/visual/capture.js']) {
     assert.ok(sites.length >= 2, `expected the scene AND login contexts to use newGuardedContext (found ${sites.length})`);
   });
 }
+
+// The rest of the visual/geometry tooling (run.js, server.js, the geometry runner) must get its
+// contexts from test/visual/capture.js (login / newScenePage, both newGuardedContext) - never a
+// bare newContext of its own.
+test('test/visual/* and test/geometry/*: no bare newContext outside capture.js', () => {
+  const dirs = ['test/visual', 'test/geometry'];
+  let scanned = 0;
+  for (const d of dirs) {
+    for (const f of fs.readdirSync(path.join(__dirname, '../..', d)).filter((x) => x.endsWith('.js'))) {
+      const rel = `${d}/${f}`;
+      if (rel === 'test/visual/capture.js') continue;
+      const code = fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+      assert.ok(!/newContext/.test(code.replace(/newGuardedContext/g, '')), `a bare newContext reference in ${rel}`);
+      scanned++;
+    }
+  }
+  assert.ok(scanned >= 5, `scanned ${scanned} files`);
+});
 
 test('the capture allowlist stays a SUBSET of the server readonly allowlist (twin contracts cannot drift apart)', () => {
   const { READONLY_ALLOWED_POSTS } = require('../../server.js');

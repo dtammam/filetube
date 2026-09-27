@@ -20,7 +20,6 @@
 // playwright install chromium). The login comes from the seeded dir's fixtures.json
 // (--data, else $VISUAL_DATA_DIR, else <tmpdir>/filetube-visual-data), or --user/--pass.
 // Exit 0 = every sample holds; 1 = a sample failed (listed); 2 = the run itself broke.
-/* global document, getComputedStyle */ // the page.evaluate callbacks run in the browser
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');

@@ -46,6 +46,10 @@ const EXPECTED_BLOCK_PATTERNS = [
   /^\/api\/progress$/,
   /^\/api\/books\/[^/]+\/progress$/, // the reader's position ping (the books twin of /api/progress)
   /^\/api\/notifications\/seen$/,
+  // The music resume pointer music.js posts on every track start (Pocket scenes and the
+  // geometry G4 sequence play a track): the same fire-and-forget class (step 4 of the UI
+  // professionalism pass; it was the one unexpected block in every Pocket capture).
+  /^\/api\/music\/resume$/,
 ];
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

@@ -19,6 +19,13 @@
 //
 // Adapted from the 2026-09-27 audit's baseline seed, which copied a local dev
 // database; this one is self-contained so CI can run it.
+// SEED_NOW (ms) pins the fixture's clock: every stamped row, including the ones the real
+// routes stamp below (watch progress), is written at SEED_NOW + seconds, via clock-shim.js.
+// Unset, the seed uses the real clock (manual runs). test/visual/run.js always pins it.
+if (Number(process.env.SEED_NOW) > 0 && !process.env.FILETUBE_CLOCK_MS) {
+  process.env.FILETUBE_CLOCK_MS = String(Number(process.env.SEED_NOW));
+  require('./clock-shim.js');
+}
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -267,7 +274,10 @@ const CHANNELS = [
         pubDateMs: NOW - e * 7 * 86400e3, durationSec: 1800 + e * 311, status: 'downloaded', bytes: wav.length, downloadedAt: NOW - e * 7 * 86400e3, filePath: fp };
     }
   });
-  podcastsDb.replaceAll({ settings: {}, episodes, subscriptions: shows.map(([id, name, author], i) => ({ id, name, author, showDirName: name,
+  // pollMinutes 0 = manual only: no feed-poll timer arms, so a long-running fixture server
+  // never re-checks the (unreachable) feeds and rewrites their status lines (step 3's
+  // determinism note: a status line changed under a server that had run for over an hour).
+  podcastsDb.replaceAll({ settings: { pollMinutes: 0 }, episodes, subscriptions: shows.map(([id, name, author], i) => ({ id, name, author, showDirName: name,
     feedUrlDisplay: `https://feeds.example.com/${id}`, feedHost: 'feeds.example.com', description: `${name} - a fixture show.`, paused: false,
     backfill: 5, order: i, addedAt: NOW - 60 * 86400e3, lastCheckedAt: NOW - 3600e3, lastStatus: 'ok' })) });
 
@@ -325,7 +335,10 @@ const CHANNELS = [
   await post('/api/books/pins', { dir: path.join(booksRoot, 'Harbor Library'), label: 'Harbor Library' });
   server.close();
 
-  const fixtures = { dataDir: DATA, seededAt: NOW, user: USER, password: PASSWORD,
+  // viewNow: the wall clock the server (start-server.sh, clock-shim.js) and the browser
+  // (capture.js installPinnedClock) start at - one hour after the seed, so every seeded
+  // row, route-stamped ones included, is in the past and reads the same relative date.
+  const fixtures = { dataDir: DATA, seededAt: NOW, viewNow: NOW + 3600e3, pinned: Number(process.env.SEED_NOW) > 0, user: USER, password: PASSWORD,
     video: harbor[0], videoUnsub: byChannel['Northbound Field Notes'][0], track: musicIds[0],
     book: readingBook, bookShelf: path.join(booksRoot, 'Harbor Library'),
     counts: { videos: Object.values(meta).filter((m) => m.type === 'video').length, musicTracks: musicIds.length,

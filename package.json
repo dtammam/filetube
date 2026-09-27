@@ -12,6 +12,9 @@
     "lint:css": "node scripts/css-token-lint.js",
     "lint:overlay": "node scripts/overlay-containment-lint.js --enforce",
     "lint:ui": "node scripts/ui-lint.js --enforce",
+    "test:geometry": "node test/geometry/run.js",
+    "test:geometry:fast": "node test/geometry/run.js --fast",
+    "test:visual": "node test/visual/run.js",
     "ledger:check": "node scripts/ledger-check.js",
     "audit:check": "node scripts/audit-check.js"
   },
