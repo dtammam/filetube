@@ -313,6 +313,7 @@ test('injectors REPLACE their placeholders in place: the header and the bar keep
     '/api/subscriptions/health': json({ enabled: true }),
     '/api/auth/me': ME,
   });
+  doc.defaultView.localStorage.setItem('ft-bottomnav-last', '["stale"]'); // the reserves are painted; now prove apply RE-writes it
   c.wireSearchAffordances();
   c.injectYouNavItem();
   c.injectSubscriptionsNavLinkIfEnabled();
@@ -404,6 +405,59 @@ test('the per-user reserve flags are dropped on sign-out and on login', () => {
     assert.match(signOut, new RegExp(`removeItem\\('${key}'\\)`), `sign-out drops ${key}`);
     assert.match(login, new RegExp(`removeItem\\('${key}'\\)`), `login drops ${key}`);
   }
+});
+
+test('apply at boot keeps a reserve IN its slot, even when the user\'s order puts an async tab first', () => {
+  const last = ['subscriptions', 'home', 'playlists', 'history', 'oneoff-download', 'you'];
+  const { c, doc } = bootShell({ 'ft-bottomnav-last': JSON.stringify(last),
+    'ft-bottomnav': JSON.stringify({ order: ['subscriptions', 'home', 'playlists', 'history', 'oneoff-download'], hidden: [], shown: [] }) }, {});
+  c.applyBottomNavCustomization(); // the DOMContentLoaded apply, before any tab has landed
+  const visible = Array.from(doc.getElementById('bottom-nav').querySelectorAll('.bottom-nav-item')).filter((e) => !e.hidden)
+    .map((e) => e.getAttribute('data-nav') || e.getAttribute('data-ft-reserve'));
+  assert.deepStrictEqual(visible, last, 'the bar resolves exactly as it painted (no re-space at DOMContentLoaded)');
+});
+
+test('the account menu takes its placeholder\'s SLOT (a later sibling stays after it)', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><header><div class="header-right"></div></header>', { url: 'http://localhost/' });
+  const c = freshCommon();
+  setGlobals(dom);
+  global.fetch = async (url) => (url === '/api/auth/me' ? ME : { ok: false, status: 404, json: async () => ({}) });
+  c.injectAccountMenu();
+  const hr = dom.window.document.querySelector('.header-right');
+  const later = dom.window.document.createElement('span');
+  later.id = 'later';
+  hr.appendChild(later);
+  for (let i = 0; i < 6; i++) await flush();
+  assert.deepStrictEqual(kidsOf(hr), ['account-menu-root', 'later']);
+});
+
+test('#140: the queue lands right before the bell PLACEHOLDER (not at firstChild, ahead of the modern sort glyph)', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><header><div class="header-right"></div></header>', { url: 'http://localhost/' });
+  const c = freshCommon();
+  setGlobals(dom);
+  dom.window.localStorage.setItem('ft-notif-bell-enabled', '1');
+  global.fetch = async (url) => {
+    if (url === '/api/queue') return json({ entries: [{ uid: 'u', mediaId: 'm', item: { id: 'm', title: 'A' } }] });
+    return new Promise(() => {}); // the bell badge never answers inside this test
+  };
+  c.injectNotificationBellIfEnabled(); // DOMContentLoaded: the bell placeholder
+  c.injectQueueChrome();
+  // then the home view's init mounts the modern sort glyph at firstChild (injectModernHeaderSort)
+  const sort = dom.window.document.createElement('div');
+  sort.className = 'modern-sort';
+  const hr = dom.window.document.querySelector('.header-right');
+  hr.insertBefore(sort, hr.firstChild);
+  for (let i = 0; i < 6; i++) await flush();
+  assert.deepStrictEqual(kidsOf(hr), ['modern-sort', 'queue-btn', 'notif-bell-placeholder']);
+});
+
+test('a Subs reserve painted from the LAYOUT (module flag not on) is dropped when the module answers off', async () => {
+  const { c, doc } = bootShell({ 'ft-ytdlp-module': '0', 'ft-bottomnav-last': JSON.stringify(['home', 'playlists', 'history', 'subscriptions']) }, {});
+  assert.ok(doc.querySelector('[data-ft-reserve="subscriptions"]'), 'populated: the reserve is painted');
+  c.injectSubscriptionsNavLinkIfEnabled();
+  for (let i = 0; i < 6; i++) await flush();
+  assert.strictEqual(doc.querySelector('[data-ft-reserve="subscriptions"]'), null, 'dropped on the 404');
+  assert.strictEqual(doc.querySelector('[data-nav="subscriptions"]'), null, 'and nothing injected');
 });
 
 // ---------------------------------------------------------------- 6. modern chrome
