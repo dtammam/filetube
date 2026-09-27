@@ -258,9 +258,12 @@
               // RSS titles are attacker-influenced - escape via textContent before the innerHTML body.
               var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
               window.showConfirmModal('Move to Trash?', 'Move <strong>' + esc(item.title || 'this episode') + '</strong> to Trash? You can Restore it from the episode list.', function () {
-                if (player && typeof player.close === 'function') player.close();
+                // v1.339 R1 (T-C4): the confirm outlives an auto-advance - stop playback only when
+                // the deleted episode is STILL what plays, never the episode that followed it.
+                var stillPlaying = !!(player && player.currentId === item.id);
+                if (stillPlaying && typeof player.close === 'function') player.close();
                 fetchJson('/api/podcasts/episodes/' + encodeURIComponent(item.id), { method: 'DELETE' })
-                  .then(function () { if (typeof onSuccess === 'function') onSuccess(); })
+                  .then(function () { if (typeof onSuccess === 'function') onSuccess(stillPlaying); })
                   .catch(function () { setStatus('Could not delete the episode.'); });
               });
             },
@@ -434,13 +437,16 @@
       if (content) content.innerHTML = buildPodcastShowSkeleton(6);
       fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
         .then(function (data) {
-          if (signal.aborted) return;
+          // v1.339 R1 (T-C8): the view alone is not enough - Back (to the grid) or another show
+          // opened during the fetch owns `content` now; this stale answer must not paint show A
+          // over it, nor overwrite B's episodes and prev/next (the rebuildPlayable re-check shape).
+          if (signal.aborted || showKey(currentShow) !== showKey(show)) return;
           currentShow = data.show || show;
           episodes = data.episodes || [];
           renderEpisodes();
         })
         .catch(function () {
-          if (signal.aborted) return;
+          if (signal.aborted || showKey(currentShow) !== showKey(show)) return; // T-C8: never wipe the view that replaced us
           if (content) content.innerHTML = ''; // never strand the shimmer
           setStatus('Could not load episodes.');
         });
@@ -1273,19 +1279,25 @@
     // applies the saved position server-side. A bad or gone id degrades to
     // the plain grid (the music playTrackFromContinue posture).
     function consumeDeepLink(epId) {
+      var showAtStart = showKey(currentShow); // T-C8: the view this deep link started on (the grid, '')
+      var linkShowId = null; // T-C8: the show this deep link drilled into, once it has
       fetchJson('/api/podcasts/episodes/' + encodeURIComponent(epId))
         .then(function (ep) {
           if (signal.aborted || !ep || !ep.subId) return;
+          // v1.339 R1 (T-C8): a show the user opened during this fetch owns the view now.
+          if (showKey(currentShow) !== showAtStart) return;
           var show = null;
           for (var k = 0; k < shows.length; k++) { if (shows[k].id === ep.subId) { show = shows[k]; break; } }
           if (!show) show = { id: ep.subId, name: ep.showName || 'Podcast' };
           currentShow = show;
+          linkShowId = showKey(show);
           // v1.157 (P3): reserve the show view before the episodes fetch (same
           // as openShow) so a ?play= deep link does not flash empty.
           if (content) content.innerHTML = buildPodcastShowSkeleton(6);
           return fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
             .then(function (data) {
-              if (signal.aborted) return;
+              // T-C8: Back (or another show) during the episodes fetch - no paint, no playAt
+              if (signal.aborted || showKey(currentShow) !== showKey(show)) return;
               currentShow = data.show || show;
               episodes = data.episodes || [];
               renderEpisodes();
@@ -1302,6 +1314,9 @@
         })
         .catch(function () {
           if (signal.aborted) return;
+          // T-C8: clear only while the view this link owns is still current (its show once it
+          // drilled in, else the view it started on) - never wipe what Back / another show drew.
+          if (showKey(currentShow) !== (linkShowId !== null ? linkShowId : showAtStart)) return;
           // v1.157 (P3, gate WARNING): once this path seeds the show skeleton
           // (before the /episodes fetch above), an error must CLEAR it -- else
           // it shimmers forever with the grid gone. Mirror openShow's catch.
