@@ -122,14 +122,25 @@ test('v1.73.1 SOURCE-LOCK (slim-gate W2/C1): all six synthetic-threading sites a
   const read = (f) => fs.readFileSync(path.join(__dirname, '../../public/js/', f), 'utf8');
   const mainSrc = read('main.js');
   assert.ok(mainSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolderPaths)'), 'main.js renderer threads (mutant M3)');
-  assert.ok(mainSrc.includes('rebuildFullFolderOrder(allFolders, settings, newVisibleOrder, syntheticFolderPaths)'), 'main.js DnD rebuild threads (mutant M4)');
   const setupSrc = read('setup.js');
   assert.ok(setupSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolders)'), 'setup.js renderer threads (mutant M5)');
-  assert.ok(setupSrc.includes('rebuildFullFolderOrder(folders, settings, newVisibleOrder, syntheticFolders)'), 'setup.js DnD rebuild threads (mutant M6)');
+  // v1.339 S2 (T-C1): the two sidebar DnD rebuilds (old mutants M4/M6) moved
+  // out of main.js/setup.js into common.js's ONE by-path persist, which
+  // rebuilds from the FRESH GET - so the threading now lives there, and the
+  // synthetic list it threads is the fresh config's, never a page copy. Both
+  // callers reach it only through that helper (bound behaviourally in
+  // setup-sidebar-reorder.test.js "S2: a synthetic folder keeps its absolute
+  // position" and home-sidebar-reorder-cas.test.js).
+  assert.ok(mainSrc.includes('persistSidebarMoveByPath(move)'), 'main.js DnD goes through the shared by-path persist');
+  assert.ok(setupSrc.includes('persistSidebarMoveByPath(move)'), 'setup.js DnD goes through the shared by-path persist');
   const watchSrc = read('watch.js');
   assert.ok(watchSrc.includes('visibleSidebarFolders(folders, settings, watchSyntheticFolders)'), 'watch.js renderer threads (slim-gate C1 - the v1.41.4 site)');
   const commonSrc = read('common.js');
   assert.ok(commonSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: sheet/sidebar parity'), 'the Playlists sheet threads (slim-gate W1)');
+  assert.ok(commonSrc.includes('const synthetic = Array.isArray(cfg.syntheticFolders) ? cfg.syntheticFolders : [];'), 'the by-path persist reads the FRESH synthetic list');
+  assert.ok(commonSrc.includes('applySidebarMoveByPath(folders, settings, synthetic, move.draggedPath'), 'and threads it into the move');
+  assert.ok(commonSrc.includes('visibleSidebarFolders(full, settings, syntheticFolders);\n  if (draggedPath === anchorPath'), 'the move derives the visible subset with it');
+  assert.ok(commonSrc.includes('rebuildFullFolderOrder(full, settings, without, syntheticFolders)'), 'and rebuilds the full order with it (old mutants M4/M6)');
   assert.ok(commonSrc.includes('renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings, snapshot.syntheticFolders)'), 'and its caller passes the snapshot half');
   // Slim-gate round-2 residual, closed as the one-liner it was: the
   // snapshot BUILDER is the ninth link - without this, deleting its

@@ -48,6 +48,11 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 </div></body>`;
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+// v1.339 (L1b): a toolbar control that is off is RESERVED (keeps its slot), never [hidden].
+const isReserved = (el) => !!el && !el.hidden && el.classList.contains('music-slot-reserved')
+  && el.getAttribute('aria-hidden') === 'true' && el.getAttribute('tabindex') === '-1' && el.hasAttribute('inert');
+const isShown = (el) => !!el && !el.hidden && !el.classList.contains('music-slot-reserved')
+  && !el.hasAttribute('aria-hidden') && !el.hasAttribute('tabindex') && !el.hasAttribute('inert');
 
 function fetchMapFor(opts, calls) {
   return (url, init) => {
@@ -317,8 +322,12 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     const home = doc.querySelector('.music-home');
     assert.ok(home, 'the default landing is the HOME shelves, not a flat grid');
     // The sort control is inert on Home (fixed recently-added shelves), so it's
-    // hidden there - never a mislabeled dropdown on the landing (QA gate).
-    assert.ok(doc.getElementById('music-sort-select').hidden, 'the sort control is hidden on Home');
+    // hidden there - never a mislabeled dropdown on the landing (QA gate). v1.339 (L1, M4):
+    // hidden by VISIBILITY (.music-slot-reserved since L1b), never display, so its slot stays
+    // and the toolbar does not reflow - [hidden] would collapse the slot.
+    const sortSel = doc.getElementById('music-sort-select');
+    assert.ok(isReserved(sortSel), 'the sort control is hidden (slot reserved, inert, aria-hidden, unfocusable) on Home');
+    assert.ok(!sortSel.hidden, 'never [hidden] on Home (that removes the slot and reflows the toolbar)');
     const shelves = home.querySelectorAll('.music-shelf');
     assert.strictEqual(shelves.length, 2, 'Your artists + Recently added shelves');
     assert.match(home.innerHTML, /Your artists/, 'the artists shelf');
@@ -340,6 +349,7 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     assert.strictEqual(active.getAttribute('data-tab'), 'artists', 'See all landed on the ARTISTS tab specifically');
     assert.ok(content.querySelector('.music-artist-card'), 'the full grid is the Artists grid (artist cards)');
     assert.ok(!doc.getElementById('music-sort-select').hidden, 'the sort control returns on a sortable full tab');
+    assert.ok(isShown(doc.getElementById('music-sort-select')), 'and is visible and interactive again (the reserve is cleared)');
   });
 });
 
@@ -379,7 +389,7 @@ test('friction: the Artists view toggle flips circles <-> compact list', async (
   await boot('http://localhost/music', { state: 'docked', currentId: null }, { tabPref: 'artists', fetch: artistsFetch }, async (dom) => {
     const doc = dom.window.document;
     const toggle = doc.getElementById('music-view-toggle');
-    assert.ok(toggle && !toggle.hidden, 'the view toggle shows on the Artists tab');
+    assert.ok(toggle && isShown(toggle), 'the view toggle shows on the Artists tab');
     const content = doc.getElementById('music-content');
     assert.ok(content.querySelector('.music-card-grid'), 'default is the circle grid');
     // Toggle -> compact list.
@@ -395,7 +405,12 @@ test('friction: the Artists view toggle flips circles <-> compact list', async (
     assert.match(content.innerHTML, /music-drill/, 'tapping a list row opens the artist page');
     // v1.215 (Dean device): the toggle HIDES inside a drill (it only sorts the
     // Artists grid/list; on a song list it does nothing). Binds the !drill axis.
-    assert.ok(toggle.hidden, 'the view toggle is hidden inside an artist drill');
+    assert.ok(isReserved(toggle), 'the view toggle is hidden inside an artist drill (v1.339 L1b: its slot reserved, never removed)');
+    // A reserved toggle never acts (the programmatic-click belt; inert drops real input).
+    const before = content.innerHTML;
+    toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.strictEqual(content.innerHTML, before, 'a click on the reserved toggle does nothing');
     // Back out of the drill, return to the list.
     const back = content.querySelector('.music-drill-back');
     if (back) { back.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); for (let i = 0; i < 8; i++) await settle(); }
@@ -410,7 +425,7 @@ test('friction: the Artists view toggle flips circles <-> compact list', async (
 test('friction: the view toggle is HIDDEN off the Artists tab (Home)', async () => {
   await boot('http://localhost/music', { state: 'docked', currentId: null }, {}, async (dom) => {
     // default landing is Home -> the artists-only toggle is hidden.
-    assert.ok(dom.window.document.getElementById('music-view-toggle').hidden, 'no view toggle on Home');
+    assert.ok(isReserved(dom.window.document.getElementById('music-view-toggle')), 'no view toggle on Home (v1.339 L1b: reserved - invisible, inert, unfocusable - never removed)');
   });
 });
 

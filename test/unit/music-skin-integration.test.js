@@ -1343,7 +1343,7 @@ test('v1.253 (Dean, listen-art): the skin cover renders the track\'s OWN artUrl 
       dom.window.history.replaceState({}, '', '/music?play=t9');
       global.fetch = (u, init) => {
         const url = String(u);
-        const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+        const track = { id: 't9', artId: 'rep9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
         if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [track] }) });
         if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => track });
         if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
@@ -1353,7 +1353,21 @@ test('v1.253 (Dean, listen-art): the skin cover renders the track\'s OWN artUrl 
       for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
       const art3 = panel(dom).querySelector('.mms-art-img');
       assert.ok(art3, 'the skin painted the normal track\'s cover (non-vacuous)');
-      assert.strictEqual(art3.getAttribute('src'), '/albumart/t9', 'an artUrl-less track keeps the /albumart route');
+      assert.strictEqual(art3.getAttribute('src'), '/albumart/rep9', 'an artUrl-less track keeps the /albumart route (v1.339: keyed on its shared artId)');
+      // arm 4 (v1.339 L1): a dock-return re-init whose rebuilt queue MISSES the playing track
+      // still keys the cover on the artId remembered at load - never a second full-size URL
+      // (/albumart/t9) for the cover the player already shows.
+      mod.destroy();
+      dom.window.history.replaceState({}, '', '/music?nowplaying=1');
+      global.fetch = (u, init) => {
+        if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      };
+      mod.init(dom.window.document.getElementById('view-root'));
+      for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      const art4 = panel(dom).querySelector('.mms-art-img');
+      assert.ok(art4, 'the skin re-painted a cover on the dock-return (non-vacuous)');
+      assert.strictEqual(art4.getAttribute('src'), '/albumart/rep9', 'the re-init cover keeps the shared art id');
     },
   });
 });
@@ -1388,7 +1402,7 @@ test('v1.253 (adversarial W2): the DESKTOP now-playing panel rows carry the trac
       for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
       const thumb2 = panel(dom).querySelector('.mnp-queue-thumb');
       assert.ok(thumb2, 'the normal track\'s panel row rendered (non-vacuous)');
-      assert.strictEqual(thumb2.getAttribute('src'), '/albumart/t9', 'an artUrl-less row keeps the /albumart route (no over-reach)');
+      assert.strictEqual(thumb2.getAttribute('src'), '/albumart/t9?s=128', 'an artUrl-less row keeps the /albumart route (no over-reach; v1.339: the row-sized rendition)');
     },
   });
 });

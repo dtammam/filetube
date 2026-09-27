@@ -65,8 +65,10 @@
 //       getBaseId()   -> the playing item's base media id (::c chapter suffix stripped), or null
 //       isEligible()  -> the view says the playing item is menu-eligible (the engine adds its
 //                        own in-MAIN-document check - the pop-out never offers Extras)
-//       onMutated()   a successful Delete/Move removed/re-keyed the playing item - the view
-//                     clears its playing state and refreshes
+//       onMutated(info) a successful Delete/Move removed/re-keyed the menu's item - the view
+//                     refreshes, and clears its playing state only when info.playingRemoved
+//                     (v1.339 R1 T-C4: false = an auto-advance moved on during the confirm, the
+//                     player was NOT closed and the new track keeps playing)
 //       signal        the view's AbortSignal (share-choice dismiss, transcript, reheat poll)
 //                     Adapter fields (v1.287, all OPTIONAL - defaults = the video/library model):
 //       fetchItem(id) -> Promise<item|null> (default: GET /api/videos/:id). Item shape:
@@ -84,7 +86,9 @@
 //       likeRequest(item,nextOn)/watchedRequest(item,nextOn) -> return the toggle fetch (default
 //                        /api/liked//api/watched); onQueue(item,pos) (default addToQueue);
 //       onDelete(item,onSuccess,player) -> OWN the delete flow entirely (podcasts: the recoverable
-//                        trash). When present, the video/music two-flow delete is bypassed.
+//                        trash). When present, the video/music two-flow delete is bypassed. It
+//                        closes `player` only if it still plays `item`, and passes that to
+//                        onSuccess(playingRemoved) (T-C4).
 // NOTE (Dean, 2026-09-02): music.js's v1.235 wheel-VOLUME mode is deliberately NOT ported -
 // Dean ruled the Now-Playing wheel SCRUBS everywhere ("like it does on mobile - consistent
 // UI and useful"), so the engine has exactly one Now-Playing wheel behavior. The iPod skin's
@@ -407,14 +411,24 @@
         sig.addEventListener('abort', stopExtrasReheatPoll, { once: true });
       }
     }
-    // A successful Move/Delete removes (or re-keys) the item the player holds: playback was
-    // already close()d; the VIEW clears its playing state and refreshes via onMutated.
-    function afterExtrasMutation() {
+    // v1.339 R1 (T-C4): is `item` STILL the playing item? The Move/Delete confirm runs long
+    // after the menu captured the item (a modal outlives an auto-advance), so the player may
+    // hold a different track by then - closing it would stop the WRONG playback. Both sides
+    // are normalized to the base file id (a `::c<idx>` chapter track acts on its whole file).
+    function extrasBaseOf(id) { return id == null ? '' : String(id).replace(/::c\d+$/, ''); }
+    function extrasStillPlaying(item) {
+      var cur = extrasBaseId();
+      return !!(item && item.id && cur && extrasBaseOf(cur) === extrasBaseOf(item.id));
+    }
+    // A successful Move/Delete removes (or re-keys) the item: when it was still the playing
+    // item, playback was already close()d and the VIEW clears its playing state; either way the
+    // view refreshes via onMutated({ playingRemoved }) - false = something else plays now, keep it.
+    function afterExtrasMutation(playingRemoved) {
       extrasItem = null;
       // QA gate (v1.33.1 class, watch.js delete parity): deleting a LIKED item changes the
       // count the sidebar's session cache gates on - re-prime it.
       if (typeof window.fetchLikedTotal === 'function') window.fetchLikedTotal(true);
-      if (typeof cfg.onMutated === 'function') { try { cfg.onMutated(); } catch (_) { /* view refresh best-effort */ } }
+      if (typeof cfg.onMutated === 'function') { try { cfg.onMutated({ playingRemoved: playingRemoved !== false }); } catch (_) { /* view refresh best-effort */ } }
     }
     function extrasMove(item) {
       if (typeof window.showMoveModal !== 'function' || typeof window.requestMoveItem !== 'function') return;
@@ -434,9 +448,10 @@
                 // and would 404 mid-playback - stop it now that the move SUCCEEDED (a failed
                 // move keeps the modal open and the track playing; closing before the
                 // request would kill playback on every retry - watch.js ordering).
+                var stillPlaying = extrasStillPlaying(item); // T-C4: only the moved item's own playback
                 var pl = extrasPlayer();
-                if (pl && typeof pl.close === 'function') pl.close();
-                afterExtrasMutation();
+                if (stillPlaying && pl && typeof pl.close === 'function') pl.close();
+                afterExtrasMutation(stillPlaying);
               })
               .catch(function (err) {
                 ctl.statusEl.textContent = (err && err.message) || 'Move failed.';
@@ -456,9 +471,11 @@
         return;
       }
       var doDelete = function () {
-        // Release the about-to-be-deleted resource before the DELETE (watch.js parity).
+        // Release the about-to-be-deleted resource before the DELETE (watch.js parity) - only
+        // when it is STILL what plays (T-C4: an auto-advance during the confirm moved on).
+        var stillPlaying = extrasStillPlaying(item);
         var pl = extrasPlayer();
-        if (pl && typeof pl.close === 'function') pl.close();
+        if (stillPlaying && pl && typeof pl.close === 'function') pl.close();
         fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
           .then(function (res) {
             if (res.status === 403) { extrasToast("You don't have permission to delete library files."); return null; }
@@ -468,7 +485,7 @@
             if (!data) return;
             if (data.success) {
               extrasToast(typeof window.deleteResultToast === 'function' ? window.deleteResultToast(data) : 'Deleted.');
-              afterExtrasMutation();
+              afterExtrasMutation(stillPlaying);
             } else {
               extrasToast('Error deleting file: ' + (data.error || 'unknown error'));
             }
@@ -1747,7 +1764,7 @@
       backHtml: extrasBackHtml,
       stillOnPage: function () { var m = panel.querySelector('[data-skin-sticker-menu]'); return !!m && m.getAttribute('data-sm-page') === 'extras'; },
       onRendered: function (hadBack) { if (hadBack) focusInMenu('[data-skin-extras-back]'); }, // #281 (c): the loaded page replaces the loading page's Back
-      onMutated: function () { if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(); } catch (_) { /* view refresh best-effort */ } } },
+      onMutated: function (info) { if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(info); } catch (_) { /* view refresh best-effort */ } } },
       // v1.287: forward the media-type ADAPTER fields (undefined for music/video -> the factory
       // defaults preserve their behaviour; podcasts supply the podcast endpoints/capabilities).
       fetchItem: extrasCfg ? extrasCfg.fetchItem : undefined,

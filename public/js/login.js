@@ -121,6 +121,10 @@
         // shared browser.
         try { localStorage.removeItem('ft-modern-avatarbar-count'); } catch (_) { /* storage disabled */ }
         try { localStorage.removeItem('ft-notif-bell-enabled'); } catch (_) { /* storage disabled */ }
+        // v1.339 (L2): the per-user pre-paint reserves too (common.js accountSignOut's list).
+        try { localStorage.removeItem('ft-queue-shown'); } catch (_) { /* storage disabled */ }
+        try { localStorage.removeItem('ft-bottomnav-last'); } catch (_) { /* storage disabled */ }
+        try { localStorage.removeItem('ft-books-continue-count'); } catch (_) { /* storage disabled */ }
         window.location.assign(safeNext());
         return;
       }

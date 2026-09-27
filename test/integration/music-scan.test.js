@@ -209,11 +209,17 @@ test('T4: album art is orphan-pruned ONLY when the album\'s LAST track is remove
   // Give the album an art file (no embedded/sidecar in this fixture).
   fs.mkdirSync(ALBUMART_DIR, { recursive: true });
   fs.writeFileSync(path.join(ALBUMART_DIR, `${albumKey}.jpg`), 'ART');
+  // v1.339 (L1): the album's cached sized renditions, plus a DIFFERENT album's (a control).
+  const sizedDir = path.join(ALBUMART_DIR, 'sized');
+  fs.mkdirSync(sizedDir, { recursive: true });
+  for (const s of [128, 256, 512]) fs.writeFileSync(path.join(sizedDir, `${albumKey}-${s}.jpg`), 'R');
+  fs.writeFileSync(path.join(sizedDir, 'otheralbumkey-128.jpg'), 'R');
 
   await setPruneMissing(true);
   fs.rmSync(path.join(libRoot, 'C/Double/02 B.flac')); // remove ONE track
   await scanMusicSettled();
   assert.ok(fs.existsSync(path.join(ALBUMART_DIR, `${albumKey}.jpg`)), 'art survives while a sibling track remains');
+  assert.ok(fs.existsSync(path.join(sizedDir, `${albumKey}-256.jpg`)), 'its renditions survive with it');
 
   fs.rmSync(path.join(libRoot, 'C/Double/01 A.flac')); // remove the LAST track
   // dir still exists but is empty -> the empty-under-mounted guard would
@@ -221,6 +227,8 @@ test('T4: album art is orphan-pruned ONLY when the album\'s LAST track is remove
   writeTrack('D/Other/01 Keep.flac');
   await scanMusicSettled();
   assert.ok(!fs.existsSync(path.join(ALBUMART_DIR, `${albumKey}.jpg`)), 'art orphan-pruned once the last track is gone');
+  for (const s of [128, 256, 512]) assert.ok(!fs.existsSync(path.join(sizedDir, `${albumKey}-${s}.jpg`)), `its ${s} rendition goes with it (v1.339)`);
+  assert.ok(fs.existsSync(path.join(sizedDir, 'otheralbumkey-128.jpg')), 'another album\'s rendition is untouched');
 });
 
 test('T4: music config REFUSES overlap with a media folder or a book folder (three-way, both directions)', async () => {

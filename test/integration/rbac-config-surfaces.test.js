@@ -100,6 +100,7 @@ test('L1 /api/config: a path-restricted member sees only visible roots + display
   const adminCfg = await getJson('/api/config', undefined);
   assert.ok(adminCfg.folders.includes(hidRoot), 'admin sees the hidden root');
   assert.ok(Object.keys(adminCfg.folderDisplayNames).includes('SecretChannel'), 'admin sees the hidden display name');
+  assert.match(adminCfg.configVersion, /^[0-9a-f]{40}$/, 'v1.339 S2: admin gets the compare-and-set token');
 
   const freeCfg = await getJson('/api/config', unrestricted.cookie);
   assert.deepStrictEqual(freeCfg, adminCfg, 'an UNRESTRICTED member gets the byte-identical config (no empty-folder vanish)');
@@ -111,6 +112,9 @@ test('L1 /api/config: a path-restricted member sees only visible roots + display
     assert.ok(!Object.keys(cfg.folderSettings).includes(hidRoot), `${label}: drops hidden folderSettings`);
     assert.deepStrictEqual(Object.keys(cfg.folderDisplayNames), ['FamilyChannel'], `${label}: drops the hidden display name`);
     assert.ok(!JSON.stringify(cfg).includes('Secret Channel'), `${label}: no hidden display label anywhere`);
+    // v1.339 S2: the compare-and-set token hashes the FULL stored config, so a
+    // restricted member (who cannot POST it anyway) never receives it.
+    assert.ok(!Object.prototype.hasOwnProperty.call(cfg, 'configVersion'), `${label}: no configVersion for a restricted member`);
   }
 });
 

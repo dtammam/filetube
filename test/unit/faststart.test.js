@@ -167,5 +167,9 @@ test('v1.111 source-lock: the scan faststarts only NEW, .mp4, writable-download,
   // A crash-left `<orig>.faststart.tmp.mp4` (a sibling INSIDE a scan root) must
   // be excluded from the walk, or it's indexed as a phantom/duplicate card
   // (gate WARNING). isInFlightTranscode matches its `.tmp.mp4` suffix.
-  assert.match(orch, /if \(isYtdlpIntermediate\(file\.name\) \|\| isInFlightTranscode\(file\.name\)\) \{/, 'the scan walk skips faststart temps');
+  // v1.339 gate r1 C1: the test lives in the walk's shared inclusion-rule
+  // helper (`isSkippedTempName`, also used by the prune keep-guard), and the
+  // walk calls it - lock both halves.
+  assert.match(orch, /function isSkippedTempName\(name\) \{\s*\n\s*return isYtdlpIntermediate\(name\) \|\| isInFlightTranscode\(name\);/, 'the shared temp-name rule covers faststart temps');
+  assert.match(orch, /if \(isSkippedTempName\(file\.name\)\) \{/, 'the scan walk skips faststart temps');
 });
