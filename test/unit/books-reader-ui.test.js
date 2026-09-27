@@ -23,6 +23,9 @@ const { JSDOM } = require('jsdom');
 const ui = require('../../public/js/ui.js');
 const PUB = path.join(__dirname, '..', '..', 'public');
 const flush = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); };
+// ui.sheet adds .is-open on the NEXT frame (jsdom pretendToBeVisual: ~16ms), so a test
+// about closing must first SEE it open (a clear asserted on a never-opened sheet is vacuous).
+const frame = () => new Promise((r) => setTimeout(r, 40));
 
 // The shell's #view-root, verbatim, so the test drives the markup that ships.
 function viewRootOf(page) {
@@ -198,8 +201,10 @@ test('books: the sort button opens a ui.menu (checked = current); a pick re-fetc
   assert.strictEqual(doc.getElementById('books-sort-label').textContent, 'Title A-Z');
   assert.strictEqual(btn.getAttribute('aria-label'), 'Sort books: Title A-Z');
   assert.ok(calls.some((c) => c.url.startsWith('/api/books?sort=title-asc')), 're-fetched with the new order');
+  await new Promise((res) => setTimeout(res, 400)); // the first menu's exit
   btn.click();
-  assert.strictEqual(doc.querySelectorAll('.ui-sheet.is-open, .ui-sheet:not(.is-open)').length >= 1, true);
+  await frame();
+  assert.strictEqual(doc.querySelectorAll('.ui-sheet.is-open').length, 1, 'precondition: the menu is OPEN');
   view.destroy();
   assert.strictEqual(doc.querySelectorAll('.ui-sheet.is-open').length, 0, 'an in-app nav away never strands the menu');
   active.view = null;
@@ -278,7 +283,7 @@ const EPUB = { id: 'b1', title: 'The Lamplighter', format: 'epub', size: 10, lik
 const key = (win, k) => win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true }));
 
 test('reader F69: the toolbar slots are RESERVED - Like and More are present and disabled (never hidden) until the detail resolves, then enabled', async () => {
-  const r = mountReader({ detail: EPUB });
+  const r = mountReader({ detail: { ...EPUB, progress: { percent: 38 } } });
   const like = r.doc.getElementById('reader-like-btn');
   const more = r.doc.getElementById('reader-more-btn');
   for (const b of [like, more, r.doc.getElementById('reader-toc-btn'), r.doc.getElementById('reader-settings-btn')]) {
@@ -292,6 +297,11 @@ test('reader F69: the toolbar slots are RESERVED - Like and More are present and
   assert.strictEqual(like.disabled, false);
   assert.strictEqual(more.disabled, false);
   assert.strictEqual(r.doc.getElementById('reader-title').textContent, 'The Lamplighter');
+  // The saved position paints the bottom bar as DATA (--p), never an inline width.
+  const fill = r.doc.getElementById('reader-progress-fill');
+  assert.strictEqual(fill.style.getPropertyValue('--p'), '0.38');
+  assert.strictEqual(fill.style.width, '', 'no inline width');
+  assert.strictEqual(r.doc.getElementById('reader-percent').textContent, '38%');
 });
 
 test('reader F69: Like is a pressed ICON toggle (favorite -> favorite.fill), never the red btn-primary fill; non-optimistic on failure', async () => {
@@ -417,7 +427,8 @@ test('reader: destroy() closes an open sheet (it lives on <body>, outside #view-
   r.releaseDetail();
   await flush(20);
   r.doc.getElementById('reader-toc-btn').click();
-  assert.strictEqual(r.doc.querySelectorAll('.ui-sheet').length, 1);
+  await frame();
+  assert.strictEqual(r.doc.querySelectorAll('.ui-sheet.is-open').length, 1, 'precondition: the sheet is OPEN');
   r.view.destroy();
   active.view = null;
   assert.strictEqual(r.doc.querySelectorAll('.ui-sheet.is-open').length, 0, 'closing on nav-away');
@@ -448,9 +459,11 @@ test('reader pure: readerMoreMenuItems and readerFontStepper', () => {
 test('source: books.js and read.js never write an inline visual style (only --p / --reader-h as data)', () => {
   for (const f of ['books.js', 'read.js']) {
     const src = fs.readFileSync(path.join(PUB, 'js', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    const writes = [...src.matchAll(/\.style\.(\w+)\s*=/g)].map((m) => m[1]);
-    // canvas.style.width in read.js's PDF adapter sizes the rendered PAGE (content, not chrome).
-    assert.deepStrictEqual(writes.filter((w) => w !== 'width' || f !== 'read.js'), [], `${f}: no .style.X = writes`);
+    const writes = [...src.matchAll(/(\w+)\.style\.(\w+)\s*=/g)].map((m) => `${m[1]}.${m[2]}`);
+    // The one write left is read.js's PDF adapter sizing the rendered PAGE canvas
+    // (reader content, not chrome) - named exactly, so a chrome write cannot hide behind it.
+    const allowed = f === 'read.js' ? ['canvas.width'] : [];
+    assert.deepStrictEqual(writes.filter((w) => !allowed.includes(w)), [], `${f}: no .style.X = writes`);
     for (const m of src.matchAll(/setProperty\('([^']+)'/g)) assert.ok(['--p', '--reader-h'].includes(m[1]), `${f}: setProperty(${m[1]})`);
     assert.doesNotMatch(src, /style="/, `${f}: no inline style attribute in markup strings`);
   }
