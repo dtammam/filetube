@@ -371,7 +371,8 @@ test('ui.sheet: DOM contract (dialog), is-open ALWAYS added on the next frame, f
   assert.strictEqual(c.body, c.el.querySelector('.ui-sheet__body'));
   assert.strictEqual(c.body.children[0], content);
   assert.strictEqual(BL.isLocked(doc), true, 'body lock taken');
-  assert.strictEqual(doc.activeElement, close, 'focus moved to the first focusable');
+  assert.strictEqual(doc.activeElement, c.el, 'focus moved into the sheet (the sheet itself, so no ring on Close)');
+  assert.strictEqual(c.el.getAttribute('tabindex'), '-1');
   assert.strictEqual(c.el.classList.contains('is-open'), false, 'not before the frame');
   t.tick(16);
   assert.strictEqual(c.el.classList.contains('is-open'), true);

@@ -149,7 +149,7 @@ const CONTRACT = {
   '--grab-w': '36px', '--grab-h': '5px', '--switch-w': '51px', '--switch-h': '31px',
   '--toast-offset': 'var(--space-12)', '--badge-ground': 'rgba(0, 0, 0, 0.72)',
   '--av-tone-1': '#3a5ba0', '--av-tone-2': '#7a4ea3', '--av-tone-3': '#a0425c', '--av-tone-4': '#9a4f16',
-  '--av-tone-5': '#2f7556', '--av-tone-6': '#1f6f80', '--av-tone-7': '#5b5b60', '--av-tone-8': '#80531f',
+  '--av-tone-5': '#2f7556', '--av-tone-6': '#1f6f80', '--av-tone-7': '#5b5b60', '--av-tone-8': '#4f46b8',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {

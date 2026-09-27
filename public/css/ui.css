@@ -339,6 +339,14 @@ button.ui-row,
   text-align: inherit;
   text-decoration: none;
 }
+/* F20: a row link never underlines, in any era or state (style.css's 2005 rule underlines
+   every <a>; the [data-theme] prefix outranks it without !important) */
+[data-theme] a.ui-row,
+[data-theme] .ui-row__link,
+a.ui-row,
+.ui-row__link {
+  text-decoration: none;
+}
 .ui-row__link::before {
   content: '';
   position: absolute;
@@ -702,6 +710,16 @@ button.ui-row:focus-visible,
   outline-offset: 0;
 }
 .ui-field__input[aria-invalid="true"] { box-shadow: inset 0 0 0 var(--hairline) var(--danger); }
+/* the password show/hide toggle (ui.prompt), over the input's trailing edge */
+.ui-field:has(> .ui-field__reveal) { position: relative; }
+.ui-field:has(> .ui-field__reveal) > .ui-field__input { padding-right: var(--hit); }
+.ui-field__reveal {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  height: var(--ctl-lg);
+  width: var(--ctl-lg);
+}
 .ui-field__help { margin: 0; font: var(--t-footnote); color: var(--ink-2); }
 .ui-field__error { margin: 0; font: var(--t-footnote); color: var(--danger); }
 .ui-select {
@@ -834,6 +852,8 @@ button.ui-row:focus-visible,
 .ui-swipe__action:active { filter: brightness(0.9); }
 .ui-swipe__content {
   position: relative;
+  /* the browser keeps vertical panning; interaction.js takes only the horizontal swipe */
+  touch-action: pan-y;
   background-color: var(--surface-1);
   transform: translateX(var(--swipe-x, 0px));
   transition: transform var(--dur-sheet) var(--ease-std);

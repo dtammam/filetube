@@ -351,8 +351,6 @@
   }
 
   // ---------------------------------------------------------------- sheet
-  var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
-    'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   var openStack = []; // open controllers, topmost last (Esc closes only the top one)
   var lockSeq = 0;
 
@@ -476,8 +474,11 @@
         s.classList.add('is-open');
         scrim.classList.add('is-open');
       });
-      var target = (o.initialFocus && s.contains(o.initialFocus)) ? o.initialFocus : s.querySelector(FOCUSABLE);
-      if (!target) { s.setAttribute('tabindex', '-1'); target = s; }
+      // Focus moves INTO the sheet: to `initialFocus` (a prompt's field), else the sheet
+      // itself - not its first control, which would open every sheet with a focus ring on
+      // Close (the kit render). Tab then reaches Close first.
+      var target = (o.initialFocus && s.contains(o.initialFocus)) ? o.initialFocus : s;
+      if (target === s) s.setAttribute('tabindex', '-1');
       try { target.focus(); } catch (_) {}
       return ctrl;
     }

@@ -98,7 +98,7 @@ module.exports = [
       // (main/watch/setup/subscriptions) calls `FileTube.registerView`/
       // `FileTube.navigate`. `ui` is the primitives' builder namespace ui.js
       // attaches to `window` (UI professionalism pass, plan D4).
-      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly', FTIcons: 'readonly', ui: 'readonly' },
+      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly', FTIcons: 'readonly', ui: 'readonly', FTInteraction: 'readonly' },
     },
     rules: {
       ...commonRules,
