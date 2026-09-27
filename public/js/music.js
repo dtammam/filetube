@@ -841,6 +841,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // in init's closure) so a warm SPA return re-paints the real tiles synchronously at init
   // - no skeleton flash - and the fetch then replaces them only if the list changed.
   var jumpbackWarmHtml = '';
+  // v1.339 (L1, M2): the playing track's shared art id, remembered at load. A dock-return /
+  // SPA re-init paints the skin before its queue reloads; without this the big art fell back
+  // to /albumart/<track id> - a second URL (and a second full-size download) for the cover
+  // the player already shows under /albumart/<artId>.
+  var playingArtMemo = { id: null, artId: '' };
   // v1.44.2: the drill-header collapse IntersectionObserver. Module-scoped (NOT
   // in init's closure) so destroy() can disconnect it on the SPA #view-root
   // swap — leaving /music mid-drill must not leak an observer pointed at a
@@ -1231,7 +1236,8 @@ if (typeof module !== 'undefined' && module.exports) {
         track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
           // v1.339 L1: keyed on the album's shared art id, so the next track of the same
           // album re-uses the cover already loaded (full size: the skin's big art).
-          artUrl: playingId ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci]) : playingId, curArt) : '' },
+          artUrl: playingId ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci])
+            : ((playingArtMemo.id === playingId && playingArtMemo.artId) ? playingArtMemo.artId : playingId), curArt) : '' },
         // v1.317 gate r1 W2: the view's veto on the artist line (the engine ANDs it with its
         // onArtist presence) - a listen video with no channel folder gets the plain line, and in
         // the pop-out a listen video's line is plain too (gate r2). The tooltip names the target.
@@ -3204,6 +3210,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function loadTrack(item, i, opts) {
       opts = opts || {};
+      playingArtMemo = { id: item && item.id, artId: musicArtId(item) }; // v1.339 L1: survives a view re-init
       // Wave G: a PROJECTED library-audio track (source 'library') streams the
       // mp3 from the media byte route, arts from its YouTube thumbnail, and saves
       // progress to the MEDIA store - so it carries its OWN routes, which we
