@@ -174,7 +174,7 @@
               <option value="album-asc">Album</option>
               <option value="duration-desc">Longest</option>
             </select>
-            <button class="btn btn-sm" id="music-view-toggle" type="button" hidden title="Switch to list view" aria-label="Switch to list view">
+            <button class="btn btn-sm music-slot-reserved" id="music-view-toggle" type="button" aria-hidden="true" tabindex="-1" inert title="Switch to list view" aria-label="Switch to list view">
               <i class="icon-list"></i>
             </button>
             <!-- v1.317 (Dean, T1): the desktop THEATRE toggle (v1.222) is no longer a
@@ -184,10 +184,12 @@
                  theatre layout (ft-music-theater). One control, one glyph writer. -->
             <!-- v1.234 (Dean): DESKTOP-only "pop out" - float the player into a small
                  window showing the picked music skin (Document PiP where supported =
-                 always-on-top; a plain independent window elsewhere). Hidden until a
+                 always-on-top; a plain independent window elsewhere). Invisible until a
                  music track is playing AND the pop-out is supported (music.js
-                 updatePopoutBtn); mobile keeps the in-tab full-screen skin instead. -->
-            <button class="btn btn-sm" id="music-popout-btn" type="button" hidden title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false">
+                 updatePopoutBtn); v1.339 L1b: it ships RESERVED (slot kept, inert) so
+                 the first play never reflows the toolbar, and has no box at <=768px
+                 (style.css), where mobile keeps the in-tab full-screen skin instead. -->
+            <button class="btn btn-sm music-slot-reserved" id="music-popout-btn" type="button" aria-hidden="true" tabindex="-1" inert title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false">
               <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-800h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h240v240h-80v-104L388-332Z"/></svg> Pop out
             </button>
             <!-- v1.278 (Dean): desktop actions menu - the video-parity Extras

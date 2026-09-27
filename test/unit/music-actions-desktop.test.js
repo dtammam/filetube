@@ -63,7 +63,8 @@ test('music.js builds the desktop menu from the SHARED createExtrasMenu (not a r
 });
 
 test('the trigger toggles, clicks delegate to the shared handleAction, and the button self-gates to a FULL library track', () => {
-  assert.match(MUSIC, /actionsBtn\.addEventListener\('click', function \(e\) \{ e\.stopPropagation\(\); toggleActionsMenu\(\); \}/, 'the trigger toggles the menu');
+  // v1.339 (L1b): the toggle rides the toolbarSlotLive belt (a RESERVED More never acts).
+  assert.match(MUSIC, /actionsBtn\.addEventListener\('click', function \(e\) \{ e\.stopPropagation\(\); if \(toolbarSlotLive\(actionsBtn\)\) toggleActionsMenu\(\); \}/, 'the trigger toggles the menu');
   assert.match(MUSIC, /desktopExtras\.handleAction\(act, xact\)/, 'menu clicks dispatch to the shared action handler (anti-INERT)');
   assert.match(MUSIC, /function updateActionsBtn\(\) \{[\s\S]*?p\.getState\(\) === 'full'[\s\S]*?extrasEligibleView\(\)/, 'shown only for a FULL, library-eligible track');
   assert.match(MUSIC, /activeDesktopExtras\.destroy\(\)/, 'the view-swap teardown stops a live reheat poll');

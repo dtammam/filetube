@@ -10945,10 +10945,23 @@ html[data-modern="on"] .video-uploader {
    v1.339 rebuildSortMenu reserves the slot instead (.music-sort-reserved below); this
    guard stays as the net for any [hidden] writer. */
 #music-sort-select[hidden] { display: none !important; }
-/* v1.339 (L1, M4): on Home the sort select is RESERVED, not removed - rebuildSortMenu
-   toggles this class (visibility keeps the box, so the wrapped mobile toolbar never
-   reflows between Home and the sortable tabs; it also drops out of the tab order). */
-#music-sort-select.music-sort-reserved { visibility: hidden; }
+/* v1.339 (L1 M4, L1b): a toolbar control that is RESERVED keeps its box but is invisible -
+   music.js setToolbarSlot toggles this class (and inert / aria-hidden / tabindex -1) on the
+   sort select (Home), the Artists view toggle, the pop-out and More, so the wrapped mobile
+   toolbar never reflows when a tab or player state shows or hides one. */
+.music-toolbar-actions .music-slot-reserved { visibility: hidden; }
+/* v1.339 (L1b): a FIXED sort width. A select sizes to its widest option, and the drill's
+   list ("Release date (newest)", 171px at the 12px btn-sm size) is wider than a tab's (133px),
+   so entering a drill widened it and pushed the row over. 15em covers the widest label with
+   room for a wider face; the value text is left-aligned inside. */
+#music-sort-select { width: 15em; }
+/* v1.339 (L1b): the toggle and the pop-out SHIP reserved in music.html (their first JS state
+   on a cold load), so the first paint already has their slots - no reflow when init runs.
+   The pop-out is never supported at <=768px (music-skins.js isMobileViewport, the SAME
+   query popoutSupported() reads), so it has no box there even before music.js runs. */
+@media (max-width: 768px) {
+  #music-popout-btn { display: none !important; }
+}
 /* v1.215 (Dean's v1.214 device pass): the SAME class for the Artists grid/list
    view toggle. syncViewToggle sets .hidden = true on every surface but the
    Artists grid, yet `.btn { display: inline-flex }` beat the UA [hidden] rule,
