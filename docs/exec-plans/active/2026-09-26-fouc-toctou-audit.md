@@ -1,10 +1,10 @@
 ---
 plan: fouc-toctou-audit
 harness: v2 · lean
-branch: (not started)
+branch: feat/v1.339-fouc-toctou
 anchor: outcome
-status: Draft
-next: all 4 passes recorded; awaiting Dean's triage (safety wave first?) before any fix
+status: Building
+next: safety slices S1-S5 + S2b merged; dual-Node full suite, then the checkpoint gate (adversary + qa + security-brief) on the safety sha; look/race slices L1/L2/R1 build on build/look-base
 design: pending
 gate: pending
 ---
@@ -307,6 +307,8 @@ this branch.
 | S2 config compare-and-set | T-C1 (+ setup.js siblings) | checkpoint: full |
 | S3 scan prune guards | T-S2, T-S3, T-S4 | checkpoint: full |
 | S4 trash vs restore window | T-S5 | checkpoint: full |
+| S2b offline folders kept on save | pre-existing: POST /api/config drops a configured folder missing on disk (routes.js:456), so a save while a share is unmounted un-configures it and the scan prunes it | checkpoint: full |
+| S5 restore vs scan follow-ups | G1 remaining T-S4 window (restore unlinks trashPath after a scan unlinked the fresh link); G2 a mid-walk restore re-indexed as new overwrites manual fields | checkpoint: full |
 | L1 Music look | M1, M2, M4 + reveal-together | final delta |
 | L2 App-wide look | D5 list | final delta |
 | R1 wrong-item races | T-C2..T-C8 | final delta |
@@ -321,3 +323,79 @@ this branch.
 - L2: a probe measurement of the home grid: card growth on reveal 0; header/bottom-nav do not
   re-space after first paint when the remembered flags are warm.
 - R1: each race has a test that is red on the base sha.
+
+## Deviations
+
+- **S1 detection signal (builder, verified at yt-dlp source + a real yt-dlp 2026.08.19).** The
+  `has already been downloaded` line is never printed in production: any `--print` implies `--quiet`
+  and the one-off argv always carries one. The kept-file signal is instead an
+  `after_move:FTCHREAL %(__real_download)j` print (`__real_download` is a private yt-dlp field; if a
+  future yt-dlp drops it the status reads "Done" - the file is still safe, the guarantee is the argv).
+- **S1 explicit `--no-force-overwrites`.** FileTube does not pass `--ignore-config`; a user yt-dlp
+  config with `--force-overwrites` re-enabled delete-first in a real run. The CLI flag wins.
+- **S1 "never touches it" is "never deletes it".** On a kept file yt-dlp still runs the embed
+  post-processors (metadata / thumbnail / chapters), which re-mux to `.temp` and `os.replace` over the
+  original only after ffmpeg succeeds: bytes/inode may change, the media is never lost; a failing
+  post-processor leaves the original intact (bound by test).
+- **S1 single-flight key** = target + format + filetype + explicit folder (an audio request is never
+  swallowed by an in-flight video job of the same id).
+- **S3 found two adjacent data-loss gaps** (G1, G2 above) - added as slice S5 on the same branch
+  (Dean's "I cannot lose data" rule; same checkpoint gate).
+- **S3 T-S4 skip:** on a failed live re-check the file is skipped for the pass (not indexed), so the
+  fresh carry-forward keeps the restored metadata verbatim. Mutant M8 (`clearPersistedServedAt` over
+  candidates) survives masked: `recordServed` re-checks inside the lock, no data effect.
+- **S2 (builder):** `configVersion` omitted for a restricted member (hash of folders they cannot
+  see); non-string `baseVersion` = 400; a drag whose dragged/anchor path is gone writes nothing and
+  re-renders; Save body extracted to `saveFolderConfig()` for testing. S2 surfaced the pre-existing
+  offline-folder drop, added as S2b.
+- **S5 G1:** two guards, each isolated by its own test: a `restoresInFlight` claim on originalPath
+  (restore's mirror of `trashesInFlight`; the scan reconcile refuses a claimed path; a second
+  concurrent restore gets 409 "already being restored") and a last-link re-check before restore
+  unlinks trashPath (vanished -> re-link, `relinked:true`; a different file -> keep the trash copy,
+  409 naming it). server.js wires `isRestoreInFlight` as a lazy dep (orchestrator is built first).
+- **S5 G2 partly refuted:** the manual fields named (chapters, sourceUrl, manual channel) already
+  survived via the Phase-2 gap-fills; what was lost was title, addedAt, duration, hasThumbnail,
+  artist, tags, codecs (on a failed re-probe), audioStatus, attributionConflict. Fix: a walk-new id
+  whose fresh entry has the same path + size + codec fields is kept verbatim. Survivors M13 / M14
+  are WARNING-class (argued equivalent-or-better); flagged for the gate.
+- **S2b (builder):** a kept offline folder is stored under its STORED spelling (the scan's
+  missing-root guard matches that exact string); a new nonexistent path is still not added and is
+  named in a new response field `skippedFolders` (not surfaced in the UI: a status line would be
+  overwritten by the scan poll + redirect; a UI message is a small decision for Dean). Reproduced on
+  5af0f00f: the scan pruned the offline folder's item.
+- **L1 (builder, probe numbers copied):** mobile CLS per Music tab cold 0.14-0.16 -> 0.0009-0.0051,
+  warm-spa 0.14 -> 0; Home cold 4071KB -> 94KB (bytes 4168370 -> 96112, -97.7%). Beyond D4: a static
+  Jump-back skeleton in music.html (byte-locked to `buildJumpBackSkeletonHtml(6)`) + an inline unhide
+  script, because a JS-only reserve still shifted before music.js ran; rendition DPR capped at 2
+  (128 rows / 256 cards / 512 drill; big now-playing + skin art stay full size); renditions under
+  `.albumart/sized/<key>-<size>.jpg`; `artId` = lowest VISIBLE track id per album key, per request.
+  Not done: desktop cold reveals take 2-3 frames (jump-back, grid, song chunks are separate batches);
+  warm SPA return 2 frames; "Playing from" line left (a reserve = a permanent blank line when idle).
+- **Branch mechanics:** the look/race slices build on `build/look-base` (safety tip 2915ce98 + L1)
+  and merge into the feature branch only AFTER the safety checkpoint gate, so no seat reviews a
+  moving tree.
+- **S4 fix shape (b)**, an in-process `trashesInFlight` set; restore answers 409 "This item is still
+  being moved to the trash -- try restoring it again in a moment". Shape (a) (re-check after the
+  await) has a hole: a restore already past its `alreadyLinked` read still passes the re-check.
+
+## For the tracker (found while building, not fixed here)
+
+- S2b: a new folder path that does not exist is silently not added from the user's view
+  (`skippedFolders` is response-only).
+- S2b: Express 4 hangs a request on any throw inside the async /api/config handler outside its
+  try/catch (seen while building a mutant) - audit the handler's pre-mutator code.
+
+- L1: orphaned `t-<id>` thumbnail renditions are never pruned; home/search album thumbnails built
+  in server.js (~5053, ~5204) are unsized.
+
+- S5: guard B's keep path (a different file at originalPath) leaves an unrecorded trash copy the
+  retention sweep ages out after 30 days (out-of-process writer only).
+- S5: in the G2 race the walk still re-probes and rewrites the thumbnail / storyboard / preview
+  sidecars from the same file; the reconcile's `destroyMediaStreams` still closes streams on a
+  claimed path.
+
+- S1: live download percent likely never parses in production (`--print` implies `--quiet`, which
+  implies no progress output; no `--progress` in the argv) - verify on device before acting.
+- S1: subscription downloads also lack `--ignore-config` / `--no-force-overwrites` (subscription argv
+  byte-parity lock kept; the archive skips known ids, so exposure is a user config + an on-disk
+  collision).
