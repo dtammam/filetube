@@ -1666,3 +1666,102 @@ fix found by the render, the History confirm test, this log).
   The sweep commit's hook: tests 7833, pass 7832, fail 0 (two earlier hook runs failed ONLY critter-mode
   "v1.176 gate W closure" at box load ~7 - the known load flake; it passed standalone, and the retry after the
   load drained passed). Final counts for this commit are in the report.
+
+### Sweep S5 - Subscriptions (2026-09-27, branch feat/ui-sweep-s5 from 871b3920; 7c5f3da2, 41b781c8, + this commit)
+
+- **Seed (7c5f3da2, its own commit):** Harbor Workshop reads "ok: downloaded 3 new video(s)" and is pinned
+  (through the real `POST /api/subscriptions/pins`); a fourth subscription, Lantern Street Studio, failed its
+  last check two hours before the seed clock (`error: HTTP Error 403: Forbidden`).
+- **Surface (41b781c8):**
+  - F62: the view's page-local `<style>` is gone (rules moved into style.css or died with their markup);
+    no-shell-style debt for the view 1 -> 0. D8.10: the Subscriptions-only moon and the dead `.theme-toggle`
+    CSS are gone; the header matches the other shells.
+  - Toolbar ("the activities buttons", F26 subs half): tonal Check all / Activity / One-off and ONE primary,
+    Add (the Podcasts shape). Only Add carries a glyph; one line at 390px.
+  - Rows (D8.9, F24, F40, F32, AC5): per A-Z section a ui-list (avatar column, three action columns) of
+    ui-rows: ui.avatar, the name, ONE meta line ("3 new · checked 2h ago"; "Check failed · 2h ago" in
+    `--danger`; "Paused" leads; a live download shows its progress), and three fixed trailing slots: pin
+    (keep / keep.fill), bell (notifications_active / _off, never gold or red), menu (more_vert). No
+    channelDir -> an empty reserved pin slot. The row opens the settings sheet; the menu holds Settings,
+    Check now / Retry (Retry exactly while the row reads failed or partial), Pause/Resume, View as playlist,
+    Open channel page and Unsubscribe (danger).
+  - Row sheet (ui.sheet, auto: bottom on a phone, dialog on desktop): the full last-check line + next
+    check, per-video failures with Skip, the cookie warning, the subscribed date and the channel URL (all
+    moved off the row), ui-select / ui-field / ui-switch fields, Check now / Pause secondary, ONE primary
+    Save, Unsubscribe danger on its own line.
+  - Panels: Add / One-off / Activity and the relocation preview are ui.sheets taking the view's signal. Their
+    content stays static in the view (a hidden `.subs-panels` holder) and moves into the sheet body on open,
+    back on close, so every id and poll binding is wired once. The preview stacks over Activity (Esc closes
+    the top one). Activity is one ui.segmented (History / Failures / Maintenance); the failure filter is
+    ui-chip filters + a danger Clear all; maintenance is five labelled tool entries (title, what it does, the
+    live status line, a tonal Run with its Cancel swapping in place).
+  - D9: the loading skeleton is the ui-row grid (same slots, same list modifiers); empty and error states are
+    ui.state (Retry on the error).
+  - Deleted CSS: the `.sub-row*`, `.sub-sheet*`, `.sub-pill`, `.sub-toolbar`, `.sub-collapsible`,
+    `.btn-chip`, `.skeleton-row*` and reloc-preview modal families (style.css: 209 lines added, 878 deleted). Also gone:
+    `scripts/sub-row-chip-probe.js` (the dead v1.316 chip instrument), the view's eslint globals block, and
+    `.sub-row` in the critter anchor pool (a ui-row paints no ground, like the other rejected rows).
+- **Destructive paths (F33, full gate):** Unsubscribe (`DELETE /api/subscriptions/:id`), a failure record
+  (`DELETE /api/subscriptions/failures/:id`) and Clear all (`DELETE /api/subscriptions/failures/all`) go
+  through ui.confirm with the danger fill; the SAME requests run only after it resolves true, one confirm
+  and one request per target at a time. **Interpretation for the gate:** the per-record failure delete used
+  to be one tap BY DESIGN (a code comment argued a confirm per row trains the reflex); the brief says "any
+  delete/remove", and Dean keeps those records "for posterity", so it confirms now. Skip-this-video stays one
+  tap (it is not a delete; it lives in the sheet). `test/unit/subs-destructive-confirm.test.js` (8 tests,
+  the real view + real ui.js in jsdom): Cancel, Esc, the scrim and Close send nothing; OK sends exactly one
+  DELETE to the same route; a double tap on OK, on the sheet's Unsubscribe, on a record's delete and on
+  Clear all still opens one dialog and sends one request; Enter never answers; a late OK on a closing dialog
+  stays a cancel; a view teardown with the dialog up closes it (nothing stranded) and a stale OK after it
+  sends nothing; a census taps every other control on the page (toolbar, every row control, every menu item
+  but Unsubscribe, every sheet button) and sees no DELETE.
+- **Locks converted (AC12, replacements in 41b781c8):** the four S5 locks - subscriptions-panels (the toolbar's
+  one language, the holder, ui-field/ui-select/ui-switch markup, no inline style), sub-row-chip-btn-family
+  (row controls are plain icon ui-btns; no stylesheet rule names a role class; the retired family is gone; the
+  era treatment rides the primitive; one bell writer = ui.setPressed), v1262-subs-and-rescan-polish (the type
+  roles; no status span in a button row; the reserved status line) and reloc-preview-mount (the panel inside
+  #view-root; no `<style>` in the view). The S5 halves of pinned-avatar-css (-> `.ui-avatar__img` + the
+  clipping box), v1262-sheet-modal-transitions (-> the ui.sheet slide/scale + reduced-motion contract),
+  v1264-skeleton-states (-> the skeleton's slot sequence equals a loaded row's), mobile-input-zoom-fontsize
+  (-> ui fields are 16px at every width; all 13 view fields are ui fields), settings-mobile-polish,
+  collapsible-sections, critter-mode, reloc-preview-client, ytdlp-failure-section, ytdlp-t6-repull-and-subs-ui,
+  sub-bell-in-place and subscriptions-panels-behavior (both on a shared jsdom harness,
+  `test/helpers/subs-view-harness.js`), ytdlp-ui-routes (integration). The 100 fake-DOM builder tests in
+  ytdlp-subscriptions-client move to jsdom + the real ui.js in `test/unit/subs-sweep-s5.test.js` (24 tests).
+  `test/geometry/subscriptions.check.js` (new, the native-interaction.check.js pattern) measures G1 / G2 / G3
+  and the SPA round trip in a real engine. capture.js scenes 04-07 follow the new DOM; 06b (the row menu) added.
+- **Debt (ui-lint --shrink, whole file, 871b3920 -> 41b781c8):** no-raw-values 1271 -> 1208, no-bespoke-controls
+  1053 -> 990, icons 160 -> 150, display-ownership 84 -> 82, colour-roles 44 -> 34, no-shell-style 2 -> 1; the
+  rest unchanged; TOTAL 2634 -> 2485 (149 paid). `lib/ytdlp/client/subscriptions.js` now carries 0 entries.
+  Left on the view: the shell's header / bottom bar (S1) and player template (S3) keys only.
+- **Measured (seeded instance, Node 22.23.1):** `test/geometry/subscriptions.check.js` holds in 2021 dark,
+  2005 dark, 2014 light and 2009 light (phone 390 + desktop 1440, hard load and after Home -> Subscriptions ->
+  Home -> Subscriptions through the router, which measures identically). 2021 dark: row slots phone media 16 /
+  body 64 / actions 242, 286, 330 on all four rows (pinned + unpinned, errored + ok); desktop 254 / 302 /
+  1308, 1344, 1380; every row glyph centred dx 0 / dy 0, the Add glyph dy 0 to its label; toolbar one line at
+  390 (tops all 211.8, heights all 32, right edge 354 of 390); no horizontal overflow; 0 page errors; 0
+  `<style>` in #view-root after the SPA swap.
+- **Renders:** before (7c5f3da2) vs after (41b781c8), scenes 04-07 x phone / land / desktop x dark / light x 4
+  eras: 96 / 96 captured each side, 0 failed, 0 unexpected blocked; 96 of 96 changed (4.1% - 99.7% of a shot;
+  compare.js threshold 16). 06b (the row menu) shot separately in 2021, 6 / 6.
+- **Mutation (a git-archive sandbox of 41b781c8 + the tightened tests, each restored and byte-checked):** 20 of
+  20 killed - unsubscribe / record delete / Clear all ignoring the answer, no one-at-a-time guard, the confirm
+  not the danger fill or not bound to the view signal, the pin slot collapsing, a failed check not in the error
+  tone, the bold count, the panel not moving back, the preview closing Activity, the bell writer accepting
+  truthy, Unsubscribe not danger in the menu, a 2-slot skeleton, the toolbar / status rules leaving style.css,
+  a view field losing ui-field, a role-class paint-over, setFieldError never hiding, the members-only switch
+  never reverting. Two first-pass survivors (the signal binding; the members-only revert raced by the initial
+  settings load) exposed weak tests, tightened in this commit and then red. Masked by design: dropping the
+  post-answer `signal.aborted` re-check alone (the signal-bound confirm already resolves false on teardown).
+- **Counts (Node 22.23.1):** `npm run test:unit` (the 41b781c8 pre-commit run): tests 7807, pass 7806, fail 0,
+  skipped 1. Targeted integration (ytdlp-ui-routes, shell-smoke, ytdlp-patch-pause, route-census, rbac-census,
+  rbac-subscriptions-flag, ytdlp-failure-log-api, ytdlp-crud, ytdlp-pins, ytdlp-disabled-noop,
+  ytdlp-delete-stays-gone, route-read-classification, capture-determinism): 101 tests, 100 pass, 1 fail
+  (ytdlp-ui-routes AC32, the old checkbox/select markup) before its conversion; that file 13 / 13 after.
+  `npx eslint .` 0 errors, 6 warnings; `lint:ui` OK TOTAL 2485; `lint:css` TOTAL 0; `lint:overlay` 0 violations.
+- **For the primitives (not changed here):** ui.menu's item icons sit on the sheet's left edge (its compact
+  list has no inset); the sheet body has no inline padding, so every sheet content supplies its own (S5's
+  `.subs-panel` pads to the title's `--space-8`).
+- **Deferred / not mine:** the shell's header, bottom bar and player-template debt on the view (S1, S3);
+  `.md-hero` / `.md-tile` (S8's master-detail family, kept as the Dean-requested v1.160.1 hero);
+  `.action-status` (shared with Settings); the header's global Download (the S8 one-off dialog) duplicates the
+  One-off panel's form - kept, since the panel also lists the running one-off jobs.

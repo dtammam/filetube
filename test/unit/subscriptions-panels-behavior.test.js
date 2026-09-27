@@ -126,23 +126,28 @@ test('S5 Activity: the segmented control shows one pane at a time (History first
   }
 });
 
-test('S5: the members-only switch posts its new state and REVERTS on a refused save', async () => {
+test('S5: the members-only switch reflects the stored setting, posts its new state and REVERTS on a refused save', async () => {
   let answer = 400;
   const { window, document, handlers, calls } = mountSubsView((m, url) => {
-    if (m === 'POST' && url === '/api/subscriptions/settings') return jsonRes(answer, answer === 200 ? { allowMembersOnly: true } : { error: 'nope' });
+    // the stored value is ON, so the load and a revert both write 'true' and a tap writes 'false'
+    if (m === 'GET' && url === '/api/subscriptions/settings') return jsonRes(200, { allowMembersOnly: true });
+    if (m === 'POST' && url === '/api/subscriptions/settings') return jsonRes(answer, answer === 200 ? { allowMembersOnly: false } : { error: 'nope' });
     return undefined;
   });
   try {
     const sw = document.getElementById('sub-members-only-check');
+    // wait for the load to land FIRST, so the only later writer of 'true' is the revert
+    await settle(() => sw.getAttribute('aria-checked') === 'true', 'the stored setting is reflected on load');
+    await new Promise((r) => setTimeout(r, 20));
     click(window, sw);
-    assert.strictEqual(sw.getAttribute('aria-checked'), 'true', 'optimistic flip on tap');
-    await settle(() => sw.getAttribute('aria-checked') === 'false', 'a 400 reverts the switch');
+    assert.strictEqual(sw.getAttribute('aria-checked'), 'false', 'optimistic flip on tap');
+    await settle(() => sw.getAttribute('aria-checked') === 'true', 'a 400 reverts the switch');
     assert.strictEqual(document.getElementById('sub-members-only-error').textContent, 'nope');
-    assert.deepStrictEqual(calls.filter((c) => c.url === '/api/subscriptions/settings' && c.method === 'POST').map((c) => c.body), [{ allowMembersOnly: true }]);
+    assert.deepStrictEqual(calls.filter((c) => c.url === '/api/subscriptions/settings' && c.method === 'POST').map((c) => c.body), [{ allowMembersOnly: false }]);
     answer = 200;
     click(window, sw);
     await settle(() => document.getElementById('sub-members-only-error').hidden === true, 'a 200 clears the error');
-    assert.strictEqual(sw.getAttribute('aria-checked'), 'true', 'and keeps the new state');
+    assert.strictEqual(sw.getAttribute('aria-checked'), 'false', 'and keeps the new state');
   } finally {
     handlers.destroy();
   }

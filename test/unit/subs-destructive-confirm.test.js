@@ -139,15 +139,19 @@ test('F33: the keyboard cannot confirm by accident - Enter anywhere does nothing
   }
 });
 
-test('F33: a view teardown (SPA nav away) with the confirm up answers false - no DELETE, even if OK is tapped after', async () => {
+test('F33: a view teardown (SPA nav away) with the confirm up closes it and answers false - no DELETE, even if OK is tapped after', async () => {
+  // Two guards, each bound here: the confirm takes the view's signal (the teardown
+  // CLOSES the dialog - asserted before any tap), and the post-answer re-check of the
+  // signal (a stale OK on the closed dialog stays a cancel). Each alone is masked by
+  // the other for the request log, so the stranded-dialog assert binds the first.
   const { window, document, handlers, calls } = mount();
   await ready(document);
   const c = await menuUnsubscribe(window, document, 's1');
   handlers.destroy();
+  await settle(() => document.querySelectorAll('.ui-sheet').length === 0, 'the teardown closed the dialog (no stranded overlay on <body>)', 1500);
   click(window, c.ok);
-  await wait(400);
+  await wait(100);
   assert.deepStrictEqual(deletes(calls), [], 'the torn-down view deletes nothing');
-  assert.strictEqual(document.querySelectorAll('.ui-sheet').length, 0, 'and strands no dialog on <body>');
 });
 
 test('F33: deleting ONE failure record confirms first; Cancel sends nothing, OK sends one DELETE for that record', async () => {
