@@ -181,6 +181,41 @@ test('modes: write-baseline, exact, new debt, paid debt, malformed, missing, ref
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('--shrink: lowers paid entries and deletes zeroes, refuses (writing nothing) on new debt, then --enforce passes', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'ui-exceptions.json');
+  let r = run(['--write-baseline', '--exceptions', file]);
+  assert.strictEqual(r.code, 0, r.err);
+  const baseText = fs.readFileSync(file, 'utf8');
+  const base = JSON.parse(baseText);
+  const rule = Object.keys(base.rules).find((k) => base.rules[k].length >= 2);
+
+  // paid debt: one entry raised by 2 (so the live count is below it), plus a key that no longer exists
+  const paid = JSON.parse(baseText);
+  paid.rules[rule][0].count += 2;
+  paid.rules[rule].push({ key: 'gone.css|.long-deleted|color', count: 3, reason: 'test', added: '2026-09-27' });
+  fs.writeFileSync(file, JSON.stringify(paid, null, 2) + '\n');
+  r = run(['--shrink', '--exceptions', file]);
+  assert.strictEqual(r.code, 0, r.err);
+  assert.match(r.out, /shrank .* 2 key\(s\), 5 item\(s\) of debt paid/);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), base, 'back to exactly the live debt');
+  assert.strictEqual(run(['--enforce', '--exceptions', file]).code, 0);
+  r = run(['--shrink', '--exceptions', file]);
+  assert.match(r.out, /nothing to shrink/);
+
+  // new debt: shrink refuses and the file is untouched, even with paid debt beside it
+  const mixed = JSON.parse(baseText);
+  mixed.rules[rule].shift();
+  mixed.rules[rule][0].count += 1;
+  const mixedText = JSON.stringify(mixed, null, 2) + '\n';
+  fs.writeFileSync(file, mixedText);
+  r = run(['--shrink', '--exceptions', file]);
+  assert.strictEqual(r.code, 1);
+  assert.match(r.err, /SHRINK REFUSED/);
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), mixedText, 'nothing written');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('report mode on the real tree exits 0 and prints every rule\'s debt', () => {
   const r = run([]);
   assert.strictEqual(r.code, 0, r.err);

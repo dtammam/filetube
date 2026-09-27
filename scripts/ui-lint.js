@@ -68,6 +68,9 @@
  *                       or count above its entry (new debt), below it (paid debt: shrink
  *                       the file), or a missing / malformed file.
  *   --write-baseline    canaries, then write the file ONLY if it does not exist.
+ *   --shrink            canaries, then lower each paid entry to its live count (delete
+ *                       it at 0) and write the file; REFUSES, writing nothing, if any key
+ *                       is above its entry - it can only ever shrink the file.
  *   --canaries          the canaries alone.
  *   --verbose           list every key (and its first location).
  *   --root <dir>        the tree to scan (default: this script's repo).
@@ -1062,11 +1065,12 @@ function baselineData(results, today) {
 // ---------------------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const a = { enforce: false, writeBaseline: false, canaries: false, verbose: false, root: DEFAULT_ROOT, exceptions: null };
+  const a = { enforce: false, writeBaseline: false, shrink: false, canaries: false, verbose: false, root: DEFAULT_ROOT, exceptions: null };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--enforce') a.enforce = true;
     else if (x === '--write-baseline') a.writeBaseline = true;
+    else if (x === '--shrink') { a.shrink = true; a.enforce = true; }
     else if (x === '--canaries') a.canaries = true;
     else if (x === '--verbose') a.verbose = true;
     else if (x === '--root') a.root = path.resolve(argv[++i]);
@@ -1174,9 +1178,23 @@ function main(argv) {
     if (over.length > 60) console.error(`  ... and ${over.length - 60} more (--verbose lists every key)`);
   }
   if (under.length) {
-    console.error(`ui-lint: FAIL - ${under.length} key(s) of PAID debt: the live count is below the entry. Shrink docs/ui-exceptions.json in this commit (lower each count to the live value; delete an entry at 0):`);
+    if (!args.shrink) console.error(`ui-lint: FAIL - ${under.length} key(s) of PAID debt: the live count is below the entry. Shrink docs/ui-exceptions.json in this commit: run node scripts/ui-lint.js --shrink (it lowers each count to the live value and deletes an entry at 0):`);
     for (const u of under.slice(0, 60)) console.error(`  [${u.rule}] ${u.key}  live ${u.live} < allowed ${u.allowed}  -> ${u.live === 0 ? 'delete the entry' : 'set count to ' + u.live}`);
     if (under.length > 60) console.error(`  ... and ${under.length - 60} more`);
+  }
+  if (args.shrink) {
+    if (over.length) { console.error('ui-lint: SHRINK REFUSED - fix the new debt above first; nothing was written.'); return 1; }
+    if (!under.length) { console.log('ui-lint: nothing to shrink - the live debt equals docs/ui-exceptions.json'); return 0; }
+    const live = new Map(under.map((u) => [u.rule + '\u0000' + u.key, u.live]));
+    for (const [rule, entries] of Object.entries(data.rules)) {
+      data.rules[rule] = entries
+        .map((e) => (live.has(rule + '\u0000' + e.key) ? { ...e, count: live.get(rule + '\u0000' + e.key) } : e))
+        .filter((e) => e.count > 0);
+    }
+    fs.writeFileSync(args.exceptions, JSON.stringify(data, null, 2) + '\n');
+    const paid = under.reduce((n, u) => n + (u.allowed - u.live), 0);
+    console.log(`ui-lint: shrank ${path.relative(args.root, args.exceptions)} - ${under.length} key(s), ${paid} item(s) of debt paid`);
+    return 0;
   }
   if (over.length || under.length) return 1;
   console.log('ui-lint: OK - the live debt equals docs/ui-exceptions.json');
