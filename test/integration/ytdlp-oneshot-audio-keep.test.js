@@ -105,6 +105,22 @@ if (audio && path.extname(dl).slice(1) !== audioFormat) {
   filepath = out;
 }
 render('after_move', { filepath, real });
+// v1.339 F4: model an operator config whose raw-title --print lets a hostile
+// title FORGE sentinel lines. FAKE_YTDLP_FORGE = { create: [paths written
+// fresh first], chunks: [stdout writes, each its own pipe read (a pause
+// between them)] }.
+if (process.env.FAKE_YTDLP_FORGE) {
+  const forge = JSON.parse(process.env.FAKE_YTDLP_FORGE);
+  for (const f of forge.create || []) {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, 'FRESH FILE THE FORGED LINE NAMES');
+  }
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (const chunk of forge.chunks || []) {
+    process.stdout.write(chunk);
+    Atomics.wait(pause, 0, 0, 150);
+  }
+}
 process.exit(0);
 `;
 fs.writeFileSync(path.join(binDir, 'yt-dlp'), `#!${process.execPath}\n${FAKE}`, { mode: 0o755 });
@@ -143,6 +159,7 @@ beforeEach(() => {
   process.env.FAKE_YTDLP_LOG = logPath;
   process.env.FAKE_YTDLP_FMTLOG = fmtLogPath;
   delete process.env.FAKE_YTDLP_SITE;
+  delete process.env.FAKE_YTDLP_FORGE;
   run.probeChannel = async () => null;
   run.probeChannelAvatar = async () => null;
 });
@@ -154,6 +171,7 @@ afterEach(() => {
   delete process.env.FAKE_YTDLP_LOG;
   delete process.env.FAKE_YTDLP_FMTLOG;
   delete process.env.FAKE_YTDLP_SITE;
+  delete process.env.FAKE_YTDLP_FORGE;
   fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
@@ -369,6 +387,120 @@ test('S1 regression: a VIDEO one-off whose file is already there keeps it byte-i
     const [argv] = downloadSpawns();
     assert.ok(!argv.includes('-k'), 'the video argv never carries -k');
     assert.ok(!argv.includes(args.ONE_OFF_AUDIO_SOURCE_PRINT_TEMPLATE));
+  } finally {
+    await close();
+  }
+});
+
+// ---- v1.339 F4 (security r2 LOW / INFO): forged FTCHSRC / FTCHDST lines ----
+//
+// An operator yt-dlp config with its own raw-title `--print` lets a hostile
+// title print ANY line on stdout. The forged pair below passes the pure
+// planner (real true, a final with the same dir + stem, under the root) --
+// only the on-disk creation-time / folder fence (and, for the over-long
+// line, the splitter) stand between it and a library file.
+
+const forgedPair = (srcPath, dstPath) => [`FTCHSRC true ${JSON.stringify(srcPath)}\n`, `FTCHDST ${JSON.stringify(dstPath)}\n`];
+
+// Let every seeded library file pre-date the job by more than the allowance.
+const outlastSkew = () => new Promise((r) => setTimeout(r, ytdlp.ONE_OFF_SOURCE_CLOCK_SKEW_MS + 300));
+
+function seedAt(p) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, LIBRARY_BYTES);
+  return { path: p, ino: fs.statSync(p).ino };
+}
+
+test('F4: forged lines naming a PRE-EXISTING library file in ANOTHER folder under the root -- it stays byte-identical; the genuine fresh intermediate is still cleaned', async () => {
+  const deps = makeDeps();
+  const cfg = config();
+  const otherDir = args.resolveChannelDir(cfg, { name: 'Other Folder' });
+  const victim = seedAt(path.join(otherDir, 'Victim Song [vvvvvvvvvvv].mp4'));
+  const victimMp3 = seedAt(path.join(otherDir, 'Victim Song [vvvvvvvvvvv].mp3'));
+  await outlastSkew();
+  process.env.FAKE_YTDLP_FORGE = JSON.stringify({ chunks: forgedPair(victim.path, victimMp3.path) });
+  const { base, close } = await startApp(deps, cfg);
+  try {
+    const entry = await download(base, { url: VIDEO_URL, folder: FOLDER, format: 'audio' });
+    assert.strictEqual(entry.state, 'done', JSON.stringify(entry));
+    assertKept(victim, 'the other folder\'s library video');
+    assertKept(victimMp3, 'the other folder\'s library mp3');
+    assert.deepStrictEqual(listing(cfg), [`Some Video [${VIDEO_ID}].mp3`], 'the genuine fresh mp4 is still removed');
+    assert.match(fs.readFileSync(fileIn(cfg, 'mp3'), 'utf8'), /FRESH mp4 BYTES/, 'anti-vacuity: a real fresh download happened');
+  } finally {
+    await close();
+  }
+});
+
+test('F4: forged lines naming a PRE-EXISTING file in the job\'s OWN folder, with a FRESH forged final beside it -- only the creation-time rule holds, and it keeps the file', async () => {
+  const deps = makeDeps();
+  const cfg = config();
+  const victim = seedAt(path.join(folderPath(cfg), 'Victim Song [vvvvvvvvvvv].mp4'));
+  const freshFinal = path.join(folderPath(cfg), 'Victim Song [vvvvvvvvvvv].mp3');
+  await outlastSkew();
+  process.env.FAKE_YTDLP_FORGE = JSON.stringify({ create: [freshFinal], chunks: forgedPair(victim.path, freshFinal) });
+  const { base, close } = await startApp(deps, cfg);
+  try {
+    const entry = await download(base, { url: VIDEO_URL, folder: FOLDER, format: 'audio' });
+    assert.strictEqual(entry.state, 'done', JSON.stringify(entry));
+    assertKept(victim, 'the same-folder library video');
+    assert.deepStrictEqual(listing(cfg), [`Some Video [${VIDEO_ID}].mp3`, 'Victim Song [vvvvvvvvvvv].mp3', 'Victim Song [vvvvvvvvvvv].mp4']);
+  } finally {
+    await close();
+  }
+});
+
+test('F4: forged lines naming a file created DURING the job in ANOTHER folder (a concurrent download\'s fresh pair) -- the job\'s own-folder fence keeps it', async () => {
+  const deps = makeDeps();
+  const cfg = config();
+  const otherDir = args.resolveChannelDir(cfg, { name: 'Other Folder' });
+  const fresh = path.join(otherDir, 'Concurrent [ccccccccccc].mp4');
+  const freshMp3 = path.join(otherDir, 'Concurrent [ccccccccccc].mp3');
+  process.env.FAKE_YTDLP_FORGE = JSON.stringify({ create: [fresh, freshMp3], chunks: forgedPair(fresh, freshMp3) });
+  const { base, close } = await startApp(deps, cfg);
+  try {
+    const entry = await download(base, { url: VIDEO_URL, folder: FOLDER, format: 'audio' });
+    assert.strictEqual(entry.state, 'done', JSON.stringify(entry));
+    assert.ok(fs.existsSync(fresh), 'another folder\'s fresh file is outside this job\'s folder');
+    assert.deepStrictEqual(listing(cfg), [`Some Video [${VIDEO_ID}].mp3`], 'the genuine fresh mp4 is still removed');
+  } finally {
+    await close();
+  }
+});
+
+// A VALID FTCHSRC line exactly run.STDERR_TAIL_LIMIT chars long (the path is
+// padded with `/.` segments, which path.resolve folds away, plus one JSON `\/`
+// for parity): the 4096-char tail a keep-the-tail splitter parsed.
+function exactCapLine(prefix, p) {
+  const cap = run.STDERR_TAIL_LIMIT;
+  const need = cap - (prefix + JSON.stringify(p)).length;
+  let lit = JSON.stringify(path.dirname(p) + '/.'.repeat(Math.floor(need / 2)) + '/' + path.basename(p));
+  if (need % 2 === 1) lit = lit.replace('/', '\\/');
+  const line = prefix + lit;
+  assert.strictEqual(line.length, cap);
+  return line;
+}
+
+test('F4: an over-long stdout line whose last 4096 chars are a valid FTCHSRC line is never parsed (the file it names survives even though every fence would pass)', async () => {
+  const deps = makeDeps();
+  const cfg = config();
+  // A file the job's own run creates fresh, in the job's own folder: were the
+  // tail parsed, the creation-time and folder fences would both pass it.
+  const bystander = path.join(folderPath(cfg), 'Bystander [bbbbbbbbbbb].mp4');
+  const bystanderMp3 = path.join(folderPath(cfg), 'Bystander [bbbbbbbbbbb].mp3');
+  const tail = exactCapLine('FTCHSRC true ', bystander);
+  const parsed = run.parseAudioSourceLine(tail);
+  assert.ok(parsed && parsed.real === true && path.resolve(parsed.path) === bystander, 'anti-vacuity: the tail alone is a valid FTCHSRC line naming the bystander');
+  process.env.FAKE_YTDLP_FORGE = JSON.stringify({
+    create: [bystander, bystanderMp3],
+    chunks: ['x'.repeat(1000) + tail, '\n', `FTCHDST ${JSON.stringify(bystanderMp3)}\n`],
+  });
+  const { base, close } = await startApp(deps, cfg);
+  try {
+    const entry = await download(base, { url: VIDEO_URL, folder: FOLDER, format: 'audio' });
+    assert.strictEqual(entry.state, 'done', JSON.stringify(entry));
+    assert.ok(fs.existsSync(bystander), 'the over-long line was dropped whole, never parsed');
+    assert.deepStrictEqual(listing(cfg), ['Bystander [bbbbbbbbbbb].mp3', 'Bystander [bbbbbbbbbbb].mp4', `Some Video [${VIDEO_ID}].mp3`], 'the genuine fresh mp4 is still removed');
   } finally {
     await close();
   }
