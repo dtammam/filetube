@@ -2613,3 +2613,15 @@ Coordinator, r1 disposition (2026-09-28):
   keeps its abort listener), adversary 7 (no focus trap in dialogs), adversary 8 (pre-push geometry skips
   lib/ytdlp changes; tv.js isPlainClick's Alt check survives), security-brief r1 3-6 (uiStateHtml's raw
   sink, the notification Delete item for viewers, example.invalid seed URLs, the Playwright digest pin).
+
+Coordinator, r1 fixes merged (fix/r1-layout 10afdb0c, fix/r1-tooling 42d62c7c, fix/r1-delete 221ba132; the ui.js
+conflict kept both sides: the open stamps `openedAt` then places the popover). One change asked of the tooling
+builder: the restore check is narrowed to the scheme (3970cd05), so an older backup whose http(s) URL predates the
+stricter validator still restores; only a non-http(s) scheme refuses the bundle. Verification at 221ba132:
+- `npm test` Node 22.23.1: tests 10249, pass 10239, fail 0. Node 24.20.0: tests 10249, pass 10239, fail 0.
+- `npm run test:geometry`: 389 checks, 389 ok, 0 FAIL, 0 XFAIL, 0 XPASS (176 scenes), DBLTAP and POP included.
+- lint:ui OK (TOTAL 1931: the 204 token-exempt annotations now counted, none new); eslint 0 errors.
+- Disclosed by the builders: DBLTAP drives the Stats delete only (the guard lives in the one primitive the
+  other paths share); caller-built sheets get the guard only via ctrl.guard/ctrl.accepts; a popover that fits
+  neither side shifts over its anchor (the notifications panel at 844x390); 6ccf0492's message describes the
+  stricter restore check that 3970cd05 narrowed.
