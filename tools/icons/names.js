@@ -24,6 +24,8 @@ const NAMES = [
   'toc', 'format_size', 'remove',
   // sweep S2 (cards and feeds): the card action menu, the library toolbar, the channel heading
   'local_fire_department', 'playlist_add', 'grid_view', 'view_list', 'sort', 'music_off',
+  // sweep S4 (notifications and queue): the queue row's Move up / Move down
+  'arrow_upward', 'arrow_downward',
   // media
   'play_arrow', 'pause', 'skip_next', 'skip_previous', 'fast_forward', 'fullscreen', 'fullscreen_exit',
   'picture_in_picture_alt', 'closed_caption', 'speed', 'volume_up', 'volume_off',
