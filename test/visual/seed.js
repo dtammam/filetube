@@ -305,7 +305,18 @@ const CHANNELS = [
   // Notifications: 6 unread rows for the subscribed channel's newest items.
   const harbor = byChannel['Harbor Workshop'];
   settingsStore.set('notificationsSeededAt', NOW);
-  const notifications = userStore.recordNotifications(harbor.slice(0, 6).map((mediaId, i) => ({ mediaId, createdAt: NOW - (i + 1) * 2 * 3600e3 })));
+  let notifications = userStore.recordNotifications(harbor.slice(0, 6).map((mediaId, i) => ({ mediaId, createdAt: NOW - (i + 1) * 2 * 3600e3 })));
+  // UI pass S4: the panel's other row kinds - a podcast episode (show art as its avatar), a
+  // downloader-engine event (admin-only; the seed user is the admin) and a READ media row from
+  // another channel - older than the six, so the Harbor rows stay on top.
+  notifications += userStore.recordNotifications([
+    { mediaId: 'pod-harbor-e1', kind: 'podcast', createdAt: NOW - 13 * 3600e3 },
+    { mediaId: 'engine:updated:2026.9.20', kind: 'engine', createdAt: NOW - 20 * 3600e3 },
+    { mediaId: byChannel['Northbound Field Notes'][1], createdAt: NOW - 26 * 3600e3 },
+  ]);
+  const seedAdmin = userStore.getByUsername(USER);
+  const readRow = seedAdmin && userStore.listNotifications(seedAdmin.id).items.find((r) => r.mediaId === byChannel['Northbound Field Notes'][1]);
+  if (!readRow || !userStore.markNotificationRead(seedAdmin.id, readRow.id, NOW)) console.error('seed: could not mark the read notification');
 
   // Per-user state through the real routes (in-process, before any READONLY): a 3-item
   // queue (the header queue icon + panel) and watch progress on 3 videos (Continue watching / History).
