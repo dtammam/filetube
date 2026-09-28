@@ -2737,3 +2737,17 @@ Restore scheme check (3970cd05):
 New, NOTE (suspicion, not measured): two file-MOVING confirms still go through the showConfirmModal shim with no view binding. They are main.js:2174 (bulk attribute-and-move, on the cached folder view) and watch.js:3244 offerAttributionMove, whose returned dismiss is discarded. Reasoned scenario: navigate away with the dialog up, then press OK. It moves the previous page's file (the closure id, so the right item) and calls `FileTube.player.close()` on whatever now plays. Both are pre-existing on main (the old modal also lived on body). Bind them to viewSignal in the menu fix.
 Blocking: finding 3's menu half, one line plus its test. Everything else is closed or accepted.
 Tree: I appended only this verdict, after the uncommitted security-brief r2 and qa r2 verdicts. The sandbox is IDENTICAL to pristine, and my fixture server is stopped.
+
+Coordinator, r2 disposition (2026-09-28): Dean ruled round 3 = fix, then a NARROW r3 (adversary + qa re-check
+only the delta 82563a2e..HEAD). Fixed in 17e7cb84 + ea17b4f9:
+- The card menu and both home Sort menus pass `shownViewSignal()` (FileTube.viewSignal); showConfirmModal is
+  bound to the shown-view signal at open and re-checks it after the answer (covers home's bulk attribute-and-move
+  and the watch page's attribution move, the adversary's r2 note). A source lock requires the signal on every
+  home menu.
+- Restore treats an empty channelUrl like a missing one (security-brief r2 INFO 3). qa r2 NOTEs: the
+  subscriptions.js head comment and CONTRIBUTING's shadow glob corrected.
+- Tests: Node 22 overlays-dialogs-s9 31/31, card-action-menu-fullchain 21/21, backup-restore 26/26; Node 24 the
+  same three files 78/78; the hook's unit suite green on both commits. lint:ui OK, eslint clean on touched files.
+- Mutants (a /tmp git-archive sandbox of 17e7cb84, IDENTICAL after): card menu unbound KILLED (3), Sort menu
+  unbound KILLED (2), modern Sort back to the cached `sig` KILLED (1), no leave listener KILLED, no pre-aborted
+  check KILLED, restore refuses '' KILLED, no post-answer re-check SURVIVED, then KILLED by ea17b4f9's test.
