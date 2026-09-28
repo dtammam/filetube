@@ -7,6 +7,12 @@ set -euo pipefail
 [ -f "$HOME/.profile" ] && source "$HOME/.profile" 2>/dev/null || true
 
 echo "Running pre-push checks..."
+# Proportional (Dean, 2026-09-28): a push of only branch deletes and docs-only commits skips the
+# checks below (scripts/prepush-scope.js reads git's push lines on stdin; anything unclear runs
+# them). CI still runs its own checks on every pushed branch.
+if [ -f scripts/prepush-scope.js ] && command -v node >/dev/null 2>&1; then
+  if node scripts/prepush-scope.js; then exit 0; fi
+fi
 
 # Resolve node_modules the way Node does - walking UP from the worktree - so a
 # git worktree under .claude/worktrees/ (which shares the main checkout's

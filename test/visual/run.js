@@ -155,5 +155,11 @@ function captureEra(era, base, shots) {
   if (taken.size === 0) console.log('  (no shots were captured)');
   console.log(`visual: report ${report}/report.md`);
   if (changed.length || missing.length || taken.size === 0) process.exitCode = 1;
+  // A run that did not capture cleanly keeps its report but uploads NO shots: the visual-shots
+  // artifact is what an intended change commits as baselines, and a broken render must never be one.
+  if (failures.length || blocked.length) {
+    for (const f of pngs(shots)) fs.rmSync(path.join(shots, f), { force: true });
+    console.log('visual: capture not clean - its shots were removed (nothing here to commit as baselines)');
+  }
   console.log(process.exitCode ? 'visual: FAIL' : 'visual: PASS (0 changed pixels)');
 })().catch((e) => { console.error(e); process.exit(1); });

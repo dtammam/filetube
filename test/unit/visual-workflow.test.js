@@ -105,7 +105,7 @@ test('a docs-only change (.md files, docs/) skips the workflow; nothing the app 
   for (const d of ['lib', 'public']) walk(path.join(ROOT, d));
   files.push(path.join(ROOT, 'server.js'));
   const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
-  const names = /['"`](\.\.\/)*docs['"`/]|\bdocs\/[\w.-]+\.(json|md)\b|['"`][^'"`\n]*\.md['"`]/;
+  const names = /['"`](\.{1,2}\/)*docs['"`/]|\bdocs\/[\w.-]+\.(json|md)\b|['"`][^'"`\n]*\.md['"`]/;
   // Prose that only NAMES a doc for the reader (an error or log message), reviewed; a new mention
   // anywhere fails until someone checks it is not a read and adds it here.
   const PROSE = [['lib/db/sqlite.js', '(rollback floor: docs/RELEASING.md)'], ['lib/db/sqlite.js', '(docs/CONFIGURATION.md, "The database")'],
