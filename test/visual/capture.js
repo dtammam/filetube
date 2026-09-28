@@ -172,6 +172,12 @@ function sceneKit(FX, BASE) {
     { id: '16-music-mini-player', path: '/music', run: async (p, vp) => { await p.evaluate(() => localStorage.removeItem('ft-music-skin')); await p.goto(`${BASE}/music?play=${FX.track}`, { waitUntil: 'networkidle' }); await sleep(1500); await pausePlayback(p);
       const c = p.locator('[data-skin-collapse]').first(); if (await c.count()) { if (isMobile(vp)) await c.tap(); else await c.click(); await sleep(800); } } },
     { id: '17-watch-top', path: `/watch.html?v=${FX.video}`, run: async (p) => { await p.waitForSelector('#media-title', { timeout: 12000 }); await pausePlayback(p); } },
+    // Sweep S3: the description's "About this file" expanded (before the sweep: the description
+    // box). The resume toast is shot by the S3 probe instead: it fades after 4s, sooner than a
+    // capture's settle (the old modal likewise auto-resumed after its 5s countdown).
+    { id: '18b-watch-about', path: `/watch.html?v=${FX.video}`, run: async (p, vp) => { await p.waitForSelector('#media-title', { timeout: 12000 }); await pausePlayback(p);
+      if (await p.locator('#about-file-toggle').count()) { await scrollCenter(p, '#about-file-toggle'); await tap(p, '#about-file-toggle', vp); await sleep(300); await scrollCenter(p, '#about-file-toggle'); }
+      else await scrollCenter(p, '.description-container'); } },
     { id: '18-watch-action-row-channel', path: `/watch.html?v=${FX.video}`, run: async (p) => { await p.waitForSelector('#subscribe-btn-mock', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#subscribe-btn-mock'); } },
     { id: '19-watch-unsubscribed-channel', path: `/watch.html?v=${FX.videoUnsub}`, run: async (p) => { await p.waitForSelector('#subscribe-btn-mock', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#subscribe-btn-mock'); } },
     { id: '20-watch-more-actions', path: `/watch.html?v=${FX.video}`, run: async (p, vp) => { await p.waitForSelector('#more-actions-btn', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#more-actions-btn'); await tap(p, '#more-actions-btn', vp); await sleep(600); } },

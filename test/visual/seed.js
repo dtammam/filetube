@@ -221,6 +221,23 @@ const CHANNELS = [
     });
   }
 
+  // The watch page (UI pass sweep S3). The subscribed fixture video carries a description long
+  // enough to clamp and a caption sidecar (so its action bar shows Transcript); the
+  // unsubscribed one carries REAL captured view and subscriber counts (they show in every era,
+  // where the mock counts of the other videos show only in the retro eras, D8.1).
+  const harborFirst = meta[byChannel['Harbor Workshop'][0]];
+  harborFirst.tags = { description: 'The bench came out of a school workshop in 1958 and spent forty years in a garage. '
+    + 'In this first part we strip it, flatten the top and find out what is worth saving.\n\n'
+    + 'Chapters, tools and timber are listed on the channel page. Part two covers the vise hardware, the '
+    + 'finish and the drawer runners, and part three is the build log for the tool rack behind it.' };
+  harborFirst.hasSubtitles = true;
+  fs.mkdirSync(path.dirname(harborFirst.filePath), { recursive: true });
+  fs.writeFileSync(harborFirst.filePath.replace(/\.mp4$/, '.en.vtt'), 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nA fixture caption line.\n');
+  Object.assign(meta[byChannel['Northbound Field Notes'][0]], {
+    sourceViewCount: 18342, sourceViewCountCapturedAt: NOW - 20 * 86400e3,
+    sourceFollowerCount: 48200, sourceFollowerCountCapturedAt: NOW - 20 * 86400e3,
+  });
+
   // Music: 3 artists x 2 albums x 4 tracks as library audio.
   const musicRoot = path.join(DATA, 'musiclib');
   const wav = silentWav(240);
@@ -346,6 +363,8 @@ const CHANNELS = [
   // row, route-stamped ones included, is in the past and reads the same relative date.
   const fixtures = { dataDir: DATA, seededAt: NOW, viewNow: NOW + 3600e3, pinned: Number(process.env.SEED_NOW) > 0, user: USER, password: PASSWORD,
     video: harbor[0], videoUnsub: byChannel['Northbound Field Notes'][0], track: musicIds[0],
+    // a video with saved progress past the resume threshold (the resume toast, D8.2)
+    videoResume: home[1],
     book: readingBook, bookShelf: path.join(booksRoot, 'Harbor Library'),
     counts: { videos: Object.values(meta).filter((m) => m.type === 'video').length, musicTracks: musicIds.length,
       podcastEpisodes: Object.keys(episodes).length, books: bookList.items.length, notifications } };
