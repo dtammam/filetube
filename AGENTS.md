@@ -104,7 +104,8 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
   `location.hash` directly); Express static-segment routes before `/:id`.
 - **UI ratchet** (LESSONS 3) - `npm run lint:ui` fails on any debt above the shrink-only
   `docs/ui-exceptions.json`; new raw literals in governed properties must be tokenized or
-  `token-exempt`-annotated (it superseded the `lint:css` token census).
+  `token-exempt`-annotated, and every annotation is counted debt there too (it superseded
+  the `lint:css` token census).
 - **Overlay containment census (anti-bleed)** (LESSONS 3, 6) — `node scripts/overlay-containment-lint.js
   --enforce` ceiling is ZERO. A rounded overlay that scrolls SPLITS clip from
   scroll (`overflow:hidden` + `border-radius` on the outer element; `overflow:auto`

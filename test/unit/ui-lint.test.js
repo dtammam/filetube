@@ -319,10 +319,10 @@ test('no-raw-values: tokens.css definitions and token-exempt lines are exempt; k
 test('token-exempt: every annotation in a comment is one item per file, in CSS, JS and HTML; a string is not a comment', () => {
   const keys = lint('token-exempt', [
     ['public/css/style.css', '.x { width: 12px; /* token-exempt: a */ }\n.y { color: #fff; /* token-exempt: b */ z-index: 9; /* token-exempt: c */ }\n/* plain comment */'],
-    ['public/js/a.js', "el.style.left = '8px'; // token-exempt: d\n/* token-exempt: e\n   spans two lines */\nel.textContent = 'token-exempt';"],
+    ['public/js/a.js', "el.style.left = '8px'; // token-exempt: d\n/* token-exempt: e\n   spans two lines */\nel.textContent = 'token-exempt';\n/* token-exempt: g (twice in one comment counts twice, as in CSS) token-exempt */"],
     ['public/x.html', '<div style="padding: 13px"></div> <!-- token-exempt: f -->\n<p>token-exempt in text</p>'],
   ]);
-  assert.deepStrictEqual([...keys], [['public/css/style.css|token-exempt', 3], ['public/js/a.js|token-exempt', 2], ['public/x.html|token-exempt', 1]]);
+  assert.deepStrictEqual([...keys], [['public/css/style.css|token-exempt', 3], ['public/js/a.js|token-exempt', 4], ['public/x.html|token-exempt', 1]]);
 });
 
 test('token-exempt: adding ONE annotation fails --enforce as new debt; removing one fails as paid debt until the file shrinks', () => {

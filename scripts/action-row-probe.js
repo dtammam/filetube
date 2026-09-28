@@ -8,7 +8,8 @@
 // video, drives the Playwright-cached headless Chromium over raw CDP (no
 // npm dependency - Node's global WebSocket + fetch), and for every viewport
 // width prints ONE JSON line of geometry (x/y/w/h of every
-// `.watch-action-btns .btn`, the stars, the title, the description box, the
+// `.watch-actions .ui-btn` (the stacked ui-btn action row since the UI
+// professionalism pass), the stars, the title, the description box, the
 // row count and the column width) plus a PNG clip of the action bar.
 // Diff the BEFORE and AFTER lines: a pre-existing button whose w/h changed
 // is a deformation; a y change is a wrap (intended or not).
@@ -107,20 +108,20 @@ const GEOMETRY_JS = `(function () {
   var wc = document.querySelector('.watch-container');
   out.theatre = !!(wc && wc.classList.contains('theater-mode'));
   out.theatreReserve = wc ? (wc.style.getPropertyValue('--watch-theatre-reserve') || null) : null;
-  var firstLabel = document.querySelector('.watch-action-btns .btn .btn-label');
+  var firstLabel = document.querySelector('.watch-actions .ui-btn .ui-btn__label');
   out.labelsShown = firstLabel ? getComputedStyle(firstLabel).display !== 'none' : null;
   out.docScrollWidth = document.documentElement.scrollWidth;
   out.vh = window.innerHeight;
   var sb = document.getElementById('sidebar');
   out.sidebarHidden = sb ? sb.classList.contains('hidden') : null;
   out.theatreGuide = document.body.getAttribute('data-theatre-guide');
-  document.querySelectorAll('.watch-action-btns .btn').forEach(function (b) {
+  document.querySelectorAll('.watch-actions .ui-btn').forEach(function (b) {
     var r = b.getBoundingClientRect();
     out.buttons[b.id || b.className] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
     if (r.width > 0) tops[Math.round(r.top)] = true; // a display:none button (0x0 at top 0) is not a row
   });
   out.rows = Object.keys(tops).length;
-  ['.star-rating', '.watch-title', '.description-container', '.watch-action-bar', '#player-wrapper', '#media-player', '.watch-player-stage', '#ambient-glow', '.watch-sidebar', '.main-content', '#sidebar'].forEach(function (sel) {
+  ['#star-rating-control', '.watch-title', '.description-container', '.watch-action-bar', '#player-wrapper', '#media-player', '.watch-player-stage', '#ambient-glow', '.watch-sidebar', '.main-content', '#sidebar'].forEach(function (sel) {
     var el = document.querySelector(sel); if (!el) return;
     var r = el.getBoundingClientRect();
     out[sel] = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };

@@ -118,6 +118,43 @@ reusable lesson (a bug class and its guard), add or update it in
 existing entry. Never write a per-release file into an agent's memory (retired
 2026-09-25: 276 such files had become a duplicate of the ROADMAP).
 
+## The visual job and baselines (UI professionalism pass)
+
+`.github/workflows/visual.yml` has two jobs:
+
+- **`visual`** runs on every push and PR (except `rebaseline/*` branches). In
+  the pinned Playwright container it seeds the synthetic fixture
+  (`test/visual/seed.js`), boots a fresh read-only server, runs the full
+  geometry set (`npm run test:geometry`), then captures the scene matrix and
+  diffs it against `test/visual/baselines/` at 0 changed pixels
+  (`test/visual/run.js`). With no committed baselines it FAILS ("no baselines
+  - run the rebaseline job"), so it stays red on every push until the first
+  baselines land; that red is expected, not a regression to wave through
+  later.
+- **`rebaseline`** takes the baselines, in the SAME container: from "Run
+  workflow" (workflow_dispatch), or on a push to a `rebaseline/*` branch.
+  GitHub dispatches a workflow only once it exists on the default branch, so
+  the FIRST baselines, and any taken before a merge, come from a pushed
+  `rebaseline/<step>` branch cut at the reviewed sha. It uploads the shots as
+  an artifact; nothing is committed by CI.
+
+Rebaseline procedure: cut `rebaseline/<step>` at the sha the gate reviewed,
+push it (the push is the trigger), download the `rebaseline` job's artifact
+into `test/visual/baselines/`, and commit it on the release branch as its own
+commit named for the step (stage the baseline paths explicitly). Never take
+baselines on a dev box: fonts and raster differ outside the container (a
+local `run.js --update` is for experiments; with `--era`/`--only` it replaces
+only that subset). Delete the `rebaseline/*` branch afterwards (`-d`, remote
+and local).
+
+**Committing baselines changes the sha the seats signed.** The baselines
+commit lands AFTER the gate, so the approvals are bound to its parent and
+are stale at the new head until re-confirmed there
+(`.harness/lib/harness-markers.md`). Keep the commit to
+`test/visual/baselines/` only, so the re-confirmation is a baselines-only
+delta, and run `bash .harness/lib/check-markers.sh` before the merge. A code
+change after the baselines means new baselines.
+
 ## Schema versions and the rollback floor
 
 FileTube's SQLite schema is versioned by `PRAGMA user_version`
@@ -313,7 +350,9 @@ no-op, and the workflow does no harm - it just cannot complete the merge yet.)
    which needs squash enabled).
 2. Settings -> Branches -> add a **branch protection rule** for `main`:
    "Require status checks to pass before merging", and select the CI checks
-   (the `ci` matrix jobs, `secret-scan`, `audit`). This is what makes
+   (the `ci` matrix jobs, `secret-scan`, `audit`, and `visual` from
+   `visual.yml` once its baselines are committed - until then it is red on
+   every push and would hold every PR). This is what makes
    auto-merge WAIT for green CI rather than merge immediately; it also
    protects `main` for human PRs.
 
