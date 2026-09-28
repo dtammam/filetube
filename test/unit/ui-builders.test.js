@@ -436,6 +436,30 @@ test('ui.sheet close: removes is-open, then (fallback timer) removes both nodes,
   assert.strictEqual(closed, 1);
 });
 
+// Sweep S9 (primitive addition): a closing sheet carries `is-closing` until it is gone or
+// re-opened - the ui.css exit easing keys on it, and a caller asks "is a LIVE dialog up?"
+// with `.ui-sheet:not(.is-closing)` (the watch page's relocation offer).
+test('ui.sheet: is-closing marks the exit only - off while open, on from close() until removed, off again on a re-open', () => {
+  const t = clock();
+  const { doc, win } = page();
+  const c = ui.sheet({ title: 'T', doc, win });
+  c.open();
+  t.tick(16);
+  assert.strictEqual(c.el.classList.contains('is-closing'), false, 'an open sheet is not closing');
+  assert.ok(doc.querySelector('.ui-sheet:not(.is-closing)'), 'the live-dialog query sees an open sheet');
+  c.close();
+  assert.strictEqual(c.el.classList.contains('is-closing'), true, 'marked the moment close() runs');
+  assert.strictEqual(doc.querySelector('.ui-sheet:not(.is-closing)'), null, 'a closing sheet is not a live dialog');
+  c.open(); // re-opened mid-exit keeps the nodes
+  assert.strictEqual(c.el.classList.contains('is-closing'), false, 'a re-open clears it');
+  c.close();
+  t.tick(400);
+  assert.strictEqual(c.el.isConnected, false);
+  assert.strictEqual(c.el.classList.contains('is-closing'), false, 'a removed sheet does not keep the mark (it can be opened again)');
+  c.open();
+  assert.strictEqual(c.el.classList.contains('is-closing'), false);
+});
+
 test('ui.sheet close: the sheet\'s own transitionend removes it early; a child\'s transitionend does not', () => {
   clock();
   const { doc, win } = page();

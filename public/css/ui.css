@@ -708,6 +708,9 @@ button.ui-row:focus-visible,
   margin: 0;
   font: var(--t-title);
 }
+/* Close sits on the trailing edge with or without a title (a titleless sheet used to put
+   it at the leading edge - S1's report) */
+.ui-sheet__close { margin-inline-start: auto; }
 .ui-sheet__body {
   flex: 1;
   min-height: 0;
@@ -726,6 +729,7 @@ button.ui-row:focus-visible,
 .ui-confirm__body {
   margin: 0;
   padding: 0 var(--space-8);
+  white-space: pre-line; /* a body's own line breaks show (the showConfirmModal shim's <br>s) */
   color: var(--ink-2);
   font: var(--t-body);
 }

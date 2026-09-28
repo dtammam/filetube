@@ -126,3 +126,19 @@ test('ui.prompt: the field in a sheet body sits on the dialog text inset (sweep 
   const inset = /padding:\s*0 (var\(--space-\d+\))/.exec(body.body)[1];
   assert.match(r.body, new RegExp('margin:\\s*var\\(--space-\\d+\\) ' + inset.replace(/[()]/g, '\\$&') + ' 0'), 'the same side inset as the confirm body text');
 });
+
+// Sweep S9 (primitive addition): a titleless sheet put its Close on the LEADING edge (the
+// header is a flex row and Close was its only child - S1's report). Close pushes itself to the
+// trailing edge; the geometry scene `sheet-header` measures it rendered.
+test('the sheet Close sits on the trailing edge with or without a title (sweep S9)', () => {
+  const r = RULES.find((x) => x.sel === '.ui-sheet__close' && x.at === '');
+  assert.ok(r, 'the rule exists');
+  assert.match(r.body, /margin-inline-start:\s*auto/);
+});
+
+// Sweep S9: the showConfirmModal shim hands ui.confirm a body with line breaks (its callers
+// built them as <br>); the confirm body keeps them.
+test('a confirm body keeps its own line breaks (white-space: pre-line, sweep S9)', () => {
+  const r = RULES.find((x) => x.sel === '.ui-confirm__body' && x.at === '');
+  assert.match(r.body, /white-space:\s*pre-line/);
+});

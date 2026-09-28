@@ -430,6 +430,7 @@
       if (onEnd) { s.removeEventListener('transitionend', onEnd); onEnd = null; }
       if (scrim.parentNode) scrim.parentNode.removeChild(scrim);
       if (s.parentNode) s.parentNode.removeChild(s);
+      s.classList.remove('is-closing');
       s.style.removeProperty('--ui-drag');
       var bl = lockApi();
       if (bl) bl.release(doc, win, lockOwner);
@@ -451,6 +452,7 @@
         state = 'open';
         openStack.push(ctrl);
         doc.addEventListener('keydown', onKey);
+        s.classList.remove('is-closing');
         s.classList.add('is-open');
         scrim.classList.add('is-open');
         return ctrl;
@@ -493,6 +495,9 @@
       if (i !== -1) openStack.splice(i, 1);
       doc.removeEventListener('keydown', onKey);
       s.classList.remove('is-open', 'is-dragging');
+      // `is-closing` marks a sheet on its way out: the exit easing (ui.css) and a caller's
+      // "is a live dialog up?" query (`.ui-sheet:not(.is-closing)`) both read it.
+      s.classList.add('is-closing');
       scrim.classList.remove('is-open');
       onEnd = function (e) { if (e.target === s) finish(); };
       s.addEventListener('transitionend', onEnd);
