@@ -16228,7 +16228,73 @@ function armSidebarSlide(sidebar) {
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
+// v1.341.3 (Dean: the Modern theme's phone folders render wider than the screen, not reproducible
+// headless): a device-side readout. Pure over (doc, win): the layout numbers that decide the
+// layout (the layout viewport, the document's scroll width, the visual viewport, the 480px phone
+// query) and the elements whose box reaches past the viewport's right edge, widest first, each as a
+// short selector. Fixed-position elements are skipped (they size to the viewport by definition).
+function measureLayoutOverflow(doc, win) {
+  const w = win || {};
+  const d = doc || {};
+  const root = d.documentElement || {};
+  const vw = Number(w.innerWidth) || 0;
+  const sel = (e) => {
+    const id = e.id ? '#' + e.id : '';
+    const cls = typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+    return String(e.tagName || '').toLowerCase() + id + cls;
+  };
+  const wide = [];
+  const all = d.querySelectorAll ? d.querySelectorAll('body *') : [];
+  for (const e of all) {
+    let r;
+    try { r = e.getBoundingClientRect(); } catch (_) { continue; }
+    if (!r || !r.width || r.right <= vw + 0.5) continue;
+    let fixed = false;
+    try { fixed = w.getComputedStyle(e).position === 'fixed'; } catch (_) { /* unknown: keep it */ }
+    if (!fixed) wide.push({ sel: sel(e), right: Math.round(r.right), width: Math.round(r.width) });
+  }
+  wide.sort((a, b) => b.right - a.right);
+  let phoneQuery = null;
+  try { phoneQuery = !!w.matchMedia('(max-width: 480px)').matches; } catch (_) { /* no matchMedia */ }
+  return {
+    innerWidth: vw,
+    clientWidth: Number(root.clientWidth) || 0,
+    scrollWidth: Number(root.scrollWidth) || 0,
+    visualWidth: w.visualViewport ? Math.round(w.visualViewport.width) : null,
+    dpr: Number(w.devicePixelRatio) || 1,
+    phoneQuery,
+    htmlClass: typeof root.className === 'string' ? root.className : '',
+    wide: wide.slice(0, 6),
+  };
+}
+
 if (typeof document !== 'undefined') {
+// v1.341.3: ?debugLayout=1 shows measureLayoutOverflow on the page itself (a fixed box, top-left,
+// refreshed every second for 15 s so late layout is caught). Screenshot it and send it over.
+(function debugLayoutReadout() {
+  let on = false;
+  try { on = /[?&]debugLayout=1\b/.test(window.location.search); } catch (_) { on = false; }
+  if (!on) return;
+  let box = null;
+  let runs = 0;
+  const render = () => {
+    const m = measureLayoutOverflow(document, window);
+    if (!box) {
+      box = document.createElement('pre');
+      box.setAttribute('data-debug-layout', '');
+      box.style.cssText = 'position:fixed;left:var(--space-2);top:var(--space-2);z-index:var(--z-top);margin:0;padding:var(--space-3);max-width:90%;white-space:pre-wrap;font:var(--t-caption);font-family:monospace;background:CanvasText;color:Canvas;pointer-events:none';
+      document.body.appendChild(box);
+    }
+    box.textContent = 'debugLayout (' + (runs + 1) + ')\n'
+      + 'inner ' + m.innerWidth + ' client ' + m.clientWidth + ' scroll ' + m.scrollWidth + ' vv ' + m.visualWidth + ' dpr ' + m.dpr + '\n'
+      + 'max-width:480px ' + m.phoneQuery + '\nhtml ' + m.htmlClass + '\n'
+      + (m.wide.length ? m.wide.map((x) => 'wide ' + x.sel + ' right ' + x.right + ' w ' + x.width).join('\n') : 'nothing past the right edge');
+    runs += 1;
+    if (runs < 15) setTimeout(render, 1000);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(render, 300));
+  else setTimeout(render, 300);
+})();
 // ---- v1.78 device handoff: the card RUNTIME -------------------------------
 //
 // ONE controller, owned by the persistent shell. Its element is appended to
@@ -16670,6 +16736,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).
     withShareStartTime,
     // Chapter Snap (2026-09-24): the ONE chapter-time editor + its pure helpers (jsdom-tested).
+    measureLayoutOverflow, // v1.341.3: the ?debugLayout=1 readout
     showChapterSnapEditor, formatSnapTime, clampSnapNudge, snapChipText, showChaptersEditor, formatChapterStamp,
     formatSnapShift, snapShiftBlock, snapShiftSuggestion, snapGapBreak,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.

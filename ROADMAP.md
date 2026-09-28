@@ -71,8 +71,10 @@
   toolbar fits (16-414px of 430; the chip strip scrolls inside it), and Dean's two ~235px columns match
   the tablet grid (auto-fill minmax(210px)) at a ~520px layout width, i.e. iOS laid the page out WIDER
   than the screen (its fit-to-width, the v1.24.6 subscriptions-zoom class), which headless Chromium does
-  not emulate. NEXT: one reading on Dean's phone in that folder (innerWidth, documentElement.clientWidth,
-  and the widest element), then fix the element that overflows at load.
+  not emulate. NEXT: v1.341.3 ships `?debugLayout=1` (a readout box: inner/client/scroll/visual width,
+  whether the 480px phone query matched, the html classes, and the non-fixed elements past the right
+  edge, widest first). Dean opens the Modern Downloads folder with it and sends a screenshot; then fix
+  the element it names.
 
 - [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
   _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
@@ -370,6 +372,8 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   notch-height too high for about a third of a second before snapping into place; the correction now
   lands on the next frame.
 - For the next device check, `?debugLifecycle=1` now logs the page's scroll position around a rotation.
+- For the Modern phone folders that render too wide, `?debugLayout=1` shows the page's real widths and
+  names the element that sticks out, so one screenshot pins the cause.
 
 ### v1.341.2 - Opening a panel no longer shifts the page on desktop (2026-09-28)
 
