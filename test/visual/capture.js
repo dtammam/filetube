@@ -214,7 +214,7 @@ function sceneKit(FX, BASE) {
     { id: '21c-notif-row-swiped', path: '/', run: async (p, vp) => { await openNotifPanel(p, vp);
       if (await p.locator('#notif-panel .ui-swipe').count()) { await swipeRowOpen(p, '#notif-panel .ui-swipe__content'); await p.waitForSelector('#notif-panel .ui-swipe.is-open', { timeout: 4000 }); await sleep(500); } } },
     { id: '21d-notif-delete-confirm', path: '/', run: async (p, vp) => { await openNotifPanel(p, vp);
-      if (await p.locator('#notif-panel .notif-more').count()) { await tap(p, '#notif-panel .notif-more', vp); await p.waitForSelector('.ui-sheet.is-open:not(#notif-panel)', { timeout: 8000 }); await sleep(400);
+      if (await p.locator('#notif-panel .notif-more').count()) { await tap(p, '#notif-panel .notif-more', vp); await p.waitForSelector('.ui-sheet.is-open:not(#notif-panel)', { timeout: 8000 }); await sleep(700); // past ui.js ACTIVATION_GUARD_MS (450): an earlier tap is a double tap the menu ignores
         await tap(p, '.ui-sheet.is-open:not(#notif-panel) .ui-row--danger', vp); await p.waitForSelector('.ui-sheet--dialog.is-open', { timeout: 8000 }); await sleep(500); } } },
     // 22: reducedMotion 'no-preference'; 22b is the SAME panel under prefers-reduced-motion: reduce.
     // F48 (fixed in sweep S4): the old panel opened INVISIBLE there (openOverlay skipped
