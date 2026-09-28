@@ -22,6 +22,9 @@
 // the same dual pattern as icons.js and body-scroll-lock.js.
 (function () {
   var hasWindow = typeof window !== 'undefined';
+  // At CALL time, for work that can run after its page is gone (a sheet's exit timer firing
+  // after a jsdom teardown): the load-time `hasWindow` would still say yes.
+  function liveWindow() { return typeof window !== 'undefined' ? window : null; }
 
   function docOf(o) {
     if (o && o.doc) return o.doc;
@@ -416,7 +419,7 @@
     var onEnd = null;
     applyVariant(variant);
 
-    function lockApi() { return (win && win.FileTubeBodyLock) || (hasWindow && window.FileTubeBodyLock) || null; }
+    function lockApi() { var w = liveWindow(); return (win && win.FileTubeBodyLock) || (w && w.FileTubeBodyLock) || null; }
 
     function onKey(e) {
       if (e.key !== 'Escape' && e.key !== 'Esc') return;
