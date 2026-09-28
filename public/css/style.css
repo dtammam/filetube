@@ -12606,6 +12606,10 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
 .setup-sec .ui-list--grouped {
   margin: 0;
 }
+/* a field placed straight in a section (the folder pages) spaces like a group */
+.setup-sec > .setup-field {
+  margin: 0 0 var(--space-12);
+}
 .setup-sec label.ui-row {
   cursor: pointer;
 }

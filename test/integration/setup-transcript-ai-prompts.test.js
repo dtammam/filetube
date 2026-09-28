@@ -74,9 +74,18 @@ function loadSetup({ prompts, postStatus, holdPosts }) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // Sweep S8 (D4.8): Remove on a saved prompt opens the danger ui.confirm; nothing is POSTed
 // until it resolves true. Asserts the dialog is up and the list untouched, then confirms.
-async function removeConfirmed(dom, row) {
+async function removeConfirmed(dom, row, posts) {
   const d = dom.window.document;
   const before = d.querySelectorAll('.transcript-ai-prompt-row').length;
+  const postsBefore = posts.length;
+  // Cancel first: nothing removed, nothing POSTed.
+  row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await wait(50);
+  let open = d.querySelectorAll('.ui-sheet--dialog');
+  open[open.length - 1].querySelectorAll('.ui-confirm__actions .ui-btn')[0].click();
+  await wait(450);
+  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt-row').length, before, 'Cancel keeps the prompt');
+  assert.strictEqual(posts.length, postsBefore, 'Cancel POSTs nothing');
   row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   await wait(50);
   const dlg = d.querySelectorAll('.ui-sheet--dialog');
@@ -127,7 +136,7 @@ test('setup: Remove POSTs the list WITHOUT that row immediately; Add appends an 
   try {
     await wait(100);
     const d = dom.window.document;
-    await removeConfirmed(dom, rows(d)[0]);
+    await removeConfirmed(dom, rows(d)[0], posts);
     assert.strictEqual(posts.length, 1);
     assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.id), ['analyze']);
     assert.strictEqual(rows(d).length, 1);
@@ -195,7 +204,7 @@ test('setup: with a blank Add row present, Remove of another row and an edit of 
     await wait(600);
     assert.strictEqual(posts.length, 1);
     assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.text), ['Sum it up.', 'Analyze it thoroughly.'], 'the edit went, the blank row did not');
-    await removeConfirmed(dom, rows(d)[0]);
+    await removeConfirmed(dom, rows(d)[0], posts);
     assert.strictEqual(posts.length, 2);
     assert.deepStrictEqual(posts[1].transcriptAiPrompts.map((p) => p.id), ['analyze'], 'the remove persisted; no blank row');
     assert.strictEqual(d.getElementById('transcript-ai-error').textContent, '');

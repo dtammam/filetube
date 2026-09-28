@@ -200,6 +200,22 @@ test('Delete a user: a danger confirm naming the account first, then the same DE
   } finally { await c.teardown(); }
 });
 
+test('a confirm left open when the view is torn down closes, and a late OK sends nothing (the view signal rides every confirm)', async () => {
+  const c = mount(usersRoutes());
+  try {
+    await setup.initAccountSection(c.ac.signal);
+    await settle();
+    userBtn(c, 'bob', 'delete').click(); // act() itself has no signal check: only the confirm's does
+    await settle();
+    const k = parts(openDialog(c.d));
+    c.ac.abort(); // navigate away
+    k.ok.click(); // a late OK on the dialog the navigation should have closed
+    await settle(12);
+    assert.strictEqual(sent(c.calls, 'DELETE', '/api/users/u-bob').length, 0, 'the teardown answered false');
+    assert.ok(!k.dlg.classList.contains('is-open'), 'and the dialog is closing, not stranded over the next view');
+  } finally { await c.teardown(); }
+});
+
 test('Reset password: a MASKED ui.prompt; the value is never in the DOM unmasked by default, and goes only to POST /api/users/:id/password', async () => {
   const c = mount(usersRoutes());
   const SECRET = 'correct-horse-battery';
@@ -305,6 +321,18 @@ test('the synthetic downloads folder never reaches the confirm (not removable)',
     assert.strictEqual(c.d.querySelector('.ui-sheet--dialog'), null, 'no confirm for a folder that cannot go');
     assert.deepStrictEqual(setup.__getConfiguredFoldersForTests(), ['/dl']);
   } finally { await c.teardown(); }
+});
+
+test('the Settings table filter (buildSortableTable) is a ui-field input: 16px + the focus ring, not font: inherit', () => {
+  const dom = new JSDOM('<div id="h"></div>');
+  const host = dom.window.document.getElementById('h');
+  SHELL_GLOBALS.buildSortableTable(host, { columns: [{ key: 'a', label: 'A', format: (r) => r.a }], rows: [{ a: 'x' }], filter: { text: (r) => r.a, placeholder: 'Filter' } });
+  const input = host.querySelector('input.stable-filter');
+  assert.ok(input, 'the filter renders');
+  assert.ok(input.classList.contains('ui-field__input'), 'a ui-field input');
+  const css = read('public/css/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /\.stable-filter\s*\{/, 'no bespoke rule re-sizes it (the old one set font: inherit)');
+  dom.window.close();
 });
 
 test('confirmDestructive answers false (and sends nothing) when ui.js is missing', async () => {

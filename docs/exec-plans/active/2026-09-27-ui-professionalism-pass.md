@@ -1876,3 +1876,59 @@ fix found by the render, the History confirm test, this log).
   menu and the playlists sheet are built on first open, so the Subscriptions row's cold-cache gap
   (v1.153.1) mostly closes; ensureAccountMenuSubscriptionsRow still patches a built menu. Sidebar rows
   took hairline separators and a 12px section title (`--t-footnote`) - a visible desktop change.
+
+
+### Sweep S8 - Settings and forms (2026-09-28, branch feat/ui-sweep-s8 from cf669c15)
+
+- **Commits:** a16b3569 (ui.css: `input.ui-switch` + `:checked` twins, its own commit), 43c30d3c (ui.css: a
+  field in a sheet body takes the dialog's text inset - the first ui.prompt render showed it flush), 3e806076
+  (the sweep), then this log with two binding fixes the mutation pass asked for and one spacing fix.
+- **Settings (F09, F36, F54):** each section is a stack of `.setup-group` blocks on the page ground: grouped
+  ui-lists of switch rows (the 29 checkboxes stay native checkboxes wearing `.ui-switch` + role=switch, so every
+  id, `.checked`, `change` wire and persisted key is unchanged - no storage change), ui-field inputs and
+  ui-select selects (16px, the focus ring), and `.setup-note` footers. setup.html's sections carry no inline
+  style (110 -> 0; the 7 left in the file are the shared player template, S3). The folder rows, Channels in
+  Music, the bottom-bar and Library-icon editors, the access editor (switches + ui.segmented mode), the sticker
+  picker (ui.segmented Size/Tilt), the engine channel picker (grouped rows, trailing radio) and every button are
+  primitives. The md nav's focus ring is the `--focus-ring` (was red). `setFieldError` reveals by `hidden`.
+  **Dropped (Architect's ruling, S2's D8.5):** the card-corner editor and its lock `card-corner-editor.test.js`.
+- **F55 / D4.8 (destructive, full gate):** one `confirmDestructive` (danger ui.confirm, the view's signal) in
+  front of every destructive Settings action, each sending the SAME request only on true: delete a user, remove
+  a folder (video/book/music/Shows; the form still persists on Save), restore a backup, clear the transcode
+  cache, remove a logo / sticker / profile photo, delete a critter / all critters, purge / empty the trash,
+  remove a saved transcript prompt, clear the timing log. The two-tap arms and window.confirm are gone. The
+  password reset is `ui.prompt({type:'password'})` (masked, a show toggle; window.prompt echoed it); refusals
+  are toasts. main.js's folder-rename prompt and its two alerts (listed by F55) moved the same way.
+  Subscriptions' two window.confirm calls (lib/ytdlp/client/subscriptions.js) are S5's.
+- **Sign-in / welcome:** ui-field inputs, a primary ui-btn, the era picker a ui-segmented radiogroup (static
+  markup, then login.js hands it to ui.segmented; no inline style). No new pre-auth allowlist entry.
+- **One-off dialog:** ui-field inputs (now aria-labelled), ui-select selects (one column on a phone:
+  "MP4 (recommended)" no longer clips), ui-btn buttons, an icon Close (was U+00D7); the builder's return API
+  and the shared `.oneoff-modal` shell (Subscribe, shortcuts) unchanged.
+- **Found by the probe:** the users/trash table filter (buildSortableTable) computed 13px on a phone
+  (`.stable-filter { font: inherit }` beat the bare-element floor); it is a ui-field input now.
+- **F39:** verified closed (the Shows tile draws `tv`; md-icons-resolve green). **MD tiles onto the
+  registry: not done** - they are 1.7-stroke line drawings on coloured tiles; the registry's Material Symbols
+  are filled/outlined shapes at another weight, so every tile would be redrawn (a material change), and the
+  era tile's corner radius tracks the era (no registry glyph does). Left in common.js; md-icons-resolve stays.
+- **Locks (AC12):** converted critter-manager, settings-mobile-polish, setup-automation-reveal (parsed DOM),
+  setup-engine-client (styling-source law, derived from the box's markup), trash-toolbar and trash-table
+  (confirm gates), v1262-mobile-input-zoom and mobile-input-zoom-fontsize (the census reads ui.css + style.css,
+  the `font:` shorthand and setup.js's templates, with witnesses), plus the markup locks of 12 more unit files
+  and 2 integration files. Kept as they were (green): master-detail, md-nav-desktop-gap, oneoff-modal-mobile-polish,
+  stats-breakdown-table, stats-master-detail. New: settings-forms-sweep.test.js, test/helpers/ui-dialogs.js.
+- **Mutation (git-archive sandbox of 3e806076, pristine diffed after):** 26 mutants, 23 killed first pass;
+  3 survivors exposed weak bindings (the view-signal arm was masked by the callers' own abort checks; the
+  transcript Remove test never dismissed; nothing bound the table filter's class), fixed here and re-run: 26/26.
+- **ui-lint (cf669c15 -> this branch):** TOTAL 2591 -> 2374. no-raw-values 1261 -> 1130, no-bespoke-controls
+  1028 -> 957, icons 155 -> 148, display-ownership 82 -> 79, colour-roles 43 -> 38; the rest unchanged.
+- **Probe (390px phone, 2021 dark; base cf669c15 vs branch):** text-entry controls measured 45 -> 41 (the 4
+  card-corner selects left), under 16px 3 -> 0 (users filter, new-user password, transcript prompt text);
+  a visible keyboard focus ring 12 of 16 probed controls -> 16 of 16; switches 48 in both, and every section's
+  row switches share one right edge (x = 366, width 51; the folder cards' inline switches at 111).
+- **Renders:** capture.js scenes 60-72 (each Settings section, sign-in, the one-off dialog, the password
+  prompt) x 4 eras x phone/landscape/desktop x dark/light: before 328 + 72 recaptured, after 344, 0 failed;
+  328 of 360 compared shots differ (as intended). Looked at: grouped switch rows, footnote help, 16px fields,
+  the masked prompt, sign-in. **For the primitives / tokens (not changed here):** in the retro light eras
+  `--surface-1` equals the page ground, so a grouped list reads ungrouped; the ui-switch keeps its iOS pill in
+  2005. New scenes enlarge the visual job's matrix by ~344 shots (a baseline-size question for Dean).
