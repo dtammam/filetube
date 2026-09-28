@@ -18,6 +18,8 @@
 //   scope: a selector the G1-G3 collectors measure inside (default: the whole page),
 //   min: anti-vacuity floors - a check that measured fewer lists/rows/items/groups than this
 //        FAILS as vacuous (a renamed class must not turn a check into a silent pass),
+//   g1: G1 options {group, actions} (checks.js collectG1): measure every row inside one `group`
+//       element as one list, and each .ui-row__actions child as its own slot,
 //   fast: in the pre-push set, vps: viewports (default phone + desktop).
 
 const ERAS = ['2021', '2014', '2009', '2005'];
@@ -80,7 +82,7 @@ const SURFACES = [
     // Measured at S4 (every era/mode, phone + desktop): 1 list of 9 rows; 9 kebabs + Close.
     min: { G1: { lists: 1, rows: 9 }, G2: { items: 10 } },
   },
-  // ---- pending: each sweep makes its surface live (D1 AC4/AC5 name these) ----
+  // ---- the sweeps' surfaces (D1 AC4/AC5 name these; none is pending since step 7) ----
   // Sweep S3 (D4.9; Dean's "the notification glyph not aligned with the text"): the watch
   // page's channel row, SUBSCRIBED (Subscribed pill + live bell + pin) and NOT subscribed
   // (Subscribe pill + the bell's reserved, invisible slot + pin), and the action bar. `scope`
@@ -109,8 +111,34 @@ const SURFACES = [
     checks: ['G2', 'G3'],
     min: { G2: { items: 4 }, G3: { groups: 1 } },
   },
-  { id: 'subscriptions', owner: 'S5', pending: 'S5', note: 'Subscriptions rows: pinned and unpinned, errored and ok (G1, G2, G3)', checks: ['G1', 'G2', 'G3'], fast: true },
-  { id: 'podcast-episodes', owner: 'S6', pending: 'S6', note: 'a podcast episode list (G1)', checks: ['G1'] },
+  // Sweep S5 (D8.9, D8.10, AC5), live since step 7: the Subscriptions page with the seed's four
+  // channels - pinned and unpinned, notify on and off, paused, errored and ok. The A-Z list is
+  // one ui-list per letter (one row each in the seed), so G1 measures every row under
+  // .subs-sections as ONE list, trailing buttons included (pin, bell, menu: the bell's slot is
+  // reserved when notify is off, so the menu never moves). G2: each row glyph centred in its
+  // button, the toolbar Add glyph on its label; G3: the toolbar's buttons and each row's
+  // buttons one height. (test/geometry/subscriptions.check.js keeps the F62 SPA round trip.)
+  {
+    id: 'subscriptions', owner: 'S5', fast: true, scope: '.subs-root',
+    path: () => '/subscriptions',
+    ready: '.subs-sections .ui-row[data-sub-id] .subs-more',
+    checks: ['G1', 'G2', 'G3'],
+    g1: { group: '.subs-sections', actions: true },
+    // Measured at step 7 (every era/mode, phone + desktop): 1 grouped list of 4 rows across 4
+    // A-Z sections; 13 glyph/label pairs (12 row glyphs + Add); 5 button groups (toolbar + 4 rows).
+    min: { G1: { lists: 1, rows: 4 }, G2: { items: 13 }, G3: { groups: 5 } },
+  },
+  // Sweep S6 (AC5), live since step 7: an opened show's episode list (the seed's Harbor Lights
+  // Radio, five downloaded episodes; `pod-harbor` is test/visual/seed.js's show id). The list
+  // reserves two trailing columns (queue, menu) on every row; G1 measures them as slots.
+  {
+    id: 'podcast-episodes', owner: 'S6', scope: '#podcasts-content',
+    path: () => '/podcasts?show=pod-harbor',
+    ready: '#podcasts-content .podcast-episodes:not([aria-hidden]) .ui-row',
+    checks: ['G1'],
+    g1: { actions: true },
+    min: { G1: { lists: 1, rows: 5 } },
+  },
   // Sweep S9 (D4.6, AC4 G2): the sheet header - a titled confirm (the F44 dialog's shape: title,
   // body, Cancel + the danger action) with a TITLELESS sheet over it, both opened through the
   // real ui.js on the kit page. G2: the Close glyph centred in its button; G3: the confirm's

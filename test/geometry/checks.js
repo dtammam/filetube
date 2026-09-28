@@ -26,26 +26,41 @@ const G4_TOL = 1;
 // Each collector takes an optional `scope` selector (a surface's `scope`): only that subtree
 // is measured, so a page-wide surface (the header on Home) is not failed by another sweep's
 // controls elsewhere on the page.
-function collectG1(scope) {
-  const root = scope ? document.querySelector(scope) : document;
+// G1 takes the scope selector, or (a surface's `g1` options, run.js) {scope, group, actions}:
+//   group:   a selector; every ui-row of every ui-list inside ONE matching element is measured
+//            as one list (Subscriptions' A-Z sections: one ui-list per letter, often a single
+//            row each, and AC5 says the columns line up ACROSS sections);
+//   actions: also measure each child of .ui-row__actions as its own slot (`actions#1`, ...):
+//            a row whose trailing button is missing or moved (a kebab sliding into the
+//            empty bell slot) fails even though the actions box itself holds its column.
+function collectG1(arg) {
+  const o = arg && typeof arg === 'object' ? arg : { scope: arg };
+  const root = o.scope ? document.querySelector(o.scope) : document;
   if (!root) return [];
   const SLOTS = ['lead', 'media', 'body', 'aside', 'actions'];
   const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
+  const measureRow = (row) => {
+    const slots = {};
+    for (const s of SLOTS) {
+      const el = Array.from(row.children).find((c) => c.classList.contains('ui-row__' + s));
+      slots[s] = el ? el.getBoundingClientRect().left : null;
+      if (s === 'actions' && el && o.actions) Array.from(el.children).forEach((c, i) => { slots[`actions#${i + 1}`] = c.getBoundingClientRect().left; });
+    }
+    return { title: (row.querySelector('.ui-row__title') || row).textContent.trim().slice(0, 40), slots };
+  };
   const lists = [];
+  if (o.group) {
+    root.querySelectorAll(o.group).forEach((g, gi) => {
+      if (!shown(g)) return;
+      const rows = Array.from(g.querySelectorAll('.ui-list .ui-row')).filter((r) => shown(r) && shown(r.closest('.ui-list')));
+      lists.push({ list: `${o.group} #${gi + 1} (${g.querySelectorAll('.ui-list').length} ui-lists)`, rows: rows.map(measureRow) });
+    });
+    return lists;
+  }
   root.querySelectorAll('.ui-list').forEach((list, li) => {
     if (!shown(list)) return;
     const rows = Array.from(list.querySelectorAll('.ui-row')).filter((r) => r.closest('.ui-list') === list && shown(r));
-    lists.push({
-      list: list.getAttribute('aria-label') || `ui-list #${li + 1}`,
-      rows: rows.map((row) => {
-        const slots = {};
-        for (const s of SLOTS) {
-          const el = Array.from(row.children).find((c) => c.classList.contains('ui-row__' + s));
-          slots[s] = el ? el.getBoundingClientRect().left : null;
-        }
-        return { title: (row.querySelector('.ui-row__title') || row).textContent.trim().slice(0, 40), slots };
-      }),
-    });
+    lists.push({ list: list.getAttribute('aria-label') || `ui-list #${li + 1}`, rows: rows.map(measureRow) });
   });
   return lists;
 }
@@ -165,7 +180,9 @@ function evalG1(lists, tol = TOL) {
     rows += l.rows.length;
     if (l.rows.length < 2) continue;
     const ref = l.rows[0];
-    for (const slot of Object.keys(ref.slots)) {
+    // Every slot any row has (an `actions#N` slot only some rows carry is itself a failure).
+    const keys = [...new Set(l.rows.flatMap((r) => Object.keys(r.slots)))];
+    for (const slot of keys) {
       for (const row of l.rows.slice(1)) {
         const a = ref.slots[slot];
         const b = row.slots[slot];

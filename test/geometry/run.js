@@ -93,7 +93,8 @@ async function measureScene(env, scene, mutationCss) {
     const res = {};
     for (const c of surf.checks) {
       if (env.only && !env.only.includes(c)) continue;
-      const data = await page.evaluate(COLLECT[c], surf.scope || null);
+      // G1 takes the surface's `g1` options (group / actions, checks.js collectG1) with its scope.
+      const data = await page.evaluate(COLLECT[c], c === 'G1' && surf.g1 ? { scope: surf.scope || null, ...surf.g1 } : surf.scope || null);
       const ev = EVALUATE[c](data);
       const floor = (surf.min && surf.min[c]) || {};
       const vacuous = Object.entries(floor).filter(([k, v]) => !(ev.measured[k] >= v)).map(([k, v]) => `${k} ${ev.measured[k]} < ${v}`);

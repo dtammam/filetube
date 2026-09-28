@@ -72,6 +72,21 @@ const MUTATIONS = {
     check: 'G1', target: { surface: 'notifications', era: '2005', mode: 'light', vp: 'desktop' },
     css: '#notif-panel .ui-row[data-kind="podcast"] > .ui-row__lead{display:none!important}',
   },
+  // ---- sweeps S5 / S6, live since step 7 (G1 with the `g1` options) ----
+  // G1 on Subscriptions: the AC5 bug shape - a row whose bell slot is NOT reserved (notify off)
+  // lets its menu slide left into the gap. Only the actions#N slots see it: the actions box
+  // itself keeps its column. The Tidewater row sits in its own A-Z section, so this also proves
+  // the cross-section grouping (per ui-list it would be a one-row list, never compared).
+  'g1-subs-bell-collapse': {
+    check: 'G1', target: { surface: 'subscriptions', era: '2021', mode: 'dark', vp: 'phone' },
+    css: '.ui-row[data-sub-id="sub-tidewater"] .ui-row__actions > :nth-child(2){display:none!important}',
+  },
+  // G1 on the podcast episode list: one row loses its queue button (a trashed or undownloaded
+  // episode's shape) and its menu moves into the queue column.
+  'g1-podcast-queue-collapse': {
+    check: 'G1', target: { surface: 'podcast-episodes', era: '2009', mode: 'light', vp: 'desktop' },
+    css: '.podcast-episodes .ui-row:nth-child(3) .ui-row__actions > :first-child{display:none!important}',
+  },
   // ---- sweep S1: the chrome's rendered contracts (HDR, NAV) ----
   // HDR: the v1.85 device-pass bug - a later same-specificity base rule hides the phone's
   // search magnifier (the selector lock this check replaced could only pin the scoping).

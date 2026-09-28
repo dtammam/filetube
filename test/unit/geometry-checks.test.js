@@ -38,6 +38,20 @@ test('G1: a slot present in one row and missing in another fails; single-row lis
   assert.strictEqual(r.measured.lists, 1);
 });
 
+test('G1: slots are the UNION of every row\'s keys - an actions#N slot only some rows carry fails, even when the first row lacks it', () => {
+  const r = (title, slots) => ({ title, slots });
+  const base = { lead: 16, media: 16, body: 64, aside: 242, actions: 242 };
+  const lists = [{ list: 'subs', rows: [
+    r('a', { ...base, 'actions#1': 242, 'actions#2': 286 }),
+    r('b', { ...base, 'actions#1': 242, 'actions#2': 286, 'actions#3': 330 }),
+  ] }];
+  const f = evalG1(lists).failures;
+  assert.strictEqual(f.length, 1);
+  assert.deepStrictEqual([f[0].slot, f[0].row, f[0].note], ['actions#3', 'b', 'slot missing in one row']);
+  const moved = [{ list: 'subs', rows: [r('a', { ...base, 'actions#2': 286 }), r('b', { ...base, 'actions#2': 242 })] }];
+  assert.deepStrictEqual(evalG1(moved).failures.map((x) => [x.slot, x.delta]), [['actions#2', -44]]);
+});
+
 test('G2: centre-y within 0.5px passes, 0.6px fails; a stacked button compares centre-x', () => {
   const box = (x, y, w, h) => ({ x, y, w, h });
   const items = [
