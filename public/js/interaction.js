@@ -552,8 +552,21 @@
     return ctrl;
   }
 
+  // A gesture that is not a menu but rides the same long press (a reorder's touch drag) refuses
+  // the context menu / selection callout that press would open, while `isArmed()` says so (read
+  // at event time). D6: every contextmenu listener lives in this file - step 7 moved the
+  // reorder's (common.js wireReorderable) here. `opts.signal` unbinds it with the press.
+  function suppressContextMenuWhile(target, isArmed, opts) {
+    if (!target || typeof target.addEventListener !== 'function' || typeof isArmed !== 'function') return function () {};
+    function onContext(e) { if (isArmed()) e.preventDefault(); }
+    var signal = opts && opts.signal;
+    target.addEventListener('contextmenu', onContext, signal ? { signal: signal } : undefined);
+    return function () { target.removeEventListener('contextmenu', onContext); };
+  }
+
   var api = {
     onLongPress: onLongPress,
+    suppressContextMenuWhile: suppressContextMenuWhile,
     onContextMenu: onContextMenu,
     onActionMenu: onActionMenu,
     swipeRow: swipeRow,

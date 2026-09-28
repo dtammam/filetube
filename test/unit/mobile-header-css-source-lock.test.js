@@ -26,10 +26,10 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
 const css = strip(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
 
 test('the phone magnifier-show out-specifies the LATER desktop hide (the v1.85 cascade fix, by specificity)', () => {
-  const show = css.search(/header \.header-right > \.search-toggle-btn \{\s*display:\s*inline-flex;/);
-  const hide = css.search(/\n\.header-right > \.search-toggle-btn \{\s*display:\s*none;/);
-  assert.ok(show > 0, 'the phone show is `header .header-right > .search-toggle-btn` (0,2,1)');
-  assert.ok(hide > 0, 'the desktop hide is `.header-right > .search-toggle-btn` (0,2,0)');
+  const show = css.search(/header \.header-right > \.ui-btn\.search-toggle-btn \{\s*display:\s*inline-flex;/);
+  const hide = css.search(/\n\.header-right > \.ui-btn\.search-toggle-btn \{\s*display:\s*none;/);
+  assert.ok(show > 0, 'the phone show is `header .header-right > .ui-btn.search-toggle-btn` (0,3,1) - step 7 named the primitive');
+  assert.ok(hide > 0, 'the desktop hide is `.header-right > .ui-btn.search-toggle-btn` (0,3,0)');
   assert.ok(show < hide, 'the hide sits LATER in the file - which is exactly why the show must out-specify it');
 });
 

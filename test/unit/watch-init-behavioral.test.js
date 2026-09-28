@@ -686,17 +686,21 @@ test('v1.314 gate W1: an in-page UNSUBSCRIBE (DELETE 200) disarms the bell - it 
 
 test('v1.314 gate W1: an in-page SUBSCRIBE (modal confirm, POST 201) creates the bell OFF from the POST response, and the cache carries it', async () => {
   let handlers = null;
+  const sheetCalls = [];
   const { btn, bell, realm } = mountSubscribed({ ...WARM_SUBSCRIBED_CACHE, subs: [] }, {
     route: (m, url) => (m === 'POST' && url === '/api/subscriptions') ? jsonRes(201, { id: 'new1', channelUrl: 'https://www.youtube.com/@chan', pushBell: false }) : null,
-    overrides: { buildSubscribeModal: (doc, opts, h) => { handlers = h; return { setError() {}, backdrop: makeEl('div'), modal: makeEl('div') }; } },
+    // step 7: the dialog is a ui.sheet - the captured stub hands back a sheet controller
+    overrides: { buildSubscribeModal: (doc, opts, h) => { handlers = h; return { setError() {}, sheet: { open() { sheetCalls.push('open'); }, close() { sheetCalls.push('close'); } }, backdrop: makeEl('div'), modal: makeEl('div') }; } },
   });
   assert.equal(labelOf(btn), 'Subscribe', 'precondition: not subscribed');
   assert.equal(labelOf(bell()), '(reserved)', 'precondition: no live bell (its slot is reserved)');
   btn._l.click(); // opens the (captured) modal
   assert.ok(handlers && typeof handlers.onConfirm === 'function', 'the modal handlers were captured');
+  assert.deepEqual(sheetCalls, ['open'], 'step 7: the tap opens the Subscribe sheet');
   handlers.onConfirm({ channelUrl: 'https://www.youtube.com/@chan', format: 'video' });
   await settle(); await settle();
   assert.equal(labelOf(btn), 'Subscribed');
+  assert.deepEqual(sheetCalls, ['open', 'close'], 'a good response closes the sheet');
   const b = bell();
   assert.ok(b, 'the bell appears WITHOUT a reload (W1 scenario B / D9 "one tap after adding")');
   assert.equal(labelOf(b), '[notifications_off] Notify', 'off by default');

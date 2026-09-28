@@ -85,10 +85,11 @@ test('DRIFT LOCK: every documented playback key is actually handled in player.js
     Space: "case ' ':",
     J: "case 'j':",
     L: "case 'l':",
-    '←': "case 'ArrowLeft':",
-    '→': "case 'ArrowRight':",
-    '↑': "case 'ArrowUp':",
-    '↓': "case 'ArrowDown':",
+    // step 7: the arrow keys are listed by their KeyboardEvent.key names (their caps draw the registry arrows)
+    ArrowLeft: "case 'ArrowLeft':",
+    ArrowRight: "case 'ArrowRight':",
+    ArrowUp: "case 'ArrowUp':",
+    ArrowDown: "case 'ArrowDown':",
     F: "case 'f':",
     C: "case 'c':",
     '<': "case '<':",
@@ -146,8 +147,8 @@ test('BIDIRECTIONAL: the reference documents every player shortcut, and no other
     "case 'k':": 'K', "case ' ':": 'Space', "case 'j':": 'J', "case 'l':": 'L',
     "case 'm':": 'M', "case 'f':": 'F', "case 'c':": 'C',
     "case '<':": '<', "case '>':": '>',
-    "case 'ArrowLeft':": '\u2190', "case 'ArrowRight':": '\u2192',
-    "case 'ArrowUp':": '\u2191', "case 'ArrowDown':": '\u2193',
+    "case 'ArrowLeft':": 'ArrowLeft', "case 'ArrowRight':": 'ArrowRight',
+    "case 'ArrowUp':": 'ArrowUp', "case 'ArrowDown':": 'ArrowDown',
     "case 'N':": 'N', "case 'P':": 'P',
   };
   const documented = new Set(allItems().flatMap((i) => i.keys));
@@ -257,7 +258,7 @@ test('SEMANTIC: the documented seek amounts match the code\'s actual arguments',
   const playback = KEYBOARD_SHORTCUT_GROUPS.find((g) => g.title === 'Playback').items;
   const descFor = (cap) => playback.find((i) => i.keys.length === 1 && i.keys[0] === cap).desc;
 
-  for (const [caseLiteral, cap] of [["case 'ArrowLeft':", '\u2190'], ["case 'ArrowRight':", '\u2192'],
+  for (const [caseLiteral, cap] of [["case 'ArrowLeft':", 'ArrowLeft'], ["case 'ArrowRight':", 'ArrowRight'],
     ["case 'j':", 'J'], ["case 'l':", 'L']]) {
     const seconds = amountFor(caseLiteral);
     assert.match(descFor(cap), new RegExp(`\\b${seconds} seconds\\b`),
@@ -273,8 +274,8 @@ test('SEMANTIC: the reader arrows are documented in the RIGHT direction', () => 
   assert.match(READ, /event\.key === 'ArrowLeft'\) \{ if \(adapter\) adapter\.prev\(\); \}/,
     'ArrowLeft must go back');
   const reading = KEYBOARD_SHORTCUT_GROUPS.find((g) => g.title === 'Reading (books)');
-  const rightRow = reading.items.find((i) => i.keys[0] === '\u2192');
-  const leftRow = reading.items.find((i) => i.keys[0] === '\u2190');
+  const rightRow = reading.items.find((i) => i.keys[0] === 'ArrowRight');
+  const leftRow = reading.items.find((i) => i.keys[0] === 'ArrowLeft');
   assert.match(rightRow.desc, /Next/, 'the right arrow must be documented as forward');
   assert.match(leftRow.desc, /Previous/, 'the left arrow must be documented as back');
 });
@@ -327,6 +328,23 @@ test('buildShortcutsModal renders every group and row as text (never innerHTML)'
   const titles = [...modal.querySelectorAll('.shortcuts-group-title')].map((n) => n.textContent);
   assert.deepEqual(titles, KEYBOARD_SHORTCUT_GROUPS.map((g) => g.title));
   assert.equal(modal.querySelectorAll('.shortcuts-row').length, allItems().length);
+});
+
+// Step 7 (UI pass, D1-AC4, DELIBERATE conversion of the arrow caps): an arrow key's cap is the
+// registry arrow with an accessible name, never a text arrow glyph.
+test('the arrow key caps draw the registry arrows (named for assistive tech), never a text arrow', () => {
+  const d = doc();
+  const { modal } = buildShortcutsModal(d, {});
+  const caps = [...modal.querySelectorAll('kbd.shortcuts-kbd--icon')];
+  const want = { 'Left arrow': 'arrow_back', 'Right arrow': 'arrow_forward', 'Up arrow': 'arrow_upward', 'Down arrow': 'arrow_downward' };
+  assert.equal(caps.length, 6, 'Left/Right twice (playback, reading), Up/Down once');
+  for (const k of caps) {
+    const name = k.getAttribute('aria-label');
+    assert.ok(want[name], 'a named arrow cap: ' + name);
+    assert.equal(k.querySelector('svg.ui-icon use').getAttribute('href'), '#i-' + want[name]);
+    assert.equal(k.textContent, '', 'no text glyph in the cap');
+  }
+  assert.doesNotMatch(modal.textContent, /[\u2190-\u2193]/, 'no arrow glyph anywhere in the reference');
 });
 
 test('the digit RANGE separator is not rendered as a key cap', () => {

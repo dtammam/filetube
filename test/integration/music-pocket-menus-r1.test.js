@@ -563,7 +563,7 @@ test('Chapter Snap: a SAVE and a REVERT through the REAL snap editor each re-loa
       // (1) SAVE: nudge Track A (chapter 2) one second later, Save
       const ed1 = showChapterSnapEditor('djmix1', { fetchImpl, pollMs: 60000, doc: h.D });
       await ed1.ready;
-      click(h.dom, ed1.list.querySelectorAll('.chapter-snap-row')[1].querySelector('[data-act="nudge"][data-delta="1"]'));
+      click(h.dom, ed1.list.querySelectorAll('.chapter-snap-item')[1].querySelector('[data-act="nudge"][data-delta="1"]'));
       click(h.dom, ed1.saveBtn);
       await waitFor(() => ed1.isClosed(), 'the snap editor closes after its save');
       assert.deepStrictEqual(events, [{ kind: 'chapters', mediaId: 'djmix1' }], 'the save raised the ONE library-changed event');

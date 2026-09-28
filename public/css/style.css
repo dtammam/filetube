@@ -1,29 +1,6 @@
 /* FileTube Classic Design System - Old-School YouTube (2005-2010 Style) with Modern Responsiveness and Dark Mode */
 
-/* v1.23 (Dean, on-device): kill iOS Safari's legacy double-tap-to-zoom on
-   interactive controls. Tapping buttons/links/nav and double-tapping
-   Home/Playlists was zooming the page in and forcing a pinch-out; the
-   Subscriptions page had the same tap-zoom behavior. `touch-action:
-   manipulation` keeps normal single-tap AND two-finger pinch-zoom (so
-   accessibility zoom is preserved) but drops ONLY the legacy double-tap-zoom
-   gesture that was firing on these targets. Global (harmless on desktop /
-   non-touch). */
-a,
-button,
-select,
-input,
-textarea,
-label,
-summary,
-[role="button"],
-[data-nav],
-.btn,
-.pc-btn,
-.bottom-nav-item,
-.video-card,
-.sidebar-item {
-  touch-action: manipulation;
-}
+/* (v1.23's per-control touch-action: manipulation list moved to ui.css's D6 base in step 7.) */
 
 /* Self-hosted Roboto (variable weight axis, latin subset) for YouTube-like
    typography without a Google Fonts CDN call — fully offline. Apache-2.0;
@@ -562,30 +539,6 @@ html.reader-immersive .app-container { padding-top: 0; }
   box-shadow: none;
 }
 
-.btn-primary {
-  background-color: var(--yt-red);
-  color: var(--on-accent);
-  border-color: var(--yt-red-dark);
-}
-
-@media (hover: hover) {
-  .btn-primary:hover {
-    background-color: var(--yt-red-dark);
-  }
-}
-
-/* The watch-page Like button's liked state (v1.108, Dean): a plain neutral
-   `.btn` when NOT liked (grey heart, the resting look), turning the heart RED
-   when liked -- the YouTube heart convention. `color`-only because a full
-   `.btn` has no resting dim to undo.
-   currentColor tints the `.icon-heart` mask + the "Liked" label together.
-   Deliberately NOT `.btn-primary`: red-as-actionable / grey-as-done read
-   backwards to Dean. `color` only, so the button keeps its era-themed `.btn`
-   background/border. */
-.btn.liked {
-  color: var(--yt-red);
-}
-
 /* Main Container Layout */
 .app-container {
   display: flex;
@@ -663,7 +616,6 @@ html.no-motion *::after {
   padding: var(--density) var(--space-12);
   color: var(--ink-1);
   text-decoration: none;
-  cursor: pointer;
   font-size: var(--fs-base);
 }
 
@@ -843,9 +795,10 @@ a.sidebar-item {
    `#library-content` and this `.section-title` exist only on the home view
    (other views use `.books-section-title`/`.sidebar-section-title`), so no
    other view's heading is affected. Solid background so grid rows scroll
-   cleanly UNDER the bar (the row is otherwise transparent); z-index 20 sits
-   above the grid cards (z-index 2) yet below the sort-menu popover (z-index
-   30 — a DESCENDANT of this bar, so it still overlays the grid) and below the
+   cleanly UNDER the bar (the row is otherwise transparent); its z-index (the
+   ladder's --z-sticky, 30, since step 7; a literal 20 before) sits above the
+   grid cards (z-index 2); the sort-menu popover is a DESCENDANT of this bar,
+   so it still overlays the grid; and the bar stays below the
    player dock / modals. `top` clears the fixed 56px header; the taller mobile
    header (`--mobile-header-h`) is handled in the max-width:768px block below.
    NB: sticky relies on no scroll-container ancestor — `html{overflow-x:clip}`
@@ -854,7 +807,7 @@ a.sidebar-item {
 #library-content .section-title {
   position: sticky;
   top: var(--sticky-bar-top);
-  z-index: 20; /* token-exempt: local stacking */
+  z-index: var(--z-sticky); /* the ladder's in-content sticky rung (30): over the grid cards (2), under the pull-to-refresh indicator and every chrome rung; the sort popover inside it is its own descendant */
   background-color: var(--surface-0);
   /* v1.45.1 (Dean on-device): pin FLUSH under the header with NO pre-stick
      "jump". The bar naturally rests one `.main-content` top-padding below the
@@ -959,23 +912,6 @@ a.sidebar-item {
   .card-preview.previewing { opacity: 0; }
 }
 
-.duration-badge {
-  /* The legacy duration pill. Cards, History and the watch page's related rail
-     moved to the ui-thumb badge (UI pass sweep S2, F04); the notification panel
-     (sweep S4) is its remaining user, with its own scoped size rule below. */
-  position: absolute;
-  bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
-  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
-  z-index: 2; /* token-exempt: local stacking (contained by the notification row's isolation) */
-  background-color: var(--scrim-legacy);
-  color: var(--on-overlay);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-md);
-  line-height: 1; /* token-exempt: glyph centering */
-  font-weight: var(--fw-normal); /* v1.205.2 (Dean): non-bold - the bigger pill read too heavy in bold */
-  border-radius: var(--radius);
-}
-
 /* v1.205: the TYPE label on a unified-search result card (Video / Music /
    Show / ...): a ui-chip--meta line above the title (never an overlay). */
 .card-type {
@@ -1032,12 +968,12 @@ a.sidebar-item {
    top-pull adds .visible (see main.js); the refresh glyph rotates with the pull
    distance (--ptr-pull, a raw px number), and .ready (past the threshold) snaps
    it to a full turn + the accent colour. Touch-only in practice, so it's inert
-   on non-touch. z-index 40: above the grid + sticky bar (20), below dock/modals. */
+   on non-touch. z-index 40 (--z-sticky + 10): above the grid + the sticky bar (--z-sticky, 30), below dock/modals. */
 .ptr-indicator {
   position: fixed;
   top: calc(var(--header-h) + env(safe-area-inset-top) + 8px); /* token-exempt: positional geometry; v1.106 - var(--header-h)+env equals --mobile-header-h at <=768px and adds the top safe-area at desktop/iPad width too */
   left: 50%;
-  z-index: 40; /* token-exempt: local stacking */
+  z-index: calc(var(--z-sticky) + 10); /* 40: over the grid and the sticky filter bar it slides out under */
   width: var(--size-control); /* Stop A Batch C: 36px == --size-control, zero-delta */
   height: var(--size-control);
   display: flex;
@@ -1234,10 +1170,12 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    `.skeleton-shimmer` ::after sweep + reduced-motion carve-out apply unchanged. */
 .music-album-art.skeleton-shimmer,
 .music-artist-mosaic.skeleton-shimmer, /* v1.103: the artist mosaic box (also thumbnail-bg) on the now-DEFAULT Artists cold landing */
-.book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
-.related-thumb.skeleton-shimmer { /* v1.99: the rail thumb skeleton takes the shimmer's base fill */
+.book-row-cover.skeleton-shimmer { /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
   background-color: var(--surface-2);
 }
+/* (The watch rail's skeleton thumb left this list in step 7: it is a ui-thumb since sweep S2,
+   and the shared .skeleton-shimmer fill beats .ui-thumb's ground by file order - ui.css loads
+   before style.css in every shell - like the book skeleton's.) */
 
 /* v1.99: the avatar-bar skeleton name line - the reused `.skeleton-line` is sized
    + margin-zeroed inside the 64px `.modern-avatar-chip` column so the shimmer chip
@@ -1989,10 +1927,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   display: none;
 }
 
-.expand-description-btn {
+.ui-btn.expand-description-btn {
   margin: 0 var(--space-4);
 }
-.expand-description-btn .ui-btn__label {
+.ui-btn.expand-description-btn .ui-btn__label {
   color: var(--ink-2);
 }
 
@@ -2126,8 +2064,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 /* UI pass sweep S2 (F53, F63): the rail thumb is a ui-thumb (row context: no
    frame, --thumb-ground placeholder, the one duration badge); only its width
    is the rail's. */
-.related-thumb {
-  width: 120px;
+.ui-thumb.related-thumb {
+  width: 120px; /* token-exempt: the rail's thumb column (layout geometry, unchanged) */
   flex-shrink: 0;
 }
 
@@ -2817,126 +2755,11 @@ select {
 /* The toast is ui.css's ui-toast (sweep S9, F56): one queue, the inverted toast surface,
    bottom-centred above the bottom bar and the safe area. */
 
-/* v1.15.0 item 3: one-off download header button + compact modal, built at
-   runtime by public/js/common.js's injectOneOffDownloadButtonIfEnabled(),
-   ONLY when the optional yt-dlp module is enabled. Sweep S9: the one-off
-   dialog is a ui.sheet now; this shell (backdrop, box, header, close) is
-   left for the Subscribe dialog (buildSubscribeModal - S3's watch channel
-   row), whose watch.js caller appends the backdrop itself. */
-.oneoff-modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--scrim-legacy);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: calc(var(--z-modal) + 100); /* above every ui.sheet (--z-sheet) -- never hidden behind another dialog */
-}
-
-/* v1.17.0 FR-6, T5 fix: WITHOUT this override, the `display: flex` above
-   beats the UA `[hidden] { display: none }` rule (an author `display`
-   declaration always wins over the UA stylesheet's), so setting
-   `backdrop.hidden = true` never actually hid this full-viewport,
-   `position: fixed`, `z-index: 2100` overlay -- it stayed painted and ate
-   every touch, reading as a dimmed/dead page. The attribute selector
-   out-specifies the base rule on its own (no `!important` needed). common.js's
-   `closeModal` now also fully removes this node from the DOM on every dismiss
-   path (backdrop tap, [x], Esc, done auto-close) rather than relying on
-   `hidden` alone -- this CSS fix is the belt to that suspenders. */
-.oneoff-modal-backdrop[hidden] {
-  display: none;
-}
-
-.oneoff-modal {
-  background-color: var(--surface-0);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  max-width: 460px;
-  width: 92%;
-  padding: var(--space-10);
-  box-shadow: var(--shadow-lg);
-  box-sizing: border-box;
-  /* v1.15.1 FIX 5: cap the modal's own height and let IT scroll (rather than
-     the page behind it) so a short viewport (a phone in landscape, or a
-     small desktop window) never clips the Download button off-screen. */
-  max-height: 85vh;
-  overflow-y: auto; /* corner-clip-safe: centered modal, no sticky/absolute/transform descendant */
-}
-
-.oneoff-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-6);
-}
-
-.oneoff-modal-title {
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-  color: var(--ink-1);
-}
-
-.oneoff-modal-close {
-  background: none;
-  border: none;
-  font-size: var(--fs-3xl);
-  line-height: 1; /* token-exempt: glyph centering */
-  cursor: pointer;
-  color: var(--ink-2);
-  padding: var(--space-1) var(--space-3);
-}
-
-@media (hover: hover) {
-  .oneoff-modal-close:hover {
-    color: var(--ink-1);
-  }
-}
-
-.oneoff-modal-field {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  margin-bottom: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  background-color: var(--surface-0);
-  color: var(--ink-1);
-  font-size: var(--fs-base);
-}
-
-.oneoff-modal-row {
-  display: flex;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-5);
-}
-
-/* v1.15.1 FIX 5: pre-fix, `min-width: 100px` was narrower than the longest
-   option label (e.g. "MP4 (recommended)"), so the closed <select> clipped
-   its own selected-option text -- the box itself was too small for its
-   content, not a wrapping problem. `min-width: 150px` fits every label in
-   ONEOFF_FORMAT_OPTIONS/ONEOFF_QUALITY_OPTIONS/ONEOFF_FILETYPE_OPTIONS in
-   full; `flex-wrap: wrap` above (unchanged) means once three 150px selects
-   no longer fit on one line, the row wraps onto additional lines instead of
-   squeezing each select back down. Also styled to match `.oneoff-modal-field`
-   (the URL input) -- previously these selects had no border/radius/padding
-   of their own, reading as bare native controls next to the styled input. */
-.oneoff-modal-row select {
-  flex: 1 1 150px;
-  min-width: 150px;
-  box-sizing: border-box;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  background-color: var(--surface-0);
-  color: var(--ink-1);
-  font-size: var(--fs-base);
-}
-
+/* v1.15.0 item 3: one-off download header button + its dialog, built at runtime by
+   public/js/common.js's injectOneOffDownloadButtonIfEnabled(), ONLY when the optional yt-dlp
+   module is enabled. Sweep S9 put the one-off dialog on ui.sheet; step 7 did the same for the
+   Subscribe dialog (buildSubscribeModal), the last user of the bespoke .oneoff-modal shell, so
+   the shell's rules are gone. What stays is the forms' own layout. */
 .oneoff-modal-status {
   font-size: var(--fs-sm);
   color: var(--ink-2);
@@ -2951,27 +2774,14 @@ select {
    `margin-top` -- kept in ONE place rather than duplicated). This class only
    adds the BOTTOM spacing needed to sit clear of the Download button below
    it. `[hidden]` (built hidden by default, toggled by `buildOneOffModal`'s
-   `setStatus`) needs no override here -- unlike `.oneoff-modal-backdrop`,
-   this track is never `display: flex`, so the native `[hidden] { display:
-   none }` UA rule already applies. */
-/* Tokens Phase 1 Tier 1: the subscribe-modal cutoff hint, moved out of
-   JS-applied styles (buildSubscribeModal - slim-gate W2 corrected the
-   builder name). Values identical to the old inline triplet; the negative
-   margin is a pull-up against the field above. */
-.oneoff-modal-hint {
-  font-size: var(--fs-sm);
-  color: var(--ink-2);
-  margin: -6px 0 10px; /* token-exempt: positional */
-}
-
+   `setStatus`) needs no override here -- the global [hidden] rule (ui.css)
+   hides it. */
 .oneoff-modal-progress {
   margin-bottom: var(--space-5);
 }
 
 /* v1.15.1 FIX 5: a clear, full-width primary call-to-action reads better in
-   this narrow modal than the small inline-flex `.btn` default used
-   everywhere else (header/setup buttons, which sit alongside other controls
-   and should stay compact). v1.55 gate round 1 (QA W1): the sitewide
+   this narrow dialog than a compact button. v1.55 gate round 1 (QA W1): the sitewide
    .action-bar caps columns at 240px, which shrank this button to barely
    half the modal -- the modal's own action row overrides to fluid 1fr
    columns, so a lone Download spans edge to edge again (auto-fit collapses
@@ -2983,10 +2793,6 @@ select {
      every button in it fills its cell -- Retry and Download can never sit
      2px misaligned in the shared stretched row. */
   margin-top: var(--space-1);
-}
-.oneoff-modal-actions .btn {
-  width: 100%;
-  justify-content: center;
 }
 /* Sweep S8: the one-off download form (buildOneOffModal) on the primitives - one gap
    between its rows (a hidden Retry/progress row drops out by the global [hidden] rule),
@@ -3006,68 +2812,40 @@ select {
   grid-template-columns: repeat(auto-fit, minmax(calc(var(--av-2xl) * 2), 1fr));
   gap: var(--space-4);
 }
-.oneoff-modal .btn-primary {
-  width: 100%;
-  justify-content: center;
-}
 
-/* v1.20.0 FR-1 (T3): the watch-page Subscribe modal's READ-ONLY channel
-   identity block, rendered inside the SAME `.oneoff-modal` shell (see
-   common.js's `buildSubscribeModal`) -- deliberately its own small class pair
-   rather than reusing `.oneoff-modal-field` (an editable input's styling),
-   since this content is plain text the user can never edit. Era-theme tokens
-   only, no hardcoded colors. */
-.subscribe-modal-identity {
-  margin-bottom: var(--space-6);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  background-color: var(--btn-bg);
+/* v1.20.0 FR-1 (T3): the Subscribe dialog's READ-ONLY channel identity (common.js
+   buildSubscribeModal) - plain text the user can never edit, on the tonal ground like the Move
+   dialog's file line. Step 7: the form rides .oneoff-form (one gap, the dialog's text inset);
+   its Skip Shorts row is a label holding a ui-switch, and Cancel / Subscribe are the dialog's
+   ui-confirm__actions row (on the form's inset already, so it drops its own). */
+.subscribe-form__identity {
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--r-md);
+  background-color: var(--surface-2);
 }
-
-.subscribe-modal-identity-name {
-  font-weight: var(--fw-bold);
+.subscribe-form__name {
+  font: var(--t-body);
+  font-weight: var(--fw-semibold);
   color: var(--ink-1);
-  font-size: var(--fs-base);
+  overflow-wrap: anywhere;
 }
-
-.subscribe-modal-identity-url {
-  color: var(--ink-2);
-  font-size: var(--fs-xs);
-  word-break: break-all;
+.subscribe-form__url {
   margin-top: var(--space-1);
+  font: var(--t-footnote);
+  color: var(--ink-2);
+  word-break: break-all;
 }
-
-/* The modal's skip-Shorts checkbox row -- a plain label/checkbox pairing,
-   sized to match the modal's other 44px-tall mobile tap targets via the
-   existing `@media (max-width: 768px)` block below. */
-.subscribe-modal-checkbox-row {
+.subscribe-form__toggle {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
-  font-size: var(--fs-base);
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-height: var(--hit);
+  font: var(--t-body);
   color: var(--ink-1);
-  cursor: pointer;
 }
-
-/* Cancel/Subscribe side-by-side, each taking an equal share of the row --
-   deliberately its OWN class rather than `.oneoff-modal-row` (whose
-   `.btn-primary` override below forces a single full-width button, meant for
-   the one-off modal's single Download CTA). */
-.subscribe-modal-actions {
-  display: flex;
-  gap: var(--space-4);
-  margin-top: var(--space-1);
-}
-
-.subscribe-modal-actions .btn {
-  flex: 1;
-  justify-content: center;
-}
-
-.subscribe-modal-actions .btn-primary {
-  width: auto;
+.subscribe-form > .ui-confirm__actions {
+  padding: 0 0 var(--space-8);
 }
 
 /* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
@@ -3087,25 +2865,17 @@ select {
    exists. Do not hand-maintain these lists. */
 .icon-home,
 .icon-folder,
-.icon-cog,
 .icon-delete,
-.icon-moon,
-.icon-sun,
-.icon-menu,
 .icon-search,
 .icon-play,
 .icon-refresh,
-.icon-arrow-up,
 .icon-arrow-down,
-.icon-grid,
 .icon-list,
 .icon-heart,
 .icon-share,
 .icon-transcript,
-.icon-attribute,
 .icon-more,
 .icon-download,
-.icon-shuffle,
 .icon-flame,
 .icon-history,
 .icon-queue,
@@ -3134,8 +2904,8 @@ select {
 .icon-favorites,
 .icon-liked {
   display: inline-block;
-  width: 1em;
-  height: 1em;
+  width: 1em; /* token-exempt: the mask glyph is its text's size (em), like .chrome-icon */
+  height: 1em; /* token-exempt: same */
   vertical-align: -0.15em;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
@@ -3163,22 +2933,16 @@ select {
 
 .icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
 .icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }
-.icon-cog { -webkit-mask-image: url(/assets/icons/settings.svg); mask-image: url(/assets/icons/settings.svg); }
 .icon-delete { -webkit-mask-image: url(/assets/icons/delete.svg); mask-image: url(/assets/icons/delete.svg); }
-.icon-moon { -webkit-mask-image: url(/assets/icons/dark_mode.svg); mask-image: url(/assets/icons/dark_mode.svg); }
-.icon-sun { -webkit-mask-image: url(/assets/icons/light_mode.svg); mask-image: url(/assets/icons/light_mode.svg); }
-.icon-menu { -webkit-mask-image: url(/assets/icons/menu.svg); mask-image: url(/assets/icons/menu.svg); }
 .icon-search { -webkit-mask-image: url(/assets/icons/search.svg); mask-image: url(/assets/icons/search.svg); }
 .icon-play { -webkit-mask-image: url(/assets/icons/play_arrow.svg); mask-image: url(/assets/icons/play_arrow.svg); }
 .icon-refresh { -webkit-mask-image: url(/assets/icons/refresh.svg); mask-image: url(/assets/icons/refresh.svg); }
-.icon-arrow-up { -webkit-mask-image: url(/assets/icons/keyboard_arrow_up.svg); mask-image: url(/assets/icons/keyboard_arrow_up.svg); }
 .icon-arrow-down { -webkit-mask-image: url(/assets/icons/keyboard_arrow_down.svg); mask-image: url(/assets/icons/keyboard_arrow_down.svg); }
 /* FR-7 (v1.17.0, T6): real download.svg mask, same treatment as every other
    chrome icon above -- replaces the old fixed "\2B07" unicode glyph (removed
    below the @supports guard). */
 .icon-download { -webkit-mask-image: url(/assets/icons/download.svg); mask-image: url(/assets/icons/download.svg); }
 /* v1.45.6 (Dean): card/list view-mode toggle glyphs (Material grid_view / view_list). */
-.icon-grid { -webkit-mask-image: url(/assets/icons/grid_view.svg); mask-image: url(/assets/icons/grid_view.svg); }
 .icon-list { -webkit-mask-image: url(/assets/icons/view_list.svg); mask-image: url(/assets/icons/view_list.svg); }
 /* v1.40.0: Like heart for the card corner control. A real SVG mask painted in
    currentColor like every other .icon-* (NOT the U+2665 codepoint, which iOS
@@ -3204,7 +2968,6 @@ select {
    the `icon-user` class that had NO mask anywhere in this file (a blank box
    on phones since v1.53). Same share/transcript precedent: one base mask,
    other sets fall back, present in all three lists. */
-.icon-attribute { -webkit-mask-image: url(/assets/icons/drive_file_move.svg); mask-image: url(/assets/icons/drive_file_move.svg); }
 /* v1.202: the action row's "More" (Material `more_horiz`), same precedent. */
 .icon-more { -webkit-mask-image: url(/assets/icons/more_horiz.svg); mask-image: url(/assets/icons/more_horiz.svg); }
 /* "Shuffle again" (v1.15.1) originally shipped as a fixed ::before unicode
@@ -3214,7 +2977,6 @@ select {
    shuffle.svg masks added to all three vector sets (outlined/rounded/filled),
    same treatment as .icon-download above. (The emoji set that kept U+1F500
    was retired in the UI pass, D2.6.) */
-.icon-shuffle { -webkit-mask-image: url(/assets/icons/shuffle.svg); mask-image: url(/assets/icons/shuffle.svg); }
 /* v1.49 (Dean): the per-video "reheat" flame. Base directory only, like
    `heart.svg`/`share.svg` -- the per-icon-set blocks below enumerate their
    members individually, so an icon with no set-specific variant falls back to
@@ -3251,12 +3013,12 @@ select {
 .icon-tv { -webkit-mask-image: url(/assets/icons/tv.svg); mask-image: url(/assets/icons/tv.svg); } /* v1.195 Shows */
 
 /* ---- v1.77: the assignable glyph pool (base/outlined masks) ---------------
-   Unlike the ten single-asset glyphs above (heart/share/flame/history/queue/
-   podcast/downloads/books/grid/list), every member here ships in EVERY set
+   Unlike the single-asset glyphs above (heart/share/flame/history/queue/
+   podcast/downloads/books/list), every member here ships in EVERY set
    (outlined, rounded, filled) - that was Dean's ask ("each glyph we choose
    should be out of a set of four", from when an emoji set was the fourth; it
    was retired in the UI pass, D2.6). Filenames track the upstream Material glyph name, not the class
-   name, matching the established convention (.icon-cog ships as settings.svg).
+   name, matching the established convention (.icon-arrow-down ships as keyboard_arrow_down.svg).
    `.icon-favorites` and `.icon-liked` deliberately share star.svg: different
    intents, same picture, so the Liked lane can change later without silently
    changing every folder that chose Favorites. */
@@ -3288,9 +3050,9 @@ select {
    mask support (or a failed/404 mask) renders nothing instead of a solid
    currentColor square. */
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
-  .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
-  .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-attribute, .icon-more, .icon-download, .icon-shuffle,
+  .icon-home, .icon-folder, .icon-delete,
+  .icon-search, .icon-play, .icon-refresh, .icon-arrow-down,
+  .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-more, .icon-download,
   .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
   .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;
@@ -3321,18 +3083,12 @@ select {
 /* Rounded set: Material Symbols Rounded, same filenames as outlined. */
 [data-icons="rounded"] .icon-home { -webkit-mask-image: url(/assets/icons/rounded/home.svg); mask-image: url(/assets/icons/rounded/home.svg); }
 [data-icons="rounded"] .icon-folder { -webkit-mask-image: url(/assets/icons/rounded/folder.svg); mask-image: url(/assets/icons/rounded/folder.svg); }
-[data-icons="rounded"] .icon-cog { -webkit-mask-image: url(/assets/icons/rounded/settings.svg); mask-image: url(/assets/icons/rounded/settings.svg); }
 [data-icons="rounded"] .icon-delete { -webkit-mask-image: url(/assets/icons/rounded/delete.svg); mask-image: url(/assets/icons/rounded/delete.svg); }
-[data-icons="rounded"] .icon-moon { -webkit-mask-image: url(/assets/icons/rounded/dark_mode.svg); mask-image: url(/assets/icons/rounded/dark_mode.svg); }
-[data-icons="rounded"] .icon-sun { -webkit-mask-image: url(/assets/icons/rounded/light_mode.svg); mask-image: url(/assets/icons/rounded/light_mode.svg); }
-[data-icons="rounded"] .icon-menu { -webkit-mask-image: url(/assets/icons/rounded/menu.svg); mask-image: url(/assets/icons/rounded/menu.svg); }
 [data-icons="rounded"] .icon-search { -webkit-mask-image: url(/assets/icons/rounded/search.svg); mask-image: url(/assets/icons/rounded/search.svg); }
 [data-icons="rounded"] .icon-play { -webkit-mask-image: url(/assets/icons/rounded/play_arrow.svg); mask-image: url(/assets/icons/rounded/play_arrow.svg); }
 [data-icons="rounded"] .icon-refresh { -webkit-mask-image: url(/assets/icons/rounded/refresh.svg); mask-image: url(/assets/icons/rounded/refresh.svg); }
-[data-icons="rounded"] .icon-arrow-up { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); }
 [data-icons="rounded"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); }
 [data-icons="rounded"] .icon-download { -webkit-mask-image: url(/assets/icons/rounded/download.svg); mask-image: url(/assets/icons/rounded/download.svg); }
-[data-icons="rounded"] .icon-shuffle { -webkit-mask-image: url(/assets/icons/rounded/shuffle.svg); mask-image: url(/assets/icons/rounded/shuffle.svg); }
 /* v1.77 pool: rounded variants (generated from public/js/glyph-pool.js). */
 [data-icons="rounded"] .icon-school { -webkit-mask-image: url(/assets/icons/rounded/school.svg); mask-image: url(/assets/icons/rounded/school.svg); }
 [data-icons="rounded"] .icon-movies { -webkit-mask-image: url(/assets/icons/rounded/movie.svg); mask-image: url(/assets/icons/rounded/movie.svg); }
@@ -3355,22 +3111,15 @@ select {
 [data-icons="rounded"] .icon-favorites { -webkit-mask-image: url(/assets/icons/rounded/star.svg); mask-image: url(/assets/icons/rounded/star.svg); }
 [data-icons="rounded"] .icon-liked { -webkit-mask-image: url(/assets/icons/rounded/star.svg); mask-image: url(/assets/icons/rounded/star.svg); }
 
-/* Filled set: Material Icons Classic (2014). Note the two substitute
-   filenames (wb_sunny/brightness_2) — see public/assets/icons/README.md. */
+/* Filled set: Material Icons Classic (2014) - see public/assets/icons/README.md. */
 [data-icons="filled"] .icon-home { -webkit-mask-image: url(/assets/icons/filled/home.svg); mask-image: url(/assets/icons/filled/home.svg); }
 [data-icons="filled"] .icon-folder { -webkit-mask-image: url(/assets/icons/filled/folder.svg); mask-image: url(/assets/icons/filled/folder.svg); }
-[data-icons="filled"] .icon-cog { -webkit-mask-image: url(/assets/icons/filled/settings.svg); mask-image: url(/assets/icons/filled/settings.svg); }
 [data-icons="filled"] .icon-delete { -webkit-mask-image: url(/assets/icons/filled/delete.svg); mask-image: url(/assets/icons/filled/delete.svg); }
-[data-icons="filled"] .icon-menu { -webkit-mask-image: url(/assets/icons/filled/menu.svg); mask-image: url(/assets/icons/filled/menu.svg); }
 [data-icons="filled"] .icon-search { -webkit-mask-image: url(/assets/icons/filled/search.svg); mask-image: url(/assets/icons/filled/search.svg); }
 [data-icons="filled"] .icon-play { -webkit-mask-image: url(/assets/icons/filled/play_arrow.svg); mask-image: url(/assets/icons/filled/play_arrow.svg); }
 [data-icons="filled"] .icon-refresh { -webkit-mask-image: url(/assets/icons/filled/refresh.svg); mask-image: url(/assets/icons/filled/refresh.svg); }
-[data-icons="filled"] .icon-arrow-up { -webkit-mask-image: url(/assets/icons/filled/keyboard_arrow_up.svg); mask-image: url(/assets/icons/filled/keyboard_arrow_up.svg); }
 [data-icons="filled"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/filled/keyboard_arrow_down.svg); mask-image: url(/assets/icons/filled/keyboard_arrow_down.svg); }
-[data-icons="filled"] .icon-sun  { -webkit-mask-image: url(/assets/icons/filled/wb_sunny.svg);     mask-image: url(/assets/icons/filled/wb_sunny.svg); }
-[data-icons="filled"] .icon-moon { -webkit-mask-image: url(/assets/icons/filled/brightness_2.svg); mask-image: url(/assets/icons/filled/brightness_2.svg); }
 [data-icons="filled"] .icon-download { -webkit-mask-image: url(/assets/icons/filled/download.svg); mask-image: url(/assets/icons/filled/download.svg); }
-[data-icons="filled"] .icon-shuffle { -webkit-mask-image: url(/assets/icons/filled/shuffle.svg); mask-image: url(/assets/icons/filled/shuffle.svg); }
 /* v1.77 pool: filled variants (generated from public/js/glyph-pool.js).
    Material Icons Filled style - see public/assets/icons/README.md for which
    members predate the 2014 launch set and which do not. */
@@ -3645,10 +3394,10 @@ select {
      item regardless of injection order (v1.86.0, Dean). Sweep S1: every header glyph is a
      44px ui-btn icon button here, so the row needs no gap of its own (each button's box
      already spaces the glyphs 44px apart, evenly - v1.87.0's "evenly spaced" report). */
-  /* (0,2,1): out-specifies the desktop hide `.header-right > .search-toggle-btn` (0,2,0),
+  /* (0,3,1): out-specifies the desktop hide `.header-right > .ui-btn.search-toggle-btn` (0,3,0),
      which sits LATER in the file - a @media adds no specificity (the v1.85 device-pass
      lesson; the geometry check HDR renders it at 390px, test/geometry). */
-  header .header-right > .search-toggle-btn {
+  header .header-right > .ui-btn.search-toggle-btn {
     display: inline-flex;
     order: 1;
   }
@@ -3767,67 +3516,6 @@ select {
 
   .video-meta {
     font-size: var(--fs-xs);
-  }
-
-  /* ---- v1.15.1 FIX 5: one-off modal comfortable on a phone -------------
-     Pre-fix: the format/quality/filetype row could still crowd two-across
-     on a narrow phone even after the min-width fix above, and every control
-     was sized for a mouse pointer, not a finger. Stack the three selects
-     one-per-row (each full-width) and give every tappable control in the
-     modal the same 44px comfortable minimum tap-target height used by the
-     Setup/Subscriptions mobile polish (v1.13.0 item 6) above; near-full-width
-     modal with tighter padding so it reads like a native mobile sheet. */
-  .oneoff-modal {
-    width: 94%;
-    padding: var(--space-8);
-  }
-
-  .oneoff-modal-row {
-    flex-direction: column;
-  }
-
-  /* v1.19.0 FR-1: the base rule's `flex: 1 1 150px` (a WIDTH hint for the
-     desktop row layout above) was never reset here after flipping the row
-     to a column main axis -- under `flex-direction: column` that same
-     150px flex-basis is reinterpreted as a MINIMUM HEIGHT, and the
-     still-active `flex-grow: 1` stretched each select to fill the modal's
-     vertical space (~1/4-screen-tall selects). Resetting to `flex: 0 0
-     auto` drops the basis back to `auto` (content height) and zeroes
-     grow/shrink, so each select renders at its normal single-line native
-     height (matching `.setup-select`'s ~36-40px) -- the 44px min-height
-     below still applies as a comfortable tap-target FLOOR, not a growth
-     target. */
-  .oneoff-modal-row select {
-    flex: 0 0 auto;
-    width: 100%;
-  }
-
-  .oneoff-modal-field,
-  .oneoff-modal-row select,
-  .oneoff-modal .btn-primary {
-    min-height: var(--size-touch);
-  }
-
-  /* v1.25.4 polish (on-device iOS PWA): focusing a form control whose
-     computed font-size is under 16px makes iOS Safari auto-zoom the page in
-     -- well-known iOS behavior, not something the viewport meta tag controls
-     (and `user-scalable=no`/`maximum-scale=1` is an accessibility
-     anti-pattern, not used here). `.oneoff-modal-field` (the one-off modal's
-     URL/folder text inputs AND the Subscribe modal's cutoff-date input,
-     which reuses this same class -- see common.js's buildOneOffModal/
-     buildSubscribeModal) and `.oneoff-modal-row select` (both modals'
-     format/quality/filetype selects) were 13px -- bumped to 16px here,
-     scoped to mobile only so the compact 13px desktop sizing (mouse input,
-     no zoom-on-focus behavior to guard against) is unchanged. */
-  .oneoff-modal-field,
-  .oneoff-modal-row select {
-    font-size: var(--fs-input-min);
-  }
-
-  /* v1.20.0 FR-1 (T3): same comfortable tap-target floor for the subscribe
-     modal's skip-Shorts checkbox row. */
-  .subscribe-modal-checkbox-row {
-    min-height: var(--size-touch);
   }
 }
 
@@ -4796,8 +4484,9 @@ html:has(> body.ft-audio-expanded),
 #player-wrapper.audio-expanded {
   overscroll-behavior: none;
 }
-.speed-sheet,
-.oneoff-modal {
+/* (:is() keeps this D6 line apart from the speed sheet's own rule - the player's carve-out - at
+   the same specificity; it was grouped with the retired .oneoff-modal.) */
+:is(.speed-sheet) {
   overscroll-behavior: contain;
 }
 
@@ -5141,19 +4830,22 @@ html:has(> body.ft-audio-expanded),
    the nudge row is a four-column grid of equal targets, and at phone widths the
    dialog is a full-height sheet whose chapter list is the only scroller.
    Containment: the rounded dialog CLIPS (overflow hidden) and the list scrolls
-   on an inner child with no radius - the split the overlay census asks for. */
+   on an inner child with no radius - the split the overlay census asks for.
+   Step 7 (UI pass): every control is a ui-btn (md: the control height on desktop, 44 on a
+   phone), the Edited badge a ui-chip--meta, and the global [hidden] rule hides what the
+   editor hides - what lives here is the editor's own layout. */
 /* Sweep S9: the shell is a ui.sheet dialog (twice the confirm width on desktop); its
    body does not scroll - the chapter list inside is the one scroller. */
-.ui-sheet--dialog:has(> .ui-sheet__body > .chapter-snap-modal) {
+.ui-sheet--dialog:has(> .ui-sheet__body > .chapter-snap-editor) {
   width: min(calc(var(--dialog-w) * 2), calc(100vw - var(--inset) * 2));
 }
-.ui-sheet__body:has(> .chapter-snap-modal) {
+.ui-sheet__body:has(> .chapter-snap-editor) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding-bottom: 0;
 }
-.chapter-snap-modal {
+.chapter-snap-editor {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -5175,20 +4867,6 @@ html:has(> body.ft-audio-expanded),
   align-items: center;
   gap: var(--space-4);
 }
-.chapter-snap-title {
-  margin: 0;
-}
-.chapter-snap-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  color: var(--on-accent);
-  background: var(--yt-red);
-  border-radius: var(--radius-full);
-  padding: var(--space-1) var(--space-4);
-}
-.chapter-snap-badge[hidden] { display: none !important; }
 .chapter-snap-sub {
   font-size: var(--fs-sm);
   color: var(--ink-2);
@@ -5205,8 +4883,6 @@ html:has(> body.ft-audio-expanded),
   flex-wrap: wrap;
   gap: var(--space-3);
 }
-.chapter-snap-tools [hidden],
-.chapter-snap-confirm[hidden] { display: none !important; }
 .chapter-snap-confirm {
   border: 1px solid var(--border-dark);
   background: var(--surface-2);
@@ -5232,16 +4908,17 @@ html:has(> body.ft-audio-expanded),
   margin: 0;
   padding: 0;
 }
-.chapter-snap-row {
+/* One chapter: a multi-line editor item (its name and times, a note, its own controls) */
+.chapter-snap-item {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-2);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: var(--hairline) solid var(--separator);
 }
-.chapter-snap-row.is-focus {
+.chapter-snap-item.is-focus {
   background: var(--surface-2);
-  box-shadow: inset 3px 0 0 var(--yt-red); /* token-exempt: a focus rail, not an elevation shadow */
+  box-shadow: inset 3px 0 0 var(--accent); /* token-exempt: a focus rail, not an elevation shadow */
 }
 .chapter-snap-rowtop {
   display: flex;
@@ -5278,16 +4955,16 @@ html:has(> body.ft-audio-expanded),
   font-size: var(--fs-xs);
   color: var(--ink-2);
 }
-.chapter-snap-chip {
-  font-size: var(--fs-xs);
+.chapter-snap-note {
+  font: var(--t-footnote);
   color: var(--ink-2);
 }
-.chapter-snap-chip-hint {
+.chapter-snap-note--hint {
   color: var(--ink-1);
   font-weight: var(--fw-semibold);
 }
-.chapter-snap-row.is-moved .chapter-snap-chip-moved {
-  color: var(--yt-red);
+.chapter-snap-item.is-moved .chapter-snap-note--moved {
+  color: var(--accent);
   font-weight: var(--fw-semibold);
 }
 .chapter-snap-ctl {
@@ -5301,14 +4978,6 @@ html:has(> body.ft-audio-expanded),
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
 }
-.chapter-snap-ctl .btn,
-.chapter-snap-tools .btn,
-.chapter-snap-confirm-actions .btn,
-.chapter-snap-actions .btn,
-.chapter-snap-shift .btn {
-  min-height: var(--size-control);
-  justify-content: center;
-}
 /* Shift all (Dean 2026-09-24): the list's top row - move every chapter after the first by
    the same amount. The four steps reuse the nudge grid; the readout, the reason a
    direction is off, and the silence's suggestion sit under them. */
@@ -5319,8 +4988,6 @@ html:has(> body.ft-audio-expanded),
   padding: var(--space-5) var(--space-2);
   border-bottom: 1px solid var(--separator);
 }
-.chapter-snap-shift[hidden],
-.chapter-snap-shift [hidden] { display: none !important; }
 .chapter-snap-shift-top {
   display: flex;
   flex-wrap: wrap;
@@ -5350,8 +5017,14 @@ html:has(> body.ft-audio-expanded),
   align-items: center;
   gap: var(--space-3);
 }
+/* the suggested shift is a long sentence: it may wrap inside its button */
 .chapter-snap-shift-apply {
   max-width: 100%;
+  height: auto;
+  min-height: var(--btn-h);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  white-space: normal;
   text-align: left;
 }
 .chapter-snap-nudge {
@@ -5359,9 +5032,9 @@ html:has(> body.ft-audio-expanded),
   font-variant-numeric: tabular-nums;
   min-width: var(--size-control);
 }
-.chapter-snap-row.is-playing .chapter-snap-play {
-  color: var(--yt-red);
-  border-color: var(--yt-red);
+.chapter-snap-item.is-playing .chapter-snap-play {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .chapter-snap-actions {
   flex: 0 0 auto;
@@ -5399,16 +5072,17 @@ html:has(> body.ft-audio-expanded),
    row as four equal buttons with the snap/play buttons on their own full-width
    lines, so nothing is clipped or scrolls sideways at 390 wide. A phone in
    LANDSCAPE (844x390) is short, not narrow - the max-height arm gives it the same
-   sheet and touch targets (gate r1 qa S4). */
+   sheet and touch targets (gate r1 qa S4): a ui-btn md is 44 only under 768 wide,
+   so this arm floors every editor button at the touch size itself. */
 @media (max-width: 600px), (max-height: 500px) {
-  .ui-sheet--dialog:has(> .ui-sheet__body > .chapter-snap-modal) {
+  .ui-sheet--dialog:has(> .ui-sheet__body > .chapter-snap-editor) {
     width: 100%;
     max-height: none;
     height: 100%;
     border-radius: 0;
     padding-top: env(safe-area-inset-top, 0px);
   }
-  .chapter-snap-modal {
+  .chapter-snap-editor {
     padding: 0 var(--space-5);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   }
@@ -5416,11 +5090,7 @@ html:has(> body.ft-audio-expanded),
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
-  .chapter-snap-ctl .btn,
-  .chapter-snap-tools .btn,
-  .chapter-snap-confirm-actions .btn,
-  .chapter-snap-actions .btn,
-  .chapter-snap-shift .btn {
+  .chapter-snap-editor .ui-btn {
     min-height: var(--size-touch);
   }
   .chapter-snap-shift-apply,
@@ -5433,11 +5103,11 @@ html:has(> body.ft-audio-expanded),
   .chapter-snap-now {
     font-size: var(--fs-xl);
   }
-  .chapter-snap-tools .btn,
-  .chapter-snap-confirm-actions .btn {
+  .chapter-snap-tools > .ui-btn,
+  .chapter-snap-confirm-actions > .ui-btn {
     flex: 1 1 auto;
   }
-  .chapter-snap-actions .btn {
+  .chapter-snap-actions > .ui-btn {
     flex: 1 1 0;
   }
 }
@@ -5446,11 +5116,11 @@ html:has(> body.ft-audio-expanded),
    to the bottom. The sheet has no radius here (the phone arm above sets 0), so a
    scrolling sheet is not the corner-clip shape. */
 @media (max-height: 500px) {
-  .ui-sheet__body:has(> .chapter-snap-modal) {
+  .ui-sheet__body:has(> .chapter-snap-editor) {
     display: block;
     overflow-y: auto;
   }
-  .chapter-snap-modal {
+  .chapter-snap-editor {
     display: block;
     padding-bottom: 0; /* the pinned actions row carries the bottom inset, so no row shows under it */
   }
@@ -5460,7 +5130,7 @@ html:has(> body.ft-audio-expanded),
   .chapter-snap-actions {
     position: sticky;
     bottom: 0;
-    z-index: 1; /* token-exempt: local stacking - the pinned Save/Cancel row paints over the rows that scroll under it */
+    z-index: var(--z-sticky); /* the ladder's in-content sticky rung: the pinned Save/Cancel row paints over the rows that scroll under it (inside the sheet's own stacking context) */
     background: var(--surface-0);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   }
@@ -7166,7 +6836,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    The magnifier is mobile-only (desktop keeps the always-on search
    bar); the history panel only shows while `.search-open`.
    ============================================================ */
-.header-right > .search-toggle-btn {
+.header-right > .ui-btn.search-toggle-btn {
   display: none; /* desktop: hidden - the full search bar is always visible (a ui-btn; the phone re-shows it) */
 }
 .search-history-panel { display: none; }
@@ -7248,7 +6918,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    unpin from - the control lives on the row itself. Sweep S1: a plain ui-btn icon toggle
    (the filled pin, F32) that asks through ui.confirm; in a desktop sidebar row it sits at the
    row's trailing edge (in the phone sheet it takes the row's reserved action column). */
-.sidebar-item .pinned-unpin-btn { margin-left: auto; }
+.sidebar-item .ui-btn.pinned-unpin-btn { margin-left: auto; }
 
 /* ---- v1.37.1: books page styles (moved from the page <head> -- the SPA
    router swaps only #view-root, so page-local styles were lost on in-app
@@ -10079,6 +9749,16 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+
+/* step 7: an arrow key's cap holds the registry arrow (common.js SHORTCUT_KEY_ICONS) */
+.shortcuts-kbd--icon {
+  display: inline-grid;
+  place-items: center;
+}
+.shortcuts-kbd--icon > .ui-icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .shortcuts-note {

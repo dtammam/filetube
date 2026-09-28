@@ -70,6 +70,22 @@ test('the D6 base opens ui.css: html, body, then img/a/video/svg, each with its 
   for (const r of uiRules.slice(0, 3)) assert.strictEqual(r.at, '', `${r.sel} is unconditional (no @media)`);
 });
 
+// Step 7 (UI pass): v1.23's per-control double-tap-zoom kill moved from the top of style.css
+// into the D6 base, right after the drag rule, at zero specificity (:where) so a component's
+// own touch-action (the seek bar's none, a swipe row's pan-y) still wins. touch-action is not
+// inherited, so the list is load-bearing: every control kind it named is still named.
+test('the D6 base names touch-action: manipulation on every tappable control kind (v1.23), at zero specificity', () => {
+  const r = uiRules[3];
+  assert.strictEqual(r.at, '', 'unconditional');
+  const m = /^:where\(([\s\S]*)\)$/.exec(norm(r.sel));
+  assert.ok(m, 'a :where() list: ' + r.sel);
+  assert.deepStrictEqual(m[1].split(',').map((x) => x.trim()),
+    ['a', 'button', 'select', 'input', 'textarea', 'label', 'summary', '[role="button"]', '[data-nav]', '.btn', '.pc-btn', '.bottom-nav-item', '.video-card', '.sidebar-item']);
+  assert.deepStrictEqual(decls(r.body), [['touch-action', 'manipulation']]);
+  const again = ALL.filter((x) => x.file === 'style.css' && /touch-action:\s*manipulation/.test(x.body) && /(^|,\s*)(a|button)(\s*,|$)/.test(norm(x.sel)));
+  assert.deepStrictEqual(again, [], 'the old style.css copy is gone (one list, not two)');
+});
+
 test('the field re-enable exists and is the LAST user-select rule across tokens.css -> ui.css -> style.css', () => {
   const field = findUi(FIELD_SEL);
   assert.ok(field, 'the field rule exists');

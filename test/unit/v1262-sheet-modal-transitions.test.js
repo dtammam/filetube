@@ -1,57 +1,18 @@
 'use strict';
 
-// [UNIT] v1.26.2 CSS/polish wave -- Item 4 (sheet/modal transitions).
-// Covers the shared `openOverlay`/`closeOverlayThen`/`prefersReducedMotion`
-// helpers (public/js/common.js) directly against a fake DOM (mirrors
-// test/unit/move-modal.test.js's fake-DOM harness pattern), plus mechanical
-// CSS-presence guards for the new `.sheet-open`/`.modal-open` transition
-// rules and their `prefers-reduced-motion` override, mirroring
-// test/unit/player-media-aspect-css.test.js's style-locking pattern.
+// [UNIT] v1.26.2 CSS/polish wave -- Item 4 (sheet/modal transitions). Since the UI pass
+// every sheet and modal is a ui.sheet: this file binds the transition intents on ui.css and
+// (step 7) that the retired v1.26.2 JS helpers stay gone.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const {
-  prefersReducedMotion, overlayCanAnimate, openOverlay, closeOverlayThen,
-} = require('../../public/js/common.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const UI_CSS_ALL = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
 const CSS_PATH = path.join(ROOT, 'public', 'css', 'style.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
-
-// ---- Fake DOM WITH classList/transitionend support (unlike move-modal's) ---
-
-class AnimatableFakeElement {
-  constructor() {
-    this._classes = new Set();
-    this.hidden = undefined;
-    this.offsetHeight = 0;
-    this._listeners = {};
-  }
-  get classList() {
-    return {
-      add: (c) => this._classes.add(c),
-      remove: (c) => this._classes.delete(c),
-      contains: (c) => this._classes.has(c),
-    };
-  }
-  addEventListener(type, fn) {
-    (this._listeners[type] = this._listeners[type] || []).push(fn);
-  }
-  removeEventListener(type, fn) {
-    if (this._listeners[type]) this._listeners[type] = this._listeners[type].filter((f) => f !== fn);
-  }
-  dispatchTransitionEnd() {
-    (this._listeners.transitionend || []).slice().forEach((fn) => fn({ target: this }));
-  }
-  // F1: a reopen interrupts an in-flight closing transition -- real browsers
-  // fire `transitioncancel`, NOT `transitionend`, in that case.
-  dispatchTransitionCancel() {
-    (this._listeners.transitioncancel || []).slice().forEach((fn) => fn({ target: this }));
-  }
-}
 
 // ---- v1.26.2 code-review fix (F4, NIT): bracket-matching function-body ----
 // ---- extractor, mirroring test/unit/v1262-mobile-input-zoom.test.js's -----
@@ -81,206 +42,22 @@ function extractFunctionBody(source, functionName) {
   return { text: source.slice(m.index, i), start: m.index, end: i };
 }
 
-function withStubbedWindow(matches, fn) {
-  const original = global.window;
-  global.window = { matchMedia: () => ({ matches }) };
-  try {
-    fn();
-  } finally {
-    global.window = original;
+// Step 7 (UI pass, DELIBERATE conversion): the openOverlay / closeOverlayThen /
+// prefersReducedMotion / overlayCanAnimate helpers (and their fake-DOM tests: the two-step
+// reveal, the transitionend-deferred teardown, the F1 reopen-cancels-a-pending-close locks)
+// are retired with their last callers - every sheet and modal they animated is a ui.sheet
+// (sweeps S1, S4, S5, S9), whose enter/exit, re-open mid-exit and reduced motion are ui.js's
+// and bound by test/unit/ui-builders.test.js (the ui.sheet tests). Bound here: the helpers do
+// not come back.
+test('step 7: the v1.26.2 overlay helpers are gone - not defined, not exported, not called', () => {
+  const common = require('../../public/js/common.js');
+  for (const n of ['openOverlay', 'closeOverlayThen', 'overlayCanAnimate', 'prefersReducedMotion']) {
+    assert.strictEqual(common[n], undefined, n + ' is not exported');
   }
-}
-
-// ---- prefersReducedMotion ---------------------------------------------------
-
-test('prefersReducedMotion: false when there is no window (Node/non-browser environment)', () => {
-  const original = global.window;
-  delete global.window;
-  try {
-    assert.strictEqual(prefersReducedMotion(), false);
-  } finally {
-    global.window = original;
+  for (const f of fs.readdirSync(path.join(ROOT, 'public', 'js')).filter((x) => x.endsWith('.js'))) {
+    const code = fs.readFileSync(path.join(ROOT, 'public', 'js', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    assert.doesNotMatch(code, /\b(openOverlay|closeOverlayThen|overlayCanAnimate|prefersReducedMotion)\s*\(/, f + ': no definition or call');
   }
-});
-
-test('prefersReducedMotion: reflects window.matchMedia(\'(prefers-reduced-motion: reduce)\').matches', () => {
-  withStubbedWindow(true, () => assert.strictEqual(prefersReducedMotion(), true));
-  withStubbedWindow(false, () => assert.strictEqual(prefersReducedMotion(), false));
-});
-
-// ---- overlayCanAnimate -------------------------------------------------------
-
-test('overlayCanAnimate: false for null/undefined and for elements without a real classList (e.g. the move-modal fake-DOM harness)', () => {
-  assert.strictEqual(overlayCanAnimate(null), false);
-  assert.strictEqual(overlayCanAnimate(undefined), false);
-  assert.strictEqual(overlayCanAnimate({}), false);
-});
-
-test('overlayCanAnimate: true for an element with a real classList.add/remove', () => {
-  assert.strictEqual(overlayCanAnimate(new AnimatableFakeElement()), true);
-});
-
-// ---- openOverlay --------------------------------------------------------------
-
-test('openOverlay: unhides the element and adds the open class when animation is possible', () => {
-  const el = new AnimatableFakeElement();
-  el.hidden = true;
-  openOverlay(el, 'sheet-open');
-  assert.strictEqual(el.hidden, false);
-  assert.ok(el.classList.contains('sheet-open'));
-});
-
-test('openOverlay: still unhides but skips the class when the element cannot animate (e.g. no classList)', () => {
-  const el = { hidden: true };
-  openOverlay(el, 'sheet-open');
-  assert.strictEqual(el.hidden, false);
-});
-
-test('openOverlay: is a no-op on null/undefined (never throws)', () => {
-  assert.doesNotThrow(() => openOverlay(null, 'sheet-open'));
-  assert.doesNotThrow(() => openOverlay(undefined, 'sheet-open'));
-});
-
-test('openOverlay: skips adding the open class under prefers-reduced-motion (CSS then renders the base/open states identically)', () => {
-  const el = new AnimatableFakeElement();
-  withStubbedWindow(true, () => {
-    openOverlay(el, 'sheet-open');
-  });
-  assert.ok(!el.classList.contains('sheet-open'));
-});
-
-// ---- closeOverlayThen ---------------------------------------------------------
-
-test('closeOverlayThen: calls afterClose synchronously when the element cannot animate (no classList) -- matches showMoveModal\'s synchronous teardown() tests', () => {
-  let called = false;
-  closeOverlayThen({}, 'sheet-open', () => { called = true; });
-  assert.strictEqual(called, true);
-});
-
-test('closeOverlayThen: calls afterClose synchronously under prefers-reduced-motion, even when the element CAN animate', () => {
-  const el = new AnimatableFakeElement();
-  el.classList.add('sheet-open');
-  let called = false;
-  withStubbedWindow(true, () => {
-    closeOverlayThen(el, 'sheet-open', () => { called = true; });
-  });
-  assert.strictEqual(called, true);
-  assert.ok(!el.classList.contains('sheet-open'), 'the open class must still be removed even on the instant path');
-});
-
-test('closeOverlayThen: removes the open class immediately, but defers afterClose until transitionend fires', () => {
-  const el = new AnimatableFakeElement();
-  el.classList.add('sheet-open');
-  let called = false;
-  closeOverlayThen(el, 'sheet-open', () => { called = true; });
-  assert.ok(!el.classList.contains('sheet-open'), 'the class is removed right away (kicks off the CSS transition)');
-  assert.strictEqual(called, false, 'afterClose must not fire before the transition actually finishes');
-  el.dispatchTransitionEnd();
-  assert.strictEqual(called, true, 'afterClose fires once transitionend arrives');
-});
-
-test('closeOverlayThen: a transitionend from an unrelated element (bubbling) does not finish this close', () => {
-  const el = new AnimatableFakeElement();
-  const other = new AnimatableFakeElement();
-  el.classList.add('sheet-open');
-  let called = false;
-  closeOverlayThen(el, 'sheet-open', () => { called = true; });
-  // Fire transitionend on a DIFFERENT target than `el` -- the listener checks
-  // `e.target === el`, so this must be ignored.
-  (el._listeners.transitionend || []).forEach((fn) => fn({ target: other }));
-  assert.strictEqual(called, false);
-});
-
-test('closeOverlayThen: calling afterClose is a no-op-safe default when afterClose is omitted', () => {
-  assert.doesNotThrow(() => closeOverlayThen({}, 'sheet-open'));
-});
-
-// ---- F1 (BLOCKER) regression: stale close-timer race on a REUSED node -------
-// ---- (e.g. the Playlists sheet's persistent #playlists-sheet/#playlists- ----
-// ---- backdrop) -- reopening before an earlier close's transitionend/300ms --
-// ---- fallback fires must never let that abandoned close hide the sheet -----
-// ---- the user just reopened. ------------------------------------------------
-
-test('F1: reopening BEFORE a pending close\'s transitionend fires cancels that close outright -- the stale 300ms fallback deadline is a true no-op', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const el = new AnimatableFakeElement();
-  el.hidden = false;
-  el.classList.add('sheet-open');
-
-  let afterCloseCalls = 0;
-  closeOverlayThen(el, 'sheet-open', () => { afterCloseCalls++; el.hidden = true; });
-  assert.ok(!el.classList.contains('sheet-open'), 'the close removed the open class, arming a 300ms fallback + transitionend listener');
-
-  // Reopen BEFORE either the transitionend or the 300ms fallback fires --
-  // this is the exact race F1 covers (a rapid close -> reopen on the SAME
-  // reused node).
-  openOverlay(el, 'sheet-open');
-  assert.strictEqual(el.hidden, false, 'the reopen must unhide immediately');
-  assert.ok(el.classList.contains('sheet-open'), 'the reopen must re-add the open class');
-
-  // Advance past the abandoned close's original 300ms fallback deadline --
-  // it must have been cancelled by the reopen above, so `afterClose` (which
-  // would hide the sheet again) must never fire.
-  t.mock.timers.tick(300);
-  assert.strictEqual(afterCloseCalls, 0, 'the stale close\'s afterClose must never fire once cancelled by a reopen');
-  assert.strictEqual(el.hidden, false, 'the sheet must still be visible after the stale deadline passes');
-  assert.ok(el.classList.contains('sheet-open'), 'the sheet must still carry the open class after the stale deadline passes');
-});
-
-test('F1: reopening BEFORE a pending close\'s deadline also survives a late, interrupted transitioncancel from that same abandoned close', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const el = new AnimatableFakeElement();
-  el.classList.add('sheet-open');
-
-  let afterCloseCalls = 0;
-  closeOverlayThen(el, 'sheet-open', () => { afterCloseCalls++; });
-  openOverlay(el, 'sheet-open');
-
-  // Even if the browser still delivers a (now-irrelevant) transitioncancel
-  // from the abandoned close's interrupted transition, cancelPendingClose
-  // already tore down that listener -- this must be a complete no-op.
-  el.dispatchTransitionCancel();
-  t.mock.timers.tick(300);
-  assert.strictEqual(afterCloseCalls, 0);
-  assert.ok(el.classList.contains('sheet-open'));
-});
-
-test('F1: rapid close -> open -> close converges on CLOSED (the LAST call\'s intent), not the first close\'s', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const el = new AnimatableFakeElement();
-  el.classList.add('sheet-open');
-
-  const calls = [];
-  closeOverlayThen(el, 'sheet-open', () => calls.push('close-1'));
-  openOverlay(el, 'sheet-open');
-  closeOverlayThen(el, 'sheet-open', () => calls.push('close-2'));
-
-  assert.ok(!el.classList.contains('sheet-open'), 'the second close removed the open class again');
-  // Let the SECOND close's own transition finish normally.
-  el.dispatchTransitionEnd();
-  assert.deepStrictEqual(calls, ['close-2'], 'only the LAST close\'s afterClose must ever fire');
-
-  // The first close's now-cancelled fallback timer must not also fire.
-  t.mock.timers.tick(300);
-  assert.deepStrictEqual(calls, ['close-2']);
-  assert.ok(!el.classList.contains('sheet-open'), 'final state is CLOSED, matching the last call');
-});
-
-test('F1: finish() belt-and-braces -- even if a stale transitionend slips through, afterClose is skipped once the element carries the open class again', () => {
-  // Exercises the classList.contains(openClass) guard inside finish()
-  // directly (rather than relying solely on cancelPendingClose), by racing
-  // a raw dispatchTransitionEnd() against a reopen without going through
-  // mock timers at all.
-  const el = new AnimatableFakeElement();
-  el.classList.add('sheet-open');
-  let afterCloseCalls = 0;
-  closeOverlayThen(el, 'sheet-open', () => { afterCloseCalls++; });
-  // Directly re-add the open class (simulating some other path re-opening
-  // without going through cancelPendingClose) to isolate the classList
-  // check from the generation-counter cancellation above.
-  el.classList.add('sheet-open');
-  el.dispatchTransitionEnd();
-  assert.strictEqual(afterCloseCalls, 0, 'afterClose must be skipped when the element still/again carries the open class');
 });
 
 // ---- F2 (MAJOR) regression: showConfirmModal must never double-fire ------------------

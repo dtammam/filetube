@@ -10,11 +10,9 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'index.html');
 const MAIN_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'main.js');
-const css = fs.readFileSync(CSS_PATH, 'utf8');
-const { ICON_SETS, liveCss, effectiveMask, beforeGlyphRules } = require('../helpers/icon-sets');
+const { liveCss, beforeGlyphRules } = require('../helpers/icon-sets');
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 
@@ -47,61 +45,29 @@ test('main.js: neither tool\'s markup is rewritten - the rescan busy state is ar
   assert.match(mainJs, /function setRescanBusy\(on\) \{\s*rescanBtn\.disabled = !!on;[\s\S]{0,160}?u\.setBusy\(rescanBtn, !!on\)/);
 });
 
-// v1.25.4 fix: .icon-shuffle previously rendered as a fixed ::before unicode
-// glyph (U+1F500 🔀) OUTSIDE the icon-set system -- unlike every other
-// .icon-* glyph (a real SVG mask painted in currentColor), which meant
-// Shuffle showed a raw colored emoji even in non-emoji/modern icon-set
-// themes (Rescan's .icon-refresh, right next to it, rendered correctly).
-// .icon-shuffle now joins the same mask-image/currentColor mechanism as
-// .icon-download (see style.css's chrome-icon block + icon-set-axis
-// section), so it themes across every era x mode x icon-set combo. (The
-// emoji icon-set kept U+1F500 on purpose until the UI pass retired it, D2.6.)
-test('style.css: .icon-shuffle is a real SVG mask (currentColor), not a fixed unicode ::before glyph', () => {
-  assert.match(css, /\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/shuffle\.svg\)/);
-  // The OLD unscoped ::before rule must be gone -- that was the actual bug
-  // (it fired in every icon-set, including non-emoji ones).
-  assert.doesNotMatch(css, /^\.icon-shuffle::before/m);
-});
-
-test('style.css: .icon-shuffle is included in the base chrome-icon group (sizing) and the @supports currentColor fill guard', () => {
-  // v1.49: asserts MEMBERSHIP of both groups rather than pinning
-  // `.icon-shuffle` as their LAST member. The original regexes required the
-  // selector list to END `..., .icon-download, .icon-shuffle {`, so adding any
-  // new icon after it failed this test on a correct change -- the same
-  // over-specification card-like.test.js already diagnosed and fixed for the
-  // fill guard in v1.47.6 (see its own comment). What actually matters is that
-  // `.icon-shuffle` is IN each list; an icon missing from one renders at the
-  // wrong box size or as nothing at all, and that is what these now check.
-  const sizingStart = css.indexOf('.icon-home,');
-  assert.notEqual(sizingStart, -1, 'expected the shared chrome-icon sizing group');
-  const sizingGroup = css.slice(sizingStart, css.indexOf('mask-repeat:', sizingStart));
-  assert.ok(sizingGroup.includes('.icon-shuffle'), 'expected .icon-shuffle in the shared chrome-icon sizing/mask-repeat group');
-
-  const supportsIdx = css.indexOf('@supports (mask-image: url("#"))');
-  assert.notEqual(supportsIdx, -1, 'expected the @supports fill guard');
-  const fillGuard = css.slice(supportsIdx, css.indexOf('background-color: currentColor', supportsIdx));
-  assert.ok(fillGuard.includes('.icon-shuffle'), 'expected .icon-shuffle in the @supports currentColor fill guard');
-});
-
-test('style.css: .icon-shuffle gets a themed mask in the rounded and filled icon sets too', () => {
-  assert.match(css, /\[data-icons="rounded"\]\s*\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/rounded\/shuffle\.svg\)/);
-  assert.match(css, /\[data-icons="filled"\]\s*\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/filled\/shuffle\.svg\)/);
-});
-
-// This pinned the emoji set's U+1F500 ::before and its mask-neutralize membership.
-// The emoji set is retired (D2.6); the three-set intent: U+1F500 renders in NO set
-// (no ::before glyph on .icon-shuffle anywhere), and under each of outlined/rounded/
-// filled both mask spellings resolve to that set's shuffle.svg (nothing blanks it).
-test('style.css: no icon set renders the U+1F500 glyph -- .icon-shuffle is its own shuffle.svg mask in all three sets', () => {
+// v1.25.4 fix: .icon-shuffle previously rendered as a fixed ::before unicode glyph (U+1F500)
+// outside the icon-set system; it became a themed mask, then sweep S2 drew the home tool from
+// the registry (`#i-shuffle`, the tests above). U+1F500 renders nowhere: no ::before glyph and no
+// escape is left in any stylesheet.
+test('no stylesheet paints the U+1F500 glyph', () => {
   const live = liveCss();
-  assert.deepEqual(beforeGlyphRules(live, 'icon-shuffle').map((r) => r.sels.join(', ')), [],
-    'no rule paints a ::before glyph on .icon-shuffle');
+  assert.deepEqual(beforeGlyphRules(live, 'icon-shuffle').map((r) => r.sels.join(', ')), [], 'no rule paints a ::before glyph on .icon-shuffle');
   assert.doesNotMatch(live, /\\1F500/, 'no U+1F500 escape left in the stylesheets');
-  const dir = { outlined: '', rounded: 'rounded/', filled: 'filled/' };
-  for (const set of ICON_SETS) {
-    const m = effectiveMask(live, set, 'icon-shuffle');
-    assert.equal(m.std, `url(/assets/icons/${dir[set]}shuffle.svg)`, `${set}: the standard mask`);
-    assert.equal(m.webkit, m.std, `${set}: the -webkit- mask agrees`);
+});
+
+// Step 7 (UI pass, DELIBERATE conversion): the `.icon-shuffle` mask is RETIRED with its last
+// consumer (the home Shuffle tool drew the registry glyph from sweep S2), so the lock on its three CSS sites became a lock that it is gone -
+// and that nothing in the app still asks for it (a class with no rule renders an empty box).
+test('step 7: the .icon-shuffle mask is retired - no rule, no consumer in public/ or lib/', () => {
+  const rules = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(rules, /\.icon-shuffle\b/, 'no sizing, mask or fill rule left');
+  const files = [];
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const q = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'assets' && e.name !== 'fonts') walk(q); } else if (/\.(js|html)$/.test(e.name)) files.push(q); } };
+  walk(path.join(__dirname, '..', '..', 'public')); walk(path.join(__dirname, '..', '..', 'lib'));
+  assert.ok(files.length > 20, 'the scan reached the tree');
+  for (const f of files) {
+    const code = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    assert.doesNotMatch(code, /icon-shuffle\b/, path.basename(f) + ' asks for no .icon-shuffle');
   }
 });
 

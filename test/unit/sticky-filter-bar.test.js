@@ -63,8 +63,11 @@ test('the home filter bar is sticky and HOME-SCOPED (not the bare .section-title
   assert.match(body, /top:\s*var\(--sticky-bar-top\)/, 'pins at the --sticky-bar-top offset (the fixed header height)');
   // Solid background so grid rows scroll UNDER it rather than showing through.
   assert.match(body, /background-color:\s*var\(--surface-0\)/, 'needs a solid background');
-  // Above grid cards (z-index 2), below the sort-menu (30) and dock/modals.
-  assert.match(body, /z-index:\s*20/, 'z-index 20: above cards, below the sort-menu/dock');
+  // step 7: the value is the ladder's in-content sticky rung --z-sticky (tokens.css pins it at
+  // 30 - retire R2's rung; it was a literal 20): still above the cards (2), and the sort popover
+  // is the bar's own descendant, so it stays on top of the bar whatever the bar's rung.
+  assert.match(body, /z-index:\s*var\(--z-sticky\)/, 'z-index --z-sticky: above cards, below the pull-to-refresh indicator and the chrome');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8'), /--z-sticky:\s*30;/);
 });
 
 test('the bar pins FLUSH with zero pre-stick jump: pull-up == give-back == the desktop content padding (v1.45.1)', () => {

@@ -7,10 +7,8 @@
 // toggle + compact options modal" / "FR-3 -- hide when no channel / module
 // disabled") for the full design/rationale.
 //
-// `buildSubscribeModal`'s DOM-construction tests reuse the exact minimal fake
-// `document`/`Element` pattern established by test/unit/ytdlp-oneoff-modal.test.js
-// (an `innerHTML` setter that unconditionally THROWS, so any regression to
-// innerHTML for a dynamic string fails loudly rather than silently passing).
+// `buildSubscribeModal`'s tests drive the real dialog (common.js + ui.js in jsdom) since
+// step 7 put it on ui.sheet; see its section below.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -180,156 +178,114 @@ test('buildSubscribeRequestBody: skipShorts is always an explicit boolean, coerc
   assert.strictEqual(buildSubscribeRequestBody('u', 'n', 'video', 'best', '2026-07-01', 0, undefined).skipShorts, false);
 });
 
-// ---- buildSubscribeModal: DOM construction ---------------------------------
+// ---- buildSubscribeModal: the Subscribe dialog, in jsdom with the real ui.js --------
+// Step 7 (UI pass, DELIBERATE conversion): the dialog is a ui.sheet now (it was the last
+// bespoke .oneoff-modal shell, a backdrop the caller appended itself), so its tests drive
+// common.js + ui.js in jsdom - every way in and out a user has - instead of the fake-DOM
+// harness that pinned the old backdrop/modal pair. Each old test's intent is kept: the
+// read-only identity as TEXT, the pre-filled selects, the blank cutoff date, the exact body
+// Subscribe sends, Cancel / Close / backdrop never subscribing, a drag from inside never
+// closing it, hostile strings inert, no innerHTML.
 
-class FakeElement {
-  constructor(tagName) {
-    this.tagName = String(tagName).toUpperCase();
-    this.children = [];
-    this.attributes = {};
-    this.className = '';
-    this._textContent = '';
-    this._listeners = {};
-    this.style = {};
-    this.hidden = false;
-    this.checked = false;
-    this.value = undefined;
-    this.parentElement = null;
-  }
+const { mock, afterEach } = require('node:test');
+const { JSDOM } = require('jsdom');
+const UI = require.resolve('../../public/js/ui.js');
 
-  appendChild(child) {
-    child.parentElement = this;
-    this.children.push(child);
-    return child;
-  }
-
-  get firstChild() {
-    return this.children.length > 0 ? this.children[0] : null;
-  }
-
-  removeChild(child) {
-    const idx = this.children.indexOf(child);
-    if (idx >= 0) this.children.splice(idx, 1);
-    return child;
-  }
-
-  remove() {
-    if (this.parentElement) {
-      const idx = this.parentElement.children.indexOf(this);
-      if (idx >= 0) this.parentElement.children.splice(idx, 1);
-      this.parentElement = null;
-    }
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  addEventListener(type, handler) {
-    (this._listeners[type] = this._listeners[type] || []).push(handler);
-  }
-
-  fire(type, evt) {
-    const event = evt || { target: this };
-    (this._listeners[type] || []).forEach((fn) => fn(event));
-  }
-
-  click() {
-    this.fire('click', { target: this });
-  }
-
-  get textContent() {
-    return this._textContent;
-  }
-
-  set textContent(value) {
-    this._textContent = value;
-    this.children = [];
-  }
-
-  set innerHTML(_value) {
-    throw new Error('buildSubscribeModal must never assign innerHTML -- use textContent instead');
-  }
-
-  get innerHTML() {
-    throw new Error('buildSubscribeModal must never read/assign innerHTML');
-  }
-
-  *walk() {
-    yield this;
-    for (const child of this.children) {
-      if (child instanceof FakeElement) yield* child.walk();
-    }
-  }
+let dom = null;
+function page(o) {
+  const opts = o || {};
+  mock.timers.enable({ apis: ['setTimeout'] });
+  dom = new JSDOM('<!DOCTYPE html><body><button id="opener">Subscribe</button></body>', { url: 'http://localhost/watch?id=x' });
+  const w = dom.window;
+  w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? !!opts.phone : false, media: q });
+  delete require.cache[UI];
+  w.ui = require(UI);
+  return w.document;
 }
+function shut() {
+  mock.timers.reset();
+  if (dom) dom.window.close();
+  dom = null;
+}
+afterEach(shut);
+const open = (doc, o, h) => { const m = buildSubscribeModal(doc, o, h); m.sheet.open(); return m; };
+const esc = (doc) => doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+const change = (el) => el.dispatchEvent(new dom.window.Event('change'));
 
-const fakeDoc = {
-  createElement: (tag) => new FakeElement(tag),
-  createTextNode: (text) => ({ nodeType: 3, textContent: text }),
-};
+test('buildSubscribeModal: a ui.sheet titled "Subscribe" (a dialog on desktop, a bottom sheet on a phone) - nothing in the document until the caller opens it', () => {
+  let doc = page();
+  const m = buildSubscribeModal(doc, { channelUrl: 'https://www.youtube.com/@x' }, {});
+  assert.strictEqual(doc.querySelector('.ui-sheet'), null, 'built, not shown');
+  m.sheet.open();
+  assert.strictEqual(m.sheet.el.parentNode, doc.body);
+  assert.ok(m.sheet.el.classList.contains('ui-sheet--dialog'), 'a dialog on desktop');
+  assert.strictEqual(m.sheet.el.querySelector('.ui-sheet__title').textContent, 'Subscribe');
+  assert.strictEqual(m.sheet.el.querySelectorAll('.ui-sheet__close').length, 1, 'the sheet\'s ONE Close');
+  assert.strictEqual(m.closeBtn, m.sheet.el.querySelector('.ui-sheet__close'));
+  assert.strictEqual(doc.querySelector('.oneoff-modal, .oneoff-modal-backdrop, .subscribe-modal-actions'), null, 'no bespoke shell is built');
+  shut();
+  doc = page({ phone: true });
+  const p = open(doc, { channelUrl: 'https://www.youtube.com/@x' }, {});
+  assert.ok(p.sheet.el.classList.contains('ui-sheet--bottom'), 'a bottom sheet on a phone');
+});
 
-test('buildSubscribeModal: starts hidden, renders the read-only identity via textContent, pre-fills format/quality/filetype, cutoff-date input starts blank', () => {
-  const modal = buildSubscribeModal(fakeDoc, {
+test('buildSubscribeModal: renders the read-only identity via textContent, pre-fills format/quality/filetype, the cutoff date starts blank, Skip Shorts starts off', () => {
+  const doc = page();
+  const modal = open(doc, {
     channelName: 'Real Creator Name',
     channelUrl: 'https://www.youtube.com/channel/UC12345',
     format: 'audio',
   }, {});
-
-  assert.strictEqual(modal.backdrop.hidden, true, 'modal must start hidden');
-  assert.strictEqual(modal.modal.hidden, true);
-
   // READ-ONLY identity -- textContent only, never an editable input.
   assert.strictEqual(modal.identityName.textContent, 'Real Creator Name');
   assert.strictEqual(modal.identityUrl.textContent, 'https://www.youtube.com/channel/UC12345');
   assert.notStrictEqual(modal.identityName.tagName, 'INPUT', 'identity name must not be an editable field');
   assert.notStrictEqual(modal.identityUrl.tagName, 'INPUT', 'identity url must not be an editable field');
-
   assert.strictEqual(modal.formatSelect.value, 'audio', 'format pre-filled from the file\'s own media type');
   assert.strictEqual(modal.qualitySelect.value, 'best');
   assert.strictEqual(modal.filetypeSelect.value, 'mp3', 'filetype defaults to the audio allowlist\'s recommended value');
-  // v1.25 QoL (T5): retires "download last N videos" -- a cutoff-DATE input,
-  // left BLANK by default (never pre-filled with a computed "yesterday"),
-  // with an accessible name since this compact modal has no visible <label>
-  // elements for its controls.
+  for (const sel of [modal.formatSelect, modal.qualitySelect, modal.filetypeSelect]) {
+    assert.ok(sel.classList.contains('ui-select__native') && sel.parentNode.classList.contains('ui-select'), 'each select is a ui-select');
+  }
+  // v1.25 QoL (T5): a cutoff-DATE input, BLANK by default, with an accessible name.
   assert.strictEqual(modal.cutoffDateInput.tagName, 'INPUT');
   assert.strictEqual(modal.cutoffDateInput.type, 'date');
-  assert.ok(!modal.cutoffDateInput.value, 'cutoff-date input must start blank, not a pre-computed date');
-  assert.strictEqual(modal.cutoffDateInput.attributes['aria-label'], 'Download videos published on or after');
+  assert.ok(modal.cutoffDateInput.classList.contains('ui-field__input'), 'a ui-field input (16px: no iOS focus zoom)');
+  assert.strictEqual(modal.cutoffDateInput.value, '', 'cutoff-date input must start blank, not a pre-computed date');
+  assert.strictEqual(modal.cutoffDateInput.getAttribute('aria-label'), 'Download videos published on or after');
   assert.strictEqual(modal.skipShortsCheck.checked, false, 'skip-Shorts defaults to OFF');
-
-  // Only the known, fixed set of tags may exist anywhere in the built modal.
-  const tagNames = new Set([...modal.backdrop.walk()].map((el) => el.tagName));
-  for (const tag of tagNames) {
-    assert.ok(['DIV', 'SPAN', 'BUTTON', 'SELECT', 'OPTION', 'INPUT', 'LABEL'].includes(tag), `unexpected element tag: ${tag}`);
-  }
+  assert.ok(modal.skipShortsCheck.classList.contains('ui-switch') && modal.skipShortsCheck.getAttribute('role') === 'switch', 'the ui-switch on the native checkbox');
+  assert.strictEqual(modal.skipShortsCheck.closest('label').textContent, 'Skip Shorts', 'labelled by its row');
+  assert.ok(modal.cancelBtn.classList.contains('ui-btn--secondary') && modal.confirmBtn.classList.contains('ui-btn--primary'), 'Cancel secondary, Subscribe the one primary');
+  assert.strictEqual(modal.confirmBtn.textContent, 'Subscribe');
+  assert.strictEqual(modal.cancelBtn.textContent, 'Cancel');
 });
 
 test('buildSubscribeModal: missing channelName falls back to a neutral placeholder, never blank/undefined text', () => {
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, {});
+  const modal = open(page(), { channelUrl: 'https://www.youtube.com/@x' }, {});
   assert.strictEqual(modal.identityName.textContent, 'This channel');
 });
 
 test('buildSubscribeModal: switching format to audio repopulates the filetype select (shared reducer wiring, AC7)', () => {
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x', format: 'video' }, {});
+  const modal = open(page(), { channelUrl: 'https://www.youtube.com/@x', format: 'video' }, {});
   modal.formatSelect.value = 'audio';
-  modal.formatSelect.fire('change');
-  assert.deepStrictEqual(modal.filetypeSelect.children.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
+  change(modal.formatSelect);
+  assert.deepStrictEqual(Array.from(modal.filetypeSelect.options).map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
   assert.strictEqual(modal.filetypeSelect.value, 'mp3');
 });
 
-test('buildSubscribeModal: confirm calls onConfirm with the exact body built from the chosen control values (AC4)', () => {
+test('buildSubscribeModal: Subscribe calls onConfirm with the exact body built from the chosen control values (AC4)', () => {
   const calls = [];
-  const modal = buildSubscribeModal(fakeDoc, {
+  const modal = open(page(), {
     channelName: 'Real Creator',
     channelUrl: 'https://www.youtube.com/channel/UC12345',
     format: 'video',
   }, { onConfirm: (body) => calls.push(body) });
-
   modal.qualitySelect.value = '720p';
   modal.cutoffDateInput.value = '2026-05-05';
-  modal.skipShortsCheck.checked = true;
+  modal.skipShortsCheck.click(); // the switch, as a user flips it
+  assert.strictEqual(modal.skipShortsCheck.checked, true);
   modal.confirmBtn.click();
-
   assert.strictEqual(calls.length, 1);
   assert.deepStrictEqual(calls[0], {
     channelUrl: 'https://www.youtube.com/channel/UC12345',
@@ -340,78 +296,76 @@ test('buildSubscribeModal: confirm calls onConfirm with the exact body built fro
     skipShorts: true,
     filetype: 'mp4',
   });
+  assert.strictEqual(modal.sheet.isOpen(), true, 'Subscribe never closes it by itself: the caller does, on a good response');
 });
 
-test('buildSubscribeModal: confirm with a blank cutoff-date input omits cutoffDate entirely, letting the server apply its own default', () => {
+test('buildSubscribeModal: Subscribe with a blank cutoff-date input omits cutoffDate entirely, letting the server apply its own default', () => {
   const calls = [];
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, {
-    onConfirm: (body) => calls.push(body),
-  });
+  const modal = open(page(), { channelUrl: 'https://www.youtube.com/@x' }, { onConfirm: (body) => calls.push(body) });
   modal.confirmBtn.click();
   assert.strictEqual(calls.length, 1);
   assert.strictEqual('cutoffDate' in calls[0], false);
 });
 
-test('buildSubscribeModal: Cancel calls onClose and does NOT call onConfirm', () => {
-  let closed = false;
-  const confirmCalls = [];
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, {
-    onClose: () => { closed = true; },
-    onConfirm: (body) => confirmCalls.push(body),
-  });
-  modal.cancelBtn.click();
-  assert.strictEqual(closed, true);
-  assert.strictEqual(confirmCalls.length, 0);
+test('buildSubscribeModal: Cancel, Close, Esc, the scrim and the view\'s signal each close it and call onClose ONCE - never onConfirm, not even a late tap on the closing dialog', () => {
+  for (const how of ['cancel', 'close', 'esc', 'scrim', 'signal']) {
+    const doc = page();
+    let closed = 0;
+    const confirms = [];
+    const ac = new dom.window.AbortController();
+    const m = open(doc, { channelUrl: 'https://www.youtube.com/@x', signal: ac.signal }, { onClose: () => { closed += 1; }, onConfirm: (b) => confirms.push(b) });
+    if (how === 'cancel') m.cancelBtn.click();
+    else if (how === 'close') m.closeBtn.click();
+    else if (how === 'esc') esc(doc);
+    else if (how === 'scrim') m.backdrop.click();
+    else ac.abort();
+    assert.strictEqual(closed, 1, how + ': onClose once');
+    assert.ok(m.sheet.el.classList.contains('is-closing'), how + ': closing');
+    m.confirmBtn.click();
+    assert.strictEqual(confirms.length, 0, how + ': never onConfirm');
+    mock.timers.tick(1000);
+    assert.strictEqual(m.sheet.el.isConnected, false, how + ': the sheet leaves the document');
+    assert.strictEqual(m.backdrop.isConnected, false, how + ': and its scrim - never a stranded touch-eater');
+    shut();
+  }
 });
 
-test('buildSubscribeModal: the [x] close button calls onClose, not onConfirm', () => {
-  let closed = false;
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, { onClose: () => { closed = true; } });
-  modal.closeBtn.click();
-  assert.strictEqual(closed, true);
-});
-
-test('buildSubscribeModal: a tap that starts+ends on the backdrop calls onClose, but a drag from inside the modal does not', () => {
-  let closeCalls = 0;
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, { onClose: () => { closeCalls += 1; } });
-
-  // A genuine backdrop tap: press AND release on the backdrop.
-  modal.backdrop.fire('pointerdown', { target: modal.backdrop });
-  modal.backdrop.fire('click', { target: modal.backdrop });
-  assert.strictEqual(closeCalls, 1);
-
-  // v1.289: a drag that begins inside the dialog and releases on the backdrop
-  // (the synthesized click targets the backdrop) must NOT close - the paste-a-
-  // feed-URL selection case.
-  modal.backdrop.fire('pointerdown', { target: modal.modal });
-  modal.backdrop.fire('click', { target: modal.backdrop });
-  assert.strictEqual(closeCalls, 1, 'a drag that starts inside the modal must not close it');
+test('buildSubscribeModal: a text-selection drag from a field released outside the sheet does not close it (v1.289); a tap on the scrim does', () => {
+  const doc = page();
+  let closed = 0;
+  const m = open(doc, { channelUrl: 'https://www.youtube.com/@x' }, { onClose: () => { closed += 1; } });
+  // A drag's synthesized click lands on the COMMON ANCESTOR of press and release: the scrim is a
+  // sibling of the sheet, so that ancestor is <body> - never the scrim.
+  m.cutoffDateInput.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }));
+  doc.body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(closed, 0, 'a drag that starts inside the dialog never closes it');
+  assert.strictEqual(m.backdrop.parentNode, m.sheet.el.parentNode, 'the scrim is the sheet\'s sibling (why the drag is safe)');
+  m.backdrop.click();
+  assert.strictEqual(closed, 1);
 });
 
 test('buildSubscribeModal: setError renders a hostile string as inert text via textContent, never innerHTML (XSS regression)', () => {
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, {});
+  const doc = page();
+  const modal = open(doc, { channelUrl: 'https://www.youtube.com/@x' }, {});
   const hostile = '<img src=x onerror=alert(1)>';
-  assert.doesNotThrow(() => modal.setError(hostile));
+  modal.setError(hostile);
   assert.strictEqual(modal.statusEl.textContent, hostile);
-
-  const tagNames = new Set([...modal.backdrop.walk()].map((el) => el.tagName));
-  assert.ok(!tagNames.has('SCRIPT'));
-  assert.ok(!tagNames.has('IMG'));
+  assert.strictEqual(doc.querySelectorAll('img, script').length, 0);
+  modal.setError('');
+  assert.strictEqual(modal.statusEl.textContent, '');
 });
 
 test('buildSubscribeModal: a hostile channelName/channelUrl renders as inert text, never parsed as markup (XSS regression)', () => {
+  const doc = page();
   const hostileName = '<script>window.__xss = true;</script>';
   const hostileUrl = 'https://www.youtube.com/@x"><img src=x onerror=alert(1)>';
-  const modal = buildSubscribeModal(fakeDoc, { channelName: hostileName, channelUrl: hostileUrl }, {});
+  const modal = open(doc, { channelName: hostileName, channelUrl: hostileUrl }, {});
   assert.strictEqual(modal.identityName.textContent, hostileName);
   assert.strictEqual(modal.identityUrl.textContent, hostileUrl);
-
-  const tagNames = new Set([...modal.backdrop.walk()].map((el) => el.tagName));
-  assert.ok(!tagNames.has('SCRIPT'));
-  assert.ok(!tagNames.has('IMG'));
+  assert.strictEqual(doc.querySelectorAll('img, script').length, 0);
 });
 
-// ---- Static-source regression guard: no innerHTML in the new builder ------
+// ---- Static-source regression guard: no innerHTML in the builder ------
 
 test('buildSubscribeModal source contains no innerHTML assignment (static regression guard)', () => {
   const stripComments = (src) => src.replace(/\/\/.*$/gm, '');

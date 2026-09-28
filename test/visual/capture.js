@@ -264,6 +264,15 @@ function sceneKit(FX, BASE) {
     // that no scene above shows (the TV view, the Stats tables and About, the Settings sections
     // not in SETTINGS_SECTIONS). Stubbed payloads stand in where the fixture holds nothing.
     ...R3_SCENES(FX),
+    // Step 7 retire (R1): the Subscribe dialog (the watch page's unsubscribed channel; the last
+    // bespoke .oneoff-modal shell before step 7), the chapter snap editor and the keyboard
+    // reference (its arrow caps). Opened the way the views open them, so a base tree draws its
+    // own version of each.
+    { id: '73-subscribe-dialog', path: `/watch.html?v=${FX.videoUnsub}`, run: async (p, vp) => { await p.waitForSelector('#subscribe-btn-mock', { timeout: 12000 }); await pausePlayback(p);
+      await tap(p, '#subscribe-btn-mock', vp); await p.waitForSelector('.oneoff-modal:not([hidden]), .ui-sheet.is-open .subscribe-form', { timeout: 8000 }); await sleep(600); } },
+    { id: '74-chapter-snap', path: `/watch.html?v=${FX.video}`, run: async (p) => { await p.waitForSelector('#media-title', { timeout: 12000 }); await pausePlayback(p);
+      await p.evaluate((id) => window.showChapterSnapEditor(id, {}), FX.video); await p.waitForSelector('.ui-sheet.is-open .chapter-snap-status', { timeout: 8000 }); await sleep(1200); } },
+    { id: '75-shortcuts', path: '/', vps: ['desktop'], run: async (p) => { await p.waitForLoadState('networkidle'); await p.keyboard.press('Shift+Slash'); await p.waitForSelector('.ui-sheet.is-open .shortcuts-body', { timeout: 8000 }); await sleep(600); } },
     // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
     { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
     { id: '51-books-shelf', path: `/books?root=${encodeURIComponent(FX.bookShelf || '')}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },

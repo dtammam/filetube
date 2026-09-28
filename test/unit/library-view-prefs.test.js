@@ -111,8 +111,10 @@ test('SOURCE-LOCK (#2): the view toggle applies .list-view to #video-grid, persi
   assert.match(MAIN, /setStoredViewMode\(next\)/, 'persists the mode on toggle');
   assert.match(HTML, /id="view-mode-btn"/, 'the toggle button is in the bar');
   assert.match(CSS, /\.video-grid\.list-view\b/, 'the list-view reflow CSS exists');
-  assert.match(CSS, /\.icon-grid \{[^}]*grid_view\.svg/, 'grid glyph registered');
-  assert.match(CSS, /\.icon-list \{[^}]*view_list\.svg/, 'list glyph registered');
+  // step 7: the toggle draws the registry glyphs (sweep S2); the retired .icon-grid mask is gone
+  assert.match(HTML, /id="view-mode-btn"[^>]*>[\s\S]{0,200}?<use href="#i-view_list"\/>/, 'the toggle draws the registry view_list glyph');
+  assert.match(MAIN, /use\.setAttribute\('href', targetIsList \? '#i-view_list' : '#i-grid_view'\)/, 'and swaps to the registry grid_view glyph');
+  assert.doesNotMatch(CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /\.icon-grid\b/, 'no .icon-grid mask left');
 });
 
 test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle driving the SAME ft-view-mode', () => {

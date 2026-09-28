@@ -2523,10 +2523,15 @@ if (typeof module !== 'undefined' && module.exports) {
       subscribeBtn.classList.toggle('ui-btn--secondary', !!subscribed);
     }
 
+    // Step 7 (UI pass): the Subscribe dialog is a ui.sheet (common.js buildSubscribeModal).
+    // Every way out - Cancel, Close, Esc, the scrim, a drag down, the view's signal, and a
+    // successful subscribe - ends here once: the state is dropped first, then the sheet closes
+    // (a no-op when the sheet itself began the close and called back through onClose).
     function closeSubscribeModal() {
       if (!subscribeModalState) return;
-      subscribeModalState.backdrop.remove();
+      const state = subscribeModalState;
       subscribeModalState = null;
+      state.sheet.close();
     }
 
     function openSubscribeModal() {
@@ -2537,6 +2542,7 @@ if (typeof module !== 'undefined' && module.exports) {
           channelName: currentChannelName,
           channelUrl: currentSubState.identity.channelUrl,
           format: mediaData && mediaData.type === 'audio' ? 'audio' : 'video',
+          signal, // the view's: an SPA nav away closes the sheet
         },
         {
           onClose: closeSubscribeModal,
@@ -2590,9 +2596,7 @@ if (typeof module !== 'undefined' && module.exports) {
           },
         }
       );
-      document.body.appendChild(subscribeModalState.backdrop);
-      subscribeModalState.backdrop.hidden = false;
-      subscribeModalState.modal.hidden = false;
+      subscribeModalState.sheet.open();
     }
 
     // UI pass sweep S3 (D4.9, F33 - one destructive rule app-wide): unsubscribing
@@ -3000,11 +3004,8 @@ if (typeof module !== 'undefined' && module.exports) {
       applySubscribeAndPinState(mediaData, moduleEnabled, subs, Array.isArray(channelPins) ? channelPins : [], true);
     }
 
-    // Esc closes the subscribe modal while it's open -- backdrop-tap and the
-    // [x] button are wired inside buildSubscribeModal itself (common.js).
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && subscribeModalState) closeSubscribeModal();
-    }, { signal });
+    // (Esc, the scrim, Close and a drag down close the Subscribe sheet inside ui.sheet itself -
+    // step 7 retired this view's own Esc listener with the bespoke backdrop.)
 
     // Navigates to another video's watch page through the SPA router (smooth,
     // no reload) -- watch -> watch never docks (see common.js's

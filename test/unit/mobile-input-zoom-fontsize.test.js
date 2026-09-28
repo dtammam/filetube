@@ -7,8 +7,8 @@
 // is an accessibility anti-pattern that is NOT used here -- see index.html/
 // watch.html/setup.html's shared viewport meta tag, unchanged). The one-off
 // download modal's URL/folder text inputs and format/quality/filetype
-// selects (shared by common.js's buildOneOffModal AND buildSubscribeModal,
-// both reuse `.oneoff-modal-field`/`.oneoff-modal-row select`), the Settings
+// selects (shared by common.js's buildOneOffModal AND buildSubscribeModal - ui-field /
+// ui-select since UI pass S8 / step 7, 16px at every width), the Settings
 // (setup.html) form's text/number inputs and selects (`.setup-box
 // .setup-select`/`input[type="text"|"number"]`, which also reaches the
 // Subscriptions page's own format/quality/filetype selects since its
@@ -98,26 +98,33 @@ function assertMobileFontSizeAtLeast16(marker, selectorSource, ruleRe) {
   assert.ok(px >= 16, `expected ${selectorSource}'s mobile font-size >= 16px to avoid iOS auto-zoom-on-focus (got ${px}px)`);
 }
 
-test('one-off download modal: .oneoff-modal-field (URL/folder text inputs) is >=16px on mobile', () => {
-  assertMobileFontSizeAtLeast16(
-    '.oneoff-modal-field',
-    '.oneoff-modal-field, .oneoff-modal-row select',
-    /\.oneoff-modal-field,\s*\n\s*\.oneoff-modal-row select\s*\{([^}]*)\}/
-  );
-});
-
-test('one-off download modal / Subscribe modal: .oneoff-modal-row select (format/quality/filetype) is >=16px on mobile', () => {
-  // Same grouped rule as above -- .oneoff-modal-field is reused by BOTH the
-  // header one-off download modal AND buildSubscribeModal's cutoff-date
-  // input (common.js), and .oneoff-modal-row select is reused by both
-  // modals' format/quality/filetype selects, so this single rule covers all
-  // of them.
-  const block = findMobileBlockContaining('.oneoff-modal-field');
-  const rule = /\.oneoff-modal-field,\s*\n\s*\.oneoff-modal-row select\s*\{([^}]*)\}/.exec(block);
-  assert.ok(rule, 'expected the grouped .oneoff-modal-field/.oneoff-modal-row select mobile rule');
-  assert.match(rule[1], /font-size:\s*var\(--fs-input-min\);/);
-  const fontMatch = /font-size:\s*([^;]+);/.exec(rule[1]);
-  assert.ok(resolveFontSizePx(fontMatch[1]) >= 16);
+// Step 7 (UI pass, DELIBERATE conversion): the one-off download dialog (sweep S8/S9) and the
+// Subscribe dialog (step 7) build ui-field inputs and ui-select selects, so the 16px floor is
+// the primitive's at EVERY width (the ui-field test below) - the .oneoff-modal-field /
+// .oneoff-modal-row select mobile bump these two tests pinned is retired with its rules.
+// Bound here: every text/date field and select either dialog builds IS a ui field.
+test('one-off download dialog + Subscribe dialog: every field they build is a ui-field input or a ui-select (16px at every width, the primitive\'s floor)', () => {
+  const { JSDOM } = require('jsdom');
+  const common = require('../../public/js/common.js');
+  const dom = new JSDOM('<!DOCTYPE html><body></body>');
+  const w = dom.window;
+  w.matchMedia = () => ({ matches: false });
+  const uiPath = require.resolve('../../public/js/ui.js');
+  delete require.cache[uiPath];
+  w.ui = require(uiPath);
+  try {
+    const one = common.buildOneOffModal(w.document, {});
+    const sub = common.buildSubscribeModal(w.document, { channelUrl: 'https://www.youtube.com/@x' }, {});
+    for (const [name, form] of [['one-off', one.modal], ['Subscribe', sub.modal]]) {
+      const fields = Array.from(form.querySelectorAll('input, select, textarea')).filter((f) => f.type !== 'checkbox');
+      assert.ok(fields.length >= 4, name + ': the scan reached the fields');
+      for (const f of fields) {
+        assert.ok(f.classList.contains('ui-field__input') || f.classList.contains('ui-select__native'),
+          name + ': <' + f.tagName.toLowerCase() + ' class="' + f.className + '"> is a ui field');
+      }
+    }
+    assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.oneoff-modal-field|\.oneoff-modal-row\b/, 'the retired bespoke field rules are gone');
+  } finally { dom.window.close(); }
 });
 
 // Retire R3 (DELIBERATE conversion of the two v1.25.4 `.setup-box .setup-select / input`
@@ -175,17 +182,9 @@ test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping sear
   );
 });
 
-test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select rules still resolve to 13px', () => {
-  const oneOffField = /(?:^|\n)\.oneoff-modal-field\s*\{([^}]*)\}/.exec(css);
-  assert.ok(oneOffField);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffField[1])[1]), 13);
-
-  const oneOffSelect = /(?:^|\n)\.oneoff-modal-row select\s*\{([^}]*)\}/.exec(css);
-  assert.ok(oneOffSelect);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffSelect[1])[1]), 13);
-
-  // (retire R3: the third member, .setup-select, is retired - see the Settings form test above)
-});
+// (The v1.25.4 "desktop sizing is unchanged: 13px" lock is gone with its three members: step 7
+// made the one-off and Subscribe fields ui fields - 16px at every width - and retire R3 retired
+// .setup-select.)
 
 // ---- census: every CLASSED text-entry control in the shells ------------------
 // Gate r1 (lock-audio-measure, qa W2): the tests above are a hand-picked list of

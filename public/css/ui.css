@@ -47,6 +47,17 @@ svg {
   -webkit-user-drag: none;
   user-drag: none;
 }
+/* v1.23 (Dean, on-device): no legacy double-tap zoom ON a control either. Tapping
+   buttons/links/nav and double-tapping Home/Playlists zoomed the page in and forced a
+   pinch-out. touch-action is not inherited (the engines combine it with the ancestors' up to
+   a scroller), so every tappable element names it itself rather than lean on body's. Step 7 moved the list here from
+   style.css beside the body rule it completes; :where() keeps it at zero specificity, so
+   any component rule that sets its own touch-action (the seek bar's none, a swipe row's
+   pan-y) wins exactly as it did. */
+:where(a, button, select, input, textarea, label, summary, [role="button"], [data-nav],
+  .btn, .pc-btn, .bottom-nav-item, .video-card, .sidebar-item) {
+  touch-action: manipulation;
+}
 /* The only selectable surfaces besides fields (the allow-list is pinned by the test
    above): the ?debugLifecycle=1 diagnostics overlay (player.js) and the reader's page
    (read.html #reader-pane). */
@@ -901,6 +912,8 @@ button.ui-row:focus-visible,
   display: block;
 }
 .ui-select__native { padding-right: calc(var(--space-6) + var(--icon-md)); cursor: pointer; }
+/* step 7: the press shows (the D4.1 press overlay, layered over the field ground) */
+.ui-select__native:active { background-image: linear-gradient(var(--tint-press), var(--tint-press)); }
 .ui-select__chevron {
   position: absolute;
   top: 50%;

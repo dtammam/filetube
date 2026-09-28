@@ -97,7 +97,7 @@ async function until(pred, label) {
   assert.fail('timed out waiting for: ' + label);
 }
 const click = (el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-row'));
+const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-item'));
 
 test('seeds from STORAGE: one row per stored chapter, the focus row marked, chapter 1 without nudges, the suggestions shown; Snap all -> Save writes the snapped starts and closes', async () => {
   const mix = seedMix();
@@ -112,9 +112,9 @@ test('seeds from STORAGE: one row per stored chapter, the focus row marked, chap
   assert.strictEqual(rows[0].querySelectorAll('[data-act="nudge"]').length, 0, 'chapter 1 has no nudges');
   assert.strictEqual(rows[1].querySelectorAll('[data-act="nudge"]').length, 4, 'every other chapter has four');
   assert.ok(rows[1].querySelector('[data-act="snap"]'), 'chapter 2 offers its snap');
-  assert.match(rows[1].querySelector('.chapter-snap-chip').textContent, /silence/);
-  assert.match(rows[3].querySelector('.chapter-snap-chip').textContent, /end of the previous song/);
-  assert.match(rows[2].querySelector('.chapter-snap-chip').textContent, /No gap found/);
+  assert.match(rows[1].querySelector('.chapter-snap-note').textContent, /silence/);
+  assert.match(rows[3].querySelector('.chapter-snap-note').textContent, /end of the previous song/);
+  assert.match(rows[2].querySelector('.chapter-snap-note').textContent, /No gap found/);
   assert.strictEqual(h.saveBtn.disabled, true, 'nothing to save yet');
   assert.match(h.snapAllBtn.textContent, /Snap all \(2\)/);
   click(h.snapAllBtn);
@@ -158,6 +158,40 @@ test('STALE seed: the text editor saved after the time editor opened -> Save is 
   assert.strictEqual(h.isClosed(), false, 'the editor stays open to say so');
   assert.strictEqual(h.saveBtn.disabled, true, 'and cannot retry the stale save');
   assert.deepStrictEqual(loadDatabase().metadata[mix.id].chaptersManual.map((c) => c.startTime), [0, 65, 120, 180, 240], 'the typed list is what is stored');
+  h.close();
+});
+
+// Step 7 (UI pass): every editor control is a ui-btn with ONE .ui-btn__label (a relabel -
+// "Snap all (2)" -> "Snap all", the confirm's Revert/Keep words, the suggested shift - goes
+// through the label, never a bare textContent that would strip the primitive's parts); the
+// Edited badge is a meta chip; Play carries the registry play_arrow, never the .icon-play mask.
+test('step 7: every editor button is a ui-btn md with one label (relabels keep it), the Edited badge a meta chip, Play the registry glyph', async () => {
+  const mix = seedMix();
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  const buttons = Array.from(h.modal.querySelectorAll('button'));
+  assert.ok(buttons.length > 20, 'the scan reached the editor\'s controls: ' + buttons.length);
+  const check = (label) => {
+    for (const b of h.modal.querySelectorAll('button')) {
+      assert.ok(b.classList.contains('ui-btn') && b.classList.contains('ui-btn--md'), label + ': ' + b.className + ' is a ui-btn md');
+      assert.ok(!b.classList.contains('btn'), label + ': no legacy .btn');
+      assert.strictEqual(b.querySelectorAll(':scope > .ui-btn__label').length, 1, label + ': one label in ' + b.className);
+    }
+  };
+  check('first paint');
+  assert.ok(h.snapAllBtn.classList.contains('ui-btn--primary') && h.saveBtn.classList.contains('ui-btn--primary'), 'Snap all and Save are the primary fills');
+  assert.ok(h.cancelBtn.classList.contains('ui-btn--secondary'), 'Cancel is secondary');
+  assert.strictEqual(h.snapAllBtn.querySelector('.ui-btn__label').textContent, 'Snap all (2)');
+  click(h.snapAllBtn); // relabels Snap all, re-renders every row
+  assert.strictEqual(h.snapAllBtn.querySelector('.ui-btn__label').textContent, 'Snap all', 'the relabel landed in the label');
+  check('after a relabel and a re-render');
+  const badge = h.modal.querySelector('.chapter-snap-badge');
+  assert.ok(badge.classList.contains('ui-chip') && badge.classList.contains('ui-chip--meta'), 'the Edited badge is a meta chip');
+  const play = rowsOf(h)[1].querySelector('[data-act="play"]');
+  assert.strictEqual(play.querySelector('.ui-btn__label').textContent, 'Play from here');
+  assert.strictEqual(play.querySelector('.ui-btn__icon use').getAttribute('href'), '#i-play_arrow', 'the registry glyph in the icon slot');
+  assert.strictEqual(h.modal.querySelector('.icon-play'), null, 'no .icon-play mask');
   h.close();
 });
 
@@ -253,11 +287,11 @@ test('entry point 4: the text editor\'s "Fix times..." opens the SAME time edito
     ed.textarea.value = text + '\n5:00 A typed extra';
     click(ed.snapBtn);
     assert.match(ed.statusEl.textContent, /Save or undo your typed changes first/);
-    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-modal').length, 0, 'no time editor over unsaved typing');
+    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-editor').length, 0, 'no time editor over unsaved typing');
     ed.textarea.value = text;
     click(ed.snapBtn);
-    await until(() => dom.window.document.querySelectorAll('.chapter-snap-row').length === 5, 'the time editor rendered the stored chapters');
-    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-modal').length, 1, 'exactly ONE time editor');
+    await until(() => dom.window.document.querySelectorAll('.chapter-snap-item').length === 5, 'the time editor rendered the stored chapters');
+    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-editor').length, 1, 'exactly ONE time editor');
     // A single-chapter text list never offers it.
     const lone = common.showChaptersEditor(mix.id, '0:00 Only', () => {}, dom.window.document);
     assert.strictEqual(lone.snapBtn, null);

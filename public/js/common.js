@@ -1244,11 +1244,10 @@ function resolveFileChannelIdentity(item) {
 // toggle + compact options modal" / "FR-3 -- hide when no channel / module
 // disabled") for the full design/rationale. Pure decision helpers first
 // (node:test-covered directly); `buildSubscribeModal` is a DOM builder in the
-// exact style of `buildOneOffModal` above, reusing its primitives
-// (`.oneoff-modal-*` CSS + `buildOneOffSelect`/`ONEOFF_*`/
-// `reduceOneOffFiletypeOptions`) so this modal carries the v1.17.0
-// full-teardown + v1.19.0 select-sizing fixes "for free" and takes on NO
-// dependency on the gated, lazy-loaded `/js/subscriptions.js`.
+// exact style of `buildOneOffModal` below - a ui.sheet since step 7 - reusing its
+// building blocks (`buildOneOffSelect` + `oneOffSelectBox`/`ONEOFF_*`/
+// `reduceOneOffFiletypeOptions`), and takes on NO dependency on the gated,
+// lazy-loaded `/js/subscriptions.js`.
 
 // v1.25 QoL (T5): pure converters between a subscription's `cutoffDate`
 // (the API/yt-dlp `YYYYMMDD` convention -- retires the old "download last N
@@ -1354,48 +1353,22 @@ function buildSubscribeRequestBody(channelUrl, name, format, quality, rawCutoffD
 }
 
 /**
- * v1.289 (Dean): dismiss a backdrop-style modal ONLY when the pointer
- * interaction BOTH started AND ended on the backdrop itself. The plain
- * `click`-target check alone (`e.target === backdrop`) closes the modal on a
- * text-selection DRAG that begins inside a field and releases on the backdrop:
- * the browser dispatches the synthesized `click` on the common ancestor of
- * press-and-release, which is the backdrop - so dragging to select or reposition
- * the URL/folder text ate the download and subscribe modals. Recording the
- * pointerdown target and requiring it to be the backdrop too makes a drag that
- * begins inside the modal never dismiss it, while a clean tap on the backdrop
- * still closes as before. `onClose` is read live at click time (callers may
- * swap `handlers.onClose` after build), matching the prior inline behaviour.
- */
-function bindBackdropDismiss(backdrop, onClose) {
-  if (!backdrop || typeof backdrop.addEventListener !== 'function') return;
-  let downOnBackdrop = false;
-  backdrop.addEventListener('pointerdown', (e) => {
-    downOnBackdrop = !!(e && e.target === backdrop);
-  });
-  backdrop.addEventListener('click', (e) => {
-    const hit = downOnBackdrop && e && e.target === backdrop;
-    downOnBackdrop = false; // consume: the next dismiss needs its own fresh press
-    if (hit && typeof onClose === 'function') onClose();
-  });
-}
-
-/**
- * Builds the compact subscribe-confirm modal as real DOM nodes (backdrop +
- * dialog, appended to `document.body` by the caller) -- mirrors
- * `buildOneOffModal`'s structure/primitives exactly (same `.oneoff-modal-*`
- * CSS classes, same `buildOneOffSelect`/`ONEOFF_*`/
- * `reduceOneOffFiletypeOptions`/`repopulateOneOffFiletypeSelect` building
- * blocks), so it carries the v1.17.0 full-teardown + v1.19.0 select-sizing
- * fixes "for free" and never drifts from the one-off modal's own
+ * Builds the Subscribe dialog (the watch page's channel row, sweep S3) -- step 7 (UI pass)
+ * moved its SHELL onto ui.sheet, the way sweep S9 moved the one-off download dialog: a bottom
+ * sheet on a phone, a dialog on desktop, titled "Subscribe", with the sheet's one Close. It was
+ * the last bespoke `.oneoff-modal` shell (a backdrop the caller appended itself). The form
+ * reuses `buildOneOffModal`'s building blocks (`buildOneOffSelect` + `oneOffSelectBox`,
+ * `ONEOFF_*`, `repopulateOneOffFiletypeSelect`), so it never drifts from the one-off dialog's
  * format<->filetype coupling (AC7).
  *
- * `opts` = `{ channelName, channelUrl, format }` --
+ * `opts` = `{ channelName, channelUrl, format, signal }` --
  * `channelName`/`channelUrl` are the FR-2-derived, READ-ONLY channel identity
  * (rendered via `textContent` ONLY, AC3/AC30 -- never an editable field);
  * `format` pre-fills the type select from the file's own media type
- * (`'audio'`/`'video'`). The cutoff-date field (v1.25 QoL, T5 -- retires the
- * old "download last N videos" `defaultMaxVideos`/AC26 pre-fill) is always
- * left BLANK on open, never pre-filled with a computed "yesterday" -- an
+ * (`'audio'`/`'video'`); `signal` (the view's AbortSignal) closes the sheet when
+ * the view goes, so an SPA nav never strands it over the next page. The cutoff-date
+ * field (v1.25 QoL, T5 -- retires the old "download last N videos" `defaultMaxVideos`/AC26
+ * pre-fill) is always left BLANK on open, never pre-filled with a computed "yesterday" -- an
  * empty field omits `cutoffDate` from the request entirely, letting the
  * server apply its own default at submit time (`store.addSubscription`),
  * which stays correct even if the user takes a while filling out the rest
@@ -1403,82 +1376,65 @@ function bindBackdropDismiss(backdrop, onClose) {
  *
  * `handlers` = `{ onConfirm(body), onClose() }` -- decouples DOM construction
  * from the network call, mirroring `buildOneOffModal`'s own
- * `{ onDownload, onClose }` split, so this function stays pure/DOM-only and
- * directly unit-testable with a fake `document` (no real fetch). `onConfirm`
- * receives the EXACT body `buildSubscribeRequestBody` produces -- the caller
- * (`watch.js`) is the only place that ever calls `fetch('/api/subscriptions')`.
+ * `{ onDownload, onClose }` split, so this function stays DOM-only and
+ * directly unit-testable in jsdom (no real fetch). `onConfirm` receives the EXACT
+ * body `buildSubscribeRequestBody` produces -- the caller (`watch.js`) is the only
+ * place that ever calls `fetch('/api/subscriptions')`. Every way out but Subscribe
+ * (Cancel, Close, Esc, the scrim, a drag down, the signal) closes the sheet and calls
+ * `onClose` once (through `onClosing`); none of them calls `onConfirm`. v1.289's
+ * drag-safe dismiss holds by construction: the scrim is a SIBLING of the sheet, so a
+ * text-selection drag from a field onto it clicks their common ancestor, never the scrim.
+ * The caller opens it (`sheet.open()`).
  *
- * SECURITY: the ONLY dynamic strings ever rendered into this modal are the
- * read-only `channelName`/`channelUrl` identity block, both via `textContent`
- * (never `innerHTML`) -- there is no free-text field for either, so there is
- * no way for a user (or a hostile captured value) to inject markup through
- * this modal.
+ * SECURITY: the ONLY dynamic strings ever rendered into this dialog are the
+ * read-only `channelName`/`channelUrl` identity block and the status line, all via
+ * `textContent` (never `innerHTML`) -- there is no free-text field for either, so there
+ * is no way for a user (or a hostile captured value) to inject markup through it.
  */
 function buildSubscribeModal(doc, opts, handlers) {
   const d = doc || document;
   const o = opts || {};
   const h = handlers || {};
-
-  const backdrop = d.createElement('div');
-  backdrop.className = 'oneoff-modal-backdrop';
-  backdrop.hidden = true;
-  // v1.289: drag-safe dismiss (a text-selection drag onto the backdrop must not close it).
-  bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
+  const U = overlayUiLib();
 
   const modal = d.createElement('div');
-  modal.className = 'oneoff-modal';
-  modal.hidden = true;
-  backdrop.appendChild(modal);
-
-  const header = d.createElement('div');
-  header.className = 'oneoff-modal-header';
-  const title = d.createElement('span');
-  title.className = 'oneoff-modal-title';
-  title.textContent = 'Subscribe';
-  header.appendChild(title);
-  const closeBtn = d.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'oneoff-modal-close';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
-  closeBtn.addEventListener('click', () => {
-    if (typeof h.onClose === 'function') h.onClose();
-  });
-  header.appendChild(closeBtn);
-  modal.appendChild(header);
+  modal.className = 'oneoff-form subscribe-form';
 
   // READ-ONLY channel identity -- textContent only, AC3/AC30. Never an
   // editable input: the channelUrl that reaches POST /api/subscriptions is
   // ALWAYS the FR-2-derived value the caller passes in, not anything typed
   // here.
   const identity = d.createElement('div');
-  identity.className = 'subscribe-modal-identity';
+  identity.className = 'subscribe-form__identity';
   const identityName = d.createElement('div');
-  identityName.className = 'subscribe-modal-identity-name';
+  identityName.className = 'subscribe-form__name';
   identityName.textContent = typeof o.channelName === 'string' && o.channelName ? o.channelName : 'This channel';
   identity.appendChild(identityName);
   const identityUrl = d.createElement('div');
-  identityUrl.className = 'subscribe-modal-identity-url';
+  identityUrl.className = 'subscribe-form__url';
   identityUrl.textContent = typeof o.channelUrl === 'string' ? o.channelUrl : '';
   identity.appendChild(identityUrl);
   modal.appendChild(identity);
 
   const row = d.createElement('div');
-  row.className = 'oneoff-modal-row';
+  row.className = 'oneoff-modal-selects';
 
   const initialFormat = o.format === 'audio' ? 'audio' : 'video';
   const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, initialFormat);
-  row.appendChild(formatSelect);
+  formatSelect.setAttribute('aria-label', 'Format');
+  row.appendChild(oneOffSelectBox(d, formatSelect));
 
   const qualitySelect = buildOneOffSelect(
     d,
     ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })),
     ONEOFF_DEFAULT_QUALITY
   );
-  row.appendChild(qualitySelect);
+  qualitySelect.setAttribute('aria-label', 'Quality');
+  row.appendChild(oneOffSelectBox(d, qualitySelect));
 
   const filetypeSelect = buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS[initialFormat], ONEOFF_DEFAULT_FILETYPE[initialFormat]);
-  row.appendChild(filetypeSelect);
+  filetypeSelect.setAttribute('aria-label', 'File type');
+  row.appendChild(oneOffSelectBox(d, filetypeSelect));
 
   formatSelect.addEventListener('change', () => {
     repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
@@ -1491,31 +1447,36 @@ function buildSubscribeModal(doc, opts, handlers) {
   // downloads, no count cap (matches the add-subscription form's own field,
   // T1's `cutoffDate` schema). Left BLANK by default (see this function's
   // doc comment above) -- `aria-label` gives it an accessible name since
-  // this compact modal has no visible `<label>` elements for any of its
-  // controls (placeholder text alone is not a substitute for assistive
-  // tech, and a date input has no meaningful placeholder anyway).
+  // this compact form has no visible `<label>` for it (placeholder text alone
+  // is not a substitute for assistive tech, and a date input has no
+  // meaningful placeholder anyway). A ui-field input (16px, the focus ring).
   const cutoffDateInput = d.createElement('input');
   cutoffDateInput.type = 'date';
-  cutoffDateInput.className = 'oneoff-modal-field';
+  cutoffDateInput.className = 'ui-field__input';
   cutoffDateInput.setAttribute('aria-label', 'Download videos published on or after');
-  modal.appendChild(cutoffDateInput);
-
-  const cutoffDateHint = d.createElement('div');
-  // Tokens Phase 1 Tier 1: the JS-applied style triplet moved to the
-  // .oneoff-modal-hint class (style.css) - font-size rides var(--fs-sm).
-  cutoffDateHint.className = 'oneoff-modal-hint';
+  const dateField = d.createElement('div');
+  dateField.className = 'ui-field';
+  dateField.appendChild(cutoffDateInput);
+  const cutoffDateHint = d.createElement('p');
+  cutoffDateHint.className = 'ui-field__help';
   cutoffDateHint.textContent = 'Default: yesterday — only new videos going forward. Set an earlier date to pull history.';
-  modal.appendChild(cutoffDateHint);
+  dateField.appendChild(cutoffDateHint);
+  modal.appendChild(dateField);
 
   // Skip-Shorts toggle, default OFF (mirrors the existing add-subscription
-  // form's own default -- download everything unless the user opts out).
+  // form's own default -- download everything unless the user opts out). The
+  // ui-switch on a native checkbox (sweep S8), labelled by its row.
   const skipShortsLabel = d.createElement('label');
-  skipShortsLabel.className = 'subscribe-modal-checkbox-row';
+  skipShortsLabel.className = 'subscribe-form__toggle';
+  const skipShortsText = d.createElement('span');
+  skipShortsText.textContent = 'Skip Shorts';
   const skipShortsCheck = d.createElement('input');
   skipShortsCheck.type = 'checkbox';
+  skipShortsCheck.className = 'ui-switch';
+  skipShortsCheck.setAttribute('role', 'switch');
   skipShortsCheck.checked = false;
+  skipShortsLabel.appendChild(skipShortsText);
   skipShortsLabel.appendChild(skipShortsCheck);
-  skipShortsLabel.appendChild(d.createTextNode(' Skip Shorts'));
   modal.appendChild(skipShortsLabel);
 
   const statusEl = d.createElement('div');
@@ -1523,23 +1484,27 @@ function buildSubscribeModal(doc, opts, handlers) {
   statusEl.setAttribute('aria-live', 'polite');
   modal.appendChild(statusEl);
 
+  // Cancel / Subscribe: the dialog's action row (the one primary action is Subscribe).
   const actionsRow = d.createElement('div');
-  actionsRow.className = 'subscribe-modal-actions';
-
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => {
-    if (typeof h.onClose === 'function') h.onClose();
-  });
+  actionsRow.className = 'ui-confirm__actions subscribe-form__actions';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
+  const confirmBtn = U.button({ variant: 'primary', label: 'Subscribe', doc: d });
   actionsRow.appendChild(cancelBtn);
+  actionsRow.appendChild(confirmBtn);
+  modal.appendChild(actionsRow);
 
-  const confirmBtn = d.createElement('button');
-  confirmBtn.type = 'button';
-  confirmBtn.className = 'btn btn-primary';
-  confirmBtn.textContent = 'Subscribe';
+  const sheet = U.sheet({
+    variant: 'auto', title: 'Subscribe', content: modal,
+    onClosing: () => { if (typeof h.onClose === 'function') h.onClose(); },
+    signal: o.signal, doc: d, win: d.defaultView,
+  });
+  const closeBtn = sheet.el.querySelector('.ui-sheet__close');
+
+  // Cancel closes the sheet; onClose runs once, through onClosing (the same path as
+  // Close, Esc, the scrim and a drag).
+  cancelBtn.addEventListener('click', () => { sheet.close(); });
   confirmBtn.addEventListener('click', () => {
+    if (!sheet.isOpen()) return; // a tap on a dialog on its way out answers nothing
     const body = buildSubscribeRequestBody(
       o.channelUrl,
       o.channelName,
@@ -1551,9 +1516,6 @@ function buildSubscribeModal(doc, opts, handlers) {
     );
     if (typeof h.onConfirm === 'function') h.onConfirm(body);
   });
-  actionsRow.appendChild(confirmBtn);
-
-  modal.appendChild(actionsRow);
 
   // Renders an error string (or clears it) -- textContent only, never
   // innerHTML, no matter what the server's validation error contains.
@@ -1562,7 +1524,7 @@ function buildSubscribeModal(doc, opts, handlers) {
   }
 
   return {
-    backdrop, modal, closeBtn, identityName, identityUrl,
+    sheet, backdrop: sheet.scrim, modal, closeBtn, identityName, identityUrl,
     formatSelect, qualitySelect, filetypeSelect, cutoffDateInput, skipShortsCheck,
     confirmBtn, cancelBtn, statusEl, setError,
   };
@@ -2714,6 +2676,13 @@ function computeAutoScrollDelta(rect, clientY, edge, maxStep) {
 //   signal          AbortSignal tearing every listener down
 const REORDER_DEFAULT_IGNORE = 'input, textarea, select, button, label, [contenteditable="true"]';
 
+// The interaction policy's JS half (interaction.js): the page's window.FTInteraction, else
+// (node:test) the sibling module.
+function interactionLib() {
+  return (typeof window !== 'undefined' && window.FTInteraction)
+    || (typeof module !== 'undefined' && module.require ? module.require('./interaction.js') : null);
+}
+
 function wireReorderable(container, opts) {
   const o = opts || {};
   if (!container || typeof container.querySelectorAll !== 'function') return;
@@ -2969,7 +2938,11 @@ function wireReorderable(container, opts) {
       // Non-passive: this is the half that actually stops the page scrolling
       // once a touch drag is armed.
       doc.addEventListener('touchmove', onDocTouchMove, { signal: pressSignal, passive: false });
-      doc.addEventListener('contextmenu', onDocContextMenu, { signal: pressSignal });
+      // The long press that arms a touch drag is also the gesture iOS/Android use for the
+      // context menu / selection callout: refused while armed (interaction.js owns every
+      // contextmenu listener, D6).
+      const FI = interactionLib();
+      if (FI) FI.suppressContextMenuWhile(doc, () => armed, { signal: pressSignal });
       if (typeof row.setPointerCapture === 'function' && e.pointerId !== undefined) {
         try { row.setPointerCapture(e.pointerId); capturedEl = row; capturedEl.__reorderPointerId = e.pointerId; } catch (_) { capturedEl = null; }
       }
@@ -3046,11 +3019,6 @@ function wireReorderable(container, opts) {
     if (armed && e.cancelable) e.preventDefault();
   }
 
-  function onDocContextMenu(e) {
-    // The long press that arms a touch drag is also the gesture iOS/Android
-    // use for the context menu / selection callout.
-    if (armed) e.preventDefault();
-  }
 
   // --- keyboard focus restore (see pendingReorderFocus above) ---------------
   // AFTER the wiring loop, never before it: the loop is what puts `tabindex`
@@ -7258,7 +7226,7 @@ function injectOneOffDownloadButtonIfEnabled() {
       // SUCCESSFUL submit's minimize-into-the-chip, see
       // `submitOneOffDownload` below); none of them have their own divergent
       // close logic, they all call this one function.
-      // Root cause (style.css): `.oneoff-modal-backdrop` sets `display: flex`
+      // Root cause (style.css, then): `.oneoff-modal-backdrop` set `display: flex`
       // with no `[hidden]` override, so the old `backdrop.hidden = true`
       // alone never actually hid the full-viewport overlay -- it stayed
       // painted and ate every touch. Now the backdrop node is fully removed
@@ -7969,8 +7937,8 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['K', 'Space'], desc: 'Play / pause' },
       { keys: ['J'], desc: 'Back 10 seconds' },
       { keys: ['L'], desc: 'Forward 10 seconds' },
-      { keys: ['←'], desc: 'Back 5 seconds' },
-      { keys: ['→'], desc: 'Forward 5 seconds' },
+      { keys: ['ArrowLeft'], desc: 'Back 5 seconds' },
+      { keys: ['ArrowRight'], desc: 'Forward 5 seconds' },
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
@@ -7983,8 +7951,8 @@ const KEYBOARD_SHORTCUT_GROUPS = [
   {
     title: 'Sound & display',
     items: [
-      { keys: ['↑'], desc: 'Volume up' },
-      { keys: ['↓'], desc: 'Volume down' },
+      { keys: ['ArrowUp'], desc: 'Volume up' },
+      { keys: ['ArrowDown'], desc: 'Volume down' },
       // v1.47.8 gate W4: M exists (player.js `case 'm'`) and was missing here.
       // YouTube documents it, and omitting it from the group that lists the
       // volume keys is the most conspicuous possible place to omit it.
@@ -8010,11 +7978,21 @@ const KEYBOARD_SHORTCUT_GROUPS = [
   {
     title: 'Reading (books)',
     items: [
-      { keys: ['←'], desc: 'Previous page' },
-      { keys: ['→'], desc: 'Next page' },
+      { keys: ['ArrowLeft'], desc: 'Previous page' },
+      { keys: ['ArrowRight'], desc: 'Next page' },
     ],
   },
 ];
+
+// Step 7 (UI pass, D1-AC4): an arrow key's cap draws the registry arrow (the DDR row's
+// glyphs), never a text arrow; the key is listed by its KeyboardEvent.key name, which is
+// also what the drift lock matches against the handlers' `case 'ArrowLeft':`.
+const SHORTCUT_KEY_ICONS = {
+  ArrowLeft: { icon: 'arrow_back', label: 'Left arrow' },
+  ArrowRight: { icon: 'arrow_forward', label: 'Right arrow' },
+  ArrowUp: { icon: 'arrow_upward', label: 'Up arrow' },
+  ArrowDown: { icon: 'arrow_downward', label: 'Down arrow' },
+};
 
 // The width at which this app considers itself "mobile" -- the SAME 768px the
 // stylesheet's phone breakpoint uses. Dean asked for the reference to be absent
@@ -9809,7 +9787,15 @@ function buildShortcutsModal(doc, handlers) {
           return;
         }
         const kbd = d.createElement('kbd');
-        kbd.textContent = key;
+        const glyph = SHORTCUT_KEY_ICONS[key];
+        if (glyph && U && typeof U.icon === 'function') {
+          kbd.className = 'shortcuts-kbd--icon';
+          kbd.setAttribute('aria-label', glyph.label);
+          kbd.setAttribute('title', glyph.label);
+          kbd.appendChild(U.icon(glyph.icon, { size: 'sm', doc: d }));
+        } else {
+          kbd.textContent = glyph ? glyph.label : key;
+        }
         keysEl.appendChild(kbd);
       });
       row.appendChild(keysEl);
@@ -12110,159 +12096,10 @@ function persistPinReorder(orderedIds, source) {
     .finally(() => refreshAllPinSurfaces());
 }
 
-// v1.26.2 polish (Dean punchlist -- sheet/modal transitions): every bottom
-// sheet / modal in this app used to be toggled purely via
-// [hidden]/create-and-remove, an instant teleport in AND out -- a CSS
-// transition can never start FROM `display: none`, and `.remove()`/
-// `removeChild()` erases the node before any closing transition could ever
-// render a single frame. These two small, dependency-free helpers fix that
-// uniformly for every open/close call site (Playlists sheet, the
-// subscription settings sheet, and the generic confirm/move modals) instead
-// of each surface reinventing its own dance. No animation library --
-// plain CSS transitions (see style.css's `.sheet-open`/`.modal-open`
-// classes) driven by these two functions.
-//
-// `openOverlay`: the two-step reveal technique -- unhide (only if the
-// element actually uses the `hidden` attribute; the confirm/move modals
-// don't, they're freshly created and appended instead), force a synchronous
-// reflow (`void el.offsetHeight`) so the browser commits the CLOSED starting
-// state BEFORE the very next line flips it to OPEN (otherwise both style
-// changes can get batched into a single paint and the transition never
-// visibly plays), then add `openClass` to trigger the CSS transition in.
-//
-// `closeOverlayThen`: removes `openClass` (triggering the CSS transition
-// back out) and calls `afterClose` once that transition actually finishes
-// (`transitionend`, with a short timeout fallback in case nothing was
-// actually transitioning) -- never leaving the caller's real teardown (the
-// `[hidden] = true` / `.remove()`) stuck half-animated.
-//
-// Both feature-detect `classList` before doing anything CSS-class-related:
-// the node:test fake-DOM harnesses used by showMoveModal's/showConfirmModal's
-// own unit tests (and any other non-browser environment) have no
-// `classList`, so on those both helpers degrade to their pre-v1.26.2
-// behavior -- an instant, synchronous show/hide -- so existing synchronous
-// test assertions (e.g. "teardown() fully detaches the backdrop") keep
-// holding exactly as before. `prefers-reduced-motion: reduce` gets the same
-// instant treatment by deliberate choice (AC: honor the OS preference).
-function prefersReducedMotion() {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function overlayCanAnimate(el) {
-  return !!(el && el.classList && typeof el.classList.add === 'function' && typeof el.classList.remove === 'function');
-}
-
-// v1.26.2 code-review fix (F1, BLOCKER): a per-element WeakMap tracks each
-// overlay's own in-flight close -- a monotonically increasing `gen`eration
-// counter plus a `cancel` closure that tears down that close's
-// transitionend/transitioncancel listeners and fallback timer. Without this,
-// a close-then-reopen-within-~300ms sequence on a REUSED node (e.g. the
-// Playlists sheet's persistent #playlists-sheet/#playlists-backdrop, before
-// sweep S1 moved that sheet onto ui.sheet -- unlike the confirm/move modals
-// or the subs settings sheet, which build a brand-new node on every open) left the abandoned close's
-// `setTimeout(finish, 300)` fallback armed; when it fired, `afterClose`
-// (which sets `hidden = true`) hid the sheet the user had just reopened. A
-// reopen interrupts the CSS transition mid-flight, which fires
-// `transitioncancel`, NOT `transitionend` -- so before this fix the stale
-// fallback timer was actually the LIVE path here, not a rare edge case.
-//
-// `cancelPendingClose(el)` is called at the TOP of both `openOverlay` and
-// `closeOverlayThen` -- it bumps `gen` (invalidating anything still in
-// flight for `el`) and, if a close was actually pending, cancels its
-// listeners/timer outright so the stale close can never reach `finish()` at
-// all. This is what makes rapid open/close/open/close sequences on the SAME
-// element always converge on the LAST call's intent: each call supersedes
-// whatever `el` was mid-animation on before it. `finish()` additionally
-// re-checks the generation counter AND (belt-and-braces, per F1's review) whether
-// `el` still carries `openClass` -- if either says "this element moved on
-// since this particular close was armed", `afterClose` is skipped even if
-// cancellation had somehow not already caught it.
-const overlayCloseState = new WeakMap();
-
-function cancelPendingClose(el) {
-  const state = overlayCloseState.get(el);
-  if (!state) return;
-  state.gen += 1; // invalidate any close armed before this point, even if nothing is actively pending
-  if (typeof state.cancel === 'function') {
-    const cancel = state.cancel;
-    state.cancel = null;
-    cancel();
-  }
-}
-
-function openOverlay(el, openClass) {
-  if (!el) return;
-  cancelPendingClose(el); // F1: a reopen always wins over an abandoned close's listeners/fallback timer
-  if ('hidden' in el) el.hidden = false;
-  if (!overlayCanAnimate(el) || prefersReducedMotion()) return;
-  void el.offsetHeight; // force reflow -- see doc comment above
-  el.classList.add(openClass);
-}
-
-function closeOverlayThen(el, openClass, afterClose) {
-  const done = typeof afterClose === 'function' ? afterClose : () => {};
-  cancelPendingClose(el); // F1: this close supersedes any earlier still-pending close on the same element
-  if (!overlayCanAnimate(el)) {
-    done();
-    return;
-  }
-  if (prefersReducedMotion()) {
-    // Still clear the open class (keeps DOM state consistent for anything
-    // that inspects it later), but skip straight to `done()` -- there is no
-    // transition to wait for.
-    el.classList.remove(openClass);
-    done();
-    return;
-  }
-  let state = overlayCloseState.get(el);
-  if (!state) {
-    state = { gen: 0, cancel: null };
-    overlayCloseState.set(el, state);
-  }
-  const myGen = state.gen;
-  let finished = false;
-  let fallbackTimer = null;
-  function finish() {
-    if (finished) return;
-    finished = true;
-    el.removeEventListener('transitionend', onTransitionEnd);
-    el.removeEventListener('transitioncancel', onTransitionEnd);
-    clearTimeout(fallbackTimer);
-    if (state.cancel === cancelThis) state.cancel = null;
-    // Belt-and-braces (should be unreachable given cancelPendingClose above,
-    // but never trust a single mechanism alone for a visible/destructive
-    // state flip): if a newer open/close has superseded this one, or `el`
-    // still carries `openClass` (it was reopened since this close was
-    // armed), skip `afterClose` outright.
-    if (state.gen !== myGen) return;
-    if (el.classList && el.classList.contains(openClass)) return;
-    done();
-  }
-  function onTransitionEnd(e) {
-    if (e.target === el) finish();
-  }
-  function cancelThis() {
-    if (finished) return;
-    finished = true;
-    el.removeEventListener('transitionend', onTransitionEnd);
-    el.removeEventListener('transitioncancel', onTransitionEnd);
-    clearTimeout(fallbackTimer);
-  }
-  el.addEventListener('transitionend', onTransitionEnd);
-  // `transitioncancel` fires (instead of `transitionend`) when the closing
-  // transition this call just started gets interrupted mid-flight -- e.g. a
-  // reopen flips `openClass` back on before the close-out transition ever
-  // finished. Handled identically to `transitionend`: either way this
-  // PARTICULAR close attempt is over and `finish()` should run (with its
-  // gen/class guard deciding whether `afterClose` actually fires).
-  el.addEventListener('transitioncancel', onTransitionEnd);
-  // Fallback in case neither event ever fires (e.g. the class removal didn't
-  // actually change any transitioning property) -- never hang.
-  fallbackTimer = setTimeout(finish, 300);
-  state.cancel = cancelThis;
-  el.classList.remove(openClass);
-}
+// (v1.26.2's openOverlay / closeOverlayThen transition helpers - and prefersReducedMotion /
+// overlayCanAnimate beside them - were retired in step 7 of the UI pass: sweeps S1, S4, S5
+// and S9 moved every sheet and modal they animated onto ui.sheet, which owns its own
+// enter/exit and reduced-motion handling (ui.js, ui.css).)
 
 // ---- v1.47.4 item 9 (Dean): the Playlists sheet's late pin shift -----------
 //
@@ -13292,21 +13129,34 @@ function showChapterSnapEditor(mediaId, opts) {
     if (text != null) n.textContent = text;
     return n;
   }
-  function btn(cls, text, label) {
-    const b = el('button', cls, text);
+  // Step 7 (UI pass): every control here is a ui-btn. `spec` is the variant ('primary' - the
+  // one filled action of a group - or 'secondary') followed by the chapter-snap-* hook classes;
+  // md is the desktop control height and 44 on a phone (the phone / short-screen arm below
+  // floors every one of them at the touch size). The label lives in the button's
+  // .ui-btn__label (setLabel), never as bare text, so a relabel keeps the primitive's box.
+  function setLabel(b, text) {
+    let l = b.querySelector('.ui-btn__label');
+    if (!l) { l = el('span', 'ui-btn__label'); b.appendChild(l); }
+    l.textContent = text == null ? '' : String(text);
+  }
+  function btn(spec, text, label) {
+    const hooks = spec.split(' ');
+    const variant = hooks.shift();
+    const b = el('button', 'ui-btn ui-btn--' + variant + ' ui-btn--md ' + hooks.join(' '));
     b.type = 'button';
+    setLabel(b, text);
     if (label) b.setAttribute('aria-label', label);
     return b;
   }
 
   // Sweep S9: the SHELL is a ui.sheet dialog titled "Fix chapter times" (wide on desktop,
-  // the full screen on a phone - style.css `:has(.chapter-snap-modal)`); `modal` is its
+  // the full screen on a phone - style.css `:has(.chapter-snap-editor)`); `modal` is its
   // content: the head, the one scrolling list, the pinned actions.
-  const modal = el('div', 'chapter-snap-modal');
+  const modal = el('div', 'chapter-snap-editor');
 
   const head = el('div', 'chapter-snap-head');
   const titleRow = el('div', 'chapter-snap-titlerow');
-  const badge = el('span', 'chapter-snap-badge', 'Edited');
+  const badge = el('span', 'ui-chip ui-chip--meta chapter-snap-badge', 'Edited'); // step 7: a meta chip (status, not a control)
   badge.hidden = true;
   titleRow.appendChild(badge);
   head.appendChild(titleRow);
@@ -13317,10 +13167,10 @@ function showChapterSnapEditor(mediaId, opts) {
   statusEl.setAttribute('aria-live', 'polite');
   head.appendChild(statusEl);
   const tools = el('div', 'chapter-snap-tools');
-  const snapAllBtn = btn('btn btn-primary chapter-snap-snapall', 'Snap all');
-  const undoBtn = btn('btn chapter-snap-undo', 'Undo changes');
-  const revertBtn = btn('btn chapter-snap-revert', 'Revert to source chapters');
-  const retryBtn = btn('btn chapter-snap-retry', 'Try again');
+  const snapAllBtn = btn('primary chapter-snap-snapall', 'Snap all');
+  const undoBtn = btn('secondary chapter-snap-undo', 'Undo changes');
+  const revertBtn = btn('secondary chapter-snap-revert', 'Revert to source chapters');
+  const retryBtn = btn('secondary chapter-snap-retry', 'Try again');
   revertBtn.hidden = true;
   retryBtn.hidden = true;
   tools.appendChild(snapAllBtn);
@@ -13333,8 +13183,8 @@ function showChapterSnapEditor(mediaId, opts) {
   confirmBox.hidden = true;
   const confirmText = el('p', 'chapter-snap-confirm-text', '');
   const confirmActs = el('div', 'chapter-snap-confirm-actions');
-  const confirmYes = btn('btn btn-primary chapter-snap-confirm-yes', 'Revert');
-  const confirmNo = btn('btn chapter-snap-confirm-no', 'Keep my corrections');
+  const confirmYes = btn('primary chapter-snap-confirm-yes', 'Revert');
+  const confirmNo = btn('secondary chapter-snap-confirm-no', 'Keep my corrections');
   confirmActs.appendChild(confirmYes);
   confirmActs.appendChild(confirmNo);
   confirmBox.appendChild(confirmText);
@@ -13355,14 +13205,14 @@ function showChapterSnapEditor(mediaId, opts) {
   const shiftReadoutEl = el('span', 'chapter-snap-shift-readout', 'No shift');
   shiftReadoutEl.setAttribute('aria-live', 'polite');
   shiftTop.appendChild(shiftReadoutEl);
-  const shiftResetBtn = btn('btn chapter-snap-shift-reset', 'Reset shift', 'Reset the shift (your nudges stay)');
+  const shiftResetBtn = btn('secondary chapter-snap-shift-reset', 'Reset shift', 'Reset the shift (your nudges stay)');
   shiftResetBtn.setAttribute('data-shift-act', 'reset');
   shiftResetBtn.hidden = true;
   shiftTop.appendChild(shiftResetBtn);
   shiftBox.appendChild(shiftTop);
   const shiftBtnsEl = el('div', 'chapter-snap-nudges chapter-snap-shift-btns');
   const shiftStepBtns = [[-1000, '−1 s', 'earlier by 1 second'], [-100, '−0.1 s', 'earlier by a tenth of a second'], [100, '+0.1 s', 'later by a tenth of a second'], [1000, '+1 s', 'later by 1 second']].map(function (n) {
-    const b = btn('btn chapter-snap-nudge chapter-snap-shift-btn', n[1], 'Shift every chapter after the first ' + n[2]);
+    const b = btn('secondary chapter-snap-nudge chapter-snap-shift-btn', n[1], 'Shift every chapter after the first ' + n[2]);
     b.setAttribute('data-shift-act', 'step');
     b.setAttribute('data-shift', String(n[0]));
     shiftBtnsEl.appendChild(b);
@@ -13374,7 +13224,7 @@ function showChapterSnapEditor(mediaId, opts) {
   shiftBox.appendChild(shiftWhy);
   const shiftSuggestEl = el('div', 'chapter-snap-shift-suggest');
   shiftSuggestEl.hidden = true;
-  const shiftApplyBtn = btn('btn btn-primary chapter-snap-shift-apply', '');
+  const shiftApplyBtn = btn('primary chapter-snap-shift-apply', '');
   shiftApplyBtn.setAttribute('data-shift-act', 'apply');
   shiftApplyBtn.hidden = true;
   const shiftNote = el('span', 'chapter-snap-shift-note', '');
@@ -13388,8 +13238,8 @@ function showChapterSnapEditor(mediaId, opts) {
   modal.appendChild(scroller);
 
   const actions = el('div', 'modal-actions chapter-snap-actions');
-  const cancelBtn = btn('btn chapter-snap-cancel', 'Cancel');
-  const saveBtn = btn('btn btn-primary chapter-snap-save', 'Save');
+  const cancelBtn = btn('secondary chapter-snap-cancel', 'Cancel');
+  const saveBtn = btn('primary chapter-snap-save', 'Save');
   actions.appendChild(cancelBtn);
   actions.appendChild(saveBtn);
   modal.appendChild(actions);
@@ -13435,7 +13285,7 @@ function showChapterSnapEditor(mediaId, opts) {
     const srcLabel = s ? ({ embedded: 'chapters from the file', description: 'chapters from the description', manual: s.edited ? 'corrected chapters' : 'your typed chapters' }[s.chaptersSource] || 'chapters') : '';
     sub.textContent = s ? [(s.title || ''), rows.length + ' chapters', srcLabel].filter(Boolean).join(' · ') : '';
     const pending = pendingSnaps();
-    snapAllBtn.textContent = pending > 0 ? 'Snap all (' + pending + ')' : 'Snap all';
+    setLabel(snapAllBtn, pending > 0 ? 'Snap all (' + pending + ')' : 'Snap all');
     snapAllBtn.disabled = busy || staleSeed || pending === 0;
     undoBtn.disabled = busy || !dirty();
     revertBtn.hidden = !(s && s.edited);
@@ -13506,7 +13356,7 @@ function showChapterSnapEditor(mediaId, opts) {
       const g = snapShiftSuggestion(t, state.suggestions);
       if (g.kind === 'suggest') {
         shiftApplyBtn.hidden = false;
-        shiftApplyBtn.textContent = 'Suggested: shift all by ' + formatSnapShift(g.deltaMs) + ' (' + g.agree + ' of ' + g.of + ' agree)';
+        setLabel(shiftApplyBtn, 'Suggested: shift all by ' + formatSnapShift(g.deltaMs) + ' (' + g.agree + ' of ' + g.of + ' agree)');
         shiftApplyBtn.setAttribute('data-shift', String(g.deltaMs));
         const blk = snapShiftBlock(t, g.deltaMs, state.duration, state.minGapSec, savedTimes());
         shiftApplyBtn.disabled = lock || !blk.ok;
@@ -13565,7 +13415,7 @@ function showChapterSnapEditor(mediaId, opts) {
     while (li.firstChild) li.removeChild(li.firstChild);
     const sug = suggestionFor(i);
     const moved = Math.abs(r.time - r.sourceStart) >= 0.05;
-    li.className = 'chapter-snap-row' + (moved ? ' is-moved' : '') + (i === focusIndex ? ' is-focus' : '') + (auditionIndex === i ? ' is-playing' : '');
+    li.className = 'chapter-snap-item' + (moved ? ' is-moved' : '') + (i === focusIndex ? ' is-focus' : '') + (auditionIndex === i ? ' is-playing' : '');
     li.setAttribute('data-index', String(i));
     const top = el('div', 'chapter-snap-rowtop');
     top.appendChild(el('span', 'chapter-snap-n', String(i + 1)));
@@ -13576,17 +13426,17 @@ function showChapterSnapEditor(mediaId, opts) {
     top.appendChild(tm);
     li.appendChild(top);
     const chip = snapChipText(i, r, sug, silenceState());
-    if (chip.text) li.appendChild(el('div', 'chapter-snap-chip chapter-snap-chip-' + chip.kind, chip.text));
+    if (chip.text) li.appendChild(el('div', 'chapter-snap-note chapter-snap-note--' + chip.kind, chip.text));
     const ctl = el('div', 'chapter-snap-ctl');
     if (i > 0) {
       if (sug && sug.status === 'suggest' && Math.abs(sug.time - r.time) >= 0.0005) {
-        const sb = btn('btn btn-primary chapter-snap-snapone', 'Snap to ' + formatSnapTime(sug.time), 'Snap chapter ' + (i + 1) + ' to ' + formatSnapTime(sug.time));
+        const sb = btn('primary chapter-snap-snapone', 'Snap to ' + formatSnapTime(sug.time), 'Snap chapter ' + (i + 1) + ' to ' + formatSnapTime(sug.time));
         sb.setAttribute('data-act', 'snap');
         ctl.appendChild(sb);
       }
       const nudges = el('div', 'chapter-snap-nudges');
       [[-1, '−1s', 'earlier by 1 second'], [-0.1, '−0.1', 'earlier by a tenth of a second'], [0.1, '+0.1', 'later by a tenth of a second'], [1, '+1s', 'later by 1 second']].forEach(function (n) {
-        const b = btn('btn chapter-snap-nudge', n[1], 'Move chapter ' + (i + 1) + ' ' + n[2]);
+        const b = btn('secondary chapter-snap-nudge', n[1], 'Move chapter ' + (i + 1) + ' ' + n[2]);
         b.setAttribute('data-act', 'nudge');
         b.setAttribute('data-delta', String(n[0]));
         nudges.appendChild(b);
@@ -13594,14 +13444,14 @@ function showChapterSnapEditor(mediaId, opts) {
       ctl.appendChild(nudges);
     }
     const playing = auditionIndex === i;
-    const pb = btn('btn chapter-snap-play', '', (playing ? 'Stop playing chapter ' : 'Play chapter ') + (i + 1) + ' from ' + formatSnapTime(r.time));
+    const pb = btn('secondary chapter-snap-play', playing ? 'Stop' : 'Play from here', (playing ? 'Stop playing chapter ' : 'Play chapter ') + (i + 1) + ' from ' + formatSnapTime(r.time));
     pb.setAttribute('data-act', 'play');
-    if (!playing) {
-      const icon = el('i', 'icon-play');
-      icon.setAttribute('aria-hidden', 'true');
-      pb.appendChild(icon);
+    if (!playing && U && typeof U.icon === 'function') {
+      // the registry glyph in the primitive's icon slot (it was the .icon-play mask)
+      const slot = el('span', 'ui-btn__icon');
+      slot.appendChild(U.icon('play_arrow', { doc: d }));
+      pb.insertBefore(slot, pb.firstChild);
     }
-    pb.appendChild(d.createTextNode(playing ? 'Stop' : ' Play from here'));
     pb.disabled = busy;
     ctl.appendChild(pb);
     li.appendChild(ctl);
@@ -13611,7 +13461,7 @@ function showChapterSnapEditor(mediaId, opts) {
   function renderList() {
     while (list.firstChild) list.removeChild(list.firstChild);
     rows.forEach(function (_, i) {
-      const li = el('li', 'chapter-snap-row');
+      const li = el('li', 'chapter-snap-item');
       renderRow(li, i);
       list.appendChild(li);
     });
@@ -13802,7 +13652,7 @@ function showChapterSnapEditor(mediaId, opts) {
   list.addEventListener('click', function (e) {
     const b = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
     if (!b || b.disabled || busy) return;
-    const li = b.closest('.chapter-snap-row');
+    const li = b.closest('.chapter-snap-item');
     const i = li ? Number(li.getAttribute('data-index')) : -1;
     if (!(i >= 0 && i < rows.length)) return;
     focusIndex = i;
@@ -13856,8 +13706,8 @@ function showChapterSnapEditor(mediaId, opts) {
   let confirmAction = null;
   function askConfirm(text, yesLabel, noLabel, onYes) {
     confirmText.textContent = text;
-    confirmYes.textContent = yesLabel;
-    confirmNo.textContent = noLabel;
+    setLabel(confirmYes, yesLabel);
+    setLabel(confirmNo, noLabel);
     confirmAction = onYes;
     confirmBox.hidden = false;
     try { confirmYes.focus(); } catch (_) { /* jsdom */ }
@@ -16905,7 +16755,7 @@ if (typeof module !== 'undefined' && module.exports) {
     REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX,
     isSyntheticFolder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
-    formatOneOffStatusText, buildOneOffModal, bindBackdropDismiss,
+    formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
     // v1.26 "real progress": the modal's progress-bar reducer + adaptive
@@ -16933,7 +16783,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.47.4 item 6: the pure session-restore decisions.
     isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
     // v1.47.8: the keyboard-shortcuts reference.
-    KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
+    KEYBOARD_SHORTCUT_GROUPS, SHORTCUT_KEY_ICONS, shouldOpenShortcuts, buildShortcutsModal,
     // v1.163: the DDR easter-egg mini-synth (pure key->note map + the synth).
     DDR_ARROWS, ddrNoteForArrow, playDdrNote,
     // v1.166: Sneaky critter mode - the pure core + the jsdom-testable DOM shims.
@@ -17052,7 +16902,6 @@ if (typeof module !== 'undefined' && module.exports) {
     fetchSubscriptionsForRepull, probeAndReconcileRepullButton,
     // v1.26.2 polish (sheet/modal transitions): shared open/close animation
     // helpers, exported for direct node:test coverage against a fake DOM.
-    prefersReducedMotion, overlayCanAnimate, openOverlay, closeOverlayThen,
     // v1.26.2 code-review fix (F2): exported for direct node:test coverage
     // of the settled-guard double-click fix (showMoveModal was already
     // exported above).

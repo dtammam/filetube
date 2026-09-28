@@ -76,10 +76,15 @@ test('watch related: seed shimmer + reveal the header BEFORE the fetch; the real
   assert.match(watch, /relatedContainer\.replaceChildren\(relatedUi\(\)\.state\(\{ icon: 'warning', title: 'Could not load related files'/, 'an error reveals the error state (Retry)');
 });
 
-test('CSS: the related thumb restores the shimmer fill (it is #000 letterbox) and the avatar name line is sized for zero-shift', () => {
+test('CSS: the related thumb shows the shimmer fill (a ui-thumb: the shared .skeleton-shimmer fill wins by file order) and the avatar name line is sized for zero-shift', () => {
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  assert.match(css, /\.related-thumb\.skeleton-shimmer \{[\s\S]*?background-color: var\(--surface-2\)/,
-    'related-thumb skeleton restores --surface-2 (else the sweep is swallowed by #000)');
+  // Step 7 (DELIBERATE conversion): the rail's skeleton box is a ui-thumb (sweep S2), so it needs
+  // no restore rule of its own - the shared .skeleton-shimmer (--surface-2) beats .ui-thumb's
+  // ground because ui.css loads first (test/unit/library-shimmer-skeletons.test.js binds the
+  // order in every shell and that no style.css rule re-grounds a ui-thumb).
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(bare, /\n\.skeleton-shimmer \{[^}]*background-color: var\(--surface-2\);/, 'the shared shimmer fill is --surface-2');
+  assert.doesNotMatch(bare, /\.related-thumb[^{,]*\{[^}]*background/, 'no rule re-grounds the rail thumb over the shimmer');
   // Bind the ACTUAL height (not just margin-bottom presence): the real
   // .modern-avatar-name is --fs-2xs (10px) x 1.4 = a 14px line box, so the
   // skeleton line MUST be 14px for a true zero-shift chip (gate WARNING: a 10px
