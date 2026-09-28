@@ -350,10 +350,12 @@ const viewRoot = (html) => {
   return d.querySelector('#view-root') || d.body;
 };
 
-test('Settings (F09): every checkbox is a ui-switch with role=switch; there are still 29', () => {
+// Sweep S3's merge follow-up: the resume-countdown switch left with the countdown (the modal it
+// configured is gone, D8.2), so the Settings switches number 28.
+test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 28', () => {
   const root = viewRoot(SETUP_HTML);
   const boxes = root.querySelectorAll('input[type="checkbox"]');
-  assert.strictEqual(boxes.length, 29, 'the same 29 settings (no key dropped)');
+  assert.strictEqual(boxes.length, 28, 'the same settings (no key dropped) minus the retired resume-countdown switch');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);

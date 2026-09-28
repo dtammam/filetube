@@ -68,6 +68,15 @@ test('the retired modal leaves nothing behind: no countdown keys, no prompt mark
   for (const gone of ['filetube_resume_countdown', 'resume-overlay', 'resume-yes-btn', 'resume-no-btn', 'startResumeCountdown', 'resolveDockTransitionResumeAction', 'resolveDockedResumeAction']) {
     assert.ok(!src.includes(gone), `player.js still names ${gone}`);
   }
+  // ...and Settings no longer offers the countdown's three controls (they drove nothing once
+  // the modal left); the resume threshold stays, now deciding when the resume is announced.
+  const setupHtml = fs.readFileSync(path.join(REPO, 'public/setup.html'), 'utf8');
+  const setupJs = fs.readFileSync(path.join(REPO, 'public/js/setup.js'), 'utf8');
+  for (const gone of ['resume-countdown-check', 'resume-countdown-seconds-input', 'resume-countdown-action-select', 'filetube_resume_countdown', 'clampResumeSeconds']) {
+    assert.ok(!setupHtml.includes(gone) && !setupJs.includes(gone), `Settings still carries ${gone}`);
+  }
+  assert.match(setupHtml, /id="resume-threshold-input"/, 'the threshold stays');
+  assert.doesNotMatch(setupHtml, /Resume playback\?/, 'no copy describes the retired prompt');
   const shells = fs.readdirSync(path.join(REPO, 'public')).filter((f) => f.endsWith('.html')).map((f) => path.join(REPO, 'public', f))
     .concat([path.join(REPO, 'lib/ytdlp/views/subscriptions.html')])
     .filter((f) => fs.readFileSync(f, 'utf8').includes('id="player-host-template"'));

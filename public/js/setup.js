@@ -1148,16 +1148,6 @@ function loadResumeThresholdControl() {
 // RESUME_THRESHOLD_KEY above -- grep it there for the precedent).
 const DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
 
-// v1.132: resume-countdown keys -- MUST match player.js's
-// RESUME_COUNTDOWN_STORAGE_KEY / RESUME_COUNTDOWN_ACTION_STORAGE_KEY exactly
-// (the RESUME_THRESHOLD_KEY cross-file string-literal convention above).
-const RESUME_COUNTDOWN_KEY = 'filetube_resume_countdown';
-const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';
-// v1.161 (Dean): the configurable countdown length. MUST match
-// RESUME_COUNTDOWN_SECONDS_STORAGE_KEY in player.js. The player clamps on read
-// (resolveResumeCountdownSeconds, [0,30] default 5); setup clamps on WRITE with
-// the SAME contract (clampResumeSeconds below) so a bad value is never stored.
-const RESUME_COUNTDOWN_SECONDS_KEY = 'filetube_resume_countdown_seconds';
 // v1.136.1: MUST match AUDIO_SESSION_DECLARE_STORAGE_KEY in player.js.
 const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';
 // v1.161.3 (Dean): MUST match BG_KEEPALIVE_STORAGE_KEY in player.js.
@@ -1383,20 +1373,6 @@ function wireBgTimingLog(signal) {
       refresh();
     }, { signal });
   }
-}
-
-// v1.161 (Dean): clamp a raw seconds input to the SAME contract as player.js's
-// resolveResumeCountdownSeconds - integer [0,30]. Returns null for absent/blank
-// (the field cleared -> remove the key -> the player's default 5 applies), so the
-// setter can distinguish "cleared" from a real 0 (= instant). Out-of-range numbers
-// clamp to the nearest bound rather than reject, matching the player-side read.
-function clampResumeSeconds(raw) {
-  if (raw === null || raw === undefined || String(raw).trim() === '') return null;
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n)) return null;
-  if (n < 0) return 0;
-  if (n > 30) return 30;
-  return n;
 }
 
 // Prefills the checkbox from whatever's currently stored -- mirrors
@@ -2749,60 +2725,6 @@ function wireStaticControls(signal) {
       const value = raw !== '' && Number.isFinite(n) && n >= 0 ? n : RESUME_THRESHOLD_DEFAULT;
       e.target.value = String(value);
       try { localStorage.setItem(RESUME_THRESHOLD_KEY, String(value)); } catch (_) { /* storage disabled/full -- best-effort only */ }
-    }, { signal });
-  }
-
-  // v1.132: resume-countdown controls -- same immediate-apply localStorage
-  // pattern as the resume-threshold control just above. Keys MUST match
-  // RESUME_COUNTDOWN_STORAGE_KEY / RESUME_COUNTDOWN_ACTION_STORAGE_KEY in
-  // player.js exactly (the RESUME_THRESHOLD cross-file convention). The
-  // checkbox stores '0' ONLY when unchecked (absent = ON, the default -
-  // mirrors player.js's resolveResumeCountdownConfig `!== '0'` check); the
-  // action select stores its value verbatim ('resume' | 'beginning'), where
-  // anything but the literal 'beginning' resolves to resume on the player
-  // side. The select stays enabled regardless of the checkbox - a stored
-  // preference survives toggling the feature off and back on.
-  const resumeCountdownCheck = document.getElementById('resume-countdown-check');
-  const resumeCountdownActionSelect = document.getElementById('resume-countdown-action-select');
-  if (resumeCountdownCheck) {
-    let rawEnabled = null;
-    try { rawEnabled = localStorage.getItem(RESUME_COUNTDOWN_KEY); } catch (_) { /* storage disabled -- show the default (on) */ }
-    resumeCountdownCheck.checked = rawEnabled !== '0';
-    resumeCountdownCheck.addEventListener('change', (e) => {
-      try {
-        if (e.target.checked) localStorage.removeItem(RESUME_COUNTDOWN_KEY);
-        else localStorage.setItem(RESUME_COUNTDOWN_KEY, '0');
-      } catch (_) { /* storage disabled/full -- best-effort only */ }
-    }, { signal });
-  }
-  if (resumeCountdownActionSelect) {
-    let rawAction = null;
-    try { rawAction = localStorage.getItem(RESUME_COUNTDOWN_ACTION_KEY); } catch (_) { /* storage disabled -- show the default */ }
-    resumeCountdownActionSelect.value = rawAction === 'beginning' ? 'beginning' : 'resume';
-    resumeCountdownActionSelect.addEventListener('change', (e) => {
-      try { localStorage.setItem(RESUME_COUNTDOWN_ACTION_KEY, e.target.value === 'beginning' ? 'beginning' : 'resume'); } catch (_) { /* storage disabled/full -- best-effort only */ }
-    }, { signal });
-  }
-  // v1.161 (Dean): the countdown-length field. Same immediate-apply localStorage
-  // pattern. Shows the stored seconds (default 5 when absent); on change, clamp to
-  // [0,30] and store - a cleared/blank field removes the key so the player's
-  // default (5) returns. ZERO is a real, storable value ("instant resume"), which
-  // is why clampResumeSeconds returns null (not 0) for a BLANK field.
-  const resumeCountdownSecondsInput = document.getElementById('resume-countdown-seconds-input');
-  if (resumeCountdownSecondsInput) {
-    let rawSeconds = null;
-    try { rawSeconds = localStorage.getItem(RESUME_COUNTDOWN_SECONDS_KEY); } catch (_) { /* storage disabled -- show the default */ }
-    const shown = clampResumeSeconds(rawSeconds);
-    resumeCountdownSecondsInput.value = String(shown === null ? 5 : shown);
-    resumeCountdownSecondsInput.addEventListener('change', (e) => {
-      const clamped = clampResumeSeconds(e.target.value);
-      try {
-        if (clamped === null) localStorage.removeItem(RESUME_COUNTDOWN_SECONDS_KEY);
-        else localStorage.setItem(RESUME_COUNTDOWN_SECONDS_KEY, String(clamped));
-      } catch (_) { /* storage disabled/full -- best-effort only */ }
-      // Reflect the clamp back into the field so a typed 99 shows 30, blank -> 5.
-      if (clamped !== null) e.target.value = String(clamped);
-      else e.target.value = '5';
     }, { signal });
   }
 
@@ -4715,8 +4637,6 @@ if (typeof module !== 'undefined' && module.exports) {
     BG_TIMING_ENABLED_KEY, BG_TIMING_LOG_KEY,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
-    // v1.161 (Dean): the resume-countdown seconds clamp (mirrors player.js's read).
-    clampResumeSeconds,
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize,
     // v1.159: the trash-table cell builders (jsdom-tested in trash-table.test.js).
     buildTrashTitleCell, buildTrashActions,

@@ -523,28 +523,9 @@
         </div>
         <div class="setup-group">
           <div class="ui-field setup-field">
-            <label class="ui-field__label" for="resume-threshold-input">Skip the resume prompt for videos under this many seconds of saved progress</label>
+            <label class="ui-field__label" for="resume-threshold-input">Announce a resume only for videos with at least this many seconds of saved progress</label>
             <input type="number" id="resume-threshold-input" class="ui-field__input" min="0" step="1" value="60" inputmode="numeric" />
-            <p class="ui-field__help">Saved progress below this threshold just resumes automatically, without asking. Progress at or above it still shows the "Resume playback?" prompt. Defaults to 60 seconds; takes effect on the very next video you open, no reload needed.</p>
-          </div>
-        </div>
-        <!-- v1.132: resume-countdown - device-local (localStorage), ON by default. -->
-        <div class="setup-group">
-          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
-            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="resume-countdown-check">Auto-choose on the resume prompt after a short countdown</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="resume-countdown-check" checked /></span></div>
-          </div>
-          <p class="setup-note">When the "Resume playback?" prompt appears, its default button counts down and fires on its own if you don't choose - handy while driving or heads-down. Any tap or keypress on the player cancels the countdown and leaves the prompt up. Off = the prompt always waits, exactly as before. Per device; takes effect on the next video you open.</p>
-          <div class="ui-field setup-field">
-            <label class="ui-field__label" for="resume-countdown-seconds-input">Countdown length (seconds)</label>
-            <input type="number" id="resume-countdown-seconds-input" class="ui-field__input" min="0" max="30" step="1" value="5" inputmode="numeric" />
-            <p class="ui-field__help">How long the countdown runs, 0 to 30. 0 = resume instantly with no prompt at all.</p>
-          </div>
-          <div class="ui-field setup-field">
-            <label class="ui-field__label" for="resume-countdown-action-select">Default choice when the countdown fires</label>
-            <span class="ui-select"><select id="resume-countdown-action-select" class="ui-select__native">
-                <option value="resume">Resume from saved position</option>
-                <option value="beginning">Start from beginning</option>
-              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p class="ui-field__help">Videos always pick up where you left off. At or above this much saved progress, a "Resumed at 12:34 · Start over" note shows over the video for a few seconds; below it, the video resumes quietly. Defaults to 60 seconds; takes effect on the very next video you open, no reload needed.</p>
           </div>
         </div>
         <!-- v1.79 / v1.84: the home experience toggles - per-user, synced to your account. -->
