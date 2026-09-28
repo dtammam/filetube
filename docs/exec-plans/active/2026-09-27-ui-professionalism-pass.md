@@ -3,10 +3,10 @@ plan: ui-professionalism-pass
 harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
-status: Building
-next: step 8 full gate (adversary + qa + security-brief, destructive) on the integrated branch; then the rebaseline (a push to rebaseline/*), step 9 release
-design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
-gate: pending
+status: Gate:APPROVED r3 @9cc44fa8
+next: the rebaseline (push rebaseline/ui-pass at 9cc44fa8's head, commit the baselines, baselines-only re-confirmation), then step 9 release v1.341.0
+design: Approved 2026-09-27 (Dean: the Design section D0-D13 as written, read against ab31cbdc; D10.4 amended by his middle-path ruling)
+gate: APPROVED r3 @9cc44fa8 (adversary + qa + security-brief); r1 CHANGES (adversary 1-6, qa 1-4) and r2 CHANGES (the card menu's view signal) fixed; residuals in the r1 disposition
 ---
 
 # A full UI professionalism pass: audit, a component layer, and guardrails that hold
@@ -2546,7 +2546,7 @@ tree is byte-identical to 6eab53bb (`git diff 6eab53bb HEAD -- . ':!<plan>'` is 
 is kept on local branch backup/ui-prof-corrupt-6eab53bb until the release. Findings 2-6 are NOTE/INFO: they go
 to residuals and do not block. Round 1 re-runs with all three seats on the repaired head.
 
-Gate: APPROVED r1 @101434b0 - security-brief
+Gate: APPROVED r1 - security-brief, reviewed at 101434b0 (superseded: re-approved r3 @9cc44fa8)
 Checks I could not complete: this seat has no Bash, so `git diff ab31cbdc..101434b0` was not run, and I did not independently confirm the "code tree byte-identical to 6eab53bb" claim; findings 2-6 above carry on that basis. HEAD was confirmed as 101434b0 by reading .git/refs. For a pre-branch comparison I used the vr360 worktree's copy (main of about v1.340, not exactly ab31cbdc).
 1. Finding 1 (r1 @6eab53bb) is FIXED. This doc was 2,548 lines before this entry and reads whole: frontmatter, Goal/The ask, Intake rulings, D0-D13 (lines 149-914), the Build log (steps 0-7 and every sweep), then Gate. The bullet "Every entry carries its reason" now appears only at 2493 (its Build-log home) and in the r1 finding text.
 2. LOW (suspicion on exploitability, the ingress is verified) - the new "Open channel page" menu item calls `window.open(s.channelUrl, '_blank', 'noopener,noreferrer')` (subscriptions.js:3516; not in the pre-branch copy). The add route validates channelUrl (http/https, YouTube host) through validateChannelUrl. But the backup-restore ingress does not: lib/admin/backup.js:196-227 checks only that ids are non-empty strings, and no lib/admin or lib/db code calls validateChannelUrl (verified by grep). Path: an admin restores a crafted bundle whose subscription has channelUrl `javascript:...`, then a user taps Open channel page (or the pre-existing settings-sheet link at 2607). I did not verify whether a browser runs a javascript: URL in a noopener popup under the app's origin; that is the suspicion part. Likelihood in this deployment is low because it needs the admin to restore a hostile bundle. This is the LESSONS 10 class "a validated ROUTE is not a validated NAMESPACE". Fix (cheap): guard both sinks with a `^https?://` check, or better, validate subscription channelUrl in the restore path. The file-head comment (line 22, "validated server-side at add-time") is accurate only for the add route. Fix or accept with a note; non-blocking.
@@ -2626,7 +2626,7 @@ stricter validator still restores; only a non-http(s) scheme refuses the bundle.
   neither side shifts over its anchor (the notifications panel at 844x390); 6ccf0492's message describes the
   stricter restore check that 3970cd05 narrowed.
 
-Gate: APPROVED r2 @f904469b - security-brief
+Gate: APPROVED r2 - security-brief, reviewed at f904469b (superseded: re-approved r3 @9cc44fa8)
 Checks I could not complete: no Bash, so no `git diff 101434b0..f904469b` and no test run. I reviewed the fix surfaces in the tree at f904469b (HEAD confirmed by reading .git/refs), not the full delta. The browser's handling of a javascript: URL in a noopener popup (the suspicion half of r1 2) stays unverified, and after this fix it no longer matters.
 1. r1 finding 2 (channelUrl from a restored backup) is FIXED, differently from my prescription and better: both of my alternatives were applied.
    - Server, verified: backup.js:126-132 isHttpUrl uses `new URL(v)` with an exact `u.protocol === 'http:' || 'https:'`, and 234-239 applies it to every ytdlp.subscriptions record inside validateFeatureBundle, before any wipe.
@@ -2799,3 +2799,19 @@ Mutants (sandbox, each restored and verified):
 - The shim's abort listener never added: 1 red.
 No new findings. The carried residuals stand as the coordinator listed them.
 Tree: I appended only this verdict, after the uncommitted qa r3 verdict above it. The sandbox is IDENTICAL to pristine, and my fixture server is stopped.
+
+Gate: APPROVED r3 @9cc44fa8 - security-brief
+Checks I could not complete: no Bash. I did not diff 82563a2e..9cc44fa8 and did not confirm that 6c0b7602's code equals 9cc44fa8's (that is the coordinator's claim). I read the named surfaces in the tree at HEAD 6c0b7602 (confirmed from .git/refs).
+1. r2 INFO 3 (empty channelUrl refused the whole restore): FIXED as prescribed. backup.js:237 now skips `''` along with undefined and null. Traced:
+   - An empty value cannot reach a link: subsSafeChannelHref('') is null (the anchored http(s) regex fails, subscriptions.js:2462). So the menu item (2482), the sheet link (2617) and window.open (3532) all withhold it. confirmAndDelete uses the value only as text in the dialog title.
+   - An empty value cannot drive the id-less path. idlessOk (backup.js:226) requires `!badKey(r.channelUrl)`, and badKey('') is true. So an id-less record with `''` still fails the id check at 227 and refuses the bundle before the new skip at 237 is reached. mintLegacyYtdlpSubscriptionIds (sqlite.js:51) also requires channelUrl !== ''. No id is ever minted from an empty string, and no collision on md5('') is possible.
+   - A record that has an id and `''` restores. The scheduler never fetches it (args.js runs validateChannelUrl before yt-dlp), and it gets no link. That is inert.
+2. showConfirmModal (common.js:12352-12390) bound to FileTube.viewSignal: fail-safe, verified by reading.
+   - Leaving the view aborts a private AbortController.
+   - A signal that was already aborted at open aborts the confirm immediately.
+   - onConfirm runs only on `ok === true` AND `!shown.aborted`.
+   - The abort listener is removed on settle and on dismiss.
+   - With no FileTube (a harness), `shown` is null and it behaves as before.
+3. main.js shownViewSignal (3136-3139) falls back to the view's own signal. The sort menus (1727, 2796), the card action menu (3211) and the card delete confirm (3149-3151) bind it. This closes surfaces on leave and adds no authority. No security surface.
+4. The subscriptions.js head comment (22-26) is now accurate: validated at add time, scheme-checked on restore, re-checked client-side by subsSafeChannelHref. It no longer lies.
+No new findings. Residuals r1 3-6 stand as carried.
