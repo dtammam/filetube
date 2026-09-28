@@ -5,13 +5,13 @@
       {
         "key": "public/css/style.css|#folders-builder-list, #book-folders-builder-list, #music-folders-builder-list|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|#music-sort-select|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -77,673 +77,673 @@
       {
         "key": "public/css/style.css|#reader-np-next .reader-np-ico::before|border-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|#reader-np-prev .reader-np-ico::before|border-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|#track-next-btn .track-nav-ico::before|border-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|#track-prev-btn .track-nav-ico::before|border-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-bar|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-footer .action-bar|grid-auto-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-footer|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-status-busy::before|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-status-busy::before|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-status-busy::before|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.action-status|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.ambient-glow|--ambient-fade",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.art-play-glyph.art-play-glyph-playing::before|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.art-play-glyph.art-play-glyph-playing::before|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.art-play-glyph::before|border-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.audio-artwork|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.audio-artwork|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.audio-vinyl::after|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.audio-vinyl::after|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.audio-vinyl|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.audio-vinyl|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.bg-timing-log-note td|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.bg-timing-log-text|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.book-row-card|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.book-row-cover|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.book-row-cover|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.book-row-progress|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.books-grid|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.btn-busy::after|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.btn-busy::after|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.btn-busy::after|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.btn|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapter-snap-actions|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapter-snap-confirm|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapter-snap-head|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapter-snap-shift|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-editor-textarea|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-edit|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-header|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-item-current|box-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-loop-label|min-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-loop|border-left",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-share|border-left",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu|min-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chrome-icon|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chrome-icon|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-backflip|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-boing|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-doublehop|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-duck|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-float|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-headshake|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-hop|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-nod|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-peek|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-pool-grid|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-pool-item img|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-pool-item img|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-pool-item|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-pop|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-rubberband|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-squish|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-swing|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-tada|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-twirl|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-wiggle|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.critter-wobble|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.folder-list-builder|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.folder-list-builder|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.ft-custom-logo .login-wordmark|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.ft-custom-logo .logo|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.header-search|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.history-list|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.login-card|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.login-wordmark .login-logo-img|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.login-wordmark .login-logo-img|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.logo-img|height",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.logo-img|max-width",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-back svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-back svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-detail-head|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-group-card|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-hero .md-tile--hero|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-hero .md-tile--hero|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-hero|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-hero|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-hero|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-row + .md-row::before|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-row-chev svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-row-chev svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-row-skeleton-tile|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-row-skeleton-tile|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-tile|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-tile|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.md-track|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-art|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-bar|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-grab::before|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-grab::before|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-grab|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-play svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-play svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-play|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-play|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-skip svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-apple .mms-skip svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod .ip-batt|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod .ip-status|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod .ip-vol-track|box-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod .ipm-grid|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod .mms-row|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -2285,43 +2285,43 @@
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before|--mms-stk-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit .mms-sticker|--mms-stk-dx",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit .mms-sticker|--mms-stk-dy",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit-strong|--mms-lit-dome-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit-strong|--mms-lit-wheel-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit|--mms-lit-dome-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-ipod.mms-lit|--mms-lit-wheel-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -2411,7 +2411,7 @@
       {
         "key": "public/css/style.css|.mms-ipod|box-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -2483,307 +2483,307 @@
       {
         "key": "public/css/style.css|.mms-spotify .mms-art|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-bar|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-ic svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-ic svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-play svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-play svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-play|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-play|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-queue|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-skip svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-skip svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-th|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-th|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-spotify .mms-tr-spacer|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-act|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible|outline",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible|outline-offset",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu|min-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-sz-2x|--mms-sticker-px",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-sz-3x|--mms-sticker-px",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-wrap > .mms-sticker-menu|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker|--mms-sticker-px",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-tapplay svg|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-tapplay svg|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-tapplay:focus-visible|outline",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-tapplay:focus-visible|outline-offset",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.modern-avatar-chip .skeleton-line|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.modern-avatar-chip .skeleton-line|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-drill-art|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-drill-art|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-drill-art|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-drill-art|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-drill-sentinel|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-drill-sticky|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-eq i|height",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-eq i|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-jump-art|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-jump-art|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-jump-sub|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-jump-tile|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.music-jump-title|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mute-icon-off::after|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mute-icon-off::after|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mute-icon-on, .mute-icon-off|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mute-icon-on, .mute-icon-off|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.oneoff-modal-actions|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.oneoff-modal-status|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -2915,37 +2915,37 @@
       {
         "key": "public/css/style.css|.pp-icon-pause|box-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.pp-icon-pause|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.pp-icon-pause|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.pp-icon-play|border-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.queue-upnext-box|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.reader-chassis|min-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -2957,307 +2957,307 @@
       {
         "key": "public/css/style.css|.reader-nowplaying|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.reader-np-ico|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.reader-np-ico|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.related-title|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.section-title|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.seek-chapters-gap|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.seek-preview-chapter|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.seek-preview-chapter|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.seek-preview-img|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.seek-preview-time|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.setup-box h2|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.setup-box|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.setup-box|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.shortcuts-ddr-arrow.ddr-hit|animation",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.shortcuts-keys|flex",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.shortcuts-modal kbd|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.shortcuts-modal kbd|min-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.shortcuts-note|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.show-grid|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.sidebar-item.drag-over-after|box-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.sidebar-item.drag-over-before|box-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-line-title|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-line|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-title|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-title|max-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-w120|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-w140|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-w200|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-w60, .skeleton-shimmer.skel-w120, .skeleton-shimmer.skel-w140, .skeleton-shimmer.skel-w200|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.skeleton-shimmer.skel-w60|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.speed-menu|min-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.speed-sheet|border-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.stable-head|border-bottom",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.theme-card|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.theme-picker|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.track-nav-ico|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.track-nav-ico|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.transcode-spinner|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.transcode-spinner|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.tv-continue-strip|grid-auto-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.tv-detail-hero|grid-template-columns",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.video-grid.list-view .card-media|width",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.video-grid|grid-template-columns",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.video-row-card|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.video-row-cover|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.video-title|max-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track|outline",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track|outline-offset",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-switch|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-thumb|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-thumb|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -3281,19 +3281,19 @@
       {
         "key": "public/css/style.css|.watch-container.theater-mode .watch-player-stage|width",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-desc-skel .skel-line|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-sidebar|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -3425,709 +3425,709 @@
       {
         "key": "public/css/style.css|0%, 100%|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|50%|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|::-webkit-scrollbar-thumb|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|::-webkit-scrollbar|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|::-webkit-scrollbar|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-divider-inset",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-era-2005",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-era-2009",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-era-2014",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-graphite",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-nav-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-steel",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-tile-glyph",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--md-tile-radius",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-accent",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-bg",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-dim",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-fg",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-grab",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-track",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-apple-veil",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-fill-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-groove-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-striate",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-striate-0",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-striate-d",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t0",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t3",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t4",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t5",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t8",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-t9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-aqua-track",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-art-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-black",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-art-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-bar1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-bar2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-batt-line",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-batt1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-batt2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-blue-hi",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-blue1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-blue2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-body1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-body2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-center-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-clear",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-edge",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-fill-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-gloss-hi",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-gloss-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-groove",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-hair",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-jump-bg",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-jump-line",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-lcd-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-line",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-r-sm",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-scr-sub",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-sheen-0",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-sheen-a",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-sheen-b",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-sheen-c",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-sheen-d",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-wheel-lbl",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-wheel-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-wheel1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-wheel2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-arc",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-band",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-band2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-darc",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-dome-drop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-dome-hi",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-drop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-drop-s",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-far",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-glass",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-hot",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-hot2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-recess",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-rim",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-room",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lit-stk-drop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lits-band",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lits-band2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lits-core",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lits-glass",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lits-glass-hot",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-lits-glass2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ls-caps",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ls-caps2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-ls-tight",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-r-art",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-r-art-ipod",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-r-queue",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-r-th",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-accent",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-dim",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-fg",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-g1",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-g2",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-g3",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-ic",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-on-accent",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-play-shadow",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-qline",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-queue-bg",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-sp-track",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mms-white",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mobile-bottom-nav-h",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--mobile-header-h",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|:root|--tracking-caps",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -4229,31 +4229,31 @@
       {
         "key": "public/css/style.css|[data-theme=\"2005\"]::-webkit-scrollbar, [data-theme=\"2005\"] ::-webkit-scrollbar|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2005\"]::-webkit-scrollbar, [data-theme=\"2005\"] ::-webkit-scrollbar|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2005\"]::-webkit-scrollbar-thumb, [data-theme=\"2005\"] ::-webkit-scrollbar-thumb|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2009\"] #seek-bar::-webkit-slider-runnable-track|background-image",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2009\"] #vol-bar::-webkit-slider-runnable-track|background-image",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -4301,31 +4301,31 @@
       {
         "key": "public/css/style.css|[data-theme=\"2009\"]::-webkit-scrollbar, [data-theme=\"2009\"] ::-webkit-scrollbar|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2009\"]::-webkit-scrollbar, [data-theme=\"2009\"] ::-webkit-scrollbar|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2009\"]::-webkit-scrollbar-thumb, [data-theme=\"2009\"] ::-webkit-scrollbar-thumb|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2009\"][data-mode=\"dark\"] .btn|background-image",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|[data-theme=\"2009\"][data-mode=\"light\"] .btn|background-image",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -4433,13 +4433,13 @@
       {
         "key": "public/css/style.css|select|border",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/ui.css|.ui-btn__label|line-height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
@@ -5021,43 +5021,43 @@
       {
         "key": "public/js/main.js|js-style|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/main.js|js-template-style|height",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/main.js|js-template-style|padding",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/main.js|js-template-style|width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/setup.js|js-template-style|padding",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/watch.js|js-template-style|padding",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       },
       {
         "key": "public/stats.html|style-attr|margin-top",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "raw value, same pixels as a token (D10.4 amendment): shrink-only; retire when the surface is next touched",
         "added": "2026-09-27"
       }
     ],
@@ -7473,247 +7473,247 @@
       {
         "key": ".account-menu",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the account-menu wrapper span every shell's inline bootstrap creates",
         "added": "2026-09-27"
       },
       {
         "key": ".books-home-row",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): layout containers whose contents are primitives; a rename would only dodge the suffix",
         "added": "2026-09-27"
       },
       {
         "key": ".btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the wheel-calibration panel (setup.js) and its buttons",
         "added": "2026-09-27"
       },
       {
         "key": ".cc-btn",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapter-now",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapters-menu",
         "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapters-menu-close",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapters-menu-item",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapters-menu-loop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapters-menu-row",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".chapters-menu-share",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".fs-btn",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".ip-center",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".ip-z-menu",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".ip-zone",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".ipm-badge",
         "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".ipm-gl",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".ipm-letter",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".ipm-row",
         "count": 6,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".md-back",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the Settings/Stats master-detail nav needs a redesign (custom tile glyphs not in the registry, no left chevron); a follow-up",
         "added": "2026-09-27"
       },
       {
         "key": ".md-row",
         "count": 5,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the Settings/Stats master-detail nav needs a redesign (custom tile glyphs not in the registry, no left chevron); a follow-up",
         "added": "2026-09-27"
       },
       {
         "key": ".md-row-badge",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the Settings/Stats master-detail nav needs a redesign (custom tile glyphs not in the registry, no left chevron); a follow-up",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-bar",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-chev",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-grab",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-ic",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-play",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-row",
         "count": 6,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-skip",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sm-act",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sm-back",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sm-chip",
         "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sm-extras",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sm-loop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sm-opt",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sticker",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-sticker-menu",
         "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-tapplay",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": ".modern-avatar-chip",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): layout containers whose contents are primitives; a rename would only dodge the suffix",
         "added": "2026-09-27"
       },
       {
         "key": ".modern-chip-row",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): layout containers whose contents are primitives; a rename would only dodge the suffix",
         "added": "2026-09-27"
       },
       {
         "key": ".mute-btn",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -7731,7 +7731,7 @@
       {
         "key": ".pill",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "diag.html's <style> and page script (D10.4 carve-out): the admin diagnostics page",
         "added": "2026-09-27"
       },
       {
@@ -7755,103 +7755,103 @@
       {
         "key": ".reader-np-btn",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".reader-tap-nav",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "read.html (D10.4 carve-out): the reader tap zones, no primitive fits (a full-height page-turn region)",
         "added": "2026-09-27"
       },
       {
         "key": ".row",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "diag.html's <style> and page script (D10.4 carve-out): the admin diagnostics page",
         "added": "2026-09-27"
       },
       {
         "key": ".settings-btn",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".settings-menu-item",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".settings-menu-toggle",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".shortcuts-modal",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the keyboard reference's key-cap layout; renaming re-keys its other debt",
         "added": "2026-09-27"
       },
       {
         "key": ".shortcuts-row",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the keyboard reference's key-cap layout; renaming re-keys its other debt",
         "added": "2026-09-27"
       },
       {
         "key": ".speed-badge",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".speed-btn",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".speed-menu",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".speed-sheet",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".speed-sheet-backdrop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".track-nav-btn",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".watch-autoplay-label",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": ".watch-autoplay-thumb",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "lib/ytdlp/views/subscriptions.html|<button>|pc-btn",
         "count": 7,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -7863,19 +7863,19 @@
       {
         "key": "public/css/style.css|.mms-sticker-menu button",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.mms-sticker-menu button:focus-visible",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-switch input",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -7893,13 +7893,13 @@
       {
         "key": "public/css/style.css|:where(button.mnp-sub, button.mms-sub, button.ip-artist, button.music-drill-artist)",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|select",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the native <select> fallback (panel-chrome-mirror binds cursor: pointer)",
         "added": "2026-09-27"
       },
       {
@@ -7977,25 +7977,25 @@
       {
         "key": "public/history.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/index.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|<button>|md-row",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the Settings/Stats master-detail nav needs a redesign (custom tile glyphs not in the registry, no left chevron); a follow-up",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|createElement(button)|backBtn",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the Settings/Stats master-detail nav needs a redesign (custom tile glyphs not in the registry, no left chevron); a follow-up",
         "added": "2026-09-27"
       },
       {
@@ -8145,13 +8145,13 @@
       {
         "key": "public/js/setup.js|<button>|(no class)",
         "count": 19,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the wheel-calibration panel (setup.js) and its buttons",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/setup.js|<button>|btn",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the wheel-calibration panel (setup.js) and its buttons",
         "added": "2026-09-27"
       },
       {
@@ -8205,49 +8205,49 @@
       {
         "key": "public/music.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/podcasts.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/read.html|<button>|pc-btn",
         "count": 11,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/read.html|<button>|reader-tap-nav",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "read.html (D10.4 carve-out): the reader tap zones, no primitive fits (a full-height page-turn region)",
         "added": "2026-09-27"
       },
       {
         "key": "public/setup.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/stats.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/tv.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/watch.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       }
     ],
@@ -8290,25 +8290,25 @@
       {
         "key": "lib/ytdlp/views/subscriptions.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "lib/ytdlp/views/subscriptions.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "lib/ytdlp/views/subscriptions.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "lib/ytdlp/views/subscriptions.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -8326,55 +8326,55 @@
       {
         "key": "public/history.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/history.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/history.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/history.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/index.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/index.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/index.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/index.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|<svg>",
         "count": 10,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): 5 critter illustrations (art), 1 generated mask data-URI and 4 master-detail tile glyphs (the nav follow-up)",
         "added": "2026-09-27"
       },
       {
@@ -8392,169 +8392,169 @@
       {
         "key": "public/music.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/music.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/music.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/music.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/podcasts.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/podcasts.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/podcasts.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/podcasts.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/read.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/read.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/read.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/read.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/setup.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/setup.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/setup.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/setup.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/stats.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/stats.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/stats.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/stats.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/tv.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/tv.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/tv.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/tv.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/watch.html|<svg>",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix) - the shell's player template",
         "added": "2026-09-27"
       },
       {
         "key": "public/watch.html|glyph|U+00D7",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/watch.html|glyph|U+26F6",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/watch.html|glyph|U+29C9",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       }
     ],
@@ -8563,25 +8563,25 @@
       {
         "key": "public/css/style.css|.cc-overlay|z-index",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu|z-index",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.resume-overlay|z-index",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.sidebar|z-index",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "left at step 7 (D10.4 amendment, retire report): the sidebar's grandfathered 99 (above --z-sticky)",
         "added": "2026-09-27"
       }
     ],
@@ -8589,7 +8589,7 @@
       {
         "key": "public/css/style.css|#ambient-toggle-row[hidden]|display",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -8619,19 +8619,19 @@
       {
         "key": "public/css/style.css|.btn[hidden]|display",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the wheel-calibration panel (setup.js) and its buttons",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapter-now[hidden]|display",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu[hidden]|display",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -8643,7 +8643,7 @@
       {
         "key": "public/css/style.css|.seek-preview-img[hidden], .seek-preview-chapter[hidden]|display",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
@@ -8681,31 +8681,31 @@
       {
         "key": "public/css/style.css|#settings-menu .cc-btn.active|color",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|#theater-btn[aria-pressed=\"true\"]|color",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.chapters-menu-loop.active|color",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.speed-menu-item.active|color",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
       {
         "key": "public/css/style.css|.watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track|outline",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
+        "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       }
     ],

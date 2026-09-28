@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: S9 (overlays) in flight; then step 7 retire per the D10.4 amendment (the middle path), step 8 full gate, step 9 release; the CI visual job needs its first rebaseline run (workflow_dispatch) before it can go green
+next: step 8 full gate (adversary + qa + security-brief, destructive) on the integrated branch; then the rebaseline (a push to rebaseline/*), step 9 release
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -2442,3 +2442,76 @@ fix found by the render, the History confirm test, this log).
   style.css parse floors drop to > 1000 (1974 rules after S9); watch.js's escape comment now
   describes confirmHtmlToText (the body is parsed, then lands as text).
 
+
+### Step 7 - retire (2026-09-28; coordinator 8a04c0fe, b7e9d53d, 8d756c43, f6b65390; R1-R4 merged)
+
+- **Scope:** Dean's D10.4 amendment (the middle path). The visible kinds of debt are retired, the carve-outs
+  carry their reason, and the invisible remainder (raw values, legacy tokens with no exact role) stays on
+  the shrink-only ratchet with a reason. A true-up wave for it is a follow-up, opened only after the device
+  sign-off.
+- **Aliases (8a04c0fe):**
+  - The eight exact aliases are renamed to their roles: 234 uses in style.css, 7 in page JS, plus the locks
+    that pinned them. The alias block is deleted.
+  - This is pixel-identical: every alias was `var(<role>)` on :root, and data-theme/data-mode are set only
+    on `<html>`.
+  - `no-legacy-tokens` is ON, and RETIRED_ALIASES keeps the eight names banned. 530 remaining uses of names
+    with no exact role are baselined with a reason; after the wave, 435 are left.
+- **css-token-lint retired (R4):**
+  - ui-lint copied its classifier (it did not require the module). The two shapes ui-lint missed are ported
+    first, each with a canary: named colours in non-colour properties, and JS style writes that start with a
+    literal and continue with `+`.
+  - ledger-check is retired (it only reconciled css-token-lint's census). pre-commit, ci.yml, lint:css and
+    the tests are updated; docker-publish runs lint:ui.
+  - Geometry: subscriptions (G1/G2/G3) and podcast-episodes (G1) are live, with mutants killed. The full run
+    is 363 checks, 363 ok.
+- **Surfaces:**
+  - **R2, Music and Podcasts:** new primitives ui-tile, ui-link, ui-row--current, the `--z-sticky` rung and
+    `--tile-w`. The music cards are ui-tile and the desktop Up next is a ui-list. 10/10 mutants killed.
+  - **R3, Settings, Stats and TV:** the ui-reorder primitive; the pickers are radiogroups of ui-rows; the TV
+    cards are links; Stats writes no inline styles. The Stats per-item delete moved from the two-tap "Sure?"
+    arm to a danger ui.confirm naming the item (same DELETE, which moves to Trash); 11 jsdom tests bind it.
+    26/26 mutants killed.
+  - **R1, watch and shared chrome:** the Subscribe dialog and chapter snap are on ui.sheet and the
+    primitives. Deleted: showHardDeleteModal, deleteFlowFor, bindBackdropDismiss, nextArmState, the
+    `.oneoff-modal` shell, `.btn-primary`, `.btn.liked` and eight dead icon masks. The touch-action list
+    moved into ui.css's D6 base. 19/20 mutants killed (the survivor is equivalent). R1 rebased onto the
+    integrated branch itself; its commit 2 message describes a z band commit 4 replaced with R2's single
+    `--z-sticky`.
+- **Coordinator fixes:**
+  - f6b65390: ui.js reads `window` at call time. A sheet's exit timer threw after a jsdom teardown, and the
+    full suite went red on chapter-snap-shift.
+  - 8d756c43: the rebaseline job also runs on a push to `rebaseline/*`. A workflow can be dispatched only
+    once it is on the default branch.
+- **Numbers (instrument output):**
+  - `lint:ui` TOTAL 2051 at 8a04c0fe (no-legacy-tokens counted for the first time), then 1727 after the
+    wave.
+  - Per rule after the wave: no-raw-values 861, no-legacy-tokens 435, no-bespoke-controls 323, icons 57,
+    display-ownership 36, colour-roles 5, z-ladder 4, hover-gated 3, native-interaction 2, no-shell-style 1,
+    pressed-state 0, no-layout-transition 0.
+  - style.css: 15781 lines at main (ab31cbdc), 11471 after the sweeps, 10743 after step 7. That is 5038
+    fewer overall.
+- **Every entry carries its reason (AC1 against the amended D10.4):**
+  - player overlay rewrite: 199 entries / 332 items;
+  - Pocket/whcal skin art: 423 / 496;
+  - diag.html: 120 / 136;
+  - read.html: 3 / 4;
+  - raw values, retire when touched: 370 / 377;
+  - legacy tokens with no exact role: 320 / 354.
+  - 14 entries (28 items) are "left at step 7" with the builder's reason:
+    - the Settings/Stats master-detail nav needs a redesign (a follow-up);
+    - the critter illustrations;
+    - the shell account-menu wrapper;
+    - three layout containers;
+    - the key-cap layout;
+    - the native select fallback;
+    - the grandfathered sidebar z.
+- **For the gate:**
+  - the Stats confirm change;
+  - the TV link click claim (stopPropagation at #view-root);
+  - `.stable-body > [role="row"]` (moved off the `-row` class; is it paid or dodged?);
+  - the `ui-link` / `ui-tile` cascade against style.css;
+  - the `:where()` touch-action list and `:is(.speed-sheet)` (lint blind spots, bound by
+    interaction-policy-css);
+  - the Subscribe dialog's close paths and signal;
+  - tracker #200 now applies to ui-lint (a `token-exempt` comment exempts its whole line);
+  - perf-collector.js's joined cssText literals (only the first literal is checked).
