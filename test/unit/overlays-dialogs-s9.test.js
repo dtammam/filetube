@@ -579,3 +579,16 @@ test('gate r2 showConfirmModal: opened on an already-left view it never opens li
   await flush();
   assert.strictEqual(calls, 1, 'the positive control: a live view confirms once');
 });
+
+test('gate r2 showConfirmModal: an OK whose answer lands in the same tick the view is left runs nothing (the post-answer re-check)', async () => {
+  clock();
+  const { showConfirmModal } = boot();
+  const leave = new dom.window.AbortController();
+  dom.window.FileTube = { viewSignal: () => leave.signal };
+  let calls = 0;
+  showConfirmModal('Move?', 'x', () => { calls++; });
+  byLabel('Confirm', top()).click(); // the answer is true, but it is delivered on a later microtask
+  leave.abort(); // the user left before it was acted on
+  await flush();
+  assert.strictEqual(calls, 0, 'an answer that outlived its view never acts');
+});
