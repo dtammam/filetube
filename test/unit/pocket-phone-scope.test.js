@@ -118,7 +118,7 @@ test('D7 CSS: the takeover block - every selector of every rule carries the devi
   const start = src.indexOf(POCKET_SCOPE + ' body.mms-on #view-root[data-view="music"] #player-slot');
   const end = src.indexOf('@keyframes mms-marquee');
   assert.ok(start > 0 && end > start, 'precondition: the block is found');
-  const block = cssRules(src.slice(start, end)).filter((r) => r.at.indexOf('orientation: landscape') === -1 && r.sel.indexOf('html.no-motion') === -1);
+  const block = cssRules(src.slice(start, end)).filter((r) => r.at.indexOf('orientation: landscape') === -1);
   assert.ok(block.length > 200, 'precondition: the block holds the takeover (' + block.length + ' rules)');
   const bare = [];
   for (const r of block) {
@@ -155,6 +155,7 @@ test('D7 CSS landscape: side by side (screen left, wheel right), insets on the s
 });
 
 test('D7 CSS stillness: html.no-motion zeroes every transition (incl. pseudo-elements), and nothing else', () => {
+  assert.strictEqual(RULES.filter((x) => x.sel.indexOf('html.no-motion') !== -1).length, 1, 'ONE rule for the class');
   const r = RULES.find((x) => x.sel === 'html.no-motion *, html.no-motion *::before, html.no-motion *::after');
   assert.ok(r, 'the one rule');
   assert.strictEqual(r.body.trim(), 'transition: none !important;');
@@ -162,23 +163,28 @@ test('D7 CSS stillness: html.no-motion zeroes every transition (incl. pseudo-ele
 });
 
 // ---- the stillness hold (common.js) -----------------------------------------------------------
-test('D7 installResizeStillness: a resize or a rotate holds html.no-motion for STILLNESS_MS (each event restarts it), then lets go', (t) => {
+test('D7 installResizeStillness: a rotate or a width-changing resize holds html.no-motion for STILLNESS_MS (each event restarts it), then lets go', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { installResizeStillness, STILLNESS_MS } = require('../../public/js/common.js');
   const dom = new JSDOM('<body></body>', { url: 'http://localhost/' });
   const w = dom.window;
   w.setTimeout = setTimeout; w.clearTimeout = clearTimeout; // the mocked clock
+  let width = 390;
+  Object.defineProperty(w, 'innerWidth', { configurable: true, get: () => width });
   assert.strictEqual(installResizeStillness(w), true);
   const html = w.document.documentElement;
   assert.strictEqual(html.classList.contains('no-motion'), false, 'idle: motion allowed');
+  width = 844; // iOS may report the new width already at the orientationchange
   w.dispatchEvent(new w.Event('orientationchange'));
   assert.ok(html.classList.contains('no-motion'), 'set synchronously, before the new layout\'s styles');
   t.mock.timers.tick(STILLNESS_MS - 50);
-  w.dispatchEvent(new w.Event('resize')); // iOS reports a resize after the orientationchange
+  w.dispatchEvent(new w.Event('resize')); // iOS reports a resize after the orientationchange: the width moved since the last RESIZE
   t.mock.timers.tick(STILLNESS_MS - 50);
   assert.ok(html.classList.contains('no-motion'), 'the second event restarted the hold');
   t.mock.timers.tick(60);
   assert.strictEqual(html.classList.contains('no-motion'), false, 'released after the last event');
+  w.dispatchEvent(new w.Event('resize')); // same width again: the URL bar, not a relayout
+  assert.strictEqual(html.classList.contains('no-motion'), false, 'a height-only resize holds nothing');
   assert.strictEqual(STILLNESS_MS, 300);
 });
 

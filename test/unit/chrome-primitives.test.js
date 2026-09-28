@@ -10,14 +10,15 @@
 //   4. unpin asks through ui.confirm and only a confirmed answer DELETEs (D4.8);
 //   5. the browser theme colour follows the app's era + mode (F66);
 //   6. D7 stillness: the sidebar slides only when the menu toggle arms it, and a real width
-//      change holds html.no-motion for 300ms; no layout property transitions;
+//      change (never a height-only resize) holds html.no-motion for 300ms, proven on the real
+//      booted index.html; no layout property transitions;
 //   7. F20: a ui-btn link (the bottom bar's tabs) never underlines, in any era.
 
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REPO = path.join(__dirname, '..', '..');
 const COMMON = require.resolve('../../public/js/common.js');
@@ -233,24 +234,70 @@ test('D7: the sidebar slides only while armed by the menu toggle; the arm clears
   assert.strictEqual((src.match(/armSidebarSlide\(/g) || []).length, 2, 'one definition, one caller');
 });
 
-test('D7: a real width change (resize, rotate) holds html.no-motion for 300ms; a height-only resize (the iOS toolbar) does not', async () => {
-  const { c } = fresh();
-  const w = dom.window;
-  const root = w.document.documentElement;
-  Object.defineProperty(w, 'innerWidth', { value: 390, writable: true, configurable: true });
-  c.wireNoMotionOnResize(w);
-  w.dispatchEvent(new w.Event('resize'));
-  assert.ok(!root.classList.contains('no-motion'), 'same width (the toolbar collapsing): no hold');
-  w.innerWidth = 844;
-  w.dispatchEvent(new w.Event('resize'));
-  assert.ok(root.classList.contains('no-motion'), 'a width change holds');
-  await tick(320);
-  assert.ok(!root.classList.contains('no-motion'), 'released after 300ms');
-  w.dispatchEvent(new w.Event('orientationchange'));
-  assert.ok(root.classList.contains('no-motion'), 'a rotation holds');
-  await tick(320);
-  const src = strip(fs.readFileSync(COMMON, 'utf8'));
-  assert.match(src, /wireNoMotionOnResize\(window\);/, 'wired at boot');
+// Gate r1 (qa 1): two writers of html.no-motion once coexisted - S1's width-filtered one and
+// S7's every-resize one - and a test driving one writer alone on its own window passed while
+// the page, running both, held the class on a height-only resize. So this boots the REAL page:
+// index.html parsed by jsdom with its own inline scripts and every script it loads up to and
+// including common.js inlined in place (the real order), common.js's DOMContentLoaded boot run.
+// Whatever common.js registers on window is live here, whichever writer it is.
+function bootIndexThroughCommon() {
+  let html = fs.readFileSync(path.join(REPO, 'public/index.html'), 'utf8');
+  const inlined = [];
+  let past = false;
+  html = html.replace(/<script([^>]*) src="\/js\/([\w-]+\.js)"([^>]*)><\/script>/g, (m, a, file, b) => {
+    if (past) return '';
+    if (file === 'common.js') past = true;
+    inlined.push(file);
+    return `<script${a}${b}>${fs.readFileSync(path.join(REPO, 'public/js', file), 'utf8')}</script>`;
+  });
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => errors.push(e.message));
+  const page = new JSDOM(html, {
+    url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole,
+    beforeParse(w) { w.fetch = async () => ({ ok: false, status: 404, json: async () => ({}), text: async () => '' }); },
+  });
+  return { page, inlined, errors };
+}
+
+test('D7 (real page): a same-width resize (the URL bar collapsing) never sets html.no-motion; a width change and a rotate hold it for 300ms', async () => {
+  const { page, inlined, errors } = bootIndexThroughCommon();
+  const w = page.window;
+  try {
+    if (w.document.readyState !== 'complete') await new Promise((r) => w.addEventListener('load', r, { once: true }));
+    await tick(50);
+    assert.ok(inlined.length > 5 && inlined[inlined.length - 1] === 'common.js', 'precondition: the shell\'s scripts ran, common.js last (' + inlined.join(', ') + ')');
+    assert.deepStrictEqual(errors, [], 'precondition: the boot threw nothing (a thrown DOMContentLoaded handler would skip later wiring)');
+    const root = w.document.documentElement;
+    assert.strictEqual(root.classList.contains('no-motion'), false, 'idle: motion allowed');
+    let width = w.innerWidth;
+    Object.defineProperty(w, 'innerWidth', { configurable: true, get: () => width });
+    Object.defineProperty(w, 'innerHeight', { configurable: true, value: 700 });
+    w.dispatchEvent(new w.Event('resize')); // only the height changed
+    assert.strictEqual(root.classList.contains('no-motion'), false, 'a height-only resize holds nothing');
+    let flips = 0;
+    new w.MutationObserver((recs) => { flips += recs.length; }).observe(root, { attributes: true, attributeFilter: ['class'] });
+    for (let i = 0; i < 5; i++) w.dispatchEvent(new w.Event('resize'));
+    await tick(0);
+    assert.strictEqual(flips, 0, 'the root class is never touched by a height-only resize (no whole-tree restyle during a scroll)');
+    width = 844;
+    w.dispatchEvent(new w.Event('resize'));
+    assert.ok(root.classList.contains('no-motion'), 'a width change holds, synchronously');
+    await tick(340);
+    assert.strictEqual(root.classList.contains('no-motion'), false, 'released after 300ms');
+    w.dispatchEvent(new w.Event('orientationchange'));
+    assert.ok(root.classList.contains('no-motion'), 'a rotation holds');
+    await tick(340);
+    assert.strictEqual(root.classList.contains('no-motion'), false, 'released');
+  } finally {
+    w.close();
+  }
+});
+
+test('D7: common.js has ONE writer of html.no-motion (installResizeStillness, registered at load)', () => {
+  const src = stripJs(fs.readFileSync(COMMON, 'utf8'));
+  assert.strictEqual((src.match(/classList\.add\('no-motion'\)/g) || []).length, 1, 'one place adds the class');
+  assert.strictEqual((src.match(/^installResizeStillness\(\);$/gm) || []).length, 1, 'wired once, at load (top level)');
 });
 
 test('D7 CSS: no layout transition on .main-content; the sidebar\'s transform transition only under .is-animating; html.no-motion zeroes transitions', () => {
@@ -264,8 +311,9 @@ test('D7 CSS: no layout transition on .main-content; the sidebar\'s transform tr
   }
   const armed = rules.find((x) => x.sel === '.sidebar.is-animating');
   assert.ok(armed && /transition:\s*transform [^;,]*;/.test(armed.body), 'the armed drawer transitions transform, nothing else');
-  const hold = rules.find((x) => /html\.no-motion \*/.test(x.sel));
-  assert.ok(hold && /transition:\s*none !important;/.test(hold.body), 'the rotation hold');
+  const holds = rules.filter((x) => /html\.no-motion/.test(x.sel));
+  assert.strictEqual(holds.length, 1, 'ONE html.no-motion rule in style.css (gate r1 qa 1: two duplicate rules named two writers)');
+  assert.ok(/transition:\s*none !important;/.test(holds[0].body), 'the rotation hold');
 });
 
 // ---------------------------------------------------------------- 7. F20

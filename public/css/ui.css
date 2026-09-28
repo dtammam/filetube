@@ -728,9 +728,17 @@ button.ui-row:focus-visible,
 }
 .ui-sheet--bottom.is-open { transform: translateY(var(--ui-drag, 0px)); }
 .ui-sheet--bottom.is-dragging { transition: none; }
+/* A popover's top and (only when it fits on no side) its height cap are placed by ui.js
+   placePopover: below the anchor, else flipped above it, else shifted inside the viewport,
+   else scrolling inside it. The fallbacks are the plain below-the-anchor placement. The three
+   --ui-pop-* inputs hand the safe areas and the gap to that measurement. */
 .ui-sheet--popover {
+  --ui-pop-gap: var(--space-4);
+  --ui-pop-safe-top: env(safe-area-inset-top, 0px);
+  --ui-pop-safe-bottom: env(safe-area-inset-bottom, 0px);
   left: clamp(var(--space-4), var(--ui-anchor-x, 50vw), calc(100vw - var(--panel-w) - var(--space-4)));
-  top: var(--ui-anchor-y, 50vh);
+  top: var(--ui-pop-top, var(--ui-anchor-y, 50vh));
+  max-height: var(--ui-pop-max-h, 90dvh);
   min-width: calc(var(--panel-w) * 0.6);
   max-width: var(--panel-w);
   border-radius: var(--r-md);

@@ -12,6 +12,9 @@
 //     --ui-anchor-x, --ui-anchor-y
 //                  ui.sheet popover: the anchor's left / bottom edge, px
 //                  (from anchor.getBoundingClientRect())
+//     --ui-pop-top, --ui-pop-max-h
+//                  ui.sheet popover: the placed top edge and, only when the menu
+//                  fits on no side, its height cap, px (placePopover)
 //     --ui-drag    ui.sheet bottom: the downward drag offset while dragging, px
 // - DOM is built with createElement / createElementNS / textContent. Labels and
 //   titles can be user data, so no markup string ever carries them.
@@ -366,6 +369,42 @@
     return 320;
   }
 
+  // A popover's vertical placement (gate r1, adversary 4: a card menu opened low on a
+  // 1280x800 page ran off the bottom while the page was locked, so "Move to Trash" could not
+  // be reached). `a` = the anchor's rect, `h` = the popover's natural height, [lo, hi] = the
+  // band it may occupy (the visual viewport less the safe areas and a gap). In order:
+  // below the anchor if it fits; else ABOVE it (flipped) if it fits; else shifted up inside
+  // the band (covering the anchor); else pinned to the band's top with the band's height as
+  // its cap, the body scrolling inside (the last resort). Pure: -> {top, maxH|null, side}.
+  // An unmeasurable popover or band (jsdom: 0) keeps the plain below-the-anchor placement.
+  function placePopover(a, h, lo, hi) {
+    if (!(h > 0) || !(hi > lo)) return { top: a.bottom, maxH: null, side: 'below' };
+    if (a.bottom + h <= hi) return { top: a.bottom, maxH: null, side: 'below' };
+    if (a.top - h >= lo) return { top: a.top - h, maxH: null, side: 'above' };
+    if (h <= hi - lo) return { top: hi - h, maxH: null, side: 'shifted' };
+    return { top: lo, maxH: hi - lo, side: 'scroll' };
+  }
+
+  // The band a popover may occupy, from the live page: the layout viewport intersected with
+  // the visual viewport (a pinch zoom or the on-screen keyboard shrinks it), less the safe-area
+  // insets and the --space-4 gap that ui.css hands over as --ui-pop-safe-top / -bottom /
+  // --ui-pop-gap (env() resolves in a custom property; JS cannot read env() itself).
+  function popoverBand(s, win, doc) {
+    var cs = null;
+    try { cs = win.getComputedStyle(s); } catch (_) {}
+    function px(name) { var v = cs ? parseFloat(cs.getPropertyValue(name)) : NaN; return isFinite(v) ? v : 0; }
+    var root = doc.documentElement;
+    var hi = (root && root.clientHeight) || win.innerHeight || 0;
+    var lo = 0;
+    var vv = win.visualViewport;
+    if (vv && vv.height > 0) {
+      lo = Math.max(lo, vv.offsetTop || 0);
+      hi = Math.min(hi, (vv.offsetTop || 0) + vv.height);
+    }
+    var gap = px('--ui-pop-gap');
+    return { lo: lo + px('--ui-pop-safe-top') + gap, hi: hi - px('--ui-pop-safe-bottom') - gap };
+  }
+
   function resolveVariant(v, anchor, win) {
     if (v !== 'auto') return oneOf(v, ['bottom', 'popover', 'dialog', 'panel'], 'dialog');
     var phone = false;
@@ -415,9 +454,32 @@
 
     var state = 'closed'; // closed | open | closing
     var opener = null;
+    var anchorRect = null; // a popover's anchor, read at open (the page is locked while it is up)
+    var placeObserver = null;
     var closeTimer = null;
     var onEnd = null;
     applyVariant(variant);
+
+    // Places an open popover inside the viewport (placePopover). Re-run when its size changes
+    // (setContent, rows arriving), so a menu that grows flips or shifts instead of running off
+    // the bottom. The cap is lifted first so the natural height is what gets measured.
+    function place() {
+      if (variant !== 'popover' || !anchorRect) return;
+      s.style.removeProperty('--ui-pop-max-h');
+      var band = popoverBand(s, win, doc);
+      var p = placePopover(anchorRect, s.offsetHeight, band.lo, band.hi);
+      s.style.setProperty('--ui-pop-top', p.top + 'px');
+      if (p.maxH != null) s.style.setProperty('--ui-pop-max-h', p.maxH + 'px');
+      s.setAttribute('data-placement', p.side);
+    }
+    function watchPlacement() {
+      if (placeObserver || variant !== 'popover' || !win || typeof win.ResizeObserver !== 'function') return;
+      placeObserver = new win.ResizeObserver(function () { if (state === 'open') place(); });
+      placeObserver.observe(s);
+    }
+    function unwatchPlacement() {
+      if (placeObserver) { placeObserver.disconnect(); placeObserver = null; }
+    }
 
     function lockApi() { var w = liveWindow(); return (win && win.FileTubeBodyLock) || (w && w.FileTubeBodyLock) || null; }
 
@@ -429,6 +491,7 @@
     }
 
     function finish() {
+      unwatchPlacement();
       if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       if (onEnd) { s.removeEventListener('transitionend', onEnd); onEnd = null; }
       if (scrim.parentNode) scrim.parentNode.removeChild(scrim);
@@ -458,12 +521,15 @@
         s.classList.remove('is-closing');
         s.classList.add('is-open');
         scrim.classList.add('is-open');
+        watchPlacement();
         return ctrl;
       }
       applyVariant(resolveVariant(requested, o.anchor, win));
       opener = doc.activeElement || null;
+      anchorRect = null;
       if (variant === 'popover' && o.anchor && o.anchor.getBoundingClientRect) {
         var rect = o.anchor.getBoundingClientRect();
+        anchorRect = { top: rect.top, bottom: rect.bottom };
         s.style.setProperty('--ui-anchor-x', rect.left + 'px');
         s.style.setProperty('--ui-anchor-y', rect.bottom + 'px');
       }
@@ -472,6 +538,8 @@
       var bl = lockApi();
       if (bl) bl.lock(doc, win, lockOwner);
       state = 'open';
+      place(); // measured in the page, before the first frame paints it
+      watchPlacement();
       openStack.push(ctrl);
       doc.addEventListener('keydown', onKey);
       // ALWAYS, reduced motion included (F48): the CSS makes that an opacity-only change.
@@ -492,6 +560,7 @@
     function close() {
       if (state !== 'open') return ctrl;
       state = 'closing';
+      unwatchPlacement();
       // The decision is made now; the exit animation is only the look.
       if (typeof o.onClosing === 'function') o.onClosing();
       var i = openStack.indexOf(ctrl);
@@ -947,7 +1016,7 @@
     switch: uiSwitch, segmented: segmented, field: field, select: select,
     state: stateBlock, copy: copy,
     // Pure helpers, exported for tests and for callers that need the same text.
-    initials: initials, toneOf: toneOf, formatDuration: formatDuration,
+    initials: initials, toneOf: toneOf, formatDuration: formatDuration, placePopover: placePopover,
   };
   if (hasWindow) window.ui = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

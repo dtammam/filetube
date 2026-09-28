@@ -565,14 +565,13 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sidebar.is-animating {
   transition: transform var(--dur-fast) var(--ease-std);
 }
-/* D7: a real width change (a rotation, a window resize) holds html.no-motion for 300ms
-   (common.js wireNoMotionOnResize) - no box animates between the old and the new layout
-   (animations - a spinner, a shimmer - keep running; they move nothing). */
-html.no-motion *,
-html.no-motion *::before,
-html.no-motion *::after {
-  transition: none !important;
-}
+/* D7 (AC9 stillness): a rotation or a width change holds html.no-motion for STILLNESS_MS
+   (common.js installResizeStillness; a height-only resize - the iOS URL bar - does not), so
+   nothing that transitions for a user's action (the sidebar drawer, the content margin beside
+   it, the Pocket takeover's layout) animates between the old and the new layout. Transitions
+   only: animations (a spinner, a shimmer, the marquee) keep running; they move nothing. The ONE
+   rule for the class, at every width. */
+html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition: none !important; }
 
 .sidebar.hidden {
   transform: translateX(calc(-1 * var(--sidebar-w))); /* the slide-away MUST match the width - the coupling --sidebar-w exists for */
@@ -9156,12 +9155,6 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
     --mms-sm-anchor-l:auto; --mms-sm-anchor-r:0; }
 }
-
-/* UI pass D7 (AC9): for STILLNESS_MS after every resize / orientationchange, common.js
-   installResizeStillness holds html.no-motion - a rotate is one relayout, so nothing that
-   transitions for a user's action (the sidebar drawer, the content margin beside it) animates
-   for it. Transitions only: animations (a spinner, the marquee) keep running. */
-html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition: none !important; }
 
 /* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }

@@ -17,6 +17,8 @@
 // G3 equal heights: ui-btn siblings (same parent) share one height (tolerance 0.5px).
 // G4 rotation stillness: after a step (rotate, leave Pocket, rotate back), once the layout
 //    first changes, no box differs from its settled box by more than 1px in any later frame.
+// POP menu reach (gate r1): an open menu and every row of it can be reached inside the
+//    viewport, and a popover that fits beside its anchor opens below it or flips above it.
 
 const TOL = 0.5;
 const G4_TOL = 1;
@@ -451,5 +453,74 @@ function evalSheetHeader(items, tol = TOL) {
   return { measured: { headers: items.length, titleless: items.filter((i) => !i.title).length }, failures };
 }
 
+// POP (gate r1, adversary 4): an open menu is REACHABLE. Measured on the last open ui.sheet
+// (the menu the scene opened from `anchor`), against the visual viewport:
+// - the sheet's box lies inside the viewport;
+// - every menu row lies inside the viewport, or the sheet body scrolls and its box does (the
+//   row is reached by scrolling the menu, never the locked page); a row inside the viewport is
+//   what elementFromPoint returns at its centre (nothing covers it);
+// - a POPOVER that fits on one side of its anchor (the band less the --ui-pop-gap and the
+//   safe areas ui.css hands to ui.js) never covers the anchor: it opens below it or flips
+//   above it, and only shifts over it when it fits on neither side.
+// Runs in the page; takes {anchor} (a selector for the control that opened the menu).
+function collectPopover(arg) {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  const sheets = document.querySelectorAll('.ui-sheet.is-open');
+  const s = sheets[sheets.length - 1];
+  const vv = window.visualViewport;
+  const vp = vv ? { x: vv.offsetLeft, y: vv.offsetTop, w: vv.width, h: vv.height } : { x: 0, y: 0, w: innerWidth, h: innerHeight };
+  if (!s) return { vp, sheet: null, rows: [] };
+  const body = s.querySelector('.ui-sheet__body');
+  const cs = getComputedStyle(s);
+  const px = (n) => parseFloat(cs.getPropertyValue(n)) || 0;
+  const anchorEl = arg && arg.anchor ? document.querySelector(arg.anchor) : null;
+  const rows = Array.from(s.querySelectorAll('.ui-row')).map((r) => {
+    const b = box(r);
+    const hit = document.elementFromPoint(b.x + b.w / 2, b.y + b.h / 2);
+    return { name: r.textContent.trim().slice(0, 30), box: b, hitSelf: !!hit && r.contains(hit) };
+  });
+  return {
+    vp,
+    popover: s.classList.contains('ui-sheet--popover'),
+    sheet: box(s),
+    body: body ? { box: box(body), scrolls: body.scrollHeight > body.clientHeight + 1 } : null,
+    band: { gap: px('--ui-pop-gap'), safeTop: px('--ui-pop-safe-top'), safeBottom: px('--ui-pop-safe-bottom') },
+    anchor: anchorEl ? box(anchorEl) : null,
+    rows,
+  };
+}
+
+// -> { measured: {rows}, failures: [string] }
+function evalPopover(d, tol = TOL) {
+  const failures = [];
+  const r2 = (v) => Math.round(v * 100) / 100;
+  if (!d || !d.sheet) return { measured: { rows: 0 }, failures: ['no open sheet'] };
+  const top = d.vp.y;
+  const bottom = d.vp.y + d.vp.h;
+  const inside = (b) => b.y >= top - tol && b.y + b.h <= bottom + tol && b.x >= d.vp.x - tol && b.x + b.w <= d.vp.x + d.vp.w + tol;
+  const span = (b) => `y${r2(b.y)}-${r2(b.y + b.h)}`;
+  if (!inside(d.sheet)) failures.push(`the menu ${span(d.sheet)} x${r2(d.sheet.x)}-${r2(d.sheet.x + d.sheet.w)} leaves the ${r2(d.vp.w)}x${r2(d.vp.h)} viewport`);
+  const scrollable = !!(d.body && d.body.scrolls && inside(d.body.box));
+  for (const r of d.rows) {
+    if (inside(r.box)) {
+      if (!r.hitSelf) failures.push(`${r.name} (${span(r.box)}): something else is on top of it`);
+    } else if (!scrollable) {
+      failures.push(`${r.name} (${span(r.box)}) is off-screen and the menu does not scroll to it: unreachable`);
+    }
+  }
+  if (d.popover) {
+    if (!d.anchor) failures.push('the anchor was not found (a popover is placed against it)');
+    else {
+      const lo = top + d.band.safeTop + d.band.gap;
+      const hi = bottom - d.band.safeBottom - d.band.gap;
+      const fitsBelow = d.anchor.y + d.anchor.h + d.sheet.h <= hi + tol;
+      const fitsAbove = d.anchor.y - d.sheet.h >= lo - tol;
+      const covers = d.sheet.y < d.anchor.y + d.anchor.h - tol && d.sheet.y + d.sheet.h > d.anchor.y + tol;
+      if ((fitsBelow || fitsAbove) && covers) failures.push(`the menu ${span(d.sheet)} covers its anchor ${span(d.anchor)} though it fits ${fitsBelow ? 'below' : 'above'} it`);
+    }
+  }
+  return { measured: { rows: d.rows.length }, failures };
+}
+
 module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4,
-  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader };
+  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover };

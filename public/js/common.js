@@ -369,11 +369,17 @@ function applyEraFlourish(era, doc) {
 }
 
 // UI pass D7 (AC9 stillness): a rotate or a window resize re-lays the page out in one step.
-// Every `resize` / `orientationchange` puts `html.no-motion` on for STILLNESS_MS (restarted by
-// each event) and style.css zeroes every transition under it, so nothing that transitions for
-// a user's action (the sidebar drawer, the content margin beside it) animates for a viewport
-// change. Registered once per document at common.js load; the resize event is dispatched in the
-// frame's resize steps, BEFORE that frame's style recalc, so the class is on when the new
+// An `orientationchange`, or a `resize` that CHANGES THE WIDTH, puts `html.no-motion` on for
+// STILLNESS_MS (restarted by each such event) and style.css zeroes every transition under it,
+// so nothing that transitions for a user's action (the sidebar drawer, the content margin beside
+// it) animates for a viewport change. A height-only resize (the iOS / Android URL bar
+// collapsing on a scroll) is NOT a relayout of the width-keyed layout and holds nothing: it
+// fires during every scroll, and a hold there would zero a sheet's or a toast's transition and
+// restyle the whole tree twice per event. `lastWidth` is advanced only by a resize, never by an
+// orientationchange, so iOS's resize that follows the orientationchange still restarts the hold.
+// The ONE writer of the class: registered once per document at common.js load (before
+// DOMContentLoaded, so a rotate during boot is covered too); the resize event is dispatched in
+// the frame's resize steps, BEFORE that frame's style recalc, so the class is on when the new
 // layout's styles resolve. `win` for jsdom tests. Returns false when there is nothing to watch.
 const STILLNESS_MS = 300;
 function installResizeStillness(win) {
@@ -381,12 +387,17 @@ function installResizeStillness(win) {
   const html = w && w.document && w.document.documentElement;
   if (!html || typeof w.addEventListener !== 'function') return false;
   let timer = null;
+  let lastWidth = w.innerWidth;
   const hold = () => {
     html.classList.add('no-motion');
     if (timer) w.clearTimeout(timer);
     timer = w.setTimeout(() => { timer = null; html.classList.remove('no-motion'); }, STILLNESS_MS);
   };
-  w.addEventListener('resize', hold);
+  w.addEventListener('resize', () => {
+    if (w.innerWidth === lastWidth) return;
+    lastWidth = w.innerWidth;
+    hold();
+  });
   w.addEventListener('orientationchange', hold);
   return true;
 }
@@ -16131,28 +16142,6 @@ function armSidebarSlide(sidebar) {
   sidebar.addEventListener('transitionend', onEnd);
   const timer = setTimeout(done, SIDEBAR_SLIDE_MS);
 }
-// D7: a real width change (a rotation, a window resize - not the iOS toolbar collapsing,
-// which changes only the height) adds html.no-motion for 300ms, which zeroes every
-// transition (style.css), so no box animates between the old and the new layout.
-const NO_MOTION_MS = 300;
-function wireNoMotionOnResize(win) {
-  const w = win || (typeof window !== 'undefined' ? window : null);
-  if (!w || !w.document) return;
-  const root = w.document.documentElement;
-  let lastWidth = w.innerWidth;
-  let timer = null;
-  const hold = () => {
-    root.classList.add('no-motion');
-    clearTimeout(timer);
-    timer = setTimeout(() => root.classList.remove('no-motion'), NO_MOTION_MS);
-  };
-  w.addEventListener('resize', () => {
-    if (w.innerWidth === lastWidth) return;
-    lastWidth = w.innerWidth;
-    hold();
-  });
-  w.addEventListener('orientationchange', hold);
-}
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
@@ -16345,7 +16334,7 @@ const handoffCard = (() => {
   return { init, __poll: poll, __hide: hide };
 })();
 
-// UI pass D7: no transition runs for a rotate / resize (html.no-motion, style.css).
+// UI pass D7: no transition runs for a rotate / width change (html.no-motion, style.css).
 installResizeStillness();
 
 // UI pass D8.1: reflect the era's flourish NOW, from the data-theme the shell's
@@ -16393,7 +16382,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  wireNoMotionOnResize(window); // D7 (sweep S1)
   const menuToggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
   const mainContent = document.getElementById('main-content');
@@ -16611,7 +16599,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // registry icon and source-locks the shells' static markup against chromeIconMarkup.
     CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl,
     uiIconMarkup, uiIconEl, chromeButtonEl, bottomNavItemEl, setBottomNavItemFilled, chromeAvatarEl, syncThemeColorMeta,
-    armSidebarSlide, wireNoMotionOnResize, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
+    armSidebarSlide, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).
