@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, TOL, G4_TOL } = require('../geometry/checks.js');
+const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, TOL, G4_TOL } = require('../geometry/checks.js');
 const { summarize, expectedFor, loadExpected } = require('../geometry/run.js');
 const { SURFACES, FAST_SCENES, G4_SEQUENCES } = require('../geometry/scenes.js');
 const { MUTATIONS } = require('../geometry/mutations.js');
@@ -136,8 +136,8 @@ test('every check has at least one mutation proof, each aimed at a live scene or
     if (m.check === 'G4') assert.ok(G4_SEQUENCES.find((q) => q.id === m.target.sequence), name);
     else assert.ok(SURFACES.find((s) => s.id === m.target.surface && !s.pending), name);
   }
-  // Sweep S1 adds HDR / NAV, the chrome's rendered contracts.
-  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4', 'HDR', 'NAV']);
+  // Sweep S1 adds HDR / NAV, the chrome's rendered contracts; sweep S9 SHD, the sheet header.
+  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'SHD']);
 });
 
 test('geometry files are not *.test.js (npm test must not try to boot Playwright)', () => {
@@ -217,4 +217,38 @@ test('NAV: each broken property fails on its own', () => {
     const { failures } = evalBottomBar(bar({ tabs }));
     assert.ok(failures.some((f) => re.test(f)), `${re} in ${JSON.stringify(failures)}`);
   }
+});
+
+// ---- SHD (sweep S9): the sheet header ----
+// A 390px dialog: header 16..374 wide at y 200 (56 tall), end padding 4 - so the Close's
+// trailing edge must sit at 370; a 44px Close with a centred 22px glyph; a title level with it.
+const sheetHead = (over) => ({
+  name: 'Move this local file to Trash?',
+  header: { x: 16, y: 200, w: 358, h: 56 }, padEnd: 4,
+  close: { x: 326, y: 206, w: 44, h: 44 }, icon: { x: 337, y: 217, w: 22, h: 22 },
+  title: { x: 32, y: 217, w: 250, h: 22 },
+  ...over,
+});
+
+test('SHD: a titled and a titleless header with the Close on the trailing edge, level and centred, pass', () => {
+  const { measured, failures } = evalSheetHeader([sheetHead(), sheetHead({ name: '(no title)', title: null })]);
+  assert.deepStrictEqual(failures, []);
+  assert.deepStrictEqual(measured, { headers: 2, titleless: 1 });
+});
+
+test('SHD: each broken property fails on its own (Close on the leading edge, glyph off centre on x and on y, title not level, title under the Close, no glyph)', () => {
+  const cases = [
+    [{ title: null, name: '(no title)', close: { x: 16, y: 206, w: 44, h: 44 }, icon: { x: 27, y: 217, w: 22, h: 22 } }, /not the header's trailing edge/],
+    [{ icon: { x: 337.6, y: 217, w: 22, h: 22 } }, /glyph centre-x off/],
+    [{ icon: { x: 337, y: 217.6, w: 22, h: 22 } }, /glyph centre-y off/],
+    [{ title: { x: 32, y: 218, w: 250, h: 22 } }, /not level/],
+    [{ title: { x: 32, y: 217, w: 300, h: 22 } }, /runs under the Close/],
+    [{ icon: null }, /no icon glyph/],
+    [{ close: null }, /no header or no Close/],
+  ];
+  for (const [over, re] of cases) {
+    const { failures } = evalSheetHeader([sheetHead(over)]);
+    assert.ok(failures.some((f) => re.test(f)), `${re} in ${JSON.stringify(failures)}`);
+  }
+  assert.deepStrictEqual(evalSheetHeader([sheetHead({ icon: { x: 337.5, y: 217.5, w: 22, h: 22 } })]).failures, [], '0.5px is inside the tolerance');
 });

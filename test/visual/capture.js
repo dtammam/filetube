@@ -252,8 +252,14 @@ function sceneKit(FX, BASE) {
     ...SETTINGS_SECTIONS.map(([id, name, key, scroll]) => ({ id: `6${id}-settings-${name}`, path: `/setup.html#${key}`, vps: scroll ? ['phone'] : undefined,
       run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(800); await openSettingsSection(p, key); if (scroll) { await p.evaluate(() => window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2))); await snapScroll(p); } } })),
     { id: '70-login-page', path: '/login', run: async (p) => { await p.context().clearCookies(); await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' }); await sleep(400); } },
-    { id: '71-oneoff-dialog', path: '/', run: async (p, vp) => { const sel = vp === 'phone' ? '[data-nav="oneoff-download"]' : '#ytdlp-oneoff-btn'; await p.waitForSelector(sel, { timeout: 12000 }); await tap(p, sel, vp); await p.waitForSelector('.oneoff-modal:not([hidden])', { timeout: 8000 }); await sleep(500); } },
+    { id: '71-oneoff-dialog', path: '/', run: async (p, vp) => { const sel = vp === 'phone' ? '[data-nav="oneoff-download"]' : '#ytdlp-oneoff-btn'; await p.waitForSelector(sel, { timeout: 12000 }); await tap(p, sel, vp); await p.waitForSelector('.oneoff-modal:not([hidden]), .ui-sheet.is-open .oneoff-form', { timeout: 8000 }); await sleep(500); } },
     { id: '72-settings-password-prompt', path: '/setup.html#users', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForLoadState('networkidle'); await openSettingsSection(p, 'users'); await p.waitForSelector('[data-user-action="reset-password"]', { timeout: 12000 }); await tap(p, '[data-user-action="reset-password"]', vp); await p.waitForSelector('.ui-sheet.is-open', { timeout: 8000 }); await p.fill('.ui-sheet .ui-field__input', 'correct-horse'); await sleep(400); } },
+    // Sweep S9 (overlays and feedback): the shared dialogs opened through the SAME globals the
+    // views call (so the before tree draws its bespoke modals and the after tree its ui.sheets),
+    // three queued toasts, the download status chip (a scripted status: one downloading, one
+    // failed), the handoff card (a scripted presence), the Modern header sort menu, and a
+    // search that finds nothing (the ui-state).
+    ...S9_SCENES(FX),
     // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
     { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
     { id: '51-books-shelf', path: `/books?root=${encodeURIComponent(FX.bookShelf || '')}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
@@ -272,6 +278,67 @@ function sceneKit(FX, BASE) {
     }
   }
   return { SCENES, openPocket };
+}
+
+// Sweep S9: the overlay / feedback scenes. `openOn` evaluates `fn` on the loaded page and
+// waits for the overlay; `stubFetch` answers one URL from an init script (the page reloads so
+// the stub is in place before the app's first request), the rest go to the server.
+function S9_SCENES(FX) {
+  const stubFetch = async (p, url, body) => {
+    await p.addInitScript(({ u, b }) => {
+      const real = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const s = typeof input === 'string' ? input : (input && input.url) || '';
+        if (s === u || s.startsWith(u + '?')) {
+          // '@now' marks a timestamp that must be fresh in the page's (pinned) clock.
+          const text = JSON.stringify(b).split('"@now"').join(JSON.stringify(new Date().toISOString()));
+          return Promise.resolve(new Response(text, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
+        return real(input, init);
+      };
+    }, { u: url, b: body });
+    await p.reload({ waitUntil: 'networkidle' });
+  };
+  const openOn = async (p, fn, arg, sel) => {
+    await p.waitForLoadState('networkidle');
+    await p.evaluate(fn, arg);
+    await p.waitForSelector(sel, { timeout: 8000 });
+    await sleep(600);
+  };
+  const SHEET = '.ui-sheet.is-open, .modal-backdrop, .hard-delete-modal-backdrop';
+  const status = { subscriptions: {}, breaker: null, oneShots: {
+    j1: { state: 'downloading', percent: 42, title: 'Harbor Workshop - Bench build, part 2', label: 'Harbor Workshop', updatedAt: '@now' },
+    j2: { state: 'error', title: 'Northbound Field Notes - River walk', error: 'HTTP Error 403: Forbidden', url: 'https://example.com/v/2', updatedAt: '@now' },
+  } };
+  return [
+    { id: '80-toasts-queued', path: '/', run: async (p) => { await openOn(p, () => {
+      window.showToast('Added to queue', { label: 'Undo', onAction() {} });
+      window.showToast('Saved');
+      window.showToast('Could not share the link.');
+    }, null, '.ui-toast.is-visible, .toast'); } },
+    { id: '81-dl-chip', path: '/', run: async (p) => { await stubFetch(p, '/api/subscriptions/status', status); await p.waitForSelector('#dl-status-chip:not([hidden])', { timeout: 12000 }); await sleep(600); } },
+    { id: '82-dl-chip-expanded', path: '/', run: async (p, vp) => { await stubFetch(p, '/api/subscriptions/status', status); await p.waitForSelector('#dl-status-chip:not([hidden])', { timeout: 12000 }); await tap(p, '#dl-status-chip .dl-status-chip-summary', vp); await sleep(600); } },
+    { id: '83-trash-confirm', path: '/', run: async (p) => { await openOn(p, () => window.showConfirmModal('Move to Trash?',
+      'Move <strong>Bench build, part 2</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">/media/Harbor Workshop/Bench build, part 2.mp4</code>',
+      () => {}, { confirm: 'Move to Trash', danger: true }), null, SHEET); } },
+    { id: '84-local-delete', path: '/', run: async (p) => { await openOn(p, () => window.showHardDeleteModal({ title: 'Garden party 2019', filePath: '/media/Home Videos/Garden party 2019.mp4' }, () => {}), null, SHEET); } },
+    { id: '85-share-choice', path: '/', run: async (p) => { await openOn(p, () => window.showChoiceModal('Share', [{ label: 'Share video', onPick() {} }, { label: 'Share at current time (1:05)', onPick() {} }]), null, SHEET); } },
+    { id: '86-move-dialog', path: '/', run: async (p) => { await openOn(p, () => window.showMoveModal({ title: 'Garden party 2019' }, ['/media/Home Videos', '/media/Harbor Workshop', '/media/Archive'], () => {}), null, SHEET); } },
+    { id: '87-transcript-dialog', path: '/', vps: ['land', 'desktop'], run: async (p) => { await openOn(p, () => window.showTranscriptModal({
+      text: 'Bench build, part 2\nPublished January 5, 2024\nHarbor Workshop\n\nWelcome back to the shop.\nToday we finish the bench.\nFirst, the legs.\n',
+      aiPrompts: [{ id: 's', name: 'Summarize', text: 'Summarize this.' }], shareAi() {} }), null, SHEET); } },
+    { id: '88-attribution-picker', path: '/', run: async (p) => { await openOn(p, () => window.showAttributionPicker([
+      { channelUrl: 'https://example.com/@harbor', channelName: 'Harbor Workshop', source: 'subscription' },
+      { channelUrl: 'https://example.com/@north', channelName: 'Northbound Field Notes', source: 'library' },
+    ], { title: 'Attribute this folder to', showRelocate: true }, () => {}), null, SHEET); } },
+    { id: '89-handoff-card', path: '/', run: async (p) => { await stubFetch(p, '/api/handoff', { presence: {
+      deviceId: 'phone-2', deviceLabel: 'iPhone', kind: 'media', mediaId: FX.video, state: 'playing', position: 125, duration: 480, ageSeconds: 12,
+      title: 'Bench build, part 2', thumbnailUrl: `/thumbnail/${FX.video}`, href: `/watch.html?v=${FX.video}` } });
+      await p.waitForSelector('#handoff-card:not([hidden])', { timeout: 12000 }); await sleep(800); } },
+    { id: '90-sort-menu', path: '/', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.evaluate(() => localStorage.setItem('ft-modern-mode', 'on')); await p.reload({ waitUntil: 'networkidle' });
+      await p.waitForSelector('.modern-sort-btn', { timeout: 12000 }); await tap(p, '.modern-sort-btn', vp); await sleep(600); } },
+    { id: '91-search-empty', path: '/?search=zzqqxx', vps: ['phone', 'desktop'], run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(900); } },
+  ];
 }
 
 // [id digit, scene name, #collapse-key, scrolled half-way (phone only)] - the Settings sections sweep S8

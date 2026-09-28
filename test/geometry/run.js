@@ -74,8 +74,8 @@ function planScenes(opts) {
 
 // Check id -> its in-page collector and pure evaluator. HDR / NAV (sweep S1) are the chrome's
 // rendered contracts (checks.js); G1-G3 take the surface's optional `scope` selector.
-const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar };
-const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar };
+const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader };
+const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader };
 
 async function measureScene(env, scene, mutationCss) {
   const surf = SURFACES.find((s) => s.id === scene.surface);
@@ -197,6 +197,7 @@ function describe(check, ev) {
   if (check === 'G2') return `(${m.items} icon/label pairs)`;
   if (check === 'HDR') return `(${m.buttons} header buttons, ${m.sidebar} sidebar rows)`;
   if (check === 'NAV') return `(${m.tabs} tabs)`;
+  if (check === 'SHD') return `(${m.headers} sheet headers, ${m.titleless} titleless)`;
   return `(${m.groups} groups)`;
 }
 

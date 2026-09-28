@@ -13,7 +13,8 @@
 //   scope: a selector - measure only that subtree (default: the whole page),
 //   path(FX, era, mode) -> the URL path, open(page, vp, helpers) -> drives it to the state,
 //   ready: a selector that exists once the surface rendered,
-//   checks: which of G1-G3 apply (plus HDR / NAV, the chrome's own rendered contracts),
+//   checks: which of G1-G3 apply (plus HDR / NAV, the chrome's own rendered contracts, and SHD,
+//           the sheet header - sweep S9),
 //   scope: a selector the G1-G3 collectors measure inside (default: the whole page),
 //   min: anti-vacuity floors - a check that measured fewer lists/rows/items/groups than this
 //        FAILS as vacuous (a renamed class must not turn a check into a silent pass),
@@ -110,7 +111,34 @@ const SURFACES = [
   },
   { id: 'subscriptions', owner: 'S5', pending: 'S5', note: 'Subscriptions rows: pinned and unpinned, errored and ok (G1, G2, G3)', checks: ['G1', 'G2', 'G3'], fast: true },
   { id: 'podcast-episodes', owner: 'S6', pending: 'S6', note: 'a podcast episode list (G1)', checks: ['G1'] },
-  { id: 'sheet-header', owner: 'S9', pending: 'S9', note: 'a sheet header: title + close (G2)', checks: ['G2'] },
+  // Sweep S9 (D4.6, AC4 G2): the sheet header - a titled confirm (the F44 dialog's shape: title,
+  // body, Cancel + the danger action) with a TITLELESS sheet over it, both opened through the
+  // real ui.js on the kit page. G2: the Close glyph centred in its button; G3: the confirm's
+  // actions equal in height (scoped to the first dialog); SHD: on every open sheet the Close
+  // sits on the header's trailing edge (titled or not), level with the title.
+  {
+    id: 'sheet-header', owner: 'S9',
+    path: (FX, era, mode) => `/ui-kit.html?era=${era}&mode=${mode}&icons=rounded`,
+    open: async (page) => {
+      await page.waitForSelector('.ui-list .ui-row', { timeout: 10000 });
+      await page.evaluate(() => {
+        const u = window.ui;
+        u.confirm({ title: 'Move this local file to Trash?', body: 'It moves to Trash and can be restored from Settings.', confirmLabel: 'Move to Trash', danger: true });
+        const p = document.createElement('p');
+        p.className = 'ui-confirm__body';
+        p.textContent = 'A sheet with no title.';
+        u.sheet({ variant: 'dialog', label: 'Untitled', content: p }).open();
+      });
+      await page.waitForFunction(() => document.querySelectorAll('.ui-sheet.is-open').length === 2, null, { timeout: 5000 });
+      await page.waitForTimeout(450); // the sheets' open transition (--dur-sheet) settles
+    },
+    ready: '.ui-sheet.is-open .ui-sheet__close',
+    scope: '.ui-sheet--dialog',
+    checks: ['G2', 'G3', 'SHD'],
+    // Measured at S9 (every era/mode, phone + desktop): the confirm's Close glyph (1 pair), its
+    // Cancel / Move to Trash row (1 group), 2 open sheet headers of which 1 is titleless.
+    min: { G2: { items: 1 }, G3: { groups: 1 }, SHD: { headers: 2, titleless: 1 } },
+  },
 ];
 
 // The pre-push set: 5 scenes of the fast surfaces (D10.2 asked for 4 at about 20s; see below).

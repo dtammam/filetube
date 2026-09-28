@@ -386,5 +386,53 @@ function evalBottomBar(d, tol = TOL) {
   return { measured: { tabs: tabs.length }, failures };
 }
 
+// SHD (sweep S9): the sheet header's rendered contract (D4.6: a title plus ONE plain icon
+// close button), measured on every OPEN ui.sheet: the Close sits on the header's trailing
+// edge (inside its end padding) with or without a title - a titleless sheet once put it on
+// the LEADING edge -, its glyph is centred in it on both axes, and a title sits level with
+// it (same centre-y) and ends before it. Runs in the page.
+function collectSheetHeader() {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  return Array.from(document.querySelectorAll('.ui-sheet.is-open')).map((s) => {
+    const header = s.querySelector(':scope > .ui-sheet__header');
+    const close = header && header.querySelector('.ui-sheet__close');
+    const icon = close && close.querySelector('.ui-icon');
+    const title = header && header.querySelector('.ui-sheet__title');
+    const cs = header ? getComputedStyle(header) : null;
+    return {
+      name: title ? title.textContent.trim().slice(0, 30) : '(no title)',
+      header: header ? box(header) : null,
+      padEnd: cs ? parseFloat(cs.paddingRight) || 0 : 0,
+      close: close ? box(close) : null,
+      icon: icon ? box(icon) : null,
+      title: title ? box(title) : null,
+    };
+  });
+}
+
+// -> { measured: {headers, titleless}, failures: [string] }
+function evalSheetHeader(items, tol = TOL) {
+  const failures = [];
+  const cx = (b) => b.x + b.w / 2;
+  const cy = (b) => b.y + b.h / 2;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  for (const it of items) {
+    if (!it.header || !it.close) { failures.push(`${it.name}: no header or no Close`); continue; }
+    const trailing = it.header.x + it.header.w - it.padEnd;
+    if (Math.abs((it.close.x + it.close.w) - trailing) > tol) failures.push(`${it.name}: Close ends at ${r2(it.close.x + it.close.w)}, not the header's trailing edge ${r2(trailing)}`);
+    if (Math.abs(cy(it.close) - cy(it.header)) > tol) failures.push(`${it.name}: Close centre-y ${r2(cy(it.close))} vs header ${r2(cy(it.header))}`);
+    if (!it.icon) failures.push(`${it.name}: the Close has no icon glyph`);
+    else {
+      if (Math.abs(cx(it.icon) - cx(it.close)) > tol) failures.push(`${it.name}: close glyph centre-x off by ${r2(cx(it.icon) - cx(it.close))}`);
+      if (Math.abs(cy(it.icon) - cy(it.close)) > tol) failures.push(`${it.name}: close glyph centre-y off by ${r2(cy(it.icon) - cy(it.close))}`);
+    }
+    if (it.title) {
+      if (Math.abs(cy(it.title) - cy(it.close)) > tol) failures.push(`${it.name}: title centre-y ${r2(cy(it.title))} vs Close ${r2(cy(it.close))} (not level)`);
+      if (it.title.x + it.title.w > it.close.x + tol) failures.push(`${it.name}: the title runs under the Close`);
+    }
+  }
+  return { measured: { headers: items.length, titleless: items.filter((i) => !i.title).length }, failures };
+}
+
 module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4,
-  collectHeader, collectBottomBar, evalHeader, evalBottomBar };
+  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader };

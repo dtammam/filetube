@@ -105,6 +105,17 @@ const MUTATIONS = {
     check: 'NAV', target: { surface: 'bottom-bar', era: '2005', mode: 'light', vp: 'phone' },
     css: '[data-theme="2005"] #bottom-nav a{text-decoration:underline!important}',
   },
+  // ---- sweep S9: the sheet header (SHD) ----
+  // SHD: S1's primitive gap - a titleless sheet's Close falls back to the header's LEADING edge.
+  'shd-close-leading': {
+    check: 'SHD', target: { surface: 'sheet-header', era: '2021', mode: 'dark', vp: 'phone' },
+    css: '.ui-sheet__close{margin-inline-start:0!important}',
+  },
+  // SHD: the close glyph sits 1px off centre in its button (a baseline nudge).
+  'shd-close-glyph-nudge': {
+    check: 'SHD', target: { surface: 'sheet-header', era: '2005', mode: 'light', vp: 'desktop' },
+    css: '.ui-sheet__close .ui-btn__icon{position:relative!important;left:1px!important}',
+  },
   // G4: a layout property moves over time after a rotate (the F37 class): the kit's padding
   // slides for 400ms once the viewport turns landscape. (UI pass S7: an ANIMATION, not a
   // transition - since D7 every rotate holds html.no-motion, which zeroes transitions, so a
