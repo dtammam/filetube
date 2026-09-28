@@ -91,6 +91,11 @@ test('lists: column-gap 0 (each declared column carries its own spacing), and un
   assert.ok(RULES.some((r) => r.sel === '.ui-list' && /--lead-w:\s*0px/.test(r.body)), 'no lead column unless declared');
 });
 
+test('a list inside a sheet (every ui.menu) takes the group inset', () => {
+  const r = RULES.find((x) => x.sel === '.ui-sheet__body > .ui-list');
+  assert.ok(r && /--row-pad-start:\s*var\(--inset\)/.test(r.body));
+});
+
 test('a rounded overlay that scrolls splits clip from scroll (LESSONS 6)', () => {
   const sheet = RULES.find((r) => r.sel === '.ui-sheet');
   assert.match(sheet.body, /overflow:\s*hidden/);

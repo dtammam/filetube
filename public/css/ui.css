@@ -696,6 +696,12 @@ button.ui-row:focus-visible,
   overscroll-behavior: contain;
   padding-bottom: var(--space-4);
 }
+/* a list inside a sheet (every ui.menu) takes the group inset, so its icons and text
+   never sit on the sheet's edge (S5's report) */
+.ui-sheet__body > .ui-list {
+  --row-pad-start: var(--inset);
+  --row-pad-end: var(--space-4);
+}
 
 /* ---- ui-confirm --------------------------------------------------------------------- */
 .ui-confirm__body {
