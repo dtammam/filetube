@@ -407,6 +407,11 @@ a.ui-btn {
   text-overflow: ellipsis;
 }
 .ui-row--danger { color: var(--danger); }
+/* the row that is playing now (step 7, retire R2: Music's playing song, the Now Playing panel's
+   current Up next row): the tonal selected fill and a heavier title - never red (D8.8). A
+   hover or press tint still answers the pointer over it. */
+.ui-row--current { background-color: var(--fill-selected); }
+.ui-row--current .ui-row__title { font-weight: var(--fw-semibold); }
 /* a row that navigates, whole (a/button) or through its title link stretched over it */
 a.ui-row,
 button.ui-row,
@@ -548,6 +553,73 @@ button.ui-row:focus-visible,
   background: var(--progress);
   transform: scaleX(var(--p, 0));
   transform-origin: left center;
+}
+
+/* ---- ui-tile ------------------------------------------------------------------------ */
+/* Step 7 (retire R2): a card that is ONE button - its art over its text lines (Music's album,
+   artist and Jump back in cards). No chrome of its own: the art is the visual; the surface
+   sizes it and styles its art and lines. The app's type (a bare <button> would paint in the
+   UA's control font), a press that dims the whole card, and the focus ring. */
+.ui-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: opacity var(--dur-press) var(--ease-std);
+}
+.ui-tile:active,
+.ui-tile[data-pressed] {
+  opacity: 0.7;
+}
+.ui-tile:focus-visible {
+  outline: var(--ring-w) solid var(--focus-ring);
+  outline-offset: var(--ring-w);
+  border-radius: var(--r-sm);
+}
+
+/* ---- ui-link ------------------------------------------------------------------------ */
+/* Step 7 (retire R2): a text control that reads as the text around it - an artist name in a
+   song row's meta line, a now-playing sub-line (the desktop panel, the album drill header,
+   the Pocket skins' artist lines). A <button> with no chrome and its context's font and
+   colour; every consumer's own type and colour rule (the skins' palettes, at two classes and
+   more) wins over these one-class defaults, as it did over the zero-specificity resets this
+   replaces. Inline by default; --block fills its line (a sub-line that ellipsizes). */
+.ui-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ui-link--block {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+.ui-link:active,
+.ui-link[data-pressed] {
+  opacity: 0.6;
+}
+.ui-link:focus-visible {
+  outline: var(--ring-w) solid var(--focus-ring);
+  outline-offset: var(--ring-w);
 }
 
 /* ---- ui-chip ------------------------------------------------------------------------ */

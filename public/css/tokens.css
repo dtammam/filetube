@@ -739,7 +739,11 @@
      a backdrop/content pair derives with calc(var(--z-X) - 1) /
      calc(var(--z-X) + 1); new raw numbers above the local 0-40 band are
      never added. The local band (in-component stacking contexts) stays
-     literal by design. */
+     literal by design. Step 7 (retire R2): an in-content STICKY bar is the one local-band
+     layer on the ladder, because ui-lint's z-ladder rule governs every position:sticky rule -
+     over the rows that scroll under it, under every chrome rung (the desktop sidebar's
+     grandfathered 99 included, so an open phone drawer is never covered). */
+  --z-sticky: 30;
   --z-nav: 900;
   --z-chip: 940;
   --z-dock: 950;

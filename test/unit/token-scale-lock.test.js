@@ -31,7 +31,7 @@ const CONTRACT = {
   '--radius-full': '999px',
   '--shadow-modal': '0 8px 24px rgba(0, 0, 0, 0.45)',
   '--dur-fast': '0.15s', '--dur-slow': '0.25s', '--dur-critter-arrive': '1.2s', '--ease-ui': 'ease',
-  '--z-nav': '900', '--z-chip': '940', '--z-dock': '950', '--z-header': '1000',
+  '--z-sticky': '30', '--z-nav': '900', '--z-chip': '940', '--z-dock': '950', '--z-header': '1000',
   '--z-player-max': '1100', '--z-sheet': '1500', '--z-panel': '1600',
   '--z-modal': '2000', '--z-top': '2200',
   // Tier 4 batch 4a (2026-07-31, Dean's OQ7 ruling): the media-placeholder
@@ -153,7 +153,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 198, 'UI pass step 3: +19 primitive metrics and grounds; step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 199, 'UI pass step 7 (retire R2): +1 --z-sticky (the in-content sticky bar on the ladder); step 3: +19 primitive metrics and grounds; step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

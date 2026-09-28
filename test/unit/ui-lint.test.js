@@ -407,7 +407,7 @@ test('no-legacy-tokens: tokens.css\'s alias and legacy names are read from the f
     assert.ok(INFO.legacy.has(n), `${n} is legacy`);
   }
   for (const n of ['--surface-0', '--ink-1', '--accent', '--btn-fill', '--btn-radius', '--r-md', '--sticky-bar-top']) assert.ok(!INFO.legacy.has(n), `${n} is not legacy`);
-  assert.deepStrictEqual(INFO.ladder, ['--z-nav', '--z-chip', '--z-dock', '--z-header', '--z-player-max', '--z-sheet', '--z-panel', '--z-modal', '--z-top']);
+  assert.deepStrictEqual(INFO.ladder, ['--z-sticky', '--z-nav', '--z-chip', '--z-dock', '--z-header', '--z-player-max', '--z-sheet', '--z-panel', '--z-modal', '--z-top']);
   assert.strictEqual(total(lint('no-legacy-tokens', [['public/css/style.css', '.a { color: var(--fs-md); b: var(--ink-1); }']])), 1);
 });
 
