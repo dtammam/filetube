@@ -319,13 +319,17 @@ test('v1.317 music -> watch: music\'s init/destroy leaves the shared button in p
 
 const STYLE_CSS = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
-test('v1.317 CSS: the in-player button is hidden below the desktop breakpoint, in the dock, and on every view that does not wire it (watch + music own it)', () => {
+test('v1.317 CSS: the in-player button is hidden below the desktop breakpoint, in the dock, and on every view that does not wire it (watch + music + podcasts own it)', () => {
   assert.match(STYLE_CSS, /@media \(max-width: 1024px\) \{\s*#theater-btn \{ display: none; \}\s*\}/, 'desktop-only (theatre has no meaning below the breakpoint) - the watch rule, unchanged');
   assert.match(STYLE_CSS, /\n#player-dock #theater-btn \{ display: none; \}/, 'hidden in the docked mini-player');
-  assert.match(STYLE_CSS, /\nbody:not\(\[data-view="watch"\]\):not\(\[data-view="music"\]\) #theater-btn \{ display: none; \}/, 'scoped to the two views that bind a click (podcasts/shows/reader mount the host too and would show a dead button)');
+  // UI pass S7: podcasts retired its own toolbar toggle for this button (podcasts.js bindTheaterControl)
+  assert.match(STYLE_CSS, /\nbody:not\(\[data-view="watch"\]\):not\(\[data-view="music"\]\):not\(\[data-view="podcasts"\]\) #theater-btn \{ display: none; \}/, 'scoped to the three views that bind a click (shows/reader mount the host too and would show a dead button)');
   assert.match(STYLE_CSS, /#theater-btn\[aria-pressed="true"\] \{\s*color: var\(--yt-red\);/, 'the pressed look still keys off aria-pressed (music re-stamps it)');
-  // the podcast theatre toggle still wears the toolbar class (out of scope, must not lose its rules)
-  assert.match(STYLE_CSS, /@media \(max-width: 1023px\) \{ \.music-theater-btn \{ display: none !important; \} \}/, 'the podcast toolbar button keeps its mobile hide');
+  // UI pass S7: the podcast toolbar's own theatre button is gone with its class and rules
+  assert.doesNotMatch(STYLE_CSS, /\.music-theater-btn/, 'no rule for the retired toolbar toggle');
+  const pods = fs.readFileSync(path.join(REPO, 'public', 'podcasts.html'), 'utf8');
+  assert.doesNotMatch(pods, /podcast-theater-btn|music-theater-btn/, 'podcasts.html carries no second theatre control');
+  assert.match(fs.readFileSync(path.join(REPO, 'public', 'js', 'podcasts.js'), 'utf8'), /pl\.ensureTheaterButton\(\)/, 'podcasts wires the player\'s own button (the one writer)');
 });
 
 // ---- one writer, no duplicate control, and SHELL PARITY ----------------------------

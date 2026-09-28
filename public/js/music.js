@@ -138,23 +138,33 @@ function buildJumpBackTileHtml(item) {
 // data-artist the content delegation reads (a .music-artist-row arm).
 function buildArtistListRowHtml(artist) {
   var name = artist.artist || 'Unknown artist';
-  var initial = (String(name).trim().charAt(0) || '?').toUpperCase();
   var count = (artist.trackCount || 0) + (artist.trackCount === 1 ? ' song' : ' songs');
+  // UI pass S7: a ui-row (the whole row drills: a <button> row) in the ARTIST_LIST_OPEN
+  // ui-list - a ui-avatar circle (D8.7: people are circles), the name, the count in the aside
+  // column. The avatar is the channel photo over its monogram (revealMusicArt reveals it on
+  // load and drops it on error, so a broken URL shows the monogram), else the artist's album
+  // art clipped to the circle.
+  var U = (typeof window !== 'undefined' && window.ui) || null;
+  var initials = (U && typeof U.initials === 'function') ? U.initials(name) : (String(name).trim().charAt(0) || '?').toUpperCase();
+  var tone = (U && typeof U.toneOf === 'function') ? U.toneOf(name) : 1;
   var circle;
   if (typeof artist.avatarUrl === 'string' && artist.avatarUrl) {
-    circle = '<span class="music-artist-row-circle"><span class="maa-mono">' + escapeMusicHtml(initial) + '</span>' +
-      '<img class="maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" /></span>';
+    circle = '<span class="ui-avatar ui-avatar--md music-artist-row-circle"><span class="ui-avatar__mono maa-mono" data-tone="' + tone + '">' + escapeMusicHtml(initials) + '</span>' +
+      '<img class="ui-avatar__img maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" /></span>';
   } else {
     var artId = (Array.isArray(artist.artIds) && artist.artIds[0]) || '';
-    circle = '<span class="music-artist-row-circle"><img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" /></span>';
+    circle = '<span class="ui-avatar ui-avatar--md music-artist-row-circle"><img class="ui-avatar__img art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" /></span>';
   }
   return '' +
-    '<button type="button" class="music-artist-row" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
-    circle +
-    '<span class="music-artist-row-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
-    '<span class="music-artist-row-count">' + escapeMusicHtml(count) + '</span>' +
+    '<button type="button" class="music-artist-row ui-row ui-row--default" role="listitem" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
+    '<span class="ui-row__lead"></span>' +
+    '<span class="ui-row__media">' + circle + '</span>' +
+    '<span class="ui-row__body"><span class="ui-row__title music-artist-row-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span></span>' +
+    '<span class="ui-row__aside music-artist-row-count">' + escapeMusicHtml(count) + '</span>' +
+    '<span class="ui-row__actions"></span>' +
     '</button>';
 }
+var ARTIST_LIST_OPEN = '<div class="music-artist-list ui-list ui-list--default ui-list--media-avatar ui-list--aside-text ui-list--divider-inset" role="list">';
 
 // Friction pass: a "Recently played" HOME tile - a round album-art circle over
 // the artist name (no meta), drilling into that artist via the same data-artist
@@ -177,31 +187,31 @@ function buildMusicShelfHtml(title, seeallTab, tilesHtml) {
     '<section class="music-shelf">' +
     '<div class="music-shelf-head">' +
     '<h3 class="music-shelf-title">' + escapeMusicHtml(title) + '</h3>' +
-    (seeallTab ? '<button type="button" class="music-shelf-seeall" data-seeall="' + escapeMusicHtml(seeallTab) + '">See all</button>' : '') +
+    (seeallTab ? '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-shelf-seeall" data-seeall="' + escapeMusicHtml(seeallTab) + '"><span class="ui-btn__label">See all</span></button>' : '') +
     '</div>' +
     '<div class="music-shelf-row">' + tilesHtml + '</div>' +
     '</section>';
 }
 
-// v1.102 (tranche 4): the song-row action glyphs (queue/download/like) are inline
-// chrome-icon SVGs, not `.icon-*` masks - a mask paints NOTHING until it decodes,
-// so on an iOS cold start it popped in a beat after the row (the v1.87 class). The
-// markup builder is common.js's chromeIconMarkup, a browser global reached via
-// `window.` (no bare require - the client-scripts convention). node:test that
-// wants the glyph attaches window.chromeIconMarkup first (see music-view.test.js);
-// otherwise the row still builds, just glyph-less.
-function rowGlyphMarkup(name) {
-  return (typeof window !== 'undefined' && typeof window.chromeIconMarkup === 'function')
-    ? window.chromeIconMarkup(name)
-    : '';
-}
 
-// A song row (index button, thumb, title/artist, duration, like toggle). The
-// row's data-index drives playAt(); the like button is a nested control.
-// v1.44.2: every row carries a CSS equalizer glyph (3 animated bars, NEVER an
-// emoji codepoint — iOS forces blue emoji) overlaid on the thumb; it is
-// display:none unless the row is `.playing` (the highlight that tracks the
-// currently-playing track id — see applyPlayingHighlight).
+// A song row. UI pass S7 (plan D4.3): a ui-row in the song ui-list (music.js
+// SONG_LIST_OPEN) with RESERVED columns, so an optional child never moves one (AC5):
+// the art (ui-art, the row media column), the title over "artist · album" (the artist
+// name is a control: data-artist -> the artist drill, v1.317 M1), the length (the aside
+// column, blank when unknown) and THREE fixed action slots - Add to queue, Like (a
+// two-state icon toggle, favorite / favorite.fill, ink never red: D8.8) and the row menu
+// (more_vert -> ui.menu: Play next, Save to device, Go to artist). The title is the row's
+// stretched link (ui-row__link): a tap anywhere else on the row plays it (the delegation
+// reads data-index), and the controls sit above the link. v1.44.2: the playing row
+// carries a CSS equalizer (3 bars, NEVER an emoji codepoint) over its art, shown only
+// while `.playing` (applyPlayingHighlight).
+// The hook classes (music-song-row, music-like-btn, music-queue-btn, music-song-more,
+// data-like-id / data-queue-id) are the delegation's, not a style.
+function songIconHtml(name) {
+  return '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-' + name.replace(/\./g, '-') + '"/></svg></span>';
+}
+var SONG_LIST_CLASSES = 'ui-list ui-list--media ui-list--media-art ui-list--aside-text ui-list--actions-3 ui-list--divider-inset';
+var SONG_LIST_OPEN = '<div class="music-song-list ' + SONG_LIST_CLASSES + '" role="list">';
 function buildSongRowHtml(item, index) {
   var dur = formatTrackDuration(item.durationSec);
   var liked = !!item.liked;
@@ -210,38 +220,32 @@ function buildSongRowHtml(item, index) {
   // (POST/DELETE /api/liked/:id, its own id); a native music-library row in the
   // music store. The heart carries the store so toggleLike never guesses.
   var likeStore = (item.source === 'library' || item.source === 'library-chapter') ? ' data-like-store="media"' : '';
+  var title = item.title || 'Unknown track';
   return '' +
-    '<div class="music-song-row" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
-    '<span class="music-song-thumb-wrap">' +
-    '<img class="music-song-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" />' +
+    '<div class="music-song-row ui-row ui-row--media" role="listitem" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
+    '<span class="ui-row__lead"></span>' +
+    '<span class="ui-row__media"><span class="music-song-thumb-wrap ui-art ui-avatar--lg">' +
+    '<img class="music-song-thumb ui-avatar__img art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" />' +
     '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
-    '</span>' +
-    '<span class="music-song-main">' +
-    '<span class="music-song-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title) + '</span>' +
-    // v1.317 (M1): the artist name is a control (data-artist -> the artist drill, the same
-    // delegation the artist cards use); the album stays plain text. Empty artist = no control.
-    '<span class="music-song-sub">' +
+    '</span></span>' +
+    '<span class="ui-row__body">' +
+    '<span class="ui-row__title music-song-title"><button type="button" class="ui-row__link music-song-play" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</button></span>' +
+    '<span class="ui-row__meta music-song-sub">' +
     (item.artist ? '<button type="button" class="music-song-artist" data-artist="' + escapeMusicHtml(item.artist) + '" title="Go to artist">' + escapeMusicHtml(item.artist) + '</button>' : '') +
-    (item.album ? ' · ' + escapeMusicHtml(item.album) : '') + '</span>' +
+    (item.album ? (item.artist ? ' · ' : '') + escapeMusicHtml(item.album) : '') + '</span>' +
     '</span>' +
-    '<span class="music-song-duration">' + escapeMusicHtml(dur) + '</span>' +
+    '<span class="ui-row__aside music-song-duration">' + escapeMusicHtml(dur) + '</span>' +
+    '<span class="ui-row__actions">' +
     // v1.72 (cap 3): per-track add-to-queue - the one global queue's verb
-    // (common.js addToQueue with the 'track' entry kind), the podcasts
-    // episode-row pattern on the like-button chassis.
-    '<button type="button" class="music-like-btn music-queue-btn" data-queue-id="' + escapeMusicHtml(item.id) + '" title="Add to queue" aria-label="Add to queue">' +
-    rowGlyphMarkup('queue') +
-    '</button>' +
-    // v1.72 (cap 7): per-track save-to-device - the like button's chassis,
-    // an anchor at the stream route's ?download=1 arm (original bytes; the
-    // server names the file via Content-Disposition). stopPropagation is
-    // not needed: an <a> click navigates the browser's download machinery,
-    // and the row-play delegation ignores clicks on .music-download-btn.
-    '<a class="music-like-btn music-download-btn" href="/track/' + encodeURIComponent(item.id) + '?download=1" download title="Save to device" aria-label="Save to device">' +
-    rowGlyphMarkup('download') +
-    '</a>' +
-    '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '"' + likeStore + ' title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
-    rowGlyphMarkup('heart') +
-    '</button>' +
+    // (common.js addToQueue with the 'track' entry kind).
+    '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-like-btn music-queue-btn" data-queue-id="' + escapeMusicHtml(item.id) + '" title="Add to queue" aria-label="Add to queue">' +
+    songIconHtml('playlist_add') + '</button>' +
+    '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '"' + likeStore +
+    ' aria-pressed="' + (liked ? 'true' : 'false') + '" data-icon-off="favorite" data-icon-on="favorite.fill" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
+    songIconHtml(liked ? 'favorite.fill' : 'favorite') + '</button>' +
+    '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-song-more" data-song-menu="' + index + '" aria-haspopup="menu" title="More" aria-label="More for ' + escapeMusicHtml(title) + '">' +
+    songIconHtml('more_vert') + '</button>' +
+    '</span>' +
     '</div>';
 }
 
@@ -491,7 +495,8 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
   }
   return '' +
     '<div class="music-drill-header">' +
-    '<button type="button" class="music-drill-back btn btn-sm" aria-label="Back">‹ Back</button>' +
+    // UI pass S7: ui-btn primitives with registry icons (no text glyph: AC4)
+    '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-drill-back" aria-label="Back">' + songIconHtml('arrow_back') + '<span class="ui-btn__label">Back</span></button>' +
     '<div class="music-drill-heading">' +
     // Gate r1 W2 (adversary): never request `/albumart/` with an EMPTY id (an empty drill has
     // no first track) - the slot keeps its box, srcless and unshimmered (nothing to reveal).
@@ -508,18 +513,18 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     (isChapterAlbum(tracks) && first.chaptersEdited === true ? ' <span class="music-drill-edited">Edited</span>' : '') +
     '</div>' +
     '<div class="music-drill-actions">' +
-    '<button type="button" class="music-drill-play btn btn-primary btn-sm"><i class="icon-play"></i> Play</button>' +
-    '<button type="button" class="music-drill-shuffle btn btn-sm"><i class="icon-shuffle"></i> Shuffle</button>' +
+    '<button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--pill music-drill-play">' + songIconHtml('play_arrow') + '<span class="ui-btn__label">Play</span></button>' +
+    '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-shuffle">' + songIconHtml('shuffle') + '<span class="ui-btn__label">Shuffle</span></button>' +
     // v1.273 (Dean): "the ability to rename chapters as if they were the song names...
     // it's just a string in a text block effectively". A chaptered album's "tracks" are
     // the `::c` chapters of ONE file, so their names come from that file's chapter list -
     // which the existing editor already writes. Only chapter albums get the button;
     // a real album's track titles are file tags and are not editable here.
     (isChapterAlbum(tracks) && !!(opts && opts.canEditChapters)
-      ? '<button type="button" class="music-drill-chapters btn btn-sm"><i class="icon-list"></i> Edit chapters</button>' +
+      ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-chapters">' + songIconHtml('edit') + '<span class="ui-btn__label">Edit chapters</span></button>' +
         // Chapter Snap (2026-09-24) (Dean): fix WHEN the songs start (silence snap + nudges) -
         // the ONE time editor (common.js showChapterSnapEditor), same write-RBAC gate.
-        '<button type="button" class="music-drill-snap btn btn-sm">Fix times</button>'
+        '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-snap"><span class="ui-btn__label">Fix times</span></button>'
       : '') +
     '</div>' +
     '</div>' +
@@ -537,12 +542,12 @@ function buildStickyBarHtml(drill, tracks) {
   var title = (drill && drill.label) || (isAlbum ? 'Album' : 'Artist');
   return '' +
     '<div class="music-drill-sticky">' +
-    '<button type="button" class="music-drill-back music-sticky-back btn btn-sm" aria-label="Back">‹</button>' +
+    '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-drill-back music-sticky-back" aria-label="Back">' + songIconHtml('arrow_back') + '</button>' +
     (artId
       ? '<img class="music-sticky-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" />'
       : '<img class="music-sticky-thumb" alt="" />') + // gate r1 W2: no empty-id art request
     '<span class="music-sticky-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</span>' +
-    '<button type="button" class="music-drill-play music-sticky-play btn btn-primary btn-sm" aria-label="Play"><i class="icon-play"></i></button>' +
+    '<button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--icon music-drill-play music-sticky-play" aria-label="Play">' + songIconHtml('play_arrow') + '</button>' +
     '</div>';
 }
 
@@ -699,18 +704,56 @@ function buildMusicHomeSkeleton() {
 function buildMusicSkeletonRows(n) {
   var count = Number.isInteger(n) && n > 0 ? n : 0;
   if (count === 0) return '';
+  // UI pass S7 (D9: seed the shape you reveal): the SAME ui-row grid as buildSongRowHtml -
+  // every slot, the 40px art, a title and a meta line that are their real line boxes
+  // (.skeleton-text holds one transparent line in the row's own font) and the three action
+  // slots - so the reveal moves nothing.
   var rows = '';
   for (var i = 0; i < count; i++) {
     rows += '' +
-      '<div class="music-song-row" aria-hidden="true">' +
-      '<span class="music-song-thumb-wrap skeleton-shimmer"></span>' +
-      '<span class="music-song-main">' +
-      '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
-      '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+      '<div class="music-song-row ui-row ui-row--media" role="listitem" aria-hidden="true">' +
+      '<span class="ui-row__lead"></span>' +
+      '<span class="ui-row__media"><span class="music-song-thumb-wrap ui-art ui-avatar--lg skeleton-shimmer"></span></span>' +
+      '<span class="ui-row__body">' +
+      '<span class="ui-row__title"><span class="skeleton-text skeleton-text-long skeleton-shimmer">&nbsp;</span></span>' +
+      '<span class="ui-row__meta"><span class="skeleton-text skeleton-text-mid skeleton-shimmer">&nbsp;</span></span>' +
       '</span>' +
+      '<span class="ui-row__aside"></span>' +
+      '<span class="ui-row__actions"><span class="ui-row__slot"></span><span class="ui-row__slot"></span><span class="ui-row__slot"></span></span>' +
       '</div>';
   }
-  return '<div class="music-song-list">' + rows + '</div>';
+  return SONG_LIST_OPEN + rows + '</div>';
+}
+
+// UI pass D7 (A5 of the music audit): the Music list's ANCHOR ROW. Rows are named by the ids the
+// renderers already carry (a song's data-id, an album's data-album-key, an artist's data-artist).
+// findListAnchor: the first row of `host` still on screen - its identity and its distance from the
+// viewport top, at `width`. anchorRestoreTarget: the page Y that puts that row back at that
+// distance, or null when there is nothing to do (the width never changed - the list kept its
+// place - or the row is gone). Pure over the DOM they are handed (music-anchor-restore.test.js).
+var POCKET_ANCHOR_ATTRS = ['data-id', 'data-album-key', 'data-artist'];
+function findListAnchor(host, width) {
+  if (!host || typeof host.querySelectorAll !== 'function') return null;
+  var rows = host.querySelectorAll('[' + POCKET_ANCHOR_ATTRS.join('], [') + ']');
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].getAttribute('aria-hidden') === 'true') continue; // a skeleton is not a place
+    var r = rows[i].getBoundingClientRect();
+    if (!(r.height > 0) || r.bottom <= 0) continue;
+    for (var k = 0; k < POCKET_ANCHOR_ATTRS.length; k++) {
+      var v = rows[i].getAttribute(POCKET_ANCHOR_ATTRS[k]);
+      if (v != null) return { attr: POCKET_ANCHOR_ATTRS[k], value: v, viewTop: r.top, width: width };
+    }
+  }
+  return null;
+}
+function anchorRestoreTarget(anchor, host, scrollY, width) {
+  if (!anchor || !host || anchor.width === width) return null;
+  var rows = host.querySelectorAll('[' + anchor.attr + ']');
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].getAttribute(anchor.attr) !== anchor.value) continue;
+    return Math.max(0, (Number(scrollY) || 0) + rows[i].getBoundingClientRect().top - anchor.viewTop);
+  }
+  return null;
 }
 
 // UI pass D7 (F58): the docked mini player floats over the bottom of the page, so on the Music
@@ -897,6 +940,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MUSIC_JUMPBACK_COUNT_KEY, readJumpBackCount, writeJumpBackCount, buildJumpBackSkeletonHtml,
     setToolbarSlot, toolbarSlotLive,
     reserveDockSpace, // UI pass D7 (F58): the mini player's footprint, reserved at the view's bottom
+    findListAnchor, anchorRestoreTarget, // UI pass D7 (A5): the list's anchor row across a rotate in Pocket
   };
 }
 
@@ -1068,6 +1112,38 @@ if (typeof module !== 'undefined' && module.exports) {
       }).catch(function () { /* fail closed */ });
     }());
     var emptyNote = root.querySelector('#music-empty');
+    // UI pass S7 (D9): the ONE empty-state writer - the library's words, or a search's
+    // ("No matches"), and the Open Settings action only for the empty library.
+    function setEmpty(show) {
+      if (!emptyNote) return;
+      emptyNote.hidden = !show;
+      if (!show) return;
+      var t = emptyNote.querySelector('[data-empty-title]');
+      var b = emptyNote.querySelector('[data-empty-body]');
+      var a = emptyNote.querySelector('[data-empty-action]');
+      if (search) {
+        if (t) t.textContent = 'No matches';
+        if (b) b.textContent = 'Nothing in your music matches "' + search + '".';
+        if (a) a.hidden = true;
+      } else {
+        if (t) t.textContent = 'No music yet';
+        if (b) b.textContent = 'Add a music folder in Settings, drop MP3, M4A, FLAC or WAV files in it, and scan.';
+        if (a) a.hidden = false;
+      }
+    }
+    // UI pass S7 (D9): a failed load - the error state with Retry (a ui.state block in
+    // #music-content), never the empty library's words.
+    function showLoadError() {
+      setEmpty(false);
+      if (!content) return;
+      content.innerHTML = '';
+      var U = window.ui;
+      if (!U || typeof U.state !== 'function') return;
+      var el = U.state({ icon: 'warning', title: 'Couldn\u2019t load your music', body: 'Check the connection, then try again.',
+        action: { label: 'Retry', onClick: function () { render().catch(function () {}); } } });
+      el.classList.add('music-load-error');
+      content.appendChild(el);
+    }
     var crumb = root.querySelector('#music-crumb');
     var tabsHost = root.querySelector('#music-tabs');
     var sortSelect = root.querySelector('#music-sort-select');
@@ -2241,30 +2317,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // distance from the viewport top); at exit, if the width changed meanwhile, the page is put
     // back so that row sits where it was. Rows are named by the ids the renderers already carry.
     // Scrolls route through FileTubeBodyLock (LESSONS 4: a haptic ghost's body lock may hold).
-    var POCKET_ANCHOR_ATTRS = ['data-id', 'data-album-key', 'data-artist'];
     var pocketAnchor = null;
     function pocketRealScrollY() {
       var BL = window.FileTubeBodyLock;
       if (BL && typeof BL.scrollYOf === 'function') return BL.scrollYOf(document, window);
       return window.pageYOffset || 0;
     }
-    function captureListAnchor() {
-      var host = root.querySelector('#music-content');
-      if (!host || typeof host.querySelectorAll !== 'function') return null;
-      var rows = host.querySelectorAll('[' + POCKET_ANCHOR_ATTRS.join('], [') + ']');
-      for (var i = 0; i < rows.length; i++) {
-        var r = rows[i].getBoundingClientRect();
-        if (!(r.height > 0) || r.bottom <= 0) continue;
-        for (var k = 0; k < POCKET_ANCHOR_ATTRS.length; k++) {
-          var v = rows[i].getAttribute(POCKET_ANCHOR_ATTRS[k]);
-          if (v != null) return { attr: POCKET_ANCHOR_ATTRS[k], value: v, viewTop: r.top, width: window.innerWidth };
-        }
-      }
-      return null;
-    }
     function notePocketEnter() {
       if (document.body.classList.contains('mms-on')) return; // already up: the first entry's anchor stands
-      try { pocketAnchor = captureListAnchor(); } catch (_) { pocketAnchor = null; }
+      try { pocketAnchor = findListAnchor(root.querySelector('#music-content'), window.innerWidth); } catch (_) { pocketAnchor = null; }
+    }
+    // A cold ?play= open enters Pocket before the list behind it has rendered: every render that
+    // lands while the skin is up re-takes the anchor - but only at the width it was entered at, so
+    // a render after a rotate never replaces the pre-rotate anchor with a reflowed one.
+    function refreshPocketAnchor() {
+      if (!document.body.classList.contains('mms-on')) return;
+      if (pocketAnchor && pocketAnchor.width !== window.innerWidth) return;
+      try { pocketAnchor = findListAnchor(root.querySelector('#music-content'), window.innerWidth) || pocketAnchor; } catch (_) { /* keep the last */ }
     }
     function restorePocketAnchor() {
       var a = pocketAnchor;
@@ -2272,17 +2341,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!a || a.width === window.innerWidth) return; // same width: the list kept its place
       var run = function () {
         if (signal.aborted) return;
-        var host = root.querySelector('#music-content');
-        if (!host) return;
-        var rows = host.querySelectorAll('[' + a.attr + ']');
-        for (var i = 0; i < rows.length; i++) {
-          if (rows[i].getAttribute(a.attr) !== a.value) continue;
-          var target = Math.max(0, pocketRealScrollY() + rows[i].getBoundingClientRect().top - a.viewTop);
-          var BL = window.FileTubeBodyLock;
-          if (BL && typeof BL.scrollTo === 'function') BL.scrollTo(document, window, target);
-          else if (typeof window.scrollTo === 'function') window.scrollTo(0, target);
-          return;
-        }
+        var target = anchorRestoreTarget(a, root.querySelector('#music-content'), pocketRealScrollY(), window.innerWidth);
+        if (target == null) return;
+        var BL = window.FileTubeBodyLock;
+        if (BL && typeof BL.scrollTo === 'function') BL.scrollTo(document, window, target);
+        else if (typeof window.scrollTo === 'function') window.scrollTo(0, target);
       };
       // after the exit's layout and the ghost lock's release (a microtask of the dock)
       if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run); else run();
@@ -2487,9 +2550,9 @@ if (typeof module !== 'undefined' && module.exports) {
           if (isTheater) {
             var slotEl = root.querySelector('#player-slot');
             var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
-            nowPlayingPanel.style.maxHeight = ph > 120 ? (ph + 'px') : '';
+            if (ph > 120) nowPlayingPanel.style.setProperty('--mnp-cap-h', ph + 'px'); else nowPlayingPanel.style.removeProperty('--mnp-cap-h'); // UI pass S7: the cap is DATA (style.css reads it), never an inline style
           } else {
-            nowPlayingPanel.style.maxHeight = '';
+            nowPlayingPanel.style.removeProperty('--mnp-cap-h');
           }
         } catch (_) { /* no layout */ }
         // then scroll the current row into the (now-bounded) queue - scrollTop only,
@@ -2677,7 +2740,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function rebuildSortMenu() {
       if (!sortSelect) return;
-      var wrap = sortSelect;
+      // UI pass S7: the slot is the ui-select field (the select + its chevron), so a reserved
+      // sort hides both and keeps the field's box
+      var wrap = (typeof sortSelect.closest === 'function' && sortSelect.closest('.music-sort')) || sortSelect;
       // The HOME shelves are a fixed recently-added composition - no sortable
       // list, so the sort control is hidden there (gate: no inert/mislabeled
       // dropdown on the default landing). A drill IS sortable (friction pass:
@@ -2731,8 +2796,12 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function setActiveTab() {
       if (!tabsHost) return;
+      // UI pass S7: a ui-segmented control - aria-checked is the selected segment (the
+      // .active hook stays for the delegation/tests); a drill checks none (no tab is in effect)
       tabsHost.querySelectorAll('.music-tab').forEach(function (b) {
-        b.classList.toggle('active', b.getAttribute('data-tab') === tab && !drill);
+        var on = b.getAttribute('data-tab') === tab && !drill;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
       });
     }
 
@@ -2771,8 +2840,9 @@ if (typeof module !== 'undefined' && module.exports) {
       setToolbarSlot(viewToggleBtn, showable ? 'shown' : 'reserved');
       if (!showable) return;
       var isList = getArtistView() === 'list';
-      var icon = viewToggleBtn.querySelector('i');
-      if (icon) icon.className = isList ? 'icon-grid' : 'icon-list';
+      // UI pass S7: the registry glyph of the view it switches TO (grid_view / view_list)
+      var use = viewToggleBtn.querySelector('.ui-btn__icon use');
+      if (use) use.setAttribute('href', isList ? '#i-grid_view' : '#i-view_list');
       var label = isList ? 'Switch to circle view' : 'Switch to list view';
       viewToggleBtn.title = label;
       viewToggleBtn.setAttribute('aria-label', label);
@@ -2889,8 +2959,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     function renderSongList() {
-      content.innerHTML = '<div class="music-song-list">' + queue.map(buildSongRowHtml).join('') + '</div>';
-      if (emptyNote) emptyNote.hidden = queue.length > 0;
+      content.innerHTML = SONG_LIST_OPEN + queue.map(buildSongRowHtml).join('') + '</div>';
+      setEmpty(!(queue.length > 0));
       applyPlayingHighlight();
       revealMusicArt();
     }
@@ -2914,7 +2984,12 @@ if (typeof module !== 'undefined' && module.exports) {
         artists = Array.isArray(res[0].items) ? res[0].items : [];
         albums = Array.isArray(res[1].items) ? res[1].items : [];
         recent = Array.isArray(res[2].items) ? res[2].items : [];
-      } catch (_) { artists = []; albums = []; recent = []; }
+      } catch (_) {
+        // UI pass S7 (D9): a failed load is an ERROR state with Retry, never the empty library
+        if (typeof stillMine === 'function' && !stillMine()) return;
+        showLoadError();
+        return;
+      }
       // Friction pass: "Recently played" ARTISTS - distinct artists from recent
       // plays, most-recent first (one tile each), so who you reach for is one tap
       // from the top instead of a scroll-and-hunt.
@@ -2932,7 +3007,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
       if (typeof stillMine === 'function' && !stillMine()) return; // gate r2 (adversary S4a): a menu pick owns the view now
       content.innerHTML = '<div class="music-home">' + html + '</div>';
-      if (emptyNote) emptyNote.hidden = (artists.length + albums.length) > 0;
+      setEmpty(!((artists.length + albums.length) > 0));
       revealMusicArt();
     }
 
@@ -2957,9 +3032,9 @@ if (typeof module !== 'undefined' && module.exports) {
         buildStickyBarHtml(drill, queue) +
         buildDrillHeaderHtml(drill, queue, { canEditChapters: musicCanModifyLibrary }) +
         '<div class="music-drill-sentinel" aria-hidden="true"></div>' +
-        '<div class="music-song-list">' + queue.map(buildSongRowHtml).join('') + '</div>' +
+        SONG_LIST_OPEN + queue.map(buildSongRowHtml).join('') + '</div>' +
         '</div>';
-      if (emptyNote) emptyNote.hidden = queue.length > 0;
+      setEmpty(!(queue.length > 0));
       applyPlayingHighlight();
       wireStickyObserver();
       revealMusicArt();
@@ -3052,7 +3127,7 @@ if (typeof module !== 'undefined' && module.exports) {
           var albums = Array.isArray(a.items) ? a.items : [];
           if (stillMine()) {
             content.innerHTML = '<div class="music-card-grid">' + albums.map(buildAlbumCardHtml).join('') + '</div>';
-            if (emptyNote) emptyNote.hidden = albums.length > 0;
+            setEmpty(!(albums.length > 0));
           }
         } else if (tab === 'artists') {
           var ar = await fetchJson('/api/music/artists?limit=10000&sort=' + encodeURIComponent(sortForTab('artists')) + (search ? '&search=' + encodeURIComponent(search) : ''));
@@ -3060,9 +3135,9 @@ if (typeof module !== 'undefined' && module.exports) {
           // Friction pass: circles (browse) OR a compact list (find fast).
           if (stillMine()) {
             content.innerHTML = getArtistView() === 'list'
-              ? '<div class="music-artist-list">' + artists.map(buildArtistListRowHtml).join('') + '</div>'
+              ? ARTIST_LIST_OPEN + artists.map(buildArtistListRowHtml).join('') + '</div>'
               : '<div class="music-card-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
-            if (emptyNote) emptyNote.hidden = artists.length > 0;
+            setEmpty(!(artists.length > 0));
           }
         }
       } catch (err) {
@@ -3070,13 +3145,13 @@ if (typeof module !== 'undefined' && module.exports) {
         // gate r2 (adversary S4b): a superseded render's failed fetch must not wipe the list a menu
         // pick drew (that pick's rows are real, and no shimmer of THIS render remains to clear).
         if (stillMine()) {
-          if (content) content.innerHTML = ''; // v1.98: never strand the seeded shimmer on error
-          if (emptyNote) emptyNote.hidden = false;
+          showLoadError(); // v1.98: never strand the seeded shimmer on error; UI pass S7 (D9): an error, never "No music yet"
         }
       }
       // v1.102: reveal the album/artist art (songs/drill self-cover via their own
       // renderers above; a second pass here is an idempotent no-op).
       revealMusicArt();
+      refreshPocketAnchor(); // UI pass D7: a list drawn behind Pocket becomes the anchor to restore on the way out
       // Re-evaluate the "Playing from" line on every render (a tab switch may
       // reveal that the player was closed, or that a non-music item is playing).
       updateNowPlaying();
@@ -3270,11 +3345,15 @@ if (typeof module !== 'undefined' && module.exports) {
         openDrill({ type: 'artist', key: name, label: name || 'Artist' }).catch(function () {});
         return;
       }
-      // v1.72: the save anchor rides the like button's chassis class - let
-      // the browser's native download navigation run (no preventDefault),
-      // and never fall through to the like toggle or the row-play path.
-      var dlBtn = e.target.closest('.music-download-btn');
-      if (dlBtn) return;
+      // UI pass S7: the row menu (more_vert) - Play next, Add to queue, Save to device, Go to
+      // artist - one ui.menu, also reached by a long-press and a desktop right-click (below).
+      var moreBtn = e.target.closest('.music-song-more');
+      if (moreBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSongMenu(moreBtn.closest('.music-song-row'), moreBtn);
+        return;
+      }
       // v1.72 (cap 3): queue the track under its own entry kind. Same
       // chassis class, so it must be dispatched BEFORE the like toggle.
       var queueBtn = e.target.closest('.music-queue-btn');
@@ -3298,6 +3377,54 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }, { signal });
 
+    // UI pass S7: the song row's menu. The row's data-index names its queue entry; the id is
+    // re-checked against it (a re-sorted queue never acts on the wrong track: LESSONS 4, the
+    // row menu closes over the DATA id). Save to device is the stream route's download arm (the
+    // v1.72 anchor, now a menu item); Go to artist opens the in-Music artist drill.
+    function songOfRow(row) {
+      var i = parseInt(row && row.getAttribute('data-index'), 10);
+      var id = row && row.getAttribute('data-id');
+      return (!isNaN(i) && queue[i] && queue[i].id === id) ? queue[i] : null;
+    }
+    function saveTrackToDevice(id) {
+      var a = document.createElement('a');
+      a.href = '/track/' + encodeURIComponent(id) + '?download=1';
+      a.setAttribute('download', '');
+      a.hidden = true;
+      document.body.appendChild(a);
+      try { a.click(); } finally { a.remove(); }
+    }
+    function openSongMenu(row, anchor) {
+      var U = window.ui;
+      if (!row || row.getAttribute('aria-hidden') === 'true' || !U || typeof U.menu !== 'function') return;
+      var id = row.getAttribute('data-id');
+      if (!id) return;
+      var item = songOfRow(row) || {};
+      var queueIt = function (pos) { if (typeof window.addToQueue === 'function') window.addToQueue(id, pos, 'track'); };
+      var items = [
+        { label: 'Play next', icon: 'queue_music', onSelect: function () { queueIt('next'); } },
+        { label: 'Add to queue', icon: 'playlist_add', onSelect: function () { queueIt('end'); } },
+        { label: 'Save to device', icon: 'download', onSelect: function () { saveTrackToDevice(id); } },
+      ];
+      if (item.artist) {
+        items.push({ label: 'Go to artist', icon: 'account_circle', onSelect: function () {
+          openDrill({ type: 'artist', key: item.artist, label: item.artist }).catch(function () {});
+        } });
+      }
+      U.menu({ title: item.title || 'Song', items: items, anchor: anchor || null, signal: signal });
+    }
+    // the same menu by a long-press (touch) or a right-click (desktop) on a row - FTInteraction
+    // owns the gesture and the contextmenu listener (plan D6); torn down with the view.
+    (function wireSongRowMenu() {
+      var FTI = window.FTInteraction;
+      if (!content || !FTI || typeof FTI.onActionMenu !== 'function') return;
+      var off = FTI.onActionMenu(content, function (e) {
+        var row = e && e.target && e.target.closest ? e.target.closest('.music-song-row') : null;
+        if (row) openSongMenu(row, null);
+      });
+      signal.addEventListener('abort', off, { once: true });
+    })();
+
     function toggleLike(btn) {
       var id = btn.getAttribute('data-like-id');
       var liked = btn.classList.contains('liked');
@@ -3320,6 +3447,9 @@ if (typeof module !== 'undefined' && module.exports) {
         // just flips state in place. The central Liked (/?liked=1) is the read
         // surface and reflects it on its next load.
         btn.classList.toggle('liked', !liked);
+        // UI pass S7: a two-state icon toggle - aria-pressed + favorite / favorite.fill (ink)
+        if (window.ui && typeof window.ui.setPressed === 'function') window.ui.setPressed(btn, !liked);
+        else btn.setAttribute('aria-pressed', !liked ? 'true' : 'false');
         btn.title = !liked ? 'Unlike' : 'Like';
         // QA gate S7: buildSongRowHtml mints an aria-label alongside the title,
         // and only the title was being flipped - a screen reader kept reading
@@ -4070,7 +4200,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (list.length <= SONG_ROWS_PER_CHUNK) { songChunkGen += 1; renderSongList(); return; }
       var gen = ++songChunkGen;
       content.innerHTML = '<div class="music-song-list"></div>';
-      if (emptyNote) emptyNote.hidden = true;
+      setEmpty(false);
       var host = content.querySelector('.music-song-list');
       var next = 0;
       function chunk() {
@@ -4083,7 +4213,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // rows straight into it re-lays out EVERY row each frame (measured: the rendering cost grew
         // with the list); a finished chunk is laid out once, and one off screen skips rendering.
         var box = document.createElement('div');
-        box.className = 'music-song-chunk';
+        box.className = 'music-song-chunk ' + SONG_LIST_CLASSES; // UI pass S7: each chunk IS a ui-list (the row grid reads the list's columns)
+        box.setAttribute('role', 'list');
         var html = '';
         for (var k = next; k < end; k++) html += buildSongRowHtml(list[k], k);
         box.innerHTML = html;
@@ -4416,12 +4547,12 @@ if (typeof module !== 'undefined' && module.exports) {
         updateNowPlayingPanel();
       }).catch(function (err) {
         console.error('Music: now-playing album restore failed', err);
-        if (emptyNote) emptyNote.hidden = false;
+        showLoadError();
       });
     } else {
       render().catch(function (err) {
         console.error('Music: initial render failed', err);
-        if (emptyNote) emptyNote.hidden = false;
+        showLoadError();
       });
     }
 

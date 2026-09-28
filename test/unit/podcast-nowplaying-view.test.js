@@ -15,7 +15,6 @@ const podcastsPath = require.resolve('../../public/js/podcasts.js');
 
 const VIEW_HTML = `<body><div id="view-root" data-view="podcasts">
   <video id="media-player"></video>
-  <button id="podcast-theater-btn" class="music-theater-btn" type="button" hidden aria-pressed="false"></button>
   <button id="podcast-popout-btn" type="button" hidden aria-pressed="false"></button>
   <div id="podcast-stage" class="music-stage">
   <div id="player-slot"></div>
@@ -54,6 +53,15 @@ function makePlayer(initialState, meta) {
     },
     expand: () => { s.value = 'full'; },
     setTrackNav: (h) => { s.trackNav = h; },
+    // UI pass S7: the player's ONE writer of the shared #theater-btn (player.js ensureTheaterButton):
+    // no host until the first load mounts one (s.hostReady), then the SAME node every call.
+    ensureTheaterButton: () => {
+      if (!s.hostReady && s.loadCalls.length === 0) return null;
+      const doc = global.document;
+      let b = doc.getElementById('theater-btn');
+      if (!b) { b = doc.createElement('button'); b.id = 'theater-btn'; b.type = 'button'; b.setAttribute('aria-pressed', 'false'); doc.body.appendChild(b); s.theaterWrites = (s.theaterWrites || 0) + 1; }
+      return b;
+    },
   };
   return { player, s, setState: (v) => { s.value = v; } };
 }
@@ -316,13 +324,19 @@ test('v1.105 (T4 reseed): a NON-podcast item on the shared host does not show th
 });
 
 // ---- v1.251 (R2): the desktop THEATRE toggle, music v1.222 parity ----------------------
+// UI pass S7: the toggle is the PLAYER's own #theater-btn (player.js ensureTheaterButton - one
+// control, one glyph writer, as on Music since v1.317), bound once the host exists; the podcast
+// toolbar's second button is gone. Its visibility is CSS (desktop-only, hidden in the dock and on
+// views that do not wire it), so the view never touches `hidden` on the shared node.
 
-test('v1.251 theatre: the button reveals with an expanded episode, toggles is-theater on the stage, and persists ft-podcast-theater', async () => {
+test('v1.251 theatre: an expanded episode binds the player\'s #theater-btn, which toggles is-theater on the stage and persists ft-podcast-theater', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
-    const btn = dom.window.document.getElementById('podcast-theater-btn');
     const stage = dom.window.document.getElementById('podcast-stage');
+    assert.equal(dom.window.document.getElementById('podcast-theater-btn'), null, 'no toolbar toggle any more');
     await playEp(dom, 0);
-    assert.equal(btn.hidden, false, 'an expanded episode reveals the toggle');
+    const btn = dom.window.document.getElementById('theater-btn');
+    assert.ok(btn, 'the mount seam bound the player\'s button');
+    assert.equal(btn.getAttribute('aria-pressed'), 'false', 're-stamped from the podcasts key');
     assert.ok(!stage.classList.contains('is-theater'), 'off by default');
     btn.click();
     await settle();
@@ -333,18 +347,24 @@ test('v1.251 theatre: the button reveals with an expanded episode, toggles is-th
     await settle();
     assert.ok(!stage.classList.contains('is-theater'), 'a second tap turns it off');
     assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '0');
+    assert.equal(btn.hasAttribute('hidden'), false, 'the view never sets `hidden` on the shared button');
   });
 });
 
-test('v1.251 theatre (reveal-once CLEAR): docking hides the toggle again (populated first, both axes)', async () => {
+test('v1.251 theatre: docking leaves the shared button to the CSS (never hidden by the view), binds once, and one click is one toggle', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
-    const btn = dom.window.document.getElementById('podcast-theater-btn');
     await playEp(dom, 0);
-    assert.equal(btn.hidden, false, 'populated first (non-vacuous)');
+    const btn = dom.window.document.getElementById('theater-btn');
+    assert.ok(btn, 'populated first (non-vacuous)');
     mock.setState('docked');
     mock.s.trackNav.onNext();
     await settle(); await settle();
-    assert.equal(btn.hidden, true, 'no expanded episode -> the toggle hides');
+    assert.equal(btn.hasAttribute('hidden'), false, 'docking does not hide the shared node (the dock CSS does)');
+    await playEp(dom, 0); // expanded again: the bind is idempotent
+    btn.click();
+    await settle();
+    assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '1', 'one click = one toggle (no double-bound listener)');
+    assert.equal(mock.s.theaterWrites, 1, 'one button node, written once');
   });
 });
 

@@ -173,13 +173,15 @@ test('friction: buildRecentArtistTileHtml renders a round drillable artist tile 
 
 test('friction: buildArtistListRowHtml renders a compact drillable row (avatar circle, name, count)', () => {
   const withAvatar = buildArtistListRowHtml({ artist: 'NESTALGIA', trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
-  assert.match(withAvatar, /class="music-artist-row" data-artist="NESTALGIA"/, 'a drillable row (same data-artist the card uses)');
-  assert.match(withAvatar, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar in the row circle');
+  // UI pass S7: a ui-row <button> (the whole row drills) with a ui-avatar circle over its monogram
+  assert.match(withAvatar, /<button type="button" class="music-artist-row ui-row ui-row--default" role="listitem" data-artist="NESTALGIA"/, 'a drillable row (same data-artist the card uses)');
+  assert.match(withAvatar, /class="ui-avatar ui-avatar--md music-artist-row-circle"><span class="ui-avatar__mono maa-mono" data-tone="\d">N<\/span><img class="ui-avatar__img maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar over its monogram in the row circle');
+  assert.match(withAvatar, /<span class="ui-row__aside music-artist-row-count">352 songs<\/span>/, 'the count in the aside column');
   assert.match(withAvatar, />NESTALGIA</, 'the name');
   assert.match(withAvatar, />352 songs</, 'the song count');
   // A native/ripped artist (no avatar) uses its album art in the circle.
   const native = buildArtistListRowHtml({ artist: 'Pink Floyd', trackCount: 1, avatarUrl: '', artIds: ['a1'] });
-  assert.match(native, /class="art-shimmer" src="\/albumart\/a1\?s=\d+"/, 'no avatar -> album art fills the row circle');
+  assert.match(native, /class="ui-avatar__img art-shimmer" src="\/albumart\/a1\?s=\d+"/, 'no avatar -> album art fills the row circle');
   assert.match(native, />1 song</, 'singular count');
 });
 
@@ -187,7 +189,7 @@ test('redesign: buildMusicShelfHtml renders a titled shelf with a See-all + a ho
   const html = buildMusicShelfHtml('Your artists', 'artists', '<button class="music-artist-card">x</button>');
   assert.match(html, /class="music-shelf"/, 'a shelf section');
   assert.match(html, /class="music-shelf-title">Your artists</, 'the title');
-  assert.match(html, /class="music-shelf-seeall" data-seeall="artists">See all</, 'a See-all that targets the tab');
+  assert.match(html, /class="ui-btn ui-btn--plain ui-btn--sm music-shelf-seeall" data-seeall="artists"><span class="ui-btn__label">See all</, 'a See-all (a plain ui-btn, UI pass S7) that targets the tab');
   assert.match(html, /class="music-shelf-row"><button class="music-artist-card">x<\/button>/, 'the tiles inside a scroll row');
 });
 
@@ -221,11 +223,16 @@ test('T9: buildSongRowHtml carries the index + id, escaped title, duration, and 
   assert.match(html, /Song &quot;One&quot;/, 'title escaped');
   assert.match(html, /3:20/, 'duration formatted');
   assert.match(html, /music-like-btn liked/, 'liked state reflected');
-  // v1.102 (tranche 4): the like glyph is the inline chrome-icon heart svg, not a
-  // decode-lagging `.icon-heart` mask (single heart, still no -filled variant).
-  // UI pass step 2: the svg draws the registry's `favorite` from the sprite.
-  assert.match(html, /class="chrome-icon"[^>]*><use href="#i-favorite"\/>/, 'the like glyph is the inline chrome-icon heart svg');
+  // UI pass S7: the like is a two-state ui-btn icon toggle - aria-pressed, the registry's
+  // favorite / favorite.fill (the swap ui.setPressed makes), ink never red; no .icon-heart mask.
+  assert.match(html, /<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-like-btn liked" data-like-id="t1" aria-pressed="true" data-icon-off="favorite" data-icon-on="favorite\.fill"[^>]*><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md"[^>]*><use href="#i-favorite-fill"\/>/, 'the like glyph is the filled registry heart when liked');
   assert.doesNotMatch(html, /icon-heart/, 'no .icon-heart mask <i> survives in the song row');
+  // the row is a ui-row with every slot, three reserved action slots, the title as its stretched link
+  assert.match(html, /^<div class="music-song-row ui-row ui-row--media" role="listitem"/, 'a ui-row');
+  for (const part of ['ui-row__lead', 'ui-row__media', 'ui-row__body', 'ui-row__aside', 'ui-row__actions']) assert.ok(html.includes('class="' + part), part);
+  assert.match(html, /<span class="ui-row__title music-song-title"><button type="button" class="ui-row__link music-song-play"/, 'the title is the row link');
+  assert.match(html, /music-queue-btn[\s\S]*music-like-btn[\s\S]*music-song-more/, 'queue, like, menu - in that order');
+  assert.match(html, /<span class="ui-row__aside music-song-duration">3:20<\/span>/, 'the length in the aside column');
 });
 
 test('T9: buildSongRowHtml unliked has no liked class', () => {
@@ -425,10 +432,10 @@ const { channelFolderOf } = require('../../public/js/music.js');
 
 test('v1.317 (M1): buildSongRowHtml renders the artist as a data-artist button (escaped), the album as plain text; no artist = no control', () => {
   const html = buildSongRowHtml({ id: 's1', title: 'T', artist: 'A & "B"', album: 'Alb<x>', durationSec: 61 }, 0);
-  assert.match(html, /<span class="music-song-sub"><button type="button" class="music-song-artist" data-artist="A &amp; &quot;B&quot;"[^>]*>A &amp; &quot;B&quot;<\/button> · Alb&lt;x&gt;<\/span>/, 'the artist button + the plain album');
+  assert.match(html, /<span class="ui-row__meta music-song-sub"><button type="button" class="music-song-artist" data-artist="A &amp; &quot;B&quot;"[^>]*>A &amp; &quot;B&quot;<\/button> · Alb&lt;x&gt;<\/span>/, 'the artist button + the plain album');
   const bare = buildSongRowHtml({ id: 's2', title: 'T', artist: '', album: 'Solo' }, 1);
   assert.doesNotMatch(bare, /music-song-artist/, 'an empty artist renders no control');
-  assert.match(bare, /class="music-song-sub"> · Solo</, 'the album still shows');
+  assert.match(bare, /class="ui-row__meta music-song-sub">Solo</, 'the album still shows (no leading separator without an artist)');
 });
 
 test('v1.317 (M1): the album drill header artist line is a data-artist button (the artist drill), escaped', () => {

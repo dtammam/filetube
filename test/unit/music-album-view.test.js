@@ -429,18 +429,22 @@ test('friction: the view toggle is HIDDEN off the Artists tab (Home)', async () 
   });
 });
 
-test('v1.215 (Dean device): the [hidden] guard on #music-view-toggle beats the .btn display base (else it LEAKS onto drills)', () => {
-  // syncViewToggle sets .hidden = true on every surface but the Artists grid, but
-  // jsdom cannot measure the cascade so those tests pass even when CSS ignores the
-  // attribute. The real v1.214 bug: `.btn { display: inline-flex }` beat the UA
-  // [hidden] rule, so the 4-cube toggle stayed painted on album/song drills -
-  // visible + inert (Dean's screenshot). Bind the guard by source, mirroring
-  // #music-sort-select: it must exist AND out-specify the .btn display base.
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  assert.match(css, /\.btn\s*\{[^}]*display:\s*inline-flex/,
-    'the .btn display:inline-flex base must exist (what the guard has to beat)');
-  assert.match(css, /#music-view-toggle\[hidden\]\s*\{[^}]*display:\s*none/,
-    'the #music-view-toggle[hidden] { display:none } guard must exist -- else the toggle leaks onto drills');
+// UI pass S7 (AC12 conversion, the [hidden] family - plan Build log step 0, note 4): the toggle is a
+// ui-btn now, and the per-control #music-view-toggle[hidden] patch gave way to the ONE global rule
+// in ui.css ([hidden] { display: none !important }), which beats ui-btn's inline-flex. The v1.214
+// bug (a display base beating the UA [hidden]) stays bound through that rule, and nothing later
+// may re-show a hidden toggle.
+test('v1.215 (Dean device): a [hidden] view toggle stays hidden - the global [hidden] rule beats the ui-btn display (else it LEAKS onto drills)', () => {
+  const { readUiCss, cssRules } = require('../helpers/stylesheets.js');
+  const ui = readUiCss();
+  assert.match(ui, /\.ui-btn\s*\{[^}]*display:\s*inline-flex/, 'the ui-btn display base exists (what the rule has to beat)');
+  const hid = cssRules(ui).filter((r) => r.sel === '[hidden]' && r.at === '');
+  assert.strictEqual(hid.length, 1, 'the one global [hidden] rule');
+  assert.match(hid[0].body, /display:\s*none\s*!important/, '... with !important');
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /#music-view-toggle[^{]*\{[^}]*display:\s*[a-z-]+\s*!important/, 'no later rule re-shows the toggle over [hidden]');
+  const html = fs.readFileSync(path.join(__dirname, '../../public/music.html'), 'utf8');
+  assert.match(html, /<button class="ui-btn [^"]*" id="music-view-toggle"/, 'the toggle is a ui-btn');
 });
 
 test('redesign S1: the "Jump back in" strip renders recent tracks and a tile resumes on tap', async () => {

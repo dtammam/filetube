@@ -785,31 +785,6 @@ a.sidebar-item {
   gap: var(--space-3);
 }
 
-/* v1.189.0 (Dean): the modern feed-chip PILL look on the remaining list-page
-   toolbar - music + podcasts (both use `.music-toolbar-actions`). Books' toolbar
-   is ui-btn since UI pass sweep S10, History's and Home's since sweep S2. Tokens
-   only, so they theme
-   with every era + light/dark identically. Unlike the home toolbar these carry
-   PRIMARY actions (+Add / Subscribe), so the flat secondary FILL is applied only
-   to `:not(.btn-primary)` - the primary keeps its --yt-red accent and only its
-   SHAPE rounds, so it still reads as the primary action. Native <select> sort
-   controls (books/music) carry `.btn` too and round cleanly. Left as-is on
-   purpose: the `.music-tab` strip is an underline-tab component, not a toolbar
-   button. */
-.music-toolbar-actions .btn {
-  border-radius: var(--radius-full);
-  box-shadow: none;
-  font-weight: normal; /* v1.190 (Dean): match the modern feed chips' weight (the base .btn is --fw-semibold, which read "bolder / different" than the feed pills) */
-}
-.music-toolbar-actions .btn:not(.btn-primary) {
-  background-color: var(--bg-secondary);
-  border-color: var(--border-color);
-}
-@media (hover: hover) {
-  .music-toolbar-actions .btn:not(.btn-primary):hover {
-    background-color: var(--bg-sidebar);
-  }
-}
 
 .sidebar-item.drag-over-after {
   box-shadow: inset 0 -2px 0 0 var(--yt-red);
@@ -7561,13 +7536,14 @@ html:has(> body.ft-audio-expanded),
 }
 #player-dock #theater-btn { display: none; }
 /* v1.317 (Dean, T1): the button is injected into the PERSISTENT player host and
-   rides along on every SPA swap, but only the watch view (`.theater-mode`) and
-   the music view (`#music-stage.is-theater`) wire a click to it. On any other
-   view that mounts the player inline (podcasts, shows, the reader) it would be a
-   visible-but-inert control, so it is scoped to the views that own it. The
-   router stamps `data-view` on <body> on every swap, cold load included
+   rides along on every SPA swap, but only the watch view (`.theater-mode`), the
+   music view (`#music-stage.is-theater`) and - since UI pass S7 - the podcasts view
+   (`#podcast-stage.is-theater`, which retired its own toolbar button for it) wire a
+   click to it. On any other view that mounts the player inline (shows, the reader)
+   it would be a visible-but-inert control, so it is scoped to the views that own it.
+   The router stamps `data-view` on <body> on every swap, cold load included
    (applyZoomPolicy). */
-body:not([data-view="watch"]):not([data-view="music"]) #theater-btn { display: none; }
+body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"]) #theater-btn { display: none; }
 
 /* v1.186 (Dean): AMBIENT MODE glow. Sits BEHIND #player-slot in a relative stage
    and bleeds a soft colour glow outward (YouTube-style). Decorative,
@@ -8662,12 +8638,6 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 }
 .music-toolbar h2 { margin: 0; }
 .music-toolbar-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; }
-/* v1.103: the sort select was hidden via [hidden] (rebuildSortMenu). It carries .btn,
-   whose display:inline-flex would otherwise beat the UA [hidden] rule (the repo's
-   [hidden]-loses-to-author-display class), so the hide is enforced explicitly. Since
-   v1.339 rebuildSortMenu reserves the slot instead (.music-sort-reserved below); this
-   guard stays as the net for any [hidden] writer. */
-#music-sort-select[hidden] { display: none !important; }
 /* v1.339 (L1 M4, L1b): a toolbar control that is RESERVED keeps its box but is invisible -
    music.js setToolbarSlot toggles this class (and inert / aria-hidden / tabindex -1) on the
    sort select (Home), the Artists view toggle, the pop-out and More, so the wrapped mobile
@@ -8682,42 +8652,22 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    so entering a drill widened it and pushed the row over. 15em covers the widest label with
    room for a wider face; the value text is left-aligned inside. */
 #music-sort-select { width: 15em; }
+/* UI pass S7: the sort is the ui-select field at the toolbar's pill height (its 16px text stays:
+   iOS zooms a focused field under 16px) */
+.music-sort .ui-select__native { height: var(--ctl-sm); border-radius: var(--r-pill); }
+/* the mode chips (Loop / Autoplay) carry a registry glyph before their words */
+.music-toolbar-actions .ui-chip { gap: var(--space-2); }
 /* v1.339 (L1b): the toggle and the pop-out SHIP reserved in music.html (their first JS state
    on a cold load), so the first paint already has their slots - no reflow when init runs.
    The pop-out is never supported on a phone (UI pass D7: html.is-phone, the SAME class
    popoutSupported() reads through music-skins.js isPhone), so it has no box there even
    before music.js runs. The id + class + element selector outranks every button rule. */
 html.is-phone #music-popout-btn { display: none; }
-/* v1.215 (Dean's v1.214 device pass): the SAME class for the Artists grid/list
-   view toggle. syncViewToggle sets .hidden = true on every surface but the
-   Artists grid, yet `.btn { display: inline-flex }` beat the UA [hidden] rule,
-   so the 4-cube toggle LEAKED onto album/song drills (visible + inert there).
-   The explicit guard restores the hide. */
-#music-view-toggle[hidden] { display: none !important; }
 
-.music-tabs {
-  display: flex;
-  gap: var(--space-2);
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: var(--space-8);
-  overflow-x: auto;
-}
-.music-tab {
-  appearance: none;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: var(--space-5) var(--space-6);
-  font-size: var(--fs-base);
-  white-space: nowrap;
-}
-.music-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--yt-red);
-  font-weight: var(--fw-semibold);
-}
+
+/* UI pass S7: the Music surfaces are ONE ui-segmented control (its own look); only its place
+   in the page is the view's. It scrolls sideways rather than squeeze on a narrow phone. */
+.music-tabs { margin-bottom: var(--space-8); max-width: 100%; overflow-x: auto; }
 
 /* v1.69 gate suggestion #10: .music-status had NO binding rule since v1.44
    (a pre-existing bare class music.html applied and podcasts.html then
@@ -8789,18 +8739,6 @@ html.is-phone #music-popout-btn { display: none; }
 .music-shelf { display: flex; flex-direction: column; gap: var(--space-3); }
 .music-shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .music-shelf-title { font-size: var(--fs-lg); font-weight: var(--fw-bold); margin: 0; }
-.music-shelf-seeall {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--text-secondary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-}
-@media (hover: hover) {
-  .music-shelf-seeall:hover { color: var(--text-primary); }
-}
 .music-shelf-row {
   display: flex;
   gap: var(--space-3);
@@ -8860,10 +8798,8 @@ html.is-phone #music-popout-btn { display: none; }
 }
 .music-drill.collapsed .music-drill-sticky { display: flex; }
 .music-drill.collapsed .music-drill-header { display: none; }
-.music-sticky-back { flex-shrink: 0; }
 .music-sticky-thumb { width: 36px; height: 36px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); flex-shrink: 0; }
 .music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.music-sticky-play { flex-shrink: 0; }
 .music-drill-sentinel { width: 100%; height: 1px; }
 
 /* breakpoint 600px - deliberate (audit amendment a): music grid column drop. */
@@ -8880,50 +8816,13 @@ html.is-phone #music-popout-btn { display: none; }
   grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
   gap: var(--space-5);
 }
-/* Friction pass: the compact Artists LIST - a fast index (name + count) to find
-   a known artist without swiping past big circles. */
-.music-artist-list { display: flex; flex-direction: column; }
-.music-artist-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-2) var(--space-2);
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--border-color);
-  cursor: pointer;
-  text-align: left;
-}
-@media (hover: hover) {
-  .music-artist-row:hover { background: var(--btn-hover); }
-}
-.music-artist-row-circle {
-  position: relative;
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: var(--thumbnail-bg);
-  display: grid;
-  place-items: center;
-}
-.music-artist-row-circle .maa-mono { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text-secondary); }
-.music-artist-row-circle img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Friction pass: the compact Artists LIST - a fast index (name + count) to find a known artist
+   without swiping past big circles. UI pass S7: a ui-list of ui-rows (music.js
+   buildArtistListRowHtml); music's own is only the avatar's stack - the photo over its
+   monogram in one cell, the photo fading in once it decodes (revealMusicArt). */
+.music-artist-row-circle > * { grid-area: 1 / 1; }
 .music-artist-row-circle .maa-img { opacity: 0; transition: opacity var(--dur-fast) var(--ease-ui); }
 .music-artist-row-circle .maa-img.is-loaded { opacity: 1; }
-.music-artist-row-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.music-artist-row-count { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-secondary); }
 /* v1.103: album + artist cards share ONE art-forward chassis (was two divergent
    looks - borderless album vs bordered text-only artist). Both are a square art
    block over a title + secondary line; only the art block differs (single cover
@@ -8955,7 +8854,9 @@ html.is-phone #music-popout-btn { display: none; }
   box-shadow: var(--shadow);
   transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
-.music-album-art { object-fit: cover; }
+/* UI pass S7 (D8.7): an ALBUM is artwork - a rounded square at the card radius, never the
+   artists' circle */
+.music-album-art { object-fit: cover; border-radius: var(--r-md); }
 @media (hover: hover) {
   .music-album-card:hover .music-album-art,
   .music-artist-card:hover .music-artist-mosaic {
@@ -9077,53 +8978,24 @@ html.is-phone #music-popout-btn { display: none; }
 .tv-player-wrap { margin-bottom: var(--space-5); background: var(--thumbnail-bg); border-radius: var(--radius-lg); overflow: hidden; }
 .tv-player-video { width: 100%; max-height: 70vh; display: block; background: var(--thumbnail-bg); }
 
-.music-song-list { display: flex; flex-direction: column; }
+/* UI pass S7: a song list is a ui-list of ui-rows (music.js SONG_LIST_OPEN / buildSongRowHtml);
+   the row grid, dividers, art box and action slots are ui.css's. Music's own: one title line,
+   tabular lengths, the inline artist control above the row's stretched title link, and the
+   playing row (a tonal fill + semibold, never red: D8.8) with its equalizer over the art. */
+.music-song-row .ui-row__link { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.music-song-row .ui-row__aside { font-variant-numeric: tabular-nums; }
+.music-song-row .music-song-artist { position: relative; }
 /* pocket menus gate r1 K3: a long list played from a pocket menu is built behind the skin in
    chunks - each its own block, so a new chunk never re-lays out the rows before it, and a chunk
    off screen skips layout and paint entirely (its size is remembered once it has rendered). */
 .music-song-chunk { display: flex; flex-direction: column; content-visibility: auto; contain-intrinsic-size: auto 1200px; }
-.music-song-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-4) var(--space-3);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .music-song-row:hover { background: var(--bg-secondary); }
-}
-.music-song-thumb-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
-.music-song-thumb { width: 44px; height: 44px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); display: block; }
-.music-song-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.music-song-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.music-song-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.music-song-duration { font-size: var(--fs-sm); color: var(--text-secondary); flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.music-like-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: var(--space-2);
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-.music-like-btn.liked { color: var(--yt-red); }
-/* v1.72: the song-row save-to-device anchor rides the like-button chassis;
-   an <a> needs its default underline stripped to sit as a peer control. */
-.music-download-btn { text-decoration: none; }
 
-/* v1.44.2 (Spotify feel): the currently-playing row. Accent + a CSS equalizer
+/* v1.44.2 (Spotify feel): the currently-playing row. A tonal fill + a CSS equalizer
    glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint
    (iOS forces blue emoji). Driven by applyPlayingHighlight() toggling
    `.playing` on the row whose data-id == the playing track id. */
-.music-song-row.playing {
-  background: var(--bg-secondary);
-  box-shadow: inset 3px 0 0 0 var(--yt-red);
-}
-.music-song-row.playing .music-song-title { color: var(--yt-red); font-weight: var(--fw-semibold); }
+.music-song-row.playing { background-color: var(--fill-selected); }
+.music-song-row.playing .ui-row__title { font-weight: var(--fw-semibold); }
 /* The eq overlays the thumb (dimmed via a scrim) only while playing. */
 .music-eq {
   position: absolute;
@@ -9154,24 +9026,9 @@ html.is-phone #music-popout-btn { display: none; }
   .music-eq i { animation: none; height: 11px; }
 }
 
-/* v1.44.2: the "Playing from <Album>" context line (a full-width subtle
-   button; taps drill into the playing track's album). */
-.music-nowplaying {
-  display: block;
-  width: 100%;
-  text-align: left;
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  padding: var(--space-2) var(--space-1) var(--space-5);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .music-nowplaying:hover { color: var(--text-primary); }
-}
-.music-nowplaying[hidden] { display: none !important; }
+/* v1.44.2: the "Playing from <Album>" context line (taps drill into the playing track's
+   album). UI pass S7: a plain sm ui-btn in the secondary ink. */
+.music-nowplaying { color: var(--ink-2); margin-bottom: var(--space-4); }
 
 /* v1.104: the expanded now-playing panel (track metadata + up-next queue), under
    #player-slot, shown only while the player is expanded. display:flex would beat
@@ -9189,31 +9046,6 @@ html.is-phone #music-popout-btn { display: none; }
    stage is a plain block by default; theatre ON + a wide viewport makes it a
    two-column row (player left, panel right). Mobile / theatre-off is untouched. */
 .music-stage { display: block; }
-.music-theater-btn[aria-pressed="true"] { background: var(--bg-secondary); }
-/* v1.284.1 (Dean): the desktop Loop / Autoplay ON state must READ as selected. The first cut
-   used --bg-secondary, which is (a) the SAME colour the base `.music-toolbar-actions
-   .btn:not(.btn-primary)` already paints and (b) equal specificity but EARLIER, so ON was
-   invisible. Match the mobile sticker's established ON look (--yt-red fill / white / dark-red
-   border, style.css ~11090), scoped under .music-toolbar-actions to TIE the base rule (0,3,0)
-   and win on source order (this rule is later), with a :hover twin so a lit toggle keeps the red
-   past the base (0,4,0) :hover rule. Uses the `background` SHORTHAND deliberately (not
-   background-color): it resets background-image to none, so the ON red also shows through the
-   2009 era skin's `.btn` gradient gloss (the `background-image`-over-`background-color` trap this
-   file documents at ~1299-1330); the theatre toggle and the sticker both use the shorthand for
-   the same reason. Existing tokens only - the census stays 0. */
-.music-toolbar-actions .music-mode-btn[aria-pressed="true"] {
-  background: var(--yt-red);
-  color: var(--on-accent);
-  border-color: var(--yt-red-dark);
-}
-@media (hover: hover) {
-  .music-toolbar-actions .music-mode-btn[aria-pressed="true"]:hover {
-    background: var(--yt-red);
-    color: var(--on-accent);
-    border-color: var(--yt-red-dark);
-  }
-}
-@media (max-width: 1023px) { .music-theater-btn { display: none !important; } } /* v1.251: class-based - the podcast theatre button shares it */
 @media (min-width: 1024px) {
   .music-stage.is-theater { display: flex; align-items: flex-start; gap: var(--space-8); }
   .music-stage.is-theater #player-slot { flex: 2 1 0; min-width: 0; }
@@ -9230,11 +9062,11 @@ html.is-phone #music-popout-btn { display: none; }
   /* v1.226 (Dean device): the up-next sits BESIDE the player in theatre; if it
      grows taller than the player when the queue fills, the whole stage grows and
      shoves "Jump back in" (and the tabs/content) down - the return-from-miniplayer
-     flash. music.js MEASURES the player and caps THIS panel to its height (inline
+     flash. music.js MEASURES the player and caps THIS panel to its height (--mnp-cap-h, data;
      max-height); the queue then fills + scrolls INSIDE, so the stage stays put and
      nothing below shifts. min-height:0 + overflow:hidden make the flex child clip
      to the cap so the queue (not the panel) scrolls. */
-  .music-stage.is-theater .music-nowplaying-panel { flex: 1 1 0; min-width: 0; margin-top: 0; min-height: 0; overflow: hidden; } /* v1.251: class-based - podcasts' stage/panel share the theatre layout */
+  .music-stage.is-theater .music-nowplaying-panel { flex: 1 1 0; min-width: 0; margin-top: 0; min-height: 0; overflow: hidden; max-height: var(--mnp-cap-h, none); } /* v1.251: class-based - podcasts' stage/panel share the theatre layout */
   .music-stage.is-theater .music-nowplaying-panel .mnp-queue { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
 }
 .mnp-meta { display: flex; flex-direction: column; gap: var(--space-2); }

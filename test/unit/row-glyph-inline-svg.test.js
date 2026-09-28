@@ -42,25 +42,27 @@ test('CHROME_ICON has queue, heart, delete (the row action glyphs), each a regis
 
 // ---- music song row: inline svgs, no masks ----------------------------------
 
-test('music song row: queue/download/like are inline chrome-icon svgs, NO .icon-* masks', () => {
+// UI pass S7 (AC12 conversion of the v1.102 lock): the song row's actions are ui-btn icon
+// buttons drawing registry sprite icons (the same no-decode-lag property the inline chrome-icon
+// gave) - Add to queue (playlist_add), Like (favorite / favorite.fill) and the row menu
+// (more_vert; Save to device moved into it) - and no .icon-* mask survives.
+test('music song row: queue / like / menu are ui-btn icon buttons with registry sprite icons, NO .icon-* masks', () => {
   const html = buildSongRowHtml({ id: 't1', title: 'x', artist: 'a', album: 'b', durationSec: 60, liked: false }, 0);
-  // Three inline chrome-icon svgs (queue, download, heart), each drawing its sprite symbol.
-  assert.strictEqual((html.match(/<svg class="chrome-icon"/g) || []).length, 3, 'three inline chrome-icon glyphs');
-  assert.match(html, /<use href="#i-playlist_play"\/>/, 'queue glyph');
-  assert.match(html, /<use href="#i-download"\/>/, 'download glyph');
-  assert.match(html, /<use href="#i-favorite"\/>/, 'heart glyph');
-  // No decode-lagging mask <i> survives in the row.
-  assert.doesNotMatch(html, /<i class="icon-(queue|download|heart)"/, 'no .icon-* mask <i> in the song row');
+  const btns = html.match(/<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon [^"]*"[^>]*><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-[a-z_-]+"\/><\/svg><\/span><\/button>/g) || [];
+  assert.strictEqual(btns.length, 3, 'three icon buttons in the action slots');
+  assert.match(html, /music-queue-btn[^>]*>[\s\S]*?<use href="#i-playlist_add"\/>/, 'queue glyph');
+  assert.match(html, /music-like-btn"[^>]*>[\s\S]*?<use href="#i-favorite"\/>/, 'heart glyph');
+  assert.match(html, /music-song-more"[^>]*>[\s\S]*?<use href="#i-more_vert"\/>/, 'menu glyph');
+  assert.doesNotMatch(html, /<i class="icon-/, 'no .icon-* mask <i> in the song row');
+  const FTIcons = require('../../public/js/icons.js');
+  for (const n of ['playlist_add', 'favorite', 'favorite.fill', 'more_vert', 'queue_music', 'download', 'account_circle']) assert.ok(FTIcons.has(n), n + ' is a registry icon');
 });
 
-test('music.js reaches chromeIconMarkup via window (no bare require - the client-scripts convention)', () => {
+test('music.js draws its row glyphs from the registry sprite (no chrome-icon resolver, no bare require)', () => {
   const src = stripComments(read('public/js/music.js'));
-  assert.match(src, /window\.chromeIconMarkup/, 'the row builder reads window.chromeIconMarkup');
+  assert.doesNotMatch(src, /rowGlyphMarkup|chromeIconMarkup/, 'the retired resolver is gone');
   assert.doesNotMatch(src, /require\(\s*['"]\.\/common/, 'no bare require of common.js in a client script');
-  // The three row buttons emit the glyph via the resolver, not a mask <i>.
-  assert.match(src, /rowGlyphMarkup\('queue'\)/);
-  assert.match(src, /rowGlyphMarkup\('download'\)/);
-  assert.match(src, /rowGlyphMarkup\('heart'\)/);
+  assert.match(src, /function songIconHtml\(name\) \{[\s\S]*?<use href="#i-/, 'one sprite-icon writer');
 });
 
 // ---- podcast episode row: registry sprite icons via ui.button, no masks -------

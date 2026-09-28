@@ -27,8 +27,26 @@ const CASES = [
   // UI pass S10: the reserved box is the real card's 2:3 ui-thumb (inside .book-cover-link)
   { name: 'book cards', fn: buildBookSkeletonCards, container: 'book-card', aspectBox: 'ui-thumb--2x3' },
   { name: 'music album cards', fn: buildMusicSkeletonCards, container: 'music-album-card', aspectBox: 'music-album-art', wrapper: 'music-card-grid' },
-  { name: 'music song rows', fn: buildMusicSkeletonRows, container: 'music-song-row', aspectBox: 'music-song-thumb-wrap', wrapper: 'music-song-list' },
 ];
+
+// UI pass S7 (D9; AC12): Music's song-row skeletons are ui-rows of the FINAL row geometry
+// (the ui-art media slot, two line boxes, the three reserved action slots) inside the real
+// song ui-list - converted out of the shared CASES table (the history precedent above).
+test('music song rows: exactly n ui-row skeletons of the final row geometry, in the real song list; n<=0 -> \'\'', () => {
+  const { JSDOM } = require('jsdom');
+  const doc = new JSDOM('<!doctype html><body>' + buildMusicSkeletonRows(3) + '</body>').window.document;
+  const list = doc.querySelector('.music-song-list.ui-list.ui-list--media-art.ui-list--actions-3');
+  assert.ok(list, 'the SAME ui-list the real rows render in');
+  const rows = list.querySelectorAll(':scope > .music-song-row.ui-row.ui-row--media[aria-hidden="true"]');
+  assert.strictEqual(rows.length, 3);
+  for (const r of rows) {
+    assert.ok(r.querySelector('.ui-row__media > .ui-art.ui-avatar--lg.skeleton-shimmer'), 'the real 40px art box');
+    assert.ok(r.querySelector('.ui-row__title > .skeleton-text.skeleton-shimmer') && r.querySelector('.ui-row__meta > .skeleton-text.skeleton-shimmer'), 'two line boxes');
+    assert.strictEqual(r.querySelectorAll('.ui-row__actions > .ui-row__slot').length, 3, 'the three reserved action slots');
+    assert.ok(r.querySelector('.ui-row__lead') && r.querySelector('.ui-row__aside'), 'every slot');
+  }
+  for (const n of [0, -2, 'nope', undefined]) assert.strictEqual(buildMusicSkeletonRows(n), '');
+});
 
 // UI pass sweep S2 (D9; AC12): History's skeleton rows are ui-rows of the FINAL
 // row geometry (the ui-thumb media slot, two line boxes, the reserved action
@@ -112,7 +130,9 @@ test('each view SEEDS its skeleton into the host before the fetch, and CLEARS it
   // Sweep S2 (D9): a failed FIRST load REPLACES the shimmer with the error state (Retry), never "No watch history yet".
   assert.match(history, /if \(replace\) \{\s*listEl\.replaceChildren\(historyUi\(\)\.state\(\{ icon: 'warning', title: 'Could not load your history'/, 'history clears the shimmer on error');
   assert.match(books, /catch \(err\) \{\s*\n\s*grid\.innerHTML = '';/, 'books clears the shimmer on error');
-  assert.match(music, /catch \(err\) \{[\s\S]*?if \(content\) content\.innerHTML = '';/, 'music clears the shimmer on error');
+  // UI pass S7 (D9): a failed load REPLACES the shimmer with the error state (Retry), never "No music yet".
+  assert.match(music, /catch \(err\) \{[\s\S]*?showLoadError\(\);/, 'music replaces the shimmer on error');
+  assert.match(music, /function showLoadError\(\) \{\s*setEmpty\(false\);\s*if \(!content\) return;\s*content\.innerHTML = '';[\s\S]*?\.state\(\{ icon: 'warning'/, 'music clears the shimmer and shows the error state');
   // UI pass S6: the clear is followed by the error state (D9), inside the same guard.
   assert.match(podcasts, /catch[\s\S]*?if \(!currentShow && content\) \{\s*\n\s*content\.innerHTML = '';/, 'podcasts clears the shimmer on error');
 });

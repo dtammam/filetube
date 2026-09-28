@@ -63,6 +63,7 @@ async function bootMusicView(storage, run, opts) {
   };
   Object.keys(storage || {}).forEach((k) => dom.window.localStorage.setItem(k, storage[k]));
   try {
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S7: every shell loads ui.js (window.ui) before the view
     delete require.cache[musicPath];
     require(musicPath);
     assert.ok(registered && typeof registered.init === 'function', 'view registered');
@@ -134,13 +135,19 @@ test('v1.103 (gate ADV-W2, reveal-once BOTH axes): a rejected artists fetch CLEA
   // The v1.102 gate blocked on exactly this class with a presence-only test. Drive
   // the error path for real: the Artists (now DEFAULT) tab seeds a skeleton, its
   // fetch rejects, and the catch must wipe #music-content (no skeleton-shimmer, no
-  // art-shimmer left sweeping under a dead grid) and reveal the empty state.
+  // art-shimmer left sweeping under a dead grid) and show the error state (UI pass S7, D9).
   await bootMusicView({ filetube_music_tab: 'artists' }, async (dom) => {
     const content = dom.window.document.getElementById('music-content');
     assert.ok(!/skeleton-shimmer/.test(content.innerHTML), 'no stranded skeleton shimmer after the fetch failed');
     assert.ok(!/art-shimmer/.test(content.innerHTML), 'no stranded art shimmer');
-    assert.equal(content.innerHTML, '', 'content cleared, not left mid-skeleton');
-    assert.equal(dom.window.document.getElementById('music-empty').hidden, false, 'empty state shown');
+    // UI pass S7 (D9): a failed load is an ERROR state with Retry in #music-content - never the
+    // empty library's "No music yet" (which would tell a user with a full library it is empty).
+    const err = content.querySelector('.ui-state.music-load-error');
+    assert.ok(err, 'the error state replaced the skeleton');
+    assert.match(err.textContent, /Couldn.t load your music/, 'it says the load failed');
+    assert.ok(err.querySelector('button.ui-btn'), 'with a Retry');
+    assert.equal(content.children.length, 1, 'only the error state - nothing of the skeleton left');
+    assert.equal(dom.window.document.getElementById('music-empty').hidden, true, 'the empty-library state stays hidden');
   }, { rejectArtists: true });
 });
 

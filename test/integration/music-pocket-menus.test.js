@@ -200,7 +200,7 @@ test('Songs: the whole library in title order; a pick plays IN that list and the
     const behind = [...h.D.querySelectorAll('#music-content .music-song-row')];
     assert.deepStrictEqual(behind.map((r) => r.getAttribute('data-id')), songs.map((t) => t.id), 'the Songs list behind = the queue');
     const row = behind.find((r) => r.getAttribute('data-id') === 'za1');
-    click(h.dom, row.querySelector('.music-song-main') || row);
+    click(h.dom, row.querySelector('.music-song-play') || row);
     await settleNet();
     const played = h.spy.loads[h.spy.loads.length - 1].id;
     assert.strictEqual(played, 'za1', 'the tapped browse row played its own track');
@@ -378,7 +378,9 @@ test('the menus drop their library cache on a rescan AND after a delete/move (a 
     setup: (dom) => {
       dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } });
       dom.window.isYtdlpManagedItem = () => false;
-      dom.window.showHardDeleteModal = (item, doDelete) => doDelete();
+      // UI pass S7: the Extras Delete asks ui.confirm (danger) - answered yes here (the confirm itself is
+      // bound by test/unit/extras-delete-confirm.test.js)
+      dom.window.ui = Object.assign({}, dom.window.ui || {}, { confirm: async () => true });
       dom.window.showToast = () => {};
     },
     run: async (h) => {
@@ -395,7 +397,7 @@ test('the menus drop their library cache on a rescan AND after a delete/move (a 
       await settleNet();
       assert.strictEqual(deletes, 1, 'the delete ran');
       // play again from the browse list behind (the menu queue's Songs list), bringing the skin back
-      const row = h.D.querySelector('#music-content .music-song-row[data-id="nd2"] .music-song-main');
+      const row = h.D.querySelector('#music-content .music-song-row[data-id="nd2"] .music-song-play');
       assert.ok(row, 'the browse list is there to play from');
       click(h.dom, row);
       await settleNet();
@@ -540,7 +542,7 @@ test('v1.331 gate r1 (qa caveat): after a menu album pick, tapping ONE chapter r
     const logBefore = h.log.length;
     const row = h.D.querySelector('#music-content .music-song-row[data-id="djmix1::c1"]');
     assert.ok(row, 'precondition: the album drill behind the skin lists Track A');
-    click(h.dom, row.querySelector('.music-song-main') || row); await settleNet();
+    click(h.dom, row.querySelector('.music-song-play') || row); await settleNet();
     assert.strictEqual(h.player.currentId, 'djmix1::c1', 'the browse row played Track A');
     assert.ok(h.log.slice(logBefore).some((u) => /^\/api\/music\?artist=NESTALGIA&sort=random/.test(u)), 'the single-chapter select primed its exit station: ' + h.log.slice(logBefore).join(' | '));
     const from = h.spy.loads.length;

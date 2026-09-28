@@ -31,9 +31,7 @@ const {
 const { JSDOM } = require('jsdom');
 
 const STYLE_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-const { cssRules, isHoverGated } = require('../helpers/stylesheets');
-// UI pass step 4 (AC6): a hover tint lives only inside @media (hover: hover).
-const hoverGated = (sel) => { const r = cssRules(STYLE_CSS).find((x) => x.sel.replace(/\s+/g, ' ') === sel); return !!r && isHoverGated(r.at); };
+const { cssRules } = require('../helpers/stylesheets');
 
 // ---- v1.188 (Dean): the library toolbar wears the modern feed-chip PILL look --
 
@@ -80,27 +78,28 @@ test('v1.189.0 the pill look extends to the music / podcasts toolbars, tokens on
     for (const cls of ['ui-btn', 'ui-btn--tonal', 'ui-btn--pill']) assert.match(tag[0], new RegExp(`class="[^"]*\\b${cls}(?![\\w-])`), `#${id} is a ${cls}`);
   }
   assert.doesNotMatch(STYLE_CSS, /\.books-toolbar \.btn/, 'no bespoke .btn recipe for the books toolbar remains');
-  // The remaining list-page toolbar container gets the pill SHAPE.
-  const shape = /\.music-toolbar-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(shape, 'the pill-shape rule for the music/podcasts toolbar exists');
-  assert.match(shape[1], /border-radius:\s*var\(--radius-full\)/, 'fully rounded like the home toolbar');
-  assert.match(shape[1], /box-shadow:\s*none/, 'flat - base .btn shadow dropped');
-  assert.match(shape[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips + the home toolbar');
-  // The flat secondary FILL is scoped to :not(.btn-primary) so +Add / Subscribe
-  // keep their --yt-red accent (only the shape rounds).
-  const fill = /\.music-toolbar-actions \.btn:not\(\.btn-primary\) \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(fill, 'the fill rule excludes .btn-primary (accent preserved)');
-  assert.match(fill[1], /background-color:\s*var\(--bg-secondary\)/, 'non-primary buttons get the flat secondary fill');
-  assert.match(fill[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
-  // Bind the hover tint too (gate SUGGESTION: without this a future edit could
-  // silently drop it, matching the v1.188 sibling test's own hover lock).
-  const hover = /\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(hover, 'the non-primary hover rule exists for the music/podcasts toolbar');
-  assert.ok(hoverGated('.music-toolbar-actions .btn:not(.btn-primary):hover'), 'the toolbar hover rule is inside @media (hover: hover)');
-  assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like the home toolbar');
-  // No raw color literal sneaks in (the census enforces this globally, but bind
-  // it here too since this is the theming question Dean raised).
-  assert.doesNotMatch(shape[1] + fill[1], /#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/, 'every color is a token, none raw - themes with the era system');
+  // UI pass sweep S7 (AC12 conversion of the music / podcasts third): both toolbars left the
+  // v1.189 .btn pill recipe for ui primitives - every control is a ui-btn (tonal sm pills;
+  // podcasts' one primary Add), a ui-chip mode toggle or the ui-select sort field - and no
+  // .music-toolbar-actions .btn rule survives to restyle them.
+  const music = fs.readFileSync(path.join(__dirname, '../../public/music.html'), 'utf8');
+  const bar = music.slice(music.indexOf('<div class="music-toolbar-actions">'), music.indexOf('<div id="music-stage"'));
+  assert.ok(bar.length > 200, 'precondition: the music toolbar markup');
+  for (const id of ['music-shuffle-btn', 'music-scan-btn', 'music-popout-btn', 'music-actions-btn', 'music-view-toggle']) {
+    const tag = new RegExp(`<button[^>]*id="${id}"[^>]*>`).exec(bar);
+    assert.ok(tag, `music.html carries #${id}`);
+    for (const cls of ['ui-btn', 'ui-btn--tonal', 'ui-btn--sm', 'ui-btn--pill']) assert.match(tag[0], new RegExp(`class="[^"]*\\b${cls}(?![\\w-])`), `#${id} is a ${cls}`);
+  }
+  for (const id of ['music-loop-btn', 'music-autoplay-btn']) {
+    assert.match(bar, new RegExp(`<button class="ui-chip ui-chip--filter music-mode-btn" id="${id}"[^>]*aria-pressed="false"`), `#${id} is a filter chip (its ON state is the chip's selected fill)`);
+  }
+  assert.match(bar, /<span class="ui-select music-sort"><select id="music-sort-select" class="ui-select__native"/, 'the sort is the ui-select field');
+  assert.doesNotMatch(bar, /class="btn\b|class="[^"]*\sbtn\b|btn-sm/, 'no legacy .btn control left in the music toolbar');
+  const pods = fs.readFileSync(path.join(__dirname, '../../public/podcasts.html'), 'utf8');
+  const podBar = pods.slice(pods.indexOf('<div class="music-toolbar-actions">'), pods.indexOf('id="podcasts-status"'));
+  assert.ok(podBar.length > 100, 'precondition: the podcasts toolbar markup');
+  assert.doesNotMatch(podBar, /class="btn\b|btn-sm|music-theater-btn/, 'the podcasts toolbar: no legacy .btn control (its theatre toggle is the player\'s own #theater-btn since S7)');
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /\.music-toolbar-actions \.btn\b/, 'no bespoke .btn recipe for the music/podcasts toolbar remains');
 });
 
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------

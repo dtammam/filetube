@@ -18,27 +18,20 @@ const musicPath = require.resolve('../../public/js/music.js');
 test('music.html actually carries the Loop + Autoplay toggles in the toolbar (the behavioural boot uses its own HTML)', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'music.html'), 'utf8');
   assert.match(html, /id="music-loop-btn"[^>]*aria-pressed=/, 'the Loop toggle is in music.html with an aria-pressed state');
-  assert.match(html, /id="music-loop-btn"[\s\S]{0,140}class="music-mode-lbl">Loop</, 'the Loop label span (relabelled to "Loop chapter" at runtime)');
+  assert.match(html, /id="music-loop-btn"[\s\S]{0,400}class="music-mode-lbl">Loop</, 'the Loop label span (relabelled to "Loop chapter" at runtime)');
   assert.match(html, /id="music-autoplay-btn"[^>]*aria-pressed=/, 'the Autoplay toggle is in music.html');
-  // v1.284.1: the ON state must READ as selected - the mobile sticker's --yt-red look (not the
-  // invisible --bg-secondary the base toolbar rule already paints), scoped so it beats that rule,
-  // with a :hover twin. Tokens only (census 0).
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  // v1.284.1: `background` SHORTHAND (not background-color) so it resets the 2009 skin's .btn
-  // gradient gloss and the red actually shows there too (the documented background-image trap).
-  // UI pass step 4 (AC6): the :hover twin moved into @media (hover: hover) with the SAME
-  // declarations (the only hover tints it must beat are gated too).
-  const ON_DECLS = /^\s*background: var\(--yt-red\);\s*color: var\(--on-accent\);\s*border-color: var\(--yt-red-dark\);/;
-  const { cssRules, isHoverGated } = require('../helpers/stylesheets');
-  const rules = cssRules(css);
-  const on = rules.find((r) => r.sel === '.music-toolbar-actions .music-mode-btn[aria-pressed="true"]');
-  assert.ok(on && on.at === '', 'the scoped ON rule exists at top level');
-  assert.match(on.body, ON_DECLS, 'the ON state is the red selected look via the background shorthand, tokens only');
-  const twin = rules.find((r) => r.sel === '.music-toolbar-actions .music-mode-btn[aria-pressed="true"]:hover');
-  assert.ok(twin && isHoverGated(twin.at), 'the :hover twin exists inside @media (hover: hover)');
-  assert.match(twin.body, ON_DECLS, 'the :hover twin carries the same red look');
-  assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\] \{ background: var\(--bg-secondary\); \}/, 'the invisible --bg-secondary ON state is gone');
-  assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\][\s\S]{0,80}background-color: var\(--yt-red\)/, 'not the longhand (which the 2009 gloss would paint over)');
+  // v1.284.1 -> UI pass S7 (D8.8; plan step 0 risky conversion): the ON state must READ as
+  // selected - and red is no longer a selected colour. The toggles are ui-chip filter chips: ON is
+  // ink on the tonal --fill-selected, LAYERED over the chip's ground, and it must still show in 2009
+  // (v1.284.1's bug: an ON painted under the 2009 gloss). test/unit/ui-chip-selected.test.js
+  // measures the ON-vs-OFF step in every era x mode and that no rule re-grounds a chip (a gloss
+  // would hide the layer); here: the toggles are those chips and no red ON rule survives.
+  for (const id of ['music-loop-btn', 'music-autoplay-btn']) {
+    assert.match(html, new RegExp('<button class="ui-chip ui-chip--filter music-mode-btn" id="' + id + '"'), id + ' is a filter chip');
+  }
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\][^{]*\{[^}]*--yt-red/, 'no red ON state');
+  assert.doesNotMatch(css, /\.music-mode-btn\[aria-pressed="true"\]/, 'no bespoke ON rule at all - the chip primitive is the look');
 });
 
 const VIEW_HTML = `<body><div id="view-root" data-view="music">

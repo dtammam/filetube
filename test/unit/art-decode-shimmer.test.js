@@ -88,7 +88,7 @@ test('shimmerArt: scoped to its root, tolerant of a non-element arg', () => {
 
 const ART_SITES = [
   ['public/js/music.js', 'class="music-album-art art-shimmer"'],
-  ['public/js/music.js', 'class="music-song-thumb art-shimmer"'],
+  ['public/js/music.js', 'class="music-song-thumb ui-avatar__img art-shimmer"'], // UI pass S7: the song row's art is the ui-art box's image
   ['public/js/music.js', 'class="music-drill-art art-shimmer"'],
   ['public/js/music.js', 'class="music-sticky-thumb art-shimmer"'],
   ['public/js/music.js', 'class="art-shimmer" src="\' + escapeMusicHtml(albumArtSrc('], // v1.103: the artist mosaic tile (v1.339: the sized, shared art URL)

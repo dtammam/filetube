@@ -169,33 +169,32 @@
       <div id="view-root" data-view="music">
         <div class="music-toolbar">
           <h2>Music</h2>
+          <!-- UI pass S7: every control is a ui-* primitive (sweep S7; plan D4). Tonal sm pills
+               (32px) with registry icons; the two playback MODES are filter chips whose ON state is
+               ink on --fill-selected (D8.8 - never red, and it shows in every era, 2009's gloss
+               included); the sort is the native select in the ui-select field (16px, no iOS zoom). -->
           <div class="music-toolbar-actions">
-            <select id="music-sort-select" class="btn btn-sm" aria-label="Sort music">
+            <span class="ui-select music-sort"><select id="music-sort-select" class="ui-select__native" aria-label="Sort music">
               <option value="newest">Recently added</option>
               <option value="title-asc">Title A-Z</option>
               <option value="title-desc">Title Z-A</option>
               <option value="artist-asc">Artist</option>
               <option value="album-asc">Album</option>
               <option value="duration-desc">Longest</option>
-            </select>
-            <button class="btn btn-sm music-slot-reserved" id="music-view-toggle" type="button" aria-hidden="true" tabindex="-1" inert title="Switch to list view" aria-label="Switch to list view">
-              <i class="icon-list"></i>
-            </button>
+            </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true" focusable="false"><use href="#i-expand_more"/></svg></span>
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill ui-btn--icon music-slot-reserved" id="music-view-toggle" type="button" aria-hidden="true" tabindex="-1" inert title="Switch to list view" aria-label="Switch to list view"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-view_list"/></svg></span></button>
             <!-- v1.317 (Dean, T1): the desktop THEATRE toggle (v1.222) is no longer a
                  toolbar button here - it is the player's own era-style #theater-btn in
                  the control bar (the same popcorn button the watch page uses), injected
                  by music.js through player.js's one writer and bound to the music
                  theatre layout (ft-music-theater). One control, one glyph writer. -->
-            <!-- v1.234 (Dean): DESKTOP-only "pop out" - float the player into a small
-                 window showing the picked music skin (Document PiP where supported =
-                 always-on-top; a plain independent window elsewhere). Invisible until a
-                 music track is playing AND the pop-out is supported (music.js
-                 updatePopoutBtn); v1.339 L1b: it ships RESERVED (slot kept, inert) so
-                 the first play never reflows the toolbar, and has no box at <=768px
-                 (style.css), where mobile keeps the in-tab full-screen skin instead. -->
-            <button class="btn btn-sm music-slot-reserved" id="music-popout-btn" type="button" aria-hidden="true" tabindex="-1" inert title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false">
-              <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-800h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h240v240h-80v-104L388-332Z"/></svg> Pop out
-            </button>
+            <!-- v1.234 (Dean): the "pop out" - float the player into a small window showing
+                 the picked music skin (Document PiP where supported = always-on-top; a plain
+                 independent window elsewhere). Invisible until a music track is playing AND the
+                 pop-out is supported (music.js updatePopoutBtn); v1.339 L1b: it ships RESERVED
+                 (slot kept, inert) so the first play never reflows the toolbar, and has no box
+                 on a phone (style.css html.is-phone), where the in-tab skin is used instead. -->
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-slot-reserved" id="music-popout-btn" type="button" aria-hidden="true" tabindex="-1" inert title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-open_in_new"/></svg></span><span class="ui-btn__label">Pop out</span></button>
             <!-- v1.278 (Dean): desktop actions menu - the video-parity Extras
                  (Share/Transcript/Watch/Reheat/Like/Watched/queue/Move/Delete, "if
                  relevant") for the now-playing track, via the SHARED createExtrasMenu
@@ -203,28 +202,17 @@
                  expanded (music.js updateActionsBtn); the menu popover is styled by the
                  shell-agnostic .mms-sticker-menu rules (v1.278 CSS lift). -->
             <span class="music-actions-wrap">
-              <button class="btn btn-sm" id="music-actions-btn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="More actions" aria-label="More actions for this track">
-                <i class="icon-more"></i> More
-              </button>
+              <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-actions-btn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="More actions" aria-label="More actions for this track"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-more_horiz"/></svg></span><span class="ui-btn__label">More</span></button>
               <div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div>
             </span>
             <!-- v1.284 (Dean): the two playback-MODE toggles the mobile skin has (Loop,
-                 Autoplay) surfaced on the desktop player - previously only reachable from the
-                 mobile skin / pop-out / Watch page, so a loop turned on elsewhere (the shared
-                 ft-loop setting) had no desktop off-switch. Both reflect the live state via
-                 aria-pressed and toggle the SAME player.setLoop / autoplay setting (music.js). -->
-            <button class="btn btn-sm music-mode-btn" id="music-loop-btn" type="button" title="Loop" aria-label="Loop" aria-pressed="false">
-              <i class="icon-refresh"></i> <span class="music-mode-lbl">Loop</span>
-            </button>
-            <button class="btn btn-sm music-mode-btn" id="music-autoplay-btn" type="button" title="Autoplay" aria-label="Autoplay" aria-pressed="false">
-              <i class="icon-play"></i> Autoplay
-            </button>
-            <button class="btn btn-sm" id="music-shuffle-btn" type="button" title="Shuffle all">
-              <i class="icon-shuffle"></i> Shuffle
-            </button>
-            <button class="btn btn-sm" id="music-scan-btn" type="button" title="Scan music folders now">
-              <i class="icon-refresh"></i> Scan
-            </button>
+                 Autoplay) surfaced on the desktop player - the shared ft-loop / autoplay
+                 settings. UI pass S7: filter chips - aria-pressed is the state, ON is ink on
+                 --fill-selected (never red, visible in every era). -->
+            <button class="ui-chip ui-chip--filter music-mode-btn" id="music-loop-btn" type="button" title="Loop" aria-label="Loop" aria-pressed="false"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg><span class="music-mode-lbl">Loop</span></button>
+            <button class="ui-chip ui-chip--filter music-mode-btn" id="music-autoplay-btn" type="button" title="Autoplay" aria-label="Autoplay" aria-pressed="false"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-playlist_play"/></svg><span class="music-mode-lbl">Autoplay</span></button>
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-shuffle-btn" type="button" title="Shuffle all"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-shuffle"/></svg></span><span class="ui-btn__label">Shuffle</span></button>
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-scan-btn" type="button" title="Scan music folders now"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></span><span class="ui-btn__label">Scan</span></button>
           </div>
         </div>
 
@@ -290,11 +278,14 @@
           })();
         </script>
 
-        <div class="music-tabs" id="music-tabs" role="tablist">
-          <button type="button" class="music-tab active" data-tab="home" role="tab">Home</button>
-          <button type="button" class="music-tab" data-tab="albums" role="tab">Albums</button>
-          <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
-          <button type="button" class="music-tab" data-tab="songs" role="tab">Songs</button>
+        <!-- UI pass S7: the four surfaces are ONE ui-segmented control (selected = the raised
+             neutral segment, never a red underline - D8.8); music.js setActiveTab keeps
+             aria-checked (and the .active hook) on the tab in effect. -->
+        <div class="music-tabs ui-segmented" id="music-tabs" role="radiogroup" aria-label="Music">
+          <button type="button" class="music-tab ui-segmented__item active" data-tab="home" role="radio" aria-checked="true">Home</button>
+          <button type="button" class="music-tab ui-segmented__item" data-tab="albums" role="radio" aria-checked="false">Albums</button>
+          <button type="button" class="music-tab ui-segmented__item" data-tab="artists" role="radio" aria-checked="false">Artists</button>
+          <button type="button" class="music-tab ui-segmented__item" data-tab="songs" role="radio" aria-checked="false">Songs</button>
         </div>
 
         <!-- Drill-in breadcrumb (album/artist view); hidden on the top tabs. -->
@@ -303,12 +294,18 @@
         <!-- v1.44.2: "Playing from <Album>" context line — a sibling of
              #music-content (survives its re-renders) that reflects the currently
              playing music track and drills into its album on tap. -->
-        <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
+        <button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-nowplaying" id="music-nowplaying" hidden></button>
 
         <!-- Album/artist grids OR a song list render into this host. -->
         <div id="music-content"></div>
-        <div class="music-empty" id="music-empty" hidden>
-          No music yet. Add a music folder in <a href="/setup.html">Settings</a>, drop MP3/M4A/FLAC/WAV files in it, and scan.
+        <!-- UI pass S7 (D9): the empty state is a ui-state block; music.js swaps its words for a
+             search with no match, and a failed load renders an error state with Retry in
+             #music-content instead (never this "No music yet"). -->
+        <div class="music-empty ui-state" id="music-empty" hidden>
+          <span class="ui-state__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-music_note"/></svg></span>
+          <h3 class="ui-state__title" data-empty-title>No music yet</h3>
+          <p class="ui-state__body" data-empty-body>Add a music folder in Settings, drop MP3, M4A, FLAC or WAV files in it, and scan.</p>
+          <a class="ui-btn ui-btn--secondary ui-btn--md" href="/setup.html" data-empty-action>Open Settings</a>
         </div>
       </div>
     </main>

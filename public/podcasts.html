@@ -175,18 +175,15 @@
                  Settings is a gear icon button so the row holds one line on a phone. -->
             <button class="ui-btn ui-btn--tonal ui-btn--sm" id="podcasts-check-btn" type="button" title="Check every feed for new episodes now"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></span><span class="ui-btn__label">Check feeds</span></button>
             <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill ui-btn--icon" id="podcasts-settings-btn" type="button" title="Podcast settings" aria-label="Podcast settings"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-settings"/></svg></span></button>
-            <!-- v1.251 (R2): the same desktop-only THEATRE toggle music has (v1.222) - the
-                 up-next episode panel beside the expanded player. Hidden until an episode
-                 is expanded (podcasts.js updateNowPlayingPanel toggles it in lockstep);
-                 persisted per device (ft-podcast-theater). -->
+            <!-- v1.251 (R2): the desktop-only THEATRE toggle (the up-next episode panel beside
+                 the expanded player, persisted as ft-podcast-theater) - since UI pass S7 it is
+                 the player's own #theater-btn in the control bar, as on Music (podcasts.js
+                 bindTheaterControl), not a button here. -->
             <!-- v1.251 (R3): the same DESKTOP pop-out music has (v1.234, via the shared
                  shell) - float the playing episode into a small always-on-top window
                  wearing the picked skin. Hidden until a podcast episode is playing AND
                  the pop-out is supported (podcasts.js updatePopoutBtn). -->
             <button class="ui-btn ui-btn--tonal ui-btn--sm" id="podcast-popout-btn" type="button" hidden title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-open_in_new"/></svg></span><span class="ui-btn__label">Pop out</span></button>
-            <button class="btn btn-sm music-theater-btn" id="podcast-theater-btn" type="button" hidden title="Theatre mode: up next beside the player" aria-label="Toggle theatre mode" aria-pressed="false">
-              <svg class="pc-svg-ico" viewBox="0 -960 960 960" aria-hidden="true"><g transform="matrix(1.2 0 0 1.2 -98 54)"><path fill-rule="evenodd" d="M256-556 704-556 652-116 308-116ZM394-544 452-544 452-128 394-128ZM508-544 566-544 566-128 508-128Z"/><path d="M242-596 718-596 704-556 256-556ZM254-648a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM328-704a70,70 0 1,0 140,0a70,70 0 1,0 -140,0ZM428-684a64,64 0 1,0 128,0a64,64 0 1,0 -128,0ZM518-706a68,68 0 1,0 136,0a68,68 0 1,0 -136,0ZM606-646a58,58 0 1,0 116,0a58,58 0 1,0 -116,0ZM398-636a46,46 0 1,0 92,0a46,46 0 1,0 -92,0ZM494-634a46,46 0 1,0 92,0a46,46 0 1,0 -92,0Z"/></g></svg>
-            </button>
             <button class="ui-btn ui-btn--primary ui-btn--sm" id="podcasts-add-btn" type="button" title="Subscribe to a podcast RSS feed"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-add"/></svg></span><span class="ui-btn__label">Add podcast</span></button>
           </div>
         </div>

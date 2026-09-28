@@ -166,19 +166,31 @@
     var statusPollTimer = null;
     var nowPlayingPanel = root.querySelector('#podcast-nowplaying-panel');
     var podcastStage = root.querySelector('#podcast-stage');
-    var theaterBtn = root.querySelector('#podcast-theater-btn');
+    var theaterBtn = null; // UI pass S7: the player's own #theater-btn, bound by bindTheaterControl once the host exists
 
     // v1.251 (R2): desktop THEATRE for podcasts - the same music v1.222 toggle (panel beside
-    // the expanded player), its own persisted key. The button is desktop-only (CSS) and shows
-    // only while an episode is expanded (updateNowPlayingPanel toggles it in lockstep).
+    // the expanded player), its own persisted key (ft-podcast-theater).
+    // UI pass S7: the toggle is the PLAYER's own era-style #theater-btn in the control bar, as
+    // music has used since v1.317 (T1) - one control, one glyph writer (player.js
+    // ensureTheaterButton) - instead of a second bespoke toolbar button. Its visibility is CSS
+    // (hidden below the desktop breakpoint, in the dock, and on views that do not wire it);
+    // `hidden` is never touched here - the button is shared with the watch and music views.
+    // Bound at BOTH seams: init (a host already exists) and updateNowPlayingPanel (the first
+    // load); idempotent per init.
     var THEATER_KEY = 'ft-podcast-theater';
     function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
     function applyTheater(on) {
       if (podcastStage) podcastStage.classList.toggle('is-theater', !!on);
       if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
-    applyTheater(theaterOn());
-    if (theaterBtn) {
+    applyTheater(theaterOn()); // the stage class synchronously, before any host exists
+    function bindTheaterControl() {
+      if (theaterBtn) return; // bound for this init already
+      var pl = window.FileTube && window.FileTube.player;
+      var btn = (pl && typeof pl.ensureTheaterButton === 'function') ? pl.ensureTheaterButton() : null;
+      if (!btn) return; // no host in the document yet - the mount seam calls again
+      theaterBtn = btn;
+      applyTheater(theaterOn()); // aria-pressed reflects the PODCASTS state on every podcasts mount
       theaterBtn.addEventListener('click', function () {
         var next = !theaterOn();
         try { localStorage.setItem(THEATER_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
@@ -186,6 +198,7 @@
         updateNowPlayingPanel(); // recompute (or clear) the theatre panel height cap
       }, { signal: signal });
     }
+    bindTheaterControl();
     // v1.251 (R2): the shared panel's rows are innerHTML now - ONE delegated tap listener
     // (music's exact contract: .mnp-queue-row data-index -> playAt) replaces the retired
     // per-row listeners. The mobile SKIN renders no .mnp-queue-row, so no double-handling.
@@ -916,7 +929,6 @@
         if (skinEngine) { try { document.body.classList.remove('mms-on'); } catch (_) { /* ignore */ } nowPlayingPanel.className = 'music-nowplaying-panel'; }
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.textContent = '';
-        if (theaterBtn) theaterBtn.hidden = true; // no expanded episode -> no theatre toggle (music parity)
         return;
       }
       // v1.246: on mobile, the panel BECOMES the chosen skin (owns its own art/transport/wheel +
@@ -968,7 +980,7 @@
       }
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
-      if (theaterBtn) theaterBtn.hidden = false; // an episode is expanded -> the toggle is available (desktop-gated by CSS)
+      bindTheaterControl(); // an episode is expanded, so the host exists: wire the player's theatre toggle (idempotent)
       // Music's v1.224-226 settle, ported: cap the panel to the player's measured height in
       // THEATRE (the up-next scrolls inside, the stage never grows), then scroll the current
       // row into the bounded queue - scrollTop only, never the page; rAF-deferred so the
@@ -981,9 +993,9 @@
           if (isTheater) {
             var slotEl = root.querySelector('#player-slot');
             var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
-            nowPlayingPanel.style.maxHeight = ph > 120 ? (ph + 'px') : '';
+            if (ph > 120) nowPlayingPanel.style.setProperty('--mnp-cap-h', ph + 'px'); else nowPlayingPanel.style.removeProperty('--mnp-cap-h'); // UI pass S7: the cap is DATA (style.css reads it), never an inline style
           } else {
-            nowPlayingPanel.style.maxHeight = '';
+            nowPlayingPanel.style.removeProperty('--mnp-cap-h');
           }
         } catch (_) { /* no layout */ }
         if (mnpQueue && curRow) {
