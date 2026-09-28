@@ -33,6 +33,8 @@ test('visual runs the geometry checks and the diff; only the rebaseline job (dis
   assert.strictEqual(WF.jobs.visual.if, "github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')");
   assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))");
   assert.ok(WF.on && 'workflow_dispatch' in WF.on && 'push' in WF.on && 'pull_request' in WF.on);
+  // A PR branch runs once (pull_request); push covers main and the rebaseline/* trigger only.
+  assert.deepStrictEqual(WF.on.push.branches, ['main', 'rebaseline/**']);
   assert.match(runs('visual'), /npm run test:geometry\b/);
   assert.match(runs('visual'), /node test\/visual\/run\.js /);
   assert.doesNotMatch(runs('visual'), /--update/);
@@ -105,7 +107,7 @@ test('a docs-only change (.md files, docs/) skips the workflow; nothing the app 
   for (const d of ['lib', 'public']) walk(path.join(ROOT, d));
   files.push(path.join(ROOT, 'server.js'));
   const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
-  const names = /['"`](\.\.\/)*docs['"`/]|\bdocs\/[\w.-]+\.(json|md)\b|['"`][^'"`\n]*\.md['"`]/;
+  const names = /['"`](\.{1,2}\/)*docs['"`/]|\bdocs\/[\w.-]+\.(json|md)\b|['"`][^'"`\n]*\.md['"`]/;
   // Prose that only NAMES a doc for the reader (an error or log message), reviewed; a new mention
   // anywhere fails until someone checks it is not a read and adds it here.
   const PROSE = [['lib/db/sqlite.js', '(rollback floor: docs/RELEASING.md)'], ['lib/db/sqlite.js', '(docs/CONFIGURATION.md, "The database")'],

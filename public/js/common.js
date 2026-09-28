@@ -12017,7 +12017,13 @@ function renderPinnedSidebar(pins) {
     // link.textContent, which would also wipe the avatar appended above) so
     // both the avatar and the label survive, neither ever passed through
     // innerHTML. Same discipline as renderPinnedPlaylists above.
-    link.appendChild(document.createTextNode(' ' + entry.label));
+    // v1.341.1 (Dean): the label is its own element (.sidebar-item__label) so it can take the row's
+    // leftover width on one line (ellipsis); as a bare text node a long one-word name
+    // ("heavymachinegun") could not shrink and pushed the pin out of the column the others sit in.
+    const label = document.createElement('span');
+    label.className = 'sidebar-item__label';
+    label.textContent = entry.label;
+    link.appendChild(label);
     // v1.37.0 (Dean's orphaned-pin report): every pinned row carries its
     // own unpin control -- see buildUnpinButton's comment.
     if (sourcePin && typeof sourcePin.id === 'string') {
@@ -13514,18 +13520,40 @@ function showChapterSnapEditor(mediaId, opts) {
     Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { if (busy || (staleSeed && b.getAttribute('data-act') !== 'play')) b.disabled = true; });
   }
 
+  // v1.341.1 (Dean, desktop, Music "Fix times"): a nudge re-renders the rows, which destroyed
+  // the button that had focus, and Chrome then scrolled the list back toward the top (1200 ->
+  // 21 -> 0 px over two nudges). A re-render now keeps the reader's place: the list's scroll
+  // position, and focus on the same control of the same row (keyboard users kept losing it too).
+  function keepPlace(render) {
+    const top = scroller.scrollTop;
+    const a = d.activeElement;
+    let key = null;
+    if (a && list.contains(a) && a.closest) {
+      const li = a.closest('.chapter-snap-item');
+      if (li) key = { i: li.getAttribute('data-index'), act: a.getAttribute('data-act'), delta: a.getAttribute('data-delta') };
+    }
+    render();
+    if (key && key.act) {
+      const sel = '.chapter-snap-item[data-index="' + key.i + '"] button[data-act="' + key.act + '"]' + (key.delta != null ? '[data-delta="' + key.delta + '"]' : '');
+      const b = list.querySelector(sel);
+      if (b && !b.disabled) { try { b.focus({ preventScroll: true }); } catch (_) { /* old engines */ } }
+    }
+    if (scroller.scrollTop !== top) scroller.scrollTop = top;
+  }
   function renderList() {
-    while (list.firstChild) list.removeChild(list.firstChild);
-    rows.forEach(function (_, i) {
-      const li = el('li', 'chapter-snap-item');
-      renderRow(li, i);
-      list.appendChild(li);
+    keepPlace(function () {
+      while (list.firstChild) list.removeChild(list.firstChild);
+      rows.forEach(function (_, i) {
+        const li = el('li', 'chapter-snap-item');
+        renderRow(li, i);
+        list.appendChild(li);
+      });
     });
     renderHead();
   }
   function rerenderRow(i) {
     const li = list.children[i];
-    if (li) renderRow(li, i);
+    if (li) keepPlace(function () { renderRow(li, i); });
     renderHead();
   }
 
@@ -13864,10 +13892,23 @@ function showChapterSnapEditor(mediaId, opts) {
   // May the editor close right now? A save in flight refuses; unsaved corrections open the
   // in-page discard confirm (its Discard closes) and refuse this close. Cancel asks it, and
   // so does every way out the sheet owns (Esc, the scrim, Close - its canDismiss).
+  // v1.341.1 (Dean: "can't close that chapter window without page refresh"): the question was
+  // the in-page band in the editor's head, away from the X he pressed, and he never saw it; the
+  // editor looked stuck. It is the app's standard confirm dialog now, opened ON TOP of the editor.
+  let discardAsking = false;
   function mayClose() {
     if (busy) return false;
     if (dirty() && !staleSeed) {
-      askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
+      if (U && typeof U.confirm === 'function') {
+        if (!discardAsking) {
+          discardAsking = true;
+          U.confirm({ title: 'Discard your changes?', body: 'Your corrected chapter times are not saved yet.',
+            confirmLabel: 'Discard', cancelLabel: 'Keep editing', danger: true, doc: d, win: d.defaultView })
+            .then(function (ok) { discardAsking = false; if (ok) teardown(); });
+        }
+      } else {
+        askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
+      }
       return false;
     }
     return true;

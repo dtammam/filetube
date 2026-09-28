@@ -13,7 +13,7 @@
 //   - a STALE seed (the text editor saved meanwhile) is refused, nothing written;
 //   - Revert goes through the IN-PAGE confirm (never window.confirm), both axes
 //     (Keep = nothing sent; Revert = the real revert);
-//   - a dirty Cancel asks first (Keep editing keeps the edits);
+//   - a dirty Cancel asks first, in the standard confirm dialog (Keep editing keeps the edits);
 //   - the text editor's "Fix times..." (entry point 4) opens the SAME editor and
 //     refuses while the textarea holds unsaved typing.
 
@@ -97,6 +97,11 @@ async function until(pred, label) {
   assert.fail('timed out waiting for: ' + label);
 }
 const click = (el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+// v1.341.1: the discard question is the standard confirm dialog, opened ON TOP of the editor
+// (the in-page band was missed: "can't close that chapter window").
+const discardDialog = () => [...dom.window.document.querySelectorAll('.ui-sheet--dialog:not(.is-closing)')].find((x) => /Discard your changes/.test(x.textContent) && !x.contains(dom.window.document.querySelector('.chapter-snap-editor')));
+const answerDiscard = (yes) => { const dlg = discardDialog(); assert.ok(dlg, 'the discard dialog is up'); click(dlg.querySelector('.ui-confirm__actions .ui-btn--' + (yes ? 'primary' : 'secondary'))); };
+const settleUi = () => new Promise((r) => setImmediate(r));
 const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-item'));
 
 test('seeds from STORAGE: one row per stored chapter, the focus row marked, chapter 1 without nudges, the suggestions shown; Snap all -> Save writes the snapped starts and closes', async () => {
@@ -229,20 +234,25 @@ test('a dirty Cancel asks first: Keep editing keeps the edits; Discard closes wi
   click(h.snapAllBtn);
   click(h.cancelBtn);
   assert.strictEqual(h.isClosed(), false, 'not closed on the first tap');
-  assert.strictEqual(h.confirmBox.hidden, false);
-  assert.match(h.confirmBox.textContent, /Discard your changes/);
-  click(h.confirmBox.querySelector('.chapter-snap-confirm-no'));
-  assert.strictEqual(h.saveBtn.disabled, false, 'the edits are still there');
+  assert.strictEqual(h.confirmBox.hidden, true, 'no easy-to-miss band in the editor head');
+  assert.ok(discardDialog(), 'a confirm dialog asks, on top of the editor');
   click(h.cancelBtn);
-  click(h.confirmBox.querySelector('.chapter-snap-confirm-yes'));
-  assert.strictEqual(h.isClosed(), true);
+  assert.strictEqual(dom.window.document.querySelectorAll('.ui-sheet--dialog:not(.is-closing)').length, 2, 'a second Cancel does not stack a second question');
+  answerDiscard(false);
+  await settleUi();
+  assert.strictEqual(h.isClosed(), false);
+  assert.strictEqual(h.saveBtn.disabled, false, 'Keep editing keeps the edits');
+  click(h.cancelBtn);
+  answerDiscard(true);
+  await settleUi();
+  assert.strictEqual(h.isClosed(), true, 'Discard closes the editor');
   assert.ok(!requests.some((r) => r.startsWith('POST ') && !r.endsWith('/scan')), 'no save was sent');
   assert.strictEqual(loadDatabase().metadata[mix.id].chaptersManual, undefined);
 });
 
 // Sweep S9: the SHELL is a ui.sheet dialog. Its own ways out - Esc, the scrim, its Close -
-// ASK exactly like Cancel (the sheet's canDismiss): with unsaved corrections they open the in-page
-// discard confirm and the editor stays; with none they close it.
+// ASK exactly like Cancel (the sheet's canDismiss): with unsaved corrections they open the discard
+// confirm dialog and the editor stays; with none they close it.
 for (const how of ['esc', 'scrim', 'close']) {
   test(`S9 shell: ${how} with unsaved corrections asks first (the editor stays); ${how} on a clean editor closes it`, async () => {
     const mix = seedMix();
@@ -263,9 +273,10 @@ for (const how of ['esc', 'scrim', 'close']) {
     out();
     assert.strictEqual(h.isClosed(), false, how + ' never discards unsaved corrections silently');
     assert.strictEqual(h.sheet.isOpen(), true);
-    assert.strictEqual(h.confirmBox.hidden, false, 'the discard confirm asks');
-    assert.match(h.confirmBox.textContent, /Discard your changes/);
-    click(h.confirmBox.querySelector('.chapter-snap-confirm-no'));
+    assert.ok(discardDialog(), 'the discard confirm dialog asks, on top');
+    answerDiscard(false);
+    await settleUi();
+    await drainSheets(dom.window);
     click(h.undoBtn); // back to clean
     out();
     assert.strictEqual(h.isClosed(), true, how + ' closes a clean editor');

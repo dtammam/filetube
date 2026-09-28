@@ -29,7 +29,8 @@ fi
 # the unit tests that read docs/, not the whole suite. The selector lives
 # beside THIS hook (core.hooksPath is shared by every worktree, and an older
 # branch may not carry the script); if it is missing, or it finds no
-# docs-reading test, the full checks below run. pre-push still runs everything.
+# docs-reading test, the full checks below run. pre-push runs everything unless the
+# whole push is branch deletes and docs-only commits (scripts/prepush-scope.js).
 fast_path="$(dirname "$0")/../scripts/precommit-docs-fast-path.js"
 if [ -f "$fast_path" ] && docs_tests="$(node "$fast_path")"; then
   echo "→ docs-only commit: the docs-reading unit tests"
