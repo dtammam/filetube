@@ -630,11 +630,6 @@
      touch-target floor and already consistent at x20. Layout geometry
      (panel widths, vh caps) stays literal by design. */
   --size-touch: 44px;
-  /* v1.96 A1 (Dean, on-device): the watch action-row buttons (.watch-actions
-     .btn) sit 5px UNDER the 44px touch floor on mobile -- the v1.95 floor made
-     that specific row too tall. Still above the ~36px pre-v1.95 height. One
-     tunable knob so Dean's device pass can nudge it without hunting a rule. */
-  --size-touch-watch-action: 39px;
   --size-control: 36px;
   --size-control-sm: 32px;
 
@@ -722,7 +717,7 @@
 
   /* Shadow - the one panel-elevation token the 6-member drift band (24px
      blurs at .25-.6 alphas) converges into at Tier 2+. Era bevel/gloss
-     insets are skin art and stay literal (token-exempt). */
+     insets are skin art and stay literal (annotated where they sit). */
   --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.45);
 
   /* Motion (audit 2.7). Bespoke animation choreography (spin 0.9s, vinyl

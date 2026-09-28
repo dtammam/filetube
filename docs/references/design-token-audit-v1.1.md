@@ -58,7 +58,9 @@ Spacing (10) - base-4 grid with 2px half-steps; names are multiples of the
 
 Sizing (4): `--size-touch:44px --size-control:36px --size-control-sm:32px
 --size-touch-watch-action:39px` (v1.96: the watch action-row buttons sit 5px
-under the 44px touch floor on mobile - see `.watch-actions .btn`)
+under the 44px touch floor on mobile - see `.watch-actions .btn`; retired in
+the UI professionalism pass, whose watch action row is stacked ui-btns at the
+`--ctl-lg` 44px floor)
 
 Color/overlay (6) - the mode-invariant dark chrome:
 `--overlay-surface:#222 --overlay-border:#444 --on-overlay:#fff

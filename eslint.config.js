@@ -203,9 +203,7 @@ module.exports = [
         wireMasterDetail: 'readonly',
         showConfirmModal: 'readonly',
         // FR-3 (T2): the toast helper (watch.js's post-delete success +
-        // main.js's card trash-can outcomes) and the card trash-can's pure
-        // arm/disarm reducer (main.js only, but declared alongside its
-        // sibling helpers here for consistency).
+        // main.js's card trash-can outcomes).
         showToast: 'readonly',
         // v1.63 playback queue: THE one add verb (common.js), called by
         // every affordance (main.js cards, watch.js verbs, music.js rows).
@@ -259,15 +257,11 @@ module.exports = [
         // used by main.js's injected modern-home sort caret.
         chromeIconEl: 'readonly',
         chromeIconMarkup: 'readonly',
-        CHROME_ICON_SVG: 'readonly',
-        // v1.340: the stable-width two-state button label (common.js), used by watch.js.
-        stableToggleLabelHtml: 'readonly',
         selectRecentUploaderChannels: 'readonly',
         modernCardAvatar: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',
-        nextArmState: 'readonly',
         THEME_REGISTRY: 'readonly',
         resolveIconSet: 'readonly',
         setIconSet: 'readonly',
@@ -314,11 +308,10 @@ module.exports = [
         decideSubscribeButtonState: 'readonly',
         buildSubscribeModal: 'readonly',
         // FR-7 (T6, v1.21.0): the fail-safe yt-dlp-vs-local detection
-        // predicate and the escalated, checkbox-gated hard-delete confirm,
-        // consumed by watch.js's delete button and main.js's card two-tap
-        // arm.
+        // predicate, consumed by the watch page's and the card menu's delete
+        // paths (the checkbox-gated hard-delete dialog it once picked between
+        // was retired in the UI professionalism pass, step 7).
         isYtdlpManagedItem: 'readonly',
-        showHardDeleteModal: 'readonly',
         // FR-5 (TC, v1.22.0): desktop-sidebar channel-pins renderer, called
         // from each of main.js/watch.js/setup.js's own init().
         renderPinnedSidebar: 'readonly',

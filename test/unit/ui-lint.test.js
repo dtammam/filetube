@@ -5,7 +5,7 @@
 // What this file binds (LESSONS 2: a guard is bound only if deleting it turns a test red):
 //   1. every rule's canary pair fires exactly on the committed tree (`--canaries` exits 0);
 //   2. MUTATION: each rule's detector, neutered in a copy of the real script, makes the runner
-//      exit 2 naming that rule - all twelve, one by one; a missing fixture or a wrong
+//      exit 2 naming that rule - all thirteen, one by one; a missing fixture or a wrong
 //      expect= also exits 2;
 //   3. the modes' exit codes against a temp exceptions file: exact -> 0, new debt -> 1, paid
 //      debt not shrunk -> 1, malformed -> 1, missing with --enforce -> 1, --write-baseline
@@ -56,12 +56,12 @@ test('every rule has a canary pair and --canaries exits 0 on the committed tree'
   assert.deepStrictEqual(L.runCanaries(REPO), []);
   const r = run(['--canaries']);
   assert.strictEqual(r.code, 0, r.err);
-  assert.match(r.out, /canaries OK \(12 rules/);
+  assert.match(r.out, /canaries OK \(13 rules/);
 });
 
-test('the rule table is the twelve D10.1 rules, every one ON since step 7 (no-legacy-tokens turned on with the aliases deleted)', () => {
+test('the rule table is the twelve D10.1 rules plus gate r1\'s token-exempt count, every one ON since step 7 (no-legacy-tokens turned on with the aliases deleted)', () => {
   assert.deepStrictEqual(L.RULE_IDS, ['no-raw-values', 'no-legacy-tokens', 'no-bespoke-controls', 'hover-gated', 'pressed-state',
-    'native-interaction', 'icons', 'no-layout-transition', 'z-ladder', 'display-ownership', 'colour-roles', 'no-shell-style']);
+    'native-interaction', 'icons', 'no-layout-transition', 'z-ladder', 'display-ownership', 'colour-roles', 'no-shell-style', 'token-exempt']);
   assert.deepStrictEqual(L.RULES.filter((r) => !r.on).map((r) => r.id), []);
 });
 
@@ -83,7 +83,7 @@ test('MUTATION: neutering each rule\'s detector in turn makes --canaries exit 2 
     assert.match(r.err, new RegExp(`\\n  ${rule.id}: the bad canary produced 0 hit\\(s\\)`), `${rule.id} is named`);
     assert.doesNotMatch(r.err.replace(new RegExp(`  ${rule.id}:[^\\n]*`), ''), /the bad canary produced/, `only ${rule.id} fails`);
   }
-  assert.strictEqual(results.length, 12);
+  assert.strictEqual(results.length, 13);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -312,6 +312,57 @@ test('no-raw-values: tokens.css definitions and token-exempt lines are exempt; k
   assert.strictEqual(total(lint('no-raw-values', [['public/css/style.css', '[data-theme="2009"] .x { color: #fff; }']])), 1, 'era-scoped rules are no longer blind (#103)');
   const js = lint('no-raw-values', [['public/js/a.js', "el.style.width = '10px';\nel.style.width = '10px'; // token-exempt: ok\nel.style.width = n + 'px';\n"]]);
   assert.deepStrictEqual([...js], [['public/js/a.js|js-style|width', 1]]);
+});
+
+// ---- rule 13, token-exempt (gate r1, adversary 6): the exemption is itself ratcheted debt ----
+
+test('token-exempt: every annotation in a comment is one item per file, in CSS, JS and HTML; a string is not a comment', () => {
+  const keys = lint('token-exempt', [
+    ['public/css/style.css', '.x { width: 12px; /* token-exempt: a */ }\n.y { color: #fff; /* token-exempt: b */ z-index: 9; /* token-exempt: c */ }\n/* plain comment */'],
+    ['public/js/a.js', "el.style.left = '8px'; // token-exempt: d\n/* token-exempt: e\n   spans two lines */\nel.textContent = 'token-exempt';\n/* token-exempt: g (twice in one comment counts twice, as in CSS) token-exempt */"],
+    ['public/x.html', '<div style="padding: 13px"></div> <!-- token-exempt: f -->\n<p>token-exempt in text</p>'],
+  ]);
+  assert.deepStrictEqual([...keys], [['public/css/style.css|token-exempt', 3], ['public/js/a.js|token-exempt', 4], ['public/x.html|token-exempt', 1]]);
+});
+
+test('token-exempt: adding ONE annotation fails --enforce as new debt; removing one fails as paid debt until the file shrinks', () => {
+  const root = tmpDir();
+  fs.mkdirSync(path.join(root, 'public/css'), { recursive: true });
+  fs.copyFileSync(path.join(REPO, 'public/css/tokens.css'), path.join(root, 'public/css/tokens.css'));
+  fs.cpSync(path.join(REPO, 'test/fixtures/ui-lint'), path.join(root, 'test/fixtures/ui-lint'), { recursive: true });
+  const style = path.join(root, 'public/css/style.css');
+  const file = path.join(root, 'ui-exceptions.json');
+  fs.writeFileSync(style, '.a { padding: var(--space-6); }\n.b { padding: 13px; /* token-exempt: one */ }\n');
+  assert.strictEqual(run(['--write-baseline', '--root', root, '--exceptions', file]).code, 0);
+  const base = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepStrictEqual(base.rules['token-exempt'].map((e) => [e.key, e.count]), [['public/css/style.css|token-exempt', 1]]);
+  assert.deepStrictEqual(base.rules['no-raw-values'], [], 'the annotated raw value is not no-raw-values debt');
+  let r = run(['--enforce', '--root', root, '--exceptions', file]);
+  assert.strictEqual(r.code, 0, `the exact file passes\n${r.err}`);
+
+  // The adversary's smuggle: a new raw value under a new annotation adds no no-raw-values debt...
+  fs.appendFileSync(style, '.adv-smuggle { color: #123456; padding: 13px; z-index: 99999; } /* token-exempt: adversary */\n');
+  r = run(['--enforce', '--root', root, '--exceptions', file]);
+  assert.strictEqual(r.code, 1, 'one new annotation is new debt');
+  assert.match(r.err, /NEW debt/);
+  assert.match(r.err, /\[token-exempt\] public\/css\/style\.css\|token-exempt {2}live 2 > allowed 1/);
+  assert.doesNotMatch(r.err, /\[no-raw-values\]/, '...it is caught by the count, not by no-raw-values');
+
+  // Paying one: the file must shrink with it.
+  fs.writeFileSync(style, '.a { padding: var(--space-6); }\n');
+  r = run(['--enforce', '--root', root, '--exceptions', file]);
+  assert.strictEqual(r.code, 1);
+  assert.match(r.err, /PAID debt/);
+  assert.match(r.err, /\[token-exempt\] public\/css\/style\.css\|token-exempt {2}live 0 < allowed 1/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('token-exempt: the committed file carries a count for every annotated file (the live tree, no drift)', () => {
+  const { results } = L.lintTree(REPO);
+  const data = JSON.parse(fs.readFileSync(path.join(REPO, 'docs/ui-exceptions.json'), 'utf8'));
+  const allowed = new Map((data.rules['token-exempt'] || []).map((e) => [e.key, e.count]));
+  assert.ok(allowed.size > 0, 'the rule has entries');
+  assert.deepStrictEqual(new Map(results['token-exempt'].keys), allowed);
 });
 
 // ---- css-token-lint's regression suite, ported (it retired at step 7; ui-lint supersedes it) ----
