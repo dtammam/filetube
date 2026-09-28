@@ -13886,10 +13886,23 @@ function showChapterSnapEditor(mediaId, opts) {
   // May the editor close right now? A save in flight refuses; unsaved corrections open the
   // in-page discard confirm (its Discard closes) and refuse this close. Cancel asks it, and
   // so does every way out the sheet owns (Esc, the scrim, Close - its canDismiss).
+  // v1.341.1 (Dean: "can't close that chapter window without page refresh"): the question was
+  // the in-page band in the editor's head, away from the X he pressed, and he never saw it; the
+  // editor looked stuck. It is the app's standard confirm dialog now, opened ON TOP of the editor.
+  let discardAsking = false;
   function mayClose() {
     if (busy) return false;
     if (dirty() && !staleSeed) {
-      askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
+      if (U && typeof U.confirm === 'function') {
+        if (!discardAsking) {
+          discardAsking = true;
+          U.confirm({ title: 'Discard your changes?', body: 'Your corrected chapter times are not saved yet.',
+            confirmLabel: 'Discard', cancelLabel: 'Keep editing', danger: true, doc: d, win: d.defaultView })
+            .then(function (ok) { discardAsking = false; if (ok) teardown(); });
+        }
+      } else {
+        askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
+      }
       return false;
     }
     return true;
