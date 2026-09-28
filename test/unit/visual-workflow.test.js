@@ -1,7 +1,7 @@
 'use strict';
 // The visual job's contracts (plan D10.5) that need no browser: the CI container pins the
 // same Playwright as tools/capture's lockfile, the job refuses to pass without baselines, the
-// rebaseline job is dispatch-only and the only one that writes baselines, and the fixture
+// rebaseline job (dispatch, or a push to rebaseline/*) is the only one that writes baselines, and the fixture
 // clock is pinned on both the server (clock-shim.js) and the browser (installPinnedClock).
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -27,9 +27,11 @@ test('both jobs run in the Playwright container that matches tools/capture\'s pi
   }
 });
 
-test('visual runs the geometry checks and the diff; only the dispatch-only rebaseline job writes baselines', () => {
-  assert.strictEqual(WF.jobs.visual.if, "github.event_name != 'workflow_dispatch'");
-  assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch'");
+test('visual runs the geometry checks and the diff; only the rebaseline job (dispatch or rebaseline/*) writes baselines', () => {
+  // The rebaseline job also runs on a push to rebaseline/* (a workflow is dispatchable only
+  // once it is on the default branch); the diff never runs there, so the two never overlap.
+  assert.strictEqual(WF.jobs.visual.if, "github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')");
+  assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))");
   assert.ok(WF.on && 'workflow_dispatch' in WF.on && 'push' in WF.on && 'pull_request' in WF.on);
   assert.match(runs('visual'), /npm run test:geometry\b/);
   assert.match(runs('visual'), /node test\/visual\/run\.js /);

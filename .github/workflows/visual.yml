@@ -9,8 +9,11 @@ name: Visual
 # matrix and diffs it against test/visual/baselines/ at 0 changed pixels. With no committed
 # baselines it FAILS ("no baselines - run the rebaseline job") instead of passing vacuously.
 #
-# `rebaseline` runs only from "Run workflow" (workflow_dispatch) in the SAME container and
-# uploads the new baselines as an artifact. Committing them is a human/Architect step: download
+# `rebaseline` runs only from "Run workflow" (workflow_dispatch), or on a push to a
+# `rebaseline/*` branch (GitHub dispatches a workflow only once it exists on the default
+# branch, so the FIRST baselines, and any taken before a merge, come from a pushed
+# rebaseline/<step> branch at the reviewed sha), in the SAME container, and uploads the new
+# baselines as an artifact. The visual diff skips those branches (they have no baselines yet). Committing them is a human/Architect step: download
 # the artifact into test/visual/baselines/ and commit it as its own commit, named for the step.
 # Baselines are never generated on a dev box (fonts and raster differ outside the container).
 #
@@ -28,7 +31,7 @@ permissions:
 
 jobs:
   visual:
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
@@ -77,7 +80,7 @@ jobs:
           retention-days: 14
 
   rebaseline:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
