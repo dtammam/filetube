@@ -1,0 +1,5 @@
+/* ui-lint-canary: path=public/css/style.css expect=3 */
+.a { padding: 13px; /* token-exempt: one */ }
+.b {
+  color: #123456; /* token-exempt: two */ z-index: 99; /* token-exempt: three */
+}

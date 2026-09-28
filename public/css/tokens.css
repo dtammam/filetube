@@ -717,7 +717,7 @@
 
   /* Shadow - the one panel-elevation token the 6-member drift band (24px
      blurs at .25-.6 alphas) converges into at Tier 2+. Era bevel/gloss
-     insets are skin art and stay literal (token-exempt). */
+     insets are skin art and stay literal (annotated where they sit). */
   --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.45);
 
   /* Motion (audit 2.7). Bespoke animation choreography (spin 0.9s, vinyl

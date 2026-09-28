@@ -8716,6 +8716,20 @@
         "reason": "diag.html's <style> and page script (D10.4 carve-out): the admin diagnostics page",
         "added": "2026-09-27"
       }
+    ],
+    "token-exempt": [
+      {
+        "key": "public/css/style.css|token-exempt",
+        "count": 201,
+        "reason": "counted token-exempt annotations (gate r1, adversary 6): each exempts a raw value from no-raw-values; shrink-only, a new one grows this file",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/perf-collector.js|token-exempt",
+        "count": 3,
+        "reason": "counted token-exempt annotations (gate r1, adversary 6): each exempts a raw value from no-raw-values; shrink-only, a new one grows this file",
+        "added": "2026-09-28"
+      }
     ]
   }
 }

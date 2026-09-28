@@ -22,7 +22,8 @@
  *                           must be tokens. Custom-property DEFINITIONS in tokens.css
  *                           are the token layer and are exempt; a line carrying a
  *                           `token-exempt` comment is exempt (the convention inherited
- *                           from the retired css-token-lint; a LINE comment in JS).
+ *                           from the retired css-token-lint; a LINE comment in JS), and
+ *                           rule 13 counts every such annotation as debt.
  *                           This rule SUPERSEDES css-token-lint (retired at step 7): it
  *                           covers every surface that linter scanned (style.css, the
  *                           subscriptions.html <style>, JS .style.X / cssText /
@@ -60,6 +61,9 @@
  *                           hover/active/focus/selected/pressed selector (D8.8), except
  *                           ui.css's primary-button fill.
  *  12 no-shell-style        no <style> in a shell (diag.html is listed, not hard-coded).
+ *  13 token-exempt          (gate r1) every `token-exempt` annotation is one item of debt,
+ *                           keyed `file|token-exempt`: the exemption rule 1 grants is
+ *                           ratcheted like any raw value, so a new one needs the file to grow.
  *
  * DEBT KEYS are `file|selector|property`, `file|<what>` or a class name - never a line
  * number, so moving code does not churn docs/ui-exceptions.json. A key's COUNT is how
@@ -172,15 +176,22 @@ function lineIndex(text) {
   return (offset) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= offset) lo = mid; else hi = mid - 1; } return lo + 1; };
 }
 
-/** Lines (1-based) on which a CSS comment carries `word`. */
-function cssCommentLines(text, word) {
-  const lines = new Set();
+/** The line (1-based) of every occurrence of `word` inside a CSS comment (repeats kept). */
+function cssCommentHits(text, word) {
+  const hits = [];
   const at = lineIndex(text);
   for (const m of text.matchAll(/\/\*[\s\S]*?\*\//g)) {
     let i = m[0].indexOf(word);
-    while (i !== -1) { lines.add(at(m.index + i)); i = m[0].indexOf(word, i + 1); }
+    while (i !== -1) { hits.push(at(m.index + i)); i = m[0].indexOf(word, i + 1); }
   }
-  return lines;
+  return hits;
+}
+
+/** Occurrences of `word` in a string. */
+function countOf(s, word) {
+  let n = 0;
+  for (let i = s.indexOf(word); i !== -1; i = s.indexOf(word, i + 1)) n++;
+  return n;
 }
 
 /** Split at top-level `sep` (outside (), [] and quotes). */
@@ -251,12 +262,14 @@ function compoundParts(compound) {
 const CSS_RANK = { 'public/css/tokens.css': 0, 'public/css/ui.css': 1, 'public/css/style.css': 2 };
 
 function newModel(info) {
-  return { info, rules: [], inline: [], js: [], html: [], errors: [] };
+  return { info, rules: [], inline: [], js: [], html: [], exemptMarks: [], errors: [] };
 }
 
 /** Parse one stylesheet into flat rule records (selector, @-context, declarations). */
 function addCss(model, text, file, lineOffset, rank) {
-  const exempt = cssCommentLines(text, 'token-exempt');
+  const exemptHits = cssCommentHits(text, 'token-exempt');
+  const exempt = new Set(exemptHits);
+  for (const l of exemptHits) model.exemptMarks.push({ file, line: l + lineOffset });
   let ast;
   try {
     ast = csstree.parse(text, {
@@ -370,6 +383,7 @@ function addJs(model, text, file, lineOffset) {
   const exemptLines = new Set();
   for (const c of toks.comments || []) {
     if (c.value.includes('token-exempt')) for (let l = c.loc.start.line; l <= c.loc.end.line; l++) exemptLines.add(l + lineOffset);
+    for (let k = countOf(c.value, 'token-exempt'); k > 0; k--) model.exemptMarks.push({ file, line: c.loc.start.line + lineOffset });
   }
   const code = toks.filter((t) => t.type !== 'Line' && t.type !== 'Block');
   code.forEach((t) => { t.line = t.loc.start.line + lineOffset; });
@@ -500,7 +514,9 @@ function addHtml(model, text, file) {
   }
   const at = lineIndex(markup);
   const exemptLines = new Set();
-  text.split('\n').forEach((l, i) => { if (/<!--[^>]*token-exempt/.test(l)) exemptLines.add(i + 1); });
+  text.split('\n').forEach((l, i) => {
+    if (/<!--[^>]*token-exempt/.test(l)) { exemptLines.add(i + 1); model.exemptMarks.push({ file, line: i + 1 }); }
+  });
   for (const m of markup.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
     const ln = at(m.index);
     addInlineDecls(model, decodeEntities(m[1] != null ? m[1] : m[2]), file, 'style-attr', ln, exemptLines.has(ln));
@@ -950,6 +966,14 @@ function detectColourRoles(model, report) {
   }
 }
 
+// Rule 13 (gate r1, adversary 6): a `token-exempt` annotation lets a raw value past
+// no-raw-values without adding debt, so the annotations ARE debt: one key per file,
+// counted per occurrence (a CSS comment exempts the line of each occurrence, a JS comment
+// every line it spans), under the same shrink-only ratchet.
+function detectTokenExempt(model, report) {
+  for (const m of model.exemptMarks) report(`${m.file}|token-exempt`, `${m.file}:${m.line}`, 'a token-exempt annotation');
+}
+
 function detectNoShellStyle(model, report) {
   for (const h of model.html) {
     for (let i = 0; i < h.styleBlocks; i++) report(`${h.file}|<style>`, h.file, 'a <style> block in a shell');
@@ -969,6 +993,7 @@ const RULES = [
   { id: 'display-ownership', on: true, detect: detectDisplayOwnership },
   { id: 'colour-roles', on: true, detect: detectColourRoles },
   { id: 'no-shell-style', on: true, detect: detectNoShellStyle },
+  { id: 'token-exempt', on: true, detect: detectTokenExempt }, // gate r1: the annotations are counted debt
 ];
 const RULE_IDS = RULES.map((r) => r.id);
 
