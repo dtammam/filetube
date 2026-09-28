@@ -126,7 +126,8 @@ takes about 10 minutes (it was one ~50 minute job). A change that touches ONLY
 `.md` files or `docs/` skips the workflow: the app renders nothing from those
 paths.
 
-- **`visual`** runs on every push and PR (except `rebaseline/*` branches). In
+- **`visual`** runs on every pull request and every push to `main` (a PR
+  branch runs once, through its pull request). In
   the pinned Playwright container each leg seeds the synthetic fixture
   (`test/visual/seed.js`), boots a fresh read-only server, runs the full
   geometry set (`npm run test:geometry`, on the 2021 desktop leg only), then

@@ -9,7 +9,7 @@ set -euo pipefail
 echo "Running pre-push checks..."
 # Proportional (Dean, 2026-09-28): a push of only branch deletes and docs-only commits skips the
 # checks below (scripts/prepush-scope.js reads git's push lines on stdin; anything unclear runs
-# them). CI still runs its own checks on every pushed branch.
+# them). A docs-only branch still gets CI on its pull request (and main runs everything on merge).
 if [ -f scripts/prepush-scope.js ] && command -v node >/dev/null 2>&1; then
   if node scripts/prepush-scope.js; then exit 0; fi
 fi

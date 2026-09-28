@@ -49,9 +49,20 @@
   while the bar is laid out. A `?debugLifecycle=1` capture of the bar's rect against `visualViewport`
   when it happens decides which one.
 
-- [x] **Bug: the v1.341.1 desktop bugs** - SHIPPED v1.341.1 (see Shipped) _(Dean, 2026-09-28)_: a panel
-  shifting the page (every top-bar panel, card menus, right-click), the Music chapter editor jumping to
-  the top after a nudge, and that editor "can't be closed" (the discard question was never seen).
+- [ ] **Bug: opening a panel shifts the page on desktop** _(Dean, 2026-09-28)_: the notification tray,
+  the account menu, a card's menu and its right-click menu (every surface that goes through the one body
+  scroll lock, `public/js/body-scroll-lock.js`, which pins body `position: fixed`) hide a CLASSIC
+  scrollbar, so the page shifts by its width (header bell x 1296 -> 1308 at 1440x900). NOT
+  `scrollbar-gutter: stable`: built for v1.341.1 and pulled at the gate (adversary r1 W1/W2, measured in
+  real Chromium with classic scrollbars) because Chrome keeps the reserved gutter in FULLSCREEN (a 12px
+  black band on the right of fullscreen video, the picture 6px off centre) and a fixed scrim cannot dim
+  the gutter (an undimmed strip beside every dialog). NEXT: the lock pads by the measured scrollbar width
+  while it holds (body padding-right, and the same offset for the fixed header / bottom chrome), measured
+  on every locking surface AND in fullscreen, with scrollbars visible (Playwright
+  `ignoreDefaultArgs: ['--hide-scrollbars']`).
+
+- [x] **Bug: the Music chapter editor jumped to the top after a nudge, and "can't be closed"** - SHIPPED
+  v1.341.1 (see Shipped) _(Dean, 2026-09-28)_ (the discard question was never seen).
 
 - [x] **Bug: pinned channels in the sidebar: a long one-line name pushes its pin further right than the
   others** - SHIPPED v1.341.1 (see Shipped) _(Dean, 2026-09-28)_; his pick: one line with an ellipsis.
@@ -187,6 +198,15 @@
 
 ### Chores
 
+- [ ] **Visual CI follow-ups from v1.341.1** _(2026-09-28)_: (1) the visual job hides scrollbars, so a
+  classic-scrollbar regression (the v1.341.1 gutter's fullscreen band) is invisible to it; add one leg or
+  a geometry check with scrollbars shown. (2) Mask the app version in the About page and account menu
+  shots (every release bump changes `97-stats-about` and `23-account-menu`). (3)
+  `test/unit/ui-lint.test.js`'s MUTATION test sets NODE_PATH to `<repo>/node_modules`, so it fails in a
+  git worktree (no node_modules of its own); resolve it by walking up, as the hooks do. (4) Gate r1
+  notes: a test for keepPlace on `rerenderRow` (audition Play/Stop) and for its disabled-button guard, a
+  test for run.js removing shots after an unclean capture, a `title` on an ellipsised pinned name.
+
 - [ ] **ntfy.sh notifications for the agent** (retired memory, followup-desktop-theatre-ambient-wave.md): when
   Claude hits a core question mid-run, notify Dean through ntfy.sh; also on releases. Deferred by Dean;
   tooling, not product.
@@ -305,11 +325,8 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
-### v1.341.1 - Panels stop shifting the page, and the chapter editor keeps your place (2026-09-28)
+### v1.341.1 - The chapter editor keeps your place, and pinned channels line up (2026-09-28)
 
-- **Opening a panel no longer shifts the page on desktop.** The notification tray, the account menu, a
-  card's menu and its right-click menu (every panel that holds the page still) hid a desktop scrollbar,
-  and the whole page moved by its width. The scrollbar's space now stays reserved.
 - **The chapter time editor keeps your place.** On a chaptered Music album's "Fix times", a nudge sent
   the list back to the top; it now stays put, with focus on the button you pressed.
 - **Closing the editor with unsaved changes asks where you can see it.** The "Discard your changes?"
@@ -320,8 +337,9 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   minutes, was about 50), a look change you meant to make lands in one run, docs-only changes skip it,
   a pull request runs each check once, and the local pre-push check skips branch deletes and docs-only
   pushes.
-- Not in this patch: the Modern-theme phone folders that render wider than the screen (see Planned >
-  Bugs; it needs one reading from the phone).
+- Not in this patch: a panel shifting the page on desktop (the fix built for it put a black band in
+  fullscreen, so it was pulled; see Planned > Bugs) and the Modern-theme phone folders that render wider
+  than the screen (it needs one reading from the phone).
 
 ### v1.341.0 - One consistent look across the whole app (2026-09-28)
 

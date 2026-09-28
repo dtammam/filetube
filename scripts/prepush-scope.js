@@ -42,7 +42,9 @@ function gitChangedFiles(localSha, remoteSha) {
       if (!main) return null;
       base = git('merge-base', localSha, main);
     }
-    const out = git('diff', '--name-only', `${base}..${localSha}`);
+    // --no-renames: a rename lists BOTH paths, so code moved into docs/ (or renamed to .md) is
+    // still code leaving its old path, never a docs-only push (gate r1 W3).
+    const out = git('diff', '--name-only', '--no-renames', `${base}..${localSha}`);
     return out ? out.split('\n') : [];
   } catch (_) {
     return null;

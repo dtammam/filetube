@@ -2,8 +2,8 @@ name: Visual
 
 # UI professionalism pass, plan D10.5 (visual diff) + D10.2 (geometry checks G1-G4).
 #
-# `visual` runs on every push and PR (except docs-only ones, below), one parallel leg per era x
-# viewport:
+# `visual` runs on every pull request and every push to main (except docs-only ones, below), one
+# parallel leg per era x viewport:
 # in the pinned Playwright container each leg seeds the
 # synthetic fixture (test/visual/seed.js), boots a FRESH read-only server on it
 # (test/visual/start-server.sh sets FILETUBE_READONLY=1 and FILETUBE_READ_ONLY_MEDIA=1 and

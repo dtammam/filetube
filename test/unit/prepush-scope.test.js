@@ -40,6 +40,13 @@ test('anything unclear runs the checks: no lines, a malformed line, an undiffabl
   assert.strictEqual(classify([line(A, B)], files([])).skip, false);
 });
 
+test('a rename counts both paths: code moved into docs/ or renamed to .md runs the checks (gate r1 W3)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'prepush-scope.js'), 'utf8');
+  assert.match(src, /git\('diff', '--name-only', '--no-renames',/);
+  // With both paths listed, the old code path is not docs.
+  assert.strictEqual(classify([line(A, B)], files(['docs/a.js', 'lib/a.js'])).skip, false);
+});
+
 test('hooks/pre-push runs the scope first and exits only when it says skip', () => {
   const hook = fs.readFileSync(path.join(__dirname, '..', '..', 'hooks', 'pre-push'), 'utf8');
   const scope = hook.indexOf('if node scripts/prepush-scope.js; then exit 0; fi');

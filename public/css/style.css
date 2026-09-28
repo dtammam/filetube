@@ -278,12 +278,6 @@
    leaving overflow-y and iOS safe-area/visual-viewport behavior untouched. */
 html {
   overflow-x: clip;
-  /* v1.341.1 (Dean, desktop): every panel that locks the page (notifications, the account menu,
-     a card's menu or right-click menu, every dialog) pins <body> (body-scroll-lock.js), the page
-     stops overflowing, and a classic scrollbar vanished: the whole page shifted by its width
-     (measured 1428 -> 1440px). The gutter stays reserved, locked or not, scrolling or not.
-     Overlay scrollbars (phones, macOS default) take no width, so they are unaffected. */
-  scrollbar-gutter: stable;
   /* v1.160.1 (Dean): no horizontal rubber-band on the left-edge swipe-back drag
      (the swipe handler also preventDefaults it, this is belt-and-suspenders). */
   overscroll-behavior-x: none;
