@@ -2751,3 +2751,51 @@ only the delta 82563a2e..HEAD). Fixed in 17e7cb84 + ea17b4f9:
 - Mutants (a /tmp git-archive sandbox of 17e7cb84, IDENTICAL after): card menu unbound KILLED (3), Sort menu
   unbound KILLED (2), modern Sort back to the cached `sig` KILLED (1), no leave listener KILLED, no pre-aborted
   check KILLED, restore refuses '' KILLED, no post-answer re-check SURVIVED, then KILLED by ea17b4f9's test.
+
+Gate: APPROVED r3 @9cc44fa8 - qa
+Narrow round (Dean's ruling): the delta 82563a2e..9cc44fa8 only (code 17e7cb84, ea17b4f9). Instruments at 9cc44fa8 (Node 22.23.1), verbatim:
+- `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json".
+- `npx eslint .`: "0 errors, 6 warnings". This also shows that `shownViewSignal`, defined in init(), resolves at both Sort-menu call sites (no-undef is silent).
+- 19 targeted files (overlays-dialogs-s9, integration card-action-menu-fullchain, attribution-client, reheat-button-wiring, extras-delete-confirm, music-sticker-extras, skin-surface, v1262-sheet-modal-transitions, ytdlp-oneoff-modal, watch-init-behavioral, watch-destructive-confirm, modern-home-layout, card-action-menu, ui-activation-guard, chrome-primitives, integration backup-restore and attribution, library-toolbar, home-chip-memory): tests 482, pass 482, fail 0.
+1. r2 W5 (the card menu outlives the view): FIXED as prescribed and bound.
+   - main.js: the card menu (3211), the modern header Sort (1727) and the library Sort (2796) all pass `shownViewSignal()`. The confirm reads the same helper.
+   - My r2 repro, rerun on a git archive of 9cc44fa8 (the real index.html, ui.js and router): open card yt1's menu, `FileTube.navigate('/history')`, then look. Before the fix: menu still open, Move to Trash, OK, `DELETE /api/videos/yt1`. Now: swapped true, 0 sheets open, no trash row, `DELETEs: []`.
+   - Sandbox mutants, each restored (public/ diffed identical after):
+
+| Mutant | Result |
+|---|---|
+| Card menu signal removed | fullchain 3 red |
+| Library Sort back to the view's own `signal` | fullchain 2 red |
+| showConfirmModal's leave listener removed | overlays-dialogs-s9 1 red |
+| Its post-answer `shown.aborted` re-check removed | overlays-dialogs-s9 1 red |
+
+   - The new tests: the fullchain leave tests (navigate and popstate) and the Sort-menu leave test. The source lock asserts every home menu carries `signal: shownViewSignal()`.
+2. showConfirmModal's view binding, read against its three callers. It is safe, no regression.
+   - The signal is read at call time from `FileTube.viewSignal()`. That signal is live while the caller's view is shown, and it is minted fresh after a leave. So main.js:2174, which opens after an async preview fetch, still opens and its onConfirm still runs on a live view.
+   - watch.js:3244 (the attribution move) and :3747 (the relocation offer) keep their own wiring. The relocation stores `dismiss` as relocationDismiss and removes its own abort listener in onConfirm. The new leave abort goes through the same `ac` and `settled` flag, so the two dismissal paths are idempotent. `unbind()` removes the view listener on both the answer path and the dismiss path, so no listener is left behind.
+   - A page without the router (`viewSignal` absent) behaves exactly as before.
+   - The tests above, which drive these callers (attribution-client, reheat-button-wiring, watch-init-behavioral, the extras and sticker files), are all green.
+3. r2 NOTE 6 (the subscriptions.js comment): FIXED. Line 23 now reads "scheme-checked (http/https only) on a backup restore".
+4. r2 NOTE 7 (CONTRIBUTING's shadow glob): FIXED. Line 90 lists `--shadow`, `--shadow-lg`, which matches ui-lint's legacy set; `--shadow-overlay` is no longer implied.
+5. Also in the delta: backup.js now skips an empty-string channelUrl like a missing one (the security-brief r2 INFO 3), with a backup-restore test (green above). There is no security surface change: '' opens nothing, and the client sinks still gate on http(s).
+No new findings. My carried r1/r2 NOTEs stay in residuals as the coordinator listed them.
+Tree: only this verdict appended to the plan doc. Mutants ran in a scratchpad git-archive sandbox, never in the tree.
+
+Gate: APPROVED r3 @9cc44fa8 - adversary
+Scope (Dean's narrow r3): only the delta 82563a2e..9cc44fa8 (17e7cb84, ea17b4f9). Measured at 9cc44fa8, Node 22.23.1, in a fresh /tmp git-archive sandbox (/tmp/adv-uiprof3/work, IDENTICAL to its pristine twin afterwards). Headless Chromium drove a freshly seeded fixture server. A browser route recorded every non-GET request and answered 200. The probe is /tmp/adv-uiprof3/probe/r3.js.
+r2 blocker (the card menu survived leaving the view): FIXED as prescribed.
+- Card menu open, then `FileTube.navigate('/history')`: 0 sheets or scrims left, no body lock, the "Move to Trash" row is gone, nothing sent.
+- Card menu open, then browser Back (popstate) to History: the same, nothing sent.
+- Forward onto the restored (cached) home: a new card menu, then Move to Trash, then OK sends one `DELETE /api/videos/<id>`. The fresh viewSignal is live, not born aborted.
+- The Sort menu (`[aria-label*="Sort"]`) open, then navigate: 0 sheets, no lock.
+r2 note (the two file-moving confirms): FIXED at the shared seam, showConfirmModal. I drove the real shim from page context on the real router (the attribution flows need seed state I did not build):
+- Opened on home, then navigate away: the dialog closes, OK is gone, onConfirm ran 0 times, nothing sent.
+- The same opened on the watch page: the same result.
+- Positive, with an onConfirm that navigates itself (the attribution move's shape: POST, then `FileTube.navigate`): onConfirm ran once, the POST was sent, and the page landed on /history. The confirm is already settled and unbound before its own navigate aborts the view, so the success-navigate still runs.
+- Listener cleanup: 20 shim confirms opened and cancelled on one view added 20 abort listeners and removed them all. The 40 remove calls are the then-unbind plus dismiss-unbind, which is harmless. onConfirm ran 0 times.
+Mutants (sandbox, each restored and verified):
+- The card menu's `signal: shownViewSignal()` dropped: 3 red (the navigate and popstate MENU tests, and the source lock).
+- The shim's `!(shown && shown.aborted)` post-answer re-check dropped: 1 red.
+- The shim's abort listener never added: 1 red.
+No new findings. The carried residuals stand as the coordinator listed them.
+Tree: I appended only this verdict, after the uncommitted qa r3 verdict above it. The sandbox is IDENTICAL to pristine, and my fixture server is stopped.
