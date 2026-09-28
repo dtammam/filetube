@@ -321,29 +321,43 @@ test('validation refuses: wrong schema, unknown bundle key, non-empty users, ove
   assert.deepEqual(readPersistedDatabase(DATA_DIR).metadata.vid1.title, 'Clip', 'metadata untouched by refused restores');
 });
 
-test('gate r1 (security-brief 2): a subscription channelUrl the add route would refuse refuses the WHOLE bundle before the wipe', async () => {
+test('gate r1 (security-brief 2): a non-http(s) subscription channelUrl refuses the WHOLE bundle; any http(s) shape an older version stored restores', async () => {
   seedFullState();
   const good = await getBackup();
   assert.ok(good.ytdlp.subscriptions.length >= 1, 'fixture sanity: the bundle carries a subscription');
   const withUrl = (channelUrl, extra) => ({ ...good, ytdlp: { ...good.ytdlp, subscriptions: good.ytdlp.subscriptions.map((sub, i) => (i === 0 ? { ...sub, channelUrl, ...(extra || {}) } : sub)) } });
   for (const bad of [
     'javascript:alert(document.cookie)',
-    'javascript:alert(1)//https://www.youtube.com/@x',
+    'JavaScript:alert(1)//https://www.youtube.com/@x',
+    ' javascript:alert(1)',
     'data:text/html,<script>alert(1)</script>',
-    'https://evil.example/@x', // http(s), but not a YouTube host
-    'click https://www.youtube.com/@x', // the validator extracts the URL from prose; the STORED string must itself be one
+    'vbscript:x',
+    'not a url',
     42,
   ]) {
     const res = await postRestore(withUrl(bad));
     assert.equal(res.status, 400, String(bad));
-    assert.match((await res.json()).error, /channelUrl must be an http\(s\) YouTube channel URL/, String(bad));
+    assert.match((await res.json()).error, /channelUrl must be an http\(s\) URL/, String(bad));
   }
   // The id-less legacy path (the importer mints the id from channelUrl) is gated too.
-  const idless = await postRestore(withUrl('javascript:alert(1)', { id: undefined }));
-  assert.equal(idless.status, 400);
+  assert.equal((await postRestore(withUrl('javascript:alert(1)', { id: undefined }))).status, 400);
   assert.equal(readPersistedDatabase(DATA_DIR).metadata.vid1.title, 'Clip', 'state untouched by the refused restores');
-  // The control, last (a restore that lands re-mints the session): the live shape restores.
-  assert.equal((await postRestore(withUrl(good.ytdlp.subscriptions[0].channelUrl))).status, 200, 'a valid channelUrl restores');
+
+  // An unrestorable backup is itself data loss: restore does NOT apply the add route's host /
+  // shape / normalization rules. A non-YouTube host and an older unnormalized shape restore.
+  // One restore carries both (a landed restore re-mints the session, so it goes last).
+  const { ytdlpDb } = require('../../server');
+  const legacy = ['https://evil-but-http.example/@x', 'HTTP://YouTube.com/user/Old?feature=x#frag'];
+  const first = good.ytdlp.subscriptions[0];
+  const bundle = { ...good, ytdlp: { ...good.ytdlp, subscriptions: [
+    { ...first, channelUrl: legacy[0] },
+    { ...first, id: 'sub-legacy-shape', channelUrl: legacy[1], name: 'Old shape' },
+    ...good.ytdlp.subscriptions.slice(1),
+  ] } };
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200, await res.text());
+  const stored = require('../../lib/ytdlp/store').ensureYtdlp(ytdlpDb.holder(['subscriptions'])).subscriptions.map((sub) => sub.channelUrl);
+  for (const u of legacy) assert.ok(stored.includes(u), `${u} is stored verbatim`);
 });
 
 test('W4: a wipe/restore landing MID-SCAN aborts the scan\'s stale merge — the replaced state survives', async () => {
