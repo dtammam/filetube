@@ -395,6 +395,36 @@ for (const [how, leave] of [
   });
 }
 
+// The same, for a confirm opened on the old view WHILE the next one is fetching (the leave
+// already happened, so only the swap's own abort can close this one).
+test('DELETE: a confirm opened while a navigation is in flight closes at the swap; its OK then sends nothing', async () => {
+  const { fetchImpl: base, calls } = makeFetchStub({});
+  let answerPage;
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    if (url === 'http://localhost/history') return new Promise((r) => { answerPage = r; });
+    return base(input, init);
+  };
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    dom.window.FileTube.navigate('/history');
+    await settle();
+    assert.strictEqual(typeof answerPage, 'function', 'the next view is fetching');
+    const dlg = await openDeleteConfirm(dom, 'yt1'); // the old view is still on screen
+    const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+    const html = '<!DOCTYPE html><html><head><title>History</title></head><body><div id="view-root"><div id="history-list"></div></div></body></html>';
+    answerPage({ ok: true, status: 200, text: async () => html });
+    await settle(); await frame();
+    assert.ok(document.getElementById('history-list'), 'precondition: the swap happened');
+    assert.strictEqual(confirmDialog(document), null, 'the confirm closed at the swap');
+    click(dom, ok);
+    await settle(); await sleep(400);
+    assert.strictEqual(deletes(calls).length, 0, 'no DELETE after the view was swapped out');
+  } finally { dom.window.close(); }
+});
+
 test('DELETE by KEYBOARD: a detail-0 activation of the kebab and of Move to Trash still needs the confirm; Esc cancels', async () => {
   const { fetchImpl, calls } = makeFetchStub({});
   const dom = await loadIndex(fetchImpl);

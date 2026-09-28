@@ -226,3 +226,21 @@ test('ui.prompt field: an auto-repeated Enter does not submit; a fresh Enter doe
   key(win, input, 'Enter');
   assert.strictEqual(await p, 'y');
 });
+
+test('ui.sheet re-opened while it animates out restarts the guard window (open() mid-exit)', async () => {
+  const t = clock();
+  const { doc, win } = page();
+  const ctrl = ui.sheet({ variant: 'dialog', title: 'Panel', doc, win });
+  ctrl.open();
+  t.tick(1000);
+  ctrl.close(); // is-closing: the exit animation
+  ctrl.open(); // re-opened mid-exit: the same nodes, a fresh window
+  assert.ok(ctrl.isOpen());
+  t.tick(100);
+  tap(win, doc.querySelector('.ui-scrim'));
+  assert.ok(ctrl.isOpen(), 'a tap 100ms after the re-open is the rest of the tap that re-opened it');
+  t.tick(500);
+  tap(win, doc.querySelector('.ui-scrim'));
+  assert.strictEqual(ctrl.isOpen(), false, 'a later tap dismisses');
+  t.tick(400);
+});

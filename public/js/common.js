@@ -10650,9 +10650,10 @@ if (typeof window !== 'undefined') {
   // nav-away and never aborted, so a destructive confirm opened from a home card stayed up over
   // the next view and its OK still deleted. `viewSignal()` is read when a surface opens (never
   // stored at init: a cached home would hold an already-aborted one after its restore), and
-  // leaveShownView() aborts it at every exit: a navigation or popstate that leaves the view
-  // (before its fetch, so no OK lands mid-swap), and every #view-root hand-over (swapToView,
-  // restoreHomeFromCache). An in-view pop (a drill collapsing) keeps it.
+  // leaveShownView() aborts it at every exit: a navigate() or popstate that leaves the view
+  // (at its start, before the fetch, so no OK lands mid-swap; this also covers the cached-home
+  // restore, which follows it synchronously), and swapToView (a surface opened on the old view
+  // WHILE the next one was fetching). An in-view pop (a drill collapsing) keeps it.
   let shownViewController = null;
   function viewSignal() {
     if (!shownViewController) shownViewController = new AbortController();
@@ -10966,7 +10967,6 @@ if (typeof window !== 'undefined') {
   // confirmed `cached.url === url`); `url`/`scrollY` are passed explicitly
   // rather than re-read off the (already-nulled) module cache.
   function restoreHomeFromCache(cached, url, scrollY) {
-    leaveShownView();
     homeViewCache = null; // consumed -- live again; the NEXT leave-home re-caches it fresh
 
     // v1.30.0 T8 (B1, AC5.2b): a one-shot may have completed while the user
