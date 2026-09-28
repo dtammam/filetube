@@ -97,11 +97,6 @@
   rotation settles), then reproduce with `Emulation.setDeviceMetricsOverride` rotation in the geometry
   G4 sequences (the Pocket rotation F23 class) and fix the element whose top moves.
 
-- [ ] **Bug: sharing a Bandcamp ALBUM link downloads only the first song** _(Dean, 2026-09-28)_. An album
-  URL should download every track (a yt-dlp playlist), like a YouTube playlist does. Check the one-off
-  download path's playlist flags (`--no-playlist` or a first-item pick) for non-YouTube sites, and what
-  the Share target passes; then the album should land as one album (tags) in Music.
-
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
   entire screen. It doesn't appear in the screenshots, but it totally appears for our faux overlay.").
