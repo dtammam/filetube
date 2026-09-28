@@ -395,6 +395,64 @@ for (const [how, leave] of [
   });
 }
 
+// Gate r2 (adversary + qa): the card MENU is bound to the shown-view signal too. Before, the
+// confirm closed on leave but the menu that opens it stayed up over the next view, kept the
+// scroll lock, and its Move to Trash then OK still sent DELETE.
+for (const [how, leave] of [
+  ['FileTube.navigate (a tap on a nav link)', (w) => { w.FileTube.navigate('/history'); }],
+  ['popstate (a Back swipe)', (w) => { w.dispatchEvent(new w.PopStateEvent('popstate', { state: { view: 'history', url: '/history', scrollY: 0, depth: 0 } })); }],
+]) {
+  test(`MENU: leaving the view by ${how} with the card menu open closes it; its Move to Trash then opens nothing and sends nothing`, async () => {
+    const { fetchImpl, calls } = makeFetchStub({});
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await openMenuByKebab(dom, 'yt1');
+      const row = menuRow(document, 'Move to Trash');
+      assert.ok(row, 'precondition: the menu is open and offers Move to Trash');
+      leave(dom.window);
+      await settle();
+      assert.strictEqual(openSheets(document).length, 0, 'the menu is no longer open after the user left');
+      click(dom, row); // the row a user reaches on the next view
+      await settle(); await frame();
+      assert.strictEqual(confirmDialog(document), null, 'no confirm opens from a menu of a view already left');
+      await sleep(400);
+      assert.strictEqual(deletes(calls).length, 0, 'no DELETE after the view was left');
+      assert.strictEqual(document.querySelector('.ui-sheet'), null, 'the menu left the DOM (its scroll lock released)');
+    } finally { dom.window.close(); }
+  });
+}
+
+test('SORT MENU: leaving the view with the home Sort menu open closes it (no sheet, no scroll lock over the next view)', async () => {
+  const { fetchImpl } = makeFetchStub({});
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const btn = document.getElementById('sort-select-btn');
+    assert.ok(btn, 'precondition: the home has its Sort button');
+    click(dom, btn);
+    await settle(); await frame();
+    assert.ok(menuRow(document, 'Newest first'), 'precondition: the Sort menu is open');
+    dom.window.FileTube.navigate('/history');
+    await settle();
+    assert.strictEqual(openSheets(document).length, 0, 'the Sort menu closed when the user left');
+    await sleep(400);
+    assert.strictEqual(document.querySelector('.ui-sheet'), null, 'it left the DOM (its scroll lock released)');
+  } finally { dom.window.close(); }
+});
+
+test('source lock (gate r2): every menu the home view opens is bound to the shown-view signal', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  const calls = src.split(/\.menu\(\{/).slice(1);
+  assert.ok(calls.length >= 3, 'the card menu and both Sort menus are found');
+  for (const body of calls) {
+    const head = body.slice(0, body.indexOf('items:'));
+    assert.match(head, /signal: shownViewSignal\(\)/, 'a home menu without the shown-view signal stays up over the next view');
+  }
+});
+
 // The same, for a confirm opened on the old view WHILE the next one is fetching (the leave
 // already happened, so only the swap's own abort can close this one).
 test('DELETE: a confirm opened while a navigation is in flight closes at the swap; its OK then sends nothing', async () => {

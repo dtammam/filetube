@@ -352,12 +352,15 @@ test('gate r1 (security-brief 2): a non-http(s) subscription channelUrl refuses 
   const bundle = { ...good, ytdlp: { ...good.ytdlp, subscriptions: [
     { ...first, channelUrl: legacy[0] },
     { ...first, id: 'sub-legacy-shape', channelUrl: legacy[1], name: 'Old shape' },
+    // Gate r2: an empty channelUrl opens nothing, so it is treated as missing, never a refusal.
+    { ...first, id: 'sub-empty-url', channelUrl: '', name: 'Empty URL' },
     ...good.ytdlp.subscriptions.slice(1),
   ] } };
   const res = await postRestore(bundle);
   assert.equal(res.status, 200, await res.text());
   const stored = require('../../lib/ytdlp/store').ensureYtdlp(ytdlpDb.holder(['subscriptions'])).subscriptions.map((sub) => sub.channelUrl);
   for (const u of legacy) assert.ok(stored.includes(u), `${u} is stored verbatim`);
+  assert.ok(stored.includes(''), 'the empty-URL subscription restored too');
 });
 
 test('W4: a wipe/restore landing MID-SCAN aborts the scan\'s stale merge — the replaced state survives', async () => {

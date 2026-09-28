@@ -87,7 +87,7 @@ control-size value ANYWHERE (a stylesheet, `<style>` blocks, `style=""`,
   adopting one means your surface follows the eras, which is the point.
   The pre-pass per-era names (`--yt-red`, `--radius*`, `--fs-*`,
   `--text-link`, `--btn-*`, `--header-bg`, `--bg-sidebar`,
-  `--border-dark`, `--star-*`, `--shadow*`, `--scrim-legacy`) are LEGACY:
+  `--border-dark`, `--star-*`, `--shadow`, `--shadow-lg`, `--scrim-legacy`) are LEGACY:
   ui-lint's `no-legacy-tokens` counts a new use as new debt, so a new rule
   names the role instead.
 - **z-index:** only the ten `--z-*` ladder names (`--z-sticky`, `--z-nav`,

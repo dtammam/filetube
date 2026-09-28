@@ -12355,6 +12355,17 @@ function showConfirmModal(title, bodyText, onConfirm, labels) {
   let settled = false;
   if (!U || typeof AbortController === 'undefined') return function dismiss() { settled = true; };
   const ac = new AbortController();
+  // Gate r2 (adversary): bound to the router's SHOWN-view signal, read now, like every
+  // destructive confirm. A caller on a cached view (home's bulk attribution) or one that moves
+  // a file (the watch page's attribution move) must not stay up over the next view and act.
+  const ft = (typeof window !== 'undefined') ? window.FileTube : null;
+  const shown = (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : null;
+  const onLeave = () => ac.abort();
+  if (shown) {
+    if (shown.aborted) ac.abort();
+    else shown.addEventListener('abort', onLeave, { once: true });
+  }
+  const unbind = () => { if (shown) shown.removeEventListener('abort', onLeave); };
   U.confirm({
     title: confirmHtmlToText(title),
     body: confirmHtmlToText(bodyText),
@@ -12363,13 +12374,15 @@ function showConfirmModal(title, bodyText, onConfirm, labels) {
     danger: l.danger === true,
     signal: ac.signal,
   }).then((ok) => {
+    unbind();
     if (settled) return;
     settled = true;
     // Exactly true: ui.confirm answers only true/false, and nothing but the confirm
     // button's own click is true.
-    if (ok === true && typeof onConfirm === 'function') onConfirm();
+    if (ok === true && !(shown && shown.aborted) && typeof onConfirm === 'function') onConfirm();
   });
   return function dismiss() {
+    unbind();
     if (settled) return;
     settled = true;
     ac.abort();

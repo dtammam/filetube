@@ -1724,7 +1724,7 @@ const PreviewCards = (function () {
             menuCtrl = window.ui.menu({
               title: 'Sort by',
               anchor: btn,
-              signal: sig,
+              signal: shownViewSignal(), // gate r2: `sig` is the cached home's, never aborted on nav-away
               items: MODERN_SORT_OPTIONS.map(([val, label]) => ({ label, value: val, checked: val === activeModernSort })),
               onSelect: choose,
               onClose: () => { btn.setAttribute('aria-expanded', 'false'); },
@@ -2793,6 +2793,7 @@ const PreviewCards = (function () {
         u.menu({
           title: 'Sort by',
           anchor: sortBtn,
+          signal: shownViewSignal(), // gate r2: leaving the view closes it and frees the scroll lock
           items: SORT_MENU_OPTIONS.map((o) => ({ label: o.label, value: o.value, checked: o.value === currentSort })),
           onSelect: (value) => chooseSort(value),
         });
@@ -3129,6 +3130,14 @@ const PreviewCards = (function () {
     // (cardDeleteConfirmCopy: a move to Trash) and calls deleteCardById only
     // when the confirm resolves exactly true - Cancel, Esc, the scrim, Close and
     // a missing ui all resolve to no delete.
+    // The router's SHOWN-view signal, read when a surface opens (this view's own `signal`
+    // outside the router, e.g. a unit harness). Gate r2: every menu or confirm a card or the
+    // sort button opens is bound to it, or it stays up over the next view and still acts.
+    function shownViewSignal() {
+      const ft = window.FileTube;
+      return (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : signal;
+    }
+
     // Gate r1 (adversary 3): the confirm is bound to the router's SHOWN-view signal, read now.
     // This view is CACHED on nav-away and its own `signal` never fires then, so a confirm bound
     // only to it stayed open over the next view and its OK still deleted; viewSignal() aborts
@@ -3137,8 +3146,7 @@ const PreviewCards = (function () {
       if (!item || !item.id) return;
       const u = cardUi();
       if (!u || typeof u.confirm !== 'function') return;
-      const ft = window.FileTube;
-      const shown = (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : signal;
+      const shown = shownViewSignal();
       const ok = await u.confirm(Object.assign({}, cardDeleteConfirmCopy(item), { signal: shown }));
       if (ok !== true) return;
       if (shown.aborted || signal.aborted) return;
@@ -3200,6 +3208,7 @@ const PreviewCards = (function () {
       openCardMenuCtrl = u.menu({
         title: item.title || 'Actions',
         anchor: anchorEl,
+        signal: shownViewSignal(), // gate r2: leaving the view closes it (home is cached, never aborted)
         items: entries.map((en) => ({
           icon: en.icon,
           label: en.label,

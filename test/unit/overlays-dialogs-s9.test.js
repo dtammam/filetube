@@ -539,3 +539,43 @@ test('D4.8: no trash confirm rides the showConfirmModal shim; each file\'s trash
   const skin = fs.readFileSync(path.join(ROOT, 'public/js/skin-surface.js'), 'utf8');
   assert.match(skin, /U\.confirm\(Object\.assign\(\{\}, copy, \{ danger: true/);
 });
+
+// Gate r2 (adversary + qa): showConfirmModal is bound to the router's SHOWN-view signal, read
+// when it opens. Its callers move files (home's bulk attribution on a CACHED view, the watch
+// page's attribution move), so leaving the view must close the dialog and its OK must do nothing.
+test('gate r2 showConfirmModal: leaving the shown view closes the confirm; its OK then never runs onConfirm', async () => {
+  const t = clock();
+  const { showConfirmModal } = boot();
+  const leave = new dom.window.AbortController();
+  dom.window.FileTube = { viewSignal: () => leave.signal };
+  let calls = 0;
+  showConfirmModal('Attribute this folder?', 'x', () => { calls++; }, { confirm: 'Attribute and move' });
+  const s = top();
+  const ok = byLabel('Attribute and move', s);
+  leave.abort(); // the user navigates away
+  await flush();
+  assert.strictEqual(liveSheets().length, 0, 'the confirm closed when the view was left');
+  ok.click(); // the OK a user reaches on the next view
+  await flush();
+  assert.strictEqual(calls, 0, 'no onConfirm after the view was left');
+  t.tick(400);
+  assert.strictEqual(s.isConnected, false, 'the dialog left the DOM');
+});
+
+test('gate r2 showConfirmModal: opened on an already-left view it never opens live; on a live view OK still runs onConfirm once', async () => {
+  clock();
+  const { showConfirmModal } = boot();
+  const gone = new dom.window.AbortController();
+  gone.abort();
+  dom.window.FileTube = { viewSignal: () => gone.signal };
+  let calls = 0;
+  showConfirmModal('Move?', 'x', () => { calls++; });
+  await flush();
+  assert.strictEqual(liveSheets().length, 0, 'a confirm for a view already left never stays up');
+  const live = new dom.window.AbortController();
+  dom.window.FileTube = { viewSignal: () => live.signal };
+  showConfirmModal('Move?', 'y', () => { calls++; });
+  byLabel('Confirm', top()).click();
+  await flush();
+  assert.strictEqual(calls, 1, 'the positive control: a live view confirms once');
+});
