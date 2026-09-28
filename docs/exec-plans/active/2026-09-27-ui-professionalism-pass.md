@@ -1932,3 +1932,139 @@ fix found by the render, the History confirm test, this log).
   the masked prompt, sign-in. **For the primitives / tokens (not changed here):** in the retro light eras
   `--surface-1` equals the page ground, so a grouped list reads ungrouped; the ui-switch keeps its iOS pill in
   2005. New scenes enlarge the visual job's matrix by ~344 shots (a baseline-size question for Dean).
+
+### Sweep S3 - watch (2026-09-28, branch feat/ui-sweep-s3 from 1b70322b; c9030603, 216962d3, + this commit)
+
+- **Seed (c9030603, its own commit):** the subscribed fixture video carries a description long enough to clamp
+  and a caption sidecar (its bar shows Transcript); the unsubscribed one carries REAL captured view and
+  subscriber counts; `fixtures.json` names `videoResume`. The seed stores watch progress through its own minted
+  session, not the capture login's user, so the resume probe routes `GET /api/progress/<id>` (noted in seed.js).
+  capture.js gains 18b-watch-about.
+- **Surface (216962d3):**
+  - D4.9 action bar: one row of stacked plain ui-btns in equal columns (grid, 1fr each on a phone, 88px each
+    wider): Like, Share (a link), Listen, Transcript (captions), More - mounted by `WATCH_BAR_ORDER`. More is ONE
+    `ui.menu` (popover on desktop, bottom sheet on a phone) built from the live state at each open
+    (`buildWatchMoreItems`): Play next, Add to queue, Save to device, Mark as watched / unwatched, Copy
+    description, Reheat metadata (Reheating... disabled while running), Move to another folder, Attribute to a
+    channel, Move to Trash (danger). Like is a stable-stack toggle (Like / Liked, favorite / favorite.fill, ink,
+    never red); Share's copy answers with a ui.toast (F21); the Share time choice is a ui.menu. The v1.96 reveal
+    barrier is kept (media + capability + flag). The v1.202 tiers, the v1.201 container query, the 39px override
+    and every `.watch-action*` / `#*-media-btn` order rule are deleted.
+  - D4.9 channel row: ui.avatar lg (replaced on repaint, keeps its id), the name (t-body 600) over the count as a
+    `ui-chip--meta` on a line reserved by a zero-width space (F43), then Subscribe: ONE pill, primary "Subscribe"
+    / secondary "Subscribed" through the label stack + `ui.setPressed`; the bell slot (sm plain icon toggle,
+    notifications_off / notifications_active) is created with Subscribe and RESERVED (`data-reserved`,
+    visibility:hidden, inert, aria-hidden) until subscribed; the pin (keep / keep.fill). Busy = `ui.setBusy`
+    (F34). Unsubscribe goes through `ui.confirm` (danger, "Unsubscribe from <name>?", says downloads stay).
+  - D8.1: `deriveWatchPaintPlan` (common.js) gains `viewsFabricated` / `subsFabricated` (the generators' own
+    tests); the painter toggles `.ft-fabricated`; the stars are drawn registry icons in `.watch-rating
+    ft-fabricated`; each mock comment row is `.ft-fabricated`, the user's own are real; two counts
+    (`#comment-count-badge` all, `#comment-count-real` Dean's) and the empty state use a new inverse rule
+    `html[data-era-flourish="on"] .ft-unfabricated { display:none }` beside S2's (same attribute, no new mechanism).
+  - D8.2 (player.js, the prompt UI only): `resolveResumeStart` is the one decision - announced progress resumes
+    WITH the toast (not while docked), quiet progress resumes silently, none starts. Resume runs through the
+    unchanged `resumeDirectly`. The toast (`#resume-toast.player-resumed` in all 10 player templates) fades in,
+    hides 4s + 200ms later (load-generation guarded); Start over = the old "Start from beginning" handler; `S`
+    starts over while it shows (R went with the modal; the shortcuts dialog says so). dock(), close() and the
+    next load's teardown hide it. Deleted: the modal markup, `resolveDockedResumeAction`,
+    `resolveDockTransitionResumeAction`, the v1.132/v1.161 countdown machinery and its CSS.
+  - D8.4: the self-hosting paragraph and the bold/monospace meta line are gone; "About this file" is a collapsed
+    `ui-row` (info glyph, chevron) that opens `#about-file-body`: Size, Type, Location (the value rows keep the
+    painter's ids; the path row has a Copy `ui.copy` button, F68) and the embedded tags (`buildAboutTagRows`, the
+    old 400-char clip). Show more is a plain ui-btn toggled by `hidden`.
+  - Also: the 2x indicator is a chip-styled pill (fast_forward glyph + "2x", `hidden`-toggled; the gesture is
+    untouched); the docked player's shadow/radius are `--shadow-overlay` / `--r-md` (structure and behaviour
+    unchanged); the fatal error box is a `ui.state`; the TV back link draws `arrow_back`; the TV poster is ui-art.
+    Deleted from common.js: `stableToggleLabelHtml` (its last callers); style.css: `.btn-label-stack/-slot`,
+    `.btn-glyph`, the uploader panel/badge, description meta/fileinfo, embedded-tags, star-rating, comment-avatar,
+    resume-actions/countdown families.
+- **Destructive paths (full gate):** Move to Trash (the More menu, offered only with the write capability)
+  asks ONE `ui.confirm` whose copy is main.js's `cardDeleteConfirmCopy` (the card menu's, so they cannot
+  disagree): title and button both "Move to Trash" (F44), body "stays in Trash", + "This local file cannot be
+  re-downloaded." for a non-yt-dlp item. What runs was read at lib/media/routes.js `app.delete('/api/videos/:id')`:
+  the v1.65 trash move for every item, never a permanent unlink. The SAME `performMediaDelete` runs only when the
+  confirm resolves exactly true, the view is alive and no other confirm/DELETE is in flight. The local-file
+  checkbox modal is no longer used by the watch page (S2 made the same call for cards; Pocket still uses it).
+  `test/unit/watch-destructive-confirm.test.js` (the real view in jsdom, 9 tests): Cancel / Esc / scrim / Close /
+  a late OK send nothing; OK x2 sends exactly one DELETE of this id and closes the player first; a teardown with
+  the confirm up + a stale OK sends nothing; a member never sees Move / Move to Trash; per-kind copy; a census
+  taps every other bar button, every other menu entry and the channel controls - no DELETE; Unsubscribe the same
+  (one dialog on a double tap, one DELETE /api/subscriptions/:id on OK x2, nothing on Cancel / Esc / scrim /
+  teardown).
+- **Measured (seeded :4013).** `test/geometry/watch.check.js` (new; `--mutate`): 2021 dark + light, 2014 light,
+  2009 dark, 2005 light, phone 390 + desktop 1440 - every check holds. **Dean's bell:** the bell's and the pin's
+  glyph centre-y are **0px** from the Subscribed label's centre-y (6 of 6 per era file) and 0 / 0 from their own
+  buttons' centres; channel controls one top, 32px each; Subscribe 104 / 104px off / on (2005: 102.25 / 102.25),
+  Like 89.5 / 89.5 (phone), 88 / 88 (desktop); Subscribe and Pin at the same x subscribed vs unsubscribed
+  (202 / 342 phone); the bar one row of equal columns (89.5 x 45 phone, 88 x 45 desktop), stacked glyphs within
+  0.01px of their captions; About opens to its rows with Copy, no monospace; no horizontal overflow. The check
+  found one real shift and it was fixed: primary (no border) vs secondary (hairline) made Subscribe 2px wider
+  when subscribed - a transparent hairline on the row's primary (style.css, surface-scoped). Its 5 mutants
+  (bell-low, stack-collapse, bell-slot-collapse, bar-unequal, pin-tall) all turn it red. `test/geometry/scenes.js`:
+  the pending channel-card and action-bar are live (+ channel-card-unsub), with a new optional `scope` (the
+  collectors measure only that subtree); two FAST_SCENES are now channel-card / action-bar. `npm run
+  test:geometry -- --only G1,G2,G3`: 144 checks, 144 ok, 64 scenes; `--mutants`: 10 of 10 killed (3 new:
+  g2-channel-bell-low, g2-action-bar-icon, g3-channel-pin-tall).
+- **Renders:** capture.js scenes 17, 18, 18b, 19, 20, 33 x phone / landscape / desktop x dark / light x 4 eras:
+  before (c9030603) 160 captured (incl. an abandoned 17b), after 136 captured, 0 failed, 0 unexpected blocked;
+  compare.js (threshold 16): 128 of 136 changed (3.1% - 95.3%), the 8 unchanged are 17-watch-top landscape (the
+  player alone fills it). Probe shots (dpr 2): the resume toast ("Resumed at 12:34 · Start over", shown after
+  290ms, hidden by 4.5s), About expanded, the More sheet, the 2x pill. Looked at: 2005 keeps square, bordered
+  controls through the era knobs; the reserved bell gap reads as spacing.
+- **Locks converted (AC12; replacements in 216962d3):** stable-toggle-label (risky: rewritten over the primitive's
+  stack by value + the watch toggles' DOM + watch.check.js measurement, mutation-proven), era-row-overflow,
+  watch-action-bar-nowrap, watch-action-row-tiers, watch-action-bar-container-query, uploader-subs-badge (->
+  watch-sweep-s3.test.js, 14 tests, + watch.check.js), player-resume-countdown, player-docked-resume,
+  player-dock-transition-resume (-> player-resume-toast.test.js: the decision table + the REAL player.js in a
+  watch.html jsdom realm, 12 tests), watch-action-bar-reveal (A1 -> the 44px stacked floor; A2 kept),
+  star-ratings-pref, player-resume-overlay, keyboard-shortcuts, watch-instant-paint, watched-toggle-ui,
+  share-prompt, row-glyph-inline-svg, reheat-button-wiring, move-trigger-wiring, attribution-client,
+  audio-opens-in-music, capability-cache, icon-attribute-mask, icon-transcript-mask, v1262-mobile-input-zoom (the
+  comment box is a 16px ui-field now), token-scale-lock, watch-init-behavioral (ui.js now evaluated in its realm;
+  the shim records attributes/classes; its v1.338 D8d delete test moved to watch-destructive-confirm), integration
+  watch-like-button, watch-share-button, watch-transcript-button, watch-action-reveal, watch-liked-sidebar;
+  `lib/media-capabilities.js` markers follow the verbs into the menu. Kept untouched and green (class a):
+  ambient-glow-engine, fullscreen-edge-and-video-state, player-rotation-cap-nudge, theatre-mode,
+  watch-chrome-ambient, the player-* locks, music-theater-toggle, mobile-player-height, watch-instant-paint's slot.
+- **Mutation (a git-archive sandbox of 216962d3, pristine copy diffed after each): 19 of 19 killed** - Move to
+  Trash / Unsubscribe ignoring the answer (M1, M2), their one-at-a-time guards dropped (M3, M4), the toast while
+  docked (M5), the 5s floor at 0 (M6), the resume decision ignored (M7), dock not hiding the toast (M8), Start over
+  keeping the saved position (M9), mock views / mock comments unmarked (M10, M11), a real subscriber count marked
+  (M12), the bell slot not reserved (M13), Move to Trash without the capability (M14), Subscribed staying primary
+  (M15), About never opening (M16), Copy copying nothing (M17), Share swapping its label (M18), S without the toast
+  (M19).
+- **Debt (`ui-lint --shrink`, 1b70322b -> this branch):** no-raw-values 1172 -> 1151, no-bespoke-controls 857 ->
+  809, icons 139 -> 100, display-ownership 76 -> 59; hover-gated 3, pressed-state 1, native-interaction 3,
+  no-layout-transition 2, z-ladder 11, colour-roles 30, no-shell-style 1 unchanged; TOTAL 2295 -> 2170 (125 paid;
+  no-legacy-tokens, off, 1327 -> 1261). Left on the watch page: the player template (pc-btn, cog svg, U+26F6 /
+  U+29C9 / U+00D7 glyphs: the carve-out), the cog's autoplay switch (injected into the player), the sidebar
+  "None" row's inline style (S1 chrome, rendered by watch.js), header / bottom bar (S1).
+- **Findings.** Closed: F06, F16 (measured), F17, F21, F25, F43, F45, F51, F52, F68 (path + description; the
+  transcript flow already copies); F44 and F15 for the watch page. **Not closed:** F07 (the player controls'
+  glyphs and monospace time are the carved-out overlay controls; only the 2x indicator changed) and F22 (the hold
+  gesture is untouched - Step 4's items 1-5 all remain: an onRelease/hold variant in interaction.js, the 500ms /
+  16px vs 450 / 8 ruling, the touchend classifier staying on its own listener, the latch reset moving with it,
+  and the non-passive hold; the device falsifier stands).
+- **For the gate / Dean (interpretations):** (1) the bar shows up to 5 columns - no fill-in: a local file shows
+  Like, Listen, More; (2) Mark watched is a More entry answered by a toast, not a bar toggle; (3) the reveal
+  barrier still waits for the capability and the flag (they only decide More now); (4) Unsubscribe confirms (it
+  was one tap by Dean's v1.20 direction; D4.9 rules the confirm); (5) the local-file checkbox modal is gone from
+  this page; (6) the reserved subscriber line leaves the name top-aligned when Modern hides a mock count (the F43
+  reserve, literal); (7) the Subscribe width fix is a surface override of a primitive property - ui.css
+  `.ui-btn--primary` could carry the transparent hairline for every primary/secondary pair (not changed: off
+  limits); (8) **Setup's three resume-countdown controls are now INERT** (setup.html / setup.js - S8's surface;
+  the player reads none of `filetube_resume_countdown*`; setup.js's "MUST match player.js" comment is now false) -
+  S8 should remove them; the resume threshold setting still decides the announcement; (9) player.js edits near
+  the carve-out: `handleResumePlayback`'s plain-video branch, the toast machinery, `hideResumeToast()` in dock /
+  close / teardown, the restart listener, the S shortcut, `speedBadge.hidden` in engage/releaseHold, and the 10
+  player templates (resume + 2x markup) - no `<video>`, fullscreen or faux-fullscreen code changed; (10) the
+  `.icon-attribute` mask has no consumer left (glyph-pool family, not deleted) and `--size-touch-watch-action`
+  is orphaned (tokens.css, step 7); (11) main.js's comment "(the watch page's showHardDeleteModal wording)" is
+  S2's and now historical.
+- **Counts (Node 22.23.1):** the 216962d3 pre-commit `npm run test:unit`: tests 7787, pass 7786, fail 0,
+  skipped 1. Integration (watch-*, shell-smoke, ytdlp-subscribe-watch-security, liked, home-api,
+  push-sw-handler, universal-search-client, oneshot-visibility-three-surfaces, handoff-api, custom-logo,
+  version-meta, route-census, ytdlp-oneoff-header-injection, podcasts-ytdlp-shows): tests 177, pass 172,
+  fail 0 (19 failed before their conversions). `npx eslint .` 0 errors, 6 warnings; `lint:ui` OK TOTAL 2170;
+  `lint:css` TOTAL 0; `lint:overlay` 0 violations; `test:geometry:fast` 10 checks, 10 ok. Final counts for this
+  commit are in the report.
