@@ -10,8 +10,13 @@
 //
 // --update writes the captured shots as the new baselines (the CI rebaseline job,
 // .github/workflows/visual.yml; D10.5: committed baselines come ONLY from the pinned CI
-// container - a local --update is for experiments, never for a commit). Without baselines
-// the run fails loudly before capturing anything.
+// container - a local --update is for experiments, never for a commit). With --era or --only
+// it replaces only the baselines inside that filter; the rest stay. Without baselines the
+// run fails loudly before capturing anything.
+//
+// --out is emptied at the start of every run, so it must be absent, empty, or a dir an
+// earlier run made (it carries run-fs.js's OUT_MARKER); /, the repo root and $HOME (and
+// anything containing them) are refused outright (exit 2, nothing touched).
 //
 // Exit: 0 = every shot identical to its baseline; 1 = a changed, missing or extra shot, or a
 // scene that failed to capture; 2 = no baselines / bad arguments.
@@ -23,6 +28,7 @@ const { spawn } = require('node:child_process');
 const { seed, boot } = require('./server.js');
 const { ERAS } = require('./capture.js');
 const { compareDirs } = require('../../tools/capture/compare.js');
+const { outDirRefusal, prepareOutDir, replaceBaselines, pngs } = require('./run-fs.js');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const args = process.argv.slice(2);
@@ -46,7 +52,17 @@ const IDLE_S = Math.max(0, Number(arg('--idle', '0')) || 0);
 function die(code, msg) { console.error(msg); process.exit(code); }
 for (const e of eras) if (!ERAS.includes(e)) die(2, `run: --era must be 2021, 2014, 2009, 2005, a comma list of them, or all (got ${eraArg})`);
 
-const pngs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.png')).sort() : []);
+// The baselines a run with --era/--only covers (its compare scope, and what --update replaces).
+const FILTERED = Boolean(ONLY) || eras.length < ERAS.length;
+const scope = (f) => {
+  const era = (f.match(/-(2014|2009|2005)\.png$/) || [null, '2021'])[1];
+  if (!eras.includes(era)) return false;
+  return !ONLY || ONLY.split(',').some((s) => f.startsWith(s) || f.split('--')[0].includes(s));
+};
+
+// Refuse a --out this run may not empty BEFORE anything is seeded or booted.
+{ const why = outDirRefusal(OUT); if (why) die(2, `visual: refusing to empty --out: ${why}`); }
+
 if (!UPDATE && pngs(BASELINES).length === 0) {
   die(2, `visual: FAIL - no baselines - run the rebaseline job (GitHub Actions: workflow "visual", Run workflow -> rebaseline), then commit its artifact into ${path.relative(REPO, BASELINES)}/.\n(${BASELINES} holds no .png files; a visual job without baselines would pass vacuously, so it refuses.)`);
 }
@@ -67,7 +83,7 @@ function captureEra(era, base, shots) {
 
 (async () => {
   const t0 = Date.now();
-  fs.rmSync(OUT, { recursive: true, force: true });
+  prepareOutDir(OUT);
   const shots = path.join(OUT, 'shots');
   fs.mkdirSync(shots, { recursive: true });
   console.log(`visual: seeding ${DATA}`);
@@ -107,20 +123,13 @@ function captureEra(era, base, shots) {
 
   if (UPDATE) {
     if (failures.length || blocked.length) die(1, 'visual: --update refused: the capture was not clean (above); the baselines are unchanged.');
-    fs.mkdirSync(BASELINES, { recursive: true });
-    for (const f of pngs(BASELINES)) fs.unlinkSync(path.join(BASELINES, f));
-    for (const f of pngs(shots)) fs.copyFileSync(path.join(shots, f), path.join(BASELINES, f));
-    console.log(`visual: wrote ${pngs(BASELINES).length} baselines to ${BASELINES}`);
+    const r = replaceBaselines(BASELINES, shots, FILTERED ? scope : null);
+    console.log(`visual: wrote ${r.written} baselines to ${BASELINES} (${FILTERED ? 'filtered: replaced ' + r.removed + ' in scope, the rest kept' : 'full set'}; ${r.total} in the dir)`);
     return;
   }
 
   // Compare against the baselines this run was asked to cover (--era/--only select a subset).
   const taken = new Set(pngs(shots));
-  const scope = (f) => {
-    const era = (f.match(/-(2014|2009|2005)\.png$/) || [null, '2021'])[1];
-    if (!eras.includes(era)) return false;
-    return !ONLY || ONLY.split(',').some((s) => f.startsWith(s) || f.split('--')[0].includes(s));
-  };
   const baseDir = path.join(OUT, '.baselines-in-scope');
   fs.mkdirSync(baseDir, { recursive: true });
   for (const f of pngs(BASELINES).filter(scope)) fs.copyFileSync(path.join(BASELINES, f), path.join(baseDir, f));

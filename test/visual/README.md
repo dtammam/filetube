@@ -15,13 +15,17 @@ stops the server. `run.js` diffs every shot against `baselines/` with
 `tools/capture/compare.js` (channel threshold 16, AA-suppressed) and fails on a
 single changed pixel, a missing or extra shot, or a scene that did not capture;
 the report and side-by-side crops land in `--out` (default
-`<tmpdir>/filetube-visual-run`). With no baselines it fails with "no baselines -
-run the rebaseline job".
+`<tmpdir>/filetube-visual-run`). `--out` is emptied at the start of every run, so
+run.js refuses (exit 2, nothing touched) a dir that is not empty and lacks its
+`.filetube-visual-run` marker, and always refuses `/`, the repo root and `$HOME`.
+With no baselines it fails with "no baselines - run the rebaseline job".
 
 Baselines come ONLY from the `rebaseline` job of `.github/workflows/visual.yml`
 (Run workflow, in the pinned Playwright container); download its artifact into
 `baselines/` and commit it as its own commit. `--update` on a dev box is for
-experiments: fonts and raster differ outside the container.
+experiments: fonts and raster differ outside the container. A full `--update`
+replaces the whole set; with `--era` or `--only` it replaces only the baselines
+inside that filter and keeps the rest.
 
 ## Pieces
 
