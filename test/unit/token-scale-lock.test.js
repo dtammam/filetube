@@ -139,7 +139,7 @@ const CONTRACT = {
   '--ctl-sm': '32px', '--ctl-md': '36px', '--ctl-lg': '44px', '--hit': '44px',
   '--icon-sm': '18px', '--icon-md': '22px', '--icon-lg': '24px',
   '--r-xs': '4px', '--r-pill': '999px',
-  '--av-xs': '20px', '--av-sm': '28px', '--av-md': '36px', '--av-lg': '40px', '--av-xl': '64px', '--av-2xl': '96px',
+  '--av-xs': '20px', '--av-sm': '28px', '--av-md': '36px', '--av-lg': '40px', '--av-xl': '64px', '--av-2xl': '96px', '--tile-w': '108px',
   '--row-compact': '44px', '--row-default': '56px', '--row-media': '64px', '--inset': '16px',
   '--dur-press': '90ms', '--dur-fade': '180ms', '--dur-sheet': '280ms',
   '--ease-std': 'cubic-bezier(0.2, 0, 0, 1)', '--ease-enter': 'cubic-bezier(0, 0, 0, 1)', '--ease-exit': 'cubic-bezier(0.3, 0, 1, 1)',
@@ -153,7 +153,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 199, 'UI pass step 7 (retire R2): +1 --z-sticky (the in-content sticky bar on the ladder); step 3: +19 primitive metrics and grounds; step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 200, 'UI pass step 7 (retire R2): +1 --z-sticky (the in-content sticky bar on the ladder), +1 --tile-w (a card tile\'s width); step 3: +19 primitive metrics and grounds; step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

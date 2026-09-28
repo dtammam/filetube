@@ -111,6 +111,7 @@
   --av-lg: 40px;
   --av-xl: 64px;
   --av-2xl: 96px;
+  --tile-w: 108px;              /* a ui-tile card's width on a shelf, a card grid's minimum column (step 7) */
   --row-compact: 44px;
   --row-default: 56px;
   --row-media: 64px;
