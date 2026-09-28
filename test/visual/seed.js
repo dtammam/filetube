@@ -374,6 +374,12 @@ const CHANNELS = [
     }
     return bookIdSet.size > 0;
   }));
+  // Bind the pin at RUN time, not just in source: every book must now hold its own addedAt
+  // (a tie is exactly the flake this fixes), or the seed fails.
+  const pinnedAt = Object.values(s.booksDb.read().items || {}).map((b) => b.addedAt);
+  if (pinnedAt.length !== bookOrder.length || new Set(pinnedAt).size !== pinnedAt.length) {
+    throw new Error(`seed: book addedAt not pinned to distinct values (${pinnedAt.join(', ')})`);
+  }
   const readingBook = bookByTitle['The Lamplighter\'s Ledger'];
   await post(`/api/books/${encodeURIComponent(readingBook)}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/4!/4/2/1:0)', spineIndex: 1 }, percent: 38 });
   await post(`/api/books/${encodeURIComponent(bookByTitle['The Frozen Canal'])}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/6!/4/2/1:0)', spineIndex: 2 }, percent: 71 });

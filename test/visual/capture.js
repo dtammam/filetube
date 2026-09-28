@@ -7,7 +7,7 @@
 //   node test/visual/seed.js                 (builds the synthetic DATA_DIR)
 //   test/visual/start-server.sh &            (serves it on :3917, FILETUBE_READONLY=1)
 //   node test/visual/capture.js [--data DIR] [--out DIR] [--only substr,substr]
-//        [--era 2021|2014|2009|2005|all|2021,2005] [--dpr N] [--clock MS|off]
+//        [--era 2021|2014|2009|2005|all|2021,2005] [--vp phone|land|desktop|all|phone,land] [--dpr N] [--clock MS|off]
 //        [--no-rotation] [--no-matrix]
 //
 // Needs Playwright from tools/capture (cd tools/capture && npm install &&
@@ -605,13 +605,15 @@ function rotationSteps(page, variant, setOrient) {
 // viewport (LESSONS 7). Returns the run record; never throws for a scene failure.
 async function captureEra(o) {
   const { base, FX, era, out, only, dpr, clockMs, matrix = true, rotationRun = false, log = console.log } = o;
+  // `vps`: the viewports to shoot (default all). CI runs one leg per era x viewport.
+  const vps = o.vps && o.vps.length ? o.vps : Object.keys(viewports(dpr));
   const record = o.record || newRecord(base);
   const { SCENES, openPocket } = sceneKit(FX, base);
   const { chromium } = playwright();
   fs.mkdirSync(out, { recursive: true });
   const common = { era, out, record, base, clockMs, dpr, openPocket };
   if (matrix) {
-    for (const vp of Object.keys(viewports(dpr))) {
+    for (const vp of vps) {
       const browser = await chromium.launch({ args: LAUNCH_ARGS });
       try {
         const st = await login(browser, base, FX, record);
@@ -654,6 +656,9 @@ if (require.main === module) {
   const eraArg = arg('--era', '2021');
   const eras = eraArg === 'all' ? ERAS : eraArg.split(',');
   for (const e of eras) if (!ERAS.includes(e)) throw new Error(`--era must be 2021, 2014, 2009, 2005, a comma list of them, or all (got ${eraArg})`);
+  const vpArg = arg('--vp', 'all');
+  const vps = vpArg === 'all' ? null : vpArg.split(',');
+  if (vps) for (const v of vps) if (!Object.keys(viewports(1)).includes(v)) throw new Error(`--vp must be ${Object.keys(viewports(1)).join(', ')}, a comma list of them, or all (got ${vpArg})`);
   // Fixture ids + login, written by seed.js: video = Harbor Workshop (subscribed,
   // notify on); videoUnsub = Northbound Field Notes (not subscribed); track = Halden Arcs;
   // book = The Lamplighter's Ledger (38% read, liked); bookShelf = its (pinned) shelf dir.
@@ -665,7 +670,7 @@ if (require.main === module) {
     const record = newRecord(BASE);
     Object.assign(record, { eras, dpr: dpr || 'default', clockMs });
     for (const era of eras) {
-      await captureEra({ base: BASE, FX, era, out: OUT, only: ONLY, dpr, clockMs, record,
+      await captureEra({ base: BASE, FX, era, out: OUT, only: ONLY, dpr, clockMs, record, vps,
         matrix: !args.includes('--no-matrix'),
         rotationRun: !args.includes('--no-rotation') && (!ONLY || ONLY.includes('rotation')) });
     }

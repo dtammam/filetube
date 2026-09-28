@@ -43,46 +43,79 @@ test('visual runs the geometry checks and the diff; only the rebaseline job (dis
   assert.strictEqual(report.if, 'failure()');
 });
 
-test('both jobs run one leg per era, and the legs together cover every era capture.js shoots', () => {
-  // A leg per era in parallel (it was one ~50 min job). The matrix IS capture.js's ERAS, so an
-  // era added there without a leg here would never be diffed.
-  const { ERAS } = require('../visual/capture.js');
+test('both jobs run one leg per era x viewport, and the legs together cover every shot capture.js takes', () => {
+  // 12 legs in parallel (it was one ~50 min job). The matrix IS capture.js's ERAS x viewports(), so
+  // an era or viewport added there without a leg here would never be diffed.
+  const { ERAS, viewports } = require('../visual/capture.js');
+  const VPS = Object.keys(viewports(1));
   for (const job of ['visual', 'rebaseline']) {
     assert.deepStrictEqual([...WF.jobs[job].strategy.matrix.era].sort(), [...ERAS].sort(), job);
-    assert.strictEqual(WF.jobs[job].strategy['fail-fast'], false, `${job}: one era failing must not cancel the others`);
-    assert.match(runs(job), /node test\/visual\/run\.js .*--era \$\{\{ matrix\.era \}\}/, `${job}: each leg runs only its era`);
+    assert.deepStrictEqual([...WF.jobs[job].strategy.matrix.vp].sort(), [...VPS].sort(), job);
+    assert.strictEqual(WF.jobs[job].strategy['fail-fast'], false, `${job}: one leg failing must not cancel the others`);
+    assert.match(runs(job), /node test\/visual\/run\.js .*--era \$\{\{ matrix\.era \}\} --vp \$\{\{ matrix\.vp \}\}/, `${job}: each leg runs only its era and viewport`);
   }
-  // The geometry checks run ONCE (on the 2021 leg), not four times.
+  // The geometry checks run ONCE (on the 2021 desktop leg), not 12 times.
   const geo = WF.jobs.visual.steps.find((s) => /npm run test:geometry/.test(s.run || ''));
-  assert.strictEqual(geo.if, "matrix.era == '2021'");
-  const report = WF.jobs.visual.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
-  assert.match(report.with.name, /\$\{\{ matrix\.era \}\}/, 'each leg uploads its own report (artifact names must not collide)');
-  // A rebaseline leg uploads ONLY its era: the checkout's committed baselines are removed first.
+  assert.strictEqual(geo.if, "matrix.era == '2021' && matrix.vp == 'desktop'");
+  const uploads = WF.jobs.visual.steps.filter((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
+  for (const u of uploads) {
+    assert.strictEqual(u.if, 'failure()', 'the visual legs upload only on failure');
+    assert.match(u.with.name, /\$\{\{ matrix\.era \}\}-\$\{\{ matrix\.vp \}\}$/, 'per-leg artifact names (they must not collide)');
+  }
+  // One run for an intended change: a failing leg uploads the shots it took; visual-shots joins them.
+  const shots = uploads.find((u) => /^visual-shots-/.test(u.with.name));
+  assert.ok(shots && shots.with.path === 'test-results/visual/shots/*.png');
+  const vs = WF.jobs['visual-shots'];
+  assert.strictEqual(vs.needs, 'visual');
+  assert.strictEqual(vs.if, "${{ always() && needs.visual.result == 'failure' }}");
+  const vm1 = vs.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact/merge'));
+  assert.deepStrictEqual([vm1.with.name, vm1.with.pattern, vm1.with['separate-directories']], ['visual-shots', 'visual-shots-*', undefined]);
+  // A rebaseline leg uploads ONLY its own shots: the checkout's committed baselines go first.
   const cap = WF.jobs.rebaseline.steps.find((s) => /--update/.test(s.run || ''));
   assert.ok(cap.run.indexOf('rm -f test/visual/baselines/*.png') !== -1 && cap.run.indexOf('rm -f test/visual/baselines/*.png') < cap.run.indexOf('--update'));
-  // ...and the merge job joins the four into the one `visual-baselines` artifact.
+  const up = WF.jobs.rebaseline.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
+  assert.strictEqual(up.with.name, 'visual-baselines-${{ matrix.era }}-${{ matrix.vp }}');
+  // ...and the merge joins the 12 into ONE flat `visual-baselines`, only when EVERY leg passed:
+  // a plain `needs` with no `if` (an `always()` would publish a partial set), no per-leg folders.
   const merge = WF.jobs['rebaseline-merge'];
   assert.strictEqual(merge.needs, 'rebaseline');
+  assert.strictEqual(merge.if, undefined, 'rebaseline-merge must not run when a leg failed');
   const m = merge.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact/merge'));
-  assert.strictEqual(m.with.name, 'visual-baselines');
-  assert.strictEqual(m.with.pattern, 'visual-baselines-*');
-  const up = WF.jobs.rebaseline.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
-  assert.strictEqual(up.with.name, 'visual-baselines-${{ matrix.era }}');
+  assert.deepStrictEqual([m.with.name, m.with.pattern, m.with['separate-directories']], ['visual-baselines', 'visual-baselines-*', undefined]);
+});
+
+test('run.js --vp scopes the compare by the shot name, and a name it cannot parse stays in scope', () => {
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'test', 'visual', 'run.js'), '--vp', 'tablet'], { encoding: 'utf8', timeout: 30000 });
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /--vp must be phone, land, desktop/);
+  const src = fs.readFileSync(path.join(ROOT, 'test', 'visual', 'run.js'), 'utf8');
+  assert.match(src, /if \(VPS\.includes\(vp\) && !vps\.includes\(vp\)\) return false;/, 'only a KNOWN other viewport leaves the scope');
+  assert.match(src, /'--vp', vps\.join\(','\)/, 'the capture shoots the same viewports the compare covers');
 });
 
 test('a docs-only change (.md files, docs/) skips the workflow; nothing the app renders lives there', () => {
   const skip = ['**/*.md', 'docs/**'];
   assert.deepStrictEqual(WF.on.push['paths-ignore'], skip);
   assert.deepStrictEqual(WF.on.pull_request['paths-ignore'], skip);
-  // The premise: no server or client code reads a file from docs/ or a .md file (the one docs
-  // reader, scripts/sync-github-releases.js, is a CI script, not the app).
+  // The premise: no server or client CODE names a docs/ path or a .md file at all (comments
+  // aside), however it would build the path. The one docs reader, scripts/sync-github-releases.js,
+  // is a CI script, not the app.
   const files = [];
-  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(js|html|css)$/.test(e.name)) files.push(p); } };
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); } else if (/\.(js|html)$/.test(e.name)) files.push(p); } };
   for (const d of ['lib', 'public']) walk(path.join(ROOT, d));
   files.push(path.join(ROOT, 'server.js'));
-  const reads = /(readFileSync|readFile|createReadStream|sendFile|fetch)\([^)]*(\bdocs\/|['"]docs['"]|\.md['"])/;
-  const hits = files.filter((f) => reads.test(fs.readFileSync(f, 'utf8'))).map((f) => path.relative(ROOT, f));
-  assert.deepStrictEqual(hits, [], 'app code reads docs/ or a .md file: a docs-only change CAN change a page, so the skip is wrong');
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  const names = /['"`](\.\.\/)*docs['"`/]|\bdocs\/[\w.-]+\.(json|md)\b|['"`][^'"`\n]*\.md['"`]/;
+  // Prose that only NAMES a doc for the reader (an error or log message), reviewed; a new mention
+  // anywhere fails until someone checks it is not a read and adds it here.
+  const PROSE = [['lib/db/sqlite.js', '(rollback floor: docs/RELEASING.md)'], ['lib/db/sqlite.js', '(docs/CONFIGURATION.md, "The database")'],
+    ['server.js', 'see docs/CONFIGURATION.md.)']];
+  const hits = files.filter((f) => {
+    let src = strip(fs.readFileSync(f, 'utf8'));
+    for (const [file, phrase] of PROSE) if (path.relative(ROOT, f) === file) src = src.split(phrase).join('');
+    return names.test(src);
+  }).map((f) => path.relative(ROOT, f));
+  assert.deepStrictEqual(hits, [], 'app code names docs/ or a .md file: a docs-only change CAN change a page, so the skip is wrong');
 });
 
 test('run.js refuses to pass without baselines (exit 2, the rebaseline instruction) before booting anything', () => {

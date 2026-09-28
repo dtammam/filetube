@@ -120,37 +120,44 @@ existing entry. Never write a per-release file into an agent's memory (retired
 
 ## The visual job and baselines (UI professionalism pass)
 
-`.github/workflows/visual.yml` has two jobs, each split into four parallel legs,
-one per era (2021, 2014, 2009, 2005; a leg takes about a quarter of the old
-~50 minutes). A change that touches ONLY `.md` files or `docs/` skips the
-workflow: the app renders nothing from those paths.
+`.github/workflows/visual.yml` has two jobs, each split into 12 parallel legs,
+one per era (2021, 2014, 2009, 2005) x viewport (phone, land, desktop); a run
+takes about 10 minutes (it was one ~50 minute job). A change that touches ONLY
+`.md` files or `docs/` skips the workflow: the app renders nothing from those
+paths.
 
 - **`visual`** runs on every push and PR (except `rebaseline/*` branches). In
   the pinned Playwright container each leg seeds the synthetic fixture
   (`test/visual/seed.js`), boots a fresh read-only server, runs the full
-  geometry set (`npm run test:geometry`, on the 2021 leg only), then captures
-  its era's scenes and diffs them against that era's `test/visual/baselines/`
-  at 0 changed pixels
-  (`test/visual/run.js`). With no committed baselines it FAILS ("no baselines
-  - run the rebaseline job"), so it stays red on every push until the first
-  baselines land; that red is expected, not a regression to wave through
-  later.
-- **`rebaseline`** takes the baselines, in the SAME container: from "Run
-  workflow" (workflow_dispatch), or on a push to a `rebaseline/*` branch.
-  GitHub dispatches a workflow only once it exists on the default branch, so
-  the FIRST baselines, and any taken before a merge, come from a pushed
-  `rebaseline/<step>` branch cut at the reviewed sha. Each era leg uploads its
-  shots, and `rebaseline-merge` joins them into one `visual-baselines`
-  artifact; nothing is committed by CI.
+  geometry set (`npm run test:geometry`, on the 2021 desktop leg only), then
+  captures its own era and viewport and diffs them against those
+  `test/visual/baselines/` at 0 changed pixels (`test/visual/run.js --era
+  --vp`). With no committed baselines it FAILS ("no baselines - run the
+  rebaseline job") instead of passing vacuously. A failing leg uploads its
+  report (`visual-report-<era>-<vp>`) and the shots it took; the
+  `visual-shots` job joins those shots into one artifact.
+- **`rebaseline`** takes a full new set, in the SAME container: from "Run
+  workflow" (workflow_dispatch), or on a push to a `rebaseline/*` branch
+  (GitHub dispatches a workflow only once it exists on the default branch).
+  The same 12 legs; `rebaseline-merge` joins them into ONE flat
+  `visual-baselines` artifact, and only when every leg passed. Nothing is
+  committed by CI.
 
-Rebaseline procedure: cut `rebaseline/<step>` at the sha the gate reviewed,
-push it (the push is the trigger), download the `rebaseline` job's artifact
-into `test/visual/baselines/`, and commit it on the release branch as its own
-commit named for the step (stage the baseline paths explicitly). Never take
-baselines on a dev box: fonts and raster differ outside the container (a
-local `run.js --update` is for experiments; with `--era`/`--only` it replaces
-only that subset). Delete the `rebaseline/*` branch afterwards (`-d`, remote
-and local).
+**An intended look change (the usual case): one run.** Push the change; the
+`visual` legs whose pages changed fail. Read their report crops (the
+`visual-report-*` artifacts). If every change is intended and the log says
+`capture failures 0; unexpected blocked requests 0`, download the
+`visual-shots` artifact into `test/visual/baselines/` (it holds only the failing
+legs' shots; the passing legs' baselines already match), commit it as its own
+baselines-only commit, and push: the next run is green. Use the rebaseline job
+instead when scenes were added, renamed or removed (a joined `visual-shots`
+never deletes a stale baseline), or for a full fresh set: cut
+`rebaseline/<step>` at the reviewed sha, push it, download the merge job's
+`visual-baselines` artifact (never a single `visual-baselines-<era>-<vp>`
+leg) into `test/visual/baselines/`, commit it, and delete the branch
+afterwards (remote and local). Never take baselines on a dev box: fonts and
+raster differ outside the container (a local `run.js --update` is for
+experiments; with `--era`/`--vp`/`--only` it replaces only that subset).
 
 **Committing baselines changes the sha the seats signed.** The baselines
 commit lands AFTER the gate, so the approvals are bound to its parent and
