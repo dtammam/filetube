@@ -1052,6 +1052,37 @@ input.ui-switch { -webkit-appearance: none; appearance: none; }
   .ui-swipe__content { transition: none; }
 }
 
+/* ---- ui-reorder: an item of a drag-to-reorder list (common.js wireReorderable) ------ */
+/* The gesture layer stamps its default state classes on the item it moves (dragging,
+   drag-over-before, drag-over-after); every list whose items wear .ui-reorder shows the drag
+   the same way: the dragged item dims and the item under the pointer draws the drop line on
+   the half it will land on. The grip is .ui-reorder__handle - the pointer grip AND the
+   keyboard control (wireReorderable gives it tabindex, a role, a label and the arrow keys).
+   The item itself paints nothing else: a list row keeps its row look, a card its card look. */
+.ui-reorder { cursor: grab; }
+.ui-reorder.dragging { opacity: 0.5; }
+.ui-reorder.drag-over-before { box-shadow: inset 0 var(--ring-w) 0 0 var(--indicator); }
+.ui-reorder.drag-over-after { box-shadow: inset 0 calc(0px - var(--ring-w)) 0 0 var(--indicator); }
+.ui-reorder__handle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--space-8);
+  min-height: var(--icon-md);
+  color: var(--ink-2);
+  font: var(--t-body);
+  letter-spacing: calc(-1 * var(--space-1));
+  cursor: grab;
+  /* taking the touch-action here, and ONLY here, lets a press on the grip arm a touch drag
+     at once without stealing the list's scroll anywhere else */
+  touch-action: none;
+}
+.ui-reorder__handle::before { content: "\22EE\22EE"; }
+.ui-reorder__handle:focus-visible {
+  outline: var(--ring-w) solid var(--focus-ring);
+  outline-offset: var(--ring-w);
+}
+
 /* ---- era treatments (attached once per primitive) --------------------------------- */
 /* 2009: the gloss on every filled button, not only .btn (D2.5) */
 [data-theme="2009"] .ui-btn--secondary,
