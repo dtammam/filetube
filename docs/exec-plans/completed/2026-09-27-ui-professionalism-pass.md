@@ -3,7 +3,7 @@ plan: ui-professionalism-pass
 harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
-status: Gate:APPROVED r3 @9cc44fa8
+status: Shipped v1.341.0
 next: released v1.341.0 from the approved code (Dean, 2026-09-28: release now, baselines as a follow-up PR); follow-up = the 21d capture wait + baselines; Dean's device pass (#289)
 design: Approved 2026-09-27 (Dean: D0-D13 as written, read against ab31cbdc; D10.4 amended by his middle-path ruling); the built design gate-approved @9cc44fa8
 gate: APPROVED r3 @9cc44fa8 (adversary + qa + security-brief); r1 CHANGES (adversary 1-6, qa 1-4) and r2 CHANGES (the card menu's view signal) fixed; residuals in the r1 disposition

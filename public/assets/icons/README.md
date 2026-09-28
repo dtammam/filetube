@@ -182,7 +182,7 @@ differs from its source path.
 
 Until the UI professionalism pass, a fourth set, `emoji`, drew the pre-v1.6.0
 emoji glyphs as CSS `::before` unicode escapes (no SVGs). It was retired
-(plan D2.6, `docs/exec-plans/active/2026-09-27-ui-professionalism-pass.md`):
+(plan D2.6, `docs/exec-plans/completed/2026-09-27-ui-professionalism-pass.md`):
 its `[data-icons="emoji"]` rules are gone, a stored `ft-icons` of `emoji`
 resolves to `filled`, and Auto maps every retro era to `filled`.
 
