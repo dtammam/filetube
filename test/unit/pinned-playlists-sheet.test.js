@@ -115,9 +115,11 @@ test('renderPinnedPlaylists: moduleEnabled=true renders a "No playlists pinned y
   assert.strictEqual(list.children.length, 1);
   const empty = list.children[0];
   assert.strictEqual(empty.id, 'playlists-pinned-section');
-  assert.strictEqual(empty.className, 'empty-state empty-state-inline');
+  // Sweep S9 (F65): the one ui-state block (a title-only compact note), not a bespoke empty family.
+  assert.strictEqual(empty.className, 'ui-state');
   const message = empty.children[0];
-  assert.strictEqual(message.className, 'empty-state-message');
+  assert.strictEqual(message.tagName, 'H3');
+  assert.strictEqual(message.className, 'ui-state__title');
   assert.strictEqual(message.textContent, 'No playlists pinned yet.');
   delete global.document;
 });
@@ -129,7 +131,7 @@ test('renderPinnedPlaylists: moduleEnabled=true with real pins renders the pins,
 
   renderPinnedPlaylists([PIN], true);
   assert.strictEqual(list.children.length, 1);
-  assert.notStrictEqual(list.children[0].className, 'empty-state empty-state-inline');
+  assert.notStrictEqual(list.children[0].className, 'ui-state');
   delete global.document;
 });
 

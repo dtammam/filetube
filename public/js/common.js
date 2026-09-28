@@ -1859,45 +1859,53 @@ function shouldShowShuffleButton(sortKey) {
 // that ever needs to interpolate untrusted data into one of these fields
 // must escape it itself first. Exported for node:test.
 
-// Pure: home/library empty-result card (no items match the current filter/
-// search/folder). `icon` is one of the existing `.icon-*` glyph classes (the
-// icon-set system already themes it across every era/mode/icon-set
-// combination via `currentColor` -- see style.css's "Chrome icons" block);
-// defaults to `icon-search` ("nothing found"), matching the "no results"
-// semantics of every call site so far. `actionHtml`, when given, is
-// appended as-is (a caller-built, already-safe HTML fragment, e.g. a "View
-// All Media" link) -- kept separate from `hint` (a caller-supplied plain
-// hint string) so callers with only one or the other never render an empty
-// wrapper element.
-function buildEmptyStateHtml(opts) {
+// Pure: the ui-state block (D9, F65) as a markup string - byte-for-byte the DOM ui.state()
+// builds (icon disc, title, body, then an action), for the views that render their lists as
+// HTML strings. `icon` is a registry name; the legacy `icon-*` names still resolve (the
+// glyph sprite, never a mask class). `title` / `body` are developer-authored static copy, as
+// every other static template in this file (a caller interpolating untrusted data escapes
+// it first). `actionHtml`, when given, is appended as-is (a caller-built, already-safe
+// fragment - a ui-btn link). `tone: 'error'` marks a failure state.
+const UI_STATE_LEGACY_ICONS = { 'icon-search': 'search', 'icon-folder': 'folder', 'icon-play': 'play_arrow', 'icon-refresh': 'refresh' };
+function uiStateHtml(opts) {
   const o = opts || {};
-  const icon = typeof o.icon === 'string' && o.icon ? o.icon : 'icon-search';
-  const message = typeof o.message === 'string' && o.message ? o.message : 'Nothing here yet.';
-  const hint = typeof o.hint === 'string' && o.hint ? `<p class="empty-state-hint">${o.hint}</p>` : '';
+  const raw = typeof o.icon === 'string' && o.icon ? o.icon : '';
+  const icon = UI_STATE_LEGACY_ICONS[raw] || raw.replace(/^icon-/, '');
+  const iconHtml = icon
+    ? `<span class="ui-state__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-${icon.replace(/\./g, '-')}"/></svg></span>`
+    : '';
+  const body = typeof o.body === 'string' && o.body ? `<p class="ui-state__body">${o.body}</p>` : '';
   const actionHtml = typeof o.actionHtml === 'string' ? o.actionHtml : '';
-  return `<div class="empty-state${o.compact ? ' empty-state-inline' : ''}">` +
-    `<i class="${icon} empty-state-icon" aria-hidden="true"></i>` +
-    `<p class="empty-state-message">${message}</p>` +
-    hint + actionHtml +
-    `</div>`;
+  return `<div class="ui-state${o.tone === 'error' ? ' ui-state--error' : ''}">` + iconHtml +
+    `<h3 class="ui-state__title">${typeof o.title === 'string' ? o.title : ''}</h3>` + body + actionHtml + '</div>';
 }
 
-// Pure: a failed-load card with a Retry affordance. The Retry `<button>`
-// carries a stable `data-error-retry` hook (no id, so multiple error cards
-// can safely coexist) -- callers own actually wiring a click listener to it
-// AFTER inserting this markup (e.g. `container.querySelector('[data-error-
-// retry]').addEventListener('click', reloadFn, { signal })`, mirroring
-// every other per-view AbortController-bound listener in this codebase);
-// this function never binds anything itself, keeping it a pure string
-// builder like `buildEmptyStateHtml` above.
+// Pure: home/library empty-result state (no items match the current filter / search /
+// folder). Sweep S9 (F65): the ONE ui-state block - `message` is its title, `hint` its body,
+// `icon` a registry glyph (default `search`, "nothing found"). Kept as the v1.26.3 entry point
+// its callers already use. Exported for node:test.
+function buildEmptyStateHtml(opts) {
+  const o = opts || {};
+  return uiStateHtml({
+    icon: typeof o.icon === 'string' && o.icon ? o.icon : 'search',
+    title: typeof o.message === 'string' && o.message ? o.message : 'Nothing here yet.',
+    body: typeof o.hint === 'string' ? o.hint : '',
+    actionHtml: o.actionHtml,
+  });
+}
+
+// Pure: a failed-load state with a Retry. The Retry is a secondary ui-btn carrying a stable
+// `data-error-retry` hook (no id, so several can coexist) - the caller wires its click AFTER
+// inserting the markup (bound to its view signal); this builder binds nothing. The failure
+// reads as a failure by its `error` glyph and its words, not by red text (F65, D8.8).
 function buildErrorStateHtml(opts) {
   const o = opts || {};
-  const message = typeof o.message === 'string' && o.message ? o.message : 'Something went wrong.';
-  return `<div class="error-state">` +
-    `<i class="icon-refresh error-state-icon" aria-hidden="true"></i>` +
-    `<p class="error-state-message">${message}</p>` +
-    `<button type="button" class="btn error-state-retry" data-error-retry>Retry</button>` +
-    `</div>`;
+  return uiStateHtml({
+    icon: 'error',
+    tone: 'error',
+    title: typeof o.message === 'string' && o.message ? o.message : 'Something went wrong.',
+    actionHtml: '<button type="button" class="ui-btn ui-btn--secondary ui-btn--md" data-error-retry><span class="ui-btn__label">Retry</span></button>',
+  });
 }
 
 // ---- C2/C3: item count + format-toggle library controls (v1.24.0, T3) -----
@@ -8043,14 +8051,9 @@ function shouldOpenShortcuts(e, activeTag, isEditable) {
 }
 
 /**
- * Build the reference dialog. Reuses the EXISTING `.oneoff-modal-backdrop` /
- * `.oneoff-modal` classes rather than inventing a second modal treatment.
- *
- * What actually keeps this from becoming the v1.17.0 full-viewport touch-eater
- * is `closeShortcutsModal`'s `backdrop.remove()` -- NOT the
- * `.oneoff-modal-backdrop[hidden]` rule, which an earlier version of this
- * comment credited (gate S12). That rule only matters to code that sets
- * `.hidden`, and this dialog never does; it is irrelevant here.
+ * Build the reference dialog (sweep S9: a ui.sheet dialog - see the comment inside).
+ * What keeps it from becoming the v1.17.0 full-viewport touch-eater is the sheet's own
+ * teardown: a closed ui.sheet removes its scrim and box from the document.
  */
 // v1.163 (Dean): the DDR "Keyboard Combos" easter egg - a hidden mini-synth in the
 // shortcuts window (the Discord homage). Four arrows sit in the header top-right;
@@ -11818,13 +11821,15 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   const entries = derivePinnedPlaylistEntries(pins);
   if (entries.length === 0) {
     if (moduleEnabled) {
+      // Sweep S9 (F65): the one ui-state block (its title only - a compact note inside
+      // the sheet), in ui.state's own DOM.
       const empty = document.createElement('div');
       empty.id = 'playlists-pinned-section';
-      empty.className = 'empty-state empty-state-inline';
-      const message = document.createElement('p');
-      message.className = 'empty-state-message';
-      message.textContent = 'No playlists pinned yet.';
-      empty.appendChild(message);
+      empty.className = 'ui-state';
+      const title = document.createElement('h3');
+      title.className = 'ui-state__title';
+      title.textContent = 'No playlists pinned yet.';
+      empty.appendChild(title);
       list.appendChild(empty);
     }
     return;
@@ -12452,7 +12457,7 @@ function confirmHtmlToText(html, doc) {
 }
 
 function dialogUi() {
-  return (typeof window !== 'undefined' && window.ui) || null;
+  return overlayUiLib(); // the page's window.ui (Node tests: the sibling module)
 }
 
 // Is a LIVE dialog up - any ui.sheet that is not on its way out? A sheet carries
@@ -14122,16 +14127,6 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
   });
 }
 
-// v1.17.0 FR-3(a): a brief, non-blocking, auto-dismissing notification --
-// replaces the blocking `alert('File deleted successfully.')` friction the
-// watch page's post-delete success branch used to have (T2). Appends a real
-// DOM node built via `textContent` ONLY (never `innerHTML`), so `msg` can
-// only ever render as plain text no matter what it contains. Auto-dismisses
-// on a ~2.5s timer with a token-themed fade (see `.toast`/`.toast-visible` in
-// style.css) and removes itself -- no user interaction required. Reused by
-// both the watch-page delete flow (watch.js) and the home/library card
-// trash-can affordance (main.js). Guarded for Node (no-op there, matching
-// this file's other document-touching helpers).
 /**
  * v1.32 (Dean, "white-label"): replace the header's text logo with the
  * user-uploaded custom logo when one is configured. A cheap HEAD probe of
@@ -15281,7 +15276,18 @@ function detectCompletedPendingOneShots(pendingJobIds, snapshot) {
  * `node:test`-callable against a fake document, no real browser needed.
  * `handlers` is `{onCancel(jobId), onRetry(item, rawEntry), onDismiss(key)}`.
  */
+// Sweep S9 (F57, F47): the row's controls are ui-btn (sm secondary: Cancel / Retry /
+// Dismiss - one button language, never a bordered bevel or a red fill), the error state
+// carries an `error` icon beside its name (colour is never the only signal), and the fill's
+// progress is the `--p` custom property (0..1, data only; ui.css-style transform, never an
+// inline width). `doc.defaultView.ui` (or window.ui) builds the buttons.
+function dlChipUi(doc) {
+  const w = (doc && doc.defaultView) || (typeof window !== 'undefined' ? window : null);
+  return (w && w.ui) || null;
+}
+
 function createDownloadChipItemRow(doc, handlers) {
+  const U = dlChipUi(doc);
   const row = doc.createElement('div');
   row.className = 'dl-status-chip-item';
   // Mutable holder the static click handlers below always read fresh data
@@ -15290,7 +15296,10 @@ function createDownloadChipItemRow(doc, handlers) {
   row.state = { item: null, rawEntry: null };
 
   const nameRow = doc.createElement('div');
-  nameRow.className = 'dl-status-chip-item-row';
+  nameRow.className = 'dl-status-chip-item-head';
+  const errIcon = U.icon('error', { size: 'sm', doc, cls: 'dl-status-chip-item-erricon' });
+  errIcon.setAttribute('hidden', '');
+  nameRow.appendChild(errIcon);
   const nameEl = doc.createElement('span');
   nameEl.className = 'dl-status-chip-item-name';
   nameRow.appendChild(nameEl);
@@ -15324,10 +15333,8 @@ function createDownloadChipItemRow(doc, handlers) {
   const cancelActions = doc.createElement('div');
   cancelActions.className = 'dl-status-chip-item-actions';
   cancelActions.hidden = true;
-  const cancelBtn = doc.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
-  cancelBtn.textContent = 'Cancel';
+  const cancelBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Cancel', doc });
+  cancelBtn.classList.add('dl-status-chip-cancel-btn');
   cancelBtn.addEventListener('click', () => {
     if (row.state.item) handlers.onCancel(row.state.item.id);
   });
@@ -15347,26 +15354,22 @@ function createDownloadChipItemRow(doc, handlers) {
   const actions = doc.createElement('div');
   actions.className = 'dl-status-chip-item-actions';
   actions.hidden = true;
-  const retryBtn = doc.createElement('button');
-  retryBtn.type = 'button';
-  retryBtn.className = 'dl-status-chip-retry-btn';
-  retryBtn.textContent = 'Retry';
+  const retryBtn = U.button({ variant: 'secondary', size: 'sm', icon: 'refresh', label: 'Retry', doc });
+  retryBtn.classList.add('dl-status-chip-retry-btn');
   retryBtn.hidden = true;
   retryBtn.addEventListener('click', () => {
     if (row.state.item) handlers.onRetry(row.state.item, row.state.rawEntry);
   });
   actions.appendChild(retryBtn);
-  const dismissBtn = doc.createElement('button');
-  dismissBtn.type = 'button';
-  dismissBtn.className = 'dl-status-chip-dismiss-btn';
-  dismissBtn.textContent = 'Dismiss';
+  const dismissBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Dismiss', doc });
+  dismissBtn.classList.add('dl-status-chip-dismiss-btn');
   dismissBtn.addEventListener('click', () => {
     if (row.state.item) handlers.onDismiss(row.state.item.key);
   });
   actions.appendChild(dismissBtn);
   row.appendChild(actions);
 
-  row.els = { nameEl, pctEl, track, fill, statusEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, dismissBtn };
+  row.els = { nameEl, errIcon, pctEl, track, fill, statusEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, dismissBtn };
   return row;
 }
 
@@ -15386,6 +15389,10 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
   const els = row.els;
 
   els.nameEl.textContent = item.name;
+  // The error icon, not the colour alone, says a row failed (F57).
+  if (item.state === 'error') els.errIcon.removeAttribute('hidden');
+  else els.errIcon.setAttribute('hidden', '');
+  row.classList.toggle('is-error', item.state === 'error');
 
   const showPercent = downloadChipItemShowsPercent(item);
   const showBadge = showPercent && !item.phase;
@@ -15402,7 +15409,9 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
     // ticks (the whole point of F2) is what lets both this class toggle and
     // the width transition below actually animate instead of restarting.
     els.fill.classList.toggle('indeterminate', Boolean(item.indeterminate));
-    els.fill.style.width = (item.indeterminate ? 100 : item.percent) + '%';
+    // --p is DATA (0..1): the fill scales by transform, so its motion is never a layout
+    // transition (AC9) and nothing writes a visual style inline.
+    els.fill.style.setProperty('--p', String((item.indeterminate ? 100 : item.percent) / 100));
   }
 
   els.statusEl.textContent = item.statusText;
@@ -15502,17 +15511,23 @@ function injectDownloadStatusChip() {
       chip.className = 'dl-status-chip';
       chip.hidden = true;
 
-      const summaryBtn = document.createElement('button');
-      summaryBtn.type = 'button';
-      summaryBtn.className = 'dl-status-chip-summary';
+      // Sweep S9 (F57): the collapsed chip is a tonal pill ui-btn - a `download` glyph while
+      // work runs, an `error` glyph in --danger once something failed (the glyph, not the
+      // red alone, says so) - over the one overlay shadow. No bevel, no pulsing red dot.
+      const U = dlChipUi(document);
+      const summaryBtn = U.button({ variant: 'tonal', size: 'sm', pill: true, icon: 'download', label: 'Downloads' });
+      summaryBtn.classList.add('dl-status-chip-summary');
       summaryBtn.setAttribute('aria-expanded', 'false');
       summaryBtn.setAttribute('aria-label', 'Active downloads');
-      const dot = document.createElement('span');
-      dot.className = 'dl-status-chip-dot';
-      summaryBtn.appendChild(dot);
-      const summaryText = document.createElement('span');
-      summaryText.className = 'dl-status-chip-text';
-      summaryBtn.appendChild(summaryText);
+      const summaryIconSlot = summaryBtn.querySelector('.ui-btn__icon');
+      const summaryText = summaryBtn.querySelector('.ui-btn__label');
+      summaryText.classList.add('dl-status-chip-text');
+      let summaryIcon = 'download';
+      const setSummaryIcon = (name) => {
+        if (name === summaryIcon) return;
+        summaryIcon = name;
+        summaryIconSlot.replaceChildren(U.icon(name, { size: 'sm' }));
+      };
       chip.appendChild(summaryBtn);
 
       const panel = document.createElement('div');
@@ -15526,10 +15541,8 @@ function injectDownloadStatusChip() {
       // updateDownloadChipPanel's row-cleanup loop leaves it alone); hidden
       // whenever nothing is dismissible. Active (still-downloading/queued)
       // rows are never dismissed by it.
-      const dismissAllBtn = document.createElement('button');
-      dismissAllBtn.type = 'button';
-      dismissAllBtn.className = 'btn btn-sm dl-status-chip-dismiss-all';
-      dismissAllBtn.textContent = 'Dismiss all';
+      const dismissAllBtn = U.button({ variant: 'plain', size: 'sm', label: 'Dismiss all' });
+      dismissAllBtn.classList.add('dl-status-chip-dismiss-all');
       dismissAllBtn.hidden = true;
       dismissAllBtn.addEventListener('click', () => {
         const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
@@ -15612,7 +15625,7 @@ function injectDownloadStatusChip() {
       function cancelOneShot(jobId) {
         fetch('/api/ytdlp/download/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
           .then((res) => {
-            if (!res.ok) showToast("Couldn't cancel — the download may have already finished");
+            if (!res.ok) showToast("Couldn't cancel - the download may have already finished", null, { kind: 'error' });
           })
           .catch(() => { /* network-level failure -- the item stays visible; the next poll reconciles reality either way */ })
           .then(() => pollOnce());
@@ -15641,6 +15654,7 @@ function injectDownloadStatusChip() {
         chip.hidden = false;
         summaryText.textContent = state.count === 0 ? breakerText : formatDownloadChipSummary(state);
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
+        setSummaryIcon(state.hasError ? 'error' : 'download');
         // v1.32: 'Dismiss all' only when there is something dismissible.
         dismissAllBtn.hidden = !state.items.some(
           (item) => chipItemLifecycle(item.state, item.failureKind) === 'sticky',
@@ -16440,7 +16454,15 @@ const handoffCard = (() => {
   // calls rather than markup-from-strings, because two of these fields are
   // client-supplied - see the title/headline writes in render(), which are
   // always textContent.
+  // Sweep S9 (F47, D4.6): the card is built from the primitives - the one close mark (a plain
+  // icon ui-btn with the registry `close` glyph, never a text x), a ui-thumb with its progress
+  // bar (`--p` as data), a primary ui-btn "Continue here" link, and a registry play / pause
+  // glyph for the state (never a drawn dot in red). It sits on the overlay surface.
+  function glyph(name) {
+    return window.ui.icon(name, { size: 'sm' });
+  }
   function build() {
+    const U = window.ui;
     const card = document.createElement('div');
     card.id = 'handoff-card';
     card.hidden = true;
@@ -16450,28 +16472,29 @@ const handoffCard = (() => {
     const state = document.createElement('span');
     state.className = 'handoff-state';
     state.setAttribute('aria-hidden', 'true');
+    state.appendChild(glyph('play_arrow'));
     const headline = document.createElement('span');
     headline.className = 'handoff-headline';
-    const dismiss = document.createElement('button');
-    dismiss.type = 'button';
-    dismiss.className = 'handoff-dismiss';
-    dismiss.setAttribute('aria-label', 'Dismiss');
-    dismiss.textContent = '×'; // multiplication sign as an escape, never a literal glyph in source
+    const dismiss = U.button({ variant: 'plain', shape: 'icon', size: 'sm', icon: 'close', ariaLabel: 'Dismiss' });
     head.append(state, headline, dismiss);
 
     const body = document.createElement('div');
     body.className = 'handoff-body';
     const thumbLink = document.createElement('a');
-    thumbLink.className = 'handoff-thumb';
+    thumbLink.className = 'handoff-cover';
+    const thumb = U.thumb({ aspect: '16x9', context: 'row' });
     const img = document.createElement('img');
+    img.className = 'ui-thumb__img';
     img.alt = '';
     img.loading = 'lazy';
-    const bar = document.createElement('div');
-    bar.className = 'handoff-progress';
-    const fill = document.createElement('div');
-    fill.className = 'handoff-progress-fill';
+    img.decoding = 'async';
+    const bar = document.createElement('span');
+    bar.className = 'ui-thumb__progress';
+    const fill = document.createElement('span');
+    fill.className = 'ui-thumb__bar';
     bar.appendChild(fill);
-    thumbLink.append(img, bar);
+    thumb.append(img, bar);
+    thumbLink.appendChild(thumb);
 
     const meta = document.createElement('div');
     meta.className = 'handoff-meta';
@@ -16479,14 +16502,16 @@ const handoffCard = (() => {
     title.className = 'handoff-title';
     const time = document.createElement('div');
     time.className = 'handoff-time';
+    // A link (it navigates), in the ui-btn's exact DOM: icon slot, then label.
     const go = document.createElement('a');
-    go.className = 'btn btn-primary handoff-continue';
-    const ico = document.createElement('span');
-    ico.className = 'handoff-play-ico';
-    ico.setAttribute('aria-hidden', 'true');
+    go.className = 'ui-btn ui-btn--primary ui-btn--sm';
+    const goIcon = document.createElement('span');
+    goIcon.className = 'ui-btn__icon';
+    goIcon.appendChild(glyph('play_arrow'));
     const goText = document.createElement('span');
+    goText.className = 'ui-btn__label';
     goText.textContent = 'Continue here';
-    go.append(ico, goText);
+    go.append(goIcon, goText);
     meta.append(title, time, go);
 
     body.append(thumbLink, meta);
@@ -16498,7 +16523,7 @@ const handoffCard = (() => {
       hide();
     });
 
-    el = { card, state, headline, img, fill, title, time, go, thumbLink };
+    el = { card, state, headline, img, fill, title, time, go, thumbLink, stateName: 'play_arrow' };
     return el;
   }
 
@@ -16516,15 +16541,20 @@ const handoffCard = (() => {
     el.headline.textContent = formatHandoffHeadline(presence);
     el.title.textContent = presence.title || '';
     el.time.textContent = formatHandoffTime(presence.position, presence.duration);
-    el.state.classList.toggle('is-paused', presence.state === 'paused');
-    el.fill.style.width = `${handoffProgressPercent(presence.position, presence.duration)}%`;
+    const stateName = presence.state === 'paused' ? 'pause' : 'play_arrow';
+    if (stateName !== el.stateName) {
+      el.stateName = stateName;
+      el.state.replaceChildren(glyph(stateName));
+    }
+    // --p is DATA (0..1): ui.css scales the thumb's bar by it.
+    el.fill.style.setProperty('--p', String(handoffProgressPercent(presence.position, presence.duration) / 100));
     el.img.src = presence.thumbnailUrl || '';
     el.go.href = presence.href || '#';
     el.thumbLink.href = presence.href || '#';
 
     el.card.hidden = false;
     // Next frame, so the fade transition runs instead of being skipped on the
-    // same paint that unhides the card (the .toast precedent).
+    // same paint that unhides the card (the toast's precedent).
     requestAnimationFrame(() => { if (el) el.card.classList.add('handoff-visible'); });
   }
 
@@ -17134,7 +17164,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // exported above).
     showConfirmModal,
     // v1.26.3 (Item 2/3): shared empty-state / error-state card builders.
-    buildEmptyStateHtml, buildErrorStateHtml,
+    buildEmptyStateHtml, buildErrorStateHtml, uiStateHtml,
     // v1.51: the notification bell's pure decisions.
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
     // Sweep S4 (D8.3): the row menu's items and the delete confirm's copy (pure).

@@ -179,9 +179,11 @@
         <div id="tv-status" class="music-status" role="status" hidden></div>
         <!-- The poster grid, a show's season/episode detail, or the Continue row render here. -->
         <div id="tv-content"></div>
-        <div class="tv-empty" id="tv-empty" hidden>
-          No shows yet. Add a Shows folder in <a href="/setup.html">Settings</a>, organize it as
-          Show / Season / Episode (e.g. <code>House MD / Season 2 / House MD S02E22 - Forever.mp4</code>), and scan.
+        <div class="ui-state tv-empty" id="tv-empty" hidden>
+          <span class="ui-state__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-tv"/></svg></span>
+          <h3 class="ui-state__title">No shows yet</h3>
+          <p class="ui-state__body">Add a Shows folder in <a href="/setup.html">Settings</a>, organize it as
+          Show / Season / Episode (for example House MD / Season 2 / House MD S02E22 - Forever.mp4), and scan.</p>
         </div>
       </div>
     </main>

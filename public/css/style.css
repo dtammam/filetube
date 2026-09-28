@@ -891,47 +891,6 @@ a.sidebar-item {
                    instead of forcing the row past the viewport width */
 }
 
-/* The Modern home's header sort menu (main.js injectModernHeaderSort) -
-   absolutely positioned below its button; `[hidden]` is the single show/hide
-   mechanism. (The library toolbar's sort is a ui.menu since sweep S2.) */
-.sort-menu {
-  position: absolute;
-  top: calc(100% + 4px); /* token-exempt: positional geometry (Stop A Batch A) */
-  left: 0;
-  z-index: 30; /* token-exempt: local stacking */ /* above the video grid cards (z-index 2), below the dock/modals */
-  margin: 0;
-  padding: var(--space-2);
-  min-width: 100%;
-  list-style: none;
-  background-color: var(--btn-bg);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-.sort-menu[hidden] {
-  display: none;
-}
-.sort-menu li {
-  padding: var(--space-3) var(--space-6);
-  border-radius: var(--radius);
-  font-size: var(--fs-sm);
-  color: var(--text-primary);
-  white-space: nowrap;
-  cursor: pointer;
-}
-.sort-menu li:focus-visible {
-  background-color: var(--btn-hover);
-}
-@media (hover: hover) {
-  .sort-menu li:hover {
-    background-color: var(--btn-hover);
-  }
-}
-.sort-menu li.active {
-  color: var(--yt-red);
-  font-weight: var(--fw-semibold);
-}
-
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -1331,61 +1290,19 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   }
 }
 
-/* v1.26.3 (Item 2/3): shared "nothing here" / "something failed" cards --
-   replaces the old bare inline-styled text (home/library empty result,
-   library load error, "Failed to load subscriptions.") with ONE consistent,
-   era-token-only treatment. Any surface can reuse `.empty-state`/
-   `.error-state` rather than hand-rolling its own inline style block; see
-   `buildEmptyStateHtml`/`buildErrorStateHtml` in common.js. */
-.empty-state,
-.error-state {
+/* Sweep S9 (F65, D9): every empty / error state is ui.css's ui-state block (common.js
+   uiStateHtml / buildEmptyStateHtml / buildErrorStateHtml, or ui.state). Only its placement
+   lives here: in a grid it spans every column, and inside a sheet's list it is compact. */
+.video-grid > .ui-state,
+#home-feed-host > .ui-state {
   grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 40px var(--space-10); /* token-exempt: off-scale 40px breathing room, single consumer (F.5 ruling 5 disposition - Dean may overrule) */
-  color: var(--text-secondary);
 }
-
-.empty-state-icon,
-.error-state-icon {
-  font-size: var(--fs-5xl);
-  margin-bottom: var(--space-6);
-  opacity: 0.6;
-}
-
-.empty-state-message,
-.error-state-message {
-  font-size: var(--fs-md);
-  margin: 0 0 var(--space-2);
-}
-
-.empty-state-hint {
-  font-size: var(--fs-sm);
-  margin: var(--space-2) 0 0;
-}
-
-.error-state-message {
-  color: var(--yt-red);
-  font-weight: var(--fw-bold);
-}
-
-.error-state-retry {
-  margin-top: var(--space-6);
-}
-
-.empty-state-action {
-  margin-top: var(--space-6);
-}
-
-/* Compact variant for a smaller, non-grid surface (the mobile Playlists
-   sheet's pinned-channels list has no grid to span) -- drops the
-   grid-column span and tightens padding to match the sheet's existing row
-   density. */
-.empty-state-inline {
-  grid-column: initial;
+#playlists-pinned-section.ui-state {
   padding: var(--space-8) var(--space-4);
+}
+.empty-state-action,
+.ui-state [data-error-retry] {
+  margin-top: var(--space-4);
 }
 
 /* Watch Page Layout */
@@ -2777,96 +2694,10 @@ select {
   font-size: var(--fs-sm);
 }
 
-/* Modal dialog custom styling */
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--scrim-legacy);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: var(--z-modal);
-  /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this backdrop
-     used to teleport in/out (public/js/common.js's showConfirmModal/
-     showMoveModal create-and-append / remove() it directly, no prior
-     [hidden] state). `openOverlay`/`closeOverlayThen` (common.js) add/remove
-     `.modal-open` right after mount / right before teardown, so the fade
-     below actually gets a "from" and "to" state to transition between. */
-  opacity: 0;
-  transition: opacity var(--dur-fast) ease-out;
-}
-
-.modal-backdrop.modal-open {
-  opacity: 1;
-}
-
-/* v1.26.2 code-review fix (F2, MAJOR): `showConfirmModal`/`showMoveModal`
-   (common.js) add this class to the backdrop the instant a Confirm/Cancel/
-   Move click starts the close fade (~200-300ms) -- blocks any further
-   pointer interaction with the fading-out dialog for the rest of that
-   window, on top of their own `settled`/`busy` JS guards + disabled buttons.
-   Deliberately its OWN class, NOT `.modal-backdrop:not(.modal-open)`:
-   `.modal-open` is only added AFTER the two-step reveal's first frame
-   (openOverlay's forced-reflow trick) and is never added at all under
-   `prefers-reduced-motion: reduce` -- either would make `:not(.modal-open)`
-   match (and so block clicks on) a dialog that is still legitimately open,
-   not just one that is closing. */
-.modal-backdrop.modal-closing {
-  pointer-events: none;
-}
-
-.modal-content {
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  max-width: 400px;
-  width: 90%;
-  padding: var(--space-10);
-  box-shadow: var(--shadow-lg);
-  /* v1.108 (Dean: "the Edit chapters section is cut off at the bottom of the
-     scroll window"): the backdrop centres this box in the viewport but it had
-     no height cap, so a TALL modal -- the chapters editor's 10-row textarea plus
-     hint + status + Save/Cancel -- overflowed past the bottom edge on short
-     viewports and the actions row was clipped AND unreachable (nothing
-     scrolled). Cap the height and let the modal scroll internally. The `vh`
-     fallback covers engines without `dvh`; the `dvh` line wins where supported
-     (correct under mobile dynamic toolbars) and subtracts the safe-area insets
-     so a PWA never centres the box under the notch/home-indicator. max-height
-     is census-exempt (layout geometry). Shared by every `.modal-content` (confirm/
-     move/chapters); short modals never reach the cap, so this is a pure
-     tall-modal improvement, not a regression. */
-  max-height: calc(100vh - var(--space-16));
-  max-height: calc(100dvh - var(--space-16) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  overflow-y: auto; /* corner-clip-safe: centered modal, no sticky/absolute descendant; the open scale-in is a transient transform on the clip box itself */
-  /* Keep the last row (Save/Cancel) clear of the PWA home-indicator when the
-     modal is scrolled to its bottom -- same idiom as the mobile nav/sheet. */
-  padding-bottom: calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
-  /* Subtle scale-in alongside the backdrop's fade above -- same `.modal-open`
-     toggle (added to the BACKDROP, so this rule descends from it). */
-  transform: scale(0.97);
-  transition: transform var(--dur-fast) ease-out;
-}
-
-.modal-backdrop.modal-open .modal-content {
-  transform: scale(1);
-}
-
-.modal-title {
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-  margin-bottom: var(--space-6);
-  color: var(--text-primary);
-}
-
-.modal-body {
-  font-size: var(--fs-base);
-  margin-bottom: var(--space-10);
-  color: var(--text-primary);
-}
-
+/* Sweep S9 (D4.6, F30): every dialog is a ui.sheet - the generic .modal-backdrop /
+   .modal-content / .modal-title / .modal-body family is gone with its last creator. The chapter
+   snap editor's action row still lays its buttons out with .modal-actions (its inner controls
+   are S3's). */
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -3012,136 +2843,80 @@ select {
    never trusted as markup. */
 #handoff-card {
   position: fixed;
-  left: 16px; /* token-exempt: positional geometry (mirrors #player-dock's right:16px) */
-  bottom: 16px; /* token-exempt: positional geometry (mirrors #player-dock) */
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  z-index: var(--z-dock); /* same rung as #player-dock: above the mobile .bottom-nav (--z-nav), below sheets/modals */
+  left: var(--inset);
+  bottom: var(--inset);
+  width: calc(var(--panel-w) * 0.8);
+  max-width: calc(100vw - var(--inset) * 2);
+  z-index: var(--z-dock); /* same rung as #player-dock: above the mobile bottom bar, below every sheet */
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  background-color: var(--bg-sidebar);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  padding: var(--space-3) var(--space-3) var(--space-6) var(--space-6);
+  box-sizing: border-box;
+  background-color: var(--surface-overlay);
+  color: var(--ink-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-overlay);
   opacity: 0;
-  transform: translateY(8px);
-  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
-}
-
-#handoff-card[hidden] {
-  display: none;
+  transform: translateY(var(--space-4));
+  transition: opacity var(--dur-fade) var(--ease-std), transform var(--dur-fade) var(--ease-std);
 }
 
 /* Like the ui-toast's fade-in: the class is added one frame after mount so the
    transition actually runs instead of being skipped on first paint. */
 #handoff-card.handoff-visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
 .handoff-head {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
+  font: var(--t-callout);
+  color: var(--ink-2);
 }
 
 .handoff-headline {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The state glyph, drawn in CSS -- never an emoji codepoint in markup (the
-   v1.38 rule). Live = a filled accent dot; paused = two bars from the same
-   box via a border trick, so no second element is needed. */
+/* The state glyph: a registry play / pause icon in ink (the v1.38 no-emoji rule; never a
+   red "live" dot - red is not a status colour here, D8.8). */
 .handoff-state {
   flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  background-color: var(--yt-red);
-}
-
-.handoff-state.is-paused {
-  border-radius: 0;
-  background-color: transparent;
-  border-left: 3px solid var(--text-secondary); /* token-exempt: glyph geometry (the pause bars) */
-  border-right: 3px solid var(--text-secondary); /* token-exempt: glyph geometry (the pause bars) */
-  width: 9px;
-}
-
-.handoff-dismiss {
-  flex: none;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--fs-md);
-  line-height: 1; /* token-exempt: glyph centering */
-  padding: 0 var(--space-2);
-}
-
-@media (hover: hover) {
-  .handoff-dismiss:hover {
-    color: var(--text-primary);
-  }
+  display: grid;
+  place-items: center;
 }
 
 .handoff-body {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-6);
 }
 
-/* 16:9 thumb with the YouTube-signature progress bar welded to its bottom
-   edge -- the same relationship .video-row-cover has with
-   .book-row-progress. */
-.handoff-thumb {
+/* The 16:9 ui-thumb with its progress bar, as a link to the item. */
+.handoff-cover {
   flex: none;
-  position: relative;
-  width: 96px;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background-color: var(--thumbnail-bg);
-}
-
-.handoff-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
   display: block;
-}
-
-.handoff-progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px; /* token-exempt: hairline progress bar (matches .book-row-progress) */
-  background-color: var(--scrim-legacy);
-}
-
-.handoff-progress-fill {
-  height: 100%;
-  background-color: var(--yt-red);
+  width: var(--av-2xl);
 }
 
 .handoff-meta {
   min-width: 0; /* lets the title actually ellipsize inside the flex row */
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 
 .handoff-title {
-  font-size: var(--fs-sm);
+  max-width: 100%;
+  font: var(--t-body);
   font-weight: var(--fw-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3149,38 +2924,27 @@ select {
 }
 
 .handoff-time {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-}
-
-/* The action reuses .btn/.btn-primary rather than hand-rolling a parallel
-   button (CONTRIBUTING's styling-SOURCE rule) -- this class only tightens it
-   for the card's narrower box. */
-.handoff-continue {
-  align-self: flex-start;
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--fs-xs);
-}
-
-/* CSS play triangle, for the same no-emoji-in-markup reason as .handoff-state. */
-.handoff-play-ico {
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent; /* token-exempt: glyph geometry (the play triangle) */
-  border-bottom: 4px solid transparent; /* token-exempt: glyph geometry (the play triangle) */
-  border-left: 6px solid currentColor; /* token-exempt: glyph geometry (the play triangle) */
+  font: var(--t-footnote);
+  color: var(--ink-2);
 }
 
 @media (max-width: 768px) {
   #handoff-card {
-    left: 8px; /* token-exempt: positional geometry (mirrors #player-dock) */
-    right: 8px; /* token-exempt: positional geometry (mirrors #player-dock) */
+    left: var(--space-4);
+    right: var(--space-4);
     width: auto;
     max-width: none;
-    /* Clear the fixed .bottom-nav as #player-dock and the ui-toast host do,
-       sharing --mobile-bottom-nav-h so all three stay in lockstep through the
-       iOS address-bar/home-indicator collapse. */
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
+    /* Clear the fixed bottom bar as #player-dock and the ui-toast host do, through the
+       shared --mobile-bottom-nav-h (it carries the safe-area inset), so they stay in
+       lockstep through the iOS address-bar/home-indicator collapse. */
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #handoff-card {
+    transform: none;
+    transition: opacity var(--dur-fade) linear;
   }
 }
 
@@ -3189,11 +2953,10 @@ select {
 
 /* v1.15.0 item 3: one-off download header button + compact modal, built at
    runtime by public/js/common.js's injectOneOffDownloadButtonIfEnabled(),
-   ONLY when the optional yt-dlp module is enabled. Deliberately its own
-   class names (not a reuse of .modal-backdrop/.modal-content above) since
-   this modal carries a real form, not just a title/body/actions block --
-   kept visually consistent via the same era-theme CSS custom-property
-   tokens (var(--bg-color)/--border-dark/--radius/--text-primary/etc.). */
+   ONLY when the optional yt-dlp module is enabled. Sweep S9: the one-off
+   dialog is a ui.sheet now; this shell (backdrop, box, header, close) is
+   left for the Subscribe dialog (buildSubscribeModal - S3's watch channel
+   row), whose watch.js caller appends the backdrop itself. */
 .oneoff-modal-backdrop {
   position: fixed;
   top: 0;
@@ -3204,7 +2967,7 @@ select {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: calc(var(--z-modal) + 100); /* above the generic .modal-backdrop (--z-modal) -- never hidden behind another dialog */
+  z-index: calc(var(--z-modal) + 100); /* above every ui.sheet (--z-sheet) -- never hidden behind another dialog */
 }
 
 /* v1.17.0 FR-6, T5 fix: WITHOUT this override, the `display: flex` above
@@ -5199,7 +4962,6 @@ html:has(> body.ft-audio-expanded),
 #player-wrapper.audio-expanded {
   overscroll-behavior: none;
 }
-.modal-content,
 .speed-sheet,
 .oneoff-modal {
   overscroll-behavior: contain;
@@ -6259,9 +6021,9 @@ html:has(> body.ft-audio-expanded),
    z-index: var(--z-player-max) -- high enough to sit above the app chrome
    it must fully cover while expanded (site header --z-header, `#player-dock`
    --z-dock, chips --z-chip, the mobile `.bottom-nav` --z-nav) but
-   deliberately BELOW every modal/toast tier (`.modal-backdrop` --z-modal,
-   `.toast` --z-top, the one-off and hard-delete rungs above them -
-   PRESERVED INVERSION, Tier 4 re-ladder) so an async toast or modal firing
+   deliberately BELOW every sheet/toast tier (a ui.sheet --z-sheet, the
+   ui-toast host --z-top, the Subscribe dialog's rung above them -
+   PRESERVED INVERSION, Tier 4 re-ladder) so an async toast or dialog firing
    while the audio view is expanded still renders on top and stays visible,
    rather than being buried under the overlay. */
 #player-wrapper.audio-mode.audio-expanded {
@@ -6917,165 +6679,96 @@ html:has(> body.ft-audio-expanded),
   margin-top: var(--space-4);
 }
 
-/* === v1.21 FR-8: download status chip ========================================
-   T7. App-wide, persistent bottom-LEFT corner chip
-   (public/js/common.js's `injectDownloadStatusChip`) -- the OPPOSITE corner
-   from `#player-dock` (bottom-right, line ~733 above), so the two can never
-   spatially overlap on any viewport width; `z-index: var(--z-chip)` keeps it
-   (like `#player-dock`'s own --z-dock rung) above the mobile `.bottom-nav`
-   (--z-nav) and below every modal/sheet band. `flex-direction: column-reverse` makes the
-   expanded panel render ABOVE the collapsed summary pill in the layout
-   (while staying AFTER it in DOM/source order, so the summary button is
-   still first in tab order) -- "dock as a slim bottom strip that expands
-   upward" per docs/references/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
-   bevels (its own hand bevel), a
-   repeating-gradient segmented/striped progress fill (never a plain smooth
-   `background-color` bar), era tokens only -- no hardcoded surface colors,
-   so every era/light-dark combination stays themed. */
+/* === v1.21 FR-8: the download status chip ====================================
+   common.js injectDownloadStatusChip: an app-wide, bottom-LEFT corner chip - the opposite
+   corner from #player-dock (bottom-right), so the two never overlap on any width. z from the
+   ladder (the chip rung - above the mobile bottom bar, below every sheet). `column-reverse` puts the
+   expanded panel ABOVE the collapsed pill while the pill stays first in tab order.
+
+   Sweep S9 (F57): the pill is a tonal ui-btn (a `download` glyph while work runs, an `error`
+   glyph in --danger once something failed - the glyph, not the red alone, carries it) over
+   the one overlay shadow; the panel is the overlay surface; rows use ui-btn controls. Active
+   progress is ink, a failed row's is --danger (red was both "downloading" and "failed"). No
+   era bevel or barber-pole stripes: the era character comes from the primitives' era knobs. */
 #dl-status-chip {
   position: fixed;
-  left: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
-  bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: var(--inset);
+  bottom: var(--inset);
   z-index: var(--z-chip);
-  max-width: min(320px, calc(100vw - 32px));
-  font-family: var(--font-family);
+  max-width: min(calc(var(--panel-w) * 0.8), calc(100vw - var(--inset) * 2));
   display: flex;
   flex-direction: column-reverse;
+  align-items: flex-start;
 }
 
-/* Mirrors the `.oneoff-modal-backdrop[hidden]` fix above (line ~2054): the
-   base rule sets its own `display`, which -- being an author-origin rule --
-   beats the UA `[hidden] { display: none }` default regardless of
-   specificity, so the override must be explicit here too. */
-#dl-status-chip[hidden] {
-  display: none;
-}
-
-.dl-status-chip-summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
-  background-color: var(--header-bg);
-  color: var(--text-primary);
-  border-top: 1px solid var(--border-dark);
-  border-left: 1px solid var(--border-dark);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  font-family: inherit;
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  cursor: pointer;
+#dl-status-chip .dl-status-chip-summary {
   max-width: 100%;
+  box-shadow: var(--shadow-overlay);
 }
-
-.dl-status-chip-summary:focus-visible {
-  color: var(--yt-red);
-}
-@media (hover: hover) {
-  .dl-status-chip-summary:hover {
-    color: var(--yt-red);
-  }
-}
-
-/* v1.50.1 (Dean): the COLLAPSED chip is just a pulsing dot in a solid box --
-   it conveys "something is happening" but shows nothing more until clicked,
-   so it shouldn't sit at full opacity over content. Dim it while collapsed;
-   restore full opacity on hover/keyboard focus and whenever the panel is
-   expanded (the summary is the expanded panel's header -- dimming it there
-   would read as disabled). Opacity, not a translucent background: the
-   whole chip (border, dot, text) fades as one, in every era x mode, with
-   zero new color tokens. */
-.dl-status-chip-summary {
-  opacity: 0.55;
-  transition: opacity var(--dur-fast) var(--ease-ui);
-}
-.dl-status-chip-summary:focus-visible,
-.dl-status-chip-expanded .dl-status-chip-summary {
-  opacity: 1;
-}
-@media (hover: hover) {
-  #dl-status-chip:hover .dl-status-chip-summary {
-    opacity: 1;
-  }
-}
-/* v1.50.1 slim-gate WARNING: the ERROR state is exempt from the dim -- the
-   static dark-red dot exists to read as "needs attention" (see the
-   -has-error rules below), and on touch devices there is no hover to
-   rescue a 55%-opacity attention affordance. Unobtrusive is for the
-   healthy/active state only. */
-.dl-status-chip-has-error .dl-status-chip-summary {
-  opacity: 1;
-}
-
-.dl-status-chip-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--yt-red);
-  animation: dl-status-chip-pulse 1.4s ease-in-out infinite; /* token-exempt: choreography */
-}
-
-/* A sticky, unacknowledged error swaps the pulsing dot for a solid, static
-   one -- "stop pulsing (still working)," reads instead as "needs attention." */
-.dl-status-chip-has-error .dl-status-chip-dot {
-  animation: none;
-  background-color: var(--yt-red-dark);
-}
-
-@keyframes dl-status-chip-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
 .dl-status-chip-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.dl-status-chip-has-error .dl-status-chip-summary .ui-btn__icon {
+  color: var(--danger);
+}
+
+/* v1.50.1 (Dean): the COLLAPSED, healthy chip rests dimmed so it does not sit at full
+   strength over content; hover, keyboard focus and the expanded panel restore it. Sweep S9
+   (F57): only where a pointer can hover - a touch screen has no hover to bring it back, so
+   there it rests at full opacity. A failed download is never dimmed (it needs attention). */
+@media (hover: hover) {
+  #dl-status-chip .dl-status-chip-summary {
+    opacity: 0.55;
+  }
+  #dl-status-chip:hover .dl-status-chip-summary,
+  #dl-status-chip .dl-status-chip-summary:focus-visible,
+  #dl-status-chip.dl-status-chip-expanded .dl-status-chip-summary,
+  #dl-status-chip.dl-status-chip-has-error .dl-status-chip-summary {
+    opacity: 1;
+  }
+}
 
 .dl-status-chip-panel {
+  /* corner-clip-safe: the rounded panel scrolls a plain column of rows; the only animated
+     child is a transform-scaled fill inside an inner overflow:hidden track */
   margin-bottom: var(--space-3);
   padding: var(--space-4);
   max-height: 60vh;
-  overflow-y: auto; /* corner-clip-safe: only animated child is a width-based fill inside an inner overflow:hidden track - cannot reach the corners */
-  background-color: var(--bg-color);
-  border-top: 1px solid var(--border-dark);
-  border-left: 1px solid var(--border-dark);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: 100%;
+  background-color: var(--surface-overlay);
+  color: var(--ink-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.dl-status-chip-panel[hidden] {
-  display: none;
-}
-
 .dl-status-chip-item {
-  padding: var(--space-4);
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-6);
+  background-color: var(--surface-2);
+  border-radius: var(--r-md);
 }
 
-.dl-status-chip-item-row {
+.dl-status-chip-item-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-4);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
+  align-items: center;
+  gap: var(--space-3);
+  font: var(--t-callout);
+  color: var(--ink-1);
+}
+.dl-status-chip-item-erricon {
+  flex: none;
+  color: var(--danger);
 }
 
 .dl-status-chip-item-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7083,183 +6776,95 @@ html:has(> body.ft-audio-expanded),
 
 .dl-status-chip-item-percent {
   flex-shrink: 0;
-  color: var(--text-secondary);
-  font-weight: normal;
+  font: var(--t-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
 }
 
-/* Beveled inset groove (mirrors the FR-2 control bar's `.pc-range` track,
-   line ~2989 above) -- the FILLED portion below is the segmented/striped
-   part, not this track. */
+/* The progress track and fill - shared with the one-off dialog's live bar. The fill is full
+   width and SCALES to `--p` (0..1, set by common.js as data): a poll tick's jump slides by
+   transform, never by a width transition (AC9). Indeterminate (no real percent yet, or a
+   postprocess phase): a short segment sweeps across by transform. */
 .dl-status-chip-progress {
   margin-top: var(--space-3);
-  height: 8px;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.25); /* token-exempt: era skin art */
+  height: var(--progress-h);
+  border-radius: var(--r-pill);
+  background-color: var(--separator);
   overflow: hidden;
 }
-
-/* Segmented/striped fill (docs/references/ui-research-2026-07.md §5's "segmented/
-   striped progress bar") -- a repeating diagonal-stripe gradient over the
-   solid era-red fill, never a flat smooth bar alone.
-
-   v1.26 "real progress": `transition: width` is what turns a poll-tick's
-   discrete width JUMP (e.g. 40% -> 47%) into a short, visible SLIDE rather
-   than an instantaneous, easy-to-miss snap -- this is a big part of what
-   makes the now much-faster (~700ms while active, see
-   `nextDownloadChipPollDelay`/`computeOneOffPollDelayMs`) poll cadence
-   actually READ as continuous motion instead of a series of twitches. */
 .dl-status-chip-progress-fill {
   height: 100%;
-  min-width: 2px;
-  background-color: var(--yt-red);
-  background-image: repeating-linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.25) 0, /* token-exempt: retro striped progress fill over --yt-red (census-zero gate W1 - multi-line decl, #68 blind spot; the stripe-over-accent class the chip's own design comment mandates) */
-    rgba(255, 255, 255, 0.25) 4px,
-    transparent 4px,
-    transparent 8px
-  );
-  transition: width var(--dur-slow) linear;
+  width: 100%;
+  background-color: var(--ink-1);
+  transform: scaleX(var(--p, 0));
+  transform-origin: left center;
+  transition: transform var(--dur-fade) linear;
 }
-
 .dl-status-chip-progress-fill-error {
-  background-color: var(--yt-red-dark);
+  background-color: var(--danger);
 }
-
-/* v1.26 "real progress": the INDETERMINATE state -- an active download with
-   no genuine percent to show right now (still `Preparing…`/`queued`, or a
-   postprocess `phase` like `Merging…`/`Converting…`, see
-   `computeOneOffProgressBar`/`buildDownloadChipItem`'s `indeterminate`
-   flag). The fill is set to full width by the caller; this animates the
-   SAME striped `background-image` already declared above by sliding its
-   `background-position` along the stripe's own 45deg repeat, so the bar
-   visibly moves instead of sitting at a flat, frozen 100% -- an honest "work
-   is happening, there's just no percent to report" signal rather than a
-   dead bar. */
 .dl-status-chip-progress-fill.indeterminate {
-  animation: dl-progress-barberpole 1s linear infinite; /* token-exempt: choreography */
+  transform: scaleX(0.4);
+  animation: dl-progress-sweep 1.2s linear infinite; /* token-exempt: choreography */
 }
-
-@keyframes dl-progress-barberpole {
-  from { background-position: 0 0; }
-  to { background-position: 32px 0; }
+@keyframes dl-progress-sweep {
+  from { transform: translateX(-100%) scaleX(0.4); }
+  to { transform: translateX(250%) scaleX(0.4); }
 }
-
-/* Respect the user's OS-level reduced-motion preference: the width slide and
-   the indeterminate barber-pole stripe are both purely decorative motion --
-   turning them off never hides or delays any information (the % text and
-   phase label update exactly the same either way). */
 @media (prefers-reduced-motion: reduce) {
   .dl-status-chip-progress-fill {
     transition: none;
   }
-
   .dl-status-chip-progress-fill.indeterminate {
     animation: none;
+    transform: none;
+    opacity: 0.5;
   }
 }
 
-/* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): the JS side
-   (common.js's `openOverlay`/`closeOverlayThen`, used by the Playlists
-   sheet, the subscription settings sheet, and the generic confirm/move
-   modals) already skips adding/removing the `.sheet-open`/`.modal-open`
-   class entirely when `prefers-reduced-motion: reduce` is set, so it never
-   even STARTS a transition -- but that alone would leave these elements
-   stuck in their "closed" visual state (`opacity: 0` / `translateY(100%)` /
-   `scale(0.97)`) forever, since nothing ever applies the "open" class to
-   counteract it. This override collapses the closed and open states to be
-   IDENTICAL (and drops the transition itself) so the element is simply
-   fully visible/in-place the instant it's unhidden/appended, regardless of
-   whether the open class ever gets added -- true instant show/hide, per the
-   OS-level preference. */
-@media (prefers-reduced-motion: reduce) {
-  .modal-backdrop,
-  .modal-content {
-    transition: none;
-    opacity: 1;
-    transform: none;
-  }
-}
 
 .dl-status-chip-item-status {
   margin-top: var(--space-2);
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  font: var(--t-footnote);
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* FIX-5 (two-reviewer gate, post-release): v1.24.0 A2 (T14)'s per-item
-   {video: reason} failure lines on the compact retro chip -- mirrors
-   `.dl-status-chip-item-status` above (same font-size/color) plus a small
-   top margin to visually separate the list from the status line, era
-   tokens only. Wraps rather than clipping (unlike
-   the single-line status above) since a batch can carry several failure
-   lines, each of which should stay fully readable. */
+/* FIX-5: a batch's per-item {video: reason} failure lines - they wrap (each stays readable)
+   instead of clipping like the one-line status above. */
 .dl-status-chip-item-failures {
   margin-top: var(--space-3);
 }
-
 .dl-status-chip-item-failure {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  font: var(--t-footnote);
+  color: var(--ink-2);
   overflow-wrap: break-word;
 }
-
 .dl-status-chip-item-failure + .dl-status-chip-item-failure {
   margin-top: var(--space-1);
 }
 
 .dl-status-chip-item-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
-.dl-status-chip-retry-btn,
-.dl-status-chip-dismiss-btn {
-  flex: 1;
-  padding: var(--space-2) var(--space-4);
-  font-family: inherit;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
-  border-radius: calc(var(--radius) + 1px);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-ui);
+.dl-status-chip-dismiss-all {
+  align-self: flex-end;
 }
 
-.dl-status-chip-retry-btn {
-  background-color: var(--yt-red);
-  border: 1px solid var(--yt-red-dark);
-  color: var(--on-accent);
-}
-
-.dl-status-chip-dismiss-btn {
-  background-color: var(--btn-bg);
-  border: 1px solid var(--border-dark);
-  color: var(--text-primary);
-}
-
-@media (hover: hover) {
-  .dl-status-chip-dismiss-btn:hover {
-    background-color: var(--btn-hover);
-  }
-}
-
-/* Mobile: clear the fixed `.bottom-nav` the SAME way `#player-dock`'s own
-   mobile rule does (line ~790 above), sharing the identical
-   `--mobile-bottom-nav-h` token -- AC57's "coordinates with the FR-2 dock so
-   the two never overlap on mobile" is satisfied structurally: the dock stays
-   pinned to the RIGHT edge, this chip to the LEFT, both lifted the same
-   amount above the bottom-nav. */
+/* Phone: clear the fixed bottom bar the same way #player-dock does, through the shared
+   --mobile-bottom-nav-h (it carries the safe-area inset), so the chip (left) and the dock
+   (right) sit at one height and never overlap. */
 @media (max-width: 768px) {
   #dl-status-chip {
-    left: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
-    max-width: min(260px, calc(100vw - 16px));
+    left: var(--space-4);
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
+    max-width: min(calc(var(--panel-w) * 0.65), calc(100vw - var(--space-4) * 2));
   }
 
   .dl-status-chip-panel {
@@ -7662,11 +7267,6 @@ body:not([data-view="watch"]) #watch-loop-row { display: none; }
 .home-feed-mode .section-title,
 .home-feed-mode #video-grid { display: none; }
 #home-feed-host { display: block; }
-.home-feed-empty {
-  padding: var(--space-10);
-  color: var(--text-secondary);
-  font-style: italic;
-}
 
 /* ============================================================
    v1.84 Modern YouTube Mode - a third home layout.
@@ -7692,71 +7292,24 @@ body:not([data-view="watch"]) #watch-loop-row { display: none; }
    this wins on BOTH desktop and mobile regardless of source order. */
 .modern-home-mode .section-title { display: none; }
 
-/* v1.86.0 (Dean): the modern-home header sort control - a glyph-only ▾ caret,
-   injected as the LEFTMOST item in the header top-right (main.js, modern home
-   only). Modelled on .notif-bell-btn; it opens the reused .sort-menu (positioned
-   absolutely against this relative wrapper).
-
-   VISIBILITY IS ROUTE-BOUND (v1.86.0 gate WARNING, both seats): the control lives
-   in the PERSISTENT header, but the SPA router caches the home view on nav-away
-   WITHOUT aborting it, so a JS abort-only removal orphans the ▾ on watch/music/
-   etc. So it is display:none by default and only shown under body[data-view="home"]
-   (the router stamps data-view on <body> after every swap, incl. cache-restore).
-   (0,2,1) beats the (0,1,0) base, so it wins on home and hides everywhere else. */
+/* The Modern home's header sort and card/list glyphs (main.js) are plain icon ui-btns (sweep
+   S9); the sort opens a ui.menu. VISIBILITY IS ROUTE-BOUND (v1.86.0 / v1.160 gate WARNINGs):
+   both live in the PERSISTENT header, but the SPA router caches the home view on nav-away
+   WITHOUT aborting it, so a JS abort-only removal would orphan them on watch / music / etc.
+   They are display:none by default and shown only under body[data-view="home"] (the router
+   stamps data-view on <body> after every swap, incl. cache-restore); style.css loads after
+   ui.css, so the hide beats the ui-btn's own display. */
 .modern-sort {
-  position: relative; /* anchor for the absolutely-positioned .sort-menu */
-  display: none;      /* route-gated: only the home view shows it (below) */
+  display: none;
   align-items: center;
 }
 body[data-view="home"] .modern-sort {
   display: inline-flex;
 }
-/* v1.160 (gate WARNING): the modern card/list toggle lives in the PERSISTENT
-   header, and home is CACHED (not destroyed) on nav-away, so its abort cleanup
-   does not fire - route-gate it like .modern-sort so it never orphans on
-   watch/stats/etc (where clicking it would hide-side-effect the cached grid). */
 .modern-view-toggle {
-  display: none;                 /* route-gated (below); shown only on home */
-  background: none;              /* v1.160.1 (Dean): transparent glyph, NOT the
-                                    filled .btn look that read as always-selected */
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: var(--space-3);
-  border-radius: var(--radius-full);
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-4xl); /* v1.160.2 (Dean): the grid/list mask glyph is 1em,
-                               so size it 22px to join the header glyph family
-                               (download/search/sort) - unset it inherited ~16px
-                               and read "a little small". */
-  line-height: 1; /* token-exempt: glyph centering */
+  display: none;
 }
 body[data-view="home"] .modern-view-toggle { display: inline-flex; }
-@media (hover: hover) {
-  .modern-view-toggle:hover { background-color: var(--bg-secondary); }
-}
-.modern-sort-btn {
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: var(--space-3);
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-4xl); /* v1.86.2 (Dean): the ▾ is a small caret CHARACTER (fills less of the em box than the mask-icons), so it needs one step MORE (22px) than the download/search glyphs to read the same size */
-  line-height: 1; /* token-exempt: glyph centering */
-}
-@media (hover: hover) {
-  .modern-sort-btn:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-.modern-sort-caret {
-  line-height: 1; /* token-exempt: glyph centering */
-}
 
 /* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
 .modern-home-mode #video-grid {
@@ -9176,7 +8729,7 @@ html.is-phone #music-popout-btn { display: none; }
      stays in the @media (max-width:768px) block below. */
   .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
   .mms-sticker-menu{ min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
-    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--radius-lg); box-shadow:var(--shadow-modal); padding:var(--space-6); font-family:var(--font-family); }
+    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--r-md); box-shadow:var(--shadow-overlay); padding:var(--space-6); font-family:var(--font-family); } /* sweep S9 (D4.6): the SHELL takes the one overlay radius + shadow (a popover, --r-md); its surface and ink stay the skin's - the rows (S7's) paint on them */
   /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
      sets it explicitly (.account-menu-item, settings-menu-item, .md-row's font:inherit).
      Without this the whole sticker menu rendered in the UA default - his "the font, the

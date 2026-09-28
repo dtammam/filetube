@@ -17,6 +17,7 @@ const {
 } = require('../../public/js/common.js');
 
 const ROOT = path.join(__dirname, '..', '..');
+const UI_CSS_ALL = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
 const CSS_PATH = path.join(ROOT, 'public', 'css', 'style.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
 
@@ -291,34 +292,29 @@ test('F1: finish() belt-and-braces -- even if a stale transitionend slips throug
 
 // ---- CSS: .sheet-open / .modal-open transition rules -----------------------
 
-test('.modal-backdrop fades in/out via .modal-open (opacity 0 -> 1) and .modal-content scales in (0.97 -> 1)', () => {
-  const backdropRule = /\.modal-backdrop\s*\{([^}]*)\}/.exec(css);
-  assert.ok(backdropRule);
-  assert.match(backdropRule[1], /opacity:\s*0;/);
-  assert.match(backdropRule[1], /transition:\s*opacity[^;]*;/);
-  assert.match(css, /\.modal-backdrop\.modal-open\s*\{\s*opacity:\s*1;/);
-
-  const contentRule = /\.modal-content\s*\{([^}]*)\}/.exec(css);
-  assert.ok(contentRule);
-  assert.match(contentRule[1], /transform:\s*scale\(0\.97\);/);
-  assert.match(css, /\.modal-backdrop\.modal-open \.modal-content\s*\{\s*transform:\s*scale\(1\);/);
+// Sweep S9 (AC12, the triage's "S9 half"): the generic .modal-backdrop / .modal-content family
+// is gone with its last creator; every dialog is a ui.sheet dialog, whose fade + scale-in and
+// tall-dialog cap are the primitive's. The intents, kept on ui.css:
+//   - v1.26.2: the dialog fades in and scales in (never teleports);
+//   - v1.108 (Dean: "the Edit chapters section is cut off at the bottom"): a TALL dialog caps
+//     its height and scrolls INSIDE (the body scrolls, the actions stay reachable), clearing
+//     the PWA home indicator.
+test('a ui.sheet dialog fades and scales in (opacity 0 -> is-open 1, scale(0.98) -> none), and no generic .modal-* rule is left', () => {
+  assert.match(UI_CSS_ALL, /\.ui-sheet \{[^}]*opacity:\s*0;[^}]*transition:\s*opacity var\(--dur-fade\)/s);
+  assert.match(UI_CSS_ALL, /\.ui-sheet\.is-open \{ opacity: 1; \}/);
+  assert.match(UI_CSS_ALL, /\.ui-sheet--dialog \{[^}]*transform:\s*scale\(0\.98\);/s);
+  const live = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(live, /\.modal-(backdrop|content|title|body|open|closing)\b/, 'the generic modal family is gone');
 });
 
-// v1.108 (Dean: "the Edit chapters section is cut off at the bottom of the
-// scroll window"): the centred .modal-content must cap its height and scroll
-// internally so a tall modal (chapters editor) never clips its Save/Cancel row
-// off the viewport bottom. Bind all three parts -- remove any and a tall modal
-// regresses to the clip.
-test('.modal-content caps its height (dvh + safe-area insets) and scrolls internally, with a safe-area bottom pad', () => {
-  const contentRule = /\.modal-content\s*\{([^}]*)\}/.exec(css);
-  assert.ok(contentRule);
-  const body = contentRule[1];
-  assert.match(body, /overflow-y:\s*auto;/, 'a tall modal must scroll instead of clipping');
-  assert.match(body, /max-height:\s*calc\(100dvh[^;]*env\(safe-area-inset-top[^;]*env\(safe-area-inset-bottom[^;]*\);/,
-    'dvh height cap that clears the PWA notch/home-indicator');
-  assert.match(body, /max-height:\s*calc\(100vh[^;]*\);/, 'vh fallback for engines without dvh');
-  assert.match(body, /padding-bottom:\s*calc\(var\(--space-10\)\s*\+\s*env\(safe-area-inset-bottom,\s*0px\)\);/,
-    'Save/Cancel stays clear of the home indicator when scrolled to the bottom');
+test('v1.108: a tall ui.sheet dialog caps its height and scrolls INSIDE its body (split clip / scroll), clearing the home indicator', () => {
+  const sheet = /\.ui-sheet \{([^}]*)\}/.exec(UI_CSS_ALL.replace(/\/\*[\s\S]*?\*\//g, ''));
+  assert.ok(sheet);
+  assert.match(sheet[1], /max-height:\s*90dvh;/, 'a dvh cap');
+  assert.match(sheet[1], /overflow:\s*hidden;/, 'the sheet clips');
+  const body = /\.ui-sheet__body \{([^}]*)\}/.exec(UI_CSS_ALL.replace(/\/\*[\s\S]*?\*\//g, ''));
+  assert.match(body[1], /overflow-y:\s*auto;/, 'the body scrolls - a tall dialog never clips its actions off-screen');
+  assert.match(UI_CSS_ALL, /\.ui-sheet--dialog \{[^}]*inset:\s*0;[^}]*margin:\s*auto;/s, 'centred in the viewport (so its cap is inside it)');
 });
 
 // Sweep S1 (DELIBERATE lock update, AC12 - the triage's "ui-sheet open/close contract
@@ -348,24 +344,13 @@ test('the Subscriptions sheets are ui.sheets: bottom slides translateY(100%) -> 
   assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.sub-sheet/, 'the bespoke .sub-sheet family is gone');
 });
 
-test('prefers-reduced-motion: reduce collapses every sheet/modal transition to instant, fully-visible/in-place (no stuck half-state)', () => {
-  // Sweeps S1 + S5: the Playlists sheet and the Subscriptions sheet left this list (a ui.sheet: ui.css's own reduced-motion rule
-  // makes it opacity-only and ALWAYS applies the open class, F48).
-  const rule = /\.modal-backdrop,\s*\.modal-content\s*\{([^}]*)\}/.exec(css); // S5 moved the sub-sheet to ui.sheet too
-  const ui = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
-  assert.match(ui, /@media \(prefers-reduced-motion: reduce\) \{\s*\.ui-sheet,\s*\.ui-sheet\.is-open,\s*\.ui-sheet--bottom,\s*\.ui-sheet--panel \{\s*transform: none;\s*transition: opacity var\(--dur-fade\) linear;/,
+test('prefers-reduced-motion: reduce collapses every sheet transition to opacity only (no stuck half-state), and no bespoke modal rule remains to collapse', () => {
+  // Sweeps S1 + S5 + S9: every sheet and dialog is a ui.sheet - ui.css's own reduced-motion
+  // rule makes it opacity-only and ALWAYS applies the open class (F48). Sweep S9 deleted the
+  // generic .modal-backdrop / .modal-content family and its reduced-motion override.
+  assert.match(UI_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*\n\s*\.ui-sheet,\s*\n\s*\.ui-sheet\.is-open,\s*\n\s*\.ui-sheet--bottom,\s*\n\s*\.ui-sheet--panel \{\s*\n\s*transform: none;\s*\n\s*transition: opacity var\(--dur-fade\) linear;/,
     'the ui.sheet reduced-motion contract');
-  assert.ok(rule, 'expected a combined selector list covering every sheet/modal surface');
-  assert.match(rule[1], /transition:\s*none;/);
-  assert.match(rule[1], /opacity:\s*1;/);
-  assert.match(rule[1], /transform:\s*none;/);
-
-  // And that selector list must actually live inside the reduced-motion query.
-  const queryBlock = /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.modal-backdrop,\s*\.modal-content\s*\{[^}]*\}\s*\n\}/.exec(css);
-  assert.ok(queryBlock, 'expected the combined rule to sit inside @media (prefers-reduced-motion: reduce)');
-  // The ui.sheets (the Subscriptions panels + settings sheet) take their own reduced-motion
-  // rule in ui.css: opacity only, never a transform (F48 - the open class still applies).
-  assert.match(UI_CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*\n\s*\.ui-sheet,\s*\n\s*\.ui-sheet\.is-open,\s*\n\s*\.ui-sheet--bottom,\s*\n\s*\.ui-sheet--panel \{\s*\n\s*transform: none;/);
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.modal-backdrop|\.modal-content/, 'no bespoke modal rule left to collapse');
 });
 
 test('every open/close call site of the Playlists sheet routes through openPlaylistsSheet/closePlaylistsSheet (no bypass leaving a stuck half-state)', () => {

@@ -99,14 +99,16 @@ test('(v1.86.2 #2, converted) the card Delete asks one ui.confirm then deletes t
   assert.doesNotMatch(MAIN, /card-delete-btn|nextArmState/, 'the inline two-tap arm is gone');
 });
 
-test('(v1.87.1 Dean) the sort control is an inline keyboard_arrow_down chrome-icon svg, not a mask or a ▾ text caret', () => {
-  const fn = MAIN.slice(MAIN.indexOf('function injectModernHeaderSort'), MAIN.indexOf('function injectModernHeaderSort') + 2600);
-  // v1.87.1: inline <svg> (chromeIconEl('caret')) rather than the v1.86.3
-  // `.icon-arrow-down` MASK - a mask decode-lags -> pop-in on a mobile cold
-  // start (the whole point of this wave). Still a 1em glyph sized like the
-  // download/search icons.
-  assert.match(fn, /chromeIconEl\('caret', 'modern-sort-caret'\)/,
-    'the caret is an inline chrome-icon svg (keyboard_arrow_down)');
-  assert.doesNotMatch(fn, /caret\.className = 'icon-arrow-down/, 'no leftover arrow-down mask caret');
-  assert.doesNotMatch(fn, /textContent = '▾'/, 'no ▾ text-character caret (it read half-height vs the icon family)');
+// v1.87.1 (Dean): the sort glyph paints from the sprite (no mask decode-lag pop-in on a cold
+// start). Sweep S9 (F31, F46): it is a header ui-btn drawing the registry `sort` glyph (the
+// same 22px icon box as every header glyph), and its options are a ui.menu with the current
+// sort a trailing ink CHECK - never red text in a hand-built list.
+test('(v1.87.1 Dean, sweep S9) the sort control is a header ui-btn with the sprite sort glyph, opening a ui.menu whose current sort is CHECKED', () => {
+  const fn = MAIN.slice(MAIN.indexOf('function injectModernHeaderSort'), MAIN.indexOf('function injectModernHeaderSort') + 3200);
+  assert.match(fn, /chromeButtonEl\(\{ icon: 'sort', ariaLabel: 'Sort', cls: 'modern-sort-btn' \}\)/, 'a header ui-btn with the sprite glyph');
+  assert.doesNotMatch(fn, /icon-arrow-down|textContent = '▾'|modern-sort-caret/, 'no mask, no text caret');
+  assert.match(fn, /window\.ui\.menu\(\{/, 'the options are a ui.menu');
+  assert.match(fn, /checked: val === activeModernSort/, 'the current sort is the checked item (ink check, F46)');
+  assert.match(fn, /signal: sig/, 'the menu closes with the view');
+  assert.doesNotMatch(fn, /sort-menu|\.active\b|li\.classList/, 'no hand-built list with an active (red) item');
 });

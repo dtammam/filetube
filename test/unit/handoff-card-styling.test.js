@@ -28,7 +28,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const commonSrc = fs.readFileSync(path.join(ROOT, 'public/js/common.js'), 'utf8');
-const cssSrc = fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
+// Sweep S9: the card is built from ui.css primitives (ui-btn, ui-thumb, ui-icon) plus its own
+// layout rules in style.css - the styling source is both sheets.
+const cssSrc = fs.readFileSync(path.join(ROOT, 'public/css/ui.css'), 'utf8') + '\n'
+  + fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
 
 // The controller is one IIFE; slice it out so we only mine ITS class names and
 // never the rest of a 10k-line file.
@@ -79,10 +82,26 @@ test('every className the card renders has a CSS rule behind it (derived, not en
     `these classNames render with NO CSS rule binding them - a DEFECT, not a stub: ${missing.join(', ')}`);
 });
 
-test('the card element id has a rule, and a hidden rule that actually hides it', () => {
-  assert.ok(/#handoff-card\s*\{/.test(css), '#handoff-card must have its own rule');
-  assert.ok(/#handoff-card\[hidden\]\s*\{\s*display:\s*none/.test(css),
-    '[hidden] must be backed by display:none - the card sets .hidden and a flex container ignores the attribute otherwise');
+test('the card element id has a rule, and [hidden] actually hides it (the one global [hidden] rule, !important over its display:flex)', () => {
+  assert.ok(/#handoff-card\s*\{[^}]*display:\s*flex/.test(css), '#handoff-card must have its own (flex) rule');
+  // UI pass step 3 / sweep S9: the per-class [hidden] patch is gone; ui.css's global
+  // [hidden] { display: none !important } beats the card's author display.
+  assert.ok(/(^|\n)\[hidden\]\s*\{\s*display:\s*none\s*!important/.test(css),
+    'the global [hidden] rule must exist - the card sets .hidden and a flex container ignores the attribute otherwise');
+  assert.ok(!/#handoff-card[^{]*\{[^}]*display:[^;}]*!important/.test(css), 'no card rule out-ranks the global [hidden]');
+});
+
+// Sweep S9 (F47, D4.6): the card's controls are the primitives - the ONE close mark (a plain
+// icon ui-btn with the registry close glyph, never a text x), a primary ui-btn link, a
+// ui-thumb whose bar is scaled by --p (data), registry play / pause glyphs for the state.
+test('S9: the dismiss is the one plain icon ui-btn close, Continue a primary ui-btn link, the thumb a ui-thumb fed --p, the state a registry glyph', () => {
+  assert.match(controller, /U\.button\(\{ variant: 'plain', shape: 'icon', size: 'sm', icon: 'close', ariaLabel: 'Dismiss' \}\)/);
+  assert.ok(!/textContent = '\\u00d7'|'×'/.test(controller), 'no text-glyph close mark');
+  assert.match(controller, /go\.className = 'ui-btn ui-btn--primary ui-btn--sm'/);
+  assert.match(controller, /U\.thumb\(\{ aspect: '16x9', context: 'row' \}\)/);
+  assert.match(controller, /fill\.style\.setProperty\('--p', String\(handoffProgressPercent\(presence\.position, presence\.duration\) \/ 100\)\)/);
+  assert.ok(!/\.style\.width\s*=/.test(controller), 'no inline width');
+  assert.match(controller, /stateName = presence\.state === 'paused' \? 'pause' : 'play_arrow'/);
 });
 
 test('the card mounts on <body>, never inside #view-root (the v1.38 SPA class)', () => {
@@ -108,7 +127,7 @@ test('the two client-supplied fields are written as textContent, never innerHTML
   assert.ok(!/innerHTML/.test(controller), 'the handoff controller must never use innerHTML');
 });
 
-test('no literal emoji/pictographic characters in the card source (glyphs come from CSS)', () => {
+test('no literal emoji/pictographic characters in the card source (glyphs come from the icon registry)', () => {
   // The v1.38 rule: chrome glyphs live in CSS, never as codepoints in markup.
   // FE0F (the emoji variation selector) is a COMBINING mark, so it lives as
   // its own alternation rather than inside the class - eslint's
@@ -116,7 +135,7 @@ test('no literal emoji/pictographic characters in the card source (glyphs come f
   // set, and it refused this very commit until I split it out.
   const pictographic = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]|\uFE0F/u;
   assert.ok(!pictographic.test(controller),
-    'the controller must not carry literal emoji - the state/play glyphs are CSS shapes');
+    'the controller must not carry literal emoji - the state/play glyphs are registry icons');
 });
 
 test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => {
@@ -124,16 +143,19 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
   // Search for the terminator AFTER the card's start (slicing to an earlier hit produced a
   // backwards, empty range that made this assertion vacuous). Sweep S9 deleted the `.toast`
   // rule that used to follow the card; the next rule after it is the one-off dialog's.
-  const cardStart = css.indexOf('#handoff-card {');
-  assert.ok(cardStart > -1, 'the card CSS block must be findable');
-  const cardEnd = css.indexOf('.oneoff-modal-backdrop {', cardStart);
-  assert.ok(cardEnd > cardStart, 'the card CSS block must end where the next family starts');
-  const cardCss = css.slice(cardStart, cardEnd);
+  // Sweep S9: the card's rules are every rule whose selector names it (parsed, not sliced
+  // between two neighbours that a later sweep can move).
+  const { cssRules } = require('../helpers/stylesheets');
+  const cardCss = cssRules(fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8'))
+    .filter((r) => /handoff/.test(r.sel)).map((r) => r.body).join('\n');
   assert.ok(cardCss.length > 500, `the card CSS block must be non-trivial, got ${cardCss.length} chars`);
 
   const consumed = new Set();
   for (const m of cardCss.matchAll(/var\((--[a-z0-9-]+)/g)) consumed.add(m[1]);
   assert.ok(consumed.size >= 10, `expected the card's real token roster, derived ${consumed.size}`);
+  // Sweep S9 (F57's family): the card paints the overlay roles, never a legacy surface / red.
+  for (const t of ['--surface-overlay', '--shadow-overlay', '--ink-1', '--ink-2']) assert.ok(consumed.has(t), 'consumes ' + t);
+  for (const t of ['--yt-red', '--bg-sidebar', '--border-color']) assert.ok(!consumed.has(t), 'no legacy ' + t);
 
   // A token resolves for an era if that era's block defines it, or :root does
   // (:root is the base every era inherits and selectively overrides).

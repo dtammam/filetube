@@ -541,7 +541,7 @@ function buildModernEmptyHtml(filter) {
     unwatched: "Nothing unwatched - you're all caught up.",
     all: 'Nothing here yet - add media and it fills in.',
   };
-  return `<div class="home-feed-empty">${msgs[filter] || msgs.all}</div>`;
+  return uiStateHtml({ icon: 'smart_display', title: msgs[filter] || msgs.all });
 }
 
 // v1.79 home feed: fetch the per-user rows and render them into `host`. Every
@@ -560,7 +560,7 @@ async function renderHomeFeed(host, signal) {
     const data = res.ok ? await res.json() : { rows: [] };
     const rows = Array.isArray(data.rows) ? data.rows : [];
     if (rows.length === 0) {
-      host.innerHTML = '<div class="home-feed-empty">Nothing here yet - start watching and your feed fills in.</div>';
+      host.innerHTML = uiStateHtml({ icon: 'smart_display', title: 'Nothing here yet', body: 'Start watching and your feed fills in.' });
       return;
     }
     host.innerHTML = rows.map(buildFeedRowHtml).join('');
@@ -570,7 +570,7 @@ async function renderHomeFeed(host, signal) {
     // QA gate SUGGESTION: feed mode hides the classic grid, so a thrown fetch
     // error must not leave a fully blank home - render a message with the way
     // back to the classic grid, never an empty surface.
-    host.innerHTML = '<div class="home-feed-empty">Could not load your home feed. Try again, or switch to the classic grid in Settings.</div>';
+    host.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load your home feed', body: 'Try again, or switch to the classic grid in Settings.' });
   }
 }
 
@@ -1666,7 +1666,7 @@ const PreviewCards = (function () {
             data = res.ok ? await res.json() : { items: [] };
           } catch (err) {
             if (err && err.name === 'AbortError') return;
-            if (token === modernReqToken) videoGrid.innerHTML = '<div class="home-feed-empty">Could not load. Try again, or switch layout in Settings.</div>';
+            if (token === modernReqToken) videoGrid.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load', body: 'Try again, or switch layout in Settings.' });
             return;
           }
           if (token !== modernReqToken) return; // a newer chip click superseded this
@@ -1695,6 +1695,11 @@ const PreviewCards = (function () {
         // the grid. Self-contained (own menu + handlers) because the classic
         // #sort-dropdown wiring drives the classic grid's resetAndReload, not this
         // endpoint. Reuses .sort-menu.
+        // Sweep S9 (F46, F31): the glyph is a plain icon ui-btn (the header's own button, the
+        // registry `sort` glyph - never a text caret) and the options are a ui.menu anchored
+        // under it: the current sort is a trailing ink CHECK, never red text (F46), and the
+        // menu owns Esc / arrow keys / the outside tap / focus return. `menuCtrl` closes with
+        // the view (the signal) like every other body-level overlay.
         function injectModernHeaderSort(sig) {
           const headerRight = document.querySelector('.header-right');
           if (!headerRight) return; // signed-out / no shell -> nothing to attach to
@@ -1703,56 +1708,15 @@ const PreviewCards = (function () {
 
           const wrap = document.createElement('div');
           wrap.className = 'modern-sort';
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'modern-sort-btn';
-          btn.setAttribute('aria-haspopup', 'listbox');
+          const btn = chromeButtonEl({ icon: 'sort', ariaLabel: 'Sort', cls: 'modern-sort-btn' });
+          btn.setAttribute('aria-haspopup', 'menu');
           btn.setAttribute('aria-expanded', 'false');
-          btn.setAttribute('aria-label', 'Sort');
           btn.title = 'Sort';
-          // v1.86.3 (Dean): a real chevron (keyboard_arrow_down) instead of a tiny
-          // ▾ text character, so it sizes like the download/search glyphs.
-          // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-arrow-down`
-          // mask - the mask decode-lags on a mobile cold start (chromeIconEl is a
-          // common.js top-level, available here like MODERN_SORT_OPTIONS).
-          const caret = chromeIconEl('caret', 'modern-sort-caret');
-          if (caret) btn.appendChild(caret);
-          const menu = document.createElement('ul');
-          menu.className = 'sort-menu modern-sort-menu';
-          menu.setAttribute('role', 'listbox');
-          menu.setAttribute('aria-label', 'Sort');
-          menu.hidden = true;
-          for (const [val, label] of MODERN_SORT_OPTIONS) {
-            const li = document.createElement('li');
-            li.setAttribute('role', 'option');
-            li.setAttribute('data-sort', val);
-            li.tabIndex = -1;
-            li.textContent = label;
-            menu.appendChild(li);
-          }
           wrap.appendChild(btn);
-          wrap.appendChild(menu);
           headerRight.insertBefore(wrap, headerRight.firstChild); // leftmost of the cluster
 
-          const opts = () => Array.prototype.slice.call(menu.querySelectorAll('[data-sort]'));
-          const applyActive = () => opts().forEach((li) => {
-            const on = li.getAttribute('data-sort') === activeModernSort;
-            li.classList.toggle('active', on);
-            li.setAttribute('aria-selected', on ? 'true' : 'false');
-          });
-          const open = () => {
-            menu.hidden = false;
-            btn.setAttribute('aria-expanded', 'true');
-            const cur = opts().find((li) => li.getAttribute('data-sort') === activeModernSort) || opts()[0];
-            if (cur) cur.focus();
-          };
-          const close = (returnFocus) => {
-            menu.hidden = true;
-            btn.setAttribute('aria-expanded', 'false');
-            if (returnFocus) btn.focus();
-          };
-          const choose = (val, returnFocus) => {
-            close(returnFocus);
+          let menuCtrl = null;
+          const choose = (val) => {
             const next = resolveModernSort(val);
             // v1.86.0 gate SUGGESTION: re-picking the SAME key is a no-op EXCEPT
             // 'random' - "Feeling lucky" should re-roll each time (the server
@@ -1761,36 +1725,19 @@ const PreviewCards = (function () {
             if (next === activeModernSort && next !== 'random') return;
             activeModernSort = next;
             try { localStorage.setItem('filetube_modern_sort', next); } catch (_) { /* private mode */ }
-            applyActive();
             fetchModernGrid(sig);
           };
-          applyActive();
-
-          btn.addEventListener('click', (e) => { e.stopPropagation(); if (menu.hidden) open(); else close(); }, { signal: sig });
-          btn.addEventListener('keydown', (e) => {
-            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && menu.hidden) { e.preventDefault(); open(); }
-          }, { signal: sig });
-          menu.addEventListener('click', (e) => {
-            const li = e.target.closest('[data-sort]');
-            if (li) choose(li.getAttribute('data-sort'), false);
-          }, { signal: sig });
-          menu.addEventListener('keydown', (e) => {
-            const list = opts();
-            const idx = list.indexOf(document.activeElement);
-            if (e.key === 'ArrowDown') { e.preventDefault(); (list[idx + 1] || list[0]).focus(); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); (list[idx - 1] || list[list.length - 1]).focus(); }
-            else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
-            else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
-            else if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              const li = document.activeElement;
-              if (li && li.getAttribute('data-sort')) choose(li.getAttribute('data-sort'), true);
-            } else if (e.key === 'Escape') { e.preventDefault(); close(true); }
-          }, { signal: sig });
-          document.addEventListener('click', (e) => {
-            if (menu.hidden) return;
-            if (wrap.contains(e.target)) return;
-            close();
+          btn.addEventListener('click', () => {
+            if (menuCtrl && menuCtrl.isOpen()) { menuCtrl.close(); return; }
+            btn.setAttribute('aria-expanded', 'true');
+            menuCtrl = window.ui.menu({
+              title: 'Sort by',
+              anchor: btn,
+              signal: sig,
+              items: MODERN_SORT_OPTIONS.map(([val, label]) => ({ label, value: val, checked: val === activeModernSort })),
+              onSelect: choose,
+              onClose: () => { btn.setAttribute('aria-expanded', 'false'); },
+            });
           }, { signal: sig });
 
           // Genuine view DESTROY (fresh/folder home load): remove the node
@@ -1816,16 +1763,13 @@ const PreviewCards = (function () {
           if (!headerRight) return;
           const prior = headerRight.querySelector('.modern-view-toggle');
           if (prior) prior.remove(); // idempotent
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          // v1.160.1 (Dean): the transparent glyph style (like .modern-sort-btn),
-          // NOT the filled .btn look which read as "always selected/grey".
-          btn.className = 'modern-view-toggle';
-          const icon = document.createElement('i');
-          btn.appendChild(icon);
+          // Sweep S9 (F31): a plain icon ui-btn like every header glyph; the registry
+          // grid_view / view_list glyph shows the mode a click switches TO.
+          const btn = chromeButtonEl({ icon: 'view_list', ariaLabel: 'Switch to list view', cls: 'modern-view-toggle' });
+          const use = btn.querySelector('.ui-btn__icon use');
           const sync = () => {
             const isList = getStoredViewMode() === 'list';
-            icon.className = isList ? 'icon-grid' : 'icon-list'; // show the mode a click switches TO
+            if (use) use.setAttribute('href', isList ? '#i-grid_view' : '#i-view_list'); // the mode a click switches TO
             const label = isList ? 'Switch to card view' : 'Switch to list view';
             btn.title = label;
             btn.setAttribute('aria-label', label);
@@ -2786,15 +2730,15 @@ const PreviewCards = (function () {
         // is context-aware: a search miss, an empty folder, or a genuinely
         // empty library each get their own message + hint.
         const actionHtml = (searchQuery || folderFilter)
-          ? '<a href="/" class="btn empty-state-action">View All Media</a>'
+          ? '<a href="/" class="ui-btn ui-btn--secondary ui-btn--md empty-state-action"><span class="ui-btn__label">View All Media</span></a>'
           : '';
         let emptyOpts;
         if (searchQuery) {
-          emptyOpts = { icon: 'icon-search', message: 'No results found.', hint: 'Try a different search, or browse all your media.', actionHtml };
+          emptyOpts = { icon: 'search', message: 'No results found.', hint: 'Try a different search, or browse all your media.', actionHtml };
         } else if (folderFilter) {
-          emptyOpts = { icon: 'icon-folder', message: 'This folder is empty.', hint: 'Nothing here yet — new files in this folder will show up after a scan.', actionHtml };
+          emptyOpts = { icon: 'folder', message: 'This folder is empty.', hint: 'Nothing here yet - new files in this folder show up after a scan.', actionHtml };
         } else {
-          emptyOpts = { icon: 'icon-play', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here — with thumbnails, durations, and playback that picks up where you left off.' };
+          emptyOpts = { icon: 'smart_display', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here - with thumbnails, durations, and playback that picks up where you left off.' };
         }
         videoGrid.innerHTML = buildEmptyStateHtml(emptyOpts);
         return;

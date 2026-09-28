@@ -53,7 +53,8 @@ const findUi = (sel) => uiRules.find((r) => r.at === '' && norm(r.sel) === sel);
 
 test('the parser sees all three sheets (guards the census below against going vacuous)', () => {
   for (const [file, css] of SHEETS) assert.ok(cssRules(css).length > 5, `${file} parsed`);
-  assert.ok(ALL.filter((r) => r.file === 'style.css').length > 2000);
+  // A parse floor: the sweeps shrink style.css (1974 rules after S9); a broken parse finds a handful.
+  assert.ok(ALL.filter((r) => r.file === 'style.css').length > 1000);
 });
 
 test('the D6 base opens ui.css: html, body, then img/a/video/svg, each with its declarations', () => {

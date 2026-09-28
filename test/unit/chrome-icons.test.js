@@ -172,9 +172,11 @@ test('the JS build sites go through chromeIconEl, not an `.icon-*` mask <i> (sou
   assert.doesNotMatch(src, /icon\.className = 'icon-download';\s*btn\.appendChild/, 'no leftover icon-download mask <i> builder in the one-off button');
 });
 
-test('main.js sort caret uses chromeIconEl (inline svg), not an icon-arrow-down mask', () => {
+// Sweep S9 (F31, F46): the Modern header sort is a header ui-btn (chromeButtonEl) drawing the
+// registry `sort` glyph, opening a ui.menu - never a mask, a caret glyph or a hand-built list.
+test('main.js sort glyph is a header ui-btn with the registry sort icon (no caret, no mask)', () => {
   const src = fs.readFileSync(path.join(REPO, 'public', 'js', 'main.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  assert.match(src, /chromeIconEl\('caret', 'modern-sort-caret'\)/, 'the modern sort caret is an inline chrome-icon svg');
-  assert.doesNotMatch(src, /className = 'icon-arrow-down modern-sort-caret'/, 'no leftover arrow-down mask caret');
+  assert.match(src, /chromeButtonEl\(\{ icon: 'sort', ariaLabel: 'Sort', cls: 'modern-sort-btn' \}\)/, 'the modern sort is a header ui-btn');
+  assert.doesNotMatch(src, /modern-sort-caret|icon-arrow-down/, 'no leftover caret or mask');
 });

@@ -92,10 +92,11 @@ test('(v1.86.0 gate WARNING) the header sort ▾ is ROUTE-GATED: display:none by
     'only the home route shows the ▾ (re-shows on cache-restore, hides on every other view)');
 });
 
-test('(v1.86.3 Dean) the sort chevron button is sized to the uniform 22px header-glyph box (--fs-4xl)', () => {
-  // The caret is now a keyboard_arrow_down MASK-ICON (main.js), a 1em glyph like
-  // download/search - so the button's --fs-4xl makes it a 22px box == the
-  // bell/queue inline-SVG box. All header glyphs are one size.
-  assert.match(css, /\.modern-sort-btn \{[^}]*font-size:\s*var\(--fs-4xl\)/,
-    'the sort glyph is --fs-4xl (22px) - the uniform header-glyph box');
+// v1.86.3 (Dean): the sort glyph is the uniform header-glyph box. Sweep S9: it is a header
+// ui-btn (chromeButtonEl: plain, md, icon - the 22px --icon-md glyph every header button
+// draws), so no bespoke rule sizes or paints it; the header geometry check (HDR) measures
+// the header's buttons level and equal.
+test('(v1.86.3 Dean, sweep S9) the sort glyph needs no bespoke size or paint rule - it is a header ui-btn', () => {
+  assert.doesNotMatch(css, /\.modern-sort-btn\s*\{/, 'no bespoke .modern-sort-btn rule');
+  assert.doesNotMatch(css, /\.modern-sort-caret|\.sort-menu\b/, 'the caret and the hand-built menu are gone');
 });

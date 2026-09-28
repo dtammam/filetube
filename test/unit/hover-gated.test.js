@@ -22,7 +22,9 @@ const ungated = (css) => cssRules(css).filter((r) => /:hover/.test(r.sel) && !is
 
 test('the parser sees style.css and its hover rules (guards the lock below against going vacuous)', () => {
   const rules = cssRules(SHEETS['style.css']);
-  assert.ok(rules.length > 2000, `style.css rules parsed: ${rules.length}`);
+  // A parse floor, not a count to hold: the sweeps delete style.css rules as surfaces move onto
+  // ui.css (1974 after S9), so a broken parse (a handful) is what it must catch.
+  assert.ok(rules.length > 1000, `style.css rules parsed: ${rules.length}`);
   const hovers = rules.filter((r) => /:hover/.test(r.sel));
   // The floor only proves the parser SEES hover rules (a vacuous lock passes on zero). The
   // sweeps delete bespoke hover rules as surfaces move onto ui.css (92 at step 4, 48 after S4),
