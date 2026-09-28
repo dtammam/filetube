@@ -92,7 +92,8 @@
   element's `currentTime` right after the seek on both devices, same track and chapter (the
   `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
 
-- [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** _(Dean,
+- [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** - MITIGATED
+  v1.341.3, confirm on device (one rotate with `?debugLifecycle=1`; the log now shows the scroll) _(Dean,
   2026-09-28, screen recording
   `~/.claude/uploads/ef864c0d-24a7-4879-a566-0754c2cf820a/a05ca679-ScreenRecording_09-28-2026_18-17-56_1.mov`)_.
   Frame-by-frame (extracted 2026-09-28, 116 frames at ~54 fps, the WATCH page, Dark): frame 79 the
@@ -102,6 +103,14 @@
   Likely a stale env(safe-area-inset-top) after rotation, with the header and the page offset taking
   the new value at different moments. Reproduce with `Emulation.setDeviceMetricsOverride` rotation in the geometry
   G4 sequences (the Pocket rotation F23 class) and fix the element whose top moves.
+  v1.341.3: headless could not reproduce the bump, but every frame fits a stray document scroll of
+  exactly the inset (~59) after the rotation back (the fixed header's layer lags it in 80-81; the
+  content sits high in 82-102), and frame 103 is our own dead-zone snap, whose double-rAF pass runs
+  BEFORE the scroll lands so only the 650ms pass caught it. Now any scroll or visual-viewport resize in
+  the second after a rotation re-runs the snap next frame (emulated: a stray 59px scroll corrected 16ms
+  later, was 434ms). The log names the source: `y` on every viewport line, scroll lines near a
+  rotation, and `fauxScroll` (on/off, y, saved, restore). If y reads ~59 after the rotation and the
+  saved value is 0, iOS deposited it; if saved is 59, the faux keeper's entry capture is the bug.
 
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
@@ -354,6 +363,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.341.3 - Rotating back to portrait no longer bumps the watch page (2026-09-28)
+
+- **The watch page settles in one step after you turn the phone back upright.** It used to sit a
+  notch-height too high for about a third of a second before snapping into place; the correction now
+  lands on the next frame.
+- For the next device check, `?debugLifecycle=1` now logs the page's scroll position around a rotation.
 
 ### v1.341.2 - Opening a panel no longer shifts the page on desktop (2026-09-28)
 

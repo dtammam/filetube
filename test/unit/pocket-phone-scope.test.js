@@ -253,6 +253,8 @@ test('D7 formatViewportDetail: the ?debugLifecycle=1 viewport line - layout + vi
   doc.documentElement.classList.remove('is-phone');
   assert.strictEqual(formatViewportDetail({ innerWidth: 1440, innerHeight: 900, document: doc }), '1440x900 · not-phone');
   assert.strictEqual(formatViewportDetail(null).length > 0, true, 'never throws');
+  // v1.341.3: the document scroll rides the line (the rotation bump was a stray scroll).
+  assert.strictEqual(formatViewportDetail({ innerWidth: 393, innerHeight: 852, pageYOffset: 59.4, document: doc }), '393x852 · not-phone · y 59');
   const src = require('node:fs').readFileSync(require.resolve('../../public/js/player.js'), 'utf8');
   for (const ev of ["'resize'", "'orientationchange'"]) assert.match(src, new RegExp("window\\.addEventListener\\(" + ev + ", function \\(\\) \\{ logViewport\\("), ev + ' is logged');
   assert.match(src, /visualViewport\.addEventListener\('resize', function \(\) \{ logViewport\('visualViewport:resize'\); \}\)/, 'the visual viewport too');
@@ -263,4 +265,21 @@ test('D7 formatViewportDetail: the ?debugLifecycle=1 viewport line - layout + vi
 test('helper: unscopePocket drops exactly the takeover scope and nothing else', () => {
   assert.strictEqual(unscopePocket(POCKET_SCOPE + ' .mms-full{a:b}\n' + POCKET_SCOPE + ' .x, ' + POCKET_SCOPE + ' .y{c:d}'), '.mms-full{a:b}\n.x, .y{c:d}');
   assert.strictEqual(unscopePocket(':where(html.is-phone) .mms-full{a:b}'), ':where(html.is-phone) .mms-full{a:b}', 'the landscape block keeps its own scope');
+});
+
+test('v1.341.3 rotation bump: for a second after a rotation, a scroll or visual-viewport resize re-runs the dead-zone snap on its next frame', () => {
+  // Dean's recording: after rotating back to portrait the page sat one top-safe-area inset high for
+  // ~0.35 s until the 650ms pass snapped it. Emulated (a stray 59px scroll 220ms after the rotate):
+  // main corrected it 434ms later, this build 16ms later (one frame).
+  const src = require('node:fs').readFileSync(require.resolve('../../public/js/player.js'), 'utf8');
+  const body = src.slice(src.indexOf('function snapSoonAfterRotation()'), src.indexOf('function scheduleViewportCapNudge()'));
+  assert.match(body, /if \(Date\.now\(\) > rotationSettleUntil \|\| rotationSnapQueued\) return;/);
+  assert.match(body, /requestAnimationFrame\(function \(\) \{ rotationSnapQueued = false; snapRotationDeadZone\(\); \}\);/);
+  assert.match(body, /window\.addEventListener\('scroll', snapSoonAfterRotation, \{ passive: true \}\);/);
+  assert.match(body, /visualViewport\.addEventListener\('resize', snapSoonAfterRotation\);/);
+  const sched = src.slice(src.indexOf('function scheduleViewportCapNudge()'), src.indexOf('function scheduleViewportCapNudge()') + 400);
+  assert.match(sched, /rotationSettleUntil = Date\.now\(\) \+ 1000;/, 'every rotation opens the window');
+  // The ?debugLifecycle=1 log: scroll lines near a rotation, and the faux keeper's plan.
+  assert.match(src, /window\.addEventListener\('scroll', function \(\) \{ if \(Date\.now\(\) <= rotationSettleUntil\) logViewport\('scroll'\); \}/);
+  assert.match(src, /recordLifecycleEvent\('fauxScroll'/);
 });

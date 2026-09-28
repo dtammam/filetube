@@ -3310,5 +3310,11 @@
     "date": "2026-09-28",
     "title": "Opening a panel no longer shifts the page on desktop",
     "intent": "On a desktop with a regular scrollbar, opening notifications, the account menu, a card's menu or a dialog no longer nudges the whole page sideways. Fullscreen video and dialogs look exactly as before."
+  },
+  {
+    "version": "1.341.3",
+    "date": "2026-09-28",
+    "title": "Rotating back to portrait no longer bumps the watch page",
+    "intent": "When you turn your phone back upright while watching, the page settles straight into place instead of sitting a little too high for a moment and then jumping."
   }
 ]
