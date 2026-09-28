@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Building
-next: sweeps - S2 (cards) and S5 (Subscriptions) in flight; then wave B (S1 chrome, S8 settings) + C (S3 watch, S7 music/pocket), then S4 + S9; the CI visual job needs its first rebaseline run (workflow_dispatch) before it can go green
+next: S9 (overlays) in flight; then step 7 retire per the D10.4 amendment (the middle path), step 8 full gate, step 9 release; the CI visual job needs its first rebaseline run (workflow_dispatch) before it can go green
 design: Approved 2026-09-27 @ab31cbdc (Dean: the Design section D0-D13 as written, read against ab31cbdc)
 gate: pending
 ---
@@ -800,6 +800,19 @@ only when `public/` changed. CI runs G1-G4 on all scenes.
 - `diag.html`'s `<style>`;
 - the docked player bar's legacy geometry, because the player rewrite is carved out. Those entries
   carry `reason: "player overlay rewrite (post black-screen fix)"`.
+
+**D10.4 amendment (Dean's ruling, 2026-09-28): the middle path.** After the sweeps, the debt was 1,647
+(no-raw-values 925, no-bespoke-controls 249, icons 51, the rest about 55). Step 7 retires:
+- every dead rule and function the sweeps replaced (unchanged);
+- all of `no-bespoke-controls`, `icons`, `colour-roles`, `z-ladder`, `display-ownership`,
+  `hover-gated`, `pressed-state`, `native-interaction`, `no-layout-transition` and `no-shell-style`
+  (the kinds a user can see), down to the carve-outs above.
+
+`no-raw-values` entries that are skin data (the Pocket/whcal palettes) or `diag.html` get a written
+`reason` as permanent carve-outs. The remaining plain `no-raw-values` entries (px sizes, borders) stay
+on the shrink-only ratchet, with `reason: "raw value, same pixels as a token; retire when touched"`.
+One true-up wave to clear them is a follow-up plan, opened only if Dean signs the pass off on device.
+AC1 is measured against this amended list, not the literal one above.
 
 **D10.5 CI visual job** (`.github/workflows/ci.yml`, a new job `visual`, required on main):
 - It runs in the pinned `mcr.microsoft.com/playwright:<exact version matching tools/capture>-jammy`
