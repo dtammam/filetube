@@ -33,7 +33,8 @@ test('the filter chips are ui-chip filter pills; the selected chip is ink on the
   assert.match(main, /<div class="modern-chip-row library-chips" role="group"/);
   const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
   assert.match(ui, /\.ui-chip--filter \{[^}]*border-radius:\s*var\(--r-pill\)/, 'chips are pills');
-  assert.match(ui, /\.ui-chip--filter\[aria-pressed="true"\] \{[^}]*background-color:\s*var\(--fill-selected\)/, 'the selected chip');
+  // UI pass S7: the tonal fill is LAYERED over the chip ground (ui-chip-selected.test.js measures that it shows)
+  assert.match(ui, /\.ui-chip--filter\[aria-pressed="true"\] \{[^}]*background-image:\s*linear-gradient\(var\(--fill-selected\), var\(--fill-selected\)\)/, 'the selected chip');
 });
 
 test('the mobile avatar bar is hidden on desktop', () => {

@@ -564,7 +564,12 @@ button.ui-row:focus-visible,
 }
 /* F13/F19: selected is ink on the neutral tonal fill, heavier - never red */
 .ui-chip--filter[aria-pressed="true"] {
-  background-color: var(--fill-selected);
+  /* UI pass S7: the tonal fill is LAYERED over the chip's own --surface-2 (a background-image
+     over the colour), not swapped for it. Swapped, the translucent fill composited over the page
+     ground and came out within 4 of the unselected chip in 2009 light (#e9e9ea vs #ededed) - an ON
+     state that does not show (the v1.284.1 class). Layered, selected is 17-28 levels off
+     unselected in every era and mode (test/unit/ui-chip-selected.test.js). */
+  background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
   font-weight: var(--fw-semibold);
 }
 .ui-chip--filter:active { background-color: var(--tint-press); }
