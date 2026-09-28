@@ -121,12 +121,14 @@ test('no literal emoji/pictographic characters in the card source (glyphs come f
 
 test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => {
   // Mine the card's own CSS block for the tokens it reads.
-  // Search for the terminator AFTER the card's start - `.toast {` also occurs
-  // earlier in the file, and slicing to the first hit produced a backwards
-  // (empty) range that made this assertion vacuous.
+  // Search for the terminator AFTER the card's start (slicing to an earlier hit produced a
+  // backwards, empty range that made this assertion vacuous). Sweep S9 deleted the `.toast`
+  // rule that used to follow the card; the next rule after it is the one-off dialog's.
   const cardStart = css.indexOf('#handoff-card {');
   assert.ok(cardStart > -1, 'the card CSS block must be findable');
-  const cardCss = css.slice(cardStart, css.indexOf('.toast {', cardStart));
+  const cardEnd = css.indexOf('.oneoff-modal-backdrop {', cardStart);
+  assert.ok(cardEnd > cardStart, 'the card CSS block must end where the next family starts');
+  const cardCss = css.slice(cardStart, cardEnd);
   assert.ok(cardCss.length > 500, `the card CSS block must be non-trivial, got ${cardCss.length} chars`);
 
   const consumed = new Set();

@@ -1520,13 +1520,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
        independently re-resolving env(safe-area-inset-bottom). */
     bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
-
-  /* v1.17.0 FR-3(a), T2: clear the fixed mobile .bottom-nav the same way
-     #player-dock does above, so the toast never renders underneath/behind
-     it. */
-  .toast {
-    bottom: calc(var(--mobile-bottom-nav-h) + 12px); /* token-exempt: positional geometry (Stop A Batch A) */
-  }
 }
 
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
@@ -3066,7 +3059,7 @@ select {
   display: none;
 }
 
-/* Mirrors .toast's fade-in: the class is added one frame after mount so the
+/* Like the ui-toast's fade-in: the class is added one frame after mount so the
    transition actually runs instead of being skipped on first paint. */
 #handoff-card.handoff-visible {
   opacity: 1;
@@ -3208,48 +3201,15 @@ select {
     right: 8px; /* token-exempt: positional geometry (mirrors #player-dock) */
     width: auto;
     max-width: none;
-    /* Clear the fixed .bottom-nav exactly as #player-dock and .toast do,
+    /* Clear the fixed .bottom-nav as #player-dock and the ui-toast host do,
        sharing --mobile-bottom-nav-h so all three stay in lockstep through the
        iOS address-bar/home-indicator collapse. */
     bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
-/* v1.17.0 FR-3(a), T2: brief, non-blocking, auto-dismissing notification --
-   see common.js's showToast(). Replaces the blocking post-delete
-   alert('File deleted successfully.') on the watch page; also used by the
-   home/library card trash-can (T2) below. Era tokens only -- no hardcoded
-   colors, so it stays legible across every era/light-dark combo. Content is
-   always textContent (never innerHTML), so nothing rendered here can ever
-   carry markup. */
-.toast {
-  position: fixed;
-  left: 50%;
-  /* v1.26.2 polish (Dean punchlist -- PWA chrome): on an installed iOS PWA
-     with a home-indicator (env(safe-area-inset-bottom) > 0), a bare 24px
-     could sit uncomfortably close to (or under) the indicator -- add the
-     inset on top of the existing 24px breathing room. The `0px` fallback
-     keeps this byte-for-byte the same 24px everywhere env() isn't supported
-     (older browsers) or the inset is genuinely 0 (no home indicator). */
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
-  transform: translateX(-50%) translateY(8px);
-  z-index: var(--z-top); /* above the one-off download modal backdrop (--z-modal + 100) */
-  max-width: calc(100vw - 32px);
-  background-color: var(--bg-sidebar);
-  color: var(--text-primary);
-  padding: var(--space-5) var(--space-8);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  font-size: var(--fs-base);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-slow) var(--ease-ui), transform var(--dur-slow) var(--ease-ui);
-}
-
-.toast.toast-visible {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
+/* The toast is ui.css's ui-toast (sweep S9, F56): one queue, the inverted toast surface,
+   bottom-centred above the bottom bar and the safe area. */
 
 /* v1.15.0 item 3: one-off download header button + compact modal, built at
    runtime by public/js/common.js's injectOneOffDownloadButtonIfEnabled(),
@@ -11497,19 +11457,6 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   a.queue-upnext-next:hover {
     text-decoration: underline;
   }
-}
-
-/* v1.63 gate: the toast's optional action button (the add-queue Undo). */
-.toast-action-btn {
-  margin-left: var(--space-5);
-  background: none;
-  border: none;
-  color: var(--yt-red);
-  font-weight: var(--fw-semibold);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  text-transform: uppercase;
-  padding: var(--space-1) var(--space-2);
 }
 
 /* ---- v1.63.1: the fake stars are optional (the watch action row's phone centring

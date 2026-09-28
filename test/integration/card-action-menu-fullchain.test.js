@@ -242,7 +242,7 @@ test('SHARE: the menu runs the native share sheet with the SERVER-derived {title
     await openMenuByKebab(dom2, 'yt1');
     click(dom2, menuRow(dom2.window.document, 'Share'));
     await settle();
-    const toasts = Array.from(dom2.window.document.querySelectorAll('.toast')).map((t) => t.textContent);
+    const toasts = Array.from(dom2.window.document.querySelectorAll('.ui-toast')).map((t) => t.textContent);
     assert.ok(toasts.some((t) => t.includes('Could not share the link.')), `expected the failure toast, saw: ${JSON.stringify(toasts)}`);
   } finally { dom2.window.close(); }
 });

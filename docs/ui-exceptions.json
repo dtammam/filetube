@@ -3603,12 +3603,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.toast|max-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.track-nav-ico|height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6299,18 +6293,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".toast",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".toast-action-btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".track-nav-btn",
         "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6582,7 +6564,7 @@
       },
       {
         "key": "public/js/common.js|createElement(button)|btn",
-        "count": 2,
+        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },

@@ -310,7 +310,7 @@ test('watch page: a failing transcript route toasts and opens nothing; the butto
     await settle();
     assert.strictEqual(document.querySelector('.transcript-modal'), null);
     assert.strictEqual(document.querySelector('.choice-modal-list'), null);
-    assert.ok(document.querySelector('.toast'), 'a toast explains the failure');
+    assert.ok(document.querySelector('.ui-toast'), 'a toast explains the failure');
     assert.strictEqual(btn.disabled, false);
   } finally { dom.window.close(); }
 });
@@ -495,7 +495,7 @@ test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clip
     await settle();
     click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
     await settle();
-    assert.strictEqual(document.querySelector('.toast'), null, 'the user saw the sheet - no toast on success');
+    assert.strictEqual(document.querySelector('.ui-toast'), null, 'the user saw the sheet - no toast on success');
   } finally { dom.window.close(); }
   const writes = [];
   ({ dom } = await loadWatchWithFetchStub(fetchImpl, (w) => installClipboard(w, writes), true));
@@ -507,7 +507,7 @@ test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clip
     click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
     await settle();
     assert.deepStrictEqual(writes, ['Summarize this.\n\n' + PLAIN_TEXT]);
-    assert.match(document.querySelector('.toast').textContent, /Copied with your prompt/);
+    assert.match(document.querySelector('.ui-toast').textContent, /Copied with your prompt/);
   } finally { dom.window.close(); }
 });
 

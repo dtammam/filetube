@@ -14786,39 +14786,26 @@ function shareMediaFile(opts) {
     });
 }
 
-function showToast(msg, action) {
-  if (typeof document === 'undefined') return;
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = msg;
-  // v1.63 (gate: Dean's ruling 3 promised an Undo on the add toast): an
-  // optional single action button - {label, onAction}. Tapping it runs the
-  // action once and dismisses immediately; the auto-dismiss window widens
-  // to give the tap a real chance. createElement/textContent only.
-  let dismissed = false;
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    toast.classList.remove('toast-visible');
-    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
-  };
+// Sweep S9 (F56): every toast rides ui.toast's ONE queue - one visible at a time, the rest
+// wait, instead of each call appending its own node on top of the last. showToast stays as
+// the thin shim every caller already uses (116 call sites, several of them in other views
+// reaching it as window.showToast): `action` is the same optional {label, onAction} (the
+// v1.63 Undo), now a sentence-case plain ui-btn in --accent; `opts.kind` ('success' |
+// 'error') adds the kind's icon, so colour is never the only signal. The text is always
+// textContent (ui.toast builds it with spanText), never markup. Returns ui.toast's handle
+// ({dismiss, el}), or null where there is no document / no ui.js (a Node require).
+function showToast(msg, action, opts) {
+  if (typeof document === 'undefined') return null;
+  const U = (typeof window !== 'undefined' && window.ui) || null;
+  if (!U || typeof U.toast !== 'function') return null;
+  const o = {};
+  if (opts && typeof opts === 'object' && (opts.kind === 'success' || opts.kind === 'error')) o.kind = opts.kind;
   if (action && typeof action.onAction === 'function' && typeof action.label === 'string') {
-    const btn = document.createElement('button');
-    btn.className = 'toast-action-btn';
-    btn.textContent = action.label;
-    btn.addEventListener('click', () => {
-      dismiss();
-      action.onAction();
-    }, { once: true });
-    toast.appendChild(btn);
+    // One tap runs the action once; ui.toast dismisses the toast after it.
+    let ran = false;
+    o.action = { label: action.label, onAction: () => { if (ran) return; ran = true; action.onAction(); } };
   }
-  document.body.appendChild(toast);
-  // Next frame so the initial (opacity:0) state is committed before adding
-  // .toast-visible -- guarantees the fade-in actually transitions instead of
-  // snapping straight to visible.
-  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
-  raf(() => toast.classList.add('toast-visible'));
-  setTimeout(dismiss, action ? 5000 : 2500);
+  return U.toast(msg == null ? '' : String(msg), o);
 }
 
 // v1.17.0 FR-3(b): pure arm/disarm reducer for the home/library card
