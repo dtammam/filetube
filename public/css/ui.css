@@ -125,6 +125,13 @@ select,
   transition: background-color var(--dur-press) var(--ease-std), color var(--dur-press) var(--ease-std),
     border-color var(--dur-press) var(--ease-std), opacity var(--dur-fade) var(--ease-std);
 }
+/* F20 (sweep S1): an <a class="ui-btn"> (the bottom bar's tabs) never underlines, in any era
+   or state - the [data-theme] prefix outranks style.css's 2005 `a` underline and the global
+   `a:hover` without !important (the ui-row link's rule, below, is the same fix). */
+[data-theme] a.ui-btn,
+a.ui-btn {
+  text-decoration: none;
+}
 .ui-btn--sm { --btn-h: var(--ctl-sm); --btn-px: var(--space-6); --btn-icon: var(--icon-sm); }
 /* an icon-only sm button (the channel row's bell and pin beside an sm pill) keeps the row glyph */
 .ui-btn--sm.ui-btn--icon { --btn-icon: var(--icon-md); }
